@@ -1,0 +1,16 @@
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/view_dezider
+    username: root
+    password: password
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jackson:
+    serialization:
+      INDENT_OUTPUT: true
+
+jwt:
+  secret: "change-this-secret-in-prod"
+  expirationMinutes: 480
+
+server:
+  port: 8080

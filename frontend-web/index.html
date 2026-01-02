@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>View Dezider</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="hero">
+    <h1>View Dezider</h1>
+    <p>Strategic Decision Engine for irreversible choices.</p>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h2>Projects</h2>
+      <form id="project-form">
+        <input type="text" id="project-name" placeholder="Project name" required />
+        <input type="text" id="project-description" placeholder="Description" />
+        <button type="submit">Create Project</button>
+      </form>
+      <ul id="project-list"></ul>
+    </section>
+
+    <section class="card">
+      <h2>Compute Results</h2>
+      <div class="inline">
+        <input type="number" id="project-id" placeholder="Project ID" />
+        <button id="compute-btn">Compute</button>
+      </div>
+      <pre id="result-output"></pre>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
