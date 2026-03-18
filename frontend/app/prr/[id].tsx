@@ -52,31 +52,30 @@ interface Decision {
 }
 
 // Function to auto-calculate ratings based on order within each category
+// Rating starts from 10 for lowest priority (last Secondary) and increments by 10
+// Order: Secondary (lowest to highest) -> Primary (lowest to highest)
 const calculateRatingsFromOrder = (factors: Factor[]): Factor[] => {
   const primaryFactors = factors.filter(f => f.category === 'primary').sort((a, b) => a.order - b.order);
   const secondaryFactors = factors.filter(f => f.category === 'secondary').sort((a, b) => a.order - b.order);
   
-  // Primary factors get higher base ratings (60-100 range)
-  // Secondary factors get lower base ratings (20-50 range)
-  
   const updatedFactors: Factor[] = [];
   
-  // Calculate primary factor ratings
-  const primaryCount = primaryFactors.length;
-  primaryFactors.forEach((factor, index) => {
-    // First item gets 100, subsequent items decrease proportionally
-    // Range: 100 down to 60
-    const rating = primaryCount === 1 ? 100 : Math.round(100 - (index * 40 / (primaryCount - 1)));
-    updatedFactors.push({ ...factor, rating, order: index });
-  });
+  // Total factors determines the rating range
+  // We build from lowest to highest priority:
+  // Secondary (reversed - last item is lowest priority) -> Primary (reversed - last item is lower priority within primary)
   
-  // Calculate secondary factor ratings
-  const secondaryCount = secondaryFactors.length;
-  secondaryFactors.forEach((factor, index) => {
-    // First item gets 50, subsequent items decrease proportionally
-    // Range: 50 down to 20
-    const rating = secondaryCount === 1 ? 50 : Math.round(50 - (index * 30 / (secondaryCount - 1)));
-    updatedFactors.push({ ...factor, rating, order: index });
+  // Create ordered list from lowest to highest priority:
+  // 1. Secondary factors in reverse order (last = lowest priority)
+  // 2. Primary factors in reverse order (last = lower priority within primary, but still higher than secondary)
+  const orderedFromLowest = [
+    ...secondaryFactors.slice().reverse(),  // Secondary: last item first (lowest priority)
+    ...primaryFactors.slice().reverse(),     // Primary: last item first (lower within primary)
+  ];
+  
+  // Assign ratings: 10, 20, 30, ... starting from lowest priority
+  orderedFromLowest.forEach((factor, index) => {
+    const rating = (index + 1) * 10;
+    updatedFactors.push({ ...factor, rating });
   });
   
   return updatedFactors;
@@ -492,8 +491,9 @@ export default function PRRDecisionDetail() {
         <View style={styles.tipBox}>
           <Ionicons name="information-circle" size={20} color={COLORS.primary} />
           <Text style={styles.tipText}>
-            Ratings are auto-calculated: Primary factors get 60-100, Secondary get 20-50. 
-            Higher position = higher rating.
+            Ratings are auto-calculated: Starting from 10 for the lowest priority factor, 
+            incrementing by 10 for each higher priority. Secondary factors get lower ratings, 
+            Primary factors get higher ratings.
           </Text>
         </View>
 
