@@ -51,6 +51,37 @@ interface Decision {
   status: string;
 }
 
+// Function to auto-calculate ratings based on order within each category
+const calculateRatingsFromOrder = (factors: Factor[]): Factor[] => {
+  const primaryFactors = factors.filter(f => f.category === 'primary').sort((a, b) => a.order - b.order);
+  const secondaryFactors = factors.filter(f => f.category === 'secondary').sort((a, b) => a.order - b.order);
+  
+  // Primary factors get higher base ratings (60-100 range)
+  // Secondary factors get lower base ratings (20-50 range)
+  
+  const updatedFactors: Factor[] = [];
+  
+  // Calculate primary factor ratings
+  const primaryCount = primaryFactors.length;
+  primaryFactors.forEach((factor, index) => {
+    // First item gets 100, subsequent items decrease proportionally
+    // Range: 100 down to 60
+    const rating = primaryCount === 1 ? 100 : Math.round(100 - (index * 40 / (primaryCount - 1)));
+    updatedFactors.push({ ...factor, rating, order: index });
+  });
+  
+  // Calculate secondary factor ratings
+  const secondaryCount = secondaryFactors.length;
+  secondaryFactors.forEach((factor, index) => {
+    // First item gets 50, subsequent items decrease proportionally
+    // Range: 50 down to 20
+    const rating = secondaryCount === 1 ? 50 : Math.round(50 - (index * 30 / (secondaryCount - 1)));
+    updatedFactors.push({ ...factor, rating, order: index });
+  });
+  
+  return updatedFactors;
+};
+
 export default function PRRDecisionDetail() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
@@ -80,8 +111,8 @@ export default function PRRDecisionDetail() {
         setCurrentStep(7);
       } else if (response.data.options.length > 0) {
         setCurrentStep(6);
-      } else if (response.data.factors.length > 0 && response.data.factors[0].rating > 0) {
-        setCurrentStep(5);
+      } else if (response.data.factors.length > 0 && response.data.factors.some((f: Factor) => f.order !== undefined)) {
+        setCurrentStep(4);
       } else if (response.data.factors.length > 0) {
         setCurrentStep(3);
       }
@@ -129,6 +160,69 @@ export default function PRRDecisionDetail() {
   const removeFactor = (factorId: string) => {
     const updatedFactors = decision!.factors.filter((f) => f.id !== factorId);
     saveDecision({ factors: updatedFactors });
+  };
+
+  // Move factor up in priority (within same category)
+  const moveFactorUp = (factorId: string) => {
+    const factor = decision!.factors.find(f => f.id === factorId);
+    if (!factor) return;
+    
+    const sameCategory = decision!.factors
+      .filter(f => f.category === factor.category)
+      .sort((a, b) => a.order - b.order);
+    
+    const currentIndex = sameCategory.findIndex(f => f.id === factorId);
+    if (currentIndex <= 0) return; // Already at top
+    
+    // Swap orders
+    const updatedFactors = decision!.factors.map(f => {
+      if (f.id === factorId) {
+        return { ...f, order: sameCategory[currentIndex - 1].order };
+      }
+      if (f.id === sameCategory[currentIndex - 1].id) {
+        return { ...f, order: factor.order };
+      }
+      return f;
+    });
+    
+    // Recalculate ratings based on new order
+    const factorsWithRatings = calculateRatingsFromOrder(updatedFactors);
+    saveDecision({ factors: factorsWithRatings });
+  };
+
+  // Move factor down in priority (within same category)
+  const moveFactorDown = (factorId: string) => {
+    const factor = decision!.factors.find(f => f.id === factorId);
+    if (!factor) return;
+    
+    const sameCategory = decision!.factors
+      .filter(f => f.category === factor.category)
+      .sort((a, b) => a.order - b.order);
+    
+    const currentIndex = sameCategory.findIndex(f => f.id === factorId);
+    if (currentIndex >= sameCategory.length - 1) return; // Already at bottom
+    
+    // Swap orders
+    const updatedFactors = decision!.factors.map(f => {
+      if (f.id === factorId) {
+        return { ...f, order: sameCategory[currentIndex + 1].order };
+      }
+      if (f.id === sameCategory[currentIndex + 1].id) {
+        return { ...f, order: factor.order };
+      }
+      return f;
+    });
+    
+    // Recalculate ratings based on new order
+    const factorsWithRatings = calculateRatingsFromOrder(updatedFactors);
+    saveDecision({ factors: factorsWithRatings });
+  };
+
+  // Apply ratings when moving to next step
+  const applyRatingsAndContinue = () => {
+    const factorsWithRatings = calculateRatingsFromOrder(decision!.factors);
+    saveDecision({ factors: factorsWithRatings });
+    setCurrentStep(6);
   };
 
   const addOption = () => {
@@ -317,86 +411,177 @@ export default function PRRDecisionDetail() {
           <Text style={styles.backButtonText}>Back</Text>
         </TouchableOpacity>
         <GradientButton
-          title="Continue"
-          onPress={() => setCurrentStep(5)}
+          title="Prioritize Factors"
+          onPress={() => setCurrentStep(4)}
           style={styles.nextButton}
         />
       </View>
     </View>
   );
 
-  const renderStep5 = () => (
-    <View style={styles.stepContent}>
-      <Text style={styles.stepTitle}>Step 5: Assign Ratings</Text>
-      <Text style={styles.stepDescription}>
-        Rate the importance of each factor (1-100). Higher = more important.
-      </Text>
+  // Step 4: Prioritize by ordering (drag up/down)
+  const renderStep4 = () => {
+    const primaryFactors = decision.factors
+      .filter(f => f.category === 'primary')
+      .sort((a, b) => a.order - b.order);
+    const secondaryFactors = decision.factors
+      .filter(f => f.category === 'secondary')
+      .sort((a, b) => a.order - b.order);
 
-      <Text style={styles.sectionLabel}>Primary Factors</Text>
-      {decision.factors
-        .filter((f) => f.category === 'primary')
-        .map((factor) => (
-          <Card key={factor.id} style={styles.ratingCard}>
-            <Text style={styles.factorName}>{factor.name}</Text>
-            <View style={styles.ratingRow}>
-              <View style={styles.ratingBar}>
-                <View
-                  style={[styles.ratingFill, { width: `${factor.rating}%` }]}
-                />
-              </View>
-              <TextInput
-                style={styles.ratingInput}
-                value={String(factor.rating)}
-                onChangeText={(text) => {
-                  const num = parseInt(text) || 0;
-                  updateFactor(factor.id, { rating: Math.min(100, Math.max(0, num)) });
-                }}
-                keyboardType="numeric"
-                maxLength={3}
+    const renderFactorWithReorder = (factor: Factor, index: number, total: number) => (
+      <Card key={factor.id} style={styles.reorderCard}>
+        <View style={styles.reorderRow}>
+          <View style={styles.reorderRank}>
+            <Text style={styles.rankNumber}>{index + 1}</Text>
+          </View>
+          <Text style={styles.reorderName}>{factor.name}</Text>
+          <View style={styles.reorderButtons}>
+            <TouchableOpacity
+              style={[styles.arrowButton, index === 0 && styles.arrowButtonDisabled]}
+              onPress={() => moveFactorUp(factor.id)}
+              disabled={index === 0}
+            >
+              <Ionicons 
+                name="chevron-up" 
+                size={20} 
+                color={index === 0 ? COLORS.textMuted : COLORS.primary} 
               />
-            </View>
-          </Card>
-        ))}
-
-      <Text style={styles.sectionLabel}>Secondary Factors</Text>
-      {decision.factors
-        .filter((f) => f.category === 'secondary')
-        .map((factor) => (
-          <Card key={factor.id} style={styles.ratingCard}>
-            <Text style={styles.factorName}>{factor.name}</Text>
-            <View style={styles.ratingRow}>
-              <View style={styles.ratingBar}>
-                <View
-                  style={[styles.ratingFill, { width: `${factor.rating}%` }]}
-                />
-              </View>
-              <TextInput
-                style={styles.ratingInput}
-                value={String(factor.rating)}
-                onChangeText={(text) => {
-                  const num = parseInt(text) || 0;
-                  updateFactor(factor.id, { rating: Math.min(100, Math.max(0, num)) });
-                }}
-                keyboardType="numeric"
-                maxLength={3}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.arrowButton, index === total - 1 && styles.arrowButtonDisabled]}
+              onPress={() => moveFactorDown(factor.id)}
+              disabled={index === total - 1}
+            >
+              <Ionicons 
+                name="chevron-down" 
+                size={20} 
+                color={index === total - 1 ? COLORS.textMuted : COLORS.primary} 
               />
-            </View>
-          </Card>
-        ))}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Card>
+    );
 
-      <View style={styles.navButtons}>
-        <TouchableOpacity style={styles.backButton} onPress={() => setCurrentStep(3)}>
-          <Ionicons name="arrow-back" size={20} color={COLORS.textSecondary} />
-          <Text style={styles.backButtonText}>Back</Text>
-        </TouchableOpacity>
-        <GradientButton
-          title="Add Options"
-          onPress={() => setCurrentStep(6)}
-          style={styles.nextButton}
-        />
+    return (
+      <View style={styles.stepContent}>
+        <Text style={styles.stepTitle}>Step 4: Prioritize Factors</Text>
+        <Text style={styles.stepDescription}>
+          Order factors by importance within each category. Use arrows to move factors up or down. 
+          The system will automatically calculate ratings based on your ordering.
+        </Text>
+
+        {primaryFactors.length > 0 && (
+          <>
+            <Text style={styles.sectionLabel}>Primary Factors (Most Important First)</Text>
+            {primaryFactors.map((factor, index) => 
+              renderFactorWithReorder(factor, index, primaryFactors.length)
+            )}
+          </>
+        )}
+
+        {secondaryFactors.length > 0 && (
+          <>
+            <Text style={[styles.sectionLabel, { marginTop: 16 }]}>Secondary Factors (Most Important First)</Text>
+            {secondaryFactors.map((factor, index) => 
+              renderFactorWithReorder(factor, index, secondaryFactors.length)
+            )}
+          </>
+        )}
+
+        <View style={styles.tipBox}>
+          <Ionicons name="information-circle" size={20} color={COLORS.primary} />
+          <Text style={styles.tipText}>
+            Ratings are auto-calculated: Primary factors get 60-100, Secondary get 20-50. 
+            Higher position = higher rating.
+          </Text>
+        </View>
+
+        <View style={styles.navButtons}>
+          <TouchableOpacity style={styles.backButton} onPress={() => setCurrentStep(3)}>
+            <Ionicons name="arrow-back" size={20} color={COLORS.textSecondary} />
+            <Text style={styles.backButtonText}>Back</Text>
+          </TouchableOpacity>
+          <GradientButton
+            title="Calculate & Add Options"
+            onPress={applyRatingsAndContinue}
+            style={styles.nextButton}
+          />
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
+
+  // Step 5: Show calculated ratings (read-only)
+  const renderStep5 = () => {
+    const primaryFactors = decision.factors
+      .filter(f => f.category === 'primary')
+      .sort((a, b) => a.order - b.order);
+    const secondaryFactors = decision.factors
+      .filter(f => f.category === 'secondary')
+      .sort((a, b) => a.order - b.order);
+
+    return (
+      <View style={styles.stepContent}>
+        <Text style={styles.stepTitle}>Step 5: Calculated Ratings</Text>
+        <Text style={styles.stepDescription}>
+          Based on your prioritization, here are the auto-calculated importance ratings.
+        </Text>
+
+        <Text style={styles.sectionLabel}>Primary Factors</Text>
+        {primaryFactors.map((factor, index) => (
+          <Card key={factor.id} style={styles.ratingCard}>
+            <View style={styles.ratingHeader}>
+              <View style={styles.ratingRank}>
+                <Text style={styles.rankNumber}>{index + 1}</Text>
+              </View>
+              <Text style={styles.factorName}>{factor.name}</Text>
+              <View style={styles.ratingBadge}>
+                <Text style={styles.ratingBadgeText}>{factor.rating}</Text>
+              </View>
+            </View>
+            <View style={styles.ratingBarContainer}>
+              <View style={[styles.ratingBarFill, { width: `${factor.rating}%` }]} />
+            </View>
+          </Card>
+        ))}
+
+        {secondaryFactors.length > 0 && (
+          <>
+            <Text style={styles.sectionLabel}>Secondary Factors</Text>
+            {secondaryFactors.map((factor, index) => (
+              <Card key={factor.id} style={styles.ratingCard}>
+                <View style={styles.ratingHeader}>
+                  <View style={[styles.ratingRank, { backgroundColor: COLORS.teal }]}>
+                    <Text style={styles.rankNumber}>{index + 1}</Text>
+                  </View>
+                  <Text style={styles.factorName}>{factor.name}</Text>
+                  <View style={[styles.ratingBadge, { backgroundColor: COLORS.teal }]}>
+                    <Text style={styles.ratingBadgeText}>{factor.rating}</Text>
+                  </View>
+                </View>
+                <View style={styles.ratingBarContainer}>
+                  <View style={[styles.ratingBarFill, { width: `${factor.rating}%`, backgroundColor: COLORS.teal }]} />
+                </View>
+              </Card>
+            ))}
+          </>
+        )}
+
+        <View style={styles.navButtons}>
+          <TouchableOpacity style={styles.backButton} onPress={() => setCurrentStep(4)}>
+            <Ionicons name="arrow-back" size={20} color={COLORS.textSecondary} />
+            <Text style={styles.backButtonText}>Adjust Priority</Text>
+          </TouchableOpacity>
+          <GradientButton
+            title="Add Options"
+            onPress={() => setCurrentStep(6)}
+            style={styles.nextButton}
+          />
+        </View>
+      </View>
+    );
+  };
 
   const renderStep6 = () => (
     <View style={styles.stepContent}>
@@ -461,9 +646,14 @@ export default function PRRDecisionDetail() {
             </View>
           </View>
 
-          {decision.factors.map((factor) => (
+          {decision.factors
+            .sort((a, b) => b.rating - a.rating)
+            .map((factor) => (
             <View key={factor.id} style={styles.assessmentRow}>
-              <Text style={styles.assessmentLabel}>{factor.name}</Text>
+              <View style={styles.assessmentLabelRow}>
+                <Text style={styles.assessmentLabel}>{factor.name}</Text>
+                <Text style={styles.assessmentRating}>({factor.rating})</Text>
+              </View>
               <View style={styles.assessmentInput}>
                 <TextInput
                   style={styles.percentInput}
@@ -541,7 +731,7 @@ export default function PRRDecisionDetail() {
                   style={styles.selectButton}
                   onPress={() => selectOption(option.id, 'obvious')}
                 >
-                  <Text style={styles.selectButtonText}>Select as Obvious Choice</Text>
+                  <Text style={styles.selectButtonText}>Select as Final Choice</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -577,8 +767,9 @@ export default function PRRDecisionDetail() {
       case 2:
         return renderStep2();
       case 3:
-      case 4:
         return renderStep3();
+      case 4:
+        return renderStep4();
       case 5:
         return renderStep5();
       case 6:
@@ -766,36 +957,105 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  // Reorder styles for Step 4
+  reorderCard: {
+    marginBottom: 8,
+    padding: 12,
+  },
+  reorderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  reorderRank: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  rankNumber: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.white,
+  },
+  reorderName: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '500',
+    color: COLORS.textPrimary,
+  },
+  reorderButtons: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  arrowButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: COLORS.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  arrowButtonDisabled: {
+    opacity: 0.5,
+  },
+  tipBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(142, 36, 170, 0.08)',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 16,
+    gap: 8,
+  },
+  tipText: {
+    flex: 1,
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    lineHeight: 18,
+  },
+  // Rating display styles for Step 5
   ratingCard: {
     marginBottom: 8,
     padding: 12,
   },
-  ratingRow: {
+  ratingHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
-    gap: 12,
+    marginBottom: 8,
   },
-  ratingBar: {
-    flex: 1,
-    height: 8,
+  ratingRank: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  ratingBadge: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  ratingBadgeText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.white,
+  },
+  ratingBarContainer: {
+    height: 6,
     backgroundColor: COLORS.divider,
-    borderRadius: 4,
+    borderRadius: 3,
+    overflow: 'hidden',
   },
-  ratingFill: {
+  ratingBarFill: {
     height: '100%',
     backgroundColor: COLORS.primary,
-    borderRadius: 4,
-  },
-  ratingInput: {
-    width: 50,
-    height: 36,
-    backgroundColor: COLORS.background,
-    borderRadius: 8,
-    textAlign: 'center',
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
+    borderRadius: 3,
   },
   optionCard: {
     marginBottom: 8,
@@ -842,10 +1102,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
   },
+  assessmentLabelRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   assessmentLabel: {
     fontSize: 14,
-    color: COLORS.textSecondary,
-    flex: 1,
+    color: COLORS.textPrimary,
+  },
+  assessmentRating: {
+    fontSize: 12,
+    color: COLORS.textMuted,
   },
   assessmentInput: {
     flexDirection: 'row',
