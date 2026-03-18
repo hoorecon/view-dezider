@@ -102,6 +102,10 @@ export default function PRRDecisionDetail() {
   // Form states
   const [newFactorName, setNewFactorName] = useState('');
   const [newOptionName, setNewOptionName] = useState('');
+  
+  // LMH Assessment states
+  const [showCustomInput, setShowCustomInput] = useState<{[key: string]: boolean}>({});
+  const [unitValues, setUnitValues] = useState<{[key: string]: string}>({});
 
   useEffect(() => {
     fetchDecision();
@@ -657,10 +661,6 @@ export default function PRRDecisionDetail() {
       </View>
     </View>
   );
-
-  // State for custom percentage input
-  const [showCustomInput, setShowCustomInput] = useState<{[key: string]: boolean}>({});
-  const [unitValues, setUnitValues] = useState<{[key: string]: string}>({});
 
   const renderStep7 = () => {
     const getAssessmentKey = (optionId: string, factorId: string) => `${optionId}_${factorId}`;
