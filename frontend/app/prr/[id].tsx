@@ -106,6 +106,7 @@ export default function PRRDecisionDetail() {
   // LMH Assessment states
   const [showCustomInput, setShowCustomInput] = useState<{[key: string]: boolean}>({});
   const [unitValues, setUnitValues] = useState<{[key: string]: string}>({});
+  const [customInputValues, setCustomInputValues] = useState<{[key: string]: string}>({});
 
   useEffect(() => {
     fetchDecision();
@@ -669,18 +670,29 @@ export default function PRRDecisionDetail() {
       const percentage = LMH_VALUES[mode].percentage;
       const key = getAssessmentKey(optionId, factorId);
       setShowCustomInput({ ...showCustomInput, [key]: false });
+      setCustomInputValues({ ...customInputValues, [key]: '' }); // Clear custom input
       updateAssessment(optionId, factorId, percentage, mode, unitValues[key]);
     };
 
     const handleCustomSelect = (optionId: string, factorId: string) => {
       const key = getAssessmentKey(optionId, factorId);
+      const currentValue = getAssessmentValue(optionId, factorId);
       setShowCustomInput({ ...showCustomInput, [key]: true });
+      setCustomInputValues({ ...customInputValues, [key]: String(currentValue) });
     };
 
-    const handleCustomPercentage = (optionId: string, factorId: string, value: string) => {
-      const num = parseInt(value) || 0;
-      const percentage = Math.min(100, Math.max(0, num));
+    const handleCustomInputChange = (optionId: string, factorId: string, value: string) => {
       const key = getAssessmentKey(optionId, factorId);
+      // Only allow numbers
+      const cleanValue = value.replace(/[^0-9]/g, '');
+      setCustomInputValues({ ...customInputValues, [key]: cleanValue });
+    };
+
+    const handleCustomInputBlur = (optionId: string, factorId: string) => {
+      const key = getAssessmentKey(optionId, factorId);
+      const inputValue = customInputValues[key] || '0';
+      const num = parseInt(inputValue) || 0;
+      const percentage = Math.min(100, Math.max(0, num));
       updateAssessment(optionId, factorId, percentage, 'custom', unitValues[key]);
     };
 
@@ -691,6 +703,14 @@ export default function PRRDecisionDetail() {
       const currentMode = getAssessmentMode(optionId, factorId);
       const currentPercentage = getAssessmentValue(optionId, factorId);
       updateAssessment(optionId, factorId, currentPercentage, currentMode, value);
+    };
+
+    const getCustomInputValue = (optionId: string, factorId: string): string => {
+      const key = getAssessmentKey(optionId, factorId);
+      if (customInputValues[key] !== undefined) {
+        return customInputValues[key];
+      }
+      return String(getAssessmentValue(optionId, factorId));
     };
 
     return (
@@ -805,8 +825,9 @@ export default function PRRDecisionDetail() {
                         <View style={styles.customInputContainer}>
                           <TextInput
                             style={styles.customPercentInput}
-                            value={String(currentValue)}
-                            onChangeText={(text) => handleCustomPercentage(option.id, factor.id, text)}
+                            value={getCustomInputValue(option.id, factor.id)}
+                            onChangeText={(text) => handleCustomInputChange(option.id, factor.id, text)}
+                            onBlur={() => handleCustomInputBlur(option.id, factor.id)}
                             keyboardType="numeric"
                             maxLength={3}
                           />
