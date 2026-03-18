@@ -25,11 +25,14 @@ interface Factor {
   category: 'primary' | 'secondary';
   rating: number;
   order: number;
+  unit?: string; // e.g., "USD", "hours", "km", etc.
 }
 
 interface OptionAssessment {
   factor_id: string;
   percentage: number;
+  unit_value?: string; // Actual value with unit (e.g., "50000 USD")
+  assessment_mode?: 'L' | 'M' | 'H' | 'custom'; // Quick assessment mode
 }
 
 interface DecisionOption {
@@ -50,6 +53,13 @@ interface Decision {
   notes: string;
   status: string;
 }
+
+// LMH Assessment constants
+const LMH_VALUES = {
+  L: { label: 'Low', percentage: 25, color: '#EF4444' },    // Red
+  M: { label: 'Medium', percentage: 50, color: '#F59E0B' }, // Yellow/Amber
+  H: { label: 'High', percentage: 75, color: '#10B981' },   // Green
+};
 
 // Function to auto-calculate ratings based on order within each category
 // Rating starts from 10 for lowest priority (last Secondary) and increments by 10
@@ -242,25 +252,43 @@ export default function PRRDecisionDetail() {
     saveDecision({ options: updatedOptions });
   };
 
-  const updateAssessment = (optionId: string, factorId: string, percentage: number) => {
+  const updateAssessment = (optionId: string, factorId: string, percentage: number, mode?: 'L' | 'M' | 'H' | 'custom', unitValue?: string) => {
     const updatedOptions = decision!.options.map((option) => {
       if (option.id !== optionId) return option;
       
       const existingIndex = option.assessments.findIndex((a) => a.factor_id === factorId);
-      let newAssessments;
+      const newAssessment: OptionAssessment = { 
+        factor_id: factorId, 
+        percentage,
+        assessment_mode: mode,
+        unit_value: unitValue,
+      };
       
+      let newAssessments;
       if (existingIndex >= 0) {
         newAssessments = option.assessments.map((a, i) =>
-          i === existingIndex ? { ...a, percentage } : a
+          i === existingIndex ? { ...a, ...newAssessment } : a
         );
       } else {
-        newAssessments = [...option.assessments, { factor_id: factorId, percentage }];
+        newAssessments = [...option.assessments, newAssessment];
       }
       
       return { ...option, assessments: newAssessments };
     });
     
     saveDecision({ options: updatedOptions, factors: decision!.factors });
+  };
+
+  const getAssessmentMode = (optionId: string, factorId: string): 'L' | 'M' | 'H' | 'custom' | undefined => {
+    const option = decision?.options.find((o) => o.id === optionId);
+    const assessment = option?.assessments.find((a) => a.factor_id === factorId);
+    return assessment?.assessment_mode;
+  };
+
+  const getUnitValue = (optionId: string, factorId: string): string => {
+    const option = decision?.options.find((o) => o.id === optionId);
+    const assessment = option?.assessments.find((a) => a.factor_id === factorId);
+    return assessment?.unit_value || '';
   };
 
   const selectOption = (optionId: string, caseType: string) => {
@@ -630,61 +658,201 @@ export default function PRRDecisionDetail() {
     </View>
   );
 
-  const renderStep7 = () => (
-    <View style={styles.stepContent}>
-      <Text style={styles.stepTitle}>Step 6-7: Assess & Calculate</Text>
-      <Text style={styles.stepDescription}>
-        Rate how well each option satisfies each factor (0-100%).
-      </Text>
+  // State for custom percentage input
+  const [showCustomInput, setShowCustomInput] = useState<{[key: string]: boolean}>({});
+  const [unitValues, setUnitValues] = useState<{[key: string]: string}>({});
 
-      {decision.options.map((option) => (
-        <Card key={option.id} style={styles.assessmentCard}>
-          <View style={styles.assessmentHeader}>
-            <Text style={styles.optionName}>{option.name}</Text>
-            <View style={styles.worthBadge}>
-              <Text style={styles.worthText}>{option.worth_percentage.toFixed(1)}%</Text>
+  const renderStep7 = () => {
+    const getAssessmentKey = (optionId: string, factorId: string) => `${optionId}_${factorId}`;
+    
+    const handleLMHSelect = (optionId: string, factorId: string, mode: 'L' | 'M' | 'H') => {
+      const percentage = LMH_VALUES[mode].percentage;
+      const key = getAssessmentKey(optionId, factorId);
+      setShowCustomInput({ ...showCustomInput, [key]: false });
+      updateAssessment(optionId, factorId, percentage, mode, unitValues[key]);
+    };
+
+    const handleCustomSelect = (optionId: string, factorId: string) => {
+      const key = getAssessmentKey(optionId, factorId);
+      setShowCustomInput({ ...showCustomInput, [key]: true });
+    };
+
+    const handleCustomPercentage = (optionId: string, factorId: string, value: string) => {
+      const num = parseInt(value) || 0;
+      const percentage = Math.min(100, Math.max(0, num));
+      const key = getAssessmentKey(optionId, factorId);
+      updateAssessment(optionId, factorId, percentage, 'custom', unitValues[key]);
+    };
+
+    const handleUnitValueChange = (optionId: string, factorId: string, value: string) => {
+      const key = getAssessmentKey(optionId, factorId);
+      setUnitValues({ ...unitValues, [key]: value });
+      // Update assessment with unit value
+      const currentMode = getAssessmentMode(optionId, factorId);
+      const currentPercentage = getAssessmentValue(optionId, factorId);
+      updateAssessment(optionId, factorId, currentPercentage, currentMode, value);
+    };
+
+    return (
+      <View style={styles.stepContent}>
+        <Text style={styles.stepTitle}>Step 6-7: Assess & Calculate</Text>
+        <Text style={styles.stepDescription}>
+          Rate how well each option satisfies each factor using quick LMH toggles or specific percentage.
+        </Text>
+
+        {/* LMH Legend */}
+        <Card style={styles.legendCard}>
+          <Text style={styles.legendTitle}>Assessment Legend</Text>
+          <View style={styles.legendRow}>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: LMH_VALUES.L.color }]} />
+              <Text style={styles.legendText}>L = Low (25%)</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: LMH_VALUES.M.color }]} />
+              <Text style={styles.legendText}>M = Medium (50%)</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: LMH_VALUES.H.color }]} />
+              <Text style={styles.legendText}>H = High (75%)</Text>
             </View>
           </View>
+        </Card>
 
-          {decision.factors
-            .sort((a, b) => b.rating - a.rating)
-            .map((factor) => (
-            <View key={factor.id} style={styles.assessmentRow}>
-              <View style={styles.assessmentLabelRow}>
-                <Text style={styles.assessmentLabel}>{factor.name}</Text>
-                <Text style={styles.assessmentRating}>({factor.rating})</Text>
-              </View>
-              <View style={styles.assessmentInput}>
-                <TextInput
-                  style={styles.percentInput}
-                  value={String(getAssessmentValue(option.id, factor.id))}
-                  onChangeText={(text) => {
-                    const num = parseInt(text) || 0;
-                    updateAssessment(option.id, factor.id, Math.min(100, Math.max(0, num)));
-                  }}
-                  keyboardType="numeric"
-                  maxLength={3}
-                />
-                <Text style={styles.percentSign}>%</Text>
+        {decision.options.map((option) => (
+          <Card key={option.id} style={styles.assessmentCard}>
+            <View style={styles.assessmentHeader}>
+              <Text style={styles.optionName}>{option.name}</Text>
+              <View style={styles.worthBadge}>
+                <Text style={styles.worthText}>{option.worth_percentage.toFixed(1)}%</Text>
               </View>
             </View>
-          ))}
-        </Card>
-      ))}
 
-      <View style={styles.navButtons}>
-        <TouchableOpacity style={styles.backButton} onPress={() => setCurrentStep(6)}>
-          <Ionicons name="arrow-back" size={20} color={COLORS.textSecondary} />
-          <Text style={styles.backButtonText}>Back</Text>
-        </TouchableOpacity>
-        <GradientButton
-          title="View Results"
-          onPress={() => setCurrentStep(8)}
-          style={styles.nextButton}
-        />
+            {decision.factors
+              .sort((a, b) => b.rating - a.rating)
+              .map((factor) => {
+                const key = getAssessmentKey(option.id, factor.id);
+                const currentMode = getAssessmentMode(option.id, factor.id);
+                const currentValue = getAssessmentValue(option.id, factor.id);
+                const isCustom = showCustomInput[key] || currentMode === 'custom';
+                const currentUnitValue = unitValues[key] || getUnitValue(option.id, factor.id);
+
+                return (
+                  <View key={factor.id} style={styles.assessmentFactorContainer}>
+                    {/* Factor header with rating */}
+                    <View style={styles.assessmentLabelRow}>
+                      <Text style={styles.assessmentLabel}>{factor.name}</Text>
+                      <Text style={styles.assessmentRating}>({factor.rating})</Text>
+                    </View>
+
+                    {/* Unit value input (optional) */}
+                    <View style={styles.unitValueRow}>
+                      <TextInput
+                        style={styles.unitValueInput}
+                        placeholder="Value (e.g., 50000 USD, 8 hours)"
+                        placeholderTextColor={COLORS.textMuted}
+                        value={currentUnitValue}
+                        onChangeText={(value) => handleUnitValueChange(option.id, factor.id, value)}
+                      />
+                    </View>
+
+                    {/* LMH Toggle Buttons + Custom */}
+                    <View style={styles.lmhContainer}>
+                      <TouchableOpacity
+                        style={[
+                          styles.lmhButton,
+                          { borderColor: LMH_VALUES.L.color },
+                          currentMode === 'L' && { backgroundColor: LMH_VALUES.L.color },
+                        ]}
+                        onPress={() => handleLMHSelect(option.id, factor.id, 'L')}
+                      >
+                        <Text style={[
+                          styles.lmhText,
+                          { color: currentMode === 'L' ? COLORS.white : LMH_VALUES.L.color },
+                        ]}>L</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.lmhButton,
+                          { borderColor: LMH_VALUES.M.color },
+                          currentMode === 'M' && { backgroundColor: LMH_VALUES.M.color },
+                        ]}
+                        onPress={() => handleLMHSelect(option.id, factor.id, 'M')}
+                      >
+                        <Text style={[
+                          styles.lmhText,
+                          { color: currentMode === 'M' ? COLORS.white : LMH_VALUES.M.color },
+                        ]}>M</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.lmhButton,
+                          { borderColor: LMH_VALUES.H.color },
+                          currentMode === 'H' && { backgroundColor: LMH_VALUES.H.color },
+                        ]}
+                        onPress={() => handleLMHSelect(option.id, factor.id, 'H')}
+                      >
+                        <Text style={[
+                          styles.lmhText,
+                          { color: currentMode === 'H' ? COLORS.white : LMH_VALUES.H.color },
+                        ]}>H</Text>
+                      </TouchableOpacity>
+
+                      {/* Custom % toggle/input */}
+                      {isCustom ? (
+                        <View style={styles.customInputContainer}>
+                          <TextInput
+                            style={styles.customPercentInput}
+                            value={String(currentValue)}
+                            onChangeText={(text) => handleCustomPercentage(option.id, factor.id, text)}
+                            keyboardType="numeric"
+                            maxLength={3}
+                          />
+                          <Text style={styles.customPercentSign}>%</Text>
+                        </View>
+                      ) : (
+                        <TouchableOpacity
+                          style={[
+                            styles.lmhButton,
+                            styles.customButton,
+                            currentMode === 'custom' && styles.customButtonActive,
+                          ]}
+                          onPress={() => handleCustomSelect(option.id, factor.id)}
+                        >
+                          <Text style={[
+                            styles.lmhText,
+                            { color: currentMode === 'custom' ? COLORS.white : COLORS.primary },
+                          ]}>%</Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {/* Display current % */}
+                      <View style={styles.currentValueBadge}>
+                        <Text style={styles.currentValueText}>{currentValue}%</Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+          </Card>
+        ))}
+
+        <View style={styles.navButtons}>
+          <TouchableOpacity style={styles.backButton} onPress={() => setCurrentStep(6)}>
+            <Ionicons name="arrow-back" size={20} color={COLORS.textSecondary} />
+            <Text style={styles.backButtonText}>Back</Text>
+          </TouchableOpacity>
+          <GradientButton
+            title="View Results"
+            onPress={() => setCurrentStep(8)}
+            style={styles.nextButton}
+          />
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   const renderStep8 = () => {
     const sortedOptions = [...decision.options].sort(
@@ -1262,5 +1430,112 @@ const styles = StyleSheet.create({
   finalButton: {
     marginTop: 20,
     marginBottom: 32,
+  },
+  // LMH Assessment Styles
+  legendCard: {
+    marginBottom: 16,
+    padding: 12,
+  },
+  legendTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  legendRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  legendDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+  },
+  legendText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontWeight: '500',
+  },
+  assessmentFactorContainer: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.divider,
+  },
+  unitValueRow: {
+    marginTop: 6,
+    marginBottom: 8,
+  },
+  unitValueInput: {
+    height: 36,
+    backgroundColor: COLORS.background,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    fontSize: 13,
+    color: COLORS.textPrimary,
+  },
+  lmhContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  lmhButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+  },
+  lmhText: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  customButton: {
+    borderColor: COLORS.primary,
+  },
+  customButtonActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  customInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.background,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+  },
+  customPercentInput: {
+    width: 40,
+    height: 36,
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  customPercentSign: {
+    fontSize: 14,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  currentValueBadge: {
+    marginLeft: 'auto',
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  currentValueText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.white,
   },
 });
