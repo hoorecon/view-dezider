@@ -8,6 +8,7 @@ import {
   RefreshControl,
   Alert,
   Platform,
+  Modal,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -31,6 +32,8 @@ export default function PRRScreen() {
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   const fetchDecisions = async () => {
     try {
@@ -55,45 +58,28 @@ export default function PRRScreen() {
     setRefreshing(false);
   };
 
-  const handleDelete = async (id: string) => {
-    const performDelete = async () => {
-      try {
-        console.log('Deleting decision:', id);
-        await api.delete(`/decisions/${id}`);
-        console.log('Delete successful');
-        setDecisions((prev) => prev.filter((d) => d.id !== id));
-      } catch (error) {
-        console.error('Delete error:', error);
-        if (Platform.OS === 'web' && typeof window !== 'undefined') {
-          window.alert('Failed to delete decision');
-        } else {
-          Alert.alert('Error', 'Failed to delete decision');
-        }
-      }
-    };
+  const handleDeletePress = (id: string) => {
+    setDeleteTargetId(id);
+    setDeleteModalVisible(true);
+  };
 
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      // Use window.confirm for web
-      const confirmed = window.confirm('Are you sure you want to delete this decision?');
-      console.log('Confirm result:', confirmed);
-      if (confirmed) {
-        await performDelete();
-      }
-    } else {
-      // Use Alert.alert for native
-      Alert.alert(
-        'Delete Decision',
-        'Are you sure you want to delete this decision?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: performDelete,
-          },
-        ]
-      );
+  const handleDeleteConfirm = async () => {
+    if (!deleteTargetId) return;
+    
+    try {
+      await api.delete(`/decisions/${deleteTargetId}`);
+      setDecisions((prev) => prev.filter((d) => d.id !== deleteTargetId));
+    } catch (error) {
+      console.error('Delete error:', error);
+    } finally {
+      setDeleteModalVisible(false);
+      setDeleteTargetId(null);
     }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteModalVisible(false);
+    setDeleteTargetId(null);
   };
 
   const getStatusColor = (status: string) => {
@@ -162,7 +148,7 @@ export default function PRRScreen() {
         </View>
       </TouchableOpacity>
       <TouchableOpacity
-        onPress={() => handleDelete(item.id)}
+        onPress={() => handleDeletePress(item.id)}
         style={styles.deleteButton}
       >
         <Ionicons name="trash-outline" size={20} color={COLORS.error} />
@@ -210,6 +196,32 @@ export default function PRRScreen() {
         }
         ListEmptyComponent={renderEmpty}
       />
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        visible={deleteModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={handleDeleteCancel}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Ionicons name="warning" size={48} color={COLORS.error} />
+            <Text style={styles.modalTitle}>Delete Decision?</Text>
+            <Text style={styles.modalText}>
+              Are you sure you want to delete this decision? This action cannot be undone.
+            </Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={styles.cancelButton} onPress={handleDeleteCancel}>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.confirmDeleteButton} onPress={handleDeleteConfirm}>
+                <Text style={styles.confirmDeleteButtonText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -336,5 +348,64 @@ const styles = StyleSheet.create({
   deleteButton: {
     padding: 12,
     marginLeft: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    maxWidth: 320,
+    width: '100%',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  modalText: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  cancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  confirmDeleteButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: COLORS.error,
+    alignItems: 'center',
+  },
+  confirmDeleteButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.white,
   },
 });
