@@ -312,7 +312,9 @@ export default function PRRDecisionDetail() {
     return assessment?.percentage ?? null;
   };
 
-  // Calculate worth percentage only from assessed factors
+  // Calculate worth percentage: Sum of (rating × assessment%) for each factor
+  // Example: If factor has rating 50 and assessment 60%, contribution = 50 × 0.60 = 30
+  // Sum all contributions for total worth
   const calculateDynamicWorth = (option: DecisionOption): { worth: number; assessedCount: number; totalCount: number } => {
     const factors = decision?.factors || [];
     const totalFactors = factors.length;
@@ -322,22 +324,13 @@ export default function PRRDecisionDetail() {
       return { worth: 0, assessedCount: 0, totalCount: totalFactors };
     }
 
-    // Calculate total rating of assessed factors only
-    const assessedFactorIds = assessedFactors.map(a => a.factor_id);
-    const totalRating = factors
-      .filter(f => assessedFactorIds.includes(f.id))
-      .reduce((sum, f) => sum + f.rating, 0);
-
-    if (totalRating === 0) {
-      return { worth: 0, assessedCount: assessedFactors.length, totalCount: totalFactors };
-    }
-
-    // Calculate weighted worth
+    // Calculate: Sum of (rating × assessment%)
+    // Each factor contributes: rating × (assessment / 100)
     let worth = 0;
     for (const assessment of assessedFactors) {
       const factor = factors.find(f => f.id === assessment.factor_id);
       if (factor) {
-        worth += (factor.rating / totalRating) * assessment.percentage;
+        worth += factor.rating * (assessment.percentage / 100);
       }
     }
 
