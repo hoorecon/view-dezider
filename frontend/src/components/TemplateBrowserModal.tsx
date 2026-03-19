@@ -74,14 +74,14 @@ export default function TemplateBrowserModal({
     }
   };
 
-  const getTimestampPrefix = () => {
+  const getTimestampWithTime = () => {
     const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   };
 
   const handleSelectTemplate = (template: Template) => {
     setSelectedTemplate(template);
-    setNewTitle(`${getTimestampPrefix()} ${template.name}`);
+    setNewTitle(`${getTimestampWithTime()} ${template.name}`);
   };
 
   const handleUseTemplate = async () => {
@@ -143,6 +143,13 @@ export default function TemplateBrowserModal({
     }
   };
 
+  const handleQuickUseTemplate = async (template: Template) => {
+    const defaultTitle = `${getTimestampWithTime()} ${template.name}`;
+    setSelectedTemplate(template);
+    setNewTitle(defaultTitle);
+    // Jump straight to detail view for confirmation + create
+  };
+
   const handleApproveTemplate = async (template: Template) => {
     try {
       await api.post(`/admin/templates/${template.id}/approve`);
@@ -178,7 +185,9 @@ export default function TemplateBrowserModal({
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const datePart = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const timePart = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    return `${datePart} ${timePart}`;
   };
 
   return (
@@ -368,20 +377,31 @@ export default function TemplateBrowserModal({
                         </Text>
                       </View>
                       <View style={styles.templateCardActions}>
-                        {/* Import button for shared/public/authorized templates (not own) */}
+                        {/* Use template button for shared/public/authorized templates */}
                         {activeTab !== 'my' && (
-                          <TouchableOpacity
-                            onPress={(e) => {
-                              e.stopPropagation?.();
-                              handleImportTemplate(template);
-                            }}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            disabled={importing}
-                            style={styles.importBtn}
-                          >
-                            <Ionicons name="download-outline" size={16} color={COLORS.primary} />
-                            <Text style={styles.importBtnText}>Import</Text>
-                          </TouchableOpacity>
+                          <>
+                            <TouchableOpacity
+                              onPress={(e) => {
+                                e.stopPropagation?.();
+                                handleQuickUseTemplate(template);
+                              }}
+                              style={styles.useBtn}
+                            >
+                              <Ionicons name="add-circle-outline" size={14} color="#FFF" />
+                              <Text style={styles.useBtnText}>Use</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={(e) => {
+                                e.stopPropagation?.();
+                                handleImportTemplate(template);
+                              }}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              disabled={importing}
+                              style={styles.saveMineBtn}
+                            >
+                              <Ionicons name="bookmark-outline" size={16} color={COLORS.primary} />
+                            </TouchableOpacity>
+                          </>
                         )}
                         {/* Admin: Approve button on public templates */}
                         {isAdmin && activeTab === 'public' && (
@@ -551,6 +571,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: COLORS.primary,
+  },
+  useBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+  },
+  useBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFF',
+  },
+  saveMineBtn: {
+    padding: 4,
   },
   approveBtn: {
     flexDirection: 'row',
