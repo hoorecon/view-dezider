@@ -1109,6 +1109,11 @@ export default function PRRDecisionDetail() {
       >
         <View style={styles.titleSection}>
           <Text style={styles.decisionTitle} numberOfLines={1}>{decision.title}</Text>
+          <View style={styles.headerStatusBadge}>
+            <Text style={styles.headerStatusText}>
+              Step {currentStep}/10
+            </Text>
+          </View>
         </View>
         {renderStepIndicator()}
         <ScrollView
@@ -1136,13 +1141,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   titleSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
     backgroundColor: COLORS.white,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
+    gap: 8,
+  },
+  headerStatusBadge: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  headerStatusText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.white,
   },
   decisionTitle: {
+    flex: 1,
     fontSize: 16,
     fontWeight: '600',
     color: COLORS.textPrimary,

@@ -435,10 +435,7 @@ const styles = StyleSheet.create({
   tabActive: {
     backgroundColor: COLORS.white,
     elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
+    boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.1)',
   },
   tabText: {
     fontSize: 14,
