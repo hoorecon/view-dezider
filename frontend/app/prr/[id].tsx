@@ -17,6 +17,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import { Card } from '../../src/components/Card';
 import { GradientButton } from '../../src/components/GradientButton';
+import VoiceAssessmentInput from '../../src/components/VoiceAssessmentInput';
+import { ParsedVoiceCommand } from '../../src/utils/voiceCommandParser';
 import api from '../../src/utils/api';
 
 interface Factor {
@@ -765,12 +767,52 @@ export default function PRRDecisionDetail() {
       return value !== null ? String(value) : '';
     };
 
+    // Voice command handler for the currently focused option
+    const handleVoiceCommand = (command: ParsedVoiceCommand) => {
+      if (command.allFactors) {
+        // Apply to all factors for all options
+        decision.options.forEach(option => {
+          decision.factors.forEach(factor => {
+            const key = getAssessmentKey(option.id, factor.id);
+            if (command.mode !== 'custom') {
+              setShowCustomInput((prev: any) => ({ ...prev, [key]: false }));
+            }
+            updateAssessment(option.id, factor.id, command.value, command.mode, unitValues[key]);
+          });
+        });
+        return;
+      }
+
+      if (command.factorId) {
+        // Apply to this factor for all options (or could be just the first/selected)
+        decision.options.forEach(option => {
+          const key = getAssessmentKey(option.id, command.factorId!);
+          if (command.mode !== 'custom') {
+            setShowCustomInput((prev: any) => ({ ...prev, [key]: false }));
+          } else {
+            setShowCustomInput((prev: any) => ({ ...prev, [key]: true }));
+            setCustomInputValues((prev: any) => ({ ...prev, [key]: String(command.value) }));
+          }
+          updateAssessment(option.id, command.factorId!, command.value, command.mode, unitValues[key]);
+        });
+      }
+    };
+
     return (
       <View style={styles.stepContent}>
         <Text style={styles.stepTitle}>Step 6-7: Assess & Calculate</Text>
         <Text style={styles.stepDescription}>
           Rate how well each option satisfies each factor using quick LMH toggles or specific percentage.
         </Text>
+
+        {/* Voice Input Button */}
+        <View style={styles.voiceInputRow}>
+          <VoiceAssessmentInput
+            factors={decision.factors}
+            onCommand={handleVoiceCommand}
+          />
+          <Text style={styles.voiceHint}>Speak: "[Factor] High/Medium/Low"</Text>
+        </View>
 
         {/* LMH Legend */}
         <Card style={styles.legendCard}>
@@ -1541,6 +1583,19 @@ const styles = StyleSheet.create({
   legendCard: {
     marginBottom: 16,
     padding: 12,
+  },
+  voiceInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+    paddingVertical: 4,
+  },
+  voiceHint: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    flex: 1,
+    fontStyle: 'italic',
   },
   legendTitle: {
     fontSize: 14,
