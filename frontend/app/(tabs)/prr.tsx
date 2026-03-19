@@ -58,10 +58,13 @@ export default function PRRScreen() {
   const handleDelete = async (id: string) => {
     const performDelete = async () => {
       try {
+        console.log('Deleting decision:', id);
         await api.delete(`/decisions/${id}`);
-        setDecisions(decisions.filter((d) => d.id !== id));
+        console.log('Delete successful');
+        setDecisions((prev) => prev.filter((d) => d.id !== id));
       } catch (error) {
-        if (Platform.OS === 'web') {
+        console.error('Delete error:', error);
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
           window.alert('Failed to delete decision');
         } else {
           Alert.alert('Error', 'Failed to delete decision');
@@ -69,9 +72,10 @@ export default function PRRScreen() {
       }
     };
 
-    if (Platform.OS === 'web') {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
       // Use window.confirm for web
       const confirmed = window.confirm('Are you sure you want to delete this decision?');
+      console.log('Confirm result:', confirmed);
       if (confirmed) {
         await performDelete();
       }
@@ -135,10 +139,14 @@ export default function PRRScreen() {
               {item.title}
             </Text>
             <TouchableOpacity
-              onPress={() => handleDelete(item.id)}
+              onPress={(e) => {
+                e.stopPropagation();
+                handleDelete(item.id);
+              }}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={styles.deleteButton}
             >
-              <Ionicons name="trash-outline" size={18} color={COLORS.error} />
+              <Ionicons name="trash-outline" size={20} color={COLORS.error} />
             </TouchableOpacity>
           </View>
           <View style={styles.statusContainer}>
@@ -330,5 +338,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: COLORS.white,
+  },
+  deleteButton: {
+    padding: 8,
+    marginRight: -8,
+    borderRadius: 8,
   },
 });
