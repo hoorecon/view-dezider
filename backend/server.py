@@ -102,6 +102,9 @@ class PRRDecision(BaseModel):
     chosen_option_id: Optional[str] = None
     decision_case: Optional[str] = None  # "obvious", "trial", "unavoidable"
     notes: str = ""
+    reflection: str = ""
+    final_notes: str = ""
+    folder: str = ""
     status: str = "draft"  # "draft", "in_progress", "completed"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -109,6 +112,7 @@ class PRRDecision(BaseModel):
 class PRRDecisionCreate(BaseModel):
     title: str
     context: str
+    folder: str = ""
 
 class PRRDecisionUpdate(BaseModel):
     title: Optional[str] = None
@@ -118,6 +122,9 @@ class PRRDecisionUpdate(BaseModel):
     chosen_option_id: Optional[str] = None
     decision_case: Optional[str] = None
     notes: Optional[str] = None
+    reflection: Optional[str] = None
+    final_notes: Optional[str] = None
+    folder: Optional[str] = None
     status: Optional[str] = None
 
 class CloneDecisionRequest(BaseModel):
@@ -132,6 +139,39 @@ class SaveTemplateRequest(BaseModel):
 
 class UseTemplateRequest(BaseModel):
     title: str
+
+# Step Sharing Models
+class ShareStepRequest(BaseModel):
+    decision_id: str
+    step_number: int
+    recipient_emails: List[str]
+    merge_mode: str = "equal"  # "equal", "self_weighted", "custom"
+    custom_weights: Optional[dict] = None  # { "user_id": weight_percent }
+    message: str = ""
+
+class ContributeStepRequest(BaseModel):
+    factors: Optional[List[dict]] = None
+    options: Optional[List[dict]] = None
+    assessments: Optional[dict] = None
+    note: str = ""
+
+class MergeStepRequest(BaseModel):
+    merge_mode: str = "equal"
+    custom_weights: Optional[dict] = None
+
+# Decision Folder Constants
+DECISION_FOLDERS = [
+    {"id": "holistic_health", "name": "Holistic Health", "icon": "fitness", "color": "#10B981"},
+    {"id": "knowledge_skills", "name": "Knowledge & Skills", "icon": "book", "color": "#3B82F6"},
+    {"id": "relationships", "name": "Relationships", "icon": "heart", "color": "#EC4899"},
+    {"id": "finance", "name": "Finance", "icon": "cash", "color": "#F59E0B"},
+    {"id": "assets", "name": "Assets", "icon": "home", "color": "#8B5CF6"},
+    {"id": "career", "name": "Career", "icon": "briefcase", "color": "#6366F1"},
+    {"id": "hobbies_entertainment", "name": "Hobbies & Entertainment", "icon": "game-controller", "color": "#14B8A6"},
+    {"id": "social_image", "name": "Social Image & Influence", "icon": "star", "color": "#F97316"},
+    {"id": "social_contributions", "name": "Social Contributions", "icon": "people", "color": "#06B6D4"},
+    {"id": "spirituality_religion", "name": "Spirituality & Religion", "icon": "leaf", "color": "#A855F7"},
+]
 
 # Admin Models
 ROLE_HIERARCHY = {"super_admin": 3, "co_admin": 2, "admin": 1, "user": 0}
@@ -615,17 +655,21 @@ async def create_decision(decision: PRRDecisionCreate, user: dict = Depends(get_
     decision_doc = PRRDecision(
         user_id=user["user_id"],
         title=decision.title,
-        context=decision.context
+        context=decision.context,
+        folder=decision.folder
     )
     
     await db.decisions.insert_one(decision_doc.dict())
     return {"id": decision_doc.id, "message": "Decision created successfully"}
 
 @api_router.get("/decisions", response_model=List[dict])
-async def get_decisions(user: dict = Depends(get_current_user)):
-    """Get all decisions for the current user"""
+async def get_decisions(user: dict = Depends(get_current_user), folder: str = None):
+    """Get all decisions for the current user, optionally filtered by folder"""
+    query = {"user_id": user["user_id"]}
+    if folder:
+        query["folder"] = folder
     decisions = await db.decisions.find(
-        {"user_id": user["user_id"]},
+        query,
         {"_id": 0}
     ).sort("created_at", -1).to_list(100)
     return decisions
@@ -718,6 +762,9 @@ async def clone_decision(decision_id: str, data: CloneDecisionRequest, user: dic
         "chosen_option_id": None,
         "decision_case": None,
         "notes": "",
+        "reflection": "",
+        "final_notes": "",
+        "folder": original.get("folder", ""),
         "status": "draft",
         "created_at": now,
         "updated_at": now,
@@ -1400,6 +1447,232 @@ async def root():
     return {"message": "View Dezider API - Decision Intelligence by Venture Buddha"}
 
 @api_router.get("/health")
+
+# ========================
+# DECISION FOLDERS
+# ========================
+
+@api_router.get("/folders")
+async def get_folders():
+    """Get all available decision folders"""
+    return DECISION_FOLDERS
+
+# ========================
+# STEP SHARING
+# ========================
+
+@api_router.post("/decisions/{decision_id}/share-step")
+async def share_step(decision_id: str, data: ShareStepRequest, user: dict = Depends(get_current_user)):
+    """Share a specific step of a decision with other users for collaborative input"""
+    decision = await db.decisions.find_one(
+        {"id": decision_id, "user_id": user["user_id"]}, {"_id": 0}
+    )
+    if not decision:
+        raise HTTPException(status_code=404, detail="Decision not found")
+    
+    # Resolve recipient user IDs from emails
+    recipients = []
+    for email in data.recipient_emails:
+        recipient_user = await db.users.find_one({"email": email}, {"_id": 0})
+        if recipient_user:
+            recipients.append({
+                "user_id": recipient_user["user_id"],
+                "email": email,
+                "name": recipient_user.get("name", email),
+                "status": "pending",
+                "contribution": None,
+            })
+    
+    if not recipients:
+        raise HTTPException(status_code=400, detail="No valid recipients found")
+    
+    share_doc = {
+        "id": str(uuid.uuid4()),
+        "decision_id": decision_id,
+        "owner_id": user["user_id"],
+        "owner_name": user.get("name", user["email"]),
+        "step_number": data.step_number,
+        "merge_mode": data.merge_mode,
+        "custom_weights": data.custom_weights or {},
+        "message": data.message,
+        "recipients": recipients,
+        "decision_title": decision.get("title", ""),
+        "decision_context": decision.get("context", ""),
+        "step_data": {
+            "factors": decision.get("factors", []),
+            "options": [{"id": o["id"], "name": o["name"]} for o in decision.get("options", [])],
+        },
+        "status": "active",
+        "created_at": datetime.now(timezone.utc),
+        "merged_at": None,
+    }
+    
+    await db.shared_steps.insert_one(share_doc)
+    return {"id": share_doc["id"], "message": f"Step {data.step_number} shared with {len(recipients)} users"}
+
+@api_router.get("/shared-steps/received")
+async def get_received_shared_steps(user: dict = Depends(get_current_user)):
+    """Get all step shares where the current user is a recipient"""
+    shares = await db.shared_steps.find(
+        {"recipients.user_id": user["user_id"], "status": "active"},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
+    return shares
+
+@api_router.get("/shared-steps/sent")
+async def get_sent_shared_steps(user: dict = Depends(get_current_user)):
+    """Get all step shares created by the current user"""
+    shares = await db.shared_steps.find(
+        {"owner_id": user["user_id"]},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
+    return shares
+
+@api_router.get("/shared-steps/{share_id}")
+async def get_shared_step(share_id: str, user: dict = Depends(get_current_user)):
+    """Get a specific shared step"""
+    share = await db.shared_steps.find_one({"id": share_id}, {"_id": 0})
+    if not share:
+        raise HTTPException(status_code=404, detail="Shared step not found")
+    
+    # Check access
+    is_owner = share["owner_id"] == user["user_id"]
+    is_recipient = any(r["user_id"] == user["user_id"] for r in share.get("recipients", []))
+    if not is_owner and not is_recipient:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    return share
+
+@api_router.post("/shared-steps/{share_id}/contribute")
+async def contribute_to_shared_step(share_id: str, data: ContributeStepRequest, user: dict = Depends(get_current_user)):
+    """Submit contribution to a shared step"""
+    share = await db.shared_steps.find_one({"id": share_id}, {"_id": 0})
+    if not share:
+        raise HTTPException(status_code=404, detail="Shared step not found")
+    
+    is_recipient = any(r["user_id"] == user["user_id"] for r in share.get("recipients", []))
+    if not is_recipient:
+        raise HTTPException(status_code=403, detail="You are not a recipient of this share")
+    
+    contribution = {
+        "factors": data.factors,
+        "options": data.options,
+        "assessments": data.assessments,
+        "note": data.note,
+        "submitted_at": datetime.now(timezone.utc).isoformat(),
+    }
+    
+    await db.shared_steps.update_one(
+        {"id": share_id, "recipients.user_id": user["user_id"]},
+        {"$set": {
+            "recipients.$.status": "contributed",
+            "recipients.$.contribution": contribution,
+        }}
+    )
+    
+    return {"message": "Contribution submitted successfully"}
+
+@api_router.post("/shared-steps/{share_id}/merge")
+async def merge_shared_step(share_id: str, data: MergeStepRequest, user: dict = Depends(get_current_user)):
+    """Merge all contributions back into the decision with weighted calculation"""
+    share = await db.shared_steps.find_one({"id": share_id}, {"_id": 0})
+    if not share:
+        raise HTTPException(status_code=404, detail="Shared step not found")
+    
+    if share["owner_id"] != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Only the owner can merge contributions")
+    
+    decision = await db.decisions.find_one(
+        {"id": share["decision_id"], "user_id": user["user_id"]}, {"_id": 0}
+    )
+    if not decision:
+        raise HTTPException(status_code=404, detail="Decision not found")
+    
+    # Collect all contributions
+    contributions = []
+    for r in share.get("recipients", []):
+        if r.get("contribution"):
+            contributions.append({
+                "user_id": r["user_id"],
+                "data": r["contribution"],
+            })
+    
+    if not contributions:
+        raise HTTPException(status_code=400, detail="No contributions to merge")
+    
+    # Calculate weights
+    merge_mode = data.merge_mode or share.get("merge_mode", "equal")
+    total_participants = len(contributions) + 1  # +1 for owner
+    
+    weights = {}
+    if merge_mode == "equal":
+        w = 1.0 / total_participants
+        weights[user["user_id"]] = w
+        for c in contributions:
+            weights[c["user_id"]] = w
+    elif merge_mode == "self_weighted":
+        weights[user["user_id"]] = 0.5
+        other_weight = 0.5 / len(contributions) if contributions else 0
+        for c in contributions:
+            weights[c["user_id"]] = other_weight
+    elif merge_mode == "custom" and data.custom_weights:
+        weights = data.custom_weights
+        # Ensure owner has a weight
+        if user["user_id"] not in weights:
+            weights[user["user_id"]] = 0.5
+    
+    # Merge assessments (weighted average of percentages)
+    step_number = share.get("step_number", 7)
+    
+    if step_number == 7 and decision.get("options"):
+        merged_options = []
+        for option in decision["options"]:
+            merged_assessments = []
+            for factor in decision.get("factors", []):
+                # Owner's assessment
+                owner_assessment = None
+                for a in option.get("assessments", []):
+                    if a.get("factor_id") == factor["id"]:
+                        owner_assessment = a
+                        break
+                
+                owner_pct = owner_assessment.get("percentage", 50) if owner_assessment else 50
+                weighted_sum = owner_pct * weights.get(user["user_id"], 0.5)
+                
+                # Contributors' assessments
+                for c in contributions:
+                    c_assessments = c["data"].get("assessments", {})
+                    c_key = f"{option['id']}_{factor['id']}"
+                    c_pct = c_assessments.get(c_key, 50)
+                    weighted_sum += c_pct * weights.get(c["user_id"], 0)
+                
+                merged_assessments.append({
+                    "factor_id": factor["id"],
+                    "percentage": min(100, max(0, round(weighted_sum))),
+                    "assessment_mode": "custom",
+                    "unit_value": "",
+                })
+            
+            merged_options.append({
+                **option,
+                "assessments": merged_assessments,
+            })
+        
+        # Update decision with merged data
+        now = datetime.now(timezone.utc)
+        await db.decisions.update_one(
+            {"id": share["decision_id"]},
+            {"$set": {"options": merged_options, "updated_at": now}}
+        )
+    
+    # Mark share as merged
+    await db.shared_steps.update_one(
+        {"id": share_id},
+        {"$set": {"status": "merged", "merged_at": datetime.now(timezone.utc)}}
+    )
+    
+    return {"message": "Contributions merged successfully", "weights": weights}
+
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
 

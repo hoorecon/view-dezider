@@ -17,8 +17,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import { Card } from '../../src/components/Card';
 import { GradientButton } from '../../src/components/GradientButton';
-import VoiceAssessmentInput from '../../src/components/VoiceAssessmentInput';
-import { ParsedVoiceCommand } from '../../src/utils/voiceCommandParser';
+import VoiceStepInput from '../../src/components/VoiceStepInput';
+import { StepVoiceCommand } from '../../src/utils/stepVoiceParser';
+import ShareStepModal from '../../src/components/ShareStepModal';
+// Voice commands now handled by StepVoiceCommand from stepVoiceParser
 import api from '../../src/utils/api';
 
 interface Factor {
@@ -107,6 +109,7 @@ export default function PRRDecisionDetail() {
   
   // LMH Assessment states
   const [showCustomInput, setShowCustomInput] = useState<{[key: string]: boolean}>({});
+  const [shareModalVisible, setShareModalVisible] = useState(false);
   const [unitValues, setUnitValues] = useState<{[key: string]: string}>({});
   const [customInputValues, setCustomInputValues] = useState<{[key: string]: string}>({});
 
@@ -373,7 +376,7 @@ export default function PRRDecisionDetail() {
 
   const renderStepIndicator = () => (
     <View style={styles.stepIndicator}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
         {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((step) => (
           <TouchableOpacity
             key={step}
@@ -395,6 +398,12 @@ export default function PRRDecisionDetail() {
           </TouchableOpacity>
         ))}
       </ScrollView>
+      <TouchableOpacity
+        style={styles.shareStepBtn}
+        onPress={() => setShareModalVisible(true)}
+      >
+        <Ionicons name="share-outline" size={16} color={COLORS.primary} />
+      </TouchableOpacity>
       {saving && <ActivityIndicator size="small" color={COLORS.primary} style={styles.savingIndicator} />}
     </View>
   );
@@ -767,35 +776,175 @@ export default function PRRDecisionDetail() {
       return value !== null ? String(value) : '';
     };
 
-    // Voice command handler for the currently focused option
-    const handleVoiceCommand = (command: ParsedVoiceCommand) => {
-      if (command.allFactors) {
-        // Apply to all factors for all options
-        decision.options.forEach(option => {
-          decision.factors.forEach(factor => {
-            const key = getAssessmentKey(option.id, factor.id);
-            if (command.mode !== 'custom') {
-              setShowCustomInput((prev: any) => ({ ...prev, [key]: false }));
+    // ===== UNIVERSAL VOICE COMMAND HANDLER =====
+    // Routes voice commands to the appropriate step logic
+    const handleUniversalVoiceCommand = (command: StepVoiceCommand) => {
+      if (!decision) return;
+
+      switch (command.type) {
+        case 'set_title':
+          if (command.text) saveDecision({ title: command.text });
+          break;
+
+        case 'set_context':
+        case 'dictation':
+          if (command.step === 1 && command.text) {
+            saveDecision({ context: (decision.context || '') + ' ' + command.text });
+          } else if (command.step === 9 && command.text) {
+            saveDecision({ reflection: (decision.reflection || '') + ' ' + command.text });
+          } else if (command.step === 10 && command.text) {
+            saveDecision({ final_notes: (decision.final_notes || '') + ' ' + command.text });
+          }
+          break;
+
+        case 'add_factor':
+          if (command.text) {
+            const exists = decision.factors.some(f => f.name.toLowerCase() === command.text!.toLowerCase());
+            if (!exists) {
+              const newFactor: Factor = {
+                id: `factor_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                name: command.text,
+                category: 'secondary',
+                rating: 50,
+                order: decision.factors.length,
+              };
+              saveDecision({ factors: [...decision.factors, newFactor] });
             }
-            updateAssessment(option.id, factor.id, command.value, command.mode, unitValues[key]);
+          }
+          break;
+
+        case 'remove_factor':
+          if (command.factorId) {
+            removeFactor(command.factorId);
+          }
+          break;
+
+        case 'classify_factor':
+          if (command.allFactors && command.category) {
+            const updated = decision.factors.map(f => ({ ...f, category: command.category! }));
+            saveDecision({ factors: updated });
+          } else if (command.factorId && command.category) {
+            updateFactor(command.factorId, { category: command.category });
+          }
+          break;
+
+        case 'move_factor':
+          if (command.factorId && command.direction) {
+            if (command.direction === 'up') {
+              moveFactorUp(command.factorId);
+            } else if (command.direction === 'down') {
+              moveFactorDown(command.factorId);
+            } else if (command.direction === 'first') {
+              // Move to top: set order to -1, then renormalize
+              const updated = decision.factors.map(f => 
+                f.id === command.factorId ? { ...f, order: -1 } : f
+              ).sort((a, b) => a.order - b.order)
+               .map((f, i) => ({ ...f, order: i }));
+              const factorsWithRatings = calculateRatingsFromOrder(updated);
+              saveDecision({ factors: factorsWithRatings });
+            } else if (command.direction === 'last') {
+              const updated = decision.factors.map(f => 
+                f.id === command.factorId ? { ...f, order: 999 } : f
+              ).sort((a, b) => a.order - b.order)
+               .map((f, i) => ({ ...f, order: i }));
+              const factorsWithRatings = calculateRatingsFromOrder(updated);
+              saveDecision({ factors: factorsWithRatings });
+            }
+          }
+          break;
+
+        case 'add_option':
+          if (command.text) {
+            const exists = decision.options.some(o => o.name.toLowerCase() === command.text!.toLowerCase());
+            if (!exists) {
+              const newOption: DecisionOption = {
+                id: `option_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                name: command.text,
+                assessments: [],
+                worth_percentage: 0,
+              };
+              saveDecision({ options: [...decision.options, newOption] });
+            }
+          }
+          break;
+
+        case 'remove_option':
+          if (command.optionId) {
+            removeOption(command.optionId);
+          }
+          break;
+
+        case 'assess_factor':
+        case 'assess_all':
+          handleAssessVoiceCommand(command);
+          break;
+
+        case 'choose_option':
+          if (command.optionId) {
+            saveDecision({ chosen_option_id: command.optionId });
+          }
+          break;
+
+        case 'set_case':
+          // Could set the view mode (best/worst/most_likely)
+          break;
+
+        default:
+          break;
+      }
+    };
+
+    // Universal voice command handler for Step 7 assessment
+    const handleAssessVoiceCommand = (command: StepVoiceCommand) => {
+      if (!decision) return;
+
+      let updatedOptions = [...decision.options.map(o => ({
+        ...o,
+        assessments: [...o.assessments],
+      }))];
+
+      const applyToFactor = (optionIdx: number, factorId: string) => {
+        const option = updatedOptions[optionIdx];
+        const key = getAssessmentKey(option.id, factorId);
+        const clampedPercentage = Math.min(100, Math.max(0, command.value || 0));
+        
+        const existingIndex = option.assessments.findIndex((a) => a.factor_id === factorId);
+        const newAssessment: OptionAssessment = {
+          factor_id: factorId,
+          percentage: clampedPercentage,
+          assessment_mode: command.mode || 'custom',
+          unit_value: unitValues[key],
+        };
+
+        if (existingIndex >= 0) {
+          option.assessments = option.assessments.map((a, i) =>
+            i === existingIndex ? { ...a, ...newAssessment } : a
+          );
+        } else {
+          option.assessments = [...option.assessments, newAssessment];
+        }
+
+        if (command.mode !== 'custom') {
+          setShowCustomInput((prev: any) => ({ ...prev, [key]: false }));
+        } else {
+          setShowCustomInput((prev: any) => ({ ...prev, [key]: true }));
+          setCustomInputValues((prev: any) => ({ ...prev, [key]: String(command.value) }));
+        }
+      };
+
+      if (command.allFactors) {
+        updatedOptions.forEach((_, optionIdx) => {
+          decision.factors.forEach(factor => {
+            applyToFactor(optionIdx, factor.id);
           });
         });
-        return;
-      }
-
-      if (command.factorId) {
-        // Apply to this factor for all options (or could be just the first/selected)
-        decision.options.forEach(option => {
-          const key = getAssessmentKey(option.id, command.factorId!);
-          if (command.mode !== 'custom') {
-            setShowCustomInput((prev: any) => ({ ...prev, [key]: false }));
-          } else {
-            setShowCustomInput((prev: any) => ({ ...prev, [key]: true }));
-            setCustomInputValues((prev: any) => ({ ...prev, [key]: String(command.value) }));
-          }
-          updateAssessment(option.id, command.factorId!, command.value, command.mode, unitValues[key]);
+      } else if (command.factorId) {
+        updatedOptions.forEach((_, optionIdx) => {
+          applyToFactor(optionIdx, command.factorId!);
         });
       }
+
+      saveDecision({ options: updatedOptions, factors: decision.factors });
     };
 
     return (
@@ -805,13 +954,12 @@ export default function PRRDecisionDetail() {
           Rate how well each option satisfies each factor using quick LMH toggles or specific percentage.
         </Text>
 
-        {/* Voice Input Button */}
+        {/* Voice Input Hint */}
         <View style={styles.voiceInputRow}>
-          <VoiceAssessmentInput
-            factors={decision.factors}
-            onCommand={handleVoiceCommand}
-          />
-          <Text style={styles.voiceHint}>Speak: "[Factor] High/Medium/Low"</Text>
+          <View style={styles.voiceHintBox}>
+            <Ionicons name="mic-outline" size={16} color={COLORS.primary} />
+            <Text style={styles.voiceHint}>Use the Voice Input button below to speak commands like "Salary High" or "All Medium"</Text>
+          </View>
         </View>
 
         {/* LMH Legend */}
@@ -1122,7 +1270,25 @@ export default function PRRDecisionDetail() {
         >
           {renderCurrentStep()}
         </ScrollView>
+        {/* Universal voice input panel - rendered outside ScrollView for all steps */}
+        {currentStep !== 5 && (
+          <VoiceStepInput
+            step={currentStep}
+            factors={decision.factors}
+            options={decision.options.map(o => ({ id: o.id, name: o.name }))}
+            onCommand={handleUniversalVoiceCommand}
+          />
+        )}
       </KeyboardAvoidingView>
+      {/* Share Step Modal */}
+      <ShareStepModal
+        visible={shareModalVisible}
+        onClose={() => setShareModalVisible(false)}
+        decisionId={id as string}
+        stepNumber={currentStep}
+        stepName={`Step ${currentStep}`}
+        onShareSuccess={() => { fetchDecision(); }}
+      />
     </SafeAreaView>
   );
 }
@@ -1202,6 +1368,15 @@ const styles = StyleSheet.create({
   },
   savingIndicator: {
     marginLeft: 8,
+  },
+  shareStepBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(142,36,170,0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 6,
   },
   scrollContent: {
     padding: 16,
@@ -1605,11 +1780,18 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   voiceInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
     marginBottom: 12,
     paddingVertical: 4,
+  },
+  voiceHintBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(142, 36, 170, 0.06)',
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(142, 36, 170, 0.12)',
   },
   voiceHint: {
     fontSize: 12,

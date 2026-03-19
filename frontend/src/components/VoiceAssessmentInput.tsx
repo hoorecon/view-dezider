@@ -6,13 +6,13 @@ import {
   TouchableOpacity,
   Animated,
   Platform,
-  Modal,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/colors';
 import { parseVoiceCommand, describeCommand, ParsedVoiceCommand } from '../utils/voiceCommandParser';
 
-// Conditional import for speech recognition - works on web and native dev client
+// Conditional import for speech recognition
 let ExpoSpeechRecognitionModule: any = null;
 let useSpeechRecognitionEvent: any = null;
 
@@ -46,8 +46,8 @@ function PulseRing({ isActive }: { isActive: boolean }) {
       const pulse = Animated.loop(
         Animated.sequence([
           Animated.parallel([
-            Animated.timing(scale, { toValue: 1.8, duration: 1000, useNativeDriver: true }),
-            Animated.timing(opacity, { toValue: 0, duration: 1000, useNativeDriver: true }),
+            Animated.timing(scale, { toValue: 1.6, duration: 800, useNativeDriver: true }),
+            Animated.timing(opacity, { toValue: 0, duration: 800, useNativeDriver: true }),
           ]),
           Animated.parallel([
             Animated.timing(scale, { toValue: 1, duration: 0, useNativeDriver: true }),
@@ -75,21 +75,57 @@ function PulseRing({ isActive }: { isActive: boolean }) {
   );
 }
 
+// Small flash animation for applied commands
+function FlashBadge({ children, flash }: { children: React.ReactNode; flash: boolean }) {
+  const bgOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (flash) {
+      Animated.sequence([
+        Animated.timing(bgOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+        Animated.timing(bgOpacity, { toValue: 0, duration: 800, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [flash]);
+
+  return (
+    <View>
+      <Animated.View style={[styles.flashOverlay, { opacity: bgOpacity }]} />
+      {children}
+    </View>
+  );
+}
+
 export default function VoiceAssessmentInput({ factors, onCommand, disabled }: VoiceAssessmentInputProps) {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [lastCommand, setLastCommand] = useState<ParsedVoiceCommand | null>(null);
-  const [showModal, setShowModal] = useState(false);
+  const [panelVisible, setPanelVisible] = useState(false);
   const [error, setError] = useState('');
   const [isAvailable, setIsAvailable] = useState(false);
-  const [commandHistory, setCommandHistory] = useState<Array<{ text: string; success: boolean }>>([]);
-  
+  const [commandHistory, setCommandHistory] = useState<Array<{ text: string; success: boolean; timestamp: number }>>([]);
+  const [continuousMode, setContinuousMode] = useState(true);
+  const [commandCount, setCommandCount] = useState(0);
+  const [lastFlashedFactor, setLastFlashedFactor] = useState<string | null>(null);
+
   const micScale = useRef(new Animated.Value(1)).current;
+  const panelAnim = useRef(new Animated.Value(0)).current;
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isStoppingRef = useRef(false);
 
   // Check availability on mount
   useEffect(() => {
     checkAvailability();
   }, []);
+
+  // Animate panel in/out
+  useEffect(() => {
+    Animated.spring(panelAnim, {
+      toValue: panelVisible ? 1 : 0,
+      useNativeDriver: true,
+      friction: 8,
+    }).start();
+  }, [panelVisible]);
 
   const checkAvailability = async () => {
     if (!ExpoSpeechRecognitionModule) {
@@ -97,9 +133,8 @@ export default function VoiceAssessmentInput({ factors, onCommand, disabled }: V
       return;
     }
     try {
-      // Check if the browser/device supports speech recognition
       if (Platform.OS === 'web') {
-        const supported = typeof window !== 'undefined' && 
+        const supported = typeof window !== 'undefined' &&
           ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
         setIsAvailable(supported);
       } else {
@@ -120,13 +155,21 @@ export default function VoiceAssessmentInput({ factors, onCommand, disabled }: V
 
     useSpeechRecognitionEvent('end', () => {
       setIsListening(false);
+      // Auto-restart in continuous mode
+      if (continuousMode && panelVisible && !isStoppingRef.current) {
+        restartTimerRef.current = setTimeout(() => {
+          if (panelVisible && !isStoppingRef.current) {
+            startRecognition();
+          }
+        }, 600);
+      }
     });
 
     useSpeechRecognitionEvent('result', (event: any) => {
       const result = event.results?.[event.results.length - 1];
       if (result?.transcript) {
         setTranscript(result.transcript);
-        
+
         // If it's a final result, parse it
         if (result.isFinal || !event.results?.some?.((r: any) => !r.isFinal)) {
           processTranscript(result.transcript);
@@ -138,76 +181,114 @@ export default function VoiceAssessmentInput({ factors, onCommand, disabled }: V
       console.log('Speech error:', event.error, event.message);
       setIsListening(false);
       if (event.error === 'no-speech') {
-        setError('No speech detected. Tap mic and speak clearly.');
+        // In continuous mode, just restart silently
+        if (continuousMode && panelVisible && !isStoppingRef.current) {
+          restartTimerRef.current = setTimeout(() => {
+            if (panelVisible && !isStoppingRef.current) {
+              startRecognition();
+            }
+          }, 300);
+        } else {
+          setError('No speech detected. Tap mic to try again.');
+        }
       } else if (event.error === 'not-allowed') {
-        setError('Microphone permission denied. Please allow access.');
+        setError('Microphone permission denied.');
+      } else if (event.error === 'aborted') {
+        // Silently handle abort (happens during restart)
       } else {
-        setError(`Error: ${event.message || event.error || 'Recognition failed'}`);
+        setError(`Error: ${event.message || event.error}`);
       }
     });
   }
 
   const processTranscript = useCallback((text: string) => {
     const command = parseVoiceCommand(text, factors);
-    
+
     if (command && command.confidence >= 0.4 && (command.factorId || command.allFactors)) {
       setLastCommand(command);
       onCommand(command);
+      setCommandCount(prev => prev + 1);
+
+      // Flash the factor that was updated
+      if (command.factorId) {
+        setLastFlashedFactor(command.factorId);
+        setTimeout(() => setLastFlashedFactor(null), 1500);
+      } else if (command.allFactors) {
+        setLastFlashedFactor('all');
+        setTimeout(() => setLastFlashedFactor(null), 1500);
+      }
+
       setCommandHistory(prev => [
-        { text: describeCommand(command), success: true },
-        ...prev.slice(0, 4),
+        { text: describeCommand(command), success: true, timestamp: Date.now() },
+        ...prev.slice(0, 9),
       ]);
     } else {
       setCommandHistory(prev => [
-        { text: `"${text}" — Not recognized`, success: false },
-        ...prev.slice(0, 4),
+        { text: `"${text}" — not recognized`, success: false, timestamp: Date.now() },
+        ...prev.slice(0, 9),
       ]);
     }
   }, [factors, onCommand]);
 
-  const startListening = async () => {
-    if (!ExpoSpeechRecognitionModule || !isAvailable) {
-      setError('Voice input is not available on this device/browser');
-      return;
-    }
-
-    setError('');
-    setTranscript('');
-    setLastCommand(null);
-    setShowModal(true);
+  const startRecognition = async () => {
+    if (!ExpoSpeechRecognitionModule || !isAvailable) return;
 
     try {
       const { granted } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
       if (!granted) {
-        setError('Microphone permission is required for voice input');
+        setError('Microphone permission required');
         return;
       }
 
       await ExpoSpeechRecognitionModule.start({
         lang: 'en-US',
         interimResults: true,
-        continuous: false,
+        continuous: true,
         maxAlternatives: 1,
         addsPunctuation: false,
         contextualStrings: [
           ...factors.map(f => f.name),
           'high', 'medium', 'low', 'percent',
-          'all', 'every',
+          'all', 'every', 'next',
         ],
       });
-
-      // Animate mic press
-      Animated.spring(micScale, {
-        toValue: 0.9,
-        useNativeDriver: true,
-      }).start();
     } catch (err: any) {
+      // If already started, ignore
+      if (err.message?.includes('already started')) return;
       console.error('Start error:', err);
       setError(err.message || 'Failed to start voice input');
     }
   };
 
+  const openPanel = async () => {
+    if (!ExpoSpeechRecognitionModule || !isAvailable) {
+      setError('Voice input not available on this device/browser');
+      return;
+    }
+
+    setError('');
+    setTranscript('');
+    setLastCommand(null);
+    isStoppingRef.current = false;
+    setPanelVisible(true);
+
+    // Small delay before starting recognition
+    setTimeout(() => {
+      startRecognition();
+    }, 300);
+
+    Animated.spring(micScale, {
+      toValue: 0.9,
+      useNativeDriver: true,
+    }).start();
+  };
+
   const stopListening = async () => {
+    isStoppingRef.current = true;
+    if (restartTimerRef.current) {
+      clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
     if (ExpoSpeechRecognitionModule) {
       try {
         await ExpoSpeechRecognitionModule.stop();
@@ -222,27 +303,36 @@ export default function VoiceAssessmentInput({ factors, onCommand, disabled }: V
     }).start();
   };
 
-  const closeModal = () => {
+  const closePanel = () => {
     stopListening();
-    setShowModal(false);
+    setPanelVisible(false);
     setTranscript('');
     setError('');
   };
 
+  const toggleMic = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      isStoppingRef.current = false;
+      startRecognition();
+    }
+  };
+
   if (!isAvailable && !ExpoSpeechRecognitionModule) {
-    return null; // Don't render if not available
+    return null;
   }
 
   return (
     <>
-      {/* Floating Mic Button */}
+      {/* Compact Mic Trigger Button */}
       <TouchableOpacity
-        style={[styles.micButton, disabled && styles.micButtonDisabled]}
+        style={[styles.micButton, disabled && styles.micButtonDisabled, panelVisible && styles.micButtonActive]}
         onPress={() => {
-          if (isListening) {
-            stopListening();
+          if (panelVisible) {
+            closePanel();
           } else {
-            startListening();
+            openPanel();
           }
         }}
         disabled={disabled}
@@ -250,131 +340,162 @@ export default function VoiceAssessmentInput({ factors, onCommand, disabled }: V
       >
         <View style={styles.micButtonInner}>
           <Ionicons
-            name={isListening ? 'mic' : 'mic-outline'}
+            name={panelVisible ? 'mic' : 'mic-outline'}
             size={20}
-            color={isListening ? '#FFFFFF' : COLORS.primary}
+            color={panelVisible ? '#FFFFFF' : COLORS.primary}
           />
-          <Text style={[styles.micButtonText, isListening && styles.micButtonTextActive]}>
-            {isListening ? 'Listening...' : 'Voice Input'}
+          <Text style={[styles.micButtonText, panelVisible && styles.micButtonTextActive]}>
+            {panelVisible ? 'Listening...' : 'Voice Input'}
           </Text>
+          {commandCount > 0 && !panelVisible && (
+            <View style={styles.commandCountBadge}>
+              <Text style={styles.commandCountText}>{commandCount}</Text>
+            </View>
+          )}
         </View>
       </TouchableOpacity>
 
-      {/* Voice Input Modal */}
-      <Modal
-        visible={showModal}
-        transparent
-        animationType="slide"
-        onRequestClose={closeModal}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            {/* Header */}
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Voice Assessment</Text>
-              <TouchableOpacity onPress={closeModal} style={styles.closeButton}>
-                <Ionicons name="close" size={24} color={COLORS.textSecondary} />
-              </TouchableOpacity>
-            </View>
+      {/* Floating Compact Panel - NOT a modal, so matrix stays visible */}
+      {panelVisible && (
+        <Animated.View
+          style={[
+            styles.floatingPanel,
+            {
+              transform: [{
+                translateY: panelAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [200, 0],
+                })
+              }],
+              opacity: panelAnim,
+            },
+          ]}
+        >
+          {/* Panel Header */}
+          <View style={styles.panelHeader}>
+            <View style={styles.panelDragHandle} />
+          </View>
 
-            {/* Instructions */}
-            <View style={styles.instructions}>
-              <Text style={styles.instructionTitle}>Say a command like:</Text>
-              <Text style={styles.instructionExample}>"Decision Power High"</Text>
-              <Text style={styles.instructionExample}>"Timeline 60 percent"</Text>
-              <Text style={styles.instructionExample}>"All Medium"</Text>
-            </View>
-
-            {/* Mic Area */}
-            <View style={styles.micArea}>
-              <PulseRing isActive={isListening} />
-              <Animated.View style={{ transform: [{ scale: micScale }] }}>
+          <View style={styles.panelBody}>
+            {/* Left: Mic button + status */}
+            <View style={styles.panelMicSection}>
+              <View style={styles.micContainer}>
+                <PulseRing isActive={isListening} />
                 <TouchableOpacity
-                  style={[
-                    styles.bigMicButton,
-                    isListening && styles.bigMicButtonActive,
-                  ]}
-                  onPress={() => {
-                    if (isListening) {
-                      stopListening();
-                    } else {
-                      startListening();
-                    }
-                  }}
+                  style={[styles.panelMicBtn, isListening && styles.panelMicBtnActive]}
+                  onPress={toggleMic}
                   activeOpacity={0.8}
                 >
                   <Ionicons
-                    name={isListening ? 'mic' : 'mic-outline'}
-                    size={40}
+                    name={isListening ? 'mic' : 'mic-off-outline'}
+                    size={24}
                     color="#FFFFFF"
                   />
                 </TouchableOpacity>
-              </Animated.View>
-              <Text style={styles.micStatus}>
-                {isListening ? 'Listening... Speak now' : 'Tap to start'}
+              </View>
+              <Text style={styles.micLabel}>
+                {isListening ? 'Listening...' : 'Paused'}
               </Text>
             </View>
 
-            {/* Transcript */}
-            {transcript ? (
-              <View style={styles.transcriptBox}>
-                <Ionicons name="chatbubble-outline" size={16} color={COLORS.textSecondary} />
-                <Text style={styles.transcriptText}>"{transcript}"</Text>
-              </View>
-            ) : null}
+            {/* Right: Transcript + Commands */}
+            <View style={styles.panelInfoSection}>
+              {/* Current transcript */}
+              {transcript ? (
+                <View style={styles.liveTranscript}>
+                  <Ionicons name="chatbubble-ellipses-outline" size={14} color={COLORS.primary} />
+                  <Text style={styles.liveTranscriptText} numberOfLines={2}>"{transcript}"</Text>
+                </View>
+              ) : isListening ? (
+                <View style={styles.liveTranscript}>
+                  <Ionicons name="chatbubble-ellipses-outline" size={14} color={COLORS.textMuted} />
+                  <Text style={styles.liveTranscriptHint}>Say: "Salary High" or "All Medium"</Text>
+                </View>
+              ) : null}
 
-            {/* Last command result */}
-            {lastCommand ? (
-              <View style={styles.commandResult}>
-                <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
-                <Text style={styles.commandResultText}>
-                  {describeCommand(lastCommand)}
+              {/* Last applied command */}
+              {lastCommand && (
+                <View style={styles.appliedCommand}>
+                  <Ionicons name="checkmark-circle" size={14} color={COLORS.success} />
+                  <Text style={styles.appliedCommandText} numberOfLines={1}>
+                    Applied: {describeCommand(lastCommand)}
+                  </Text>
+                </View>
+              )}
+
+              {/* Error */}
+              {error ? (
+                <View style={styles.panelError}>
+                  <Ionicons name="alert-circle" size={14} color={COLORS.error} />
+                  <Text style={styles.panelErrorText} numberOfLines={1}>{error}</Text>
+                </View>
+              ) : null}
+
+              {/* Command History (scrollable, compact) */}
+              {commandHistory.length > 0 && (
+                <ScrollView
+                  style={styles.historyScroll}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                >
+                  {commandHistory.slice(0, 5).map((item, idx) => (
+                    <View
+                      key={idx}
+                      style={[
+                        styles.historyChip,
+                        item.success ? styles.historyChipSuccess : styles.historyChipFail,
+                      ]}
+                    >
+                      <Ionicons
+                        name={item.success ? 'checkmark' : 'close'}
+                        size={10}
+                        color={item.success ? COLORS.success : COLORS.error}
+                      />
+                      <Text style={styles.historyChipText} numberOfLines={1}>
+                        {item.text}
+                      </Text>
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+
+            {/* Close button */}
+            <TouchableOpacity onPress={closePanel} style={styles.panelCloseBtn}>
+              <Ionicons name="close" size={20} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Factor chips - compact row showing which factors are available */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.factorChipsScroll}
+            contentContainerStyle={styles.factorChipsContent}
+          >
+            {factors.map(f => (
+              <View
+                key={f.id}
+                style={[
+                  styles.factorChip,
+                  lastFlashedFactor === f.id && styles.factorChipActive,
+                  lastFlashedFactor === 'all' && styles.factorChipActive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.factorChipText,
+                    (lastFlashedFactor === f.id || lastFlashedFactor === 'all') && styles.factorChipTextActive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {f.name}
                 </Text>
               </View>
-            ) : null}
-
-            {/* Error */}
-            {error ? (
-              <View style={styles.errorBox}>
-                <Ionicons name="alert-circle" size={16} color={COLORS.error} />
-                <Text style={styles.errorText}>{error}</Text>
-              </View>
-            ) : null}
-
-            {/* Command History */}
-            {commandHistory.length > 0 && (
-              <View style={styles.historySection}>
-                <Text style={styles.historyTitle}>Recent Commands</Text>
-                {commandHistory.map((item, idx) => (
-                  <View key={idx} style={styles.historyItem}>
-                    <Ionicons
-                      name={item.success ? 'checkmark-circle' : 'close-circle'}
-                      size={14}
-                      color={item.success ? COLORS.success : COLORS.error}
-                    />
-                    <Text style={[
-                      styles.historyText,
-                      !item.success && styles.historyTextError,
-                    ]}>{item.text}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {/* Available Factors */}
-            <View style={styles.factorList}>
-              <Text style={styles.factorListTitle}>Available Factors:</Text>
-              <View style={styles.factorChips}>
-                {factors.map(f => (
-                  <View key={f.id} style={styles.factorChip}>
-                    <Text style={styles.factorChipText}>{f.name}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          </View>
-        </View>
-      </Modal>
+            ))}
+          </ScrollView>
+        </Animated.View>
+      )}
     </>
   );
 }
@@ -393,6 +514,10 @@ const styles = StyleSheet.create({
   micButtonDisabled: {
     opacity: 0.5,
   },
+  micButtonActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
   micButtonInner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -406,180 +531,221 @@ const styles = StyleSheet.create({
   micButtonTextActive: {
     color: '#FFFFFF',
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    maxHeight: '85%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  commandCountBadge: {
+    backgroundColor: COLORS.success,
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    marginLeft: 2,
   },
-  modalTitle: {
-    fontSize: 20,
+  commandCountText: {
+    fontSize: 10,
     fontWeight: '700',
-    color: COLORS.textPrimary,
+    color: '#FFFFFF',
   },
-  closeButton: {
-    padding: 4,
+
+  // Floating panel styles - positioned at bottom, compact, semi-transparent
+  floatingPanel: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.97)',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    boxShadow: '0px -4px 20px rgba(0, 0, 0, 0.15)',
+    elevation: 10,
+    zIndex: 100,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 16,
   },
-  instructions: {
-    backgroundColor: COLORS.background,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 20,
-  },
-  instructionTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-    marginBottom: 6,
-  },
-  instructionExample: {
-    fontSize: 14,
-    color: COLORS.primary,
-    fontWeight: '500',
-    fontStyle: 'italic',
-    marginBottom: 2,
-  },
-  micArea: {
+  panelHeader: {
     alignItems: 'center',
-    marginVertical: 20,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  panelDragHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.border,
+  },
+
+  panelBody: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 12,
+  },
+
+  // Mic section
+  panelMicSection: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  micContainer: {
+    width: 52,
+    height: 52,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   pulseRing: {
     position: 'absolute',
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: COLORS.primary,
   },
-  bigMicButton: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+  panelMicBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 4,
-    boxShadow: '0px 4px 8px rgba(124, 58, 237, 0.3)',
+    boxShadow: '0px 2px 8px rgba(124, 58, 237, 0.3)',
   },
-  bigMicButtonActive: {
-    backgroundColor: COLORS.error,
+  panelMicBtnActive: {
+    backgroundColor: '#E53E3E',
   },
-  micStatus: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    marginTop: 12,
-    fontWeight: '500',
+  micLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  transcriptBox: {
+
+  // Info section
+  panelInfoSection: {
+    flex: 1,
+    gap: 4,
+  },
+  liveTranscript: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.background,
-    padding: 12,
-    borderRadius: 10,
-    gap: 8,
-    marginBottom: 8,
+    gap: 6,
+    backgroundColor: 'rgba(142, 36, 170, 0.06)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
   },
-  transcriptText: {
-    fontSize: 15,
-    color: COLORS.textPrimary,
+  liveTranscriptText: {
+    fontSize: 13,
+    color: COLORS.primary,
+    fontWeight: '500',
     flex: 1,
     fontStyle: 'italic',
   },
-  commandResult: {
+  liveTranscriptHint: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    flex: 1,
+    fontStyle: 'italic',
+  },
+  appliedCommand: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-    padding: 12,
-    borderRadius: 10,
-    gap: 8,
-    marginBottom: 8,
+    gap: 6,
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
   },
-  commandResultText: {
-    fontSize: 14,
+  appliedCommandText: {
+    fontSize: 12,
     fontWeight: '600',
     color: COLORS.success,
     flex: 1,
   },
-  errorBox: {
+  panelError: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    padding: 10,
-    borderRadius: 8,
     gap: 6,
-    marginBottom: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
-  errorText: {
-    fontSize: 13,
+  panelErrorText: {
+    fontSize: 11,
     color: COLORS.error,
     flex: 1,
   },
-  historySection: {
-    marginTop: 8,
-    marginBottom: 12,
+
+  // History chips (horizontal scroll)
+  historyScroll: {
+    flexGrow: 0,
+    marginTop: 2,
   },
-  historyTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.textMuted,
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  historyItem: {
+  historyChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 4,
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    marginRight: 6,
   },
-  historyText: {
-    fontSize: 13,
+  historyChipSuccess: {
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+  },
+  historyChipFail: {
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+  },
+  historyChipText: {
+    fontSize: 10,
     color: COLORS.textSecondary,
+    maxWidth: 120,
   },
-  historyTextError: {
-    color: COLORS.textMuted,
+
+  // Close button
+  panelCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.background,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  factorList: {
-    marginTop: 8,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.divider,
+
+  // Factor chips at bottom of panel
+  factorChipsScroll: {
+    flexGrow: 0,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
-  factorListTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.textMuted,
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  factorChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  factorChipsContent: {
     gap: 6,
+    paddingRight: 16,
   },
   factorChip: {
     backgroundColor: COLORS.background,
-    borderRadius: 16,
+    borderRadius: 14,
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 4,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
+  factorChipActive: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderColor: COLORS.success,
+  },
   factorChipText: {
-    fontSize: 12,
-    color: COLORS.textPrimary,
+    fontSize: 11,
+    color: COLORS.textSecondary,
     fontWeight: '500',
+  },
+  factorChipTextActive: {
+    color: COLORS.success,
+    fontWeight: '700',
+  },
+
+  // Flash overlay
+  flashOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    borderRadius: 8,
   },
 });

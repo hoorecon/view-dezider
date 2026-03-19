@@ -408,6 +408,102 @@ backend:
         agent: "testing"
         comment: "✅ PERMISSION MATRIX TESTING PASSED: Complete 3-tier permission system validated. Super Admin (level 3): can promote/demote co_admin and admin, approve templates. Co-Admin (level 2): can promote/demote admin, approve templates, denied co_admin operations. Admin (level 1): can approve templates, denied all promotion/demotion. All role-based access controls and security restrictions working correctly."
 
+  - task: "Decision Folders System"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ DECISION FOLDERS API TESTING PASSED: GET /api/folders endpoint returns 10 life area folders with proper structure (id, name, icon, color). All expected folders present: career, finance, relationships, holistic_health, assets, knowledge_skills, social_image, social_contributions, hobbies_entertainment, spirituality_religion."
+
+  - task: "Decision Creation with Folders"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ DECISION CREATION WITH FOLDER TESTING PASSED: POST /api/decisions with folder parameter working correctly. Decisions properly created and stored with folder field. Folder field correctly persisted and retrievable."
+
+  - task: "Decision Folder Filtering"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ DECISION FOLDER FILTERING TESTING PASSED: GET /api/decisions?folder=career filtering working correctly. Created decisions in multiple folders (career, finance, relationships) and verified each folder filter returns only relevant decisions."
+
+  - task: "Step Sharing System - Share Creation"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ STEP SHARING CREATION TESTING PASSED: POST /api/decisions/{id}/share-step endpoint working correctly. Successfully shared step 7 with recipient_emails, merge_mode (self_weighted), and custom message. Returns proper share_id for tracking."
+
+  - task: "Step Sharing System - View Shares"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ STEP SHARING VIEW TESTING PASSED: Both GET /api/shared-steps/sent and GET /api/shared-steps/received endpoints working correctly. Sharer can view sent shares, recipients can view received shares. GET /api/shared-steps/{id} provides detailed share information with proper authorization."
+
+  - task: "Step Sharing System - Contributions"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ STEP SHARING CONTRIBUTIONS TESTING PASSED: POST /api/shared-steps/{id}/contribute endpoint working correctly. Recipients can submit assessments and notes. Contribution data properly stored and associated with recipient user."
+
+  - task: "Step Sharing System - Merge Process"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ STEP SHARING MERGE TESTING PASSED: POST /api/shared-steps/{id}/merge endpoint working correctly. Sharer can merge contributions using self_weighted merge mode. Decision properly updated with merged assessments. Original decision reflects merged data."
+
+  - task: "Decision New Fields Update"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ DECISION NEW FIELDS UPDATE TESTING PASSED: PUT /api/decisions/{id} properly handles new fields: reflection, final_notes, folder. All fields correctly updated and persisted. Field changes properly stored and retrievable in subsequent GET requests."
+
 frontend:
   - task: "Login Screen (Email + Google)"
     implemented: true
@@ -542,6 +638,8 @@ agent_communication:
   - agent: "testing"
     message: "✅ 3-TIER ADMIN SYSTEM TESTING COMPLETE: All admin system tests passed."
   - agent: "main"
-    message: "FORKED SESSION - Running comprehensive re-test of all backend APIs to ensure everything works after fork. Fixed missing auth/callback route in layout. Please test ALL backend endpoints: auth (register/login/me/forgot-password/reset-password/set-password), PRR decisions CRUD with full factor/option/assessment flow, Test123 sessions, Assessment quiz, Journal CRUD, Dashboard stats, Clone at all levels, Templates (create/list/use/delete/share/import), Admin system (setup/promote/demote/users/template-authorization). Test with fresh users."
+    message: "FORKED SESSION - Implemented 3 new features: 1) Universal Voice Input across all 10 PRR steps (VoiceStepInput + stepVoiceParser), 2) Step Sharing with 3 merge modes (equal/self_weighted/custom), 3) Decision Folders (10 life areas). Please test NEW endpoints: GET /api/folders, POST /api/decisions with folder param, GET /api/decisions?folder=career, POST /api/decisions/{id}/share-step, GET /api/shared-steps/sent, GET /api/shared-steps/received, GET /api/shared-steps/{id}, POST /api/shared-steps/{id}/contribute, POST /api/shared-steps/{id}/merge. Also test existing endpoints still work (decisions CRUD with new reflection/final_notes/folder fields). Use two users to test sharing flow end-to-end."
   - agent: "testing"
     message: "🎉 COMPREHENSIVE POST-FORK BACKEND TESTING COMPLETE: All 34 endpoints tested successfully! Tested complete API coverage including Auth (6 endpoints), PRR Decisions with full CRUD + clone at 5 levels (11 endpoints), Templates with visibility/sharing (6 endpoints), Test123 sessions (4 endpoints), Assessment system (3 endpoints), Journal CRUD (4 endpoints), Dashboard stats, and Admin system (6 endpoints). All core functionality verified working correctly after fork/session change. Used fresh unique test users for authentication. PRR worth percentage calculations validated ≤100%. Template system with private/shared/public visibility working. Clone functionality at all levels (factors/classification/prioritization/options/assessment) verified. Journal, assessment, and Test123 workflows all functional."
+  - agent: "testing"
+    message: "🚀 NEW FEATURES COMPREHENSIVE TESTING COMPLETE: All 6 new feature test scenarios passed successfully! ✅ Decision Folders API - 10 life area folders with proper structure (id/name/icon/color). ✅ Decision Creation with Folder - decisions properly created and stored with folder parameter. ✅ Decision Folder Filtering - GET /api/decisions?folder=career filtering working correctly. ✅ Step Sharing Complete Flow - full end-to-end sharing workflow tested with 2 users including share creation, contribution, and merge functionality. ✅ Decision New Fields Update - reflection, final_notes, and folder fields properly updated and persisted. ✅ Existing Endpoints Still Work - all legacy endpoints (auth, PRR CRUD, Test123, Journal, Stats) remain functional after new feature implementation. Used fresh unique test users throughout testing. All sharing endpoints functional: POST /decisions/{id}/share-step, GET /shared-steps/sent, GET /shared-steps/received, GET /shared-steps/{id}, POST /shared-steps/{id}/contribute, POST /shared-steps/{id}/merge."

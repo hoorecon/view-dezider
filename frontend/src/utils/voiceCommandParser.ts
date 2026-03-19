@@ -131,22 +131,35 @@ function findFactor(words: string[], factors: Factor[]): { factor: Factor; match
  * Extract a numeric value from the transcript
  */
 function extractNumber(words: string[]): number | null {
+  // First check for digit-based numbers
   for (const word of words) {
-    const num = parseInt(word, 10);
-    if (!isNaN(num) && num >= 0 && num <= 100) {
-      return num;
+    const cleaned = word.replace(/[^0-9]/g, '');
+    if (cleaned) {
+      const num = parseInt(cleaned, 10);
+      if (!isNaN(num) && num >= 0 && num <= 100) {
+        return num;
+      }
     }
   }
   
-  // Check for number words
+  // Check for compound number words (twenty-five, thirty percent, etc.)
   const numberWords: Record<string, number> = {
-    'zero': 0, 'ten': 10, 'twenty': 20, 'thirty': 30, 'forty': 40,
-    'fifty': 50, 'sixty': 60, 'seventy': 70, 'eighty': 80, 'ninety': 90,
+    'zero': 0, 'five': 5, 'ten': 10, 'fifteen': 15, 'twenty': 20,
+    'twenty-five': 25, 'twenty five': 25,
+    'thirty': 30, 'thirty-five': 35, 'thirty five': 35,
+    'forty': 40, 'forty-five': 45, 'forty five': 45,
+    'fifty': 50, 'fifty-five': 55, 'fifty five': 55,
+    'sixty': 60, 'sixty-five': 65, 'sixty five': 65,
+    'seventy': 70, 'seventy-five': 75, 'seventy five': 75,
+    'eighty': 80, 'eighty-five': 85, 'eighty five': 85,
+    'ninety': 90, 'ninety-five': 95, 'ninety five': 95,
     'hundred': 100, 'one hundred': 100,
   };
   
   const text = words.join(' ');
-  for (const [word, num] of Object.entries(numberWords)) {
+  // Sort by length descending so "twenty five" matches before "twenty"
+  const sortedEntries = Object.entries(numberWords).sort((a, b) => b[0].length - a[0].length);
+  for (const [word, num] of sortedEntries) {
     if (text.includes(word)) return num;
   }
   
