@@ -878,16 +878,18 @@ export default function PRRDecisionDetail() {
 
                       {/* Custom % toggle/input */}
                       {isCustom ? (
-                        <View style={styles.customInputContainer}>
+                        <View style={[styles.customInputContainer, { backgroundColor: COLORS.primary }]}>
                           <TextInput
-                            style={styles.customPercentInput}
+                            style={[styles.customPercentInput, { color: COLORS.white }]}
                             value={getCustomInputValue(option.id, factor.id)}
                             onChangeText={(text) => handleCustomInputChange(option.id, factor.id, text)}
                             onBlur={() => handleCustomInputBlur(option.id, factor.id)}
                             keyboardType="numeric"
                             maxLength={3}
+                            placeholderTextColor="rgba(255,255,255,0.6)"
+                            placeholder="0"
                           />
-                          <Text style={styles.customPercentSign}>%</Text>
+                          <Text style={[styles.customPercentSign, { color: COLORS.white }]}>%</Text>
                         </View>
                       ) : (
                         <TouchableOpacity
@@ -906,7 +908,10 @@ export default function PRRDecisionDetail() {
                       )}
 
                       {/* Display current % */}
-                      <View style={styles.currentValueBadge}>
+                      <View style={[
+                        styles.currentValueBadge,
+                        !hasValue && styles.currentValueBadgeEmpty
+                      ]}>
                         {hasValue ? (
                           <Text style={styles.currentValueText}>{currentValue}%</Text>
                         ) : (
@@ -1614,6 +1619,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 12,
+  },
+  currentValueBadgeEmpty: {
+    backgroundColor: COLORS.textMuted,
   },
   currentValueText: {
     fontSize: 13,
