@@ -353,11 +353,9 @@ export default function TemplateBrowserModal({
                 </View>
               ) : (
                 templates[activeTab].map((template) => (
-                  <TouchableOpacity
+                  <View
                     key={template.id}
                     style={styles.templateCard}
-                    onPress={() => handleSelectTemplate(template)}
-                    activeOpacity={0.7}
                   >
                     <View style={styles.templateCardHeader}>
                       <View style={[
@@ -381,21 +379,14 @@ export default function TemplateBrowserModal({
                         {activeTab !== 'my' && (
                           <>
                             <TouchableOpacity
-                              onPress={(e) => {
-                                e.stopPropagation?.();
-                                handleQuickUseTemplate(template);
-                              }}
+                              onPress={() => handleQuickUseTemplate(template)}
                               style={styles.useBtn}
                             >
                               <Ionicons name="add-circle-outline" size={14} color="#FFF" />
                               <Text style={styles.useBtnText}>Use</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
-                              onPress={(e) => {
-                                e.stopPropagation?.();
-                                handleImportTemplate(template);
-                              }}
-                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              onPress={() => handleImportTemplate(template)}
                               disabled={importing}
                               style={styles.saveMineBtn}
                             >
@@ -406,11 +397,7 @@ export default function TemplateBrowserModal({
                         {/* Admin: Approve button on public templates */}
                         {isAdmin && activeTab === 'public' && (
                           <TouchableOpacity
-                            onPress={(e) => {
-                              e.stopPropagation?.();
-                              handleApproveTemplate(template);
-                            }}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            onPress={() => handleApproveTemplate(template)}
                             style={styles.approveBtn}
                           >
                             <Ionicons name="shield-checkmark-outline" size={14} color="#10B981" />
@@ -420,11 +407,7 @@ export default function TemplateBrowserModal({
                         {/* Admin: Revoke button on authorized templates */}
                         {isAdmin && activeTab === 'authorized' && (
                           <TouchableOpacity
-                            onPress={(e) => {
-                              e.stopPropagation?.();
-                              handleRevokeTemplate(template);
-                            }}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            onPress={() => handleRevokeTemplate(template)}
                             style={styles.revokeBtn}
                           >
                             <Ionicons name="close-circle-outline" size={14} color={COLORS.error} />
@@ -434,25 +417,24 @@ export default function TemplateBrowserModal({
                         {/* Delete button for own templates */}
                         {activeTab === 'my' && (
                           <TouchableOpacity
-                            onPress={(e) => {
-                              e.stopPropagation?.();
-                              handleDeleteTemplate(template);
-                            }}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            onPress={() => handleDeleteTemplate(template)}
+                            style={styles.deleteBtn}
                           >
-                            <Ionicons name="trash-outline" size={16} color={COLORS.textMuted} />
+                            <Ionicons name="trash-outline" size={18} color={COLORS.error} />
                           </TouchableOpacity>
                         )}
                       </View>
                     </View>
-                    <Text style={styles.templateName} numberOfLines={1}>{template.name}</Text>
-                    <Text style={styles.templateMeta}>
-                      {template.factors?.length || 0} factors • {template.options?.length || 0} options
-                    </Text>
-                    <Text style={styles.templateAuthor}>
-                      By {template.created_by_name} • {formatDate(template.created_at)}
-                    </Text>
-                  </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleSelectTemplate(template)} activeOpacity={0.7}>
+                      <Text style={styles.templateName} numberOfLines={1}>{template.name}</Text>
+                      <Text style={styles.templateMeta}>
+                        {template.factors?.length || 0} factors • {template.options?.length || 0} options
+                      </Text>
+                      <Text style={styles.templateAuthor}>
+                        By {template.created_by_name} • {formatDate(template.created_at)}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 ))
               )}
             </ScrollView>
@@ -587,7 +569,10 @@ const styles = StyleSheet.create({
     color: '#FFF',
   },
   saveMineBtn: {
-    padding: 4,
+    padding: 6,
+  },
+  deleteBtn: {
+    padding: 6,
   },
   approveBtn: {
     flexDirection: 'row',
