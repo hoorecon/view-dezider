@@ -315,6 +315,142 @@ export default function PRRDecisionDetail() {
     setCurrentStep(10);
   };
 
+  // Helper used by both voice handler and step 7
+  const getAssessmentKey = (optionId: string, factorId: string) => `${optionId}_${factorId}`;
+
+  // ===== UNIVERSAL VOICE COMMAND HANDLER =====
+  const handleAssessVoiceCommand = (command: StepVoiceCommand) => {
+    if (!decision) return;
+
+    let updatedOptions = [...decision.options.map(o => ({
+      ...o,
+      assessments: [...o.assessments],
+    }))];
+
+    const applyToFactor = (optionIdx: number, factorId: string) => {
+      const option = updatedOptions[optionIdx];
+      const key = getAssessmentKey(option.id, factorId);
+      const clampedPercentage = Math.min(100, Math.max(0, command.value || 0));
+      
+      const existingIndex = option.assessments.findIndex((a) => a.factor_id === factorId);
+      const newAssessment: OptionAssessment = {
+        factor_id: factorId,
+        percentage: clampedPercentage,
+        assessment_mode: command.mode || 'custom',
+        unit_value: unitValues[key],
+      };
+
+      if (existingIndex >= 0) {
+        option.assessments = option.assessments.map((a, i) =>
+          i === existingIndex ? { ...a, ...newAssessment } : a
+        );
+      } else {
+        option.assessments = [...option.assessments, newAssessment];
+      }
+
+      if (command.mode !== 'custom') {
+        setShowCustomInput((prev: any) => ({ ...prev, [key]: false }));
+      } else {
+        setShowCustomInput((prev: any) => ({ ...prev, [key]: true }));
+        setCustomInputValues((prev: any) => ({ ...prev, [key]: String(command.value) }));
+      }
+    };
+
+    if (command.allFactors) {
+      updatedOptions.forEach((_, optionIdx) => {
+        decision.factors.forEach(factor => {
+          applyToFactor(optionIdx, factor.id);
+        });
+      });
+    } else if (command.factorId) {
+      updatedOptions.forEach((_, optionIdx) => {
+        applyToFactor(optionIdx, command.factorId!);
+      });
+    }
+
+    saveDecision({ options: updatedOptions, factors: decision.factors });
+  };
+
+  const handleUniversalVoiceCommand = (command: StepVoiceCommand) => {
+    if (!decision) return;
+
+    switch (command.type) {
+      case 'set_title':
+        if (command.text) saveDecision({ title: command.text });
+        break;
+      case 'set_context':
+      case 'dictation':
+        if (command.step === 1 && command.text) {
+          saveDecision({ context: (decision.context || '') + ' ' + command.text });
+        } else if (command.step === 9 && command.text) {
+          saveDecision({ reflection: (decision.reflection || '') + ' ' + command.text });
+        } else if (command.step === 10 && command.text) {
+          saveDecision({ final_notes: (decision.final_notes || '') + ' ' + command.text });
+        }
+        break;
+      case 'add_factor':
+        if (command.text) {
+          const exists = decision.factors.some(f => f.name.toLowerCase() === command.text!.toLowerCase());
+          if (!exists) {
+            const newFactor: Factor = {
+              id: `factor_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+              name: command.text, category: 'secondary', rating: 50, order: decision.factors.length,
+            };
+            saveDecision({ factors: [...decision.factors, newFactor] });
+          }
+        }
+        break;
+      case 'remove_factor':
+        if (command.factorId) removeFactor(command.factorId);
+        break;
+      case 'classify_factor':
+        if (command.allFactors && command.category) {
+          saveDecision({ factors: decision.factors.map(f => ({ ...f, category: command.category! })) });
+        } else if (command.factorId && command.category) {
+          updateFactor(command.factorId, { category: command.category });
+        }
+        break;
+      case 'move_factor':
+        if (command.factorId && command.direction) {
+          if (command.direction === 'up') moveFactorUp(command.factorId);
+          else if (command.direction === 'down') moveFactorDown(command.factorId);
+          else if (command.direction === 'first') {
+            const updated = decision.factors.map(f => f.id === command.factorId ? { ...f, order: -1 } : f)
+              .sort((a, b) => a.order - b.order).map((f, i) => ({ ...f, order: i }));
+            saveDecision({ factors: calculateRatingsFromOrder(updated) });
+          } else if (command.direction === 'last') {
+            const updated = decision.factors.map(f => f.id === command.factorId ? { ...f, order: 999 } : f)
+              .sort((a, b) => a.order - b.order).map((f, i) => ({ ...f, order: i }));
+            saveDecision({ factors: calculateRatingsFromOrder(updated) });
+          }
+        }
+        break;
+      case 'add_option':
+        if (command.text) {
+          const exists = decision.options.some(o => o.name.toLowerCase() === command.text!.toLowerCase());
+          if (!exists) {
+            const newOption: DecisionOption = {
+              id: `option_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+              name: command.text, assessments: [], worth_percentage: 0,
+            };
+            saveDecision({ options: [...decision.options, newOption] });
+          }
+        }
+        break;
+      case 'remove_option':
+        if (command.optionId) removeOption(command.optionId);
+        break;
+      case 'assess_factor':
+      case 'assess_all':
+        handleAssessVoiceCommand(command);
+        break;
+      case 'choose_option':
+        if (command.optionId) saveDecision({ chosen_option_id: command.optionId });
+        break;
+      default: break;
+    }
+  };
+
   const getAssessmentValue = (optionId: string, factorId: string): number | null => {
     const option = decision?.options.find((o) => o.id === optionId);
     const assessment = option?.assessments.find((a) => a.factor_id === factorId);
@@ -723,8 +859,6 @@ export default function PRRDecisionDetail() {
   );
 
   const renderStep7 = () => {
-    const getAssessmentKey = (optionId: string, factorId: string) => `${optionId}_${factorId}`;
-    
     const handleLMHSelect = (optionId: string, factorId: string, mode: 'L' | 'M' | 'H') => {
       const percentage = LMH_VALUES[mode].percentage;
       const key = getAssessmentKey(optionId, factorId);
@@ -774,177 +908,6 @@ export default function PRRDecisionDetail() {
       }
       const value = getAssessmentValue(optionId, factorId);
       return value !== null ? String(value) : '';
-    };
-
-    // ===== UNIVERSAL VOICE COMMAND HANDLER =====
-    // Routes voice commands to the appropriate step logic
-    const handleUniversalVoiceCommand = (command: StepVoiceCommand) => {
-      if (!decision) return;
-
-      switch (command.type) {
-        case 'set_title':
-          if (command.text) saveDecision({ title: command.text });
-          break;
-
-        case 'set_context':
-        case 'dictation':
-          if (command.step === 1 && command.text) {
-            saveDecision({ context: (decision.context || '') + ' ' + command.text });
-          } else if (command.step === 9 && command.text) {
-            saveDecision({ reflection: (decision.reflection || '') + ' ' + command.text });
-          } else if (command.step === 10 && command.text) {
-            saveDecision({ final_notes: (decision.final_notes || '') + ' ' + command.text });
-          }
-          break;
-
-        case 'add_factor':
-          if (command.text) {
-            const exists = decision.factors.some(f => f.name.toLowerCase() === command.text!.toLowerCase());
-            if (!exists) {
-              const newFactor: Factor = {
-                id: `factor_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-                name: command.text,
-                category: 'secondary',
-                rating: 50,
-                order: decision.factors.length,
-              };
-              saveDecision({ factors: [...decision.factors, newFactor] });
-            }
-          }
-          break;
-
-        case 'remove_factor':
-          if (command.factorId) {
-            removeFactor(command.factorId);
-          }
-          break;
-
-        case 'classify_factor':
-          if (command.allFactors && command.category) {
-            const updated = decision.factors.map(f => ({ ...f, category: command.category! }));
-            saveDecision({ factors: updated });
-          } else if (command.factorId && command.category) {
-            updateFactor(command.factorId, { category: command.category });
-          }
-          break;
-
-        case 'move_factor':
-          if (command.factorId && command.direction) {
-            if (command.direction === 'up') {
-              moveFactorUp(command.factorId);
-            } else if (command.direction === 'down') {
-              moveFactorDown(command.factorId);
-            } else if (command.direction === 'first') {
-              // Move to top: set order to -1, then renormalize
-              const updated = decision.factors.map(f => 
-                f.id === command.factorId ? { ...f, order: -1 } : f
-              ).sort((a, b) => a.order - b.order)
-               .map((f, i) => ({ ...f, order: i }));
-              const factorsWithRatings = calculateRatingsFromOrder(updated);
-              saveDecision({ factors: factorsWithRatings });
-            } else if (command.direction === 'last') {
-              const updated = decision.factors.map(f => 
-                f.id === command.factorId ? { ...f, order: 999 } : f
-              ).sort((a, b) => a.order - b.order)
-               .map((f, i) => ({ ...f, order: i }));
-              const factorsWithRatings = calculateRatingsFromOrder(updated);
-              saveDecision({ factors: factorsWithRatings });
-            }
-          }
-          break;
-
-        case 'add_option':
-          if (command.text) {
-            const exists = decision.options.some(o => o.name.toLowerCase() === command.text!.toLowerCase());
-            if (!exists) {
-              const newOption: DecisionOption = {
-                id: `option_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-                name: command.text,
-                assessments: [],
-                worth_percentage: 0,
-              };
-              saveDecision({ options: [...decision.options, newOption] });
-            }
-          }
-          break;
-
-        case 'remove_option':
-          if (command.optionId) {
-            removeOption(command.optionId);
-          }
-          break;
-
-        case 'assess_factor':
-        case 'assess_all':
-          handleAssessVoiceCommand(command);
-          break;
-
-        case 'choose_option':
-          if (command.optionId) {
-            saveDecision({ chosen_option_id: command.optionId });
-          }
-          break;
-
-        case 'set_case':
-          // Could set the view mode (best/worst/most_likely)
-          break;
-
-        default:
-          break;
-      }
-    };
-
-    // Universal voice command handler for Step 7 assessment
-    const handleAssessVoiceCommand = (command: StepVoiceCommand) => {
-      if (!decision) return;
-
-      let updatedOptions = [...decision.options.map(o => ({
-        ...o,
-        assessments: [...o.assessments],
-      }))];
-
-      const applyToFactor = (optionIdx: number, factorId: string) => {
-        const option = updatedOptions[optionIdx];
-        const key = getAssessmentKey(option.id, factorId);
-        const clampedPercentage = Math.min(100, Math.max(0, command.value || 0));
-        
-        const existingIndex = option.assessments.findIndex((a) => a.factor_id === factorId);
-        const newAssessment: OptionAssessment = {
-          factor_id: factorId,
-          percentage: clampedPercentage,
-          assessment_mode: command.mode || 'custom',
-          unit_value: unitValues[key],
-        };
-
-        if (existingIndex >= 0) {
-          option.assessments = option.assessments.map((a, i) =>
-            i === existingIndex ? { ...a, ...newAssessment } : a
-          );
-        } else {
-          option.assessments = [...option.assessments, newAssessment];
-        }
-
-        if (command.mode !== 'custom') {
-          setShowCustomInput((prev: any) => ({ ...prev, [key]: false }));
-        } else {
-          setShowCustomInput((prev: any) => ({ ...prev, [key]: true }));
-          setCustomInputValues((prev: any) => ({ ...prev, [key]: String(command.value) }));
-        }
-      };
-
-      if (command.allFactors) {
-        updatedOptions.forEach((_, optionIdx) => {
-          decision.factors.forEach(factor => {
-            applyToFactor(optionIdx, factor.id);
-          });
-        });
-      } else if (command.factorId) {
-        updatedOptions.forEach((_, optionIdx) => {
-          applyToFactor(optionIdx, command.factorId!);
-        });
-      }
-
-      saveDecision({ options: updatedOptions, factors: decision.factors });
     };
 
     return (
