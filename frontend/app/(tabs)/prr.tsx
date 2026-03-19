@@ -187,7 +187,7 @@ export default function PRRScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>PRR Decisions</Text>
+        <Text style={styles.title}>Decision Box</Text>
         <TouchableOpacity
           style={styles.addButton}
           onPress={() => router.push('/prr/new')}

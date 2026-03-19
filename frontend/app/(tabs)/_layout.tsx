@@ -36,7 +36,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="prr"
         options={{
-          title: 'PRR',
+          title: 'Decision Box',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="analytics" size={size} color={color} />
           ),
