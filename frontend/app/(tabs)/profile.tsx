@@ -44,6 +44,14 @@ export default function ProfileScreen() {
   const [passwordError, setPasswordError] = useState('');
   const [hasPassword, setHasPassword] = useState(false);
 
+  // Admin state
+  const [userRole, setUserRole] = useState('user');
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [adminUsers, setAdminUsers] = useState<any[]>([]);
+  const [promoteEmail, setPromoteEmail] = useState('');
+  const [promoteRole, setPromoteRole] = useState<'admin' | 'co_admin'>('admin');
+  const [adminLoading, setAdminLoading] = useState(false);
+
   useEffect(() => {
     fetchQuestions();
     fetchLatestAssessment();
@@ -54,6 +62,7 @@ export default function ProfileScreen() {
     try {
       const response = await api.get('/auth/me');
       setHasPassword(response.data.has_password || false);
+      setUserRole(response.data.role || 'user');
     } catch (error) {
       console.error('Error fetching user info:', error);
     }
@@ -151,6 +160,78 @@ export default function ProfileScreen() {
     } finally {
       setPasswordLoading(false);
     }
+  };
+
+  const handleAdminSetup = async () => {
+    Alert.alert(
+      'Become Super Admin',
+      'This will make you the Super Admin. This can only be done once.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm',
+          onPress: async () => {
+            try {
+              await api.post('/admin/setup');
+              setUserRole('super_admin');
+              Alert.alert('Success', 'You are now Super Admin!');
+            } catch (err: any) {
+              Alert.alert('Error', err.response?.data?.detail || 'Setup failed');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const fetchAdminUsers = async () => {
+    try {
+      const response = await api.get('/admin/users');
+      setAdminUsers(response.data || []);
+    } catch (err: any) {
+      console.error('Error fetching admin users:', err);
+    }
+  };
+
+  const handlePromoteUser = async () => {
+    if (!promoteEmail.trim()) {
+      Alert.alert('Error', 'Please enter an email address');
+      return;
+    }
+    setAdminLoading(true);
+    try {
+      await api.post('/admin/promote', { email: promoteEmail.trim(), role: promoteRole });
+      Alert.alert('Success', `${promoteEmail} promoted to ${promoteRole === 'co_admin' ? 'Co-Admin' : 'Admin'}`);
+      setPromoteEmail('');
+      fetchAdminUsers();
+    } catch (err: any) {
+      Alert.alert('Error', err.response?.data?.detail || 'Promotion failed');
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  const handleDemoteUser = (email: string, role: string) => {
+    Alert.alert(
+      'Demote User',
+      `Remove ${role} role from ${email}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Demote',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api.post('/admin/demote', { email });
+              fetchAdminUsers();
+              Alert.alert('Done', `${email} demoted to regular user`);
+            } catch (err: any) {
+              Alert.alert('Error', err.response?.data?.detail || 'Demotion failed');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const getModeColor = (mode: string) => {
@@ -256,6 +337,25 @@ export default function ProfileScreen() {
                 {user?.auth_method === 'google' ? 'Google Account' : 'Email Account'}
               </Text>
             </View>
+            {userRole !== 'user' && (
+              <View style={[styles.authBadge, styles.roleBadge, 
+                userRole === 'super_admin' && styles.roleBadgeSuperAdmin,
+                userRole === 'co_admin' && styles.roleBadgeCoAdmin,
+                userRole === 'admin' && styles.roleBadgeAdmin,
+              ]}>
+                <Ionicons
+                  name={userRole === 'super_admin' ? 'shield' : userRole === 'co_admin' ? 'shield-half' : 'shield-outline'}
+                  size={12}
+                  color={userRole === 'super_admin' ? '#F59E0B' : userRole === 'co_admin' ? '#8B5CF6' : '#3B82F6'}
+                />
+                <Text style={[styles.authText, { 
+                  color: userRole === 'super_admin' ? '#F59E0B' : userRole === 'co_admin' ? '#8B5CF6' : '#3B82F6',
+                  fontWeight: '700',
+                }]}>
+                  {userRole === 'super_admin' ? 'Super Admin' : userRole === 'co_admin' ? 'Co-Admin' : 'Admin'}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
       </Card>
@@ -338,6 +438,130 @@ export default function ProfileScreen() {
           />
         </Card>
       )}
+
+      {/* Admin Panel - visible to admins and setup for regular users */}
+      <Text style={styles.sectionTitle}>Administration</Text>
+      <Card style={styles.passwordCard}>
+        {userRole === 'user' ? (
+          <TouchableOpacity style={styles.adminSetupRow} onPress={handleAdminSetup}>
+            <View style={[styles.passwordSetIcon, { backgroundColor: 'rgba(245, 158, 11, 0.1)' }]}>
+              <Ionicons name="shield-outline" size={24} color="#F59E0B" />
+            </View>
+            <View style={styles.passwordSetInfo}>
+              <Text style={styles.passwordSetTitle}>Become Super Admin</Text>
+              <Text style={styles.passwordSetSubtitle}>One-time setup (if no admin exists)</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={COLORS.textMuted} />
+          </TouchableOpacity>
+        ) : (
+          <>
+            <TouchableOpacity
+              style={styles.adminSetupRow}
+              onPress={() => {
+                setShowAdminPanel(!showAdminPanel);
+                if (!showAdminPanel) fetchAdminUsers();
+              }}
+            >
+              <View style={[styles.passwordSetIcon, { backgroundColor: 'rgba(245, 158, 11, 0.1)' }]}>
+                <Ionicons
+                  name={userRole === 'super_admin' ? 'shield' : userRole === 'co_admin' ? 'shield-half' : 'shield-outline'}
+                  size={24}
+                  color="#F59E0B"
+                />
+              </View>
+              <View style={styles.passwordSetInfo}>
+                <Text style={styles.passwordSetTitle}>Manage Admins</Text>
+                <Text style={styles.passwordSetSubtitle}>
+                  {userRole === 'super_admin' ? 'Full control' : userRole === 'co_admin' ? 'Can manage admins' : 'View only'}
+                </Text>
+              </View>
+              <Ionicons name={showAdminPanel ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textMuted} />
+            </TouchableOpacity>
+
+            {showAdminPanel && (
+              <View style={styles.adminPanelContent}>
+                {/* Promote section - Super Admin & Co-Admin only */}
+                {(userRole === 'super_admin' || userRole === 'co_admin') && (
+                  <View style={styles.promoteSection}>
+                    <Text style={styles.promoteSectionTitle}>Add Admin</Text>
+                    <TextInput
+                      style={styles.promoteInput}
+                      value={promoteEmail}
+                      onChangeText={setPromoteEmail}
+                      placeholder="User email..."
+                      placeholderTextColor={COLORS.textMuted}
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                    />
+                    <View style={styles.promoteRoleRow}>
+                      <TouchableOpacity
+                        style={[styles.roleChip, promoteRole === 'admin' && styles.roleChipActive]}
+                        onPress={() => setPromoteRole('admin')}
+                      >
+                        <Text style={[styles.roleChipText, promoteRole === 'admin' && styles.roleChipTextActive]}>Admin</Text>
+                      </TouchableOpacity>
+                      {userRole === 'super_admin' && (
+                        <TouchableOpacity
+                          style={[styles.roleChip, promoteRole === 'co_admin' && styles.roleChipActive]}
+                          onPress={() => setPromoteRole('co_admin')}
+                        >
+                          <Text style={[styles.roleChipText, promoteRole === 'co_admin' && styles.roleChipTextActive]}>Co-Admin</Text>
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity
+                        style={styles.promoteBtn}
+                        onPress={handlePromoteUser}
+                        disabled={adminLoading}
+                      >
+                        {adminLoading ? (
+                          <ActivityIndicator size="small" color="#FFF" />
+                        ) : (
+                          <Text style={styles.promoteBtnText}>Promote</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+
+                {/* Admin Users List */}
+                <Text style={styles.adminListTitle}>Admin Team</Text>
+                {adminUsers.map((admin, idx) => (
+                  <View key={idx} style={styles.adminUserRow}>
+                    <View style={styles.adminUserInfo}>
+                      <Text style={styles.adminUserName}>{admin.name}</Text>
+                      <Text style={styles.adminUserEmail}>{admin.email}</Text>
+                    </View>
+                    <View style={[styles.adminRoleBadge,
+                      admin.role === 'super_admin' && { backgroundColor: 'rgba(245, 158, 11, 0.1)' },
+                      admin.role === 'co_admin' && { backgroundColor: 'rgba(139, 92, 246, 0.1)' },
+                      admin.role === 'admin' && { backgroundColor: 'rgba(59, 130, 246, 0.1)' },
+                    ]}>
+                      <Text style={[styles.adminRoleBadgeText,
+                        admin.role === 'super_admin' && { color: '#F59E0B' },
+                        admin.role === 'co_admin' && { color: '#8B5CF6' },
+                        admin.role === 'admin' && { color: '#3B82F6' },
+                      ]}>
+                        {admin.role === 'super_admin' ? 'Super' : admin.role === 'co_admin' ? 'Co-Admin' : 'Admin'}
+                      </Text>
+                    </View>
+                    {/* Demote button - based on hierarchy */}
+                    {admin.role !== 'super_admin' && (
+                      (userRole === 'super_admin' || (userRole === 'co_admin' && admin.role === 'admin')) ? (
+                        <TouchableOpacity onPress={() => handleDemoteUser(admin.email, admin.role)} style={styles.demoteBtn}>
+                          <Ionicons name="remove-circle-outline" size={18} color={COLORS.error} />
+                        </TouchableOpacity>
+                      ) : null
+                    )}
+                  </View>
+                ))}
+                {adminUsers.length === 0 && (
+                  <Text style={styles.noAdminsText}>No admin users found</Text>
+                )}
+              </View>
+            )}
+          </>
+        )}
+      </Card>
 
       {/* Set Password Section - Show for Google users or users who want to change password */}
       {(user?.auth_method === 'google' || user?.auth_method === 'google_and_email') && (
@@ -758,6 +982,132 @@ const styles = StyleSheet.create({
   },
   savePasswordButton: {
     flex: 1,
+  },
+  // Admin Panel styles
+  roleBadge: {
+    marginTop: 4,
+  },
+  roleBadgeSuperAdmin: {
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+  },
+  roleBadgeCoAdmin: {
+    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+  },
+  roleBadgeAdmin: {
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+  },
+  adminSetupRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  adminPanelContent: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.divider,
+  },
+  promoteSection: {
+    marginBottom: 16,
+  },
+  promoteSectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginBottom: 8,
+  },
+  promoteInput: {
+    backgroundColor: COLORS.background,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 8,
+  },
+  promoteRoleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  roleChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+  },
+  roleChipActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: 'rgba(142, 36, 170, 0.08)',
+  },
+  roleChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+  },
+  roleChipTextActive: {
+    color: COLORS.primary,
+  },
+  promoteBtn: {
+    flex: 1,
+    backgroundColor: COLORS.primary,
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  promoteBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFF',
+  },
+  adminListTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  adminUserRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.divider,
+  },
+  adminUserInfo: {
+    flex: 1,
+  },
+  adminUserName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  adminUserEmail: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+  },
+  adminRoleBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  adminRoleBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  demoteBtn: {
+    padding: 6,
+  },
+  noAdminsText: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 12,
   },
   appInfo: {
     alignItems: 'center',

@@ -18,6 +18,7 @@ interface TemplateBrowserModalProps {
   visible: boolean;
   onClose: () => void;
   onUseTemplate: (newDecisionId: string) => void;
+  userRole?: string;
 }
 
 interface Template {
@@ -36,16 +37,19 @@ export default function TemplateBrowserModal({
   visible,
   onClose,
   onUseTemplate,
+  userRole = 'user',
 }: TemplateBrowserModalProps) {
-  const [templates, setTemplates] = useState<{ my: Template[]; shared: Template[]; public: Template[] }>({
-    my: [], shared: [], public: [],
+  const [templates, setTemplates] = useState<{ my: Template[]; shared: Template[]; public: Template[]; authorized: Template[] }>({
+    my: [], shared: [], public: [], authorized: [],
   });
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [newTitle, setNewTitle] = useState('');
-  const [activeTab, setActiveTab] = useState<'my' | 'shared' | 'public'>('my');
+  const [activeTab, setActiveTab] = useState<'my' | 'shared' | 'public' | 'authorized'>('authorized');
   const [importing, setImporting] = useState(false);
+
+  const isAdmin = ['admin', 'co_admin', 'super_admin'].includes(userRole);
 
   useEffect(() => {
     if (visible) {
@@ -61,6 +65,7 @@ export default function TemplateBrowserModal({
         my: response.data.my_templates || [],
         shared: response.data.shared_templates || [],
         public: response.data.public_templates || [],
+        authorized: response.data.authorized_templates || [],
       });
     } catch (err: any) {
       console.error('Failed to fetch templates:', err);
@@ -136,6 +141,39 @@ export default function TemplateBrowserModal({
     } finally {
       setImporting(false);
     }
+  };
+
+  const handleApproveTemplate = async (template: Template) => {
+    try {
+      await api.post(`/admin/templates/${template.id}/approve`);
+      Alert.alert('Authorized!', 'Template is now in Authorized Templates');
+      fetchTemplates();
+    } catch (err: any) {
+      Alert.alert('Error', err.response?.data?.detail || 'Failed to authorize template');
+    }
+  };
+
+  const handleRevokeTemplate = async (template: Template) => {
+    Alert.alert(
+      'Revoke Authorization',
+      `Remove "${template.name}" from Authorized Templates?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Revoke',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api.post(`/admin/templates/${template.id}/revoke`);
+              Alert.alert('Revoked', 'Template moved back to Public');
+              fetchTemplates();
+            } catch (err: any) {
+              Alert.alert('Error', err.response?.data?.detail || 'Failed to revoke');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const formatDate = (dateStr: string) => {
@@ -265,19 +303,19 @@ export default function TemplateBrowserModal({
             <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
               {/* Tab switcher */}
               <View style={styles.tabRow}>
-                {(['my', 'shared', 'public'] as const).map((tab) => {
+                {(['authorized', 'my', 'shared', 'public'] as const).map((tab) => {
                   const count = templates[tab].length;
-                  const labels = { my: 'My Templates', shared: 'Shared', public: 'Public' };
-                  const icons = { my: 'person-outline', shared: 'people-outline', public: 'globe-outline' } as const;
+                  const labels = { authorized: 'Authorized', my: 'Mine', shared: 'Shared', public: 'Public' };
+                  const icons = { authorized: 'shield-checkmark-outline', my: 'person-outline', shared: 'people-outline', public: 'globe-outline' } as const;
                   return (
                     <TouchableOpacity
                       key={tab}
                       style={[styles.tab, activeTab === tab && styles.tabActive]}
                       onPress={() => setActiveTab(tab)}
                     >
-                      <Ionicons name={icons[tab]} size={14} color={activeTab === tab ? COLORS.primary : COLORS.textMuted} />
-                      <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-                        {labels[tab]} {count > 0 ? `(${count})` : ''}
+                      <Ionicons name={icons[tab]} size={14} color={activeTab === tab ? (tab === 'authorized' ? '#10B981' : COLORS.primary) : COLORS.textMuted} />
+                      <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive, tab === 'authorized' && activeTab === tab && { color: '#10B981' }]}>
+                        {labels[tab]}{count > 0 ? ` ${count}` : ''}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -287,18 +325,20 @@ export default function TemplateBrowserModal({
               {templates[activeTab].length === 0 ? (
                 <View style={styles.emptyState}>
                   <Ionicons
-                    name={activeTab === 'my' ? 'bookmark-outline' : activeTab === 'shared' ? 'people-outline' : 'globe-outline'}
+                    name={activeTab === 'my' ? 'bookmark-outline' : activeTab === 'shared' ? 'people-outline' : activeTab === 'authorized' ? 'shield-checkmark-outline' : 'globe-outline'}
                     size={48}
                     color={COLORS.textMuted}
                   />
                   <Text style={styles.emptyTitle}>
-                    {activeTab === 'my' ? 'No Templates Yet' : activeTab === 'shared' ? 'No Shared Templates' : 'No Public Templates'}
+                    {activeTab === 'my' ? 'No Templates Yet' : activeTab === 'shared' ? 'No Shared Templates' : activeTab === 'authorized' ? 'No Authorized Templates' : 'No Public Templates'}
                   </Text>
                   <Text style={styles.emptyText}>
                     {activeTab === 'my'
                       ? 'Save a decision as a template from the Clone menu.'
                       : activeTab === 'shared'
                       ? 'No one has shared a template with your account yet.'
+                      : activeTab === 'authorized'
+                      ? 'No admin-approved templates available yet.'
                       : 'No public templates available.'}
                   </Text>
                 </View>
@@ -328,7 +368,7 @@ export default function TemplateBrowserModal({
                         </Text>
                       </View>
                       <View style={styles.templateCardActions}>
-                        {/* Import button for shared/public templates */}
+                        {/* Import button for shared/public/authorized templates (not own) */}
                         {activeTab !== 'my' && (
                           <TouchableOpacity
                             onPress={(e) => {
@@ -341,6 +381,34 @@ export default function TemplateBrowserModal({
                           >
                             <Ionicons name="download-outline" size={16} color={COLORS.primary} />
                             <Text style={styles.importBtnText}>Import</Text>
+                          </TouchableOpacity>
+                        )}
+                        {/* Admin: Approve button on public templates */}
+                        {isAdmin && activeTab === 'public' && (
+                          <TouchableOpacity
+                            onPress={(e) => {
+                              e.stopPropagation?.();
+                              handleApproveTemplate(template);
+                            }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            style={styles.approveBtn}
+                          >
+                            <Ionicons name="shield-checkmark-outline" size={14} color="#10B981" />
+                            <Text style={styles.approveBtnText}>Approve</Text>
+                          </TouchableOpacity>
+                        )}
+                        {/* Admin: Revoke button on authorized templates */}
+                        {isAdmin && activeTab === 'authorized' && (
+                          <TouchableOpacity
+                            onPress={(e) => {
+                              e.stopPropagation?.();
+                              handleRevokeTemplate(template);
+                            }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            style={styles.revokeBtn}
+                          >
+                            <Ionicons name="close-circle-outline" size={14} color={COLORS.error} />
+                            <Text style={styles.revokeBtnText}>Revoke</Text>
                           </TouchableOpacity>
                         )}
                         {/* Delete button for own templates */}
@@ -483,6 +551,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: COLORS.primary,
+  },
+  approveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  approveBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#10B981',
+  },
+  revokeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  revokeBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.error,
   },
   tabRow: {
     flexDirection: 'row',

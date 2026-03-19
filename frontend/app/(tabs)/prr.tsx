@@ -39,6 +39,7 @@ export default function PRRScreen() {
   const [cloneModalVisible, setCloneModalVisible] = useState(false);
   const [cloneTarget, setCloneTarget] = useState<Decision | null>(null);
   const [templateBrowserVisible, setTemplateBrowserVisible] = useState(false);
+  const [userRole, setUserRole] = useState('user');
 
   const fetchDecisions = async () => {
     try {
@@ -51,9 +52,19 @@ export default function PRRScreen() {
     }
   };
 
+  const fetchUserRole = async () => {
+    try {
+      const response = await api.get('/auth/me');
+      setUserRole(response.data.role || 'user');
+    } catch (error) {
+      console.error('Error fetching user role:', error);
+    }
+  };
+
   useFocusEffect(
     useCallback(() => {
       fetchDecisions();
+      fetchUserRole();
     }, [])
   );
 
@@ -274,6 +285,7 @@ export default function PRRScreen() {
           fetchDecisions();
           router.push(`/prr/${newId}`);
         }}
+        userRole={userRole}
       />
     </SafeAreaView>
   );

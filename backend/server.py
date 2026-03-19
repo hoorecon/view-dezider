@@ -133,6 +133,16 @@ class SaveTemplateRequest(BaseModel):
 class UseTemplateRequest(BaseModel):
     title: str
 
+# Admin Models
+ROLE_HIERARCHY = {"super_admin": 3, "co_admin": 2, "admin": 1, "user": 0}
+
+class PromoteUserRequest(BaseModel):
+    email: EmailStr
+    role: str  # "admin" or "co_admin"
+
+class DemoteUserRequest(BaseModel):
+    email: EmailStr
+
 # Test123 Models
 class Test123Session(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -274,6 +284,35 @@ async def get_current_user(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="User not found")
     
     return user_doc
+
+def get_user_role(user: dict) -> str:
+    """Get user's role, defaulting to 'user'"""
+    return user.get("role", "user")
+
+def get_role_level(role: str) -> int:
+    """Get numeric level for role comparison"""
+    return ROLE_HIERARCHY.get(role, 0)
+
+async def require_admin(user: dict = Depends(get_current_user)):
+    """Require at least admin role"""
+    role = get_user_role(user)
+    if get_role_level(role) < 1:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+async def require_co_admin(user: dict = Depends(get_current_user)):
+    """Require at least co_admin role"""
+    role = get_user_role(user)
+    if get_role_level(role) < 2:
+        raise HTTPException(status_code=403, detail="Co-Admin access required")
+    return user
+
+async def require_super_admin(user: dict = Depends(get_current_user)):
+    """Require super_admin role"""
+    role = get_user_role(user)
+    if get_role_level(role) < 3:
+        raise HTTPException(status_code=403, detail="Super Admin access required")
+    return user
 
 # ========================
 # AUTH ROUTES
@@ -463,6 +502,7 @@ async def get_me(user: dict = Depends(get_current_user)):
         "picture": user.get("picture"),
         "auth_method": user.get("auth_method", "email"),
         "has_password": bool(user.get("password_hash")),
+        "role": user.get("role", "user"),
     }
 
 @api_router.post("/auth/logout")
@@ -806,7 +846,7 @@ async def save_as_template(decision_id: str, data: SaveTemplateRequest, user: di
 
 @api_router.get("/templates")
 async def get_templates(user: dict = Depends(get_current_user)):
-    """Get templates categorized: my_templates, shared_with_me, public"""
+    """Get templates categorized: my_templates, shared_with_me, public, authorized"""
     user_email = user.get("email", "").lower()
     user_id = user["user_id"]
     
@@ -815,23 +855,31 @@ async def get_templates(user: dict = Depends(get_current_user)):
     my_templates = []
     shared_templates = []
     public_templates = []
+    authorized_templates = []
     
     for t in all_templates:
         visibility = t.get("visibility", "private")
         created_by = t.get("created_by", "")
         shared_with = [e.lower() for e in t.get("shared_with", [])]
+        is_authorized = t.get("authorized", False)
+        
+        # Authorized templates (admin-approved public ones) - show to everyone
+        if is_authorized and visibility == "public":
+            authorized_templates.append(t)
         
         if created_by == user_id:
             my_templates.append(t)
         elif visibility == "shared" and user_email in shared_with:
             shared_templates.append(t)
-        elif visibility == "public" and created_by != user_id:
+        elif visibility == "public" and created_by != user_id and not is_authorized:
+            # Only show non-authorized public templates in the public tab
             public_templates.append(t)
     
     return {
         "my_templates": my_templates,
         "shared_templates": shared_templates,
         "public_templates": public_templates,
+        "authorized_templates": authorized_templates,
     }
 
 @api_router.post("/templates/{template_id}/use")
@@ -971,6 +1019,142 @@ async def update_template(template_id: str, data: SaveTemplateRequest, user: dic
         {"$set": update_fields}
     )
     return {"message": "Template updated successfully"}
+
+# ========================
+# ADMIN ROUTES
+# ========================
+
+@api_router.post("/admin/setup")
+async def admin_setup(user: dict = Depends(get_current_user)):
+    """Bootstrap: Make current user Super Admin if no super admin exists"""
+    existing_super = await db.users.find_one({"role": "super_admin"}, {"_id": 0})
+    if existing_super:
+        raise HTTPException(status_code=400, detail="Super Admin already exists")
+    
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"role": "super_admin"}}
+    )
+    return {"message": f"You are now Super Admin", "role": "super_admin"}
+
+@api_router.post("/admin/promote")
+async def promote_user(data: PromoteUserRequest, user: dict = Depends(get_current_user)):
+    """Promote a user to admin or co_admin"""
+    promoter_role = get_user_role(user)
+    promoter_level = get_role_level(promoter_role)
+    target_role = data.role
+    target_level = get_role_level(target_role)
+    
+    # Validate target role
+    if target_role not in ("admin", "co_admin"):
+        raise HTTPException(status_code=400, detail="Can only promote to 'admin' or 'co_admin'")
+    
+    # Only Super Admin can create Co-Admins
+    if target_role == "co_admin" and promoter_role != "super_admin":
+        raise HTTPException(status_code=403, detail="Only Super Admin can create Co-Admins")
+    
+    # Co-Admin and above can create Admins
+    if target_role == "admin" and promoter_level < 2:
+        raise HTTPException(status_code=403, detail="Only Co-Admin or above can promote to Admin")
+    
+    # Find target user
+    target_user = await db.users.find_one({"email": data.email.lower()}, {"_id": 0})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found with this email")
+    
+    # Can't promote someone who already has equal or higher role
+    current_target_level = get_role_level(get_user_role(target_user))
+    if current_target_level >= target_level:
+        raise HTTPException(status_code=400, detail=f"User already has role '{get_user_role(target_user)}'")
+    
+    await db.users.update_one(
+        {"email": data.email.lower()},
+        {"$set": {"role": target_role}}
+    )
+    return {"message": f"User {data.email} promoted to {target_role}"}
+
+@api_router.post("/admin/demote")
+async def demote_user(data: DemoteUserRequest, user: dict = Depends(get_current_user)):
+    """Demote a user back to regular user"""
+    demoter_role = get_user_role(user)
+    demoter_level = get_role_level(demoter_role)
+    
+    # Find target user
+    target_user = await db.users.find_one({"email": data.email.lower()}, {"_id": 0})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found with this email")
+    
+    target_role = get_user_role(target_user)
+    target_level = get_role_level(target_role)
+    
+    # Can't demote yourself
+    if target_user["user_id"] == user["user_id"]:
+        raise HTTPException(status_code=400, detail="Cannot demote yourself")
+    
+    # Super Admin cannot be demoted
+    if target_role == "super_admin":
+        raise HTTPException(status_code=403, detail="Super Admin cannot be demoted")
+    
+    # Co-Admin can only be demoted by Super Admin
+    if target_role == "co_admin" and demoter_role != "super_admin":
+        raise HTTPException(status_code=403, detail="Only Super Admin can demote Co-Admins")
+    
+    # Admin can be demoted by Co-Admin or Super Admin
+    if target_role == "admin" and demoter_level < 2:
+        raise HTTPException(status_code=403, detail="Only Co-Admin or above can demote Admins")
+    
+    await db.users.update_one(
+        {"email": data.email.lower()},
+        {"$set": {"role": "user"}}
+    )
+    return {"message": f"User {data.email} demoted to regular user"}
+
+@api_router.get("/admin/users")
+async def get_admin_users(user: dict = Depends(require_admin)):
+    """Get all users with admin roles"""
+    admin_users = await db.users.find(
+        {"role": {"$in": ["super_admin", "co_admin", "admin"]}},
+        {"_id": 0, "password_hash": 0}
+    ).to_list(100)
+    return admin_users
+
+@api_router.post("/admin/templates/{template_id}/approve")
+async def approve_template(template_id: str, user: dict = Depends(require_admin)):
+    """Approve a public template as Authorized"""
+    template = await db.templates.find_one({"id": template_id}, {"_id": 0})
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    if template.get("visibility") != "public":
+        raise HTTPException(status_code=400, detail="Only public templates can be authorized")
+    
+    await db.templates.update_one(
+        {"id": template_id},
+        {"$set": {
+            "authorized": True,
+            "authorized_by": user["user_id"],
+            "authorized_by_name": user.get("name", "Unknown"),
+            "authorized_at": datetime.now(timezone.utc),
+        }}
+    )
+    return {"message": "Template authorized successfully"}
+
+@api_router.post("/admin/templates/{template_id}/revoke")
+async def revoke_template(template_id: str, user: dict = Depends(require_admin)):
+    """Revoke authorized status from a template"""
+    template = await db.templates.find_one({"id": template_id}, {"_id": 0})
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    await db.templates.update_one(
+        {"id": template_id},
+        {"$set": {
+            "authorized": False,
+            "authorized_by": None,
+            "authorized_by_name": None,
+            "authorized_at": None,
+        }}
+    )
+    return {"message": "Template authorization revoked"}
 
 # ========================
 # TEST123 ROUTES
