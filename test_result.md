@@ -321,6 +321,21 @@ backend:
         agent: "testing"
         comment: "✅ TEMPLATE MANAGEMENT API TESTING PASSED: All template operations working correctly! (1) Save-as-template working for both 'options' and 'assessment' types, (2) List templates returns all created templates, (3) Use template successfully creates new decision with correct factor ID mapping and data structure, (4) Delete template working with proper authorization. Complete template lifecycle tested and verified."
 
+  - task: "Enhanced Template Sharing System"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Enhanced template system with visibility levels (private/shared/public), cross-account sharing, and import functionality"
+      - working: true
+        agent: "testing"
+        comment: "✅ ENHANCED TEMPLATE SHARING SYSTEM COMPREHENSIVE TESTING PASSED: All 10 test scenarios successful! Tested with 2 users (userA@test.com and userB@test.com): (1) User registration and authentication working, (2) Decision creation with complex factors and options working, (3) Template creation with all 3 visibility levels (private/shared/public) working, (4) Cross-user template visibility rules correctly enforced - User A sees 3 my_templates, 0 shared, 0 public; User B sees 0 my_templates, 1 shared, 1 public, (5) Private template completely invisible to User B (security verified), (6) Template import functionality working - User B successfully imported both shared and public templates, (7) Private template access control working - User B correctly denied with 403 when trying to import private template, (8) Template usage working - User B created new decision from imported template, (9) Final state verification - User B has 2 imported templates in my_templates section. Complete enhanced template sharing workflow verified with proper authentication, authorization, and data segregation."
+
 frontend:
   - task: "Login Screen (Email + Google)"
     implemented: true
@@ -431,3 +446,5 @@ agent_communication:
     message: "✅ NEW AUTH ENDPOINTS TESTING COMPLETE: All 4 authentication endpoint tests passed successfully! Tested: (1) User Registration with testforgot@test.com created successfully, (2) Forgot Password Flow - OTP generation working, nonexistent email returns 404, password reset with correct OTP successful, wrong OTP correctly rejected, login with new password verified, (3) Set Password Flow - valid password set successfully, short password validation working with proper 6-character minimum message, (4) Enhanced /auth/me endpoint includes has_password boolean field as expected. All forgot password and set password features working correctly. Backend authentication system is robust and production-ready."
   - agent: "testing"
     message: "✅ CLONE AND TEMPLATE API TESTING COMPLETE: All 21 tests passed successfully! Comprehensive testing of new Clone and Template endpoints: (1) User Registration & Login with Bearer token working perfectly, (2) Created decision with 3 factors (2 primary, 1 secondary) and 2 options with assessments, (3) Clone API tested at all 5 levels - factors (names only, reset ratings/categories), classification (preserve categories, reset ratings), prioritization (preserve both), options (factors + option names, no assessments), assessment (complete clone), (4) Template Management - save as template (options/assessment types), list templates, use template to create new decisions, delete templates. All clone logic and template lifecycle operations working correctly. Backend Clone and Template functionality is production-ready."
+  - agent: "testing"
+    message: "✅ ENHANCED TEMPLATE SHARING SYSTEM TESTING COMPLETE: All 10 comprehensive test scenarios passed successfully! Tested complete multi-user template sharing workflow with userA@test.com and userB@test.com: (1) User authentication working correctly, (2) Decision creation with factors and options working, (3) Template creation with 3 visibility levels (private/shared/public) all working, (4) Cross-user template visibility rules correctly enforced - User A sees 3 my_templates only, User B sees 1 shared + 1 public template, (5) Private template completely invisible to User B (security verified), (6) Template import functionality working - User B successfully imported shared and public templates, (7) Private template access correctly denied with 403, (8) Template usage working - created new decision from imported template, (9) All authentication and authorization rules working perfectly. Enhanced template sharing system is fully functional and secure."

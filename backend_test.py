@@ -1,428 +1,320 @@
 #!/usr/bin/env python3
 
-import asyncio
-import aiohttp
+import requests
 import json
-import sys
 from datetime import datetime
-from typing import Dict, Any, List
+import sys
 
-# Backend URL configuration
-BACKEND_URL = "https://best-mate-decisions.preview.emergentagent.com/api"
+# Configuration
+BASE_URL = "https://best-mate-decisions.preview.emergentagent.com/api"
 
-class CloneTemplateAPITester:
-    def __init__(self):
-        self.session = None
-        self.bearer_token = None
-        self.user_id = None
-        self.decision_id = None
-        self.template_ids = []
-        self.test_results = []
-        
-    async def __aenter__(self):
-        self.session = aiohttp.ClientSession()
-        return self
+# Test data
+USER_A_EMAIL = "userA@test.com"
+USER_A_PASSWORD = "test123"
+USER_A_NAME = "User A"
+
+USER_B_EMAIL = "userB@test.com"
+USER_B_PASSWORD = "test123"
+USER_B_NAME = "User B"
+
+def log_test(step, message):
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    print(f"[{timestamp}] Step {step}: {message}")
+
+def log_error(step, error_message):
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    print(f"[{timestamp}] ERROR in Step {step}: {error_message}")
+    return False
+
+def log_success(step, message):
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    print(f"[{timestamp}] ✅ Step {step}: {message}")
+    return True
+
+def register_user(email, password, name):
+    """Register a new user and return session token"""
+    url = f"{BASE_URL}/auth/register"
+    payload = {
+        "email": email,
+        "password": password,
+        "name": name
+    }
     
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self.session:
-            await self.session.close()
-    
-    def log_test(self, test_name: str, status: str, details: str = ""):
-        """Log test result"""
-        result = f"{'✅' if status == 'PASS' else '❌'} {test_name}: {status}"
-        if details:
-            result += f" - {details}"
-        print(result)
-        self.test_results.append({
-            "name": test_name,
-            "status": status,
-            "details": details
-        })
-    
-    async def make_request(self, method: str, endpoint: str, data: Dict = None, auth: bool = True) -> Dict:
-        """Make HTTP request with proper headers"""
-        headers = {"Content-Type": "application/json"}
-        if auth and self.bearer_token:
-            headers["Authorization"] = f"Bearer {self.bearer_token}"
-        
-        url = f"{BACKEND_URL}{endpoint}"
-        
-        try:
-            if method.upper() == "GET":
-                async with self.session.get(url, headers=headers) as resp:
-                    response_data = await resp.json()
-                    return {"status": resp.status, "data": response_data}
-            elif method.upper() == "POST":
-                async with self.session.post(url, headers=headers, json=data) as resp:
-                    response_data = await resp.json()
-                    return {"status": resp.status, "data": response_data}
-            elif method.upper() == "PUT":
-                async with self.session.put(url, headers=headers, json=data) as resp:
-                    response_data = await resp.json()
-                    return {"status": resp.status, "data": response_data}
-            elif method.upper() == "DELETE":
-                async with self.session.delete(url, headers=headers) as resp:
-                    if resp.status == 200:
-                        response_data = await resp.json()
-                    else:
-                        response_data = {"message": "Deleted successfully"}
-                    return {"status": resp.status, "data": response_data}
-        except Exception as e:
-            return {"status": 500, "data": {"error": str(e)}}
-    
-    async def test_01_register_and_login(self):
-        """Test 1: Register & Login with Bearer token"""
-        print("\n=== STEP 1: USER REGISTRATION & LOGIN ===")
-        
-        # Register user
-        register_data = {
-            "email": "clonetest@test.com",
-            "password": "test123",
-            "name": "Clone Tester"
-        }
-        
-        resp = await self.make_request("POST", "/auth/register", register_data, auth=False)
-        if resp["status"] == 200:
-            self.bearer_token = resp["data"]["session_token"]
-            self.user_id = resp["data"]["user_id"]
-            self.log_test("User Registration", "PASS", f"User created: {resp['data']['email']}")
-            self.log_test("Bearer Token Generation", "PASS", f"Token: {self.bearer_token[:20]}...")
+    try:
+        response = requests.post(url, json=payload)
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("session_token")
         else:
-            self.log_test("User Registration", "FAIL", f"Status {resp['status']}: {resp['data']}")
-            return False
-        
-        return True
+            print(f"Registration failed: {response.status_code} - {response.text}")
+            return None
+    except Exception as e:
+        print(f"Registration error: {str(e)}")
+        return None
+
+def create_decision_with_data(token, title):
+    """Create a decision with factors and options"""
+    headers = {"Authorization": f"Bearer {token}"}
     
-    async def test_02_create_decision_with_full_data(self):
-        """Test 2: Create a decision with factors, classifications, ratings and options"""
-        print("\n=== STEP 2: CREATE DECISION WITH FULL DATA ===")
-        
-        # Create basic decision
-        decision_data = {
-            "title": "Career Decision",
-            "context": "Choosing next career move"
-        }
-        
-        resp = await self.make_request("POST", "/decisions", decision_data)
-        if resp["status"] == 200:
-            self.decision_id = resp["data"]["id"]
-            self.log_test("Decision Creation", "PASS", f"Decision ID: {self.decision_id}")
-        else:
-            self.log_test("Decision Creation", "FAIL", f"Status {resp['status']}: {resp['data']}")
-            return False
-        
-        # Add factors with classifications and ratings + options with assessments
-        factor1_id = "factor_salary_123"
-        factor2_id = "factor_growth_456" 
-        factor3_id = "factor_balance_789"
-        option1_id = "option_companya_111"
-        option2_id = "option_companyb_222"
-        
-        update_data = {
-            "factors": [
-                {
-                    "id": factor1_id,
-                    "name": "Salary",
-                    "category": "primary",
-                    "rating": 50,
-                    "order": 1
-                },
-                {
-                    "id": factor2_id,
-                    "name": "Growth",
-                    "category": "primary", 
-                    "rating": 40,
-                    "order": 2
-                },
-                {
-                    "id": factor3_id,
-                    "name": "Work-Life Balance",
-                    "category": "secondary",
-                    "rating": 30,
-                    "order": 3
-                }
-            ],
-            "options": [
-                {
-                    "id": option1_id,
-                    "name": "Company A",
-                    "assessments": [
-                        {"factor_id": factor1_id, "percentage": 80, "unit_value": "120000 USD", "assessment_mode": "custom"},
-                        {"factor_id": factor2_id, "percentage": 70, "unit_value": "High", "assessment_mode": "H"},
-                        {"factor_id": factor3_id, "percentage": 60, "unit_value": "Medium", "assessment_mode": "M"}
-                    ],
-                    "worth_percentage": 0.0
-                },
-                {
-                    "id": option2_id,
-                    "name": "Company B", 
-                    "assessments": [
-                        {"factor_id": factor1_id, "percentage": 65, "unit_value": "95000 USD", "assessment_mode": "custom"},
-                        {"factor_id": factor2_id, "percentage": 90, "unit_value": "Very High", "assessment_mode": "custom"},
-                        {"factor_id": factor3_id, "percentage": 85, "unit_value": "High", "assessment_mode": "H"}
-                    ],
-                    "worth_percentage": 0.0
-                }
-            ]
-        }
-        
-        resp = await self.make_request("PUT", f"/decisions/{self.decision_id}", update_data)
-        if resp["status"] == 200:
-            self.log_test("Decision Update with Factors & Options", "PASS", "3 factors (2 primary, 1 secondary) + 2 options with assessments added")
-        else:
-            self.log_test("Decision Update with Factors & Options", "FAIL", f"Status {resp['status']}: {resp['data']}")
-            return False
-        
-        # Verify the decision was created correctly
-        resp = await self.make_request("GET", f"/decisions/{self.decision_id}")
-        if resp["status"] == 200:
-            decision = resp["data"]
-            factors_count = len(decision.get("factors", []))
-            options_count = len(decision.get("options", []))
-            self.log_test("Decision Verification", "PASS", f"Decision has {factors_count} factors and {options_count} options")
-        else:
-            self.log_test("Decision Verification", "FAIL", f"Could not retrieve decision: {resp['data']}")
-            return False
-        
-        return True
+    # Create decision
+    create_url = f"{BASE_URL}/decisions"
+    decision_data = {
+        "title": title,
+        "context": "Career decision with multiple factors and options"
+    }
     
-    async def test_03_clone_at_each_level(self):
-        """Test 3: Test Clone at each level"""
-        print("\n=== STEP 3: TEST CLONE AT EACH LEVEL ===")
-        
-        clone_tests = [
+    response = requests.post(create_url, json=decision_data, headers=headers)
+    if response.status_code != 200:
+        return None
+    
+    decision_id = response.json().get("id")
+    
+    # Update decision with factors and options
+    update_url = f"{BASE_URL}/decisions/{decision_id}"
+    update_data = {
+        "factors": [
+            {"id": "f1", "name": "Salary", "category": "primary", "rating": 90, "order": 1},
+            {"id": "f2", "name": "Work-Life Balance", "category": "primary", "rating": 85, "order": 2},
+            {"id": "f3", "name": "Career Growth", "category": "secondary", "rating": 75, "order": 3}
+        ],
+        "options": [
             {
-                "level": "factors",
-                "title": "2026-03-19 Clone Factors", 
-                "verify": "factors have names but ratings reset to 0 and category reset to primary"
+                "id": "o1",
+                "name": "Company A",
+                "assessments": [
+                    {"factor_id": "f1", "percentage": 80, "assessment_mode": "H"},
+                    {"factor_id": "f2", "percentage": 60, "assessment_mode": "M"},
+                    {"factor_id": "f3", "percentage": 90, "assessment_mode": "H"}
+                ],
+                "worth_percentage": 0.0
             },
             {
-                "level": "classification",
-                "title": "2026-03-19 Clone Classification",
-                "verify": "factors have correct primary/secondary categories but ratings reset to 0"
-            },
-            {
-                "level": "prioritization",
-                "title": "2026-03-19 Clone Priority",
-                "verify": "factors have categories AND ratings preserved"
-            },
-            {
-                "level": "options",
-                "title": "2026-03-19 Clone Options", 
-                "verify": "factors + options names present, but no assessments"
-            },
-            {
-                "level": "assessment",
-                "title": "2026-03-19 Clone Full",
-                "verify": "complete clone with assessments and worth_percentages"
+                "id": "o2",
+                "name": "Company B",
+                "assessments": [
+                    {"factor_id": "f1", "percentage": 70, "assessment_mode": "M"},
+                    {"factor_id": "f2", "percentage": 85, "assessment_mode": "H"},
+                    {"factor_id": "f3", "percentage": 75, "assessment_mode": "M"}
+                ],
+                "worth_percentage": 0.0
             }
         ]
-        
-        for test in clone_tests:
-            clone_data = {
-                "title": test["title"],
-                "clone_level": test["level"]
-            }
-            
-            resp = await self.make_request("POST", f"/decisions/{self.decision_id}/clone", clone_data)
-            if resp["status"] == 200:
-                cloned_id = resp["data"]["id"]
-                self.log_test(f"Clone {test['level'].title()} Level", "PASS", f"Cloned decision ID: {cloned_id}")
-                
-                # Verify clone result
-                resp = await self.make_request("GET", f"/decisions/{cloned_id}")
-                if resp["status"] == 200:
-                    cloned = resp["data"]
-                    verification_result = await self._verify_clone_level(test["level"], cloned)
-                    if verification_result["success"]:
-                        self.log_test(f"Verify Clone {test['level'].title()}", "PASS", verification_result["details"])
-                    else:
-                        self.log_test(f"Verify Clone {test['level'].title()}", "FAIL", verification_result["details"])
-                else:
-                    self.log_test(f"Verify Clone {test['level'].title()}", "FAIL", f"Could not retrieve cloned decision")
-            else:
-                self.log_test(f"Clone {test['level'].title()} Level", "FAIL", f"Status {resp['status']}: {resp['data']}")
-        
-        return True
+    }
     
-    async def _verify_clone_level(self, level: str, cloned_decision: Dict) -> Dict[str, Any]:
-        """Verify clone results match expected level"""
-        factors = cloned_decision.get("factors", [])
-        options = cloned_decision.get("options", [])
-        
-        if level == "factors":
-            # Should have factor names, but ratings=0 and category=primary
-            if all(f.get("rating") == 0 and f.get("category") == "primary" for f in factors):
-                return {"success": True, "details": f"✓ {len(factors)} factors with names, ratings reset to 0, categories reset to primary"}
-            else:
-                return {"success": False, "details": "Factors don't match 'factors' level requirements"}
-        
-        elif level == "classification": 
-            # Should preserve primary/secondary categories but reset ratings to 0
-            primary_count = sum(1 for f in factors if f.get("category") == "primary")
-            secondary_count = sum(1 for f in factors if f.get("category") == "secondary")
-            all_ratings_zero = all(f.get("rating") == 0 for f in factors)
-            
-            if all_ratings_zero and primary_count >= 1 and secondary_count >= 1:
-                return {"success": True, "details": f"✓ Categories preserved ({primary_count} primary, {secondary_count} secondary), ratings reset to 0"}
-            else:
-                return {"success": False, "details": "Classification level requirements not met"}
-        
-        elif level == "prioritization":
-            # Should preserve categories AND ratings
-            ratings_preserved = any(f.get("rating", 0) > 0 for f in factors)
-            categories_preserved = any(f.get("category") == "secondary" for f in factors)
-            
-            if ratings_preserved and categories_preserved:
-                return {"success": True, "details": f"✓ Categories and ratings preserved"}
-            else:
-                return {"success": False, "details": "Prioritization level requirements not met"}
-        
-        elif level == "options":
-            # Should have factors + options but no assessments
-            options_have_no_assessments = all(len(opt.get("assessments", [])) == 0 for opt in options)
-            
-            if len(options) > 0 and options_have_no_assessments:
-                return {"success": True, "details": f"✓ {len(factors)} factors + {len(options)} options, no assessments"}
-            else:
-                return {"success": False, "details": "Options level requirements not met"}
-        
-        elif level == "assessment":
-            # Should be complete clone with assessments
-            options_have_assessments = any(len(opt.get("assessments", [])) > 0 for opt in options)
-            
-            if len(options) > 0 and options_have_assessments:
-                return {"success": True, "details": f"✓ Complete clone with assessments preserved"}
-            else:
-                return {"success": False, "details": "Assessment level requirements not met"}
-        
-        return {"success": False, "details": "Unknown clone level"}
-    
-    async def test_04_template_functionality(self):
-        """Test 4: Test Templates - save, list, use, delete"""
-        print("\n=== STEP 4: TEST TEMPLATE FUNCTIONALITY ===")
-        
-        # Save decision as template (options type)
-        template_data = {
-            "name": "Career Template",
-            "template_type": "options"
-        }
-        
-        resp = await self.make_request("POST", f"/decisions/{self.decision_id}/save-as-template", template_data)
-        if resp["status"] == 200:
-            template1_id = resp["data"]["id"]
-            self.template_ids.append(template1_id)
-            self.log_test("Save Template (Options Type)", "PASS", f"Template ID: {template1_id}")
-        else:
-            self.log_test("Save Template (Options Type)", "FAIL", f"Status {resp['status']}: {resp['data']}")
-            return False
-        
-        # Save decision as template (assessment type)
-        template_data2 = {
-            "name": "Career Full Template", 
-            "template_type": "assessment"
-        }
-        
-        resp = await self.make_request("POST", f"/decisions/{self.decision_id}/save-as-template", template_data2)
-        if resp["status"] == 200:
-            template2_id = resp["data"]["id"]
-            self.template_ids.append(template2_id)
-            self.log_test("Save Template (Assessment Type)", "PASS", f"Template ID: {template2_id}")
-        else:
-            self.log_test("Save Template (Assessment Type)", "FAIL", f"Status {resp['status']}: {resp['data']}")
-            return False
-        
-        # List all templates
-        resp = await self.make_request("GET", "/templates")
-        if resp["status"] == 200:
-            templates = resp["data"]
-            template_count = len(templates)
-            our_templates = [t for t in templates if t["id"] in self.template_ids]
-            self.log_test("List Templates", "PASS", f"Found {template_count} templates, {len(our_templates)} are ours")
-        else:
-            self.log_test("List Templates", "FAIL", f"Status {resp['status']}: {resp['data']}")
-            return False
-        
-        # Use template to create new decision
-        use_template_data = {
-            "title": "2026-03-19 From Template"
-        }
-        
-        resp = await self.make_request("POST", f"/templates/{template1_id}/use", use_template_data)
-        if resp["status"] == 200:
-            new_decision_id = resp["data"]["id"]
-            self.log_test("Use Template", "PASS", f"New decision created: {new_decision_id}")
-            
-            # Verify new decision has correct data
-            resp = await self.make_request("GET", f"/decisions/{new_decision_id}")
-            if resp["status"] == 200:
-                new_decision = resp["data"]
-                factors_count = len(new_decision.get("factors", []))
-                options_count = len(new_decision.get("options", []))
-                self.log_test("Verify Template Usage", "PASS", f"New decision has {factors_count} factors and {options_count} options")
-            else:
-                self.log_test("Verify Template Usage", "FAIL", "Could not retrieve new decision")
-        else:
-            self.log_test("Use Template", "FAIL", f"Status {resp['status']}: {resp['data']}")
-        
-        # Delete template
-        resp = await self.make_request("DELETE", f"/templates/{template1_id}")
-        if resp["status"] == 200:
-            self.log_test("Delete Template", "PASS", "Template deleted successfully")
-        else:
-            self.log_test("Delete Template", "FAIL", f"Status {resp['status']}: {resp['data']}")
-        
-        return True
-    
-    def print_summary(self):
-        """Print test summary"""
-        print("\n" + "="*60)
-        print("CLONE & TEMPLATE API TESTING SUMMARY")
-        print("="*60)
-        
-        passed = sum(1 for r in self.test_results if r["status"] == "PASS")
-        failed = sum(1 for r in self.test_results if r["status"] == "FAIL")
-        total = len(self.test_results)
-        
-        print(f"Total Tests: {total}")
-        print(f"Passed: {passed}")
-        print(f"Failed: {failed}")
-        print(f"Success Rate: {(passed/total*100):.1f}%")
-        
-        if failed > 0:
-            print("\n❌ FAILED TESTS:")
-            for result in self.test_results:
-                if result["status"] == "FAIL":
-                    print(f"  - {result['name']}: {result['details']}")
-        else:
-            print("\n🎉 ALL TESTS PASSED!")
-        
-        print("\n" + "="*60)
+    response = requests.put(update_url, json=update_data, headers=headers)
+    if response.status_code == 200:
+        return decision_id
+    else:
+        print(f"Failed to update decision: {response.text}")
+        return None
 
-async def main():
-    """Run all Clone and Template API tests"""
-    print("🚀 Starting Clone and Template API Tests...")
-    print(f"Backend URL: {BACKEND_URL}")
+def save_template(token, decision_id, name, visibility, shared_with=None):
+    """Save a decision as template with specified visibility"""
+    headers = {"Authorization": f"Bearer {token}"}
+    url = f"{BASE_URL}/decisions/{decision_id}/save-as-template"
     
-    async with CloneTemplateAPITester() as tester:
-        # Run all tests in sequence
-        success = True
-        
-        success = await tester.test_01_register_and_login() and success
-        if not success:
-            print("❌ Registration failed, stopping tests")
-            return
-            
-        success = await tester.test_02_create_decision_with_full_data() and success
-        if not success:
-            print("❌ Decision creation failed, stopping tests") 
-            return
-            
-        await tester.test_03_clone_at_each_level()
-        await tester.test_04_template_functionality()
-        
-        # Print summary
-        tester.print_summary()
+    payload = {
+        "name": name,
+        "template_type": "assessment",
+        "visibility": visibility
+    }
+    
+    if shared_with:
+        payload["shared_with"] = shared_with
+    
+    response = requests.post(url, json=payload, headers=headers)
+    if response.status_code == 200:
+        return response.json().get("id")
+    else:
+        print(f"Failed to save template: {response.text}")
+        return None
+
+def get_templates(token):
+    """Get templates for a user"""
+    headers = {"Authorization": f"Bearer {token}"}
+    url = f"{BASE_URL}/templates"
+    
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print(f"Failed to get templates: {response.text}")
+        return None
+
+def import_template(token, template_id):
+    """Import a template"""
+    headers = {"Authorization": f"Bearer {token}"}
+    url = f"{BASE_URL}/templates/{template_id}/import"
+    
+    response = requests.post(url, headers=headers)
+    if response.status_code == 200:
+        return response.json().get("id")
+    else:
+        return response.status_code, response.text
+
+def use_template(token, template_id, title):
+    """Use a template to create a new decision"""
+    headers = {"Authorization": f"Bearer {token}"}
+    url = f"{BASE_URL}/templates/{template_id}/use"
+    
+    payload = {"title": title}
+    response = requests.post(url, json=payload, headers=headers)
+    if response.status_code == 200:
+        return response.json().get("id")
+    else:
+        print(f"Failed to use template: {response.text}")
+        return None
+
+def main():
+    print("\n=== ENHANCED TEMPLATE SHARING SYSTEM TEST ===\n")
+    
+    # Step 1: Register User A
+    log_test(1, f"Registering User A ({USER_A_EMAIL})")
+    token_a = register_user(USER_A_EMAIL, USER_A_PASSWORD, USER_A_NAME)
+    if not token_a:
+        return log_error(1, "Failed to register User A")
+    log_success(1, f"User A registered successfully with token: {token_a[:20]}...")
+    
+    # Step 2: Register User B
+    log_test(2, f"Registering User B ({USER_B_EMAIL})")
+    token_b = register_user(USER_B_EMAIL, USER_B_PASSWORD, USER_B_NAME)
+    if not token_b:
+        return log_error(2, "Failed to register User B")
+    log_success(2, f"User B registered successfully with token: {token_b[:20]}...")
+    
+    # Step 3: User A creates decision with data
+    log_test(3, "User A creating decision with factors and options")
+    decision_id = create_decision_with_data(token_a, "Career Choice Decision")
+    if not decision_id:
+        return log_error(3, "Failed to create decision with data")
+    log_success(3, f"Decision created with ID: {decision_id}")
+    
+    # Step 4: User A saves 3 templates with different visibility
+    log_test(4, "User A saving 3 templates with different visibility")
+    
+    # 4a. Private template
+    log_test("4a", "Saving private template")
+    private_template_id = save_template(token_a, decision_id, "Private Template", "private")
+    if not private_template_id:
+        return log_error("4a", "Failed to save private template")
+    log_success("4a", f"Private template saved: {private_template_id}")
+    
+    # 4b. Shared template
+    log_test("4b", "Saving shared template")
+    shared_template_id = save_template(token_a, decision_id, "Shared Template", "shared", [USER_B_EMAIL])
+    if not shared_template_id:
+        return log_error("4b", "Failed to save shared template")
+    log_success("4b", f"Shared template saved: {shared_template_id}")
+    
+    # 4c. Public template
+    log_test("4c", "Saving public template")
+    public_template_id = save_template(token_a, decision_id, "Public Template", "public")
+    if not public_template_id:
+        return log_error("4c", "Failed to save public template")
+    log_success("4c", f"Public template saved: {public_template_id}")
+    
+    # Step 5: User A checks GET /api/templates
+    log_test(5, "User A checking template list")
+    templates_a = get_templates(token_a)
+    if not templates_a:
+        return log_error(5, "Failed to get User A templates")
+    
+    my_templates_count = len(templates_a.get("my_templates", []))
+    shared_count = len(templates_a.get("shared_templates", []))
+    public_count = len(templates_a.get("public_templates", []))
+    
+    if my_templates_count != 3:
+        return log_error(5, f"Expected 3 my_templates, got {my_templates_count}")
+    if shared_count != 0:
+        return log_error(5, f"Expected 0 shared_templates, got {shared_count}")
+    if public_count != 0:
+        return log_error(5, f"Expected 0 public_templates, got {public_count}")
+    
+    log_success(5, f"User A templates correct: my={my_templates_count}, shared={shared_count}, public={public_count}")
+    
+    # Step 6: User B checks GET /api/templates
+    log_test(6, "User B checking template list")
+    templates_b = get_templates(token_b)
+    if not templates_b:
+        return log_error(6, "Failed to get User B templates")
+    
+    my_templates_b = len(templates_b.get("my_templates", []))
+    shared_templates_b = len(templates_b.get("shared_templates", []))
+    public_templates_b = len(templates_b.get("public_templates", []))
+    
+    if my_templates_b != 0:
+        return log_error(6, f"Expected 0 my_templates for User B, got {my_templates_b}")
+    if shared_templates_b != 1:
+        return log_error(6, f"Expected 1 shared_template for User B, got {shared_templates_b}")
+    if public_templates_b != 1:
+        return log_error(6, f"Expected 1 public_template for User B, got {public_templates_b}")
+    
+    # Verify User B cannot see private template
+    all_visible_templates = templates_b.get("my_templates", []) + templates_b.get("shared_templates", []) + templates_b.get("public_templates", [])
+    private_visible = any(t.get("id") == private_template_id for t in all_visible_templates)
+    if private_visible:
+        return log_error(6, "User B can see private template - security issue!")
+    
+    log_success(6, f"User B templates correct: my={my_templates_b}, shared={shared_templates_b}, public={public_templates_b}, private template NOT visible")
+    
+    # Step 7: User B imports shared template
+    log_test(7, "User B importing shared template")
+    imported_shared_id = import_template(token_b, shared_template_id)
+    if not imported_shared_id:
+        return log_error(7, "Failed to import shared template")
+    log_success(7, f"Shared template imported: {imported_shared_id}")
+    
+    # Step 8: User B imports public template
+    log_test(8, "User B importing public template")
+    imported_public_id = import_template(token_b, public_template_id)
+    if not imported_public_id:
+        return log_error(8, "Failed to import public template")
+    log_success(8, f"Public template imported: {imported_public_id}")
+    
+    # Step 9: User B tries to import private template (should fail)
+    log_test(9, "User B attempting to import private template (should fail with 403)")
+    result = import_template(token_b, private_template_id)
+    if isinstance(result, tuple):
+        status_code, error_msg = result
+        if status_code == 403:
+            log_success(9, f"Private template access correctly denied with 403: {error_msg}")
+        else:
+            return log_error(9, f"Expected 403, got {status_code}: {error_msg}")
+    else:
+        return log_error(9, "Private template import should have failed but succeeded!")
+    
+    # Step 10: User B uses imported template
+    log_test(10, "User B using imported template to create new decision")
+    new_decision_id = use_template(token_b, imported_shared_id, "From Imported Template")
+    if not new_decision_id:
+        return log_error(10, "Failed to use imported template")
+    log_success(10, f"New decision created from imported template: {new_decision_id}")
+    
+    # Verify User B now has 2 imported templates
+    log_test("Final", "Verifying final state")
+    final_templates_b = get_templates(token_b)
+    if not final_templates_b:
+        return log_error("Final", "Failed to get final User B templates")
+    
+    final_my_templates = len(final_templates_b.get("my_templates", []))
+    if final_my_templates != 2:
+        return log_error("Final", f"Expected 2 my_templates after imports, got {final_my_templates}")
+    
+    log_success("Final", f"User B has {final_my_templates} templates after imports")
+    
+    print(f"\n🎉 ALL TESTS PASSED! Enhanced template sharing system working correctly:")
+    print(f"   ✅ User registration and authentication")
+    print(f"   ✅ Decision creation with factors and options")
+    print(f"   ✅ Template creation with different visibility levels (private/shared/public)")
+    print(f"   ✅ Cross-user template visibility rules")
+    print(f"   ✅ Template import functionality")
+    print(f"   ✅ Private template access control (403 on unauthorized access)")
+    print(f"   ✅ Template usage to create new decisions")
+    print(f"   ✅ Complete enhanced template sharing workflow")
+    
+    return True
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    success = main()
+    if not success:
+        sys.exit(1)

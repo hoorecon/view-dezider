@@ -127,6 +127,8 @@ class CloneDecisionRequest(BaseModel):
 class SaveTemplateRequest(BaseModel):
     name: str
     template_type: str  # "options" or "assessment"
+    visibility: str = "private"  # "private", "shared", "public"
+    shared_with: List[str] = []  # list of email addresses for "shared" visibility
 
 class UseTemplateRequest(BaseModel):
     title: str
@@ -771,8 +773,11 @@ async def save_as_template(decision_id: str, data: SaveTemplateRequest, user: di
         "id": template_id,
         "name": data.name,
         "template_type": data.template_type,
+        "visibility": data.visibility,  # "private", "shared", "public"
+        "shared_with": [e.strip().lower() for e in data.shared_with if e.strip()],  # normalized emails
         "created_by": user["user_id"],
         "created_by_name": user.get("name", "Unknown"),
+        "created_by_email": user.get("email", ""),
         "source_decision_title": original.get("title", ""),
         "context": original.get("context", ""),
         "factors": original.get("factors", []),
@@ -801,9 +806,33 @@ async def save_as_template(decision_id: str, data: SaveTemplateRequest, user: di
 
 @api_router.get("/templates")
 async def get_templates(user: dict = Depends(get_current_user)):
-    """Get all shared templates"""
-    templates = await db.templates.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
-    return templates
+    """Get templates categorized: my_templates, shared_with_me, public"""
+    user_email = user.get("email", "").lower()
+    user_id = user["user_id"]
+    
+    all_templates = await db.templates.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    
+    my_templates = []
+    shared_templates = []
+    public_templates = []
+    
+    for t in all_templates:
+        visibility = t.get("visibility", "private")
+        created_by = t.get("created_by", "")
+        shared_with = [e.lower() for e in t.get("shared_with", [])]
+        
+        if created_by == user_id:
+            my_templates.append(t)
+        elif visibility == "shared" and user_email in shared_with:
+            shared_templates.append(t)
+        elif visibility == "public" and created_by != user_id:
+            public_templates.append(t)
+    
+    return {
+        "my_templates": my_templates,
+        "shared_templates": shared_templates,
+        "public_templates": public_templates,
+    }
 
 @api_router.post("/templates/{template_id}/use")
 async def use_template(template_id: str, data: UseTemplateRequest, user: dict = Depends(get_current_user)):
@@ -878,6 +907,70 @@ async def delete_template(template_id: str, user: dict = Depends(get_current_use
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Template not found or not authorized")
     return {"message": "Template deleted successfully"}
+
+@api_router.post("/templates/{template_id}/import")
+async def import_template(template_id: str, user: dict = Depends(get_current_user)):
+    """Import a shared/public template to my templates"""
+    template = await db.templates.find_one({"id": template_id}, {"_id": 0})
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    user_email = user.get("email", "").lower()
+    visibility = template.get("visibility", "private")
+    shared_with = [e.lower() for e in template.get("shared_with", [])]
+    
+    # Check access: must be public or shared with this user
+    if template["created_by"] == user["user_id"]:
+        raise HTTPException(status_code=400, detail="This is already your template")
+    if visibility == "private":
+        raise HTTPException(status_code=403, detail="This template is private")
+    if visibility == "shared" and user_email not in shared_with:
+        raise HTTPException(status_code=403, detail="This template is not shared with you")
+    
+    # Create a copy under the current user
+    new_template_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    
+    imported = {
+        "id": new_template_id,
+        "name": f"{template['name']} (imported)",
+        "template_type": template.get("template_type", "options"),
+        "visibility": "private",  # Imported as private by default
+        "shared_with": [],
+        "created_by": user["user_id"],
+        "created_by_name": user.get("name", "Unknown"),
+        "created_by_email": user.get("email", ""),
+        "source_decision_title": template.get("source_decision_title", ""),
+        "imported_from": template.get("created_by_name", "Unknown"),
+        "context": template.get("context", ""),
+        "factors": template.get("factors", []),
+        "options": template.get("options", []),
+        "created_at": now,
+    }
+    
+    await db.templates.insert_one(imported)
+    return {"id": new_template_id, "message": "Template imported to your collection"}
+
+@api_router.put("/templates/{template_id}")
+async def update_template(template_id: str, data: SaveTemplateRequest, user: dict = Depends(get_current_user)):
+    """Update template visibility and sharing settings"""
+    template = await db.templates.find_one(
+        {"id": template_id, "created_by": user["user_id"]}, {"_id": 0}
+    )
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found or not authorized")
+    
+    update_fields = {
+        "name": data.name,
+        "visibility": data.visibility,
+        "shared_with": [e.strip().lower() for e in data.shared_with if e.strip()],
+    }
+    
+    await db.templates.update_one(
+        {"id": template_id},
+        {"$set": update_fields}
+    )
+    return {"message": "Template updated successfully"}
 
 # ========================
 # TEST123 ROUTES

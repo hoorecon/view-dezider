@@ -79,6 +79,30 @@ const TEMPLATE_TYPES = [
 
 type Tab = 'clone' | 'template';
 
+const VISIBILITY_OPTIONS = [
+  {
+    key: 'private',
+    label: 'Private',
+    icon: 'lock-closed-outline' as const,
+    description: 'Only visible to you',
+    color: COLORS.textSecondary,
+  },
+  {
+    key: 'shared',
+    label: 'Shared',
+    icon: 'people-outline' as const,
+    description: 'Share with specific accounts',
+    color: '#3B82F6',
+  },
+  {
+    key: 'public',
+    label: 'Public',
+    icon: 'globe-outline' as const,
+    description: 'Visible to all app users',
+    color: '#10B981',
+  },
+];
+
 export default function CloneTemplateModal({
   visible,
   onClose,
@@ -91,6 +115,8 @@ export default function CloneTemplateModal({
   const [selectedTemplateType, setSelectedTemplateType] = useState('options');
   const [title, setTitle] = useState('');
   const [loading, setLoading] = useState(false);
+  const [visibility, setVisibility] = useState('private');
+  const [sharedEmails, setSharedEmails] = useState('');
 
   const getTimestampPrefix = () => {
     const now = new Date();
@@ -137,16 +163,27 @@ export default function CloneTemplateModal({
       Alert.alert('Error', 'Please enter a name for the template');
       return;
     }
+    if (visibility === 'shared' && !sharedEmails.trim()) {
+      Alert.alert('Error', 'Please enter at least one email to share with');
+      return;
+    }
     
     setLoading(true);
     try {
+      const shared_with = visibility === 'shared'
+        ? sharedEmails.split(',').map(e => e.trim()).filter(e => e)
+        : [];
+      
       await api.post(`/decisions/${decision.id}/save-as-template`, {
         name: title.trim(),
         template_type: selectedTemplateType,
+        visibility,
+        shared_with,
       });
       onTemplateSuccess?.();
       onClose();
-      Alert.alert('Saved!', 'Template saved and shared across all users');
+      const visLabel = visibility === 'public' ? 'publicly' : visibility === 'shared' ? `with ${shared_with.length} account(s)` : 'privately';
+      Alert.alert('Saved!', `Template saved ${visLabel}`);
     } catch (err: any) {
       Alert.alert('Error', err.response?.data?.detail || 'Failed to save template');
     } finally {
@@ -244,9 +281,6 @@ export default function CloneTemplateModal({
             ) : (
               <View style={styles.optionsSection}>
                 <Text style={styles.sectionLabel}>Template type</Text>
-                <Text style={styles.sectionSubLabel}>
-                  Templates are shared across all app users
-                </Text>
                 {TEMPLATE_TYPES.map((type) => (
                   <TouchableOpacity
                     key={type.key}
@@ -274,6 +308,53 @@ export default function CloneTemplateModal({
                     </View>
                   </TouchableOpacity>
                 ))}
+
+                {/* Visibility Selector */}
+                <Text style={[styles.sectionLabel, { marginTop: 16 }]}>Who can see this?</Text>
+                {VISIBILITY_OPTIONS.map((opt) => (
+                  <TouchableOpacity
+                    key={opt.key}
+                    style={[
+                      styles.visibilityOption,
+                      visibility === opt.key && styles.visibilityOptionActive,
+                      visibility === opt.key && { borderColor: opt.color },
+                    ]}
+                    onPress={() => setVisibility(opt.key)}
+                  >
+                    <Ionicons name={opt.icon} size={18} color={visibility === opt.key ? opt.color : COLORS.textMuted} />
+                    <View style={styles.visibilityInfo}>
+                      <Text style={[styles.visibilityLabel, visibility === opt.key && { color: opt.color }]}>
+                        {opt.label}
+                      </Text>
+                      <Text style={styles.visibilityDesc}>{opt.description}</Text>
+                    </View>
+                    <View style={[
+                      styles.radio,
+                      visibility === opt.key && { borderColor: opt.color, backgroundColor: opt.color },
+                    ]}>
+                      {visibility === opt.key && (
+                        <Ionicons name="checkmark" size={14} color="#FFF" />
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                ))}
+
+                {/* Shared With Emails */}
+                {visibility === 'shared' && (
+                  <View style={styles.sharedEmailsSection}>
+                    <Text style={styles.sharedEmailsLabel}>Share with (comma-separated emails)</Text>
+                    <TextInput
+                      style={styles.sharedEmailsInput}
+                      value={sharedEmails}
+                      onChangeText={setSharedEmails}
+                      placeholder="user1@email.com, user2@email.com"
+                      placeholderTextColor={COLORS.textMuted}
+                      multiline
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                    />
+                  </View>
+                )}
               </View>
             )}
           </ScrollView>
@@ -484,5 +565,52 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#FFF',
+  },
+  visibilityOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    marginBottom: 6,
+    gap: 10,
+  },
+  visibilityOptionActive: {
+    backgroundColor: 'rgba(142, 36, 170, 0.04)',
+  },
+  visibilityInfo: {
+    flex: 1,
+  },
+  visibilityLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  visibilityDesc: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    marginTop: 1,
+  },
+  sharedEmailsSection: {
+    marginTop: 12,
+  },
+  sharedEmailsLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    marginBottom: 6,
+  },
+  sharedEmailsInput: {
+    backgroundColor: COLORS.background,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    minHeight: 60,
+    textAlignVertical: 'top',
   },
 });

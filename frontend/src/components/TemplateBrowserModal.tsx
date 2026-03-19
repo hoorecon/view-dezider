@@ -37,11 +37,15 @@ export default function TemplateBrowserModal({
   onClose,
   onUseTemplate,
 }: TemplateBrowserModalProps) {
-  const [templates, setTemplates] = useState<Template[]>([]);
+  const [templates, setTemplates] = useState<{ my: Template[]; shared: Template[]; public: Template[] }>({
+    my: [], shared: [], public: [],
+  });
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [newTitle, setNewTitle] = useState('');
+  const [activeTab, setActiveTab] = useState<'my' | 'shared' | 'public'>('my');
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -53,7 +57,11 @@ export default function TemplateBrowserModal({
     setLoading(true);
     try {
       const response = await api.get('/templates');
-      setTemplates(response.data || []);
+      setTemplates({
+        my: response.data.my_templates || [],
+        shared: response.data.shared_templates || [],
+        public: response.data.public_templates || [],
+      });
     } catch (err: any) {
       console.error('Failed to fetch templates:', err);
     } finally {
@@ -104,7 +112,7 @@ export default function TemplateBrowserModal({
           onPress: async () => {
             try {
               await api.delete(`/templates/${template.id}`);
-              setTemplates(prev => prev.filter(t => t.id !== template.id));
+              fetchTemplates();
               if (selectedTemplate?.id === template.id) {
                 setSelectedTemplate(null);
               }
@@ -115,6 +123,19 @@ export default function TemplateBrowserModal({
         },
       ]
     );
+  };
+
+  const handleImportTemplate = async (template: Template) => {
+    setImporting(true);
+    try {
+      await api.post(`/templates/${template.id}/import`);
+      Alert.alert('Imported!', 'Template has been copied to your collection');
+      fetchTemplates();
+    } catch (err: any) {
+      Alert.alert('Error', err.response?.data?.detail || 'Failed to import template');
+    } finally {
+      setImporting(false);
+    }
   };
 
   const formatDate = (dateStr: string) => {
@@ -240,18 +261,49 @@ export default function TemplateBrowserModal({
               </View>
             </ScrollView>
           ) : (
-            /* Template List */
+            /* Template List with 3 tabs */
             <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
-              {templates.length === 0 ? (
+              {/* Tab switcher */}
+              <View style={styles.tabRow}>
+                {(['my', 'shared', 'public'] as const).map((tab) => {
+                  const count = templates[tab].length;
+                  const labels = { my: 'My Templates', shared: 'Shared', public: 'Public' };
+                  const icons = { my: 'person-outline', shared: 'people-outline', public: 'globe-outline' } as const;
+                  return (
+                    <TouchableOpacity
+                      key={tab}
+                      style={[styles.tab, activeTab === tab && styles.tabActive]}
+                      onPress={() => setActiveTab(tab)}
+                    >
+                      <Ionicons name={icons[tab]} size={14} color={activeTab === tab ? COLORS.primary : COLORS.textMuted} />
+                      <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
+                        {labels[tab]} {count > 0 ? `(${count})` : ''}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {templates[activeTab].length === 0 ? (
                 <View style={styles.emptyState}>
-                  <Ionicons name="bookmark-outline" size={48} color={COLORS.textMuted} />
-                  <Text style={styles.emptyTitle}>No Templates Yet</Text>
+                  <Ionicons
+                    name={activeTab === 'my' ? 'bookmark-outline' : activeTab === 'shared' ? 'people-outline' : 'globe-outline'}
+                    size={48}
+                    color={COLORS.textMuted}
+                  />
+                  <Text style={styles.emptyTitle}>
+                    {activeTab === 'my' ? 'No Templates Yet' : activeTab === 'shared' ? 'No Shared Templates' : 'No Public Templates'}
+                  </Text>
                   <Text style={styles.emptyText}>
-                    Save a decision as a template to share it across all users.
+                    {activeTab === 'my'
+                      ? 'Save a decision as a template from the Clone menu.'
+                      : activeTab === 'shared'
+                      ? 'No one has shared a template with your account yet.'
+                      : 'No public templates available.'}
                   </Text>
                 </View>
               ) : (
-                templates.map((template) => (
+                templates[activeTab].map((template) => (
                   <TouchableOpacity
                     key={template.id}
                     style={styles.templateCard}
@@ -275,15 +327,35 @@ export default function TemplateBrowserModal({
                           {template.template_type === 'assessment' ? 'Assessment' : 'Options'}
                         </Text>
                       </View>
-                      <TouchableOpacity
-                        onPress={(e) => {
-                          e.stopPropagation?.();
-                          handleDeleteTemplate(template);
-                        }}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Ionicons name="trash-outline" size={16} color={COLORS.textMuted} />
-                      </TouchableOpacity>
+                      <View style={styles.templateCardActions}>
+                        {/* Import button for shared/public templates */}
+                        {activeTab !== 'my' && (
+                          <TouchableOpacity
+                            onPress={(e) => {
+                              e.stopPropagation?.();
+                              handleImportTemplate(template);
+                            }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            disabled={importing}
+                            style={styles.importBtn}
+                          >
+                            <Ionicons name="download-outline" size={16} color={COLORS.primary} />
+                            <Text style={styles.importBtnText}>Import</Text>
+                          </TouchableOpacity>
+                        )}
+                        {/* Delete button for own templates */}
+                        {activeTab === 'my' && (
+                          <TouchableOpacity
+                            onPress={(e) => {
+                              e.stopPropagation?.();
+                              handleDeleteTemplate(template);
+                            }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Ionicons name="trash-outline" size={16} color={COLORS.textMuted} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     </View>
                     <Text style={styles.templateName} numberOfLines={1}>{template.name}</Text>
                     <Text style={styles.templateMeta}>
@@ -392,6 +464,57 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
+  },
+  templateCardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  importBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(142, 36, 170, 0.08)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  importBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+  tabRow: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.background,
+    borderRadius: 10,
+    padding: 3,
+    marginBottom: 16,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 4,
+  },
+  tabActive: {
+    backgroundColor: COLORS.white,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+  },
+  tabText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+  },
+  tabTextActive: {
+    color: COLORS.primary,
   },
   typeBadge: {
     flexDirection: 'row',
