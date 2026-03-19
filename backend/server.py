@@ -120,6 +120,17 @@ class PRRDecisionUpdate(BaseModel):
     notes: Optional[str] = None
     status: Optional[str] = None
 
+class CloneDecisionRequest(BaseModel):
+    title: str
+    clone_level: str  # "factors", "classification", "prioritization", "options", "assessment"
+
+class SaveTemplateRequest(BaseModel):
+    name: str
+    template_type: str  # "options" or "assessment"
+
+class UseTemplateRequest(BaseModel):
+    title: str
+
 # Test123 Models
 class Test123Session(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -641,6 +652,232 @@ async def delete_decision(decision_id: str, user: dict = Depends(get_current_use
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Decision not found")
     return {"message": "Decision deleted successfully"}
+
+@api_router.post("/decisions/{decision_id}/clone")
+async def clone_decision(decision_id: str, data: CloneDecisionRequest, user: dict = Depends(get_current_user)):
+    """Clone a decision from a specific level"""
+    original = await db.decisions.find_one(
+        {"id": decision_id, "user_id": user["user_id"]}, {"_id": 0}
+    )
+    if not original:
+        raise HTTPException(status_code=404, detail="Decision not found")
+    
+    new_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    
+    # Start with base fields
+    cloned = {
+        "id": new_id,
+        "user_id": user["user_id"],
+        "title": data.title,
+        "context": original.get("context", ""),
+        "factors": [],
+        "options": [],
+        "chosen_option_id": None,
+        "decision_case": None,
+        "notes": "",
+        "status": "draft",
+        "created_at": now,
+        "updated_at": now,
+    }
+    
+    clone_level = data.clone_level
+    
+    # Copy Factors (names + order only, reset classification and rating)
+    if clone_level in ("factors", "classification", "prioritization", "options", "assessment"):
+        cloned["factors"] = []
+        for f in original.get("factors", []):
+            new_factor = {
+                "id": str(uuid.uuid4()),
+                "name": f["name"],
+                "order": f.get("order", 0),
+                "category": "primary",  # Reset classification
+                "rating": 0,  # Reset rating
+            }
+            cloned["factors"].append(new_factor)
+    
+    # Copy Classification (keep primary/secondary)
+    if clone_level in ("classification", "prioritization", "options", "assessment"):
+        for i, f in enumerate(original.get("factors", [])):
+            if i < len(cloned["factors"]):
+                cloned["factors"][i]["category"] = f.get("category", "primary")
+    
+    # Copy Prioritization (keep ratings)
+    if clone_level in ("prioritization", "options", "assessment"):
+        for i, f in enumerate(original.get("factors", [])):
+            if i < len(cloned["factors"]):
+                cloned["factors"][i]["rating"] = f.get("rating", 0)
+    
+    # Copy Options (names only, no assessments)
+    if clone_level in ("options", "assessment"):
+        # Create factor ID mapping (old -> new)
+        factor_id_map = {}
+        for i, orig_f in enumerate(original.get("factors", [])):
+            if i < len(cloned["factors"]):
+                factor_id_map[orig_f["id"]] = cloned["factors"][i]["id"]
+        
+        cloned["options"] = []
+        for opt in original.get("options", []):
+            new_opt = {
+                "id": str(uuid.uuid4()),
+                "name": opt["name"],
+                "assessments": [],
+                "worth_percentage": 0.0,
+            }
+            cloned["options"].append(new_opt)
+    
+    # Copy Assessment (full clone with assessments)
+    if clone_level == "assessment":
+        factor_id_map = {}
+        for i, orig_f in enumerate(original.get("factors", [])):
+            if i < len(cloned["factors"]):
+                factor_id_map[orig_f["id"]] = cloned["factors"][i]["id"]
+        
+        for i, opt in enumerate(original.get("options", [])):
+            if i < len(cloned["options"]):
+                new_assessments = []
+                for asmt in opt.get("assessments", []):
+                    new_factor_id = factor_id_map.get(asmt["factor_id"], asmt["factor_id"])
+                    new_assessments.append({
+                        "factor_id": new_factor_id,
+                        "percentage": asmt.get("percentage"),
+                        "unit_value": asmt.get("unit_value"),
+                        "assessment_mode": asmt.get("assessment_mode"),
+                    })
+                cloned["options"][i]["assessments"] = new_assessments
+                cloned["options"][i]["worth_percentage"] = opt.get("worth_percentage", 0.0)
+    
+    await db.decisions.insert_one(cloned)
+    return {"id": new_id, "message": f"Decision cloned successfully (level: {clone_level})"}
+
+# ========================
+# TEMPLATE ROUTES
+# ========================
+
+@api_router.post("/decisions/{decision_id}/save-as-template")
+async def save_as_template(decision_id: str, data: SaveTemplateRequest, user: dict = Depends(get_current_user)):
+    """Save a decision as a shared template"""
+    original = await db.decisions.find_one(
+        {"id": decision_id, "user_id": user["user_id"]}, {"_id": 0}
+    )
+    if not original:
+        raise HTTPException(status_code=404, detail="Decision not found")
+    
+    template_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    
+    # Build template data based on type
+    template = {
+        "id": template_id,
+        "name": data.name,
+        "template_type": data.template_type,
+        "created_by": user["user_id"],
+        "created_by_name": user.get("name", "Unknown"),
+        "source_decision_title": original.get("title", ""),
+        "context": original.get("context", ""),
+        "factors": original.get("factors", []),
+        "options": [],
+        "created_at": now,
+    }
+    
+    # Include options for both types
+    if data.template_type in ("options", "assessment"):
+        template["options"] = []
+        for opt in original.get("options", []):
+            new_opt = {
+                "id": opt["id"],
+                "name": opt["name"],
+                "assessments": [],
+                "worth_percentage": 0.0,
+            }
+            # Include assessments only for "assessment" type
+            if data.template_type == "assessment":
+                new_opt["assessments"] = opt.get("assessments", [])
+                new_opt["worth_percentage"] = opt.get("worth_percentage", 0.0)
+            template["options"].append(new_opt)
+    
+    await db.templates.insert_one(template)
+    return {"id": template_id, "message": "Template saved successfully"}
+
+@api_router.get("/templates")
+async def get_templates(user: dict = Depends(get_current_user)):
+    """Get all shared templates"""
+    templates = await db.templates.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return templates
+
+@api_router.post("/templates/{template_id}/use")
+async def use_template(template_id: str, data: UseTemplateRequest, user: dict = Depends(get_current_user)):
+    """Create a new decision from a template"""
+    template = await db.templates.find_one({"id": template_id}, {"_id": 0})
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    new_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    
+    # Create factor ID mapping and new factors
+    factor_id_map = {}
+    new_factors = []
+    for f in template.get("factors", []):
+        new_factor_id = str(uuid.uuid4())
+        factor_id_map[f["id"]] = new_factor_id
+        new_factors.append({
+            "id": new_factor_id,
+            "name": f["name"],
+            "category": f.get("category", "primary"),
+            "rating": f.get("rating", 0),
+            "order": f.get("order", 0),
+        })
+    
+    # Create new options with mapped factor IDs
+    new_options = []
+    for opt in template.get("options", []):
+        new_opt = {
+            "id": str(uuid.uuid4()),
+            "name": opt["name"],
+            "assessments": [],
+            "worth_percentage": 0.0,
+        }
+        # Map assessment factor IDs if template includes assessments
+        if template.get("template_type") == "assessment":
+            for asmt in opt.get("assessments", []):
+                new_factor_id = factor_id_map.get(asmt["factor_id"], asmt["factor_id"])
+                new_opt["assessments"].append({
+                    "factor_id": new_factor_id,
+                    "percentage": asmt.get("percentage"),
+                    "unit_value": asmt.get("unit_value"),
+                    "assessment_mode": asmt.get("assessment_mode"),
+                })
+            new_opt["worth_percentage"] = opt.get("worth_percentage", 0.0)
+        new_options.append(new_opt)
+    
+    decision = {
+        "id": new_id,
+        "user_id": user["user_id"],
+        "title": data.title,
+        "context": template.get("context", ""),
+        "factors": new_factors,
+        "options": new_options,
+        "chosen_option_id": None,
+        "decision_case": None,
+        "notes": "",
+        "status": "draft",
+        "created_at": now,
+        "updated_at": now,
+    }
+    
+    await db.decisions.insert_one(decision)
+    return {"id": new_id, "message": "Decision created from template"}
+
+@api_router.delete("/templates/{template_id}")
+async def delete_template(template_id: str, user: dict = Depends(get_current_user)):
+    """Delete a template (only by creator)"""
+    result = await db.templates.delete_one(
+        {"id": template_id, "created_by": user["user_id"]}
+    )
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Template not found or not authorized")
+    return {"message": "Template deleted successfully"}
 
 # ========================
 # TEST123 ROUTES

@@ -15,6 +15,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import { Card } from '../../src/components/Card';
+import CloneTemplateModal from '../../src/components/CloneTemplateModal';
+import TemplateBrowserModal from '../../src/components/TemplateBrowserModal';
 import api from '../../src/utils/api';
 
 interface Decision {
@@ -34,6 +36,9 @@ export default function PRRScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [cloneModalVisible, setCloneModalVisible] = useState(false);
+  const [cloneTarget, setCloneTarget] = useState<Decision | null>(null);
+  const [templateBrowserVisible, setTemplateBrowserVisible] = useState(false);
 
   const fetchDecisions = async () => {
     try {
@@ -147,12 +152,23 @@ export default function PRRScreen() {
           </View>
         </View>
       </TouchableOpacity>
-      <TouchableOpacity
-        onPress={() => handleDeletePress(item.id)}
-        style={styles.deleteButton}
-      >
-        <Ionicons name="trash-outline" size={20} color={COLORS.error} />
-      </TouchableOpacity>
+      <View style={styles.cardActions}>
+        <TouchableOpacity
+          onPress={() => {
+            setCloneTarget(item);
+            setCloneModalVisible(true);
+          }}
+          style={styles.actionButton}
+        >
+          <Ionicons name="copy-outline" size={20} color={COLORS.primary} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => handleDeletePress(item.id)}
+          style={styles.actionButton}
+        >
+          <Ionicons name="trash-outline" size={20} color={COLORS.error} />
+        </TouchableOpacity>
+      </View>
     </Card>
   );
 
@@ -177,12 +193,20 @@ export default function PRRScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>Decision Box</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => router.push('/prr/new')}
-        >
-          <Ionicons name="add" size={24} color={COLORS.white} />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.templateButton}
+            onPress={() => setTemplateBrowserVisible(true)}
+          >
+            <Ionicons name="bookmark-outline" size={20} color={COLORS.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => router.push('/prr/new')}
+          >
+            <Ionicons name="add" size={24} color={COLORS.white} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <FlatList
@@ -222,6 +246,35 @@ export default function PRRScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Clone / Template Modal */}
+      {cloneTarget && (
+        <CloneTemplateModal
+          visible={cloneModalVisible}
+          onClose={() => {
+            setCloneModalVisible(false);
+            setCloneTarget(null);
+          }}
+          decision={cloneTarget}
+          onCloneSuccess={(newId) => {
+            fetchDecisions();
+            router.push(`/prr/${newId}`);
+          }}
+          onTemplateSuccess={() => {
+            Alert.alert('Template Saved', 'Your decision has been saved as a shared template.');
+          }}
+        />
+      )}
+
+      {/* Template Browser Modal */}
+      <TemplateBrowserModal
+        visible={templateBrowserVisible}
+        onClose={() => setTemplateBrowserVisible(false)}
+        onUseTemplate={(newId) => {
+          fetchDecisions();
+          router.push(`/prr/${newId}`);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -237,6 +290,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     paddingTop: 8,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  templateButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(142, 36, 170, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   title: {
     fontSize: 28,
@@ -345,9 +411,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.white,
   },
-  deleteButton: {
-    padding: 12,
-    marginLeft: 8,
+  cardActions: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 4,
+    marginLeft: 4,
+  },
+  actionButton: {
+    padding: 8,
   },
   modalOverlay: {
     flex: 1,

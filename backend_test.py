@@ -1,365 +1,428 @@
 #!/usr/bin/env python3
 
 import asyncio
-import httpx
+import aiohttp
 import json
-import os
+import sys
 from datetime import datetime
+from typing import Dict, Any, List
 
-# Configuration
-BACKEND_URL = "https://best-mate-decisions.preview.emergentagent.com"
-API_BASE = f"{BACKEND_URL}/api"
+# Backend URL configuration
+BACKEND_URL = "https://best-mate-decisions.preview.emergentagent.com/api"
 
-class AuthEndpointTester:
+class CloneTemplateAPITester:
     def __init__(self):
-        self.session_token = None
+        self.session = None
+        self.bearer_token = None
         self.user_id = None
-        self.client = httpx.AsyncClient(timeout=30.0)
-        self.stored_otp = None
+        self.decision_id = None
+        self.template_ids = []
+        self.test_results = []
         
-    async def close(self):
-        await self.client.aclose()
+    async def __aenter__(self):
+        self.session = aiohttp.ClientSession()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self.session:
+            await self.session.close()
+    
+    def log_test(self, test_name: str, status: str, details: str = ""):
+        """Log test result"""
+        result = f"{'✅' if status == 'PASS' else '❌'} {test_name}: {status}"
+        if details:
+            result += f" - {details}"
+        print(result)
+        self.test_results.append({
+            "name": test_name,
+            "status": status,
+            "details": details
+        })
+    
+    async def make_request(self, method: str, endpoint: str, data: Dict = None, auth: bool = True) -> Dict:
+        """Make HTTP request with proper headers"""
+        headers = {"Content-Type": "application/json"}
+        if auth and self.bearer_token:
+            headers["Authorization"] = f"Bearer {self.bearer_token}"
         
-    async def test_register_user(self):
-        """Register a test user for forgot password testing"""
-        print("\n=== Testing User Registration ===")
+        url = f"{BACKEND_URL}{endpoint}"
         
-        test_user_data = {
-            "email": "testforgot@test.com",
-            "password": "pass123",
-            "name": "Test User"
+        try:
+            if method.upper() == "GET":
+                async with self.session.get(url, headers=headers) as resp:
+                    response_data = await resp.json()
+                    return {"status": resp.status, "data": response_data}
+            elif method.upper() == "POST":
+                async with self.session.post(url, headers=headers, json=data) as resp:
+                    response_data = await resp.json()
+                    return {"status": resp.status, "data": response_data}
+            elif method.upper() == "PUT":
+                async with self.session.put(url, headers=headers, json=data) as resp:
+                    response_data = await resp.json()
+                    return {"status": resp.status, "data": response_data}
+            elif method.upper() == "DELETE":
+                async with self.session.delete(url, headers=headers) as resp:
+                    if resp.status == 200:
+                        response_data = await resp.json()
+                    else:
+                        response_data = {"message": "Deleted successfully"}
+                    return {"status": resp.status, "data": response_data}
+        except Exception as e:
+            return {"status": 500, "data": {"error": str(e)}}
+    
+    async def test_01_register_and_login(self):
+        """Test 1: Register & Login with Bearer token"""
+        print("\n=== STEP 1: USER REGISTRATION & LOGIN ===")
+        
+        # Register user
+        register_data = {
+            "email": "clonetest@test.com",
+            "password": "test123",
+            "name": "Clone Tester"
         }
         
-        response = await self.client.post(
-            f"{API_BASE}/auth/register",
-            json=test_user_data
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            self.session_token = data["session_token"]
-            self.user_id = data["user_id"]
-            print(f"✅ Registration successful")
-            print(f"   User ID: {self.user_id}")
-            print(f"   Email: {test_user_data['email']}")
-            print(f"   Session Token: {self.session_token[:20]}...")
-            return True
-        elif response.status_code == 400 and "already registered" in response.text:
-            print(f"✅ User already exists, continuing with testing")
-            # Try to login to get session token
-            return await self.login_existing_user()
+        resp = await self.make_request("POST", "/auth/register", register_data, auth=False)
+        if resp["status"] == 200:
+            self.bearer_token = resp["data"]["session_token"]
+            self.user_id = resp["data"]["user_id"]
+            self.log_test("User Registration", "PASS", f"User created: {resp['data']['email']}")
+            self.log_test("Bearer Token Generation", "PASS", f"Token: {self.bearer_token[:20]}...")
         else:
-            print(f"❌ Registration failed: {response.status_code} - {response.text}")
+            self.log_test("User Registration", "FAIL", f"Status {resp['status']}: {resp['data']}")
             return False
-            
-    async def login_existing_user(self):
-        """Login with existing test user"""
-        print("\n--- Logging in with existing test user ---")
-        login_data = {
-            "email": "testforgot@test.com", 
-            "password": "pass123"
-        }
         
-        response = await self.client.post(
-            f"{API_BASE}/auth/login",
-            json=login_data
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            self.session_token = data["session_token"]
-            self.user_id = data["user_id"]
-            print(f"✅ Login successful for existing user")
-            return True
-        else:
-            # User might have changed password, try with newpass456
-            login_data["password"] = "newpass456"
-            response = await self.client.post(
-                f"{API_BASE}/auth/login",
-                json=login_data
-            )
-            if response.status_code == 200:
-                data = response.json()
-                self.session_token = data["session_token"]
-                self.user_id = data["user_id"]
-                print(f"✅ Login successful with reset password")
-                return True
-            else:
-                print(f"❌ Login failed: {response.status_code} - {response.text}")
-                return False
-
-    async def test_forgot_password_flow(self):
-        """Test the complete forgot password flow"""
-        print("\n=== Testing Forgot Password Flow ===")
-        
-        # Test 2a: POST forgot-password with valid email
-        print("\n2a. Testing forgot-password with valid email...")
-        forgot_data = {"email": "testforgot@test.com"}
-        
-        response = await self.client.post(
-            f"{API_BASE}/auth/forgot-password",
-            json=forgot_data
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            self.stored_otp = data.get("otp")  # MVP returns OTP in response
-            print(f"✅ Forgot password request successful")
-            print(f"   Message: {data.get('message', '')}")
-            print(f"   OTP: {self.stored_otp}")
-            print(f"   Expires in: {data.get('expires_in_minutes', 'Unknown')} minutes")
-        else:
-            print(f"❌ Forgot password failed: {response.status_code} - {response.text}")
-            return False
-            
-        # Test 2b: POST forgot-password with nonexistent email
-        print("\n2b. Testing forgot-password with nonexistent email...")
-        forgot_data_invalid = {"email": "nonexistent@test.com"}
-        
-        response = await self.client.post(
-            f"{API_BASE}/auth/forgot-password",
-            json=forgot_data_invalid
-        )
-        
-        if response.status_code == 404:
-            print(f"✅ Correctly returned 404 for nonexistent email")
-            print(f"   Error: {response.json().get('detail', response.text)}")
-        else:
-            print(f"❌ Expected 404 but got {response.status_code}: {response.text}")
-            
-        # Test 2c: POST reset-password with correct email + OTP + new_password
-        print("\n2c. Testing reset-password with correct OTP...")
-        if not self.stored_otp:
-            print("❌ No OTP available for testing")
-            return False
-            
-        reset_data = {
-            "email": "testforgot@test.com",
-            "otp": self.stored_otp,
-            "new_password": "newpass456"
-        }
-        
-        response = await self.client.post(
-            f"{API_BASE}/auth/reset-password",
-            json=reset_data
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            print(f"✅ Password reset successful")
-            print(f"   Message: {data.get('message', '')}")
-        else:
-            print(f"❌ Password reset failed: {response.status_code} - {response.text}")
-            return False
-            
-        # Test 2d: POST reset-password with wrong OTP
-        print("\n2d. Testing reset-password with wrong OTP...")
-        wrong_reset_data = {
-            "email": "testforgot@test.com",
-            "otp": "999999",  # Wrong OTP
-            "new_password": "anothernewpass"
-        }
-        
-        response = await self.client.post(
-            f"{API_BASE}/auth/reset-password",
-            json=wrong_reset_data
-        )
-        
-        if response.status_code == 400:
-            print(f"✅ Correctly rejected wrong OTP with 400 status")
-            print(f"   Error: {response.json().get('detail', response.text)}")
-        else:
-            print(f"❌ Expected 400 but got {response.status_code}: {response.text}")
-            
-        # Test 2e: Login with new password to verify reset worked
-        print("\n2e. Testing login with new password...")
-        login_data = {
-            "email": "testforgot@test.com",
-            "password": "newpass456"
-        }
-        
-        response = await self.client.post(
-            f"{API_BASE}/auth/login",
-            json=login_data
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            self.session_token = data["session_token"]  # Update session token
-            print(f"✅ Login with new password successful")
-            print(f"   User ID: {data['user_id']}")
-            print(f"   Email: {data['email']}")
-            return True
-        else:
-            print(f"❌ Login with new password failed: {response.status_code} - {response.text}")
-            return False
-
-    async def test_set_password_flow(self):
-        """Test the set password functionality"""
-        print("\n=== Testing Set Password Flow ===")
-        
-        if not self.session_token:
-            print("❌ No session token available for set password testing")
-            return False
-            
-        headers = {"Authorization": f"Bearer {self.session_token}"}
-        
-        # Test 3a: Login first to ensure we have a valid session
-        print("\n3a. Verifying current session...")
-        response = await self.client.get(
-            f"{API_BASE}/auth/me",
-            headers=headers
-        )
-        
-        if response.status_code != 200:
-            print(f"❌ Session verification failed: {response.status_code} - {response.text}")
-            return False
-            
-        print(f"✅ Session verified for user: {response.json().get('email')}")
-        
-        # Test 3b: POST set-password with valid password
-        print("\n3b. Testing set-password with valid password...")
-        set_password_data = {"new_password": "mypass123"}
-        
-        response = await self.client.post(
-            f"{API_BASE}/auth/set-password",
-            json=set_password_data,
-            headers=headers
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            print(f"✅ Set password successful")
-            print(f"   Message: {data.get('message', '')}")
-        else:
-            print(f"❌ Set password failed: {response.status_code} - {response.text}")
-            return False
-            
-        # Test 3c: POST set-password with short password (should fail validation)
-        print("\n3c. Testing set-password with short password...")
-        short_password_data = {"new_password": "ab"}
-        
-        response = await self.client.post(
-            f"{API_BASE}/auth/set-password",
-            json=short_password_data,
-            headers=headers
-        )
-        
-        if response.status_code == 400:
-            print(f"✅ Correctly rejected short password with 400 status")
-            error_msg = response.json().get('detail', response.text)
-            print(f"   Error: {error_msg}")
-            if "6 characters" in error_msg:
-                print(f"✅ Proper minimum length validation message")
-            else:
-                print(f"⚠️  Validation message doesn't mention 6 character minimum")
-        else:
-            print(f"❌ Expected 400 but got {response.status_code}: {response.text}")
-            
         return True
-
-    async def test_auth_me_has_password_field(self):
-        """Test that /auth/me includes has_password field"""
-        print("\n=== Testing /auth/me has_password Field ===")
+    
+    async def test_02_create_decision_with_full_data(self):
+        """Test 2: Create a decision with factors, classifications, ratings and options"""
+        print("\n=== STEP 2: CREATE DECISION WITH FULL DATA ===")
         
-        if not self.session_token:
-            print("❌ No session token available for /auth/me testing")
+        # Create basic decision
+        decision_data = {
+            "title": "Career Decision",
+            "context": "Choosing next career move"
+        }
+        
+        resp = await self.make_request("POST", "/decisions", decision_data)
+        if resp["status"] == 200:
+            self.decision_id = resp["data"]["id"]
+            self.log_test("Decision Creation", "PASS", f"Decision ID: {self.decision_id}")
+        else:
+            self.log_test("Decision Creation", "FAIL", f"Status {resp['status']}: {resp['data']}")
             return False
-            
-        headers = {"Authorization": f"Bearer {self.session_token}"}
         
-        response = await self.client.get(
-            f"{API_BASE}/auth/me",
-            headers=headers
-        )
+        # Add factors with classifications and ratings + options with assessments
+        factor1_id = "factor_salary_123"
+        factor2_id = "factor_growth_456" 
+        factor3_id = "factor_balance_789"
+        option1_id = "option_companya_111"
+        option2_id = "option_companyb_222"
         
-        if response.status_code == 200:
-            data = response.json()
-            print(f"✅ /auth/me endpoint working")
-            print(f"   User ID: {data.get('user_id')}")
-            print(f"   Email: {data.get('email')}")
-            print(f"   Name: {data.get('name')}")
-            print(f"   Auth Method: {data.get('auth_method')}")
+        update_data = {
+            "factors": [
+                {
+                    "id": factor1_id,
+                    "name": "Salary",
+                    "category": "primary",
+                    "rating": 50,
+                    "order": 1
+                },
+                {
+                    "id": factor2_id,
+                    "name": "Growth",
+                    "category": "primary", 
+                    "rating": 40,
+                    "order": 2
+                },
+                {
+                    "id": factor3_id,
+                    "name": "Work-Life Balance",
+                    "category": "secondary",
+                    "rating": 30,
+                    "order": 3
+                }
+            ],
+            "options": [
+                {
+                    "id": option1_id,
+                    "name": "Company A",
+                    "assessments": [
+                        {"factor_id": factor1_id, "percentage": 80, "unit_value": "120000 USD", "assessment_mode": "custom"},
+                        {"factor_id": factor2_id, "percentage": 70, "unit_value": "High", "assessment_mode": "H"},
+                        {"factor_id": factor3_id, "percentage": 60, "unit_value": "Medium", "assessment_mode": "M"}
+                    ],
+                    "worth_percentage": 0.0
+                },
+                {
+                    "id": option2_id,
+                    "name": "Company B", 
+                    "assessments": [
+                        {"factor_id": factor1_id, "percentage": 65, "unit_value": "95000 USD", "assessment_mode": "custom"},
+                        {"factor_id": factor2_id, "percentage": 90, "unit_value": "Very High", "assessment_mode": "custom"},
+                        {"factor_id": factor3_id, "percentage": 85, "unit_value": "High", "assessment_mode": "H"}
+                    ],
+                    "worth_percentage": 0.0
+                }
+            ]
+        }
+        
+        resp = await self.make_request("PUT", f"/decisions/{self.decision_id}", update_data)
+        if resp["status"] == 200:
+            self.log_test("Decision Update with Factors & Options", "PASS", "3 factors (2 primary, 1 secondary) + 2 options with assessments added")
+        else:
+            self.log_test("Decision Update with Factors & Options", "FAIL", f"Status {resp['status']}: {resp['data']}")
+            return False
+        
+        # Verify the decision was created correctly
+        resp = await self.make_request("GET", f"/decisions/{self.decision_id}")
+        if resp["status"] == 200:
+            decision = resp["data"]
+            factors_count = len(decision.get("factors", []))
+            options_count = len(decision.get("options", []))
+            self.log_test("Decision Verification", "PASS", f"Decision has {factors_count} factors and {options_count} options")
+        else:
+            self.log_test("Decision Verification", "FAIL", f"Could not retrieve decision: {resp['data']}")
+            return False
+        
+        return True
+    
+    async def test_03_clone_at_each_level(self):
+        """Test 3: Test Clone at each level"""
+        print("\n=== STEP 3: TEST CLONE AT EACH LEVEL ===")
+        
+        clone_tests = [
+            {
+                "level": "factors",
+                "title": "2026-03-19 Clone Factors", 
+                "verify": "factors have names but ratings reset to 0 and category reset to primary"
+            },
+            {
+                "level": "classification",
+                "title": "2026-03-19 Clone Classification",
+                "verify": "factors have correct primary/secondary categories but ratings reset to 0"
+            },
+            {
+                "level": "prioritization",
+                "title": "2026-03-19 Clone Priority",
+                "verify": "factors have categories AND ratings preserved"
+            },
+            {
+                "level": "options",
+                "title": "2026-03-19 Clone Options", 
+                "verify": "factors + options names present, but no assessments"
+            },
+            {
+                "level": "assessment",
+                "title": "2026-03-19 Clone Full",
+                "verify": "complete clone with assessments and worth_percentages"
+            }
+        ]
+        
+        for test in clone_tests:
+            clone_data = {
+                "title": test["title"],
+                "clone_level": test["level"]
+            }
             
-            # Check for has_password field
-            if 'has_password' in data:
-                has_password = data['has_password']
-                print(f"✅ has_password field present: {has_password}")
-                if isinstance(has_password, bool):
-                    print(f"✅ has_password is boolean type as expected")
-                    return True
+            resp = await self.make_request("POST", f"/decisions/{self.decision_id}/clone", clone_data)
+            if resp["status"] == 200:
+                cloned_id = resp["data"]["id"]
+                self.log_test(f"Clone {test['level'].title()} Level", "PASS", f"Cloned decision ID: {cloned_id}")
+                
+                # Verify clone result
+                resp = await self.make_request("GET", f"/decisions/{cloned_id}")
+                if resp["status"] == 200:
+                    cloned = resp["data"]
+                    verification_result = await self._verify_clone_level(test["level"], cloned)
+                    if verification_result["success"]:
+                        self.log_test(f"Verify Clone {test['level'].title()}", "PASS", verification_result["details"])
+                    else:
+                        self.log_test(f"Verify Clone {test['level'].title()}", "FAIL", verification_result["details"])
                 else:
-                    print(f"⚠️  has_password is not boolean: {type(has_password)}")
-                    return True
+                    self.log_test(f"Verify Clone {test['level'].title()}", "FAIL", f"Could not retrieve cloned decision")
             else:
-                print(f"❌ has_password field missing from /auth/me response")
-                print(f"   Available fields: {list(data.keys())}")
-                return False
+                self.log_test(f"Clone {test['level'].title()} Level", "FAIL", f"Status {resp['status']}: {resp['data']}")
+        
+        return True
+    
+    async def _verify_clone_level(self, level: str, cloned_decision: Dict) -> Dict[str, Any]:
+        """Verify clone results match expected level"""
+        factors = cloned_decision.get("factors", [])
+        options = cloned_decision.get("options", [])
+        
+        if level == "factors":
+            # Should have factor names, but ratings=0 and category=primary
+            if all(f.get("rating") == 0 and f.get("category") == "primary" for f in factors):
+                return {"success": True, "details": f"✓ {len(factors)} factors with names, ratings reset to 0, categories reset to primary"}
+            else:
+                return {"success": False, "details": "Factors don't match 'factors' level requirements"}
+        
+        elif level == "classification": 
+            # Should preserve primary/secondary categories but reset ratings to 0
+            primary_count = sum(1 for f in factors if f.get("category") == "primary")
+            secondary_count = sum(1 for f in factors if f.get("category") == "secondary")
+            all_ratings_zero = all(f.get("rating") == 0 for f in factors)
+            
+            if all_ratings_zero and primary_count >= 1 and secondary_count >= 1:
+                return {"success": True, "details": f"✓ Categories preserved ({primary_count} primary, {secondary_count} secondary), ratings reset to 0"}
+            else:
+                return {"success": False, "details": "Classification level requirements not met"}
+        
+        elif level == "prioritization":
+            # Should preserve categories AND ratings
+            ratings_preserved = any(f.get("rating", 0) > 0 for f in factors)
+            categories_preserved = any(f.get("category") == "secondary" for f in factors)
+            
+            if ratings_preserved and categories_preserved:
+                return {"success": True, "details": f"✓ Categories and ratings preserved"}
+            else:
+                return {"success": False, "details": "Prioritization level requirements not met"}
+        
+        elif level == "options":
+            # Should have factors + options but no assessments
+            options_have_no_assessments = all(len(opt.get("assessments", [])) == 0 for opt in options)
+            
+            if len(options) > 0 and options_have_no_assessments:
+                return {"success": True, "details": f"✓ {len(factors)} factors + {len(options)} options, no assessments"}
+            else:
+                return {"success": False, "details": "Options level requirements not met"}
+        
+        elif level == "assessment":
+            # Should be complete clone with assessments
+            options_have_assessments = any(len(opt.get("assessments", [])) > 0 for opt in options)
+            
+            if len(options) > 0 and options_have_assessments:
+                return {"success": True, "details": f"✓ Complete clone with assessments preserved"}
+            else:
+                return {"success": False, "details": "Assessment level requirements not met"}
+        
+        return {"success": False, "details": "Unknown clone level"}
+    
+    async def test_04_template_functionality(self):
+        """Test 4: Test Templates - save, list, use, delete"""
+        print("\n=== STEP 4: TEST TEMPLATE FUNCTIONALITY ===")
+        
+        # Save decision as template (options type)
+        template_data = {
+            "name": "Career Template",
+            "template_type": "options"
+        }
+        
+        resp = await self.make_request("POST", f"/decisions/{self.decision_id}/save-as-template", template_data)
+        if resp["status"] == 200:
+            template1_id = resp["data"]["id"]
+            self.template_ids.append(template1_id)
+            self.log_test("Save Template (Options Type)", "PASS", f"Template ID: {template1_id}")
         else:
-            print(f"❌ /auth/me failed: {response.status_code} - {response.text}")
+            self.log_test("Save Template (Options Type)", "FAIL", f"Status {resp['status']}: {resp['data']}")
             return False
-
-    async def run_all_tests(self):
-        """Run all auth endpoint tests in sequence"""
-        print("🚀 Starting Authentication Endpoints Testing")
-        print(f"Backend URL: {BACKEND_URL}")
         
-        tests_passed = 0
-        total_tests = 4
+        # Save decision as template (assessment type)
+        template_data2 = {
+            "name": "Career Full Template", 
+            "template_type": "assessment"
+        }
         
-        # Test 1: Register test user
-        if await self.test_register_user():
-            tests_passed += 1
-            print("✅ User Registration: PASSED")
+        resp = await self.make_request("POST", f"/decisions/{self.decision_id}/save-as-template", template_data2)
+        if resp["status"] == 200:
+            template2_id = resp["data"]["id"]
+            self.template_ids.append(template2_id)
+            self.log_test("Save Template (Assessment Type)", "PASS", f"Template ID: {template2_id}")
         else:
-            print("❌ User Registration: FAILED")
-            
-        # Test 2: Forgot Password Flow
-        if await self.test_forgot_password_flow():
-            tests_passed += 1
-            print("✅ Forgot Password Flow: PASSED")
-        else:
-            print("❌ Forgot Password Flow: FAILED")
-            
-        # Test 3: Set Password Flow 
-        if await self.test_set_password_flow():
-            tests_passed += 1
-            print("✅ Set Password Flow: PASSED")
-        else:
-            print("❌ Set Password Flow: FAILED")
-            
-        # Test 4: Auth Me has_password field
-        if await self.test_auth_me_has_password_field():
-            tests_passed += 1
-            print("✅ Auth Me has_password Field: PASSED")
-        else:
-            print("❌ Auth Me has_password Field: FAILED")
-        
-        print("\n" + "="*80)
-        print("📊 FINAL AUTH ENDPOINTS TEST SUMMARY")
-        print("="*80)
-        print(f"Tests passed: {tests_passed}/{total_tests}")
-        
-        if tests_passed == total_tests:
-            print("✅ ALL AUTH ENDPOINTS TESTS PASSED!")
-            print("✅ Forgot Password and Set Password features working correctly")
-            return True
-        else:
-            print("❌ Some auth endpoint tests failed")
+            self.log_test("Save Template (Assessment Type)", "FAIL", f"Status {resp['status']}: {resp['data']}")
             return False
+        
+        # List all templates
+        resp = await self.make_request("GET", "/templates")
+        if resp["status"] == 200:
+            templates = resp["data"]
+            template_count = len(templates)
+            our_templates = [t for t in templates if t["id"] in self.template_ids]
+            self.log_test("List Templates", "PASS", f"Found {template_count} templates, {len(our_templates)} are ours")
+        else:
+            self.log_test("List Templates", "FAIL", f"Status {resp['status']}: {resp['data']}")
+            return False
+        
+        # Use template to create new decision
+        use_template_data = {
+            "title": "2026-03-19 From Template"
+        }
+        
+        resp = await self.make_request("POST", f"/templates/{template1_id}/use", use_template_data)
+        if resp["status"] == 200:
+            new_decision_id = resp["data"]["id"]
+            self.log_test("Use Template", "PASS", f"New decision created: {new_decision_id}")
+            
+            # Verify new decision has correct data
+            resp = await self.make_request("GET", f"/decisions/{new_decision_id}")
+            if resp["status"] == 200:
+                new_decision = resp["data"]
+                factors_count = len(new_decision.get("factors", []))
+                options_count = len(new_decision.get("options", []))
+                self.log_test("Verify Template Usage", "PASS", f"New decision has {factors_count} factors and {options_count} options")
+            else:
+                self.log_test("Verify Template Usage", "FAIL", "Could not retrieve new decision")
+        else:
+            self.log_test("Use Template", "FAIL", f"Status {resp['status']}: {resp['data']}")
+        
+        # Delete template
+        resp = await self.make_request("DELETE", f"/templates/{template1_id}")
+        if resp["status"] == 200:
+            self.log_test("Delete Template", "PASS", "Template deleted successfully")
+        else:
+            self.log_test("Delete Template", "FAIL", f"Status {resp['status']}: {resp['data']}")
+        
+        return True
+    
+    def print_summary(self):
+        """Print test summary"""
+        print("\n" + "="*60)
+        print("CLONE & TEMPLATE API TESTING SUMMARY")
+        print("="*60)
+        
+        passed = sum(1 for r in self.test_results if r["status"] == "PASS")
+        failed = sum(1 for r in self.test_results if r["status"] == "FAIL")
+        total = len(self.test_results)
+        
+        print(f"Total Tests: {total}")
+        print(f"Passed: {passed}")
+        print(f"Failed: {failed}")
+        print(f"Success Rate: {(passed/total*100):.1f}%")
+        
+        if failed > 0:
+            print("\n❌ FAILED TESTS:")
+            for result in self.test_results:
+                if result["status"] == "FAIL":
+                    print(f"  - {result['name']}: {result['details']}")
+        else:
+            print("\n🎉 ALL TESTS PASSED!")
+        
+        print("\n" + "="*60)
 
 async def main():
-    """Run all authentication endpoint tests"""
-    tester = AuthEndpointTester()
+    """Run all Clone and Template API tests"""
+    print("🚀 Starting Clone and Template API Tests...")
+    print(f"Backend URL: {BACKEND_URL}")
     
-    try:
-        return await tester.run_all_tests()
-    except Exception as e:
-        print(f"❌ Unexpected error during testing: {e}")
-        return False
-    finally:
-        await tester.close()
+    async with CloneTemplateAPITester() as tester:
+        # Run all tests in sequence
+        success = True
+        
+        success = await tester.test_01_register_and_login() and success
+        if not success:
+            print("❌ Registration failed, stopping tests")
+            return
+            
+        success = await tester.test_02_create_decision_with_full_data() and success
+        if not success:
+            print("❌ Decision creation failed, stopping tests") 
+            return
+            
+        await tester.test_03_clone_at_each_level()
+        await tester.test_04_template_functionality()
+        
+        # Print summary
+        tester.print_summary()
 
 if __name__ == "__main__":
-    result = asyncio.run(main())
-    exit(0 if result else 1)
+    asyncio.run(main())

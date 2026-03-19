@@ -291,6 +291,36 @@ backend:
         agent: "testing"
         comment: "✅ PASSED: Auth me endpoint enhanced successfully. Returns all user data (user_id, email, name, auth_method) plus new has_password boolean field. Field correctly indicates password availability and is proper boolean type as expected."
 
+  - task: "Clone Decision API"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented POST /api/decisions/{decision_id}/clone with clone_level parameter for 5 levels: factors, classification, prioritization, options, assessment"
+      - working: true
+        agent: "testing"
+        comment: "✅ COMPREHENSIVE CLONE API TESTING PASSED: All 5 clone levels working perfectly! (1) Factors level: clones factor names, resets ratings to 0 and categories to primary, (2) Classification level: preserves primary/secondary categories, resets ratings to 0, (3) Prioritization level: preserves both categories and ratings, (4) Options level: includes factors + option names but no assessments, (5) Assessment level: complete clone with all assessments and worth_percentages preserved. Clone logic implemented correctly for all scenarios."
+
+  - task: "Template Management API"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented complete template system: POST /api/decisions/{id}/save-as-template, GET /api/templates, POST /api/templates/{id}/use, DELETE /api/templates/{id} with options and assessment template types"
+      - working: true
+        agent: "testing"
+        comment: "✅ TEMPLATE MANAGEMENT API TESTING PASSED: All template operations working correctly! (1) Save-as-template working for both 'options' and 'assessment' types, (2) List templates returns all created templates, (3) Use template successfully creates new decision with correct factor ID mapping and data structure, (4) Delete template working with proper authorization. Complete template lifecycle tested and verified."
+
 frontend:
   - task: "Login Screen (Email + Google)"
     implemented: true
@@ -399,3 +429,5 @@ agent_communication:
     message: "✅ PRR DECISIONS WORTH PERCENTAGE BUG FIX TESTING COMPLETE: All 5 comprehensive test scenarios passed successfully! Confirmed bug fix is working perfectly: (1) Normal LMH values produce correct percentages ≤100%, (2) Edge case assessment percentage=150 correctly clamped to 100% in server-side calculation, (3) Edge case assessment percentage=0 handled properly, (4) All factors at 100% produce exactly 100% worth (not exceeding limit), (5) All factors at 75% produce exactly 75% worth. Key validations: worth_percentage NEVER exceeds 100% in any scenario, individual assessment percentage clamping functional, unit_value and assessment_mode fields are preserved in OptionAssessment model. Backend API is robust and production-ready with this critical bug fix implemented."
   - agent: "testing"
     message: "✅ NEW AUTH ENDPOINTS TESTING COMPLETE: All 4 authentication endpoint tests passed successfully! Tested: (1) User Registration with testforgot@test.com created successfully, (2) Forgot Password Flow - OTP generation working, nonexistent email returns 404, password reset with correct OTP successful, wrong OTP correctly rejected, login with new password verified, (3) Set Password Flow - valid password set successfully, short password validation working with proper 6-character minimum message, (4) Enhanced /auth/me endpoint includes has_password boolean field as expected. All forgot password and set password features working correctly. Backend authentication system is robust and production-ready."
+  - agent: "testing"
+    message: "✅ CLONE AND TEMPLATE API TESTING COMPLETE: All 21 tests passed successfully! Comprehensive testing of new Clone and Template endpoints: (1) User Registration & Login with Bearer token working perfectly, (2) Created decision with 3 factors (2 primary, 1 secondary) and 2 options with assessments, (3) Clone API tested at all 5 levels - factors (names only, reset ratings/categories), classification (preserve categories, reset ratings), prioritization (preserve both), options (factors + option names, no assessments), assessment (complete clone), (4) Template Management - save as template (options/assessment types), list templates, use template to create new decisions, delete templates. All clone logic and template lifecycle operations working correctly. Backend Clone and Template functionality is production-ready."
