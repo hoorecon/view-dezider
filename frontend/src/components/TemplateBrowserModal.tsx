@@ -64,8 +64,15 @@ export default function TemplateBrowserModal({
   const [newTitle, setNewTitle] = useState('');
   const [activeTab, setActiveTab] = useState<'my' | 'shared' | 'public' | 'authorized'>('authorized');
   const [importing, setImporting] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   const isAdmin = ['admin', 'co_admin', 'super_admin'].includes(userRole);
+
+  const showFeedback = (text: string, type: 'success' | 'error') => {
+    setFeedbackMsg({ text, type });
+    setTimeout(() => setFeedbackMsg(null), 3000);
+  };
 
   useEffect(() => {
     if (visible) {
@@ -122,44 +129,32 @@ export default function TemplateBrowserModal({
   };
 
   const handleDeleteTemplate = (template: Template) => {
-    confirmAction(
-      'Delete Template',
-      `Delete "${template.name}"? This cannot be undone.`,
-      async () => {
-        try {
-          await api.delete(`/templates/${template.id}`);
-          fetchTemplates();
-          if (selectedTemplate?.id === template.id) {
-            setSelectedTemplate(null);
-          }
-        } catch (err: any) {
-          if (Platform.OS === 'web') {
-            window.alert(err.response?.data?.detail || 'Failed to delete template');
-          } else {
-            Alert.alert('Error', err.response?.data?.detail || 'Failed to delete template');
-          }
-        }
+    setDeleteConfirmId(template.id);
+  };
+
+  const confirmDeleteTemplate = async (template: Template) => {
+    try {
+      await api.delete(`/templates/${template.id}`);
+      setDeleteConfirmId(null);
+      showFeedback('Template deleted', 'success');
+      fetchTemplates();
+      if (selectedTemplate?.id === template.id) {
+        setSelectedTemplate(null);
       }
-    );
+    } catch (err: any) {
+      showFeedback(err.response?.data?.detail || 'Failed to delete', 'error');
+      setDeleteConfirmId(null);
+    }
   };
 
   const handleImportTemplate = async (template: Template) => {
     setImporting(true);
     try {
       await api.post(`/templates/${template.id}/import`);
-      if (Platform.OS === 'web') {
-        window.alert('Template copied to your collection!');
-      } else {
-        Alert.alert('Imported!', 'Template has been copied to your collection');
-      }
+      showFeedback('Template copied to your collection!', 'success');
       fetchTemplates();
     } catch (err: any) {
-      const msg = err.response?.data?.detail || 'Failed to import template';
-      if (Platform.OS === 'web') {
-        window.alert(msg);
-      } else {
-        Alert.alert('Error', msg);
-      }
+      showFeedback(err.response?.data?.detail || 'Failed to import', 'error');
     } finally {
       setImporting(false);
     }
@@ -175,39 +170,21 @@ export default function TemplateBrowserModal({
   const handleApproveTemplate = async (template: Template) => {
     try {
       await api.post(`/admin/templates/${template.id}/approve`);
-      if (Platform.OS === 'web') {
-        window.alert('Template authorized!');
-      } else {
-        Alert.alert('Authorized!', 'Template is now in Authorized Templates');
-      }
+      showFeedback('Template authorized!', 'success');
       fetchTemplates();
     } catch (err: any) {
-      const msg = err.response?.data?.detail || 'Failed to authorize template';
-      if (Platform.OS === 'web') {
-        window.alert(msg);
-      } else {
-        Alert.alert('Error', msg);
-      }
+      showFeedback(err.response?.data?.detail || 'Failed to authorize', 'error');
     }
   };
 
   const handleRevokeTemplate = async (template: Template) => {
-    confirmAction(
-      'Revoke Authorization',
-      `Remove "${template.name}" from Authorized Templates?`,
-      async () => {
-        try {
-          await api.post(`/admin/templates/${template.id}/revoke`);
-          fetchTemplates();
-        } catch (err: any) {
-          if (Platform.OS === 'web') {
-            window.alert(err.response?.data?.detail || 'Failed to revoke');
-          } else {
-            Alert.alert('Error', err.response?.data?.detail || 'Failed to revoke');
-          }
-        }
-      }
-    );
+    try {
+      await api.post(`/admin/templates/${template.id}/revoke`);
+      showFeedback('Authorization revoked', 'success');
+      fetchTemplates();
+    } catch (err: any) {
+      showFeedback(err.response?.data?.detail || 'Failed to revoke', 'error');
+    }
   };
 
   const formatDate = (dateStr: string) => {
