@@ -179,6 +179,12 @@ backend:
       - working: true
         agent: "testing"
         comment: "✅ PASSED: Full CRUD operations working. Create/Read/Update/Delete all functional. Factor ratings and option assessments calculated correctly with worth percentages. Tested with realistic career decision scenario."
+      - working: true
+        agent: "main"
+        comment: "Bug fix: Updated OptionAssessment Pydantic model to include unit_value and assessment_mode fields. Added server-side clamping of assessment percentages to 0-100 range. Capped worth_percentage at 100%. This fixes the bug where overall worth could exceed 100%."
+      - working: true
+        agent: "testing"
+        comment: "✅ COMPREHENSIVE BUG FIX TESTING PASSED: All 5 PRR decisions worth percentage test cases successful! Verified: (1) Normal LMH values produce correct percentages ≤100%, (2) Assessment percentage=150 correctly clamped to 100%, (3) Assessment percentage=0 handled properly, (4) All factors at 100% produce exactly 100% worth, (5) All factors at 75% produce exactly 75% worth. Bug fix working perfectly - worth_percentage never exceeds 100%, individual assessment clamping functional, unit_value and assessment_mode fields preserved."
 
   - task: "Test123 Sessions CRUD"
     implemented: true
@@ -342,3 +348,7 @@ agent_communication:
     message: "Initial implementation complete. Backend has all auth endpoints, PRR decision system, Test123 instant decisions, journal, and assessment features. Frontend has all screens with Venture Buddha branding. Please test backend APIs first."
   - agent: "testing"
     message: "✅ COMPREHENSIVE BACKEND TESTING COMPLETE: All 16 backend API tests passed successfully! Tested: Auth (register/login/me), PRR Decisions CRUD with factor calculations, Test123 sessions, Assessment system with 4 decision modes, Journal CRUD, Dashboard stats. Used realistic career decision scenarios. Only Google OAuth skipped due to external dependency. All core functionality working perfectly. Backend is production-ready."
+  - agent: "main"
+    message: "Bug fix for worth percentage exceeding 100%. Changes: 1) Backend OptionAssessment model now includes unit_value and assessment_mode fields. 2) Backend calculation now clamps individual assessment percentages to 0-100 and caps worth_percentage at 100. Please test PRR Decisions CRUD specifically focusing on: creating a decision with factors, adding options with assessments (both LMH and custom with values at boundaries like 0, 50, 100), and verify worth_percentage never exceeds 100. Test with edge case: try setting assessment percentage > 100 in the API call and verify it gets clamped."
+  - agent: "testing"
+    message: "✅ PRR DECISIONS WORTH PERCENTAGE BUG FIX TESTING COMPLETE: All 5 comprehensive test scenarios passed successfully! Confirmed bug fix is working perfectly: (1) Normal LMH values produce correct percentages ≤100%, (2) Edge case assessment percentage=150 correctly clamped to 100% in server-side calculation, (3) Edge case assessment percentage=0 handled properly, (4) All factors at 100% produce exactly 100% worth (not exceeding limit), (5) All factors at 75% produce exactly 75% worth. Key validations: worth_percentage NEVER exceeds 100% in any scenario, individual assessment percentage clamping functional, unit_value and assessment_mode fields are preserved in OptionAssessment model. Backend API is robust and production-ready with this critical bug fix implemented."

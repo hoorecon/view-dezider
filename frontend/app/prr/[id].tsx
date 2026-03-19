@@ -258,13 +258,18 @@ export default function PRRDecisionDetail() {
   };
 
   const updateAssessment = (optionId: string, factorId: string, percentage: number, mode?: 'L' | 'M' | 'H' | 'custom', unitValue?: string) => {
+    // Clamp percentage to 0-100 range to prevent worth exceeding 100%
+    const clampedPercentage = percentage !== null && percentage !== undefined 
+      ? Math.min(100, Math.max(0, percentage)) 
+      : percentage;
+    
     const updatedOptions = decision!.options.map((option) => {
       if (option.id !== optionId) return option;
       
       const existingIndex = option.assessments.findIndex((a) => a.factor_id === factorId);
       const newAssessment: OptionAssessment = { 
         factor_id: factorId, 
-        percentage,
+        percentage: clampedPercentage,
         assessment_mode: mode,
         unit_value: unitValue,
       };
@@ -312,9 +317,9 @@ export default function PRRDecisionDetail() {
     return assessment?.percentage ?? null;
   };
 
-  // Calculate worth percentage: Sum of (rating × assessment%) for each factor
-  // Example: If factor has rating 50 and assessment 60%, contribution = 50 × 0.60 = 30
-  // Sum all contributions for total worth
+  // Calculate worth percentage using weighted average formula
+  // Formula: Sum(Rating × Assessment%) / Sum(All Ratings)
+  // This ensures result is always 0-100%
   const calculateDynamicWorth = (option: DecisionOption): { worth: number; assessedCount: number; totalCount: number } => {
     const factors = decision?.factors || [];
     const totalFactors = factors.length;
@@ -324,15 +329,28 @@ export default function PRRDecisionDetail() {
       return { worth: 0, assessedCount: 0, totalCount: totalFactors };
     }
 
-    // Calculate: Sum of (rating × assessment%)
-    // Each factor contributes: rating × (assessment / 100)
-    let worth = 0;
+    // Get total of ALL factor ratings (not just assessed ones)
+    const totalRating = factors.reduce((sum, f) => sum + f.rating, 0);
+
+    if (totalRating === 0) {
+      return { worth: 0, assessedCount: assessedFactors.length, totalCount: totalFactors };
+    }
+
+    // Calculate weighted sum: Sum(rating × assessment%)
+    let weightedSum = 0;
     for (const assessment of assessedFactors) {
       const factor = factors.find(f => f.id === assessment.factor_id);
       if (factor) {
-        worth += factor.rating * (assessment.percentage / 100);
+        // Clamp individual assessment percentage to 0-100 before calculation
+        const clampedPercentage = Math.min(100, Math.max(0, assessment.percentage));
+        weightedSum += factor.rating * (clampedPercentage / 100);
       }
     }
+
+    // Divide by total ratings to get weighted average (0-100%)
+    const rawWorth = (weightedSum / totalRating) * 100;
+    // Cap at 100% - mathematically impossible to exceed if assessments are 0-100%
+    const worth = Math.min(100, Math.max(0, rawWorth));
 
     return { 
       worth: Math.round(worth * 10) / 10, 
@@ -713,9 +731,12 @@ export default function PRRDecisionDetail() {
 
     const handleCustomInputChange = (optionId: string, factorId: string, value: string) => {
       const key = getAssessmentKey(optionId, factorId);
-      // Only allow numbers
+      // Only allow numbers and clamp to 0-100
       const cleanValue = value.replace(/[^0-9]/g, '');
-      setCustomInputValues({ ...customInputValues, [key]: cleanValue });
+      const num = parseInt(cleanValue) || 0;
+      // Clamp to max 100 in real-time to prevent values > 100%
+      const clampedValue = num > 100 ? '100' : cleanValue;
+      setCustomInputValues({ ...customInputValues, [key]: clampedValue });
     };
 
     const handleCustomInputBlur = (optionId: string, factorId: string) => {
@@ -935,8 +956,13 @@ export default function PRRDecisionDetail() {
   };
 
   const renderStep8 = () => {
-    const sortedOptions = [...decision.options].sort(
-      (a, b) => b.worth_percentage - a.worth_percentage
+    // Use dynamic calculation with clamping instead of stored worth_percentage
+    const optionsWithDynamicWorth = decision.options.map(option => ({
+      ...option,
+      dynamic_worth: calculateDynamicWorth(option).worth,
+    }));
+    const sortedOptions = [...optionsWithDynamicWorth].sort(
+      (a, b) => b.dynamic_worth - a.dynamic_worth
     );
     const bestOption = sortedOptions[0];
 
@@ -962,7 +988,7 @@ export default function PRRDecisionDetail() {
               <View style={styles.resultInfo}>
                 <Text style={styles.resultName}>{option.name}</Text>
                 <Text style={styles.resultWorth}>
-                  Worth: {option.worth_percentage.toFixed(1)}%
+                  Worth: {option.dynamic_worth.toFixed(1)}%
                 </Text>
               </View>
               {index === 0 && (

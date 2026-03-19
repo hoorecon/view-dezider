@@ -70,7 +70,9 @@ class Factor(BaseModel):
 
 class OptionAssessment(BaseModel):
     factor_id: str
-    percentage: int  # 0-100 how well option meets this factor
+    percentage: Optional[int] = None  # 0-100 how well option meets this factor
+    unit_value: Optional[str] = None  # Actual value with unit (e.g., "50000 USD")
+    assessment_mode: Optional[str] = None  # 'L', 'M', 'H', or 'custom'
 
 class DecisionOption(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -511,8 +513,13 @@ async def update_decision(decision_id: str, update_data: PRRDecisionUpdate, user
                 for assessment in option.get("assessments", []):
                     factor = next((f for f in factors if f["id"] == assessment["factor_id"]), None)
                     if factor:
-                        worth += (factor["rating"] / total_rating) * assessment["percentage"]
-                option["worth_percentage"] = round(worth, 2)
+                        # Clamp individual assessment percentage to 0-100
+                        pct = assessment.get("percentage") or 0
+                        clamped_pct = max(0, min(100, pct))
+                        assessment["percentage"] = clamped_pct
+                        worth += (factor["rating"] / total_rating) * clamped_pct
+                # Cap total worth at 100%
+                option["worth_percentage"] = round(min(100.0, max(0.0, worth)), 2)
             else:
                 option["worth_percentage"] = 0.0
     
