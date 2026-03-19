@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   Alert,
+  Platform,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -55,25 +56,40 @@ export default function PRRScreen() {
   };
 
   const handleDelete = async (id: string) => {
-    Alert.alert(
-      'Delete Decision',
-      'Are you sure you want to delete this decision?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await api.delete(`/decisions/${id}`);
-              setDecisions(decisions.filter((d) => d.id !== id));
-            } catch (error) {
-              Alert.alert('Error', 'Failed to delete decision');
-            }
+    const performDelete = async () => {
+      try {
+        await api.delete(`/decisions/${id}`);
+        setDecisions(decisions.filter((d) => d.id !== id));
+      } catch (error) {
+        if (Platform.OS === 'web') {
+          window.alert('Failed to delete decision');
+        } else {
+          Alert.alert('Error', 'Failed to delete decision');
+        }
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      // Use window.confirm for web
+      const confirmed = window.confirm('Are you sure you want to delete this decision?');
+      if (confirmed) {
+        await performDelete();
+      }
+    } else {
+      // Use Alert.alert for native
+      Alert.alert(
+        'Delete Decision',
+        'Are you sure you want to delete this decision?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: performDelete,
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   };
 
   const getStatusColor = (status: string) => {
