@@ -8,6 +8,7 @@ import {
   Alert,
   Image,
   ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,6 +17,7 @@ import { useAuthStore } from '../../src/store/authStore';
 import { COLORS } from '../../src/constants/colors';
 import { Card } from '../../src/components/Card';
 import { GradientButton } from '../../src/components/GradientButton';
+import { Input } from '../../src/components/Input';
 import api from '../../src/utils/api';
 
 interface AssessmentQuestion {
@@ -34,10 +36,28 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // Set Password state
+  const [showSetPassword, setShowSetPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [hasPassword, setHasPassword] = useState(false);
+
   useEffect(() => {
     fetchQuestions();
     fetchLatestAssessment();
+    fetchUserInfo();
   }, []);
+
+  const fetchUserInfo = async () => {
+    try {
+      const response = await api.get('/auth/me');
+      setHasPassword(response.data.has_password || false);
+    } catch (error) {
+      console.error('Error fetching user info:', error);
+    }
+  };
 
   const fetchQuestions = async () => {
     try {
@@ -100,6 +120,37 @@ export default function ProfileScreen() {
         },
       ]
     );
+  };
+
+  const handleSetPassword = async () => {
+    setPasswordError('');
+    
+    if (!newPassword) {
+      setPasswordError('Please enter a password');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match');
+      return;
+    }
+
+    setPasswordLoading(true);
+    try {
+      await api.post('/auth/set-password', { new_password: newPassword });
+      setHasPassword(true);
+      setShowSetPassword(false);
+      setNewPassword('');
+      setConfirmPassword('');
+      Alert.alert('Success', 'Password set successfully! You can now also login with email and password.');
+    } catch (err: any) {
+      setPasswordError(err.response?.data?.detail || 'Failed to set password');
+    } finally {
+      setPasswordLoading(false);
+    }
   };
 
   const getModeColor = (mode: string) => {
@@ -286,6 +337,106 @@ export default function ProfileScreen() {
             style={styles.takeAssessmentButton}
           />
         </Card>
+      )}
+
+      {/* Set Password Section - Show for Google users or users who want to change password */}
+      {(user?.auth_method === 'google' || user?.auth_method === 'google_and_email') && (
+        <>
+          <Text style={styles.sectionTitle}>Account Security</Text>
+          <Card style={styles.passwordCard}>
+            {hasPassword ? (
+              <View style={styles.passwordSetRow}>
+                <View style={styles.passwordSetIcon}>
+                  <Ionicons name="shield-checkmark" size={24} color={COLORS.success} />
+                </View>
+                <View style={styles.passwordSetInfo}>
+                  <Text style={styles.passwordSetTitle}>Password Set</Text>
+                  <Text style={styles.passwordSetSubtitle}>
+                    You can login with both Google and email/password
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowSetPassword(!showSetPassword);
+                    setPasswordError('');
+                    setNewPassword('');
+                    setConfirmPassword('');
+                  }}
+                >
+                  <Text style={styles.changePasswordLink}>Change</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+                <View style={styles.passwordSetRow}>
+                  <View style={[styles.passwordSetIcon, { backgroundColor: 'rgba(245, 158, 11, 0.1)' }]}>
+                    <Ionicons name="key-outline" size={24} color={COLORS.warning} />
+                  </View>
+                  <View style={styles.passwordSetInfo}>
+                    <Text style={styles.passwordSetTitle}>Set a Password</Text>
+                    <Text style={styles.passwordSetSubtitle}>
+                      Enable email login alongside Google Sign-In
+                    </Text>
+                  </View>
+                </View>
+                {!showSetPassword && (
+                  <TouchableOpacity
+                    style={styles.setPasswordButton}
+                    onPress={() => setShowSetPassword(true)}
+                  >
+                    <Ionicons name="lock-closed-outline" size={16} color={COLORS.primary} />
+                    <Text style={styles.setPasswordButtonText}>Set Password</Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
+
+            {showSetPassword && (
+              <View style={styles.setPasswordForm}>
+                {passwordError ? (
+                  <View style={styles.passwordErrorContainer}>
+                    <Ionicons name="alert-circle" size={16} color={COLORS.error} />
+                    <Text style={styles.passwordErrorText}>{passwordError}</Text>
+                  </View>
+                ) : null}
+
+                <Input
+                  label="New Password"
+                  placeholder="Min 6 characters"
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  secureTextEntry
+                />
+                <Input
+                  label="Confirm Password"
+                  placeholder="Re-enter password"
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  secureTextEntry
+                />
+                <View style={styles.setPasswordActions}>
+                  <TouchableOpacity
+                    style={styles.cancelButton}
+                    onPress={() => {
+                      setShowSetPassword(false);
+                      setPasswordError('');
+                      setNewPassword('');
+                      setConfirmPassword('');
+                    }}
+                  >
+                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <GradientButton
+                    title={hasPassword ? 'Update Password' : 'Set Password'}
+                    onPress={handleSetPassword}
+                    loading={passwordLoading}
+                    style={styles.savePasswordButton}
+                  />
+                </View>
+              </View>
+            )}
+          </Card>
+        </>
       )}
 
       {/* Logout */}
@@ -519,6 +670,94 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: COLORS.error,
+  },
+  // Set Password styles
+  passwordCard: {
+    marginBottom: 16,
+  },
+  passwordSetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  passwordSetIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  passwordSetInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  passwordSetTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  passwordSetSubtitle: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  changePasswordLink: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+  setPasswordButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(142, 36, 170, 0.08)',
+    borderRadius: 8,
+    gap: 6,
+  },
+  setPasswordButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+  setPasswordForm: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.divider,
+  },
+  passwordErrorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 12,
+    gap: 6,
+  },
+  passwordErrorText: {
+    color: COLORS.error,
+    fontSize: 13,
+    flex: 1,
+  },
+  setPasswordActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 4,
+  },
+  cancelButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+  },
+  cancelButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  savePasswordButton: {
+    flex: 1,
   },
   appInfo: {
     alignItems: 'center',

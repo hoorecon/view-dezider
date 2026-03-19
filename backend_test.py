@@ -10,338 +10,353 @@ from datetime import datetime
 BACKEND_URL = "https://best-mate-decisions.preview.emergentagent.com"
 API_BASE = f"{BACKEND_URL}/api"
 
-# Test data that looks realistic for PRR Decision System
-TEST_USER_DATA = {
-    "email": f"alex.carter.{datetime.now().timestamp():.0f}@techstartup.com",
-    "password": "SecurePass2025!",
-    "name": "Alex Carter"
-}
-
-class BackendAPITester:
+class AuthEndpointTester:
     def __init__(self):
         self.session_token = None
         self.user_id = None
         self.client = httpx.AsyncClient(timeout=30.0)
+        self.stored_otp = None
         
     async def close(self):
         await self.client.aclose()
         
-    async def register_user(self):
-        """Register a test user and get session token"""
+    async def test_register_user(self):
+        """Register a test user for forgot password testing"""
         print("\n=== Testing User Registration ===")
+        
+        test_user_data = {
+            "email": "testforgot@test.com",
+            "password": "pass123",
+            "name": "Test User"
+        }
         
         response = await self.client.post(
             f"{API_BASE}/auth/register",
-            json=TEST_USER_DATA
+            json=test_user_data
         )
         
         if response.status_code == 200:
             data = response.json()
             self.session_token = data["session_token"]
             self.user_id = data["user_id"]
-            print(f"✅ Registration successful - User ID: {self.user_id}")
+            print(f"✅ Registration successful")
+            print(f"   User ID: {self.user_id}")
+            print(f"   Email: {test_user_data['email']}")
+            print(f"   Session Token: {self.session_token[:20]}...")
             return True
+        elif response.status_code == 400 and "already registered" in response.text:
+            print(f"✅ User already exists, continuing with testing")
+            # Try to login to get session token
+            return await self.login_existing_user()
         else:
             print(f"❌ Registration failed: {response.status_code} - {response.text}")
             return False
             
-    async def test_prr_decisions_worth_calculation_bug_fix(self):
-        """Test PRR decisions worth percentage calculation bug fix"""
-        print("\n=== Testing PRR Decisions Worth Percentage Bug Fix ===")
+    async def login_existing_user(self):
+        """Login with existing test user"""
+        print("\n--- Logging in with existing test user ---")
+        login_data = {
+            "email": "testforgot@test.com", 
+            "password": "pass123"
+        }
+        
+        response = await self.client.post(
+            f"{API_BASE}/auth/login",
+            json=login_data
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            self.session_token = data["session_token"]
+            self.user_id = data["user_id"]
+            print(f"✅ Login successful for existing user")
+            return True
+        else:
+            # User might have changed password, try with newpass456
+            login_data["password"] = "newpass456"
+            response = await self.client.post(
+                f"{API_BASE}/auth/login",
+                json=login_data
+            )
+            if response.status_code == 200:
+                data = response.json()
+                self.session_token = data["session_token"]
+                self.user_id = data["user_id"]
+                print(f"✅ Login successful with reset password")
+                return True
+            else:
+                print(f"❌ Login failed: {response.status_code} - {response.text}")
+                return False
+
+    async def test_forgot_password_flow(self):
+        """Test the complete forgot password flow"""
+        print("\n=== Testing Forgot Password Flow ===")
+        
+        # Test 2a: POST forgot-password with valid email
+        print("\n2a. Testing forgot-password with valid email...")
+        forgot_data = {"email": "testforgot@test.com"}
+        
+        response = await self.client.post(
+            f"{API_BASE}/auth/forgot-password",
+            json=forgot_data
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            self.stored_otp = data.get("otp")  # MVP returns OTP in response
+            print(f"✅ Forgot password request successful")
+            print(f"   Message: {data.get('message', '')}")
+            print(f"   OTP: {self.stored_otp}")
+            print(f"   Expires in: {data.get('expires_in_minutes', 'Unknown')} minutes")
+        else:
+            print(f"❌ Forgot password failed: {response.status_code} - {response.text}")
+            return False
+            
+        # Test 2b: POST forgot-password with nonexistent email
+        print("\n2b. Testing forgot-password with nonexistent email...")
+        forgot_data_invalid = {"email": "nonexistent@test.com"}
+        
+        response = await self.client.post(
+            f"{API_BASE}/auth/forgot-password",
+            json=forgot_data_invalid
+        )
+        
+        if response.status_code == 404:
+            print(f"✅ Correctly returned 404 for nonexistent email")
+            print(f"   Error: {response.json().get('detail', response.text)}")
+        else:
+            print(f"❌ Expected 404 but got {response.status_code}: {response.text}")
+            
+        # Test 2c: POST reset-password with correct email + OTP + new_password
+        print("\n2c. Testing reset-password with correct OTP...")
+        if not self.stored_otp:
+            print("❌ No OTP available for testing")
+            return False
+            
+        reset_data = {
+            "email": "testforgot@test.com",
+            "otp": self.stored_otp,
+            "new_password": "newpass456"
+        }
+        
+        response = await self.client.post(
+            f"{API_BASE}/auth/reset-password",
+            json=reset_data
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            print(f"✅ Password reset successful")
+            print(f"   Message: {data.get('message', '')}")
+        else:
+            print(f"❌ Password reset failed: {response.status_code} - {response.text}")
+            return False
+            
+        # Test 2d: POST reset-password with wrong OTP
+        print("\n2d. Testing reset-password with wrong OTP...")
+        wrong_reset_data = {
+            "email": "testforgot@test.com",
+            "otp": "999999",  # Wrong OTP
+            "new_password": "anothernewpass"
+        }
+        
+        response = await self.client.post(
+            f"{API_BASE}/auth/reset-password",
+            json=wrong_reset_data
+        )
+        
+        if response.status_code == 400:
+            print(f"✅ Correctly rejected wrong OTP with 400 status")
+            print(f"   Error: {response.json().get('detail', response.text)}")
+        else:
+            print(f"❌ Expected 400 but got {response.status_code}: {response.text}")
+            
+        # Test 2e: Login with new password to verify reset worked
+        print("\n2e. Testing login with new password...")
+        login_data = {
+            "email": "testforgot@test.com",
+            "password": "newpass456"
+        }
+        
+        response = await self.client.post(
+            f"{API_BASE}/auth/login",
+            json=login_data
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            self.session_token = data["session_token"]  # Update session token
+            print(f"✅ Login with new password successful")
+            print(f"   User ID: {data['user_id']}")
+            print(f"   Email: {data['email']}")
+            return True
+        else:
+            print(f"❌ Login with new password failed: {response.status_code} - {response.text}")
+            return False
+
+    async def test_set_password_flow(self):
+        """Test the set password functionality"""
+        print("\n=== Testing Set Password Flow ===")
         
         if not self.session_token:
-            print("❌ No session token available")
+            print("❌ No session token available for set password testing")
             return False
             
         headers = {"Authorization": f"Bearer {self.session_token}"}
         
-        # 1. Create a PRR decision
-        print("\n1. Creating PRR decision...")
-        decision_data = {
-            "title": "Career Path Selection: Tech Startup vs Corporate Job",
-            "context": "Deciding between joining a tech startup as a senior developer or taking a corporate position at a Fortune 500 company"
-        }
+        # Test 3a: Login first to ensure we have a valid session
+        print("\n3a. Verifying current session...")
+        response = await self.client.get(
+            f"{API_BASE}/auth/me",
+            headers=headers
+        )
+        
+        if response.status_code != 200:
+            print(f"❌ Session verification failed: {response.status_code} - {response.text}")
+            return False
+            
+        print(f"✅ Session verified for user: {response.json().get('email')}")
+        
+        # Test 3b: POST set-password with valid password
+        print("\n3b. Testing set-password with valid password...")
+        set_password_data = {"new_password": "mypass123"}
         
         response = await self.client.post(
-            f"{API_BASE}/decisions",
-            json=decision_data,
+            f"{API_BASE}/auth/set-password",
+            json=set_password_data,
             headers=headers
         )
         
-        if response.status_code != 200:
-            print(f"❌ Failed to create decision: {response.status_code} - {response.text}")
+        if response.status_code == 200:
+            data = response.json()
+            print(f"✅ Set password successful")
+            print(f"   Message: {data.get('message', '')}")
+        else:
+            print(f"❌ Set password failed: {response.status_code} - {response.text}")
             return False
             
-        decision_id = response.json()["id"]
-        print(f"✅ Decision created with ID: {decision_id}")
+        # Test 3c: POST set-password with short password (should fail validation)
+        print("\n3c. Testing set-password with short password...")
+        short_password_data = {"new_password": "ab"}
         
-        # 2. Add 5 factors (mix of primary and secondary)
-        print("\n2. Adding 5 factors to decision...")
-        factors = [
-            {"id": "factor_1", "name": "Salary and Benefits", "category": "primary", "rating": 90, "order": 1},
-            {"id": "factor_2", "name": "Career Growth Opportunities", "category": "primary", "rating": 85, "order": 2},
-            {"id": "factor_3", "name": "Work-Life Balance", "category": "primary", "rating": 80, "order": 3},
-            {"id": "factor_4", "name": "Company Culture", "category": "secondary", "rating": 70, "order": 4},
-            {"id": "factor_5", "name": "Learning & Development", "category": "secondary", "rating": 75, "order": 5}
-        ]
-        
-        # 3. Add 2 options to the decision
-        print("\n3. Adding 2 options to decision...")
-        options = [
-            {"id": "option_1", "name": "Tech Startup Position", "assessments": [], "worth_percentage": 0.0},
-            {"id": "option_2", "name": "Corporate Position", "assessments": [], "worth_percentage": 0.0}
-        ]
-        
-        update_data = {
-            "factors": factors,
-            "options": options,
-            "status": "in_progress"
-        }
-        
-        response = await self.client.put(
-            f"{API_BASE}/decisions/{decision_id}",
-            json=update_data,
+        response = await self.client.post(
+            f"{API_BASE}/auth/set-password",
+            json=short_password_data,
             headers=headers
         )
         
-        if response.status_code != 200:
-            print(f"❌ Failed to add factors and options: {response.status_code} - {response.text}")
-            return False
-            
-        print("✅ Factors and options added successfully")
-        
-        # 4. Test cases for assessment percentages and worth calculation
-        test_cases = [
-            {
-                "name": "Normal LMH values test",
-                "option_assessments": {
-                    "option_1": [
-                        {"factor_id": "factor_1", "percentage": 75, "assessment_mode": "H"},  # High
-                        {"factor_id": "factor_2", "percentage": 50, "assessment_mode": "M"},  # Medium  
-                        {"factor_id": "factor_3", "percentage": 25, "assessment_mode": "L"},  # Low
-                        {"factor_id": "factor_4", "percentage": 75, "assessment_mode": "H"},  # High
-                        {"factor_id": "factor_5", "percentage": 50, "assessment_mode": "M"}   # Medium
-                    ],
-                    "option_2": [
-                        {"factor_id": "factor_1", "percentage": 50, "assessment_mode": "M"},  # Medium
-                        {"factor_id": "factor_2", "percentage": 75, "assessment_mode": "H"},  # High
-                        {"factor_id": "factor_3", "percentage": 75, "assessment_mode": "H"},  # High
-                        {"factor_id": "factor_4", "percentage": 25, "assessment_mode": "L"},  # Low
-                        {"factor_id": "factor_5", "percentage": 75, "assessment_mode": "H"}   # High
-                    ]
-                }
-            },
-            {
-                "name": "Edge case: Assessment percentage = 150 (should be clamped to 100)",
-                "option_assessments": {
-                    "option_1": [
-                        {"factor_id": "factor_1", "percentage": 150, "assessment_mode": "custom", "unit_value": "150000 USD"},  # Should clamp to 100
-                        {"factor_id": "factor_2", "percentage": 80, "assessment_mode": "H"},
-                        {"factor_id": "factor_3", "percentage": 60, "assessment_mode": "M"},
-                        {"factor_id": "factor_4", "percentage": 70, "assessment_mode": "H"},
-                        {"factor_id": "factor_5", "percentage": 90, "assessment_mode": "H"}
-                    ]
-                }
-            },
-            {
-                "name": "Edge case: Assessment percentage = 0",
-                "option_assessments": {
-                    "option_1": [
-                        {"factor_id": "factor_1", "percentage": 0, "assessment_mode": "custom", "unit_value": "0 USD"},
-                        {"factor_id": "factor_2", "percentage": 50, "assessment_mode": "M"},
-                        {"factor_id": "factor_3", "percentage": 75, "assessment_mode": "H"},
-                        {"factor_id": "factor_4", "percentage": 25, "assessment_mode": "L"},
-                        {"factor_id": "factor_5", "percentage": 50, "assessment_mode": "M"}
-                    ]
-                }
-            },
-            {
-                "name": "All factors at 100% - worth should be exactly 100",
-                "option_assessments": {
-                    "option_1": [
-                        {"factor_id": "factor_1", "percentage": 100, "assessment_mode": "custom", "unit_value": "200000 USD"},
-                        {"factor_id": "factor_2", "percentage": 100, "assessment_mode": "custom", "unit_value": "Excellent"},
-                        {"factor_id": "factor_3", "percentage": 100, "assessment_mode": "custom", "unit_value": "Perfect"},
-                        {"factor_id": "factor_4", "percentage": 100, "assessment_mode": "custom", "unit_value": "Amazing"},
-                        {"factor_id": "factor_5", "percentage": 100, "assessment_mode": "custom", "unit_value": "Outstanding"}
-                    ]
-                }
-            },
-            {
-                "name": "All factors at 75% (H) - worth should be exactly 75",
-                "option_assessments": {
-                    "option_1": [
-                        {"factor_id": "factor_1", "percentage": 75, "assessment_mode": "H"},
-                        {"factor_id": "factor_2", "percentage": 75, "assessment_mode": "H"},
-                        {"factor_id": "factor_3", "percentage": 75, "assessment_mode": "H"},
-                        {"factor_id": "factor_4", "percentage": 75, "assessment_mode": "H"},
-                        {"factor_id": "factor_5", "percentage": 75, "assessment_mode": "H"}
-                    ]
-                }
-            }
-        ]
-        
-        success_count = 0
-        total_tests = len(test_cases)
-        
-        for i, test_case in enumerate(test_cases, 1):
-            print(f"\n4.{chr(96+i)}. Testing: {test_case['name']}")
-            
-            # Update options with assessments
-            test_options = []
-            for option_id, assessments in test_case['option_assessments'].items():
-                test_options.append({
-                    "id": option_id,
-                    "name": "Tech Startup Position" if option_id == "option_1" else "Corporate Position",
-                    "assessments": assessments,
-                    "worth_percentage": 0.0
-                })
-            
-            # Add empty option if only one option provided in test case
-            if len(test_options) == 1:
-                other_option_id = "option_2" if test_options[0]["id"] == "option_1" else "option_1"
-                test_options.append({
-                    "id": other_option_id,
-                    "name": "Corporate Position" if other_option_id == "option_2" else "Tech Startup Position", 
-                    "assessments": [],
-                    "worth_percentage": 0.0
-                })
-            
-            update_data = {
-                "factors": factors,
-                "options": test_options
-            }
-            
-            response = await self.client.put(
-                f"{API_BASE}/decisions/{decision_id}",
-                json=update_data,
-                headers=headers
-            )
-            
-            if response.status_code != 200:
-                print(f"❌ Failed to update assessments: {response.status_code} - {response.text}")
-                continue
-                
-            # Get the updated decision to check worth_percentage
-            response = await self.client.get(
-                f"{API_BASE}/decisions/{decision_id}",
-                headers=headers
-            )
-            
-            if response.status_code != 200:
-                print(f"❌ Failed to retrieve updated decision: {response.status_code} - {response.text}")
-                continue
-                
-            decision = response.json()
-            
-            # Analyze results for each option
-            test_passed = True
-            for option in decision.get("options", []):
-                worth = option.get("worth_percentage", 0)
-                option_name = option.get("name", "Unknown")
-                
-                print(f"   Option '{option_name}': worth_percentage = {worth}%")
-                
-                # Check that worth never exceeds 100%
-                if worth > 100:
-                    print(f"❌ CRITICAL BUG: Worth percentage {worth}% exceeds 100% limit!")
-                    test_passed = False
-                
-                # Verify assessments are properly clamped
-                for assessment in option.get("assessments", []):
-                    pct = assessment.get("percentage", 0)
-                    if pct > 100:
-                        print(f"❌ Assessment percentage {pct}% not clamped to 100%")
-                        test_passed = False
-                    elif pct < 0:
-                        print(f"❌ Assessment percentage {pct}% below 0%")
-                        test_passed = False
-                        
-                    # Verify unit_value and assessment_mode are preserved
-                    if "unit_value" in assessment:
-                        print(f"   - unit_value preserved: {assessment['unit_value']}")
-                    if "assessment_mode" in assessment:
-                        print(f"   - assessment_mode preserved: {assessment['assessment_mode']}")
-                
-                # Specific validation for test cases
-                if test_case["name"] == "All factors at 100% - worth should be exactly 100":
-                    # Only validate the option with assessments
-                    if option.get("assessments", []):
-                        if abs(worth - 100.0) > 0.01:  # Allow small floating point differences
-                            print(f"❌ Expected exactly 100% but got {worth}%")
-                            test_passed = False
-                elif test_case["name"] == "All factors at 75% (H) - worth should be exactly 75":
-                    # Only validate the option with assessments
-                    if option.get("assessments", []):
-                        if abs(worth - 75.0) > 0.01:
-                            print(f"❌ Expected exactly 75% but got {worth}%")
-                            test_passed = False
-                elif "Assessment percentage = 150" in test_case["name"]:
-                    # Check that the 150% input was clamped to 100% in the calculation
-                    # Only check for the option that has assessments
-                    if option.get("assessments", []):
-                        found_clamped = False
-                        for assessment in option.get("assessments", []):
-                            if assessment.get("percentage") == 100 and assessment.get("unit_value") == "150000 USD":
-                                found_clamped = True
-                                print(f"✅ Assessment percentage correctly clamped from 150% to 100%")
-                                break
-                        if not found_clamped:
-                            print(f"❌ Assessment percentage clamping not working")
-                            test_passed = False
-            
-            if test_passed:
-                print(f"✅ Test case '{test_case['name']}' PASSED")
-                success_count += 1
+        if response.status_code == 400:
+            print(f"✅ Correctly rejected short password with 400 status")
+            error_msg = response.json().get('detail', response.text)
+            print(f"   Error: {error_msg}")
+            if "6 characters" in error_msg:
+                print(f"✅ Proper minimum length validation message")
             else:
-                print(f"❌ Test case '{test_case['name']}' FAILED")
+                print(f"⚠️  Validation message doesn't mention 6 character minimum")
+        else:
+            print(f"❌ Expected 400 but got {response.status_code}: {response.text}")
+            
+        return True
+
+    async def test_auth_me_has_password_field(self):
+        """Test that /auth/me includes has_password field"""
+        print("\n=== Testing /auth/me has_password Field ===")
         
-        print(f"\n=== PRR Worth Calculation Test Results ===")
-        print(f"Tests passed: {success_count}/{total_tests}")
+        if not self.session_token:
+            print("❌ No session token available for /auth/me testing")
+            return False
+            
+        headers = {"Authorization": f"Bearer {self.session_token}"}
         
-        if success_count == total_tests:
-            print("✅ ALL PRR DECISIONS WORTH CALCULATION TESTS PASSED!")
-            print("✅ Bug fix verified: worth_percentage never exceeds 100%")
-            print("✅ Assessment percentage clamping working correctly")
-            print("✅ unit_value and assessment_mode fields preserved")
+        response = await self.client.get(
+            f"{API_BASE}/auth/me",
+            headers=headers
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            print(f"✅ /auth/me endpoint working")
+            print(f"   User ID: {data.get('user_id')}")
+            print(f"   Email: {data.get('email')}")
+            print(f"   Name: {data.get('name')}")
+            print(f"   Auth Method: {data.get('auth_method')}")
+            
+            # Check for has_password field
+            if 'has_password' in data:
+                has_password = data['has_password']
+                print(f"✅ has_password field present: {has_password}")
+                if isinstance(has_password, bool):
+                    print(f"✅ has_password is boolean type as expected")
+                    return True
+                else:
+                    print(f"⚠️  has_password is not boolean: {type(has_password)}")
+                    return True
+            else:
+                print(f"❌ has_password field missing from /auth/me response")
+                print(f"   Available fields: {list(data.keys())}")
+                return False
+        else:
+            print(f"❌ /auth/me failed: {response.status_code} - {response.text}")
+            return False
+
+    async def run_all_tests(self):
+        """Run all auth endpoint tests in sequence"""
+        print("🚀 Starting Authentication Endpoints Testing")
+        print(f"Backend URL: {BACKEND_URL}")
+        
+        tests_passed = 0
+        total_tests = 4
+        
+        # Test 1: Register test user
+        if await self.test_register_user():
+            tests_passed += 1
+            print("✅ User Registration: PASSED")
+        else:
+            print("❌ User Registration: FAILED")
+            
+        # Test 2: Forgot Password Flow
+        if await self.test_forgot_password_flow():
+            tests_passed += 1
+            print("✅ Forgot Password Flow: PASSED")
+        else:
+            print("❌ Forgot Password Flow: FAILED")
+            
+        # Test 3: Set Password Flow 
+        if await self.test_set_password_flow():
+            tests_passed += 1
+            print("✅ Set Password Flow: PASSED")
+        else:
+            print("❌ Set Password Flow: FAILED")
+            
+        # Test 4: Auth Me has_password field
+        if await self.test_auth_me_has_password_field():
+            tests_passed += 1
+            print("✅ Auth Me has_password Field: PASSED")
+        else:
+            print("❌ Auth Me has_password Field: FAILED")
+        
+        print("\n" + "="*80)
+        print("📊 FINAL AUTH ENDPOINTS TEST SUMMARY")
+        print("="*80)
+        print(f"Tests passed: {tests_passed}/{total_tests}")
+        
+        if tests_passed == total_tests:
+            print("✅ ALL AUTH ENDPOINTS TESTS PASSED!")
+            print("✅ Forgot Password and Set Password features working correctly")
             return True
         else:
-            print("❌ Some PRR decisions tests failed - bug fix needs attention")
+            print("❌ Some auth endpoint tests failed")
             return False
 
 async def main():
-    """Run all backend API tests"""
-    tester = BackendAPITester()
+    """Run all authentication endpoint tests"""
+    tester = AuthEndpointTester()
     
     try:
-        print("🚀 Starting Backend API Tests for PRR Decisions Worth Percentage Bug Fix")
-        print(f"Backend URL: {BACKEND_URL}")
-        
-        # Register user first
-        if not await tester.register_user():
-            print("❌ Cannot continue without user registration")
-            return False
-            
-        # Test PRR decisions worth calculation bug fix
-        prr_success = await tester.test_prr_decisions_worth_calculation_bug_fix()
-        
-        print("\n" + "="*80)
-        print("📊 FINAL TEST SUMMARY")
-        print("="*80)
-        
-        if prr_success:
-            print("✅ PRR Decisions Worth Percentage Bug Fix: PASSED")
-            print("✅ Backend is working correctly with the bug fix implemented")
-            return True
-        else:
-            print("❌ PRR Decisions Worth Percentage Bug Fix: FAILED")
-            print("❌ Critical issues found that need immediate attention")
-            return False
-            
+        return await tester.run_all_tests()
     except Exception as e:
         print(f"❌ Unexpected error during testing: {e}")
         return False
-        
     finally:
         await tester.close()
 

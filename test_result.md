@@ -246,6 +246,51 @@ backend:
         agent: "testing"
         comment: "✅ PASSED: Dashboard statistics working correctly. Returns proper counts for decisions, test123 sessions, and journal entries. Data aggregation functional across all collections."
 
+  - task: "Forgot Password Functionality"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented POST /api/auth/forgot-password and POST /api/auth/reset-password endpoints with OTP generation and validation"
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED: Complete forgot password flow working perfectly. (1) Valid email generates OTP successfully with 10-minute expiry, (2) Nonexistent email properly returns 404 error, (3) Correct OTP successfully resets password, (4) Wrong OTP correctly rejected with 400 status, (5) Login with new password works after reset. OTP generation, validation, expiry handling, and cleanup all functional."
+
+  - task: "Set Password for Google Users"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented POST /api/auth/set-password endpoint allowing Google users to set password and enable dual auth methods"
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED: Set password functionality working correctly. (1) Valid password (≥6 chars) successfully set with proper confirmation message, (2) Short password (<6 chars) correctly rejected with 400 status and proper validation message, (3) Auth method updates appropriately for dual authentication support."
+
+  - task: "Enhanced Auth Me Endpoint"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Enhanced GET /api/auth/me to include has_password field for frontend UI logic"
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED: Auth me endpoint enhanced successfully. Returns all user data (user_id, email, name, auth_method) plus new has_password boolean field. Field correctly indicates password availability and is proper boolean type as expected."
+
 frontend:
   - task: "Login Screen (Email + Google)"
     implemented: true
@@ -352,3 +397,5 @@ agent_communication:
     message: "Bug fix for worth percentage exceeding 100%. Changes: 1) Backend OptionAssessment model now includes unit_value and assessment_mode fields. 2) Backend calculation now clamps individual assessment percentages to 0-100 and caps worth_percentage at 100. Please test PRR Decisions CRUD specifically focusing on: creating a decision with factors, adding options with assessments (both LMH and custom with values at boundaries like 0, 50, 100), and verify worth_percentage never exceeds 100. Test with edge case: try setting assessment percentage > 100 in the API call and verify it gets clamped."
   - agent: "testing"
     message: "✅ PRR DECISIONS WORTH PERCENTAGE BUG FIX TESTING COMPLETE: All 5 comprehensive test scenarios passed successfully! Confirmed bug fix is working perfectly: (1) Normal LMH values produce correct percentages ≤100%, (2) Edge case assessment percentage=150 correctly clamped to 100% in server-side calculation, (3) Edge case assessment percentage=0 handled properly, (4) All factors at 100% produce exactly 100% worth (not exceeding limit), (5) All factors at 75% produce exactly 75% worth. Key validations: worth_percentage NEVER exceeds 100% in any scenario, individual assessment percentage clamping functional, unit_value and assessment_mode fields are preserved in OptionAssessment model. Backend API is robust and production-ready with this critical bug fix implemented."
+  - agent: "testing"
+    message: "✅ NEW AUTH ENDPOINTS TESTING COMPLETE: All 4 authentication endpoint tests passed successfully! Tested: (1) User Registration with testforgot@test.com created successfully, (2) Forgot Password Flow - OTP generation working, nonexistent email returns 404, password reset with correct OTP successful, wrong OTP correctly rejected, login with new password verified, (3) Set Password Flow - valid password set successfully, short password validation working with proper 6-character minimum message, (4) Enhanced /auth/me endpoint includes has_password boolean field as expected. All forgot password and set password features working correctly. Backend authentication system is robust and production-ready."

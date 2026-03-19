@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timezone, timedelta
+import random
 import httpx
 from passlib.context import CryptContext
 from jose import JWTError, jwt
@@ -59,6 +60,17 @@ class UserResponse(BaseModel):
 
 class SessionRequest(BaseModel):
     session_id: str
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    otp: str
+    new_password: str
+
+class SetPasswordRequest(BaseModel):
+    new_password: str
 
 # PRR Decision Models
 class Factor(BaseModel):
@@ -315,7 +327,7 @@ async def login(user_data: UserLogin, response: Response):
     if not user_doc:
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
-    if user_doc.get("auth_method") == "google":
+    if user_doc.get("auth_method") == "google" and not user_doc.get("password_hash"):
         raise HTTPException(status_code=400, detail="This account uses Google Sign-In. Please login with Google.")
     
     if not verify_password(user_data.password, user_doc.get("password_hash", "")):
@@ -436,7 +448,8 @@ async def get_me(user: dict = Depends(get_current_user)):
         "email": user["email"],
         "name": user["name"],
         "picture": user.get("picture"),
-        "auth_method": user.get("auth_method", "email")
+        "auth_method": user.get("auth_method", "email"),
+        "has_password": bool(user.get("password_hash")),
     }
 
 @api_router.post("/auth/logout")
@@ -449,6 +462,95 @@ async def logout(request: Request, response: Response):
     
     response.delete_cookie(key="session_token", path="/")
     return {"message": "Logged out successfully"}
+
+@api_router.post("/auth/forgot-password")
+async def forgot_password(data: ForgotPasswordRequest):
+    """Generate OTP for password reset"""
+    user_doc = await db.users.find_one({"email": data.email}, {"_id": 0})
+    
+    if not user_doc:
+        raise HTTPException(status_code=404, detail="No account found with this email")
+    
+    if user_doc.get("auth_method") == "google" and not user_doc.get("password_hash"):
+        raise HTTPException(status_code=400, detail="This account uses Google Sign-In. Please login with Google or set a password from your profile.")
+    
+    # Generate 6-digit OTP
+    otp = str(random.randint(100000, 999999))
+    
+    # Store OTP with 10-minute expiry
+    await db.password_resets.delete_many({"email": data.email})  # Remove old OTPs
+    await db.password_resets.insert_one({
+        "email": data.email,
+        "otp": otp,
+        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=10),
+        "created_at": datetime.now(timezone.utc),
+    })
+    
+    # In production, send OTP via email. For MVP, return in response.
+    return {
+        "message": "OTP generated successfully",
+        "otp": otp,  # MVP only - remove in production
+        "expires_in_minutes": 10,
+    }
+
+@api_router.post("/auth/reset-password")
+async def reset_password(data: ResetPasswordRequest):
+    """Reset password using OTP"""
+    # Find valid OTP
+    reset_doc = await db.password_resets.find_one({
+        "email": data.email,
+        "otp": data.otp,
+    })
+    
+    if not reset_doc:
+        raise HTTPException(status_code=400, detail="Invalid OTP code")
+    
+    # Check expiry
+    expires_at = reset_doc["expires_at"]
+    if isinstance(expires_at, str):
+        expires_at = datetime.fromisoformat(expires_at)
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < datetime.now(timezone.utc):
+        await db.password_resets.delete_one({"_id": reset_doc["_id"]})
+        raise HTTPException(status_code=400, detail="OTP has expired. Please request a new one.")
+    
+    if len(data.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    
+    # Update password
+    hashed_password = hash_password(data.new_password)
+    await db.users.update_one(
+        {"email": data.email},
+        {"$set": {"password_hash": hashed_password}}
+    )
+    
+    # Clean up OTP
+    await db.password_resets.delete_many({"email": data.email})
+    
+    return {"message": "Password reset successfully. You can now login with your new password."}
+
+@api_router.post("/auth/set-password")
+async def set_password(data: SetPasswordRequest, user: dict = Depends(get_current_user)):
+    """Set password for Google-authenticated users (or change existing password)"""
+    if len(data.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    
+    hashed_password = hash_password(data.new_password)
+    
+    # Update user with password and set auth_method to allow both
+    update_fields = {"password_hash": hashed_password}
+    
+    # If user was Google-only, update auth_method to indicate both are available
+    if user.get("auth_method") == "google":
+        update_fields["auth_method"] = "google_and_email"
+    
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": update_fields}
+    )
+    
+    return {"message": "Password set successfully. You can now also login with email and password."}
 
 # ========================
 # PRR DECISION ROUTES
