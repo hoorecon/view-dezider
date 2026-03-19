@@ -9,10 +9,26 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/colors';
 import api from '../utils/api';
+
+// Cross-platform confirm that works on web + mobile
+const confirmAction = (title: string, message: string, onConfirm: () => void) => {
+  if (Platform.OS === 'web') {
+    // On web, use window.confirm which actually works
+    if (typeof window !== 'undefined' && window.confirm(`${title}\n${message}`)) {
+      onConfirm();
+    }
+  } else {
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Confirm', style: 'destructive', onPress: onConfirm },
+    ]);
+  }
+};
 
 interface TemplateBrowserModalProps {
   visible: boolean;
@@ -106,27 +122,24 @@ export default function TemplateBrowserModal({
   };
 
   const handleDeleteTemplate = (template: Template) => {
-    Alert.alert(
+    confirmAction(
       'Delete Template',
       `Delete "${template.name}"? This cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await api.delete(`/templates/${template.id}`);
-              fetchTemplates();
-              if (selectedTemplate?.id === template.id) {
-                setSelectedTemplate(null);
-              }
-            } catch (err: any) {
-              Alert.alert('Error', err.response?.data?.detail || 'Failed to delete template');
-            }
-          },
-        },
-      ]
+      async () => {
+        try {
+          await api.delete(`/templates/${template.id}`);
+          fetchTemplates();
+          if (selectedTemplate?.id === template.id) {
+            setSelectedTemplate(null);
+          }
+        } catch (err: any) {
+          if (Platform.OS === 'web') {
+            window.alert(err.response?.data?.detail || 'Failed to delete template');
+          } else {
+            Alert.alert('Error', err.response?.data?.detail || 'Failed to delete template');
+          }
+        }
+      }
     );
   };
 
@@ -134,10 +147,19 @@ export default function TemplateBrowserModal({
     setImporting(true);
     try {
       await api.post(`/templates/${template.id}/import`);
-      Alert.alert('Imported!', 'Template has been copied to your collection');
+      if (Platform.OS === 'web') {
+        window.alert('Template copied to your collection!');
+      } else {
+        Alert.alert('Imported!', 'Template has been copied to your collection');
+      }
       fetchTemplates();
     } catch (err: any) {
-      Alert.alert('Error', err.response?.data?.detail || 'Failed to import template');
+      const msg = err.response?.data?.detail || 'Failed to import template';
+      if (Platform.OS === 'web') {
+        window.alert(msg);
+      } else {
+        Alert.alert('Error', msg);
+      }
     } finally {
       setImporting(false);
     }
@@ -153,33 +175,38 @@ export default function TemplateBrowserModal({
   const handleApproveTemplate = async (template: Template) => {
     try {
       await api.post(`/admin/templates/${template.id}/approve`);
-      Alert.alert('Authorized!', 'Template is now in Authorized Templates');
+      if (Platform.OS === 'web') {
+        window.alert('Template authorized!');
+      } else {
+        Alert.alert('Authorized!', 'Template is now in Authorized Templates');
+      }
       fetchTemplates();
     } catch (err: any) {
-      Alert.alert('Error', err.response?.data?.detail || 'Failed to authorize template');
+      const msg = err.response?.data?.detail || 'Failed to authorize template';
+      if (Platform.OS === 'web') {
+        window.alert(msg);
+      } else {
+        Alert.alert('Error', msg);
+      }
     }
   };
 
   const handleRevokeTemplate = async (template: Template) => {
-    Alert.alert(
+    confirmAction(
       'Revoke Authorization',
       `Remove "${template.name}" from Authorized Templates?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Revoke',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await api.post(`/admin/templates/${template.id}/revoke`);
-              Alert.alert('Revoked', 'Template moved back to Public');
-              fetchTemplates();
-            } catch (err: any) {
-              Alert.alert('Error', err.response?.data?.detail || 'Failed to revoke');
-            }
-          },
-        },
-      ]
+      async () => {
+        try {
+          await api.post(`/admin/templates/${template.id}/revoke`);
+          fetchTemplates();
+        } catch (err: any) {
+          if (Platform.OS === 'web') {
+            window.alert(err.response?.data?.detail || 'Failed to revoke');
+          } else {
+            Alert.alert('Error', err.response?.data?.detail || 'Failed to revoke');
+          }
+        }
+      }
     );
   };
 
