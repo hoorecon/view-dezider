@@ -128,27 +128,16 @@ export default function PRRScreen() {
   };
 
   const renderDecision = ({ item }: { item: Decision }) => (
-    <TouchableOpacity
-      onPress={() => router.push(`/prr/${item.id}`)}
-      activeOpacity={0.7}
-    >
-      <Card style={styles.decisionCard}>
+    <Card style={styles.decisionCard}>
+      <TouchableOpacity
+        onPress={() => router.push(`/prr/${item.id}`)}
+        activeOpacity={0.7}
+        style={styles.cardContent}
+      >
         <View style={styles.cardHeader}>
-          <View style={styles.cardTitleRow}>
-            <Text style={styles.cardTitle} numberOfLines={1}>
-              {item.title}
-            </Text>
-            <TouchableOpacity
-              onPress={(e) => {
-                e.stopPropagation();
-                handleDelete(item.id);
-              }}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              style={styles.deleteButton}
-            >
-              <Ionicons name="trash-outline" size={20} color={COLORS.error} />
-            </TouchableOpacity>
-          </View>
+          <Text style={styles.cardTitle} numberOfLines={1}>
+            {item.title}
+          </Text>
           <View style={styles.statusContainer}>
             <View
               style={[
@@ -171,8 +160,14 @@ export default function PRRScreen() {
             </Text>
           </View>
         </View>
-      </Card>
-    </TouchableOpacity>
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={() => handleDelete(item.id)}
+        style={styles.deleteButton}
+      >
+        <Ionicons name="trash-outline" size={20} color={COLORS.error} />
+      </TouchableOpacity>
+    </Card>
   );
 
   const renderEmpty = () => (
@@ -251,21 +246,20 @@ const styles = StyleSheet.create({
   },
   decisionCard: {
     marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  cardContent: {
+    flex: 1,
   },
   cardHeader: {
     marginBottom: 8,
-  },
-  cardTitleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
   },
   cardTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: COLORS.textPrimary,
-    flex: 1,
-    marginRight: 8,
+    marginBottom: 4,
   },
   statusContainer: {
     flexDirection: 'row',
@@ -340,8 +334,7 @@ const styles = StyleSheet.create({
     color: COLORS.white,
   },
   deleteButton: {
-    padding: 8,
-    marginRight: -8,
-    borderRadius: 8,
+    padding: 12,
+    marginLeft: 8,
   },
 });
