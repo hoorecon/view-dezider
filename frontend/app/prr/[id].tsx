@@ -305,10 +305,47 @@ export default function PRRDecisionDetail() {
     setCurrentStep(10);
   };
 
-  const getAssessmentValue = (optionId: string, factorId: string): number => {
+  const getAssessmentValue = (optionId: string, factorId: string): number | null => {
     const option = decision?.options.find((o) => o.id === optionId);
     const assessment = option?.assessments.find((a) => a.factor_id === factorId);
-    return assessment?.percentage || 50;
+    // Return null if no assessment exists (no default value)
+    return assessment?.percentage ?? null;
+  };
+
+  // Calculate worth percentage only from assessed factors
+  const calculateDynamicWorth = (option: DecisionOption): { worth: number; assessedCount: number; totalCount: number } => {
+    const factors = decision?.factors || [];
+    const totalFactors = factors.length;
+    const assessedFactors = option.assessments.filter(a => a.percentage !== undefined && a.percentage !== null);
+    
+    if (assessedFactors.length === 0 || totalFactors === 0) {
+      return { worth: 0, assessedCount: 0, totalCount: totalFactors };
+    }
+
+    // Calculate total rating of assessed factors only
+    const assessedFactorIds = assessedFactors.map(a => a.factor_id);
+    const totalRating = factors
+      .filter(f => assessedFactorIds.includes(f.id))
+      .reduce((sum, f) => sum + f.rating, 0);
+
+    if (totalRating === 0) {
+      return { worth: 0, assessedCount: assessedFactors.length, totalCount: totalFactors };
+    }
+
+    // Calculate weighted worth
+    let worth = 0;
+    for (const assessment of assessedFactors) {
+      const factor = factors.find(f => f.id === assessment.factor_id);
+      if (factor) {
+        worth += (factor.rating / totalRating) * assessment.percentage;
+      }
+    }
+
+    return { 
+      worth: Math.round(worth * 10) / 10, 
+      assessedCount: assessedFactors.length, 
+      totalCount: totalFactors 
+    };
   };
 
   if (loading || !decision) {
@@ -710,7 +747,8 @@ export default function PRRDecisionDetail() {
       if (customInputValues[key] !== undefined) {
         return customInputValues[key];
       }
-      return String(getAssessmentValue(optionId, factorId));
+      const value = getAssessmentValue(optionId, factorId);
+      return value !== null ? String(value) : '';
     };
 
     return (
@@ -739,13 +777,30 @@ export default function PRRDecisionDetail() {
           </View>
         </Card>
 
-        {decision.options.map((option) => (
+        {decision.options.map((option) => {
+          const dynamicWorth = calculateDynamicWorth(option);
+          
+          return (
           <Card key={option.id} style={styles.assessmentCard}>
             <View style={styles.assessmentHeader}>
               <Text style={styles.optionName}>{option.name}</Text>
-              <View style={styles.worthBadge}>
-                <Text style={styles.worthText}>{option.worth_percentage.toFixed(1)}%</Text>
+              <View style={[
+                styles.worthBadge, 
+                dynamicWorth.assessedCount === 0 && styles.worthBadgeEmpty
+              ]}>
+                {dynamicWorth.assessedCount > 0 ? (
+                  <Text style={styles.worthText}>{dynamicWorth.worth.toFixed(1)}%</Text>
+                ) : (
+                  <Text style={styles.worthTextEmpty}>--</Text>
+                )}
               </View>
+            </View>
+            
+            {/* Progress indicator */}
+            <View style={styles.assessmentProgress}>
+              <Text style={styles.progressText}>
+                {dynamicWorth.assessedCount}/{dynamicWorth.totalCount} factors rated
+              </Text>
             </View>
 
             {decision.factors
@@ -756,6 +811,7 @@ export default function PRRDecisionDetail() {
                 const currentValue = getAssessmentValue(option.id, factor.id);
                 const isCustom = showCustomInput[key] || currentMode === 'custom';
                 const currentUnitValue = unitValues[key] || getUnitValue(option.id, factor.id);
+                const hasValue = currentValue !== null;
 
                 return (
                   <View key={factor.id} style={styles.assessmentFactorContainer}>
@@ -851,14 +907,19 @@ export default function PRRDecisionDetail() {
 
                       {/* Display current % */}
                       <View style={styles.currentValueBadge}>
-                        <Text style={styles.currentValueText}>{currentValue}%</Text>
+                        {hasValue ? (
+                          <Text style={styles.currentValueText}>{currentValue}%</Text>
+                        ) : (
+                          <Text style={styles.currentValueTextEmpty}>--</Text>
+                        )}
                       </View>
                     </View>
                   </View>
                 );
               })}
           </Card>
-        ))}
+          );
+        })}
 
         <View style={styles.navButtons}>
           <TouchableOpacity style={styles.backButton} onPress={() => setCurrentStep(6)}>
@@ -1558,5 +1619,26 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: COLORS.white,
+  },
+  currentValueTextEmpty: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.white,
+  },
+  worthBadgeEmpty: {
+    backgroundColor: COLORS.textMuted,
+  },
+  worthTextEmpty: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.white,
+  },
+  assessmentProgress: {
+    marginBottom: 8,
+  },
+  progressText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontStyle: 'italic',
   },
 });
