@@ -504,6 +504,51 @@ backend:
         agent: "testing"
         comment: "✅ DECISION NEW FIELDS UPDATE TESTING PASSED: PUT /api/decisions/{id} properly handles new fields: reflection, final_notes, folder. All fields correctly updated and persisted. Field changes properly stored and retrievable in subsequent GET requests."
 
+  - task: "Notification System APIs"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented notification endpoints: GET /api/notifications, GET /api/notifications/unread-count, POST /api/notifications/{id}/read, POST /api/notifications/read-all, DELETE /api/notifications/{id}. Notifications auto-created when sharing steps and receiving contributions."
+      - working: true
+        agent: "testing"
+        comment: "✅ NOTIFICATION SYSTEM COMPREHENSIVE TESTING PASSED: All 11 notification workflow tests successful! (1) User registration and authentication working, (2) Decision creation with factors/options working, (3) Step sharing creates share_invite notification automatically, (4) GET /api/notifications returns proper share_invite notification with title and message, (5) GET /api/notifications/unread-count correctly shows count=1, (6) POST /api/notifications/{id}/read marks notification as read, (7) Unread count correctly reduces to 0 after marking read, (8) User contribution creates share_contributed notification for decision owner, (9) Decision owner receives proper contribution notification, (10) POST /api/notifications/read-all marks all notifications as read, (11) DELETE /api/notifications/{id} successfully deletes notifications. Complete notification lifecycle tested with 2 users (Alice and Bob). All 5 notification endpoints working correctly."
+
+  - task: "Folder Analytics APIs"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented analytics endpoints: GET /api/analytics/folders (all folder breakdown with summary), GET /api/analytics/folder/{folder_id} (single folder detail with top factors and recent decisions)"
+      - working: true
+        agent: "testing"
+        comment: "✅ FOLDER ANALYTICS COMPREHENSIVE TESTING PASSED: All 8 analytics tests successful! (1) Analytics user registration working, (2) Created 3 decisions across 2 folders (2 career + 1 finance), (3) GET /api/analytics/folders returns proper structure with folders/active_folders/summary keys, (4) Summary contains required fields: total_decisions, total_completed, total_folders_used, overall_completion_rate, (5) Analytics data accuracy verified: 3 total decisions, 3 completed, 100% completion rate, (6) Folder breakdown accuracy confirmed: Career folder has 2 decisions, Finance folder has 1 decision, (7) GET /api/analytics/folder/career returns proper single folder structure with all required fields, (8) Career folder detail shows correct data: 2 total, 2 completed, 100% completion rate, plus top_factors and recent_decisions arrays populated. Both analytics endpoints working correctly with realistic decision data."
+
+  - task: "Health Check Endpoint Fix"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Fixed GET /api/health endpoint - was broken due to orphaned function body. Now properly returns health status."
+      - working: true
+        agent: "testing"
+        comment: "✅ HEALTH CHECK ENDPOINT FIX TESTING PASSED: GET /api/health returns proper JSON response with required fields 'status' and 'timestamp'. Status field correctly returns 'healthy' and timestamp shows current UTC time. Endpoint responding correctly with HTTP 200 status code."
+
 frontend:
   - task: "Login Screen (Email + Google)"
     implemented: true
@@ -610,6 +655,54 @@ frontend:
         agent: "main"
         comment: "Tested via Playwright - Profile shows user info, Take Assessment button. Assessment quiz has 12 questions with 1-5 rating scale. After submission, shows dominant mode (Emotional) with Mode Breakdown chart. Retake Assessment button works. Admin section with Become Super Admin visible. Logout button present."
 
+  - task: "Shared Inbox Screen"
+    implemented: true
+    working: "NA"
+    file: "app/inbox.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Inbox screen for received shared steps. Shows cards with step number, decision title, sender name, factors/options context, status (pending/contributed/merged). Contribute modal with LMH buttons and custom percentage input."
+
+  - task: "Notifications Screen"
+    implemented: true
+    working: "NA"
+    file: "app/notifications.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Notifications list screen with mark-all-read, delete, navigation to relevant screens on tap. Shows unread dot indicator and relative timestamps."
+
+  - task: "Folder Analytics Screen"
+    implemented: true
+    working: "NA"
+    file: "app/analytics.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Analytics dashboard with overall summary (total decisions, completed, life areas used, completion rate), folder breakdown with expandable cards showing detail stats, common factors, and recent decisions."
+
+  - task: "Home Screen Navigation Integration"
+    implemented: true
+    working: "NA"
+    file: "app/(tabs)/index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added Collaborate & Insights section on Home with 3 cards: Shared Inbox (with pending count), Notifications (with unread count), and Analytics. Added notification bell icon to header gradient with unread badge. Uses useFocusEffect to refresh counts on screen focus."
+
 metadata:
   created_by: "main_agent"
   version: "1.0"
@@ -643,3 +736,7 @@ agent_communication:
     message: "🎉 COMPREHENSIVE POST-FORK BACKEND TESTING COMPLETE: All 34 endpoints tested successfully! Tested complete API coverage including Auth (6 endpoints), PRR Decisions with full CRUD + clone at 5 levels (11 endpoints), Templates with visibility/sharing (6 endpoints), Test123 sessions (4 endpoints), Assessment system (3 endpoints), Journal CRUD (4 endpoints), Dashboard stats, and Admin system (6 endpoints). All core functionality verified working correctly after fork/session change. Used fresh unique test users for authentication. PRR worth percentage calculations validated ≤100%. Template system with private/shared/public visibility working. Clone functionality at all levels (factors/classification/prioritization/options/assessment) verified. Journal, assessment, and Test123 workflows all functional."
   - agent: "testing"
     message: "🚀 NEW FEATURES COMPREHENSIVE TESTING COMPLETE: All 6 new feature test scenarios passed successfully! ✅ Decision Folders API - 10 life area folders with proper structure (id/name/icon/color). ✅ Decision Creation with Folder - decisions properly created and stored with folder parameter. ✅ Decision Folder Filtering - GET /api/decisions?folder=career filtering working correctly. ✅ Step Sharing Complete Flow - full end-to-end sharing workflow tested with 2 users including share creation, contribution, and merge functionality. ✅ Decision New Fields Update - reflection, final_notes, and folder fields properly updated and persisted. ✅ Existing Endpoints Still Work - all legacy endpoints (auth, PRR CRUD, Test123, Journal, Stats) remain functional after new feature implementation. Used fresh unique test users throughout testing. All sharing endpoints functional: POST /decisions/{id}/share-step, GET /shared-steps/sent, GET /shared-steps/received, GET /shared-steps/{id}, POST /shared-steps/{id}/contribute, POST /shared-steps/{id}/merge."
+  - agent: "main"
+    message: "FORKED SESSION - Fixed health endpoint bug. Added 3 backend feature areas already present from previous session: Notification System (5 endpoints), Folder Analytics (2 endpoints). Now need to test: (1) GET /api/health, (2) GET /api/notifications + GET /api/notifications/unread-count + POST /api/notifications/{id}/read + POST /api/notifications/read-all + DELETE /api/notifications/{id}, (3) GET /api/analytics/folders + GET /api/analytics/folder/{folder_id}. The notification system creates notifications automatically when step sharing (share_invite on create, share_contributed on contribute, share_merged on merge). Test with 2 users: share a step, check recipient notifications, mark read, delete. For analytics: create decisions in different folders, then check analytics breakdown."
+  - agent: "testing"
+    message: "🎉 NEW BACKEND ENDPOINTS COMPREHENSIVE TESTING COMPLETE: All 21 tests passed successfully across 3 focus areas! ✅ Health Check Endpoint Fix - GET /api/health returns proper JSON with 'status': 'healthy' and timestamp. ✅ Notification System APIs (11 tests) - Complete notification lifecycle tested with 2 users: step sharing auto-creates share_invite notifications, GET /api/notifications retrieves notifications properly, GET /api/notifications/unread-count shows correct counts, POST /api/notifications/{id}/read marks individual notifications as read, unread count reduces correctly after read, user contributions auto-create share_contributed notifications for decision owners, POST /api/notifications/read-all marks all notifications as read, DELETE /api/notifications/{id} successfully deletes notifications. All 5 notification endpoints working correctly. ✅ Folder Analytics APIs (8 tests) - Created 3 decisions across 2 folders (career/finance), GET /api/analytics/folders returns proper structure with folders/active_folders/summary containing total_decisions/total_completed/total_folders_used/overall_completion_rate, folder breakdown accuracy verified (2 career, 1 finance), GET /api/analytics/folder/career returns detailed single folder analytics with top_factors and recent_decisions arrays. Both analytics endpoints working correctly. All new backend endpoints fully functional!"

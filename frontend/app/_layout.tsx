@@ -59,6 +59,24 @@ export default function RootLayout() {
             headerTintColor: COLORS.primary,
           }} 
         />
+        <Stack.Screen 
+          name="inbox" 
+          options={{ 
+            headerShown: false,
+          }} 
+        />
+        <Stack.Screen 
+          name="notifications" 
+          options={{ 
+            headerShown: false,
+          }} 
+        />
+        <Stack.Screen 
+          name="analytics" 
+          options={{ 
+            headerShown: false,
+          }} 
+        />
       </Stack>
     </>
   );

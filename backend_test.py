@@ -1,585 +1,470 @@
 #!/usr/bin/env python3
+"""
+Backend Testing Script for View Dezider API
+Testing Focus Areas: Health Check, Notification System, Folder Analytics
+"""
 
 import requests
 import json
+import time
 from datetime import datetime
-import sys
+from typing import Dict, Any, List
 
-# Configuration
-BASE_URL = "https://decision-flow-plus.preview.emergentagent.com/api"
+# Use the production URL from frontend/.env
+BACKEND_URL = "https://decision-flow-plus.preview.emergentagent.com/api"
 
-# Test data
-USER_A_EMAIL = "userA@test.com"
-USER_A_PASSWORD = "test123"
-USER_A_NAME = "User A"
+class TestResults:
+    def __init__(self):
+        self.passed = 0
+        self.failed = 0
+        self.results = []
+    
+    def log(self, test_name: str, success: bool, details: str = ""):
+        status = "✅ PASSED" if success else "❌ FAILED"
+        self.results.append(f"{status}: {test_name}")
+        if details:
+            self.results.append(f"   {details}")
+        if success:
+            self.passed += 1
+        else:
+            self.failed += 1
+        print(f"{status}: {test_name}")
+        if details:
+            print(f"   {details}")
 
-USER_B_EMAIL = "userB@test.com"
-USER_B_PASSWORD = "test123"
-USER_B_NAME = "User B"
-
-def log_test(step, message):
-    timestamp = datetime.now().strftime("%H:%M:%S")
-    print(f"[{timestamp}] Step {step}: {message}")
-
-def log_error(step, error_message):
-    timestamp = datetime.now().strftime("%H:%M:%S")
-    print(f"[{timestamp}] ERROR in Step {step}: {error_message}")
-    return False
-
-def log_success(step, message):
-    timestamp = datetime.now().strftime("%H:%M:%S")
-    print(f"[{timestamp}] ✅ Step {step}: {message}")
-    return True
-
-def register_user(email, password, name):
-    """Register a new user and return session token"""
-    url = f"{BASE_URL}/auth/register"
-    payload = {
+def register_user(email: str, password: str, name: str) -> Dict[str, Any]:
+    """Register a new user and return user data with session token"""
+    data = {
         "email": email,
         "password": password,
         "name": name
     }
     
-    try:
-        response = requests.post(url, json=payload)
-        if response.status_code == 200:
-            data = response.json()
-            return data.get("session_token")
-        else:
-            print(f"Registration failed: {response.status_code} - {response.text}")
-            return None
-    except Exception as e:
-        print(f"Registration error: {str(e)}")
-        return None
-
-def create_decision_with_data(token, title):
-    """Create a decision with factors and options"""
-    headers = {"Authorization": f"Bearer {token}"}
-    
-    # Create decision
-    create_url = f"{BASE_URL}/decisions"
-    decision_data = {
-        "title": title,
-        "context": "Career decision with multiple factors and options"
-    }
-    
-    response = requests.post(create_url, json=decision_data, headers=headers)
-    if response.status_code != 200:
-        return None
-    
-    decision_id = response.json().get("id")
-    
-    # Update decision with factors and options
-    update_url = f"{BASE_URL}/decisions/{decision_id}"
-    update_data = {
-        "factors": [
-            {"id": "f1", "name": "Salary", "category": "primary", "rating": 90, "order": 1},
-            {"id": "f2", "name": "Work-Life Balance", "category": "primary", "rating": 85, "order": 2},
-            {"id": "f3", "name": "Career Growth", "category": "secondary", "rating": 75, "order": 3}
-        ],
-        "options": [
-            {
-                "id": "o1",
-                "name": "Company A",
-                "assessments": [
-                    {"factor_id": "f1", "percentage": 80, "assessment_mode": "H"},
-                    {"factor_id": "f2", "percentage": 60, "assessment_mode": "M"},
-                    {"factor_id": "f3", "percentage": 90, "assessment_mode": "H"}
-                ],
-                "worth_percentage": 0.0
-            },
-            {
-                "id": "o2",
-                "name": "Company B",
-                "assessments": [
-                    {"factor_id": "f1", "percentage": 70, "assessment_mode": "M"},
-                    {"factor_id": "f2", "percentage": 85, "assessment_mode": "H"},
-                    {"factor_id": "f3", "percentage": 75, "assessment_mode": "M"}
-                ],
-                "worth_percentage": 0.0
-            }
-        ]
-    }
-    
-    response = requests.put(update_url, json=update_data, headers=headers)
-    if response.status_code == 200:
-        return decision_id
-    else:
-        print(f"Failed to update decision: {response.text}")
-        return None
-
-def save_template(token, decision_id, name, visibility, shared_with=None):
-    """Save a decision as template with specified visibility"""
-    headers = {"Authorization": f"Bearer {token}"}
-    url = f"{BASE_URL}/decisions/{decision_id}/save-as-template"
-    
-    payload = {
-        "name": name,
-        "template_type": "assessment",
-        "visibility": visibility
-    }
-    
-    if shared_with:
-        payload["shared_with"] = shared_with
-    
-    response = requests.post(url, json=payload, headers=headers)
-    if response.status_code == 200:
-        return response.json().get("id")
-    else:
-        print(f"Failed to save template: {response.text}")
-        return None
-
-def get_templates(token):
-    """Get templates for a user"""
-    headers = {"Authorization": f"Bearer {token}"}
-    url = f"{BASE_URL}/templates"
-    
-    response = requests.get(url, headers=headers)
+    response = requests.post(f"{BACKEND_URL}/auth/register", json=data)
     if response.status_code == 200:
         return response.json()
     else:
-        print(f"Failed to get templates: {response.text}")
-        return None
+        raise Exception(f"Registration failed: {response.status_code} {response.text}")
 
-def import_template(token, template_id):
-    """Import a template"""
-    headers = {"Authorization": f"Bearer {token}"}
-    url = f"{BASE_URL}/templates/{template_id}/import"
+def create_decision(session_token: str, title: str, context: str, folder: str) -> str:
+    """Create a PRR decision and return decision_id"""
+    headers = {"Authorization": f"Bearer {session_token}"}
+    data = {
+        "title": title,
+        "context": context,
+        "folder": folder
+    }
     
-    response = requests.post(url, headers=headers)
+    response = requests.post(f"{BACKEND_URL}/decisions", json=data, headers=headers)
     if response.status_code == 200:
-        return response.json().get("id")
+        return response.json()["id"]
     else:
-        return response.status_code, response.text
+        raise Exception(f"Decision creation failed: {response.status_code} {response.text}")
 
-def use_template(token, template_id, title):
-    """Use a template to create a new decision"""
-    headers = {"Authorization": f"Bearer {token}"}
-    url = f"{BASE_URL}/templates/{template_id}/use"
+def add_factors_and_options_to_decision(session_token: str, decision_id: str):
+    """Add factors and options to a decision for testing"""
+    headers = {"Authorization": f"Bearer {session_token}"}
     
-    payload = {"title": title}
-    response = requests.post(url, json=payload, headers=headers)
-    if response.status_code == 200:
-        return response.json().get("id")
-    else:
-        print(f"Failed to use template: {response.text}")
-        return None
+    # Add factors
+    factors = [
+        {"id": "f1", "name": "Salary", "category": "primary", "rating": 80, "order": 1},
+        {"id": "f2", "name": "Work-Life Balance", "category": "primary", "rating": 90, "order": 2},
+        {"id": "f3", "name": "Growth Opportunities", "category": "secondary", "rating": 70, "order": 3}
+    ]
+    
+    # Add options with assessments
+    options = [
+        {
+            "id": "o1",
+            "name": "Job A - Tech Startup",
+            "assessments": [
+                {"factor_id": "f1", "percentage": 85, "assessment_mode": "H"},
+                {"factor_id": "f2", "percentage": 60, "assessment_mode": "M"},
+                {"factor_id": "f3", "percentage": 90, "assessment_mode": "H"}
+            ]
+        },
+        {
+            "id": "o2",
+            "name": "Job B - Corporate",
+            "assessments": [
+                {"factor_id": "f1", "percentage": 95, "assessment_mode": "H"},
+                {"factor_id": "f2", "percentage": 40, "assessment_mode": "L"},
+                {"factor_id": "f3", "percentage": 50, "assessment_mode": "M"}
+            ]
+        }
+    ]
+    
+    update_data = {
+        "factors": factors,
+        "options": options,
+        "status": "completed"
+    }
+    
+    response = requests.put(f"{BACKEND_URL}/decisions/{decision_id}", json=update_data, headers=headers)
+    if response.status_code != 200:
+        raise Exception(f"Decision update failed: {response.status_code} {response.text}")
+
+def test_health_check(results: TestResults):
+    """Test the health check endpoint"""
+    print("\n=== TESTING HEALTH CHECK ENDPOINT ===")
+    
+    try:
+        response = requests.get(f"{BACKEND_URL}/health", timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            required_fields = ["status", "timestamp"]
+            
+            if all(field in data for field in required_fields):
+                if data["status"] == "healthy":
+                    results.log("Health Check Response Format", True, f'Status: {data["status"]}, Timestamp: {data["timestamp"]}')
+                else:
+                    results.log("Health Check Response Format", False, f'Expected status "healthy", got "{data["status"]}"')
+            else:
+                missing_fields = [f for f in required_fields if f not in data]
+                results.log("Health Check Response Format", False, f"Missing fields: {missing_fields}")
+        else:
+            results.log("Health Check Endpoint", False, f"HTTP {response.status_code}: {response.text}")
+    
+    except requests.exceptions.RequestException as e:
+        results.log("Health Check Endpoint", False, f"Request failed: {str(e)}")
+
+def test_notification_system(results: TestResults):
+    """Test the complete notification system flow"""
+    print("\n=== TESTING NOTIFICATION SYSTEM APIs ===")
+    
+    try:
+        # Generate unique timestamps for user emails
+        timestamp = str(int(time.time()))
+        
+        # Step 1: Register two users
+        user_a_data = register_user(
+            f"alice.tester.{timestamp}@careerpath.com",
+            "securepass123",
+            f"Alice Tester {timestamp}"
+        )
+        user_a_token = user_a_data["session_token"]
+        user_a_email = user_a_data["email"]
+        
+        user_b_data = register_user(
+            f"bob.tester.{timestamp}@careerpath.com", 
+            "securepass123",
+            f"Bob Tester {timestamp}"
+        )
+        user_b_token = user_b_data["session_token"]
+        user_b_email = user_b_data["email"]
+        
+        results.log("User Registration for Testing", True, f"Created users: {user_a_data['name']} and {user_b_data['name']}")
+        
+        # Step 2: User A creates a decision with folder, factors, and options
+        decision_id = create_decision(
+            user_a_token,
+            "Career Change Decision - Should I Switch Jobs?",
+            "Evaluating whether to leave my current position for a new opportunity",
+            "career"
+        )
+        
+        add_factors_and_options_to_decision(user_a_token, decision_id)
+        results.log("Decision Creation with Factors/Options", True, f"Decision ID: {decision_id}")
+        
+        # Step 3: User A shares step 7 with User B
+        share_data = {
+            "decision_id": decision_id,
+            "step_number": 7,
+            "recipient_emails": [user_b_email],
+            "merge_mode": "self_weighted",
+            "message": "Please help me evaluate these job options!"
+        }
+        
+        headers_a = {"Authorization": f"Bearer {user_a_token}"}
+        response = requests.post(f"{BACKEND_URL}/decisions/{decision_id}/share-step", json=share_data, headers=headers_a)
+        
+        if response.status_code == 200:
+            share_id = response.json()["id"]
+            results.log("Step Sharing (creates notification)", True, f"Share ID: {share_id}")
+        else:
+            results.log("Step Sharing", False, f"HTTP {response.status_code}: {response.text}")
+            return
+        
+        # Wait a moment for notification creation
+        time.sleep(1)
+        
+        # Step 4: Check User B's notifications
+        headers_b = {"Authorization": f"Bearer {user_b_token}"}
+        response = requests.get(f"{BACKEND_URL}/notifications", headers=headers_b)
+        
+        if response.status_code == 200:
+            notifications = response.json()
+            share_invite_notifications = [n for n in notifications if n["type"] == "share_invite"]
+            
+            if share_invite_notifications:
+                notif = share_invite_notifications[0]
+                results.log("Get Notifications (share_invite)", True, f'Found notification: "{notif["title"]}" - {notif["message"]}')
+                notif_id = notif["id"]
+            else:
+                results.log("Get Notifications (share_invite)", False, "No share_invite notification found")
+                return
+        else:
+            results.log("Get Notifications", False, f"HTTP {response.status_code}: {response.text}")
+            return
+        
+        # Step 5: Check User B's unread count
+        response = requests.get(f"{BACKEND_URL}/notifications/unread-count", headers=headers_b)
+        
+        if response.status_code == 200:
+            unread_data = response.json()
+            if unread_data.get("count", 0) >= 1:
+                results.log("Unread Count Check", True, f'Unread count: {unread_data["count"]}')
+            else:
+                results.log("Unread Count Check", False, f'Expected ≥1 unread, got {unread_data.get("count", 0)}')
+        else:
+            results.log("Unread Count Check", False, f"HTTP {response.status_code}: {response.text}")
+        
+        # Step 6: Mark notification as read
+        response = requests.post(f"{BACKEND_URL}/notifications/{notif_id}/read", headers=headers_b)
+        
+        if response.status_code == 200:
+            results.log("Mark Notification Read", True, response.json().get("message", "Success"))
+        else:
+            results.log("Mark Notification Read", False, f"HTTP {response.status_code}: {response.text}")
+        
+        # Step 7: Verify unread count is now 0
+        response = requests.get(f"{BACKEND_URL}/notifications/unread-count", headers=headers_b)
+        
+        if response.status_code == 200:
+            unread_data = response.json()
+            if unread_data.get("count", 1) == 0:
+                results.log("Unread Count After Read", True, "Count correctly reduced to 0")
+            else:
+                results.log("Unread Count After Read", False, f'Expected 0, got {unread_data.get("count", 1)}')
+        else:
+            results.log("Unread Count After Read", False, f"HTTP {response.status_code}: {response.text}")
+        
+        # Step 8: User B contributes to share
+        contribute_data = {
+            "assessments": {
+                "o1_f1": 80,  # Job A - Salary
+                "o1_f2": 75,  # Job A - Work-Life Balance  
+                "o1_f3": 85,  # Job A - Growth
+                "o2_f1": 90,  # Job B - Salary
+                "o2_f2": 45,  # Job B - Work-Life Balance
+                "o2_f3": 55   # Job B - Growth
+            },
+            "note": "Based on my experience, Job A offers better long-term growth potential."
+        }
+        
+        response = requests.post(f"{BACKEND_URL}/shared-steps/{share_id}/contribute", json=contribute_data, headers=headers_b)
+        
+        if response.status_code == 200:
+            results.log("User B Contribution (creates notification)", True, response.json().get("message", "Success"))
+        else:
+            results.log("User B Contribution", False, f"HTTP {response.status_code}: {response.text}")
+            return
+        
+        # Wait for notification creation
+        time.sleep(1)
+        
+        # Step 9: Check User A gets share_contributed notification  
+        response = requests.get(f"{BACKEND_URL}/notifications", headers=headers_a)
+        
+        if response.status_code == 200:
+            notifications = response.json()
+            contributed_notifications = [n for n in notifications if n["type"] == "share_contributed"]
+            
+            if contributed_notifications:
+                notif = contributed_notifications[0]
+                results.log("User A Gets Contribution Notification", True, f'Found: "{notif["title"]}" - {notif["message"]}')
+            else:
+                results.log("User A Gets Contribution Notification", False, "No share_contributed notification found")
+        else:
+            results.log("User A Gets Contribution Notification", False, f"HTTP {response.status_code}: {response.text}")
+        
+        # Step 10: Test mark-all-read
+        # First create another notification by having User A share another step
+        share_data2 = {
+            "decision_id": decision_id,
+            "step_number": 6,
+            "recipient_emails": [user_b_email],
+            "message": "Also need help with factor prioritization"
+        }
+        
+        requests.post(f"{BACKEND_URL}/decisions/{decision_id}/share-step", json=share_data2, headers=headers_a)
+        time.sleep(1)
+        
+        response = requests.post(f"{BACKEND_URL}/notifications/read-all", headers=headers_b)
+        
+        if response.status_code == 200:
+            results.log("Mark All Read", True, response.json().get("message", "Success"))
+        else:
+            results.log("Mark All Read", False, f"HTTP {response.status_code}: {response.text}")
+        
+        # Step 11: Test delete notification
+        # Get a notification ID to delete
+        response = requests.get(f"{BACKEND_URL}/notifications", headers=headers_b)
+        if response.status_code == 200 and response.json():
+            delete_notif_id = response.json()[0]["id"]
+            
+            response = requests.delete(f"{BACKEND_URL}/notifications/{delete_notif_id}", headers=headers_b)
+            
+            if response.status_code == 200:
+                results.log("Delete Notification", True, response.json().get("message", "Success"))
+            else:
+                results.log("Delete Notification", False, f"HTTP {response.status_code}: {response.text}")
+        else:
+            results.log("Delete Notification", False, "No notifications found to delete")
+            
+    except Exception as e:
+        results.log("Notification System Testing", False, f"Exception: {str(e)}")
+
+def test_folder_analytics(results: TestResults):
+    """Test folder analytics APIs"""
+    print("\n=== TESTING FOLDER ANALYTICS APIs ===")
+    
+    try:
+        # Generate unique timestamp
+        timestamp = str(int(time.time()))
+        
+        # Register a user for analytics testing
+        user_data = register_user(
+            f"analytics.user.{timestamp}@careerpath.com",
+            "securepass123",
+            f"Analytics User {timestamp}"
+        )
+        token = user_data["session_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        results.log("Analytics User Registration", True, f"Created user: {user_data['name']}")
+        
+        # Create decisions in different folders
+        career_decision1 = create_decision(token, "Job Change Analysis", "Should I switch to a startup?", "career")
+        career_decision2 = create_decision(token, "Career Path Planning", "Long-term career strategy", "career")
+        finance_decision = create_decision(token, "Investment Portfolio", "Asset allocation strategy", "finance")
+        
+        # Add factors/options to make decisions "completed"
+        for decision_id in [career_decision1, career_decision2, finance_decision]:
+            add_factors_and_options_to_decision(token, decision_id)
+        
+        results.log("Create Decisions in Multiple Folders", True, "Created 2 career + 1 finance decisions")
+        
+        # Test GET /api/analytics/folders
+        response = requests.get(f"{BACKEND_URL}/analytics/folders", headers=headers)
+        
+        if response.status_code == 200:
+            analytics_data = response.json()
+            
+            # Check response structure
+            required_keys = ["folders", "active_folders", "summary"]
+            if all(key in analytics_data for key in required_keys):
+                results.log("Folders Analytics Structure", True, "Response has required keys: folders, active_folders, summary")
+                
+                # Check summary fields
+                summary = analytics_data["summary"]
+                summary_fields = ["total_decisions", "total_completed", "total_folders_used", "overall_completion_rate"]
+                
+                if all(field in summary for field in summary_fields):
+                    results.log("Analytics Summary Fields", True, f"Summary: {json.dumps(summary, indent=2)}")
+                    
+                    # Verify data makes sense
+                    if summary["total_decisions"] == 3 and summary["total_completed"] == 3:
+                        results.log("Analytics Data Accuracy", True, "Correct counts: 3 total, 3 completed")
+                    else:
+                        results.log("Analytics Data Accuracy", False, f"Expected 3/3, got {summary['total_decisions']}/{summary['total_completed']}")
+                else:
+                    missing = [f for f in summary_fields if f not in summary]
+                    results.log("Analytics Summary Fields", False, f"Missing fields: {missing}")
+                
+                # Check active folders
+                active_folders = analytics_data["active_folders"]
+                career_folder = next((f for f in active_folders if f["id"] == "career"), None)
+                finance_folder = next((f for f in active_folders if f["id"] == "finance"), None)
+                
+                if career_folder and finance_folder:
+                    if career_folder["total_decisions"] == 2 and finance_folder["total_decisions"] == 1:
+                        results.log("Folder Breakdown Accuracy", True, "Career: 2 decisions, Finance: 1 decision")
+                    else:
+                        results.log("Folder Breakdown Accuracy", False, f"Career: {career_folder['total_decisions']}, Finance: {finance_folder['total_decisions']}")
+                else:
+                    results.log("Folder Breakdown Accuracy", False, "Career or Finance folder not found in active_folders")
+            else:
+                missing = [k for k in required_keys if k not in analytics_data]
+                results.log("Folders Analytics Structure", False, f"Missing keys: {missing}")
+        else:
+            results.log("Get Folders Analytics", False, f"HTTP {response.status_code}: {response.text}")
+            return
+        
+        # Test GET /api/analytics/folder/career
+        response = requests.get(f"{BACKEND_URL}/analytics/folder/career", headers=headers)
+        
+        if response.status_code == 200:
+            folder_data = response.json()
+            
+            # Check single folder response structure
+            expected_fields = ["folder_id", "total_decisions", "completed", "completion_rate", "top_factors", "recent_decisions"]
+            
+            if all(field in folder_data for field in expected_fields):
+                results.log("Single Folder Analytics Structure", True, "Response has all required fields")
+                
+                # Verify career folder data
+                if (folder_data["folder_id"] == "career" and 
+                    folder_data["total_decisions"] == 2 and
+                    folder_data["completed"] == 2):
+                    results.log("Career Folder Detail Accuracy", True, f"Career folder: 2 total, 2 completed, {folder_data['completion_rate']}% completion")
+                else:
+                    results.log("Career Folder Detail Accuracy", False, f"Unexpected data: {json.dumps(folder_data, indent=2)}")
+                
+                # Check if top_factors and recent_decisions are present
+                if isinstance(folder_data["top_factors"], list) and isinstance(folder_data["recent_decisions"], list):
+                    results.log("Folder Detail Subarrays", True, f"Top factors: {len(folder_data['top_factors'])}, Recent decisions: {len(folder_data['recent_decisions'])}")
+                else:
+                    results.log("Folder Detail Subarrays", False, "top_factors or recent_decisions not arrays")
+            else:
+                missing = [f for f in expected_fields if f not in folder_data]
+                results.log("Single Folder Analytics Structure", False, f"Missing fields: {missing}")
+        else:
+            results.log("Get Single Folder Analytics", False, f"HTTP {response.status_code}: {response.text}")
+            
+    except Exception as e:
+        results.log("Folder Analytics Testing", False, f"Exception: {str(e)}")
 
 def main():
-    print("\n=== ENHANCED TEMPLATE SHARING SYSTEM TEST ===\n")
-    
-    # Step 1: Register User A
-    log_test(1, f"Registering User A ({USER_A_EMAIL})")
-    token_a = register_user(USER_A_EMAIL, USER_A_PASSWORD, USER_A_NAME)
-    if not token_a:
-        return log_error(1, "Failed to register User A")
-    log_success(1, f"User A registered successfully with token: {token_a[:20]}...")
-    
-    # Step 2: Register User B
-    log_test(2, f"Registering User B ({USER_B_EMAIL})")
-    token_b = register_user(USER_B_EMAIL, USER_B_PASSWORD, USER_B_NAME)
-    if not token_b:
-        return log_error(2, "Failed to register User B")
-    log_success(2, f"User B registered successfully with token: {token_b[:20]}...")
-    
-    # Step 3: User A creates decision with data
-    log_test(3, "User A creating decision with factors and options")
-    decision_id = create_decision_with_data(token_a, "Career Choice Decision")
-    if not decision_id:
-        return log_error(3, "Failed to create decision with data")
-    log_success(3, f"Decision created with ID: {decision_id}")
-    
-    # Step 4: User A saves 3 templates with different visibility
-    log_test(4, "User A saving 3 templates with different visibility")
-    
-    # 4a. Private template
-    log_test("4a", "Saving private template")
-    private_template_id = save_template(token_a, decision_id, "Private Template", "private")
-    if not private_template_id:
-        return log_error("4a", "Failed to save private template")
-    log_success("4a", f"Private template saved: {private_template_id}")
-    
-    # 4b. Shared template
-    log_test("4b", "Saving shared template")
-    shared_template_id = save_template(token_a, decision_id, "Shared Template", "shared", [USER_B_EMAIL])
-    if not shared_template_id:
-        return log_error("4b", "Failed to save shared template")
-    log_success("4b", f"Shared template saved: {shared_template_id}")
-    
-    # 4c. Public template
-    log_test("4c", "Saving public template")
-    public_template_id = save_template(token_a, decision_id, "Public Template", "public")
-    if not public_template_id:
-        return log_error("4c", "Failed to save public template")
-    log_success("4c", f"Public template saved: {public_template_id}")
-    
-    # Step 5: User A checks GET /api/templates
-    log_test(5, "User A checking template list")
-    templates_a = get_templates(token_a)
-    if not templates_a:
-        return log_error(5, "Failed to get User A templates")
-    
-    my_templates_count = len(templates_a.get("my_templates", []))
-    shared_count = len(templates_a.get("shared_templates", []))
-    public_count = len(templates_a.get("public_templates", []))
-    
-    if my_templates_count != 3:
-        return log_error(5, f"Expected 3 my_templates, got {my_templates_count}")
-    if shared_count != 0:
-        return log_error(5, f"Expected 0 shared_templates, got {shared_count}")
-    if public_count != 0:
-        return log_error(5, f"Expected 0 public_templates, got {public_count}")
-    
-    log_success(5, f"User A templates correct: my={my_templates_count}, shared={shared_count}, public={public_count}")
-    
-    # Step 6: User B checks GET /api/templates
-    log_test(6, "User B checking template list")
-    templates_b = get_templates(token_b)
-    if not templates_b:
-        return log_error(6, "Failed to get User B templates")
-    
-    my_templates_b = len(templates_b.get("my_templates", []))
-    shared_templates_b = len(templates_b.get("shared_templates", []))
-    public_templates_b = len(templates_b.get("public_templates", []))
-    
-    if my_templates_b != 0:
-        return log_error(6, f"Expected 0 my_templates for User B, got {my_templates_b}")
-    if shared_templates_b != 1:
-        return log_error(6, f"Expected 1 shared_template for User B, got {shared_templates_b}")
-    if public_templates_b != 1:
-        return log_error(6, f"Expected 1 public_template for User B, got {public_templates_b}")
-    
-    # Verify User B cannot see private template
-    all_visible_templates = templates_b.get("my_templates", []) + templates_b.get("shared_templates", []) + templates_b.get("public_templates", [])
-    private_visible = any(t.get("id") == private_template_id for t in all_visible_templates)
-    if private_visible:
-        return log_error(6, "User B can see private template - security issue!")
-    
-    log_success(6, f"User B templates correct: my={my_templates_b}, shared={shared_templates_b}, public={public_templates_b}, private template NOT visible")
-    
-    # Step 7: User B imports shared template
-    log_test(7, "User B importing shared template")
-    imported_shared_id = import_template(token_b, shared_template_id)
-    if not imported_shared_id:
-        return log_error(7, "Failed to import shared template")
-    log_success(7, f"Shared template imported: {imported_shared_id}")
-    
-    # Step 8: User B imports public template
-    log_test(8, "User B importing public template")
-    imported_public_id = import_template(token_b, public_template_id)
-    if not imported_public_id:
-        return log_error(8, "Failed to import public template")
-    log_success(8, f"Public template imported: {imported_public_id}")
-    
-    # Step 9: User B tries to import private template (should fail)
-    log_test(9, "User B attempting to import private template (should fail with 403)")
-    result = import_template(token_b, private_template_id)
-    if isinstance(result, tuple):
-        status_code, error_msg = result
-        if status_code == 403:
-            log_success(9, f"Private template access correctly denied with 403: {error_msg}")
-        else:
-            return log_error(9, f"Expected 403, got {status_code}: {error_msg}")
-    else:
-        return log_error(9, "Private template import should have failed but succeeded!")
-    
-    # Step 10: User B uses imported template
-    log_test(10, "User B using imported template to create new decision")
-    new_decision_id = use_template(token_b, imported_shared_id, "From Imported Template")
-    if not new_decision_id:
-        return log_error(10, "Failed to use imported template")
-    log_success(10, f"New decision created from imported template: {new_decision_id}")
-    
-    # Verify User B now has 2 imported templates
-    log_test("Final", "Verifying final state")
-    final_templates_b = get_templates(token_b)
-    if not final_templates_b:
-        return log_error("Final", "Failed to get final User B templates")
-    
-    final_my_templates = len(final_templates_b.get("my_templates", []))
-    if final_my_templates != 2:
-        return log_error("Final", f"Expected 2 my_templates after imports, got {final_my_templates}")
-    
-    log_success("Final", f"User B has {final_my_templates} templates after imports")
-    
-    print(f"\n🎉 ALL TESTS PASSED! Enhanced template sharing system working correctly:")
-    print(f"   ✅ User registration and authentication")
-    print(f"   ✅ Decision creation with factors and options")
-    print(f"   ✅ Template creation with different visibility levels (private/shared/public)")
-    print(f"   ✅ Cross-user template visibility rules")
-    print(f"   ✅ Template import functionality")
-    print(f"   ✅ Private template access control (403 on unauthorized access)")
-    print(f"   ✅ Template usage to create new decisions")
-    print(f"   ✅ Complete enhanced template sharing workflow")
-    
-    return True
-
-def test_admin_system():
-    """Test 3-tier admin system and authorized templates"""
-    print("\n🔧 TESTING 3-TIER ADMIN SYSTEM")
-    print("=" * 50)
-    
-    # Generate unique emails with timestamp for new users to avoid conflicts
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    
-    # Use existing super admin
-    super_email = "super@test.com"
-    super_password = "test123"
-    super_name = "Super Admin"
-    
-    # New users with unique emails
-    coadmin_email = f"coadmin{timestamp}@test.com"
-    coadmin_password = "test123"
-    coadmin_name = "Co Admin"
-    
-    admin_email = f"admin{timestamp}@test.com"
-    admin_password = "test123"
-    admin_name = "Regular Admin"
-    
-    # Step 1: Login existing super admin and register 2 new users
-    log_test("1", "Logging in existing super admin and registering 2 new users")
-    
-    # Login existing super admin
-    login_url = f"{BASE_URL}/auth/login"
-    response = requests.post(login_url, json={
-        "email": super_email,
-        "password": super_password
-    })
-    if response.status_code != 200:
-        return log_error("1a", f"Failed to login existing super admin: {response.status_code} - {response.text}")
-    super_token = response.json().get("session_token")
-    log_success("1a", f"Super admin logged in successfully")
-    
-    coadmin_token = register_user(coadmin_email, coadmin_password, coadmin_name)
-    if not coadmin_token:
-        return log_error("1b", "Failed to register CoAdmin user")
-    log_success("1b", f"CoAdmin user registered successfully")
-    
-    admin_token = register_user(admin_email, admin_password, admin_name)
-    if not admin_token:
-        return log_error("1c", "Failed to register Admin user")
-    log_success("1c", f"Admin user registered successfully")
-    
-    # Step 2: Verify admin setup and existing super admin
-    log_test("2", "Verifying admin setup with existing super admin")
-    
-    headers_super = {"Authorization": f"Bearer {super_token}"}
-    
-    # Verify super admin role
-    me_url = f"{BASE_URL}/auth/me"
-    response = requests.get(me_url, headers=headers_super)
-    if response.status_code != 200:
-        return log_error("2a", f"Failed to get super user info: {response.status_code}")
-    
-    super_data = response.json()
-    if super_data.get("role") != "super_admin":
-        return log_error("2a", f"Expected role 'super_admin', got: {super_data.get('role')}")
-    log_success("2a", f"Super admin verified with correct role: {super_data.get('role')}")
-    
-    # CoAdmin tries to become super_admin (should fail)
-    headers_coadmin = {"Authorization": f"Bearer {coadmin_token}"}
-    setup_url = f"{BASE_URL}/admin/setup"
-    response = requests.post(setup_url, headers=headers_coadmin)
-    if response.status_code != 400:
-        return log_error("2b", f"Expected 400 when CoAdmin tries setup, got: {response.status_code}")
-    log_success("2b", "CoAdmin correctly denied admin setup (super already exists)")
-    
-    # Step 3: Skip this since we already verified in step 2
-    
-    # Step 4: Super Admin promotes users
-    log_test("4", "Testing user promotion")
-    
-    promote_url = f"{BASE_URL}/admin/promote"
-    
-    # Promote CoAdmin to co_admin
-    promote_data = {"email": coadmin_email, "role": "co_admin"}
-    response = requests.post(promote_url, json=promote_data, headers=headers_super)
-    if response.status_code != 200:
-        return log_error("4a", f"Failed to promote CoAdmin: {response.status_code} - {response.text}")
-    log_success("4a", "CoAdmin promoted to co_admin successfully")
-    
-    # Promote Admin to admin
-    promote_data = {"email": admin_email, "role": "admin"}
-    response = requests.post(promote_url, json=promote_data, headers=headers_super)
-    if response.status_code != 200:
-        return log_error("4b", f"Failed to promote Admin: {response.status_code} - {response.text}")
-    log_success("4b", "Admin promoted to admin successfully")
-    
-    # Step 5: Test GET /api/admin/users
-    log_test("5", "Testing admin users list")
-    
-    users_url = f"{BASE_URL}/admin/users"
-    response = requests.get(users_url, headers=headers_super)
-    if response.status_code != 200:
-        return log_error("5", f"Failed to get admin users: {response.status_code} - {response.text}")
-    
-    admin_users = response.json()
-    if len(admin_users) < 3:
-        return log_error("5", f"Expected at least 3 admin users, got: {len(admin_users)}")
-    
-    # Check that our specific users exist with correct roles
-    user_emails = [user.get("email") for user in admin_users]
-    expected_users = {
-        super_email: "super_admin",
-        coadmin_email: "co_admin",  
-        admin_email: "admin"
-    }
-    
-    for email, expected_role in expected_users.items():
-        found_user = None
-        for user in admin_users:
-            if user.get("email") == email:
-                found_user = user
-                break
-        
-        if not found_user:
-            return log_error("5", f"User {email} not found in admin users list")
-        
-        if found_user.get("role") != expected_role:
-            return log_error("5", f"User {email} has role {found_user.get('role')}, expected {expected_role}")
-    
-    log_success("5", f"Admin users list contains our 3 test users with correct roles (total {len(admin_users)} admin users)")
-    
-    # Step 6: Permission tests
-    log_test("6", "Testing permission matrix")
-    
-    headers_admin = {"Authorization": f"Bearer {admin_token}"}
-    
-    # 6a: Admin tries to promote someone (should fail)
-    promote_data = {"email": "test@example.com", "role": "admin"}
-    response = requests.post(promote_url, json=promote_data, headers=headers_admin)
-    if response.status_code != 403:
-        return log_error("6a", f"Expected 403 when Admin tries to promote, got: {response.status_code}")
-    log_success("6a", "Admin correctly denied promotion privileges (403)")
-    
-    # 6b: CoAdmin tries to promote to co_admin (should fail)
-    promote_data = {"email": admin_email, "role": "co_admin"}  # Try to promote existing admin to co_admin
-    response = requests.post(promote_url, json=promote_data, headers=headers_coadmin)
-    if response.status_code != 403:
-        return log_error("6b", f"Expected 403 when CoAdmin tries to create co_admin, got: {response.status_code}")
-    log_success("6b", "CoAdmin correctly denied co_admin promotion (only super can)")
-    
-    # 6c: CoAdmin promotes to admin (should succeed - create a new user first)
-    # Register a test user to promote
-    test_email = f"testuser{timestamp}@test.com"
-    test_user_token = register_user(test_email, "test123", "Test User")
-    if not test_user_token:
-        return log_error("6c", "Failed to register test user for promotion")
-    
-    promote_data = {"email": test_email, "role": "admin"}
-    response = requests.post(promote_url, json=promote_data, headers=headers_coadmin)
-    if response.status_code != 200:
-        return log_error("6c", f"CoAdmin failed to promote to admin: {response.status_code} - {response.text}")
-    log_success("6c", "CoAdmin successfully promoted user to admin")
-    
-    # 6d: Admin tries to demote someone (should fail)
-    demote_url = f"{BASE_URL}/admin/demote"
-    demote_data = {"email": test_email}
-    response = requests.post(demote_url, json=demote_data, headers=headers_admin)
-    if response.status_code != 403:
-        return log_error("6d", f"Expected 403 when Admin tries to demote, got: {response.status_code}")
-    log_success("6d", "Admin correctly denied demotion privileges (403)")
-    
-    # 6e: CoAdmin tries to demote admin (should succeed)
-    response = requests.post(demote_url, json=demote_data, headers=headers_coadmin)
-    if response.status_code != 200:
-        return log_error("6e", f"CoAdmin failed to demote admin: {response.status_code} - {response.text}")
-    log_success("6e", "CoAdmin successfully demoted admin user")
-    
-    # 6f: CoAdmin tries to demote super_admin (should fail)
-    demote_data = {"email": super_email}
-    response = requests.post(demote_url, json=demote_data, headers=headers_coadmin)
-    if response.status_code != 403:
-        return log_error("6f", f"Expected 403 when trying to demote super_admin, got: {response.status_code}")
-    log_success("6f", "CoAdmin correctly denied demoting super_admin (403)")
-    
-    # 6g: Super Admin demotes Co-Admin (should succeed)
-    demote_data = {"email": coadmin_email}
-    response = requests.post(demote_url, json=demote_data, headers=headers_super)
-    if response.status_code != 200:
-        return log_error("6g", f"Super Admin failed to demote co-admin: {response.status_code} - {response.text}")
-    log_success("6g", "Super Admin successfully demoted Co-Admin")
-    
-    # Step 7: Template authorization tests
-    log_test("7", "Testing template authorization")
-    
-    # First create a decision and save as public template
-    decision_id = create_decision_with_data(super_token, "Template Decision")
-    if not decision_id:
-        return log_error("7", "Failed to create decision for template testing")
-    
-    # Save as public template
-    template_url = f"{BASE_URL}/decisions/{decision_id}/save-as-template"
-    template_data = {
-        "name": "Test Authorization Template",
-        "template_type": "assessment",
-        "visibility": "public"
-    }
-    response = requests.post(template_url, json=template_data, headers=headers_super)
-    if response.status_code != 200:
-        return log_error("7", f"Failed to save template: {response.status_code} - {response.text}")
-    response_data = response.json()
-    template_id = response_data.get("id")
-    if not template_id:
-        return log_error("7", f"No template ID in response: {response_data}")
-    log_success("7a", f"Public template created successfully with ID: {template_id}")
-    
-    # 7b: Approve template (as Super Admin)
-    approve_url = f"{BASE_URL}/admin/templates/{template_id}/approve"
-    response = requests.post(approve_url, headers=headers_super)
-    if response.status_code != 200:
-        return log_error("7b", f"Failed to approve template: {response.status_code} - {response.text}")
-    log_success("7b", "Template approved successfully")
-    
-    # 7c: Check authorized templates in GET /api/templates
-    templates_url = f"{BASE_URL}/templates"
-    response = requests.get(templates_url, headers=headers_super)
-    if response.status_code != 200:
-        return log_error("7c", f"Failed to get templates: {response.status_code} - {response.text}")
-    
-    templates_data = response.json()
-    authorized_templates = templates_data.get("authorized_templates", [])
-    if len(authorized_templates) == 0:
-        return log_error("7c", "No authorized templates found after approval")
-    
-    # Check if our template is in authorized list
-    found_template = False
-    for template in authorized_templates:
-        if template.get("id") == template_id:
-            found_template = True
-            if not template.get("authorized"):
-                return log_error("7c", "Template found but not marked as authorized")
-            break
-    
-    if not found_template:
-        return log_error("7c", "Approved template not found in authorized_templates list")
-    log_success("7c", "Authorized template correctly appears in templates list")
-    
-    # 7d: Revoke template authorization
-    revoke_url = f"{BASE_URL}/admin/templates/{template_id}/revoke"
-    response = requests.post(revoke_url, headers=headers_super)
-    if response.status_code != 200:
-        return log_error("7d", f"Failed to revoke template: {response.status_code} - {response.text}")
-    log_success("7d", "Template authorization revoked successfully")
-    
-    # 7e: Non-admin tries to approve (should fail - use regular user token)
-    response = requests.post(approve_url, headers={"Authorization": f"Bearer {test_user_token}"})
-    if response.status_code != 403:
-        return log_error("7e", f"Expected 403 when non-admin tries to approve, got: {response.status_code}")
-    log_success("7e", "Non-admin correctly denied template approval (403)")
-    
-    print(f"\n🎉 ALL ADMIN SYSTEM TESTS PASSED!")
-    print(f"   ✅ 3-tier admin system working correctly")
-    print(f"   ✅ User registration and bootstrap setup")
-    print(f"   ✅ Role promotion and demotion with proper permissions")
-    print(f"   ✅ Admin users list endpoint")
-    print(f"   ✅ Complete permission matrix validation")
-    print(f"   ✅ Template authorization system")
-    print(f"   ✅ All security controls functioning properly")
-    
-    return True
+    """Run all backend tests"""
+    print("🚀 BACKEND TESTING - View Dezider API")
+    print(f"Testing against: {BACKEND_URL}")
+    print(f"Started at: {datetime.now().isoformat()}")
+    
+    results = TestResults()
+    
+    # Test 1: Health Check Endpoint Fix
+    test_health_check(results)
+    
+    # Test 2: Notification System APIs
+    test_notification_system(results)
+    
+    # Test 3: Folder Analytics APIs  
+    test_folder_analytics(results)
+    
+    # Print Summary
+    print(f"\n{'='*60}")
+    print("🏁 BACKEND TESTING COMPLETE")
+    print(f"{'='*60}")
+    print(f"✅ PASSED: {results.passed}")
+    print(f"❌ FAILED: {results.failed}")
+    print(f"📊 TOTAL: {results.passed + results.failed}")
+    
+    if results.failed > 0:
+        print(f"\n❌ FAILED TESTS:")
+        for result in results.results:
+            if "❌ FAILED" in result:
+                print(f"   {result}")
+    
+    print(f"\n✅ SUCCESSFUL TESTS:")
+    for result in results.results:
+        if "✅ PASSED" in result:
+            print(f"   {result}")
+    
+    print(f"\nCompleted at: {datetime.now().isoformat()}")
+    return results.failed == 0
 
 if __name__ == "__main__":
-    success = test_admin_system()
-    if not success:
-        sys.exit(1)
+    success = main()
+    exit(0 if success else 1)

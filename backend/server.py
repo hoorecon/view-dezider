@@ -1455,6 +1455,8 @@ async def root():
     return {"message": "View Dezider API - Decision Intelligence by Venture Buddha"}
 
 @api_router.get("/health")
+async def health_check():
+    return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 # ========================
 # DECISION FOLDERS
@@ -1920,10 +1922,6 @@ async def get_single_folder_analytics(folder_id: str, user: dict = Depends(get_c
             for d in decisions[:5]
         ],
     }
-
-
-async def health_check():
-    return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 # Include the router in the main app
 app.include_router(api_router)

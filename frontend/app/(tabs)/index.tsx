@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,7 @@ import {
   RefreshControl,
   Image,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,6 +29,8 @@ export default function HomeScreen() {
   const { user } = useAuthStore();
   const [stats, setStats] = useState<Stats | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [inboxPending, setInboxPending] = useState(0);
 
   const fetchStats = async () => {
     try {
@@ -39,13 +41,40 @@ export default function HomeScreen() {
     }
   };
 
-  useEffect(() => {
-    fetchStats();
-  }, []);
+  const fetchUnreadCount = async () => {
+    try {
+      const response = await api.get('/notifications/unread-count');
+      setUnreadCount(response.data.count || 0);
+    } catch (error) {
+      console.error('Error fetching unread count:', error);
+    }
+  };
+
+  const fetchInboxCount = async () => {
+    try {
+      const response = await api.get('/shared-steps/received');
+      const pending = (response.data || []).filter((s: any) =>
+        s.status === 'active' && s.recipients?.some((r: any) => r.status === 'pending')
+      ).length;
+      setInboxPending(pending);
+    } catch (error) {
+      console.error('Error fetching inbox:', error);
+    }
+  };
+
+  const fetchAll = async () => {
+    await Promise.all([fetchStats(), fetchUnreadCount(), fetchInboxCount()]);
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchAll();
+    }, [])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchStats();
+    await fetchAll();
     setRefreshing(false);
   };
 
@@ -86,10 +115,23 @@ export default function HomeScreen() {
               <Text style={styles.greeting}>{getGreeting()},</Text>
               <Text style={styles.userName}>{user?.name || 'Decision Maker'}</Text>
             </View>
-            <Image
-              source={{ uri: 'https://customer-assets.emergentagent.com/job_chapter2-guide/artifacts/acyqe96y_VENTURE%20BUDDHA-SqaureHD.png' }}
-              style={styles.headerLogo}
-            />
+            <View style={styles.headerRight}>
+              <TouchableOpacity
+                style={styles.headerIconBtn}
+                onPress={() => router.push('/notifications')}
+              >
+                <Ionicons name="notifications-outline" size={22} color="#FFF" />
+                {unreadCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              <Image
+                source={{ uri: 'https://customer-assets.emergentagent.com/job_chapter2-guide/artifacts/acyqe96y_VENTURE%20BUDDHA-SqaureHD.png' }}
+                style={styles.headerLogo}
+              />
+            </View>
           </View>
           <Text style={styles.tagline}>Make conscious decisions, shape your destiny</Text>
         </LinearGradient>
@@ -124,6 +166,57 @@ export default function HomeScreen() {
               </LinearGradient>
               <Text style={styles.actionTitle}>Test123</Text>
               <Text style={styles.actionSubtitle}>Instant decision</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Collaborate & Insights */}
+          <Text style={styles.sectionTitle}>Collaborate & Insights</Text>
+          <View style={styles.colabRow}>
+            <TouchableOpacity
+              style={styles.colabCard}
+              onPress={() => router.push('/inbox')}
+            >
+              <View style={[styles.colabIconWrap, { backgroundColor: 'rgba(99,102,241,0.1)' }]}>
+                <Ionicons name="mail-unread" size={22} color="#6366F1" />
+                {inboxPending > 0 && (
+                  <View style={[styles.colabBadge, { backgroundColor: '#6366F1' }]}>
+                    <Text style={styles.colabBadgeText}>{inboxPending}</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.colabTitle}>Shared Inbox</Text>
+              <Text style={styles.colabSubtitle}>
+                {inboxPending > 0 ? `${inboxPending} pending` : 'No pending'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.colabCard}
+              onPress={() => router.push('/notifications')}
+            >
+              <View style={[styles.colabIconWrap, { backgroundColor: 'rgba(245,158,11,0.1)' }]}>
+                <Ionicons name="notifications" size={22} color="#F59E0B" />
+                {unreadCount > 0 && (
+                  <View style={[styles.colabBadge, { backgroundColor: '#F59E0B' }]}>
+                    <Text style={styles.colabBadgeText}>{unreadCount}</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.colabTitle}>Notifications</Text>
+              <Text style={styles.colabSubtitle}>
+                {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.colabCard}
+              onPress={() => router.push('/analytics')}
+            >
+              <View style={[styles.colabIconWrap, { backgroundColor: 'rgba(16,185,129,0.1)' }]}>
+                <Ionicons name="bar-chart" size={22} color="#10B981" />
+              </View>
+              <Text style={styles.colabTitle}>Analytics</Text>
+              <Text style={styles.colabSubtitle}>Life areas</Text>
             </TouchableOpacity>
           </View>
 
@@ -281,6 +374,38 @@ const styles = StyleSheet.create({
   headerLeft: {
     flex: 1,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  badge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#EF4444',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: '#FFF',
+  },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFF',
+  },
   headerLogo: {
     width: 48,
     height: 48,
@@ -342,6 +467,56 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textSecondary,
     marginTop: 2,
+  },
+  colabRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  colabCard: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+    borderRadius: 14,
+    padding: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  colabIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  colabBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 3,
+  },
+  colabBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFF',
+  },
+  colabTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    textAlign: 'center',
+  },
+  colabSubtitle: {
+    fontSize: 10,
+    color: COLORS.textMuted,
+    marginTop: 2,
+    textAlign: 'center',
   },
   statsGrid: {
     flexDirection: 'row',
