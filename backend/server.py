@@ -176,6 +176,14 @@ DECISION_FOLDERS = [
 # Admin Models
 ROLE_HIERARCHY = {"super_admin": 3, "co_admin": 2, "admin": 1, "user": 0}
 
+# Notification Models
+class NotificationCreate(BaseModel):
+    user_id: str
+    type: str  # "share_invite", "share_contributed", "share_merged", "system"
+    title: str
+    message: str
+    data: Optional[dict] = None  # Extra data like share_id, decision_id
+
 class PromoteUserRequest(BaseModel):
     email: EmailStr
     role: str  # "admin" or "co_admin"
@@ -1508,6 +1516,17 @@ async def share_step(decision_id: str, data: ShareStepRequest, user: dict = Depe
     }
     
     await db.shared_steps.insert_one(share_doc)
+    
+    # Create notifications for each recipient
+    for r in recipients:
+        await create_notification(
+            r["user_id"],
+            "share_invite",
+            "Step Shared With You",
+            f'{user.get("name", user["email"])} shared Step {data.step_number} of "{decision.get("title", "a decision")}" with you',
+            {"share_id": share_doc["id"], "decision_id": decision_id, "step_number": data.step_number}
+        )
+    
     return {"id": share_doc["id"], "message": f"Step {data.step_number} shared with {len(recipients)} users"}
 
 @api_router.get("/shared-steps/received")
@@ -1568,6 +1587,16 @@ async def contribute_to_shared_step(share_id: str, data: ContributeStepRequest, 
             "recipients.$.status": "contributed",
             "recipients.$.contribution": contribution,
         }}
+    )
+    
+    # Notify the owner about the contribution
+    contributor_name = user.get("name", user.get("email", "Someone"))
+    await create_notification(
+        share["owner_id"],
+        "share_contributed",
+        "New Contribution",
+        f'{contributor_name} contributed to Step {share.get("step_number", "?")} of "{share.get("decision_title", "your decision")}"',
+        {"share_id": share_id, "decision_id": share.get("decision_id")}
     )
     
     return {"message": "Contribution submitted successfully"}
@@ -1671,7 +1700,227 @@ async def merge_shared_step(share_id: str, data: MergeStepRequest, user: dict = 
         {"$set": {"status": "merged", "merged_at": datetime.now(timezone.utc)}}
     )
     
+    # Notify contributors that merge happened
+    for r in share.get("recipients", []):
+        if r.get("contribution"):
+            await create_notification(
+                r["user_id"],
+                "share_merged",
+                "Contributions Merged",
+                f'{user.get("name", "Someone")} merged your input for "{share.get("decision_title", "a decision")}"',
+                {"share_id": share_id, "decision_id": share["decision_id"]}
+            )
+    
     return {"message": "Contributions merged successfully", "weights": weights}
+
+# ========================
+# NOTIFICATIONS
+# ========================
+
+async def create_notification(user_id: str, notif_type: str, title: str, message: str, data: dict = None):
+    """Helper function to create a notification"""
+    notif = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "type": notif_type,
+        "title": title,
+        "message": message,
+        "data": data or {},
+        "read": False,
+        "created_at": datetime.now(timezone.utc),
+    }
+    await db.notifications.insert_one(notif)
+    return notif
+
+@api_router.get("/notifications")
+async def get_notifications(user: dict = Depends(get_current_user)):
+    """Get all notifications for the current user"""
+    notifications = await db.notifications.find(
+        {"user_id": user["user_id"]},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
+    return notifications
+
+@api_router.get("/notifications/unread-count")
+async def get_unread_count(user: dict = Depends(get_current_user)):
+    """Get count of unread notifications"""
+    count = await db.notifications.count_documents(
+        {"user_id": user["user_id"], "read": False}
+    )
+    return {"count": count}
+
+@api_router.post("/notifications/{notif_id}/read")
+async def mark_notification_read(notif_id: str, user: dict = Depends(get_current_user)):
+    """Mark a specific notification as read"""
+    result = await db.notifications.update_one(
+        {"id": notif_id, "user_id": user["user_id"]},
+        {"$set": {"read": True}}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return {"message": "Notification marked as read"}
+
+@api_router.post("/notifications/read-all")
+async def mark_all_notifications_read(user: dict = Depends(get_current_user)):
+    """Mark all notifications as read for the current user"""
+    await db.notifications.update_many(
+        {"user_id": user["user_id"], "read": False},
+        {"$set": {"read": True}}
+    )
+    return {"message": "All notifications marked as read"}
+
+@api_router.delete("/notifications/{notif_id}")
+async def delete_notification(notif_id: str, user: dict = Depends(get_current_user)):
+    """Delete a notification"""
+    await db.notifications.delete_one({"id": notif_id, "user_id": user["user_id"]})
+    return {"message": "Notification deleted"}
+
+# ========================
+# FOLDER ANALYTICS
+# ========================
+
+@api_router.get("/analytics/folders")
+async def get_folder_analytics(user: dict = Depends(get_current_user)):
+    """Get analytics broken down by decision folder"""
+    decisions = await db.decisions.find(
+        {"user_id": user["user_id"]},
+        {"_id": 0}
+    ).to_list(500)
+    
+    # Build analytics per folder
+    folder_stats = {}
+    for folder in DECISION_FOLDERS:
+        folder_stats[folder["id"]] = {
+            "id": folder["id"],
+            "name": folder["name"],
+            "icon": folder["icon"],
+            "color": folder["color"],
+            "total_decisions": 0,
+            "completed": 0,
+            "in_progress": 0,
+            "draft": 0,
+            "avg_factors": 0,
+            "avg_options": 0,
+            "total_factors": 0,
+            "total_options": 0,
+            "completion_rate": 0,
+            "recent_decision": None,
+        }
+    
+    # Add uncategorized
+    folder_stats["uncategorized"] = {
+        "id": "uncategorized",
+        "name": "Uncategorized",
+        "icon": "folder-open",
+        "color": "#9CA3AF",
+        "total_decisions": 0,
+        "completed": 0,
+        "in_progress": 0,
+        "draft": 0,
+        "avg_factors": 0,
+        "avg_options": 0,
+        "total_factors": 0,
+        "total_options": 0,
+        "completion_rate": 0,
+        "recent_decision": None,
+    }
+    
+    for d in decisions:
+        folder_id = d.get("folder", "") or "uncategorized"
+        if folder_id not in folder_stats:
+            folder_id = "uncategorized"
+        
+        stats = folder_stats[folder_id]
+        stats["total_decisions"] += 1
+        stats["total_factors"] += len(d.get("factors", []))
+        stats["total_options"] += len(d.get("options", []))
+        
+        status = d.get("status", "draft")
+        if status == "completed":
+            stats["completed"] += 1
+        elif status == "in_progress":
+            stats["in_progress"] += 1
+        else:
+            stats["draft"] += 1
+        
+        # Track most recent decision
+        if not stats["recent_decision"] or d.get("updated_at", d.get("created_at")) > stats["recent_decision"].get("updated_at", stats["recent_decision"].get("created_at")):
+            stats["recent_decision"] = {
+                "id": d["id"],
+                "title": d["title"],
+                "status": d.get("status", "draft"),
+                "updated_at": d.get("updated_at", d.get("created_at")),
+            }
+    
+    # Calculate averages and rates
+    for stats in folder_stats.values():
+        total = stats["total_decisions"]
+        if total > 0:
+            stats["avg_factors"] = round(stats["total_factors"] / total, 1)
+            stats["avg_options"] = round(stats["total_options"] / total, 1)
+            stats["completion_rate"] = round(stats["completed"] / total * 100, 1)
+        
+        # Serialize recent decision datetime
+        if stats["recent_decision"] and "updated_at" in stats["recent_decision"]:
+            dt = stats["recent_decision"]["updated_at"]
+            if isinstance(dt, datetime):
+                stats["recent_decision"]["updated_at"] = dt.isoformat()
+    
+    # Return only folders that have decisions + summary
+    active_folders = [s for s in folder_stats.values() if s["total_decisions"] > 0]
+    all_folders = list(folder_stats.values())
+    
+    # Overall summary
+    total_decisions = len(decisions)
+    completed = sum(1 for d in decisions if d.get("status") == "completed")
+    
+    return {
+        "folders": all_folders,
+        "active_folders": active_folders,
+        "summary": {
+            "total_decisions": total_decisions,
+            "total_completed": completed,
+            "total_folders_used": len(active_folders),
+            "overall_completion_rate": round(completed / total_decisions * 100, 1) if total_decisions > 0 else 0,
+            "most_active_folder": max(active_folders, key=lambda x: x["total_decisions"])["name"] if active_folders else None,
+        }
+    }
+
+@api_router.get("/analytics/folder/{folder_id}")
+async def get_single_folder_analytics(folder_id: str, user: dict = Depends(get_current_user)):
+    """Get detailed analytics for a specific folder"""
+    decisions = await db.decisions.find(
+        {"user_id": user["user_id"], "folder": folder_id},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(100)
+    
+    total = len(decisions)
+    completed = [d for d in decisions if d.get("status") == "completed"]
+    in_progress = [d for d in decisions if d.get("status") == "in_progress"]
+    
+    # Factor frequency analysis
+    factor_freq = {}
+    for d in decisions:
+        for f in d.get("factors", []):
+            name = f.get("name", "Unknown")
+            factor_freq[name] = factor_freq.get(name, 0) + 1
+    
+    top_factors = sorted(factor_freq.items(), key=lambda x: x[1], reverse=True)[:10]
+    
+    return {
+        "folder_id": folder_id,
+        "total_decisions": total,
+        "completed": len(completed),
+        "in_progress": len(in_progress),
+        "draft": total - len(completed) - len(in_progress),
+        "completion_rate": round(len(completed) / total * 100, 1) if total > 0 else 0,
+        "top_factors": [{"name": name, "count": count} for name, count in top_factors],
+        "recent_decisions": [
+            {"id": d["id"], "title": d["title"], "status": d.get("status", "draft")}
+            for d in decisions[:5]
+        ],
+    }
+
 
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}

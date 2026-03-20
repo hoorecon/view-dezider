@@ -6,7 +6,7 @@ from datetime import datetime
 import sys
 
 # Configuration
-BASE_URL = "https://prr-modal-testing.preview.emergentagent.com/api"
+BASE_URL = "https://decision-flow-plus.preview.emergentagent.com/api"
 
 # Test data
 USER_A_EMAIL = "userA@test.com"

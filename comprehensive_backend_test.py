@@ -7,7 +7,7 @@ import sys
 import time
 
 # Configuration
-BASE_URL = "https://prr-modal-testing.preview.emergentagent.com/api"
+BASE_URL = "https://decision-flow-plus.preview.emergentagent.com/api"
 
 def log_test(step, message):
     timestamp = datetime.now().strftime("%H:%M:%S")
