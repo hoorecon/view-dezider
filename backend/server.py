@@ -2524,26 +2524,41 @@ async def fetch_factor_data(request: Request, user: dict = Depends(get_current_u
                     search_query = search_query.replace("{option}", option_name)
                     search_query = search_query.replace("{title}", decision_title)
                 try:
-                    prompt = f"""Research and find the current real-world value for the following:
+                    # Real web search using DuckDuckGo
+                    search_results_text = ""
+                    try:
+                        from duckduckgo_search import DDGS
+                        with DDGS() as ddgs:
+                            ddg_results = list(ddgs.text(search_query, max_results=5))
+                        for idx, r in enumerate(ddg_results, 1):
+                            search_results_text += f"\n{idx}. {r.get('title', '')}: {r.get('body', '')[:300]}"
+                            if r.get('href'):
+                                search_results_text += f"\n   Source: {r['href']}"
+                    except Exception as search_err:
+                        search_results_text = f"(Web search unavailable: {str(search_err)[:100]})"
+
+                    prompt = f"""Based on the following web search results, extract the current real-world value for:
 
 Factor: {factor.get('name', '')}
 Option/Subject: {option_name}
 Decision Context: {decision_title} - {decision_context}
-Search Focus: {search_query}
 Expected Unit: {factor.get('unit', 'N/A')}
 Data Type: {factor.get('factor_type', 'unknown')}
+
+Web Search Results for "{search_query}":
+{search_results_text}
 
 Return ONLY a JSON object with:
 - "value": the actual value (number for quantitative, text for qualitative)
 - "confidence": "high", "medium", or "low"
-- "source_note": brief note about where this data comes from
+- "source_note": brief note about the source of this data
 
 Return ONLY valid JSON, no explanation."""
 
                     chat = LlmChat(
                         api_key=api_key,
                         session_id=f"websurf_{user['user_id']}_{uuid.uuid4().hex[:8]}",
-                        system_message="You are a research assistant. Find real-world data values. Return only valid JSON."
+                        system_message="You are a research assistant. Analyze web search results and extract factual data values. Return only valid JSON."
                     ).with_model("openai", "gpt-4.1-mini")
                     response = await chat.send_message(UserMessage(text=prompt))
                     response_text = response.strip()

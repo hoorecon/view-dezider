@@ -88,6 +88,11 @@ export default function CLDViewer({
   const [cldData, setCldData] = useState<CLDData | null>(null);
   const [factorAnalysis, setFactorAnalysis] = useState<FactorAnalysis[]>([]);
   const [showDiagram, setShowDiagram] = useState(true);
+  // Edit mode state
+  const [editMode, setEditMode] = useState(false);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [addingLink, setAddingLink] = useState(false);
+  const [linkFromId, setLinkFromId] = useState<string | null>(null);
 
   if (!visible) return null;
 
@@ -158,6 +163,78 @@ export default function CLDViewer({
   const getLinkColor = (link: CLDLink) =>
     link.type === 'reinforcing' ? '#3B82F6' : '#EF4444';
 
+  // Edit functions
+  const handleNodeTap = (nodeId: string) => {
+    if (!editMode) return;
+    if (addingLink) {
+      if (!linkFromId) {
+        setLinkFromId(nodeId);
+      } else if (linkFromId !== nodeId) {
+        // Create new link
+        if (cldData) {
+          const exists = cldData.links.some(l =>
+            (l.from_id === linkFromId && l.to_id === nodeId) ||
+            (l.from_id === nodeId && l.to_id === linkFromId)
+          );
+          if (!exists) {
+            setCldData({
+              ...cldData,
+              links: [...cldData.links, {
+                from_id: linkFromId,
+                to_id: nodeId,
+                type: 'reinforcing',
+                strength: 5,
+                description: 'Manual link',
+              }],
+            });
+          }
+        }
+        setLinkFromId(null);
+        setAddingLink(false);
+      }
+    } else {
+      setSelectedNodeId(selectedNodeId === nodeId ? null : nodeId);
+    }
+  };
+
+  const removeNode = (nodeId: string) => {
+    if (!cldData) return;
+    Alert.alert('Remove Node', 'Remove this node and all its links?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove', style: 'destructive', onPress: () => {
+          setCldData({
+            ...cldData,
+            nodes: cldData.nodes.filter(n => n.factor_id !== nodeId),
+            links: cldData.links.filter(l => l.from_id !== nodeId && l.to_id !== nodeId),
+          });
+          setFactorAnalysis(prev => prev.filter(fa => fa.factor_id !== nodeId));
+          setSelectedNodeId(null);
+        },
+      },
+    ]);
+  };
+
+  const removeLink = (fromId: string, toId: string) => {
+    if (!cldData) return;
+    setCldData({
+      ...cldData,
+      links: cldData.links.filter(l => !(l.from_id === fromId && l.to_id === toId)),
+    });
+  };
+
+  const toggleLinkType = (fromId: string, toId: string) => {
+    if (!cldData) return;
+    setCldData({
+      ...cldData,
+      links: cldData.links.map(l =>
+        l.from_id === fromId && l.to_id === toId
+          ? { ...l, type: l.type === 'reinforcing' ? 'balancing' : 'reinforcing' }
+          : l
+      ),
+    });
+  };
+
   return (
     <View style={styles.overlay}>
       <View style={styles.container}>
@@ -209,10 +286,51 @@ export default function CLDViewer({
                   <Ionicons name="list-outline" size={16} color={!showDiagram ? '#FFF' : COLORS.textMuted} />
                   <Text style={[styles.tabText, !showDiagram && styles.tabTextActive]}>Analysis</Text>
                 </TouchableOpacity>
+                {showDiagram && (
+                  <TouchableOpacity
+                    style={[styles.tab, editMode && { backgroundColor: '#F59E0B' }]}
+                    onPress={() => { setEditMode(!editMode); setSelectedNodeId(null); setAddingLink(false); setLinkFromId(null); }}
+                  >
+                    <Ionicons name="create-outline" size={16} color={editMode ? '#FFF' : COLORS.textMuted} />
+                    <Text style={[styles.tabText, editMode && { color: '#FFF' }]}>Edit</Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
               {showDiagram ? (
                 <View style={styles.diagramContainer}>
+                  {/* Edit Toolbar */}
+                  {editMode && (
+                    <View style={styles.editToolbar}>
+                      <TouchableOpacity
+                        style={[styles.editToolBtn, addingLink && styles.editToolBtnActive]}
+                        onPress={() => { setAddingLink(!addingLink); setLinkFromId(null); setSelectedNodeId(null); }}
+                      >
+                        <Ionicons name="git-merge" size={16} color={addingLink ? '#FFF' : COLORS.primary} />
+                        <Text style={[styles.editToolText, addingLink && { color: '#FFF' }]}>
+                          {addingLink ? (linkFromId ? 'Tap Target Node' : 'Tap Source Node') : 'Add Link'}
+                        </Text>
+                      </TouchableOpacity>
+                      {selectedNodeId && (
+                        <>
+                          <TouchableOpacity
+                            style={[styles.editToolBtn, { borderColor: COLORS.error }]}
+                            onPress={() => removeNode(selectedNodeId)}
+                          >
+                            <Ionicons name="trash" size={16} color={COLORS.error} />
+                            <Text style={[styles.editToolText, { color: COLORS.error }]}>Remove Node</Text>
+                          </TouchableOpacity>
+                        </>
+                      )}
+                    </View>
+                  )}
+
+                  {addingLink && linkFromId && (
+                    <Text style={styles.editHint}>
+                      Now tap the destination node to create a link
+                    </Text>
+                  )}
+
                   <Svg width={DIAGRAM_SIZE} height={DIAGRAM_SIZE} viewBox={`0 0 ${DIAGRAM_SIZE} ${DIAGRAM_SIZE}`}>
                     <Defs>
                       <Marker id="arrowR" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
@@ -309,6 +427,56 @@ export default function CLDViewer({
                       <Text style={styles.legendText}>Balancing</Text>
                     </View>
                   </View>
+
+                  {/* Node touch overlay */}
+                  {editMode && cldData.nodes.map((node) => {
+                    const r = getNodeSize(node);
+                    return (
+                      <TouchableOpacity
+                        key={`touch-${node.factor_id}`}
+                        style={{
+                          position: 'absolute',
+                          left: node.x - r + 8,
+                          top: node.y - r + 8,
+                          width: r * 2,
+                          height: r * 2,
+                          borderRadius: r,
+                          borderWidth: selectedNodeId === node.factor_id ? 3 : 0,
+                          borderColor: '#F59E0B',
+                        }}
+                        onPress={() => handleNodeTap(node.factor_id)}
+                      />
+                    );
+                  })}
+
+                  {/* Edit mode link list */}
+                  {editMode && cldData.links.length > 0 && (
+                    <View style={styles.linkList}>
+                      <Text style={styles.linkListTitle}>Links (tap to edit)</Text>
+                      {cldData.links.map((link, idx) => {
+                        const fromName = cldData.nodes.find(n => n.factor_id === link.from_id)?.name || '?';
+                        const toName = cldData.nodes.find(n => n.factor_id === link.to_id)?.name || '?';
+                        return (
+                          <View key={idx} style={styles.linkItem}>
+                            <Text style={styles.linkItemText} numberOfLines={1}>
+                              {fromName} → {toName}
+                            </Text>
+                            <TouchableOpacity
+                              style={[styles.linkTypeBadge, { backgroundColor: link.type === 'reinforcing' ? '#DBEAFE' : '#FEE2E2' }]}
+                              onPress={() => toggleLinkType(link.from_id, link.to_id)}
+                            >
+                              <Text style={{ fontSize: 10, fontWeight: '600', color: link.type === 'reinforcing' ? '#3B82F6' : '#EF4444' }}>
+                                {link.type === 'reinforcing' ? 'R' : 'B'}
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => removeLink(link.from_id, link.to_id)}>
+                              <Ionicons name="close-circle" size={18} color={COLORS.error} />
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
 
                   {/* Loops */}
                   {cldData.loops.length > 0 && (
@@ -420,4 +588,30 @@ const styles = StyleSheet.create({
   applyBtnText: { fontSize: 15, fontWeight: '700', color: '#FFF' },
   regenBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10 },
   regenBtnText: { fontSize: 13, fontWeight: '600', color: COLORS.primary },
+  // Edit mode styles
+  editToolbar: { flexDirection: 'row', gap: 8, marginBottom: 8, flexWrap: 'wrap' },
+  editToolBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 8, borderWidth: 1, borderColor: COLORS.primary,
+    backgroundColor: '#FFF',
+  },
+  editToolBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  editToolText: { fontSize: 11, fontWeight: '600', color: COLORS.primary },
+  editHint: {
+    fontSize: 11, fontWeight: '600', color: '#F59E0B',
+    textAlign: 'center', marginBottom: 6,
+  },
+  linkList: { marginTop: 10, gap: 4 },
+  linkListTitle: { fontSize: 12, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 4 },
+  linkItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: 6, paddingHorizontal: 8,
+    backgroundColor: '#F8FAFC', borderRadius: 8,
+  },
+  linkItemText: { flex: 1, fontSize: 11, color: COLORS.textSecondary },
+  linkTypeBadge: {
+    width: 22, height: 22, borderRadius: 11,
+    alignItems: 'center', justifyContent: 'center',
+  },
 });
