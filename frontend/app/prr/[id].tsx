@@ -14,184 +14,32 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import { COLORS } from '../../src/constants/colors';
 import { Card } from '../../src/components/Card';
 import { GradientButton } from '../../src/components/GradientButton';
 import VoiceStepInput from '../../src/components/VoiceStepInput';
 import { StepVoiceCommand } from '../../src/utils/stepVoiceParser';
 import ShareStepModal from '../../src/components/ShareStepModal';
-// Voice commands now handled by StepVoiceCommand from stepVoiceParser
 import api from '../../src/utils/api';
+import type { Factor, OptionAssessment, DecisionOption, MPPSActionItem, MPPSImprovement, Decision } from '../../src/types/decision';
+import {
+  GAP_PRESETS,
+  LMH_VALUES,
+  UNIT_PRESETS,
+  NUMERIC_OPERATORS,
+  TEXT_OPERATORS,
+  TEPFI_ELEMENTS,
+  TEPFI_LAYERS,
+  senseDataType,
+  STANDARD_GAP,
+  calculateRatingsFromOrder,
+  getFactorAssessmentPct,
+} from '../../src/utils/decisionHelpers';
 
-interface Factor {
-  id: string;
-  name: string;
-  category: 'primary' | 'secondary';
-  rating: number;
-  order: number;
-  unit?: string; // e.g., "USD", "hours", "km", etc.
-  expected_value?: string | number; // Benchmark value
-  data_type?: 'numeric' | 'text'; // Auto-sensed from expected_value
-  operator?: string; // >=, <=, >, <, =, !=, between, contains, starts_with, ends_with, equals, not_equals
-  gap_multiplier?: number; // Per-factor gap multiplier (default 1.0)
-  parent_id?: string; // null/undefined = top-level factor, set = sub-factor under parent
-  weight?: number; // Sub-factor weight as % of parent (0-100, subs must sum to 100)
-}
-
-interface OptionAssessment {
-  factor_id: string;
-  percentage: number;
-  unit_value?: string; // Legacy: combined value+unit string
-  actual_value?: number; // Separated numeric value
-  assessment_mode?: 'L' | 'M' | 'H' | 'custom'; // Quick assessment mode
-}
-
-interface DecisionOption {
-  id: string;
-  name: string;
-  assessments: OptionAssessment[];
-  worth_percentage: number;
-}
-
-interface MPPSActionItem {
-  assignee_name: string;
-  assignee_email: string;
-  assignee_mobile: string;
-  task: string;
-  deadline?: string;
-}
-
-interface MPPSImprovement {
-  factor_id: string;
-  original_percentage?: number;
-  projected_percentage?: number;
-  delta_percentage?: number;
-  expected_value?: string;
-  expected_unit?: string;
-  improvement_plan: string;
-  tepfi_elements?: string[];
-  tepfi_layer?: 'self' | 'micro' | 'macro';
-  action_items?: MPPSActionItem[];
-}
-
-interface Decision {
-  id: string;
-  title: string;
-  context: string;
-  factors: Factor[];
-  options: DecisionOption[];
-  chosen_option_id: string | null;
-  decision_case: string | null;
-  notes: string;
-  rating_gap_multiplier: number;
-  mpps_option_id?: string;
-  mpps_improvements?: MPPSImprovement[];
-  mpps_projected_worth?: number;
-  mpps_timeframe?: string;
-  life_area?: string;
-  decision_type?: string;
-  status: string;
-}
-
-// Gap multiplier presets
-const GAP_PRESETS = [
-  { label: '0.25x', value: 0.25, warn: false },
-  { label: '0.5x', value: 0.5, warn: false },
-  { label: '0.75x', value: 0.75, warn: false },
-  { label: '1x', value: 1.0, warn: false },
-  { label: '1.5x', value: 1.5, warn: false },
-  { label: '2x', value: 2.0, warn: false },
-  { label: '3x', value: 3.0, warn: true },
-  { label: '4x', value: 4.0, warn: true },
-  { label: '5x', value: 5.0, warn: true },
-];
-
-// LMH Assessment constants
-const LMH_VALUES = {
-  L: { label: 'Low', percentage: 25, color: '#EF4444' },    // Red
-  M: { label: 'Medium', percentage: 50, color: '#F59E0B' }, // Yellow/Amber
-  H: { label: 'High', percentage: 75, color: '#10B981' },   // Green
-};
-
-// Common unit presets for factor measurement
-const UNIT_PRESETS = [
-  { label: '$', value: 'USD' },
-  { label: '€', value: 'EUR' },
-  { label: '₹', value: 'INR' },
-  { label: '£', value: 'GBP' },
-  { label: 'hrs', value: 'hours' },
-  { label: 'mins', value: 'minutes' },
-  { label: 'days', value: 'days' },
-  { label: 'yrs', value: 'years' },
-  { label: 'km', value: 'km' },
-  { label: 'mi', value: 'miles' },
-  { label: '%', value: '%' },
-  { label: '#', value: 'count' },
-  { label: 'ppl', value: 'people' },
-];
-
-// Operator presets by data type
-const NUMERIC_OPERATORS = [
-  { label: '≥', value: '>=' },
-  { label: '≤', value: '<=' },
-  { label: '>', value: '>' },
-  { label: '<', value: '<' },
-  { label: '=', value: '=' },
-  { label: '≠', value: '!=' },
-];
-const TEXT_OPERATORS = [
-  { label: 'Contains', value: 'contains' },
-  { label: 'Starts with', value: 'starts_with' },
-  { label: 'Ends with', value: 'ends_with' },
-  { label: 'Equals', value: 'equals' },
-  { label: '≠', value: 'not_equals' },
-];
-
-// Auto-sense data type from value
-const senseDataType = (value: string): 'numeric' | 'text' => {
-  if (!value || value.trim() === '') return 'numeric'; // default
-  const trimmed = value.trim();
-  // Check if it's a valid number (including decimals, negatives)
-  return /^-?\d+(\.\d+)?$/.test(trimmed) ? 'numeric' : 'text';
-};
-
-// Function to auto-calculate ratings based on order within each category
-// Rating starts from 10 for lowest priority (last Secondary) and increments by 10
-// Order: Secondary (lowest to highest) -> Primary (lowest to highest)
-const STANDARD_GAP = 10;
-
-const calculateRatingsFromOrder = (factors: Factor[], _unused?: number): Factor[] => {
-  // Only top-level factors participate in rating calculation
-  const topLevel = factors.filter(f => !f.parent_id);
-  const subFactors = factors.filter(f => !!f.parent_id);
-
-  const primaryFactors = topLevel.filter(f => f.category === 'primary').sort((a, b) => a.order - b.order);
-  const secondaryFactors = topLevel.filter(f => f.category === 'secondary').sort((a, b) => a.order - b.order);
-  
-  // Build ordered list from lowest to highest priority
-  const orderedFromLowest = [
-    ...secondaryFactors.slice().reverse(),
-    ...primaryFactors.slice().reverse(),
-  ];
-  
-  // Assign ratings using per-factor gap multipliers
-  const updatedTopLevel: Factor[] = [];
-  let currentRating = STANDARD_GAP; // Base rating for lowest factor
-  
-  orderedFromLowest.forEach((factor, index) => {
-    if (index === 0) {
-      updatedTopLevel.push({ ...factor, rating: currentRating });
-    } else {
-      const gapMult = factor.gap_multiplier ?? 1.0;
-      const gap = Math.round(STANDARD_GAP * gapMult);
-      currentRating = currentRating + gap;
-      updatedTopLevel.push({ ...factor, rating: currentRating });
-    }
-  });
-  
-  // Return updated top-level factors + unchanged sub-factors
-  return [...updatedTopLevel, ...subFactors];
-};
+// Gap multiplier presets, LMH values, unit presets, operators, TEPFI, and helper functions
+// are now imported from '../../src/utils/decisionHelpers'
 
 export default function PRRDecisionDetail() {
   const { id } = useLocalSearchParams();
@@ -571,80 +419,10 @@ export default function PRRDecisionDetail() {
     return assessment?.percentage ?? null;
   };
 
-  // Calculate worth percentage using weighted average formula
-  // Formula: Sum(Rating × Assessment%) / Sum(All Ratings)
-  // This ensures result is always 0-100%
-  // For factors with sub-factors: parent assessment % = weighted avg of sub-factor assessments
+  // Calculate worth using shared helper
   const calculateDynamicWorth = (option: DecisionOption): { worth: number; assessedCount: number; totalCount: number } => {
-    const factors = decision?.factors || [];
-    const topLevel = factors.filter(f => !f.parent_id);
-    const totalFactors = topLevel.length;
-    
-    if (totalFactors === 0) {
-      return { worth: 0, assessedCount: 0, totalCount: 0 };
-    }
-
-    // Get total of ALL top-level factor ratings
-    const totalRating = topLevel.reduce((sum, f) => sum + f.rating, 0);
-
-    if (totalRating === 0) {
-      return { worth: 0, assessedCount: 0, totalCount: totalFactors };
-    }
-
-    // Helper: get effective assessment % for a factor (handles sub-factor aggregation)
-    const getEffectivePercentage = (factor: Factor): number | null => {
-      const subs = factors.filter(f => f.parent_id === factor.id);
-      
-      if (subs.length === 0) {
-        // Leaf factor: use direct assessment
-        const assessment = option.assessments.find(a => a.factor_id === factor.id);
-        return assessment?.percentage ?? null;
-      }
-      
-      // Parent with sub-factors: weighted average of sub-factor assessments
-      let weightedSum = 0;
-      let totalWeight = 0;
-      let anyAssessed = false;
-      
-      for (const sub of subs) {
-        const subAssessment = option.assessments.find(a => a.factor_id === sub.id);
-        const subWeight = sub.weight || 0;
-        if (subAssessment?.percentage !== undefined && subAssessment?.percentage !== null && subWeight > 0) {
-          weightedSum += (subAssessment.percentage * subWeight) / 100;
-          totalWeight += subWeight;
-          anyAssessed = true;
-        }
-      }
-      
-      if (!anyAssessed || totalWeight === 0) return null;
-      // Scale up if not all sub-factor weights are accounted for
-      return Math.round(weightedSum * (100 / totalWeight) * 10) / 10;
-    };
-
-    let weightedSum = 0;
-    let assessedCount = 0;
-
-    for (const factor of topLevel) {
-      const pct = getEffectivePercentage(factor);
-      if (pct !== null) {
-        const clampedPercentage = Math.min(100, Math.max(0, pct));
-        weightedSum += factor.rating * (clampedPercentage / 100);
-        assessedCount++;
-      }
-    }
-
-    if (assessedCount === 0) {
-      return { worth: 0, assessedCount: 0, totalCount: totalFactors };
-    }
-
-    const rawWorth = (weightedSum / totalRating) * 100;
-    const worth = Math.min(100, Math.max(0, rawWorth));
-
-    return { 
-      worth: Math.round(worth * 10) / 10, 
-      assessedCount, 
-      totalCount: totalFactors 
-    };
+    const { calculateDynamicWorth: calcWorth } = require('../../src/utils/decisionHelpers');
+    return calcWorth(option, decision?.factors || []);
   };
 
   if (loading || !decision) {
@@ -1834,21 +1612,6 @@ export default function PRRDecisionDetail() {
       </View>
     );
   };
-
-  // TEPFI element labels
-  const TEPFI_ELEMENTS: { key: 'T' | 'E' | 'P' | 'F' | 'I'; label: string; icon: string; color: string }[] = [
-    { key: 'T', label: 'Time', icon: 'time-outline', color: '#3B82F6' },
-    { key: 'E', label: 'Effort', icon: 'fitness-outline', color: '#8B5CF6' },
-    { key: 'P', label: 'People', icon: 'people-outline', color: '#EC4899' },
-    { key: 'F', label: 'Finance', icon: 'cash-outline', color: '#10B981' },
-    { key: 'I', label: 'Infra', icon: 'business-outline', color: '#F59E0B' },
-  ];
-
-  const TEPFI_LAYERS: { key: 'self' | 'micro' | 'macro'; label: string; color: string }[] = [
-    { key: 'self', label: 'Self', color: '#6366F1' },
-    { key: 'micro', label: 'Micro', color: '#0EA5E9' },
-    { key: 'macro', label: 'Macro', color: '#64748B' },
-  ];
 
   // Step 8: Case-1 Results — ranked options
   const renderStep8 = () => {
