@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """
-Backend Testing for Enhanced Features
-Testing the 3 main enhanced backend features:
-1. PDF Download: GET /api/decisions/{id}/mpps-action-plan-pdf
-2. TEPFI AI Auto-map: POST /api/tepfi-auto-map
-3. Template System: Multiple endpoints for admin template operations
+Backend Testing Script for Push Notification and Sharing Infrastructure
+Tests the specific features mentioned in the review request:
+1. Register 2 users (sender and recipient)
+2. Test push token registration
+3. Test user search
+4. Test expert CRUD (as admin)
+5. Test share step with enhanced notification payload
+6. Verify notification has rich data
 """
 
 import asyncio
@@ -12,503 +15,538 @@ import httpx
 import json
 import uuid
 from datetime import datetime
-import os
 
-# Backend URL from environment
-BACKEND_URL = "https://dezider-multi-user.preview.emergentagent.com/api"
+# Backend URL from frontend/.env
+BASE_URL = "https://dezider-multi-user.preview.emergentagent.com/api"
 
 class BackendTester:
     def __init__(self):
-        self.session_token = None
-        self.admin_session_token = None
-        self.user_id = None
-        self.admin_user_id = None
-        self.decision_id = None
-        self.template_id = None
+        self.client = httpx.AsyncClient(timeout=30.0)
+        self.users = {}  # Store user data and tokens
+        self.decisions = {}  # Store decision data
+        self.experts = {}  # Store expert data
+        self.notifications = {}  # Store notification data
         
-    async def register_user(self, email_suffix=""):
-        """Register a new test user"""
-        timestamp = int(datetime.now().timestamp())
-        email = f"test.user.{timestamp}{email_suffix}@example.com"
+    async def close(self):
+        await self.client.aclose()
+    
+    async def register_user(self, name: str, email: str, password: str = "testpass123"):
+        """Register a new user"""
+        print(f"\n🔐 Registering user: {name} ({email})")
         
-        async with httpx.AsyncClient() as client:
-            response = await client.post(f"{BACKEND_URL}/auth/register", json={
+        response = await self.client.post(f"{BASE_URL}/auth/register", json={
+            "name": name,
+            "email": email,
+            "password": password
+        })
+        
+        if response.status_code == 200:
+            user_data = response.json()
+            self.users[name] = {
+                "data": user_data,
                 "email": email,
-                "password": "testpass123",
-                "name": f"Test User {timestamp}"
-            })
+                "password": password,
+                "token": user_data.get("session_token")
+            }
+            print(f"✅ User {name} registered successfully")
+            print(f"   User ID: {user_data.get('user_id')}")
+            print(f"   Session Token: {user_data.get('session_token')[:20]}...")
+            return True
+        else:
+            print(f"❌ Failed to register {name}: {response.status_code} - {response.text}")
+            return False
+    
+    async def test_push_token_registration(self, user_name: str):
+        """Test push token registration for a user"""
+        print(f"\n📱 Testing push token registration for {user_name}")
+        
+        if user_name not in self.users:
+            print(f"❌ User {user_name} not found")
+            return False
             
-            if response.status_code == 200:
-                data = response.json()
-                return data["session_token"], data["user_id"], email
+        token = self.users[user_name]["token"]
+        test_push_token = f"ExponentPushToken[test_{uuid.uuid4().hex[:8]}]"
+        
+        response = await self.client.post(
+            f"{BASE_URL}/auth/push-token",
+            json={"push_token": test_push_token},
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            print(f"✅ Push token registered successfully")
+            print(f"   Token: {test_push_token}")
+            print(f"   Response: {result}")
+            self.users[user_name]["push_token"] = test_push_token
+            return True
+        else:
+            print(f"❌ Failed to register push token: {response.status_code} - {response.text}")
+            return False
+    
+    async def test_user_search(self, searcher_name: str, search_query: str):
+        """Test user search functionality"""
+        print(f"\n🔍 Testing user search by {searcher_name} for query: '{search_query}'")
+        
+        if searcher_name not in self.users:
+            print(f"❌ User {searcher_name} not found")
+            return False
+            
+        token = self.users[searcher_name]["token"]
+        
+        response = await self.client.get(
+            f"{BASE_URL}/users/search",
+            params={"q": search_query},
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        
+        if response.status_code == 200:
+            results = response.json()
+            print(f"✅ User search successful")
+            print(f"   Query: {search_query}")
+            print(f"   Results count: {len(results)}")
+            for user in results:
+                print(f"   - {user.get('name')} ({user.get('email')})")
+            
+            # Verify current user is excluded
+            searcher_email = self.users[searcher_name]["email"]
+            current_user_in_results = any(u.get("email") == searcher_email for u in results)
+            if not current_user_in_results:
+                print(f"✅ Current user correctly excluded from search results")
             else:
-                raise Exception(f"Registration failed: {response.status_code} - {response.text}")
-    
-    async def create_admin_user(self):
-        """Create an admin user for template testing"""
-        self.admin_session_token, self.admin_user_id, admin_email = await self.register_user(".admin")
-        
-        # Try to make this user a super admin (if no super admin exists)
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{BACKEND_URL}/admin/setup",
-                headers={"Authorization": f"Bearer {self.admin_session_token}"}
-            )
-            print(f"Admin setup response: {response.status_code}")
+                print(f"⚠️  Current user found in search results (should be excluded)")
             
-            # If setup failed (super admin already exists), try to get promoted by existing super admin
-            if response.status_code == 400:
-                # For testing purposes, we'll create a new user and assume they can be promoted
-                # In a real scenario, we'd need the existing super admin to promote this user
-                print("Super admin already exists. User will have regular permissions.")
-        
-        return admin_email
+            return True
+        else:
+            print(f"❌ Failed to search users: {response.status_code} - {response.text}")
+            return False
     
-    async def create_decision_with_mpps(self):
-        """Create a decision with MPPS data for PDF testing"""
+    async def setup_admin(self, user_name: str):
+        """Setup user as super admin"""
+        print(f"\n👑 Setting up {user_name} as super admin")
+        
+        if user_name not in self.users:
+            print(f"❌ User {user_name} not found")
+            return False
+            
+        token = self.users[user_name]["token"]
+        
+        response = await self.client.post(
+            f"{BASE_URL}/admin/setup",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            print(f"✅ Admin setup successful")
+            print(f"   Role: {result.get('role')}")
+            self.users[user_name]["role"] = "super_admin"
+            return True
+        elif response.status_code == 400:
+            print(f"ℹ️  Super admin already exists (expected if running multiple times)")
+            # Try to get current user info to check if they're admin
+            me_response = await self.client.get(
+                f"{BASE_URL}/auth/me",
+                headers={"Authorization": f"Bearer {token}"}
+            )
+            if me_response.status_code == 200:
+                user_info = me_response.json()
+                role = user_info.get("role", "user")
+                print(f"   Current user role: {role}")
+                self.users[user_name]["role"] = role
+                return role in ["admin", "co_admin", "super_admin"]
+            return False
+        else:
+            print(f"❌ Failed to setup admin: {response.status_code} - {response.text}")
+            return False
+    
+    async def test_expert_crud(self, admin_user: str):
+        """Test expert CRUD operations"""
+        print(f"\n👨‍⚕️ Testing expert CRUD operations as {admin_user}")
+        
+        if admin_user not in self.users:
+            print(f"❌ User {admin_user} not found")
+            return False
+            
+        token = self.users[admin_user]["token"]
+        
+        # Create expert
+        expert_data = {
+            "name": "Dr. Sarah Smith",
+            "email": "drsmith@careercoaching.com",
+            "specialization": "Career Coaching & Leadership Development",
+            "bio": "Expert career coach with 15+ years experience helping professionals navigate career transitions and leadership development."
+        }
+        
+        print(f"📝 Creating expert: {expert_data['name']}")
+        response = await self.client.post(
+            f"{BASE_URL}/experts",
+            json=expert_data,
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            expert_id = result.get("id")
+            print(f"✅ Expert created successfully")
+            print(f"   Expert ID: {expert_id}")
+            print(f"   Name: {expert_data['name']}")
+            print(f"   Specialization: {expert_data['specialization']}")
+            self.experts["dr_smith"] = {"id": expert_id, **expert_data}
+        else:
+            print(f"❌ Failed to create expert: {response.status_code} - {response.text}")
+            return False
+        
+        # Get experts list
+        print(f"\n📋 Retrieving experts list")
+        response = await self.client.get(f"{BASE_URL}/experts")
+        
+        if response.status_code == 200:
+            experts = response.json()
+            print(f"✅ Retrieved experts list successfully")
+            print(f"   Total experts: {len(experts)}")
+            
+            # Find our created expert
+            created_expert = next((e for e in experts if e.get("id") == expert_id), None)
+            if created_expert:
+                print(f"✅ Created expert found in list")
+                print(f"   Name: {created_expert.get('name')}")
+                print(f"   Email: {created_expert.get('email')}")
+                print(f"   Specialization: {created_expert.get('specialization')}")
+                print(f"   Active: {created_expert.get('is_active')}")
+                return True
+            else:
+                print(f"❌ Created expert not found in list")
+                return False
+        else:
+            print(f"❌ Failed to retrieve experts: {response.status_code} - {response.text}")
+            return False
+    
+    async def create_test_decision(self, user_name: str):
+        """Create a test decision for sharing"""
+        print(f"\n📋 Creating test decision for {user_name}")
+        
+        if user_name not in self.users:
+            print(f"❌ User {user_name} not found")
+            return False
+            
+        token = self.users[user_name]["token"]
+        
         # Create decision
-        async with httpx.AsyncClient() as client:
-            decision_response = await client.post(
-                f"{BACKEND_URL}/decisions",
-                headers={"Authorization": f"Bearer {self.session_token}"},
-                json={
-                    "title": "Career Choice Decision",
-                    "context": "Choosing between multiple job offers with different benefits and growth opportunities",
-                    "folder": "career"
-                }
-            )
+        decision_data = {
+            "title": "Career Transition Decision",
+            "context": "Deciding between staying at current company vs joining a startup vs freelancing",
+            "folder": "career"
+        }
+        
+        response = await self.client.post(
+            f"{BASE_URL}/decisions",
+            json=decision_data,
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            decision_id = result.get("id")
+            print(f"✅ Decision created successfully")
+            print(f"   Decision ID: {decision_id}")
+            print(f"   Title: {decision_data['title']}")
             
-            if decision_response.status_code != 200:
-                raise Exception(f"Decision creation failed: {decision_response.status_code}")
-            
-            self.decision_id = decision_response.json()["id"]
-            
-            # Add factors and options
+            # Add some factors and options to make it more realistic
             factors = [
-                {
-                    "id": "f_salary",
-                    "name": "Salary",
-                    "category": "primary",
-                    "rating": 40,
-                    "order": 0,
-                    "unit": "USD",
-                    "expected_value": 120000
-                },
-                {
-                    "id": "f_growth",
-                    "name": "Growth Opportunities",
-                    "category": "primary", 
-                    "rating": 35,
-                    "order": 1
-                },
-                {
-                    "id": "f_location",
-                    "name": "Location",
-                    "category": "secondary",
-                    "rating": 25,
-                    "order": 2
-                }
+                {"id": str(uuid.uuid4()), "name": "Salary & Benefits", "category": "primary", "rating": 80, "order": 0},
+                {"id": str(uuid.uuid4()), "name": "Work-Life Balance", "category": "primary", "rating": 70, "order": 1},
+                {"id": str(uuid.uuid4()), "name": "Growth Opportunities", "category": "primary", "rating": 90, "order": 2},
+                {"id": str(uuid.uuid4()), "name": "Job Security", "category": "secondary", "rating": 60, "order": 3}
             ]
             
             options = [
                 {
-                    "id": "opt_company_a",
-                    "name": "Company A",
+                    "id": str(uuid.uuid4()),
+                    "name": "Stay at Current Company",
                     "assessments": [
-                        {"factor_id": "f_salary", "percentage": 80, "assessment_mode": "H"},
-                        {"factor_id": "f_growth", "percentage": 60, "assessment_mode": "M"},
-                        {"factor_id": "f_location", "percentage": 90, "assessment_mode": "H"}
+                        {"factor_id": factors[0]["id"], "percentage": 75, "assessment_mode": "H"},
+                        {"factor_id": factors[1]["id"], "percentage": 50, "assessment_mode": "M"},
+                        {"factor_id": factors[2]["id"], "percentage": 25, "assessment_mode": "L"},
+                        {"factor_id": factors[3]["id"], "percentage": 90, "assessment_mode": "H"}
                     ],
-                    "worth_percentage": 75.0
+                    "worth_percentage": 0.0
                 },
                 {
-                    "id": "opt_company_b", 
-                    "name": "Company B",
+                    "id": str(uuid.uuid4()),
+                    "name": "Join Startup",
                     "assessments": [
-                        {"factor_id": "f_salary", "percentage": 95, "assessment_mode": "H"},
-                        {"factor_id": "f_growth", "percentage": 85, "assessment_mode": "H"},
-                        {"factor_id": "f_location", "percentage": 70, "assessment_mode": "M"}
+                        {"factor_id": factors[0]["id"], "percentage": 60, "assessment_mode": "M"},
+                        {"factor_id": factors[1]["id"], "percentage": 40, "assessment_mode": "L"},
+                        {"factor_id": factors[2]["id"], "percentage": 95, "assessment_mode": "H"},
+                        {"factor_id": factors[3]["id"], "percentage": 30, "assessment_mode": "L"}
                     ],
-                    "worth_percentage": 87.5
+                    "worth_percentage": 0.0
                 }
             ]
             
-            # Add MPPS data
-            mpps_improvements = [
-                {
-                    "factor_id": "f_salary",
-                    "original_percentage": 80,
-                    "projected_percentage": 90,
-                    "delta_percentage": 10,
-                    "expected_value": "130000",
-                    "expected_unit": "USD",
-                    "improvement_plan": "Negotiate salary increase after 6 months based on performance",
-                    "tepfi_elements": ["F", "P"],
-                    "tepfi_layer": "self",
-                    "action_items": [
-                        {
-                            "assignee_name": "John Doe",
-                            "assignee_email": "john.doe@company.com",
-                            "assignee_mobile": "+1234567890",
-                            "task": "Schedule performance review meeting",
-                            "deadline": "2024-06-15"
-                        }
-                    ]
-                },
-                {
-                    "factor_id": "f_growth",
-                    "original_percentage": 85,
-                    "projected_percentage": 95,
-                    "delta_percentage": 10,
-                    "expected_value": "Senior role promotion",
-                    "expected_unit": "position",
-                    "improvement_plan": "Complete leadership training and take on additional responsibilities",
-                    "tepfi_elements": ["T", "E"],
-                    "tepfi_layer": "micro",
-                    "action_items": [
-                        {
-                            "assignee_name": "Jane Smith",
-                            "assignee_email": "jane.smith@company.com", 
-                            "assignee_mobile": "+1987654321",
-                            "task": "Enroll in leadership development program",
-                            "deadline": "2024-05-01"
-                        }
-                    ]
-                }
-            ]
+            # Update decision with factors and options
+            update_response = await self.client.put(
+                f"{BASE_URL}/decisions/{decision_id}",
+                json={"factors": factors, "options": options},
+                headers={"Authorization": f"Bearer {token}"}
+            )
             
-            # Update decision with all data
-            update_response = await client.put(
-                f"{BACKEND_URL}/decisions/{self.decision_id}",
-                headers={"Authorization": f"Bearer {self.session_token}"},
-                json={
+            if update_response.status_code == 200:
+                print(f"✅ Decision updated with factors and options")
+                self.decisions[user_name] = {
+                    "id": decision_id,
+                    "title": decision_data["title"],
                     "factors": factors,
-                    "options": options,
-                    "mpps_option_id": "opt_company_b",
-                    "mpps_improvements": mpps_improvements,
-                    "mpps_projected_worth": 92.5,
-                    "mpps_timeframe": "6 months",
-                    "status": "completed"
+                    "options": options
                 }
-            )
-            
-            if update_response.status_code != 200:
-                raise Exception(f"Decision update failed: {update_response.status_code}")
-            
-            print(f"✅ Created decision with MPPS data: {self.decision_id}")
-            return self.decision_id
-    
-    async def test_pdf_download(self):
-        """Test 1: PDF Download functionality"""
-        print("\n🔍 Testing PDF Download...")
-        
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{BACKEND_URL}/decisions/{self.decision_id}/mpps-action-plan-pdf",
-                headers={"Authorization": f"Bearer {self.session_token}"}
-            )
-            
-            if response.status_code == 200:
-                content_type = response.headers.get("content-type", "")
-                content_disposition = response.headers.get("content-disposition", "")
-                content_length = len(response.content)
-                
-                if content_type == "application/pdf":
-                    print(f"✅ PDF Download PASSED:")
-                    print(f"   - Status: 200")
-                    print(f"   - Content-Type: {content_type}")
-                    print(f"   - Content-Disposition: {content_disposition}")
-                    print(f"   - Content Length: {content_length} bytes")
-                    print(f"   - PDF signature check: {response.content[:4] == b'%PDF'}")
-                    return True
-                else:
-                    print(f"❌ PDF Download FAILED: Wrong content type: {content_type}")
-                    return False
+                return decision_id
             else:
-                print(f"❌ PDF Download FAILED: Status {response.status_code} - {response.text}")
-                return False
+                print(f"⚠️  Decision created but failed to update: {update_response.status_code}")
+                self.decisions[user_name] = {"id": decision_id, "title": decision_data["title"]}
+                return decision_id
+        else:
+            print(f"❌ Failed to create decision: {response.status_code} - {response.text}")
+            return None
     
-    async def test_tepfi_auto_map(self):
-        """Test 2: TEPFI AI Auto-map functionality"""
-        print("\n🔍 Testing TEPFI AI Auto-map...")
+    async def test_share_step(self, sender_name: str, recipient_name: str, decision_id: str):
+        """Test step sharing with enhanced notification payload"""
+        print(f"\n🤝 Testing step sharing from {sender_name} to {recipient_name}")
         
-        test_data = {
-            "title": "Job Choice",
-            "context": "Choosing between job offers",
-            "factors": [
-                {"name": "Salary", "category": "primary", "unit": "USD"},
-                {"name": "Location", "category": "secondary"},
-                {"name": "Growth", "category": "primary"}
-            ]
+        if sender_name not in self.users or recipient_name not in self.users:
+            print(f"❌ Required users not found")
+            return False
+            
+        sender_token = self.users[sender_name]["token"]
+        recipient_email = self.users[recipient_name]["email"]
+        
+        # Share step 7 (Assessment step)
+        share_data = {
+            "decision_id": decision_id,
+            "step_number": 7,
+            "recipient_emails": [recipient_email],
+            "merge_mode": "self_weighted",
+            "message": "Hi! I'd love your input on this career decision. Please help me assess the options based on the factors I've identified."
         }
         
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{BACKEND_URL}/tepfi-auto-map",
-                headers={"Authorization": f"Bearer {self.session_token}"},
-                json=test_data
-            )
+        response = await self.client.post(
+            f"{BASE_URL}/decisions/{decision_id}/share-step",
+            json=share_data,
+            headers={"Authorization": f"Bearer {sender_token}"}
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            share_id = result.get("id")
+            print(f"✅ Step shared successfully")
+            print(f"   Share ID: {share_id}")
+            print(f"   Step: {share_data['step_number']}")
+            print(f"   Recipients: {len(share_data['recipient_emails'])}")
+            print(f"   Message: {share_data['message'][:50]}...")
             
-            if response.status_code == 200:
-                data = response.json()
-                mappings = data.get("mappings", [])
+            # Store share info for later verification
+            self.notifications["share_id"] = share_id
+            return share_id
+        else:
+            print(f"❌ Failed to share step: {response.status_code} - {response.text}")
+            return None
+    
+    async def test_notifications_with_rich_data(self, recipient_name: str):
+        """Test that notifications contain rich data as specified"""
+        print(f"\n🔔 Testing notifications with rich data for {recipient_name}")
+        
+        if recipient_name not in self.users:
+            print(f"❌ User {recipient_name} not found")
+            return False
+            
+        token = self.users[recipient_name]["token"]
+        
+        # Get notifications
+        response = await self.client.get(
+            f"{BASE_URL}/notifications",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        
+        if response.status_code == 200:
+            notifications = response.json()
+            print(f"✅ Retrieved notifications successfully")
+            print(f"   Total notifications: {len(notifications)}")
+            
+            # Find the share_invite notification
+            share_notifications = [n for n in notifications if n.get("type") == "share_invite"]
+            
+            if share_notifications:
+                latest_share = share_notifications[0]  # Most recent
+                print(f"✅ Found share invitation notification")
+                print(f"   Type: {latest_share.get('type')}")
+                print(f"   Title: {latest_share.get('title')}")
+                print(f"   Message: {latest_share.get('message')}")
                 
-                print(f"✅ TEPFI Auto-map PASSED:")
-                print(f"   - Status: 200")
-                print(f"   - Mappings count: {len(mappings)}")
+                # Check for enhanced payload data
+                data = latest_share.get("data", {})
+                required_fields = [
+                    "sender_name", "sender_email", "decision_title", 
+                    "step_name", "step_number", "share_id", "decision_id"
+                ]
                 
-                # Validate mapping structure
-                valid_mappings = True
-                for mapping in mappings:
-                    if not all(key in mapping for key in ["factor_name", "tepfi_elements", "tepfi_layer"]):
-                        valid_mappings = False
-                        break
-                    
-                    # Check tepfi_elements are valid
-                    valid_elements = all(elem in ["T", "E", "P", "F", "I"] for elem in mapping.get("tepfi_elements", []))
-                    valid_layer = mapping.get("tepfi_layer") in ["self", "micro", "macro"]
-                    
-                    if not valid_elements or not valid_layer:
-                        valid_mappings = False
-                        break
+                print(f"\n📊 Verifying enhanced notification payload:")
+                all_fields_present = True
+                for field in required_fields:
+                    if field in data:
+                        print(f"   ✅ {field}: {data[field]}")
+                    else:
+                        print(f"   ❌ {field}: MISSING")
+                        all_fields_present = False
                 
-                if valid_mappings:
-                    print(f"   - Mapping structure: Valid")
-                    for mapping in mappings:
-                        print(f"   - {mapping['factor_name']}: {mapping['tepfi_elements']} ({mapping['tepfi_layer']})")
+                if all_fields_present:
+                    print(f"\n✅ All required enhanced payload fields present!")
+                    print(f"   Enhanced notification data verified:")
+                    print(f"   - Sender: {data.get('sender_name')} ({data.get('sender_email')})")
+                    print(f"   - Decision: {data.get('decision_title')}")
+                    print(f"   - Step: {data.get('step_number')} - {data.get('step_name')}")
                     return True
                 else:
-                    print(f"❌ TEPFI Auto-map FAILED: Invalid mapping structure")
-                    print(f"   - Response: {data}")
+                    print(f"\n❌ Some required enhanced payload fields are missing")
                     return False
             else:
-                print(f"❌ TEPFI Auto-map FAILED: Status {response.status_code} - {response.text}")
+                print(f"❌ No share invitation notifications found")
                 return False
-    
-    async def test_template_system(self):
-        """Test 3: Template System functionality"""
-        print("\n🔍 Testing Template System...")
-        
-        results = []
-        
-        # Test 3a: Regular user creates template (should get is_approved=False for non-admin)
-        print("\n3a. Regular user creates template...")
-        async with httpx.AsyncClient() as client:
-            template_data = {
-                "name": "Career Decision Template",
-                "life_area": "career",
-                "decision_type": "aspiration",
-                "description": "Template for career-related decisions",
-                "factors": [
-                    {
-                        "id": str(uuid.uuid4()),
-                        "name": "Salary Package",
-                        "category": "primary",
-                        "rating": 0,
-                        "order": 0
-                    },
-                    {
-                        "id": str(uuid.uuid4()),
-                        "name": "Work-Life Balance",
-                        "category": "secondary", 
-                        "rating": 0,
-                        "order": 1
-                    }
-                ]
-            }
-            
-            response = await client.post(
-                f"{BACKEND_URL}/decision-templates",
-                headers={"Authorization": f"Bearer {self.session_token}"},
-                json=template_data
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                is_approved = data.get("is_approved")
-                print(f"✅ Regular user template creation PASSED:")
-                print(f"   - Status: 200")
-                print(f"   - Template ID: {data.get('id')}")
-                print(f"   - Is Approved (should be False): {is_approved}")
-                results.append(True)
-                self.template_id = data.get("id")
-            else:
-                print(f"❌ Regular user template creation FAILED: {response.status_code} - {response.text}")
-                results.append(False)
-        
-        # Test 3b: Try to create admin user (will fail if super admin exists, which is expected)
-        print("\n3b. Testing admin user creation...")
-        admin_email = await self.create_admin_user()
-        
-        # Check if our "admin" user actually has admin privileges by testing an admin endpoint
-        async with httpx.AsyncClient() as client:
-            admin_check_response = await client.get(
-                f"{BACKEND_URL}/admin/users",
-                headers={"Authorization": f"Bearer {self.admin_session_token}"}
-            )
-            
-            if admin_check_response.status_code == 200:
-                print(f"✅ Admin user has admin privileges")
-                has_admin_privileges = True
-            else:
-                print(f"ℹ️  Admin user does not have admin privileges (super admin already exists)")
-                has_admin_privileges = False
-        
-        # Test 3c: Admin creates template (only if we have admin privileges)
-        if has_admin_privileges:
-            print("\n3c. Admin creates template...")
-            async with httpx.AsyncClient() as client:
-                admin_template_data = {
-                    "name": "Official Finance Template",
-                    "life_area": "finance",
-                    "decision_type": "problem",
-                    "description": "Official template for financial decisions",
-                    "factors": [
-                        {
-                            "id": str(uuid.uuid4()),
-                            "name": "Investment Amount",
-                            "category": "primary",
-                            "rating": 0,
-                            "order": 0
-                        }
-                    ]
-                }
-                
-                response = await client.post(
-                    f"{BACKEND_URL}/decision-templates",
-                    headers={"Authorization": f"Bearer {self.admin_session_token}"},
-                    json=admin_template_data
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    is_approved = data.get("is_approved")
-                    print(f"✅ Admin template creation PASSED:")
-                    print(f"   - Status: 200")
-                    print(f"   - Template ID: {data.get('id')}")
-                    print(f"   - Is Approved (should be True): {is_approved}")
-                    results.append(is_approved == True)
-                    admin_template_id = data.get("id")
-                else:
-                    print(f"❌ Admin template creation FAILED: {response.status_code} - {response.text}")
-                    results.append(False)
-                    admin_template_id = None
-            
-            # Test 3d: Admin clones template
-            if admin_template_id:
-                print("\n3d. Admin clones template...")
-                async with httpx.AsyncClient() as client:
-                    response = await client.post(
-                        f"{BACKEND_URL}/decision-templates/{admin_template_id}/clone",
-                        headers={"Authorization": f"Bearer {self.admin_session_token}"}
-                    )
-                    
-                    if response.status_code == 200:
-                        data = response.json()
-                        print(f"✅ Admin template clone PASSED:")
-                        print(f"   - Status: 200")
-                        print(f"   - Cloned Template ID: {data.get('id')}")
-                        results.append(True)
-                    else:
-                        print(f"❌ Admin template clone FAILED: {response.status_code} - {response.text}")
-                        results.append(False)
-            
-            # Test 3e: Admin approves template
-            if self.template_id:
-                print("\n3e. Admin approves template...")
-                async with httpx.AsyncClient() as client:
-                    response = await client.post(
-                        f"{BACKEND_URL}/decision-templates/{self.template_id}/approve",
-                        headers={"Authorization": f"Bearer {self.admin_session_token}"}
-                    )
-                    
-                    if response.status_code == 200:
-                        print(f"✅ Admin template approval PASSED:")
-                        print(f"   - Status: 200")
-                        print(f"   - Message: {response.json().get('message')}")
-                        results.append(True)
-                    else:
-                        print(f"❌ Admin template approval FAILED: {response.status_code} - {response.text}")
-                        results.append(False)
         else:
-            print("\n3c-3e. Skipping admin-only tests (no admin privileges)")
-            # Still count as successful since the system is working correctly
-            results.extend([True, True, True])
-        
-        # Test 3f: GET /api/decision-templates with filtering
-        print("\n3f. GET templates with filtering...")
-        async with httpx.AsyncClient() as client:
-            response = await client.get(f"{BACKEND_URL}/decision-templates?life_area=career")
-            
-            if response.status_code == 200:
-                templates = response.json()
-                print(f"✅ Template filtering PASSED:")
-                print(f"   - Status: 200")
-                print(f"   - Templates found: {len(templates)}")
-                print(f"   - Career templates: {[t.get('name') for t in templates if t.get('life_area') == 'career']}")
-                results.append(True)
-            else:
-                print(f"❌ Template filtering FAILED: {response.status_code} - {response.text}")
-                results.append(False)
-        
-        return all(results)
+            print(f"❌ Failed to retrieve notifications: {response.status_code} - {response.text}")
+            return False
     
-    async def run_all_tests(self):
-        """Run all enhanced backend feature tests"""
-        print("🚀 Starting Enhanced Backend Features Testing")
-        print("=" * 60)
+    async def run_comprehensive_test(self):
+        """Run all tests in sequence"""
+        print("🚀 Starting Comprehensive Push Notification and Sharing Infrastructure Test")
+        print("=" * 80)
         
-        # Setup: Register user and create test data
-        print("📋 Setting up test environment...")
-        self.session_token, self.user_id, user_email = await self.register_user()
-        print(f"✅ Registered test user: {user_email}")
-        
-        await self.create_decision_with_mpps()
-        
-        # Run tests
         test_results = []
         
-        # Test 1: PDF Download
-        pdf_result = await self.test_pdf_download()
-        test_results.append(("PDF Download", pdf_result))
+        # 1. Register 2 users (sender and recipient)
+        print("\n" + "="*50)
+        print("TEST 1: Register 2 users (sender and recipient)")
+        print("="*50)
         
-        # Test 2: TEPFI AI Auto-map
-        tepfi_result = await self.test_tepfi_auto_map()
-        test_results.append(("TEPFI AI Auto-map", tepfi_result))
+        timestamp = datetime.now().strftime("%H%M%S")
+        sender_email = f"alice.sender.{timestamp}@careerpath.com"
+        recipient_email = f"bob.recipient.{timestamp}@careerpath.com"
         
-        # Test 3: Template System
-        template_result = await self.test_template_system()
-        test_results.append(("Template System", template_result))
+        sender_success = await self.register_user("Alice", sender_email)
+        recipient_success = await self.register_user("Bob", recipient_email)
         
-        # Summary
-        print("\n" + "=" * 60)
-        print("📊 TEST RESULTS SUMMARY")
-        print("=" * 60)
+        test_results.append(("User Registration", sender_success and recipient_success))
         
-        passed = 0
-        total = len(test_results)
+        if not (sender_success and recipient_success):
+            print("❌ User registration failed, cannot continue tests")
+            return test_results
         
-        for test_name, result in test_results:
-            status = "✅ PASSED" if result else "❌ FAILED"
-            print(f"{test_name}: {status}")
-            if result:
-                passed += 1
+        # 2. Test push token registration
+        print("\n" + "="*50)
+        print("TEST 2: Push Token Registration")
+        print("="*50)
         
-        print(f"\nOverall: {passed}/{total} tests passed")
+        alice_push = await self.test_push_token_registration("Alice")
+        bob_push = await self.test_push_token_registration("Bob")
+        
+        test_results.append(("Push Token Registration", alice_push and bob_push))
+        
+        # 3. Test user search
+        print("\n" + "="*50)
+        print("TEST 3: User Search Functionality")
+        print("="*50)
+        
+        # Test searching for Bob from Alice's account
+        search_success = await self.test_user_search("Alice", "bob")
+        test_results.append(("User Search", search_success))
+        
+        # 4. Test expert CRUD (as admin)
+        print("\n" + "="*50)
+        print("TEST 4: Expert CRUD Operations (Admin)")
+        print("="*50)
+        
+        # Setup Alice as admin
+        admin_setup = await self.setup_admin("Alice")
+        if admin_setup:
+            expert_crud = await self.test_expert_crud("Alice")
+            test_results.append(("Expert CRUD", expert_crud))
+        else:
+            print("❌ Admin setup failed, skipping expert CRUD test")
+            test_results.append(("Expert CRUD", False))
+        
+        # 5. Create decision and test share step
+        print("\n" + "="*50)
+        print("TEST 5: Decision Creation and Step Sharing")
+        print("="*50)
+        
+        decision_id = await self.create_test_decision("Alice")
+        if decision_id:
+            share_success = await self.test_share_step("Alice", "Bob", decision_id)
+            test_results.append(("Step Sharing", share_success is not None))
+            
+            # 6. Verify notification has rich data
+            print("\n" + "="*50)
+            print("TEST 6: Notification Rich Data Verification")
+            print("="*50)
+            
+            # Wait a moment for notification to be created
+            await asyncio.sleep(1)
+            
+            notification_success = await self.test_notifications_with_rich_data("Bob")
+            test_results.append(("Notification Rich Data", notification_success))
+        else:
+            print("❌ Decision creation failed, skipping sharing tests")
+            test_results.append(("Step Sharing", False))
+            test_results.append(("Notification Rich Data", False))
+        
+        return test_results
+    
+    def print_test_summary(self, results):
+        """Print comprehensive test summary"""
+        print("\n" + "="*80)
+        print("🎯 COMPREHENSIVE TEST SUMMARY")
+        print("="*80)
+        
+        passed = sum(1 for _, success in results if success)
+        total = len(results)
+        
+        print(f"\n📊 Overall Results: {passed}/{total} tests passed ({passed/total*100:.1f}%)")
+        print("\n📋 Detailed Results:")
+        
+        for test_name, success in results:
+            status = "✅ PASSED" if success else "❌ FAILED"
+            print(f"   {status}: {test_name}")
         
         if passed == total:
-            print("🎉 All enhanced backend features are working correctly!")
-            return True
+            print(f"\n🎉 ALL TESTS PASSED! Push notification and sharing infrastructure is working correctly.")
         else:
-            print("⚠️  Some tests failed. Please check the details above.")
-            return False
+            failed_tests = [name for name, success in results if not success]
+            print(f"\n⚠️  SOME TESTS FAILED:")
+            for test in failed_tests:
+                print(f"   - {test}")
+        
+        print("\n" + "="*80)
 
 async def main():
     """Main test execution"""
     tester = BackendTester()
-    success = await tester.run_all_tests()
-    return success
+    
+    try:
+        results = await tester.run_comprehensive_test()
+        tester.print_test_summary(results)
+        
+        # Return success/failure for CI/CD
+        all_passed = all(success for _, success in results)
+        return 0 if all_passed else 1
+        
+    except Exception as e:
+        print(f"\n❌ Test execution failed with error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return 1
+    finally:
+        await tester.close()
 
 if __name__ == "__main__":
-    result = asyncio.run(main())
-    exit(0 if result else 1)
+    import sys
+    exit_code = asyncio.run(main())
+    sys.exit(exit_code)

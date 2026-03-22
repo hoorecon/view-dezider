@@ -1,14 +1,29 @@
 import React, { useEffect } from 'react';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from '../src/store/authStore';
 import { COLORS } from '../src/constants/colors';
+import { registerForPushNotifications, addNotificationResponseListener } from '../src/utils/pushNotifications';
 
 export default function RootLayout() {
   const checkAuth = useAuthStore((state) => state.checkAuth);
+  const router = useRouter();
 
   useEffect(() => {
     checkAuth();
+
+    // Register push notifications
+    registerForPushNotifications().catch(() => {});
+
+    // Handle notification tap → navigate to inbox
+    const sub = addNotificationResponseListener((response) => {
+      const data = response.notification.request.content.data;
+      if (data?.decision_id) {
+        router.push('/inbox');
+      }
+    });
+
+    return () => sub.remove();
   }, []);
 
   return (

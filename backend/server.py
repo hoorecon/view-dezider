@@ -1562,14 +1562,32 @@ async def share_step(decision_id: str, data: ShareStepRequest, user: dict = Depe
     
     await db.shared_steps.insert_one(share_doc)
     
-    # Create notifications for each recipient
+    STEP_NAMES = {
+        1: 'Context & Options', 2: 'List Factors', 3: 'Classify Factors',
+        4: 'Prioritize Factors', 5: 'Calculate Ratings', 6: 'Define Options',
+        7: 'Assess & Calculate', 8: 'Case-1 Results', 9: 'MPPS Analysis', 10: 'Final Decision',
+    }
+    step_name = STEP_NAMES.get(data.step_number, f'Step {data.step_number}')
+    sender_name = user.get("name", user["email"])
+    sender_email = user.get("email", "")
+    decision_title = decision.get("title", "a decision")
+    
+    # Create notifications + push for each recipient
     for r in recipients:
         await create_notification(
             r["user_id"],
             "share_invite",
-            "Step Shared With You",
-            f'{user.get("name", user["email"])} shared Step {data.step_number} of "{decision.get("title", "a decision")}" with you',
-            {"share_id": share_doc["id"], "decision_id": decision_id, "step_number": data.step_number}
+            f"Step {data.step_number}: {step_name}",
+            f'{sender_name} ({sender_email}) shared Step {data.step_number} "{step_name}" of "{decision_title}" with you',
+            {
+                "share_id": share_doc["id"],
+                "decision_id": decision_id,
+                "step_number": data.step_number,
+                "step_name": step_name,
+                "sender_name": sender_name,
+                "sender_email": sender_email,
+                "decision_title": decision_title,
+            }
         )
     
     return {"id": share_doc["id"], "message": f"Step {data.step_number} shared with {len(recipients)} users"}
@@ -1762,8 +1780,36 @@ async def merge_shared_step(share_id: str, data: MergeStepRequest, user: dict = 
 # NOTIFICATIONS
 # ========================
 
+async def send_expo_push(push_tokens: list, title: str, body: str, data: dict = None):
+    """Send push notification via Expo Push API"""
+    if not push_tokens:
+        return
+    messages = []
+    for token in push_tokens:
+        if not token or not token.startswith('ExponentPushToken'):
+            continue
+        messages.append({
+            "to": token,
+            "sound": "default",
+            "title": title,
+            "body": body,
+            "data": data or {},
+        })
+    if not messages:
+        return
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                "https://exp.host/--/api/v2/push/send",
+                json=messages,
+                headers={"Content-Type": "application/json"},
+                timeout=10
+            )
+    except Exception as e:
+        logger.error(f"Push notification error: {e}")
+
 async def create_notification(user_id: str, notif_type: str, title: str, message: str, data: dict = None):
-    """Helper function to create a notification"""
+    """Helper function to create a notification and send push"""
     notif = {
         "id": str(uuid.uuid4()),
         "user_id": user_id,
@@ -1775,7 +1821,90 @@ async def create_notification(user_id: str, notif_type: str, title: str, message
         "created_at": datetime.now(timezone.utc),
     }
     await db.notifications.insert_one(notif)
+
+    # Send push notification
+    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if user_doc and user_doc.get("push_token"):
+        await send_expo_push([user_doc["push_token"]], title, message, data)
+
     return notif
+
+# Push token registration
+@api_router.post("/auth/push-token")
+async def register_push_token(request: Request, user: dict = Depends(get_current_user)):
+    """Register Expo push token for the current user"""
+    body = await request.json()
+    token = body.get("push_token", "")
+    if token:
+        await db.users.update_one(
+            {"user_id": user["user_id"]},
+            {"$set": {"push_token": token}}
+        )
+    return {"message": "Push token registered"}
+
+# User search for sharing
+@api_router.get("/users/search")
+async def search_users(q: str = "", user: dict = Depends(get_current_user)):
+    """Search users by name or email for sharing"""
+    if not q or len(q) < 2:
+        return []
+    query = {
+        "$or": [
+            {"name": {"$regex": q, "$options": "i"}},
+            {"email": {"$regex": q, "$options": "i"}},
+        ],
+        "user_id": {"$ne": user["user_id"]},  # Exclude self
+    }
+    users = await db.users.find(query, {"_id": 0, "password_hash": 0, "push_token": 0}).to_list(20)
+    return [{"user_id": u["user_id"], "name": u.get("name", ""), "email": u["email"]} for u in users]
+
+# Authorized Experts (admin-managed)
+@api_router.get("/experts")
+async def get_experts():
+    """Get list of authorized experts"""
+    experts = await db.experts.find({"is_active": True}, {"_id": 0}).sort("name", 1).to_list(100)
+    return experts
+
+@api_router.post("/experts")
+async def create_expert(request: Request, user: dict = Depends(get_current_user)):
+    """Create an authorized expert (admin only)"""
+    if user.get("role") not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    body = await request.json()
+    expert = {
+        "id": str(uuid.uuid4()),
+        "name": body.get("name", ""),
+        "email": body.get("email", ""),
+        "specialization": body.get("specialization", ""),
+        "bio": body.get("bio", ""),
+        "is_active": True,
+        "created_by": user["user_id"],
+        "created_at": datetime.now(timezone.utc),
+    }
+    await db.experts.insert_one(expert)
+    return {"id": expert["id"], "message": "Expert created"}
+
+@api_router.put("/experts/{expert_id}")
+async def update_expert(expert_id: str, request: Request, user: dict = Depends(get_current_user)):
+    """Update an expert (admin only)"""
+    if user.get("role") not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    body = await request.json()
+    update_fields = {k: v for k, v in body.items() if k in ["name", "email", "specialization", "bio", "is_active"]}
+    result = await db.experts.update_one({"id": expert_id}, {"$set": update_fields})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Expert not found")
+    return {"message": "Expert updated"}
+
+@api_router.delete("/experts/{expert_id}")
+async def delete_expert(expert_id: str, user: dict = Depends(get_current_user)):
+    """Delete an expert (admin only)"""
+    if user.get("role") not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    result = await db.experts.delete_one({"id": expert_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Expert not found")
+    return {"message": "Expert deleted"}
 
 @api_router.get("/notifications")
 async def get_notifications(user: dict = Depends(get_current_user)):

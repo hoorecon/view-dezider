@@ -73,12 +73,37 @@ export default function ShareStepModal({
   const [loading, setLoading] = useState(false);
   const [sentShares, setSentShares] = useState<any[]>([]);
   const [showSent, setShowSent] = useState(false);
+  // New: share source tab
+  const [shareSource, setShareSource] = useState<'email' | 'users' | 'experts'>('email');
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [experts, setExperts] = useState<any[]>([]);
+  const [expertsLoading, setExpertsLoading] = useState(false);
 
   useEffect(() => {
     if (visible) {
       fetchSentShares();
+      fetchExperts();
     }
   }, [visible]);
+
+  // Debounced user search
+  useEffect(() => {
+    if (shareSource !== 'users' || userSearchQuery.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        const resp = await api.get(`/users/search?q=${encodeURIComponent(userSearchQuery)}`);
+        setSearchResults(resp.data || []);
+      } catch { setSearchResults([]); }
+      finally { setSearchLoading(false); }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [userSearchQuery, shareSource]);
 
   const fetchSentShares = async () => {
     try {
@@ -90,11 +115,26 @@ export default function ShareStepModal({
     } catch {}
   };
 
+  const fetchExperts = async () => {
+    setExpertsLoading(true);
+    try {
+      const resp = await api.get('/experts');
+      setExperts(resp.data || []);
+    } catch { setExperts([]); }
+    finally { setExpertsLoading(false); }
+  };
+
   const addEmail = () => {
     const email = emailInput.trim().toLowerCase();
     if (email && email.includes('@') && !emails.includes(email)) {
       setEmails([...emails, email]);
       setEmailInput('');
+    }
+  };
+
+  const addUserEmail = (email: string) => {
+    if (email && !emails.includes(email)) {
+      setEmails([...emails, email]);
     }
   };
 
@@ -188,24 +228,119 @@ export default function ShareStepModal({
 
             {!showSent ? (
               <>
+                {/* Share Source Tabs: Email / Users / Experts */}
+                <View style={styles.sourceTabRow}>
+                  {[
+                    { id: 'email' as const, label: 'Email', icon: 'mail-outline' },
+                    { id: 'users' as const, label: 'Users', icon: 'people-outline' },
+                    { id: 'experts' as const, label: 'Experts', icon: 'shield-checkmark-outline' },
+                  ].map((st) => (
+                    <TouchableOpacity
+                      key={st.id}
+                      style={[styles.sourceTab, shareSource === st.id && styles.sourceTabActive]}
+                      onPress={() => setShareSource(st.id)}
+                    >
+                      <Ionicons name={st.icon as any} size={14} color={shareSource === st.id ? COLORS.primary : COLORS.textMuted} />
+                      <Text style={[styles.sourceTabText, shareSource === st.id && styles.sourceTabTextActive]}>{st.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
                 {/* Add Recipients */}
                 <View style={styles.section}>
                   <Text style={styles.sectionTitle}>Recipients</Text>
-                  <View style={styles.emailInputRow}>
-                    <TextInput
-                      style={styles.emailInput}
-                      placeholder="Enter email address..."
-                      placeholderTextColor={COLORS.textMuted}
-                      value={emailInput}
-                      onChangeText={setEmailInput}
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                      onSubmitEditing={addEmail}
-                    />
-                    <TouchableOpacity style={styles.addEmailBtn} onPress={addEmail}>
-                      <Ionicons name="add" size={20} color="#FFF" />
-                    </TouchableOpacity>
-                  </View>
+
+                  {/* Email direct entry */}
+                  {shareSource === 'email' && (
+                    <View style={styles.emailInputRow}>
+                      <TextInput
+                        style={styles.emailInput}
+                        placeholder="Enter email address..."
+                        placeholderTextColor={COLORS.textMuted}
+                        value={emailInput}
+                        onChangeText={setEmailInput}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        onSubmitEditing={addEmail}
+                      />
+                      <TouchableOpacity style={styles.addEmailBtn} onPress={addEmail}>
+                        <Ionicons name="add" size={20} color="#FFF" />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {/* User search */}
+                  {shareSource === 'users' && (
+                    <View>
+                      <TextInput
+                        style={[styles.emailInput, { marginBottom: 6 }]}
+                        placeholder="Search users by name or email..."
+                        placeholderTextColor={COLORS.textMuted}
+                        value={userSearchQuery}
+                        onChangeText={setUserSearchQuery}
+                        autoCapitalize="none"
+                      />
+                      {searchLoading && <ActivityIndicator size="small" color={COLORS.primary} style={{ marginBottom: 6 }} />}
+                      {searchResults.map((u) => (
+                        <TouchableOpacity
+                          key={u.user_id}
+                          style={[styles.userResultItem, emails.includes(u.email) && { backgroundColor: '#F0FDF4' }]}
+                          onPress={() => addUserEmail(u.email)}
+                        >
+                          <View style={styles.userAvatar}>
+                            <Text style={styles.userAvatarText}>{(u.name || u.email)[0].toUpperCase()}</Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.userName}>{u.name}</Text>
+                            <Text style={styles.userEmail}>{u.email}</Text>
+                          </View>
+                          {emails.includes(u.email) ? (
+                            <Ionicons name="checkmark-circle" size={18} color="#16A34A" />
+                          ) : (
+                            <Ionicons name="add-circle-outline" size={18} color={COLORS.primary} />
+                          )}
+                        </TouchableOpacity>
+                      ))}
+                      {!searchLoading && userSearchQuery.length >= 2 && searchResults.length === 0 && (
+                        <Text style={{ fontSize: 12, color: COLORS.textMuted, padding: 8 }}>No users found</Text>
+                      )}
+                    </View>
+                  )}
+
+                  {/* Authorized Experts */}
+                  {shareSource === 'experts' && (
+                    <View>
+                      {expertsLoading && <ActivityIndicator size="small" color={COLORS.primary} style={{ marginBottom: 6 }} />}
+                      {experts.length === 0 && !expertsLoading && (
+                        <Text style={{ fontSize: 12, color: COLORS.textMuted, padding: 8 }}>No authorized experts available.</Text>
+                      )}
+                      {experts.map((exp) => (
+                        <TouchableOpacity
+                          key={exp.id}
+                          style={[styles.userResultItem, emails.includes(exp.email) && { backgroundColor: '#F0FDF4' }]}
+                          onPress={() => addUserEmail(exp.email)}
+                        >
+                          <View style={[styles.userAvatar, { backgroundColor: '#6366F1' }]}>
+                            <Ionicons name="shield-checkmark" size={14} color="#FFF" />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.userName}>{exp.name}</Text>
+                            <Text style={styles.userEmail}>{exp.email}</Text>
+                            {exp.specialization ? (
+                              <Text style={{ fontSize: 10, color: COLORS.primary, fontWeight: '600' }}>{exp.specialization}</Text>
+                            ) : null}
+                          </View>
+                          {emails.includes(exp.email) ? (
+                            <Ionicons name="checkmark-circle" size={18} color="#16A34A" />
+                          ) : (
+                            <Ionicons name="add-circle-outline" size={18} color={COLORS.primary} />
+                          )}
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+
+                  {/* Selected recipients chips */}
                   <View style={styles.emailChips}>
                     {emails.map(email => (
                       <View key={email} style={styles.emailChip}>
@@ -463,4 +598,30 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.success, paddingVertical: 10, borderRadius: 10, marginTop: 8,
   },
   mergeBtnText: { fontSize: 13, fontWeight: '600', color: '#FFF' },
+  sourceTabRow: {
+    flexDirection: 'row', gap: 4, marginBottom: 12, backgroundColor: '#F1F5F9',
+    borderRadius: 10, padding: 3,
+  },
+  sourceTab: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+    paddingVertical: 7, borderRadius: 8,
+  },
+  sourceTabActive: {
+    backgroundColor: COLORS.white,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2,
+  },
+  sourceTabText: { fontSize: 12, color: COLORS.textMuted },
+  sourceTabTextActive: { color: COLORS.primary, fontWeight: '600' },
+  userResultItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingVertical: 8, paddingHorizontal: 8, borderRadius: 8,
+    borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
+  },
+  userAvatar: {
+    width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.primary + '20',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  userAvatarText: { fontSize: 14, fontWeight: '700', color: COLORS.primary },
+  userName: { fontSize: 13, fontWeight: '600', color: COLORS.textPrimary },
+  userEmail: { fontSize: 11, color: COLORS.textMuted },
 });
