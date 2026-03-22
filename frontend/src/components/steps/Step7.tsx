@@ -1,0 +1,349 @@
+import React from 'react';
+import { View, Text, TextInput, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { COLORS } from '../../constants/colors';
+import { Card } from '../Card';
+import { GradientButton } from '../GradientButton';
+import { useDecision } from '../../context/DecisionContext';
+import { styles } from '../../styles/decisionStyles';
+import { LMH_VALUES } from '../../utils/decisionHelpers';
+import type { Factor } from '../../types/decision';
+
+export default function Step7() {
+  const {
+    decision, updateAssessment, getAssessmentValue, getAssessmentMode,
+    getUnitValue, getActualValue, getAssessmentKey,
+    showCustomInput, setShowCustomInput,
+    customInputValues, setCustomInputValues,
+    actualValues, setActualValues,
+    calculateDynamicWorth, calculateAutoPercentage,
+    setCurrentStep,
+  } = useDecision();
+
+  const handleLMHSelect = (optionId: string, factorId: string, mode: 'L' | 'M' | 'H') => {
+    const percentage = LMH_VALUES[mode].percentage;
+    const key = getAssessmentKey(optionId, factorId);
+    setShowCustomInput({ ...showCustomInput, [key]: false });
+    setCustomInputValues({ ...customInputValues, [key]: '' });
+    const currentActual = getActualValue(optionId, factorId);
+    const factor = decision.factors.find(f => f.id === factorId);
+    const unitStr = factor?.unit || '';
+    const displayValue = currentActual !== undefined ? `${currentActual}${unitStr ? ' ' + unitStr : ''}` : '';
+    updateAssessment(optionId, factorId, percentage, mode, displayValue, currentActual);
+  };
+
+  const handleCustomSelect = (optionId: string, factorId: string) => {
+    const key = getAssessmentKey(optionId, factorId);
+    const currentValue = getAssessmentValue(optionId, factorId);
+    setShowCustomInput({ ...showCustomInput, [key]: true });
+    setCustomInputValues({ ...customInputValues, [key]: String(currentValue) });
+  };
+
+  const handleCustomInputChange = (optionId: string, factorId: string, value: string) => {
+    const key = getAssessmentKey(optionId, factorId);
+    const cleanValue = value.replace(/[^0-9]/g, '');
+    const num = parseInt(cleanValue) || 0;
+    const clampedValue = num > 100 ? '100' : cleanValue;
+    setCustomInputValues({ ...customInputValues, [key]: clampedValue });
+  };
+
+  const handleCustomInputBlur = (optionId: string, factorId: string) => {
+    const key = getAssessmentKey(optionId, factorId);
+    const inputValue = customInputValues[key] || '0';
+    const num = parseInt(inputValue) || 0;
+    const percentage = Math.min(100, Math.max(0, num));
+    const currentActual = getActualValue(optionId, factorId);
+    const factor = decision.factors.find(f => f.id === factorId);
+    const unitStr = factor?.unit || '';
+    const displayValue = currentActual !== undefined ? `${currentActual}${unitStr ? ' ' + unitStr : ''}` : '';
+    updateAssessment(optionId, factorId, percentage, 'custom', displayValue, currentActual);
+  };
+
+  const handleUnitValueChange = (optionId: string, factorId: string, value: string) => {
+    const key = getAssessmentKey(optionId, factorId);
+    const factor = decision.factors.find(f => f.id === factorId);
+    const isTextType = factor?.data_type === 'text';
+    if (isTextType) {
+      setActualValues({ ...actualValues, [key]: value });
+    } else {
+      const cleanValue = value.replace(/[^0-9.]/g, '');
+      const parts = cleanValue.split('.');
+      const sanitized = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : cleanValue;
+      setActualValues({ ...actualValues, [key]: sanitized });
+    }
+  };
+
+  const handleActualValueBlur = (optionId: string, factorId: string) => {
+    const key = getAssessmentKey(optionId, factorId);
+    const inputValue = (actualValues[key] || '').trim();
+    const factor = decision.factors.find(f => f.id === factorId);
+    const isTextType = factor?.data_type === 'text';
+    let actualVal: number | string | undefined;
+    if (isTextType) { actualVal = inputValue || undefined; }
+    else { const numVal = parseFloat(inputValue); actualVal = isNaN(numVal) ? undefined : numVal; }
+    const unitStr = factor?.unit || '';
+    const displayValue = actualVal !== undefined ? `${actualVal}${unitStr ? ' ' + unitStr : ''}` : '';
+    const numericActual = typeof actualVal === 'number' ? actualVal : undefined;
+    const autoPercent = factor ? calculateAutoPercentage(factor, actualVal) : null;
+    if (autoPercent !== null) {
+      updateAssessment(optionId, factorId, autoPercent, 'auto' as any, displayValue, numericActual);
+    } else {
+      const currentMode = getAssessmentMode(optionId, factorId);
+      const currentPercentage = getAssessmentValue(optionId, factorId);
+      updateAssessment(optionId, factorId, currentPercentage as number, currentMode, displayValue, numericActual);
+    }
+  };
+
+  const getActualInputValue = (optionId: string, factorId: string): string => {
+    const key = getAssessmentKey(optionId, factorId);
+    if (actualValues[key] !== undefined) return actualValues[key];
+    const stored = getActualValue(optionId, factorId);
+    if (stored !== undefined && stored !== null) return String(stored);
+    const legacy = getUnitValue(optionId, factorId);
+    if (legacy) {
+      const factor = decision.factors.find(f => f.id === factorId);
+      if (factor?.data_type === 'text') return legacy;
+      const num = parseFloat(legacy);
+      if (!isNaN(num)) return String(num);
+    }
+    return '';
+  };
+
+  const getCustomInputValue = (optionId: string, factorId: string): string => {
+    const key = getAssessmentKey(optionId, factorId);
+    if (customInputValues[key] !== undefined) return customInputValues[key];
+    const value = getAssessmentValue(optionId, factorId);
+    return value !== null ? String(value) : '';
+  };
+
+  const renderFactorAssessment = (option: { id: string }, f: Factor, indent: boolean = false, parentRating?: number) => {
+    const key = getAssessmentKey(option.id, f.id);
+    const currentMode = getAssessmentMode(option.id, f.id);
+    const currentValue = getAssessmentValue(option.id, f.id);
+    const isCustom = showCustomInput[key] || currentMode === 'custom';
+    const hasValue = currentValue !== null;
+
+    return (
+      <View key={f.id} style={[styles.assessmentFactorContainer, indent && { marginLeft: 12, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: COLORS.border }]}>
+        <View style={styles.assessmentLabelRow}>
+          {indent && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.primary, marginRight: 6 }} />}
+          <Text style={[styles.assessmentLabel, indent && { fontSize: 13 }]}>{f.name}</Text>
+          {f.unit && (
+            <View style={styles.factorUnitBadge}>
+              <Text style={styles.factorUnitBadgeText}>{f.unit}</Text>
+            </View>
+          )}
+          {f.expected_value !== undefined && f.expected_value !== null && (
+            <View style={styles.expectedCriteriaBadge}>
+              <Text style={styles.expectedCriteriaText}>
+                {f.operator || '≥'} {String(f.expected_value)}{f.unit ? ` ${f.unit}` : ''}
+              </Text>
+            </View>
+          )}
+          {indent && f.weight ? (
+            <View style={{ backgroundColor: '#EDE9FE', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 6, marginLeft: 4 }}>
+              <Text style={{ fontSize: 10, color: COLORS.primary, fontWeight: '600' }}>{f.weight}%</Text>
+            </View>
+          ) : null}
+          {!indent && parentRating !== undefined && <Text style={styles.assessmentRating}>({parentRating})</Text>}
+        </View>
+
+        <View style={styles.actualValueRow}>
+          <View style={styles.actualValueInputWrap}>
+            <TextInput
+              style={styles.actualValueInput}
+              placeholder={
+                f.data_type === 'text'
+                  ? `Enter ${f.name.toLowerCase()} value`
+                  : f.unit ? `Value in ${f.unit}` : 'Actual value (optional)'
+              }
+              placeholderTextColor={COLORS.textMuted}
+              value={getActualInputValue(option.id, f.id)}
+              onChangeText={(value) => handleUnitValueChange(option.id, f.id, value)}
+              onBlur={() => handleActualValueBlur(option.id, f.id)}
+              keyboardType={f.data_type === 'text' ? 'default' : 'decimal-pad'}
+            />
+            {f.unit ? (
+              <View style={styles.unitSuffix}>
+                <Text style={styles.unitSuffixText}>{f.unit}</Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+
+        <View style={styles.lmhContainer}>
+          <TouchableOpacity
+            style={[styles.lmhButton, { borderColor: LMH_VALUES.L.color }, currentMode === 'L' && { backgroundColor: LMH_VALUES.L.color }]}
+            onPress={() => handleLMHSelect(option.id, f.id, 'L')}
+          >
+            <Text style={[styles.lmhText, { color: currentMode === 'L' ? COLORS.white : LMH_VALUES.L.color }]}>L</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.lmhButton, { borderColor: LMH_VALUES.M.color }, currentMode === 'M' && { backgroundColor: LMH_VALUES.M.color }]}
+            onPress={() => handleLMHSelect(option.id, f.id, 'M')}
+          >
+            <Text style={[styles.lmhText, { color: currentMode === 'M' ? COLORS.white : LMH_VALUES.M.color }]}>M</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.lmhButton, { borderColor: LMH_VALUES.H.color }, currentMode === 'H' && { backgroundColor: LMH_VALUES.H.color }]}
+            onPress={() => handleLMHSelect(option.id, f.id, 'H')}
+          >
+            <Text style={[styles.lmhText, { color: currentMode === 'H' ? COLORS.white : LMH_VALUES.H.color }]}>H</Text>
+          </TouchableOpacity>
+
+          {isCustom ? (
+            <View style={[styles.customInputContainer, { backgroundColor: COLORS.primary }]}>
+              <TextInput
+                style={[styles.customPercentInput, { color: COLORS.white }]}
+                value={getCustomInputValue(option.id, f.id)}
+                onChangeText={(text) => handleCustomInputChange(option.id, f.id, text)}
+                onBlur={() => handleCustomInputBlur(option.id, f.id)}
+                keyboardType="numeric"
+                maxLength={3}
+                placeholderTextColor="rgba(255,255,255,0.6)"
+                placeholder="0"
+              />
+              <Text style={[styles.customPercentSign, { color: COLORS.white }]}>%</Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={[styles.lmhButton, styles.customButton, currentMode === 'custom' && styles.customButtonActive]}
+              onPress={() => handleCustomSelect(option.id, f.id)}
+            >
+              <Text style={[styles.lmhText, { color: currentMode === 'custom' ? COLORS.white : COLORS.primary }]}>%</Text>
+            </TouchableOpacity>
+          )}
+
+          <View style={[
+            styles.currentValueBadge,
+            !hasValue && styles.currentValueBadgeEmpty,
+            currentMode === 'auto' && styles.currentValueBadgeAuto,
+          ]}>
+            {hasValue ? (
+              <View style={styles.percentBadgeInner}>
+                {currentMode === 'auto' && <Ionicons name="flash" size={10} color={'#6366F1'} />}
+                <Text style={[styles.currentValueText, currentMode === 'auto' && styles.currentValueTextAuto]}>{currentValue}%</Text>
+              </View>
+            ) : (
+              <Text style={styles.currentValueTextEmpty}>--</Text>
+            )}
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  return (
+    <View style={styles.stepContent}>
+      <Text style={styles.stepTitle}>Step 6-7: Assess & Calculate</Text>
+      <Text style={styles.stepDescription}>
+        Rate how well each option satisfies each factor using quick LMH toggles or specific percentage.
+      </Text>
+
+      <View style={styles.voiceInputRow}>
+        <View style={styles.voiceHintBox}>
+          <Ionicons name="mic-outline" size={16} color={COLORS.primary} />
+          <Text style={styles.voiceHint}>Use the Voice Input button below to speak commands like "Salary High" or "All Medium"</Text>
+        </View>
+      </View>
+
+      <Card style={styles.legendCard}>
+        <Text style={styles.legendTitle}>Assessment Legend</Text>
+        <View style={styles.legendRow}>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: LMH_VALUES.L.color }]} />
+            <Text style={styles.legendText}>L = Low (25%)</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: LMH_VALUES.M.color }]} />
+            <Text style={styles.legendText}>M = Medium (50%)</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: LMH_VALUES.H.color }]} />
+            <Text style={styles.legendText}>H = High (75%)</Text>
+          </View>
+        </View>
+      </Card>
+
+      {decision.options.map((option) => {
+        const dynamicWorth = calculateDynamicWorth(option);
+        return (
+          <Card key={option.id} style={styles.assessmentCard}>
+            <View style={styles.assessmentHeader}>
+              <Text style={styles.optionName}>{option.name}</Text>
+              <View style={[styles.worthBadge, dynamicWorth.assessedCount === 0 && styles.worthBadgeEmpty]}>
+                {dynamicWorth.assessedCount > 0 ? (
+                  <Text style={styles.worthText}>{dynamicWorth.worth.toFixed(1)}%</Text>
+                ) : (
+                  <Text style={styles.worthTextEmpty}>--</Text>
+                )}
+              </View>
+            </View>
+            <View style={styles.assessmentProgress}>
+              <Text style={styles.progressText}>{dynamicWorth.assessedCount}/{dynamicWorth.totalCount} factors rated</Text>
+            </View>
+
+            {decision.factors
+              .filter(f => !f.parent_id)
+              .sort((a, b) => b.rating - a.rating)
+              .map((factor) => {
+                const subs = decision.factors.filter(f => f.parent_id === factor.id).sort((a, b) => a.order - b.order);
+                const hasSubs = subs.length > 0;
+
+                const getParentWeightedPct = (): number | null => {
+                  if (!hasSubs) return null;
+                  let wSum = 0; let wTotal = 0; let anyAssessed = false;
+                  for (const sub of subs) {
+                    const sa = option.assessments.find(a => a.factor_id === sub.id);
+                    const sw = sub.weight || 0;
+                    if (sa?.percentage !== undefined && sa?.percentage !== null && sw > 0) {
+                      wSum += (sa.percentage * sw) / 100; wTotal += sw; anyAssessed = true;
+                    }
+                  }
+                  if (!anyAssessed || wTotal === 0) return null;
+                  return Math.round(wSum * (100 / wTotal) * 10) / 10;
+                };
+
+                const parentPct = hasSubs ? getParentWeightedPct() : null;
+
+                if (!hasSubs) return renderFactorAssessment(option, factor, false, factor.rating);
+
+                return (
+                  <View key={factor.id} style={styles.assessmentFactorContainer}>
+                    <View style={[styles.assessmentLabelRow, { borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingBottom: 6, marginBottom: 6 }]}>
+                      <Ionicons name="git-branch-outline" size={14} color={COLORS.primary} style={{ marginRight: 4 }} />
+                      <Text style={[styles.assessmentLabel, { fontWeight: '700' }]}>{factor.name}</Text>
+                      <Text style={styles.assessmentRating}>({factor.rating})</Text>
+                      <View style={[
+                        styles.currentValueBadge,
+                        parentPct === null && styles.currentValueBadgeEmpty,
+                        parentPct !== null && { backgroundColor: '#EDE9FE' },
+                      ]}>
+                        {parentPct !== null ? (
+                          <View style={styles.percentBadgeInner}>
+                            <Ionicons name="calculator-outline" size={10} color={COLORS.primary} />
+                            <Text style={[styles.currentValueText, { color: COLORS.primary, fontWeight: '700' }]}>{parentPct}%</Text>
+                          </View>
+                        ) : (
+                          <Text style={styles.currentValueTextEmpty}>--</Text>
+                        )}
+                      </View>
+                    </View>
+                    {subs.map((sub) => renderFactorAssessment(option, sub, true))}
+                  </View>
+                );
+              })}
+          </Card>
+        );
+      })}
+
+      <View style={styles.navButtons}>
+        <TouchableOpacity style={styles.backButton} onPress={() => setCurrentStep(6)}>
+          <Ionicons name="arrow-back" size={20} color={COLORS.textSecondary} />
+          <Text style={styles.backButtonText}>Back</Text>
+        </TouchableOpacity>
+        <GradientButton title="View Results" onPress={() => setCurrentStep(8)} style={styles.nextButton} />
+      </View>
+    </View>
+  );
+}

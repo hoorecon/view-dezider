@@ -1,151 +1,161 @@
-**original_problem_statement**: The user wants to build a full-stack decision-making application. Throughout the session, the following features and bug fixes were requested:
+<analysis>**original_problem_statement**: 
+The user is building a Multi-user Decision Making App (View Dezider) based on a 10-step Proactive Risk Response (PRR) framework. The app requires highly complex logical calculations, data collection, Max Possible Practical Solutions (MPPS) action planning, AI-based auto-mapping, sharing via push notifications, and a newly requested Multi-Tenant SaaS architecture.
 
-- **Bug:** The Overall Worth % calculation for a decision was exceeding 100%.
-- **Feature:** Implement a Forgot Password flow and allow users who signed up with Google to set a local password.
-- **Feature:** Add voice-based input, starting with the assessment step where users rate factors.
-- **Feature:** Allow users to clone existing decisions from various stages (e.g., copy factors, options, assessment).
-- **Feature:** Allow users to save decisions as templates for reuse.
-- **Feature:** Enhance the template system to support sharing across accounts, with three categories: My Templates (private), Shared Templates (with specific users), and Public Templates.
-- **Feature:** Add a fourth category of Authorized Templates and a 3-tier admin system (Super Admin, Co-Admin, Admin) to manage them.
-- **Bug:** The Import button in the template library was not creating a new decision as expected.
-- **Bug:** Timestamps throughout the app were missing the time (HH:MM).
-- **Bug:** Action buttons (like Delete, Use, Approve) in the Template Browser modal were not working on mobile devices.
+**User's preferred language**: 
+INSTRUCT next agent to respond in English.
 
-**User's preferred language**: English
+**what currently exists?** 
+A robust full-stack Expo/FastAPI/MongoDB app with a complete 10-step decision flow. Recent additions include end-to-end sub-factor logic, MPPS Action Plan generation (exportable as PDF/CSV), TEPFI AI auto-mapping using the Emergent LLM Key, Decision Templates (Life Area/Decision Type based), Push Notifications for sharing steps, and a multi-tab share modal (Custom Email, Predefined Users, Authorized Experts).
 
-**what currently exists?**
-A full-stack application built with Expo (React Native) and FastAPI. The app allows users to create, manage, and analyze complex decisions using a structured process (PRR).
+**Last working item**: 
+    - Last item agent was working: Initiating the Expert Management UI and preparing for Multi-Tenant SaaS features. The agent created  and added an entry point in the Profile tab. The user simply replied Continue while the agent was processing.
+    - Status: IN PROGRESS
+    - Agent Testing Done: N
+    - Which testing method agent to use? Frontend manual testing by screenshot tool.
+    - User Testing Done: N
 
-Key features implemented include:
-- A multi-step decision wizard for defining factors, options, classifications, priorities, and assessments.
-- User authentication via email/password and Google OAuth.
-- A Forgot Password flow and an option for Google users to set a password.
-- A template system with four categories (Authorized, My, Shared, Public) and granular sharing options.
-- A 3-tier role-based access control system (Super Admin, Co-Admin, Admin) for managing templates.
-- Voice input for the assessment step.
-- Cloning functionality for decisions.
+**All Pending/In progress Issue list**: 
+  - Issue 1: Multi-Tenant SaaS Architecture (P0)
+     - Attempted fixes: Not yet started.
+     - Next debug checklist: Update Auth flow to accept/require . Update backend models (, , , etc.) to include  to ensure data isolation. Add custom logo/branding config based on Org ID.
+     - Why fix this issue and what will be achieved with the fix? Core user requirement to convert the app into a B2B white-labeled SaaS platform.
+     - Status: NOT STARTED
+     - Is recurring issue? N
+     - Should Test frontend/backend/both after fix? Both
+     - Blocked on other issue: None
+  - Issue 2: Factor Grouping (Quantitative vs Qualitative) & Live 3rd Party API Fetch (P0)
+     - Attempted fixes: Not yet started.
+     - Next debug checklist: Update Step 2 ( or ) to classify factors as Quantitative/Qualitative. Create a UI/config to map Quantitative factors to live 3rd party APIs for auto-fetching values during assessment.
+     - Why fix this issue and what will be achieved with the fix? Allows automated data ingestion for objective factors during decision making.
+     - Status: NOT STARTED
+     - Is recurring issue? N
+     - Should Test frontend/backend/both after fix? Both
+     - Blocked on other issue: Clarification needed from user regarding *which* 3rd party APIs to use.
+  - Issue 3: Complete Expert Management UI (P1)
+     - Attempted fixes: Created empty file .
+     - Next debug checklist: Implement CRUD operations for Admins to manage the Authorized Experts list used in the Share Step Modal.
+     - Why fix this issue and what will be achieved with the fix? Completes the requested sharing infrastructure.
+     - Status: IN PROGRESS
+     - Is recurring issue? N
+     - Should Test frontend/backend/both after fix? Frontend
+     - Blocked on other issue: None
+  - Issue 4: Admin Dashboard UI for Template Management (P1)
+     - Attempted fixes: Backend endpoints exist, UI is missing.
+     - Next debug checklist: Build an Admin UI to review, edit, and approve user-submitted decision templates.
+     - Why fix this issue and what will be achieved with the fix? Fulfills user request for Admin-curated context libraries.
+     - Status: NOT STARTED
+     - Is recurring issue? N
+     - Should Test frontend/backend/both after fix? Frontend
+     - Blocked on other issue: None
 
-The backend provides all necessary APIs for these features, and the frontend includes screens for login, registration, a dashboard, the decision list, a detailed decision wizard, and a user profile with an admin panel.
-
-**Last working item**:
--   **Last item agent was working**: The agent was fixing a critical bug where action buttons (e.g., 'Delete', 'Use') inside the  were unresponsive on mobile. The root cause was identified as React Native's  API being unreliable when triggered from within a  component on mobile platforms.
--   **Status**: IN PROGRESS
--   **Agent Testing Done**: N
--   **Which testing method agent to use?**: Frontend testing agent. The agent should specifically be instructed to test all action buttons (Use, Save to Mine, Delete, Approve, Revoke) within the Template Browser on a simulated mobile environment to confirm the fix works correctly.
--   **User Testing Done**: N
-
-**All Pending/In progress Issue list**:
--   **Issue 1 (P0)**: Action buttons in the  are not working on mobile.
-
-**Issues Detail**:
--   **Issue 1**:
-    -   **Attempted fixes**: The agent first tried restructuring  components, which resolved the issue on the web but not on mobile. The second attempt used a cross-platform helper that still relied on the problematic  API on mobile, which also failed. The current approach is to replace all  calls with a custom, inline confirmation UI managed by component state. The agent had started this implementation but had not completed it for all actions.
-    -   **Next debug checklist**:
-        1.  Open .
-        2.  The current implementation for deleting a template uses a state-based confirmation (). This pattern must be systematically applied to all other actions within the modal that use .
-        3.  Refactor the handlers for Use, Save to Mine, Approve, and Revoke to use an inline confirmation prompt instead of .
-        4.  Create a generic state, e.g., , to manage the confirmation UI for different actions, avoiding multiple boolean states.
-        5.  Ensure the custom confirmation UI is rendered correctly within the modal and that its Confirm and Cancel buttons work as expected.
-    -   **Why fix this issue and what will be achieved with the fix?**: This is a critical, high-priority bug that makes the entire template management system unusable on mobile. Fixing it is essential for core app functionality.
-    -   **Status**: IN PROGRESS
-    -   **Is recurring issue?**: Y
-    -   **Should Test frontend/backend/both after fix?**: Frontend
-    -   **Blocked on other issue**: None
-
-**In progress Task List**:
--   None.
+**In progress Task List**: 
+  - Task 1: Refactor  into modular step components
+     - Where to resume: The previous agent extracted types to  and helpers to , reducing the file size slightly. However, the 10 step render functions ( through ) are still housed inside the massive  file. You must extract these into separate components (e.g., ).
+     - What will be achieved with this? Prevents LLM context exhaustion and makes the codebase maintainable.
+     - Status: IN PROGRESS
+     - Should Test frontend/backend/both after fix? Frontend
+     - Blocked on something: None
 
 **Upcoming and Future Tasks**
-- **Upcoming Tasks**:
-    - **Task 1 (P1):** Extend voice input functionality to other parts of the decision-making process, such as adding factors, options, and changing priorities.
-        - **Files**:  and related components.
+    Upcoming Tasks:
+    - Phase 1: Finish Expert Management UI (P1)
+    - Phase 1: Step 2 Qualitative/Quantitative grouping & Live 3rd party API setup (P0)
+    - Phase 2: Multi-tenant Org ID login and custom branding (P0)
+    - Phase 3: Template Management UI for Admins (P1)
+    Future Tasks:
+    - Full modular extraction of  (P1)
 
 **Completed work in this session**
-- **Bug Fix:** The Overall Worth % calculation no longer exceeds 100%.
-- **Feature:** A Forgot Password flow and the ability for Google-authenticated users to set a password have been implemented.
-- **Feature:** Voice input has been added to the assessment step (Step 7) of the decision process.
-- **Feature:** A comprehensive clone and template system has been created.
-    - Users can clone decisions at 5 different levels of completion.
-    - Users can save decisions as templates with three visibility options: Private, Shared (with specific users), and Public.
-- **Feature:** A 3-tier admin system (Super Admin, Co-Admin, Admin) was implemented to manage a fourth Authorized template category.
-- **Bug Fix:** The Import button was changed to Use and now correctly creates a new decision from a template.
-- **Enhancement:** All timestamps displayed in the UI now include the time (HH:MM).
-- **Bug Fix:** The delete button in the template browser now works on the web version after replacing a problematic alert mechanism.
+- Sub-factor propagation to Steps 3, 4, 5 (parent visibility) and Step 7 (weighted aggregate auto-calculations).
+- Reverted Step 3 UI to a simplified layout per user request.
+- Implemented MPPS (Max Possible Practical Solutions) flow across Steps 8, 9, and 10.
+- Implemented MPPS Action Plan downloads in both CSV and PDF formats via Backend.
+- Added AI Auto-mapping for TEPFI tags using the Emergent LLM Key.
+- Created Backend Decision Template endpoints (User submit & Admin approve).
+- Built Push Notification infrastructure using .
+- Upgraded the Share Step Modal to support 3 tabs: Email, Users, Experts.
 
 **Earlier issues found/mentioned but not fixed**
-- None.
+   - Issue 1: Massive Component Bloat in Core Engine
+   - Debug checklist:  is still ~3600 lines long. Extract step renders into separate files.
+   - Why to solve this issue and what will be achieved with this? File size limits AI context and causes parsing errors during large search/replace operations.
+   - Should Test frontend/backend/both after fix: Frontend
+   - Is recurring issue? Y
 
 **Known issue recurrence from previous fork**
-- None.
+  - Issue recurrence in previous fork: Massive Component Bloat ().
+  - Recurrence count: 1
+  - Status: IN PROGRESS (Partial extraction of types/helpers done, but UI components remain inline).
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
-- **Frontend**: React Native, Expo, TypeScript,  for navigation, Zustand for state management.
-- **Backend**: Python, FastAPI, Pydantic.
-- **Database**: MongoDB.
-- **Key Libraries**:  for voice input.
+Frontend: Expo (React Native), React Hooks,  (Push).
+Backend: FastAPI (Python), Motor (Async MongoDB), /CSV (for exports).
+Integrations: Emergent LLM Key (for TEPFI AI auto-mapping).
 
 **key DB schema**
-- **users**: 
-- **decisions**: 
-- **templates**: 
+  - : Added , , , , .
+  -  (New): {id, name, life_area, decision_type, factors, is_approved, created_by}.
+  - : Added .
 
 **changes in tech stack**
-- None.
+  - Added PDF generation capabilities on the backend for MPPS Action Plans.
+  - Added  to the frontend.
 
 **All files of reference**
-- ****: The location of the primary bug. This component handles the UI for browsing, using, and managing templates.
-- ****: Contains all backend logic, including the API endpoints for templates, cloning, and admin actions.
-- ****: The Decision Box screen where the user accesses the template browser.
-- ****: The main decision wizard, a very large component that has been modified multiple times.
-- ****: The user profile screen, which now contains the admin panel for role management.
+  - : Heavily updated with PDF endpoints, Push logic, and TEPFI LLM integration.
+  - : Core engine containing MPPS logic. Needs refactoring.
+  - : Created but mostly empty.
+  -  & : Extracted logic to reduce main file size.
 
-**Areas that need refactoring**
-- ****: This component has grown large and complex. The ongoing fix will add more state management, making it a good candidate for being broken down into smaller, more manageable components (e.g., , ).
-- ****: At over 1700 lines, this file represents a complex multi-step wizard and is very difficult to maintain. It should be refactored into smaller components, one for each step of the decision process.
+**Areas that need refactoring**:
+- : Must be broken into individual Step component files.
 
 **key api endpoints**
-- 
-- 
-- 
-- 
-- 
-- 
-- 
+-  (New)
+-  (New)
+-  (New - Uses Emergent LLM)
+-  (New)
 
-**Critical Info for New Agent**
-- **User Frustration**: The user has expressed significant frustration due to recurring bugs. It is crucial to be empathetic, acknowledge the previous failures, and be meticulous in implementing and testing the next fix.
-- **Core Bug**: The current critical issue is that ** does not function correctly inside a React Native  on mobile platforms**. This is not a web issue. Any fix must avoid using  for confirmation dialogs within the . The correct approach, which was in progress, is to build a custom confirmation UI using component state that renders directly within the modal.
-- **Test on Mobile**: Do not assume a fix that works on the web preview will work on mobile. The current bug is a perfect example of a platform-specific issue. All fixes for this issue must be validated in a mobile context.
+**Critical Info for New Agent** 
+- **Multi-Tenant SaaS Request:** The user has requested a pivot to Multi-Tenant SaaS with  logins and custom branding. This requires careful updates to the Database schema to ensure data isolation. Do this safely without breaking existing user data.
+- **Emergent LLM Key:** The backend currently uses the Emergent LLM Key for the TEPFI Auto-mapping endpoint. *Do not switch this to require a user key*, as the user explicitly asked to use the Emergent key.
+- **Live 3rd Party APIs:** User wants Quantitative factors to automatically fetch live data. *You must ask the user via * how they want these APIs configured (e.g., dynamic webhook URLs, specific predefined services like finance/weather APIs, etc.) before writing the logic.
 
 **documents and test reports created in this job**
--  has been consistently updated to communicate with the backend testing agent.
+  - 
 
-**Last 10 User Messages and any pending HUMAN messages**
-1.  **User (Bug Report)**: Reports the delete button is not working on mobile and expresses frustration, asking why the hell you deliver code with such basic bugs ?.
-2.  **User (Bug Report)**: Calls the agent an idiot and reports the delete button is still not resolved, asking for the web version URL to check F12 logs.
-3.  **User (Bug Report)**: Confirms the delete button now works on the web but NOT on mobile. Also reports the use button throws an error on mobile (with screenshot).
-4.  **User (Confirmation)**: Continue - User is repeatedly prompted to continue while the agent works in small increments. This indicates the agent's process is too granular and should be consolidated. (Multiple Continue messages followed).
+**Last 10 User Messages and any pending HUMAN messages** 
+1. (User): Asked to make the download BOTH PDF and CSV. Asked if they should provide an LLM key or use Emergent for TEPFI. Asked if templates are Admin-only or User-submit. Demanded refactoring .
+2. (Agent): Asked clarifying question regarding Admin template workflow.
+3. (User): Confirmed Admin can review/edit/approve user-submitted templates and create official ones.
+4. (Agent): Implemented PDF/CSV downloads, TEPFI AI mapping, Template endpoints, and extracted types/helpers from . Finished task.
+5. (User): Requested Push Notifications for share invitations (Custom email, predefined users, authorized experts).
+6. (Agent): Asked clarifying question about payload and sharing scope.
+7. (User): Clarified payload (sender, title, step) and confirmed the 3 share target types.
+8. (Agent): Implemented push token logic, enhanced share modal with 3 tabs. Finished task.
+9. (User): Requested: 1. Admin UI for Experts. 2. Group factors by Quantitative/Qualitative in Step 2 with Live 3rd party API data fetching. 3. Multi-Tenant SaaS with Org ID login and custom branding.
+10. (Agent): Asked clarifying question regarding UI placement and SaaS architecture.
+11. (User): Clarified Experts go in Profile tab. API setup is user-configurable. SaaS uses Org ID login.
+12. (Agent): Created  and added link to Profile.
+13. (User): Continue (Pending user message - Agent paused).
 
 **Project Health Check:**
-- **Broken**: The template management functionality (using, deleting, approving templates) is critically broken on mobile due to the  issue within the modal.
-- **Mocked**: None.
+- Broken: None.
+- Mocked: None.
 
-**3rd Party Integrations**
-- : Used for voice-to-text input in the assessment step.
+**3rd Party Integrations** 
+  - OpenAI GPT-4o / Emergent Integrations — uses Emergent LLM Key (Used for TEPFI Auto-Mapping).
+  - Expo Push Notifications — No key required (Standard setup).
 
 **Testing status**
-- **Testing agent used after significant changes**: YES, the backend testing agent () was used successfully and frequently to validate API changes.
-- **Troubleshoot agent used after agent stuck in loop**: NO
-- **Test files created**: None.
-- **Known regressions**: The action buttons in the  were initially broken, then fixed for the web, but remained broken on mobile, which the user perceived as a regression.
-
-**Credentials to test flow:**
--   You can register a new user or use the credentials for the super admin account:
-    -   **Email**: 
-    -   **Password**: 
+  - Testing agent used after significant changes: YES
+  - Troubleshoot agent used after agent stuck in loop: NO
+  - Test files created: None
+  - Known regressions: None
 
 **What agent forgot to execute**
-- The agent repeatedly failed to test its fixes in a mobile context, despite the user's reports clearly indicating a mobile-specific problem. It assumed fixes working on the web would be sufficient, leading to multiple failed attempts and increased user frustration. The agent also did not recognize that  is a known problematic API inside modals on mobile platforms.
+- The agent started refactoring  by moving types and helpers, but **forgot to actually split the 10 step render functions into separate UI components**.
+- The agent set up backend endpoints for Admin Template Approval but **forgot to build the Admin UI** for managing templates.</analysis>

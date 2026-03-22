@@ -1859,16 +1859,19 @@ async def search_users(q: str = "", user: dict = Depends(get_current_user)):
     return [{"user_id": u["user_id"], "name": u.get("name", ""), "email": u["email"]} for u in users]
 
 # Authorized Experts (admin-managed)
+ADMIN_ROLES = ["admin", "co_admin", "super_admin"]
+
 @api_router.get("/experts")
-async def get_experts():
-    """Get list of authorized experts"""
-    experts = await db.experts.find({"is_active": True}, {"_id": 0}).sort("name", 1).to_list(100)
+async def get_experts(include_inactive: bool = False):
+    """Get list of authorized experts. Admins can include_inactive=true to see all."""
+    query = {} if include_inactive else {"is_active": True}
+    experts = await db.experts.find(query, {"_id": 0}).sort("name", 1).to_list(100)
     return experts
 
 @api_router.post("/experts")
 async def create_expert(request: Request, user: dict = Depends(get_current_user)):
     """Create an authorized expert (admin only)"""
-    if user.get("role") not in ["admin", "super_admin"]:
+    if user.get("role") not in ADMIN_ROLES:
         raise HTTPException(status_code=403, detail="Admin access required")
     body = await request.json()
     expert = {
@@ -1887,7 +1890,7 @@ async def create_expert(request: Request, user: dict = Depends(get_current_user)
 @api_router.put("/experts/{expert_id}")
 async def update_expert(expert_id: str, request: Request, user: dict = Depends(get_current_user)):
     """Update an expert (admin only)"""
-    if user.get("role") not in ["admin", "super_admin"]:
+    if user.get("role") not in ADMIN_ROLES:
         raise HTTPException(status_code=403, detail="Admin access required")
     body = await request.json()
     update_fields = {k: v for k, v in body.items() if k in ["name", "email", "specialization", "bio", "is_active"]}
@@ -1899,7 +1902,7 @@ async def update_expert(expert_id: str, request: Request, user: dict = Depends(g
 @api_router.delete("/experts/{expert_id}")
 async def delete_expert(expert_id: str, user: dict = Depends(get_current_user)):
     """Delete an expert (admin only)"""
-    if user.get("role") not in ["admin", "super_admin"]:
+    if user.get("role") not in ADMIN_ROLES:
         raise HTTPException(status_code=403, detail="Admin access required")
     result = await db.experts.delete_one({"id": expert_id})
     if result.deleted_count == 0:

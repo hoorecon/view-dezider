@@ -68,4 +68,7 @@ export interface Decision {
   life_area?: string;
   decision_type?: string;
   status: string;
+  folder?: string;
+  reflection?: string;
+  final_notes?: string;
 }
