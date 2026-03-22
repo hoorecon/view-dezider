@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Platform,
   Alert,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -30,12 +31,71 @@ const FOLDERS = [
   { id: 'spirituality_religion', name: 'Spirituality & Religion', icon: 'leaf', color: '#A855F7' },
 ];
 
+const DECISION_TYPES = [
+  { id: 'problem', name: 'Problem', icon: 'warning', color: '#EF4444', desc: 'Solving a challenge' },
+  { id: 'need', name: 'Need', icon: 'flag', color: '#F59E0B', desc: 'Fulfilling a requirement' },
+  { id: 'aspiration', name: 'Aspiration', icon: 'rocket', color: '#10B981', desc: 'Pursuing a goal' },
+];
+
+interface Template {
+  id: string;
+  name: string;
+  description: string;
+  life_area: string;
+  decision_type: string;
+  factors: any[];
+  is_official: boolean;
+  submitted_by_name?: string;
+}
+
 export default function NewPRRDecision() {
   const router = useRouter();
   const [title, setTitle] = useState('');
   const [context, setContext] = useState('');
   const [selectedFolder, setSelectedFolder] = useState('');
+  const [selectedType, setSelectedType] = useState('');
   const [loading, setLoading] = useState(false);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
+  const [showTemplates, setShowTemplates] = useState(false);
+
+  // Fetch templates when life area or decision type changes
+  useEffect(() => {
+    if (selectedFolder || selectedType) {
+      fetchTemplates();
+    } else {
+      setTemplates([]);
+    }
+  }, [selectedFolder, selectedType]);
+
+  const fetchTemplates = async () => {
+    setLoadingTemplates(true);
+    try {
+      const params: any = {};
+      // Map folder to life_area
+      if (selectedFolder) params.life_area = selectedFolder;
+      if (selectedType) params.decision_type = selectedType;
+      const query = new URLSearchParams(params).toString();
+      const resp = await api.get(`/decision-templates?${query}`);
+      setTemplates(resp.data || []);
+    } catch (e) {
+      setTemplates([]);
+    } finally {
+      setLoadingTemplates(false);
+    }
+  };
+
+  const applyTemplate = (template: Template) => {
+    setSelectedTemplate(template);
+    if (!title.trim()) setTitle(template.name);
+    if (!context.trim()) setContext(template.description);
+    setShowTemplates(false);
+    Alert.alert(
+      'Template Applied',
+      `"${template.name}" will pre-load ${template.factors.length} factors with classification, prioritization & ratings when you proceed.`
+    );
+  };
 
   const handleCreate = async () => {
     if (!title.trim()) {
@@ -49,12 +109,25 @@ export default function NewPRRDecision() {
 
     setLoading(true);
     try {
-      const response = await api.post('/decisions', {
+      const payload: any = {
         title,
         context,
         folder: selectedFolder,
-      });
-      router.replace(`/prr/${response.data.id}`);
+        life_area: selectedFolder,
+        decision_type: selectedType,
+      };
+
+      const response = await api.post('/decisions', payload);
+      const decisionId = response.data.id;
+
+      // If a template was selected, pre-load its factors
+      if (selectedTemplate && selectedTemplate.factors.length > 0) {
+        await api.put(`/decisions/${decisionId}`, {
+          factors: selectedTemplate.factors,
+        });
+      }
+
+      router.replace(`/prr/${decisionId}`);
     } catch (error) {
       Alert.alert('Error', 'Failed to create decision');
     } finally {
@@ -76,14 +149,14 @@ export default function NewPRRDecision() {
             <Text style={styles.stepLabel}>Step 1 of 10</Text>
             <Text style={styles.title}>State Context & Options</Text>
             <Text style={styles.description}>
-              Begin by clearly defining what decision you need to make and the context surrounding it.
+              Select a life area, decision type, and optionally use a template to pre-load factors.
             </Text>
           </View>
 
           <View style={styles.form}>
-            {/* Folder Selection */}
+            {/* Folder / Life Area Selection */}
             <View style={styles.folderSection}>
-              <Text style={styles.folderLabel}>Life Area Folder</Text>
+              <Text style={styles.folderLabel}>Life Area</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.folderScroll}>
                 {FOLDERS.map((folder) => (
                   <TouchableOpacity
@@ -118,6 +191,84 @@ export default function NewPRRDecision() {
               </ScrollView>
             </View>
 
+            {/* Decision Type Selection */}
+            <View style={styles.folderSection}>
+              <Text style={styles.folderLabel}>Decision Type</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {DECISION_TYPES.map((dt) => (
+                  <TouchableOpacity
+                    key={dt.id}
+                    style={[
+                      styles.typeChip,
+                      { borderColor: dt.color + '50' },
+                      selectedType === dt.id && { borderColor: dt.color, backgroundColor: dt.color + '15' },
+                    ]}
+                    onPress={() => setSelectedType(selectedType === dt.id ? '' : dt.id)}
+                  >
+                    <Ionicons name={dt.icon as any} size={16} color={selectedType === dt.id ? dt.color : COLORS.textMuted} />
+                    <View>
+                      <Text style={[styles.typeChipName, selectedType === dt.id && { color: dt.color }]}>{dt.name}</Text>
+                      <Text style={styles.typeChipDesc}>{dt.desc}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Template Suggestions */}
+            {(selectedFolder || selectedType) && (
+              <View style={styles.templateSection}>
+                <TouchableOpacity
+                  style={styles.templateToggle}
+                  onPress={() => setShowTemplates(!showTemplates)}
+                >
+                  <Ionicons name="layers-outline" size={16} color={COLORS.primary} />
+                  <Text style={styles.templateToggleText}>
+                    {loadingTemplates ? 'Loading templates...' : `Templates (${templates.length})`}
+                  </Text>
+                  <Ionicons name={showTemplates ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.textMuted} />
+                </TouchableOpacity>
+
+                {showTemplates && (
+                  <View style={styles.templateList}>
+                    {loadingTemplates && <ActivityIndicator size="small" color={COLORS.primary} />}
+                    {!loadingTemplates && templates.length === 0 && (
+                      <Text style={{ fontSize: 12, color: COLORS.textMuted, padding: 8 }}>No templates available for this selection.</Text>
+                    )}
+                    {templates.map((t) => (
+                      <TouchableOpacity
+                        key={t.id}
+                        style={[styles.templateItem, selectedTemplate?.id === t.id && styles.templateItemSelected]}
+                        onPress={() => applyTemplate(t)}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                          {t.is_official && <Ionicons name="shield-checkmark" size={12} color={COLORS.primary} />}
+                          <Text style={styles.templateItemName}>{t.name}</Text>
+                          <Text style={{ fontSize: 10, color: COLORS.textMuted }}>({t.factors.length} factors)</Text>
+                        </View>
+                        {t.description ? <Text style={styles.templateItemDesc} numberOfLines={2}>{t.description}</Text> : null}
+                        {t.submitted_by_name && !t.is_official && (
+                          <Text style={{ fontSize: 10, color: COLORS.textMuted }}>by {t.submitted_by_name}</Text>
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+
+                {selectedTemplate && (
+                  <View style={styles.selectedTemplateBadge}>
+                    <Ionicons name="checkmark-circle" size={14} color="#16A34A" />
+                    <Text style={{ fontSize: 12, color: '#16A34A', fontWeight: '600', flex: 1 }}>
+                      Template: {selectedTemplate.name} ({selectedTemplate.factors.length} factors)
+                    </Text>
+                    <TouchableOpacity onPress={() => setSelectedTemplate(null)}>
+                      <Ionicons name="close-circle" size={16} color={COLORS.textMuted} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            )}
+
             <Input
               label="Decision Title"
               placeholder="e.g., Career choice between Company A and B"
@@ -127,27 +278,31 @@ export default function NewPRRDecision() {
 
             <Input
               label="Context Description"
-              placeholder="Describe the situation, why this decision is important, any constraints or considerations..."
+              placeholder="Describe the situation, why this decision is important, any constraints..."
               value={context}
               onChangeText={setContext}
               multiline
-              numberOfLines={6}
+              numberOfLines={5}
             />
 
             <View style={styles.tip}>
               <Text style={styles.tipTitle}>PRR Tip:</Text>
               <Text style={styles.tipText}>
-                Be specific about your context. Include timelines, constraints, and what success looks like for you.
+                {selectedTemplate
+                  ? `Template "${selectedTemplate.name}" will pre-load factors. You can customize them in Step 2.`
+                  : 'Select a template to pre-load factors, or start from scratch.'}
               </Text>
             </View>
           </View>
 
           <GradientButton
-            title="Create & Continue"
+            title={selectedTemplate ? 'Create with Template' : 'Create & Continue'}
             onPress={handleCreate}
             loading={loading}
             style={styles.button}
           />
+
+          {/* Save as Template button for returning users */}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -163,7 +318,6 @@ const styles = StyleSheet.create({
   title: { fontSize: 24, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 8 },
   description: { fontSize: 14, color: COLORS.textSecondary, lineHeight: 20 },
   form: { marginBottom: 24 },
-  // Folder selection
   folderSection: { marginBottom: 16 },
   folderLabel: { fontSize: 14, fontWeight: '600', color: COLORS.textPrimary, marginBottom: 8 },
   folderScroll: { flexGrow: 0 },
@@ -174,6 +328,37 @@ const styles = StyleSheet.create({
     marginRight: 7, backgroundColor: COLORS.white,
   },
   folderChipText: { fontSize: 12, color: COLORS.textSecondary },
+  typeChip: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 10, paddingVertical: 10,
+    borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+  },
+  typeChipName: { fontSize: 12, fontWeight: '600', color: COLORS.textPrimary },
+  typeChipDesc: { fontSize: 10, color: COLORS.textMuted },
+  templateSection: { marginBottom: 12 },
+  templateToggle: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: 8, paddingHorizontal: 12,
+    backgroundColor: '#EDE9FE', borderRadius: 10,
+  },
+  templateToggleText: { flex: 1, fontSize: 13, fontWeight: '600', color: COLORS.primary },
+  templateList: {
+    backgroundColor: COLORS.white, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border,
+    marginTop: 6, maxHeight: 200, padding: 4,
+  },
+  templateItem: {
+    padding: 10, borderRadius: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  },
+  templateItemSelected: { backgroundColor: '#F0FDF4', borderColor: '#16A34A' },
+  templateItemName: { fontSize: 13, fontWeight: '600', color: COLORS.textPrimary },
+  templateItemDesc: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
+  selectedTemplateBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 10, paddingVertical: 6,
+    backgroundColor: '#F0FDF4', borderRadius: 8, borderWidth: 1, borderColor: '#16A34A',
+    marginTop: 6,
+  },
   tip: {
     backgroundColor: 'rgba(142,36,170,0.08)', borderRadius: 12, padding: 16, marginTop: 8,
   },

@@ -2035,6 +2035,194 @@ async def download_mpps_action_plan(decision_id: str, user: dict = Depends(get_c
         headers={"Content-Disposition": f'attachment; filename="MPPS_Action_Plan_{decision_id[:8]}.csv"'}
     )
 
+@api_router.get("/decisions/{decision_id}/mpps-action-plan-pdf")
+async def download_mpps_action_plan_pdf(decision_id: str, user: dict = Depends(get_current_user)):
+    """Download MPPS action plan as PDF"""
+    import io
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.units import mm
+
+    decision = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]})
+    if not decision:
+        raise HTTPException(status_code=404, detail="Decision not found")
+
+    improvements = decision.get("mpps_improvements", [])
+    factors = decision.get("factors", [])
+    options = decision.get("options", [])
+    mpps_option_id = decision.get("mpps_option_id")
+    mpps_timeframe = decision.get("mpps_timeframe", "Not specified")
+    target_option = next((o for o in options if o.get("id") == mpps_option_id), options[0] if options else None)
+    option_name = target_option.get("name", "Unknown") if target_option else "Unknown"
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=15*mm, bottomMargin=15*mm, leftMargin=12*mm, rightMargin=12*mm)
+    styles = getSampleStyleSheet()
+    story = []
+
+    # Title
+    title_style = ParagraphStyle('Title2', parent=styles['Title'], fontSize=16, spaceAfter=6)
+    story.append(Paragraph("MPPS Action Plan", title_style))
+    story.append(Spacer(1, 4*mm))
+
+    # Summary table
+    summary_data = [
+        ["Decision", decision.get("title", "")],
+        ["Context", decision.get("context", "")],
+        ["Option", option_name],
+        ["Timeframe", mpps_timeframe],
+        ["Projected Worth", f"{decision.get('mpps_projected_worth', 0)}%"],
+    ]
+    summary_table = Table(summary_data, colWidths=[35*mm, 140*mm])
+    summary_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    story.append(summary_table)
+    story.append(Spacer(1, 6*mm))
+
+    # Factor improvements
+    cell_style = ParagraphStyle('Cell', parent=styles['Normal'], fontSize=7, leading=9)
+    header_style = ParagraphStyle('Header', parent=styles['Normal'], fontSize=7, leading=9, fontName='Helvetica-Bold', textColor=colors.white)
+
+    for imp in improvements:
+        factor = next((f for f in factors if f.get("id") == imp.get("factor_id")), {})
+        tepfi = ", ".join(imp.get("tepfi_elements", []))
+        layer = imp.get("tepfi_layer", "")
+        action_items = imp.get("action_items", [])
+
+        # Factor header
+        factor_title = ParagraphStyle('FTitle', parent=styles['Heading3'], fontSize=11, spaceAfter=2, spaceBefore=4)
+        orig = imp.get("original_percentage", "--")
+        proj = imp.get("projected_percentage", "--")
+        delta = imp.get("delta_percentage", "--")
+        story.append(Paragraph(f"{factor.get('name', '')} — {factor.get('category', '')} (Rating: {factor.get('rating', '')})", factor_title))
+
+        info_data = [
+            [Paragraph("<b>Current %</b>", cell_style), Paragraph(f"{orig}%", cell_style),
+             Paragraph("<b>Projected %</b>", cell_style), Paragraph(f"{proj}%", cell_style),
+             Paragraph("<b>Delta</b>", cell_style), Paragraph(f"+{delta}%" if delta and str(delta) != '--' else str(delta), cell_style)],
+            [Paragraph("<b>Target Value</b>", cell_style), Paragraph(str(imp.get("expected_value", "")), cell_style),
+             Paragraph("<b>Unit</b>", cell_style), Paragraph(str(imp.get("expected_unit", "")), cell_style),
+             Paragraph("<b>TEPFI</b>", cell_style), Paragraph(tepfi, cell_style)],
+            [Paragraph("<b>Layer</b>", cell_style), Paragraph(layer, cell_style),
+             Paragraph("<b>Plan</b>", cell_style), Paragraph(str(imp.get("improvement_plan", "")), cell_style), "", ""],
+        ]
+        info_table = Table(info_data, colWidths=[22*mm, 28*mm, 22*mm, 28*mm, 22*mm, 53*mm])
+        info_table.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+            ('FONTSIZE', (0, 0), (-1, -1), 7),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ]))
+        story.append(info_table)
+
+        # Action items
+        if action_items:
+            story.append(Spacer(1, 2*mm))
+            ai_header = [
+                Paragraph("Who", header_style), Paragraph("Email", header_style),
+                Paragraph("Mobile", header_style), Paragraph("Task", header_style),
+                Paragraph("By When", header_style)
+            ]
+            ai_data = [ai_header]
+            for ai in action_items:
+                ai_data.append([
+                    Paragraph(ai.get("assignee_name", ""), cell_style),
+                    Paragraph(ai.get("assignee_email", ""), cell_style),
+                    Paragraph(ai.get("assignee_mobile", ""), cell_style),
+                    Paragraph(ai.get("task", ""), cell_style),
+                    Paragraph(ai.get("deadline", ""), cell_style),
+                ])
+            ai_table = Table(ai_data, colWidths=[30*mm, 38*mm, 28*mm, 50*mm, 29*mm])
+            ai_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#6366F1')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+                ('FONTSIZE', (0, 0), (-1, -1), 7),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+                ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ]))
+            story.append(ai_table)
+
+        story.append(Spacer(1, 4*mm))
+
+    doc.build(story)
+    buffer.seek(0)
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="MPPS_Action_Plan_{decision_id[:8]}.pdf"'}
+    )
+
+
+# ============= TEPFI AI Auto-mapping =============
+
+@api_router.post("/tepfi-auto-map")
+async def tepfi_auto_map(request: Request, user: dict = Depends(get_current_user)):
+    """AI auto-map factors to TEPFI elements and solution layers"""
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    import json as json_module
+
+    body = await request.json()
+    context = body.get("context", "")
+    decision_title = body.get("title", "")
+    factors = body.get("factors", [])
+
+    if not factors:
+        return {"mappings": []}
+
+    api_key = os.getenv("EMERGENT_LLM_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="LLM key not configured")
+
+    factor_list = "\n".join([f"- {f.get('name', '')} (category: {f.get('category', '')}, unit: {f.get('unit', '')})" for f in factors])
+
+    prompt = f"""You are an expert decision analyst using the TEPFI framework.
+
+Decision: {decision_title}
+Context: {context}
+
+Factors to classify:
+{factor_list}
+
+For each factor, assign:
+1. tepfi_elements: one or more from [T=Time, E=Effort, P=People, F=Finance, I=Infrastructure] — use the single letter codes
+2. tepfi_layer: one from [self, micro, macro]
+   - self = personal/individual control
+   - micro = immediate environment (team, family, organization)
+   - macro = external/systemic factors
+
+Return ONLY valid JSON array, no markdown, no explanation:
+[{{"factor_name": "...", "tepfi_elements": ["T","F"], "tepfi_layer": "self"}}]"""
+
+    try:
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"tepfi_{user['user_id']}_{uuid.uuid4().hex[:8]}",
+            system_message="You are a TEPFI framework classifier. Return only valid JSON."
+        ).with_model("openai", "gpt-4.1-mini")
+
+        response = await chat.send_message(UserMessage(text=prompt))
+
+        # Parse JSON from response
+        response_text = response.strip()
+        if response_text.startswith("```"):
+            response_text = response_text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+
+        mappings = json_module.loads(response_text)
+        return {"mappings": mappings}
+    except Exception as e:
+        logger.error(f"TEPFI auto-map error: {str(e)}")
+        return {"mappings": [], "error": str(e)}
+
+
 # ============= Decision Templates (Admin-curated Context Library) =============
 
 class DecisionTemplate(BaseModel):
@@ -2045,7 +2233,10 @@ class DecisionTemplate(BaseModel):
     description: str = ""
     factors: List[Factor] = []
     created_by: str = ""
+    submitted_by: Optional[str] = None  # user_id who submitted for review
+    submitted_by_name: Optional[str] = None
     is_approved: bool = False
+    is_official: bool = False  # True for admin-created templates
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class DecisionTemplateCreate(BaseModel):
@@ -2078,15 +2269,49 @@ async def get_all_templates(user: dict = Depends(get_current_user)):
 
 @api_router.post("/decision-templates")
 async def create_decision_template(template: DecisionTemplateCreate, user: dict = Depends(get_current_user)):
-    if user.get("role") not in ["admin", "super_admin"]:
-        raise HTTPException(status_code=403, detail="Admin access required")
+    """Create a decision template - admin creates approved + official, user creates pending"""
+    is_admin = user.get("role") in ["admin", "super_admin"]
     template_dict = template.dict()
     template_dict["id"] = str(uuid.uuid4())
     template_dict["created_by"] = user["user_id"]
-    template_dict["is_approved"] = True
+    template_dict["submitted_by"] = user["user_id"]
+    template_dict["submitted_by_name"] = user.get("name", "")
+    template_dict["is_approved"] = is_admin  # Auto-approve for admins
+    template_dict["is_official"] = is_admin  # Mark as official if admin-created
     template_dict["created_at"] = datetime.now(timezone.utc)
     await db.decision_templates.insert_one(template_dict)
-    return {"id": template_dict["id"], "message": "Template created successfully"}
+    return {"id": template_dict["id"], "message": "Template created successfully", "is_approved": is_admin}
+
+@api_router.post("/decision-templates/{template_id}/approve")
+async def approve_template(template_id: str, user: dict = Depends(get_current_user)):
+    """Admin approves a user-submitted template (can edit before approving)"""
+    if user.get("role") not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    result = await db.decision_templates.update_one(
+        {"id": template_id},
+        {"$set": {"is_approved": True}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return {"message": "Template approved"}
+
+@api_router.post("/decision-templates/{template_id}/clone")
+async def clone_template(template_id: str, user: dict = Depends(get_current_user)):
+    """Admin clones a template for editing before approval"""
+    if user.get("role") not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    template = await db.decision_templates.find_one({"id": template_id})
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    template.pop("_id", None)
+    template["id"] = str(uuid.uuid4())
+    template["created_by"] = user["user_id"]
+    template["is_official"] = True
+    template["is_approved"] = False  # Not approved until explicitly done
+    template["name"] = f"{template['name']} (Copy)"
+    template["created_at"] = datetime.now(timezone.utc)
+    await db.decision_templates.insert_one(template)
+    return {"id": template["id"], "message": "Template cloned successfully"}
 
 @api_router.put("/decision-templates/{template_id}")
 async def update_decision_template(template_id: str, template: DecisionTemplateCreate, user: dict = Depends(get_current_user)):

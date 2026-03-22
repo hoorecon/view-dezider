@@ -2148,9 +2148,58 @@ export default function PRRDecisionDetail() {
         </Card>
 
         {/* Factor-by-factor improvement */}
-        <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.text, marginTop: 12, marginBottom: 4 }}>
-          Factor Improvement Plans
-        </Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, marginBottom: 4 }}>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.text }}>
+            Factor Improvement Plans
+          </Text>
+          <TouchableOpacity
+            onPress={async () => {
+              try {
+                const token = await AsyncStorage.getItem('session_token');
+                const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
+                const resp = await fetch(`${baseUrl}/api/tepfi-auto-map`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                  body: JSON.stringify({
+                    title: decision.title,
+                    context: decision.context,
+                    factors: topLevelFactors.map(f => ({ name: f.name, category: f.category, unit: f.unit })),
+                  }),
+                });
+                const data = await resp.json();
+                if (data.mappings && data.mappings.length > 0) {
+                  const existing = [...improvements];
+                  for (const m of data.mappings) {
+                    const factor = topLevelFactors.find(f => f.name === m.factor_name);
+                    if (!factor) continue;
+                    const idx = existing.findIndex(i => i.factor_id === factor.id);
+                    const currentPct = getFactorAssessmentPct(factor);
+                    if (idx >= 0) {
+                      existing[idx] = { ...existing[idx], tepfi_elements: m.tepfi_elements || [], tepfi_layer: m.tepfi_layer };
+                    } else {
+                      existing.push({
+                        factor_id: factor.id,
+                        original_percentage: currentPct ?? undefined,
+                        improvement_plan: '',
+                        tepfi_elements: m.tepfi_elements || [],
+                        tepfi_layer: m.tepfi_layer,
+                        action_items: [],
+                      });
+                    }
+                  }
+                  saveDecision({ mpps_option_id: mppsOptionId, mpps_improvements: existing });
+                  Alert.alert('AI Mapped', 'TEPFI elements auto-mapped. You can override manually.');
+                }
+              } catch (err) {
+                Alert.alert('Error', 'AI mapping failed. Try again.');
+              }
+            }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#EDE9FE', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12 }}
+          >
+            <Ionicons name="sparkles" size={14} color={COLORS.primary} />
+            <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.primary }}>AI Auto-Map TEPFI</Text>
+          </TouchableOpacity>
+        </View>
 
         {sortedFactors.map((factor) => {
           const currentPct = getFactorAssessmentPct(factor);
@@ -2352,14 +2401,42 @@ export default function PRRDecisionDetail() {
           );
         })}
 
-        {/* Download + Nav */}
-        <TouchableOpacity
-          onPress={downloadActionPlan}
-          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, marginTop: 8, backgroundColor: '#F0FDF4', borderRadius: 10, borderWidth: 1, borderColor: '#16A34A' }}
-        >
-          <Ionicons name="download-outline" size={18} color="#16A34A" />
-          <Text style={{ fontSize: 14, fontWeight: '600', color: '#16A34A' }}>Download MPPS Action Plan (CSV)</Text>
-        </TouchableOpacity>
+        {/* Download buttons */}
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+          <TouchableOpacity
+            onPress={downloadActionPlan}
+            style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, backgroundColor: '#F0FDF4', borderRadius: 10, borderWidth: 1, borderColor: '#16A34A' }}
+          >
+            <Ionicons name="document-text-outline" size={16} color="#16A34A" />
+            <Text style={{ fontSize: 13, fontWeight: '600', color: '#16A34A' }}>CSV</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={async () => {
+              try {
+                const token = await AsyncStorage.getItem('session_token');
+                const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
+                const url = `${baseUrl}/api/decisions/${decision.id}/mpps-action-plan-pdf`;
+                if (typeof window !== 'undefined') {
+                  const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+                  const blob = await response.blob();
+                  const blobUrl = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = blobUrl;
+                  a.download = `MPPS_Action_Plan.pdf`;
+                  a.click();
+                  URL.revokeObjectURL(blobUrl);
+                }
+                Alert.alert('Success', 'PDF downloaded');
+              } catch (err) {
+                Alert.alert('Error', 'Failed to download PDF');
+              }
+            }}
+            style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, backgroundColor: '#EDE9FE', borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary }}
+          >
+            <Ionicons name="download-outline" size={16} color={COLORS.primary} />
+            <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.primary }}>PDF</Text>
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.navButtons}>
           <TouchableOpacity style={styles.backButton} onPress={() => setCurrentStep(8)}>
@@ -2514,15 +2591,48 @@ export default function PRRDecisionDetail() {
             <Text style={styles.backButtonText}>Back</Text>
           </TouchableOpacity>
           {decision.chosen_option_id && (
-            <GradientButton
-              title="Complete Decision"
-              onPress={() => {
-                saveDecision({ status: 'completed' });
-                router.back();
-              }}
-              variant="accent"
-              style={styles.nextButton}
-            />
+            <View style={{ gap: 8 }}>
+              <GradientButton
+                title="Complete Decision"
+                onPress={() => {
+                  saveDecision({ status: 'completed' });
+                  router.back();
+                }}
+                variant="accent"
+                style={styles.nextButton}
+              />
+              <TouchableOpacity
+                onPress={async () => {
+                  try {
+                    const token = await AsyncStorage.getItem('session_token');
+                    const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
+                    const resp = await fetch(`${baseUrl}/api/decision-templates`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                      body: JSON.stringify({
+                        name: decision.title,
+                        life_area: decision.life_area || decision.folder || '',
+                        decision_type: decision.decision_type || '',
+                        description: decision.context,
+                        factors: decision.factors,
+                      }),
+                    });
+                    const data = await resp.json();
+                    if (data.is_approved) {
+                      Alert.alert('Saved', 'Template published successfully!');
+                    } else {
+                      Alert.alert('Submitted', 'Template submitted for admin review.');
+                    }
+                  } catch (err) {
+                    Alert.alert('Error', 'Failed to save template');
+                  }
+                }}
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, backgroundColor: '#EDE9FE', borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary }}
+              >
+                <Ionicons name="bookmark-outline" size={16} color={COLORS.primary} />
+                <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.primary }}>Save as Template</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
       </View>
