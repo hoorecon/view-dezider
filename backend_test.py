@@ -426,6 +426,318 @@ def test_folder_analytics(results: TestResults):
     except Exception as e:
         results.log("Folder Analytics Testing", False, f"Exception: {str(e)}")
 
+def test_mpps_fields_comprehensive(results: TestResults):
+    """
+    Comprehensive test for MPPS (Max Possible Practical Solution) fields in PRR Decisions API
+    
+    Test Flow:
+    1. Register a user and create a decision with factors and options
+    2. Add assessments to the options
+    3. Test saving MPPS data via PUT /api/decisions/{id}
+    4. Verify MPPS data persists correctly via GET /api/decisions/{id}
+    5. Verify all MPPS fields are returned: mpps_option_id, mpps_improvements, mpps_projected_worth
+    """
+    
+    print("\n🎯 Testing MPPS Fields Comprehensive")
+    print("-" * 40)
+    
+    # Generate unique test data
+    timestamp = str(int(time.time()))
+    test_email = f"mpps.tester.{timestamp}@careerpath.com"
+    test_password = "SecurePass123!"
+    test_name = f"MPPS Tester {timestamp}"
+    
+    try:
+        # Step 1: Register User
+        user_data = register_user(test_email, test_password, test_name)
+        session_token = user_data.get("session_token")
+        user_id = user_data.get("user_id")
+        
+        if not session_token:
+            results.log("MPPS User Registration", False, "No session token received")
+            return
+        
+        results.log("MPPS User Registration", True, f"User ID: {user_id}")
+        
+        # Step 2: Create Decision with Factors and Options
+        decision_id = create_decision(
+            session_token, 
+            f"MPPS Test Decision - Career Choice {timestamp}",
+            "Testing MPPS functionality with a realistic career decision scenario",
+            "career"
+        )
+        
+        results.log("MPPS Decision Creation", True, f"Decision ID: {decision_id}")
+        
+        # Step 3: Add Factors to Decision
+        headers = {"Authorization": f"Bearer {session_token}", "Content-Type": "application/json"}
+        
+        factors_data = {
+            "factors": [
+                {
+                    "id": "f_salary",
+                    "name": "Salary & Compensation",
+                    "category": "primary",
+                    "rating": 80,
+                    "order": 0,
+                    "expected_value": 120000,
+                    "unit": "USD",
+                    "operator": ">=",
+                    "data_type": "numeric"
+                },
+                {
+                    "id": "f_growth",
+                    "name": "Career Growth Opportunities",
+                    "category": "primary", 
+                    "rating": 70,
+                    "order": 1
+                },
+                {
+                    "id": "f_location",
+                    "name": "Work Location",
+                    "category": "secondary",
+                    "rating": 40,
+                    "order": 2,
+                    "expected_value": "Remote",
+                    "operator": "contains",
+                    "data_type": "text"
+                },
+                {
+                    "id": "f_culture",
+                    "name": "Company Culture",
+                    "category": "primary",
+                    "rating": 60,
+                    "order": 3
+                }
+            ]
+        }
+        
+        response = requests.put(f"{BACKEND_URL}/decisions/{decision_id}", json=factors_data, headers=headers)
+        if response.status_code != 200:
+            results.log("MPPS Adding Factors", False, f"Status: {response.status_code}")
+            return
+        
+        results.log("MPPS Adding Factors", True, "4 factors added successfully")
+        
+        # Step 4: Add Options with Assessments
+        full_update_data = {
+            "factors": factors_data["factors"],
+            "options": [
+                {
+                    "id": "opt_company_a",
+                    "name": "Tech Startup A",
+                    "assessments": [
+                        {"factor_id": "f_salary", "percentage": 60, "assessment_mode": "M"},
+                        {"factor_id": "f_growth", "percentage": 85, "assessment_mode": "H"},
+                        {"factor_id": "f_location", "percentage": 30, "assessment_mode": "L"},
+                        {"factor_id": "f_culture", "percentage": 75, "assessment_mode": "H"}
+                    ]
+                },
+                {
+                    "id": "opt_company_b",
+                    "name": "Enterprise Corp B", 
+                    "assessments": [
+                        {"factor_id": "f_salary", "percentage": 90, "assessment_mode": "H"},
+                        {"factor_id": "f_growth", "percentage": 50, "assessment_mode": "M"},
+                        {"factor_id": "f_location", "percentage": 20, "assessment_mode": "L"},
+                        {"factor_id": "f_culture", "percentage": 40, "assessment_mode": "L"}
+                    ]
+                },
+                {
+                    "id": "opt_company_c",
+                    "name": "Remote Agency C",
+                    "assessments": [
+                        {"factor_id": "f_salary", "percentage": 70, "assessment_mode": "M"},
+                        {"factor_id": "f_growth", "percentage": 60, "assessment_mode": "M"},
+                        {"factor_id": "f_location", "percentage": 95, "assessment_mode": "H"},
+                        {"factor_id": "f_culture", "percentage": 80, "assessment_mode": "H"}
+                    ]
+                }
+            ]
+        }
+        
+        response = requests.put(f"{BACKEND_URL}/decisions/{decision_id}", json=full_update_data, headers=headers)
+        if response.status_code != 200:
+            results.log("MPPS Adding Options & Assessments", False, f"Status: {response.status_code}")
+            return
+        
+        results.log("MPPS Adding Options & Assessments", True, "3 options with assessments added")
+        
+        # Step 5: Test MPPS Data Saving via PUT
+        best_option_id = "opt_company_c"
+        
+        mpps_data = {
+            "mpps_option_id": best_option_id,
+            "mpps_improvements": [
+                {
+                    "factor_id": "f_salary",
+                    "original_percentage": 70,
+                    "projected_percentage": 85,
+                    "improvement_plan": "Negotiate salary increase after 6 months based on performance metrics",
+                    "tepfi_element": "F",
+                    "tepfi_layer": "self"
+                },
+                {
+                    "factor_id": "f_growth", 
+                    "original_percentage": 60,
+                    "projected_percentage": 80,
+                    "improvement_plan": "Request mentorship program and lead a client project within first year",
+                    "tepfi_element": "P",
+                    "tepfi_layer": "micro"
+                },
+                {
+                    "factor_id": "f_culture",
+                    "original_percentage": 80,
+                    "projected_percentage": 90,
+                    "improvement_plan": "Actively participate in team building and suggest process improvements",
+                    "tepfi_element": "E",
+                    "tepfi_layer": "micro"
+                }
+            ],
+            "mpps_projected_worth": 85.5
+        }
+        
+        response = requests.put(f"{BACKEND_URL}/decisions/{decision_id}", json=mpps_data, headers=headers)
+        if response.status_code != 200:
+            results.log("MPPS Data Saving", False, f"Status: {response.status_code}")
+            return
+        
+        results.log("MPPS Data Saving", True, "MPPS data saved successfully")
+        
+        # Step 6: Verify MPPS Data Persistence via GET
+        response = requests.get(f"{BACKEND_URL}/decisions/{decision_id}", headers=headers)
+        if response.status_code != 200:
+            results.log("MPPS Data Retrieval", False, f"Status: {response.status_code}")
+            return
+        
+        decision_data = response.json()
+        results.log("MPPS Data Retrieval", True, "Decision data retrieved successfully")
+        
+        # Step 7: Verify All MPPS Fields Are Present and Correct
+        
+        # Check mpps_option_id
+        if decision_data.get("mpps_option_id") != best_option_id:
+            results.log("MPPS Option ID", False, f"Expected: {best_option_id}, Got: {decision_data.get('mpps_option_id')}")
+            return
+        results.log("MPPS Option ID", True, f"Correctly set to: {best_option_id}")
+        
+        # Check mpps_projected_worth
+        if decision_data.get("mpps_projected_worth") != 85.5:
+            results.log("MPPS Projected Worth", False, f"Expected: 85.5, Got: {decision_data.get('mpps_projected_worth')}")
+            return
+        results.log("MPPS Projected Worth", True, f"Correctly set to: 85.5")
+        
+        # Check mpps_improvements array
+        mpps_improvements = decision_data.get("mpps_improvements", [])
+        if len(mpps_improvements) != 3:
+            results.log("MPPS Improvements Count", False, f"Expected: 3, Got: {len(mpps_improvements)}")
+            return
+        results.log("MPPS Improvements Count", True, "3 improvements found")
+        
+        # Validate each improvement has required fields
+        required_fields = ["factor_id", "original_percentage", "projected_percentage", "improvement_plan", "tepfi_element", "tepfi_layer"]
+        for i, improvement in enumerate(mpps_improvements):
+            for field in required_fields:
+                if field not in improvement:
+                    results.log(f"MPPS Improvement {i+1} Fields", False, f"Missing field: {field}")
+                    return
+        results.log("MPPS Improvements Fields", True, "All required fields present in all improvements")
+        
+        # Validate specific improvement data
+        salary_improvement = next((imp for imp in mpps_improvements if imp["factor_id"] == "f_salary"), None)
+        if not salary_improvement:
+            results.log("Salary Improvement", False, "Salary improvement not found")
+            return
+        
+        if (salary_improvement["original_percentage"] != 70 or 
+            salary_improvement["projected_percentage"] != 85 or
+            salary_improvement["tepfi_element"] != "F" or
+            salary_improvement["tepfi_layer"] != "self"):
+            results.log("Salary Improvement Data", False, f"Incorrect data: {salary_improvement}")
+            return
+        results.log("Salary Improvement Data", True, "Salary improvement data correct")
+        
+        # Validate TEPFI elements and layers are preserved
+        tepfi_elements = [imp["tepfi_element"] for imp in mpps_improvements]
+        tepfi_layers = [imp["tepfi_layer"] for imp in mpps_improvements]
+        
+        if set(tepfi_elements) != {"F", "P", "E"}:
+            results.log("TEPFI Elements", False, f"Expected F,P,E. Got: {tepfi_elements}")
+            return
+        results.log("TEPFI Elements", True, "All TEPFI elements preserved correctly")
+        
+        if set(tepfi_layers) != {"self", "micro"}:
+            results.log("TEPFI Layers", False, f"Expected self,micro. Got: {tepfi_layers}")
+            return
+        results.log("TEPFI Layers", True, "All TEPFI layers preserved correctly")
+        
+        # Step 8: Test MPPS Update (modify existing MPPS data)
+        updated_mpps_data = {
+            "mpps_projected_worth": 88.0,
+            "mpps_improvements": [
+                {
+                    "factor_id": "f_salary",
+                    "original_percentage": 70,
+                    "projected_percentage": 90,  # Increased projection
+                    "improvement_plan": "Negotiate salary increase after 6 months + annual bonus structure",
+                    "tepfi_element": "F",
+                    "tepfi_layer": "self"
+                },
+                {
+                    "factor_id": "f_growth",
+                    "original_percentage": 60,
+                    "projected_percentage": 85,  # Increased projection
+                    "improvement_plan": "Request mentorship program, lead client project, and attend industry conferences",
+                    "tepfi_element": "P", 
+                    "tepfi_layer": "macro"  # Changed layer
+                }
+            ]
+        }
+        
+        response = requests.put(f"{BACKEND_URL}/decisions/{decision_id}", json=updated_mpps_data, headers=headers)
+        if response.status_code != 200:
+            results.log("MPPS Data Update", False, f"Status: {response.status_code}")
+            return
+        
+        results.log("MPPS Data Update", True, "MPPS data updated successfully")
+        
+        # Step 9: Verify Updated MPPS Data
+        response = requests.get(f"{BACKEND_URL}/decisions/{decision_id}", headers=headers)
+        if response.status_code != 200:
+            results.log("Updated MPPS Verification", False, f"Status: {response.status_code}")
+            return
+        
+        updated_decision = response.json()
+        
+        # Check updated projected worth
+        if updated_decision.get("mpps_projected_worth") != 88.0:
+            results.log("Updated Projected Worth", False, f"Expected: 88.0, Got: {updated_decision.get('mpps_projected_worth')}")
+            return
+        results.log("Updated Projected Worth", True, "Projected worth updated to 88.0")
+        
+        # Check updated improvements count (should be 2 now)
+        updated_improvements = updated_decision.get("mpps_improvements", [])
+        if len(updated_improvements) != 2:
+            results.log("Updated Improvements Count", False, f"Expected: 2, Got: {len(updated_improvements)}")
+            return
+        results.log("Updated Improvements Count", True, "Improvements count updated to 2")
+        
+        # Check specific updated values
+        updated_salary_improvement = next((imp for imp in updated_improvements if imp["factor_id"] == "f_salary"), None)
+        if not updated_salary_improvement or updated_salary_improvement["projected_percentage"] != 90:
+            results.log("Updated Salary Projection", False, f"Expected 90%, Got: {updated_salary_improvement}")
+            return
+        results.log("Updated Salary Projection", True, "Salary projection updated to 90%")
+        
+        updated_growth_improvement = next((imp for imp in updated_improvements if imp["factor_id"] == "f_growth"), None)
+        if not updated_growth_improvement or updated_growth_improvement["tepfi_layer"] != "macro":
+            results.log("Updated TEPFI Layer", False, f"Expected 'macro', Got: {updated_growth_improvement}")
+            return
+        results.log("Updated TEPFI Layer", True, "TEPFI layer updated to 'macro'")
+        
+    except Exception as e:
+        results.log("MPPS Testing Exception", False, f"Exception occurred: {str(e)}")
+
 def main():
     """Run all backend tests"""
     print("🚀 BACKEND TESTING - View Dezider API")
@@ -442,6 +754,9 @@ def main():
     
     # Test 3: Folder Analytics APIs  
     test_folder_analytics(results)
+    
+    # Test 4: MPPS Fields Comprehensive Testing
+    test_mpps_fields_comprehensive(results)
     
     # Print Summary
     print(f"\n{'='*60}")

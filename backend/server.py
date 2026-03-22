@@ -94,6 +94,14 @@ class OptionAssessment(BaseModel):
     actual_value: Optional[float] = None  # Separated numeric value for AI/ML
     assessment_mode: Optional[str] = None  # 'L', 'M', 'H', or 'custom'
 
+class MPPSImprovement(BaseModel):
+    factor_id: str
+    original_percentage: Optional[int] = None  # Original assessment %
+    projected_percentage: Optional[int] = None  # Projected improved %
+    improvement_plan: str = ""  # How to improve this factor
+    tepfi_element: Optional[str] = None  # T, E, P, F, or I
+    tepfi_layer: Optional[str] = None  # self, micro, or macro
+
 class DecisionOption(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
@@ -114,6 +122,9 @@ class PRRDecision(BaseModel):
     final_notes: str = ""
     folder: str = ""
     rating_gap_multiplier: float = 1.0  # Gap multiplier: 0.25, 0.5, 0.75, 1.0 (standard), 1.5, 2.0, 3.0, 4.0, 5.0
+    mpps_option_id: Optional[str] = None  # Option being analyzed for MPPS
+    mpps_improvements: List[MPPSImprovement] = []  # Factor improvement plans
+    mpps_projected_worth: Optional[float] = None  # Projected worth after improvements
     status: str = "draft"  # "draft", "in_progress", "completed"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -135,6 +146,9 @@ class PRRDecisionUpdate(BaseModel):
     final_notes: Optional[str] = None
     folder: Optional[str] = None
     rating_gap_multiplier: Optional[float] = None
+    mpps_option_id: Optional[str] = None
+    mpps_improvements: Optional[List[MPPSImprovement]] = None
+    mpps_projected_worth: Optional[float] = None
     status: Optional[str] = None
 
 class CloneDecisionRequest(BaseModel):

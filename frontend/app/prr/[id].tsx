@@ -53,6 +53,15 @@ interface DecisionOption {
   worth_percentage: number;
 }
 
+interface MPPSImprovement {
+  factor_id: string;
+  original_percentage?: number;
+  projected_percentage?: number;
+  improvement_plan: string;
+  tepfi_element?: 'T' | 'E' | 'P' | 'F' | 'I';
+  tepfi_layer?: 'self' | 'micro' | 'macro';
+}
+
 interface Decision {
   id: string;
   title: string;
@@ -63,6 +72,9 @@ interface Decision {
   decision_case: string | null;
   notes: string;
   rating_gap_multiplier: number;
+  mpps_option_id?: string;
+  mpps_improvements?: MPPSImprovement[];
+  mpps_projected_worth?: number;
   status: string;
 }
 
@@ -1012,22 +1024,11 @@ export default function PRRDecisionDetail() {
       <Text style={styles.stepTitle}>Step 3: Classify Factors</Text>
       <Text style={styles.stepDescription}>
         Categorize each factor as Primary (essential) or Secondary (important but not critical).
-        {decision.factors.some(f => !!f.parent_id) ? ' Sub-factors inherit their parent\'s classification.' : ''}
       </Text>
 
-      {topLevelFactors.map((factor) => {
-        const subs = decision.factors.filter(f => f.parent_id === factor.id);
-        const hasSubs = subs.length > 0;
-        return (
+      {topLevelFactors.map((factor) => (
         <Card key={factor.id} style={styles.factorCard}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-            <Text style={styles.factorName}>{factor.name}</Text>
-            {hasSubs && (
-              <View style={{ backgroundColor: COLORS.primaryLight || '#EDE9FE', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 }}>
-                <Text style={{ fontSize: 10, color: COLORS.primary }}>{subs.length} sub</Text>
-              </View>
-            )}
-          </View>
+          <Text style={styles.factorName}>{factor.name}</Text>
           <View style={styles.categoryButtons}>
             <TouchableOpacity
               style={[
@@ -1063,8 +1064,7 @@ export default function PRRDecisionDetail() {
             </TouchableOpacity>
           </View>
         </Card>
-        );
-      })}
+      ))}
 
       <View style={styles.navButtons}>
         <TouchableOpacity style={styles.backButton} onPress={() => setCurrentStep(2)}>
@@ -1820,8 +1820,23 @@ export default function PRRDecisionDetail() {
     );
   };
 
+  // TEPFI element labels
+  const TEPFI_ELEMENTS: { key: 'T' | 'E' | 'P' | 'F' | 'I'; label: string; icon: string; color: string }[] = [
+    { key: 'T', label: 'Time', icon: 'time-outline', color: '#3B82F6' },
+    { key: 'E', label: 'Effort', icon: 'fitness-outline', color: '#8B5CF6' },
+    { key: 'P', label: 'People', icon: 'people-outline', color: '#EC4899' },
+    { key: 'F', label: 'Finance', icon: 'cash-outline', color: '#10B981' },
+    { key: 'I', label: 'Infra', icon: 'business-outline', color: '#F59E0B' },
+  ];
+
+  const TEPFI_LAYERS: { key: 'self' | 'micro' | 'macro'; label: string; color: string }[] = [
+    { key: 'self', label: 'Self', color: '#6366F1' },
+    { key: 'micro', label: 'Micro', color: '#0EA5E9' },
+    { key: 'macro', label: 'Macro', color: '#64748B' },
+  ];
+
+  // Step 8: Case-1 Results — ranked options
   const renderStep8 = () => {
-    // Use dynamic calculation with clamping instead of stored worth_percentage
     const optionsWithDynamicWorth = decision.options.map(option => ({
       ...option,
       dynamic_worth: calculateDynamicWorth(option).worth,
@@ -1829,13 +1844,12 @@ export default function PRRDecisionDetail() {
     const sortedOptions = [...optionsWithDynamicWorth].sort(
       (a, b) => b.dynamic_worth - a.dynamic_worth
     );
-    const bestOption = sortedOptions[0];
 
     return (
       <View style={styles.stepContent}>
-        <Text style={styles.stepTitle}>Step 8-10: Final Decision</Text>
+        <Text style={styles.stepTitle}>Step 8: Case-1 Results</Text>
         <Text style={styles.stepDescription}>
-          Based on your analysis, here are your options ranked by worth percentage.
+          Options ranked by worth percentage. The highest worth option is the best as per Case-1 analysis.
         </Text>
 
         {sortedOptions.map((option, index) => (
@@ -1863,40 +1877,480 @@ export default function PRRDecisionDetail() {
                 </View>
               )}
             </View>
-
-            {decision.chosen_option_id !== option.id && (
-              <View style={styles.selectButtons}>
-                <TouchableOpacity
-                  style={styles.selectButton}
-                  onPress={() => selectOption(option.id, 'obvious')}
-                >
-                  <Text style={styles.selectButtonText}>Select as Final Choice</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {decision.chosen_option_id === option.id && (
-              <View style={styles.selectedBadge}>
-                <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
-                <Text style={styles.selectedText}>Selected ({decision.decision_case})</Text>
-              </View>
-            )}
           </Card>
         ))}
 
         <View style={styles.caseInfo}>
-          <Text style={styles.caseTitle}>Decision Cases:</Text>
-          <Text style={styles.caseItem}>• Case 1 (Obvious): Clear winner, choose it</Text>
-          <Text style={styles.caseItem}>• Case 2 (Trial): Consider if option can improve</Text>
-          <Text style={styles.caseItem}>• Case 3 (Unavoidable): Accept best available</Text>
+          <Text style={styles.caseTitle}>Solution Types:</Text>
+          <Text style={styles.caseItem}>• Ideal Solution: 100% worth — perfect fit</Text>
+          <Text style={styles.caseItem}>• Practical Solution: High worth ({'>'} 50%) — satisfactory</Text>
+          <Text style={styles.caseItem}>• Unavoidable: Best available ({'<'} 50%) — limited choices</Text>
         </View>
 
-        <GradientButton
-          title={decision.status === 'completed' ? 'Decision Completed' : 'Back to Analysis'}
-          onPress={() => decision.status === 'completed' ? router.back() : setCurrentStep(7)}
-          variant={decision.status === 'completed' ? 'accent' : 'primary'}
-          style={styles.finalButton}
-        />
+        <View style={styles.navButtons}>
+          <TouchableOpacity style={styles.backButton} onPress={() => setCurrentStep(7)}>
+            <Ionicons name="arrow-back" size={20} color={COLORS.textSecondary} />
+            <Text style={styles.backButtonText}>Back</Text>
+          </TouchableOpacity>
+          <GradientButton
+            title="MPPS Analysis"
+            onPress={() => setCurrentStep(9)}
+            icon={<Ionicons name="rocket-outline" size={18} color={COLORS.white} />}
+            style={styles.nextButton}
+          />
+        </View>
+      </View>
+    );
+  };
+
+  // Step 9: MPPS — Max Possible Practical Solution (Case-2 Analysis)
+  const renderStep9 = () => {
+    const topLevelFactors = decision.factors.filter(f => !f.parent_id);
+    const improvements = decision.mpps_improvements || [];
+
+    // Get best option
+    const optionsWithDynamicWorth = decision.options.map(option => ({
+      ...option,
+      dynamic_worth: calculateDynamicWorth(option).worth,
+    }));
+    const sortedOptions = [...optionsWithDynamicWorth].sort(
+      (a, b) => b.dynamic_worth - a.dynamic_worth
+    );
+    const bestOption = sortedOptions[0];
+    if (!bestOption) {
+      return (
+        <View style={styles.stepContent}>
+          <Text style={styles.stepTitle}>Step 9: MPPS Analysis</Text>
+          <Text style={styles.stepDescription}>No options available. Go back and add options first.</Text>
+        </View>
+      );
+    }
+
+    const mppsOptionId = decision.mpps_option_id || bestOption.id;
+    const targetOption = decision.options.find(o => o.id === mppsOptionId) || bestOption;
+    const targetWorth = calculateDynamicWorth(targetOption).worth;
+
+    // Helper: get current assessment % for a factor (handles sub-factor aggregation)
+    const getFactorAssessmentPct = (factor: Factor): number | null => {
+      const subs = decision.factors.filter(f => f.parent_id === factor.id);
+      if (subs.length === 0) {
+        const a = targetOption.assessments.find(a => a.factor_id === factor.id);
+        return a?.percentage ?? null;
+      }
+      let wSum = 0; let wTotal = 0; let any = false;
+      for (const sub of subs) {
+        const sa = targetOption.assessments.find(a => a.factor_id === sub.id);
+        const sw = sub.weight || 0;
+        if (sa?.percentage !== undefined && sa?.percentage !== null && sw > 0) {
+          wSum += (sa.percentage * sw) / 100;
+          wTotal += sw;
+          any = true;
+        }
+      }
+      if (!any || wTotal === 0) return null;
+      return Math.round(wSum * (100 / wTotal) * 10) / 10;
+    };
+
+    // Calculate MPPS projected worth
+    const calculateMPPSWorth = (): number => {
+      const totalRating = topLevelFactors.reduce((sum, f) => sum + f.rating, 0);
+      if (totalRating === 0) return 0;
+
+      let weightedSum = 0;
+      for (const factor of topLevelFactors) {
+        const imp = improvements.find(i => i.factor_id === factor.id);
+        const currentPct = getFactorAssessmentPct(factor);
+        const effectivePct = imp?.projected_percentage ?? currentPct ?? 0;
+        const clamped = Math.min(100, Math.max(0, effectivePct));
+        weightedSum += factor.rating * (clamped / 100);
+      }
+
+      const rawWorth = (weightedSum / totalRating) * 100;
+      return Math.round(Math.min(100, Math.max(0, rawWorth)) * 10) / 10;
+    };
+
+    const mppsWorth = calculateMPPSWorth();
+    const improvement = mppsWorth - targetWorth;
+
+    // Update an MPPS improvement for a factor
+    const updateImprovement = (factorId: string, updates: Partial<MPPSImprovement>) => {
+      const existing = [...improvements];
+      const idx = existing.findIndex(i => i.factor_id === factorId);
+      if (idx >= 0) {
+        existing[idx] = { ...existing[idx], ...updates };
+      } else {
+        const currentPct = getFactorAssessmentPct(topLevelFactors.find(f => f.id === factorId)!);
+        existing.push({
+          factor_id: factorId,
+          original_percentage: currentPct ?? undefined,
+          projected_percentage: updates.projected_percentage,
+          improvement_plan: updates.improvement_plan || '',
+          tepfi_element: updates.tepfi_element,
+          tepfi_layer: updates.tepfi_layer,
+        });
+      }
+      saveDecision({
+        mpps_option_id: mppsOptionId,
+        mpps_improvements: existing,
+        mpps_projected_worth: null, // Will be recalculated on save
+      });
+    };
+
+    // Save MPPS projected worth
+    const saveMPPSWorth = () => {
+      saveDecision({
+        mpps_option_id: mppsOptionId,
+        mpps_improvements: improvements,
+        mpps_projected_worth: mppsWorth,
+      });
+    };
+
+    // Sort factors: lowest assessment first (most room for improvement)
+    const sortedFactors = [...topLevelFactors].sort((a, b) => {
+      const aPct = getFactorAssessmentPct(a) ?? 0;
+      const bPct = getFactorAssessmentPct(b) ?? 0;
+      return aPct - bPct;
+    });
+
+    return (
+      <View style={styles.stepContent}>
+        <Text style={styles.stepTitle}>Step 9: MPPS Analysis</Text>
+        <Text style={styles.stepDescription}>
+          Max Possible Practical Solution — Analyze the best option and find ways to improve its weak factors.
+        </Text>
+
+        {/* Option being analyzed */}
+        <Card style={[styles.factorCard, { borderLeftWidth: 3, borderLeftColor: COLORS.primary }]}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 2 }}>Analyzing Best Option</Text>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.text }}>{targetOption.name}</Text>
+            </View>
+            <View style={{ alignItems: 'center' }}>
+              <Text style={{ fontSize: 11, color: COLORS.textMuted }}>Current Worth</Text>
+              <Text style={{ fontSize: 22, fontWeight: '800', color: COLORS.primary }}>{targetWorth.toFixed(1)}%</Text>
+            </View>
+          </View>
+        </Card>
+
+        {/* MPPS Projection Summary */}
+        <Card style={[styles.factorCard, { backgroundColor: improvement > 0 ? '#F0FDF4' : '#FAFAFA' }]}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View>
+              <Text style={{ fontSize: 12, color: COLORS.textMuted }}>MPPS Projected Worth</Text>
+              <Text style={{ fontSize: 24, fontWeight: '800', color: improvement > 0 ? '#16A34A' : COLORS.text }}>{mppsWorth.toFixed(1)}%</Text>
+            </View>
+            {improvement > 0 && (
+              <View style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#16A34A' }}>+{improvement.toFixed(1)}%</Text>
+              </View>
+            )}
+            <View style={{ alignItems: 'center' }}>
+              <Text style={{ fontSize: 11, color: COLORS.textMuted }}>Type</Text>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: mppsWorth >= 100 ? '#16A34A' : mppsWorth >= 50 ? COLORS.primary : '#EF4444' }}>
+                {mppsWorth >= 100 ? 'Ideal' : mppsWorth >= 50 ? 'Practical' : 'Unavoidable'}
+              </Text>
+            </View>
+          </View>
+        </Card>
+
+        {/* Factor-by-factor improvement analysis */}
+        <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.text, marginTop: 12, marginBottom: 6 }}>
+          Factor Improvement Plans
+        </Text>
+        <Text style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 10 }}>
+          Factors sorted by lowest assessment — biggest improvement opportunity first.
+        </Text>
+
+        {sortedFactors.map((factor) => {
+          const currentPct = getFactorAssessmentPct(factor);
+          const imp = improvements.find(i => i.factor_id === factor.id);
+          const projPct = imp?.projected_percentage;
+          const hasImprovement = !!imp?.improvement_plan || (projPct !== undefined && projPct !== null);
+          const pctColor = (currentPct ?? 0) < 40 ? '#EF4444' : (currentPct ?? 0) < 70 ? '#F59E0B' : '#10B981';
+
+          return (
+            <Card key={factor.id} style={[styles.factorCard, hasImprovement && { borderLeftWidth: 3, borderLeftColor: '#16A34A' }]}>
+              {/* Factor header */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.text }}>{factor.name}</Text>
+                  <Text style={{ fontSize: 11, color: COLORS.textMuted }}>Rating: {factor.rating} · {factor.category}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={{ alignItems: 'center' }}>
+                    <Text style={{ fontSize: 10, color: COLORS.textMuted }}>Now</Text>
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: pctColor }}>
+                      {currentPct !== null ? `${currentPct}%` : '--'}
+                    </Text>
+                  </View>
+                  {projPct !== undefined && projPct !== null && (
+                    <>
+                      <Ionicons name="arrow-forward" size={14} color={COLORS.textMuted} />
+                      <View style={{ alignItems: 'center' }}>
+                        <Text style={{ fontSize: 10, color: '#16A34A' }}>Projected</Text>
+                        <Text style={{ fontSize: 16, fontWeight: '700', color: '#16A34A' }}>
+                          {projPct}%
+                        </Text>
+                      </View>
+                    </>
+                  )}
+                </View>
+              </View>
+
+              {/* Projected % input */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <Text style={{ fontSize: 12, color: COLORS.textMuted, width: 80 }}>Projected %</Text>
+                <TextInput
+                  style={{
+                    flex: 1, height: 36, borderWidth: 1, borderColor: COLORS.border,
+                    borderRadius: 8, paddingHorizontal: 10, fontSize: 14, color: COLORS.text,
+                    backgroundColor: COLORS.white,
+                  }}
+                  value={projPct !== undefined && projPct !== null ? String(projPct) : ''}
+                  onChangeText={(text) => {
+                    const num = parseInt(text);
+                    if (text === '') {
+                      updateImprovement(factor.id, { projected_percentage: undefined });
+                    } else if (!isNaN(num) && num >= 0 && num <= 100) {
+                      updateImprovement(factor.id, { projected_percentage: num });
+                    }
+                  }}
+                  keyboardType="numeric"
+                  maxLength={3}
+                  placeholder={currentPct !== null ? String(currentPct) : '0'}
+                  placeholderTextColor={COLORS.textMuted}
+                />
+              </View>
+
+              {/* Improvement plan text */}
+              <TextInput
+                style={{
+                  borderWidth: 1, borderColor: COLORS.border, borderRadius: 8,
+                  paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: COLORS.text,
+                  backgroundColor: COLORS.white, minHeight: 44, textAlignVertical: 'top',
+                }}
+                value={imp?.improvement_plan || ''}
+                onChangeText={(text) => updateImprovement(factor.id, { improvement_plan: text })}
+                placeholder="How can this factor be improved? (e.g., negotiate better terms, relocate...)"
+                placeholderTextColor={COLORS.textMuted}
+                multiline
+              />
+
+              {/* TEPFI Element & Layer tags */}
+              <View style={{ marginTop: 8 }}>
+                <Text style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 4 }}>TEPFI Element</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+                  {TEPFI_ELEMENTS.map((te) => (
+                    <TouchableOpacity
+                      key={te.key}
+                      onPress={() => updateImprovement(factor.id, { tepfi_element: imp?.tepfi_element === te.key ? undefined : te.key })}
+                      style={{
+                        paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12,
+                        borderWidth: 1.5,
+                        borderColor: imp?.tepfi_element === te.key ? te.color : COLORS.border,
+                        backgroundColor: imp?.tepfi_element === te.key ? te.color + '18' : 'transparent',
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                        <Ionicons name={te.icon as any} size={12} color={imp?.tepfi_element === te.key ? te.color : COLORS.textMuted} />
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: imp?.tepfi_element === te.key ? te.color : COLORS.textMuted }}>{te.label}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View style={{ marginTop: 6 }}>
+                <Text style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 4 }}>Solution Layer</Text>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  {TEPFI_LAYERS.map((tl) => (
+                    <TouchableOpacity
+                      key={tl.key}
+                      onPress={() => updateImprovement(factor.id, { tepfi_layer: imp?.tepfi_layer === tl.key ? undefined : tl.key })}
+                      style={{
+                        paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12,
+                        borderWidth: 1.5,
+                        borderColor: imp?.tepfi_layer === tl.key ? tl.color : COLORS.border,
+                        backgroundColor: imp?.tepfi_layer === tl.key ? tl.color + '18' : 'transparent',
+                      }}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: imp?.tepfi_layer === tl.key ? tl.color : COLORS.textMuted }}>{tl.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </Card>
+          );
+        })}
+
+        <View style={styles.navButtons}>
+          <TouchableOpacity style={styles.backButton} onPress={() => setCurrentStep(8)}>
+            <Ionicons name="arrow-back" size={20} color={COLORS.textSecondary} />
+            <Text style={styles.backButtonText}>Back</Text>
+          </TouchableOpacity>
+          <GradientButton
+            title="Final Decision"
+            onPress={() => {
+              saveMPPSWorth();
+              setCurrentStep(10);
+            }}
+            style={styles.nextButton}
+          />
+        </View>
+      </View>
+    );
+  };
+
+  // Step 10: Final Decision — choose option + complete
+  const renderStep10 = () => {
+    const optionsWithDynamicWorth = decision.options.map(option => ({
+      ...option,
+      dynamic_worth: calculateDynamicWorth(option).worth,
+    }));
+    const sortedOptions = [...optionsWithDynamicWorth].sort(
+      (a, b) => b.dynamic_worth - a.dynamic_worth
+    );
+
+    const mppsWorth = decision.mpps_projected_worth;
+    const hasImprovements = (decision.mpps_improvements || []).some(i => i.improvement_plan || i.projected_percentage);
+
+    return (
+      <View style={styles.stepContent}>
+        <Text style={styles.stepTitle}>Step 10: Final Decision</Text>
+        <Text style={styles.stepDescription}>
+          Select your final option based on Case-1 results and MPPS analysis.
+        </Text>
+
+        {sortedOptions.map((option, index) => {
+          const isSelected = decision.chosen_option_id === option.id;
+          const isMPPSTarget = decision.mpps_option_id === option.id;
+
+          return (
+            <Card
+              key={option.id}
+              style={[
+                styles.resultCard,
+                index === 0 && styles.resultCardBest,
+                isSelected && { borderWidth: 2, borderColor: COLORS.success },
+              ]}
+            >
+              <View style={styles.resultHeader}>
+                <View style={styles.resultRank}>
+                  <Text style={styles.rankText}>#{index + 1}</Text>
+                </View>
+                <View style={styles.resultInfo}>
+                  <Text style={styles.resultName}>{option.name}</Text>
+                  <Text style={styles.resultWorth}>
+                    Case-1 Worth: {option.dynamic_worth.toFixed(1)}%
+                  </Text>
+                  {isMPPSTarget && mppsWorth && (
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#16A34A' }}>
+                      MPPS Worth: {mppsWorth.toFixed(1)}%
+                    </Text>
+                  )}
+                </View>
+                {index === 0 && (
+                  <View style={styles.bestBadge}>
+                    <Ionicons name="trophy" size={16} color={COLORS.warning} />
+                    <Text style={styles.bestText}>Best</Text>
+                  </View>
+                )}
+              </View>
+
+              {isSelected ? (
+                <View style={styles.selectedBadge}>
+                  <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
+                  <Text style={styles.selectedText}>Selected ({decision.decision_case})</Text>
+                </View>
+              ) : (
+                <View style={styles.selectButtons}>
+                  <TouchableOpacity
+                    style={[styles.selectButton, { marginRight: 6 }]}
+                    onPress={() => selectOption(option.id, 'obvious')}
+                  >
+                    <Text style={styles.selectButtonText}>Case-1</Text>
+                  </TouchableOpacity>
+                  {hasImprovements && isMPPSTarget && (
+                    <TouchableOpacity
+                      style={[styles.selectButton, { backgroundColor: '#16A34A' }]}
+                      onPress={() => selectOption(option.id, 'trial')}
+                    >
+                      <Text style={styles.selectButtonText}>MPPS</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={[styles.selectButton, { backgroundColor: COLORS.textMuted }]}
+                    onPress={() => selectOption(option.id, 'unavoidable')}
+                  >
+                    <Text style={styles.selectButtonText}>Unavoidable</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </Card>
+          );
+        })}
+
+        {/* MPPS Improvement Summary */}
+        {hasImprovements && (
+          <Card style={[styles.factorCard, { borderLeftWidth: 3, borderLeftColor: '#16A34A' }]}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.text, marginBottom: 6 }}>
+              MPPS Improvement Plans
+            </Text>
+            {(decision.mpps_improvements || [])
+              .filter(i => i.improvement_plan)
+              .map((imp) => {
+                const factor = decision.factors.find(f => f.id === imp.factor_id);
+                const te = TEPFI_ELEMENTS.find(t => t.key === imp.tepfi_element);
+                const tl = TEPFI_LAYERS.find(t => t.key === imp.tepfi_layer);
+                return (
+                  <View key={imp.factor_id} style={{ marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.text }}>{factor?.name || 'Unknown'}</Text>
+                      {imp.original_percentage !== undefined && imp.projected_percentage !== undefined && (
+                        <Text style={{ fontSize: 11, color: '#16A34A' }}>
+                          {imp.original_percentage}% → {imp.projected_percentage}%
+                        </Text>
+                      )}
+                    </View>
+                    <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>{imp.improvement_plan}</Text>
+                    {(te || tl) && (
+                      <View style={{ flexDirection: 'row', gap: 4, marginTop: 3 }}>
+                        {te && (
+                          <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8, backgroundColor: te.color + '18' }}>
+                            <Text style={{ fontSize: 10, color: te.color, fontWeight: '600' }}>{te.label}</Text>
+                          </View>
+                        )}
+                        {tl && (
+                          <View style={{ paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8, backgroundColor: tl.color + '18' }}>
+                            <Text style={{ fontSize: 10, color: tl.color, fontWeight: '600' }}>{tl.label}</Text>
+                          </View>
+                        )}
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+          </Card>
+        )}
+
+        <View style={styles.navButtons}>
+          <TouchableOpacity style={styles.backButton} onPress={() => setCurrentStep(9)}>
+            <Ionicons name="arrow-back" size={20} color={COLORS.textSecondary} />
+            <Text style={styles.backButtonText}>Back</Text>
+          </TouchableOpacity>
+          {decision.chosen_option_id && (
+            <GradientButton
+              title="Complete Decision"
+              onPress={() => {
+                saveDecision({ status: 'completed' });
+                router.back();
+              }}
+              variant="accent"
+              style={styles.nextButton}
+            />
+          )}
+        </View>
       </View>
     );
   };
@@ -1916,9 +2370,11 @@ export default function PRRDecisionDetail() {
       case 7:
         return renderStep7();
       case 8:
-      case 9:
-      case 10:
         return renderStep8();
+      case 9:
+        return renderStep9();
+      case 10:
+        return renderStep10();
       default:
         return renderStep2();
     }
