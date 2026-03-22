@@ -9,6 +9,7 @@ import {
   Image,
   ActivityIndicator,
   TextInput,
+  Switch,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -24,6 +25,65 @@ interface AssessmentQuestion {
   id: string;
   text: string;
   mode: string;
+}
+
+// WOWO Feature Flag Toggle Component
+function WowoToggle({ label, flagKey }: { label: string; flagKey: string }) {
+  const [enabled, setEnabled] = useState(false);
+  const [toggling, setToggling] = useState(false);
+
+  useEffect(() => {
+    fetchFlag();
+  }, []);
+
+  const fetchFlag = async () => {
+    try {
+      const res = await api.get('/feature-flags');
+      setEnabled(res.data?.[flagKey] || false);
+    } catch (e) {
+      console.error('Error fetching flag:', e);
+    }
+  };
+
+  const toggleFlag = async (val: boolean) => {
+    setToggling(true);
+    try {
+      // We need to send all flags so get current first
+      const res = await api.get('/feature-flags');
+      const flags = res.data || {};
+      flags[flagKey] = val;
+      await api.put('/admin/feature-flags', flags);
+      setEnabled(val);
+    } catch (e) {
+      Alert.alert('Error', 'Failed to update feature flag');
+    } finally {
+      setToggling(false);
+    }
+  };
+
+  return (
+    <View style={{
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.divider,
+    }}>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 14, fontWeight: '500', color: COLORS.textPrimary }}>{label}</Text>
+        <Text style={{ fontSize: 11, color: enabled ? COLORS.success : COLORS.textMuted }}>
+          {enabled ? 'Wire ON' : 'Wire OFF'}
+        </Text>
+      </View>
+      {toggling ? (
+        <ActivityIndicator size="small" color={COLORS.primary} />
+      ) : (
+        <Switch
+          value={enabled}
+          onValueChange={toggleFlag}
+          trackColor={{ false: '#D1D5DB', true: COLORS.success + '80' }}
+          thumbColor={enabled ? COLORS.success : '#9CA3AF'}
+        />
+      )}
+    </View>
+  );
 }
 
 export default function ProfileScreen() {
@@ -557,6 +617,16 @@ export default function ProfileScreen() {
                 {adminUsers.length === 0 && (
                   <Text style={styles.noAdminsText}>No admin users found</Text>
                 )}
+
+                {/* WOWO Feature Flags Toggle */}
+                <View style={styles.wowoSection}>
+                  <Text style={styles.promoteSectionTitle}>WOWO Feature Flags</Text>
+                  <Text style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 10 }}>
+                    Wire On / Wire Off - Toggle features for all users
+                  </Text>
+                  <WowoToggle label="Simple Solution Finder" flagKey="solution_finder" />
+                  <WowoToggle label="Advanced Solution Matrix" flagKey="solution_matrix" />
+                </View>
               </View>
             )}
           </>
@@ -692,6 +762,23 @@ export default function ProfileScreen() {
         </View>
         <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
       </TouchableOpacity>
+
+      {/* Admin Settings */}
+      {userRole !== 'user' && (
+        <TouchableOpacity
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}
+          onPress={() => router.push('/admin/settings')}
+        >
+          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#F59E0B', alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="settings" size={18} color="#FFF" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>Admin Settings</Text>
+            <Text style={{ fontSize: 12, color: COLORS.textMuted }}>WOWO feature flags, call config & more</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+        </TouchableOpacity>
+      )}
 
       {/* Logout */}
       <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
@@ -1138,6 +1225,12 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     textAlign: 'center',
     paddingVertical: 12,
+  },
+  wowoSection: {
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.divider,
   },
   appInfo: {
     alignItems: 'center',

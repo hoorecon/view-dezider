@@ -24,6 +24,11 @@ interface Stats {
   latest_assessment: any;
 }
 
+interface FeatureFlags {
+  solution_finder: boolean;
+  solution_matrix: boolean;
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
@@ -31,6 +36,7 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [inboxPending, setInboxPending] = useState(0);
+  const [featureFlags, setFeatureFlags] = useState<FeatureFlags>({ solution_finder: false, solution_matrix: false });
 
   const fetchStats = async () => {
     try {
@@ -62,8 +68,17 @@ export default function HomeScreen() {
     }
   };
 
+  const fetchFeatureFlags = async () => {
+    try {
+      const response = await api.get('/feature-flags');
+      setFeatureFlags(response.data || { solution_finder: false, solution_matrix: false });
+    } catch (error) {
+      console.error('Error fetching feature flags:', error);
+    }
+  };
+
   const fetchAll = async () => {
-    await Promise.all([fetchStats(), fetchUnreadCount(), fetchInboxCount()]);
+    await Promise.all([fetchStats(), fetchUnreadCount(), fetchInboxCount(), fetchFeatureFlags()]);
   };
 
   useFocusEffect(
@@ -219,6 +234,45 @@ export default function HomeScreen() {
               <Text style={styles.colabSubtitle}>Life areas</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Solution Tools (WOWO gated) */}
+          {(featureFlags.solution_finder || featureFlags.solution_matrix) && (
+            <>
+              <Text style={styles.sectionTitle}>Solution Tools</Text>
+              <View style={styles.quickActions}>
+                {featureFlags.solution_finder && (
+                  <TouchableOpacity
+                    style={styles.actionCard}
+                    onPress={() => router.push('/tools/solution-finder-list')}
+                  >
+                    <LinearGradient
+                      colors={[COLORS.teal, COLORS.tealDark]}
+                      style={styles.actionIcon}
+                    >
+                      <Ionicons name="search" size={24} color={COLORS.white} />
+                    </LinearGradient>
+                    <Text style={styles.actionTitle}>Solution Finder</Text>
+                    <Text style={styles.actionSubtitle}>Structured problem solving</Text>
+                  </TouchableOpacity>
+                )}
+                {featureFlags.solution_matrix && (
+                  <TouchableOpacity
+                    style={styles.actionCard}
+                    onPress={() => router.push('/tools/solution-matrix-list')}
+                  >
+                    <LinearGradient
+                      colors={[COLORS.accent, COLORS.accentDark]}
+                      style={styles.actionIcon}
+                    >
+                      <Ionicons name="grid" size={24} color={COLORS.white} />
+                    </LinearGradient>
+                    <Text style={styles.actionTitle}>Solution Matrix</Text>
+                    <Text style={styles.actionSubtitle}>Advanced multi-layer analysis</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </>
+          )}
 
           {/* Stats */}
           <Text style={styles.sectionTitle}>Your Progress</Text>

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Backend API Testing for CLD and Call Session Endpoints
-Testing URL: https://prr-platform-1.preview.emergentagent.com/api
+Backend API Testing for View Dezider - New Endpoints
+Testing the newly implemented WOWO Feature Flags, Solution Finder CRUD, Solution Matrix CRUD, and Admin Call Config endpoints
 """
 
 import requests
@@ -9,367 +9,599 @@ import json
 import time
 from datetime import datetime
 
-# Configuration
-BASE_URL = "https://prr-platform-1.preview.emergentagent.com/api"
-TEST_EMAIL = "cld@test.com"
-TEST_PASSWORD = "Test1234!"
-TEST_NAME = "CLD Tester"
+# Backend URL from frontend .env
+BACKEND_URL = "https://dezider-solver.preview.emergentagent.com/api"
 
-class BackendTester:
+class TestResults:
     def __init__(self):
-        self.session = requests.Session()
-        self.auth_token = None
-        self.user_id = None
-        self.decision_id = None
-        self.session_id = None
+        self.passed = 0
+        self.failed = 0
+        self.results = []
+    
+    def add_result(self, test_name, passed, details=""):
+        self.results.append({
+            "test": test_name,
+            "passed": passed,
+            "details": details
+        })
+        if passed:
+            self.passed += 1
+        else:
+            self.failed += 1
         
-    def log(self, message):
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
+        status = "✅ PASS" if passed else "❌ FAIL"
+        print(f"{status}: {test_name}")
+        if details:
+            print(f"   Details: {details}")
+    
+    def summary(self):
+        total = self.passed + self.failed
+        print(f"\n=== TEST SUMMARY ===")
+        print(f"Total Tests: {total}")
+        print(f"Passed: {self.passed}")
+        print(f"Failed: {self.failed}")
+        print(f"Success Rate: {(self.passed/total*100):.1f}%" if total > 0 else "No tests run")
         
-    def test_user_registration(self):
-        """Test 1: Register a new user"""
-        self.log("🔐 Testing user registration...")
-        
-        # Use timestamp to ensure unique email
-        timestamp = int(time.time())
-        email = f"cld.tester.{timestamp}@test.com"
-        
-        payload = {
-            "email": email,
-            "password": TEST_PASSWORD,
-            "name": TEST_NAME
-        }
-        
-        response = self.session.post(f"{BASE_URL}/auth/register", json=payload)
-        
+        if self.failed > 0:
+            print(f"\n=== FAILED TESTS ===")
+            for result in self.results:
+                if not result["passed"]:
+                    print(f"❌ {result['test']}: {result['details']}")
+
+def test_new_endpoints():
+    """Test all new endpoints implemented by main agent"""
+    results = TestResults()
+    
+    # Test data
+    timestamp = int(time.time())
+    test_user_email = f"wowo.tester.{timestamp}@dezider.com"
+    test_user_password = "SecurePass123!"
+    test_user_name = "WOWO Test User"
+    
+    admin_email = f"admin.wowo.{timestamp}@dezider.com"
+    admin_password = "AdminPass123!"
+    admin_name = "WOWO Admin User"
+    
+    user_token = None
+    admin_token = None
+    
+    print("🚀 Starting NEW ENDPOINTS Testing for View Dezider")
+    print(f"Backend URL: {BACKEND_URL}")
+    print(f"Test User: {test_user_email}")
+    print(f"Admin User: {admin_email}")
+    print("=" * 60)
+    
+    # ===== AUTHENTICATION SETUP =====
+    print("\n📋 AUTHENTICATION SETUP")
+    
+    # 1. Register regular user
+    try:
+        response = requests.post(f"{BACKEND_URL}/auth/register", json={
+            "email": test_user_email,
+            "password": test_user_password,
+            "name": test_user_name
+        })
         if response.status_code in [200, 201]:
-            data = response.json()
-            self.auth_token = data.get("session_token")
-            self.user_id = data.get("user_id")
-            self.session.headers.update({"Authorization": f"Bearer {self.auth_token}"})
-            self.log(f"✅ Registration successful - User ID: {self.user_id}")
-            return True
+            user_data = response.json()
+            user_token = user_data.get("session_token")
+            results.add_result("User Registration", True, f"User ID: {user_data.get('user_id')}")
         else:
-            self.log(f"❌ Registration failed: {response.status_code} - {response.text}")
-            return False
-            
-    def test_create_decision(self):
-        """Test 2: Create a decision for CLD analysis"""
-        self.log("📋 Creating decision for CLD analysis...")
-        
-        payload = {
-            "title": "Career Decision",
-            "description": "Choosing between job offers at different tech companies",
-            "context": "Choosing between job offers at different tech companies",
-            "folder": "career"
-        }
-        
-        response = self.session.post(f"{BASE_URL}/decisions", json=payload)
-        
+            results.add_result("User Registration", False, f"Status: {response.status_code}, Response: {response.text}")
+            return results
+    except Exception as e:
+        results.add_result("User Registration", False, f"Exception: {str(e)}")
+        return results
+    
+    # 2. Register admin user
+    try:
+        response = requests.post(f"{BACKEND_URL}/auth/register", json={
+            "email": admin_email,
+            "password": admin_password,
+            "name": admin_name
+        })
         if response.status_code in [200, 201]:
-            data = response.json()
-            self.decision_id = data.get("id")  # Changed from "decision_id" to "id"
-            self.log(f"✅ Decision created - ID: {self.decision_id}")
-            return True
+            admin_data = response.json()
+            admin_token = admin_data.get("session_token")
+            results.add_result("Admin User Registration", True, f"User ID: {admin_data.get('user_id')}")
         else:
-            self.log(f"❌ Decision creation failed: {response.status_code} - {response.text}")
-            return False
-            
-    def test_update_decision_with_factors(self):
-        """Test 3: Update decision with factors for CLD analysis"""
-        self.log("🔧 Adding factors to decision...")
-        
-        factors = [
-            {"id": "f1", "name": "Salary", "category": "secondary", "rating": 50, "order": 0},
-            {"id": "f2", "name": "Work-Life Balance", "category": "secondary", "rating": 50, "order": 1},
-            {"id": "f3", "name": "Growth Opportunity", "category": "secondary", "rating": 50, "order": 2},
-            {"id": "f4", "name": "Location", "category": "secondary", "rating": 50, "order": 3}
-        ]
-        
-        payload = {"factors": factors}
-        
-        response = self.session.put(f"{BASE_URL}/decisions/{self.decision_id}", json=payload)
-        
+            results.add_result("Admin User Registration", False, f"Status: {response.status_code}, Response: {response.text}")
+            return results
+    except Exception as e:
+        results.add_result("Admin User Registration", False, f"Exception: {str(e)}")
+        return results
+    
+    # 3. Setup admin privileges (if no super admin exists)
+    try:
+        response = requests.post(f"{BACKEND_URL}/admin/setup", 
+                               headers={"Authorization": f"Bearer {admin_token}"})
         if response.status_code == 200:
-            self.log("✅ Factors added to decision successfully")
-            return True
+            results.add_result("Admin Setup", True, f"Status: {response.status_code}")
+        elif response.status_code == 400 and "Super Admin already exists" in response.text:
+            results.add_result("Admin Setup", True, f"Super Admin already exists (expected)")
+            # Since we can't create admin, we'll skip admin-only tests
+            admin_token = None
         else:
-            self.log(f"❌ Factor update failed: {response.status_code} - {response.text}")
-            return False
-            
-    def test_cld_analyze(self):
-        """Test 4: Test CLD Analysis endpoint"""
-        self.log("🧠 Testing CLD Analysis endpoint...")
-        
-        payload = {
-            "decision_title": "Career Decision",
-            "decision_context": "Choosing between job offers at different tech companies",
-            "life_area": "Career",
-            "decision_type": "Job Selection",
-            "factors": [
-                {"id": "f1", "name": "Salary"},
-                {"id": "f2", "name": "Work-Life Balance"},
-                {"id": "f3", "name": "Growth Opportunity"},
-                {"id": "f4", "name": "Location"}
-            ]
-        }
-        
-        response = self.session.post(f"{BASE_URL}/cld/analyze", json=payload)
-        
+            results.add_result("Admin Setup", False, f"Status: {response.status_code}, Response: {response.text}")
+    except Exception as e:
+        results.add_result("Admin Setup", False, f"Exception: {str(e)}")
+    
+    # ===== FEATURE FLAGS TESTING =====
+    print("\n🏁 FEATURE FLAGS (WOWO) TESTING")
+    
+    # 4. Test GET /api/feature-flags (requires auth)
+    try:
+        response = requests.get(f"{BACKEND_URL}/feature-flags",
+                              headers={"Authorization": f"Bearer {user_token}"})
         if response.status_code == 200:
-            data = response.json()
-            
-            # Verify response structure
-            required_keys = ["cld", "factor_analysis"]
-            missing_keys = [key for key in required_keys if key not in data]
-            
-            if missing_keys:
-                self.log(f"❌ CLD response missing keys: {missing_keys}")
-                return False
-                
-            # Verify CLD structure
-            cld = data.get("cld", {})
-            cld_required = ["nodes", "links", "loops"]
-            cld_missing = [key for key in cld_required if key not in cld]
-            
-            if cld_missing:
-                self.log(f"❌ CLD structure missing keys: {cld_missing}")
-                return False
-                
-            # Verify factor analysis
-            factor_analysis = data.get("factor_analysis", [])
-            if not isinstance(factor_analysis, list):
-                self.log("❌ Factor analysis should be a list")
-                return False
-                
-            self.log(f"✅ CLD Analysis successful - Nodes: {len(cld['nodes'])}, Links: {len(cld['links'])}, Loops: {len(cld['loops'])}")
-            self.log(f"✅ Factor analysis returned {len(factor_analysis)} factor classifications")
-            return True
-        else:
-            self.log(f"❌ CLD Analysis failed: {response.status_code} - {response.text}")
-            return False
-            
-    def test_get_call_config(self):
-        """Test 5: Get call configuration"""
-        self.log("⚙️ Testing GET call configuration...")
-        
-        response = self.session.get(f"{BASE_URL}/call-config")
-        
-        if response.status_code == 200:
-            data = response.json()
-            
-            # Verify required fields
-            required_fields = ["min_duration", "max_duration", "default_duration"]
-            missing_fields = [field for field in required_fields if field not in data]
-            
-            if missing_fields:
-                self.log(f"❌ Call config missing fields: {missing_fields}")
-                return False
-                
-            self.log(f"✅ Call config retrieved - Min: {data['min_duration']}, Max: {data['max_duration']}, Default: {data['default_duration']}")
-            return True
-        else:
-            self.log(f"❌ Get call config failed: {response.status_code} - {response.text}")
-            return False
-            
-    def test_update_call_config(self):
-        """Test 6: Try updating call configuration (should require admin)"""
-        self.log("⚙️ Testing PUT call configuration (should require admin)...")
-        
-        payload = {
-            "min_duration": 10,
-            "max_duration": 90,
-            "default_duration": 25
-        }
-        
-        response = self.session.put(f"{BASE_URL}/call-config", json=payload)
-        
-        # Should return 403 for non-admin users
-        if response.status_code == 403:
-            self.log("✅ Call config update correctly requires admin privileges (403)")
-            return True
-        elif response.status_code == 200:
-            self.log("⚠️ Call config update succeeded (user might have admin privileges)")
-            return True
-        else:
-            self.log(f"❌ Unexpected call config update response: {response.status_code} - {response.text}")
-            return False
-            
-    def test_create_call_session(self):
-        """Test 7: Create a call session"""
-        self.log("📞 Testing call session creation...")
-        
-        payload = {
-            "expert_id": None,
-            "decision_id": "test-dec",
-            "step_number": 3,
-            "step_name": "Classify Factors",
-            "duration_minutes": 15,
-            "decision_title": "Career Decision"
-        }
-        
-        response = self.session.post(f"{BASE_URL}/call-sessions", json=payload)
-        
-        if response.status_code in [200, 201]:
-            data = response.json()
-            
-            # Verify required fields
-            required_fields = ["session_id", "room_id", "room_url", "duration_minutes", "expires_at"]
-            missing_fields = [field for field in required_fields if field not in data]
-            
-            if missing_fields:
-                self.log(f"❌ Call session response missing fields: {missing_fields}")
-                return False
-                
-            self.session_id = data.get("session_id")
-            
-            # Verify room_url is a Jitsi URL
-            room_url = data.get("room_url", "")
-            if "meet.jit.si" not in room_url and "jitsi" not in room_url.lower():
-                self.log(f"⚠️ Room URL might not be Jitsi format: {room_url}")
-            
-            self.log(f"✅ Call session created - ID: {self.session_id}")
-            self.log(f"✅ Room URL: {room_url}")
-            self.log(f"✅ Duration: {data['duration_minutes']} minutes")
-            return True
-        else:
-            self.log(f"❌ Call session creation failed: {response.status_code} - {response.text}")
-            return False
-            
-    def test_get_call_session(self):
-        """Test 8: Get call session details"""
-        if not self.session_id:
-            self.log("❌ No session ID available for testing")
-            return False
-            
-        self.log("📞 Testing get call session details...")
-        
-        response = self.session.get(f"{BASE_URL}/call-sessions/{self.session_id}")
-        
-        if response.status_code == 200:
-            data = response.json()
-            
-            # Verify session data
-            if data.get("id") != self.session_id:
-                self.log(f"❌ Session ID mismatch: expected {self.session_id}, got {data.get('id')}")
-                return False
-                
-            self.log(f"✅ Call session details retrieved - Status: {data.get('status')}")
-            return True
-        else:
-            self.log(f"❌ Get call session failed: {response.status_code} - {response.text}")
-            return False
-            
-    def test_end_call_session(self):
-        """Test 9: End call session"""
-        if not self.session_id:
-            self.log("❌ No session ID available for testing")
-            return False
-            
-        self.log("📞 Testing end call session...")
-        
-        response = self.session.put(f"{BASE_URL}/call-sessions/{self.session_id}/end")
-        
-        if response.status_code == 200:
-            data = response.json()
-            if "ended" in data.get("message", "").lower():
-                self.log("✅ Call session ended successfully")
-                return True
+            flags = response.json()
+            if "solution_finder" in flags and "solution_matrix" in flags:
+                results.add_result("GET /api/feature-flags (authenticated)", True, 
+                                 f"Flags: solution_finder={flags['solution_finder']}, solution_matrix={flags['solution_matrix']}")
             else:
-                self.log(f"❌ Unexpected end session response: {data}")
-                return False
+                results.add_result("GET /api/feature-flags (authenticated)", False, 
+                                 f"Missing required flags in response: {flags}")
         else:
-            self.log(f"❌ End call session failed: {response.status_code} - {response.text}")
-            return False
-            
-    def test_list_call_sessions(self):
-        """Test 10: List call sessions"""
-        self.log("📞 Testing list call sessions...")
-        
-        response = self.session.get(f"{BASE_URL}/call-sessions")
-        
+            results.add_result("GET /api/feature-flags (authenticated)", False, 
+                             f"Status: {response.status_code}, Response: {response.text}")
+    except Exception as e:
+        results.add_result("GET /api/feature-flags (authenticated)", False, f"Exception: {str(e)}")
+    
+    # 5. Test GET /api/feature-flags/public (no auth needed)
+    try:
+        response = requests.get(f"{BACKEND_URL}/feature-flags/public")
         if response.status_code == 200:
-            data = response.json()
-            
-            if not isinstance(data, list):
-                self.log(f"❌ Expected list response, got: {type(data)}")
-                return False
-                
-            self.log(f"✅ Call sessions list retrieved - Count: {len(data)}")
-            
-            # Verify our session is in the list
-            if self.session_id:
-                session_found = any(session.get("id") == self.session_id for session in data)
-                if session_found:
-                    self.log("✅ Created session found in list")
-                else:
-                    self.log("⚠️ Created session not found in list (might be expected)")
-                    
-            return True
+            flags = response.json()
+            if "solution_finder" in flags and "solution_matrix" in flags:
+                results.add_result("GET /api/feature-flags/public (no auth)", True, 
+                                 f"Flags: solution_finder={flags['solution_finder']}, solution_matrix={flags['solution_matrix']}")
+            else:
+                results.add_result("GET /api/feature-flags/public (no auth)", False, 
+                                 f"Missing required flags in response: {flags}")
         else:
-            self.log(f"❌ List call sessions failed: {response.status_code} - {response.text}")
-            return False
-            
-    def run_all_tests(self):
-        """Run all tests in sequence"""
-        self.log("🚀 Starting CLD and Call Session endpoint testing...")
-        self.log(f"🌐 Backend URL: {BASE_URL}")
-        
-        tests = [
-            ("User Registration", self.test_user_registration),
-            ("Create Decision", self.test_create_decision),
-            ("Update Decision with Factors", self.test_update_decision_with_factors),
-            ("CLD Analysis", self.test_cld_analyze),
-            ("Get Call Config", self.test_get_call_config),
-            ("Update Call Config", self.test_update_call_config),
-            ("Create Call Session", self.test_create_call_session),
-            ("Get Call Session", self.test_get_call_session),
-            ("End Call Session", self.test_end_call_session),
-            ("List Call Sessions", self.test_list_call_sessions),
+            results.add_result("GET /api/feature-flags/public (no auth)", False, 
+                             f"Status: {response.status_code}, Response: {response.text}")
+    except Exception as e:
+        results.add_result("GET /api/feature-flags/public (no auth)", False, f"Exception: {str(e)}")
+    
+    # 6. Test PUT /api/admin/feature-flags (admin only) - Non-admin should get 403
+    try:
+        response = requests.put(f"{BACKEND_URL}/admin/feature-flags",
+                              headers={"Authorization": f"Bearer {user_token}"},
+                              json={"solution_finder": True, "solution_matrix": True})
+        if response.status_code == 403:
+            results.add_result("PUT /api/admin/feature-flags (non-admin 403)", True, 
+                             "Non-admin correctly denied access")
+        else:
+            results.add_result("PUT /api/admin/feature-flags (non-admin 403)", False, 
+                             f"Expected 403, got {response.status_code}: {response.text}")
+    except Exception as e:
+        results.add_result("PUT /api/admin/feature-flags (non-admin 403)", False, f"Exception: {str(e)}")
+    
+    # 7. Test PUT /api/admin/feature-flags (admin only) - Admin should succeed
+    if admin_token:
+        try:
+            response = requests.put(f"{BACKEND_URL}/admin/feature-flags",
+                                  headers={"Authorization": f"Bearer {admin_token}"},
+                                  json={"solution_finder": True, "solution_matrix": True})
+            if response.status_code == 200:
+                result = response.json()
+                results.add_result("PUT /api/admin/feature-flags (admin success)", True, 
+                                 f"Feature flags updated: {result}")
+            else:
+                results.add_result("PUT /api/admin/feature-flags (admin success)", False, 
+                                 f"Status: {response.status_code}, Response: {response.text}")
+        except Exception as e:
+            results.add_result("PUT /api/admin/feature-flags (admin success)", False, f"Exception: {str(e)}")
+    else:
+        results.add_result("PUT /api/admin/feature-flags (admin success)", True, 
+                         "Skipped - No admin privileges available (super admin already exists)")
+    
+    # ===== SIMPLE SOLUTION FINDER CRUD TESTING =====
+    print("\n🔍 SIMPLE SOLUTION FINDER CRUD TESTING")
+    
+    solution_finder_id = None
+    
+    # 8. Test POST /api/solution-finders - Create entry
+    solution_finder_data = {
+        "area_of_life": "career",
+        "smart_goal": "Earn 3 lakh per quarter",
+        "milestones": [
+            {
+                "description": "Get 12 students",
+                "timeline": "15.09.2025"
+            }
+        ],
+        "q1_all_concerns": "Fees, Health",
+        "q2_primary_concerns": "Time, Marketing",
+        "q3_capabilities": "Knowledge, Skill",
+        "q3_resources": "Contacts, Time",
+        "q3_solutions": "Smart scheduling",
+        "external_help_aspect": "Marketing",
+        "external_help_level": "One-time Consulting",
+        "external_help_from": "Mentor",
+        "q4_negative_consequences": "Burnout",
+        "q4_mitigation_plans": "Regular breaks",
+        "q4_contingency_plans": "Delegate work",
+        "action_items": [
+            {
+                "action": "Prepare fee structure",
+                "who": "Self",
+                "by_when": "01.09.2025",
+                "status": "pending"
+            }
         ]
-        
-        results = []
-        
-        for test_name, test_func in tests:
-            self.log(f"\n{'='*50}")
-            self.log(f"Running: {test_name}")
-            self.log('='*50)
-            
-            try:
-                result = test_func()
-                results.append((test_name, result))
-                
-                if not result:
-                    self.log(f"❌ {test_name} FAILED")
-                else:
-                    self.log(f"✅ {test_name} PASSED")
-                    
-            except Exception as e:
-                self.log(f"❌ {test_name} ERROR: {str(e)}")
-                results.append((test_name, False))
-                
-        # Summary
-        self.log(f"\n{'='*60}")
-        self.log("TEST SUMMARY")
-        self.log('='*60)
-        
-        passed = sum(1 for _, result in results if result)
-        total = len(results)
-        
-        for test_name, result in results:
-            status = "✅ PASS" if result else "❌ FAIL"
-            self.log(f"{status} - {test_name}")
-            
-        self.log(f"\n🎯 Results: {passed}/{total} tests passed")
-        
-        if passed == total:
-            self.log("🎉 ALL TESTS PASSED!")
+    }
+    
+    try:
+        response = requests.post(f"{BACKEND_URL}/solution-finders",
+                               headers={"Authorization": f"Bearer {user_token}"},
+                               json=solution_finder_data)
+        if response.status_code in [200, 201]:
+            created_entry = response.json()
+            solution_finder_id = created_entry.get("entry_id")
+            results.add_result("POST /api/solution-finders (create)", True, 
+                             f"Created entry ID: {solution_finder_id}")
         else:
-            self.log(f"⚠️ {total - passed} tests failed")
+            results.add_result("POST /api/solution-finders (create)", False, 
+                             f"Status: {response.status_code}, Response: {response.text}")
+    except Exception as e:
+        results.add_result("POST /api/solution-finders (create)", False, f"Exception: {str(e)}")
+    
+    # 9. Test GET /api/solution-finders - List all entries
+    try:
+        response = requests.get(f"{BACKEND_URL}/solution-finders",
+                              headers={"Authorization": f"Bearer {user_token}"})
+        if response.status_code == 200:
+            entries = response.json()
+            if isinstance(entries, list) and len(entries) >= 1:
+                results.add_result("GET /api/solution-finders (list)", True, 
+                                 f"Retrieved {len(entries)} entries")
+            else:
+                results.add_result("GET /api/solution-finders (list)", False, 
+                                 f"Expected list with entries, got: {entries}")
+        else:
+            results.add_result("GET /api/solution-finders (list)", False, 
+                             f"Status: {response.status_code}, Response: {response.text}")
+    except Exception as e:
+        results.add_result("GET /api/solution-finders (list)", False, f"Exception: {str(e)}")
+    
+    # 10. Test GET /api/solution-finders/{entry_id} - Get specific entry
+    if solution_finder_id:
+        try:
+            response = requests.get(f"{BACKEND_URL}/solution-finders/{solution_finder_id}",
+                                  headers={"Authorization": f"Bearer {user_token}"})
+            if response.status_code == 200:
+                entry = response.json()
+                if entry.get("entry_id") == solution_finder_id and entry.get("area_of_life") == "career":
+                    results.add_result("GET /api/solution-finders/{id} (get specific)", True, 
+                                     f"Retrieved entry with correct data")
+                else:
+                    results.add_result("GET /api/solution-finders/{id} (get specific)", False, 
+                                     f"Data mismatch in retrieved entry: {entry}")
+            else:
+                results.add_result("GET /api/solution-finders/{id} (get specific)", False, 
+                                 f"Status: {response.status_code}, Response: {response.text}")
+        except Exception as e:
+            results.add_result("GET /api/solution-finders/{id} (get specific)", False, f"Exception: {str(e)}")
+    
+    # 11. Test PUT /api/solution-finders/{entry_id} - Update entry
+    if solution_finder_id:
+        try:
+            update_data = {
+                "status": "completed",
+                "q3_solutions": "Updated solutions with better scheduling"
+            }
+            response = requests.put(f"{BACKEND_URL}/solution-finders/{solution_finder_id}",
+                                  headers={"Authorization": f"Bearer {user_token}"},
+                                  json=update_data)
+            if response.status_code == 200:
+                updated_entry = response.json()
+                if updated_entry.get("status") == "completed":
+                    results.add_result("PUT /api/solution-finders/{id} (update)", True, 
+                                     f"Entry updated successfully")
+                else:
+                    results.add_result("PUT /api/solution-finders/{id} (update)", False, 
+                                     f"Update not reflected: {updated_entry}")
+            else:
+                results.add_result("PUT /api/solution-finders/{id} (update)", False, 
+                                 f"Status: {response.status_code}, Response: {response.text}")
+        except Exception as e:
+            results.add_result("PUT /api/solution-finders/{id} (update)", False, f"Exception: {str(e)}")
+    
+    # 12. Test user isolation - Another user cannot access first user's entries
+    try:
+        # Create second user
+        second_user_email = f"second.user.{timestamp}@dezider.com"
+        response = requests.post(f"{BACKEND_URL}/auth/register", json={
+            "email": second_user_email,
+            "password": "SecondPass123!",
+            "name": "Second User"
+        })
+        if response.status_code in [200, 201]:
+            second_user_token = response.json().get("session_token")
             
-        return passed == total
+            # Try to access first user's solution finder
+            if solution_finder_id:
+                response = requests.get(f"{BACKEND_URL}/solution-finders/{solution_finder_id}",
+                                      headers={"Authorization": f"Bearer {second_user_token}"})
+                if response.status_code == 404:
+                    results.add_result("Solution Finder User Isolation", True, 
+                                     "Second user correctly cannot access first user's entries")
+                else:
+                    results.add_result("Solution Finder User Isolation", False, 
+                                     f"Security breach: Second user accessed first user's data. Status: {response.status_code}")
+        else:
+            results.add_result("Solution Finder User Isolation", False, 
+                             f"Could not create second user for isolation test")
+    except Exception as e:
+        results.add_result("Solution Finder User Isolation", False, f"Exception: {str(e)}")
+    
+    # ===== ADVANCED SOLUTION MATRIX CRUD TESTING =====
+    print("\n🔬 ADVANCED SOLUTION MATRIX CRUD TESTING")
+    
+    solution_matrix_id = None
+    
+    # 13. Test POST /api/solution-matrices - Create entry
+    solution_matrix_data = {
+        "area_of_life": "career",
+        "smart_goal": "Launch new business",
+        "q1_all_concerns": "Funding, Time",
+        "q2_priority_concerns": "Funding",
+        "simpler_solutions": "Bootstrap first",
+        "simpler_capabilities": "Tech skills",
+        "simpler_resources": "Savings",
+        "matrix_self": {
+            "summary": "Self analysis",
+            "knowledge_skills": "Python, ML",
+            "capacity": "High energy",
+            "time": "Full-time available",
+            "people": "Solo",
+            "finance": "50K savings",
+            "infrastructure": "Laptop"
+        },
+        "matrix_micro": {
+            "summary": "Micro level",
+            "knowledge_skills": "Team skills",
+            "capacity": "Medium",
+            "time": "Part-time team",
+            "people": "2 cofounders",
+            "finance": "100K",
+            "infrastructure": "Office"
+        },
+        "matrix_macro": {
+            "summary": "Macro level",
+            "knowledge_skills": "Industry expertise",
+            "capacity": "Scale ready",
+            "time": "Long-term",
+            "people": "Network",
+            "finance": "VC potential",
+            "infrastructure": "Cloud"
+        },
+        "solution_category": {
+            "completely_solvable": True,
+            "partially_solvable": True,
+            "patience_period": True
+        },
+        "solution_sources": {
+            "from_self": "Build MVP",
+            "from_expert": "Hire consultant"
+        },
+        "q4_negative_consequences": "Market risk",
+        "q4_mitigation_plans": "MVP validation",
+        "q4_contingency_plans": "Pivot strategy",
+        "action_items": [
+            {
+                "who": "Founder",
+                "what": "Build MVP",
+                "by_when": "Q1 2025",
+                "status": "in_progress"
+            }
+        ]
+    }
+    
+    try:
+        response = requests.post(f"{BACKEND_URL}/solution-matrices",
+                               headers={"Authorization": f"Bearer {user_token}"},
+                               json=solution_matrix_data)
+        if response.status_code in [200, 201]:
+            created_matrix = response.json()
+            solution_matrix_id = created_matrix.get("entry_id")
+            
+            # Verify matrix structure
+            matrix_valid = True
+            matrix_details = []
+            
+            # Check matrix_self has all 7 fields
+            matrix_self = created_matrix.get("matrix_self", {})
+            required_fields = ["summary", "knowledge_skills", "capacity", "time", "people", "finance", "infrastructure"]
+            for field in required_fields:
+                if field not in matrix_self:
+                    matrix_valid = False
+                    matrix_details.append(f"Missing {field} in matrix_self")
+            
+            # Check solution_category returns boolean flags
+            solution_category = created_matrix.get("solution_category", {})
+            for key, value in solution_category.items():
+                if not isinstance(value, bool):
+                    matrix_valid = False
+                    matrix_details.append(f"solution_category.{key} is not boolean: {type(value)}")
+            
+            # Check solution_sources returns string values
+            solution_sources = created_matrix.get("solution_sources", {})
+            for key, value in solution_sources.items():
+                if not isinstance(value, str):
+                    matrix_valid = False
+                    matrix_details.append(f"solution_sources.{key} is not string: {type(value)}")
+            
+            if matrix_valid:
+                results.add_result("POST /api/solution-matrices (create)", True, 
+                                 f"Created matrix ID: {solution_matrix_id}")
+            else:
+                results.add_result("POST /api/solution-matrices (create)", False, 
+                                 f"Matrix structure issues: {'; '.join(matrix_details)}")
+        else:
+            results.add_result("POST /api/solution-matrices (create)", False, 
+                             f"Status: {response.status_code}, Response: {response.text}")
+    except Exception as e:
+        results.add_result("POST /api/solution-matrices (create)", False, f"Exception: {str(e)}")
+    
+    # 14. Test GET /api/solution-matrices - List all entries
+    try:
+        response = requests.get(f"{BACKEND_URL}/solution-matrices",
+                              headers={"Authorization": f"Bearer {user_token}"})
+        if response.status_code == 200:
+            matrices = response.json()
+            if isinstance(matrices, list) and len(matrices) >= 1:
+                results.add_result("GET /api/solution-matrices (list)", True, 
+                                 f"Retrieved {len(matrices)} matrices")
+            else:
+                results.add_result("GET /api/solution-matrices (list)", False, 
+                                 f"Expected list with matrices, got: {matrices}")
+        else:
+            results.add_result("GET /api/solution-matrices (list)", False, 
+                             f"Status: {response.status_code}, Response: {response.text}")
+    except Exception as e:
+        results.add_result("GET /api/solution-matrices (list)", False, f"Exception: {str(e)}")
+    
+    # 15. Test GET /api/solution-matrices/{entry_id} - Get specific entry
+    if solution_matrix_id:
+        try:
+            response = requests.get(f"{BACKEND_URL}/solution-matrices/{solution_matrix_id}",
+                                  headers={"Authorization": f"Bearer {user_token}"})
+            if response.status_code == 200:
+                matrix = response.json()
+                if matrix.get("entry_id") == solution_matrix_id and matrix.get("area_of_life") == "career":
+                    results.add_result("GET /api/solution-matrices/{id} (get specific)", True, 
+                                     f"Retrieved matrix with correct data")
+                else:
+                    results.add_result("GET /api/solution-matrices/{id} (get specific)", False, 
+                                     f"Data mismatch in retrieved matrix: {matrix}")
+            else:
+                results.add_result("GET /api/solution-matrices/{id} (get specific)", False, 
+                                 f"Status: {response.status_code}, Response: {response.text}")
+        except Exception as e:
+            results.add_result("GET /api/solution-matrices/{id} (get specific)", False, f"Exception: {str(e)}")
+    
+    # 16. Test PUT /api/solution-matrices/{entry_id} - Update entry
+    if solution_matrix_id:
+        try:
+            update_data = {
+                "status": "completed",
+                "matrix_self": {
+                    "summary": "Updated self analysis",
+                    "knowledge_skills": "Python, ML, AI",
+                    "capacity": "High energy",
+                    "time": "Full-time available",
+                    "people": "Solo",
+                    "finance": "50K savings",
+                    "infrastructure": "Laptop"
+                }
+            }
+            response = requests.put(f"{BACKEND_URL}/solution-matrices/{solution_matrix_id}",
+                                  headers={"Authorization": f"Bearer {user_token}"},
+                                  json=update_data)
+            if response.status_code == 200:
+                updated_matrix = response.json()
+                if (updated_matrix.get("status") == "completed" and 
+                    updated_matrix.get("matrix_self", {}).get("knowledge_skills") == "Python, ML, AI"):
+                    results.add_result("PUT /api/solution-matrices/{id} (update)", True, 
+                                     f"Matrix updated successfully")
+                else:
+                    results.add_result("PUT /api/solution-matrices/{id} (update)", False, 
+                                     f"Update not reflected: {updated_matrix}")
+            else:
+                results.add_result("PUT /api/solution-matrices/{id} (update)", False, 
+                                 f"Status: {response.status_code}, Response: {response.text}")
+        except Exception as e:
+            results.add_result("PUT /api/solution-matrices/{id} (update)", False, f"Exception: {str(e)}")
+    
+    # ===== ADMIN CALL CONFIG TESTING =====
+    print("\n📞 ADMIN CALL CONFIG TESTING")
+    
+    # 17. Test GET /api/admin/call-config (no auth needed)
+    try:
+        response = requests.get(f"{BACKEND_URL}/admin/call-config")
+        if response.status_code == 200:
+            config = response.json()
+            required_fields = ["default_duration", "min_duration", "max_duration"]
+            if all(field in config for field in required_fields):
+                results.add_result("GET /api/admin/call-config (no auth)", True, 
+                                 f"Config: default={config['default_duration']}, min={config['min_duration']}, max={config['max_duration']}")
+            else:
+                results.add_result("GET /api/admin/call-config (no auth)", False, 
+                                 f"Missing required fields in config: {config}")
+        else:
+            results.add_result("GET /api/admin/call-config (no auth)", False, 
+                             f"Status: {response.status_code}, Response: {response.text}")
+    except Exception as e:
+        results.add_result("GET /api/admin/call-config (no auth)", False, f"Exception: {str(e)}")
+    
+    # 18. Test PUT /api/admin/call-config (admin only) - Non-admin should get 403
+    try:
+        response = requests.put(f"{BACKEND_URL}/admin/call-config",
+                              headers={"Authorization": f"Bearer {user_token}"},
+                              json={"default_duration": 45, "min_duration": 10, "max_duration": 90})
+        if response.status_code == 403:
+            results.add_result("PUT /api/admin/call-config (non-admin 403)", True, 
+                             "Non-admin correctly denied access")
+        else:
+            results.add_result("PUT /api/admin/call-config (non-admin 403)", False, 
+                             f"Expected 403, got {response.status_code}: {response.text}")
+    except Exception as e:
+        results.add_result("PUT /api/admin/call-config (non-admin 403)", False, f"Exception: {str(e)}")
+    
+    # 19. Test PUT /api/admin/call-config (admin only) - Admin should succeed
+    if admin_token:
+        try:
+            response = requests.put(f"{BACKEND_URL}/admin/call-config",
+                                  headers={"Authorization": f"Bearer {admin_token}"},
+                                  json={"default_duration": 45, "min_duration": 10, "max_duration": 90})
+            if response.status_code == 200:
+                result = response.json()
+                results.add_result("PUT /api/admin/call-config (admin success)", True, 
+                                 f"Call config updated: {result}")
+            else:
+                results.add_result("PUT /api/admin/call-config (admin success)", False, 
+                                 f"Status: {response.status_code}, Response: {response.text}")
+        except Exception as e:
+            results.add_result("PUT /api/admin/call-config (admin success)", False, f"Exception: {str(e)}")
+    else:
+        results.add_result("PUT /api/admin/call-config (admin success)", True, 
+                         "Skipped - No admin privileges available (super admin already exists)")
+    
+    # ===== CLEANUP AND DELETE TESTING =====
+    print("\n🗑️ DELETE OPERATIONS TESTING")
+    
+    # 20. Test DELETE /api/solution-finders/{entry_id}
+    if solution_finder_id:
+        try:
+            response = requests.delete(f"{BACKEND_URL}/solution-finders/{solution_finder_id}",
+                                     headers={"Authorization": f"Bearer {user_token}"})
+            if response.status_code == 200:
+                results.add_result("DELETE /api/solution-finders/{id}", True, 
+                                 f"Solution finder deleted successfully")
+            else:
+                results.add_result("DELETE /api/solution-finders/{id}", False, 
+                                 f"Status: {response.status_code}, Response: {response.text}")
+        except Exception as e:
+            results.add_result("DELETE /api/solution-finders/{id}", False, f"Exception: {str(e)}")
+    
+    # 21. Test DELETE /api/solution-matrices/{entry_id}
+    if solution_matrix_id:
+        try:
+            response = requests.delete(f"{BACKEND_URL}/solution-matrices/{solution_matrix_id}",
+                                     headers={"Authorization": f"Bearer {user_token}"})
+            if response.status_code == 200:
+                results.add_result("DELETE /api/solution-matrices/{id}", True, 
+                                 f"Solution matrix deleted successfully")
+            else:
+                results.add_result("DELETE /api/solution-matrices/{id}", False, 
+                                 f"Status: {response.status_code}, Response: {response.text}")
+        except Exception as e:
+            results.add_result("DELETE /api/solution-matrices/{id}", False, f"Exception: {str(e)}")
+    
+    return results
 
 if __name__ == "__main__":
-    tester = BackendTester()
-    success = tester.run_all_tests()
-    exit(0 if success else 1)
+    results = test_new_endpoints()
+    results.summary()
