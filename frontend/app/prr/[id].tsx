@@ -33,6 +33,7 @@ interface Factor {
   expected_value?: string | number; // Benchmark value
   data_type?: 'numeric' | 'text'; // Auto-sensed from expected_value
   operator?: string; // >=, <=, >, <, =, !=, between, contains, starts_with, ends_with, equals, not_equals
+  gap_multiplier?: number; // Per-factor gap multiplier (default 1.0)
 }
 
 interface OptionAssessment {
@@ -130,22 +131,31 @@ const senseDataType = (value: string): 'numeric' | 'text' => {
 // Order: Secondary (lowest to highest) -> Primary (lowest to highest)
 const STANDARD_GAP = 10;
 
-const calculateRatingsFromOrder = (factors: Factor[], gapMultiplier: number = 1.0): Factor[] => {
+const calculateRatingsFromOrder = (factors: Factor[], _unused?: number): Factor[] => {
   const primaryFactors = factors.filter(f => f.category === 'primary').sort((a, b) => a.order - b.order);
   const secondaryFactors = factors.filter(f => f.category === 'secondary').sort((a, b) => a.order - b.order);
   
-  const updatedFactors: Factor[] = [];
-  const gap = Math.round(STANDARD_GAP * gapMultiplier);
-  
+  // Build ordered list from lowest to highest priority
   const orderedFromLowest = [
     ...secondaryFactors.slice().reverse(),
     ...primaryFactors.slice().reverse(),
   ];
   
-  // Assign ratings using dynamic gap
+  // Assign ratings using per-factor gap multipliers
+  const updatedFactors: Factor[] = [];
+  let currentRating = STANDARD_GAP; // Base rating for lowest factor
+  
   orderedFromLowest.forEach((factor, index) => {
-    const rating = (index + 1) * gap;
-    updatedFactors.push({ ...factor, rating });
+    if (index === 0) {
+      // Lowest priority factor gets base rating
+      updatedFactors.push({ ...factor, rating: currentRating });
+    } else {
+      // Each subsequent factor: previous + (standard_gap × this factor's gap_multiplier)
+      const gapMult = factor.gap_multiplier ?? 1.0;
+      const gap = Math.round(STANDARD_GAP * gapMult);
+      currentRating = currentRating + gap;
+      updatedFactors.push({ ...factor, rating: currentRating });
+    }
   });
   
   return updatedFactors;
@@ -984,116 +994,135 @@ export default function PRRDecisionDetail() {
     );
   };
 
-  // Step 5: Show calculated ratings with gap adjustment
+  // Step 5: Show calculated ratings with per-factor gap adjustment
   const renderStep5 = () => {
-    const currentMultiplier = decision.rating_gap_multiplier || 1.0;
-    const gap = Math.round(STANDARD_GAP * currentMultiplier);
-    const maxRating = decision.factors.length * gap;
-    const exceedsLimit = maxRating > 100;
+    // Always recalculate from per-factor gaps for live preview
+    const recalculated = calculateRatingsFromOrder(decision.factors);
 
-    const handleGapChange = (multiplier: number) => {
-      const newFactors = calculateRatingsFromOrder(decision.factors, multiplier);
-      saveDecision({ factors: newFactors, rating_gap_multiplier: multiplier });
+    // Sort factors by rating descending for display (highest priority first)
+    const sortedFactors = [...recalculated].sort((a, b) => b.rating - a.rating);
+    const highestRating = sortedFactors.length > 0 ? sortedFactors[0].rating : 100;
+
+    // Build ordered list from lowest to highest for gap context
+    const primaryFactors = recalculated.filter(f => f.category === 'primary').sort((a, b) => a.order - b.order);
+    const secondaryFactors = recalculated.filter(f => f.category === 'secondary').sort((a, b) => a.order - b.order);
+    const orderedFromLowest = [
+      ...secondaryFactors.slice().reverse(),
+      ...primaryFactors.slice().reverse(),
+    ];
+
+    const handleFactorGapChange = (factorId: string, multiplier: number) => {
+      const updatedFactors = decision.factors.map(f =>
+        f.id === factorId ? { ...f, gap_multiplier: multiplier } : f
+      );
+      const recalculated = calculateRatingsFromOrder(updatedFactors);
+      saveDecision({ factors: recalculated });
     };
 
-    // Sort factors by rating descending for display
-    const sortedFactors = [...decision.factors].sort((a, b) => b.rating - a.rating);
-    const highestRating = sortedFactors.length > 0 ? sortedFactors[0].rating : 100;
+    const exceedsLimit = highestRating > 100;
 
     return (
       <View style={styles.stepContent}>
         <Text style={styles.stepTitle}>Step 5: Rate Factor Importance</Text>
         <Text style={styles.stepDescription}>
-          Adjust the gap to control how spread out the factor priorities are. Higher gaps amplify the difference between top and bottom.
+          Adjust each factor's gap from the one below it. Standard gap = {STANDARD_GAP} pts. Higher gaps amplify how much more important that factor is.
         </Text>
 
-        {/* Gap Multiplier Selector */}
-        <Card style={styles.gapSelectorCard}>
-          <View style={styles.gapHeaderRow}>
-            <Text style={styles.gapSelectorTitle}>Rating Gap</Text>
-            <View style={styles.gapCurrentBadge}>
-              <Text style={styles.gapCurrentBadgeText}>{gap} pts/factor</Text>
-            </View>
+        {exceedsLimit && (
+          <View style={styles.gapWarningBox}>
+            <Ionicons name="warning" size={16} color="#F59E0B" />
+            <Text style={styles.gapWarningText}>
+              Top rating ({highestRating}) exceeds 100%. Requires admin/account-level approval for exceptional cases.
+            </Text>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.gapChipsScroll}>
-            <View style={styles.gapChipsRow}>
-              {GAP_PRESETS.map((preset) => (
-                <TouchableOpacity
-                  key={preset.value}
-                  style={[
-                    styles.gapChip,
-                    currentMultiplier === preset.value && styles.gapChipActive,
-                    preset.warn && styles.gapChipWarn,
-                    preset.warn && currentMultiplier === preset.value && styles.gapChipWarnActive,
-                  ]}
-                  onPress={() => handleGapChange(preset.value)}
-                >
-                  <Text style={[
-                    styles.gapChipText,
-                    currentMultiplier === preset.value && styles.gapChipTextActive,
-                    preset.warn && styles.gapChipTextWarn,
-                    preset.warn && currentMultiplier === preset.value && styles.gapChipTextWarnActive,
-                  ]}>{preset.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
+        )}
 
-          {exceedsLimit && (
-            <View style={styles.gapWarningBox}>
-              <Ionicons name="warning" size={16} color="#F59E0B" />
-              <Text style={styles.gapWarningText}>
-                Top rating ({maxRating}) exceeds 100%. Requires admin/account-level approval for exceptional cases.
-              </Text>
-            </View>
-          )}
-        </Card>
+        {/* Factors listed from highest to lowest with per-factor gap selector */}
+        {sortedFactors.map((factor, displayIndex) => {
+          const orderedIndex = orderedFromLowest.findIndex(f => f.id === factor.id);
+          const isLowest = orderedIndex === 0;
+          const gapMult = factor.gap_multiplier ?? 1.0;
+          const gapPts = isLowest ? STANDARD_GAP : Math.round(STANDARD_GAP * gapMult);
+          const belowFactor = !isLowest ? orderedFromLowest[orderedIndex - 1] : null;
 
-        {/* Factor ratings preview */}
-        <Text style={[styles.sectionLabel, { marginTop: 12, marginBottom: 8 }]}>Live Rating Preview</Text>
-        {sortedFactors.map((factor, index) => (
-          <Card key={factor.id} style={styles.ratingCard}>
-            <View style={styles.ratingHeader}>
-              <View style={[styles.ratingRank, factor.category === 'secondary' && { backgroundColor: COLORS.teal }]}>
-                <Text style={styles.rankNumber}>{index + 1}</Text>
+          return (
+            <Card key={factor.id} style={styles.ratingCard}>
+              <View style={styles.ratingHeader}>
+                <View style={[styles.ratingRank, factor.category === 'secondary' && { backgroundColor: COLORS.teal }]}>
+                  <Text style={styles.rankNumber}>{displayIndex + 1}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.factorName}>{factor.name}</Text>
+                </View>
+                <View style={[styles.categoryBadgeSmall, factor.category === 'primary' ? styles.catBadgePrimary : styles.catBadgeSecondary]}>
+                  <Text style={styles.categoryBadgeSmallText}>
+                    {factor.category === 'primary' ? 'P' : 'S'}
+                  </Text>
+                </View>
+                <View style={[
+                  styles.ratingBadge,
+                  factor.category === 'secondary' && { backgroundColor: COLORS.teal },
+                  factor.rating > 100 && { backgroundColor: '#F59E0B' },
+                ]}>
+                  <Text style={styles.ratingBadgeText}>{factor.rating}</Text>
+                </View>
               </View>
-              <Text style={styles.factorName}>{factor.name}</Text>
-              <View style={[styles.categoryBadgeSmall, factor.category === 'primary' ? styles.catBadgePrimary : styles.catBadgeSecondary]}>
-                <Text style={styles.categoryBadgeSmallText}>
-                  {factor.category === 'primary' ? 'P' : 'S'}
-                </Text>
+
+              {/* Rating bar */}
+              <View style={styles.ratingBarContainer}>
+                <View style={[styles.ratingBarFill, {
+                  width: `${Math.min(100, (factor.rating / Math.max(highestRating, 100)) * 100)}%`,
+                  backgroundColor: factor.rating > 100
+                    ? '#F59E0B'
+                    : factor.category === 'primary'
+                      ? COLORS.primary
+                      : COLORS.teal,
+                }]} />
               </View>
-              <View style={[
-                styles.ratingBadge,
-                factor.category === 'secondary' && { backgroundColor: COLORS.teal },
-                factor.rating > 100 && { backgroundColor: '#F59E0B' },
-              ]}>
-                <Text style={styles.ratingBadgeText}>{factor.rating}</Text>
-              </View>
-            </View>
-            <View style={styles.ratingBarContainer}>
-              <View style={[styles.ratingBarFill, {
-                width: `${Math.min(100, (factor.rating / Math.max(highestRating, 100)) * 100)}%`,
-                backgroundColor: factor.rating > 100
-                  ? '#F59E0B'
-                  : factor.category === 'primary'
-                    ? COLORS.primary
-                    : COLORS.teal,
-              }]} />
-            </View>
-          </Card>
-        ))}
+
+              {/* Per-factor gap selector (not shown for lowest) */}
+              {!isLowest ? (
+                <View style={styles.perFactorGapRow}>
+                  <Text style={styles.perFactorGapLabel}>
+                    Gap from {belowFactor?.name || 'below'}: +{gapPts}
+                  </Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
+                    <View style={styles.gapChipsRow}>
+                      {GAP_PRESETS.map((preset) => (
+                        <TouchableOpacity
+                          key={preset.value}
+                          style={[
+                            styles.gapChipSmall,
+                            gapMult === preset.value && styles.gapChipSmallActive,
+                            preset.warn && styles.gapChipSmallWarn,
+                            preset.warn && gapMult === preset.value && styles.gapChipSmallWarnActive,
+                          ]}
+                          onPress={() => handleFactorGapChange(factor.id, preset.value)}
+                        >
+                          <Text style={[
+                            styles.gapChipSmallText,
+                            gapMult === preset.value && styles.gapChipSmallTextActive,
+                            preset.warn && styles.gapChipSmallTextWarn,
+                            preset.warn && gapMult === preset.value && styles.gapChipSmallTextWarnActive,
+                          ]}>{preset.label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </View>
+              ) : (
+                <Text style={styles.baseRatingNote}>Base rating: {STANDARD_GAP}</Text>
+              )}
+            </Card>
+          );
+        })}
 
         {/* Summary */}
         <Card style={styles.ratingSummaryCard}>
           <View style={styles.ratingSummaryRow}>
-            <Text style={styles.ratingSummaryLabel}>Gap multiplier</Text>
-            <Text style={styles.ratingSummaryValue}>{currentMultiplier}x ({gap} pts)</Text>
-          </View>
-          <View style={styles.ratingSummaryRow}>
             <Text style={styles.ratingSummaryLabel}>Rating range</Text>
             <Text style={[styles.ratingSummaryValue, exceedsLimit && { color: '#F59E0B', fontWeight: '700' as any }]}>
-              {gap} → {maxRating}
+              {STANDARD_GAP} → {highestRating}
             </Text>
           </View>
           <View style={styles.ratingSummaryRow}>
@@ -2082,6 +2111,58 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#92400E',
     lineHeight: 17,
+  },
+  perFactorGapRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 6,
+  },
+  perFactorGapLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: COLORS.textMuted,
+    minWidth: 80,
+  },
+  gapChipSmall: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+  },
+  gapChipSmallActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  gapChipSmallWarn: {
+    borderColor: '#FCD34D',
+    backgroundColor: 'rgba(245,158,11,0.05)',
+  },
+  gapChipSmallWarnActive: {
+    backgroundColor: '#F59E0B',
+    borderColor: '#F59E0B',
+  },
+  gapChipSmallText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  gapChipSmallTextActive: {
+    color: COLORS.white,
+  },
+  gapChipSmallTextWarn: {
+    color: '#D97706',
+  },
+  gapChipSmallTextWarnActive: {
+    color: COLORS.white,
+  },
+  baseRatingNote: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    fontStyle: 'italic',
+    marginTop: 6,
   },
   categoryBadgeSmall: {
     width: 20,

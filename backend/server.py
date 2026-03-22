@@ -83,6 +83,7 @@ class Factor(BaseModel):
     expected_value: Optional[Any] = None  # Benchmark value (numeric or text)
     data_type: Optional[str] = None  # 'numeric' or 'text' (auto-sensed)
     operator: Optional[str] = None  # >=, <=, >, <, =, !=, between, contains, starts_with, ends_with, equals, not_equals
+    gap_multiplier: Optional[float] = 1.0  # Per-factor gap from the one below (default 1x = standard gap of 10)
 
 class OptionAssessment(BaseModel):
     factor_id: str
