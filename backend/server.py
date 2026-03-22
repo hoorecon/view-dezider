@@ -79,11 +79,13 @@ class Factor(BaseModel):
     category: str  # "primary" or "secondary"
     rating: int  # 1-100 importance rating
     order: int
+    unit: Optional[str] = None  # Measurement unit (e.g., "USD", "hours", "km")
 
 class OptionAssessment(BaseModel):
     factor_id: str
     percentage: Optional[int] = None  # 0-100 how well option meets this factor
-    unit_value: Optional[str] = None  # Actual value with unit (e.g., "50000 USD")
+    unit_value: Optional[str] = None  # Legacy: combined value+unit string
+    actual_value: Optional[float] = None  # Separated numeric value for AI/ML
     assessment_mode: Optional[str] = None  # 'L', 'M', 'H', or 'custom'
 
 class DecisionOption(BaseModel):

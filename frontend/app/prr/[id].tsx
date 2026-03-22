@@ -35,7 +35,8 @@ interface Factor {
 interface OptionAssessment {
   factor_id: string;
   percentage: number;
-  unit_value?: string; // Actual value with unit (e.g., "50000 USD")
+  unit_value?: string; // Legacy: combined value+unit string
+  actual_value?: number; // Separated numeric value
   assessment_mode?: 'L' | 'M' | 'H' | 'custom'; // Quick assessment mode
 }
 
@@ -64,6 +65,23 @@ const LMH_VALUES = {
   M: { label: 'Medium', percentage: 50, color: '#F59E0B' }, // Yellow/Amber
   H: { label: 'High', percentage: 75, color: '#10B981' },   // Green
 };
+
+// Common unit presets for factor measurement
+const UNIT_PRESETS = [
+  { label: '$', value: 'USD' },
+  { label: '€', value: 'EUR' },
+  { label: '₹', value: 'INR' },
+  { label: '£', value: 'GBP' },
+  { label: 'hrs', value: 'hours' },
+  { label: 'mins', value: 'minutes' },
+  { label: 'days', value: 'days' },
+  { label: 'yrs', value: 'years' },
+  { label: 'km', value: 'km' },
+  { label: 'mi', value: 'miles' },
+  { label: '%', value: '%' },
+  { label: '#', value: 'count' },
+  { label: 'ppl', value: 'people' },
+];
 
 // Function to auto-calculate ratings based on order within each category
 // Rating starts from 10 for lowest priority (last Secondary) and increments by 10
@@ -112,6 +130,9 @@ export default function PRRDecisionDetail() {
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [unitValues, setUnitValues] = useState<{[key: string]: string}>({});
   const [customInputValues, setCustomInputValues] = useState<{[key: string]: string}>({});
+  const [actualValues, setActualValues] = useState<{[key: string]: string}>({});
+  const [customUnitInput, setCustomUnitInput] = useState<{[key: string]: string}>({});
+  const [showUnitPicker, setShowUnitPicker] = useState<{[key: string]: boolean}>({});
 
   useEffect(() => {
     fetchDecision();
@@ -262,7 +283,7 @@ export default function PRRDecisionDetail() {
     saveDecision({ options: updatedOptions });
   };
 
-  const updateAssessment = (optionId: string, factorId: string, percentage: number, mode?: 'L' | 'M' | 'H' | 'custom', unitValue?: string) => {
+  const updateAssessment = (optionId: string, factorId: string, percentage: number, mode?: 'L' | 'M' | 'H' | 'custom', unitValue?: string, actualValue?: number) => {
     // Clamp percentage to 0-100 range to prevent worth exceeding 100%
     const clampedPercentage = percentage !== null && percentage !== undefined 
       ? Math.min(100, Math.max(0, percentage)) 
@@ -277,6 +298,7 @@ export default function PRRDecisionDetail() {
         percentage: clampedPercentage,
         assessment_mode: mode,
         unit_value: unitValue,
+        actual_value: actualValue,
       };
       
       let newAssessments;
@@ -304,6 +326,12 @@ export default function PRRDecisionDetail() {
     const option = decision?.options.find((o) => o.id === optionId);
     const assessment = option?.assessments.find((a) => a.factor_id === factorId);
     return assessment?.unit_value || '';
+  };
+
+  const getActualValue = (optionId: string, factorId: string): number | undefined => {
+    const option = decision?.options.find((o) => o.id === optionId);
+    const assessment = option?.assessments.find((a) => a.factor_id === factorId);
+    return assessment?.actual_value;
   };
 
   const selectOption = (optionId: string, caseType: string) => {
@@ -553,17 +581,96 @@ export default function PRRDecisionDetail() {
     <View style={styles.stepContent}>
       <Text style={styles.stepTitle}>Step 2: List All Factors</Text>
       <Text style={styles.stepDescription}>
-        List all logical and emotional factors that influence this decision.
+        List all logical and emotional factors that influence this decision. Optionally set a measurement unit for each.
       </Text>
 
       {decision.factors.map((factor) => (
         <Card key={factor.id} style={styles.factorCard}>
           <View style={styles.factorHeader}>
             <Text style={styles.factorName}>{factor.name}</Text>
+            {factor.unit && (
+              <View style={styles.unitBadgeSmall}>
+                <Text style={styles.unitBadgeSmallText}>{factor.unit}</Text>
+              </View>
+            )}
             <TouchableOpacity onPress={() => removeFactor(factor.id)}>
               <Ionicons name="close-circle" size={22} color={COLORS.error} />
             </TouchableOpacity>
           </View>
+          {/* Unit selector row */}
+          <View style={styles.unitSelectorRow}>
+            <Text style={styles.unitSelectorLabel}>Unit:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.unitChipsScroll}>
+              <View style={styles.unitChipsContainer}>
+                {factor.unit && (
+                  <TouchableOpacity
+                    style={[styles.unitChip, styles.unitChipClear]}
+                    onPress={() => updateFactor(factor.id, { unit: undefined })}
+                  >
+                    <Ionicons name="close" size={12} color={COLORS.error} />
+                  </TouchableOpacity>
+                )}
+                {UNIT_PRESETS.map((preset) => (
+                  <TouchableOpacity
+                    key={preset.value}
+                    style={[
+                      styles.unitChip,
+                      factor.unit === preset.value && styles.unitChipActive,
+                    ]}
+                    onPress={() => updateFactor(factor.id, { unit: preset.value })}
+                  >
+                    <Text style={[
+                      styles.unitChipText,
+                      factor.unit === preset.value && styles.unitChipTextActive,
+                    ]}>{preset.label}</Text>
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity
+                  style={[
+                    styles.unitChip,
+                    styles.unitChipCustom,
+                    showUnitPicker[factor.id] && styles.unitChipActive,
+                  ]}
+                  onPress={() => setShowUnitPicker({ ...showUnitPicker, [factor.id]: !showUnitPicker[factor.id] })}
+                >
+                  <Text style={[
+                    styles.unitChipText,
+                    showUnitPicker[factor.id] && styles.unitChipTextActive,
+                  ]}>✎</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+          {showUnitPicker[factor.id] && (
+            <View style={styles.customUnitRow}>
+              <TextInput
+                style={styles.customUnitInput}
+                placeholder="Custom unit (e.g., sqft, rating)"
+                placeholderTextColor={COLORS.textMuted}
+                value={customUnitInput[factor.id] || ''}
+                onChangeText={(v) => setCustomUnitInput({ ...customUnitInput, [factor.id]: v })}
+                onSubmitEditing={() => {
+                  const val = (customUnitInput[factor.id] || '').trim();
+                  if (val) {
+                    updateFactor(factor.id, { unit: val });
+                    setShowUnitPicker({ ...showUnitPicker, [factor.id]: false });
+                  }
+                }}
+              />
+              <TouchableOpacity
+                style={styles.customUnitApplyBtn}
+                onPress={() => {
+                  const val = (customUnitInput[factor.id] || '').trim();
+                  if (val) {
+                    updateFactor(factor.id, { unit: val });
+                    setShowUnitPicker({ ...showUnitPicker, [factor.id]: false });
+                  }
+                }}
+              >
+                <Ionicons name="checkmark" size={18} color={COLORS.white} />
+              </TouchableOpacity>
+            </View>
+          )}
         </Card>
       ))}
 
@@ -869,7 +976,12 @@ export default function PRRDecisionDetail() {
       const key = getAssessmentKey(optionId, factorId);
       setShowCustomInput({ ...showCustomInput, [key]: false });
       setCustomInputValues({ ...customInputValues, [key]: '' }); // Clear custom input
-      updateAssessment(optionId, factorId, percentage, mode, unitValues[key]);
+      // Get current actual value to preserve it
+      const currentActual = getActualValue(optionId, factorId);
+      const factor = decision.factors.find(f => f.id === factorId);
+      const unitStr = factor?.unit || '';
+      const displayValue = currentActual !== undefined ? `${currentActual}${unitStr ? ' ' + unitStr : ''}` : '';
+      updateAssessment(optionId, factorId, percentage, mode, displayValue, currentActual);
     };
 
     const handleCustomSelect = (optionId: string, factorId: string) => {
@@ -894,16 +1006,51 @@ export default function PRRDecisionDetail() {
       const inputValue = customInputValues[key] || '0';
       const num = parseInt(inputValue) || 0;
       const percentage = Math.min(100, Math.max(0, num));
-      updateAssessment(optionId, factorId, percentage, 'custom', unitValues[key]);
+      // Preserve actual value when changing percentage
+      const currentActual = getActualValue(optionId, factorId);
+      const factor = decision.factors.find(f => f.id === factorId);
+      const unitStr = factor?.unit || '';
+      const displayValue = currentActual !== undefined ? `${currentActual}${unitStr ? ' ' + unitStr : ''}` : '';
+      updateAssessment(optionId, factorId, percentage, 'custom', displayValue, currentActual);
     };
 
     const handleUnitValueChange = (optionId: string, factorId: string, value: string) => {
       const key = getAssessmentKey(optionId, factorId);
-      setUnitValues({ ...unitValues, [key]: value });
-      // Update assessment with unit value
+      // Allow only numeric input (with decimal)
+      const cleanValue = value.replace(/[^0-9.]/g, '');
+      // Prevent multiple decimals
+      const parts = cleanValue.split('.');
+      const sanitized = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : cleanValue;
+      setActualValues({ ...actualValues, [key]: sanitized });
+    };
+
+    const handleActualValueBlur = (optionId: string, factorId: string) => {
+      const key = getAssessmentKey(optionId, factorId);
+      const inputValue = actualValues[key] || '';
+      const numVal = parseFloat(inputValue);
+      const actualVal = isNaN(numVal) ? undefined : numVal;
+      // Get current assessment data
       const currentMode = getAssessmentMode(optionId, factorId);
       const currentPercentage = getAssessmentValue(optionId, factorId);
-      updateAssessment(optionId, factorId, currentPercentage, currentMode, value);
+      const factor = decision.factors.find(f => f.id === factorId);
+      // Build display string for backward compat
+      const unitStr = factor?.unit || '';
+      const displayValue = actualVal !== undefined ? `${actualVal}${unitStr ? ' ' + unitStr : ''}` : '';
+      updateAssessment(optionId, factorId, currentPercentage, currentMode, displayValue, actualVal);
+    };
+
+    const getActualInputValue = (optionId: string, factorId: string): string => {
+      const key = getAssessmentKey(optionId, factorId);
+      if (actualValues[key] !== undefined) return actualValues[key];
+      const stored = getActualValue(optionId, factorId);
+      if (stored !== undefined) return String(stored);
+      // Fallback: try to parse from legacy unit_value
+      const legacy = getUnitValue(optionId, factorId);
+      if (legacy) {
+        const num = parseFloat(legacy);
+        if (!isNaN(num)) return String(num);
+      }
+      return '';
     };
 
     const getCustomInputValue = (optionId: string, factorId: string): string => {
@@ -982,26 +1129,39 @@ export default function PRRDecisionDetail() {
                 const currentMode = getAssessmentMode(option.id, factor.id);
                 const currentValue = getAssessmentValue(option.id, factor.id);
                 const isCustom = showCustomInput[key] || currentMode === 'custom';
-                const currentUnitValue = unitValues[key] || getUnitValue(option.id, factor.id);
                 const hasValue = currentValue !== null;
 
                 return (
                   <View key={factor.id} style={styles.assessmentFactorContainer}>
-                    {/* Factor header with rating */}
+                    {/* Factor header with rating and unit badge */}
                     <View style={styles.assessmentLabelRow}>
                       <Text style={styles.assessmentLabel}>{factor.name}</Text>
+                      {factor.unit && (
+                        <View style={styles.factorUnitBadge}>
+                          <Text style={styles.factorUnitBadgeText}>{factor.unit}</Text>
+                        </View>
+                      )}
                       <Text style={styles.assessmentRating}>({factor.rating})</Text>
                     </View>
 
-                    {/* Unit value input (optional) */}
-                    <View style={styles.unitValueRow}>
-                      <TextInput
-                        style={styles.unitValueInput}
-                        placeholder="Value (e.g., 50000 USD, 8 hours)"
-                        placeholderTextColor={COLORS.textMuted}
-                        value={currentUnitValue}
-                        onChangeText={(value) => handleUnitValueChange(option.id, factor.id, value)}
-                      />
+                    {/* Separated: Actual Value (numeric) + Unit label */}
+                    <View style={styles.actualValueRow}>
+                      <View style={styles.actualValueInputWrap}>
+                        <TextInput
+                          style={styles.actualValueInput}
+                          placeholder={factor.unit ? `Value in ${factor.unit}` : 'Actual value (optional)'}
+                          placeholderTextColor={COLORS.textMuted}
+                          value={getActualInputValue(option.id, factor.id)}
+                          onChangeText={(value) => handleUnitValueChange(option.id, factor.id, value)}
+                          onBlur={() => handleActualValueBlur(option.id, factor.id)}
+                          keyboardType="decimal-pad"
+                        />
+                        {factor.unit ? (
+                          <View style={styles.unitSuffix}>
+                            <Text style={styles.unitSuffixText}>{factor.unit}</Text>
+                          </View>
+                        ) : null}
+                      </View>
                     </View>
 
                     {/* LMH Toggle Buttons + Custom */}
@@ -1809,6 +1969,137 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     fontSize: 13,
     color: COLORS.textPrimary,
+  },
+  // Unit selector styles (Step 2)
+  unitSelectorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 6,
+  },
+  unitSelectorLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: COLORS.textMuted,
+  },
+  unitChipsScroll: {
+    flex: 1,
+  },
+  unitChipsContainer: {
+    flexDirection: 'row',
+    gap: 5,
+    paddingRight: 8,
+  },
+  unitChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.background,
+  },
+  unitChipActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  unitChipClear: {
+    backgroundColor: 'rgba(239,68,68,0.08)',
+    borderColor: '#EF4444',
+    paddingHorizontal: 6,
+  },
+  unitChipCustom: {
+    borderStyle: 'dashed' as any,
+    borderColor: COLORS.primary,
+  },
+  unitChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  unitChipTextActive: {
+    color: COLORS.white,
+  },
+  unitBadgeSmall: {
+    backgroundColor: 'rgba(142,36,170,0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginRight: 8,
+  },
+  unitBadgeSmallText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+  customUnitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 8,
+  },
+  customUnitInput: {
+    flex: 1,
+    height: 36,
+    backgroundColor: COLORS.background,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    fontSize: 13,
+    color: COLORS.textPrimary,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  customUnitApplyBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  // Step 7 - Separated actual value + unit
+  actualValueRow: {
+    marginTop: 6,
+    marginBottom: 8,
+  },
+  actualValueInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.background,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  actualValueInput: {
+    flex: 1,
+    height: 38,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    color: COLORS.textPrimary,
+  },
+  unitSuffix: {
+    backgroundColor: 'rgba(142,36,170,0.1)',
+    paddingHorizontal: 10,
+    height: 38,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderLeftWidth: 1,
+    borderLeftColor: COLORS.border,
+  },
+  unitSuffixText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+  factorUnitBadge: {
+    backgroundColor: 'rgba(142,36,170,0.1)',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 8,
+    marginLeft: 6,
+  },
+  factorUnitBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: COLORS.primary,
   },
   lmhContainer: {
     flexDirection: 'row',
