@@ -1,79 +1,90 @@
 # View Dezider - Product Requirements Document
 
 ## Overview
-**View Dezider** is a decision intelligence mobile app based on Chapter 2 of "Be Your Best-mate" book by Venture Buddha. It helps users make better decisions through structured frameworks.
+Multi-user Decision Making App based on a 10-step Proactive Risk Response (PRR) framework with AI-driven features, Solution Tools, and Multi-tenant SaaS capabilities.
 
 ## Core Features
 
-### 1. PRR (Priority Related Ratings) Decision System
-- 10-step guided decision-making process
-- Steps: Context → List Factors → Classify → Prioritize → Calculate Ratings → Define Options → Assess Options → Results → Reflection → Final Notes
-- LMH (Low/Medium/High) quick assessment toggles
-- Custom percentage input for precise ratings
-- Voice command input support
-- Auto-calculated worth percentages with weighted average formula
-- Clone decisions at 5 levels (factors/classification/prioritization/options/assessment)
-- Template system with visibility (private/shared/public)
+### 1. 10-Step PRR Decision Flow
+- Modular step components (Step2-Step10)
+- DecisionContext for centralized state
+- Factor Grouping (Quantitative/Qualitative) with data source config (Webhook/AI/Web Surf)
 
-### 2. Test123 - Quick Decision Tool
-- 3-test instant decision framework
-- Test 1: Am I emotional? (emotional check)
-- Test 2: Worst case scenario analysis
-- Test 3: Core needs identification
+### 2. Solution Tools (P0 - NEW)
+#### Simple Solution Finder
+- 5-step structured problem-solving worksheet
+- Steps: Life Area & Goal → Concerns → Influence & Solutions → Risk Management → Action Plan
+- Fields: area_of_life, smart_goal, milestones, concerns, capabilities, resources, solutions, external help, risk management, action items
 
-### 3. Decision Mode Assessment
-- 12-question personality quiz
-- 4 decision modes: Emotional, Logical, Intuitive, Awareness
-- Score breakdown with visual charts
+#### Advanced Solution Matrix
+- 7-step extended analysis tool
+- Self/Micro/Macro matrix layers with 7 sub-areas each (Summary, Knowledge & Skills, Capacity, Time, People, Finance, Infrastructure)
+- 8 Solution Categories: Completely Solvable, Partially Solvable, Not Solvable, Patience Period, Accept & Let Go, Surrender & Trust, Surrender & Ignore, Surrender & Involve
+- 5 Solution Sources: Self, Well-wisher, Experienced, On-Demand Expert, Regular Coach
 
-### 4. Decision Journal
-- Track decisions and outcomes
-- Status tracking (Pending Review, Reviewed, Archived)
+### 3. WOWO Feature Flags (P0 - NEW)
+- Admin-controlled Wire On/Wire Off system
+- Toggle Solution Finder and Solution Matrix visibility
+- Admin UI in Settings page with Switch toggles
+- Dashboard conditionally renders Solution Tools section
 
-### 5. Admin System
-- 3-tier role hierarchy: super_admin > co_admin > admin > user
-- Template authorization (approve/revoke)
-- User role management (promote/demote)
+### 4. Admin Settings (P1)
+- Video Call Duration Configuration (5-120 min configurable)
+- Feature Flags management
+- Organization Branding management
 
-## Tech Stack
-- **Frontend**: Expo (React Native) with expo-router, TypeScript
-- **Backend**: FastAPI (Python) with Motor (async MongoDB)
-- **Database**: MongoDB
-- **Auth**: Email/password + Google OAuth
-- **Styling**: Venture Buddha branding with purple/magenta gradient theme
+### 5. Multi-tenant SaaS
+- Organization model with slug-based login
+- Per-org data isolation
+- Org-specific branding (logo, colors, tagline)
+- Org registration support on signup page
 
-## API Endpoints (34 total)
-All endpoints prefixed with `/api`
+### 6. AI Features
+- TEPFI Auto-mapping (via Emergent LLM)
+- CLD (Causal Loop Diagram) generation with visual editing
+- Factor Data Auto-fetch (Webhook/AI/Web Surf)
+- Web Surf uses real DuckDuckGo search + LLM synthesis
 
-### Auth (6)
-- POST /auth/register, /auth/login, /auth/forgot-password, /auth/reset-password, /auth/set-password
-- GET /auth/me
+### 7. Expert Video Calls
+- Jitsi Meet embedded video calls
+- Admin-configurable duration limits
+- Screen sharing support
 
-### Decisions (5)
-- POST /decisions, GET /decisions, GET /decisions/{id}, PUT /decisions/{id}, DELETE /decisions/{id}
+### 8. CLD Visual Editing (P2 - NEW)
+- Edit mode toggle on CLD diagram
+- Select and remove nodes
+- Add/remove links between nodes
+- Toggle link types (Reinforcing/Balancing)
+- Interactive link list management
 
-### Clone & Templates (6)
-- POST /decisions/{id}/clone, /templates, /templates/{id}/use, /templates/{id}/import
-- GET /templates, DELETE /templates/{id}
+## Architecture
+```
+/app
+├── backend/
+│   ├── server.py (Main app ~3100 lines)
+│   ├── core/ (Shared utilities)
+│   │   ├── database.py
+│   │   └── auth.py
+│   └── routes/ (Modular endpoints)
+│       ├── tools.py (Solution Finder + Matrix)
+│       └── admin.py (Feature Flags + Call Config)
+├── frontend/
+│   ├── app/
+│   │   ├── (tabs)/ (index, profile, prr)
+│   │   ├── admin/ (experts, templates, settings)
+│   │   ├── auth/ (login, register)
+│   │   ├── tools/ (solution-finder, solution-finder-list, solution-matrix, solution-matrix-list)
+│   │   └── prr/[id].tsx
+│   └── src/
+│       ├── components/ (steps/, CLDViewer, ExpertCallModal)
+│       ├── context/ (DecisionContext)
+│       └── store/ (authStore)
+```
 
-### Test123 (4)
-- POST /test123, GET /test123, GET /test123/{id}, PUT /test123/{id}
-
-### Assessment (3)
-- POST /assessment, GET /assessment, GET /assessment/questions
-
-### Journal (4)
-- POST /journal, GET /journal, PUT /journal/{id}, DELETE /journal/{id}
-
-### Stats (1)
-- GET /stats
-
-### Admin (5)
-- POST /admin/setup, /admin/promote/{id}, /admin/demote/{id}, /admin/templates/{id}/approve, /admin/templates/{id}/revoke
-- GET /admin/users
-
-## Status
-- Backend: All 34 API endpoints tested and working ✅
-- Frontend: All screens implemented and tested ✅
-- Shadow deprecation warnings fixed ✅
-- UI polish completed ✅
+## API Endpoints (New)
+- `GET/PUT /api/admin/feature-flags` - WOWO toggle
+- `GET /api/feature-flags` - Get flags (auth)
+- `GET /api/feature-flags/public` - Get flags (no auth)
+- `POST/GET/PUT/DELETE /api/solution-finders` - Solution Finder CRUD
+- `POST/GET/PUT/DELETE /api/solution-matrices` - Solution Matrix CRUD
+- `GET/PUT /api/admin/call-config` - Video call settings
