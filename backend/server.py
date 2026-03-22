@@ -2611,6 +2611,330 @@ Return ONLY valid JSON, no markdown."""
     return {"results": results}
 
 
+# ============= CLD (Causal Loop Diagram) Analysis =============
+
+@api_router.post("/cld/analyze")
+async def cld_analyze(request: Request, user: dict = Depends(get_current_user)):
+    """Generate a Causal Loop Diagram from factors and auto-derive Steps 3-5 values.
+    
+    Body: { decision_title, decision_context, life_area, decision_type, factors: [{id, name}] }
+    Returns: { cld: { nodes, links, loops }, classifications, priorities, ratings }
+    """
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    import json as json_module
+
+    body = await request.json()
+    title = body.get("decision_title", "")
+    context = body.get("decision_context", "")
+    life_area = body.get("life_area", "")
+    decision_type = body.get("decision_type", "")
+    factors = body.get("factors", [])
+
+    if len(factors) < 2:
+        raise HTTPException(status_code=400, detail="At least 2 factors required for CLD analysis")
+
+    api_key = os.getenv("EMERGENT_LLM_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="LLM key not configured")
+
+    factor_names = [f.get("name", "") for f in factors]
+    factor_ids = [f.get("id", "") for f in factors]
+    factor_list_str = "\n".join([f"  {i+1}. {name} (id: {fid})" for i, (name, fid) in enumerate(zip(factor_names, factor_ids))])
+
+    prompt = f"""Analyze the following decision factors using Causal Loop Diagram (CLD) methodology from Systems Thinking.
+
+Decision: {title}
+Context: {context}
+Life Area: {life_area}
+Decision Type: {decision_type}
+
+Factors:
+{factor_list_str}
+
+Perform the following analysis and return ONLY a valid JSON object:
+
+1. **CLD Links**: Identify causal relationships between factors. For each link:
+   - from_id: source factor id
+   - to_id: target factor id  
+   - type: "reinforcing" (same direction change) or "balancing" (opposite direction change)
+   - strength: 1-5 (how strong the causal link is)
+   - description: brief explanation of the causal relationship
+
+2. **CLD Loops**: Identify feedback loops (reinforcing R or balancing B):
+   - name: loop name (e.g., "R1: Growth Loop")
+   - type: "reinforcing" or "balancing"
+   - factor_ids: array of factor ids in the loop
+
+3. **Centrality Scores**: For each factor, compute a centrality score (0.0 to 1.0) based on:
+   - Number of incoming/outgoing links
+   - Participation in feedback loops
+   - Strength of connections
+
+4. **Classifications**: Based on centrality:
+   - centrality >= 0.5 → "primary" (essential, highly connected)
+   - centrality < 0.5 → "secondary" (supporting, less connected)
+
+5. **Priority Order**: Rank factors from most to least influential based on:
+   - Centrality score
+   - Number of reinforcing loops participated in
+   - Total link strength
+
+6. **Gap Multipliers**: For rating gaps (Step 5):
+   - Factors with much higher centrality than the one below → gap_multiplier 2.0-3.0
+   - Moderate difference → 1.0-1.5
+   - Small difference → 0.5-1.0
+
+Return this exact JSON structure:
+{{
+  "links": [
+    {{"from_id": "...", "to_id": "...", "type": "reinforcing|balancing", "strength": 1-5, "description": "..."}}
+  ],
+  "loops": [
+    {{"name": "R1: ...", "type": "reinforcing|balancing", "factor_ids": ["..."]}}
+  ],
+  "factor_analysis": [
+    {{
+      "factor_id": "...",
+      "factor_name": "...",
+      "centrality": 0.0-1.0,
+      "classification": "primary|secondary",
+      "priority_rank": 1,
+      "gap_multiplier": 0.5-3.0,
+      "reasoning": "brief explanation"
+    }}
+  ]
+}}
+
+Return ONLY valid JSON, no markdown fences, no explanation outside the JSON."""
+
+    try:
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"cld_{user['user_id']}_{uuid.uuid4().hex[:8]}",
+            system_message="You are an expert in Systems Thinking and Causal Loop Diagrams. Analyze factor relationships precisely."
+        ).with_model("openai", "gpt-4.1-mini")
+        
+        response = await chat.send_message(UserMessage(text=prompt))
+        response_text = response.strip()
+        if response_text.startswith("```"):
+            response_text = response_text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+        
+        cld_data = json_module.loads(response_text)
+        
+        # Build node positions (circular layout)
+        import math
+        n = len(factors)
+        nodes = []
+        for i, factor in enumerate(factors):
+            angle = (2 * math.pi * i) / n
+            fa = next((fa for fa in cld_data.get("factor_analysis", []) if fa["factor_id"] == factor["id"]), None)
+            nodes.append({
+                "factor_id": factor["id"],
+                "name": factor["name"],
+                "x": 200 + 140 * math.cos(angle),
+                "y": 200 + 140 * math.sin(angle),
+                "centrality": fa["centrality"] if fa else 0.5,
+                "classification": fa["classification"] if fa else "secondary",
+                "priority_rank": fa["priority_rank"] if fa else i + 1,
+                "gap_multiplier": fa["gap_multiplier"] if fa else 1.0,
+            })
+        
+        return {
+            "cld": {
+                "nodes": nodes,
+                "links": cld_data.get("links", []),
+                "loops": cld_data.get("loops", []),
+            },
+            "factor_analysis": cld_data.get("factor_analysis", []),
+        }
+    except json_module.JSONDecodeError as e:
+        raise HTTPException(status_code=500, detail=f"AI returned invalid JSON: {str(e)[:100]}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"CLD analysis failed: {str(e)[:200]}")
+
+
+# ============= Video Call Sessions (Expert Consultation) =============
+
+# Admin-configurable call duration limits
+DEFAULT_CALL_DURATION = 30  # minutes
+MIN_CALL_DURATION = 5
+MAX_CALL_DURATION = 120
+
+@api_router.get("/call-config")
+async def get_call_config():
+    """Get admin-configured call settings"""
+    config = await db.app_config.find_one({"key": "call_settings"}, {"_id": 0})
+    if not config:
+        return {
+            "min_duration": MIN_CALL_DURATION,
+            "max_duration": MAX_CALL_DURATION,
+            "default_duration": DEFAULT_CALL_DURATION,
+            "provider": "jitsi",
+            "jitsi_domain": "meet.jit.si",
+        }
+    return config.get("value", {})
+
+@api_router.put("/call-config")
+async def update_call_config(request: Request, user: dict = Depends(get_current_user)):
+    """Update call configuration (admin only)"""
+    if user.get("role") not in ADMIN_ROLES:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    body = await request.json()
+    config_value = {
+        "min_duration": max(5, min(body.get("min_duration", MIN_CALL_DURATION), 60)),
+        "max_duration": max(15, min(body.get("max_duration", MAX_CALL_DURATION), 180)),
+        "default_duration": body.get("default_duration", DEFAULT_CALL_DURATION),
+        "provider": body.get("provider", "jitsi"),
+        "jitsi_domain": body.get("jitsi_domain", "meet.jit.si"),
+    }
+    await db.app_config.update_one(
+        {"key": "call_settings"},
+        {"$set": {"key": "call_settings", "value": config_value}},
+        upsert=True
+    )
+    return {"message": "Call config updated", "config": config_value}
+
+@api_router.post("/call-sessions")
+async def create_call_session(request: Request, user: dict = Depends(get_current_user)):
+    """Create a new video call session with an expert.
+    
+    Body: {
+      expert_id, decision_id, step_number, duration_minutes,
+      step_name, share_screen_data (optional)
+    }
+    """
+    body = await request.json()
+    expert_id = body.get("expert_id")
+    decision_id = body.get("decision_id")
+    step_number = body.get("step_number", 0)
+    duration_minutes = body.get("duration_minutes", DEFAULT_CALL_DURATION)
+    
+    # Get call config
+    config = await db.app_config.find_one({"key": "call_settings"}, {"_id": 0})
+    config_val = config.get("value", {}) if config else {}
+    max_dur = config_val.get("max_duration", MAX_CALL_DURATION)
+    min_dur = config_val.get("min_duration", MIN_CALL_DURATION)
+    provider = config_val.get("provider", "jitsi")
+    jitsi_domain = config_val.get("jitsi_domain", "meet.jit.si")
+    
+    duration_minutes = max(min_dur, min(duration_minutes, max_dur))
+    
+    # Validate expert exists
+    if expert_id:
+        expert = await db.experts.find_one({"id": expert_id, "is_active": True}, {"_id": 0})
+        if not expert:
+            raise HTTPException(status_code=404, detail="Expert not found or inactive")
+    
+    # Generate unique room
+    room_id = f"prr-{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(minutes=duration_minutes)
+    
+    # Build provider-specific room URL
+    if provider == "jitsi":
+        room_url = f"https://{jitsi_domain}/{room_id}"
+    else:
+        room_url = f"https://{jitsi_domain}/{room_id}"  # Generic fallback
+    
+    # Get user info
+    user_doc = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "password_hash": 0})
+    
+    session_doc = {
+        "id": str(uuid.uuid4()),
+        "room_id": room_id,
+        "room_url": room_url,
+        "provider": provider,
+        "created_by": user["user_id"],
+        "creator_name": user_doc.get("name", "User") if user_doc else "User",
+        "expert_id": expert_id,
+        "decision_id": decision_id,
+        "step_number": step_number,
+        "step_name": body.get("step_name", f"Step {step_number}"),
+        "duration_minutes": duration_minutes,
+        "status": "active",
+        "created_at": now,
+        "expires_at": expires_at,
+        "ended_at": None,
+        "share_context": {
+            "decision_title": body.get("decision_title", ""),
+            "step_data": body.get("step_data"),
+        },
+    }
+    
+    await db.call_sessions.insert_one(session_doc)
+    
+    # Send notification to expert if push token exists
+    if expert_id:
+        expert = await db.experts.find_one({"id": expert_id}, {"_id": 0})
+        if expert and expert.get("email"):
+            # Create a notification for the expert
+            notif = {
+                "id": str(uuid.uuid4()),
+                "user_email": expert["email"],
+                "type": "call_invitation",
+                "title": f"Call Request from {session_doc['creator_name']}",
+                "body": f"Step {step_number}: {body.get('step_name', '')} - {body.get('decision_title', '')}",
+                "data": {
+                    "room_url": room_url,
+                    "session_id": session_doc["id"],
+                    "duration_minutes": duration_minutes,
+                    "expires_at": expires_at.isoformat(),
+                },
+                "read": False,
+                "created_at": now,
+            }
+            await db.notifications.insert_one(notif)
+    
+    return {
+        "session_id": session_doc["id"],
+        "room_id": room_id,
+        "room_url": room_url,
+        "provider": provider,
+        "duration_minutes": duration_minutes,
+        "expires_at": expires_at.isoformat(),
+    }
+
+@api_router.get("/call-sessions/{session_id}")
+async def get_call_session(session_id: str, user: dict = Depends(get_current_user)):
+    """Get call session details"""
+    session = await db.call_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    # Check if expired
+    if session.get("expires_at"):
+        expires_at = session["expires_at"]
+        if isinstance(expires_at, str):
+            expires_at = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
+        elif expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        
+        if datetime.now(timezone.utc) > expires_at:
+            if session["status"] == "active":
+                await db.call_sessions.update_one({"id": session_id}, {"$set": {"status": "expired"}})
+                session["status"] = "expired"
+    return session
+
+@api_router.put("/call-sessions/{session_id}/end")
+async def end_call_session(session_id: str, user: dict = Depends(get_current_user)):
+    """End a call session"""
+    result = await db.call_sessions.update_one(
+        {"id": session_id},
+        {"$set": {"status": "ended", "ended_at": datetime.now(timezone.utc)}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"message": "Call session ended"}
+
+@api_router.get("/call-sessions")
+async def list_call_sessions(user: dict = Depends(get_current_user), decision_id: str = None):
+    """List call sessions for the current user"""
+    query = {"created_by": user["user_id"]}
+    if decision_id:
+        query["decision_id"] = decision_id
+    sessions = await db.call_sessions.find(query, {"_id": 0}).sort("created_at", -1).to_list(50)
+    return sessions
+
+
 
 # ============= Decision Templates (Admin-curated Context Library) =============
 

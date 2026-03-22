@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -13,8 +13,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import VoiceStepInput from '../../src/components/VoiceStepInput';
 import ShareStepModal from '../../src/components/ShareStepModal';
+import CLDViewer from '../../src/components/CLDViewer';
+import ExpertCallModal from '../../src/components/ExpertCallModal';
 import { DecisionProvider, useDecision } from '../../src/context/DecisionContext';
 import { styles } from '../../src/styles/decisionStyles';
+import { calculateRatingsFromOrder } from '../../src/utils/decisionHelpers';
 
 // Step components
 import Step2 from '../../src/components/steps/Step2';
@@ -38,8 +41,46 @@ function PRRDecisionDetailInner() {
     setShareModalVisible,
     handleUniversalVoiceCommand,
     fetchDecision,
+    saveDecision,
     id,
   } = useDecision();
+
+  const [showCLD, setShowCLD] = useState(false);
+  const [showCallModal, setShowCallModal] = useState(false);
+
+  const handleCLDApply = (results: {
+    classifications: { [factorId: string]: 'primary' | 'secondary' };
+    priorities: { factorId: string; order: number }[];
+    gapMultipliers: { [factorId: string]: number };
+  }) => {
+    if (!decision) return;
+    let updatedFactors = decision.factors.map(f => {
+      const cls = results.classifications[f.id];
+      const priority = results.priorities.find(p => p.factorId === f.id);
+      const gapMult = results.gapMultipliers[f.id];
+      return {
+        ...f,
+        ...(cls ? { category: cls } : {}),
+        ...(priority !== undefined ? { order: priority.order } : {}),
+        ...(gapMult !== undefined ? { gap_multiplier: gapMult } : {}),
+      };
+    });
+    // Recalculate ratings based on new order and gaps
+    updatedFactors = calculateRatingsFromOrder(updatedFactors, decision.rating_gap_multiplier || 1.0);
+    saveDecision({ factors: updatedFactors });
+  };
+
+  const STEP_NAMES: { [key: number]: string } = {
+    2: 'Define Factors',
+    3: 'Classify Factors',
+    4: 'Prioritize',
+    5: 'Rate Importance',
+    6: 'Define Options',
+    7: 'Assess Options',
+    8: 'Results',
+    9: 'MPPS Analysis',
+    10: 'Final Decision',
+  };
 
   const renderStepIndicator = () => (
     <View style={styles.stepIndicator}>
@@ -61,6 +102,22 @@ function PRRDecisionDetailInner() {
         ))}
       </ScrollView>
       {saving && <ActivityIndicator size="small" color={COLORS.primary} style={styles.savingIndicator} />}
+      {/* CLD button - visible on Steps 3, 4, 5 */}
+      {[3, 4, 5].includes(currentStep) && (
+        <TouchableOpacity
+          style={[styles.shareStepBtn, { marginRight: 4, backgroundColor: '#F5F3FF' }]}
+          onPress={() => setShowCLD(true)}
+        >
+          <Ionicons name="git-network-outline" size={16} color={COLORS.primary} />
+        </TouchableOpacity>
+      )}
+      {/* Call Expert button */}
+      <TouchableOpacity
+        style={[styles.shareStepBtn, { marginRight: 4, backgroundColor: '#DCFCE7' }]}
+        onPress={() => setShowCallModal(true)}
+      >
+        <Ionicons name="videocam-outline" size={16} color="#16A34A" />
+      </TouchableOpacity>
       <TouchableOpacity
         style={styles.shareStepBtn}
         onPress={() => setShareModalVisible(true)}
@@ -126,14 +183,37 @@ function PRRDecisionDetailInner() {
           />
         )}
       </KeyboardAvoidingView>
+
       {/* Share Step Modal */}
       <ShareStepModal
         visible={shareModalVisible}
         onClose={() => setShareModalVisible(false)}
         decisionId={id}
         stepNumber={currentStep}
-        stepName={`Step ${currentStep}`}
+        stepName={STEP_NAMES[currentStep] || `Step ${currentStep}`}
         onShareSuccess={() => { fetchDecision(); }}
+      />
+
+      {/* CLD Viewer */}
+      <CLDViewer
+        visible={showCLD}
+        onClose={() => setShowCLD(false)}
+        factors={decision.factors}
+        decisionTitle={decision.title}
+        decisionContext={decision.context}
+        lifeArea={decision.life_area}
+        decisionType={decision.decision_type}
+        onApplyResults={handleCLDApply}
+      />
+
+      {/* Expert Call Modal */}
+      <ExpertCallModal
+        visible={showCallModal}
+        onClose={() => setShowCallModal(false)}
+        decisionId={id}
+        decisionTitle={decision.title}
+        stepNumber={currentStep}
+        stepName={STEP_NAMES[currentStep] || `Step ${currentStep}`}
       />
     </SafeAreaView>
   );

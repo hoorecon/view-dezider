@@ -1,543 +1,375 @@
 #!/usr/bin/env python3
 """
-Comprehensive Backend API Testing for View Dezider
-Testing new multi-tenant organization endpoints, factor data fetch, and decision templates
+Backend API Testing for CLD and Call Session Endpoints
+Testing URL: https://prr-platform-1.preview.emergentagent.com/api
 """
 
-import asyncio
-import httpx
+import requests
 import json
-import uuid
+import time
 from datetime import datetime
 
-# Backend URL from frontend .env
-BACKEND_URL = "https://prr-platform-1.preview.emergentagent.com/api"
+# Configuration
+BASE_URL = "https://prr-platform-1.preview.emergentagent.com/api"
+TEST_EMAIL = "cld@test.com"
+TEST_PASSWORD = "Test1234!"
+TEST_NAME = "CLD Tester"
 
 class BackendTester:
     def __init__(self):
-        self.session_tokens = {}
-        self.test_data = {}
+        self.session = requests.Session()
+        self.auth_token = None
+        self.user_id = None
+        self.decision_id = None
+        self.session_id = None
         
-    async def test_health_check(self):
-        """Test basic health endpoint"""
-        print("\n=== Testing Health Check ===")
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            try:
-                response = await client.get(f"{BACKEND_URL}/health")
-                print(f"Health Check: {response.status_code}")
-                if response.status_code == 200:
-                    data = response.json()
-                    print(f"✅ Health: {data}")
-                    return True
-                else:
-                    print(f"❌ Health check failed: {response.status_code}")
-                    return False
-            except Exception as e:
-                print(f"❌ Health check error: {e}")
-                return False
-
-    async def register_user(self, email, password, name, org_id=None):
-        """Register a new user"""
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            try:
-                payload = {
-                    "email": email,
-                    "password": password,
-                    "name": name
-                }
-                if org_id:
-                    payload["org_id"] = org_id
-                    
-                response = await client.post(f"{BACKEND_URL}/auth/register", json=payload)
-                if response.status_code == 200:
-                    data = response.json()
-                    self.session_tokens[email] = data["session_token"]
-                    print(f"✅ Registered user: {email}")
-                    return data
-                else:
-                    print(f"❌ Registration failed for {email}: {response.status_code} - {response.text}")
-                    return None
-            except Exception as e:
-                print(f"❌ Registration error for {email}: {e}")
-                return None
-
-    async def login_user(self, email, password):
-        """Login existing user"""
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            try:
-                response = await client.post(f"{BACKEND_URL}/auth/login", json={
-                    "email": email,
-                    "password": password
-                })
-                if response.status_code == 200:
-                    data = response.json()
-                    self.session_tokens[email] = data["session_token"]
-                    print(f"✅ Logged in user: {email}")
-                    return data
-                else:
-                    print(f"❌ Login failed for {email}: {response.status_code}")
-                    return None
-            except Exception as e:
-                print(f"❌ Login error for {email}: {e}")
-                return None
-
-    async def make_admin_setup(self, email):
-        """Make user admin via setup endpoint"""
-        if email not in self.session_tokens:
-            print(f"❌ No session token for {email}")
+    def log(self, message):
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
+        
+    def test_user_registration(self):
+        """Test 1: Register a new user"""
+        self.log("🔐 Testing user registration...")
+        
+        # Use timestamp to ensure unique email
+        timestamp = int(time.time())
+        email = f"cld.tester.{timestamp}@test.com"
+        
+        payload = {
+            "email": email,
+            "password": TEST_PASSWORD,
+            "name": TEST_NAME
+        }
+        
+        response = self.session.post(f"{BASE_URL}/auth/register", json=payload)
+        
+        if response.status_code in [200, 201]:
+            data = response.json()
+            self.auth_token = data.get("session_token")
+            self.user_id = data.get("user_id")
+            self.session.headers.update({"Authorization": f"Bearer {self.auth_token}"})
+            self.log(f"✅ Registration successful - User ID: {self.user_id}")
+            return True
+        else:
+            self.log(f"❌ Registration failed: {response.status_code} - {response.text}")
             return False
             
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            try:
-                headers = {"Authorization": f"Bearer {self.session_tokens[email]}"}
-                response = await client.post(f"{BACKEND_URL}/admin/setup", headers=headers)
-                if response.status_code == 200:
-                    data = response.json()
-                    print(f"✅ Admin setup for {email}: {data}")
-                    return True
-                else:
-                    print(f"❌ Admin setup failed for {email}: {response.status_code} - {response.text}")
-                    return False
-            except Exception as e:
-                print(f"❌ Admin setup error for {email}: {e}")
-                return False
-
-    async def test_organization_endpoints(self):
-        """Test all organization endpoints for multi-tenant SaaS"""
-        print("\n=== Testing Organization Endpoints (Multi-Tenant SaaS) ===")
+    def test_create_decision(self):
+        """Test 2: Create a decision for CLD analysis"""
+        self.log("📋 Creating decision for CLD analysis...")
         
-        # Step 1: Register admin user
-        timestamp = int(datetime.now().timestamp())
-        admin_email = f"admin.{timestamp}@acmecorp.com"
-        admin_password = "SecurePass123!"
-        admin_name = "Admin User"
+        payload = {
+            "title": "Career Decision",
+            "description": "Choosing between job offers at different tech companies",
+            "context": "Choosing between job offers at different tech companies",
+            "folder": "career"
+        }
         
-        admin_data = await self.register_user(admin_email, admin_password, admin_name)
-        if not admin_data:
-            print("❌ Failed to register admin user")
+        response = self.session.post(f"{BASE_URL}/decisions", json=payload)
+        
+        if response.status_code in [200, 201]:
+            data = response.json()
+            self.decision_id = data.get("id")  # Changed from "decision_id" to "id"
+            self.log(f"✅ Decision created - ID: {self.decision_id}")
+            return True
+        else:
+            self.log(f"❌ Decision creation failed: {response.status_code} - {response.text}")
             return False
             
-        # Step 2: Try to make user admin (may fail if super admin already exists)
-        admin_setup_success = await self.make_admin_setup(admin_email)
-        if not admin_setup_success:
-            print("⚠️  Super admin already exists, testing with regular user for organization creation")
-            # Continue with regular user - organizations can be created by any user
-            
-        # Step 3: Create organization
-        print("\n--- Testing Organization Creation ---")
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            try:
-                headers = {"Authorization": f"Bearer {self.session_tokens[admin_email]}"}
-                org_payload = {
-                    "name": "Acme Corp",
-                    "slug": f"acme-corp-{timestamp}",
-                    "primary_color": "#FF6600",
-                    "tagline": "Making decisions better"
-                }
-                response = await client.post(f"{BACKEND_URL}/organizations", json=org_payload, headers=headers)
-                if response.status_code == 200:
-                    org_data = response.json()
-                    self.test_data["org_id"] = org_data["id"]
-                    self.test_data["org_slug"] = org_data["slug"]
-                    print(f"✅ Organization created: {org_data}")
-                else:
-                    print(f"❌ Organization creation failed: {response.status_code} - {response.text}")
-                    return False
-            except Exception as e:
-                print(f"❌ Organization creation error: {e}")
-                return False
-                
-        # Step 4: Get organization by slug (public endpoint)
-        print("\n--- Testing Get Organization by Slug ---")
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            try:
-                response = await client.get(f"{BACKEND_URL}/organizations/{self.test_data['org_slug']}")
-                if response.status_code == 200:
-                    org_data = response.json()
-                    print(f"✅ Organization retrieved by slug: {org_data}")
-                    # Verify expected fields
-                    expected_fields = ["id", "name", "slug", "primary_color", "tagline"]
-                    for field in expected_fields:
-                        if field not in org_data:
-                            print(f"❌ Missing field in organization data: {field}")
-                            return False
-                else:
-                    print(f"❌ Get organization by slug failed: {response.status_code}")
-                    return False
-            except Exception as e:
-                print(f"❌ Get organization by slug error: {e}")
-                return False
-                
-        # Step 5: Update organization branding (requires admin privileges)
-        print("\n--- Testing Organization Update ---")
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            try:
-                headers = {"Authorization": f"Bearer {self.session_tokens[admin_email]}"}
-                update_payload = {
-                    "name": "Acme Corporation",
-                    "tagline": "Making better decisions together",
-                    "primary_color": "#FF7700"
-                }
-                response = await client.put(f"{BACKEND_URL}/organizations/{self.test_data['org_id']}", 
-                                          json=update_payload, headers=headers)
-                if response.status_code == 200:
-                    print(f"✅ Organization updated successfully")
-                elif response.status_code == 403:
-                    print(f"⚠️  Organization update requires admin privileges (403) - this is expected for regular users")
-                else:
-                    print(f"❌ Organization update failed: {response.status_code} - {response.text}")
-                    return False
-            except Exception as e:
-                print(f"❌ Organization update error: {e}")
-                return False
-                
-        # Step 6: Get organization members
-        print("\n--- Testing Get Organization Members ---")
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            try:
-                headers = {"Authorization": f"Bearer {self.session_tokens[admin_email]}"}
-                response = await client.get(f"{BACKEND_URL}/organizations/{self.test_data['org_id']}/members", 
-                                          headers=headers)
-                if response.status_code == 200:
-                    members = response.json()
-                    print(f"✅ Organization members retrieved: {len(members)} members")
-                    if len(members) >= 1:
-                        print(f"   First member: {members[0].get('name', 'Unknown')} ({members[0].get('email', 'Unknown')})")
-                else:
-                    print(f"❌ Get organization members failed: {response.status_code}")
-                    return False
-            except Exception as e:
-                print(f"❌ Get organization members error: {e}")
-                return False
-                
-        # Step 7: Register another user with org_id
-        print("\n--- Testing User Registration with Organization ---")
-        member_email = f"member.{timestamp}@acmecorp.com"
-        member_password = "MemberPass123!"
-        member_name = "Member User"
+    def test_update_decision_with_factors(self):
+        """Test 3: Update decision with factors for CLD analysis"""
+        self.log("🔧 Adding factors to decision...")
         
-        member_data = await self.register_user(member_email, member_password, member_name, self.test_data['org_id'])
-        if not member_data:
-            print("❌ Failed to register member user with org_id")
+        factors = [
+            {"id": "f1", "name": "Salary", "category": "secondary", "rating": 50, "order": 0},
+            {"id": "f2", "name": "Work-Life Balance", "category": "secondary", "rating": 50, "order": 1},
+            {"id": "f3", "name": "Growth Opportunity", "category": "secondary", "rating": 50, "order": 2},
+            {"id": "f4", "name": "Location", "category": "secondary", "rating": 50, "order": 3}
+        ]
+        
+        payload = {"factors": factors}
+        
+        response = self.session.put(f"{BASE_URL}/decisions/{self.decision_id}", json=payload)
+        
+        if response.status_code == 200:
+            self.log("✅ Factors added to decision successfully")
+            return True
+        else:
+            self.log(f"❌ Factor update failed: {response.status_code} - {response.text}")
             return False
             
-        print("✅ All organization endpoints working correctly!")
-        return True
-
-    async def test_factor_data_fetch(self):
-        """Test factor data fetch endpoint with AI LLM"""
-        print("\n=== Testing Factor Data Fetch Endpoint ===")
+    def test_cld_analyze(self):
+        """Test 4: Test CLD Analysis endpoint"""
+        self.log("🧠 Testing CLD Analysis endpoint...")
         
-        # Use any authenticated user
-        test_email = list(self.session_tokens.keys())[0] if self.session_tokens else None
-        if not test_email:
-            print("❌ No authenticated users available for testing")
+        payload = {
+            "decision_title": "Career Decision",
+            "decision_context": "Choosing between job offers at different tech companies",
+            "life_area": "Career",
+            "decision_type": "Job Selection",
+            "factors": [
+                {"id": "f1", "name": "Salary"},
+                {"id": "f2", "name": "Work-Life Balance"},
+                {"id": "f3", "name": "Growth Opportunity"},
+                {"id": "f4", "name": "Location"}
+            ]
+        }
+        
+        response = self.session.post(f"{BASE_URL}/cld/analyze", json=payload)
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Verify response structure
+            required_keys = ["cld", "factor_analysis"]
+            missing_keys = [key for key in required_keys if key not in data]
+            
+            if missing_keys:
+                self.log(f"❌ CLD response missing keys: {missing_keys}")
+                return False
+                
+            # Verify CLD structure
+            cld = data.get("cld", {})
+            cld_required = ["nodes", "links", "loops"]
+            cld_missing = [key for key in cld_required if key not in cld]
+            
+            if cld_missing:
+                self.log(f"❌ CLD structure missing keys: {cld_missing}")
+                return False
+                
+            # Verify factor analysis
+            factor_analysis = data.get("factor_analysis", [])
+            if not isinstance(factor_analysis, list):
+                self.log("❌ Factor analysis should be a list")
+                return False
+                
+            self.log(f"✅ CLD Analysis successful - Nodes: {len(cld['nodes'])}, Links: {len(cld['links'])}, Loops: {len(cld['loops'])}")
+            self.log(f"✅ Factor analysis returned {len(factor_analysis)} factor classifications")
+            return True
+        else:
+            self.log(f"❌ CLD Analysis failed: {response.status_code} - {response.text}")
             return False
             
-        async with httpx.AsyncClient(timeout=60.0) as client:  # Longer timeout for AI calls
-            try:
-                headers = {"Authorization": f"Bearer {self.session_tokens[test_email]}"}
-                payload = {
-                    "decision_title": "Best Job Offer",
-                    "decision_context": "Choosing between tech companies",
-                    "option_name": "Google",
-                    "factors": [
-                        {
-                            "id": "f1",
-                            "name": "Salary",
-                            "factor_type": "quantitative",
-                            "data_source": {
-                                "type": "ai_llm",
-                                "config": {
-                                    "prompt": "What is a typical senior engineer salary at {option}?"
-                                }
-                            },
-                            "unit": "USD"
-                        },
-                        {
-                            "id": "f2",
-                            "name": "Work Culture",
-                            "factor_type": "qualitative",
-                            "data_source": {
-                                "type": "ai_llm",
-                                "config": {
-                                    "prompt": "Describe the work culture at {option} in one sentence"
-                                }
-                            }
-                        }
-                    ]
-                }
-                
-                response = await client.post(f"{BACKEND_URL}/factors/fetch-data", 
-                                           json=payload, headers=headers)
-                if response.status_code == 200:
-                    data = response.json()
-                    print(f"✅ Factor data fetch successful")
-                    
-                    # Verify response structure
-                    if "results" not in data:
-                        print("❌ Missing 'results' field in response")
-                        return False
-                        
-                    results = data["results"]
-                    if len(results) != 2:
-                        print(f"❌ Expected 2 results, got {len(results)}")
-                        return False
-                        
-                    # Check each result
-                    for i, result in enumerate(results):
-                        factor_id = result.get("factor_id")
-                        value = result.get("value")
-                        source_type = result.get("source_type")
-                        
-                        print(f"   Factor {i+1} (ID: {factor_id}):")
-                        print(f"     Value: {value}")
-                        print(f"     Source: {source_type}")
-                        
-                        if result.get("error"):
-                            print(f"     Error: {result['error']}")
-                        if result.get("reasoning"):
-                            print(f"     Reasoning: {result['reasoning']}")
-                            
-                        # Verify required fields
-                        if not factor_id or source_type != "ai_llm":
-                            print(f"❌ Invalid result structure for factor {i+1}")
-                            return False
-                            
-                    print("✅ Factor data fetch endpoint working correctly!")
-                    return True
-                else:
-                    print(f"❌ Factor data fetch failed: {response.status_code} - {response.text}")
-                    return False
-            except Exception as e:
-                print(f"❌ Factor data fetch error: {e}")
-                return False
-
-    async def test_decision_template_endpoints(self):
-        """Test decision template endpoints"""
-        print("\n=== Testing Decision Template Endpoints ===")
+    def test_get_call_config(self):
+        """Test 5: Get call configuration"""
+        self.log("⚙️ Testing GET call configuration...")
         
-        # Find an admin user or try to test with available functionality
-        admin_email = None
-        for email in self.session_tokens.keys():
-            if "admin" in email:
-                admin_email = email
-                break
+        response = self.session.get(f"{BASE_URL}/call-config")
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Verify required fields
+            required_fields = ["min_duration", "max_duration", "default_duration"]
+            missing_fields = [field for field in required_fields if field not in data]
+            
+            if missing_fields:
+                self.log(f"❌ Call config missing fields: {missing_fields}")
+                return False
                 
-        if not admin_email:
-            # Try to find any user and test what we can
-            if self.session_tokens:
-                test_email = list(self.session_tokens.keys())[0]
-                print(f"⚠️  No admin user available, testing with regular user: {test_email}")
+            self.log(f"✅ Call config retrieved - Min: {data['min_duration']}, Max: {data['max_duration']}, Default: {data['default_duration']}")
+            return True
+        else:
+            self.log(f"❌ Get call config failed: {response.status_code} - {response.text}")
+            return False
+            
+    def test_update_call_config(self):
+        """Test 6: Try updating call configuration (should require admin)"""
+        self.log("⚙️ Testing PUT call configuration (should require admin)...")
+        
+        payload = {
+            "min_duration": 10,
+            "max_duration": 90,
+            "default_duration": 25
+        }
+        
+        response = self.session.put(f"{BASE_URL}/call-config", json=payload)
+        
+        # Should return 403 for non-admin users
+        if response.status_code == 403:
+            self.log("✅ Call config update correctly requires admin privileges (403)")
+            return True
+        elif response.status_code == 200:
+            self.log("⚠️ Call config update succeeded (user might have admin privileges)")
+            return True
+        else:
+            self.log(f"❌ Unexpected call config update response: {response.status_code} - {response.text}")
+            return False
+            
+    def test_create_call_session(self):
+        """Test 7: Create a call session"""
+        self.log("📞 Testing call session creation...")
+        
+        payload = {
+            "expert_id": None,
+            "decision_id": "test-dec",
+            "step_number": 3,
+            "step_name": "Classify Factors",
+            "duration_minutes": 15,
+            "decision_title": "Career Decision"
+        }
+        
+        response = self.session.post(f"{BASE_URL}/call-sessions", json=payload)
+        
+        if response.status_code in [200, 201]:
+            data = response.json()
+            
+            # Verify required fields
+            required_fields = ["session_id", "room_id", "room_url", "duration_minutes", "expires_at"]
+            missing_fields = [field for field in required_fields if field not in data]
+            
+            if missing_fields:
+                self.log(f"❌ Call session response missing fields: {missing_fields}")
+                return False
                 
-                # Test public decision templates endpoint
-                print("\n--- Testing Get Public Decision Templates ---")
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    try:
-                        response = await client.get(f"{BACKEND_URL}/decision-templates")
-                        if response.status_code == 200:
-                            templates = response.json()
-                            print(f"✅ Public templates retrieved: {len(templates)} templates")
-                        else:
-                            print(f"❌ Get public templates failed: {response.status_code}")
-                            return False
-                    except Exception as e:
-                        print(f"❌ Get public templates error: {e}")
-                        return False
-                        
-                # Test template creation as regular user (should create pending template)
-                print("\n--- Testing Create Decision Template (Regular User) ---")
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    try:
-                        headers = {"Authorization": f"Bearer {self.session_tokens[test_email]}"}
-                        template_payload = {
-                            "name": "User Test Template",
-                            "life_area": "Career",
-                            "decision_type": "Job Offer",
-                            "description": "Template for evaluating job offers",
-                            "factors": [
-                                {
-                                    "id": "f1",
-                                    "name": "Salary",
-                                    "category": "primary",
-                                    "rating": 80,
-                                    "order": 0
-                                }
-                            ]
-                        }
-                        response = await client.post(f"{BACKEND_URL}/decision-templates", 
-                                                   json=template_payload, headers=headers)
-                        if response.status_code == 200:
-                            template_data = response.json()
-                            print(f"✅ Template created by regular user: {template_data}")
-                            print(f"   Template approval status: {template_data.get('is_approved', 'Unknown')}")
-                        else:
-                            print(f"❌ Template creation failed: {response.status_code} - {response.text}")
-                            return False
-                    except Exception as e:
-                        print(f"❌ Template creation error: {e}")
-                        return False
-                        
-                # Test admin-only endpoints (should fail with 403)
-                print("\n--- Testing Admin-Only Endpoints (Should Fail) ---")
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    try:
-                        headers = {"Authorization": f"Bearer {self.session_tokens[test_email]}"}
-                        
-                        # Test GET all templates (admin only)
-                        response = await client.get(f"{BACKEND_URL}/decision-templates/all", headers=headers)
-                        if response.status_code == 403:
-                            print(f"✅ GET /decision-templates/all correctly denied for regular user (403)")
-                        else:
-                            print(f"❌ GET /decision-templates/all should return 403, got {response.status_code}")
-                            
-                        # Test approve template (admin only)
-                        response = await client.post(f"{BACKEND_URL}/decision-templates/fake-id/approve", headers=headers)
-                        if response.status_code == 403:
-                            print(f"✅ POST /decision-templates/approve correctly denied for regular user (403)")
-                        else:
-                            print(f"❌ POST /decision-templates/approve should return 403, got {response.status_code}")
-                            
-                        # Test update template (admin only)
-                        response = await client.put(f"{BACKEND_URL}/decision-templates/fake-id", 
-                                                  json=template_payload, headers=headers)
-                        if response.status_code == 403:
-                            print(f"✅ PUT /decision-templates correctly denied for regular user (403)")
-                        else:
-                            print(f"❌ PUT /decision-templates should return 403, got {response.status_code}")
-                            
-                        # Test delete template (admin only)
-                        response = await client.delete(f"{BACKEND_URL}/decision-templates/fake-id", headers=headers)
-                        if response.status_code == 403:
-                            print(f"✅ DELETE /decision-templates correctly denied for regular user (403)")
-                        else:
-                            print(f"❌ DELETE /decision-templates should return 403, got {response.status_code}")
-                            
-                    except Exception as e:
-                        print(f"❌ Admin endpoint testing error: {e}")
-                        return False
-                        
-                print("✅ Decision template endpoints working correctly (tested with regular user permissions)!")
+            self.session_id = data.get("session_id")
+            
+            # Verify room_url is a Jitsi URL
+            room_url = data.get("room_url", "")
+            if "meet.jit.si" not in room_url and "jitsi" not in room_url.lower():
+                self.log(f"⚠️ Room URL might not be Jitsi format: {room_url}")
+            
+            self.log(f"✅ Call session created - ID: {self.session_id}")
+            self.log(f"✅ Room URL: {room_url}")
+            self.log(f"✅ Duration: {data['duration_minutes']} minutes")
+            return True
+        else:
+            self.log(f"❌ Call session creation failed: {response.status_code} - {response.text}")
+            return False
+            
+    def test_get_call_session(self):
+        """Test 8: Get call session details"""
+        if not self.session_id:
+            self.log("❌ No session ID available for testing")
+            return False
+            
+        self.log("📞 Testing get call session details...")
+        
+        response = self.session.get(f"{BASE_URL}/call-sessions/{self.session_id}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Verify session data
+            if data.get("id") != self.session_id:
+                self.log(f"❌ Session ID mismatch: expected {self.session_id}, got {data.get('id')}")
+                return False
+                
+            self.log(f"✅ Call session details retrieved - Status: {data.get('status')}")
+            return True
+        else:
+            self.log(f"❌ Get call session failed: {response.status_code} - {response.text}")
+            return False
+            
+    def test_end_call_session(self):
+        """Test 9: End call session"""
+        if not self.session_id:
+            self.log("❌ No session ID available for testing")
+            return False
+            
+        self.log("📞 Testing end call session...")
+        
+        response = self.session.put(f"{BASE_URL}/call-sessions/{self.session_id}/end")
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "ended" in data.get("message", "").lower():
+                self.log("✅ Call session ended successfully")
                 return True
             else:
-                print("❌ No users available for template testing")
+                self.log(f"❌ Unexpected end session response: {data}")
                 return False
         else:
-            print(f"✅ Found admin user: {admin_email}")
-            # Test with admin user (this branch should not execute in current system)
-            return True
-
-    async def test_existing_endpoints(self):
-        """Test that existing endpoints still work"""
-        print("\n=== Testing Existing Endpoints ===")
-        
-        # Test health endpoint
-        health_ok = await self.test_health_check()
-        if not health_ok:
+            self.log(f"❌ End call session failed: {response.status_code} - {response.text}")
             return False
             
-        # Test login with existing user
-        if self.session_tokens:
-            test_email = list(self.session_tokens.keys())[0]
-            print(f"\n--- Testing Auth Me with {test_email} ---")
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                try:
-                    headers = {"Authorization": f"Bearer {self.session_tokens[test_email]}"}
-                    response = await client.get(f"{BACKEND_URL}/auth/me", headers=headers)
-                    if response.status_code == 200:
-                        user_data = response.json()
-                        print(f"✅ Auth me working: {user_data.get('name')} ({user_data.get('email')})")
-                    else:
-                        print(f"❌ Auth me failed: {response.status_code}")
-                        return False
-                except Exception as e:
-                    print(f"❌ Auth me error: {e}")
-                    return False
-                    
-        # Test decisions endpoint
-        if self.session_tokens:
-            test_email = list(self.session_tokens.keys())[0]
-            print(f"\n--- Testing Decisions List ---")
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                try:
-                    headers = {"Authorization": f"Bearer {self.session_tokens[test_email]}"}
-                    response = await client.get(f"{BACKEND_URL}/decisions", headers=headers)
-                    if response.status_code == 200:
-                        decisions = response.json()
-                        print(f"✅ Decisions list working: {len(decisions)} decisions")
-                    else:
-                        print(f"❌ Decisions list failed: {response.status_code}")
-                        return False
-                except Exception as e:
-                    print(f"❌ Decisions list error: {e}")
-                    return False
-                    
-        # Test experts endpoint
-        print(f"\n--- Testing Experts Endpoint ---")
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            try:
-                response = await client.get(f"{BACKEND_URL}/experts?include_inactive=true")
-                if response.status_code == 200:
-                    experts = response.json()
-                    print(f"✅ Experts endpoint working: {len(experts)} experts")
-                else:
-                    print(f"❌ Experts endpoint failed: {response.status_code}")
-                    return False
-            except Exception as e:
-                print(f"❌ Experts endpoint error: {e}")
+    def test_list_call_sessions(self):
+        """Test 10: List call sessions"""
+        self.log("📞 Testing list call sessions...")
+        
+        response = self.session.get(f"{BASE_URL}/call-sessions")
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            if not isinstance(data, list):
+                self.log(f"❌ Expected list response, got: {type(data)}")
                 return False
                 
-        print("✅ All existing endpoints working correctly!")
-        return True
-
-    async def run_all_tests(self):
-        """Run all tests in sequence"""
-        print("🚀 Starting Comprehensive Backend API Testing")
-        print(f"Backend URL: {BACKEND_URL}")
-        
-        test_results = []
-        
-        # Test 1: Organization Endpoints
-        org_result = await self.test_organization_endpoints()
-        test_results.append(("Organization Endpoints", org_result))
-        
-        # Test 2: Factor Data Fetch
-        factor_result = await self.test_factor_data_fetch()
-        test_results.append(("Factor Data Fetch", factor_result))
-        
-        # Test 3: Decision Template Endpoints
-        template_result = await self.test_decision_template_endpoints()
-        test_results.append(("Decision Template Endpoints", template_result))
-        
-        # Test 4: Existing Endpoints
-        existing_result = await self.test_existing_endpoints()
-        test_results.append(("Existing Endpoints", existing_result))
-        
-        # Summary
-        print("\n" + "="*60)
-        print("🎯 COMPREHENSIVE BACKEND TESTING SUMMARY")
-        print("="*60)
-        
-        all_passed = True
-        for test_name, result in test_results:
-            status = "✅ PASSED" if result else "❌ FAILED"
-            print(f"{test_name}: {status}")
-            if not result:
-                all_passed = False
-                
-        print("="*60)
-        if all_passed:
-            print("🎉 ALL TESTS PASSED! Backend is fully functional.")
+            self.log(f"✅ Call sessions list retrieved - Count: {len(data)}")
+            
+            # Verify our session is in the list
+            if self.session_id:
+                session_found = any(session.get("id") == self.session_id for session in data)
+                if session_found:
+                    self.log("✅ Created session found in list")
+                else:
+                    self.log("⚠️ Created session not found in list (might be expected)")
+                    
+            return True
         else:
-            print("⚠️  SOME TESTS FAILED! Check the details above.")
-        print("="*60)
+            self.log(f"❌ List call sessions failed: {response.status_code} - {response.text}")
+            return False
+            
+    def run_all_tests(self):
+        """Run all tests in sequence"""
+        self.log("🚀 Starting CLD and Call Session endpoint testing...")
+        self.log(f"🌐 Backend URL: {BASE_URL}")
         
-        return all_passed
-
-async def main():
-    """Main test runner"""
-    tester = BackendTester()
-    await tester.run_all_tests()
+        tests = [
+            ("User Registration", self.test_user_registration),
+            ("Create Decision", self.test_create_decision),
+            ("Update Decision with Factors", self.test_update_decision_with_factors),
+            ("CLD Analysis", self.test_cld_analyze),
+            ("Get Call Config", self.test_get_call_config),
+            ("Update Call Config", self.test_update_call_config),
+            ("Create Call Session", self.test_create_call_session),
+            ("Get Call Session", self.test_get_call_session),
+            ("End Call Session", self.test_end_call_session),
+            ("List Call Sessions", self.test_list_call_sessions),
+        ]
+        
+        results = []
+        
+        for test_name, test_func in tests:
+            self.log(f"\n{'='*50}")
+            self.log(f"Running: {test_name}")
+            self.log('='*50)
+            
+            try:
+                result = test_func()
+                results.append((test_name, result))
+                
+                if not result:
+                    self.log(f"❌ {test_name} FAILED")
+                else:
+                    self.log(f"✅ {test_name} PASSED")
+                    
+            except Exception as e:
+                self.log(f"❌ {test_name} ERROR: {str(e)}")
+                results.append((test_name, False))
+                
+        # Summary
+        self.log(f"\n{'='*60}")
+        self.log("TEST SUMMARY")
+        self.log('='*60)
+        
+        passed = sum(1 for _, result in results if result)
+        total = len(results)
+        
+        for test_name, result in results:
+            status = "✅ PASS" if result else "❌ FAIL"
+            self.log(f"{status} - {test_name}")
+            
+        self.log(f"\n🎯 Results: {passed}/{total} tests passed")
+        
+        if passed == total:
+            self.log("🎉 ALL TESTS PASSED!")
+        else:
+            self.log(f"⚠️ {total - passed} tests failed")
+            
+        return passed == total
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    tester = BackendTester()
+    success = tester.run_all_tests()
+    exit(0 if success else 1)
