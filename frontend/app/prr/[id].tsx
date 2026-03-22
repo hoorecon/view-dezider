@@ -510,29 +510,34 @@ export default function PRRDecisionDetail() {
     );
   }
 
+  const isCompleted = decision.status === 'completed';
+
   const renderStepIndicator = () => (
     <View style={styles.stepIndicator}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
-        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((step) => (
-          <TouchableOpacity
-            key={step}
-            style={[
-              styles.stepDot,
-              step <= currentStep && styles.stepDotActive,
-              step === currentStep && styles.stepDotCurrent,
-            ]}
-            onPress={() => step <= currentStep && setCurrentStep(step)}
-          >
-            <Text
+        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((step) => {
+          const canNavigate = isCompleted || step <= currentStep;
+          return (
+            <TouchableOpacity
+              key={step}
               style={[
-                styles.stepDotText,
-                step <= currentStep && styles.stepDotTextActive,
+                styles.stepDot,
+                canNavigate && styles.stepDotActive,
+                step === currentStep && styles.stepDotCurrent,
               ]}
+              onPress={() => canNavigate && setCurrentStep(step)}
             >
-              {step}
-            </Text>
-          </TouchableOpacity>
-        ))}
+              <Text
+                style={[
+                  styles.stepDotText,
+                  canNavigate && styles.stepDotTextActive,
+                ]}
+              >
+                {step}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
       <TouchableOpacity
         style={styles.shareStepBtn}
