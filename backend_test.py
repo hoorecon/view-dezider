@@ -1,785 +1,474 @@
 #!/usr/bin/env python3
 """
-Backend Testing Script for View Dezider API
-Testing Focus Areas: Health Check, Notification System, Folder Analytics
+Enhanced MPPS and Decision Templates API Testing
+Testing the enhanced MPPS fields and Decision Templates CRUD operations
 """
 
 import requests
 import json
 import time
-from datetime import datetime
-from typing import Dict, Any, List
+import uuid
+from datetime import datetime, timezone
 
-# Use the production URL from frontend/.env
+# Backend URL from environment
 BACKEND_URL = "https://dezider-multi-user.preview.emergentagent.com/api"
 
-class TestResults:
+class TestEnhancedMPPSAndTemplates:
     def __init__(self):
-        self.passed = 0
-        self.failed = 0
-        self.results = []
-    
-    def log(self, test_name: str, success: bool, details: str = ""):
-        status = "✅ PASSED" if success else "❌ FAILED"
-        self.results.append(f"{status}: {test_name}")
-        if details:
-            self.results.append(f"   {details}")
-        if success:
-            self.passed += 1
-        else:
-            self.failed += 1
-        print(f"{status}: {test_name}")
-        if details:
-            print(f"   {details}")
-
-def register_user(email: str, password: str, name: str) -> Dict[str, Any]:
-    """Register a new user and return user data with session token"""
-    data = {
-        "email": email,
-        "password": password,
-        "name": name
-    }
-    
-    response = requests.post(f"{BACKEND_URL}/auth/register", json=data)
-    if response.status_code == 200:
-        return response.json()
-    else:
-        raise Exception(f"Registration failed: {response.status_code} {response.text}")
-
-def create_decision(session_token: str, title: str, context: str, folder: str) -> str:
-    """Create a PRR decision and return decision_id"""
-    headers = {"Authorization": f"Bearer {session_token}"}
-    data = {
-        "title": title,
-        "context": context,
-        "folder": folder
-    }
-    
-    response = requests.post(f"{BACKEND_URL}/decisions", json=data, headers=headers)
-    if response.status_code == 200:
-        return response.json()["id"]
-    else:
-        raise Exception(f"Decision creation failed: {response.status_code} {response.text}")
-
-def add_factors_and_options_to_decision(session_token: str, decision_id: str):
-    """Add factors and options to a decision for testing"""
-    headers = {"Authorization": f"Bearer {session_token}"}
-    
-    # Add factors
-    factors = [
-        {"id": "f1", "name": "Salary", "category": "primary", "rating": 80, "order": 1},
-        {"id": "f2", "name": "Work-Life Balance", "category": "primary", "rating": 90, "order": 2},
-        {"id": "f3", "name": "Growth Opportunities", "category": "secondary", "rating": 70, "order": 3}
-    ]
-    
-    # Add options with assessments
-    options = [
-        {
-            "id": "o1",
-            "name": "Job A - Tech Startup",
-            "assessments": [
-                {"factor_id": "f1", "percentage": 85, "assessment_mode": "H"},
-                {"factor_id": "f2", "percentage": 60, "assessment_mode": "M"},
-                {"factor_id": "f3", "percentage": 90, "assessment_mode": "H"}
-            ]
-        },
-        {
-            "id": "o2",
-            "name": "Job B - Corporate",
-            "assessments": [
-                {"factor_id": "f1", "percentage": 95, "assessment_mode": "H"},
-                {"factor_id": "f2", "percentage": 40, "assessment_mode": "L"},
-                {"factor_id": "f3", "percentage": 50, "assessment_mode": "M"}
-            ]
-        }
-    ]
-    
-    update_data = {
-        "factors": factors,
-        "options": options,
-        "status": "completed"
-    }
-    
-    response = requests.put(f"{BACKEND_URL}/decisions/{decision_id}", json=update_data, headers=headers)
-    if response.status_code != 200:
-        raise Exception(f"Decision update failed: {response.status_code} {response.text}")
-
-def test_health_check(results: TestResults):
-    """Test the health check endpoint"""
-    print("\n=== TESTING HEALTH CHECK ENDPOINT ===")
-    
-    try:
-        response = requests.get(f"{BACKEND_URL}/health", timeout=10)
+        self.session = requests.Session()
+        self.user_token = None
+        self.admin_token = None
+        self.decision_id = None
+        self.template_id = None
         
-        if response.status_code == 200:
-            data = response.json()
-            required_fields = ["status", "timestamp"]
-            
-            if all(field in data for field in required_fields):
-                if data["status"] == "healthy":
-                    results.log("Health Check Response Format", True, f'Status: {data["status"]}, Timestamp: {data["timestamp"]}')
-                else:
-                    results.log("Health Check Response Format", False, f'Expected status "healthy", got "{data["status"]}"')
-            else:
-                missing_fields = [f for f in required_fields if f not in data]
-                results.log("Health Check Response Format", False, f"Missing fields: {missing_fields}")
-        else:
-            results.log("Health Check Endpoint", False, f"HTTP {response.status_code}: {response.text}")
-    
-    except requests.exceptions.RequestException as e:
-        results.log("Health Check Endpoint", False, f"Request failed: {str(e)}")
-
-def test_notification_system(results: TestResults):
-    """Test the complete notification system flow"""
-    print("\n=== TESTING NOTIFICATION SYSTEM APIs ===")
-    
-    try:
-        # Generate unique timestamps for user emails
-        timestamp = str(int(time.time()))
+    def log(self, message):
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
         
-        # Step 1: Register two users
-        user_a_data = register_user(
-            f"alice.tester.{timestamp}@careerpath.com",
-            "securepass123",
-            f"Alice Tester {timestamp}"
-        )
-        user_a_token = user_a_data["session_token"]
-        user_a_email = user_a_data["email"]
+    def test_user_registration_and_login(self):
+        """Test 1: Register a user and login"""
+        self.log("🔐 Testing user registration and login...")
         
-        user_b_data = register_user(
-            f"bob.tester.{timestamp}@careerpath.com", 
-            "securepass123",
-            f"Bob Tester {timestamp}"
-        )
-        user_b_token = user_b_data["session_token"]
-        user_b_email = user_b_data["email"]
+        # Generate unique email
+        timestamp = int(time.time())
+        email = f"mpps.tester.{timestamp}@careerpath.com"
         
-        results.log("User Registration for Testing", True, f"Created users: {user_a_data['name']} and {user_b_data['name']}")
-        
-        # Step 2: User A creates a decision with folder, factors, and options
-        decision_id = create_decision(
-            user_a_token,
-            "Career Change Decision - Should I Switch Jobs?",
-            "Evaluating whether to leave my current position for a new opportunity",
-            "career"
-        )
-        
-        add_factors_and_options_to_decision(user_a_token, decision_id)
-        results.log("Decision Creation with Factors/Options", True, f"Decision ID: {decision_id}")
-        
-        # Step 3: User A shares step 7 with User B
-        share_data = {
-            "decision_id": decision_id,
-            "step_number": 7,
-            "recipient_emails": [user_b_email],
-            "merge_mode": "self_weighted",
-            "message": "Please help me evaluate these job options!"
+        # Register user
+        register_data = {
+            "email": email,
+            "password": "securepass123",
+            "name": "MPPS Tester"
         }
         
-        headers_a = {"Authorization": f"Bearer {user_a_token}"}
-        response = requests.post(f"{BACKEND_URL}/decisions/{decision_id}/share-step", json=share_data, headers=headers_a)
-        
-        if response.status_code == 200:
-            share_id = response.json()["id"]
-            results.log("Step Sharing (creates notification)", True, f"Share ID: {share_id}")
-        else:
-            results.log("Step Sharing", False, f"HTTP {response.status_code}: {response.text}")
-            return
-        
-        # Wait a moment for notification creation
-        time.sleep(1)
-        
-        # Step 4: Check User B's notifications
-        headers_b = {"Authorization": f"Bearer {user_b_token}"}
-        response = requests.get(f"{BACKEND_URL}/notifications", headers=headers_b)
-        
-        if response.status_code == 200:
-            notifications = response.json()
-            share_invite_notifications = [n for n in notifications if n["type"] == "share_invite"]
+        response = self.session.post(f"{BACKEND_URL}/auth/register", json=register_data)
+        if response.status_code != 200:
+            raise Exception(f"Registration failed: {response.status_code} - {response.text}")
             
-            if share_invite_notifications:
-                notif = share_invite_notifications[0]
-                results.log("Get Notifications (share_invite)", True, f'Found notification: "{notif["title"]}" - {notif["message"]}')
-                notif_id = notif["id"]
-            else:
-                results.log("Get Notifications (share_invite)", False, "No share_invite notification found")
-                return
-        else:
-            results.log("Get Notifications", False, f"HTTP {response.status_code}: {response.text}")
-            return
+        result = response.json()
+        self.user_token = result["session_token"]
+        self.log(f"✅ User registered successfully: {email}")
         
-        # Step 5: Check User B's unread count
-        response = requests.get(f"{BACKEND_URL}/notifications/unread-count", headers=headers_b)
+        # Set authorization header
+        self.session.headers.update({"Authorization": f"Bearer {self.user_token}"})
         
-        if response.status_code == 200:
-            unread_data = response.json()
-            if unread_data.get("count", 0) >= 1:
-                results.log("Unread Count Check", True, f'Unread count: {unread_data["count"]}')
-            else:
-                results.log("Unread Count Check", False, f'Expected ≥1 unread, got {unread_data.get("count", 0)}')
-        else:
-            results.log("Unread Count Check", False, f"HTTP {response.status_code}: {response.text}")
+        return True
         
-        # Step 6: Mark notification as read
-        response = requests.post(f"{BACKEND_URL}/notifications/{notif_id}/read", headers=headers_b)
+    def test_create_decision_with_factors(self):
+        """Test 2: Create a decision with factors and options"""
+        self.log("📋 Testing decision creation with factors...")
         
-        if response.status_code == 200:
-            results.log("Mark Notification Read", True, response.json().get("message", "Success"))
-        else:
-            results.log("Mark Notification Read", False, f"HTTP {response.status_code}: {response.text}")
+        # Create decision
+        decision_data = {
+            "title": "Enhanced MPPS Career Decision",
+            "context": "Testing enhanced MPPS features with action items and timeframes",
+            "folder": "career"
+        }
         
-        # Step 7: Verify unread count is now 0
-        response = requests.get(f"{BACKEND_URL}/notifications/unread-count", headers=headers_b)
+        response = self.session.post(f"{BACKEND_URL}/decisions", json=decision_data)
+        if response.status_code != 200:
+            raise Exception(f"Decision creation failed: {response.status_code} - {response.text}")
+            
+        result = response.json()
+        self.decision_id = result["id"]
+        self.log(f"✅ Decision created: {self.decision_id}")
         
-        if response.status_code == 200:
-            unread_data = response.json()
-            if unread_data.get("count", 1) == 0:
-                results.log("Unread Count After Read", True, "Count correctly reduced to 0")
-            else:
-                results.log("Unread Count After Read", False, f'Expected 0, got {unread_data.get("count", 1)}')
-        else:
-            results.log("Unread Count After Read", False, f"HTTP {response.status_code}: {response.text}")
-        
-        # Step 8: User B contributes to share
-        contribute_data = {
-            "assessments": {
-                "o1_f1": 80,  # Job A - Salary
-                "o1_f2": 75,  # Job A - Work-Life Balance  
-                "o1_f3": 85,  # Job A - Growth
-                "o2_f1": 90,  # Job B - Salary
-                "o2_f2": 45,  # Job B - Work-Life Balance
-                "o2_f3": 55   # Job B - Growth
+        # Add factors
+        factors = [
+            {
+                "id": "f_salary",
+                "name": "Salary Package",
+                "category": "primary",
+                "rating": 80,
+                "order": 0,
+                "unit": "USD",
+                "expected_value": 120000,
+                "data_type": "numeric",
+                "operator": ">="
             },
-            "note": "Based on my experience, Job A offers better long-term growth potential."
+            {
+                "id": "f_growth",
+                "name": "Career Growth",
+                "category": "primary", 
+                "rating": 70,
+                "order": 1
+            },
+            {
+                "id": "f_location",
+                "name": "Work Location",
+                "category": "secondary",
+                "rating": 50,
+                "order": 2,
+                "expected_value": "Remote",
+                "data_type": "text",
+                "operator": "contains"
+            }
+        ]
+        
+        # Add options
+        options = [
+            {
+                "id": "opt_company_a",
+                "name": "TechCorp Inc",
+                "assessments": [
+                    {"factor_id": "f_salary", "percentage": 75, "actual_value": 110000, "assessment_mode": "H"},
+                    {"factor_id": "f_growth", "percentage": 60, "assessment_mode": "M"},
+                    {"factor_id": "f_location", "percentage": 90, "assessment_mode": "H"}
+                ]
+            },
+            {
+                "id": "opt_company_b", 
+                "name": "InnovateLabs",
+                "assessments": [
+                    {"factor_id": "f_salary", "percentage": 85, "actual_value": 125000, "assessment_mode": "H"},
+                    {"factor_id": "f_growth", "percentage": 80, "assessment_mode": "H"},
+                    {"factor_id": "f_location", "percentage": 70, "assessment_mode": "M"}
+                ]
+            }
+        ]
+        
+        # Update decision with factors and options
+        update_data = {
+            "factors": factors,
+            "options": options
         }
         
-        response = requests.post(f"{BACKEND_URL}/shared-steps/{share_id}/contribute", json=contribute_data, headers=headers_b)
-        
-        if response.status_code == 200:
-            results.log("User B Contribution (creates notification)", True, response.json().get("message", "Success"))
-        else:
-            results.log("User B Contribution", False, f"HTTP {response.status_code}: {response.text}")
-            return
-        
-        # Wait for notification creation
-        time.sleep(1)
-        
-        # Step 9: Check User A gets share_contributed notification  
-        response = requests.get(f"{BACKEND_URL}/notifications", headers=headers_a)
-        
-        if response.status_code == 200:
-            notifications = response.json()
-            contributed_notifications = [n for n in notifications if n["type"] == "share_contributed"]
+        response = self.session.put(f"{BACKEND_URL}/decisions/{self.decision_id}", json=update_data)
+        if response.status_code != 200:
+            raise Exception(f"Decision update failed: {response.status_code} - {response.text}")
             
-            if contributed_notifications:
-                notif = contributed_notifications[0]
-                results.log("User A Gets Contribution Notification", True, f'Found: "{notif["title"]}" - {notif["message"]}')
-            else:
-                results.log("User A Gets Contribution Notification", False, "No share_contributed notification found")
-        else:
-            results.log("User A Gets Contribution Notification", False, f"HTTP {response.status_code}: {response.text}")
+        self.log("✅ Decision updated with factors and options")
+        return True
         
-        # Step 10: Test mark-all-read
-        # First create another notification by having User A share another step
-        share_data2 = {
-            "decision_id": decision_id,
-            "step_number": 6,
-            "recipient_emails": [user_b_email],
-            "message": "Also need help with factor prioritization"
+    def test_enhanced_mpps_data_saving(self):
+        """Test 3: Save enhanced MPPS data with new fields"""
+        self.log("🎯 Testing enhanced MPPS data saving...")
+        
+        # Enhanced MPPS data with new fields
+        mpps_improvements = [
+            {
+                "factor_id": "f_salary",
+                "original_percentage": 75,
+                "projected_percentage": 90,
+                "delta_percentage": 15,
+                "expected_value": "130000",
+                "expected_unit": "USD",
+                "improvement_plan": "Negotiate salary increase after 6 months performance review",
+                "tepfi_elements": ["T", "F"],  # Time and Finance
+                "tepfi_layer": "self",
+                "action_items": [
+                    {
+                        "assignee_name": "John Smith",
+                        "assignee_email": "john.smith@techcorp.com",
+                        "assignee_mobile": "+1-555-0123",
+                        "task": "Schedule performance review meeting",
+                        "deadline": "2024-06-15"
+                    },
+                    {
+                        "assignee_name": "Sarah Johnson",
+                        "assignee_email": "sarah.j@techcorp.com", 
+                        "assignee_mobile": "+1-555-0456",
+                        "task": "Prepare salary benchmarking report",
+                        "deadline": "2024-06-10"
+                    }
+                ]
+            },
+            {
+                "factor_id": "f_growth",
+                "original_percentage": 60,
+                "projected_percentage": 85,
+                "delta_percentage": 25,
+                "expected_value": "Senior Developer",
+                "expected_unit": "Role",
+                "improvement_plan": "Complete advanced certification and lead 2 major projects",
+                "tepfi_elements": ["E", "P"],  # Education and People
+                "tepfi_layer": "micro",
+                "action_items": [
+                    {
+                        "assignee_name": "Mike Chen",
+                        "assignee_email": "mike.chen@techcorp.com",
+                        "assignee_mobile": "+1-555-0789",
+                        "task": "Enroll in AWS Solutions Architect certification",
+                        "deadline": "2024-05-01"
+                    }
+                ]
+            },
+            {
+                "factor_id": "f_location",
+                "original_percentage": 90,
+                "projected_percentage": 95,
+                "delta_percentage": 5,
+                "expected_value": "Full Remote",
+                "expected_unit": "Policy",
+                "improvement_plan": "Negotiate permanent remote work arrangement",
+                "tepfi_elements": ["F"],  # Finance (cost savings)
+                "tepfi_layer": "macro",
+                "action_items": [
+                    {
+                        "assignee_name": "Lisa Wong",
+                        "assignee_email": "lisa.wong@hr.techcorp.com",
+                        "assignee_mobile": "+1-555-0321",
+                        "task": "Draft remote work policy amendment",
+                        "deadline": "2024-04-30"
+                    }
+                ]
+            }
+        ]
+        
+        # Save enhanced MPPS data
+        mpps_data = {
+            "mpps_option_id": "opt_company_a",
+            "mpps_timeframe": "3 months",
+            "mpps_improvements": mpps_improvements,
+            "mpps_projected_worth": 88.5
         }
         
-        requests.post(f"{BACKEND_URL}/decisions/{decision_id}/share-step", json=share_data2, headers=headers_a)
-        time.sleep(1)
-        
-        response = requests.post(f"{BACKEND_URL}/notifications/read-all", headers=headers_b)
-        
-        if response.status_code == 200:
-            results.log("Mark All Read", True, response.json().get("message", "Success"))
-        else:
-            results.log("Mark All Read", False, f"HTTP {response.status_code}: {response.text}")
-        
-        # Step 11: Test delete notification
-        # Get a notification ID to delete
-        response = requests.get(f"{BACKEND_URL}/notifications", headers=headers_b)
-        if response.status_code == 200 and response.json():
-            delete_notif_id = response.json()[0]["id"]
+        response = self.session.put(f"{BACKEND_URL}/decisions/{self.decision_id}", json=mpps_data)
+        if response.status_code != 200:
+            raise Exception(f"MPPS data saving failed: {response.status_code} - {response.text}")
             
-            response = requests.delete(f"{BACKEND_URL}/notifications/{delete_notif_id}", headers=headers_b)
+        self.log("✅ Enhanced MPPS data saved successfully")
+        return True
+        
+    def test_mpps_data_persistence(self):
+        """Test 4: Verify enhanced MPPS fields persist via GET"""
+        self.log("🔍 Testing MPPS data persistence...")
+        
+        response = self.session.get(f"{BACKEND_URL}/decisions/{self.decision_id}")
+        if response.status_code != 200:
+            raise Exception(f"Decision retrieval failed: {response.status_code} - {response.text}")
             
-            if response.status_code == 200:
-                results.log("Delete Notification", True, response.json().get("message", "Success"))
-            else:
-                results.log("Delete Notification", False, f"HTTP {response.status_code}: {response.text}")
-        else:
-            results.log("Delete Notification", False, "No notifications found to delete")
+        decision = response.json()
+        
+        # Verify enhanced MPPS fields
+        assert decision.get("mpps_timeframe") == "3 months", "MPPS timeframe not persisted"
+        assert decision.get("mpps_projected_worth") == 88.5, "MPPS projected worth not persisted"
+        assert decision.get("mpps_option_id") == "opt_company_a", "MPPS option ID not persisted"
+        
+        improvements = decision.get("mpps_improvements", [])
+        assert len(improvements) == 3, f"Expected 3 improvements, got {len(improvements)}"
+        
+        # Verify first improvement with action items
+        first_improvement = improvements[0]
+        assert first_improvement.get("factor_id") == "f_salary", "Factor ID not persisted"
+        assert first_improvement.get("tepfi_elements") == ["T", "F"], "TEPFI elements not persisted"
+        assert first_improvement.get("tepfi_layer") == "self", "TEPFI layer not persisted"
+        assert first_improvement.get("expected_value") == "130000", "Expected value not persisted"
+        assert first_improvement.get("expected_unit") == "USD", "Expected unit not persisted"
+        assert first_improvement.get("delta_percentage") == 15, "Delta percentage not persisted"
+        
+        action_items = first_improvement.get("action_items", [])
+        assert len(action_items) == 2, f"Expected 2 action items, got {len(action_items)}"
+        
+        first_action = action_items[0]
+        assert first_action.get("assignee_name") == "John Smith", "Assignee name not persisted"
+        assert first_action.get("assignee_email") == "john.smith@techcorp.com", "Assignee email not persisted"
+        assert first_action.get("assignee_mobile") == "+1-555-0123", "Assignee mobile not persisted"
+        assert first_action.get("task") == "Schedule performance review meeting", "Task not persisted"
+        assert first_action.get("deadline") == "2024-06-15", "Deadline not persisted"
+        
+        self.log("✅ All enhanced MPPS fields persisted correctly")
+        return True
+        
+    def test_mpps_action_plan_csv_download(self):
+        """Test 5: Test MPPS Action Plan CSV download"""
+        self.log("📊 Testing MPPS Action Plan CSV download...")
+        
+        response = self.session.get(f"{BACKEND_URL}/decisions/{self.decision_id}/mpps-action-plan")
+        if response.status_code != 200:
+            raise Exception(f"CSV download failed: {response.status_code} - {response.text}")
             
-    except Exception as e:
-        results.log("Notification System Testing", False, f"Exception: {str(e)}")
-
-def test_folder_analytics(results: TestResults):
-    """Test folder analytics APIs"""
-    print("\n=== TESTING FOLDER ANALYTICS APIs ===")
-    
-    try:
-        # Generate unique timestamp
-        timestamp = str(int(time.time()))
+        # Verify response headers
+        content_type = response.headers.get("content-type")
+        assert "text/csv" in content_type, f"Expected CSV content type, got {content_type}"
         
-        # Register a user for analytics testing
-        user_data = register_user(
-            f"analytics.user.{timestamp}@careerpath.com",
-            "securepass123",
-            f"Analytics User {timestamp}"
-        )
-        token = user_data["session_token"]
-        headers = {"Authorization": f"Bearer {token}"}
+        content_disposition = response.headers.get("content-disposition")
+        assert "attachment" in content_disposition, "Missing attachment header"
+        assert "MPPS_Action_Plan" in content_disposition, "Missing filename in header"
         
-        results.log("Analytics User Registration", True, f"Created user: {user_data['name']}")
+        # Verify CSV content
+        csv_content = response.text
+        lines = csv_content.strip().split('\n')
         
-        # Create decisions in different folders
-        career_decision1 = create_decision(token, "Job Change Analysis", "Should I switch to a startup?", "career")
-        career_decision2 = create_decision(token, "Career Path Planning", "Long-term career strategy", "career")
-        finance_decision = create_decision(token, "Investment Portfolio", "Asset allocation strategy", "finance")
+        # Check header structure
+        assert "MPPS Action Plan" in lines[0], "Missing CSV title"
+        assert "Enhanced MPPS Career Decision" in csv_content, "Decision title not in CSV"
+        assert "3 months" in csv_content, "Timeframe not in CSV"
+        assert "88.5%" in csv_content, "Projected worth not in CSV"
         
-        # Add factors/options to make decisions "completed"
-        for decision_id in [career_decision1, career_decision2, finance_decision]:
-            add_factors_and_options_to_decision(token, decision_id)
+        # Check action items in CSV
+        assert "John Smith" in csv_content, "Assignee name not in CSV"
+        assert "john.smith@techcorp.com" in csv_content, "Assignee email not in CSV"
+        assert "+1-555-0123" in csv_content, "Assignee mobile not in CSV"
+        assert "Schedule performance review meeting" in csv_content, "Task not in CSV"
+        assert "2024-06-15" in csv_content, "Deadline not in CSV"
         
-        results.log("Create Decisions in Multiple Folders", True, "Created 2 career + 1 finance decisions")
+        # Check TEPFI elements and layers
+        assert "T, F" in csv_content, "TEPFI elements not in CSV"
+        assert "self" in csv_content, "TEPFI layer not in CSV"
         
-        # Test GET /api/analytics/folders
-        response = requests.get(f"{BACKEND_URL}/analytics/folders", headers=headers)
+        self.log("✅ MPPS Action Plan CSV download working correctly")
+        return True
         
-        if response.status_code == 200:
-            analytics_data = response.json()
+    def test_decision_meta_endpoint(self):
+        """Test 6: Test decision meta endpoint"""
+        self.log("📚 Testing decision meta endpoint...")
+        
+        response = self.session.get(f"{BACKEND_URL}/decision-meta")
+        if response.status_code != 200:
+            raise Exception(f"Decision meta failed: {response.status_code} - {response.text}")
             
-            # Check response structure
-            required_keys = ["folders", "active_folders", "summary"]
-            if all(key in analytics_data for key in required_keys):
-                results.log("Folders Analytics Structure", True, "Response has required keys: folders, active_folders, summary")
-                
-                # Check summary fields
-                summary = analytics_data["summary"]
-                summary_fields = ["total_decisions", "total_completed", "total_folders_used", "overall_completion_rate"]
-                
-                if all(field in summary for field in summary_fields):
-                    results.log("Analytics Summary Fields", True, f"Summary: {json.dumps(summary, indent=2)}")
-                    
-                    # Verify data makes sense
-                    if summary["total_decisions"] == 3 and summary["total_completed"] == 3:
-                        results.log("Analytics Data Accuracy", True, "Correct counts: 3 total, 3 completed")
-                    else:
-                        results.log("Analytics Data Accuracy", False, f"Expected 3/3, got {summary['total_decisions']}/{summary['total_completed']}")
-                else:
-                    missing = [f for f in summary_fields if f not in summary]
-                    results.log("Analytics Summary Fields", False, f"Missing fields: {missing}")
-                
-                # Check active folders
-                active_folders = analytics_data["active_folders"]
-                career_folder = next((f for f in active_folders if f["id"] == "career"), None)
-                finance_folder = next((f for f in active_folders if f["id"] == "finance"), None)
-                
-                if career_folder and finance_folder:
-                    if career_folder["total_decisions"] == 2 and finance_folder["total_decisions"] == 1:
-                        results.log("Folder Breakdown Accuracy", True, "Career: 2 decisions, Finance: 1 decision")
-                    else:
-                        results.log("Folder Breakdown Accuracy", False, f"Career: {career_folder['total_decisions']}, Finance: {finance_folder['total_decisions']}")
-                else:
-                    results.log("Folder Breakdown Accuracy", False, "Career or Finance folder not found in active_folders")
-            else:
-                missing = [k for k in required_keys if k not in analytics_data]
-                results.log("Folders Analytics Structure", False, f"Missing keys: {missing}")
-        else:
-            results.log("Get Folders Analytics", False, f"HTTP {response.status_code}: {response.text}")
-            return
+        meta = response.json()
         
-        # Test GET /api/analytics/folder/career
-        response = requests.get(f"{BACKEND_URL}/analytics/folder/career", headers=headers)
+        # Verify life areas
+        life_areas = meta.get("life_areas", [])
+        assert len(life_areas) > 0, "No life areas returned"
         
-        if response.status_code == 200:
-            folder_data = response.json()
+        career_area = next((area for area in life_areas if area["id"] == "career"), None)
+        assert career_area is not None, "Career life area not found"
+        assert career_area["name"] == "Career & Work", "Career area name incorrect"
+        assert career_area["icon"] == "briefcase", "Career area icon incorrect"
+        
+        # Verify decision types
+        decision_types = meta.get("decision_types", [])
+        assert len(decision_types) == 3, f"Expected 3 decision types, got {len(decision_types)}"
+        
+        problem_type = next((dt for dt in decision_types if dt["id"] == "problem"), None)
+        assert problem_type is not None, "Problem decision type not found"
+        assert problem_type["name"] == "Problem", "Problem type name incorrect"
+        assert problem_type["color"] == "#EF4444", "Problem type color incorrect"
+        
+        self.log("✅ Decision meta endpoint working correctly")
+        return True
+        
+    def test_create_admin_user(self):
+        """Test 7: Create admin user for template testing"""
+        self.log("👑 Creating admin user for template testing...")
+        
+        # Generate unique admin email
+        timestamp = int(time.time())
+        admin_email = f"admin.tester.{timestamp}@techcorp.com"
+        
+        # Register admin user
+        admin_data = {
+            "email": admin_email,
+            "password": "adminpass123",
+            "name": "Admin Tester"
+        }
+        
+        # Create new session for admin
+        admin_session = requests.Session()
+        response = admin_session.post(f"{BACKEND_URL}/auth/register", json=admin_data)
+        if response.status_code != 200:
+            raise Exception(f"Admin registration failed: {response.status_code} - {response.text}")
             
-            # Check single folder response structure
-            expected_fields = ["folder_id", "total_decisions", "completed", "completion_rate", "top_factors", "recent_decisions"]
-            
-            if all(field in folder_data for field in expected_fields):
-                results.log("Single Folder Analytics Structure", True, "Response has all required fields")
-                
-                # Verify career folder data
-                if (folder_data["folder_id"] == "career" and 
-                    folder_data["total_decisions"] == 2 and
-                    folder_data["completed"] == 2):
-                    results.log("Career Folder Detail Accuracy", True, f"Career folder: 2 total, 2 completed, {folder_data['completion_rate']}% completion")
-                else:
-                    results.log("Career Folder Detail Accuracy", False, f"Unexpected data: {json.dumps(folder_data, indent=2)}")
-                
-                # Check if top_factors and recent_decisions are present
-                if isinstance(folder_data["top_factors"], list) and isinstance(folder_data["recent_decisions"], list):
-                    results.log("Folder Detail Subarrays", True, f"Top factors: {len(folder_data['top_factors'])}, Recent decisions: {len(folder_data['recent_decisions'])}")
-                else:
-                    results.log("Folder Detail Subarrays", False, "top_factors or recent_decisions not arrays")
-            else:
-                missing = [f for f in expected_fields if f not in folder_data]
-                results.log("Single Folder Analytics Structure", False, f"Missing fields: {missing}")
-        else:
-            results.log("Get Single Folder Analytics", False, f"HTTP {response.status_code}: {response.text}")
-            
-    except Exception as e:
-        results.log("Folder Analytics Testing", False, f"Exception: {str(e)}")
-
-def test_mpps_fields_comprehensive(results: TestResults):
-    """
-    Comprehensive test for MPPS (Max Possible Practical Solution) fields in PRR Decisions API
-    
-    Test Flow:
-    1. Register a user and create a decision with factors and options
-    2. Add assessments to the options
-    3. Test saving MPPS data via PUT /api/decisions/{id}
-    4. Verify MPPS data persists correctly via GET /api/decisions/{id}
-    5. Verify all MPPS fields are returned: mpps_option_id, mpps_improvements, mpps_projected_worth
-    """
-    
-    print("\n🎯 Testing MPPS Fields Comprehensive")
-    print("-" * 40)
-    
-    # Generate unique test data
-    timestamp = str(int(time.time()))
-    test_email = f"mpps.tester.{timestamp}@careerpath.com"
-    test_password = "SecurePass123!"
-    test_name = f"MPPS Tester {timestamp}"
-    
-    try:
-        # Step 1: Register User
-        user_data = register_user(test_email, test_password, test_name)
-        session_token = user_data.get("session_token")
-        user_id = user_data.get("user_id")
+        result = response.json()
+        self.admin_token = result["session_token"]
+        admin_session.headers.update({"Authorization": f"Bearer {self.admin_token}"})
         
-        if not session_token:
-            results.log("MPPS User Registration", False, "No session token received")
-            return
+        # Promote to admin role (assuming super admin exists)
+        # For testing purposes, we'll try to create templates and expect 403 for non-admin
+        self.admin_session = admin_session
         
-        results.log("MPPS User Registration", True, f"User ID: {user_id}")
+        self.log(f"✅ Admin user created: {admin_email}")
+        return True
         
-        # Step 2: Create Decision with Factors and Options
-        decision_id = create_decision(
-            session_token, 
-            f"MPPS Test Decision - Career Choice {timestamp}",
-            "Testing MPPS functionality with a realistic career decision scenario",
-            "career"
-        )
+    def test_decision_templates_non_admin_access(self):
+        """Test 8: Verify template creation requires admin role"""
+        self.log("🚫 Testing non-admin template creation restriction...")
         
-        results.log("MPPS Decision Creation", True, f"Decision ID: {decision_id}")
-        
-        # Step 3: Add Factors to Decision
-        headers = {"Authorization": f"Bearer {session_token}", "Content-Type": "application/json"}
-        
-        factors_data = {
+        # Try to create template with regular user (should fail)
+        template_data = {
+            "name": "Career Change Template",
+            "life_area": "career",
+            "decision_type": "aspiration",
+            "description": "Template for career transition decisions",
             "factors": [
                 {
-                    "id": "f_salary",
-                    "name": "Salary & Compensation",
+                    "id": str(uuid.uuid4()),
+                    "name": "Salary Expectations",
                     "category": "primary",
                     "rating": 80,
-                    "order": 0,
-                    "expected_value": 120000,
-                    "unit": "USD",
-                    "operator": ">=",
-                    "data_type": "numeric"
-                },
-                {
-                    "id": "f_growth",
-                    "name": "Career Growth Opportunities",
-                    "category": "primary", 
-                    "rating": 70,
-                    "order": 1
-                },
-                {
-                    "id": "f_location",
-                    "name": "Work Location",
-                    "category": "secondary",
-                    "rating": 40,
-                    "order": 2,
-                    "expected_value": "Remote",
-                    "operator": "contains",
-                    "data_type": "text"
-                },
-                {
-                    "id": "f_culture",
-                    "name": "Company Culture",
-                    "category": "primary",
-                    "rating": 60,
-                    "order": 3
+                    "order": 0
                 }
             ]
         }
         
-        response = requests.put(f"{BACKEND_URL}/decisions/{decision_id}", json=factors_data, headers=headers)
+        response = self.session.post(f"{BACKEND_URL}/decision-templates", json=template_data)
+        assert response.status_code == 403, f"Expected 403 for non-admin, got {response.status_code}"
+        
+        error = response.json()
+        assert "Admin access required" in error.get("detail", ""), "Missing admin access error message"
+        
+        self.log("✅ Non-admin template creation correctly restricted")
+        return True
+        
+    def test_decision_templates_get_public(self):
+        """Test 9: Test getting decision templates (public endpoint)"""
+        self.log("📋 Testing decision templates GET endpoint...")
+        
+        # Test general templates endpoint
+        response = self.session.get(f"{BACKEND_URL}/decision-templates")
         if response.status_code != 200:
-            results.log("MPPS Adding Factors", False, f"Status: {response.status_code}")
-            return
+            raise Exception(f"Templates GET failed: {response.status_code} - {response.text}")
+            
+        templates = response.json()
+        assert isinstance(templates, list), "Templates should be a list"
         
-        results.log("MPPS Adding Factors", True, "4 factors added successfully")
-        
-        # Step 4: Add Options with Assessments
-        full_update_data = {
-            "factors": factors_data["factors"],
-            "options": [
-                {
-                    "id": "opt_company_a",
-                    "name": "Tech Startup A",
-                    "assessments": [
-                        {"factor_id": "f_salary", "percentage": 60, "assessment_mode": "M"},
-                        {"factor_id": "f_growth", "percentage": 85, "assessment_mode": "H"},
-                        {"factor_id": "f_location", "percentage": 30, "assessment_mode": "L"},
-                        {"factor_id": "f_culture", "percentage": 75, "assessment_mode": "H"}
-                    ]
-                },
-                {
-                    "id": "opt_company_b",
-                    "name": "Enterprise Corp B", 
-                    "assessments": [
-                        {"factor_id": "f_salary", "percentage": 90, "assessment_mode": "H"},
-                        {"factor_id": "f_growth", "percentage": 50, "assessment_mode": "M"},
-                        {"factor_id": "f_location", "percentage": 20, "assessment_mode": "L"},
-                        {"factor_id": "f_culture", "percentage": 40, "assessment_mode": "L"}
-                    ]
-                },
-                {
-                    "id": "opt_company_c",
-                    "name": "Remote Agency C",
-                    "assessments": [
-                        {"factor_id": "f_salary", "percentage": 70, "assessment_mode": "M"},
-                        {"factor_id": "f_growth", "percentage": 60, "assessment_mode": "M"},
-                        {"factor_id": "f_location", "percentage": 95, "assessment_mode": "H"},
-                        {"factor_id": "f_culture", "percentage": 80, "assessment_mode": "H"}
-                    ]
-                }
-            ]
-        }
-        
-        response = requests.put(f"{BACKEND_URL}/decisions/{decision_id}", json=full_update_data, headers=headers)
+        # Test with life_area filter
+        response = self.session.get(f"{BACKEND_URL}/decision-templates?life_area=career")
         if response.status_code != 200:
-            results.log("MPPS Adding Options & Assessments", False, f"Status: {response.status_code}")
-            return
+            raise Exception(f"Templates GET with filter failed: {response.status_code} - {response.text}")
+            
+        career_templates = response.json()
+        assert isinstance(career_templates, list), "Filtered templates should be a list"
         
-        results.log("MPPS Adding Options & Assessments", True, "3 options with assessments added")
-        
-        # Step 5: Test MPPS Data Saving via PUT
-        best_option_id = "opt_company_c"
-        
-        mpps_data = {
-            "mpps_option_id": best_option_id,
-            "mpps_improvements": [
-                {
-                    "factor_id": "f_salary",
-                    "original_percentage": 70,
-                    "projected_percentage": 85,
-                    "improvement_plan": "Negotiate salary increase after 6 months based on performance metrics",
-                    "tepfi_element": "F",
-                    "tepfi_layer": "self"
-                },
-                {
-                    "factor_id": "f_growth", 
-                    "original_percentage": 60,
-                    "projected_percentage": 80,
-                    "improvement_plan": "Request mentorship program and lead a client project within first year",
-                    "tepfi_element": "P",
-                    "tepfi_layer": "micro"
-                },
-                {
-                    "factor_id": "f_culture",
-                    "original_percentage": 80,
-                    "projected_percentage": 90,
-                    "improvement_plan": "Actively participate in team building and suggest process improvements",
-                    "tepfi_element": "E",
-                    "tepfi_layer": "micro"
-                }
-            ],
-            "mpps_projected_worth": 85.5
-        }
-        
-        response = requests.put(f"{BACKEND_URL}/decisions/{decision_id}", json=mpps_data, headers=headers)
+        # Test with decision_type filter
+        response = self.session.get(f"{BACKEND_URL}/decision-templates?decision_type=problem")
         if response.status_code != 200:
-            results.log("MPPS Data Saving", False, f"Status: {response.status_code}")
-            return
+            raise Exception(f"Templates GET with type filter failed: {response.status_code} - {response.text}")
+            
+        problem_templates = response.json()
+        assert isinstance(problem_templates, list), "Type filtered templates should be a list"
         
-        results.log("MPPS Data Saving", True, "MPPS data saved successfully")
+        self.log("✅ Decision templates GET endpoint working correctly")
+        return True
         
-        # Step 6: Verify MPPS Data Persistence via GET
-        response = requests.get(f"{BACKEND_URL}/decisions/{decision_id}", headers=headers)
-        if response.status_code != 200:
-            results.log("MPPS Data Retrieval", False, f"Status: {response.status_code}")
-            return
+    def run_all_tests(self):
+        """Run all enhanced MPPS and Decision Templates tests"""
+        tests = [
+            self.test_user_registration_and_login,
+            self.test_create_decision_with_factors,
+            self.test_enhanced_mpps_data_saving,
+            self.test_mpps_data_persistence,
+            self.test_mpps_action_plan_csv_download,
+            self.test_decision_meta_endpoint,
+            self.test_create_admin_user,
+            self.test_decision_templates_non_admin_access,
+            self.test_decision_templates_get_public
+        ]
         
-        decision_data = response.json()
-        results.log("MPPS Data Retrieval", True, "Decision data retrieved successfully")
+        passed = 0
+        failed = 0
         
-        # Step 7: Verify All MPPS Fields Are Present and Correct
+        for test in tests:
+            try:
+                test()
+                passed += 1
+            except Exception as e:
+                self.log(f"❌ {test.__name__} FAILED: {str(e)}")
+                failed += 1
+                
+        self.log(f"\n🎯 ENHANCED MPPS AND DECISION TEMPLATES TESTING COMPLETE")
+        self.log(f"✅ Passed: {passed}")
+        self.log(f"❌ Failed: {failed}")
         
-        # Check mpps_option_id
-        if decision_data.get("mpps_option_id") != best_option_id:
-            results.log("MPPS Option ID", False, f"Expected: {best_option_id}, Got: {decision_data.get('mpps_option_id')}")
-            return
-        results.log("MPPS Option ID", True, f"Correctly set to: {best_option_id}")
-        
-        # Check mpps_projected_worth
-        if decision_data.get("mpps_projected_worth") != 85.5:
-            results.log("MPPS Projected Worth", False, f"Expected: 85.5, Got: {decision_data.get('mpps_projected_worth')}")
-            return
-        results.log("MPPS Projected Worth", True, f"Correctly set to: 85.5")
-        
-        # Check mpps_improvements array
-        mpps_improvements = decision_data.get("mpps_improvements", [])
-        if len(mpps_improvements) != 3:
-            results.log("MPPS Improvements Count", False, f"Expected: 3, Got: {len(mpps_improvements)}")
-            return
-        results.log("MPPS Improvements Count", True, "3 improvements found")
-        
-        # Validate each improvement has required fields
-        required_fields = ["factor_id", "original_percentage", "projected_percentage", "improvement_plan", "tepfi_element", "tepfi_layer"]
-        for i, improvement in enumerate(mpps_improvements):
-            for field in required_fields:
-                if field not in improvement:
-                    results.log(f"MPPS Improvement {i+1} Fields", False, f"Missing field: {field}")
-                    return
-        results.log("MPPS Improvements Fields", True, "All required fields present in all improvements")
-        
-        # Validate specific improvement data
-        salary_improvement = next((imp for imp in mpps_improvements if imp["factor_id"] == "f_salary"), None)
-        if not salary_improvement:
-            results.log("Salary Improvement", False, "Salary improvement not found")
-            return
-        
-        if (salary_improvement["original_percentage"] != 70 or 
-            salary_improvement["projected_percentage"] != 85 or
-            salary_improvement["tepfi_element"] != "F" or
-            salary_improvement["tepfi_layer"] != "self"):
-            results.log("Salary Improvement Data", False, f"Incorrect data: {salary_improvement}")
-            return
-        results.log("Salary Improvement Data", True, "Salary improvement data correct")
-        
-        # Validate TEPFI elements and layers are preserved
-        tepfi_elements = [imp["tepfi_element"] for imp in mpps_improvements]
-        tepfi_layers = [imp["tepfi_layer"] for imp in mpps_improvements]
-        
-        if set(tepfi_elements) != {"F", "P", "E"}:
-            results.log("TEPFI Elements", False, f"Expected F,P,E. Got: {tepfi_elements}")
-            return
-        results.log("TEPFI Elements", True, "All TEPFI elements preserved correctly")
-        
-        if set(tepfi_layers) != {"self", "micro"}:
-            results.log("TEPFI Layers", False, f"Expected self,micro. Got: {tepfi_layers}")
-            return
-        results.log("TEPFI Layers", True, "All TEPFI layers preserved correctly")
-        
-        # Step 8: Test MPPS Update (modify existing MPPS data)
-        updated_mpps_data = {
-            "mpps_projected_worth": 88.0,
-            "mpps_improvements": [
-                {
-                    "factor_id": "f_salary",
-                    "original_percentage": 70,
-                    "projected_percentage": 90,  # Increased projection
-                    "improvement_plan": "Negotiate salary increase after 6 months + annual bonus structure",
-                    "tepfi_element": "F",
-                    "tepfi_layer": "self"
-                },
-                {
-                    "factor_id": "f_growth",
-                    "original_percentage": 60,
-                    "projected_percentage": 85,  # Increased projection
-                    "improvement_plan": "Request mentorship program, lead client project, and attend industry conferences",
-                    "tepfi_element": "P", 
-                    "tepfi_layer": "macro"  # Changed layer
-                }
-            ]
-        }
-        
-        response = requests.put(f"{BACKEND_URL}/decisions/{decision_id}", json=updated_mpps_data, headers=headers)
-        if response.status_code != 200:
-            results.log("MPPS Data Update", False, f"Status: {response.status_code}")
-            return
-        
-        results.log("MPPS Data Update", True, "MPPS data updated successfully")
-        
-        # Step 9: Verify Updated MPPS Data
-        response = requests.get(f"{BACKEND_URL}/decisions/{decision_id}", headers=headers)
-        if response.status_code != 200:
-            results.log("Updated MPPS Verification", False, f"Status: {response.status_code}")
-            return
-        
-        updated_decision = response.json()
-        
-        # Check updated projected worth
-        if updated_decision.get("mpps_projected_worth") != 88.0:
-            results.log("Updated Projected Worth", False, f"Expected: 88.0, Got: {updated_decision.get('mpps_projected_worth')}")
-            return
-        results.log("Updated Projected Worth", True, "Projected worth updated to 88.0")
-        
-        # Check updated improvements count (should be 2 now)
-        updated_improvements = updated_decision.get("mpps_improvements", [])
-        if len(updated_improvements) != 2:
-            results.log("Updated Improvements Count", False, f"Expected: 2, Got: {len(updated_improvements)}")
-            return
-        results.log("Updated Improvements Count", True, "Improvements count updated to 2")
-        
-        # Check specific updated values
-        updated_salary_improvement = next((imp for imp in updated_improvements if imp["factor_id"] == "f_salary"), None)
-        if not updated_salary_improvement or updated_salary_improvement["projected_percentage"] != 90:
-            results.log("Updated Salary Projection", False, f"Expected 90%, Got: {updated_salary_improvement}")
-            return
-        results.log("Updated Salary Projection", True, "Salary projection updated to 90%")
-        
-        updated_growth_improvement = next((imp for imp in updated_improvements if imp["factor_id"] == "f_growth"), None)
-        if not updated_growth_improvement or updated_growth_improvement["tepfi_layer"] != "macro":
-            results.log("Updated TEPFI Layer", False, f"Expected 'macro', Got: {updated_growth_improvement}")
-            return
-        results.log("Updated TEPFI Layer", True, "TEPFI layer updated to 'macro'")
-        
-    except Exception as e:
-        results.log("MPPS Testing Exception", False, f"Exception occurred: {str(e)}")
-
-def main():
-    """Run all backend tests"""
-    print("🚀 BACKEND TESTING - View Dezider API")
-    print(f"Testing against: {BACKEND_URL}")
-    print(f"Started at: {datetime.now().isoformat()}")
-    
-    results = TestResults()
-    
-    # Test 1: Health Check Endpoint Fix
-    test_health_check(results)
-    
-    # Test 2: Notification System APIs
-    test_notification_system(results)
-    
-    # Test 3: Folder Analytics APIs  
-    test_folder_analytics(results)
-    
-    # Test 4: MPPS Fields Comprehensive Testing
-    test_mpps_fields_comprehensive(results)
-    
-    # Print Summary
-    print(f"\n{'='*60}")
-    print("🏁 BACKEND TESTING COMPLETE")
-    print(f"{'='*60}")
-    print(f"✅ PASSED: {results.passed}")
-    print(f"❌ FAILED: {results.failed}")
-    print(f"📊 TOTAL: {results.passed + results.failed}")
-    
-    if results.failed > 0:
-        print(f"\n❌ FAILED TESTS:")
-        for result in results.results:
-            if "❌ FAILED" in result:
-                print(f"   {result}")
-    
-    print(f"\n✅ SUCCESSFUL TESTS:")
-    for result in results.results:
-        if "✅ PASSED" in result:
-            print(f"   {result}")
-    
-    print(f"\nCompleted at: {datetime.now().isoformat()}")
-    return results.failed == 0
+        if failed == 0:
+            self.log("🎉 ALL TESTS PASSED!")
+        else:
+            self.log(f"⚠️  {failed} tests failed")
+            
+        return failed == 0
 
 if __name__ == "__main__":
-    success = main()
+    tester = TestEnhancedMPPSAndTemplates()
+    success = tester.run_all_tests()
     exit(0 if success else 1)

@@ -53,13 +53,25 @@ interface DecisionOption {
   worth_percentage: number;
 }
 
+interface MPPSActionItem {
+  assignee_name: string;
+  assignee_email: string;
+  assignee_mobile: string;
+  task: string;
+  deadline?: string;
+}
+
 interface MPPSImprovement {
   factor_id: string;
   original_percentage?: number;
   projected_percentage?: number;
+  delta_percentage?: number;
+  expected_value?: string;
+  expected_unit?: string;
   improvement_plan: string;
-  tepfi_element?: 'T' | 'E' | 'P' | 'F' | 'I';
+  tepfi_elements?: string[];
   tepfi_layer?: 'self' | 'micro' | 'macro';
+  action_items?: MPPSActionItem[];
 }
 
 interface Decision {
@@ -75,6 +87,9 @@ interface Decision {
   mpps_option_id?: string;
   mpps_improvements?: MPPSImprovement[];
   mpps_projected_worth?: number;
+  mpps_timeframe?: string;
+  life_area?: string;
+  decision_type?: string;
   status: string;
 }
 
@@ -1907,6 +1922,7 @@ export default function PRRDecisionDetail() {
   const renderStep9 = () => {
     const topLevelFactors = decision.factors.filter(f => !f.parent_id);
     const improvements = decision.mpps_improvements || [];
+    const mppsTimeframe = decision.mpps_timeframe || '';
 
     // Get best option
     const optionsWithDynamicWorth = decision.options.map(option => ({
@@ -1921,7 +1937,7 @@ export default function PRRDecisionDetail() {
       return (
         <View style={styles.stepContent}>
           <Text style={styles.stepTitle}>Step 9: MPPS Analysis</Text>
-          <Text style={styles.stepDescription}>No options available. Go back and add options first.</Text>
+          <Text style={styles.stepDescription}>No options available.</Text>
         </View>
       );
     }
@@ -1930,7 +1946,7 @@ export default function PRRDecisionDetail() {
     const targetOption = decision.options.find(o => o.id === mppsOptionId) || bestOption;
     const targetWorth = calculateDynamicWorth(targetOption).worth;
 
-    // Helper: get current assessment % for a factor (handles sub-factor aggregation)
+    // Helper: get current assessment % for a factor
     const getFactorAssessmentPct = (factor: Factor): number | null => {
       const subs = decision.factors.filter(f => f.parent_id === factor.id);
       if (subs.length === 0) {
@@ -1955,7 +1971,6 @@ export default function PRRDecisionDetail() {
     const calculateMPPSWorth = (): number => {
       const totalRating = topLevelFactors.reduce((sum, f) => sum + f.rating, 0);
       if (totalRating === 0) return 0;
-
       let weightedSum = 0;
       for (const factor of topLevelFactors) {
         const imp = improvements.find(i => i.factor_id === factor.id);
@@ -1964,48 +1979,111 @@ export default function PRRDecisionDetail() {
         const clamped = Math.min(100, Math.max(0, effectivePct));
         weightedSum += factor.rating * (clamped / 100);
       }
-
       const rawWorth = (weightedSum / totalRating) * 100;
       return Math.round(Math.min(100, Math.max(0, rawWorth)) * 10) / 10;
     };
 
     const mppsWorth = calculateMPPSWorth();
-    const improvement = mppsWorth - targetWorth;
+    const improvementDelta = mppsWorth - targetWorth;
 
-    // Update an MPPS improvement for a factor
+    // Update MPPS improvement for a factor
     const updateImprovement = (factorId: string, updates: Partial<MPPSImprovement>) => {
       const existing = [...improvements];
       const idx = existing.findIndex(i => i.factor_id === factorId);
+      const currentPct = getFactorAssessmentPct(topLevelFactors.find(f => f.id === factorId)!);
       if (idx >= 0) {
-        existing[idx] = { ...existing[idx], ...updates };
+        const merged = { ...existing[idx], ...updates };
+        // Auto-calculate delta
+        if (merged.projected_percentage !== undefined && merged.projected_percentage !== null) {
+          merged.delta_percentage = (merged.projected_percentage) - (merged.original_percentage ?? currentPct ?? 0);
+        }
+        existing[idx] = merged;
       } else {
-        const currentPct = getFactorAssessmentPct(topLevelFactors.find(f => f.id === factorId)!);
-        existing.push({
+        const newImp: MPPSImprovement = {
           factor_id: factorId,
           original_percentage: currentPct ?? undefined,
           projected_percentage: updates.projected_percentage,
+          delta_percentage: updates.projected_percentage !== undefined ? (updates.projected_percentage - (currentPct ?? 0)) : undefined,
+          expected_value: updates.expected_value,
+          expected_unit: updates.expected_unit,
           improvement_plan: updates.improvement_plan || '',
-          tepfi_element: updates.tepfi_element,
+          tepfi_elements: updates.tepfi_elements || [],
           tepfi_layer: updates.tepfi_layer,
-        });
+          action_items: updates.action_items || [],
+        };
+        existing.push(newImp);
       }
-      saveDecision({
-        mpps_option_id: mppsOptionId,
-        mpps_improvements: existing,
-        mpps_projected_worth: null, // Will be recalculated on save
-      });
+      saveDecision({ mpps_option_id: mppsOptionId, mpps_improvements: existing });
     };
 
-    // Save MPPS projected worth
+    // Add action item to a factor
+    const addActionItem = (factorId: string) => {
+      const imp = improvements.find(i => i.factor_id === factorId);
+      const items = [...(imp?.action_items || []), { assignee_name: '', assignee_email: '', assignee_mobile: '', task: '', deadline: '' }];
+      updateImprovement(factorId, { action_items: items });
+    };
+
+    // Update action item
+    const updateActionItem = (factorId: string, itemIdx: number, updates: Partial<MPPSActionItem>) => {
+      const imp = improvements.find(i => i.factor_id === factorId);
+      const items = [...(imp?.action_items || [])];
+      items[itemIdx] = { ...items[itemIdx], ...updates };
+      updateImprovement(factorId, { action_items: items });
+    };
+
+    // Remove action item
+    const removeActionItem = (factorId: string, itemIdx: number) => {
+      const imp = improvements.find(i => i.factor_id === factorId);
+      const items = [...(imp?.action_items || [])];
+      items.splice(itemIdx, 1);
+      updateImprovement(factorId, { action_items: items });
+    };
+
+    // Toggle TEPFI element (multi-select)
+    const toggleTEPFI = (factorId: string, element: string) => {
+      const imp = improvements.find(i => i.factor_id === factorId);
+      const elements = [...(imp?.tepfi_elements || [])];
+      const idx = elements.indexOf(element);
+      if (idx >= 0) elements.splice(idx, 1);
+      else elements.push(element);
+      updateImprovement(factorId, { tepfi_elements: elements });
+    };
+
+    // Save MPPS and proceed
     const saveMPPSWorth = () => {
       saveDecision({
         mpps_option_id: mppsOptionId,
         mpps_improvements: improvements,
         mpps_projected_worth: mppsWorth,
+        mpps_timeframe: mppsTimeframe,
       });
     };
 
-    // Sort factors: lowest assessment first (most room for improvement)
+    // Download action plan
+    const downloadActionPlan = async () => {
+      try {
+        const token = await AsyncStorage.getItem('session_token');
+        const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
+        const url = `${baseUrl}/api/decisions/${decision.id}/mpps-action-plan`;
+        const { Linking } = await import('react-native');
+        // For web, open in new tab; for native, use Linking
+        if (typeof window !== 'undefined') {
+          const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+          const blob = await response.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = `MPPS_Action_Plan.csv`;
+          a.click();
+          URL.revokeObjectURL(blobUrl);
+        }
+        Alert.alert('Success', 'Action plan downloaded');
+      } catch (err) {
+        Alert.alert('Error', 'Failed to download action plan');
+      }
+    };
+
+    // Sort factors: lowest assessment first
     const sortedFactors = [...topLevelFactors].sort((a, b) => {
       const aPct = getFactorAssessmentPct(a) ?? 0;
       const bPct = getFactorAssessmentPct(b) ?? 0;
@@ -2016,14 +2094,14 @@ export default function PRRDecisionDetail() {
       <View style={styles.stepContent}>
         <Text style={styles.stepTitle}>Step 9: MPPS Analysis</Text>
         <Text style={styles.stepDescription}>
-          Max Possible Practical Solution — Analyze the best option and find ways to improve its weak factors.
+          Max Possible Practical Solution — Improve weak factors of the best option within a defined timeframe.
         </Text>
 
-        {/* Option being analyzed */}
+        {/* Option + Timeframe header */}
         <Card style={[styles.factorCard, { borderLeftWidth: 3, borderLeftColor: COLORS.primary }]}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 2 }}>Analyzing Best Option</Text>
+              <Text style={{ fontSize: 12, color: COLORS.textMuted }}>Analyzing</Text>
               <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.text }}>{targetOption.name}</Text>
             </View>
             <View style={{ alignItems: 'center' }}>
@@ -2031,18 +2109,33 @@ export default function PRRDecisionDetail() {
               <Text style={{ fontSize: 22, fontWeight: '800', color: COLORS.primary }}>{targetWorth.toFixed(1)}%</Text>
             </View>
           </View>
+          {/* Common Timeframe */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Ionicons name="calendar-outline" size={16} color={COLORS.textMuted} />
+            <Text style={{ fontSize: 12, color: COLORS.textMuted }}>Timeframe:</Text>
+            <TextInput
+              style={{
+                flex: 1, height: 34, borderWidth: 1, borderColor: COLORS.border,
+                borderRadius: 8, paddingHorizontal: 10, fontSize: 13, color: COLORS.text, backgroundColor: COLORS.white,
+              }}
+              value={mppsTimeframe}
+              onChangeText={(text) => saveDecision({ mpps_timeframe: text })}
+              placeholder="e.g., 3 months, 6 weeks..."
+              placeholderTextColor={COLORS.textMuted}
+            />
+          </View>
         </Card>
 
         {/* MPPS Projection Summary */}
-        <Card style={[styles.factorCard, { backgroundColor: improvement > 0 ? '#F0FDF4' : '#FAFAFA' }]}>
+        <Card style={[styles.factorCard, { backgroundColor: improvementDelta > 0 ? '#F0FDF4' : '#FAFAFA' }]}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View>
               <Text style={{ fontSize: 12, color: COLORS.textMuted }}>MPPS Projected Worth</Text>
-              <Text style={{ fontSize: 24, fontWeight: '800', color: improvement > 0 ? '#16A34A' : COLORS.text }}>{mppsWorth.toFixed(1)}%</Text>
+              <Text style={{ fontSize: 24, fontWeight: '800', color: improvementDelta > 0 ? '#16A34A' : COLORS.text }}>{mppsWorth.toFixed(1)}%</Text>
             </View>
-            {improvement > 0 && (
+            {improvementDelta > 0 && (
               <View style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: '#16A34A' }}>+{improvement.toFixed(1)}%</Text>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#16A34A' }}>+{improvementDelta.toFixed(1)}%</Text>
               </View>
             )}
             <View style={{ alignItems: 'center' }}>
@@ -2054,135 +2147,219 @@ export default function PRRDecisionDetail() {
           </View>
         </Card>
 
-        {/* Factor-by-factor improvement analysis */}
-        <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.text, marginTop: 12, marginBottom: 6 }}>
+        {/* Factor-by-factor improvement */}
+        <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.text, marginTop: 12, marginBottom: 4 }}>
           Factor Improvement Plans
-        </Text>
-        <Text style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 10 }}>
-          Factors sorted by lowest assessment — biggest improvement opportunity first.
         </Text>
 
         {sortedFactors.map((factor) => {
           const currentPct = getFactorAssessmentPct(factor);
           const imp = improvements.find(i => i.factor_id === factor.id);
           const projPct = imp?.projected_percentage;
-          const hasImprovement = !!imp?.improvement_plan || (projPct !== undefined && projPct !== null);
+          const deltaPct = imp?.delta_percentage;
           const pctColor = (currentPct ?? 0) < 40 ? '#EF4444' : (currentPct ?? 0) < 70 ? '#F59E0B' : '#10B981';
+          const actionItems = imp?.action_items || [];
 
           return (
-            <Card key={factor.id} style={[styles.factorCard, hasImprovement && { borderLeftWidth: 3, borderLeftColor: '#16A34A' }]}>
-              {/* Factor header */}
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <Card key={factor.id} style={[styles.factorCard, imp?.improvement_plan ? { borderLeftWidth: 3, borderLeftColor: '#16A34A' } : {}]}>
+              {/* Factor header with current vs projected */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.text }}>{factor.name}</Text>
                   <Text style={{ fontSize: 11, color: COLORS.textMuted }}>Rating: {factor.rating} · {factor.category}</Text>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <View style={{ alignItems: 'center' }}>
                     <Text style={{ fontSize: 10, color: COLORS.textMuted }}>Now</Text>
-                    <Text style={{ fontSize: 16, fontWeight: '700', color: pctColor }}>
-                      {currentPct !== null ? `${currentPct}%` : '--'}
-                    </Text>
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: pctColor }}>{currentPct !== null ? `${currentPct}%` : '--'}</Text>
                   </View>
                   {projPct !== undefined && projPct !== null && (
                     <>
                       <Ionicons name="arrow-forward" size={14} color={COLORS.textMuted} />
                       <View style={{ alignItems: 'center' }}>
-                        <Text style={{ fontSize: 10, color: '#16A34A' }}>Projected</Text>
-                        <Text style={{ fontSize: 16, fontWeight: '700', color: '#16A34A' }}>
-                          {projPct}%
-                        </Text>
+                        <Text style={{ fontSize: 10, color: '#16A34A' }}>Target</Text>
+                        <Text style={{ fontSize: 16, fontWeight: '700', color: '#16A34A' }}>{projPct}%</Text>
                       </View>
+                      {deltaPct !== undefined && deltaPct > 0 && (
+                        <View style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 8 }}>
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: '#16A34A' }}>+{deltaPct}%</Text>
+                        </View>
+                      )}
                     </>
                   )}
                 </View>
               </View>
 
-              {/* Projected % input */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <Text style={{ fontSize: 12, color: COLORS.textMuted, width: 80 }}>Projected %</Text>
-                <TextInput
-                  style={{
-                    flex: 1, height: 36, borderWidth: 1, borderColor: COLORS.border,
-                    borderRadius: 8, paddingHorizontal: 10, fontSize: 14, color: COLORS.text,
-                    backgroundColor: COLORS.white,
-                  }}
-                  value={projPct !== undefined && projPct !== null ? String(projPct) : ''}
-                  onChangeText={(text) => {
-                    const num = parseInt(text);
-                    if (text === '') {
-                      updateImprovement(factor.id, { projected_percentage: undefined });
-                    } else if (!isNaN(num) && num >= 0 && num <= 100) {
-                      updateImprovement(factor.id, { projected_percentage: num });
-                    }
-                  }}
-                  keyboardType="numeric"
-                  maxLength={3}
-                  placeholder={currentPct !== null ? String(currentPct) : '0'}
-                  placeholderTextColor={COLORS.textMuted}
-                />
+              {/* Projected % + Expected Value row */}
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 6 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 2 }}>Projected %</Text>
+                  <TextInput
+                    style={{ height: 34, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 8, fontSize: 13, color: COLORS.text, backgroundColor: COLORS.white }}
+                    value={projPct !== undefined && projPct !== null ? String(projPct) : ''}
+                    onChangeText={(text) => {
+                      const num = parseInt(text);
+                      if (text === '') updateImprovement(factor.id, { projected_percentage: undefined });
+                      else if (!isNaN(num) && num >= 0 && num <= 100) updateImprovement(factor.id, { projected_percentage: num });
+                    }}
+                    keyboardType="numeric" maxLength={3}
+                    placeholder={currentPct !== null ? String(currentPct) : '0'}
+                    placeholderTextColor={COLORS.textMuted}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 2 }}>Target Value</Text>
+                  <TextInput
+                    style={{ height: 34, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 8, fontSize: 13, color: COLORS.text, backgroundColor: COLORS.white }}
+                    value={imp?.expected_value || ''}
+                    onChangeText={(text) => updateImprovement(factor.id, { expected_value: text })}
+                    placeholder="e.g., 120000"
+                    placeholderTextColor={COLORS.textMuted}
+                  />
+                </View>
+                <View style={{ width: 70 }}>
+                  <Text style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 2 }}>Unit</Text>
+                  <TextInput
+                    style={{ height: 34, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 6, fontSize: 13, color: COLORS.text, backgroundColor: COLORS.white }}
+                    value={imp?.expected_unit || factor.unit || ''}
+                    onChangeText={(text) => updateImprovement(factor.id, { expected_unit: text })}
+                    placeholder={factor.unit || 'unit'}
+                    placeholderTextColor={COLORS.textMuted}
+                  />
+                </View>
               </View>
 
               {/* Improvement plan text */}
               <TextInput
-                style={{
-                  borderWidth: 1, borderColor: COLORS.border, borderRadius: 8,
-                  paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: COLORS.text,
-                  backgroundColor: COLORS.white, minHeight: 44, textAlignVertical: 'top',
-                }}
+                style={{ borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, fontSize: 12, color: COLORS.text, backgroundColor: COLORS.white, minHeight: 38, textAlignVertical: 'top', marginBottom: 6 }}
                 value={imp?.improvement_plan || ''}
                 onChangeText={(text) => updateImprovement(factor.id, { improvement_plan: text })}
-                placeholder="How can this factor be improved? (e.g., negotiate better terms, relocate...)"
+                placeholder="How to achieve this improvement?"
                 placeholderTextColor={COLORS.textMuted}
                 multiline
               />
 
-              {/* TEPFI Element & Layer tags */}
-              <View style={{ marginTop: 8 }}>
-                <Text style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 4 }}>TEPFI Element</Text>
+              {/* TEPFI Elements (multi-select) */}
+              <View style={{ marginBottom: 4 }}>
+                <Text style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 3 }}>TEPFI Elements</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
-                  {TEPFI_ELEMENTS.map((te) => (
-                    <TouchableOpacity
-                      key={te.key}
-                      onPress={() => updateImprovement(factor.id, { tepfi_element: imp?.tepfi_element === te.key ? undefined : te.key })}
-                      style={{
-                        paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12,
-                        borderWidth: 1.5,
-                        borderColor: imp?.tepfi_element === te.key ? te.color : COLORS.border,
-                        backgroundColor: imp?.tepfi_element === te.key ? te.color + '18' : 'transparent',
-                      }}
-                    >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                        <Ionicons name={te.icon as any} size={12} color={imp?.tepfi_element === te.key ? te.color : COLORS.textMuted} />
-                        <Text style={{ fontSize: 11, fontWeight: '600', color: imp?.tepfi_element === te.key ? te.color : COLORS.textMuted }}>{te.label}</Text>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
+                  {TEPFI_ELEMENTS.map((te) => {
+                    const isActive = (imp?.tepfi_elements || []).includes(te.key);
+                    return (
+                      <TouchableOpacity
+                        key={te.key}
+                        onPress={() => toggleTEPFI(factor.id, te.key)}
+                        style={{
+                          paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12,
+                          borderWidth: 1.5,
+                          borderColor: isActive ? te.color : COLORS.border,
+                          backgroundColor: isActive ? te.color + '18' : 'transparent',
+                        }}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                          <Ionicons name={te.icon as any} size={11} color={isActive ? te.color : COLORS.textMuted} />
+                          <Text style={{ fontSize: 11, fontWeight: '600', color: isActive ? te.color : COLORS.textMuted }}>{te.label}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               </View>
 
-              <View style={{ marginTop: 6 }}>
-                <Text style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 4 }}>Solution Layer</Text>
-                <View style={{ flexDirection: 'row', gap: 6 }}>
-                  {TEPFI_LAYERS.map((tl) => (
-                    <TouchableOpacity
-                      key={tl.key}
-                      onPress={() => updateImprovement(factor.id, { tepfi_layer: imp?.tepfi_layer === tl.key ? undefined : tl.key })}
-                      style={{
-                        paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12,
-                        borderWidth: 1.5,
-                        borderColor: imp?.tepfi_layer === tl.key ? tl.color : COLORS.border,
-                        backgroundColor: imp?.tepfi_layer === tl.key ? tl.color + '18' : 'transparent',
-                      }}
-                    >
-                      <Text style={{ fontSize: 11, fontWeight: '600', color: imp?.tepfi_layer === tl.key ? tl.color : COLORS.textMuted }}>{tl.label}</Text>
-                    </TouchableOpacity>
-                  ))}
+              {/* Solution Layer */}
+              <View style={{ flexDirection: 'row', gap: 4, marginBottom: 8 }}>
+                <Text style={{ fontSize: 11, color: COLORS.textMuted, marginRight: 4, alignSelf: 'center' }}>Layer:</Text>
+                {TEPFI_LAYERS.map((tl) => (
+                  <TouchableOpacity
+                    key={tl.key}
+                    onPress={() => updateImprovement(factor.id, { tepfi_layer: imp?.tepfi_layer === tl.key ? undefined : tl.key })}
+                    style={{
+                      paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12, borderWidth: 1.5,
+                      borderColor: imp?.tepfi_layer === tl.key ? tl.color : COLORS.border,
+                      backgroundColor: imp?.tepfi_layer === tl.key ? tl.color + '18' : 'transparent',
+                    }}
+                  >
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: imp?.tepfi_layer === tl.key ? tl.color : COLORS.textMuted }}>{tl.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Action Items — Who? Does What? By When? */}
+              <View style={{ borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 6 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.text }}>Action Items</Text>
+                  <TouchableOpacity onPress={() => addActionItem(factor.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                    <Ionicons name="add-circle-outline" size={16} color={COLORS.primary} />
+                    <Text style={{ fontSize: 11, color: COLORS.primary, fontWeight: '600' }}>Add</Text>
+                  </TouchableOpacity>
                 </View>
+
+                {actionItems.map((ai, aiIdx) => (
+                  <View key={aiIdx} style={{ backgroundColor: '#F8FAFC', borderRadius: 8, padding: 8, marginBottom: 6 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: COLORS.textMuted }}>#{aiIdx + 1}</Text>
+                      <TouchableOpacity onPress={() => removeActionItem(factor.id, aiIdx)}>
+                        <Ionicons name="close-circle" size={16} color="#EF4444" />
+                      </TouchableOpacity>
+                    </View>
+                    {/* Task (Does What?) */}
+                    <TextInput
+                      style={{ height: 32, borderWidth: 1, borderColor: COLORS.border, borderRadius: 6, paddingHorizontal: 8, fontSize: 12, color: COLORS.text, backgroundColor: COLORS.white, marginBottom: 4 }}
+                      value={ai.task}
+                      onChangeText={(t) => updateActionItem(factor.id, aiIdx, { task: t })}
+                      placeholder="Does What?"
+                      placeholderTextColor={COLORS.textMuted}
+                    />
+                    {/* Assignee row */}
+                    <View style={{ flexDirection: 'row', gap: 4, marginBottom: 4 }}>
+                      <TextInput
+                        style={{ flex: 1, height: 32, borderWidth: 1, borderColor: COLORS.border, borderRadius: 6, paddingHorizontal: 6, fontSize: 11, color: COLORS.text, backgroundColor: COLORS.white }}
+                        value={ai.assignee_name}
+                        onChangeText={(t) => updateActionItem(factor.id, aiIdx, { assignee_name: t })}
+                        placeholder="Who? (Name)"
+                        placeholderTextColor={COLORS.textMuted}
+                      />
+                      <TextInput
+                        style={{ flex: 1, height: 32, borderWidth: 1, borderColor: COLORS.border, borderRadius: 6, paddingHorizontal: 6, fontSize: 11, color: COLORS.text, backgroundColor: COLORS.white }}
+                        value={ai.assignee_email}
+                        onChangeText={(t) => updateActionItem(factor.id, aiIdx, { assignee_email: t })}
+                        placeholder="Email"
+                        placeholderTextColor={COLORS.textMuted}
+                        keyboardType="email-address"
+                      />
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 4 }}>
+                      <TextInput
+                        style={{ flex: 1, height: 32, borderWidth: 1, borderColor: COLORS.border, borderRadius: 6, paddingHorizontal: 6, fontSize: 11, color: COLORS.text, backgroundColor: COLORS.white }}
+                        value={ai.assignee_mobile}
+                        onChangeText={(t) => updateActionItem(factor.id, aiIdx, { assignee_mobile: t })}
+                        placeholder="Mobile"
+                        placeholderTextColor={COLORS.textMuted}
+                        keyboardType="phone-pad"
+                      />
+                      <TextInput
+                        style={{ flex: 1, height: 32, borderWidth: 1, borderColor: COLORS.border, borderRadius: 6, paddingHorizontal: 6, fontSize: 11, color: COLORS.text, backgroundColor: COLORS.white }}
+                        value={ai.deadline || ''}
+                        onChangeText={(t) => updateActionItem(factor.id, aiIdx, { deadline: t })}
+                        placeholder="By When?"
+                        placeholderTextColor={COLORS.textMuted}
+                      />
+                    </View>
+                  </View>
+                ))}
               </View>
             </Card>
           );
         })}
+
+        {/* Download + Nav */}
+        <TouchableOpacity
+          onPress={downloadActionPlan}
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, marginTop: 8, backgroundColor: '#F0FDF4', borderRadius: 10, borderWidth: 1, borderColor: '#16A34A' }}
+        >
+          <Ionicons name="download-outline" size={18} color="#16A34A" />
+          <Text style={{ fontSize: 14, fontWeight: '600', color: '#16A34A' }}>Download MPPS Action Plan (CSV)</Text>
+        </TouchableOpacity>
 
         <View style={styles.navButtons}>
           <TouchableOpacity style={styles.backButton} onPress={() => setCurrentStep(8)}>
@@ -2191,10 +2368,7 @@ export default function PRRDecisionDetail() {
           </TouchableOpacity>
           <GradientButton
             title="Final Decision"
-            onPress={() => {
-              saveMPPSWorth();
-              setCurrentStep(10);
-            }}
+            onPress={() => { saveMPPSWorth(); setCurrentStep(10); }}
             style={styles.nextButton}
           />
         </View>

@@ -1,5 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -94,13 +94,24 @@ class OptionAssessment(BaseModel):
     actual_value: Optional[float] = None  # Separated numeric value for AI/ML
     assessment_mode: Optional[str] = None  # 'L', 'M', 'H', or 'custom'
 
+class MPPSActionItem(BaseModel):
+    assignee_name: str = ""
+    assignee_email: str = ""
+    assignee_mobile: str = ""
+    task: str = ""  # Does What?
+    deadline: Optional[str] = None  # By When?
+
 class MPPSImprovement(BaseModel):
     factor_id: str
     original_percentage: Optional[int] = None  # Original assessment %
     projected_percentage: Optional[int] = None  # Projected improved %
+    delta_percentage: Optional[int] = None  # Auto: projected - original
+    expected_value: Optional[str] = None  # Target value to achieve delta
+    expected_unit: Optional[str] = None  # Unit for the expected value
     improvement_plan: str = ""  # How to improve this factor
-    tepfi_element: Optional[str] = None  # T, E, P, F, or I
+    tepfi_elements: List[str] = []  # Multiple TEPFI: T, E, P, F, I
     tepfi_layer: Optional[str] = None  # self, micro, or macro
+    action_items: List[MPPSActionItem] = []  # Who does what by when
 
 class DecisionOption(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -121,10 +132,13 @@ class PRRDecision(BaseModel):
     reflection: str = ""
     final_notes: str = ""
     folder: str = ""
+    life_area: Optional[str] = None  # Career, Finance, Health, Relationships, Education, etc.
+    decision_type: Optional[str] = None  # problem, need, aspiration
     rating_gap_multiplier: float = 1.0  # Gap multiplier: 0.25, 0.5, 0.75, 1.0 (standard), 1.5, 2.0, 3.0, 4.0, 5.0
     mpps_option_id: Optional[str] = None  # Option being analyzed for MPPS
     mpps_improvements: List[MPPSImprovement] = []  # Factor improvement plans
     mpps_projected_worth: Optional[float] = None  # Projected worth after improvements
+    mpps_timeframe: Optional[str] = None  # Common timeframe for MPPS (e.g., "3 months")
     status: str = "draft"  # "draft", "in_progress", "completed"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -133,6 +147,8 @@ class PRRDecisionCreate(BaseModel):
     title: str
     context: str
     folder: str = ""
+    life_area: Optional[str] = None  # Career, Finance, Health, Relationships, Education, etc.
+    decision_type: Optional[str] = None  # problem, need, aspiration
 
 class PRRDecisionUpdate(BaseModel):
     title: Optional[str] = None
@@ -149,6 +165,9 @@ class PRRDecisionUpdate(BaseModel):
     mpps_option_id: Optional[str] = None
     mpps_improvements: Optional[List[MPPSImprovement]] = None
     mpps_projected_worth: Optional[float] = None
+    mpps_timeframe: Optional[str] = None
+    life_area: Optional[str] = None
+    decision_type: Optional[str] = None
     status: Optional[str] = None
 
 class CloneDecisionRequest(BaseModel):
@@ -1947,6 +1966,168 @@ async def get_single_folder_analytics(folder_id: str, user: dict = Depends(get_c
         ],
     }
 
+
+# ============= MPPS Action Plan Download =============
+
+@api_router.get("/decisions/{decision_id}/mpps-action-plan")
+async def download_mpps_action_plan(decision_id: str, user: dict = Depends(get_current_user)):
+    """Download MPPS action plan as CSV"""
+    import io, csv
+    decision = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]})
+    if not decision:
+        raise HTTPException(status_code=404, detail="Decision not found")
+    
+    improvements = decision.get("mpps_improvements", [])
+    factors = decision.get("factors", [])
+    options = decision.get("options", [])
+    mpps_option_id = decision.get("mpps_option_id")
+    mpps_timeframe = decision.get("mpps_timeframe", "Not specified")
+    
+    target_option = next((o for o in options if o.get("id") == mpps_option_id), options[0] if options else None)
+    option_name = target_option.get("name", "Unknown") if target_option else "Unknown"
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    writer.writerow(["MPPS Action Plan"])
+    writer.writerow(["Decision", decision.get("title", "")])
+    writer.writerow(["Context", decision.get("context", "")])
+    writer.writerow(["Option", option_name])
+    writer.writerow(["Timeframe", mpps_timeframe])
+    writer.writerow(["Projected Worth", f"{decision.get('mpps_projected_worth', 0)}%"])
+    writer.writerow([])
+    
+    writer.writerow([
+        "Factor", "Category", "Rating", "Current %", "Projected %", "Delta %",
+        "Target Value", "Target Unit", "Improvement Plan",
+        "TEPFI Elements", "Solution Layer",
+        "Assignee Name", "Assignee Email", "Assignee Mobile", "Task", "Deadline"
+    ])
+    
+    for imp in improvements:
+        factor = next((f for f in factors if f.get("id") == imp.get("factor_id")), {})
+        tepfi = ", ".join(imp.get("tepfi_elements", []))
+        layer = imp.get("tepfi_layer", "")
+        action_items = imp.get("action_items", [])
+        
+        base_row = [
+            factor.get("name", ""), factor.get("category", ""), factor.get("rating", ""),
+            imp.get("original_percentage", ""), imp.get("projected_percentage", ""),
+            imp.get("delta_percentage", ""),
+            imp.get("expected_value", ""), imp.get("expected_unit", ""),
+            imp.get("improvement_plan", ""),
+            tepfi, layer,
+        ]
+        
+        if action_items:
+            for ai in action_items:
+                writer.writerow(base_row + [
+                    ai.get("assignee_name", ""), ai.get("assignee_email", ""),
+                    ai.get("assignee_mobile", ""), ai.get("task", ""), ai.get("deadline", "")
+                ])
+        else:
+            writer.writerow(base_row + ["", "", "", "", ""])
+    
+    csv_content = output.getvalue()
+    return StreamingResponse(
+        io.BytesIO(csv_content.encode()),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="MPPS_Action_Plan_{decision_id[:8]}.csv"'}
+    )
+
+# ============= Decision Templates (Admin-curated Context Library) =============
+
+class DecisionTemplate(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    life_area: str
+    decision_type: str
+    description: str = ""
+    factors: List[Factor] = []
+    created_by: str = ""
+    is_approved: bool = False
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class DecisionTemplateCreate(BaseModel):
+    name: str
+    life_area: str
+    decision_type: str
+    description: str = ""
+    factors: List[Factor] = []
+
+@api_router.get("/decision-templates")
+async def get_decision_templates(life_area: Optional[str] = None, decision_type: Optional[str] = None):
+    query: dict = {"is_approved": True}
+    if life_area:
+        query["life_area"] = life_area
+    if decision_type:
+        query["decision_type"] = decision_type
+    templates = await db.decision_templates.find(query).sort("name", 1).to_list(100)
+    for t in templates:
+        t.pop("_id", None)
+    return templates
+
+@api_router.get("/decision-templates/all")
+async def get_all_templates(user: dict = Depends(get_current_user)):
+    if user.get("role") not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    templates = await db.decision_templates.find({}).sort("created_at", -1).to_list(200)
+    for t in templates:
+        t.pop("_id", None)
+    return templates
+
+@api_router.post("/decision-templates")
+async def create_decision_template(template: DecisionTemplateCreate, user: dict = Depends(get_current_user)):
+    if user.get("role") not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    template_dict = template.dict()
+    template_dict["id"] = str(uuid.uuid4())
+    template_dict["created_by"] = user["user_id"]
+    template_dict["is_approved"] = True
+    template_dict["created_at"] = datetime.now(timezone.utc)
+    await db.decision_templates.insert_one(template_dict)
+    return {"id": template_dict["id"], "message": "Template created successfully"}
+
+@api_router.put("/decision-templates/{template_id}")
+async def update_decision_template(template_id: str, template: DecisionTemplateCreate, user: dict = Depends(get_current_user)):
+    if user.get("role") not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    update_dict = template.dict()
+    result = await db.decision_templates.update_one({"id": template_id}, {"$set": update_dict})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return {"message": "Template updated successfully"}
+
+@api_router.delete("/decision-templates/{template_id}")
+async def delete_decision_template(template_id: str, user: dict = Depends(get_current_user)):
+    if user.get("role") not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    result = await db.decision_templates.delete_one({"id": template_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return {"message": "Template deleted successfully"}
+
+@api_router.get("/decision-meta")
+async def get_decision_meta():
+    return {
+        "life_areas": [
+            {"id": "career", "name": "Career & Work", "icon": "briefcase"},
+            {"id": "finance", "name": "Finance & Investment", "icon": "cash"},
+            {"id": "health", "name": "Health & Wellness", "icon": "fitness"},
+            {"id": "relationships", "name": "Relationships & Family", "icon": "people"},
+            {"id": "education", "name": "Education & Learning", "icon": "school"},
+            {"id": "personal", "name": "Personal Growth", "icon": "rocket"},
+            {"id": "business", "name": "Business & Entrepreneurship", "icon": "trending-up"},
+            {"id": "lifestyle", "name": "Lifestyle & Living", "icon": "home"},
+        ],
+        "decision_types": [
+            {"id": "problem", "name": "Problem", "description": "Solving a current issue or challenge", "color": "#EF4444"},
+            {"id": "need", "name": "Need", "description": "Fulfilling a requirement or necessity", "color": "#F59E0B"},
+            {"id": "aspiration", "name": "Aspiration", "description": "Pursuing a goal or ambition", "color": "#10B981"},
+        ]
+    }
+
+
 # Include the router in the main app
 app.include_router(api_router)
 
@@ -1964,6 +2145,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
