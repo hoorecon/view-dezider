@@ -1092,6 +1092,63 @@ export default function PRRDecisionDetail() {
     </View>
   );
 
+  // Auto-calculate match % from actual value vs factor criteria
+  const calculateAutoPercentage = (factor: Factor, actualValue: number | string | undefined): number | null => {
+    if (actualValue === undefined || actualValue === null || actualValue === '') return null;
+    if (factor.expected_value === undefined || factor.expected_value === null) return null;
+    if (!factor.operator) return null;
+
+    const dataType = factor.data_type || 'numeric';
+
+    if (dataType === 'numeric') {
+      const expected = typeof factor.expected_value === 'number' ? factor.expected_value : parseFloat(String(factor.expected_value));
+      const actual = typeof actualValue === 'number' ? actualValue : parseFloat(String(actualValue));
+      if (isNaN(expected) || isNaN(actual)) return null;
+      if (expected === 0) return actual === 0 ? 100 : 0;
+
+      switch (factor.operator) {
+        case '>=':
+        case '>':
+          // Directly proportional: higher is better
+          if (factor.operator === '>=' ? actual >= expected : actual > expected) return 100;
+          return Math.max(0, Math.round((actual / expected) * 100));
+        case '<=':
+        case '<':
+          // Inversely proportional: lower is better
+          if (factor.operator === '<=' ? actual <= expected : actual < expected) return 100;
+          return actual === 0 ? 100 : Math.max(0, Math.round((expected / actual) * 100));
+        case '=':
+          // Exact match with deviation penalty
+          const deviation = Math.abs(actual - expected) / Math.abs(expected);
+          return Math.max(0, Math.round((1 - deviation) * 100));
+        case '!=':
+          return actual !== expected ? 100 : 0;
+        default:
+          return null;
+      }
+    } else {
+      // Text comparison
+      const expected = String(factor.expected_value).toLowerCase().trim();
+      const actual = String(actualValue).toLowerCase().trim();
+      if (!expected || !actual) return null;
+
+      switch (factor.operator) {
+        case 'contains':
+          return actual.includes(expected) ? 100 : 0;
+        case 'starts_with':
+          return actual.startsWith(expected) ? 100 : 0;
+        case 'ends_with':
+          return actual.endsWith(expected) ? 100 : 0;
+        case 'equals':
+          return actual === expected ? 100 : 0;
+        case 'not_equals':
+          return actual !== expected ? 100 : 0;
+        default:
+          return null;
+      }
+    }
+  };
+
   const renderStep7 = () => {
     const handleLMHSelect = (optionId: string, factorId: string, mode: 'L' | 'M' | 'H') => {
       const percentage = LMH_VALUES[mode].percentage;
@@ -1138,27 +1195,51 @@ export default function PRRDecisionDetail() {
 
     const handleUnitValueChange = (optionId: string, factorId: string, value: string) => {
       const key = getAssessmentKey(optionId, factorId);
-      // Allow only numeric input (with decimal)
-      const cleanValue = value.replace(/[^0-9.]/g, '');
-      // Prevent multiple decimals
-      const parts = cleanValue.split('.');
-      const sanitized = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : cleanValue;
-      setActualValues({ ...actualValues, [key]: sanitized });
+      const factor = decision.factors.find(f => f.id === factorId);
+      const isTextType = factor?.data_type === 'text';
+      
+      if (isTextType) {
+        // Allow any text for text-type factors
+        setActualValues({ ...actualValues, [key]: value });
+      } else {
+        // Allow only numeric input (with decimal)
+        const cleanValue = value.replace(/[^0-9.]/g, '');
+        const parts = cleanValue.split('.');
+        const sanitized = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : cleanValue;
+        setActualValues({ ...actualValues, [key]: sanitized });
+      }
     };
 
     const handleActualValueBlur = (optionId: string, factorId: string) => {
       const key = getAssessmentKey(optionId, factorId);
-      const inputValue = actualValues[key] || '';
-      const numVal = parseFloat(inputValue);
-      const actualVal = isNaN(numVal) ? undefined : numVal;
-      // Get current assessment data
-      const currentMode = getAssessmentMode(optionId, factorId);
-      const currentPercentage = getAssessmentValue(optionId, factorId);
+      const inputValue = (actualValues[key] || '').trim();
       const factor = decision.factors.find(f => f.id === factorId);
-      // Build display string for backward compat
+      const isTextType = factor?.data_type === 'text';
+
+      let actualVal: number | string | undefined;
+      if (isTextType) {
+        actualVal = inputValue || undefined;
+      } else {
+        const numVal = parseFloat(inputValue);
+        actualVal = isNaN(numVal) ? undefined : numVal;
+      }
+
       const unitStr = factor?.unit || '';
       const displayValue = actualVal !== undefined ? `${actualVal}${unitStr ? ' ' + unitStr : ''}` : '';
-      updateAssessment(optionId, factorId, currentPercentage, currentMode, displayValue, actualVal);
+      const numericActual = typeof actualVal === 'number' ? actualVal : undefined;
+
+      // Auto-calculate percentage if criteria defined
+      const autoPercent = factor ? calculateAutoPercentage(factor, actualVal) : null;
+
+      if (autoPercent !== null) {
+        // Auto-set the percentage from criteria match
+        updateAssessment(optionId, factorId, autoPercent, 'auto' as any, displayValue, numericActual);
+      } else {
+        // Keep existing percentage, just store the actual value
+        const currentMode = getAssessmentMode(optionId, factorId);
+        const currentPercentage = getAssessmentValue(optionId, factorId);
+        updateAssessment(optionId, factorId, currentPercentage, currentMode, displayValue, numericActual);
+      }
     };
 
     const getActualInputValue = (optionId: string, factorId: string): string => {
@@ -1169,6 +1250,8 @@ export default function PRRDecisionDetail() {
       // Fallback: try to parse from legacy unit_value
       const legacy = getUnitValue(optionId, factorId);
       if (legacy) {
+        const factor = decision.factors.find(f => f.id === factorId);
+        if (factor?.data_type === 'text') return legacy;
         const num = parseFloat(legacy);
         if (!isNaN(num)) return String(num);
       }
@@ -1263,20 +1346,33 @@ export default function PRRDecisionDetail() {
                           <Text style={styles.factorUnitBadgeText}>{factor.unit}</Text>
                         </View>
                       )}
+                      {factor.expected_value !== undefined && factor.expected_value !== null && (
+                        <View style={styles.expectedCriteriaBadge}>
+                          <Text style={styles.expectedCriteriaText}>
+                            {factor.operator || '≥'} {String(factor.expected_value)}{factor.unit ? ` ${factor.unit}` : ''}
+                          </Text>
+                        </View>
+                      )}
                       <Text style={styles.assessmentRating}>({factor.rating})</Text>
                     </View>
 
-                    {/* Separated: Actual Value (numeric) + Unit label */}
+                    {/* Actual Value input — text or numeric based on data_type */}
                     <View style={styles.actualValueRow}>
                       <View style={styles.actualValueInputWrap}>
                         <TextInput
                           style={styles.actualValueInput}
-                          placeholder={factor.unit ? `Value in ${factor.unit}` : 'Actual value (optional)'}
+                          placeholder={
+                            factor.data_type === 'text'
+                              ? `Enter ${factor.name.toLowerCase()} value`
+                              : factor.unit
+                                ? `Value in ${factor.unit}`
+                                : 'Actual value (optional)'
+                          }
                           placeholderTextColor={COLORS.textMuted}
                           value={getActualInputValue(option.id, factor.id)}
                           onChangeText={(value) => handleUnitValueChange(option.id, factor.id, value)}
                           onBlur={() => handleActualValueBlur(option.id, factor.id)}
-                          keyboardType="decimal-pad"
+                          keyboardType={factor.data_type === 'text' ? 'default' : 'decimal-pad'}
                         />
                         {factor.unit ? (
                           <View style={styles.unitSuffix}>
@@ -1361,13 +1457,22 @@ export default function PRRDecisionDetail() {
                         </TouchableOpacity>
                       )}
 
-                      {/* Display current % */}
+                      {/* Display current % with auto indicator */}
                       <View style={[
                         styles.currentValueBadge,
-                        !hasValue && styles.currentValueBadgeEmpty
+                        !hasValue && styles.currentValueBadgeEmpty,
+                        currentMode === 'auto' && styles.currentValueBadgeAuto,
                       ]}>
                         {hasValue ? (
-                          <Text style={styles.currentValueText}>{currentValue}%</Text>
+                          <View style={styles.percentBadgeInner}>
+                            {currentMode === 'auto' && (
+                              <Ionicons name="flash" size={10} color={currentMode === 'auto' ? '#6366F1' : COLORS.textSecondary} />
+                            )}
+                            <Text style={[
+                              styles.currentValueText,
+                              currentMode === 'auto' && styles.currentValueTextAuto,
+                            ]}>{currentValue}%</Text>
+                          </View>
                         ) : (
                           <Text style={styles.currentValueTextEmpty}>--</Text>
                         )}
@@ -2310,6 +2415,32 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     color: COLORS.primary,
+  },
+  expectedCriteriaBadge: {
+    backgroundColor: 'rgba(99,102,241,0.1)',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 8,
+    marginLeft: 4,
+  },
+  expectedCriteriaText: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: '#6366F1',
+  },
+  currentValueBadgeAuto: {
+    backgroundColor: 'rgba(99,102,241,0.12)',
+    borderWidth: 1,
+    borderColor: '#6366F1',
+  },
+  currentValueTextAuto: {
+    color: '#6366F1',
+    fontWeight: '700',
+  },
+  percentBadgeInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
   },
   lmhContainer: {
     flexDirection: 'row',
