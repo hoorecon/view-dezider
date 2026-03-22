@@ -110,6 +110,7 @@ class PRRDecision(BaseModel):
     reflection: str = ""
     final_notes: str = ""
     folder: str = ""
+    rating_gap_multiplier: float = 1.0  # Gap multiplier: 0.25, 0.5, 0.75, 1.0 (standard), 1.5, 2.0, 3.0, 4.0, 5.0
     status: str = "draft"  # "draft", "in_progress", "completed"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -130,6 +131,7 @@ class PRRDecisionUpdate(BaseModel):
     reflection: Optional[str] = None
     final_notes: Optional[str] = None
     folder: Optional[str] = None
+    rating_gap_multiplier: Optional[float] = None
     status: Optional[str] = None
 
 class CloneDecisionRequest(BaseModel):
