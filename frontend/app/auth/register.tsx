@@ -27,6 +27,7 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [orgSlug, setOrgSlug] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
@@ -57,7 +58,7 @@ export default function RegisterScreen() {
     setError('');
 
     try {
-      await register(email, password, name);
+      await register(email, password, name, orgSlug.trim() || undefined);
       router.replace('/(tabs)');
     } catch (err: any) {
       setError(err.message || 'Registration failed');
@@ -167,6 +168,14 @@ export default function RegisterScreen() {
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry
+            />
+
+            <Input
+              label="Organization (Optional)"
+              placeholder="Enter organization slug to join"
+              value={orgSlug}
+              onChangeText={setOrgSlug}
+              autoCapitalize="none"
             />
 
             <GradientButton

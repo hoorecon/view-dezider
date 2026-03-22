@@ -1,0 +1,105 @@
+"""Admin-only endpoints: Feature Flags (WOWO), Call Config."""
+from datetime import datetime, timezone
+from fastapi import APIRouter, HTTPException, Request, Depends
+from core.database import db
+from core.auth import get_current_user, get_user_role, ADMIN_ROLES
+
+router = APIRouter()
+
+
+# ========================
+# WOWO FEATURE FLAGS
+# ========================
+
+@router.get("/feature-flags")
+async def get_feature_flags(user: dict = Depends(get_current_user)):
+    """Get all feature flags (WOWO settings)"""
+    settings = await db.app_settings.find_one({"key": "feature_flags"})
+    if not settings:
+        return {"solution_finder": False, "solution_matrix": False}
+    flags = settings.get("flags", {})
+    return {
+        "solution_finder": flags.get("solution_finder", False),
+        "solution_matrix": flags.get("solution_matrix", False),
+    }
+
+
+@router.get("/feature-flags/public")
+async def get_public_feature_flags():
+    """Get feature flags without auth (for conditional UI rendering)"""
+    settings = await db.app_settings.find_one({"key": "feature_flags"})
+    if not settings:
+        return {"solution_finder": False, "solution_matrix": False}
+    flags = settings.get("flags", {})
+    return {
+        "solution_finder": flags.get("solution_finder", False),
+        "solution_matrix": flags.get("solution_matrix", False),
+    }
+
+
+@router.put("/admin/feature-flags")
+async def update_feature_flags(request: Request, user: dict = Depends(get_current_user)):
+    """Update feature flags (admin only) - WOWO toggle"""
+    role = get_user_role(user)
+    if role not in ADMIN_ROLES:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    body = await request.json()
+    flags = {}
+    if "solution_finder" in body:
+        flags["solution_finder"] = bool(body["solution_finder"])
+    if "solution_matrix" in body:
+        flags["solution_matrix"] = bool(body["solution_matrix"])
+
+    await db.app_settings.update_one(
+        {"key": "feature_flags"},
+        {"$set": {
+            "flags": flags,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_by": user["user_id"],
+        }},
+        upsert=True,
+    )
+    return {"message": "Feature flags updated", "flags": flags}
+
+
+# ========================
+# ADMIN CALL CONFIG
+# ========================
+
+@router.get("/admin/call-config")
+async def get_admin_call_config():
+    """Get admin-configurable call settings"""
+    config = await db.app_settings.find_one({"key": "call_config"})
+    if not config:
+        return {"default_duration": 30, "min_duration": 5, "max_duration": 120}
+    return {
+        "default_duration": config.get("default_duration", 30),
+        "min_duration": config.get("min_duration", 5),
+        "max_duration": config.get("max_duration", 120),
+    }
+
+
+@router.put("/admin/call-config")
+async def update_admin_call_config(request: Request, user: dict = Depends(get_current_user)):
+    """Update call configuration (admin only)"""
+    role = get_user_role(user)
+    if role not in ADMIN_ROLES:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    body = await request.json()
+    update = {}
+    if "default_duration" in body:
+        update["default_duration"] = max(5, min(120, int(body["default_duration"])))
+    if "min_duration" in body:
+        update["min_duration"] = max(1, min(60, int(body["min_duration"])))
+    if "max_duration" in body:
+        update["max_duration"] = max(30, min(480, int(body["max_duration"])))
+
+    update["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update["updated_by"] = user["user_id"]
+
+    await db.app_settings.update_one(
+        {"key": "call_config"}, {"$set": update}, upsert=True
+    )
+    return {"message": "Call config updated", **update}
