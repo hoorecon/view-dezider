@@ -1,3 +1,4 @@
+"""Shared authentication utilities for modular routes."""
 import os
 from datetime import datetime, timezone, timedelta
 from fastapi import HTTPException, Request
@@ -30,28 +31,50 @@ def create_access_token(data: dict):
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-async def get_current_user(request: Request):
-    """Dependency that extracts and validates the JWT token from the request."""
-    token = request.headers.get("Authorization", "").replace("Bearer ", "")
-    if not token:
+async def get_current_user(request: Request) -> dict:
+    """Extract and validate user from session token (cookie or header).
+    Matches the session-based auth used by the main server.py.
+    """
+    session_token = None
+
+    # Try cookie first
+    session_token = request.cookies.get("session_token")
+
+    # Then try Authorization header
+    if not session_token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            session_token = auth_header[7:]
+
+    if not session_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id = payload.get("sub")
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        user = await db.users.find_one({"user_id": user_id})
-        if not user:
-            raise HTTPException(status_code=401, detail="User not found")
-        return {
-            "user_id": user["user_id"],
-            "email": user["email"],
-            "name": user.get("name", ""),
-            "role": user.get("role", "user"),
-            "org_id": user.get("org_id")
-        }
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # Check session in database
+    session_doc = await db.user_sessions.find_one(
+        {"session_token": session_token}, {"_id": 0}
+    )
+
+    if not session_doc:
+        raise HTTPException(status_code=401, detail="Invalid session")
+
+    # Check expiry
+    expires_at = session_doc["expires_at"]
+    if isinstance(expires_at, str):
+        expires_at = datetime.fromisoformat(expires_at)
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=401, detail="Session expired")
+
+    # Get user
+    user_doc = await db.users.find_one(
+        {"user_id": session_doc["user_id"]}, {"_id": 0}
+    )
+
+    if not user_doc:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    return user_doc
 
 
 def get_user_role(user: dict) -> str:
