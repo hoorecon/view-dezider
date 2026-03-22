@@ -34,6 +34,8 @@ interface Factor {
   data_type?: 'numeric' | 'text'; // Auto-sensed from expected_value
   operator?: string; // >=, <=, >, <, =, !=, between, contains, starts_with, ends_with, equals, not_equals
   gap_multiplier?: number; // Per-factor gap multiplier (default 1.0)
+  parent_id?: string; // null/undefined = top-level factor, set = sub-factor under parent
+  weight?: number; // Sub-factor weight as % of parent (0-100, subs must sum to 100)
 }
 
 interface OptionAssessment {
@@ -132,8 +134,12 @@ const senseDataType = (value: string): 'numeric' | 'text' => {
 const STANDARD_GAP = 10;
 
 const calculateRatingsFromOrder = (factors: Factor[], _unused?: number): Factor[] => {
-  const primaryFactors = factors.filter(f => f.category === 'primary').sort((a, b) => a.order - b.order);
-  const secondaryFactors = factors.filter(f => f.category === 'secondary').sort((a, b) => a.order - b.order);
+  // Only top-level factors participate in rating calculation
+  const topLevel = factors.filter(f => !f.parent_id);
+  const subFactors = factors.filter(f => !!f.parent_id);
+
+  const primaryFactors = topLevel.filter(f => f.category === 'primary').sort((a, b) => a.order - b.order);
+  const secondaryFactors = topLevel.filter(f => f.category === 'secondary').sort((a, b) => a.order - b.order);
   
   // Build ordered list from lowest to highest priority
   const orderedFromLowest = [
@@ -142,23 +148,22 @@ const calculateRatingsFromOrder = (factors: Factor[], _unused?: number): Factor[
   ];
   
   // Assign ratings using per-factor gap multipliers
-  const updatedFactors: Factor[] = [];
+  const updatedTopLevel: Factor[] = [];
   let currentRating = STANDARD_GAP; // Base rating for lowest factor
   
   orderedFromLowest.forEach((factor, index) => {
     if (index === 0) {
-      // Lowest priority factor gets base rating
-      updatedFactors.push({ ...factor, rating: currentRating });
+      updatedTopLevel.push({ ...factor, rating: currentRating });
     } else {
-      // Each subsequent factor: previous + (standard_gap × this factor's gap_multiplier)
       const gapMult = factor.gap_multiplier ?? 1.0;
       const gap = Math.round(STANDARD_GAP * gapMult);
       currentRating = currentRating + gap;
-      updatedFactors.push({ ...factor, rating: currentRating });
+      updatedTopLevel.push({ ...factor, rating: currentRating });
     }
   });
   
-  return updatedFactors;
+  // Return updated top-level factors + unchanged sub-factors
+  return [...updatedTopLevel, ...subFactors];
 };
 
 export default function PRRDecisionDetail() {
@@ -182,6 +187,9 @@ export default function PRRDecisionDetail() {
   const [customUnitInput, setCustomUnitInput] = useState<{[key: string]: string}>({});
   const [showUnitPicker, setShowUnitPicker] = useState<{[key: string]: boolean}>({});
   const [expectedInputs, setExpectedInputs] = useState<{[key: string]: string}>({});
+  const [newSubFactorName, setNewSubFactorName] = useState<{[key: string]: string}>({});
+  const [expandedGroups, setExpandedGroups] = useState<{[key: string]: boolean}>({});
+  const [subWeightInputs, setSubWeightInputs] = useState<{[key: string]: string}>({});
 
   useEffect(() => {
     fetchDecision();
@@ -247,17 +255,18 @@ export default function PRRDecisionDetail() {
   };
 
   const removeFactor = (factorId: string) => {
-    const updatedFactors = decision!.factors.filter((f) => f.id !== factorId);
+    // Also remove child sub-factors when parent is deleted
+    const updatedFactors = decision!.factors.filter((f) => f.id !== factorId && f.parent_id !== factorId);
     saveDecision({ factors: updatedFactors });
   };
 
-  // Move factor up in priority (within same category)
+  // Move factor up in priority (within same category) — top-level only
   const moveFactorUp = (factorId: string) => {
     const factor = decision!.factors.find(f => f.id === factorId);
-    if (!factor) return;
+    if (!factor || factor.parent_id) return; // Skip sub-factors
     
     const sameCategory = decision!.factors
-      .filter(f => f.category === factor.category)
+      .filter(f => f.category === factor.category && !f.parent_id)
       .sort((a, b) => a.order - b.order);
     
     const currentIndex = sameCategory.findIndex(f => f.id === factorId);
@@ -279,13 +288,13 @@ export default function PRRDecisionDetail() {
     saveDecision({ factors: factorsWithRatings });
   };
 
-  // Move factor down in priority (within same category)
+  // Move factor down in priority (within same category) — top-level only
   const moveFactorDown = (factorId: string) => {
     const factor = decision!.factors.find(f => f.id === factorId);
-    if (!factor) return;
+    if (!factor || factor.parent_id) return; // Skip sub-factors
     
     const sameCategory = decision!.factors
-      .filter(f => f.category === factor.category)
+      .filter(f => f.category === factor.category && !f.parent_id)
       .sort((a, b) => a.order - b.order);
     
     const currentIndex = sameCategory.findIndex(f => f.id === factorId);
@@ -538,41 +547,75 @@ export default function PRRDecisionDetail() {
   // Calculate worth percentage using weighted average formula
   // Formula: Sum(Rating × Assessment%) / Sum(All Ratings)
   // This ensures result is always 0-100%
+  // For factors with sub-factors: parent assessment % = weighted avg of sub-factor assessments
   const calculateDynamicWorth = (option: DecisionOption): { worth: number; assessedCount: number; totalCount: number } => {
     const factors = decision?.factors || [];
-    const totalFactors = factors.length;
-    const assessedFactors = option.assessments.filter(a => a.percentage !== undefined && a.percentage !== null);
+    const topLevel = factors.filter(f => !f.parent_id);
+    const totalFactors = topLevel.length;
     
-    if (assessedFactors.length === 0 || totalFactors === 0) {
+    if (totalFactors === 0) {
+      return { worth: 0, assessedCount: 0, totalCount: 0 };
+    }
+
+    // Get total of ALL top-level factor ratings
+    const totalRating = topLevel.reduce((sum, f) => sum + f.rating, 0);
+
+    if (totalRating === 0) {
       return { worth: 0, assessedCount: 0, totalCount: totalFactors };
     }
 
-    // Get total of ALL factor ratings (not just assessed ones)
-    const totalRating = factors.reduce((sum, f) => sum + f.rating, 0);
+    // Helper: get effective assessment % for a factor (handles sub-factor aggregation)
+    const getEffectivePercentage = (factor: Factor): number | null => {
+      const subs = factors.filter(f => f.parent_id === factor.id);
+      
+      if (subs.length === 0) {
+        // Leaf factor: use direct assessment
+        const assessment = option.assessments.find(a => a.factor_id === factor.id);
+        return assessment?.percentage ?? null;
+      }
+      
+      // Parent with sub-factors: weighted average of sub-factor assessments
+      let weightedSum = 0;
+      let totalWeight = 0;
+      let anyAssessed = false;
+      
+      for (const sub of subs) {
+        const subAssessment = option.assessments.find(a => a.factor_id === sub.id);
+        const subWeight = sub.weight || 0;
+        if (subAssessment?.percentage !== undefined && subAssessment?.percentage !== null && subWeight > 0) {
+          weightedSum += (subAssessment.percentage * subWeight) / 100;
+          totalWeight += subWeight;
+          anyAssessed = true;
+        }
+      }
+      
+      if (!anyAssessed || totalWeight === 0) return null;
+      // Scale up if not all sub-factor weights are accounted for
+      return Math.round(weightedSum * (100 / totalWeight) * 10) / 10;
+    };
 
-    if (totalRating === 0) {
-      return { worth: 0, assessedCount: assessedFactors.length, totalCount: totalFactors };
-    }
-
-    // Calculate weighted sum: Sum(rating × assessment%)
     let weightedSum = 0;
-    for (const assessment of assessedFactors) {
-      const factor = factors.find(f => f.id === assessment.factor_id);
-      if (factor) {
-        // Clamp individual assessment percentage to 0-100 before calculation
-        const clampedPercentage = Math.min(100, Math.max(0, assessment.percentage));
+    let assessedCount = 0;
+
+    for (const factor of topLevel) {
+      const pct = getEffectivePercentage(factor);
+      if (pct !== null) {
+        const clampedPercentage = Math.min(100, Math.max(0, pct));
         weightedSum += factor.rating * (clampedPercentage / 100);
+        assessedCount++;
       }
     }
 
-    // Divide by total ratings to get weighted average (0-100%)
+    if (assessedCount === 0) {
+      return { worth: 0, assessedCount: 0, totalCount: totalFactors };
+    }
+
     const rawWorth = (weightedSum / totalRating) * 100;
-    // Cap at 100% - mathematically impossible to exceed if assessments are 0-100%
     const worth = Math.min(100, Math.max(0, rawWorth));
 
     return { 
       worth: Math.round(worth * 10) / 10, 
-      assessedCount: assessedFactors.length, 
+      assessedCount, 
       totalCount: totalFactors 
     };
   };
@@ -640,7 +683,6 @@ export default function PRRDecisionDetail() {
       const detectedType = senseDataType(raw);
       const numericVal = detectedType === 'numeric' ? parseFloat(raw) : undefined;
       const currentOp = decision.factors.find(f => f.id === factorId)?.operator;
-      // Auto-set default operator if none selected or if type changed
       const validOps = detectedType === 'numeric'
         ? NUMERIC_OPERATORS.map(o => o.value)
         : TEXT_OPERATORS.map(o => o.value);
@@ -664,24 +706,158 @@ export default function PRRDecisionDetail() {
       return senseDataType(val);
     };
 
+    // Helpers for sub-factor management
+    const addSubFactor = (parentId: string) => {
+      const name = (newSubFactorName[parentId] || '').trim();
+      if (!name) return;
+      const newSub: Factor = {
+        id: `sf_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        name,
+        category: 'secondary',
+        rating: 0,
+        order: decision.factors.filter(f => f.parent_id === parentId).length,
+        parent_id: parentId,
+        weight: 0,
+      };
+      const updated = [...decision.factors, newSub];
+      saveDecision({ factors: updated });
+      setNewSubFactorName({ ...newSubFactorName, [parentId]: '' });
+      setExpandedGroups({ ...expandedGroups, [parentId]: true });
+    };
+
+    const handleWeightBlur = (factorId: string, parentId: string) => {
+      const raw = (subWeightInputs[factorId] || '').trim();
+      const val = parseInt(raw) || 0;
+      const clamped = Math.min(100, Math.max(0, val));
+      updateFactor(factorId, { weight: clamped });
+    };
+
+    // Split factors into top-level and sub-factors
+    const topLevelFactors = decision.factors.filter(f => !f.parent_id);
+    const getSubFactors = (parentId: string) =>
+      decision.factors.filter(f => f.parent_id === parentId).sort((a, b) => a.order - b.order);
+    const getSubWeightTotal = (parentId: string) =>
+      getSubFactors(parentId).reduce((sum, f) => sum + (f.weight || 0), 0);
+
+    // Check if a factor is a "leaf" (no children, OR is itself a sub-factor)
+    const isLeaf = (factor: Factor) => {
+      if (factor.parent_id) return true; // It's a sub-factor, always a leaf
+      return getSubFactors(factor.id).length === 0; // Top-level with no children
+    };
+
+    const toggleGroup = (factorId: string) => {
+      setExpandedGroups({ ...expandedGroups, [factorId]: !expandedGroups[factorId] });
+    };
+
+    // Render criteria fields (expected value, operator, unit) for a leaf factor
+    const renderCriteria = (factor: Factor, indent: boolean = false) => {
+      const detectedType = getDetectedType(factor);
+      const operators = detectedType === 'numeric' ? NUMERIC_OPERATORS : TEXT_OPERATORS;
+      const hasExpected = factor.expected_value !== undefined && factor.expected_value !== null;
+
+      return (
+        <View style={indent ? styles.subFactorCriteria : undefined}>
+          {/* Expected value */}
+          <View style={styles.expectedRow}>
+            <Text style={styles.expectedLabel}>Expected:</Text>
+            <TextInput
+              style={styles.expectedInput}
+              placeholder="e.g. 20 or Bangalore"
+              placeholderTextColor={COLORS.textMuted}
+              value={getExpectedInput(factor)}
+              onChangeText={(v) => handleExpectedValueChange(factor.id, v)}
+              onBlur={() => handleExpectedValueBlur(factor.id)}
+            />
+            <View style={[styles.dataTypeBadge, detectedType === 'text' ? styles.dataTypeBadgeText : null]}>
+              <Text style={styles.dataTypeBadgeLabel}>{detectedType === 'numeric' ? '123' : 'abc'}</Text>
+            </View>
+          </View>
+
+          {/* Operator */}
+          {hasExpected && (
+            <View style={styles.operatorRow}>
+              <Text style={styles.operatorLabel}>Operator:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
+                <View style={styles.operatorChipsContainer}>
+                  {operators.map((op) => (
+                    <TouchableOpacity
+                      key={op.value}
+                      style={[styles.operatorChip, factor.operator === op.value && styles.operatorChipActive]}
+                      onPress={() => updateFactor(factor.id, { operator: op.value })}
+                    >
+                      <Text style={[styles.operatorChipText, factor.operator === op.value && styles.operatorChipTextActive]}>{op.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+            </View>
+          )}
+
+          {/* Unit (numeric only) */}
+          {detectedType === 'numeric' && (
+            <View style={styles.unitSelectorRow}>
+              <Text style={styles.unitSelectorLabel}>Unit:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.unitChipsScroll}>
+                <View style={styles.unitChipsContainer}>
+                  {factor.unit && (
+                    <TouchableOpacity style={[styles.unitChip, styles.unitChipClear]} onPress={() => updateFactor(factor.id, { unit: undefined })}>
+                      <Ionicons name="close" size={12} color={COLORS.error} />
+                    </TouchableOpacity>
+                  )}
+                  {UNIT_PRESETS.map((preset) => (
+                    <TouchableOpacity key={preset.value} style={[styles.unitChip, factor.unit === preset.value && styles.unitChipActive]} onPress={() => updateFactor(factor.id, { unit: preset.value })}>
+                      <Text style={[styles.unitChipText, factor.unit === preset.value && styles.unitChipTextActive]}>{preset.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity style={[styles.unitChip, styles.unitChipCustom, showUnitPicker[factor.id] && styles.unitChipActive]} onPress={() => setShowUnitPicker({ ...showUnitPicker, [factor.id]: !showUnitPicker[factor.id] })}>
+                    <Text style={[styles.unitChipText, showUnitPicker[factor.id] && styles.unitChipTextActive]}>✎</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </View>
+          )}
+          {showUnitPicker[factor.id] && detectedType === 'numeric' && (
+            <View style={styles.customUnitRow}>
+              <TextInput style={styles.customUnitInput} placeholder="Custom unit (e.g., Km/Liter)" placeholderTextColor={COLORS.textMuted} value={customUnitInput[factor.id] || ''} onChangeText={(v) => setCustomUnitInput({ ...customUnitInput, [factor.id]: v })} onSubmitEditing={() => { const val = (customUnitInput[factor.id] || '').trim(); if (val) { updateFactor(factor.id, { unit: val }); setShowUnitPicker({ ...showUnitPicker, [factor.id]: false }); } }} />
+              <TouchableOpacity style={styles.customUnitApplyBtn} onPress={() => { const val = (customUnitInput[factor.id] || '').trim(); if (val) { updateFactor(factor.id, { unit: val }); setShowUnitPicker({ ...showUnitPicker, [factor.id]: false }); } }}>
+                <Ionicons name="checkmark" size={18} color={COLORS.white} />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      );
+    };
+
     return (
       <View style={styles.stepContent}>
         <Text style={styles.stepTitle}>Step 2: Define Factors & Criteria</Text>
         <Text style={styles.stepDescription}>
-          List factors, set expected values with comparison operators, and optionally assign measurement units.
+          List factors, group them with sub-factors (splitting 100%), then assign expected values, operators, and units.
         </Text>
 
-        {decision.factors.map((factor) => {
-          const detectedType = getDetectedType(factor);
-          const operators = detectedType === 'numeric' ? NUMERIC_OPERATORS : TEXT_OPERATORS;
+        {topLevelFactors.map((factor) => {
+          const subs = getSubFactors(factor.id);
+          const hasChildren = subs.length > 0;
+          const isExpanded = expandedGroups[factor.id] !== false; // default expanded
+          const weightTotal = getSubWeightTotal(factor.id);
           const hasExpected = factor.expected_value !== undefined && factor.expected_value !== null;
 
           return (
-            <Card key={factor.id} style={styles.factorCard}>
-              {/* Row 1: Factor name + badges + delete */}
+            <Card key={factor.id} style={[styles.factorCard, hasChildren && styles.factorCardGroup]}>
+              {/* Factor header */}
               <View style={styles.factorHeader}>
-                <Text style={styles.factorName}>{factor.name}</Text>
-                {hasExpected && (
+                {hasChildren && (
+                  <TouchableOpacity onPress={() => toggleGroup(factor.id)} style={styles.expandBtn}>
+                    <Ionicons name={isExpanded ? 'chevron-down' : 'chevron-forward'} size={18} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
+                )}
+                <Text style={[styles.factorName, { flex: 1 }]}>{factor.name}</Text>
+                {hasChildren && (
+                  <View style={[styles.weightTotalBadge, weightTotal === 100 && styles.weightTotalComplete, weightTotal > 100 && styles.weightTotalOver]}>
+                    <Text style={styles.weightTotalText}>{weightTotal}%</Text>
+                  </View>
+                )}
+                {hasExpected && !hasChildren && (
                   <View style={styles.criteriaPreview}>
                     <Text style={styles.criteriaPreviewText}>
                       {factor.operator || '≥'} {String(factor.expected_value)}{factor.unit ? ` ${factor.unit}` : ''}
@@ -693,123 +869,100 @@ export default function PRRDecisionDetail() {
                 </TouchableOpacity>
               </View>
 
-              {/* Row 2: Expected value input + data type badge */}
-              <View style={styles.expectedRow}>
-                <Text style={styles.expectedLabel}>Expected:</Text>
-                <TextInput
-                  style={styles.expectedInput}
-                  placeholder="e.g. 20 or Bangalore"
-                  placeholderTextColor={COLORS.textMuted}
-                  value={getExpectedInput(factor)}
-                  onChangeText={(v) => handleExpectedValueChange(factor.id, v)}
-                  onBlur={() => handleExpectedValueBlur(factor.id)}
-                />
-                <View style={[styles.dataTypeBadge, detectedType === 'text' ? styles.dataTypeBadgeText : null]}>
-                  <Text style={styles.dataTypeBadgeLabel}>
-                    {detectedType === 'numeric' ? '123' : 'abc'}
-                  </Text>
-                </View>
-              </View>
+              {/* If leaf factor (no children), show criteria directly */}
+              {!hasChildren && renderCriteria(factor)}
 
-              {/* Row 3: Operator selector */}
-              <View style={styles.operatorRow}>
-                <Text style={styles.operatorLabel}>Operator:</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
-                  <View style={styles.operatorChipsContainer}>
-                    {operators.map((op) => (
-                      <TouchableOpacity
-                        key={op.value}
-                        style={[
-                          styles.operatorChip,
-                          factor.operator === op.value && styles.operatorChipActive,
-                        ]}
-                        onPress={() => updateFactor(factor.id, { operator: op.value })}
-                      >
-                        <Text style={[
-                          styles.operatorChipText,
-                          factor.operator === op.value && styles.operatorChipTextActive,
-                        ]}>{op.label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </ScrollView>
-              </View>
-
-              {/* Row 4: Unit selector (only for numeric) */}
-              {detectedType === 'numeric' && (
-                <View style={styles.unitSelectorRow}>
-                  <Text style={styles.unitSelectorLabel}>Unit:</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.unitChipsScroll}>
-                    <View style={styles.unitChipsContainer}>
-                      {factor.unit && (
-                        <TouchableOpacity
-                          style={[styles.unitChip, styles.unitChipClear]}
-                          onPress={() => updateFactor(factor.id, { unit: undefined })}
-                        >
-                          <Ionicons name="close" size={12} color={COLORS.error} />
-                        </TouchableOpacity>
-                      )}
-                      {UNIT_PRESETS.map((preset) => (
-                        <TouchableOpacity
-                          key={preset.value}
-                          style={[
-                            styles.unitChip,
-                            factor.unit === preset.value && styles.unitChipActive,
-                          ]}
-                          onPress={() => updateFactor(factor.id, { unit: preset.value })}
-                        >
-                          <Text style={[
-                            styles.unitChipText,
-                            factor.unit === preset.value && styles.unitChipTextActive,
-                          ]}>{preset.label}</Text>
-                        </TouchableOpacity>
-                      ))}
-                      <TouchableOpacity
-                        style={[
-                          styles.unitChip,
-                          styles.unitChipCustom,
-                          showUnitPicker[factor.id] && styles.unitChipActive,
-                        ]}
-                        onPress={() => setShowUnitPicker({ ...showUnitPicker, [factor.id]: !showUnitPicker[factor.id] })}
-                      >
-                        <Text style={[
-                          styles.unitChipText,
-                          showUnitPicker[factor.id] && styles.unitChipTextActive,
-                        ]}>✎</Text>
-                      </TouchableOpacity>
+              {/* Sub-factors section */}
+              {hasChildren && isExpanded && (
+                <View style={styles.subFactorsContainer}>
+                  {/* Weight progress bar */}
+                  <View style={styles.weightProgressRow}>
+                    <View style={styles.weightProgressBar}>
+                      <View style={[
+                        styles.weightProgressFill,
+                        { width: `${Math.min(100, weightTotal)}%` },
+                        weightTotal === 100 && { backgroundColor: '#10B981' },
+                        weightTotal > 100 && { backgroundColor: '#EF4444' },
+                      ]} />
                     </View>
-                  </ScrollView>
+                    <Text style={[styles.weightProgressText, weightTotal === 100 && { color: '#10B981' }, weightTotal > 100 && { color: '#EF4444' }]}>
+                      {weightTotal}/100%
+                    </Text>
+                  </View>
+
+                  {subs.map((sub) => {
+                    const subHasExpected = sub.expected_value !== undefined && sub.expected_value !== null;
+                    return (
+                      <View key={sub.id} style={styles.subFactorItem}>
+                        <View style={styles.subFactorHeader}>
+                          <View style={styles.subFactorDot} />
+                          <Text style={styles.subFactorName}>{sub.name}</Text>
+                          {subHasExpected && (
+                            <View style={[styles.criteriaPreview, { marginRight: 4 }]}>
+                              <Text style={styles.criteriaPreviewText}>
+                                {sub.operator || '≥'} {String(sub.expected_value)}{sub.unit ? ` ${sub.unit}` : ''}
+                              </Text>
+                            </View>
+                          )}
+                          {/* Weight input */}
+                          <View style={styles.weightInputWrap}>
+                            <TextInput
+                              style={styles.weightInput}
+                              value={subWeightInputs[sub.id] !== undefined ? subWeightInputs[sub.id] : (sub.weight ? String(sub.weight) : '')}
+                              onChangeText={(v) => setSubWeightInputs({ ...subWeightInputs, [sub.id]: v.replace(/[^0-9]/g, '') })}
+                              onBlur={() => handleWeightBlur(sub.id, factor.id)}
+                              keyboardType="number-pad"
+                              placeholder="0"
+                              placeholderTextColor={COLORS.textMuted}
+                            />
+                            <Text style={styles.weightPercent}>%</Text>
+                          </View>
+                          <TouchableOpacity onPress={() => removeFactor(sub.id)}>
+                            <Ionicons name="close-circle" size={18} color={COLORS.error} />
+                          </TouchableOpacity>
+                        </View>
+                        {/* Sub-factor criteria */}
+                        {renderCriteria(sub, true)}
+                      </View>
+                    );
+                  })}
+
+                  {/* Add sub-factor input */}
+                  <View style={styles.addSubFactorRow}>
+                    <TextInput
+                      style={styles.addSubFactorInput}
+                      placeholder="Add sub-factor..."
+                      placeholderTextColor={COLORS.textMuted}
+                      value={newSubFactorName[factor.id] || ''}
+                      onChangeText={(v) => setNewSubFactorName({ ...newSubFactorName, [factor.id]: v })}
+                      onSubmitEditing={() => addSubFactor(factor.id)}
+                    />
+                    <TouchableOpacity style={styles.addSubFactorBtn} onPress={() => addSubFactor(factor.id)}>
+                      <Ionicons name="add" size={18} color={COLORS.white} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               )}
-              {showUnitPicker[factor.id] && detectedType === 'numeric' && (
-                <View style={styles.customUnitRow}>
-                  <TextInput
-                    style={styles.customUnitInput}
-                    placeholder="Custom unit (e.g., Km/Liter)"
-                    placeholderTextColor={COLORS.textMuted}
-                    value={customUnitInput[factor.id] || ''}
-                    onChangeText={(v) => setCustomUnitInput({ ...customUnitInput, [factor.id]: v })}
-                    onSubmitEditing={() => {
-                      const val = (customUnitInput[factor.id] || '').trim();
-                      if (val) {
-                        updateFactor(factor.id, { unit: val });
-                        setShowUnitPicker({ ...showUnitPicker, [factor.id]: false });
-                      }
-                    }}
-                  />
-                  <TouchableOpacity
-                    style={styles.customUnitApplyBtn}
-                    onPress={() => {
-                      const val = (customUnitInput[factor.id] || '').trim();
-                      if (val) {
-                        updateFactor(factor.id, { unit: val });
-                        setShowUnitPicker({ ...showUnitPicker, [factor.id]: false });
-                      }
-                    }}
-                  >
-                    <Ionicons name="checkmark" size={18} color={COLORS.white} />
-                  </TouchableOpacity>
-                </View>
+
+              {/* "Add Sub-factor" toggle for factors without children yet */}
+              {!hasChildren && (
+                <TouchableOpacity style={styles.addSubToggle} onPress={() => {
+                  setExpandedGroups({ ...expandedGroups, [factor.id]: true });
+                  // Add a placeholder sub-factor to start the group
+                  const firstSub: Factor = {
+                    id: `sf_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                    name: factor.name + ' - Part 1',
+                    category: factor.category || 'secondary',
+                    rating: 0,
+                    order: 0,
+                    parent_id: factor.id,
+                    weight: 50,
+                  };
+                  saveDecision({ factors: [...decision.factors, firstSub] });
+                }}>
+                  <Ionicons name="git-branch-outline" size={14} color={COLORS.primary} />
+                  <Text style={styles.addSubToggleText}>Split into sub-factors</Text>
+                </TouchableOpacity>
               )}
             </Card>
           );
@@ -818,7 +971,7 @@ export default function PRRDecisionDetail() {
         <View style={styles.addFactorRow}>
           <TextInput
             style={styles.addInput}
-            placeholder="Add a factor (e.g., Salary, Mileage, Location)"
+            placeholder="Add a factor (e.g., Cost, Performance, Location)"
             placeholderTextColor={COLORS.textMuted}
             value={newFactorName}
             onChangeText={setNewFactorName}
@@ -832,30 +985,56 @@ export default function PRRDecisionDetail() {
         <GradientButton
           title="Continue to Classification"
           onPress={() => setCurrentStep(3)}
-          disabled={decision.factors.length < 2}
+          disabled={topLevelFactors.length < 2}
           style={styles.continueButton}
         />
       </View>
     );
   };
 
-  const renderStep3 = () => (
+  const renderStep3 = () => {
+    // Only show top-level factors; sub-factors inherit parent's classification
+    const topLevelFactors = decision.factors.filter(f => !f.parent_id);
+
+    const classifyFactorWithChildren = (factorId: string, category: 'primary' | 'secondary') => {
+      // Update parent + all its sub-factors
+      const updatedFactors = decision.factors.map(f => {
+        if (f.id === factorId || f.parent_id === factorId) {
+          return { ...f, category };
+        }
+        return f;
+      });
+      saveDecision({ factors: updatedFactors });
+    };
+
+    return (
     <View style={styles.stepContent}>
       <Text style={styles.stepTitle}>Step 3: Classify Factors</Text>
       <Text style={styles.stepDescription}>
         Categorize each factor as Primary (essential) or Secondary (important but not critical).
+        {decision.factors.some(f => !!f.parent_id) ? ' Sub-factors inherit their parent\'s classification.' : ''}
       </Text>
 
-      {decision.factors.map((factor) => (
+      {topLevelFactors.map((factor) => {
+        const subs = decision.factors.filter(f => f.parent_id === factor.id);
+        const hasSubs = subs.length > 0;
+        return (
         <Card key={factor.id} style={styles.factorCard}>
-          <Text style={styles.factorName}>{factor.name}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <Text style={styles.factorName}>{factor.name}</Text>
+            {hasSubs && (
+              <View style={{ backgroundColor: COLORS.primaryLight || '#EDE9FE', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 }}>
+                <Text style={{ fontSize: 10, color: COLORS.primary }}>{subs.length} sub</Text>
+              </View>
+            )}
+          </View>
           <View style={styles.categoryButtons}>
             <TouchableOpacity
               style={[
                 styles.categoryButton,
                 factor.category === 'primary' && styles.categoryButtonActive,
               ]}
-              onPress={() => updateFactor(factor.id, { category: 'primary' })}
+              onPress={() => classifyFactorWithChildren(factor.id, 'primary')}
             >
               <Text
                 style={[
@@ -871,7 +1050,7 @@ export default function PRRDecisionDetail() {
                 styles.categoryButton,
                 factor.category === 'secondary' && styles.categoryButtonActive,
               ]}
-              onPress={() => updateFactor(factor.id, { category: 'secondary' })}
+              onPress={() => classifyFactorWithChildren(factor.id, 'secondary')}
             >
               <Text
                 style={[
@@ -884,7 +1063,8 @@ export default function PRRDecisionDetail() {
             </TouchableOpacity>
           </View>
         </Card>
-      ))}
+        );
+      })}
 
       <View style={styles.navButtons}>
         <TouchableOpacity style={styles.backButton} onPress={() => setCurrentStep(2)}>
@@ -898,14 +1078,16 @@ export default function PRRDecisionDetail() {
         />
       </View>
     </View>
-  );
+    );
+  };
 
-  // Step 4: Prioritize by ordering (drag up/down)
+  // Step 4: Prioritize by ordering (drag up/down) — top-level factors only
   const renderStep4 = () => {
-    const primaryFactors = decision.factors
+    const topLevel = decision.factors.filter(f => !f.parent_id);
+    const primaryFactors = topLevel
       .filter(f => f.category === 'primary')
       .sort((a, b) => a.order - b.order);
-    const secondaryFactors = decision.factors
+    const secondaryFactors = topLevel
       .filter(f => f.category === 'secondary')
       .sort((a, b) => a.order - b.order);
 
@@ -994,18 +1176,21 @@ export default function PRRDecisionDetail() {
     );
   };
 
-  // Step 5: Show calculated ratings with per-factor gap adjustment
+  // Step 5: Show calculated ratings with per-factor gap adjustment (top-level only)
   const renderStep5 = () => {
     // Always recalculate from per-factor gaps for live preview
     const recalculated = calculateRatingsFromOrder(decision.factors);
 
+    // Only show top-level factors
+    const topLevelRecalc = recalculated.filter(f => !f.parent_id);
+
     // Sort factors by rating descending for display (highest priority first)
-    const sortedFactors = [...recalculated].sort((a, b) => b.rating - a.rating);
+    const sortedFactors = [...topLevelRecalc].sort((a, b) => b.rating - a.rating);
     const highestRating = sortedFactors.length > 0 ? sortedFactors[0].rating : 100;
 
     // Build ordered list from lowest to highest for gap context
-    const primaryFactors = recalculated.filter(f => f.category === 'primary').sort((a, b) => a.order - b.order);
-    const secondaryFactors = recalculated.filter(f => f.category === 'secondary').sort((a, b) => a.order - b.order);
+    const primaryFactors = topLevelRecalc.filter(f => f.category === 'primary').sort((a, b) => a.order - b.order);
+    const secondaryFactors = topLevelRecalc.filter(f => f.category === 'secondary').sort((a, b) => a.order - b.order);
     const orderedFromLowest = [
       ...secondaryFactors.slice().reverse(),
       ...primaryFactors.slice().reverse(),
@@ -1127,7 +1312,7 @@ export default function PRRDecisionDetail() {
           </View>
           <View style={styles.ratingSummaryRow}>
             <Text style={styles.ratingSummaryLabel}>Factors</Text>
-            <Text style={styles.ratingSummaryValue}>{decision.factors.length}</Text>
+            <Text style={styles.ratingSummaryValue}>{topLevelRecalc.length}</Text>
           </View>
         </Card>
 
@@ -1347,7 +1532,7 @@ export default function PRRDecisionDetail() {
       const key = getAssessmentKey(optionId, factorId);
       if (actualValues[key] !== undefined) return actualValues[key];
       const stored = getActualValue(optionId, factorId);
-      if (stored !== undefined) return String(stored);
+      if (stored !== undefined && stored !== null) return String(stored);
       // Fallback: try to parse from legacy unit_value
       const legacy = getUnitValue(optionId, factorId);
       if (legacy) {
@@ -1428,157 +1613,191 @@ export default function PRRDecisionDetail() {
               </Text>
             </View>
 
+            {/* Render factors - top-level only, with sub-factor expansion */}
             {decision.factors
+              .filter(f => !f.parent_id)
               .sort((a, b) => b.rating - a.rating)
               .map((factor) => {
-                const key = getAssessmentKey(option.id, factor.id);
-                const currentMode = getAssessmentMode(option.id, factor.id);
-                const currentValue = getAssessmentValue(option.id, factor.id);
-                const isCustom = showCustomInput[key] || currentMode === 'custom';
-                const hasValue = currentValue !== null;
+                const subs = decision.factors.filter(f => f.parent_id === factor.id).sort((a, b) => a.order - b.order);
+                const hasSubs = subs.length > 0;
 
-                return (
-                  <View key={factor.id} style={styles.assessmentFactorContainer}>
-                    {/* Factor header with rating and unit badge */}
-                    <View style={styles.assessmentLabelRow}>
-                      <Text style={styles.assessmentLabel}>{factor.name}</Text>
-                      {factor.unit && (
-                        <View style={styles.factorUnitBadge}>
-                          <Text style={styles.factorUnitBadgeText}>{factor.unit}</Text>
-                        </View>
-                      )}
-                      {factor.expected_value !== undefined && factor.expected_value !== null && (
-                        <View style={styles.expectedCriteriaBadge}>
-                          <Text style={styles.expectedCriteriaText}>
-                            {factor.operator || '≥'} {String(factor.expected_value)}{factor.unit ? ` ${factor.unit}` : ''}
-                          </Text>
-                        </View>
-                      )}
-                      <Text style={styles.assessmentRating}>({factor.rating})</Text>
-                    </View>
+                // Calculate parent's weighted average from sub-factor assessments
+                const getParentWeightedPct = (): number | null => {
+                  if (!hasSubs) return null;
+                  let wSum = 0;
+                  let wTotal = 0;
+                  let any = false;
+                  for (const sub of subs) {
+                    const sa = option.assessments.find(a => a.factor_id === sub.id);
+                    const sw = sub.weight || 0;
+                    if (sa?.percentage !== undefined && sa?.percentage !== null && sw > 0) {
+                      wSum += (sa.percentage * sw) / 100;
+                      wTotal += sw;
+                      any = true;
+                    }
+                  }
+                  if (!any || wTotal === 0) return null;
+                  return Math.round(wSum * (100 / wTotal) * 10) / 10;
+                };
 
-                    {/* Actual Value input — text or numeric based on data_type */}
-                    <View style={styles.actualValueRow}>
-                      <View style={styles.actualValueInputWrap}>
-                        <TextInput
-                          style={styles.actualValueInput}
-                          placeholder={
-                            factor.data_type === 'text'
-                              ? `Enter ${factor.name.toLowerCase()} value`
-                              : factor.unit
-                                ? `Value in ${factor.unit}`
-                                : 'Actual value (optional)'
-                          }
-                          placeholderTextColor={COLORS.textMuted}
-                          value={getActualInputValue(option.id, factor.id)}
-                          onChangeText={(value) => handleUnitValueChange(option.id, factor.id, value)}
-                          onBlur={() => handleActualValueBlur(option.id, factor.id)}
-                          keyboardType={factor.data_type === 'text' ? 'default' : 'decimal-pad'}
-                        />
-                        {factor.unit ? (
-                          <View style={styles.unitSuffix}>
-                            <Text style={styles.unitSuffixText}>{factor.unit}</Text>
+                const parentPct = hasSubs ? getParentWeightedPct() : null;
+
+                // Render a single factor's assessment controls (reused for leaf & sub-factors)
+                const renderFactorAssessment = (f: Factor, indent: boolean = false) => {
+                  const key = getAssessmentKey(option.id, f.id);
+                  const currentMode = getAssessmentMode(option.id, f.id);
+                  const currentValue = getAssessmentValue(option.id, f.id);
+                  const isCustom = showCustomInput[key] || currentMode === 'custom';
+                  const hasValue = currentValue !== null;
+
+                  return (
+                    <View key={f.id} style={[styles.assessmentFactorContainer, indent && { marginLeft: 12, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: COLORS.border }]}>
+                      <View style={styles.assessmentLabelRow}>
+                        {indent && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.primary, marginRight: 6 }} />}
+                        <Text style={[styles.assessmentLabel, indent && { fontSize: 13 }]}>{f.name}</Text>
+                        {f.unit && (
+                          <View style={styles.factorUnitBadge}>
+                            <Text style={styles.factorUnitBadgeText}>{f.unit}</Text>
+                          </View>
+                        )}
+                        {f.expected_value !== undefined && f.expected_value !== null && (
+                          <View style={styles.expectedCriteriaBadge}>
+                            <Text style={styles.expectedCriteriaText}>
+                              {f.operator || '≥'} {String(f.expected_value)}{f.unit ? ` ${f.unit}` : ''}
+                            </Text>
+                          </View>
+                        )}
+                        {indent && f.weight ? (
+                          <View style={{ backgroundColor: '#EDE9FE', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 6, marginLeft: 4 }}>
+                            <Text style={{ fontSize: 10, color: COLORS.primary, fontWeight: '600' }}>{f.weight}%</Text>
                           </View>
                         ) : null}
+                        {!indent && <Text style={styles.assessmentRating}>({factor.rating})</Text>}
+                      </View>
+
+                      {/* Actual Value input */}
+                      <View style={styles.actualValueRow}>
+                        <View style={styles.actualValueInputWrap}>
+                          <TextInput
+                            style={styles.actualValueInput}
+                            placeholder={
+                              f.data_type === 'text'
+                                ? `Enter ${f.name.toLowerCase()} value`
+                                : f.unit
+                                  ? `Value in ${f.unit}`
+                                  : 'Actual value (optional)'
+                            }
+                            placeholderTextColor={COLORS.textMuted}
+                            value={getActualInputValue(option.id, f.id)}
+                            onChangeText={(value) => handleUnitValueChange(option.id, f.id, value)}
+                            onBlur={() => handleActualValueBlur(option.id, f.id)}
+                            keyboardType={f.data_type === 'text' ? 'default' : 'decimal-pad'}
+                          />
+                          {f.unit ? (
+                            <View style={styles.unitSuffix}>
+                              <Text style={styles.unitSuffixText}>{f.unit}</Text>
+                            </View>
+                          ) : null}
+                        </View>
+                      </View>
+
+                      {/* LMH Toggle Buttons + Custom */}
+                      <View style={styles.lmhContainer}>
+                        <TouchableOpacity
+                          style={[styles.lmhButton, { borderColor: LMH_VALUES.L.color }, currentMode === 'L' && { backgroundColor: LMH_VALUES.L.color }]}
+                          onPress={() => handleLMHSelect(option.id, f.id, 'L')}
+                        >
+                          <Text style={[styles.lmhText, { color: currentMode === 'L' ? COLORS.white : LMH_VALUES.L.color }]}>L</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[styles.lmhButton, { borderColor: LMH_VALUES.M.color }, currentMode === 'M' && { backgroundColor: LMH_VALUES.M.color }]}
+                          onPress={() => handleLMHSelect(option.id, f.id, 'M')}
+                        >
+                          <Text style={[styles.lmhText, { color: currentMode === 'M' ? COLORS.white : LMH_VALUES.M.color }]}>M</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[styles.lmhButton, { borderColor: LMH_VALUES.H.color }, currentMode === 'H' && { backgroundColor: LMH_VALUES.H.color }]}
+                          onPress={() => handleLMHSelect(option.id, f.id, 'H')}
+                        >
+                          <Text style={[styles.lmhText, { color: currentMode === 'H' ? COLORS.white : LMH_VALUES.H.color }]}>H</Text>
+                        </TouchableOpacity>
+
+                        {isCustom ? (
+                          <View style={[styles.customInputContainer, { backgroundColor: COLORS.primary }]}>
+                            <TextInput
+                              style={[styles.customPercentInput, { color: COLORS.white }]}
+                              value={getCustomInputValue(option.id, f.id)}
+                              onChangeText={(text) => handleCustomInputChange(option.id, f.id, text)}
+                              onBlur={() => handleCustomInputBlur(option.id, f.id)}
+                              keyboardType="numeric"
+                              maxLength={3}
+                              placeholderTextColor="rgba(255,255,255,0.6)"
+                              placeholder="0"
+                            />
+                            <Text style={[styles.customPercentSign, { color: COLORS.white }]}>%</Text>
+                          </View>
+                        ) : (
+                          <TouchableOpacity
+                            style={[styles.lmhButton, styles.customButton, currentMode === 'custom' && styles.customButtonActive]}
+                            onPress={() => handleCustomSelect(option.id, f.id)}
+                          >
+                            <Text style={[styles.lmhText, { color: currentMode === 'custom' ? COLORS.white : COLORS.primary }]}>%</Text>
+                          </TouchableOpacity>
+                        )}
+
+                        <View style={[
+                          styles.currentValueBadge,
+                          !hasValue && styles.currentValueBadgeEmpty,
+                          currentMode === 'auto' && styles.currentValueBadgeAuto,
+                        ]}>
+                          {hasValue ? (
+                            <View style={styles.percentBadgeInner}>
+                              {currentMode === 'auto' && (
+                                <Ionicons name="flash" size={10} color={'#6366F1'} />
+                              )}
+                              <Text style={[styles.currentValueText, currentMode === 'auto' && styles.currentValueTextAuto]}>{currentValue}%</Text>
+                            </View>
+                          ) : (
+                            <Text style={styles.currentValueTextEmpty}>--</Text>
+                          )}
+                        </View>
                       </View>
                     </View>
+                  );
+                };
 
-                    {/* LMH Toggle Buttons + Custom */}
-                    <View style={styles.lmhContainer}>
-                      <TouchableOpacity
-                        style={[
-                          styles.lmhButton,
-                          { borderColor: LMH_VALUES.L.color },
-                          currentMode === 'L' && { backgroundColor: LMH_VALUES.L.color },
-                        ]}
-                        onPress={() => handleLMHSelect(option.id, factor.id, 'L')}
-                      >
-                        <Text style={[
-                          styles.lmhText,
-                          { color: currentMode === 'L' ? COLORS.white : LMH_VALUES.L.color },
-                        ]}>L</Text>
-                      </TouchableOpacity>
+                if (!hasSubs) {
+                  // Leaf factor — render directly
+                  return renderFactorAssessment(factor);
+                }
 
-                      <TouchableOpacity
-                        style={[
-                          styles.lmhButton,
-                          { borderColor: LMH_VALUES.M.color },
-                          currentMode === 'M' && { backgroundColor: LMH_VALUES.M.color },
-                        ]}
-                        onPress={() => handleLMHSelect(option.id, factor.id, 'M')}
-                      >
-                        <Text style={[
-                          styles.lmhText,
-                          { color: currentMode === 'M' ? COLORS.white : LMH_VALUES.M.color },
-                        ]}>M</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={[
-                          styles.lmhButton,
-                          { borderColor: LMH_VALUES.H.color },
-                          currentMode === 'H' && { backgroundColor: LMH_VALUES.H.color },
-                        ]}
-                        onPress={() => handleLMHSelect(option.id, factor.id, 'H')}
-                      >
-                        <Text style={[
-                          styles.lmhText,
-                          { color: currentMode === 'H' ? COLORS.white : LMH_VALUES.H.color },
-                        ]}>H</Text>
-                      </TouchableOpacity>
-
-                      {/* Custom % toggle/input */}
-                      {isCustom ? (
-                        <View style={[styles.customInputContainer, { backgroundColor: COLORS.primary }]}>
-                          <TextInput
-                            style={[styles.customPercentInput, { color: COLORS.white }]}
-                            value={getCustomInputValue(option.id, factor.id)}
-                            onChangeText={(text) => handleCustomInputChange(option.id, factor.id, text)}
-                            onBlur={() => handleCustomInputBlur(option.id, factor.id)}
-                            keyboardType="numeric"
-                            maxLength={3}
-                            placeholderTextColor="rgba(255,255,255,0.6)"
-                            placeholder="0"
-                          />
-                          <Text style={[styles.customPercentSign, { color: COLORS.white }]}>%</Text>
-                        </View>
-                      ) : (
-                        <TouchableOpacity
-                          style={[
-                            styles.lmhButton,
-                            styles.customButton,
-                            currentMode === 'custom' && styles.customButtonActive,
-                          ]}
-                          onPress={() => handleCustomSelect(option.id, factor.id)}
-                        >
-                          <Text style={[
-                            styles.lmhText,
-                            { color: currentMode === 'custom' ? COLORS.white : COLORS.primary },
-                          ]}>%</Text>
-                        </TouchableOpacity>
-                      )}
-
-                      {/* Display current % with auto indicator */}
+                // Parent factor with sub-factors — group header + sub-factor inputs
+                return (
+                  <View key={factor.id} style={styles.assessmentFactorContainer}>
+                    {/* Parent factor header with aggregated % */}
+                    <View style={[styles.assessmentLabelRow, { borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingBottom: 6, marginBottom: 6 }]}>
+                      <Ionicons name="git-branch-outline" size={14} color={COLORS.primary} style={{ marginRight: 4 }} />
+                      <Text style={[styles.assessmentLabel, { fontWeight: '700' }]}>{factor.name}</Text>
+                      <Text style={styles.assessmentRating}>({factor.rating})</Text>
                       <View style={[
                         styles.currentValueBadge,
-                        !hasValue && styles.currentValueBadgeEmpty,
-                        currentMode === 'auto' && styles.currentValueBadgeAuto,
+                        parentPct === null && styles.currentValueBadgeEmpty,
+                        parentPct !== null && { backgroundColor: '#EDE9FE' },
                       ]}>
-                        {hasValue ? (
+                        {parentPct !== null ? (
                           <View style={styles.percentBadgeInner}>
-                            {currentMode === 'auto' && (
-                              <Ionicons name="flash" size={10} color={currentMode === 'auto' ? '#6366F1' : COLORS.textSecondary} />
-                            )}
-                            <Text style={[
-                              styles.currentValueText,
-                              currentMode === 'auto' && styles.currentValueTextAuto,
-                            ]}>{currentValue}%</Text>
+                            <Ionicons name="calculator-outline" size={10} color={COLORS.primary} />
+                            <Text style={[styles.currentValueText, { color: COLORS.primary, fontWeight: '700' }]}>{parentPct}%</Text>
                           </View>
                         ) : (
                           <Text style={styles.currentValueTextEmpty}>--</Text>
                         )}
                       </View>
                     </View>
+                    {/* Sub-factor assessment inputs */}
+                    {subs.map((sub) => renderFactorAssessment(sub, true))}
                   </View>
                 );
               })}
@@ -2578,6 +2797,154 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: '#6366F1',
+  },
+  // Sub-factor grouping styles
+  factorCardGroup: {
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.primary,
+  },
+  expandBtn: {
+    marginRight: 6,
+    padding: 2,
+  },
+  subFactorsContainer: {
+    marginTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    paddingTop: 10,
+  },
+  weightProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  weightProgressBar: {
+    flex: 1,
+    height: 6,
+    backgroundColor: COLORS.background,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  weightProgressFill: {
+    height: '100%',
+    backgroundColor: '#F59E0B',
+    borderRadius: 3,
+  },
+  weightProgressText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+    minWidth: 50,
+    textAlign: 'right',
+  },
+  weightTotalBadge: {
+    backgroundColor: 'rgba(245,158,11,0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginRight: 6,
+  },
+  weightTotalComplete: {
+    backgroundColor: 'rgba(16,185,129,0.12)',
+  },
+  weightTotalOver: {
+    backgroundColor: 'rgba(239,68,68,0.12)',
+  },
+  weightTotalText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+  },
+  subFactorItem: {
+    marginBottom: 10,
+    paddingLeft: 8,
+    borderLeftWidth: 2,
+    borderLeftColor: 'rgba(142,36,170,0.2)',
+  },
+  subFactorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  subFactorDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.primary,
+  },
+  subFactorName: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+    color: COLORS.textPrimary,
+  },
+  subFactorCriteria: {
+    paddingLeft: 12,
+    marginTop: 4,
+  },
+  weightInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.background,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 6,
+    marginRight: 4,
+  },
+  weightInput: {
+    width: 32,
+    height: 28,
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    textAlign: 'center',
+    padding: 0,
+  },
+  weightPercent: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    fontWeight: '600',
+  },
+  addSubFactorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+    paddingLeft: 8,
+  },
+  addSubFactorInput: {
+    flex: 1,
+    height: 32,
+    backgroundColor: COLORS.background,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    fontSize: 12,
+    color: COLORS.textPrimary,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderStyle: 'dashed' as any,
+  },
+  addSubFactorBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addSubToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    paddingVertical: 4,
+  },
+  addSubToggleText: {
+    fontSize: 12,
+    color: COLORS.primary,
+    fontWeight: '500',
   },
   unitChipsScroll: {
     flex: 1,

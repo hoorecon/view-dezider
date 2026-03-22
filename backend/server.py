@@ -84,6 +84,8 @@ class Factor(BaseModel):
     data_type: Optional[str] = None  # 'numeric' or 'text' (auto-sensed)
     operator: Optional[str] = None  # >=, <=, >, <, =, !=, between, contains, starts_with, ends_with, equals, not_equals
     gap_multiplier: Optional[float] = 1.0  # Per-factor gap from the one below (default 1x = standard gap of 10)
+    parent_id: Optional[str] = None  # ID of parent factor (null = top-level, set = sub-factor)
+    weight: Optional[float] = None  # Sub-factor weight as % of parent (0-100, sub-factors must sum to 100)
 
 class OptionAssessment(BaseModel):
     factor_id: str
