@@ -80,6 +80,9 @@ class Factor(BaseModel):
     rating: int  # 1-100 importance rating
     order: int
     unit: Optional[str] = None  # Measurement unit (e.g., "USD", "hours", "km")
+    expected_value: Optional[Any] = None  # Benchmark value (numeric or text)
+    data_type: Optional[str] = None  # 'numeric' or 'text' (auto-sensed)
+    operator: Optional[str] = None  # >=, <=, >, <, =, !=, between, contains, starts_with, ends_with, equals, not_equals
 
 class OptionAssessment(BaseModel):
     factor_id: str

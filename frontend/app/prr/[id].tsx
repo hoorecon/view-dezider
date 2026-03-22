@@ -30,6 +30,9 @@ interface Factor {
   rating: number;
   order: number;
   unit?: string; // e.g., "USD", "hours", "km", etc.
+  expected_value?: string | number; // Benchmark value
+  data_type?: 'numeric' | 'text'; // Auto-sensed from expected_value
+  operator?: string; // >=, <=, >, <, =, !=, between, contains, starts_with, ends_with, equals, not_equals
 }
 
 interface OptionAssessment {
@@ -83,6 +86,31 @@ const UNIT_PRESETS = [
   { label: 'ppl', value: 'people' },
 ];
 
+// Operator presets by data type
+const NUMERIC_OPERATORS = [
+  { label: '≥', value: '>=' },
+  { label: '≤', value: '<=' },
+  { label: '>', value: '>' },
+  { label: '<', value: '<' },
+  { label: '=', value: '=' },
+  { label: '≠', value: '!=' },
+];
+const TEXT_OPERATORS = [
+  { label: 'Contains', value: 'contains' },
+  { label: 'Starts with', value: 'starts_with' },
+  { label: 'Ends with', value: 'ends_with' },
+  { label: 'Equals', value: 'equals' },
+  { label: '≠', value: 'not_equals' },
+];
+
+// Auto-sense data type from value
+const senseDataType = (value: string): 'numeric' | 'text' => {
+  if (!value || value.trim() === '') return 'numeric'; // default
+  const trimmed = value.trim();
+  // Check if it's a valid number (including decimals, negatives)
+  return /^-?\d+(\.\d+)?$/.test(trimmed) ? 'numeric' : 'text';
+};
+
 // Function to auto-calculate ratings based on order within each category
 // Rating starts from 10 for lowest priority (last Secondary) and increments by 10
 // Order: Secondary (lowest to highest) -> Primary (lowest to highest)
@@ -133,6 +161,7 @@ export default function PRRDecisionDetail() {
   const [actualValues, setActualValues] = useState<{[key: string]: string}>({});
   const [customUnitInput, setCustomUnitInput] = useState<{[key: string]: string}>({});
   const [showUnitPicker, setShowUnitPicker] = useState<{[key: string]: boolean}>({});
+  const [expectedInputs, setExpectedInputs] = useState<{[key: string]: string}>({});
 
   useEffect(() => {
     fetchDecision();
@@ -577,125 +606,218 @@ export default function PRRDecisionDetail() {
     </View>
   );
 
-  const renderStep2 = () => (
-    <View style={styles.stepContent}>
-      <Text style={styles.stepTitle}>Step 2: List All Factors</Text>
-      <Text style={styles.stepDescription}>
-        List all logical and emotional factors that influence this decision. Optionally set a measurement unit for each.
-      </Text>
+  const renderStep2 = () => {
+    const handleExpectedValueChange = (factorId: string, value: string) => {
+      setExpectedInputs({ ...expectedInputs, [factorId]: value });
+    };
 
-      {decision.factors.map((factor) => (
-        <Card key={factor.id} style={styles.factorCard}>
-          <View style={styles.factorHeader}>
-            <Text style={styles.factorName}>{factor.name}</Text>
-            {factor.unit && (
-              <View style={styles.unitBadgeSmall}>
-                <Text style={styles.unitBadgeSmallText}>{factor.unit}</Text>
-              </View>
-            )}
-            <TouchableOpacity onPress={() => removeFactor(factor.id)}>
-              <Ionicons name="close-circle" size={22} color={COLORS.error} />
-            </TouchableOpacity>
-          </View>
-          {/* Unit selector row */}
-          <View style={styles.unitSelectorRow}>
-            <Text style={styles.unitSelectorLabel}>Unit:</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.unitChipsScroll}>
-              <View style={styles.unitChipsContainer}>
-                {factor.unit && (
-                  <TouchableOpacity
-                    style={[styles.unitChip, styles.unitChipClear]}
-                    onPress={() => updateFactor(factor.id, { unit: undefined })}
-                  >
-                    <Ionicons name="close" size={12} color={COLORS.error} />
-                  </TouchableOpacity>
+    const handleExpectedValueBlur = (factorId: string) => {
+      const raw = (expectedInputs[factorId] ?? '').trim();
+      if (!raw) {
+        updateFactor(factorId, { expected_value: undefined, data_type: undefined, operator: undefined });
+        return;
+      }
+      const detectedType = senseDataType(raw);
+      const numericVal = detectedType === 'numeric' ? parseFloat(raw) : undefined;
+      const currentOp = decision.factors.find(f => f.id === factorId)?.operator;
+      // Auto-set default operator if none selected or if type changed
+      const validOps = detectedType === 'numeric'
+        ? NUMERIC_OPERATORS.map(o => o.value)
+        : TEXT_OPERATORS.map(o => o.value);
+      const newOp = currentOp && validOps.includes(currentOp) ? currentOp : validOps[0];
+      updateFactor(factorId, {
+        expected_value: numericVal !== undefined ? numericVal : raw,
+        data_type: detectedType,
+        operator: newOp,
+      });
+    };
+
+    const getExpectedInput = (factor: Factor): string => {
+      if (expectedInputs[factor.id] !== undefined) return expectedInputs[factor.id];
+      if (factor.expected_value !== undefined && factor.expected_value !== null) return String(factor.expected_value);
+      return '';
+    };
+
+    const getDetectedType = (factor: Factor): 'numeric' | 'text' => {
+      if (factor.data_type) return factor.data_type;
+      const val = expectedInputs[factor.id] ?? (factor.expected_value !== undefined ? String(factor.expected_value) : '');
+      return senseDataType(val);
+    };
+
+    return (
+      <View style={styles.stepContent}>
+        <Text style={styles.stepTitle}>Step 2: Define Factors & Criteria</Text>
+        <Text style={styles.stepDescription}>
+          List factors, set expected values with comparison operators, and optionally assign measurement units.
+        </Text>
+
+        {decision.factors.map((factor) => {
+          const detectedType = getDetectedType(factor);
+          const operators = detectedType === 'numeric' ? NUMERIC_OPERATORS : TEXT_OPERATORS;
+          const hasExpected = factor.expected_value !== undefined && factor.expected_value !== null;
+
+          return (
+            <Card key={factor.id} style={styles.factorCard}>
+              {/* Row 1: Factor name + badges + delete */}
+              <View style={styles.factorHeader}>
+                <Text style={styles.factorName}>{factor.name}</Text>
+                {hasExpected && (
+                  <View style={styles.criteriaPreview}>
+                    <Text style={styles.criteriaPreviewText}>
+                      {factor.operator || '≥'} {String(factor.expected_value)}{factor.unit ? ` ${factor.unit}` : ''}
+                    </Text>
+                  </View>
                 )}
-                {UNIT_PRESETS.map((preset) => (
-                  <TouchableOpacity
-                    key={preset.value}
-                    style={[
-                      styles.unitChip,
-                      factor.unit === preset.value && styles.unitChipActive,
-                    ]}
-                    onPress={() => updateFactor(factor.id, { unit: preset.value })}
-                  >
-                    <Text style={[
-                      styles.unitChipText,
-                      factor.unit === preset.value && styles.unitChipTextActive,
-                    ]}>{preset.label}</Text>
-                  </TouchableOpacity>
-                ))}
-                <TouchableOpacity
-                  style={[
-                    styles.unitChip,
-                    styles.unitChipCustom,
-                    showUnitPicker[factor.id] && styles.unitChipActive,
-                  ]}
-                  onPress={() => setShowUnitPicker({ ...showUnitPicker, [factor.id]: !showUnitPicker[factor.id] })}
-                >
-                  <Text style={[
-                    styles.unitChipText,
-                    showUnitPicker[factor.id] && styles.unitChipTextActive,
-                  ]}>✎</Text>
+                <TouchableOpacity onPress={() => removeFactor(factor.id)}>
+                  <Ionicons name="close-circle" size={22} color={COLORS.error} />
                 </TouchableOpacity>
               </View>
-            </ScrollView>
-          </View>
-          {showUnitPicker[factor.id] && (
-            <View style={styles.customUnitRow}>
-              <TextInput
-                style={styles.customUnitInput}
-                placeholder="Custom unit (e.g., sqft, rating)"
-                placeholderTextColor={COLORS.textMuted}
-                value={customUnitInput[factor.id] || ''}
-                onChangeText={(v) => setCustomUnitInput({ ...customUnitInput, [factor.id]: v })}
-                onSubmitEditing={() => {
-                  const val = (customUnitInput[factor.id] || '').trim();
-                  if (val) {
-                    updateFactor(factor.id, { unit: val });
-                    setShowUnitPicker({ ...showUnitPicker, [factor.id]: false });
-                  }
-                }}
-              />
-              <TouchableOpacity
-                style={styles.customUnitApplyBtn}
-                onPress={() => {
-                  const val = (customUnitInput[factor.id] || '').trim();
-                  if (val) {
-                    updateFactor(factor.id, { unit: val });
-                    setShowUnitPicker({ ...showUnitPicker, [factor.id]: false });
-                  }
-                }}
-              >
-                <Ionicons name="checkmark" size={18} color={COLORS.white} />
-              </TouchableOpacity>
-            </View>
-          )}
-        </Card>
-      ))}
 
-      <View style={styles.addFactorRow}>
-        <TextInput
-          style={styles.addInput}
-          placeholder="Add a factor (e.g., Salary, Work-Life Balance)"
-          placeholderTextColor={COLORS.textMuted}
-          value={newFactorName}
-          onChangeText={setNewFactorName}
-          onSubmitEditing={addFactor}
+              {/* Row 2: Expected value input + data type badge */}
+              <View style={styles.expectedRow}>
+                <Text style={styles.expectedLabel}>Expected:</Text>
+                <TextInput
+                  style={styles.expectedInput}
+                  placeholder="e.g. 20 or Bangalore"
+                  placeholderTextColor={COLORS.textMuted}
+                  value={getExpectedInput(factor)}
+                  onChangeText={(v) => handleExpectedValueChange(factor.id, v)}
+                  onBlur={() => handleExpectedValueBlur(factor.id)}
+                />
+                <View style={[styles.dataTypeBadge, detectedType === 'text' ? styles.dataTypeBadgeText : null]}>
+                  <Text style={styles.dataTypeBadgeLabel}>
+                    {detectedType === 'numeric' ? '123' : 'abc'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Row 3: Operator selector */}
+              <View style={styles.operatorRow}>
+                <Text style={styles.operatorLabel}>Operator:</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
+                  <View style={styles.operatorChipsContainer}>
+                    {operators.map((op) => (
+                      <TouchableOpacity
+                        key={op.value}
+                        style={[
+                          styles.operatorChip,
+                          factor.operator === op.value && styles.operatorChipActive,
+                        ]}
+                        onPress={() => updateFactor(factor.id, { operator: op.value })}
+                      >
+                        <Text style={[
+                          styles.operatorChipText,
+                          factor.operator === op.value && styles.operatorChipTextActive,
+                        ]}>{op.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+              </View>
+
+              {/* Row 4: Unit selector (only for numeric) */}
+              {detectedType === 'numeric' && (
+                <View style={styles.unitSelectorRow}>
+                  <Text style={styles.unitSelectorLabel}>Unit:</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.unitChipsScroll}>
+                    <View style={styles.unitChipsContainer}>
+                      {factor.unit && (
+                        <TouchableOpacity
+                          style={[styles.unitChip, styles.unitChipClear]}
+                          onPress={() => updateFactor(factor.id, { unit: undefined })}
+                        >
+                          <Ionicons name="close" size={12} color={COLORS.error} />
+                        </TouchableOpacity>
+                      )}
+                      {UNIT_PRESETS.map((preset) => (
+                        <TouchableOpacity
+                          key={preset.value}
+                          style={[
+                            styles.unitChip,
+                            factor.unit === preset.value && styles.unitChipActive,
+                          ]}
+                          onPress={() => updateFactor(factor.id, { unit: preset.value })}
+                        >
+                          <Text style={[
+                            styles.unitChipText,
+                            factor.unit === preset.value && styles.unitChipTextActive,
+                          ]}>{preset.label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                      <TouchableOpacity
+                        style={[
+                          styles.unitChip,
+                          styles.unitChipCustom,
+                          showUnitPicker[factor.id] && styles.unitChipActive,
+                        ]}
+                        onPress={() => setShowUnitPicker({ ...showUnitPicker, [factor.id]: !showUnitPicker[factor.id] })}
+                      >
+                        <Text style={[
+                          styles.unitChipText,
+                          showUnitPicker[factor.id] && styles.unitChipTextActive,
+                        ]}>✎</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </ScrollView>
+                </View>
+              )}
+              {showUnitPicker[factor.id] && detectedType === 'numeric' && (
+                <View style={styles.customUnitRow}>
+                  <TextInput
+                    style={styles.customUnitInput}
+                    placeholder="Custom unit (e.g., Km/Liter)"
+                    placeholderTextColor={COLORS.textMuted}
+                    value={customUnitInput[factor.id] || ''}
+                    onChangeText={(v) => setCustomUnitInput({ ...customUnitInput, [factor.id]: v })}
+                    onSubmitEditing={() => {
+                      const val = (customUnitInput[factor.id] || '').trim();
+                      if (val) {
+                        updateFactor(factor.id, { unit: val });
+                        setShowUnitPicker({ ...showUnitPicker, [factor.id]: false });
+                      }
+                    }}
+                  />
+                  <TouchableOpacity
+                    style={styles.customUnitApplyBtn}
+                    onPress={() => {
+                      const val = (customUnitInput[factor.id] || '').trim();
+                      if (val) {
+                        updateFactor(factor.id, { unit: val });
+                        setShowUnitPicker({ ...showUnitPicker, [factor.id]: false });
+                      }
+                    }}
+                  >
+                    <Ionicons name="checkmark" size={18} color={COLORS.white} />
+                  </TouchableOpacity>
+                </View>
+              )}
+            </Card>
+          );
+        })}
+
+        <View style={styles.addFactorRow}>
+          <TextInput
+            style={styles.addInput}
+            placeholder="Add a factor (e.g., Salary, Mileage, Location)"
+            placeholderTextColor={COLORS.textMuted}
+            value={newFactorName}
+            onChangeText={setNewFactorName}
+            onSubmitEditing={addFactor}
+          />
+          <TouchableOpacity style={styles.addButton} onPress={addFactor}>
+            <Ionicons name="add" size={24} color={COLORS.white} />
+          </TouchableOpacity>
+        </View>
+
+        <GradientButton
+          title="Continue to Classification"
+          onPress={() => setCurrentStep(3)}
+          disabled={decision.factors.length < 2}
+          style={styles.continueButton}
         />
-        <TouchableOpacity style={styles.addButton} onPress={addFactor}>
-          <Ionicons name="add" size={24} color={COLORS.white} />
-        </TouchableOpacity>
       </View>
-
-      <GradientButton
-        title="Continue to Classification"
-        onPress={() => setCurrentStep(3)}
-        disabled={decision.factors.length < 2}
-        style={styles.continueButton}
-      />
-    </View>
-  );
+    );
+  };
 
   const renderStep3 = () => (
     <View style={styles.stepContent}>
@@ -1981,6 +2103,94 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     color: COLORS.textMuted,
+    minWidth: 30,
+  },
+  // Expected value & operator styles (Step 2)
+  expectedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    gap: 6,
+  },
+  expectedLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: COLORS.textMuted,
+    minWidth: 55,
+  },
+  expectedInput: {
+    flex: 1,
+    height: 36,
+    backgroundColor: COLORS.background,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  dataTypeBadge: {
+    backgroundColor: 'rgba(99,102,241,0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  dataTypeBadgeText: {
+    backgroundColor: 'rgba(16,185,129,0.12)',
+  },
+  dataTypeBadgeLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+  },
+  operatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 6,
+  },
+  operatorLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: COLORS.textMuted,
+    minWidth: 55,
+  },
+  operatorChipsContainer: {
+    flexDirection: 'row',
+    gap: 5,
+    paddingRight: 8,
+  },
+  operatorChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+  },
+  operatorChipActive: {
+    backgroundColor: '#6366F1',
+    borderColor: '#6366F1',
+  },
+  operatorChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  operatorChipTextActive: {
+    color: COLORS.white,
+  },
+  criteriaPreview: {
+    backgroundColor: 'rgba(99,102,241,0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginRight: 8,
+  },
+  criteriaPreviewText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#6366F1',
   },
   unitChipsScroll: {
     flex: 1,
