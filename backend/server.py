@@ -45,10 +45,12 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
     name: str
+    org_id: Optional[str] = None  # Multi-tenant: organization ID
 
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+    org_id: Optional[str] = None  # Multi-tenant: organization ID
 
 class UserResponse(BaseModel):
     user_id: str
@@ -427,6 +429,7 @@ async def register(user_data: UserCreate, response: Response):
         "password_hash": hashed_password,
         "picture": None,
         "auth_method": "email",
+        "org_id": user_data.org_id,
         "created_at": datetime.now(timezone.utc)
     }
     
@@ -503,6 +506,7 @@ async def login(user_data: UserLogin, response: Response):
         "name": user_doc["name"],
         "picture": user_doc.get("picture"),
         "auth_method": user_doc["auth_method"],
+        "org_id": user_doc.get("org_id"),
         "session_token": session_token
     }
 
@@ -697,20 +701,101 @@ async def set_password(data: SetPasswordRequest, user: dict = Depends(get_curren
     return {"message": "Password set successfully. You can now also login with email and password."}
 
 # ========================
+# ORGANIZATION ROUTES (Multi-Tenant SaaS)
+# ========================
+
+@api_router.post("/organizations")
+async def create_organization(request: Request, user: dict = Depends(get_current_user)):
+    """Create a new organization (super_admin or any user creating their first org)"""
+    body = await request.json()
+    name = body.get("name", "").strip()
+    slug = body.get("slug", "").strip().lower().replace(" ", "-")
+    if not name or not slug:
+        raise HTTPException(status_code=400, detail="Name and slug are required")
+    # Check slug uniqueness
+    existing = await db.organizations.find_one({"slug": slug})
+    if existing:
+        raise HTTPException(status_code=400, detail="Organization slug already taken")
+    org_doc = {
+        "id": str(uuid.uuid4()),
+        "name": name,
+        "slug": slug,
+        "logo_url": body.get("logo_url", ""),
+        "primary_color": body.get("primary_color", "#6C63FF"),
+        "accent_color": body.get("accent_color", "#FF6584"),
+        "tagline": body.get("tagline", ""),
+        "created_by": user["user_id"],
+        "created_at": datetime.now(timezone.utc),
+    }
+    await db.organizations.insert_one(org_doc)
+    # Assign creator to org
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"org_id": org_doc["id"]}})
+    return {"id": org_doc["id"], "slug": slug, "message": "Organization created"}
+
+@api_router.get("/organizations/{slug}")
+async def get_organization_by_slug(slug: str):
+    """Get organization branding by slug (public endpoint for login screen)"""
+    org = await db.organizations.find_one({"slug": slug}, {"_id": 0})
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    # Return public branding info only
+    return {
+        "id": org["id"],
+        "name": org["name"],
+        "slug": org["slug"],
+        "logo_url": org.get("logo_url", ""),
+        "primary_color": org.get("primary_color", "#6C63FF"),
+        "accent_color": org.get("accent_color", "#FF6584"),
+        "tagline": org.get("tagline", ""),
+    }
+
+@api_router.put("/organizations/{org_id}")
+async def update_organization(org_id: str, request: Request, user: dict = Depends(get_current_user)):
+    """Update organization branding (org admin only)"""
+    # Verify user belongs to this org and is admin
+    user_doc = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    if user_doc.get("org_id") != org_id:
+        raise HTTPException(status_code=403, detail="Not a member of this organization")
+    role = get_user_role(user)
+    if get_role_level(role) < 2:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    body = await request.json()
+    update_fields = {k: v for k, v in body.items() if k in ["name", "logo_url", "primary_color", "accent_color", "tagline"]}
+    if update_fields:
+        await db.organizations.update_one({"id": org_id}, {"$set": update_fields})
+    return {"message": "Organization updated"}
+
+@api_router.get("/organizations/{org_id}/members")
+async def get_org_members(org_id: str, user: dict = Depends(get_current_user)):
+    """Get members of an organization"""
+    user_doc = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    if user_doc.get("org_id") != org_id:
+        raise HTTPException(status_code=403, detail="Not a member of this organization")
+    members = await db.users.find({"org_id": org_id}, {"_id": 0, "password_hash": 0}).to_list(200)
+    return members
+
+
+# ========================
 # PRR DECISION ROUTES
 # ========================
 
 @api_router.post("/decisions", response_model=dict)
 async def create_decision(decision: PRRDecisionCreate, user: dict = Depends(get_current_user)):
     """Create a new PRR decision"""
+    # Get user's org_id for data isolation
+    user_doc = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    org_id = user_doc.get("org_id") if user_doc else None
+    
     decision_doc = PRRDecision(
         user_id=user["user_id"],
         title=decision.title,
         context=decision.context,
         folder=decision.folder
     )
+    doc_dict = decision_doc.dict()
+    doc_dict["org_id"] = org_id  # Multi-tenant data isolation
     
-    await db.decisions.insert_one(decision_doc.dict())
+    await db.decisions.insert_one(doc_dict)
     return {"id": decision_doc.id, "message": "Decision created successfully"}
 
 @api_router.get("/decisions", response_model=List[dict])
@@ -2353,6 +2438,178 @@ Return ONLY valid JSON array, no markdown, no explanation:
     except Exception as e:
         logger.error(f"TEPFI auto-map error: {str(e)}")
         return {"mappings": [], "error": str(e)}
+
+
+
+# ============= Factor Data Source Auto-Fetch =============
+
+@api_router.post("/factors/fetch-data")
+async def fetch_factor_data(request: Request, user: dict = Depends(get_current_user)):
+    """Fetch actual values for factors from configured data sources (webhook, web_surf, ai_llm).
+    Supports both per-factor and grouped (by factor_type) fetching.
+    
+    Body: {
+      decision_title: str,
+      decision_context: str,
+      option_name: str,
+      factors: [{ id, name, factor_type, data_source: { type, config }, unit, expected_value, operator }]
+    }
+    Returns: { results: [{ factor_id, value, source_type, raw_response }] }
+    """
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    import json as json_module
+
+    body = await request.json()
+    decision_title = body.get("decision_title", "")
+    decision_context = body.get("decision_context", "")
+    option_name = body.get("option_name", "")
+    factors = body.get("factors", [])
+
+    if not factors:
+        return {"results": []}
+
+    results = []
+
+    # Group factors by data source type for efficiency
+    webhook_factors = [f for f in factors if f.get("data_source", {}).get("type") == "webhook"]
+    web_surf_factors = [f for f in factors if f.get("data_source", {}).get("type") == "web_surf"]
+    ai_llm_factors = [f for f in factors if f.get("data_source", {}).get("type") == "ai_llm"]
+
+    # --- WEBHOOK FETCH ---
+    for factor in webhook_factors:
+        ds = factor.get("data_source", {})
+        config = ds.get("config", {})
+        url = config.get("url", "")
+        if not url:
+            results.append({"factor_id": factor["id"], "value": None, "source_type": "webhook", "error": "No URL configured"})
+            continue
+        try:
+            headers_str = config.get("headers", "{}")
+            try:
+                custom_headers = json_module.loads(headers_str) if headers_str else {}
+            except:
+                custom_headers = {}
+            payload = {
+                "factor_name": factor.get("name", ""),
+                "factor_type": factor.get("factor_type", ""),
+                "option_name": option_name,
+                "decision_title": decision_title,
+                "unit": factor.get("unit", ""),
+                "expected_value": factor.get("expected_value"),
+            }
+            async with httpx.AsyncClient(timeout=15.0) as client_http:
+                resp = await client_http.post(url, json=payload, headers=custom_headers)
+                data = resp.json()
+                value = data.get("value", data.get("result", str(data)))
+                results.append({"factor_id": factor["id"], "value": value, "source_type": "webhook", "raw_response": str(data)[:500]})
+        except Exception as e:
+            results.append({"factor_id": factor["id"], "value": None, "source_type": "webhook", "error": str(e)[:200]})
+
+    # --- WEB SURF FETCH ---
+    if web_surf_factors:
+        api_key = os.getenv("EMERGENT_LLM_KEY")
+        if not api_key:
+            for f in web_surf_factors:
+                results.append({"factor_id": f["id"], "value": None, "source_type": "web_surf", "error": "LLM key not configured"})
+        else:
+            for factor in web_surf_factors:
+                ds = factor.get("data_source", {})
+                config = ds.get("config", {})
+                search_query = config.get("search_query", "")
+                if not search_query:
+                    search_query = f"{factor.get('name', '')} {option_name} {decision_title}"
+                else:
+                    # Template replacement
+                    search_query = search_query.replace("{factor}", factor.get("name", ""))
+                    search_query = search_query.replace("{option}", option_name)
+                    search_query = search_query.replace("{title}", decision_title)
+                try:
+                    prompt = f"""Research and find the current real-world value for the following:
+
+Factor: {factor.get('name', '')}
+Option/Subject: {option_name}
+Decision Context: {decision_title} - {decision_context}
+Search Focus: {search_query}
+Expected Unit: {factor.get('unit', 'N/A')}
+Data Type: {factor.get('factor_type', 'unknown')}
+
+Return ONLY a JSON object with:
+- "value": the actual value (number for quantitative, text for qualitative)
+- "confidence": "high", "medium", or "low"
+- "source_note": brief note about where this data comes from
+
+Return ONLY valid JSON, no explanation."""
+
+                    chat = LlmChat(
+                        api_key=api_key,
+                        session_id=f"websurf_{user['user_id']}_{uuid.uuid4().hex[:8]}",
+                        system_message="You are a research assistant. Find real-world data values. Return only valid JSON."
+                    ).with_model("openai", "gpt-4.1-mini")
+                    response = await chat.send_message(UserMessage(text=prompt))
+                    response_text = response.strip()
+                    if response_text.startswith("```"):
+                        response_text = response_text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+                    data = json_module.loads(response_text)
+                    results.append({
+                        "factor_id": factor["id"],
+                        "value": data.get("value"),
+                        "source_type": "web_surf",
+                        "confidence": data.get("confidence", "medium"),
+                        "source_note": data.get("source_note", ""),
+                    })
+                except Exception as e:
+                    results.append({"factor_id": factor["id"], "value": None, "source_type": "web_surf", "error": str(e)[:200]})
+
+    # --- AI LLM FETCH ---
+    if ai_llm_factors:
+        api_key = os.getenv("EMERGENT_LLM_KEY")
+        if not api_key:
+            for f in ai_llm_factors:
+                results.append({"factor_id": f["id"], "value": None, "source_type": "ai_llm", "error": "LLM key not configured"})
+        else:
+            for factor in ai_llm_factors:
+                ds = factor.get("data_source", {})
+                config = ds.get("config", {})
+                custom_prompt = config.get("prompt", "")
+                if not custom_prompt:
+                    custom_prompt = f"What is the {factor.get('name', '')} for {option_name}?"
+                else:
+                    custom_prompt = custom_prompt.replace("{factor}", factor.get("name", ""))
+                    custom_prompt = custom_prompt.replace("{option}", option_name)
+                    custom_prompt = custom_prompt.replace("{title}", decision_title)
+                try:
+                    system_msg = f"""You are a decision-support AI. Provide data values for decision factors.
+Decision: {decision_title}
+Context: {decision_context}
+Evaluating option: {option_name}
+
+Return ONLY a JSON object:
+- "value": the value ({factor.get('unit', 'appropriate unit')})
+- "reasoning": brief explanation (1-2 sentences)
+
+Return ONLY valid JSON, no markdown."""
+
+                    chat = LlmChat(
+                        api_key=api_key,
+                        session_id=f"aillm_{user['user_id']}_{uuid.uuid4().hex[:8]}",
+                        system_message=system_msg
+                    ).with_model("openai", "gpt-4.1-mini")
+                    response = await chat.send_message(UserMessage(text=custom_prompt))
+                    response_text = response.strip()
+                    if response_text.startswith("```"):
+                        response_text = response_text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+                    data = json_module.loads(response_text)
+                    results.append({
+                        "factor_id": factor["id"],
+                        "value": data.get("value"),
+                        "source_type": "ai_llm",
+                        "reasoning": data.get("reasoning", ""),
+                    })
+                except Exception as e:
+                    results.append({"factor_id": factor["id"], "value": None, "source_type": "ai_llm", "error": str(e)[:200]})
+
+    return {"results": results}
+
 
 
 # ============= Decision Templates (Admin-curated Context Library) =============

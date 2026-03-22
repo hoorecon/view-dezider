@@ -22,10 +22,12 @@ import { GradientButton } from '../../src/components/GradientButton';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { login, loginWithGoogle, isAuthenticated } = useAuthStore();
+  const { login, loginWithGoogle, isAuthenticated, fetchOrgBranding, orgBranding } = useAuthStore();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [orgSlug, setOrgSlug] = useState('');
+  const [showOrgInput, setShowOrgInput] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
@@ -35,6 +37,16 @@ export default function LoginScreen() {
       router.replace('/(tabs)');
     }
   }, [isAuthenticated]);
+
+  const handleOrgLookup = async () => {
+    if (!orgSlug.trim()) return;
+    const branding = await fetchOrgBranding(orgSlug.trim().toLowerCase());
+    if (!branding) {
+      setError('Organization not found');
+    } else {
+      setError('');
+    }
+  };
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -46,7 +58,7 @@ export default function LoginScreen() {
     setError('');
 
     try {
-      await login(email, password);
+      await login(email, password, orgBranding?.id);
       router.replace('/(tabs)');
     } catch (err: any) {
       setError(err.message || 'Login failed');
@@ -118,6 +130,51 @@ export default function LoginScreen() {
           ) : null}
 
           <View style={styles.form}>
+            {/* Organization ID Section */}
+            <TouchableOpacity
+              style={styles.orgToggle}
+              onPress={() => setShowOrgInput(!showOrgInput)}
+            >
+              <Ionicons name="business-outline" size={16} color={COLORS.primary} />
+              <Text style={styles.orgToggleText}>
+                {orgBranding ? orgBranding.name : 'Organization Login'}
+              </Text>
+              <Ionicons name={showOrgInput ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.textMuted} />
+            </TouchableOpacity>
+
+            {showOrgInput && (
+              <View style={styles.orgSection}>
+                {orgBranding ? (
+                  <View style={styles.orgBrandingCard}>
+                    <View style={[styles.orgColorDot, { backgroundColor: orgBranding.primary_color || COLORS.primary }]} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.orgBrandingName}>{orgBranding.name}</Text>
+                      {orgBranding.tagline ? <Text style={styles.orgBrandingTagline}>{orgBranding.tagline}</Text> : null}
+                    </View>
+                    <TouchableOpacity onPress={() => { useAuthStore.getState().setOrgBranding(null); setOrgSlug(''); }}>
+                      <Ionicons name="close-circle" size={20} color={COLORS.textMuted} />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={styles.orgInputRow}>
+                    <Input
+                      label="Organization ID"
+                      placeholder="Enter org slug (e.g., acme-corp)"
+                      value={orgSlug}
+                      onChangeText={setOrgSlug}
+                      autoCapitalize="none"
+                    />
+                    <GradientButton
+                      title="Verify"
+                      onPress={handleOrgLookup}
+                      style={styles.orgVerifyBtn}
+                      variant="secondary"
+                    />
+                  </View>
+                )}
+              </View>
+            )}
+
             <Input
               label="Email"
               placeholder="Enter your email"
@@ -287,5 +344,54 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontSize: 14,
     fontWeight: '600',
+  },
+  orgToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: '#F5F3FF',
+    borderRadius: 10,
+    marginBottom: 16,
+  },
+  orgToggleText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+  orgSection: {
+    marginBottom: 16,
+  },
+  orgInputRow: {
+    gap: 8,
+  },
+  orgVerifyBtn: {
+    marginTop: 4,
+  },
+  orgBrandingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  orgColorDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+  },
+  orgBrandingName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  orgBrandingTagline: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
   },
 });

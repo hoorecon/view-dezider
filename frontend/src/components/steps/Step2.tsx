@@ -1,18 +1,24 @@
-import React from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/colors';
 import { Card } from '../Card';
 import { GradientButton } from '../GradientButton';
 import { useDecision } from '../../context/DecisionContext';
 import { styles } from '../../styles/decisionStyles';
-import type { Factor } from '../../types/decision';
+import type { Factor, FactorDataSource } from '../../types/decision';
 import {
   UNIT_PRESETS,
   NUMERIC_OPERATORS,
   TEXT_OPERATORS,
   senseDataType,
 } from '../../utils/decisionHelpers';
+
+const DATA_SOURCE_TYPES = [
+  { key: 'webhook', label: 'Webhook/API', icon: 'link-outline', color: '#3B82F6' },
+  { key: 'web_surf', label: 'Web Surf', icon: 'globe-outline', color: '#10B981' },
+  { key: 'ai_llm', label: 'AI/LLM', icon: 'sparkles-outline', color: '#8B5CF6' },
+] as const;
 
 export default function Step2() {
   const {
@@ -26,6 +32,8 @@ export default function Step2() {
     customUnitInput, setCustomUnitInput,
     setCurrentStep,
   } = useDecision();
+
+  const [showDataSourceConfig, setShowDataSourceConfig] = useState<{ [key: string]: boolean }>({});
 
   const handleExpectedValueChange = (factorId: string, value: string) => {
     setExpectedInputs({ ...expectedInputs, [factorId]: value });
@@ -215,6 +223,127 @@ export default function Step2() {
 
             {!hasChildren && renderCriteria(factor)}
 
+            {/* Factor Type Toggle: Quantitative / Qualitative */}
+            <View style={dsStyles.factorTypeRow}>
+              <Text style={dsStyles.factorTypeLabel}>Type:</Text>
+              <TouchableOpacity
+                style={[dsStyles.typeChip, (factor.factor_type || (factor.data_type === 'text' ? 'qualitative' : 'quantitative')) === 'quantitative' && dsStyles.typeChipActiveBlue]}
+                onPress={() => updateFactor(factor.id, { factor_type: 'quantitative' })}
+              >
+                <Ionicons name="calculator-outline" size={12} color={(factor.factor_type || (factor.data_type === 'text' ? 'qualitative' : 'quantitative')) === 'quantitative' ? '#FFF' : COLORS.textMuted} />
+                <Text style={[dsStyles.typeChipText, (factor.factor_type || (factor.data_type === 'text' ? 'qualitative' : 'quantitative')) === 'quantitative' && dsStyles.typeChipTextActive]}>Quantitative</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[dsStyles.typeChip, (factor.factor_type || (factor.data_type === 'text' ? 'qualitative' : 'quantitative')) === 'qualitative' && dsStyles.typeChipActiveGreen]}
+                onPress={() => updateFactor(factor.id, { factor_type: 'qualitative' })}
+              >
+                <Ionicons name="text-outline" size={12} color={(factor.factor_type || (factor.data_type === 'text' ? 'qualitative' : 'quantitative')) === 'qualitative' ? '#FFF' : COLORS.textMuted} />
+                <Text style={[dsStyles.typeChipText, (factor.factor_type || (factor.data_type === 'text' ? 'qualitative' : 'quantitative')) === 'qualitative' && dsStyles.typeChipTextActive]}>Qualitative</Text>
+              </TouchableOpacity>
+
+              {/* Data Source toggle */}
+              <TouchableOpacity
+                style={[dsStyles.dsToggleBtn, factor.data_source?.type && dsStyles.dsToggleBtnActive]}
+                onPress={() => setShowDataSourceConfig({ ...showDataSourceConfig, [factor.id]: !showDataSourceConfig[factor.id] })}
+              >
+                <Ionicons name="cloud-download-outline" size={14} color={factor.data_source?.type ? '#FFF' : COLORS.primary} />
+                <Text style={[dsStyles.dsToggleBtnText, factor.data_source?.type && { color: '#FFF' }]}>
+                  {factor.data_source?.type ? DATA_SOURCE_TYPES.find(d => d.key === factor.data_source?.type)?.label : 'Data Source'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Data Source Configuration (collapsible) */}
+            {showDataSourceConfig[factor.id] && (
+              <View style={dsStyles.dsConfigContainer}>
+                <Text style={dsStyles.dsConfigTitle}>Auto-Fetch Configuration</Text>
+                <View style={dsStyles.dsTypeRow}>
+                  {DATA_SOURCE_TYPES.map((ds) => (
+                    <TouchableOpacity
+                      key={ds.key}
+                      style={[dsStyles.dsTypeChip, factor.data_source?.type === ds.key && { backgroundColor: ds.color, borderColor: ds.color }]}
+                      onPress={() => {
+                        const currentDs = factor.data_source || { type: ds.key, config: {} };
+                        updateFactor(factor.id, { data_source: { ...currentDs, type: ds.key as any } });
+                      }}
+                    >
+                      <Ionicons name={ds.icon as any} size={14} color={factor.data_source?.type === ds.key ? '#FFF' : ds.color} />
+                      <Text style={[dsStyles.dsTypeChipText, factor.data_source?.type === ds.key && { color: '#FFF' }]}>{ds.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                  {factor.data_source?.type && (
+                    <TouchableOpacity
+                      style={dsStyles.dsClearBtn}
+                      onPress={() => updateFactor(factor.id, { data_source: undefined })}
+                    >
+                      <Ionicons name="close" size={14} color={COLORS.error} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {factor.data_source?.type === 'webhook' && (
+                  <View style={dsStyles.dsFieldsContainer}>
+                    <Text style={dsStyles.dsFieldLabel}>Webhook URL</Text>
+                    <TextInput
+                      style={dsStyles.dsFieldInput}
+                      value={factor.data_source.config?.url || ''}
+                      onChangeText={(text) => updateFactor(factor.id, {
+                        data_source: { ...factor.data_source!, config: { ...factor.data_source!.config, url: text } }
+                      })}
+                      placeholder="https://api.example.com/data"
+                      placeholderTextColor={COLORS.textMuted}
+                      autoCapitalize="none"
+                    />
+                    <Text style={dsStyles.dsFieldLabel}>Custom Headers (JSON, optional)</Text>
+                    <TextInput
+                      style={dsStyles.dsFieldInput}
+                      value={factor.data_source.config?.headers || ''}
+                      onChangeText={(text) => updateFactor(factor.id, {
+                        data_source: { ...factor.data_source!, config: { ...factor.data_source!.config, headers: text } }
+                      })}
+                      placeholder='{"Authorization": "Bearer ..."}'
+                      placeholderTextColor={COLORS.textMuted}
+                      autoCapitalize="none"
+                    />
+                    <Text style={dsStyles.dsHint}>POST request with factor_name, option_name, decision_title in body. Expects {"{"}"value": ...{"}"} in response.</Text>
+                  </View>
+                )}
+
+                {factor.data_source?.type === 'web_surf' && (
+                  <View style={dsStyles.dsFieldsContainer}>
+                    <Text style={dsStyles.dsFieldLabel}>Search Query Template</Text>
+                    <TextInput
+                      style={dsStyles.dsFieldInput}
+                      value={factor.data_source.config?.search_query || ''}
+                      onChangeText={(text) => updateFactor(factor.id, {
+                        data_source: { ...factor.data_source!, config: { ...factor.data_source!.config, search_query: text } }
+                      })}
+                      placeholder="{factor} for {option} in {title}"
+                      placeholderTextColor={COLORS.textMuted}
+                    />
+                    <Text style={dsStyles.dsHint}>Use {'{factor}'}, {'{option}'}, {'{title}'} as placeholders. AI will search and extract the value.</Text>
+                  </View>
+                )}
+
+                {factor.data_source?.type === 'ai_llm' && (
+                  <View style={dsStyles.dsFieldsContainer}>
+                    <Text style={dsStyles.dsFieldLabel}>Custom Prompt</Text>
+                    <TextInput
+                      style={[dsStyles.dsFieldInput, { minHeight: 60 }]}
+                      value={factor.data_source.config?.prompt || ''}
+                      onChangeText={(text) => updateFactor(factor.id, {
+                        data_source: { ...factor.data_source!, config: { ...factor.data_source!.config, prompt: text } }
+                      })}
+                      placeholder="What is the {factor} for {option}?"
+                      placeholderTextColor={COLORS.textMuted}
+                      multiline
+                    />
+                    <Text style={dsStyles.dsHint}>AI will answer using decision context. Use {'{factor}'}, {'{option}'}, {'{title}'} placeholders.</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
             {hasChildren && isExpanded && (
               <View style={styles.subFactorsContainer}>
                 <View style={styles.weightProgressRow}>
@@ -327,3 +456,26 @@ export default function Step2() {
     </View>
   );
 }
+
+const dsStyles = StyleSheet.create({
+  factorTypeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' },
+  factorTypeLabel: { fontSize: 11, color: COLORS.textMuted, fontWeight: '600' },
+  typeChip: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.border, backgroundColor: '#F8FAFC' },
+  typeChipActiveBlue: { backgroundColor: '#3B82F6', borderColor: '#3B82F6' },
+  typeChipActiveGreen: { backgroundColor: '#10B981', borderColor: '#10B981' },
+  typeChipText: { fontSize: 11, fontWeight: '600', color: COLORS.textMuted },
+  typeChipTextActive: { color: '#FFF' },
+  dsToggleBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.primary, backgroundColor: '#F5F3FF', marginLeft: 'auto' },
+  dsToggleBtnActive: { backgroundColor: COLORS.primary },
+  dsToggleBtnText: { fontSize: 11, fontWeight: '600', color: COLORS.primary },
+  dsConfigContainer: { marginTop: 8, padding: 10, backgroundColor: '#F8FAFC', borderRadius: 10, borderWidth: 1, borderColor: COLORS.border },
+  dsConfigTitle: { fontSize: 12, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 6 },
+  dsTypeRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 8 },
+  dsTypeChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 1.5, borderColor: COLORS.border, backgroundColor: '#FFF' },
+  dsTypeChipText: { fontSize: 12, fontWeight: '600', color: COLORS.textSecondary },
+  dsClearBtn: { padding: 6, borderRadius: 8, backgroundColor: '#FEE2E2' },
+  dsFieldsContainer: { gap: 6 },
+  dsFieldLabel: { fontSize: 11, fontWeight: '600', color: COLORS.textMuted, marginTop: 4 },
+  dsFieldInput: { height: 36, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 10, fontSize: 12, color: COLORS.textPrimary, backgroundColor: '#FFF' },
+  dsHint: { fontSize: 10, color: COLORS.textMuted, fontStyle: 'italic', marginTop: 2 },
+});

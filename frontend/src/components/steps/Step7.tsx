@@ -1,6 +1,8 @@
-import React from 'react';
-import { View, Text, TextInput, TouchableOpacity } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import { COLORS } from '../../constants/colors';
 import { Card } from '../Card';
 import { GradientButton } from '../GradientButton';
@@ -19,6 +21,70 @@ export default function Step7() {
     calculateDynamicWorth, calculateAutoPercentage,
     setCurrentStep,
   } = useDecision();
+
+  const [fetchingData, setFetchingData] = useState<{ [key: string]: boolean }>({});
+
+  // Fetch data from configured data sources for all factors of an option
+  const fetchFactorData = async (optionId: string, optionName: string) => {
+    const factorsWithDataSource = decision.factors.filter(f => !f.parent_id && f.data_source?.type);
+    if (factorsWithDataSource.length === 0) {
+      Alert.alert('No Data Sources', 'No factors have auto-fetch data sources configured. Configure them in Step 2.');
+      return;
+    }
+    const fetchKey = `option_${optionId}`;
+    setFetchingData(prev => ({ ...prev, [fetchKey]: true }));
+    try {
+      const token = await AsyncStorage.getItem('session_token');
+      const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
+      const resp = await fetch(`${baseUrl}/api/factors/fetch-data`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          decision_title: decision.title,
+          decision_context: decision.context,
+          option_name: optionName,
+          factors: factorsWithDataSource.map(f => ({
+            id: f.id,
+            name: f.name,
+            factor_type: f.factor_type || (f.data_type === 'text' ? 'qualitative' : 'quantitative'),
+            data_source: f.data_source,
+            unit: f.unit,
+            expected_value: f.expected_value,
+            operator: f.operator,
+          })),
+        }),
+      });
+      const data = await resp.json();
+      if (data.results && data.results.length > 0) {
+        let successCount = 0;
+        for (const result of data.results) {
+          if (result.value !== null && result.value !== undefined) {
+            successCount++;
+            const factor = decision.factors.find(f => f.id === result.factor_id);
+            const key = getAssessmentKey(optionId, result.factor_id);
+            const valStr = String(result.value);
+            setActualValues(prev => ({ ...prev, [key]: valStr }));
+            // Auto-calculate percentage if possible
+            if (factor) {
+              const autoPercent = calculateAutoPercentage(factor, result.value);
+              const unitStr = factor.unit || '';
+              const displayValue = `${result.value}${unitStr ? ' ' + unitStr : ''}`;
+              const numericActual = typeof result.value === 'number' ? result.value : parseFloat(String(result.value));
+              if (autoPercent !== null) {
+                updateAssessment(optionId, result.factor_id, autoPercent, 'auto' as any, displayValue, isNaN(numericActual) ? undefined : numericActual);
+              }
+            }
+          }
+        }
+        const errorCount = data.results.filter((r: any) => r.error).length;
+        Alert.alert('Data Fetched', `${successCount} values fetched${errorCount > 0 ? `, ${errorCount} failed` : ''}`);
+      }
+    } catch (err) {
+      Alert.alert('Error', 'Failed to fetch data from sources');
+    } finally {
+      setFetchingData(prev => ({ ...prev, [fetchKey]: false }));
+    }
+  };
 
   const handleLMHSelect = (optionId: string, factorId: string, mode: 'L' | 'M' | 'H') => {
     const percentage = LMH_VALUES[mode].percentage;
@@ -281,6 +347,23 @@ export default function Step7() {
             </View>
             <View style={styles.assessmentProgress}>
               <Text style={styles.progressText}>{dynamicWorth.assessedCount}/{dynamicWorth.totalCount} factors rated</Text>
+              {/* Fetch Data button */}
+              {decision.factors.some(f => !f.parent_id && f.data_source?.type) && (
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#EDE9FE', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 }}
+                  onPress={() => fetchFactorData(option.id, option.name)}
+                  disabled={fetchingData[`option_${option.id}`]}
+                >
+                  {fetchingData[`option_${option.id}`] ? (
+                    <ActivityIndicator size="small" color={COLORS.primary} />
+                  ) : (
+                    <Ionicons name="cloud-download-outline" size={14} color={COLORS.primary} />
+                  )}
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: COLORS.primary }}>
+                    {fetchingData[`option_${option.id}`] ? 'Fetching...' : 'Auto-Fetch'}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {decision.factors

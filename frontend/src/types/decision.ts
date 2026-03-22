@@ -1,5 +1,17 @@
 // Shared types for the PRR Decision system
 
+export interface FactorDataSource {
+  type: 'webhook' | 'web_surf' | 'ai_llm';
+  config: {
+    url?: string;          // For webhook
+    headers?: string;      // For webhook (JSON string)
+    search_query?: string; // For web_surf
+    prompt?: string;       // For ai_llm
+  };
+  last_fetched?: string;   // ISO timestamp
+  last_value?: string;     // Last fetched value
+}
+
 export interface Factor {
   id: string;
   name: string;
@@ -13,6 +25,8 @@ export interface Factor {
   gap_multiplier?: number;
   parent_id?: string;
   weight?: number;
+  factor_type?: 'quantitative' | 'qualitative';
+  data_source?: FactorDataSource;
 }
 
 export interface OptionAssessment {
