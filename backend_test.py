@@ -7,7 +7,7 @@ import random
 import string
 
 # Backend URL
-BASE_URL = "https://dezider-solver.preview.emergentagent.com/api"
+BASE_URL = "https://prr-actions-central.preview.emergentagent.com/api"
 
 def generate_random_suffix():
     """Generate random suffix for unique emails"""

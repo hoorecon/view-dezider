@@ -3191,9 +3191,11 @@ async def get_decision_meta():
 # Import and include modular route files
 from routes.tools import router as tools_router
 from routes.admin import router as admin_router
+from routes.ctt_gem import router as ctt_gem_router
 
 api_router.include_router(tools_router)
 api_router.include_router(admin_router)
+api_router.include_router(ctt_gem_router)
 
 
 # Include the router in the main app

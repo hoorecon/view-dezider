@@ -11,7 +11,7 @@ import time
 from datetime import datetime
 
 # Backend URL from the request
-BASE_URL = "https://dezider-solver.preview.emergentagent.com/api"
+BASE_URL = "https://prr-actions-central.preview.emergentagent.com/api"
 
 class ComprehensiveBackendTest:
     def __init__(self):

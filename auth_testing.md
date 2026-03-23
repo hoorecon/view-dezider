@@ -29,11 +29,11 @@ print('User ID: ' + userId);
 
 ```bash
 # Test auth endpoint
-curl -X GET "https://dezider-solver.preview.emergentagent.com/api/auth/me" \
+curl -X GET "https://prr-actions-central.preview.emergentagent.com/api/auth/me" \
   -H "Authorization: Bearer YOUR_SESSION_TOKEN"
 
 # Test protected endpoints
-curl -X GET "https://dezider-solver.preview.emergentagent.com/api/decisions" \
+curl -X GET "https://prr-actions-central.preview.emergentagent.com/api/decisions" \
   -H "Authorization: Bearer YOUR_SESSION_TOKEN"
 ```
 
@@ -50,7 +50,7 @@ await page.context.add_cookies([{
     "secure": true,
     "sameSite": "None"
 }]);
-await page.goto("https://dezider-solver.preview.emergentagent.com");
+await page.goto("https://prr-actions-central.preview.emergentagent.com");
 ```
 
 ## Quick Debug

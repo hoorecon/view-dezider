@@ -29,6 +29,14 @@ interface FeatureFlags {
   solution_matrix: boolean;
 }
 
+interface CTTStats {
+  total: number;
+  by_status: Record<string, number>;
+  by_priority: Record<string, number>;
+  routine_count: number;
+  one_time_count: number;
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
@@ -37,6 +45,7 @@ export default function HomeScreen() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [inboxPending, setInboxPending] = useState(0);
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags>({ solution_finder: false, solution_matrix: false });
+  const [cttStats, setCttStats] = useState<CTTStats | null>(null);
 
   const fetchStats = async () => {
     try {
@@ -77,8 +86,17 @@ export default function HomeScreen() {
     }
   };
 
+  const fetchCttStats = async () => {
+    try {
+      const response = await api.get('/ctt/stats');
+      setCttStats(response.data);
+    } catch (error) {
+      console.error('Error fetching CTT stats:', error);
+    }
+  };
+
   const fetchAll = async () => {
-    await Promise.all([fetchStats(), fetchUnreadCount(), fetchInboxCount(), fetchFeatureFlags()]);
+    await Promise.all([fetchStats(), fetchUnreadCount(), fetchInboxCount(), fetchFeatureFlags(), fetchCttStats()]);
   };
 
   useFocusEffect(
@@ -273,6 +291,62 @@ export default function HomeScreen() {
               </View>
             </>
           )}
+
+          {/* CTT - Centralized Task Tracker */}
+          <Text style={styles.sectionTitle}>Task Tracker</Text>
+          <TouchableOpacity
+            style={styles.cttCard}
+            onPress={() => router.push('/tools/ctt')}
+            activeOpacity={0.7}
+          >
+            <LinearGradient
+              colors={['#1E3A5F', '#2D5F8B']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.cttGradient}
+            >
+              <View style={styles.cttHeader}>
+                <View style={styles.cttIconWrap}>
+                  <Ionicons name="clipboard" size={24} color="#FFF" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cttTitle}>Centralized Task Tracker</Text>
+                  <Text style={styles.cttSubtitle}>
+                    Track all action items from Decisions, Solutions & Goals
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.7)" />
+              </View>
+              {cttStats && cttStats.total > 0 && (
+                <View style={styles.cttStatsRow}>
+                  <View style={styles.cttStatItem}>
+                    <Text style={styles.cttStatNum}>{cttStats.total}</Text>
+                    <Text style={styles.cttStatLabel}>Total</Text>
+                  </View>
+                  <View style={[styles.cttStatDivider]} />
+                  <View style={styles.cttStatItem}>
+                    <Text style={[styles.cttStatNum, { color: '#3B82F6' }]}>{cttStats.by_status?.in_progress || 0}</Text>
+                    <Text style={styles.cttStatLabel}>Active</Text>
+                  </View>
+                  <View style={[styles.cttStatDivider]} />
+                  <View style={styles.cttStatItem}>
+                    <Text style={[styles.cttStatNum, { color: '#10B981' }]}>{cttStats.by_status?.done || 0}</Text>
+                    <Text style={styles.cttStatLabel}>Done</Text>
+                  </View>
+                  <View style={[styles.cttStatDivider]} />
+                  <View style={styles.cttStatItem}>
+                    <Text style={[styles.cttStatNum, { color: '#EF4444' }]}>{cttStats.by_status?.blocked || 0}</Text>
+                    <Text style={styles.cttStatLabel}>Blocked</Text>
+                  </View>
+                  <View style={[styles.cttStatDivider]} />
+                  <View style={styles.cttStatItem}>
+                    <Text style={[styles.cttStatNum, { color: '#F59E0B' }]}>{cttStats.routine_count || 0}</Text>
+                    <Text style={styles.cttStatLabel}>Routines</Text>
+                  </View>
+                </View>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
 
           {/* Stats */}
           <Text style={styles.sectionTitle}>Your Progress</Text>
@@ -691,5 +765,72 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: COLORS.white,
+  },
+  // CTT Card styles
+  cttCard: {
+    marginBottom: 16,
+    borderRadius: 16,
+    overflow: 'hidden',
+    elevation: 3,
+    shadowColor: '#1E3A5F',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+  },
+  cttGradient: {
+    padding: 16,
+    borderRadius: 16,
+  },
+  cttHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  cttIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cttTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFF',
+  },
+  cttSubtitle: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.7)',
+    marginTop: 2,
+  },
+  cttStatsRow: {
+    flexDirection: 'row',
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+  },
+  cttStatItem: {
+    alignItems: 'center',
+  },
+  cttStatNum: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#FFF',
+  },
+  cttStatLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.6)',
+    marginTop: 2,
+    textTransform: 'uppercase',
+  },
+  cttStatDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
 });
