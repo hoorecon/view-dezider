@@ -221,6 +221,13 @@ DECISION_FOLDERS = [
 # Admin Models
 ROLE_HIERARCHY = {"super_admin": 3, "co_admin": 2, "admin": 1, "user": 0}
 
+# Org-level Role Hierarchy (mirrors global roles within an organization)
+ORG_ROLE_HIERARCHY = {"org_super_admin": 3, "org_co_admin": 2, "org_admin": 1, "org_member": 0}
+ORG_ADMIN_ROLES = ["org_admin", "org_co_admin", "org_super_admin"]
+
+def get_org_role_level(role: str) -> int:
+    return ORG_ROLE_HIERARCHY.get(role, 0)
+
 # Notification Models
 class NotificationCreate(BaseModel):
     user_id: str
@@ -430,6 +437,7 @@ async def register(user_data: UserCreate, response: Response):
         "picture": None,
         "auth_method": "email",
         "org_id": user_data.org_id,
+        "org_role": "org_member" if user_data.org_id else None,
         "created_at": datetime.now(timezone.utc)
     }
     
@@ -598,6 +606,8 @@ async def get_me(user: dict = Depends(get_current_user)):
         "auth_method": user.get("auth_method", "email"),
         "has_password": bool(user.get("password_hash")),
         "role": user.get("role", "user"),
+        "org_id": user.get("org_id"),
+        "org_role": user.get("org_role"),
     }
 
 @api_router.post("/auth/logout")
@@ -728,8 +738,11 @@ async def create_organization(request: Request, user: dict = Depends(get_current
         "created_at": datetime.now(timezone.utc),
     }
     await db.organizations.insert_one(org_doc)
-    # Assign creator to org
-    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"org_id": org_doc["id"]}})
+    # Assign creator to org with org_super_admin role
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"org_id": org_doc["id"], "org_role": "org_super_admin"}}
+    )
     return {"id": org_doc["id"], "slug": slug, "message": "Organization created"}
 
 @api_router.get("/organizations/{slug}")
@@ -751,14 +764,15 @@ async def get_organization_by_slug(slug: str):
 
 @api_router.put("/organizations/{org_id}")
 async def update_organization(org_id: str, request: Request, user: dict = Depends(get_current_user)):
-    """Update organization branding (org admin only)"""
-    # Verify user belongs to this org and is admin
+    """Update organization branding (org_admin+ or global admin)"""
     user_doc = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
     if user_doc.get("org_id") != org_id:
         raise HTTPException(status_code=403, detail="Not a member of this organization")
-    role = get_user_role(user)
-    if get_role_level(role) < 2:
-        raise HTTPException(status_code=403, detail="Admin access required")
+    org_role = user_doc.get("org_role", "org_member")
+    global_role = get_user_role(user_doc)
+    # Allow if org_admin+ or global admin
+    if get_org_role_level(org_role) < 1 and get_role_level(global_role) < 1:
+        raise HTTPException(status_code=403, detail="Org Admin access required")
     body = await request.json()
     update_fields = {k: v for k, v in body.items() if k in ["name", "logo_url", "primary_color", "accent_color", "tagline"]}
     if update_fields:
@@ -767,12 +781,102 @@ async def update_organization(org_id: str, request: Request, user: dict = Depend
 
 @api_router.get("/organizations/{org_id}/members")
 async def get_org_members(org_id: str, user: dict = Depends(get_current_user)):
-    """Get members of an organization"""
+    """Get members of an organization with org roles"""
     user_doc = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
     if user_doc.get("org_id") != org_id:
         raise HTTPException(status_code=403, detail="Not a member of this organization")
-    members = await db.users.find({"org_id": org_id}, {"_id": 0, "password_hash": 0}).to_list(200)
+    members = await db.users.find(
+        {"org_id": org_id},
+        {"_id": 0, "password_hash": 0}
+    ).to_list(200)
+    # Ensure each member has org_role
+    for m in members:
+        if not m.get("org_role"):
+            # Check if creator
+            org = await db.organizations.find_one({"id": org_id})
+            if org and m.get("user_id") == org.get("created_by"):
+                m["org_role"] = "org_super_admin"
+                await db.users.update_one({"user_id": m["user_id"]}, {"$set": {"org_role": "org_super_admin"}})
+            else:
+                m["org_role"] = "org_member"
     return members
+
+@api_router.put("/organizations/{org_id}/members/{target_user_id}/role")
+async def update_org_member_role(org_id: str, target_user_id: str, request: Request, user: dict = Depends(get_current_user)):
+    """Promote/demote org member role (org_admin+ only)"""
+    # Verify promoter is in org and has admin level
+    promoter = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    if promoter.get("org_id") != org_id:
+        raise HTTPException(status_code=403, detail="Not a member of this organization")
+
+    promoter_org_role = promoter.get("org_role", "org_member")
+    promoter_level = get_org_role_level(promoter_org_role)
+
+    if promoter_level < 1:
+        raise HTTPException(status_code=403, detail="Org Admin access required")
+
+    # Get target user
+    target = await db.users.find_one({"user_id": target_user_id, "org_id": org_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found in this organization")
+
+    body = await request.json()
+    new_role = body.get("org_role", "").strip()
+    if new_role not in ORG_ROLE_HIERARCHY:
+        raise HTTPException(status_code=400, detail=f"Invalid org role. Must be one of: {list(ORG_ROLE_HIERARCHY.keys())}")
+
+    new_role_level = get_org_role_level(new_role)
+    target_current_level = get_org_role_level(target.get("org_role", "org_member"))
+
+    # Can't modify yourself
+    if target_user_id == user["user_id"]:
+        raise HTTPException(status_code=400, detail="Cannot change your own org role")
+
+    # Can't promote to equal or higher than own level
+    if new_role_level >= promoter_level:
+        raise HTTPException(status_code=403, detail="Cannot promote to a role equal or higher than your own")
+
+    # Can't modify someone at equal or higher level
+    if target_current_level >= promoter_level:
+        raise HTTPException(status_code=403, detail="Cannot modify a user with equal or higher org role")
+
+    # Only org_super_admin can create org_co_admin
+    if new_role == "org_co_admin" and promoter_org_role != "org_super_admin":
+        raise HTTPException(status_code=403, detail="Only Org Super Admin can assign Org Co-Admin role")
+
+    await db.users.update_one(
+        {"user_id": target_user_id},
+        {"$set": {"org_role": new_role}}
+    )
+    return {"message": f"User org role updated to {new_role}"}
+
+@api_router.delete("/organizations/{org_id}/members/{target_user_id}")
+async def remove_org_member(org_id: str, target_user_id: str, user: dict = Depends(get_current_user)):
+    """Remove a member from the organization (org_admin+ only)"""
+    remover = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    if remover.get("org_id") != org_id:
+        raise HTTPException(status_code=403, detail="Not a member of this organization")
+
+    remover_level = get_org_role_level(remover.get("org_role", "org_member"))
+    if remover_level < 1:
+        raise HTTPException(status_code=403, detail="Org Admin access required")
+
+    target = await db.users.find_one({"user_id": target_user_id, "org_id": org_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found in this organization")
+
+    if target_user_id == user["user_id"]:
+        raise HTTPException(status_code=400, detail="Cannot remove yourself from the organization")
+
+    target_level = get_org_role_level(target.get("org_role", "org_member"))
+    if target_level >= remover_level:
+        raise HTTPException(status_code=403, detail="Cannot remove a user with equal or higher org role")
+
+    await db.users.update_one(
+        {"user_id": target_user_id},
+        {"$set": {"org_id": None, "org_role": None}}
+    )
+    return {"message": "Member removed from organization"}
 
 
 # ========================

@@ -12,6 +12,8 @@ interface User {
   picture?: string;
   auth_method: string;
   org_id?: string;
+  org_role?: string;
+  role?: string;
 }
 
 interface OrgBranding {
