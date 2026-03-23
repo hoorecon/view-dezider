@@ -348,6 +348,58 @@ export default function HomeScreen() {
             </LinearGradient>
           </TouchableOpacity>
 
+          {/* GEM + TEPFI + Calendar Quick Actions */}
+          <Text style={styles.sectionTitle}>Management Tools</Text>
+          <View style={styles.quickActions}>
+            <TouchableOpacity
+              style={styles.actionCard}
+              onPress={() => router.push('/tools/gem')}
+            >
+              <LinearGradient
+                colors={['#0F766E', '#14B8A6']}
+                style={styles.actionIcon}
+              >
+                <Ionicons name="flag" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Goals (GEM)</Text>
+              <Text style={styles.actionSubtitle}>Track life goals</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionCard}
+              onPress={() => router.push('/tools/tepfi')}
+            >
+              <LinearGradient
+                colors={['#7C3AED', '#A855F7']}
+                style={styles.actionIcon}
+              >
+                <Ionicons name="cube" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>TEPFI Matrix</Text>
+              <Text style={styles.actionSubtitle}>Resource tracking</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            style={styles.calendarCard}
+            onPress={() => router.push('/tools/calendar-view')}
+            activeOpacity={0.7}
+          >
+            <LinearGradient
+              colors={['#4285F4', '#5B9EF4']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.calendarGradient}
+            >
+              <Ionicons name="calendar" size={24} color="#FFF" />
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.calendarTitle}>Calendar & Scheduling</Text>
+                <Text style={styles.calendarSub}>View upcoming deadlines & export to Google Calendar</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
+            </LinearGradient>
+          </TouchableOpacity>
+
           {/* Stats */}
           <Text style={styles.sectionTitle}>Your Progress</Text>
           <View style={styles.statsGrid}>
@@ -832,5 +884,32 @@ const styles = StyleSheet.create({
     width: 1,
     height: 28,
     backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  // Calendar card styles
+  calendarCard: {
+    marginBottom: 16,
+    borderRadius: 14,
+    overflow: 'hidden',
+    elevation: 2,
+    shadowColor: '#4285F4',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  calendarGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 14,
+  },
+  calendarTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFF',
+  },
+  calendarSub: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.7)',
+    marginTop: 2,
   },
 });

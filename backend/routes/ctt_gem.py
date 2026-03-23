@@ -1,6 +1,6 @@
-"""CTT (Centralized Task Tracker) + GEM (Goals Execution Manager) + Calendar endpoints."""
+"""CTT (Centralized Task Tracker) + GEM (Goals Execution Manager) + TEPFI Resource Matrix + Calendar endpoints."""
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Request, Depends
 from core.database import db
@@ -13,6 +13,9 @@ LIFE_AREAS = [
     "knowledge_skills", "social_image", "social_contributions",
     "hobbies_entertainment", "spirituality_religion",
 ]
+
+TEPFI_DIMENSIONS = ["time", "effort", "people", "finance", "infrastructure"]
+TEPFI_LAYERS = ["self", "micro", "macro"]
 
 # ========================
 # CTT TASKS
@@ -530,3 +533,326 @@ async def gem_dashboard(user: dict = Depends(get_current_user)):
         "by_type": by_type,
         "by_status": by_status,
     }
+
+
+# ========================
+# TEPFI RESOURCE MATRIX
+# ========================
+
+@router.post("/tepfi/entries")
+async def create_tepfi_entry(request: Request, user: dict = Depends(get_current_user)):
+    """Create a TEPFI resource entry. Tracks Time, Effort, People, Finance, Infrastructure across Self/Micro/Macro."""
+    body = await request.json()
+    entry_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Build the matrix: { "time": { "self": ..., "micro": ..., "macro": ... }, ... }
+    matrix = {}
+    for dim in TEPFI_DIMENSIONS:
+        matrix[dim] = {}
+        for layer in TEPFI_LAYERS:
+            key = f"{dim}_{layer}"
+            matrix[dim][layer] = {
+                "description": body.get(key, {}).get("description", "") if isinstance(body.get(key), dict) else body.get(f"{key}_description", ""),
+                "score": body.get(key, {}).get("score", 0) if isinstance(body.get(key), dict) else body.get(f"{key}_score", 0),
+                "notes": body.get(key, {}).get("notes", "") if isinstance(body.get(key), dict) else body.get(f"{key}_notes", ""),
+            }
+
+    # Also accept pre-built matrix object
+    if "matrix" in body and isinstance(body["matrix"], dict):
+        matrix = body["matrix"]
+
+    doc = {
+        "entry_id": entry_id,
+        "user_id": user["user_id"],
+        "org_id": user.get("org_id"),
+        "title": body.get("title", ""),
+        "life_area": body.get("life_area", ""),
+        "goal_id": body.get("goal_id"),
+        "decision_type": body.get("decision_type", ""),
+        "linked_solution_matrix_id": body.get("linked_solution_matrix_id"),
+        "linked_goal_id": body.get("linked_goal_id"),
+        "matrix": matrix,
+        "overall_notes": body.get("overall_notes", ""),
+        "status": body.get("status", "draft"),
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.tepfi_entries.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@router.get("/tepfi/entries")
+async def list_tepfi_entries(request: Request, user: dict = Depends(get_current_user)):
+    query: dict = {"user_id": user["user_id"]}
+    params = request.query_params
+    if params.get("life_area"):
+        query["life_area"] = params["life_area"]
+    if params.get("goal_id"):
+        query["goal_id"] = params["goal_id"]
+    if params.get("status"):
+        query["status"] = params["status"]
+
+    entries = await db.tepfi_entries.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return entries
+
+
+@router.get("/tepfi/entries/{entry_id}")
+async def get_tepfi_entry(entry_id: str, user: dict = Depends(get_current_user)):
+    entry = await db.tepfi_entries.find_one(
+        {"entry_id": entry_id, "user_id": user["user_id"]}, {"_id": 0}
+    )
+    if not entry:
+        raise HTTPException(status_code=404, detail="TEPFI entry not found")
+    return entry
+
+
+@router.put("/tepfi/entries/{entry_id}")
+async def update_tepfi_entry(entry_id: str, request: Request, user: dict = Depends(get_current_user)):
+    body = await request.json()
+    entry = await db.tepfi_entries.find_one({"entry_id": entry_id, "user_id": user["user_id"]})
+    if not entry:
+        raise HTTPException(status_code=404, detail="TEPFI entry not found")
+
+    allowed = [
+        "title", "life_area", "goal_id", "decision_type",
+        "linked_solution_matrix_id", "linked_goal_id",
+        "matrix", "overall_notes", "status",
+    ]
+    update = {k: body[k] for k in allowed if k in body}
+    update["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    await db.tepfi_entries.update_one({"entry_id": entry_id}, {"$set": update})
+    updated = await db.tepfi_entries.find_one({"entry_id": entry_id}, {"_id": 0})
+    return updated
+
+
+@router.delete("/tepfi/entries/{entry_id}")
+async def delete_tepfi_entry(entry_id: str, user: dict = Depends(get_current_user)):
+    result = await db.tepfi_entries.delete_one({"entry_id": entry_id, "user_id": user["user_id"]})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="TEPFI entry not found")
+    return {"message": "TEPFI entry deleted"}
+
+
+@router.get("/tepfi/dashboard")
+async def tepfi_dashboard(user: dict = Depends(get_current_user)):
+    """TEPFI overview: aggregated scores across life areas."""
+    entries = await db.tepfi_entries.find(
+        {"user_id": user["user_id"]}, {"_id": 0}
+    ).to_list(200)
+
+    by_area = {}
+    overall_scores = {dim: {layer: [] for layer in TEPFI_LAYERS} for dim in TEPFI_DIMENSIONS}
+
+    for e in entries:
+        area = e.get("life_area", "other")
+        by_area.setdefault(area, {"count": 0, "avg_scores": {}})
+        by_area[area]["count"] += 1
+
+        matrix = e.get("matrix", {})
+        for dim in TEPFI_DIMENSIONS:
+            dim_data = matrix.get(dim, {})
+            for layer in TEPFI_LAYERS:
+                layer_data = dim_data.get(layer, {})
+                score = layer_data.get("score", 0)
+                if score:
+                    overall_scores[dim][layer].append(score)
+
+    # Calculate averages
+    avg_matrix = {}
+    for dim in TEPFI_DIMENSIONS:
+        avg_matrix[dim] = {}
+        for layer in TEPFI_LAYERS:
+            scores = overall_scores[dim][layer]
+            avg_matrix[dim][layer] = round(sum(scores) / max(len(scores), 1), 1) if scores else 0
+
+    return {
+        "total_entries": len(entries),
+        "by_area": by_area,
+        "avg_matrix": avg_matrix,
+    }
+
+
+@router.post("/tepfi/import-from-matrix/{matrix_id}")
+async def import_tepfi_from_solution_matrix(matrix_id: str, user: dict = Depends(get_current_user)):
+    """Import TEPFI data from an existing Solution Matrix entry."""
+    sm = await db.solution_matrices.find_one(
+        {"entry_id": matrix_id, "user_id": user["user_id"]}, {"_id": 0}
+    )
+    if not sm:
+        raise HTTPException(status_code=404, detail="Solution Matrix not found")
+
+    # Check if already imported
+    existing = await db.tepfi_entries.find_one({
+        "user_id": user["user_id"],
+        "linked_solution_matrix_id": matrix_id,
+    })
+    if existing:
+        raise HTTPException(status_code=400, detail="Already imported from this matrix")
+
+    # Map solution matrix layers to TEPFI
+    now = datetime.now(timezone.utc).isoformat()
+    matrix = {}
+    tepfi_map = {
+        "time": "time",
+        "people": "people",
+        "finance": "finance",
+        "infrastructure": "infrastructure",
+        "capacity": "effort",
+    }
+
+    for dim in TEPFI_DIMENSIONS:
+        matrix[dim] = {}
+        for layer in TEPFI_LAYERS:
+            sm_layer_key = layer
+            sm_layer_data = sm.get("steps", {}).get("2", {}).get(sm_layer_key, {})
+            # Try to find matching sub-area in solution matrix
+            sm_dim_key = tepfi_map.get(dim, dim)
+            sub_area_data = sm_layer_data.get(sm_dim_key, {})
+            matrix[dim][layer] = {
+                "description": sub_area_data.get("description", sub_area_data.get("notes", "")),
+                "score": sub_area_data.get("score", 0),
+                "notes": sub_area_data.get("analysis", ""),
+            }
+
+    doc = {
+        "entry_id": str(uuid.uuid4()),
+        "user_id": user["user_id"],
+        "org_id": user.get("org_id"),
+        "title": f"From: {sm.get('smart_goal', sm.get('title', 'Solution Matrix'))}",
+        "life_area": sm.get("area_of_life", ""),
+        "decision_type": "",
+        "linked_solution_matrix_id": matrix_id,
+        "linked_goal_id": None,
+        "goal_id": None,
+        "matrix": matrix,
+        "overall_notes": f"Imported from Solution Matrix: {sm.get('smart_goal', '')}",
+        "status": "active",
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.tepfi_entries.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+# ========================
+# GOOGLE CALENDAR SCHEDULING (Enhanced)
+# ========================
+
+@router.post("/calendar/batch-export")
+async def batch_export_to_calendar(request: Request, user: dict = Depends(get_current_user)):
+    """Generate Google Calendar URLs for multiple tasks at once."""
+    body = await request.json()
+    task_ids = body.get("task_ids", [])
+
+    if not task_ids:
+        # Export all non-done tasks with deadlines
+        tasks = await db.ctt_tasks.find(
+            {"user_id": user["user_id"], "current_status": {"$ne": "done"}, "deadline": {"$ne": None}},
+            {"_id": 0}
+        ).to_list(100)
+    else:
+        tasks = await db.ctt_tasks.find(
+            {"user_id": user["user_id"], "task_id": {"$in": task_ids}},
+            {"_id": 0}
+        ).to_list(100)
+
+    results = []
+    for task in tasks:
+        title = task.get("task", "Untitled Task")
+        details_parts = []
+        if task.get("project"):
+            details_parts.append(f"Project: {task['project']}")
+        if task.get("priority"):
+            details_parts.append(f"Priority: {task['priority'].upper()}")
+        if task.get("life_area"):
+            details_parts.append(f"Life Area: {task['life_area'].replace('_', ' ').title()}")
+        if task.get("remarks"):
+            details_parts.append(f"Notes: {task['remarks']}")
+        if task.get("sub_task"):
+            details_parts.append(f"Sub-task: {task['sub_task']}")
+        details = "\n".join(details_parts)
+
+        deadline = task.get("deadline", "")
+        from_time = task.get("from_time", "")
+        to_time = task.get("to_time", "")
+
+        base = "https://calendar.google.com/calendar/render?action=TEMPLATE"
+        params_str = f"&text={quote(title)}&details={quote(details)}"
+
+        if from_time and to_time:
+            # Try to format as Google Calendar expects: YYYYMMDDTHHmmssZ
+            ft = _format_gcal_date(from_time)
+            tt = _format_gcal_date(to_time)
+            params_str += f"&dates={ft}/{tt}"
+        elif deadline:
+            dd = _format_gcal_date(deadline)
+            params_str += f"&dates={dd}/{dd}"
+
+        results.append({
+            "task_id": task["task_id"],
+            "task": title,
+            "calendar_url": base + params_str,
+        })
+
+    return {"tasks": results, "count": len(results)}
+
+
+@router.get("/calendar/upcoming")
+async def get_upcoming_calendar_items(request: Request, user: dict = Depends(get_current_user)):
+    """Get upcoming tasks with deadlines for calendar view."""
+    params = request.query_params
+    days_ahead = int(params.get("days", "30"))
+
+    tasks = await db.ctt_tasks.find(
+        {"user_id": user["user_id"], "current_status": {"$ne": "cancelled"}},
+        {"_id": 0}
+    ).sort("deadline", 1).to_list(500)
+
+    # Filter tasks with valid deadlines
+    upcoming = []
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    future_str = (datetime.now(timezone.utc) + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
+
+    for t in tasks:
+        deadline = t.get("deadline", "")
+        if deadline and today_str <= deadline <= future_str:
+            upcoming.append(t)
+
+    # Also group by date
+    by_date: dict = {}
+    for t in upcoming:
+        d = t.get("deadline", "")
+        by_date.setdefault(d, [])
+        by_date[d].append(t)
+
+    return {"upcoming": upcoming, "by_date": by_date, "total": len(upcoming)}
+
+
+def _format_gcal_date(date_str: str) -> str:
+    """Try to format date string for Google Calendar (YYYYMMDDTHHmmssZ)."""
+    if not date_str:
+        return ""
+    # Remove common separators and try to parse
+    clean = date_str.strip()
+    try:
+        # Try ISO format: YYYY-MM-DD HH:MM
+        if " " in clean and ":" in clean:
+            dt = datetime.strptime(clean[:16], "%Y-%m-%d %H:%M")
+            return dt.strftime("%Y%m%dT%H%M%S")
+        # Try date only: YYYY-MM-DD
+        if "-" in clean and len(clean) >= 10:
+            dt = datetime.strptime(clean[:10], "%Y-%m-%d")
+            return dt.strftime("%Y%m%d")
+        # Try DD/MM/YYYY
+        if "/" in clean:
+            parts = clean.split("/")
+            if len(parts) == 3:
+                dt = datetime.strptime(clean[:10], "%d/%m/%Y")
+                return dt.strftime("%Y%m%d")
+    except (ValueError, IndexError):
+        pass
+    return quote(clean)
