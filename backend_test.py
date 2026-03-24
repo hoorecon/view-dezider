@@ -1,587 +1,537 @@
 #!/usr/bin/env python3
 """
-Backend Testing Script for TEPFI Resource Matrix and Calendar endpoints
-Testing against: https://prr-actions-central.preview.emergentagent.com/api
+Comprehensive Backend Testing for Lifestyle Dezider and Lifestyle Analyzer
+Tests all endpoints mentioned in the review request.
 """
 
-import requests
+import asyncio
+import httpx
 import json
 import time
-from datetime import datetime, timedelta
-import uuid
+from datetime import datetime, timezone
 
-# Configuration
-BASE_URL = "https://prr-actions-central.preview.emergentagent.com/api"
-session_token = None
+# Backend URL from environment
+BACKEND_URL = "https://prr-actions-central.preview.emergentagent.com/api"
 
-def log_test(test_name, status, details=""):
-    """Log test results with timestamp"""
-    timestamp = datetime.now().strftime("%H:%M:%S")
-    status_symbol = "✅" if status == "PASS" else "❌" if status == "FAIL" else "⏭️"
-    print(f"[{timestamp}] {status_symbol} {test_name}")
-    if details:
-        print(f"    {details}")
-
-def register_user():
-    """Register a new test user and get session token"""
-    global session_token
-    timestamp = int(time.time())
-    test_email = f"tepfi.test.{timestamp}@careerpath.com"
-    
-    payload = {
-        "name": "TEPFI Test User",
-        "email": test_email,
-        "password": "testpass123"
-    }
-    
-    try:
-        response = requests.post(f"{BASE_URL}/auth/register", json=payload)
-        if response.status_code == 200:
+class LifestyleBackendTester:
+    def __init__(self):
+        self.session_token = None
+        self.user_data = None
+        self.created_routines = []
+        self.created_assessments = []
+        self.created_ctt_tasks = []
+        
+    async def register_user(self):
+        """Register a new user for testing"""
+        timestamp = int(time.time())
+        email = f"lifestyle.tester.{timestamp}@routinemaster.com"
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(f"{BACKEND_URL}/auth/register", json={
+                "email": email,
+                "password": "lifestyle123",
+                "name": f"Lifestyle Tester {timestamp}"
+            })
+            
+            if response.status_code != 200:
+                raise Exception(f"Registration failed: {response.status_code} - {response.text}")
+            
             data = response.json()
-            session_token = data.get("session_token")
-            log_test("User Registration", "PASS", f"Email: {test_email}, Token: {session_token[:20]}...")
-            return True
-        else:
-            log_test("User Registration", "FAIL", f"Status: {response.status_code}, Response: {response.text}")
-            return False
-    except Exception as e:
-        log_test("User Registration", "FAIL", f"Exception: {str(e)}")
-        return False
-
-def get_headers():
-    """Get authorization headers"""
-    return {"Authorization": f"Bearer {session_token}", "Content-Type": "application/json"}
-
-def test_tepfi_crud():
-    """Test TEPFI Resource Matrix CRUD operations"""
-    print("\n=== TESTING TEPFI RESOURCE MATRIX CRUD ===")
+            self.session_token = data["session_token"]
+            self.user_data = data
+            print(f"✅ User registered: {email}")
+            return data
     
-    # Test 1: Create TEPFI Entry
-    tepfi_payload = {
-        "title": "Career Development Q1",
-        "life_area": "career",
-        "matrix": {
-            "time": {
-                "self": {"description": "8 hours daily", "score": 7, "notes": "Good"},
-                "micro": {"description": "Team meetings 2h", "score": 5, "notes": ""},
-                "macro": {"description": "Industry events quarterly", "score": 3, "notes": "Need more"}
-            },
-            "effort": {
-                "self": {"description": "High focus", "score": 8, "notes": ""},
-                "micro": {"description": "Team coordination", "score": 6, "notes": ""},
-                "macro": {"description": "Market analysis", "score": 4, "notes": ""}
-            },
-            "people": {
-                "self": {"description": "Personal network", "score": 6, "notes": ""},
-                "micro": {"description": "5 team members", "score": 7, "notes": ""},
-                "macro": {"description": "Industry contacts", "score": 3, "notes": ""}
-            },
-            "finance": {
-                "self": {"description": "Savings", "score": 5, "notes": ""},
-                "micro": {"description": "Department budget", "score": 6, "notes": ""},
-                "macro": {"description": "VC funding options", "score": 2, "notes": ""}
-            },
-            "infrastructure": {
-                "self": {"description": "Laptop & tools", "score": 8, "notes": ""},
-                "micro": {"description": "Office setup", "score": 7, "notes": ""},
-                "macro": {"description": "Cloud services", "score": 6, "notes": ""}
+    def get_headers(self):
+        """Get authorization headers"""
+        return {"Authorization": f"Bearer {self.session_token}"}
+    
+    async def test_routine_crud(self):
+        """Test Lifestyle Routine CRUD operations"""
+        print("\n🧪 Testing Lifestyle Routine CRUD...")
+        
+        async with httpx.AsyncClient() as client:
+            # Test 1: Create Morning Meditation routine
+            routine1_data = {
+                "name": "Morning Meditation",
+                "description": "20 min guided meditation",
+                "life_area": "spirituality_religion",
+                "frequency": "daily",
+                "time_slot": "6:00 AM - 6:20 AM",
+                "priority": "high",
+                "category": "primary",
+                "expected_value": "20",
+                "unit": "minutes",
+                "is_active": True
             }
-        },
-        "overall_notes": "Good resource allocation",
-        "status": "active"
-    }
-    
-    try:
-        response = requests.post(f"{BASE_URL}/tepfi/entries", json=tepfi_payload, headers=get_headers())
-        if response.status_code == 200:
-            tepfi_data = response.json()
-            entry_id = tepfi_data.get("entry_id")
-            log_test("TEPFI Create Entry", "PASS", f"Entry ID: {entry_id}")
             
-            # Validate response structure
-            required_fields = ["entry_id", "user_id", "title", "life_area", "matrix", "overall_notes", "status"]
-            missing_fields = [field for field in required_fields if field not in tepfi_data]
-            if missing_fields:
-                log_test("TEPFI Create Response Structure", "FAIL", f"Missing fields: {missing_fields}")
-                return None
-            else:
-                log_test("TEPFI Create Response Structure", "PASS", "All required fields present")
+            response = await client.post(
+                f"{BACKEND_URL}/lifestyle/routines",
+                json=routine1_data,
+                headers=self.get_headers()
+            )
             
-            return entry_id
-        else:
-            log_test("TEPFI Create Entry", "FAIL", f"Status: {response.status_code}, Response: {response.text}")
-            return None
-    except Exception as e:
-        log_test("TEPFI Create Entry", "FAIL", f"Exception: {str(e)}")
-        return None
-
-def test_tepfi_list_and_filters(entry_id):
-    """Test TEPFI list and filtering"""
-    # Test 2: List all TEPFI entries
-    try:
-        response = requests.get(f"{BASE_URL}/tepfi/entries", headers=get_headers())
-        if response.status_code == 200:
-            entries = response.json()
-            if isinstance(entries, list) and len(entries) > 0:
-                log_test("TEPFI List Entries", "PASS", f"Found {len(entries)} entries")
-            else:
-                log_test("TEPFI List Entries", "FAIL", "No entries returned")
-                return False
-        else:
-            log_test("TEPFI List Entries", "FAIL", f"Status: {response.status_code}")
-            return False
-    except Exception as e:
-        log_test("TEPFI List Entries", "FAIL", f"Exception: {str(e)}")
-        return False
-    
-    # Test 3: Filter by life_area
-    try:
-        response = requests.get(f"{BASE_URL}/tepfi/entries?life_area=career", headers=get_headers())
-        if response.status_code == 200:
-            entries = response.json()
-            if isinstance(entries, list):
-                career_entries = [e for e in entries if e.get("life_area") == "career"]
-                log_test("TEPFI Filter by Life Area", "PASS", f"Found {len(career_entries)} career entries")
-            else:
-                log_test("TEPFI Filter by Life Area", "FAIL", "Invalid response format")
-                return False
-        else:
-            log_test("TEPFI Filter by Life Area", "FAIL", f"Status: {response.status_code}")
-            return False
-    except Exception as e:
-        log_test("TEPFI Filter by Life Area", "FAIL", f"Exception: {str(e)}")
-        return False
-    
-    # Test 4: Filter by status
-    try:
-        response = requests.get(f"{BASE_URL}/tepfi/entries?status=active", headers=get_headers())
-        if response.status_code == 200:
-            entries = response.json()
-            if isinstance(entries, list):
-                active_entries = [e for e in entries if e.get("status") == "active"]
-                log_test("TEPFI Filter by Status", "PASS", f"Found {len(active_entries)} active entries")
-            else:
-                log_test("TEPFI Filter by Status", "FAIL", "Invalid response format")
-                return False
-        else:
-            log_test("TEPFI Filter by Status", "FAIL", f"Status: {response.status_code}")
-            return False
-    except Exception as e:
-        log_test("TEPFI Filter by Status", "FAIL", f"Exception: {str(e)}")
-        return False
-    
-    return True
-
-def test_tepfi_get_single(entry_id):
-    """Test getting single TEPFI entry"""
-    # Test 5: Get single TEPFI entry
-    try:
-        response = requests.get(f"{BASE_URL}/tepfi/entries/{entry_id}", headers=get_headers())
-        if response.status_code == 200:
-            entry = response.json()
-            if entry.get("entry_id") == entry_id:
-                log_test("TEPFI Get Single Entry", "PASS", f"Retrieved entry: {entry.get('title')}")
-                
-                # Validate matrix structure
-                matrix = entry.get("matrix", {})
-                tepfi_dimensions = ["time", "effort", "people", "finance", "infrastructure"]
-                tepfi_layers = ["self", "micro", "macro"]
-                
-                matrix_valid = True
-                for dim in tepfi_dimensions:
-                    if dim not in matrix:
-                        matrix_valid = False
-                        break
-                    for layer in tepfi_layers:
-                        if layer not in matrix[dim]:
-                            matrix_valid = False
-                            break
-                        layer_data = matrix[dim][layer]
-                        if not all(key in layer_data for key in ["description", "score", "notes"]):
-                            matrix_valid = False
-                            break
-                
-                if matrix_valid:
-                    log_test("TEPFI Matrix Structure Validation", "PASS", "All dimensions and layers present")
-                else:
-                    log_test("TEPFI Matrix Structure Validation", "FAIL", "Matrix structure incomplete")
-                
-                return True
-            else:
-                log_test("TEPFI Get Single Entry", "FAIL", "Entry ID mismatch")
-                return False
-        else:
-            log_test("TEPFI Get Single Entry", "FAIL", f"Status: {response.status_code}")
-            return False
-    except Exception as e:
-        log_test("TEPFI Get Single Entry", "FAIL", f"Exception: {str(e)}")
-        return False
-
-def test_tepfi_update(entry_id):
-    """Test TEPFI entry update"""
-    # Test 6: Update TEPFI entry
-    update_payload = {
-        "title": "Career Development Q1 - Updated",
-        "matrix": {
-            "time": {
-                "self": {"description": "9 hours daily", "score": 8, "notes": "Improved"},
-                "micro": {"description": "Team meetings 2h", "score": 5, "notes": ""},
-                "macro": {"description": "Industry events quarterly", "score": 4, "notes": "More events planned"}
-            },
-            "effort": {
-                "self": {"description": "High focus", "score": 9, "notes": "Better focus"},
-                "micro": {"description": "Team coordination", "score": 6, "notes": ""},
-                "macro": {"description": "Market analysis", "score": 5, "notes": ""}
-            },
-            "people": {
-                "self": {"description": "Personal network", "score": 7, "notes": "Expanded"},
-                "micro": {"description": "5 team members", "score": 7, "notes": ""},
-                "macro": {"description": "Industry contacts", "score": 4, "notes": ""}
-            },
-            "finance": {
-                "self": {"description": "Savings", "score": 6, "notes": "Increased"},
-                "micro": {"description": "Department budget", "score": 6, "notes": ""},
-                "macro": {"description": "VC funding options", "score": 3, "notes": ""}
-            },
-            "infrastructure": {
-                "self": {"description": "Laptop & tools", "score": 8, "notes": ""},
-                "micro": {"description": "Office setup", "score": 7, "notes": ""},
-                "macro": {"description": "Cloud services", "score": 7, "notes": "Upgraded"}
+            if response.status_code != 200:
+                raise Exception(f"Create routine 1 failed: {response.status_code} - {response.text}")
+            
+            routine1 = response.json()
+            self.created_routines.append(routine1)
+            print(f"✅ Created routine 1: {routine1['name']} (ID: {routine1['routine_id']})")
+            
+            # Test 2: Create Weekly Exercise Plan Review routine
+            routine2_data = {
+                "name": "Weekly Exercise Plan Review",
+                "description": "Review and adjust weekly exercise schedule",
+                "life_area": "holistic_health",
+                "frequency": "weekly",
+                "priority": "medium",
+                "category": "secondary",
+                "is_active": True
             }
-        },
-        "overall_notes": "Improved resource allocation after review"
-    }
-    
-    try:
-        response = requests.put(f"{BASE_URL}/tepfi/entries/{entry_id}", json=update_payload, headers=get_headers())
-        if response.status_code == 200:
-            updated_entry = response.json()
-            if updated_entry.get("title") == "Career Development Q1 - Updated":
-                log_test("TEPFI Update Entry", "PASS", "Title and matrix updated successfully")
-                
-                # Verify specific score updates
-                time_self_score = updated_entry.get("matrix", {}).get("time", {}).get("self", {}).get("score", 0)
-                if time_self_score == 8:
-                    log_test("TEPFI Update Score Verification", "PASS", f"Time-Self score updated to {time_self_score}")
-                else:
-                    log_test("TEPFI Update Score Verification", "FAIL", f"Expected score 8, got {time_self_score}")
-                
-                return True
-            else:
-                log_test("TEPFI Update Entry", "FAIL", "Title not updated correctly")
-                return False
-        else:
-            log_test("TEPFI Update Entry", "FAIL", f"Status: {response.status_code}, Response: {response.text}")
-            return False
-    except Exception as e:
-        log_test("TEPFI Update Entry", "FAIL", f"Exception: {str(e)}")
-        return False
-
-def test_tepfi_dashboard():
-    """Test TEPFI dashboard"""
-    # Test 7: Get TEPFI dashboard
-    try:
-        response = requests.get(f"{BASE_URL}/tepfi/dashboard", headers=get_headers())
-        if response.status_code == 200:
+            
+            response = await client.post(
+                f"{BACKEND_URL}/lifestyle/routines",
+                json=routine2_data,
+                headers=self.get_headers()
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"Create routine 2 failed: {response.status_code} - {response.text}")
+            
+            routine2 = response.json()
+            self.created_routines.append(routine2)
+            print(f"✅ Created routine 2: {routine2['name']} (ID: {routine2['routine_id']})")
+            
+            # Test 3: Create Monthly Budget Review routine
+            routine3_data = {
+                "name": "Monthly Budget Review",
+                "description": "Review monthly expenses and budget allocation",
+                "life_area": "finance",
+                "frequency": "monthly",
+                "priority": "high",
+                "category": "primary",
+                "is_active": True
+            }
+            
+            response = await client.post(
+                f"{BACKEND_URL}/lifestyle/routines",
+                json=routine3_data,
+                headers=self.get_headers()
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"Create routine 3 failed: {response.status_code} - {response.text}")
+            
+            routine3 = response.json()
+            self.created_routines.append(routine3)
+            print(f"✅ Created routine 3: {routine3['name']} (ID: {routine3['routine_id']})")
+            
+            # Test 4: List all routines (should return 3)
+            response = await client.get(
+                f"{BACKEND_URL}/lifestyle/routines",
+                headers=self.get_headers()
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"List routines failed: {response.status_code} - {response.text}")
+            
+            all_routines = response.json()
+            if len(all_routines) != 3:
+                raise Exception(f"Expected 3 routines, got {len(all_routines)}")
+            
+            print(f"✅ Listed all routines: {len(all_routines)} routines found")
+            
+            # Test 5: Filter by frequency (daily)
+            response = await client.get(
+                f"{BACKEND_URL}/lifestyle/routines?frequency=daily",
+                headers=self.get_headers()
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"Filter by frequency failed: {response.status_code} - {response.text}")
+            
+            daily_routines = response.json()
+            if len(daily_routines) != 1:
+                raise Exception(f"Expected 1 daily routine, got {len(daily_routines)}")
+            
+            print(f"✅ Filtered by frequency (daily): {len(daily_routines)} routines found")
+            
+            # Test 6: Get single routine
+            routine_id = routine1['routine_id']
+            response = await client.get(
+                f"{BACKEND_URL}/lifestyle/routines/{routine_id}",
+                headers=self.get_headers()
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"Get single routine failed: {response.status_code} - {response.text}")
+            
+            single_routine = response.json()
+            if single_routine['routine_id'] != routine_id:
+                raise Exception(f"Wrong routine returned: expected {routine_id}, got {single_routine['routine_id']}")
+            
+            print(f"✅ Retrieved single routine: {single_routine['name']}")
+            
+            # Test 7: Update routine (change priority)
+            update_data = {"priority": "medium"}
+            response = await client.put(
+                f"{BACKEND_URL}/lifestyle/routines/{routine_id}",
+                json=update_data,
+                headers=self.get_headers()
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"Update routine failed: {response.status_code} - {response.text}")
+            
+            updated_routine = response.json()
+            if updated_routine['priority'] != 'medium':
+                raise Exception(f"Priority not updated: expected 'medium', got {updated_routine['priority']}")
+            
+            print(f"✅ Updated routine priority: {updated_routine['priority']}")
+            
+            # Test 8: Delete last routine
+            routine_to_delete_id = routine3['routine_id']
+            response = await client.delete(
+                f"{BACKEND_URL}/lifestyle/routines/{routine_to_delete_id}",
+                headers=self.get_headers()
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"Delete routine failed: {response.status_code} - {response.text}")
+            
+            print(f"✅ Deleted routine: {routine3['name']}")
+            
+            # Test 9: Recreate the deleted routine
+            response = await client.post(
+                f"{BACKEND_URL}/lifestyle/routines",
+                json=routine3_data,
+                headers=self.get_headers()
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"Recreate routine failed: {response.status_code} - {response.text}")
+            
+            recreated_routine = response.json()
+            self.created_routines[2] = recreated_routine  # Update our tracking
+            print(f"✅ Recreated routine: {recreated_routine['name']} (ID: {recreated_routine['routine_id']})")
+            
+            # Test 10: Check dashboard stats
+            response = await client.get(
+                f"{BACKEND_URL}/lifestyle/dashboard",
+                headers=self.get_headers()
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"Dashboard failed: {response.status_code} - {response.text}")
+            
             dashboard = response.json()
-            required_fields = ["total_entries", "by_area", "avg_matrix"]
-            missing_fields = [field for field in required_fields if field not in dashboard]
+            expected_fields = ['total_routines', 'active_routines', 'by_frequency', 'by_area']
+            for field in expected_fields:
+                if field not in dashboard:
+                    raise Exception(f"Dashboard missing field: {field}")
             
-            if missing_fields:
-                log_test("TEPFI Dashboard", "FAIL", f"Missing fields: {missing_fields}")
-                return False
-            else:
-                total_entries = dashboard.get("total_entries", 0)
-                avg_matrix = dashboard.get("avg_matrix", {})
-                log_test("TEPFI Dashboard", "PASS", f"Total entries: {total_entries}, Avg matrix calculated")
-                
-                # Validate avg_matrix structure
-                tepfi_dimensions = ["time", "effort", "people", "finance", "infrastructure"]
-                tepfi_layers = ["self", "micro", "macro"]
-                
-                matrix_valid = True
-                for dim in tepfi_dimensions:
-                    if dim not in avg_matrix:
-                        matrix_valid = False
-                        break
-                    for layer in tepfi_layers:
-                        if layer not in avg_matrix[dim]:
-                            matrix_valid = False
-                            break
-                
-                if matrix_valid:
-                    log_test("TEPFI Dashboard Matrix Structure", "PASS", "Average matrix structure valid")
-                else:
-                    log_test("TEPFI Dashboard Matrix Structure", "FAIL", "Average matrix structure invalid")
-                
-                return True
-        else:
-            log_test("TEPFI Dashboard", "FAIL", f"Status: {response.status_code}")
-            return False
-    except Exception as e:
-        log_test("TEPFI Dashboard", "FAIL", f"Exception: {str(e)}")
-        return False
-
-def test_tepfi_delete(entry_id):
-    """Test TEPFI entry deletion"""
-    # Create an extra entry to delete
-    extra_payload = {
-        "title": "Test Entry for Deletion",
-        "life_area": "finance",
-        "matrix": {
-            "time": {
-                "self": {"description": "Test", "score": 5, "notes": ""},
-                "micro": {"description": "Test", "score": 5, "notes": ""},
-                "macro": {"description": "Test", "score": 5, "notes": ""}
-            },
-            "effort": {
-                "self": {"description": "Test", "score": 5, "notes": ""},
-                "micro": {"description": "Test", "score": 5, "notes": ""},
-                "macro": {"description": "Test", "score": 5, "notes": ""}
-            },
-            "people": {
-                "self": {"description": "Test", "score": 5, "notes": ""},
-                "micro": {"description": "Test", "score": 5, "notes": ""},
-                "macro": {"description": "Test", "score": 5, "notes": ""}
-            },
-            "finance": {
-                "self": {"description": "Test", "score": 5, "notes": ""},
-                "micro": {"description": "Test", "score": 5, "notes": ""},
-                "macro": {"description": "Test", "score": 5, "notes": ""}
-            },
-            "infrastructure": {
-                "self": {"description": "Test", "score": 5, "notes": ""},
-                "micro": {"description": "Test", "score": 5, "notes": ""},
-                "macro": {"description": "Test", "score": 5, "notes": ""}
+            if dashboard['active_routines'] != 3:
+                raise Exception(f"Expected 3 active routines in dashboard, got {dashboard['active_routines']}")
+            
+            print(f"✅ Dashboard stats: {dashboard['active_routines']} active routines, by_frequency: {dashboard['by_frequency']}")
+            
+            return True
+    
+    async def test_lifestyle_assessment(self):
+        """Test Lifestyle Assessment (PRR-based) functionality"""
+        print("\n🧪 Testing Lifestyle Assessment (PRR-based)...")
+        
+        async with httpx.AsyncClient() as client:
+            # Test 1: Start daily assessment
+            response = await client.post(
+                f"{BACKEND_URL}/lifestyle/start-assessment",
+                json={"period": "daily"},
+                headers=self.get_headers()
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"Start daily assessment failed: {response.status_code} - {response.text}")
+            
+            daily_assessment = response.json()
+            required_fields = ['decision_id', 'factors_count', 'period']
+            for field in required_fields:
+                if field not in daily_assessment:
+                    raise Exception(f"Daily assessment missing field: {field}")
+            
+            if daily_assessment['period'] != 'daily':
+                raise Exception(f"Expected period 'daily', got {daily_assessment['period']}")
+            
+            # Should match number of daily routines (1 from our test data)
+            if daily_assessment['factors_count'] != 1:
+                raise Exception(f"Expected 1 daily routine factor, got {daily_assessment['factors_count']}")
+            
+            self.created_assessments.append(daily_assessment)
+            print(f"✅ Started daily assessment: {daily_assessment['factors_count']} factors, decision_id: {daily_assessment['decision_id']}")
+            
+            # Test 2: Start weekly assessment
+            response = await client.post(
+                f"{BACKEND_URL}/lifestyle/start-assessment",
+                json={"period": "weekly"},
+                headers=self.get_headers()
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"Start weekly assessment failed: {response.status_code} - {response.text}")
+            
+            weekly_assessment = response.json()
+            if weekly_assessment['period'] != 'weekly':
+                raise Exception(f"Expected period 'weekly', got {weekly_assessment['period']}")
+            
+            # Should include daily + weekly routines (2 from our test data)
+            if weekly_assessment['factors_count'] != 2:
+                raise Exception(f"Expected 2 weekly routine factors, got {weekly_assessment['factors_count']}")
+            
+            self.created_assessments.append(weekly_assessment)
+            print(f"✅ Started weekly assessment: {weekly_assessment['factors_count']} factors, decision_id: {weekly_assessment['decision_id']}")
+            
+            # Test 3: Start monthly assessment
+            response = await client.post(
+                f"{BACKEND_URL}/lifestyle/start-assessment",
+                json={"period": "monthly"},
+                headers=self.get_headers()
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"Start monthly assessment failed: {response.status_code} - {response.text}")
+            
+            monthly_assessment = response.json()
+            if monthly_assessment['period'] != 'monthly':
+                raise Exception(f"Expected period 'monthly', got {monthly_assessment['period']}")
+            
+            # Should include all routines (3 from our test data)
+            if monthly_assessment['factors_count'] != 3:
+                raise Exception(f"Expected 3 monthly routine factors, got {monthly_assessment['factors_count']}")
+            
+            self.created_assessments.append(monthly_assessment)
+            print(f"✅ Started monthly assessment: {monthly_assessment['factors_count']} factors, decision_id: {monthly_assessment['decision_id']}")
+            
+            # Test 4: List assessments
+            response = await client.get(
+                f"{BACKEND_URL}/lifestyle/assessments",
+                headers=self.get_headers()
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"List assessments failed: {response.status_code} - {response.text}")
+            
+            assessments_list = response.json()
+            if len(assessments_list) != 3:
+                raise Exception(f"Expected 3 assessments, got {len(assessments_list)}")
+            
+            print(f"✅ Listed assessments: {len(assessments_list)} assessments found")
+            
+            # Test 5: Get analytics for daily period
+            response = await client.get(
+                f"{BACKEND_URL}/lifestyle/analytics?period=daily",
+                headers=self.get_headers()
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"Get analytics failed: {response.status_code} - {response.text}")
+            
+            analytics = response.json()
+            required_fields = ['trend', 'area_averages', 'avg_effectiveness', 'total_assessments']
+            for field in required_fields:
+                if field not in analytics:
+                    raise Exception(f"Analytics missing field: {field}")
+            
+            print(f"✅ Retrieved analytics: {analytics['total_assessments']} total assessments, avg effectiveness: {analytics['avg_effectiveness']}%")
+            
+            # Test 6: Check updated dashboard stats
+            response = await client.get(
+                f"{BACKEND_URL}/lifestyle/dashboard",
+                headers=self.get_headers()
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"Updated dashboard failed: {response.status_code} - {response.text}")
+            
+            dashboard = response.json()
+            print(f"✅ Updated dashboard stats: {dashboard['active_routines']} active routines, recent scores: {dashboard['recent_scores']}")
+            
+            return True
+    
+    async def test_ctt_import(self):
+        """Test Import from CTT functionality"""
+        print("\n🧪 Testing Import from CTT...")
+        
+        async with httpx.AsyncClient() as client:
+            # Test 1: Create a CTT routine task first
+            ctt_task_data = {
+                "task": "Daily Standup Meeting",
+                "is_routine": True,
+                "frequency": "daily",
+                "life_area": "career",
+                "priority": "medium",
+                "current_status": "open"
             }
-        },
-        "status": "draft"
-    }
-    
-    try:
-        # Create extra entry
-        response = requests.post(f"{BASE_URL}/tepfi/entries", json=extra_payload, headers=get_headers())
-        if response.status_code == 200:
-            extra_entry_id = response.json().get("entry_id")
-            log_test("TEPFI Create Extra Entry for Deletion", "PASS", f"Entry ID: {extra_entry_id}")
             
-            # Delete the extra entry
-            delete_response = requests.delete(f"{BASE_URL}/tepfi/entries/{extra_entry_id}", headers=get_headers())
-            if delete_response.status_code == 200:
-                log_test("TEPFI Delete Entry", "PASS", "Entry deleted successfully")
-                
-                # Verify deletion
-                get_response = requests.get(f"{BASE_URL}/tepfi/entries/{extra_entry_id}", headers=get_headers())
-                if get_response.status_code == 404:
-                    log_test("TEPFI Delete Verification", "PASS", "Entry not found after deletion")
-                    return True
-                else:
-                    log_test("TEPFI Delete Verification", "FAIL", "Entry still exists after deletion")
-                    return False
-            else:
-                log_test("TEPFI Delete Entry", "FAIL", f"Status: {delete_response.status_code}")
-                return False
-        else:
-            log_test("TEPFI Create Extra Entry for Deletion", "FAIL", f"Status: {response.status_code}")
-            return False
-    except Exception as e:
-        log_test("TEPFI Delete Entry", "FAIL", f"Exception: {str(e)}")
-        return False
-
-def create_ctt_task_for_calendar():
-    """Create a CTT task with deadline for calendar testing"""
-    future_date = (datetime.now() + timedelta(days=15)).strftime("%Y-%m-%d")
-    from_time = f"{future_date} 09:00"
-    to_time = f"{future_date} 11:00"
-    
-    task_payload = {
-        "task": "Calendar Test Task",
-        "deadline": future_date,
-        "from_time": from_time,
-        "to_time": to_time,
-        "priority": "high",
-        "current_status": "open",
-        "life_area": "career"
-    }
-    
-    try:
-        response = requests.post(f"{BASE_URL}/ctt/tasks", json=task_payload, headers=get_headers())
-        if response.status_code == 200:
-            task_data = response.json()
-            task_id = task_data.get("task_id")
-            log_test("CTT Create Task for Calendar", "PASS", f"Task ID: {task_id}, Deadline: {future_date}")
-            return task_id
-        else:
-            log_test("CTT Create Task for Calendar", "FAIL", f"Status: {response.status_code}, Response: {response.text}")
-            return None
-    except Exception as e:
-        log_test("CTT Create Task for Calendar", "FAIL", f"Exception: {str(e)}")
-        return None
-
-def test_calendar_upcoming():
-    """Test calendar upcoming view"""
-    print("\n=== TESTING CALENDAR UPCOMING VIEW ===")
-    
-    # Test 8: Get upcoming calendar items
-    try:
-        response = requests.get(f"{BASE_URL}/calendar/upcoming?days=30", headers=get_headers())
-        if response.status_code == 200:
-            calendar_data = response.json()
-            required_fields = ["upcoming", "by_date", "total"]
-            missing_fields = [field for field in required_fields if field not in calendar_data]
+            response = await client.post(
+                f"{BACKEND_URL}/ctt/tasks",
+                json=ctt_task_data,
+                headers=self.get_headers()
+            )
             
-            if missing_fields:
-                log_test("Calendar Upcoming View", "FAIL", f"Missing fields: {missing_fields}")
-                return False
-            else:
-                total_tasks = calendar_data.get("total", 0)
-                by_date = calendar_data.get("by_date", {})
-                upcoming = calendar_data.get("upcoming", [])
-                
-                log_test("Calendar Upcoming View", "PASS", f"Total upcoming tasks: {total_tasks}")
-                log_test("Calendar Upcoming Structure", "PASS", f"By date groups: {len(by_date)}, Upcoming list: {len(upcoming)}")
-                
-                # Validate that tasks are grouped by date correctly
-                if by_date:
-                    for date, tasks in by_date.items():
-                        if isinstance(tasks, list):
-                            log_test("Calendar Date Grouping", "PASS", f"Date {date}: {len(tasks)} tasks")
-                        else:
-                            log_test("Calendar Date Grouping", "FAIL", f"Date {date}: Invalid task list format")
-                            return False
-                
-                return True
-        else:
-            log_test("Calendar Upcoming View", "FAIL", f"Status: {response.status_code}")
-            return False
-    except Exception as e:
-        log_test("Calendar Upcoming View", "FAIL", f"Exception: {str(e)}")
-        return False
-
-def test_calendar_batch_export():
-    """Test calendar batch export"""
-    print("\n=== TESTING CALENDAR BATCH EXPORT ===")
-    
-    # Test 9: Batch export all non-done tasks with deadlines
-    try:
-        response = requests.post(f"{BASE_URL}/calendar/batch-export", json={}, headers=get_headers())
-        if response.status_code == 200:
-            export_data = response.json()
-            required_fields = ["tasks", "count"]
-            missing_fields = [field for field in required_fields if field not in export_data]
+            if response.status_code != 200:
+                raise Exception(f"Create CTT task failed: {response.status_code} - {response.text}")
             
-            if missing_fields:
-                log_test("Calendar Batch Export", "FAIL", f"Missing fields: {missing_fields}")
-                return False
-            else:
-                tasks = export_data.get("tasks", [])
-                count = export_data.get("count", 0)
-                
-                log_test("Calendar Batch Export", "PASS", f"Exported {count} tasks")
-                
-                # Validate calendar URLs
-                valid_urls = 0
-                for task in tasks:
-                    calendar_url = task.get("calendar_url", "")
-                    if calendar_url.startswith("https://calendar.google.com/calendar/render?action=TEMPLATE"):
-                        valid_urls += 1
-                        
-                        # Check URL parameters
-                        if "&text=" in calendar_url and "&details=" in calendar_url:
-                            log_test("Calendar URL Format", "PASS", f"Task '{task.get('task')}' has valid Google Calendar URL")
-                        else:
-                            log_test("Calendar URL Format", "FAIL", f"Task '{task.get('task')}' missing required URL parameters")
-                    else:
-                        log_test("Calendar URL Format", "FAIL", f"Task '{task.get('task')}' has invalid calendar URL")
-                
-                if valid_urls == len(tasks) and len(tasks) > 0:
-                    log_test("Calendar URL Validation", "PASS", f"All {valid_urls} URLs are valid Google Calendar URLs")
-                elif len(tasks) == 0:
-                    log_test("Calendar URL Validation", "PASS", "No tasks to export (expected for new user)")
-                else:
-                    log_test("Calendar URL Validation", "FAIL", f"Only {valid_urls}/{len(tasks)} URLs are valid")
-                
-                return True
-        else:
-            log_test("Calendar Batch Export", "FAIL", f"Status: {response.status_code}")
-            return False
-    except Exception as e:
-        log_test("Calendar Batch Export", "FAIL", f"Exception: {str(e)}")
-        return False
-
-def test_calendar_batch_export_with_task(task_id):
-    """Test calendar batch export with specific task"""
-    # Test 10: Batch export specific task
-    try:
-        response = requests.post(f"{BASE_URL}/calendar/batch-export", json={"task_ids": [task_id]}, headers=get_headers())
-        if response.status_code == 200:
-            export_data = response.json()
-            tasks = export_data.get("tasks", [])
+            ctt_task = response.json()
+            self.created_ctt_tasks.append(ctt_task)
+            print(f"✅ Created CTT routine task: {ctt_task['task']} (ID: {ctt_task['task_id']})")
             
-            if len(tasks) == 1:
-                task = tasks[0]
-                calendar_url = task.get("calendar_url", "")
-                
-                if calendar_url.startswith("https://calendar.google.com/calendar/render?action=TEMPLATE"):
-                    log_test("Calendar Specific Task Export", "PASS", f"Task exported with valid URL")
-                    
-                    # Validate date formatting in URL
-                    if "&dates=" in calendar_url:
-                        log_test("Calendar Date Formatting", "PASS", "Date parameters included in URL")
-                    else:
-                        log_test("Calendar Date Formatting", "FAIL", "Date parameters missing from URL")
-                    
-                    return True
-                else:
-                    log_test("Calendar Specific Task Export", "FAIL", "Invalid calendar URL format")
-                    return False
-            else:
-                log_test("Calendar Specific Task Export", "FAIL", f"Expected 1 task, got {len(tasks)}")
-                return False
-        else:
-            log_test("Calendar Specific Task Export", "FAIL", f"Status: {response.status_code}")
+            # Test 2: Import from CTT
+            response = await client.post(
+                f"{BACKEND_URL}/lifestyle/import-from-ctt",
+                headers=self.get_headers()
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"Import from CTT failed: {response.status_code} - {response.text}")
+            
+            import_result = response.json()
+            required_fields = ['imported', 'total_ctt_routines']
+            for field in required_fields:
+                if field not in import_result:
+                    raise Exception(f"Import result missing field: {field}")
+            
+            if import_result['imported'] != 1:
+                raise Exception(f"Expected 1 imported routine, got {import_result['imported']}")
+            
+            print(f"✅ Imported from CTT: {import_result['imported']} routines imported from {import_result['total_ctt_routines']} CTT routines")
+            
+            # Test 3: Import from CTT again (should return imported=0 due to deduplication)
+            response = await client.post(
+                f"{BACKEND_URL}/lifestyle/import-from-ctt",
+                headers=self.get_headers()
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"Second import from CTT failed: {response.status_code} - {response.text}")
+            
+            second_import = response.json()
+            if second_import['imported'] != 0:
+                raise Exception(f"Expected 0 imported routines on second import (deduplication), got {second_import['imported']}")
+            
+            print(f"✅ Second import (deduplication test): {second_import['imported']} routines imported (expected 0)")
+            
+            # Test 4: Verify the imported routine appears in routine list
+            response = await client.get(
+                f"{BACKEND_URL}/lifestyle/routines",
+                headers=self.get_headers()
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"List routines after import failed: {response.status_code} - {response.text}")
+            
+            all_routines = response.json()
+            # Should now have 4 routines (3 original + 1 imported)
+            if len(all_routines) != 4:
+                raise Exception(f"Expected 4 routines after import, got {len(all_routines)}")
+            
+            # Find the imported routine
+            imported_routine = None
+            for routine in all_routines:
+                if routine.get('source_ctt_task_id') == ctt_task['task_id']:
+                    imported_routine = routine
+                    break
+            
+            if not imported_routine:
+                raise Exception("Imported routine not found in routine list")
+            
+            if imported_routine['name'] != ctt_task['task']:
+                raise Exception(f"Imported routine name mismatch: expected '{ctt_task['task']}', got '{imported_routine['name']}'")
+            
+            print(f"✅ Verified imported routine: {imported_routine['name']} appears in routine list")
+            
+            return True
+    
+    async def test_error_cases(self):
+        """Test error cases"""
+        print("\n🧪 Testing Error Cases...")
+        
+        async with httpx.AsyncClient() as client:
+            # Test 1: Register a fresh user with no routines
+            timestamp = int(time.time())
+            fresh_email = f"fresh.user.{timestamp}@routinemaster.com"
+            
+            response = await client.post(f"{BACKEND_URL}/auth/register", json={
+                "email": fresh_email,
+                "password": "fresh123",
+                "name": f"Fresh User {timestamp}"
+            })
+            
+            if response.status_code != 200:
+                raise Exception(f"Fresh user registration failed: {response.status_code} - {response.text}")
+            
+            fresh_user_data = response.json()
+            fresh_token = fresh_user_data["session_token"]
+            fresh_headers = {"Authorization": f"Bearer {fresh_token}"}
+            
+            print(f"✅ Registered fresh user: {fresh_email}")
+            
+            # Test 2: Try to start assessment when no active routines exist (should return 400)
+            response = await client.post(
+                f"{BACKEND_URL}/lifestyle/start-assessment",
+                json={"period": "daily"},
+                headers=fresh_headers
+            )
+            
+            if response.status_code != 400:
+                raise Exception(f"Expected 400 for no routines, got {response.status_code}")
+            
+            error_data = response.json()
+            if "No active routines found" not in error_data.get("detail", ""):
+                raise Exception(f"Expected 'No active routines found' error, got: {error_data}")
+            
+            print(f"✅ Error case handled correctly: {error_data['detail']}")
+            
+            return True
+    
+    async def run_all_tests(self):
+        """Run all tests in sequence"""
+        print("🚀 Starting Lifestyle Dezider and Lifestyle Analyzer Backend Testing...")
+        print(f"Backend URL: {BACKEND_URL}")
+        
+        try:
+            # Step 1: Register user
+            await self.register_user()
+            
+            # Step 2: Test Routine CRUD
+            await self.test_routine_crud()
+            
+            # Step 3: Test Lifestyle Assessment
+            await self.test_lifestyle_assessment()
+            
+            # Step 4: Test CTT Import
+            await self.test_ctt_import()
+            
+            # Step 5: Test Error Cases
+            await self.test_error_cases()
+            
+            print("\n🎉 ALL TESTS PASSED! Lifestyle Dezider and Lifestyle Analyzer backend is working correctly.")
+            return True
+            
+        except Exception as e:
+            print(f"\n❌ TEST FAILED: {str(e)}")
             return False
-    except Exception as e:
-        log_test("Calendar Specific Task Export", "FAIL", f"Exception: {str(e)}")
-        return False
 
-def main():
-    """Main test execution"""
-    print("🚀 STARTING TEPFI RESOURCE MATRIX AND CALENDAR ENDPOINTS TESTING")
-    print(f"Backend URL: {BASE_URL}")
-    print("=" * 80)
+async def main():
+    """Main test runner"""
+    tester = LifestyleBackendTester()
+    success = await tester.run_all_tests()
     
-    # Step 1: Register user and authenticate
-    if not register_user():
-        print("❌ CRITICAL: User registration failed. Cannot proceed with tests.")
-        return
+    if success:
+        print("\n✅ COMPREHENSIVE TESTING COMPLETE: All Lifestyle endpoints working correctly!")
+    else:
+        print("\n❌ TESTING FAILED: Some endpoints have issues.")
     
-    # Step 2: Test TEPFI CRUD operations
-    entry_id = test_tepfi_crud()
-    if not entry_id:
-        print("❌ CRITICAL: TEPFI entry creation failed. Cannot proceed with TEPFI tests.")
-        return
-    
-    # Continue with TEPFI tests
-    test_tepfi_list_and_filters(entry_id)
-    test_tepfi_get_single(entry_id)
-    test_tepfi_update(entry_id)
-    test_tepfi_dashboard()
-    test_tepfi_delete(entry_id)
-    
-    # Step 3: Create CTT task for calendar testing
-    task_id = create_ctt_task_for_calendar()
-    
-    # Step 4: Test Calendar endpoints
-    test_calendar_upcoming()
-    test_calendar_batch_export()
-    
-    if task_id:
-        test_calendar_batch_export_with_task(task_id)
-    
-    print("\n" + "=" * 80)
-    print("🎯 TEPFI RESOURCE MATRIX AND CALENDAR ENDPOINTS TESTING COMPLETE")
-    print("=" * 80)
+    return success
 
 if __name__ == "__main__":
-    main()
+    result = asyncio.run(main())
+    exit(0 if result else 1)

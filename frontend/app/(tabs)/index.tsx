@@ -400,6 +400,27 @@ export default function HomeScreen() {
             </LinearGradient>
           </TouchableOpacity>
 
+          {/* Lifestyle Dezider */}
+          <TouchableOpacity
+            style={styles.calendarCard}
+            onPress={() => router.push('/tools/lifestyle')}
+            activeOpacity={0.7}
+          >
+            <LinearGradient
+              colors={['#065F46', '#059669']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.calendarGradient}
+            >
+              <Ionicons name="leaf" size={24} color="#FFF" />
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.calendarTitle}>Lifestyle Dezider</Text>
+                <Text style={styles.calendarSub}>Manage routines & assess lifestyle effectiveness via PRR</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
+            </LinearGradient>
+          </TouchableOpacity>
+
           {/* Stats */}
           <Text style={styles.sectionTitle}>Your Progress</Text>
           <View style={styles.statsGrid}>
