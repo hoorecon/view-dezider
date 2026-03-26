@@ -7,8 +7,10 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Linking from 'expo-linking';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import { useAuthStore } from '../../src/store/authStore';
 
 const LIFE_AREAS = [
   { id: 'career', name: 'Career', icon: 'briefcase' },
@@ -55,6 +57,7 @@ const DECISION_TYPES = [
 export default function CTTTaskScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
+  const { session } = useAuthStore();
   const editId = id as string | undefined;
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -477,8 +480,42 @@ export default function CTTTaskScreen() {
           )}
         </ScrollView>
 
-        {/* Sticky Save Button */}
+        {/* Sticky Save Button + Calendar Sync */}
         <View style={st.bottom}>
+          {editId && deadline && (
+            <TouchableOpacity
+              style={st.calendarSyncBtn}
+              onPress={async () => {
+                try {
+                  const statusRes = await api.get('/oauth/calendar/status', {
+                    headers: { Authorization: `Bearer ${session}` },
+                  });
+                  if (!statusRes.data?.connected) {
+                    Alert.alert('Connect Calendar', 'Please connect your Google Calendar first.', [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Connect', onPress: () => router.push('/tools/google-calendar' as any) },
+                    ]);
+                    return;
+                  }
+                  const res = await api.post('/google-calendar/sync-ctt-task', {
+                    task_id: editId,
+                    timezone: 'Asia/Kolkata',
+                  }, { headers: { Authorization: `Bearer ${session}` } });
+                  Alert.alert('Synced!', 'Task added to your Google Calendar', [
+                    { text: 'OK' },
+                    { text: 'Open Link', onPress: () => {
+                      if (res.data?.html_link) Linking.openURL(res.data.html_link);
+                    }},
+                  ]);
+                } catch (e: any) {
+                  Alert.alert('Error', e?.response?.data?.detail || 'Failed to sync to calendar');
+                }
+              }}
+            >
+              <Ionicons name="calendar" size={16} color="#4285F4" />
+              <Text style={st.calendarSyncText}>Sync to Google Calendar</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={[st.saveBtn, saving && { opacity: 0.7 }]}
             onPress={handleSave}
@@ -547,6 +584,8 @@ const st = StyleSheet.create({
 
   // Bottom
   bottom: { padding: 16, paddingBottom: Platform.OS === 'ios' ? 20 : 16, borderTopWidth: 1, borderTopColor: COLORS.border, backgroundColor: COLORS.white },
+  calendarSyncBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#E8F0FE', borderRadius: 10, paddingVertical: 10, marginBottom: 8, borderWidth: 1, borderColor: '#4285F430' },
+  calendarSyncText: { fontSize: 13, fontWeight: '600', color: '#4285F4' },
   saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#1E3A5F', borderRadius: 14, paddingVertical: 16 },
   saveBtnText: { fontSize: 16, fontWeight: '700', color: '#FFF' },
 });

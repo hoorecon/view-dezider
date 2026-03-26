@@ -409,6 +409,22 @@ export default function HomeScreen() {
 
             <TouchableOpacity
               style={styles.actionCard}
+              onPress={() => router.push('/tools/google-calendar')}
+            >
+              <LinearGradient
+                colors={['#4285F4', '#34A853']}
+                style={styles.actionIcon}
+              >
+                <Ionicons name="calendar" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Google Calendar</Text>
+              <Text style={styles.actionSubtitle}>Sync tasks & events</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.quickActions}>
+            <TouchableOpacity
+              style={styles.actionCard}
               onPress={() => router.push('/tools/gem')}
             >
               <LinearGradient
@@ -420,9 +436,7 @@ export default function HomeScreen() {
               <Text style={styles.actionTitle}>Goals (GEM)</Text>
               <Text style={styles.actionSubtitle}>Track life goals</Text>
             </TouchableOpacity>
-          </View>
 
-          <View style={styles.quickActions}>
             <TouchableOpacity
               style={styles.actionCard}
               onPress={() => router.push('/tools/tepfi')}
@@ -436,8 +450,6 @@ export default function HomeScreen() {
               <Text style={styles.actionTitle}>TEPFI Matrix</Text>
               <Text style={styles.actionSubtitle}>Resource tracking</Text>
             </TouchableOpacity>
-
-            <View style={[styles.actionCard, { opacity: 0 }]} />
           </View>
 
           <TouchableOpacity

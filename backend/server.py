@@ -3345,6 +3345,7 @@ from routes.lifestyle import router as lifestyle_router
 from routes.decision_intake import router as decision_intake_router
 from routes.org_auth import router as org_auth_router
 from routes.solutions_store import router as solutions_store_router
+from routes.google_calendar import router as google_calendar_router
 
 api_router.include_router(tools_router)
 api_router.include_router(admin_router)
@@ -3353,6 +3354,7 @@ api_router.include_router(lifestyle_router)
 api_router.include_router(decision_intake_router)
 api_router.include_router(org_auth_router)
 api_router.include_router(solutions_store_router)
+api_router.include_router(google_calendar_router)
 
 
 # Include the router in the main app
