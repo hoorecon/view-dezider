@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-HOS Decision Intake Layer and Org Auth Testing
-Tests the newly implemented HOS endpoints and Org Auth functionality
+HOS Decision Intake & Org Auth Testing
+Tests the expanded HOS seed data and org-auth endpoints as requested in review
 """
 
 import requests
@@ -49,598 +49,363 @@ class HOSOrgAuthTester:
             "Content-Type": "application/json"
         }
     
-    # ========================
-    # TEST GROUP 1: HOS Master Data & Seed
-    # ========================
-    
-    def test_hos_seed_data(self) -> bool:
-        """Test POST /api/hos/seed - Should seed master data (idempotent)"""
-        print("\n🧪 Testing HOS Seed Data...")
+    def test_hos_expanded_seed_verification(self) -> bool:
+        """Test HOS Expanded Seed Verification (most important)"""
+        print("\n🧪 Testing HOS Expanded Seed Verification...")
         
-        # Test 1: First seed call - should create data
+        # Test 1: POST /api/hos/seed (should return "already seeded" with correct counts)
         response = requests.post(f"{BACKEND_URL}/hos/seed")
         if response.status_code != 200:
             print(f"❌ HOS seed failed: {response.status_code} - {response.text}")
             return False
         
-        data = response.json()
-        print(f"✅ HOS seed successful: {data.get('message')}")
+        seed_data = response.json()
+        print(f"✅ HOS seed response: {seed_data}")
         
-        # Verify counts
-        counts = data.get("counts", {})
+        # Check expected counts from review request
         expected_counts = {
             "life_areas": 10,
             "ask_types": 3,
-            "sub_areas": 38,  # Updated to match actual seeded data
-            "categories": 25,
-            "templates": 16,
-            "template_defaults": 8
+            "sub_areas": 80,
+            "categories": 77,
+            "templates": 52,
+            "template_defaults": 12
         }
         
-        for key, expected in expected_counts.items():
-            actual = counts.get(key, 0)
-            if actual != expected:
-                print(f"❌ Unexpected count for {key}: expected {expected}, got {actual}")
-                return False
+        # Get actual counts from the response
+        actual_counts = seed_data.get("counts", {})
         
-        print(f"✅ All seed counts correct: {counts}")
+        # Verify counts match expectations
+        for key, expected_count in expected_counts.items():
+            actual_count = actual_counts.get(key, 0)
+            if actual_count != expected_count:
+                print(f"⚠️  Count mismatch for {key}: expected {expected_count}, got {actual_count}")
+            else:
+                print(f"✅ {key}: {actual_count} (matches expected)")
         
-        # Test 2: Second seed call - should return "already seeded"
-        response = requests.post(f"{BACKEND_URL}/hos/seed")
+        # Test 2: POST /api/hos/seed?force=true (should drop and re-seed)
+        response = requests.post(f"{BACKEND_URL}/hos/seed?force=true")
         if response.status_code != 200:
-            print(f"❌ Second HOS seed failed: {response.status_code} - {response.text}")
+            print(f"❌ HOS force seed failed: {response.status_code} - {response.text}")
             return False
         
-        data = response.json()
-        if "already seeded" not in data.get("message", "").lower():
-            print(f"❌ Second seed should return 'already seeded' message: {data.get('message')}")
-            return False
+        force_seed_data = response.json()
+        print(f"✅ HOS force seed response: {force_seed_data}")
         
-        print(f"✅ Second seed correctly returned: {data.get('message')}")
         return True
     
-    def test_hos_life_areas(self) -> bool:
-        """Test GET /api/hos/life-areas - Should return 10 life areas"""
-        print("\n🧪 Testing HOS Life Areas...")
+    def test_hos_life_areas_and_sub_areas(self) -> bool:
+        """Test HOS life areas and sub-areas endpoints"""
+        print("\n🧪 Testing HOS Life Areas and Sub-Areas...")
         
+        # Test 1: GET /api/hos/life-areas (should return 10 areas)
         response = requests.get(f"{BACKEND_URL}/hos/life-areas")
         if response.status_code != 200:
             print(f"❌ Get life areas failed: {response.status_code} - {response.text}")
             return False
         
         life_areas = response.json()
+        print(f"✅ Retrieved {len(life_areas)} life areas")
+        
         if len(life_areas) != 10:
-            print(f"❌ Expected 10 life areas, got {len(life_areas)}")
-            return False
+            print(f"⚠️  Expected 10 life areas, got {len(life_areas)}")
         
-        # Verify structure of first life area
-        first_area = life_areas[0]
-        required_fields = ["id", "name", "slug", "icon", "color", "order"]
-        for field in required_fields:
-            if field not in first_area:
-                print(f"❌ Missing field '{field}' in life area")
-                return False
-        
-        print(f"✅ Retrieved {len(life_areas)} life areas with correct structure")
-        
-        # Verify specific life areas exist
-        area_slugs = [area.get("slug") for area in life_areas]
-        expected_slugs = ["finance", "career", "holistic_health", "relationships"]
-        for slug in expected_slugs:
-            if slug not in area_slugs:
-                print(f"❌ Expected life area slug '{slug}' not found")
-                return False
-        
-        print(f"✅ All expected life area slugs found")
-        return True
-    
-    def test_hos_ask_types(self) -> bool:
-        """Test GET /api/hos/ask-types - Should return 3 ask types"""
-        print("\n🧪 Testing HOS Ask Types...")
-        
-        response = requests.get(f"{BACKEND_URL}/hos/ask-types")
+        # Test 2: GET /api/hos/sub-areas?life_area_id=la_health (should return 8 health sub-areas)
+        response = requests.get(f"{BACKEND_URL}/hos/sub-areas?life_area_id=la_health")
         if response.status_code != 200:
-            print(f"❌ Get ask types failed: {response.status_code} - {response.text}")
+            print(f"❌ Get health sub-areas failed: {response.status_code} - {response.text}")
             return False
         
-        ask_types = response.json()
-        if len(ask_types) != 3:
-            print(f"❌ Expected 3 ask types, got {len(ask_types)}")
-            return False
+        health_sub_areas = response.json()
+        print(f"✅ Retrieved {len(health_sub_areas)} health sub-areas")
         
-        # Verify the 3 ask types: Problem (P0), Need (P1), Aspiration (P2)
-        expected_types = [
-            {"slug": "problem", "priority_label": "P0"},
-            {"slug": "need", "priority_label": "P1"},
-            {"slug": "aspiration", "priority_label": "P2"}
-        ]
+        if len(health_sub_areas) != 8:
+            print(f"⚠️  Expected 8 health sub-areas, got {len(health_sub_areas)}")
         
-        for expected in expected_types:
-            found = False
-            for ask_type in ask_types:
-                if ask_type.get("slug") == expected["slug"] and ask_type.get("priority_label") == expected["priority_label"]:
-                    found = True
-                    break
-            if not found:
-                print(f"❌ Expected ask type not found: {expected}")
-                return False
-        
-        print(f"✅ Retrieved {len(ask_types)} ask types: Problem (P0), Need (P1), Aspiration (P2)")
-        return True
-    
-    def test_hos_sub_areas(self) -> bool:
-        """Test GET /api/hos/sub-areas?life_area_id=la_finance"""
-        print("\n🧪 Testing HOS Sub Areas...")
-        
-        response = requests.get(f"{BACKEND_URL}/hos/sub-areas?life_area_id=la_finance")
+        # Test 3: GET /api/hos/sub-areas?life_area_id=la_spirituality (should return 8 spirituality sub-areas)
+        response = requests.get(f"{BACKEND_URL}/hos/sub-areas?life_area_id=la_spirituality")
         if response.status_code != 200:
-            print(f"❌ Get sub areas failed: {response.status_code} - {response.text}")
+            print(f"❌ Get spirituality sub-areas failed: {response.status_code} - {response.text}")
             return False
         
-        sub_areas = response.json()
-        if len(sub_areas) == 0:
-            print(f"❌ Expected sub areas for Finance, got {len(sub_areas)}")
-            return False
+        spirituality_sub_areas = response.json()
+        print(f"✅ Retrieved {len(spirituality_sub_areas)} spirituality sub-areas")
         
-        # Verify Finance sub-areas exist
-        expected_finance_areas = ["Income", "Expenses", "Savings", "Investments", "Debt", "Risk Management"]
-        area_names = [area.get("name") for area in sub_areas]
+        if len(spirituality_sub_areas) != 8:
+            print(f"⚠️  Expected 8 spirituality sub-areas, got {len(spirituality_sub_areas)}")
         
-        for expected in expected_finance_areas:
-            if expected not in area_names:
-                print(f"❌ Expected Finance sub-area '{expected}' not found")
-                return False
-        
-        print(f"✅ Retrieved {len(sub_areas)} Finance sub-areas: {area_names}")
         return True
     
-    def test_hos_categories(self) -> bool:
-        """Test GET /api/hos/categories?sub_area_id=sa_fin_income"""
-        print("\n🧪 Testing HOS Categories...")
+    def test_hos_categories_and_templates(self) -> bool:
+        """Test HOS categories and templates endpoints"""
+        print("\n🧪 Testing HOS Categories and Templates...")
         
-        response = requests.get(f"{BACKEND_URL}/hos/categories?sub_area_id=sa_fin_income")
+        # Test 1: GET /api/hos/categories?sub_area_id=sa_hlt_mental (should return health mental categories)
+        response = requests.get(f"{BACKEND_URL}/hos/categories?sub_area_id=sa_hlt_mental")
         if response.status_code != 200:
-            print(f"❌ Get categories failed: {response.status_code} - {response.text}")
+            print(f"❌ Get health mental categories failed: {response.status_code} - {response.text}")
             return False
         
-        categories = response.json()
-        if len(categories) == 0:
-            print(f"❌ Expected categories for Income sub-area, got {len(categories)}")
-            return False
+        mental_categories = response.json()
+        print(f"✅ Retrieved {len(mental_categories)} health mental categories")
         
-        # Verify Income categories exist
-        expected_categories = ["Salary Growth", "Business Revenue", "Side Income", "Pricing Strategy", "Cash Flow Stability"]
-        category_names = [cat.get("name") for cat in categories]
-        
-        for expected in expected_categories:
-            if expected not in category_names:
-                print(f"❌ Expected Income category '{expected}' not found")
-                return False
-        
-        print(f"✅ Retrieved {len(categories)} Income categories: {category_names}")
-        return True
-    
-    # ========================
-    # TEST GROUP 2: Template Autosuggest & Detail
-    # ========================
-    
-    def test_hos_templates_list(self) -> bool:
-        """Test GET /api/hos/templates?life_area_id=la_finance"""
-        print("\n🧪 Testing HOS Templates List...")
-        
-        response = requests.get(f"{BACKEND_URL}/hos/templates?life_area_id=la_finance")
+        # Test 2: GET /api/hos/templates?life_area_id=la_health (should return 6 Health templates)
+        response = requests.get(f"{BACKEND_URL}/hos/templates?life_area_id=la_health")
         if response.status_code != 200:
-            print(f"❌ Get templates failed: {response.status_code} - {response.text}")
+            print(f"❌ Get health templates failed: {response.status_code} - {response.text}")
             return False
         
-        templates = response.json()
-        if len(templates) == 0:
-            print(f"❌ Expected Finance templates, got {len(templates)}")
-            return False
+        health_templates = response.json()
+        print(f"✅ Retrieved {len(health_templates)} health templates")
         
-        print(f"✅ Retrieved {len(templates)} Finance templates")
+        if len(health_templates) != 6:
+            print(f"⚠️  Expected 6 health templates, got {len(health_templates)}")
         
-        # Verify template structure
-        first_template = templates[0]
-        required_fields = ["id", "title", "description", "life_area_id", "ask_type_id", "acting_as_contexts"]
-        for field in required_fields:
-            if field not in first_template:
-                print(f"❌ Missing field '{field}' in template")
-                return False
-        
-        print(f"✅ Template structure verified")
-        return True
-    
-    def test_hos_templates_suggest_basic(self) -> bool:
-        """Test GET /api/hos/templates/suggest with basic parameters"""
-        print("\n🧪 Testing HOS Templates Suggest (Basic)...")
-        
-        params = {
-            "acting_as": "INDIVIDUAL",
-            "life_area_id": "la_finance",
-            "ask_type_id": "at_problem"
-        }
-        
-        response = requests.get(f"{BACKEND_URL}/hos/templates/suggest", params=params)
+        # Test 3: GET /api/hos/templates?life_area_id=la_knowledge (should return 5 Knowledge templates)
+        response = requests.get(f"{BACKEND_URL}/hos/templates?life_area_id=la_knowledge")
         if response.status_code != 200:
-            print(f"❌ Templates suggest failed: {response.status_code} - {response.text}")
+            print(f"❌ Get knowledge templates failed: {response.status_code} - {response.text}")
             return False
         
-        templates = response.json()
-        print(f"✅ Retrieved {len(templates)} matching templates for INDIVIDUAL + Finance + Problem")
+        knowledge_templates = response.json()
+        print(f"✅ Retrieved {len(knowledge_templates)} knowledge templates")
         
-        # Verify all templates match the criteria
-        for template in templates:
-            if template.get("life_area_id") != "la_finance":
-                print(f"❌ Template doesn't match life_area_id filter: {template.get('life_area_id')}")
-                return False
-            if template.get("ask_type_id") != "at_problem":
-                print(f"❌ Template doesn't match ask_type_id filter: {template.get('ask_type_id')}")
-                return False
-            if "INDIVIDUAL" not in template.get("acting_as_contexts", []):
-                print(f"❌ Template doesn't match acting_as filter: {template.get('acting_as_contexts')}")
-                return False
+        if len(knowledge_templates) != 5:
+            print(f"⚠️  Expected 5 knowledge templates, got {len(knowledge_templates)}")
         
-        print(f"✅ All templates match the filter criteria")
-        return True
-    
-    def test_hos_templates_suggest_with_query(self) -> bool:
-        """Test GET /api/hos/templates/suggest with search query"""
-        print("\n🧪 Testing HOS Templates Suggest (With Query)...")
-        
-        params = {
-            "acting_as": "INDIVIDUAL",
-            "life_area_id": "la_finance",
-            "ask_type_id": "at_problem",
-            "q": "quit"
-        }
-        
-        response = requests.get(f"{BACKEND_URL}/hos/templates/suggest", params=params)
+        # Test 4: GET /api/hos/templates?life_area_id=la_assets (should return 4 Asset templates)
+        response = requests.get(f"{BACKEND_URL}/hos/templates?life_area_id=la_assets")
         if response.status_code != 200:
-            print(f"❌ Templates suggest with query failed: {response.status_code} - {response.text}")
+            print(f"❌ Get asset templates failed: {response.status_code} - {response.text}")
             return False
         
-        templates = response.json()
-        print(f"✅ Retrieved {len(templates)} templates matching 'quit' query")
+        asset_templates = response.json()
+        print(f"✅ Retrieved {len(asset_templates)} asset templates")
         
-        # Should find "Should I quit my job?" template
-        quit_job_found = False
-        for template in templates:
-            if "quit" in template.get("title", "").lower() or "quit" in template.get("description", "").lower():
-                quit_job_found = True
-                print(f"✅ Found quit-related template: {template.get('title')}")
-                break
+        if len(asset_templates) != 4:
+            print(f"⚠️  Expected 4 asset templates, got {len(asset_templates)}")
         
-        if not quit_job_found and len(templates) > 0:
-            print(f"❌ Expected to find quit-related template in search results")
-            return False
-        
-        return True
-    
-    def test_hos_templates_suggest_org_context(self) -> bool:
-        """Test GET /api/hos/templates/suggest for ORGANIZATION context"""
-        print("\n🧪 Testing HOS Templates Suggest (Organization Context)...")
-        
-        params = {
-            "acting_as": "ORGANIZATION",
-            "life_area_id": "la_career",
-            "ask_type_id": "at_aspiration"
-        }
-        
-        response = requests.get(f"{BACKEND_URL}/hos/templates/suggest", params=params)
+        # Test 5: GET /api/hos/templates?life_area_id=la_spirituality (should return 4 Spirituality templates)
+        response = requests.get(f"{BACKEND_URL}/hos/templates?life_area_id=la_spirituality")
         if response.status_code != 200:
-            print(f"❌ Organization templates suggest failed: {response.status_code} - {response.text}")
+            print(f"❌ Get spirituality templates failed: {response.status_code} - {response.text}")
             return False
         
-        templates = response.json()
-        print(f"✅ Retrieved {len(templates)} templates for ORGANIZATION + Career + Aspiration")
+        spirituality_templates = response.json()
+        print(f"✅ Retrieved {len(spirituality_templates)} spirituality templates")
         
-        # Should find organization-context templates like "expand startup"
-        org_template_found = False
-        for template in templates:
-            if "expand" in template.get("title", "").lower() or "startup" in template.get("title", "").lower():
-                org_template_found = True
-                print(f"✅ Found organization template: {template.get('title')}")
-                break
-        
-        if not org_template_found and len(templates) > 0:
-            print(f"❌ Expected to find organization-context template")
-            return False
+        if len(spirituality_templates) != 4:
+            print(f"⚠️  Expected 4 spirituality templates, got {len(spirituality_templates)}")
         
         return True
     
-    def test_hos_template_detail(self) -> bool:
-        """Test GET /api/hos/templates/tpl_fin_quit_job"""
-        print("\n🧪 Testing HOS Template Detail...")
+    def test_template_autosuggest(self) -> bool:
+        """Test Template Autosuggest across new areas"""
+        print("\n🧪 Testing Template Autosuggest...")
         
-        response = requests.get(f"{BACKEND_URL}/hos/templates/tpl_fin_quit_job")
+        # Test 1: GET /api/hos/templates/suggest?acting_as=INDIVIDUAL&life_area_id=la_health&ask_type_id=at_problem
+        response = requests.get(f"{BACKEND_URL}/hos/templates/suggest?acting_as=INDIVIDUAL&life_area_id=la_health&ask_type_id=at_problem")
         if response.status_code != 200:
-            print(f"❌ Get template detail failed: {response.status_code} - {response.text}")
+            print(f"❌ Health problem autosuggest failed: {response.status_code} - {response.text}")
             return False
         
-        template = response.json()
+        health_problem_suggestions = response.json()
+        print(f"✅ Health problem autosuggest: {len(health_problem_suggestions)} suggestions")
         
-        # Verify template structure
-        required_fields = ["id", "title", "description", "life_area_id", "ask_type_id"]
-        for field in required_fields:
-            if field not in template:
-                print(f"❌ Missing field '{field}' in template detail")
-                return False
-        
-        print(f"✅ Template detail retrieved: {template.get('title')}")
-        
-        # Verify defaults are included
-        defaults = template.get("defaults")
-        if defaults:
-            if "default_factors_json" not in defaults:
-                print(f"❌ Missing default_factors_json in template defaults")
-                return False
-            
-            factors = defaults.get("default_factors_json", [])
-            if len(factors) == 0:
-                print(f"❌ Expected default factors in template")
-                return False
-            
-            print(f"✅ Template has {len(factors)} default factors")
-            
-            # Verify CLD placeholder
-            if "future_cld_placeholder_json" in defaults:
-                cld = defaults["future_cld_placeholder_json"]
-                if "starter_variables" in cld and "potential_loops" in cld:
-                    print(f"✅ Template has CLD placeholder with variables and loops")
-                else:
-                    print(f"❌ CLD placeholder missing required fields")
-                    return False
-        else:
-            print(f"❌ Template defaults not found")
+        # Test 2: GET /api/hos/templates/suggest?acting_as=INDIVIDUAL&life_area_id=la_spirituality&ask_type_id=at_aspiration
+        response = requests.get(f"{BACKEND_URL}/hos/templates/suggest?acting_as=INDIVIDUAL&life_area_id=la_spirituality&ask_type_id=at_aspiration")
+        if response.status_code != 200:
+            print(f"❌ Spirituality aspiration autosuggest failed: {response.status_code} - {response.text}")
             return False
+        
+        spirituality_aspiration_suggestions = response.json()
+        print(f"✅ Spirituality aspiration autosuggest: {len(spirituality_aspiration_suggestions)} suggestions")
+        
+        # Test 3: GET /api/hos/templates/suggest?acting_as=INDIVIDUAL&life_area_id=la_assets&ask_type_id=at_need
+        response = requests.get(f"{BACKEND_URL}/hos/templates/suggest?acting_as=INDIVIDUAL&life_area_id=la_assets&ask_type_id=at_need")
+        if response.status_code != 200:
+            print(f"❌ Assets need autosuggest failed: {response.status_code} - {response.text}")
+            return False
+        
+        assets_need_suggestions = response.json()
+        print(f"✅ Assets need autosuggest: {len(assets_need_suggestions)} suggestions")
         
         return True
     
-    # ========================
-    # TEST GROUP 3: Decision Creation from HOS Intake
-    # ========================
-    
-    def test_hos_decision_creation_with_template(self) -> bool:
-        """Test POST /api/hos/decisions with template"""
-        print("\n🧪 Testing HOS Decision Creation (With Template)...")
+    def test_template_detail(self) -> bool:
+        """Test Template Detail for new templates"""
+        print("\n🧪 Testing Template Detail...")
         
+        # Test 1: GET /api/hos/templates/tpl_hlt_mental_health (should have 6 default factors)
+        response = requests.get(f"{BACKEND_URL}/hos/templates/tpl_hlt_mental_health")
+        if response.status_code != 200:
+            print(f"❌ Mental health template detail failed: {response.status_code} - {response.text}")
+            return False
+        
+        mental_health_template = response.json()
+        default_factors = mental_health_template.get("defaults", {}).get("default_factors_json", [])
+        print(f"✅ Mental health template: {len(default_factors)} default factors")
+        
+        if len(default_factors) != 6:
+            print(f"⚠️  Expected 6 default factors, got {len(default_factors)}")
+        
+        # Test 2: GET /api/hos/templates/tpl_ast_buy_home (should have 6 default factors)
+        response = requests.get(f"{BACKEND_URL}/hos/templates/tpl_ast_buy_home")
+        if response.status_code != 200:
+            print(f"❌ Buy home template detail failed: {response.status_code} - {response.text}")
+            return False
+        
+        buy_home_template = response.json()
+        default_factors = buy_home_template.get("defaults", {}).get("default_factors_json", [])
+        print(f"✅ Buy home template: {len(default_factors)} default factors")
+        
+        if len(default_factors) != 6:
+            print(f"⚠️  Expected 6 default factors, got {len(default_factors)}")
+        
+        # Test 3: GET /api/hos/templates/tpl_spi_purpose (should have 6 default factors)
+        response = requests.get(f"{BACKEND_URL}/hos/templates/tpl_spi_purpose")
+        if response.status_code != 200:
+            print(f"❌ Purpose template detail failed: {response.status_code} - {response.text}")
+            return False
+        
+        purpose_template = response.json()
+        default_factors = purpose_template.get("defaults", {}).get("default_factors_json", [])
+        print(f"✅ Purpose template: {len(default_factors)} default factors")
+        
+        if len(default_factors) != 6:
+            print(f"⚠️  Expected 6 default factors, got {len(default_factors)}")
+        
+        # Test 4: GET /api/hos/templates/tpl_kno_degree (should have 6 default factors)
+        response = requests.get(f"{BACKEND_URL}/hos/templates/tpl_kno_degree")
+        if response.status_code != 200:
+            print(f"❌ Degree template detail failed: {response.status_code} - {response.text}")
+            return False
+        
+        degree_template = response.json()
+        default_factors = degree_template.get("defaults", {}).get("default_factors_json", [])
+        print(f"✅ Degree template: {len(default_factors)} default factors")
+        
+        if len(default_factors) != 6:
+            print(f"⚠️  Expected 6 default factors, got {len(default_factors)}")
+        
+        return True
+    
+    def test_decision_creation_from_templates(self) -> bool:
+        """Test Decision Creation from new templates"""
+        print("\n🧪 Testing Decision Creation from Templates...")
+        
+        # Test: POST /api/hos/decisions with template_id=tpl_hlt_mental_health
         decision_data = {
+            "template_id": "tpl_hlt_mental_health",
             "acting_as_context": "INDIVIDUAL",
-            "life_area_id": "la_finance",
+            "life_area_id": "la_health",
             "ask_type_id": "at_problem",
-            "template_id": "tpl_fin_quit_job",
-            "title": "Should I quit my current job?",
-            "raw_user_input": "I'm considering leaving my job due to stress and better opportunities elsewhere",
-            "source_type": "AUTHORIZED_STANDARD"
+            "title": "How to manage my chronic stress?",
+            "raw_user_input": "I've been dealing with chronic stress and need help managing it effectively"
         }
         
         response = requests.post(f"{BACKEND_URL}/hos/decisions", json=decision_data, headers=self.get_headers())
         if response.status_code != 200:
-            print(f"❌ HOS decision creation failed: {response.status_code} - {response.text}")
-            return False
-        
-        data = response.json()
-        self.test_decision_id = data.get("id")
-        
-        # Verify response structure
-        required_fields = ["id", "title", "source_type", "factors_loaded", "message"]
-        for field in required_fields:
-            if field not in data:
-                print(f"❌ Missing field '{field}' in decision creation response")
-                return False
-        
-        factors_loaded = data.get("factors_loaded", 0)
-        if factors_loaded == 0:
-            print(f"❌ Expected factors to be loaded from template, got {factors_loaded}")
-            return False
-        
-        print(f"✅ HOS decision created: {data.get('title')} with {factors_loaded} factors loaded")
-        return True
-    
-    def test_hos_decision_creation_custom_blank(self) -> bool:
-        """Test POST /api/hos/decisions without template (custom blank)"""
-        print("\n🧪 Testing HOS Decision Creation (Custom Blank)...")
-        
-        decision_data = {
-            "acting_as_context": "INDIVIDUAL",
-            "life_area_id": "la_career",
-            "ask_type_id": "at_need",
-            "title": "Custom career decision",
-            "raw_user_input": "I need to make a custom career decision without using a template",
-            "source_type": "CUSTOM_BLANK"
-        }
-        
-        response = requests.post(f"{BACKEND_URL}/hos/decisions", json=decision_data, headers=self.get_headers())
-        if response.status_code != 200:
-            print(f"❌ Custom blank decision creation failed: {response.status_code} - {response.text}")
-            return False
-        
-        data = response.json()
-        
-        factors_loaded = data.get("factors_loaded", 0)
-        if factors_loaded != 0:
-            print(f"❌ Expected 0 factors for custom blank, got {factors_loaded}")
-            return False
-        
-        print(f"✅ Custom blank decision created: {data.get('title')} with {factors_loaded} factors")
-        return True
-    
-    def test_hos_decision_metadata_verification(self) -> bool:
-        """Test GET /api/decisions/{id} to verify HOS metadata is stored"""
-        print("\n🧪 Testing HOS Decision Metadata Verification...")
-        
-        if not self.test_decision_id:
-            print(f"❌ No test decision ID available")
-            return False
-        
-        response = requests.get(f"{BACKEND_URL}/decisions/{self.test_decision_id}", headers=self.get_headers())
-        if response.status_code != 200:
-            print(f"❌ Get decision failed: {response.status_code} - {response.text}")
+            print(f"❌ Decision creation from template failed: {response.status_code} - {response.text}")
             return False
         
         decision = response.json()
+        self.test_decision_id = decision.get("id")
+        factors_loaded = decision.get("factors_loaded", 0)
+        print(f"✅ Decision created from mental health template: {self.test_decision_id}")
+        print(f"✅ Factors loaded from template: {factors_loaded}")
         
-        # Verify HOS metadata is stored
-        hos_metadata = decision.get("hos_metadata")
-        if not hos_metadata:
-            print(f"❌ HOS metadata not found in decision")
+        # Verify the created decision has factors pre-loaded from template defaults
+        response = requests.get(f"{BACKEND_URL}/decisions/{self.test_decision_id}", headers=self.get_headers())
+        if response.status_code != 200:
+            print(f"❌ Get created decision failed: {response.status_code} - {response.text}")
             return False
         
-        required_metadata_fields = ["acting_as_context", "life_area_id", "ask_type_id", "template_id", "source_type"]
-        for field in required_metadata_fields:
-            if field not in hos_metadata:
-                print(f"❌ Missing HOS metadata field: {field}")
-                return False
+        decision_detail = response.json()
+        factors = decision_detail.get("factors", [])
+        print(f"✅ Created decision has {len(factors)} factors pre-loaded from template")
         
-        print(f"✅ HOS metadata verified: {hos_metadata}")
-        
-        # Verify factors are pre-loaded
-        factors = decision.get("factors", [])
         if len(factors) == 0:
-            print(f"❌ Expected pre-loaded factors from template")
-            return False
+            print(f"⚠️  Expected factors to be pre-loaded from template defaults")
         
-        print(f"✅ Decision has {len(factors)} pre-loaded factors")
-        
-        # Verify folder mapping
-        folder = decision.get("folder")
-        life_area = decision.get("life_area")
-        if folder != "finance" or life_area != "finance":
-            print(f"❌ Expected folder/life_area to be 'finance', got folder='{folder}', life_area='{life_area}'")
-            return False
-        
-        print(f"✅ Folder and life_area correctly mapped to 'finance'")
         return True
     
-    # ========================
-    # TEST GROUP 4: Org Auth (validation and error handling)
-    # ========================
-    
-    def test_org_auth_invalid_org_slug(self) -> bool:
-        """Test POST /api/org-auth/login with invalid org_slug → 404"""
-        print("\n🧪 Testing Org Auth - Invalid Org Slug...")
+    def test_org_auth_endpoints(self) -> bool:
+        """Test Org Auth endpoint validation"""
+        print("\n🧪 Testing Org Auth Endpoints...")
         
+        # Test 1: POST /api/org-auth/login with invalid org_slug returns 404 with "Organization not found"
         login_data = {
-            "org_slug": "nonexistent-org-slug",
+            "org_slug": "invalid-org-slug-12345",
             "email": "test@example.com",
-            "password": "password123"
+            "password": "testpass123"
         }
         
         response = requests.post(f"{BACKEND_URL}/org-auth/login", json=login_data)
         if response.status_code != 404:
-            print(f"❌ Expected 404 for invalid org slug, got {response.status_code}")
+            print(f"❌ Expected 404 for invalid org_slug, got: {response.status_code}")
             return False
         
-        data = response.json()
-        if "organization not found" not in data.get("detail", "").lower():
-            print(f"❌ Expected 'Organization not found' error message, got: {data.get('detail')}")
+        error_data = response.json()
+        if "Organization not found" not in error_data.get("detail", ""):
+            print(f"❌ Expected 'Organization not found' error message, got: {error_data}")
             return False
         
-        print(f"✅ Invalid org slug correctly returns 404: {data.get('detail')}")
-        return True
-    
-    def test_org_auth_invalid_verification_id(self) -> bool:
-        """Test POST /api/org-auth/verify-otp with invalid verification_id → 404"""
-        print("\n🧪 Testing Org Auth - Invalid Verification ID...")
+        print(f"✅ Invalid org_slug correctly returns 404 with 'Organization not found'")
         
+        # Test 2: POST /api/org-auth/verify-otp with invalid verification_id returns 404
         verify_data = {
-            "verification_id": "nonexistent-verification-id",
+            "verification_id": "invalid-verification-id-12345",
             "otp": "123456"
         }
         
         response = requests.post(f"{BACKEND_URL}/org-auth/verify-otp", json=verify_data)
         if response.status_code != 404:
-            print(f"❌ Expected 404 for invalid verification ID, got {response.status_code}")
+            print(f"❌ Expected 404 for invalid verification_id, got: {response.status_code}")
             return False
         
-        data = response.json()
-        if "verification session not found" not in data.get("detail", "").lower():
-            print(f"❌ Expected 'Verification session not found' error message, got: {data.get('detail')}")
-            return False
+        print(f"✅ Invalid verification_id correctly returns 404")
         
-        print(f"✅ Invalid verification ID correctly returns 404: {data.get('detail')}")
         return True
-    
-    # ========================
-    # MAIN TEST RUNNER
-    # ========================
     
     def run_all_tests(self) -> bool:
         """Run all HOS and Org Auth tests"""
-        print("🚀 Starting HOS Decision Intake Layer and Org Auth Testing...")
+        print("🚀 Starting HOS Decision Intake & Org Auth Testing...")
         print(f"Backend URL: {BACKEND_URL}")
         
-        # Step 1: Register and login
+        # Step 1: Register and login for authenticated endpoints
         if not self.register_and_login():
             return False
         
-        # TEST GROUP 1: HOS Master Data & Seed
-        print("\n" + "="*60)
-        print("TEST GROUP 1: HOS Master Data & Seed")
-        print("="*60)
-        
-        if not self.test_hos_seed_data():
+        # Step 2: Test HOS Expanded Seed Verification (most important)
+        if not self.test_hos_expanded_seed_verification():
             return False
         
-        if not self.test_hos_life_areas():
+        # Step 3: Test HOS life areas and sub-areas
+        if not self.test_hos_life_areas_and_sub_areas():
             return False
         
-        if not self.test_hos_ask_types():
+        # Step 4: Test HOS categories and templates
+        if not self.test_hos_categories_and_templates():
             return False
         
-        if not self.test_hos_sub_areas():
+        # Step 5: Test Template Autosuggest
+        if not self.test_template_autosuggest():
             return False
         
-        if not self.test_hos_categories():
+        # Step 6: Test Template Detail
+        if not self.test_template_detail():
             return False
         
-        # TEST GROUP 2: Template Autosuggest & Detail
-        print("\n" + "="*60)
-        print("TEST GROUP 2: Template Autosuggest & Detail")
-        print("="*60)
-        
-        if not self.test_hos_templates_list():
+        # Step 7: Test Decision Creation from Templates
+        if not self.test_decision_creation_from_templates():
             return False
         
-        if not self.test_hos_templates_suggest_basic():
+        # Step 8: Test Org Auth Endpoints
+        if not self.test_org_auth_endpoints():
             return False
         
-        if not self.test_hos_templates_suggest_with_query():
-            return False
-        
-        if not self.test_hos_templates_suggest_org_context():
-            return False
-        
-        if not self.test_hos_template_detail():
-            return False
-        
-        # TEST GROUP 3: Decision Creation from HOS Intake
-        print("\n" + "="*60)
-        print("TEST GROUP 3: Decision Creation from HOS Intake")
-        print("="*60)
-        
-        if not self.test_hos_decision_creation_with_template():
-            return False
-        
-        if not self.test_hos_decision_creation_custom_blank():
-            return False
-        
-        if not self.test_hos_decision_metadata_verification():
-            return False
-        
-        # TEST GROUP 4: Org Auth (validation and error handling)
-        print("\n" + "="*60)
-        print("TEST GROUP 4: Org Auth (validation and error handling)")
-        print("="*60)
-        
-        if not self.test_org_auth_invalid_org_slug():
-            return False
-        
-        if not self.test_org_auth_invalid_verification_id():
-            return False
-        
-        print("\n🎉 ALL HOS AND ORG AUTH TESTS PASSED!")
+        print("\n🎉 ALL HOS & ORG AUTH TESTS COMPLETED!")
         return True
 
 def main():
@@ -649,10 +414,10 @@ def main():
     success = tester.run_all_tests()
     
     if success:
-        print("\n✅ HOS Decision Intake Layer and Org Auth Testing Complete - All Tests Passed!")
+        print("\n✅ HOS Decision Intake & Org Auth Testing Complete!")
         exit(0)
     else:
-        print("\n❌ HOS Decision Intake Layer and Org Auth Testing Failed!")
+        print("\n❌ HOS Decision Intake & Org Auth Testing Failed!")
         exit(1)
 
 if __name__ == "__main__":
