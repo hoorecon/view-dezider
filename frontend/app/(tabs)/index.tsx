@@ -467,7 +467,19 @@ export default function HomeScreen() {
               <Text style={styles.actionSubtitle}>Import & API</Text>
             </TouchableOpacity>
 
-            <View style={[styles.actionCard, { opacity: 0 }]} />
+            <TouchableOpacity
+              style={styles.actionCard}
+              onPress={() => router.push('/tools/cld-engine' as any)}
+            >
+              <LinearGradient
+                colors={['#1E40AF', '#3B82F6']}
+                style={styles.actionIcon}
+              >
+                <Ionicons name="git-network-outline" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>CLD Engine</Text>
+              <Text style={styles.actionSubtitle}>Systems thinking</Text>
+            </TouchableOpacity>
           </View>
 
           <TouchableOpacity

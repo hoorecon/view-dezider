@@ -1,525 +1,408 @@
 #!/usr/bin/env python3
 """
-Solutions Store + ReviewNet Backend Testing
-Comprehensive test suite for all Solutions Store and ReviewNet endpoints
+Comprehensive CLD Engine Backend Testing
+Tests all CLD endpoints in sequence as specified in the review request.
 """
 
-import asyncio
-import httpx
+import requests
 import json
-import sys
+import time
 from datetime import datetime
 
-# Backend URL from frontend/.env
-BASE_URL = "https://dezider-core.preview.emergentagent.com/api"
+# Backend URL from environment
+BACKEND_URL = "https://dezider-core.preview.emergentagent.com/api"
 
-class SolutionsStoreTestSuite:
+class CLDEngineTest:
     def __init__(self):
-        self.base_url = BASE_URL
         self.session_token = None
-        self.user_id = None
+        self.decision_id = None
         self.test_results = []
-        self.private_solution_id = None
-        self.public_solution_id = None
         
-    async def log_result(self, test_name: str, success: bool, details: str = ""):
+    def log_result(self, test_name, status, details=""):
         """Log test result"""
-        status = "✅ PASS" if success else "❌ FAIL"
-        result = f"{status}: {test_name}"
-        if details:
-            result += f" - {details}"
-        print(result)
-        self.test_results.append({
+        result = {
             "test": test_name,
-            "success": success,
-            "details": details
-        })
+            "status": status,
+            "details": details,
+            "timestamp": datetime.now().isoformat()
+        }
+        self.test_results.append(result)
+        status_icon = "✅" if status == "PASS" else "❌"
+        print(f"{status_icon} {test_name}: {details}")
         
-    async def make_request(self, method: str, endpoint: str, data: dict = None, headers: dict = None):
+    def make_request(self, method, endpoint, data=None, headers=None):
         """Make HTTP request with error handling"""
-        url = f"{self.base_url}{endpoint}"
-        request_headers = {}
-        
+        url = f"{BACKEND_URL}{endpoint}"
+        default_headers = {}
         if self.session_token:
-            request_headers["Authorization"] = f"Bearer {self.session_token}"
-            
+            default_headers["Authorization"] = f"Bearer {self.session_token}"
         if headers:
-            request_headers.update(headers)
+            default_headers.update(headers)
             
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                if method.upper() == "GET":
-                    response = await client.get(url, headers=request_headers)
-                elif method.upper() == "POST":
-                    response = await client.post(url, json=data, headers=request_headers)
-                elif method.upper() == "PUT":
-                    response = await client.put(url, json=data, headers=request_headers)
-                elif method.upper() == "DELETE":
-                    response = await client.delete(url, headers=request_headers)
-                else:
-                    raise ValueError(f"Unsupported method: {method}")
-                    
-                return response
+            if method == "GET":
+                response = requests.get(url, headers=default_headers)
+            elif method == "POST":
+                response = requests.post(url, json=data, headers=default_headers)
+            elif method == "PUT":
+                response = requests.put(url, json=data, headers=default_headers)
+            elif method == "DELETE":
+                response = requests.delete(url, headers=default_headers)
+            else:
+                raise ValueError(f"Unsupported method: {method}")
+                
+            return response
         except Exception as e:
-            print(f"Request failed: {method} {url} - {str(e)}")
             return None
             
-    async def test_1_register_user(self):
-        """Test 1: Register a test user"""
-        test_name = "User Registration"
-        
+    def test_1_register_user(self):
+        """Test 1: Register user"""
+        timestamp = int(time.time())
         user_data = {
-            "email": "store_test@test.com",
-            "password": "TestPass123!",
-            "name": "Store Test User"
+            "email": f"cldtest2@test.com",
+            "password": "test123",
+            "name": "CLD Tester"
         }
         
-        response = await self.make_request("POST", "/auth/register", user_data)
-        
+        response = self.make_request("POST", "/auth/register", user_data)
         if response and response.status_code == 200:
             data = response.json()
             self.session_token = data.get("session_token")
-            self.user_id = data.get("user_id")
-            await self.log_result(test_name, True, f"User registered with ID: {self.user_id}")
+            self.log_result("User Registration", "PASS", f"User registered with session token")
             return True
         else:
-            error_msg = response.text if response else "No response"
-            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
+            error = response.json().get("detail", "Unknown error") if response else "No response"
+            self.log_result("User Registration", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
             return False
             
-    async def test_2_seed_solutions_data(self):
-        """Test 2: Seed solutions data"""
-        test_name = "Seed Solutions Data"
+    def test_2_create_decision(self):
+        """Test 2: Create a decision"""
+        decision_data = {
+            "title": "Career Move Decision",
+            "context": "Deciding between job offers",
+            "life_area": "Career",
+            "decision_type": "need"
+        }
         
-        response = await self.make_request("POST", "/solutions-store/seed?force=true")
-        
+        response = self.make_request("POST", "/decisions", decision_data)
         if response and response.status_code == 200:
             data = response.json()
-            count = data.get("count", 0)
-            await self.log_result(test_name, True, f"Seeded {count} solutions")
+            self.decision_id = data.get("id")
+            self.log_result("Decision Creation", "PASS", f"Decision created with ID: {self.decision_id}")
             return True
         else:
-            error_msg = response.text if response else "No response"
-            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
+            error = response.json().get("detail", "Unknown error") if response else "No response"
+            self.log_result("Decision Creation", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
             return False
             
-    async def test_3_list_solutions(self):
-        """Test 3: Test listing solutions"""
-        test_name = "List Solutions"
+    def test_3_update_decision_with_factors(self):
+        """Test 3: Update decision with factors"""
+        factors_data = {
+            "factors": [
+                {"id": "f1", "name": "Salary", "category": "primary", "rating": 90, "order": 0},
+                {"id": "f2", "name": "Work-Life Balance", "category": "primary", "rating": 80, "order": 1},
+                {"id": "f3", "name": "Growth Opportunity", "category": "secondary", "rating": 70, "order": 2},
+                {"id": "f4", "name": "Location", "category": "secondary", "rating": 60, "order": 3}
+            ]
+        }
         
-        response = await self.make_request("GET", "/solutions-store/solutions")
-        
+        response = self.make_request("PUT", f"/decisions/{self.decision_id}", factors_data)
+        if response and response.status_code == 200:
+            self.log_result("Decision Update with Factors", "PASS", "4 factors added successfully")
+            return True
+        else:
+            error = response.json().get("detail", "Unknown error") if response else "No response"
+            self.log_result("Decision Update with Factors", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
+            return False
+            
+    def test_4_get_cld_empty(self):
+        """Test 4: GET /api/cld/{decision_id} - Should return null"""
+        response = self.make_request("GET", f"/cld/{self.decision_id}")
         if response and response.status_code == 200:
             data = response.json()
-            if isinstance(data, list):
-                count = len(data)
-                await self.log_result(test_name, True, f"Retrieved {count} solutions")
-                return count >= 14  # Should return 14 seeded solutions
+            if data.get("cld") is None:
+                self.log_result("GET CLD (Empty)", "PASS", "Returns null as expected")
+                return True
             else:
-                await self.log_result(test_name, False, "Response is not a list")
+                self.log_result("GET CLD (Empty)", "FAIL", f"Expected null, got: {data.get('cld')}")
                 return False
         else:
-            error_msg = response.text if response else "No response"
-            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
+            error = response.json().get("detail", "Unknown error") if response else "No response"
+            self.log_result("GET CLD (Empty)", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
             return False
             
-    async def test_4_browse_by_life_area(self):
-        """Test 4: Test browsing by life area"""
-        test_name = "Browse by Life Area (Health)"
-        
-        response = await self.make_request("GET", "/solutions-store/browse?life_area_id=la_health")
-        
-        if response and response.status_code == 200:
-            data = response.json()
-            solutions = data.get("solutions", [])
-            grouped = data.get("grouped_by_sub_area", {})
-            total = data.get("total", 0)
-            await self.log_result(test_name, True, f"Found {total} health solutions, grouped by {len(grouped)} sub-areas")
-            return True
-        else:
-            error_msg = response.text if response else "No response"
-            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
-            return False
-            
-    async def test_5_for_decision_endpoint(self):
-        """Test 5: Test for-decision endpoint"""
-        test_name = "For-Decision Endpoint (Finance)"
-        
-        response = await self.make_request("GET", "/solutions-store/for-decision?life_area_id=la_finance")
-        
-        if response and response.status_code == 200:
-            data = response.json()
-            solutions = data.get("solutions", [])
-            total = data.get("total", 0)
-            await self.log_result(test_name, True, f"Found {total} finance solutions for decision")
-            return True
-        else:
-            error_msg = response.text if response else "No response"
-            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
-            return False
-            
-    async def test_6_search_solutions(self):
-        """Test 6: Test search functionality"""
-        test_name = "Search Solutions (Apollo)"
-        
-        response = await self.make_request("GET", "/solutions-store/search?q=Apollo")
-        
-        if response and response.status_code == 200:
-            data = response.json()
-            results = data.get("results", [])
-            query = data.get("query", "")
-            total = data.get("total", 0)
-            
-            # Check if Apollo Hospitals is found
-            apollo_found = any("Apollo" in result.get("name", "") for result in results)
-            await self.log_result(test_name, apollo_found, f"Found {total} results for '{query}', Apollo Hospitals: {'Yes' if apollo_found else 'No'}")
-            return apollo_found
-        else:
-            error_msg = response.text if response else "No response"
-            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
-            return False
-            
-    async def test_7_create_private_solution(self):
-        """Test 7: Create a PRIVATE solution"""
-        test_name = "Create Private Solution"
-        
-        solution_data = {
-            "type": "SERVICE",
-            "name": "Test Private Service",
-            "description": "My private service",
-            "life_area_id": "la_health",
-            "visibility": "PRIVATE",
-            "country": "IN",
-            "city": "Chennai",
-            "quantitative_factors": [
-                {
-                    "factor_name": "Cost",
-                    "value": 5000,
-                    "unit": "INR"
-                }
-            ]
+    def test_5_save_cld(self):
+        """Test 5: POST /api/cld/{decision_id}/save - Save CLD"""
+        cld_data = {
+            "nodes": [
+                {"factor_id": "f1", "name": "Salary", "x": 200, "y": 60, "centrality": 0.8, "classification": "primary", "priority_rank": 1, "gap_multiplier": 2.0, "base_value": 60, "locked": False},
+                {"factor_id": "f2", "name": "Work-Life Balance", "x": 340, "y": 200, "centrality": 0.7, "classification": "primary", "priority_rank": 2, "gap_multiplier": 1.5, "base_value": 45, "locked": False},
+                {"factor_id": "f3", "name": "Growth Opportunity", "x": 200, "y": 340, "centrality": 0.5, "classification": "secondary", "priority_rank": 3, "gap_multiplier": 1.0, "base_value": 55, "locked": False},
+                {"factor_id": "f4", "name": "Location", "x": 60, "y": 200, "centrality": 0.3, "classification": "secondary", "priority_rank": 4, "gap_multiplier": 0.5, "base_value": 40, "locked": False}
+            ],
+            "links": [
+                {"from_id": "f1", "to_id": "f2", "link_type": "balancing", "strength": 7, "delay": 0, "description": "Higher salary often means less balance"},
+                {"from_id": "f3", "to_id": "f1", "link_type": "reinforcing", "strength": 8, "delay": 1, "description": "Growth leads to higher salary"},
+                {"from_id": "f2", "to_id": "f3", "link_type": "reinforcing", "strength": 5, "delay": 0, "description": "Balance enables learning"},
+                {"from_id": "f4", "to_id": "f2", "link_type": "reinforcing", "strength": 6, "delay": 0, "description": "Good location improves balance"}
+            ],
+            "loops": [
+                {"name": "B1: Salary-Balance Tradeoff", "loop_type": "balancing", "factor_ids": ["f1", "f2", "f3"]}
+            ],
+            "layout_type": "circular"
         }
         
-        response = await self.make_request("POST", "/solutions-store/solutions", solution_data)
-        
+        response = self.make_request("POST", f"/cld/{self.decision_id}/save", cld_data)
         if response and response.status_code == 200:
             data = response.json()
-            self.private_solution_id = data.get("solution_id")
-            visibility = data.get("visibility")
-            approval_status = data.get("approval_status")
-            is_authorized = data.get("is_authorized")
-            
-            success = (visibility == "PRIVATE" and approval_status == "approved" and not is_authorized)
-            await self.log_result(test_name, success, f"Solution ID: {self.private_solution_id}, Visibility: {visibility}, Status: {approval_status}, Authorized: {is_authorized}")
-            return success
-        else:
-            error_msg = response.text if response else "No response"
-            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
-            return False
-            
-    async def test_8_create_public_solution(self):
-        """Test 8: Create a PUBLIC solution (should get pending approval)"""
-        test_name = "Create Public Solution (Pending Approval)"
-        
-        solution_data = {
-            "type": "PRODUCT",
-            "name": "Test Public Product",
-            "description": "A product for everyone",
-            "life_area_id": "la_health",
-            "visibility": "PUBLIC",
-            "country": "IN",
-            "city": "Chennai"
-        }
-        
-        response = await self.make_request("POST", "/solutions-store/solutions", solution_data)
-        
-        if response and response.status_code == 200:
-            data = response.json()
-            self.public_solution_id = data.get("solution_id")
-            visibility = data.get("visibility")
-            approval_status = data.get("approval_status")
-            is_authorized = data.get("is_authorized")
-            
-            # For normal users, PUBLIC solutions should be pending approval and not authorized
-            success = (visibility == "PUBLIC" and approval_status == "pending" and not is_authorized)
-            await self.log_result(test_name, success, f"Solution ID: {self.public_solution_id}, Visibility: {visibility}, Status: {approval_status}, Authorized: {is_authorized}")
-            return success
-        else:
-            error_msg = response.text if response else "No response"
-            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
-            return False
-            
-    async def test_9_solution_detail(self):
-        """Test 9: Test solution detail endpoint"""
-        test_name = "Solution Detail"
-        
-        if not self.private_solution_id:
-            await self.log_result(test_name, False, "No private solution ID available")
-            return False
-            
-        response = await self.make_request("GET", f"/solutions-store/solutions/{self.private_solution_id}")
-        
-        if response and response.status_code == 200:
-            data = response.json()
-            solution_id = data.get("solution_id")
-            name = data.get("name")
-            quantitative_factors = data.get("quantitative_factors", [])
-            
-            success = (solution_id == self.private_solution_id and name == "Test Private Service")
-            await self.log_result(test_name, success, f"Retrieved solution: {name}, Quantitative factors: {len(quantitative_factors)}")
-            return success
-        else:
-            error_msg = response.text if response else "No response"
-            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
-            return False
-            
-    async def test_10_submit_review(self):
-        """Test 10: Submit a review via ReviewNet"""
-        test_name = "Submit Review"
-        
-        if not self.private_solution_id:
-            await self.log_result(test_name, False, "No private solution ID available")
-            return False
-            
-        review_data = {
-            "solution_id": self.private_solution_id,
-            "review_text": "Great service!",
-            "pros": ["Fast and reliable"],
-            "cons": ["Expensive"],
-            "qualitative_factors": [
-                {"factor_name": "Trustworthiness", "rating": 8},
-                {"factor_name": "Quality", "rating": 9},
-                {"factor_name": "Value for Money", "rating": 6}
-            ]
-        }
-        
-        response = await self.make_request("POST", "/reviewnet/reviews", review_data)
-        
-        if response and response.status_code == 200:
-            data = response.json()
-            review_id = data.get("review_id")
-            solution_id = data.get("solution_id")
-            overall_rating = data.get("overall_rating")
-            
-            success = (solution_id == self.private_solution_id and review_id is not None)
-            await self.log_result(test_name, success, f"Review ID: {review_id}, Overall rating: {overall_rating}")
-            return success
-        else:
-            error_msg = response.text if response else "No response"
-            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
-            return False
-            
-    async def test_11_get_reviews(self):
-        """Test 11: Get reviews for a solution"""
-        test_name = "Get Reviews"
-        
-        if not self.private_solution_id:
-            await self.log_result(test_name, False, "No private solution ID available")
-            return False
-            
-        response = await self.make_request("GET", f"/reviewnet/reviews?solution_id={self.private_solution_id}")
-        
-        if response and response.status_code == 200:
-            data = response.json()
-            reviews = data.get("reviews", [])
-            aggregated_scores = data.get("aggregated_scores", [])
-            overall_avg_rating = data.get("overall_avg_rating")
-            total_reviews = data.get("total_reviews", 0)
-            
-            success = (total_reviews > 0 and overall_avg_rating is not None)
-            await self.log_result(test_name, success, f"Reviews: {total_reviews}, Avg rating: {overall_avg_rating}, Aggregated factors: {len(aggregated_scores)}")
-            return success
-        else:
-            error_msg = response.text if response else "No response"
-            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
-            return False
-            
-    async def test_12_apply_to_option(self):
-        """Test 12: Test apply-to-option endpoint"""
-        test_name = "Apply to Option"
-        
-        if not self.private_solution_id:
-            await self.log_result(test_name, False, "No private solution ID available")
-            return False
-            
-        apply_data = {
-            "solution_id": self.private_solution_id
-        }
-        
-        response = await self.make_request("POST", "/solutions-store/apply-to-option", apply_data)
-        
-        if response and response.status_code == 200:
-            data = response.json()
-            quantitative_factors = data.get("quantitative_factors", [])
-            qualitative_factors = data.get("qualitative_factors", [])
-            solution_name = data.get("solution_name")
-            
-            success = (solution_name == "Test Private Service" and len(quantitative_factors) > 0)
-            await self.log_result(test_name, success, f"Solution: {solution_name}, Quant factors: {len(quantitative_factors)}, Qual factors: {len(qualitative_factors)}")
-            return success
-        else:
-            error_msg = response.text if response else "No response"
-            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
-            return False
-            
-    async def test_13_qualitative_factors_list(self):
-        """Test 13: Test qualitative factors list"""
-        test_name = "Qualitative Factors List"
-        
-        response = await self.make_request("GET", "/reviewnet/qualitative-factors")
-        
-        if response and response.status_code == 200:
-            data = response.json()
-            factors = data.get("factors", [])
-            
-            expected_factors = ["Trustworthiness", "Quality", "Reliability", "Value for Money"]
-            has_expected = all(factor in factors for factor in expected_factors)
-            
-            await self.log_result(test_name, has_expected, f"Found {len(factors)} default factors: {factors[:4]}...")
-            return has_expected
-        else:
-            error_msg = response.text if response else "No response"
-            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
-            return False
-            
-    async def test_14_setup_admin_user(self):
-        """Test 14: Set up admin user for approval tests"""
-        test_name = "Setup Admin User"
-        
-        response = await self.make_request("POST", "/admin/setup")
-        
-        if response and response.status_code == 200:
-            data = response.json()
-            role = data.get("role")
-            await self.log_result(test_name, True, f"User promoted to: {role}")
-            return True
-        elif response and response.status_code == 400:
-            # Super admin already exists
-            await self.log_result(test_name, True, "Super admin already exists (expected)")
+            self.log_result("Save CLD", "PASS", f"CLD saved successfully: {data.get('message')}")
             return True
         else:
-            error_msg = response.text if response else "No response"
-            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
+            error = response.json().get("detail", "Unknown error") if response else "No response"
+            self.log_result("Save CLD", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
             return False
             
-    async def test_15_pending_approvals(self):
-        """Test 15: Test pending approvals endpoint"""
-        test_name = "Pending Approvals"
-        
-        response = await self.make_request("GET", "/solutions-store/pending-approval")
-        
+    def test_6_get_cld_saved(self):
+        """Test 6: GET /api/cld/{decision_id} - Should return saved CLD"""
+        response = self.make_request("GET", f"/cld/{self.decision_id}")
         if response and response.status_code == 200:
             data = response.json()
-            solutions = data.get("solutions", [])
-            total = data.get("total", 0)
-            
-            # Should find the public solution from test 8
-            public_found = any(sol.get("solution_id") == self.public_solution_id for sol in solutions)
-            await self.log_result(test_name, public_found, f"Found {total} pending solutions, Public solution found: {'Yes' if public_found else 'No'}")
-            return public_found
+            cld = data.get("cld")
+            if cld and "nodes" in cld and "links" in cld and "loops" in cld:
+                nodes_count = len(cld.get("nodes", []))
+                links_count = len(cld.get("links", []))
+                loops_count = len(cld.get("loops", []))
+                self.log_result("GET CLD (Saved)", "PASS", f"CLD retrieved: {nodes_count} nodes, {links_count} links, {loops_count} loops")
+                return True
+            else:
+                self.log_result("GET CLD (Saved)", "FAIL", f"Invalid CLD structure: {cld}")
+                return False
         else:
-            error_msg = response.text if response else "No response"
-            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
+            error = response.json().get("detail", "Unknown error") if response else "No response"
+            self.log_result("GET CLD (Saved)", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
             return False
             
-    async def test_16_approve_solution(self):
-        """Test 16: Test approve solution"""
-        test_name = "Approve Solution"
-        
-        if not self.public_solution_id:
-            await self.log_result(test_name, False, "No public solution ID available")
-            return False
-            
-        response = await self.make_request("PUT", f"/solutions-store/approve/{self.public_solution_id}")
-        
+    def test_7_get_cld_list(self):
+        """Test 7: GET /api/cld/list - Should return list with saved CLD"""
+        response = self.make_request("GET", "/cld/list")
         if response and response.status_code == 200:
             data = response.json()
-            message = data.get("message")
-            solution_id = data.get("solution_id")
-            
-            success = (solution_id == self.public_solution_id)
-            await self.log_result(test_name, success, f"Message: {message}")
-            return success
+            clds = data.get("clds", [])
+            if len(clds) >= 1:
+                self.log_result("GET CLD List", "PASS", f"Found {len(clds)} CLD(s)")
+                return True
+            else:
+                self.log_result("GET CLD List", "FAIL", f"Expected at least 1 CLD, found {len(clds)}")
+                return False
         else:
-            error_msg = response.text if response else "No response"
-            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
+            error = response.json().get("detail", "Unknown error") if response else "No response"
+            self.log_result("GET CLD List", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
             return False
             
-    async def test_17_verify_approved_solution(self):
-        """Test 17: Verify the approved solution appears with is_authorized=true"""
-        test_name = "Verify Approved Solution"
+    def test_8_update_node(self):
+        """Test 8: PUT /api/cld/{decision_id}/node/f1 - Update node"""
+        node_update = {
+            "base_value": 70,
+            "locked": True
+        }
         
-        if not self.public_solution_id:
-            await self.log_result(test_name, False, "No public solution ID available")
+        response = self.make_request("PUT", f"/cld/{self.decision_id}/node/f1", node_update)
+        if response and response.status_code == 200:
+            self.log_result("Update Node", "PASS", "Node f1 updated successfully")
+            return True
+        else:
+            error = response.json().get("detail", "Unknown error") if response else "No response"
+            self.log_result("Update Node", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
             return False
             
-        response = await self.make_request("GET", f"/solutions-store/solutions/{self.public_solution_id}")
+    def test_9_update_link(self):
+        """Test 9: PUT /api/cld/{decision_id}/link - Update link"""
+        link_update = {
+            "from_id": "f1",
+            "to_id": "f2",
+            "strength": 9
+        }
         
+        response = self.make_request("PUT", f"/cld/{self.decision_id}/link", link_update)
+        if response and response.status_code == 200:
+            self.log_result("Update Link", "PASS", "Link f1->f2 updated successfully")
+            return True
+        else:
+            error = response.json().get("detail", "Unknown error") if response else "No response"
+            self.log_result("Update Link", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
+            return False
+            
+    def test_10_simulate_positive_shock(self):
+        """Test 10: POST /api/cld/{decision_id}/simulate - Positive shock"""
+        simulation_data = {
+            "shock_factor_id": "f3",
+            "shock_delta": 25,
+            "time_steps": 5,
+            "dampening": 0.7
+        }
+        
+        response = self.make_request("POST", f"/cld/{self.decision_id}/simulate", simulation_data)
         if response and response.status_code == 200:
             data = response.json()
-            is_authorized = data.get("is_authorized")
-            approval_status = data.get("approval_status")
-            visibility = data.get("visibility")
-            
-            success = (is_authorized and approval_status == "approved" and visibility == "PUBLIC")
-            await self.log_result(test_name, success, f"Authorized: {is_authorized}, Status: {approval_status}, Visibility: {visibility}")
-            return success
+            required_fields = ["timeline", "final_values", "total_impact", "stability", "most_affected", "baseline"]
+            if all(field in data for field in required_fields):
+                timeline_steps = len(data.get("timeline", []))
+                stability = data.get("stability")
+                self.log_result("Simulate Positive Shock", "PASS", f"Simulation completed: {timeline_steps} steps, stability: {stability}")
+                return True
+            else:
+                missing = [f for f in required_fields if f not in data]
+                self.log_result("Simulate Positive Shock", "FAIL", f"Missing fields: {missing}")
+                return False
         else:
-            error_msg = response.text if response else "No response"
-            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
+            error = response.json().get("detail", "Unknown error") if response else "No response"
+            self.log_result("Simulate Positive Shock", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
             return False
             
-    async def run_all_tests(self):
-        """Run all tests in sequence"""
-        print("🚀 Starting Solutions Store + ReviewNet Backend Testing")
+    def test_11_simulate_negative_shock(self):
+        """Test 11: POST /api/cld/{decision_id}/simulate - Negative shock"""
+        simulation_data = {
+            "shock_factor_id": "f1",
+            "shock_delta": -20,
+            "time_steps": 8,
+            "dampening": 0.5
+        }
+        
+        response = self.make_request("POST", f"/cld/{self.decision_id}/simulate", simulation_data)
+        if response and response.status_code == 200:
+            data = response.json()
+            timeline_steps = len(data.get("timeline", []))
+            stability = data.get("stability")
+            total_impact = data.get("total_impact", {})
+            f1_impact = total_impact.get("f1", 0)
+            self.log_result("Simulate Negative Shock", "PASS", f"Negative shock simulation: {timeline_steps} steps, f1 impact: {f1_impact}")
+            return True
+        else:
+            error = response.json().get("detail", "Unknown error") if response else "No response"
+            self.log_result("Simulate Negative Shock", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
+            return False
+            
+    def test_12_layout_force(self):
+        """Test 12: POST /api/cld/{decision_id}/layout - Force layout"""
+        layout_data = {
+            "layout_type": "force"
+        }
+        
+        response = self.make_request("POST", f"/cld/{self.decision_id}/layout", layout_data)
+        if response and response.status_code == 200:
+            data = response.json()
+            nodes = data.get("nodes", [])
+            layout_type = data.get("layout_type")
+            if nodes and layout_type == "force":
+                self.log_result("Layout Force", "PASS", f"Force layout computed for {len(nodes)} nodes")
+                return True
+            else:
+                self.log_result("Layout Force", "FAIL", f"Invalid response: {data}")
+                return False
+        else:
+            error = response.json().get("detail", "Unknown error") if response else "No response"
+            self.log_result("Layout Force", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
+            return False
+            
+    def test_13_layout_hierarchical(self):
+        """Test 13: POST /api/cld/{decision_id}/layout - Hierarchical layout"""
+        layout_data = {
+            "layout_type": "hierarchical"
+        }
+        
+        response = self.make_request("POST", f"/cld/{self.decision_id}/layout", layout_data)
+        if response and response.status_code == 200:
+            data = response.json()
+            nodes = data.get("nodes", [])
+            layout_type = data.get("layout_type")
+            if nodes and layout_type == "hierarchical":
+                self.log_result("Layout Hierarchical", "PASS", f"Hierarchical layout computed for {len(nodes)} nodes")
+                return True
+            else:
+                self.log_result("Layout Hierarchical", "FAIL", f"Invalid response: {data}")
+                return False
+        else:
+            error = response.json().get("detail", "Unknown error") if response else "No response"
+            self.log_result("Layout Hierarchical", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
+            return False
+            
+    def test_14_delete_cld(self):
+        """Test 14: DELETE /api/cld/{decision_id} - Delete CLD"""
+        response = self.make_request("DELETE", f"/cld/{self.decision_id}")
+        if response and response.status_code == 200:
+            self.log_result("Delete CLD", "PASS", "CLD deleted successfully")
+            return True
+        else:
+            error = response.json().get("detail", "Unknown error") if response else "No response"
+            self.log_result("Delete CLD", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
+            return False
+            
+    def test_15_get_cld_after_delete(self):
+        """Test 15: GET /api/cld/{decision_id} - Should return null after delete"""
+        response = self.make_request("GET", f"/cld/{self.decision_id}")
+        if response and response.status_code == 200:
+            data = response.json()
+            if data.get("cld") is None:
+                self.log_result("GET CLD (After Delete)", "PASS", "Returns null after deletion")
+                return True
+            else:
+                self.log_result("GET CLD (After Delete)", "FAIL", f"Expected null, got: {data.get('cld')}")
+                return False
+        else:
+            error = response.json().get("detail", "Unknown error") if response else "No response"
+            self.log_result("GET CLD (After Delete)", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
+            return False
+            
+    def run_all_tests(self):
+        """Run all CLD Engine tests in sequence"""
+        print("🚀 Starting CLD Engine Comprehensive Testing")
         print("=" * 60)
         
         tests = [
             self.test_1_register_user,
-            self.test_2_seed_solutions_data,
-            self.test_3_list_solutions,
-            self.test_4_browse_by_life_area,
-            self.test_5_for_decision_endpoint,
-            self.test_6_search_solutions,
-            self.test_7_create_private_solution,
-            self.test_8_create_public_solution,
-            self.test_9_solution_detail,
-            self.test_10_submit_review,
-            self.test_11_get_reviews,
-            self.test_12_apply_to_option,
-            self.test_13_qualitative_factors_list,
-            self.test_14_setup_admin_user,
-            self.test_15_pending_approvals,
-            self.test_16_approve_solution,
-            self.test_17_verify_approved_solution,
+            self.test_2_create_decision,
+            self.test_3_update_decision_with_factors,
+            self.test_4_get_cld_empty,
+            self.test_5_save_cld,
+            self.test_6_get_cld_saved,
+            self.test_7_get_cld_list,
+            self.test_8_update_node,
+            self.test_9_update_link,
+            self.test_10_simulate_positive_shock,
+            self.test_11_simulate_negative_shock,
+            self.test_12_layout_force,
+            self.test_13_layout_hierarchical,
+            self.test_14_delete_cld,
+            self.test_15_get_cld_after_delete
         ]
         
         passed = 0
-        total = len(tests)
+        failed = 0
         
         for test in tests:
             try:
-                result = await test()
-                if result:
+                if test():
                     passed += 1
+                else:
+                    failed += 1
             except Exception as e:
-                print(f"❌ FAIL: {test.__name__} - Exception: {str(e)}")
+                self.log_result(test.__name__, "ERROR", f"Exception: {str(e)}")
+                failed += 1
                 
         print("\n" + "=" * 60)
-        print(f"🎯 TEST SUMMARY: {passed}/{total} tests passed")
+        print(f"🎯 CLD Engine Testing Complete")
+        print(f"✅ Passed: {passed}")
+        print(f"❌ Failed: {failed}")
+        print(f"📊 Success Rate: {(passed/(passed+failed)*100):.1f}%")
         
-        if passed == total:
-            print("🎉 ALL TESTS PASSED! Solutions Store + ReviewNet is working correctly.")
-        else:
-            print(f"⚠️  {total - passed} tests failed. Please check the implementation.")
-            
-        return passed == total
-
-async def main():
-    """Main test runner"""
-    test_suite = SolutionsStoreTestSuite()
-    success = await test_suite.run_all_tests()
-    sys.exit(0 if success else 1)
+        return passed, failed, self.test_results
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    tester = CLDEngineTest()
+    passed, failed, results = tester.run_all_tests()
+    
+    # Print detailed results
+    print("\n📋 Detailed Test Results:")
+    for result in results:
+        status_icon = "✅" if result["status"] == "PASS" else "❌" if result["status"] == "FAIL" else "⚠️"
+        print(f"{status_icon} {result['test']}: {result['details']}")

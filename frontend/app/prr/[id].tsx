@@ -199,6 +199,7 @@ function PRRDecisionDetailInner() {
         visible={showCLD}
         onClose={() => setShowCLD(false)}
         factors={decision.factors}
+        decisionId={id}
         decisionTitle={decision.title}
         decisionContext={decision.context}
         lifeArea={decision.life_area}

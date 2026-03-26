@@ -3358,6 +3358,10 @@ api_router.include_router(solutions_store_router)
 api_router.include_router(google_calendar_router)
 api_router.include_router(deo_router)
 
+# CLD Engine Router
+from routes.cld import router as cld_router
+api_router.include_router(cld_router)
+
 
 # Include the router in the main app
 app.include_router(api_router)
