@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, Alert, TextInput, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
@@ -12,6 +12,11 @@ import { TEPFI_ELEMENTS, TEPFI_LAYERS } from '../../utils/decisionHelpers';
 
 export default function Step10() {
   const { decision, saveDecision, selectOption, calculateDynamicWorth, setCurrentStep, router } = useDecision();
+  const [reviewDateStr, setReviewDateStr] = useState(
+    decision.implementation_review_date
+      ? new Date(decision.implementation_review_date).toISOString().split('T')[0]
+      : ''
+  );
 
   const optionsWithDynamicWorth = decision.options.map(option => ({
     ...option,
@@ -139,6 +144,81 @@ export default function Step10() {
               );
             })}
         </Card>
+      )}
+
+      {/* Implementation Review Date & Journal */}
+      <Card style={[styles.factorCard, { borderLeftWidth: 3, borderLeftColor: '#F59E0B' }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+          <Ionicons name="calendar" size={16} color="#F59E0B" />
+          <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.textPrimary }}>
+            Implementation Review Date
+          </Text>
+        </View>
+        <Text style={{ fontSize: 12, color: COLORS.textSecondary, marginBottom: 8 }}>
+          Set a date to review this decision&#39;s outcome and document learnings
+        </Text>
+        <TextInput
+          style={{
+            backgroundColor: COLORS.background, borderRadius: 10, borderWidth: 1,
+            borderColor: COLORS.border, paddingHorizontal: 14, paddingVertical: 10,
+            fontSize: 15, color: COLORS.textPrimary,
+          }}
+          placeholder="YYYY-MM-DD (e.g., 2026-06-15)"
+          value={reviewDateStr}
+          onChangeText={(text) => {
+            setReviewDateStr(text);
+            // Auto-save when valid date format
+            if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+              const d = new Date(text + 'T00:00:00Z');
+              if (!isNaN(d.getTime())) {
+                saveDecision({ implementation_review_date: d.toISOString() });
+              }
+            }
+          }}
+          placeholderTextColor={COLORS.textMuted}
+        />
+        {decision.decision_type && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}>
+            <View style={{
+              paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
+              backgroundColor: decision.decision_type === 'problem' ? '#EF444418' : decision.decision_type === 'need' ? '#F59E0B18' : '#10B98118',
+            }}>
+              <Text style={{
+                fontSize: 11, fontWeight: '700',
+                color: decision.decision_type === 'problem' ? '#EF4444' : decision.decision_type === 'need' ? '#F59E0B' : '#10B981',
+              }}>
+                {decision.decision_type === 'problem' ? 'P0 — Critical' : decision.decision_type === 'need' ? 'P1 — Important' : 'P2 — Aspiration'}
+              </Text>
+            </View>
+            {(decision.decision_type === 'problem' || decision.decision_type === 'need') && (
+              <Text style={{ fontSize: 11, color: '#B91C1C' }}>
+                Auto-reminder will appear on review date
+              </Text>
+            )}
+          </View>
+        )}
+      </Card>
+
+      {/* Document Learnings button (for completed decisions) */}
+      {decision.status === 'completed' && (
+        <TouchableOpacity
+          onPress={() => {
+            router.push({
+              pathname: '/(tabs)/journal',
+              params: { linkModule: 'decision', linkId: decision.id, linkTitle: decision.title },
+            });
+          }}
+          style={{
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+            paddingVertical: 14, backgroundColor: '#10B98115', borderRadius: 12,
+            borderWidth: 1.5, borderColor: '#10B981', marginTop: 4,
+          }}
+        >
+          <Ionicons name="book" size={18} color="#10B981" />
+          <Text style={{ fontSize: 14, fontWeight: '700', color: '#10B981' }}>
+            Document Learnings
+          </Text>
+        </TouchableOpacity>
       )}
 
       <View style={styles.navButtons}>

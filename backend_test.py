@@ -1,537 +1,411 @@
 #!/usr/bin/env python3
 """
-Comprehensive Backend Testing for Lifestyle Dezider and Lifestyle Analyzer
-Tests all endpoints mentioned in the review request.
+Backend Testing for Journal Enhancement Feature
+Tests the newly implemented journal endpoints with module linking and reminders
 """
 
-import asyncio
-import httpx
+import requests
 import json
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from typing import Dict, Any
 
-# Backend URL from environment
+# Backend URL from frontend/.env
 BACKEND_URL = "https://prr-actions-central.preview.emergentagent.com/api"
 
-class LifestyleBackendTester:
+class JournalEnhancementTester:
     def __init__(self):
         self.session_token = None
         self.user_data = None
-        self.created_routines = []
-        self.created_assessments = []
-        self.created_ctt_tasks = []
+        self.test_decision_id = None
+        self.test_journal_id = None
         
-    async def register_user(self):
-        """Register a new user for testing"""
+    def register_and_login(self) -> bool:
+        """Register a new user and get session token"""
         timestamp = int(time.time())
-        email = f"lifestyle.tester.{timestamp}@routinemaster.com"
+        email = f"journal.tester.{timestamp}@viewdezider.com"
         
-        async with httpx.AsyncClient() as client:
-            response = await client.post(f"{BACKEND_URL}/auth/register", json={
-                "email": email,
-                "password": "lifestyle123",
-                "name": f"Lifestyle Tester {timestamp}"
-            })
-            
-            if response.status_code != 200:
-                raise Exception(f"Registration failed: {response.status_code} - {response.text}")
-            
-            data = response.json()
-            self.session_token = data["session_token"]
-            self.user_data = data
-            print(f"✅ User registered: {email}")
-            return data
-    
-    def get_headers(self):
-        """Get authorization headers"""
-        return {"Authorization": f"Bearer {self.session_token}"}
-    
-    async def test_routine_crud(self):
-        """Test Lifestyle Routine CRUD operations"""
-        print("\n🧪 Testing Lifestyle Routine CRUD...")
+        # Register user
+        register_data = {
+            "email": email,
+            "password": "testpass123",
+            "name": f"Journal Tester {timestamp}"
+        }
         
-        async with httpx.AsyncClient() as client:
-            # Test 1: Create Morning Meditation routine
-            routine1_data = {
-                "name": "Morning Meditation",
-                "description": "20 min guided meditation",
-                "life_area": "spirituality_religion",
-                "frequency": "daily",
-                "time_slot": "6:00 AM - 6:20 AM",
-                "priority": "high",
-                "category": "primary",
-                "expected_value": "20",
-                "unit": "minutes",
-                "is_active": True
-            }
+        response = requests.post(f"{BACKEND_URL}/auth/register", json=register_data)
+        if response.status_code != 200:
+            print(f"❌ Registration failed: {response.status_code} - {response.text}")
+            return False
             
-            response = await client.post(
-                f"{BACKEND_URL}/lifestyle/routines",
-                json=routine1_data,
-                headers=self.get_headers()
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"Create routine 1 failed: {response.status_code} - {response.text}")
-            
-            routine1 = response.json()
-            self.created_routines.append(routine1)
-            print(f"✅ Created routine 1: {routine1['name']} (ID: {routine1['routine_id']})")
-            
-            # Test 2: Create Weekly Exercise Plan Review routine
-            routine2_data = {
-                "name": "Weekly Exercise Plan Review",
-                "description": "Review and adjust weekly exercise schedule",
-                "life_area": "holistic_health",
-                "frequency": "weekly",
-                "priority": "medium",
-                "category": "secondary",
-                "is_active": True
-            }
-            
-            response = await client.post(
-                f"{BACKEND_URL}/lifestyle/routines",
-                json=routine2_data,
-                headers=self.get_headers()
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"Create routine 2 failed: {response.status_code} - {response.text}")
-            
-            routine2 = response.json()
-            self.created_routines.append(routine2)
-            print(f"✅ Created routine 2: {routine2['name']} (ID: {routine2['routine_id']})")
-            
-            # Test 3: Create Monthly Budget Review routine
-            routine3_data = {
-                "name": "Monthly Budget Review",
-                "description": "Review monthly expenses and budget allocation",
-                "life_area": "finance",
-                "frequency": "monthly",
-                "priority": "high",
-                "category": "primary",
-                "is_active": True
-            }
-            
-            response = await client.post(
-                f"{BACKEND_URL}/lifestyle/routines",
-                json=routine3_data,
-                headers=self.get_headers()
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"Create routine 3 failed: {response.status_code} - {response.text}")
-            
-            routine3 = response.json()
-            self.created_routines.append(routine3)
-            print(f"✅ Created routine 3: {routine3['name']} (ID: {routine3['routine_id']})")
-            
-            # Test 4: List all routines (should return 3)
-            response = await client.get(
-                f"{BACKEND_URL}/lifestyle/routines",
-                headers=self.get_headers()
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"List routines failed: {response.status_code} - {response.text}")
-            
-            all_routines = response.json()
-            if len(all_routines) != 3:
-                raise Exception(f"Expected 3 routines, got {len(all_routines)}")
-            
-            print(f"✅ Listed all routines: {len(all_routines)} routines found")
-            
-            # Test 5: Filter by frequency (daily)
-            response = await client.get(
-                f"{BACKEND_URL}/lifestyle/routines?frequency=daily",
-                headers=self.get_headers()
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"Filter by frequency failed: {response.status_code} - {response.text}")
-            
-            daily_routines = response.json()
-            if len(daily_routines) != 1:
-                raise Exception(f"Expected 1 daily routine, got {len(daily_routines)}")
-            
-            print(f"✅ Filtered by frequency (daily): {len(daily_routines)} routines found")
-            
-            # Test 6: Get single routine
-            routine_id = routine1['routine_id']
-            response = await client.get(
-                f"{BACKEND_URL}/lifestyle/routines/{routine_id}",
-                headers=self.get_headers()
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"Get single routine failed: {response.status_code} - {response.text}")
-            
-            single_routine = response.json()
-            if single_routine['routine_id'] != routine_id:
-                raise Exception(f"Wrong routine returned: expected {routine_id}, got {single_routine['routine_id']}")
-            
-            print(f"✅ Retrieved single routine: {single_routine['name']}")
-            
-            # Test 7: Update routine (change priority)
-            update_data = {"priority": "medium"}
-            response = await client.put(
-                f"{BACKEND_URL}/lifestyle/routines/{routine_id}",
-                json=update_data,
-                headers=self.get_headers()
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"Update routine failed: {response.status_code} - {response.text}")
-            
-            updated_routine = response.json()
-            if updated_routine['priority'] != 'medium':
-                raise Exception(f"Priority not updated: expected 'medium', got {updated_routine['priority']}")
-            
-            print(f"✅ Updated routine priority: {updated_routine['priority']}")
-            
-            # Test 8: Delete last routine
-            routine_to_delete_id = routine3['routine_id']
-            response = await client.delete(
-                f"{BACKEND_URL}/lifestyle/routines/{routine_to_delete_id}",
-                headers=self.get_headers()
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"Delete routine failed: {response.status_code} - {response.text}")
-            
-            print(f"✅ Deleted routine: {routine3['name']}")
-            
-            # Test 9: Recreate the deleted routine
-            response = await client.post(
-                f"{BACKEND_URL}/lifestyle/routines",
-                json=routine3_data,
-                headers=self.get_headers()
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"Recreate routine failed: {response.status_code} - {response.text}")
-            
-            recreated_routine = response.json()
-            self.created_routines[2] = recreated_routine  # Update our tracking
-            print(f"✅ Recreated routine: {recreated_routine['name']} (ID: {recreated_routine['routine_id']})")
-            
-            # Test 10: Check dashboard stats
-            response = await client.get(
-                f"{BACKEND_URL}/lifestyle/dashboard",
-                headers=self.get_headers()
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"Dashboard failed: {response.status_code} - {response.text}")
-            
-            dashboard = response.json()
-            expected_fields = ['total_routines', 'active_routines', 'by_frequency', 'by_area']
-            for field in expected_fields:
-                if field not in dashboard:
-                    raise Exception(f"Dashboard missing field: {field}")
-            
-            if dashboard['active_routines'] != 3:
-                raise Exception(f"Expected 3 active routines in dashboard, got {dashboard['active_routines']}")
-            
-            print(f"✅ Dashboard stats: {dashboard['active_routines']} active routines, by_frequency: {dashboard['by_frequency']}")
-            
-            return True
+        data = response.json()
+        self.session_token = data.get("session_token")
+        self.user_data = data
+        print(f"✅ User registered: {email}")
+        return True
     
-    async def test_lifestyle_assessment(self):
-        """Test Lifestyle Assessment (PRR-based) functionality"""
-        print("\n🧪 Testing Lifestyle Assessment (PRR-based)...")
+    def get_headers(self) -> Dict[str, str]:
+        """Get headers with authentication"""
+        return {
+            "Authorization": f"Bearer {self.session_token}",
+            "Content-Type": "application/json"
+        }
+    
+    def test_enhanced_journal_create(self) -> bool:
+        """Test POST /api/journal with new fields (linked_module, entry_type)"""
+        print("\n🧪 Testing Enhanced Journal Create...")
         
-        async with httpx.AsyncClient() as client:
-            # Test 1: Start daily assessment
-            response = await client.post(
-                f"{BACKEND_URL}/lifestyle/start-assessment",
-                json={"period": "daily"},
-                headers=self.get_headers()
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"Start daily assessment failed: {response.status_code} - {response.text}")
-            
-            daily_assessment = response.json()
-            required_fields = ['decision_id', 'factors_count', 'period']
-            for field in required_fields:
-                if field not in daily_assessment:
-                    raise Exception(f"Daily assessment missing field: {field}")
-            
-            if daily_assessment['period'] != 'daily':
-                raise Exception(f"Expected period 'daily', got {daily_assessment['period']}")
-            
-            # Should match number of daily routines (1 from our test data)
-            if daily_assessment['factors_count'] != 1:
-                raise Exception(f"Expected 1 daily routine factor, got {daily_assessment['factors_count']}")
-            
-            self.created_assessments.append(daily_assessment)
-            print(f"✅ Started daily assessment: {daily_assessment['factors_count']} factors, decision_id: {daily_assessment['decision_id']}")
-            
-            # Test 2: Start weekly assessment
-            response = await client.post(
-                f"{BACKEND_URL}/lifestyle/start-assessment",
-                json={"period": "weekly"},
-                headers=self.get_headers()
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"Start weekly assessment failed: {response.status_code} - {response.text}")
-            
-            weekly_assessment = response.json()
-            if weekly_assessment['period'] != 'weekly':
-                raise Exception(f"Expected period 'weekly', got {weekly_assessment['period']}")
-            
-            # Should include daily + weekly routines (2 from our test data)
-            if weekly_assessment['factors_count'] != 2:
-                raise Exception(f"Expected 2 weekly routine factors, got {weekly_assessment['factors_count']}")
-            
-            self.created_assessments.append(weekly_assessment)
-            print(f"✅ Started weekly assessment: {weekly_assessment['factors_count']} factors, decision_id: {weekly_assessment['decision_id']}")
-            
-            # Test 3: Start monthly assessment
-            response = await client.post(
-                f"{BACKEND_URL}/lifestyle/start-assessment",
-                json={"period": "monthly"},
-                headers=self.get_headers()
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"Start monthly assessment failed: {response.status_code} - {response.text}")
-            
-            monthly_assessment = response.json()
-            if monthly_assessment['period'] != 'monthly':
-                raise Exception(f"Expected period 'monthly', got {monthly_assessment['period']}")
-            
-            # Should include all routines (3 from our test data)
-            if monthly_assessment['factors_count'] != 3:
-                raise Exception(f"Expected 3 monthly routine factors, got {monthly_assessment['factors_count']}")
-            
-            self.created_assessments.append(monthly_assessment)
-            print(f"✅ Started monthly assessment: {monthly_assessment['factors_count']} factors, decision_id: {monthly_assessment['decision_id']}")
-            
-            # Test 4: List assessments
-            response = await client.get(
-                f"{BACKEND_URL}/lifestyle/assessments",
-                headers=self.get_headers()
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"List assessments failed: {response.status_code} - {response.text}")
-            
-            assessments_list = response.json()
-            if len(assessments_list) != 3:
-                raise Exception(f"Expected 3 assessments, got {len(assessments_list)}")
-            
-            print(f"✅ Listed assessments: {len(assessments_list)} assessments found")
-            
-            # Test 5: Get analytics for daily period
-            response = await client.get(
-                f"{BACKEND_URL}/lifestyle/analytics?period=daily",
-                headers=self.get_headers()
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"Get analytics failed: {response.status_code} - {response.text}")
-            
-            analytics = response.json()
-            required_fields = ['trend', 'area_averages', 'avg_effectiveness', 'total_assessments']
-            for field in required_fields:
-                if field not in analytics:
-                    raise Exception(f"Analytics missing field: {field}")
-            
-            print(f"✅ Retrieved analytics: {analytics['total_assessments']} total assessments, avg effectiveness: {analytics['avg_effectiveness']}%")
-            
-            # Test 6: Check updated dashboard stats
-            response = await client.get(
-                f"{BACKEND_URL}/lifestyle/dashboard",
-                headers=self.get_headers()
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"Updated dashboard failed: {response.status_code} - {response.text}")
-            
-            dashboard = response.json()
-            print(f"✅ Updated dashboard stats: {dashboard['active_routines']} active routines, recent scores: {dashboard['recent_scores']}")
-            
-            return True
-    
-    async def test_ctt_import(self):
-        """Test Import from CTT functionality"""
-        print("\n🧪 Testing Import from CTT...")
+        # Test 1: Create journal entry with linked_module="decision" and entry_type="best_practice"
+        journal_data = {
+            "decision_title": "Career Decision Best Practice",
+            "decision_description": "Documenting the best practice from my recent career decision",
+            "linked_module": "decision",
+            "linked_id": "test-decision-123",
+            "linked_title": "Should I take the new job offer?",
+            "entry_type": "best_practice"
+        }
         
-        async with httpx.AsyncClient() as client:
-            # Test 1: Create a CTT routine task first
-            ctt_task_data = {
-                "task": "Daily Standup Meeting",
-                "is_routine": True,
-                "frequency": "daily",
-                "life_area": "career",
-                "priority": "medium",
-                "current_status": "open"
-            }
-            
-            response = await client.post(
-                f"{BACKEND_URL}/ctt/tasks",
-                json=ctt_task_data,
-                headers=self.get_headers()
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"Create CTT task failed: {response.status_code} - {response.text}")
-            
-            ctt_task = response.json()
-            self.created_ctt_tasks.append(ctt_task)
-            print(f"✅ Created CTT routine task: {ctt_task['task']} (ID: {ctt_task['task_id']})")
-            
-            # Test 2: Import from CTT
-            response = await client.post(
-                f"{BACKEND_URL}/lifestyle/import-from-ctt",
-                headers=self.get_headers()
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"Import from CTT failed: {response.status_code} - {response.text}")
-            
-            import_result = response.json()
-            required_fields = ['imported', 'total_ctt_routines']
-            for field in required_fields:
-                if field not in import_result:
-                    raise Exception(f"Import result missing field: {field}")
-            
-            if import_result['imported'] != 1:
-                raise Exception(f"Expected 1 imported routine, got {import_result['imported']}")
-            
-            print(f"✅ Imported from CTT: {import_result['imported']} routines imported from {import_result['total_ctt_routines']} CTT routines")
-            
-            # Test 3: Import from CTT again (should return imported=0 due to deduplication)
-            response = await client.post(
-                f"{BACKEND_URL}/lifestyle/import-from-ctt",
-                headers=self.get_headers()
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"Second import from CTT failed: {response.status_code} - {response.text}")
-            
-            second_import = response.json()
-            if second_import['imported'] != 0:
-                raise Exception(f"Expected 0 imported routines on second import (deduplication), got {second_import['imported']}")
-            
-            print(f"✅ Second import (deduplication test): {second_import['imported']} routines imported (expected 0)")
-            
-            # Test 4: Verify the imported routine appears in routine list
-            response = await client.get(
-                f"{BACKEND_URL}/lifestyle/routines",
-                headers=self.get_headers()
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"List routines after import failed: {response.status_code} - {response.text}")
-            
-            all_routines = response.json()
-            # Should now have 4 routines (3 original + 1 imported)
-            if len(all_routines) != 4:
-                raise Exception(f"Expected 4 routines after import, got {len(all_routines)}")
-            
-            # Find the imported routine
-            imported_routine = None
-            for routine in all_routines:
-                if routine.get('source_ctt_task_id') == ctt_task['task_id']:
-                    imported_routine = routine
-                    break
-            
-            if not imported_routine:
-                raise Exception("Imported routine not found in routine list")
-            
-            if imported_routine['name'] != ctt_task['task']:
-                raise Exception(f"Imported routine name mismatch: expected '{ctt_task['task']}', got '{imported_routine['name']}'")
-            
-            print(f"✅ Verified imported routine: {imported_routine['name']} appears in routine list")
-            
-            return True
-    
-    async def test_error_cases(self):
-        """Test error cases"""
-        print("\n🧪 Testing Error Cases...")
+        response = requests.post(f"{BACKEND_URL}/journal", json=journal_data, headers=self.get_headers())
+        if response.status_code != 200:
+            print(f"❌ Journal create failed: {response.status_code} - {response.text}")
+            return False
         
-        async with httpx.AsyncClient() as client:
-            # Test 1: Register a fresh user with no routines
-            timestamp = int(time.time())
-            fresh_email = f"fresh.user.{timestamp}@routinemaster.com"
-            
-            response = await client.post(f"{BACKEND_URL}/auth/register", json={
-                "email": fresh_email,
-                "password": "fresh123",
-                "name": f"Fresh User {timestamp}"
-            })
-            
-            if response.status_code != 200:
-                raise Exception(f"Fresh user registration failed: {response.status_code} - {response.text}")
-            
-            fresh_user_data = response.json()
-            fresh_token = fresh_user_data["session_token"]
-            fresh_headers = {"Authorization": f"Bearer {fresh_token}"}
-            
-            print(f"✅ Registered fresh user: {fresh_email}")
-            
-            # Test 2: Try to start assessment when no active routines exist (should return 400)
-            response = await client.post(
-                f"{BACKEND_URL}/lifestyle/start-assessment",
-                json={"period": "daily"},
-                headers=fresh_headers
-            )
-            
-            if response.status_code != 400:
-                raise Exception(f"Expected 400 for no routines, got {response.status_code}")
-            
-            error_data = response.json()
-            if "No active routines found" not in error_data.get("detail", ""):
-                raise Exception(f"Expected 'No active routines found' error, got: {error_data}")
-            
-            print(f"✅ Error case handled correctly: {error_data['detail']}")
-            
-            return True
+        data = response.json()
+        self.test_journal_id = data.get("id")
+        print(f"✅ Journal entry created with linked_module='decision' and entry_type='best_practice': {self.test_journal_id}")
+        
+        # Test 2: Create journal entry with linked_module="gem" and entry_type="learning"
+        journal_data2 = {
+            "decision_title": "Gem Goal Learning",
+            "decision_description": "Key learnings from my gem goal achievement",
+            "linked_module": "gem",
+            "linked_id": "test-gem-456",
+            "linked_title": "Complete fitness transformation",
+            "entry_type": "learning"
+        }
+        
+        response = requests.post(f"{BACKEND_URL}/journal", json=journal_data2, headers=self.get_headers())
+        if response.status_code != 200:
+            print(f"❌ Second journal create failed: {response.status_code} - {response.text}")
+            return False
+        
+        print(f"✅ Journal entry created with linked_module='gem' and entry_type='learning'")
+        
+        # Test 3: Test validation - invalid linked_module
+        invalid_data = {
+            "decision_title": "Invalid Test",
+            "decision_description": "Testing invalid linked_module",
+            "linked_module": "invalid_module",
+            "entry_type": "best_practice"
+        }
+        
+        response = requests.post(f"{BACKEND_URL}/journal", json=invalid_data, headers=self.get_headers())
+        if response.status_code != 400:
+            print(f"❌ Validation failed - should reject invalid linked_module: {response.status_code}")
+            return False
+        
+        print(f"✅ Validation working - invalid linked_module rejected with 400")
+        
+        # Test 4: Test validation - invalid entry_type
+        invalid_data2 = {
+            "decision_title": "Invalid Test 2",
+            "decision_description": "Testing invalid entry_type",
+            "linked_module": "decision",
+            "entry_type": "bad_type"
+        }
+        
+        response = requests.post(f"{BACKEND_URL}/journal", json=invalid_data2, headers=self.get_headers())
+        if response.status_code != 400:
+            print(f"❌ Validation failed - should reject invalid entry_type: {response.status_code}")
+            return False
+        
+        print(f"✅ Validation working - invalid entry_type rejected with 400")
+        
+        return True
     
-    async def run_all_tests(self):
-        """Run all tests in sequence"""
-        print("🚀 Starting Lifestyle Dezider and Lifestyle Analyzer Backend Testing...")
+    def test_enhanced_journal_get(self) -> bool:
+        """Test GET /api/journal with query params"""
+        print("\n🧪 Testing Enhanced Journal Get with Filters...")
+        
+        # Test 1: Get all journal entries (no filters)
+        response = requests.get(f"{BACKEND_URL}/journal", headers=self.get_headers())
+        if response.status_code != 200:
+            print(f"❌ Get all journal entries failed: {response.status_code} - {response.text}")
+            return False
+        
+        all_entries = response.json()
+        print(f"✅ Retrieved all journal entries: {len(all_entries)} entries")
+        
+        # Test 2: Filter by linked_module="decision"
+        response = requests.get(f"{BACKEND_URL}/journal?linked_module=decision", headers=self.get_headers())
+        if response.status_code != 200:
+            print(f"❌ Filter by linked_module failed: {response.status_code} - {response.text}")
+            return False
+        
+        decision_entries = response.json()
+        print(f"✅ Filtered by linked_module='decision': {len(decision_entries)} entries")
+        
+        # Test 3: Filter by entry_type="best_practice"
+        response = requests.get(f"{BACKEND_URL}/journal?entry_type=best_practice", headers=self.get_headers())
+        if response.status_code != 200:
+            print(f"❌ Filter by entry_type failed: {response.status_code} - {response.text}")
+            return False
+        
+        best_practice_entries = response.json()
+        print(f"✅ Filtered by entry_type='best_practice': {len(best_practice_entries)} entries")
+        
+        # Verify filtering worked correctly
+        if len(decision_entries) > 0:
+            for entry in decision_entries:
+                if entry.get("linked_module") != "decision":
+                    print(f"❌ Filter failed - found non-decision entry: {entry.get('linked_module')}")
+                    return False
+        
+        if len(best_practice_entries) > 0:
+            for entry in best_practice_entries:
+                if entry.get("entry_type") != "best_practice":
+                    print(f"❌ Filter failed - found non-best_practice entry: {entry.get('entry_type')}")
+                    return False
+        
+        print(f"✅ All filters working correctly")
+        return True
+    
+    def create_test_decision_with_review_date(self) -> bool:
+        """Create a PRR decision with implementation_review_date for testing reminders"""
+        print("\n🧪 Creating Test Decision with Review Date...")
+        
+        # Create decision with past implementation_review_date
+        past_date = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        
+        decision_data = {
+            "title": "Test Problem Decision for Reminders",
+            "context": "This is a test decision to verify reminder functionality",
+            "decision_type": "problem",
+            "implementation_review_date": past_date
+        }
+        
+        response = requests.post(f"{BACKEND_URL}/decisions", json=decision_data, headers=self.get_headers())
+        if response.status_code != 200:
+            print(f"❌ Decision creation failed: {response.status_code} - {response.text}")
+            return False
+        
+        data = response.json()
+        self.test_decision_id = data.get("id")
+        print(f"✅ Test decision created with past review date: {self.test_decision_id}")
+        
+        return True
+    
+    def test_journal_reminders(self) -> bool:
+        """Test GET /api/journal/reminders"""
+        print("\n🧪 Testing Journal Reminders...")
+        
+        # First, get reminders - should include our test decision
+        response = requests.get(f"{BACKEND_URL}/journal/reminders", headers=self.get_headers())
+        if response.status_code != 200:
+            print(f"❌ Get reminders failed: {response.status_code} - {response.text}")
+            return False
+        
+        reminders = response.json()
+        print(f"✅ Retrieved reminders: {len(reminders)} reminders")
+        
+        # Verify our test decision is in reminders with P0 priority
+        found_test_decision = False
+        for reminder in reminders:
+            if reminder.get("decision_id") == self.test_decision_id:
+                found_test_decision = True
+                if reminder.get("priority_label") != "P0":
+                    print(f"❌ Wrong priority label: expected P0, got {reminder.get('priority_label')}")
+                    return False
+                print(f"✅ Test decision found in reminders with priority P0")
+                break
+        
+        if not found_test_decision:
+            print(f"❌ Test decision not found in reminders")
+            return False
+        
+        # Now create a journal entry linked to this decision
+        journal_data = {
+            "decision_title": "Documenting Problem Decision",
+            "decision_description": "Recording learnings from the problem decision",
+            "linked_module": "decision",
+            "linked_id": self.test_decision_id,
+            "entry_type": "learning"
+        }
+        
+        response = requests.post(f"{BACKEND_URL}/journal", json=journal_data, headers=self.get_headers())
+        if response.status_code != 200:
+            print(f"❌ Journal entry creation failed: {response.status_code} - {response.text}")
+            return False
+        
+        print(f"✅ Journal entry created linked to test decision")
+        
+        # Get reminders again - should NOT include our test decision anymore
+        response = requests.get(f"{BACKEND_URL}/journal/reminders", headers=self.get_headers())
+        if response.status_code != 200:
+            print(f"❌ Get reminders after journal creation failed: {response.status_code} - {response.text}")
+            return False
+        
+        reminders_after = response.json()
+        print(f"✅ Retrieved reminders after journal creation: {len(reminders_after)} reminders")
+        
+        # Verify our test decision is NOT in reminders anymore
+        for reminder in reminders_after:
+            if reminder.get("decision_id") == self.test_decision_id:
+                print(f"❌ Test decision still in reminders after journal entry created")
+                return False
+        
+        print(f"✅ Test decision correctly removed from reminders after journal entry created")
+        return True
+    
+    def test_journal_linkable_items(self) -> bool:
+        """Test GET /api/journal/linkable-items"""
+        print("\n🧪 Testing Journal Linkable Items...")
+        
+        response = requests.get(f"{BACKEND_URL}/journal/linkable-items", headers=self.get_headers())
+        if response.status_code != 200:
+            print(f"❌ Get linkable items failed: {response.status_code} - {response.text}")
+            return False
+        
+        linkable_items = response.json()
+        print(f"✅ Retrieved linkable items")
+        
+        # Verify structure - should have all 6 module keys
+        expected_keys = ["decision", "solution_finder", "solution_matrix", "gem", "ctt", "lifestyle"]
+        for key in expected_keys:
+            if key not in linkable_items:
+                print(f"❌ Missing key in linkable items: {key}")
+                return False
+        
+        print(f"✅ All expected module keys present: {expected_keys}")
+        
+        # Verify our test decision is in the decision array
+        decisions = linkable_items.get("decision", [])
+        found_test_decision = False
+        for decision in decisions:
+            if decision.get("id") == self.test_decision_id:
+                found_test_decision = True
+                print(f"✅ Test decision found in linkable items: {decision.get('title')}")
+                break
+        
+        if not found_test_decision:
+            print(f"❌ Test decision not found in linkable items")
+            return False
+        
+        return True
+    
+    def test_prr_decision_implementation_review_date(self) -> bool:
+        """Test PRR Decision with implementation_review_date field"""
+        print("\n🧪 Testing PRR Decision implementation_review_date Field...")
+        
+        # Test 1: Create decision with implementation_review_date
+        future_date = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+        
+        decision_data = {
+            "title": "Test Decision with Review Date",
+            "context": "Testing implementation_review_date field",
+            "decision_type": "need",
+            "implementation_review_date": future_date
+        }
+        
+        response = requests.post(f"{BACKEND_URL}/decisions", json=decision_data, headers=self.get_headers())
+        if response.status_code != 200:
+            print(f"❌ Decision creation with review date failed: {response.status_code} - {response.text}")
+            return False
+        
+        data = response.json()
+        new_decision_id = data.get("id")
+        print(f"✅ Decision created with implementation_review_date: {new_decision_id}")
+        
+        # Test 2: Verify the field is stored by retrieving the decision
+        response = requests.get(f"{BACKEND_URL}/decisions/{new_decision_id}", headers=self.get_headers())
+        if response.status_code != 200:
+            print(f"❌ Get decision failed: {response.status_code} - {response.text}")
+            return False
+        
+        decision = response.json()
+        stored_date = decision.get("implementation_review_date")
+        if not stored_date:
+            print(f"❌ implementation_review_date not stored")
+            return False
+        
+        print(f"✅ implementation_review_date stored correctly: {stored_date}")
+        
+        # Test 3: Update decision with new implementation_review_date
+        new_future_date = (datetime.now(timezone.utc) + timedelta(days=60)).isoformat()
+        
+        update_data = {
+            "implementation_review_date": new_future_date
+        }
+        
+        response = requests.put(f"{BACKEND_URL}/decisions/{new_decision_id}", json=update_data, headers=self.get_headers())
+        if response.status_code != 200:
+            print(f"❌ Decision update with review date failed: {response.status_code} - {response.text}")
+            return False
+        
+        print(f"✅ Decision updated with new implementation_review_date")
+        
+        # Verify the update
+        response = requests.get(f"{BACKEND_URL}/decisions/{new_decision_id}", headers=self.get_headers())
+        if response.status_code != 200:
+            print(f"❌ Get updated decision failed: {response.status_code} - {response.text}")
+            return False
+        
+        updated_decision = response.json()
+        updated_date = updated_decision.get("implementation_review_date")
+        if updated_date == stored_date:
+            print(f"❌ implementation_review_date not updated")
+            return False
+        
+        print(f"✅ implementation_review_date updated correctly: {updated_date}")
+        
+        return True
+    
+    def run_all_tests(self) -> bool:
+        """Run all journal enhancement tests"""
+        print("🚀 Starting Journal Enhancement Feature Testing...")
         print(f"Backend URL: {BACKEND_URL}")
         
-        try:
-            # Step 1: Register user
-            await self.register_user()
-            
-            # Step 2: Test Routine CRUD
-            await self.test_routine_crud()
-            
-            # Step 3: Test Lifestyle Assessment
-            await self.test_lifestyle_assessment()
-            
-            # Step 4: Test CTT Import
-            await self.test_ctt_import()
-            
-            # Step 5: Test Error Cases
-            await self.test_error_cases()
-            
-            print("\n🎉 ALL TESTS PASSED! Lifestyle Dezider and Lifestyle Analyzer backend is working correctly.")
-            return True
-            
-        except Exception as e:
-            print(f"\n❌ TEST FAILED: {str(e)}")
+        # Step 1: Register and login
+        if not self.register_and_login():
             return False
+        
+        # Step 2: Test enhanced journal create
+        if not self.test_enhanced_journal_create():
+            return False
+        
+        # Step 3: Test enhanced journal get with filters
+        if not self.test_enhanced_journal_get():
+            return False
+        
+        # Step 4: Create test decision for reminders
+        if not self.create_test_decision_with_review_date():
+            return False
+        
+        # Step 5: Test journal reminders
+        if not self.test_journal_reminders():
+            return False
+        
+        # Step 6: Test journal linkable items
+        if not self.test_journal_linkable_items():
+            return False
+        
+        # Step 7: Test PRR decision implementation_review_date field
+        if not self.test_prr_decision_implementation_review_date():
+            return False
+        
+        print("\n🎉 ALL JOURNAL ENHANCEMENT TESTS PASSED!")
+        return True
 
-async def main():
-    """Main test runner"""
-    tester = LifestyleBackendTester()
-    success = await tester.run_all_tests()
+def main():
+    """Main test execution"""
+    tester = JournalEnhancementTester()
+    success = tester.run_all_tests()
     
     if success:
-        print("\n✅ COMPREHENSIVE TESTING COMPLETE: All Lifestyle endpoints working correctly!")
+        print("\n✅ Journal Enhancement Feature Testing Complete - All Tests Passed!")
+        exit(0)
     else:
-        print("\n❌ TESTING FAILED: Some endpoints have issues.")
-    
-    return success
+        print("\n❌ Journal Enhancement Feature Testing Failed!")
+        exit(1)
 
 if __name__ == "__main__":
-    result = asyncio.run(main())
-    exit(0 if result else 1)
+    main()

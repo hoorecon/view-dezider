@@ -37,6 +37,16 @@ interface CTTStats {
   one_time_count: number;
 }
 
+interface JournalReminder {
+  decision_id: string;
+  title: string;
+  decision_type: string;
+  life_area: string;
+  priority_label: string;
+  implementation_review_date: string;
+  status: string;
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
@@ -46,6 +56,7 @@ export default function HomeScreen() {
   const [inboxPending, setInboxPending] = useState(0);
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags>({ solution_finder: false, solution_matrix: false });
   const [cttStats, setCttStats] = useState<CTTStats | null>(null);
+  const [journalReminders, setJournalReminders] = useState<JournalReminder[]>([]);
 
   const fetchStats = async () => {
     try {
@@ -95,8 +106,17 @@ export default function HomeScreen() {
     }
   };
 
+  const fetchJournalReminders = async () => {
+    try {
+      const response = await api.get('/journal/reminders');
+      setJournalReminders(response.data || []);
+    } catch (error) {
+      console.error('Error fetching journal reminders:', error);
+    }
+  };
+
   const fetchAll = async () => {
-    await Promise.all([fetchStats(), fetchUnreadCount(), fetchInboxCount(), fetchFeatureFlags(), fetchCttStats()]);
+    await Promise.all([fetchStats(), fetchUnreadCount(), fetchInboxCount(), fetchFeatureFlags(), fetchCttStats(), fetchJournalReminders()]);
   };
 
   useFocusEffect(
@@ -170,6 +190,28 @@ export default function HomeScreen() {
         </LinearGradient>
 
         <View style={styles.content}>
+          {/* Journal Review Reminders Banner */}
+          {journalReminders.length > 0 && (
+            <TouchableOpacity
+              style={styles.reminderBanner}
+              onPress={() => router.push('/(tabs)/journal')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.reminderBannerIcon}>
+                <Ionicons name="book" size={20} color="#FFFFFF" />
+              </View>
+              <View style={styles.reminderBannerContent}>
+                <Text style={styles.reminderBannerTitle}>
+                  {journalReminders.length} Decision{journalReminders.length > 1 ? 's' : ''} Need{journalReminders.length === 1 ? 's' : ''} Review
+                </Text>
+                <Text style={styles.reminderBannerText}>
+                  Document learnings from your {journalReminders[0]?.priority_label === 'P0' ? 'critical' : 'important'} decisions
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#EF4444" />
+            </TouchableOpacity>
+          )}
+
           {/* Quick Actions */}
           <Text style={styles.sectionTitle}>Quick Actions</Text>
           <View style={styles.quickActions}>
@@ -559,6 +601,39 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  // Reminder Banner
+  reminderBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    gap: 12,
+  },
+  reminderBannerIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#EF4444',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  reminderBannerContent: {
+    flex: 1,
+  },
+  reminderBannerTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#991B1B',
+  },
+  reminderBannerText: {
+    fontSize: 12,
+    color: '#B91C1C',
+    marginTop: 2,
   },
   header: {
     padding: 24,

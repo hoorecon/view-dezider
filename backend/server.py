@@ -141,6 +141,7 @@ class PRRDecision(BaseModel):
     mpps_improvements: List[MPPSImprovement] = []  # Factor improvement plans
     mpps_projected_worth: Optional[float] = None  # Projected worth after improvements
     mpps_timeframe: Optional[str] = None  # Common timeframe for MPPS (e.g., "3 months")
+    implementation_review_date: Optional[datetime] = None  # Date to review implementation and document learnings
     status: str = "draft"  # "draft", "in_progress", "completed"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -151,6 +152,7 @@ class PRRDecisionCreate(BaseModel):
     folder: str = ""
     life_area: Optional[str] = None  # Career, Finance, Health, Relationships, Education, etc.
     decision_type: Optional[str] = None  # problem, need, aspiration
+    implementation_review_date: Optional[datetime] = None
 
 class PRRDecisionUpdate(BaseModel):
     title: Optional[str] = None
@@ -170,6 +172,7 @@ class PRRDecisionUpdate(BaseModel):
     mpps_timeframe: Optional[str] = None
     life_area: Optional[str] = None
     decision_type: Optional[str] = None
+    implementation_review_date: Optional[datetime] = None
     status: Optional[str] = None
 
 class CloneDecisionRequest(BaseModel):
@@ -287,11 +290,18 @@ class ModeAssessmentCreate(BaseModel):
     answers: Dict[str, int]
 
 # Decision Journal Models
+VALID_LINKED_MODULES = ["decision", "solution_finder", "solution_matrix", "gem", "ctt", "lifestyle"]
+VALID_ENTRY_TYPES = ["best_practice", "learning"]
+
 class JournalEntry(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     user_id: str
-    decision_title: str
-    decision_description: str
+    decision_title: str  # Title of the journal entry
+    decision_description: str  # Description/content
+    linked_module: Optional[str] = None  # decision, solution_finder, solution_matrix, gem, ctt, lifestyle
+    linked_id: Optional[str] = None  # ID of the linked item
+    linked_title: Optional[str] = None  # Cached title of linked item
+    entry_type: Optional[str] = None  # best_practice, learning
     outcome: str = ""
     outcome_rating: int = 0  # 1-5
     lessons_learned: str = ""
@@ -305,11 +315,19 @@ class JournalEntry(BaseModel):
 class JournalEntryCreate(BaseModel):
     decision_title: str
     decision_description: str
+    linked_module: Optional[str] = None
+    linked_id: Optional[str] = None
+    linked_title: Optional[str] = None
+    entry_type: Optional[str] = None  # best_practice, learning
     decision_date: Optional[datetime] = None
 
 class JournalEntryUpdate(BaseModel):
     decision_title: Optional[str] = None
     decision_description: Optional[str] = None
+    linked_module: Optional[str] = None
+    linked_id: Optional[str] = None
+    linked_title: Optional[str] = None
+    entry_type: Optional[str] = None
     outcome: Optional[str] = None
     outcome_rating: Optional[int] = None
     lessons_learned: Optional[str] = None
@@ -894,7 +912,10 @@ async def create_decision(decision: PRRDecisionCreate, user: dict = Depends(get_
         user_id=user["user_id"],
         title=decision.title,
         context=decision.context,
-        folder=decision.folder
+        folder=decision.folder,
+        life_area=decision.life_area,
+        decision_type=decision.decision_type,
+        implementation_review_date=decision.implementation_review_date
     )
     doc_dict = decision_doc.dict()
     doc_dict["org_id"] = org_id  # Multi-tenant data isolation
@@ -1575,11 +1596,43 @@ async def get_assessment_history(user: dict = Depends(get_current_user)):
 
 @api_router.post("/journal", response_model=dict)
 async def create_journal_entry(entry: JournalEntryCreate, user: dict = Depends(get_current_user)):
-    """Create a new journal entry"""
+    """Create a new journal entry - must be linked to a module"""
+    # Validate linked_module if provided
+    if entry.linked_module and entry.linked_module not in VALID_LINKED_MODULES:
+        raise HTTPException(status_code=400, detail=f"Invalid linked_module. Must be one of: {VALID_LINKED_MODULES}")
+    if entry.entry_type and entry.entry_type not in VALID_ENTRY_TYPES:
+        raise HTTPException(status_code=400, detail=f"Invalid entry_type. Must be one of: {VALID_ENTRY_TYPES}")
+    
+    # Auto-fetch linked title if linked_module and linked_id provided
+    linked_title = entry.linked_title
+    if entry.linked_module and entry.linked_id and not linked_title:
+        if entry.linked_module == "decision":
+            doc = await db.decisions.find_one({"id": entry.linked_id}, {"title": 1})
+            linked_title = doc.get("title") if doc else None
+        elif entry.linked_module == "solution_finder":
+            doc = await db.solution_finders.find_one({"id": entry.linked_id}, {"title": 1})
+            linked_title = doc.get("title") if doc else None
+        elif entry.linked_module == "solution_matrix":
+            doc = await db.solution_matrices.find_one({"id": entry.linked_id}, {"smart_goal": 1})
+            linked_title = doc.get("smart_goal") if doc else None
+        elif entry.linked_module == "gem":
+            doc = await db.gem_goals.find_one({"id": entry.linked_id}, {"title": 1})
+            linked_title = doc.get("title") if doc else None
+        elif entry.linked_module == "ctt":
+            doc = await db.ctt_tasks.find_one({"id": entry.linked_id}, {"task": 1})
+            linked_title = doc.get("task") if doc else None
+        elif entry.linked_module == "lifestyle":
+            doc = await db.lifestyle_routines.find_one({"id": entry.linked_id}, {"name": 1})
+            linked_title = doc.get("name") if doc else None
+
     journal_entry = JournalEntry(
         user_id=user["user_id"],
         decision_title=entry.decision_title,
         decision_description=entry.decision_description,
+        linked_module=entry.linked_module,
+        linked_id=entry.linked_id,
+        linked_title=linked_title or entry.linked_title,
+        entry_type=entry.entry_type,
         decision_date=entry.decision_date or datetime.now(timezone.utc)
     )
     
@@ -1587,13 +1640,107 @@ async def create_journal_entry(entry: JournalEntryCreate, user: dict = Depends(g
     return {"id": journal_entry.id, "message": "Journal entry created"}
 
 @api_router.get("/journal", response_model=List[dict])
-async def get_journal_entries(user: dict = Depends(get_current_user)):
-    """Get all journal entries for the current user"""
+async def get_journal_entries(
+    user: dict = Depends(get_current_user),
+    linked_module: Optional[str] = None,
+    linked_id: Optional[str] = None,
+    entry_type: Optional[str] = None
+):
+    """Get all journal entries for the current user, with optional filters"""
+    query = {"user_id": user["user_id"]}
+    if linked_module:
+        query["linked_module"] = linked_module
+    if linked_id:
+        query["linked_id"] = linked_id
+    if entry_type:
+        query["entry_type"] = entry_type
     entries = await db.journal.find(
-        {"user_id": user["user_id"]},
+        query,
         {"_id": 0}
     ).sort("created_at", -1).to_list(100)
     return entries
+
+@api_router.get("/journal/reminders", response_model=List[dict])
+async def get_journal_reminders(user: dict = Depends(get_current_user)):
+    """Get decisions that need journal review (P0: problem, P1: need) past their review date"""
+    now = datetime.now(timezone.utc)
+    
+    # Find decisions with implementation_review_date <= now and decision_type in [problem, need]
+    decisions = await db.decisions.find(
+        {
+            "user_id": user["user_id"],
+            "implementation_review_date": {"$lte": now, "$ne": None},
+            "decision_type": {"$in": ["problem", "need"]},
+        },
+        {"_id": 0}
+    ).sort("implementation_review_date", 1).to_list(50)
+    
+    # Filter out those that already have a linked journal entry
+    reminders = []
+    for dec in decisions:
+        existing_journal = await db.journal.find_one({
+            "user_id": user["user_id"],
+            "linked_module": "decision",
+            "linked_id": dec["id"]
+        })
+        if not existing_journal:
+            priority_label = "P0" if dec.get("decision_type") == "problem" else "P1"
+            reminders.append({
+                "decision_id": dec["id"],
+                "title": dec.get("title", ""),
+                "decision_type": dec.get("decision_type", ""),
+                "life_area": dec.get("life_area", ""),
+                "priority_label": priority_label,
+                "implementation_review_date": dec.get("implementation_review_date"),
+                "status": dec.get("status", ""),
+                "created_at": dec.get("created_at"),
+            })
+    
+    return reminders
+
+@api_router.get("/journal/linkable-items", response_model=dict)
+async def get_linkable_items(user: dict = Depends(get_current_user)):
+    """Get all items that can be linked to a journal entry"""
+    user_id = user["user_id"]
+    
+    decisions = await db.decisions.find(
+        {"user_id": user_id},
+        {"_id": 0, "id": 1, "title": 1, "decision_type": 1, "life_area": 1, "status": 1}
+    ).sort("created_at", -1).to_list(50)
+    
+    solution_finders = await db.solution_finders.find(
+        {"user_id": user_id},
+        {"_id": 0, "id": 1, "title": 1}
+    ).sort("created_at", -1).to_list(50)
+    
+    solution_matrices = await db.solution_matrices.find(
+        {"user_id": user_id},
+        {"_id": 0, "id": 1, "smart_goal": 1, "area_of_life": 1}
+    ).sort("created_at", -1).to_list(50)
+    
+    gem_goals = await db.gem_goals.find(
+        {"user_id": user_id},
+        {"_id": 0, "id": 1, "title": 1, "goal_type": 1, "life_area": 1}
+    ).sort("created_at", -1).to_list(50)
+    
+    ctt_tasks = await db.ctt_tasks.find(
+        {"user_id": user_id},
+        {"_id": 0, "id": 1, "task": 1, "life_area": 1, "status": 1}
+    ).sort("created_at", -1).to_list(50)
+    
+    lifestyle_routines = await db.lifestyle_routines.find(
+        {"user_id": user_id},
+        {"_id": 0, "id": 1, "name": 1, "life_area": 1, "frequency": 1}
+    ).sort("created_at", -1).to_list(50)
+    
+    return {
+        "decision": [{"id": d["id"], "title": d.get("title", ""), "extra": d.get("decision_type", "")} for d in decisions],
+        "solution_finder": [{"id": d["id"], "title": d.get("title", ""), "extra": ""} for d in solution_finders],
+        "solution_matrix": [{"id": d["id"], "title": d.get("smart_goal", ""), "extra": d.get("area_of_life", "")} for d in solution_matrices],
+        "gem": [{"id": d["id"], "title": d.get("title", ""), "extra": d.get("goal_type", "")} for d in gem_goals],
+        "ctt": [{"id": d["id"], "title": d.get("task", ""), "extra": d.get("status", "")} for d in ctt_tasks],
+        "lifestyle": [{"id": d["id"], "title": d.get("name", ""), "extra": d.get("frequency", "")} for d in lifestyle_routines],
+    }
 
 @api_router.get("/journal/{entry_id}")
 async def get_journal_entry(entry_id: str, user: dict = Depends(get_current_user)):

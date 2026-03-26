@@ -81,6 +81,7 @@ export interface Decision {
   mpps_timeframe?: string;
   life_area?: string;
   decision_type?: string;
+  implementation_review_date?: string;
   status: string;
   folder?: string;
   reflection?: string;

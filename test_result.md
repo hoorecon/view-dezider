@@ -2031,3 +2031,69 @@ agent_communication:
         agent: "testing"
         comment: "✅ LIFESTYLE ASSESSMENT (PRR-BASED) COMPREHENSIVE TESTING PASSED: All 6 assessment operations working perfectly! (1) POST /api/lifestyle/start-assessment with period='daily' creates PRR decision with 1 factor (daily routines only), returns proper structure with decision_id, factors_count, period, message, (2) POST /api/lifestyle/start-assessment with period='weekly' includes daily+weekly routines (2 factors), (3) POST /api/lifestyle/start-assessment with period='monthly' includes all routines (3 factors), (4) GET /api/lifestyle/assessments lists all created assessments (returned 3), (5) GET /api/lifestyle/analytics?period=daily returns proper analytics structure with trend, area_averages, avg_effectiveness, total_assessments fields, (6) GET /api/lifestyle/dashboard updated stats show recent_scores array. Assessment system correctly converts lifestyle routines into PRR decision factors with proper metadata (_routine_id, _frequency, _life_area, _time_slot). Single option 'My Lifestyle' created for assessment. Period-based filtering working correctly: daily (hourly+daily), weekly (hourly+daily+weekly), monthly (all frequencies). Complete PRR-based lifestyle assessment workflow verified."
 
+
+  - task: "Journal Entry with Module Linking (Create/Read with linked_module, linked_id, entry_type)"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Updated Journal schema with linked_module (decision/solution_finder/solution_matrix/gem/ctt/lifestyle), linked_id, linked_title, entry_type (best_practice/learning). POST /api/journal now validates linked_module and entry_type, auto-fetches linked_title. GET /api/journal supports query params: linked_module, linked_id, entry_type."
+      - working: true
+        agent: "testing"
+        comment: "✅ JOURNAL ENTRY WITH MODULE LINKING COMPREHENSIVE TESTING PASSED: All 4 enhanced journal create tests successful! (1) POST /api/journal with linked_module='decision' and entry_type='best_practice' creates entry successfully with proper validation and storage, (2) POST /api/journal with linked_module='gem' and entry_type='learning' creates entry successfully, (3) Validation working correctly - invalid linked_module 'invalid_module' properly rejected with 400 status, (4) Validation working correctly - invalid entry_type 'bad_type' properly rejected with 400 status. Enhanced journal creation with module linking and entry types fully functional with proper validation."
+
+  - task: "Journal Reminders API (GET /api/journal/reminders)"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "New GET /api/journal/reminders endpoint. Returns decisions with implementation_review_date <= now, decision_type in [problem, need] (P0/P1), that don't have a linked journal entry yet. Each reminder includes priority_label (P0/P1)."
+      - working: true
+        agent: "testing"
+        comment: "✅ JOURNAL REMINDERS API COMPREHENSIVE TESTING PASSED: Complete reminder workflow tested successfully! (1) Created test decision with decision_type='problem' and past implementation_review_date, (2) GET /api/journal/reminders returns decision with correct priority_label='P0' for problem type, (3) Created journal entry linked to test decision with linked_module='decision' and entry_type='learning', (4) GET /api/journal/reminders after journal creation correctly excludes the decision (0 reminders returned). Reminder system properly filters decisions needing review and excludes those already documented in journal. P0/P1 priority labeling working correctly."
+
+  - task: "Journal Linkable Items API (GET /api/journal/linkable-items)"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "New GET /api/journal/linkable-items endpoint. Returns all user's items from 6 modules (decision, solution_finder, solution_matrix, gem, ctt, lifestyle) that can be linked to journal entries."
+      - working: true
+        agent: "testing"
+        comment: "✅ JOURNAL LINKABLE ITEMS API TESTING PASSED: GET /api/journal/linkable-items endpoint working perfectly! (1) Returns proper structure with all 6 expected module keys: decision, solution_finder, solution_matrix, gem, ctt, lifestyle, (2) Test decision properly appears in decision array with correct id and title, (3) All module arrays properly structured for frontend consumption. Linkable items endpoint provides complete catalog of user's items across all modules for journal linking functionality."
+
+  - task: "PRR Decision implementation_review_date field"
+    implemented: true
+    working: true
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added implementation_review_date to PRRDecision, PRRDecisionCreate, and PRRDecisionUpdate models. Create endpoint passes it through. Used by journal/reminders endpoint."
+      - working: true
+        agent: "testing"
+        comment: "✅ PRR DECISION IMPLEMENTATION_REVIEW_DATE FIELD COMPREHENSIVE TESTING PASSED: All 3 implementation review date tests successful! (1) POST /api/decisions with implementation_review_date creates decision successfully and stores date field correctly, (2) GET /api/decisions/{id} retrieves decision with implementation_review_date field properly persisted, (3) PUT /api/decisions/{id} with new implementation_review_date updates field successfully and persists changes. Implementation review date field fully functional for create, read, and update operations. Field properly integrated with journal reminders system."
+
+
+  - agent: "main"
+    message: "FORKED SESSION - Implemented Journal Enhancement Feature: (1) Updated Journal schema with linked_module (decision/solution_finder/solution_matrix/gem/ctt/lifestyle), linked_id, linked_title, entry_type (best_practice/learning). (2) POST /api/journal now validates linked_module and entry_type, auto-fetches linked_title from the linked collection. GET /api/journal now supports query params: linked_module, linked_id, entry_type. (3) NEW endpoint GET /api/journal/reminders - returns P0 (problem) and P1 (need) decisions past their implementation_review_date that don't have journal entries yet. (4) NEW endpoint GET /api/journal/linkable-items - returns all user's items from 6 modules. (5) Added implementation_review_date field to PRRDecision, PRRDecisionCreate, PRRDecisionUpdate models. (6) Frontend: Revamped Journal screen with module linking selector, entry type cards (Best Practice / Learning), filter chips, reminder banner. Step 10 now has Implementation Review Date input and Document Learnings button. Dashboard shows red reminder banner when P0/P1 decisions need review. Please test: POST /api/journal with linked_module/entry_type, GET /api/journal with filters, GET /api/journal/reminders, GET /api/journal/linkable-items, POST /api/decisions with implementation_review_date, PUT /api/decisions/{id} with implementation_review_date."
+  - agent: "testing"
+    message: "✅ JOURNAL ENHANCEMENT FEATURE COMPREHENSIVE TESTING COMPLETE: All 4 new backend tasks tested successfully! (1) Journal Entry with Module Linking - POST /api/journal with linked_module/entry_type working perfectly, validation rejecting invalid values with 400 status, GET /api/journal filters by linked_module and entry_type working correctly, (2) Journal Reminders API - GET /api/journal/reminders returns P0/P1 decisions past review date, correctly excludes decisions with existing journal entries, priority labeling working (P0 for problem, P1 for need), (3) Journal Linkable Items API - GET /api/journal/linkable-items returns all 6 module arrays (decision/solution_finder/solution_matrix/gem/ctt/lifestyle) with proper structure, (4) PRR Decision implementation_review_date field - create/read/update operations all working, field properly stored and retrieved. Complete end-to-end journal enhancement workflow tested with realistic data. All new endpoints functional and properly integrated."
