@@ -25,8 +25,9 @@ const TYPES = [
 ];
 
 const VISIBILITY = [
-  { id: 'PRIVATE', icon: 'lock-closed', label: 'Private (Only Me)' },
-  { id: 'ORG', icon: 'people', label: 'My Organization' },
+  { id: 'PRIVATE', icon: 'lock-closed', label: 'Private (Only Me)', desc: 'Only visible to you' },
+  { id: 'ORG', icon: 'people', label: 'My Organization', desc: 'Visible to your org members' },
+  { id: 'PUBLIC', icon: 'globe', label: 'Public (Share with Everyone)', desc: 'Subject to admin review & approval' },
 ];
 
 export default function AddSolutionScreen() {
@@ -100,7 +101,10 @@ export default function AddSolutionScreen() {
         headers: { Authorization: `Bearer ${session}` },
       });
 
-      Alert.alert('Success', 'Solution added to store!', [
+      const successMsg = form.visibility === 'PUBLIC'
+        ? 'Solution submitted for admin review. It will be visible to everyone once approved!'
+        : 'Solution added to store!';
+      Alert.alert('Success', successMsg, [
         { text: 'OK', onPress: () => router.back() },
       ]);
     } catch (e: any) {
@@ -195,7 +199,11 @@ export default function AddSolutionScreen() {
           style={[styles.visOption, form.visibility === v.id && styles.visOptionActive]}
           onPress={() => updateForm('visibility', v.id)}>
           <Ionicons name={v.icon as any} size={18} color={form.visibility === v.id ? COLORS.primary : COLORS.textMuted} />
-          <Text style={[styles.visText, form.visibility === v.id && { color: COLORS.primary }]}>{v.label}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.visText, form.visibility === v.id && { color: COLORS.primary }]}>{v.label}</Text>
+            <Text style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 1 }}>{v.desc}</Text>
+          </View>
+          {form.visibility === v.id && <Ionicons name="checkmark-circle" size={18} color={COLORS.primary} />}
         </TouchableOpacity>
       ))}
 

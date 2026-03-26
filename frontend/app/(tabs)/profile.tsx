@@ -810,6 +810,36 @@ export default function ProfileScreen() {
         <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
       </TouchableOpacity>
 
+      {/* Solutions Store - Admin */}
+      <TouchableOpacity
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}
+        onPress={() => router.push('/tools/solutions-store' as any)}
+      >
+        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#7C3AED', alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="storefront" size={18} color="#FFF" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>Solutions Store</Text>
+          <Text style={{ fontSize: 12, color: COLORS.textMuted }}>Products, services, events & contacts catalog</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+      </TouchableOpacity>
+
+      {/* Pending Approvals - Admin Only */}
+      <TouchableOpacity
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#F59E0B30', marginBottom: 12 }}
+        onPress={() => router.push('/admin/pending-approvals' as any)}
+      >
+        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#F59E0B', alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="hourglass" size={18} color="#FFF" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>Pending Approvals</Text>
+          <Text style={{ fontSize: 12, color: COLORS.textMuted }}>Review user-submitted public solutions</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+      </TouchableOpacity>
+
       {/* Goals Execution Manager */}
       <TouchableOpacity
         style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}

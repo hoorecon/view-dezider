@@ -1,411 +1,525 @@
 #!/usr/bin/env python3
 """
-Backend Testing for Journal Enhancement Feature
-Tests the newly implemented journal endpoints with module linking and reminders
+Solutions Store + ReviewNet Backend Testing
+Comprehensive test suite for all Solutions Store and ReviewNet endpoints
 """
 
-import requests
+import asyncio
+import httpx
 import json
-import time
-from datetime import datetime, timezone, timedelta
-from typing import Dict, Any
+import sys
+from datetime import datetime
 
 # Backend URL from frontend/.env
-BACKEND_URL = "https://prr-actions-central.preview.emergentagent.com/api"
+BASE_URL = "https://prr-actions-central.preview.emergentagent.com/api"
 
-class JournalEnhancementTester:
+class SolutionsStoreTestSuite:
     def __init__(self):
+        self.base_url = BASE_URL
         self.session_token = None
-        self.user_data = None
-        self.test_decision_id = None
-        self.test_journal_id = None
+        self.user_id = None
+        self.test_results = []
+        self.private_solution_id = None
+        self.public_solution_id = None
         
-    def register_and_login(self) -> bool:
-        """Register a new user and get session token"""
-        timestamp = int(time.time())
-        email = f"journal.tester.{timestamp}@viewdezider.com"
+    async def log_result(self, test_name: str, success: bool, details: str = ""):
+        """Log test result"""
+        status = "✅ PASS" if success else "❌ FAIL"
+        result = f"{status}: {test_name}"
+        if details:
+            result += f" - {details}"
+        print(result)
+        self.test_results.append({
+            "test": test_name,
+            "success": success,
+            "details": details
+        })
         
-        # Register user
-        register_data = {
-            "email": email,
-            "password": "testpass123",
-            "name": f"Journal Tester {timestamp}"
+    async def make_request(self, method: str, endpoint: str, data: dict = None, headers: dict = None):
+        """Make HTTP request with error handling"""
+        url = f"{self.base_url}{endpoint}"
+        request_headers = {}
+        
+        if self.session_token:
+            request_headers["Authorization"] = f"Bearer {self.session_token}"
+            
+        if headers:
+            request_headers.update(headers)
+            
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                if method.upper() == "GET":
+                    response = await client.get(url, headers=request_headers)
+                elif method.upper() == "POST":
+                    response = await client.post(url, json=data, headers=request_headers)
+                elif method.upper() == "PUT":
+                    response = await client.put(url, json=data, headers=request_headers)
+                elif method.upper() == "DELETE":
+                    response = await client.delete(url, headers=request_headers)
+                else:
+                    raise ValueError(f"Unsupported method: {method}")
+                    
+                return response
+        except Exception as e:
+            print(f"Request failed: {method} {url} - {str(e)}")
+            return None
+            
+    async def test_1_register_user(self):
+        """Test 1: Register a test user"""
+        test_name = "User Registration"
+        
+        user_data = {
+            "email": "store_test@test.com",
+            "password": "TestPass123!",
+            "name": "Store Test User"
         }
         
-        response = requests.post(f"{BACKEND_URL}/auth/register", json=register_data)
-        if response.status_code != 200:
-            print(f"❌ Registration failed: {response.status_code} - {response.text}")
+        response = await self.make_request("POST", "/auth/register", user_data)
+        
+        if response and response.status_code == 200:
+            data = response.json()
+            self.session_token = data.get("session_token")
+            self.user_id = data.get("user_id")
+            await self.log_result(test_name, True, f"User registered with ID: {self.user_id}")
+            return True
+        else:
+            error_msg = response.text if response else "No response"
+            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
             return False
             
-        data = response.json()
-        self.session_token = data.get("session_token")
-        self.user_data = data
-        print(f"✅ User registered: {email}")
-        return True
-    
-    def get_headers(self) -> Dict[str, str]:
-        """Get headers with authentication"""
-        return {
-            "Authorization": f"Bearer {self.session_token}",
-            "Content-Type": "application/json"
-        }
-    
-    def test_enhanced_journal_create(self) -> bool:
-        """Test POST /api/journal with new fields (linked_module, entry_type)"""
-        print("\n🧪 Testing Enhanced Journal Create...")
+    async def test_2_seed_solutions_data(self):
+        """Test 2: Seed solutions data"""
+        test_name = "Seed Solutions Data"
         
-        # Test 1: Create journal entry with linked_module="decision" and entry_type="best_practice"
-        journal_data = {
-            "decision_title": "Career Decision Best Practice",
-            "decision_description": "Documenting the best practice from my recent career decision",
-            "linked_module": "decision",
-            "linked_id": "test-decision-123",
-            "linked_title": "Should I take the new job offer?",
-            "entry_type": "best_practice"
-        }
+        response = await self.make_request("POST", "/solutions-store/seed?force=true")
         
-        response = requests.post(f"{BACKEND_URL}/journal", json=journal_data, headers=self.get_headers())
-        if response.status_code != 200:
-            print(f"❌ Journal create failed: {response.status_code} - {response.text}")
+        if response and response.status_code == 200:
+            data = response.json()
+            count = data.get("count", 0)
+            await self.log_result(test_name, True, f"Seeded {count} solutions")
+            return True
+        else:
+            error_msg = response.text if response else "No response"
+            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
             return False
+            
+    async def test_3_list_solutions(self):
+        """Test 3: Test listing solutions"""
+        test_name = "List Solutions"
         
-        data = response.json()
-        self.test_journal_id = data.get("id")
-        print(f"✅ Journal entry created with linked_module='decision' and entry_type='best_practice': {self.test_journal_id}")
+        response = await self.make_request("GET", "/solutions-store/solutions")
         
-        # Test 2: Create journal entry with linked_module="gem" and entry_type="learning"
-        journal_data2 = {
-            "decision_title": "Gem Goal Learning",
-            "decision_description": "Key learnings from my gem goal achievement",
-            "linked_module": "gem",
-            "linked_id": "test-gem-456",
-            "linked_title": "Complete fitness transformation",
-            "entry_type": "learning"
-        }
-        
-        response = requests.post(f"{BACKEND_URL}/journal", json=journal_data2, headers=self.get_headers())
-        if response.status_code != 200:
-            print(f"❌ Second journal create failed: {response.status_code} - {response.text}")
-            return False
-        
-        print(f"✅ Journal entry created with linked_module='gem' and entry_type='learning'")
-        
-        # Test 3: Test validation - invalid linked_module
-        invalid_data = {
-            "decision_title": "Invalid Test",
-            "decision_description": "Testing invalid linked_module",
-            "linked_module": "invalid_module",
-            "entry_type": "best_practice"
-        }
-        
-        response = requests.post(f"{BACKEND_URL}/journal", json=invalid_data, headers=self.get_headers())
-        if response.status_code != 400:
-            print(f"❌ Validation failed - should reject invalid linked_module: {response.status_code}")
-            return False
-        
-        print(f"✅ Validation working - invalid linked_module rejected with 400")
-        
-        # Test 4: Test validation - invalid entry_type
-        invalid_data2 = {
-            "decision_title": "Invalid Test 2",
-            "decision_description": "Testing invalid entry_type",
-            "linked_module": "decision",
-            "entry_type": "bad_type"
-        }
-        
-        response = requests.post(f"{BACKEND_URL}/journal", json=invalid_data2, headers=self.get_headers())
-        if response.status_code != 400:
-            print(f"❌ Validation failed - should reject invalid entry_type: {response.status_code}")
-            return False
-        
-        print(f"✅ Validation working - invalid entry_type rejected with 400")
-        
-        return True
-    
-    def test_enhanced_journal_get(self) -> bool:
-        """Test GET /api/journal with query params"""
-        print("\n🧪 Testing Enhanced Journal Get with Filters...")
-        
-        # Test 1: Get all journal entries (no filters)
-        response = requests.get(f"{BACKEND_URL}/journal", headers=self.get_headers())
-        if response.status_code != 200:
-            print(f"❌ Get all journal entries failed: {response.status_code} - {response.text}")
-            return False
-        
-        all_entries = response.json()
-        print(f"✅ Retrieved all journal entries: {len(all_entries)} entries")
-        
-        # Test 2: Filter by linked_module="decision"
-        response = requests.get(f"{BACKEND_URL}/journal?linked_module=decision", headers=self.get_headers())
-        if response.status_code != 200:
-            print(f"❌ Filter by linked_module failed: {response.status_code} - {response.text}")
-            return False
-        
-        decision_entries = response.json()
-        print(f"✅ Filtered by linked_module='decision': {len(decision_entries)} entries")
-        
-        # Test 3: Filter by entry_type="best_practice"
-        response = requests.get(f"{BACKEND_URL}/journal?entry_type=best_practice", headers=self.get_headers())
-        if response.status_code != 200:
-            print(f"❌ Filter by entry_type failed: {response.status_code} - {response.text}")
-            return False
-        
-        best_practice_entries = response.json()
-        print(f"✅ Filtered by entry_type='best_practice': {len(best_practice_entries)} entries")
-        
-        # Verify filtering worked correctly
-        if len(decision_entries) > 0:
-            for entry in decision_entries:
-                if entry.get("linked_module") != "decision":
-                    print(f"❌ Filter failed - found non-decision entry: {entry.get('linked_module')}")
-                    return False
-        
-        if len(best_practice_entries) > 0:
-            for entry in best_practice_entries:
-                if entry.get("entry_type") != "best_practice":
-                    print(f"❌ Filter failed - found non-best_practice entry: {entry.get('entry_type')}")
-                    return False
-        
-        print(f"✅ All filters working correctly")
-        return True
-    
-    def create_test_decision_with_review_date(self) -> bool:
-        """Create a PRR decision with implementation_review_date for testing reminders"""
-        print("\n🧪 Creating Test Decision with Review Date...")
-        
-        # Create decision with past implementation_review_date
-        past_date = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
-        
-        decision_data = {
-            "title": "Test Problem Decision for Reminders",
-            "context": "This is a test decision to verify reminder functionality",
-            "decision_type": "problem",
-            "implementation_review_date": past_date
-        }
-        
-        response = requests.post(f"{BACKEND_URL}/decisions", json=decision_data, headers=self.get_headers())
-        if response.status_code != 200:
-            print(f"❌ Decision creation failed: {response.status_code} - {response.text}")
-            return False
-        
-        data = response.json()
-        self.test_decision_id = data.get("id")
-        print(f"✅ Test decision created with past review date: {self.test_decision_id}")
-        
-        return True
-    
-    def test_journal_reminders(self) -> bool:
-        """Test GET /api/journal/reminders"""
-        print("\n🧪 Testing Journal Reminders...")
-        
-        # First, get reminders - should include our test decision
-        response = requests.get(f"{BACKEND_URL}/journal/reminders", headers=self.get_headers())
-        if response.status_code != 200:
-            print(f"❌ Get reminders failed: {response.status_code} - {response.text}")
-            return False
-        
-        reminders = response.json()
-        print(f"✅ Retrieved reminders: {len(reminders)} reminders")
-        
-        # Verify our test decision is in reminders with P0 priority
-        found_test_decision = False
-        for reminder in reminders:
-            if reminder.get("decision_id") == self.test_decision_id:
-                found_test_decision = True
-                if reminder.get("priority_label") != "P0":
-                    print(f"❌ Wrong priority label: expected P0, got {reminder.get('priority_label')}")
-                    return False
-                print(f"✅ Test decision found in reminders with priority P0")
-                break
-        
-        if not found_test_decision:
-            print(f"❌ Test decision not found in reminders")
-            return False
-        
-        # Now create a journal entry linked to this decision
-        journal_data = {
-            "decision_title": "Documenting Problem Decision",
-            "decision_description": "Recording learnings from the problem decision",
-            "linked_module": "decision",
-            "linked_id": self.test_decision_id,
-            "entry_type": "learning"
-        }
-        
-        response = requests.post(f"{BACKEND_URL}/journal", json=journal_data, headers=self.get_headers())
-        if response.status_code != 200:
-            print(f"❌ Journal entry creation failed: {response.status_code} - {response.text}")
-            return False
-        
-        print(f"✅ Journal entry created linked to test decision")
-        
-        # Get reminders again - should NOT include our test decision anymore
-        response = requests.get(f"{BACKEND_URL}/journal/reminders", headers=self.get_headers())
-        if response.status_code != 200:
-            print(f"❌ Get reminders after journal creation failed: {response.status_code} - {response.text}")
-            return False
-        
-        reminders_after = response.json()
-        print(f"✅ Retrieved reminders after journal creation: {len(reminders_after)} reminders")
-        
-        # Verify our test decision is NOT in reminders anymore
-        for reminder in reminders_after:
-            if reminder.get("decision_id") == self.test_decision_id:
-                print(f"❌ Test decision still in reminders after journal entry created")
+        if response and response.status_code == 200:
+            data = response.json()
+            if isinstance(data, list):
+                count = len(data)
+                await self.log_result(test_name, True, f"Retrieved {count} solutions")
+                return count >= 14  # Should return 14 seeded solutions
+            else:
+                await self.log_result(test_name, False, "Response is not a list")
                 return False
-        
-        print(f"✅ Test decision correctly removed from reminders after journal entry created")
-        return True
-    
-    def test_journal_linkable_items(self) -> bool:
-        """Test GET /api/journal/linkable-items"""
-        print("\n🧪 Testing Journal Linkable Items...")
-        
-        response = requests.get(f"{BACKEND_URL}/journal/linkable-items", headers=self.get_headers())
-        if response.status_code != 200:
-            print(f"❌ Get linkable items failed: {response.status_code} - {response.text}")
+        else:
+            error_msg = response.text if response else "No response"
+            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
             return False
+            
+    async def test_4_browse_by_life_area(self):
+        """Test 4: Test browsing by life area"""
+        test_name = "Browse by Life Area (Health)"
         
-        linkable_items = response.json()
-        print(f"✅ Retrieved linkable items")
+        response = await self.make_request("GET", "/solutions-store/browse?life_area_id=la_health")
         
-        # Verify structure - should have all 6 module keys
-        expected_keys = ["decision", "solution_finder", "solution_matrix", "gem", "ctt", "lifestyle"]
-        for key in expected_keys:
-            if key not in linkable_items:
-                print(f"❌ Missing key in linkable items: {key}")
-                return False
-        
-        print(f"✅ All expected module keys present: {expected_keys}")
-        
-        # Verify our test decision is in the decision array
-        decisions = linkable_items.get("decision", [])
-        found_test_decision = False
-        for decision in decisions:
-            if decision.get("id") == self.test_decision_id:
-                found_test_decision = True
-                print(f"✅ Test decision found in linkable items: {decision.get('title')}")
-                break
-        
-        if not found_test_decision:
-            print(f"❌ Test decision not found in linkable items")
+        if response and response.status_code == 200:
+            data = response.json()
+            solutions = data.get("solutions", [])
+            grouped = data.get("grouped_by_sub_area", {})
+            total = data.get("total", 0)
+            await self.log_result(test_name, True, f"Found {total} health solutions, grouped by {len(grouped)} sub-areas")
+            return True
+        else:
+            error_msg = response.text if response else "No response"
+            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
             return False
+            
+    async def test_5_for_decision_endpoint(self):
+        """Test 5: Test for-decision endpoint"""
+        test_name = "For-Decision Endpoint (Finance)"
         
-        return True
-    
-    def test_prr_decision_implementation_review_date(self) -> bool:
-        """Test PRR Decision with implementation_review_date field"""
-        print("\n🧪 Testing PRR Decision implementation_review_date Field...")
+        response = await self.make_request("GET", "/solutions-store/for-decision?life_area_id=la_finance")
         
-        # Test 1: Create decision with implementation_review_date
-        future_date = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+        if response and response.status_code == 200:
+            data = response.json()
+            solutions = data.get("solutions", [])
+            total = data.get("total", 0)
+            await self.log_result(test_name, True, f"Found {total} finance solutions for decision")
+            return True
+        else:
+            error_msg = response.text if response else "No response"
+            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
+            return False
+            
+    async def test_6_search_solutions(self):
+        """Test 6: Test search functionality"""
+        test_name = "Search Solutions (Apollo)"
         
-        decision_data = {
-            "title": "Test Decision with Review Date",
-            "context": "Testing implementation_review_date field",
-            "decision_type": "need",
-            "implementation_review_date": future_date
+        response = await self.make_request("GET", "/solutions-store/search?q=Apollo")
+        
+        if response and response.status_code == 200:
+            data = response.json()
+            results = data.get("results", [])
+            query = data.get("query", "")
+            total = data.get("total", 0)
+            
+            # Check if Apollo Hospitals is found
+            apollo_found = any("Apollo" in result.get("name", "") for result in results)
+            await self.log_result(test_name, apollo_found, f"Found {total} results for '{query}', Apollo Hospitals: {'Yes' if apollo_found else 'No'}")
+            return apollo_found
+        else:
+            error_msg = response.text if response else "No response"
+            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
+            return False
+            
+    async def test_7_create_private_solution(self):
+        """Test 7: Create a PRIVATE solution"""
+        test_name = "Create Private Solution"
+        
+        solution_data = {
+            "type": "SERVICE",
+            "name": "Test Private Service",
+            "description": "My private service",
+            "life_area_id": "la_health",
+            "visibility": "PRIVATE",
+            "country": "IN",
+            "city": "Chennai",
+            "quantitative_factors": [
+                {
+                    "factor_name": "Cost",
+                    "value": 5000,
+                    "unit": "INR"
+                }
+            ]
         }
         
-        response = requests.post(f"{BACKEND_URL}/decisions", json=decision_data, headers=self.get_headers())
-        if response.status_code != 200:
-            print(f"❌ Decision creation with review date failed: {response.status_code} - {response.text}")
+        response = await self.make_request("POST", "/solutions-store/solutions", solution_data)
+        
+        if response and response.status_code == 200:
+            data = response.json()
+            self.private_solution_id = data.get("solution_id")
+            visibility = data.get("visibility")
+            approval_status = data.get("approval_status")
+            is_authorized = data.get("is_authorized")
+            
+            success = (visibility == "PRIVATE" and approval_status == "approved" and not is_authorized)
+            await self.log_result(test_name, success, f"Solution ID: {self.private_solution_id}, Visibility: {visibility}, Status: {approval_status}, Authorized: {is_authorized}")
+            return success
+        else:
+            error_msg = response.text if response else "No response"
+            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
             return False
+            
+    async def test_8_create_public_solution(self):
+        """Test 8: Create a PUBLIC solution (should get pending approval)"""
+        test_name = "Create Public Solution (Pending Approval)"
         
-        data = response.json()
-        new_decision_id = data.get("id")
-        print(f"✅ Decision created with implementation_review_date: {new_decision_id}")
-        
-        # Test 2: Verify the field is stored by retrieving the decision
-        response = requests.get(f"{BACKEND_URL}/decisions/{new_decision_id}", headers=self.get_headers())
-        if response.status_code != 200:
-            print(f"❌ Get decision failed: {response.status_code} - {response.text}")
-            return False
-        
-        decision = response.json()
-        stored_date = decision.get("implementation_review_date")
-        if not stored_date:
-            print(f"❌ implementation_review_date not stored")
-            return False
-        
-        print(f"✅ implementation_review_date stored correctly: {stored_date}")
-        
-        # Test 3: Update decision with new implementation_review_date
-        new_future_date = (datetime.now(timezone.utc) + timedelta(days=60)).isoformat()
-        
-        update_data = {
-            "implementation_review_date": new_future_date
+        solution_data = {
+            "type": "PRODUCT",
+            "name": "Test Public Product",
+            "description": "A product for everyone",
+            "life_area_id": "la_health",
+            "visibility": "PUBLIC",
+            "country": "IN",
+            "city": "Chennai"
         }
         
-        response = requests.put(f"{BACKEND_URL}/decisions/{new_decision_id}", json=update_data, headers=self.get_headers())
-        if response.status_code != 200:
-            print(f"❌ Decision update with review date failed: {response.status_code} - {response.text}")
+        response = await self.make_request("POST", "/solutions-store/solutions", solution_data)
+        
+        if response and response.status_code == 200:
+            data = response.json()
+            self.public_solution_id = data.get("solution_id")
+            visibility = data.get("visibility")
+            approval_status = data.get("approval_status")
+            is_authorized = data.get("is_authorized")
+            
+            # For normal users, PUBLIC solutions should be pending approval and not authorized
+            success = (visibility == "PUBLIC" and approval_status == "pending" and not is_authorized)
+            await self.log_result(test_name, success, f"Solution ID: {self.public_solution_id}, Visibility: {visibility}, Status: {approval_status}, Authorized: {is_authorized}")
+            return success
+        else:
+            error_msg = response.text if response else "No response"
+            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
             return False
+            
+    async def test_9_solution_detail(self):
+        """Test 9: Test solution detail endpoint"""
+        test_name = "Solution Detail"
         
-        print(f"✅ Decision updated with new implementation_review_date")
-        
-        # Verify the update
-        response = requests.get(f"{BACKEND_URL}/decisions/{new_decision_id}", headers=self.get_headers())
-        if response.status_code != 200:
-            print(f"❌ Get updated decision failed: {response.status_code} - {response.text}")
+        if not self.private_solution_id:
+            await self.log_result(test_name, False, "No private solution ID available")
             return False
+            
+        response = await self.make_request("GET", f"/solutions-store/solutions/{self.private_solution_id}")
         
-        updated_decision = response.json()
-        updated_date = updated_decision.get("implementation_review_date")
-        if updated_date == stored_date:
-            print(f"❌ implementation_review_date not updated")
+        if response and response.status_code == 200:
+            data = response.json()
+            solution_id = data.get("solution_id")
+            name = data.get("name")
+            quantitative_factors = data.get("quantitative_factors", [])
+            
+            success = (solution_id == self.private_solution_id and name == "Test Private Service")
+            await self.log_result(test_name, success, f"Retrieved solution: {name}, Quantitative factors: {len(quantitative_factors)}")
+            return success
+        else:
+            error_msg = response.text if response else "No response"
+            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
             return False
+            
+    async def test_10_submit_review(self):
+        """Test 10: Submit a review via ReviewNet"""
+        test_name = "Submit Review"
         
-        print(f"✅ implementation_review_date updated correctly: {updated_date}")
-        
-        return True
-    
-    def run_all_tests(self) -> bool:
-        """Run all journal enhancement tests"""
-        print("🚀 Starting Journal Enhancement Feature Testing...")
-        print(f"Backend URL: {BACKEND_URL}")
-        
-        # Step 1: Register and login
-        if not self.register_and_login():
+        if not self.private_solution_id:
+            await self.log_result(test_name, False, "No private solution ID available")
             return False
+            
+        review_data = {
+            "solution_id": self.private_solution_id,
+            "review_text": "Great service!",
+            "pros": ["Fast and reliable"],
+            "cons": ["Expensive"],
+            "qualitative_factors": [
+                {"factor_name": "Trustworthiness", "rating": 8},
+                {"factor_name": "Quality", "rating": 9},
+                {"factor_name": "Value for Money", "rating": 6}
+            ]
+        }
         
-        # Step 2: Test enhanced journal create
-        if not self.test_enhanced_journal_create():
+        response = await self.make_request("POST", "/reviewnet/reviews", review_data)
+        
+        if response and response.status_code == 200:
+            data = response.json()
+            review_id = data.get("review_id")
+            solution_id = data.get("solution_id")
+            overall_rating = data.get("overall_rating")
+            
+            success = (solution_id == self.private_solution_id and review_id is not None)
+            await self.log_result(test_name, success, f"Review ID: {review_id}, Overall rating: {overall_rating}")
+            return success
+        else:
+            error_msg = response.text if response else "No response"
+            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
             return False
+            
+    async def test_11_get_reviews(self):
+        """Test 11: Get reviews for a solution"""
+        test_name = "Get Reviews"
         
-        # Step 3: Test enhanced journal get with filters
-        if not self.test_enhanced_journal_get():
+        if not self.private_solution_id:
+            await self.log_result(test_name, False, "No private solution ID available")
             return False
+            
+        response = await self.make_request("GET", f"/reviewnet/reviews?solution_id={self.private_solution_id}")
         
-        # Step 4: Create test decision for reminders
-        if not self.create_test_decision_with_review_date():
+        if response and response.status_code == 200:
+            data = response.json()
+            reviews = data.get("reviews", [])
+            aggregated_scores = data.get("aggregated_scores", [])
+            overall_avg_rating = data.get("overall_avg_rating")
+            total_reviews = data.get("total_reviews", 0)
+            
+            success = (total_reviews > 0 and overall_avg_rating is not None)
+            await self.log_result(test_name, success, f"Reviews: {total_reviews}, Avg rating: {overall_avg_rating}, Aggregated factors: {len(aggregated_scores)}")
+            return success
+        else:
+            error_msg = response.text if response else "No response"
+            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
             return False
+            
+    async def test_12_apply_to_option(self):
+        """Test 12: Test apply-to-option endpoint"""
+        test_name = "Apply to Option"
         
-        # Step 5: Test journal reminders
-        if not self.test_journal_reminders():
+        if not self.private_solution_id:
+            await self.log_result(test_name, False, "No private solution ID available")
             return False
+            
+        apply_data = {
+            "solution_id": self.private_solution_id
+        }
         
-        # Step 6: Test journal linkable items
-        if not self.test_journal_linkable_items():
+        response = await self.make_request("POST", "/solutions-store/apply-to-option", apply_data)
+        
+        if response and response.status_code == 200:
+            data = response.json()
+            quantitative_factors = data.get("quantitative_factors", [])
+            qualitative_factors = data.get("qualitative_factors", [])
+            solution_name = data.get("solution_name")
+            
+            success = (solution_name == "Test Private Service" and len(quantitative_factors) > 0)
+            await self.log_result(test_name, success, f"Solution: {solution_name}, Quant factors: {len(quantitative_factors)}, Qual factors: {len(qualitative_factors)}")
+            return success
+        else:
+            error_msg = response.text if response else "No response"
+            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
             return False
+            
+    async def test_13_qualitative_factors_list(self):
+        """Test 13: Test qualitative factors list"""
+        test_name = "Qualitative Factors List"
         
-        # Step 7: Test PRR decision implementation_review_date field
-        if not self.test_prr_decision_implementation_review_date():
+        response = await self.make_request("GET", "/reviewnet/qualitative-factors")
+        
+        if response and response.status_code == 200:
+            data = response.json()
+            factors = data.get("factors", [])
+            
+            expected_factors = ["Trustworthiness", "Quality", "Reliability", "Value for Money"]
+            has_expected = all(factor in factors for factor in expected_factors)
+            
+            await self.log_result(test_name, has_expected, f"Found {len(factors)} default factors: {factors[:4]}...")
+            return has_expected
+        else:
+            error_msg = response.text if response else "No response"
+            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
             return False
+            
+    async def test_14_setup_admin_user(self):
+        """Test 14: Set up admin user for approval tests"""
+        test_name = "Setup Admin User"
         
-        print("\n🎉 ALL JOURNAL ENHANCEMENT TESTS PASSED!")
-        return True
+        response = await self.make_request("POST", "/admin/setup")
+        
+        if response and response.status_code == 200:
+            data = response.json()
+            role = data.get("role")
+            await self.log_result(test_name, True, f"User promoted to: {role}")
+            return True
+        elif response and response.status_code == 400:
+            # Super admin already exists
+            await self.log_result(test_name, True, "Super admin already exists (expected)")
+            return True
+        else:
+            error_msg = response.text if response else "No response"
+            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
+            return False
+            
+    async def test_15_pending_approvals(self):
+        """Test 15: Test pending approvals endpoint"""
+        test_name = "Pending Approvals"
+        
+        response = await self.make_request("GET", "/solutions-store/pending-approval")
+        
+        if response and response.status_code == 200:
+            data = response.json()
+            solutions = data.get("solutions", [])
+            total = data.get("total", 0)
+            
+            # Should find the public solution from test 8
+            public_found = any(sol.get("solution_id") == self.public_solution_id for sol in solutions)
+            await self.log_result(test_name, public_found, f"Found {total} pending solutions, Public solution found: {'Yes' if public_found else 'No'}")
+            return public_found
+        else:
+            error_msg = response.text if response else "No response"
+            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
+            return False
+            
+    async def test_16_approve_solution(self):
+        """Test 16: Test approve solution"""
+        test_name = "Approve Solution"
+        
+        if not self.public_solution_id:
+            await self.log_result(test_name, False, "No public solution ID available")
+            return False
+            
+        response = await self.make_request("PUT", f"/solutions-store/approve/{self.public_solution_id}")
+        
+        if response and response.status_code == 200:
+            data = response.json()
+            message = data.get("message")
+            solution_id = data.get("solution_id")
+            
+            success = (solution_id == self.public_solution_id)
+            await self.log_result(test_name, success, f"Message: {message}")
+            return success
+        else:
+            error_msg = response.text if response else "No response"
+            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
+            return False
+            
+    async def test_17_verify_approved_solution(self):
+        """Test 17: Verify the approved solution appears with is_authorized=true"""
+        test_name = "Verify Approved Solution"
+        
+        if not self.public_solution_id:
+            await self.log_result(test_name, False, "No public solution ID available")
+            return False
+            
+        response = await self.make_request("GET", f"/solutions-store/solutions/{self.public_solution_id}")
+        
+        if response and response.status_code == 200:
+            data = response.json()
+            is_authorized = data.get("is_authorized")
+            approval_status = data.get("approval_status")
+            visibility = data.get("visibility")
+            
+            success = (is_authorized and approval_status == "approved" and visibility == "PUBLIC")
+            await self.log_result(test_name, success, f"Authorized: {is_authorized}, Status: {approval_status}, Visibility: {visibility}")
+            return success
+        else:
+            error_msg = response.text if response else "No response"
+            await self.log_result(test_name, False, f"Status: {response.status_code if response else 'None'}, Error: {error_msg}")
+            return False
+            
+    async def run_all_tests(self):
+        """Run all tests in sequence"""
+        print("🚀 Starting Solutions Store + ReviewNet Backend Testing")
+        print("=" * 60)
+        
+        tests = [
+            self.test_1_register_user,
+            self.test_2_seed_solutions_data,
+            self.test_3_list_solutions,
+            self.test_4_browse_by_life_area,
+            self.test_5_for_decision_endpoint,
+            self.test_6_search_solutions,
+            self.test_7_create_private_solution,
+            self.test_8_create_public_solution,
+            self.test_9_solution_detail,
+            self.test_10_submit_review,
+            self.test_11_get_reviews,
+            self.test_12_apply_to_option,
+            self.test_13_qualitative_factors_list,
+            self.test_14_setup_admin_user,
+            self.test_15_pending_approvals,
+            self.test_16_approve_solution,
+            self.test_17_verify_approved_solution,
+        ]
+        
+        passed = 0
+        total = len(tests)
+        
+        for test in tests:
+            try:
+                result = await test()
+                if result:
+                    passed += 1
+            except Exception as e:
+                print(f"❌ FAIL: {test.__name__} - Exception: {str(e)}")
+                
+        print("\n" + "=" * 60)
+        print(f"🎯 TEST SUMMARY: {passed}/{total} tests passed")
+        
+        if passed == total:
+            print("🎉 ALL TESTS PASSED! Solutions Store + ReviewNet is working correctly.")
+        else:
+            print(f"⚠️  {total - passed} tests failed. Please check the implementation.")
+            
+        return passed == total
 
-def main():
-    """Main test execution"""
-    tester = JournalEnhancementTester()
-    success = tester.run_all_tests()
-    
-    if success:
-        print("\n✅ Journal Enhancement Feature Testing Complete - All Tests Passed!")
-        exit(0)
-    else:
-        print("\n❌ Journal Enhancement Feature Testing Failed!")
-        exit(1)
+async def main():
+    """Main test runner"""
+    test_suite = SolutionsStoreTestSuite()
+    success = await test_suite.run_all_tests()
+    sys.exit(0 if success else 1)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

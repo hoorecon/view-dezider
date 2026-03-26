@@ -395,6 +395,20 @@ export default function HomeScreen() {
           <View style={styles.quickActions}>
             <TouchableOpacity
               style={styles.actionCard}
+              onPress={() => router.push('/tools/solutions-store')}
+            >
+              <LinearGradient
+                colors={['#7C3AED', '#A855F7']}
+                style={styles.actionIcon}
+              >
+                <Ionicons name="storefront" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Solutions Store</Text>
+              <Text style={styles.actionSubtitle}>Products & services</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionCard}
               onPress={() => router.push('/tools/gem')}
             >
               <LinearGradient
@@ -406,7 +420,9 @@ export default function HomeScreen() {
               <Text style={styles.actionTitle}>Goals (GEM)</Text>
               <Text style={styles.actionSubtitle}>Track life goals</Text>
             </TouchableOpacity>
+          </View>
 
+          <View style={styles.quickActions}>
             <TouchableOpacity
               style={styles.actionCard}
               onPress={() => router.push('/tools/tepfi')}
@@ -420,6 +436,8 @@ export default function HomeScreen() {
               <Text style={styles.actionTitle}>TEPFI Matrix</Text>
               <Text style={styles.actionSubtitle}>Resource tracking</Text>
             </TouchableOpacity>
+
+            <View style={[styles.actionCard, { opacity: 0 }]} />
           </View>
 
           <TouchableOpacity

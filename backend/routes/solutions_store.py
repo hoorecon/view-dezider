@@ -18,6 +18,7 @@ router = APIRouter()
 # ================================================================
 SOLUTION_TYPES = ["PRODUCT", "SERVICE", "EVENT", "PROJECT", "PERSON_CONTACT"]
 VISIBILITY_LEVELS = ["PRIVATE", "ORG", "PUBLIC"]
+APPROVAL_STATUSES = ["pending", "approved", "rejected"]
 
 # Type-specific field definitions
 TYPE_SPECIFIC_FIELDS = {
@@ -58,14 +59,23 @@ async def create_solution(request: Request, user: dict = Depends(get_current_use
     if visibility not in VISIBILITY_LEVELS:
         raise HTTPException(status_code=400, detail=f"Invalid visibility. Must be one of: {VISIBILITY_LEVELS}")
 
-    # Only admins can create PUBLIC (authorized) solutions
+    user_role = user.get("role", "")
+    org_role = user.get("org_role", "")
+    is_admin = user_role in ["super_admin", "co_admin", "admin"] or org_role in ["org_super_admin", "org_co_admin"]
+
+    # Determine authorization and approval status
     is_authorized = False
+    approval_status = "approved"  # Default for PRIVATE/ORG
+
     if visibility == "PUBLIC":
-        user_role = user.get("role", "")
-        org_role = user.get("org_role", "")
-        if user_role not in ["super_admin", "co_admin", "admin"] and org_role not in ["org_super_admin", "org_co_admin"]:
-            raise HTTPException(status_code=403, detail="Only admins can create public/authorized solutions")
-        is_authorized = True
+        if is_admin:
+            # Admins create directly authorized public solutions
+            is_authorized = True
+            approval_status = "approved"
+        else:
+            # Regular users can submit public solutions pending admin review
+            is_authorized = False
+            approval_status = "pending"
 
     name = body.get("name", "").strip()
     if not name:
@@ -86,7 +96,9 @@ async def create_solution(request: Request, user: dict = Depends(get_current_use
         "sub_area_id": body.get("sub_area_id"),
         "category_id": body.get("category_id"),
         "visibility": visibility,
+        "approval_status": approval_status,
         "created_by": user["user_id"],
+        "created_by_name": user.get("name", ""),
         "org_id": user.get("org_id"),
         "is_authorized": is_authorized,
         "country": body.get("country", "IN"),
@@ -123,13 +135,14 @@ async def list_solutions(
     visibility: Optional[str] = None,
     user: dict = Depends(get_current_user),
 ):
-    """List solutions visible to the user (own + org + authorized/public)."""
+    """List solutions visible to the user (own + org + authorized/public approved)."""
     query = {"status": "active"}
 
-    # Visibility filter: user sees own PRIVATE + own ORG + all PUBLIC
+    # Visibility filter: user sees own PRIVATE + own ORG + all PUBLIC (approved only)
     vis_filter = [
-        {"created_by": user["user_id"]},
-        {"is_authorized": True},
+        {"created_by": user["user_id"]},  # Own solutions (any status)
+        {"is_authorized": True},  # System-seeded authorized solutions
+        {"visibility": "PUBLIC", "approval_status": "approved"},  # User-submitted approved public
     ]
     if user.get("org_id"):
         vis_filter.append({"visibility": "ORG", "org_id": user["org_id"]})
@@ -266,7 +279,11 @@ async def browse_solutions_by_hierarchy(
 ):
     """Browse solutions organized by the HOS hierarchy."""
     query = {"status": "active"}
-    vis_filter = [{"created_by": user["user_id"]}, {"is_authorized": True}]
+    vis_filter = [
+        {"created_by": user["user_id"]},
+        {"is_authorized": True},
+        {"visibility": "PUBLIC", "approval_status": "approved"},
+    ]
     if user.get("org_id"):
         vis_filter.append({"visibility": "ORG", "org_id": user["org_id"]})
     query["$or"] = vis_filter
@@ -314,7 +331,11 @@ async def search_solutions(
 ):
     """Full-text search across solutions."""
     query = {"status": "active", "$text": {"$search": q}}
-    vis_filter = [{"created_by": user["user_id"]}, {"is_authorized": True}]
+    vis_filter = [
+        {"created_by": user["user_id"]},
+        {"is_authorized": True},
+        {"visibility": "PUBLIC", "approval_status": "approved"},
+    ]
     if user.get("org_id"):
         vis_filter.append({"visibility": "ORG", "org_id": user["org_id"]})
     query["$or"] = vis_filter
@@ -341,7 +362,11 @@ async def get_solutions_for_decision(
 ):
     """Get solutions relevant to a decision context — used during 'Add Options'."""
     query = {"status": "active", "life_area_id": life_area_id}
-    vis_filter = [{"created_by": user["user_id"]}, {"is_authorized": True}]
+    vis_filter = [
+        {"created_by": user["user_id"]},
+        {"is_authorized": True},
+        {"visibility": "PUBLIC", "approval_status": "approved"},
+    ]
     if user.get("org_id"):
         vis_filter.append({"visibility": "ORG", "org_id": user["org_id"]})
     query["$or"] = vis_filter
@@ -535,6 +560,80 @@ async def delete_review(review_id: str, user: dict = Depends(get_current_user)):
 async def get_default_qualitative_factors(user: dict = Depends(get_current_user)):
     """Return the default qualitative factor names for reviews."""
     return {"factors": DEFAULT_QUALITATIVE_FACTORS}
+
+
+# ================================================================
+# ADMIN: SOLUTION APPROVAL WORKFLOW
+# ================================================================
+
+@router.get("/solutions-store/pending-approval")
+async def list_pending_solutions(user: dict = Depends(get_current_user)):
+    """Admin-only: List solutions pending approval."""
+    user_role = user.get("role", "")
+    org_role = user.get("org_role", "")
+    if user_role not in ["super_admin", "co_admin", "admin"] and org_role not in ["org_super_admin", "org_co_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    pending = await db.solutions_store.find(
+        {"approval_status": "pending", "status": "active"},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(200)
+    return {"solutions": pending, "total": len(pending)}
+
+
+@router.put("/solutions-store/approve/{solution_id}")
+async def approve_solution(solution_id: str, user: dict = Depends(get_current_user)):
+    """Admin-only: Approve a user-submitted public solution."""
+    user_role = user.get("role", "")
+    org_role = user.get("org_role", "")
+    if user_role not in ["super_admin", "co_admin", "admin"] and org_role not in ["org_super_admin", "org_co_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    sol = await db.solutions_store.find_one({"solution_id": solution_id})
+    if not sol:
+        raise HTTPException(status_code=404, detail="Solution not found")
+    if sol.get("approval_status") != "pending":
+        raise HTTPException(status_code=400, detail="Solution is not pending approval")
+
+    await db.solutions_store.update_one(
+        {"solution_id": solution_id},
+        {"$set": {
+            "approval_status": "approved",
+            "is_authorized": True,
+            "approved_by": user["user_id"],
+            "approved_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }}
+    )
+    return {"message": "Solution approved", "solution_id": solution_id}
+
+
+@router.put("/solutions-store/reject/{solution_id}")
+async def reject_solution(solution_id: str, request: Request, user: dict = Depends(get_current_user)):
+    """Admin-only: Reject a user-submitted public solution."""
+    user_role = user.get("role", "")
+    org_role = user.get("org_role", "")
+    if user_role not in ["super_admin", "co_admin", "admin"] and org_role not in ["org_super_admin", "org_co_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    sol = await db.solutions_store.find_one({"solution_id": solution_id})
+    if not sol:
+        raise HTTPException(status_code=404, detail="Solution not found")
+
+    body = await request.json()
+    reason = body.get("reason", "")
+
+    await db.solutions_store.update_one(
+        {"solution_id": solution_id},
+        {"$set": {
+            "approval_status": "rejected",
+            "rejection_reason": reason,
+            "rejected_by": user["user_id"],
+            "rejected_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }}
+    )
+    return {"message": "Solution rejected", "solution_id": solution_id}
 
 
 # ================================================================

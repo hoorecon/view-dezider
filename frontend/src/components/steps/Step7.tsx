@@ -23,6 +23,78 @@ export default function Step7() {
   } = useDecision();
 
   const [fetchingData, setFetchingData] = useState<{ [key: string]: boolean }>({});
+  const [fetchingStore, setFetchingStore] = useState<{ [key: string]: boolean }>({});
+
+  // Fetch pre-populated data from Solutions Store for options linked to a solution
+  const fetchFromSolutionStore = async (optionId: string, solutionId: string) => {
+    const fetchKey = `store_${optionId}`;
+    setFetchingStore(prev => ({ ...prev, [fetchKey]: true }));
+    try {
+      const token = await AsyncStorage.getItem('session_token');
+      const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
+      const resp = await fetch(`${baseUrl}/api/solutions-store/apply-to-option`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ solution_id: solutionId }),
+      });
+      const data = await resp.json();
+
+      let matchCount = 0;
+
+      // Auto-populate quantitative factors
+      if (data.quantitative_factors && data.quantitative_factors.length > 0) {
+        for (const qf of data.quantitative_factors) {
+          // Try to find a matching factor in the decision
+          const matchingFactor = decision.factors.find(f =>
+            f.name.toLowerCase().includes(qf.factor_name.toLowerCase()) ||
+            qf.factor_name.toLowerCase().includes(f.name.toLowerCase())
+          );
+          if (matchingFactor) {
+            matchCount++;
+            const key = getAssessmentKey(optionId, matchingFactor.id);
+            const valStr = String(qf.value);
+            setActualValues(prev => ({ ...prev, [key]: valStr }));
+            const autoPercent = calculateAutoPercentage(matchingFactor, qf.value);
+            const unitStr = matchingFactor.unit || qf.unit || '';
+            const displayValue = `${qf.value}${unitStr ? ' ' + unitStr : ''}`;
+            const numericActual = typeof qf.value === 'number' ? qf.value : parseFloat(String(qf.value));
+            if (autoPercent !== null) {
+              updateAssessment(optionId, matchingFactor.id, autoPercent, 'auto' as any, displayValue, isNaN(numericActual) ? undefined : numericActual);
+            }
+          }
+        }
+      }
+
+      // Auto-populate qualitative factors
+      if (data.qualitative_factors && data.qualitative_factors.length > 0) {
+        for (const qf of data.qualitative_factors) {
+          const matchingFactor = decision.factors.find(f =>
+            f.name.toLowerCase().includes(qf.factor_name.toLowerCase()) ||
+            qf.factor_name.toLowerCase().includes(f.name.toLowerCase())
+          );
+          if (matchingFactor) {
+            matchCount++;
+            // Convert 1-10 qualitative rating to percentage (multiply by 10)
+            const percentage = Math.min(100, Math.round(qf.avg_rating * 10));
+            const key = getAssessmentKey(optionId, matchingFactor.id);
+            setActualValues(prev => ({ ...prev, [key]: String(qf.avg_rating) }));
+            updateAssessment(optionId, matchingFactor.id, percentage, 'auto' as any, `${qf.avg_rating}/10 (${qf.review_count} reviews)`, qf.avg_rating);
+          }
+        }
+      }
+
+      if (matchCount > 0) {
+        Alert.alert('Store Data Applied', `${matchCount} factor value${matchCount > 1 ? 's' : ''} auto-populated from Solutions Store & ReviewNet`);
+      } else {
+        Alert.alert('No Matches', 'No factor names matched between your decision and the solution data. Values are stored for reference.');
+      }
+    } catch (err) {
+      console.error('Error fetching store data:', err);
+      Alert.alert('Error', 'Failed to fetch data from Solutions Store');
+    } finally {
+      setFetchingStore(prev => ({ ...prev, [fetchKey]: false }));
+    }
+  };
 
   // Fetch data from configured data sources for all factors of an option
   const fetchFactorData = async (optionId: string, optionName: string) => {
@@ -365,6 +437,25 @@ export default function Step7() {
                 </TouchableOpacity>
               )}
             </View>
+
+            {/* Fetch from Solutions Store button - for options linked to a solution */}
+            {option.solution_id && (
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#ECFDF5', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, marginBottom: 8, borderWidth: 1, borderColor: '#A7F3D0' }}
+                onPress={() => fetchFromSolutionStore(option.id, option.solution_id!)}
+                disabled={fetchingStore[`store_${option.id}`]}
+              >
+                {fetchingStore[`store_${option.id}`] ? (
+                  <ActivityIndicator size="small" color="#059669" />
+                ) : (
+                  <Ionicons name="storefront" size={14} color="#059669" />
+                )}
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#059669', flex: 1 }}>
+                  {fetchingStore[`store_${option.id}`] ? 'Fetching from Store...' : 'Auto-populate from Solutions Store & ReviewNet'}
+                </Text>
+                <Ionicons name="flash" size={14} color="#059669" />
+              </TouchableOpacity>
+            )}
 
             {decision.factors
               .filter(f => !f.parent_id)

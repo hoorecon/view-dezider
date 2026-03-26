@@ -42,6 +42,7 @@ export interface DecisionOption {
   name: string;
   assessments: OptionAssessment[];
   worth_percentage: number;
+  solution_id?: string;  // Links to Solutions Store for auto-populated data
 }
 
 export interface MPPSActionItem {

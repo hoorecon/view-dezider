@@ -29,6 +29,7 @@ interface DecisionContextType {
 
   // Option operations
   addOption: () => void;
+  addOptionFromStore: (name: string, solutionId: string) => void;
   removeOption: (optionId: string) => void;
   newOptionName: string;
   setNewOptionName: (name: string) => void;
@@ -229,6 +230,21 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const updatedOptions = [...decision!.options, newOption];
     saveDecision({ options: updatedOptions });
     setNewOptionName('');
+  };
+
+  const addOptionFromStore = (name: string, solutionId: string) => {
+    // Check if this solution is already added
+    const exists = decision!.options.some(o => o.solution_id === solutionId);
+    if (exists) return;
+    const newOption: DecisionOption = {
+      id: `option_${Date.now()}`,
+      name: name.trim(),
+      assessments: [],
+      worth_percentage: 0,
+      solution_id: solutionId,
+    };
+    const updatedOptions = [...decision!.options, newOption];
+    saveDecision({ options: updatedOptions });
   };
 
   const removeOption = (optionId: string) => {
@@ -444,7 +460,7 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     fetchDecision,
     addFactor, updateFactor, removeFactor, moveFactorUp, moveFactorDown, applyRatingsAndContinue,
     newFactorName, setNewFactorName,
-    addOption, removeOption,
+    addOption, addOptionFromStore, removeOption,
     newOptionName, setNewOptionName,
     updateAssessment, getAssessmentValue, getAssessmentMode, getUnitValue, getActualValue, getAssessmentKey,
     selectOption,
