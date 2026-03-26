@@ -482,6 +482,38 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Time Dezider & Time Store */}
+          <Text style={styles.sectionTitle}>Time Intelligence</Text>
+          <View style={styles.quickActions}>
+            <TouchableOpacity
+              style={styles.actionCard}
+              onPress={() => router.push('/tools/time-dezider' as any)}
+            >
+              <LinearGradient
+                colors={['#7C3AED', '#A855F7']}
+                style={styles.actionIcon}
+              >
+                <Ionicons name="time-outline" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Time Dezider</Text>
+              <Text style={styles.actionSubtitle}>Daily schedule AI</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionCard}
+              onPress={() => router.push('/tools/time-store' as any)}
+            >
+              <LinearGradient
+                colors={['#DC2626', '#EF4444']}
+                style={styles.actionIcon}
+              >
+                <Ionicons name="cart-outline" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Time Store</Text>
+              <Text style={styles.actionSubtitle}>Buy back time</Text>
+            </TouchableOpacity>
+          </View>
+
           <TouchableOpacity
             style={styles.calendarCard}
             onPress={() => router.push('/tools/calendar-view')}

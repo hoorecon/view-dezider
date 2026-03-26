@@ -2367,6 +2367,63 @@ agent_communication:
     message: "🎉 CLD VERIFICATION HEALTH CHECK COMPLETE: All 7 requested API endpoints tested successfully! ✅ POST /api/auth/register - User registration working with session token generation, ✅ GET /api/auth/me - Authentication and user info retrieval working correctly, ✅ POST /api/decisions - Decision creation working (returns decision ID), ✅ GET /api/decisions - Decision listing working (finds created decision), ✅ GET /api/lifestyle/routines - Lifestyle routines endpoint working (returns empty array as expected), ✅ GET /api/solutions-store/solutions - Solutions store working (returns 14 solutions), ✅ GET /api/deo/api-keys - DEO API keys endpoint working (returns empty array as expected). All endpoints returned 200 OK status codes with proper response formats. Backend URL: https://dezider-core.preview.emergentagent.com/api is healthy and all key CLD features are functional. Quick verification test completed successfully with realistic test data (cldtest_{timestamp}@test.com user, 'Test CLD Decision' with Career/need parameters)."
 
 
+  - task: "Time Dezider - Daily Schedule Aggregation"
+    implemented: true
+    working: true
+    file: "routes/time_dezider.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented GET /api/time-dezider/daily with CTT + Lifestyle + Unplanned task aggregation, stats calculation, and time block management"
+      - working: true
+        agent: "testing"
+        comment: "✅ DAILY SCHEDULE AGGREGATION COMPREHENSIVE TESTING PASSED: Complete workflow tested successfully! (1) User registration (timetest@test.com) working, (2) Created 5 CTT tasks with from_time/to_time slots: Morning Standup (09:00-09:30), Deep Work Session (10:00-12:00), Lunch Break (12:00-13:00), Team Meeting (14:00-15:00), Email Processing (16:00-17:00), (3) Created 2 Lifestyle routines: Morning Exercise (06:30), Evening Meditation (21:00), (4) GET /api/time-dezider/daily?date=2026-03-26 returns proper aggregated schedule with 5 total blocks (3 CTT tasks + 2 lifestyle routines), (5) Stats calculation working: 210 scheduled minutes, 750 free minutes, 21.9% utilization, (6) All required fields present: blocks array with source_type, stats with scheduled_minutes/free_minutes/utilization_percent. Complete daily schedule aggregation functionality verified end-to-end."
+
+  - task: "Time Dezider - Unplanned Task + AI Rescheduling"
+    implemented: true
+    working: true
+    file: "routes/time_dezider.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented POST /api/time-dezider/unplanned-task, DELETE /api/time-dezider/unplanned-task/{block_id}, and AI rescheduling with TEPFI analysis"
+      - working: true
+        agent: "testing"
+        comment: "✅ UNPLANNED TASK WORKFLOW COMPREHENSIVE TESTING PASSED: Complete unplanned task lifecycle working perfectly! (1) POST /api/time-dezider/unplanned-task successfully creates unplanned task 'Urgent Client Call' with 60 minutes duration and high priority, returns proper block_id, (2) GET /api/time-dezider/daily?date=2026-03-26 correctly includes unplanned task in schedule - found 1 unplanned block with source_type='unplanned', (3) DELETE /api/time-dezider/unplanned-task/{block_id} successfully removes unplanned task. Complete unplanned task management functionality verified with proper integration into daily schedule aggregation."
+
+  - task: "Time Store - Budget Analysis + AI Optimization"
+    implemented: true
+    working: true
+    file: "routes/time_dezider.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented GET /api/time-store/budget with period-based analysis (daily/weekly), by_area/by_type breakdown, and AI optimization suggestions"
+      - working: true
+        agent: "testing"
+        comment: "✅ TIME STORE BUDGET ANALYSIS COMPREHENSIVE TESTING PASSED: Both daily and weekly budget analysis working perfectly! (1) GET /api/time-store/budget?period=daily returns proper time allocation: 960 available minutes, 390 committed minutes, 570 free minutes, 40.6% utilization, (2) Response includes all required fields: by_area (3 areas), by_type (3 types), items (7 items), (3) GET /api/time-store/budget?period=weekly returns scaled weekly allocation: 6720 available minutes, 2730 committed minutes, 3990 free minutes, 40.6% utilization, (4) Budget analysis correctly aggregates CTT tasks and Lifestyle routines with proper daily/weekly scaling. Complete time budget analysis functionality verified with realistic time allocation data."
+
+  - agent: "main"
+    message: "Time Dezider + Time Store backend and frontend complete. Test all time-dezider and time-store endpoints. Create CTT tasks with from_time/to_time and lifestyle routines first, then test daily schedule aggregation, unplanned tasks, budget analysis."
+  - agent: "testing"
+    message: "🎉 TIME DEZIDER + TIME STORE COMPREHENSIVE TESTING COMPLETE: All 7 test scenarios passed successfully with 100% success rate! ✅ SETUP & AUTHENTICATION: User registration (timetest@test.com) and session token generation working correctly. ✅ CTT TASKS CREATION: All 5 CTT tasks created successfully with proper from_time/to_time slots and task_duration fields. ✅ LIFESTYLE ROUTINES CREATION: Both lifestyle routines created successfully with time_slot and frequency fields. ✅ TIME DEZIDER PREFERENCES: GET/PUT /api/time-dezider/preferences working correctly with day_start/day_end configuration. ✅ DAILY SCHEDULE AGGREGATION: GET /api/time-dezider/daily returns unified timeline with CTT + Lifestyle blocks, proper stats calculation (scheduled/free minutes, utilization %), and all required response fields. ✅ UNPLANNED TASK WORKFLOW: Complete lifecycle working - POST creates unplanned task, GET daily schedule includes it, DELETE removes it successfully. ✅ TIME STORE BUDGET ANALYSIS: Both daily and weekly budget analysis working with proper by_area/by_type breakdown and time allocation calculations. Complete Time Dezider + Time Store functionality verified end-to-end with realistic time management scenarios. Backend URL: https://dezider-core.preview.emergentagent.com/api working correctly."
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+
   - task: "CLD Engine - CRUD (Save/Load/Delete CLD)"
     implemented: true
     working: true

@@ -3362,6 +3362,10 @@ api_router.include_router(deo_router)
 from routes.cld import router as cld_router
 api_router.include_router(cld_router)
 
+# Time Dezider + Time Store Router
+from routes.time_dezider import router as time_dezider_router
+api_router.include_router(time_dezider_router)
+
 
 # Include the router in the main app
 app.include_router(api_router)

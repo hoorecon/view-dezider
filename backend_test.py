@@ -1,408 +1,450 @@
 #!/usr/bin/env python3
 """
-Comprehensive CLD Engine Backend Testing
-Tests all CLD endpoints in sequence as specified in the review request.
+Time Dezider + Time Store Backend Testing
+Tests all endpoints in sequence as specified in the review request.
 """
 
 import requests
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
-# Backend URL from environment
-BACKEND_URL = "https://dezider-core.preview.emergentagent.com/api"
+# Backend URL
+BASE_URL = "https://dezider-core.preview.emergentagent.com/api"
 
-class CLDEngineTest:
+class TimeDezizerTester:
     def __init__(self):
         self.session_token = None
-        self.decision_id = None
-        self.test_results = []
+        self.user_data = None
+        self.created_tasks = []
+        self.created_routines = []
+        self.unplanned_block_id = None
         
-    def log_result(self, test_name, status, details=""):
-        """Log test result"""
-        result = {
-            "test": test_name,
-            "status": status,
-            "details": details,
-            "timestamp": datetime.now().isoformat()
+    def log(self, message):
+        """Log test progress"""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        print(f"[{timestamp}] {message}")
+        
+    def make_request(self, method, endpoint, data=None, params=None):
+        """Make authenticated API request"""
+        url = f"{BASE_URL}{endpoint}"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.session_token}" if self.session_token else None
         }
-        self.test_results.append(result)
-        status_icon = "✅" if status == "PASS" else "❌"
-        print(f"{status_icon} {test_name}: {details}")
+        headers = {k: v for k, v in headers.items() if v is not None}
         
-    def make_request(self, method, endpoint, data=None, headers=None):
-        """Make HTTP request with error handling"""
-        url = f"{BACKEND_URL}{endpoint}"
-        default_headers = {}
-        if self.session_token:
-            default_headers["Authorization"] = f"Bearer {self.session_token}"
-        if headers:
-            default_headers.update(headers)
-            
         try:
-            if method == "GET":
-                response = requests.get(url, headers=default_headers)
-            elif method == "POST":
-                response = requests.post(url, json=data, headers=default_headers)
-            elif method == "PUT":
-                response = requests.put(url, json=data, headers=default_headers)
-            elif method == "DELETE":
-                response = requests.delete(url, headers=default_headers)
+            if method.upper() == "GET":
+                response = requests.get(url, headers=headers, params=params)
+            elif method.upper() == "POST":
+                response = requests.post(url, headers=headers, json=data)
+            elif method.upper() == "PUT":
+                response = requests.put(url, headers=headers, json=data)
+            elif method.upper() == "DELETE":
+                response = requests.delete(url, headers=headers)
             else:
                 raise ValueError(f"Unsupported method: {method}")
                 
             return response
         except Exception as e:
+            self.log(f"❌ Request failed: {str(e)}")
             return None
-            
-    def test_1_register_user(self):
-        """Test 1: Register user"""
-        timestamp = int(time.time())
+    
+    def test_user_registration(self):
+        """Step 1: Register user"""
+        self.log("🔧 Step 1: User Registration")
+        
         user_data = {
-            "email": f"cldtest2@test.com",
+            "email": "timetest@test.com",
             "password": "test123",
-            "name": "CLD Tester"
+            "name": "Time Tester"
         }
         
         response = self.make_request("POST", "/auth/register", user_data)
+        
         if response and response.status_code == 200:
             data = response.json()
             self.session_token = data.get("session_token")
-            self.log_result("User Registration", "PASS", f"User registered with session token")
+            self.user_data = data
+            self.log(f"✅ User registered successfully: {data.get('name')} ({data.get('email')})")
+            self.log(f"   Session token: {self.session_token[:20]}...")
             return True
         else:
-            error = response.json().get("detail", "Unknown error") if response else "No response"
-            self.log_result("User Registration", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
+            self.log(f"❌ Registration failed: {response.status_code if response else 'No response'}")
+            if response:
+                self.log(f"   Error: {response.text}")
             return False
-            
-    def test_2_create_decision(self):
-        """Test 2: Create a decision"""
-        decision_data = {
-            "title": "Career Move Decision",
-            "context": "Deciding between job offers",
-            "life_area": "Career",
-            "decision_type": "need"
-        }
+    
+    def test_ctt_tasks_creation(self):
+        """Step 2: Create CTT Tasks with from_time/to_time"""
+        self.log("🔧 Step 2: Creating CTT Tasks with Time Slots")
         
-        response = self.make_request("POST", "/decisions", decision_data)
-        if response and response.status_code == 200:
-            data = response.json()
-            self.decision_id = data.get("id")
-            self.log_result("Decision Creation", "PASS", f"Decision created with ID: {self.decision_id}")
-            return True
-        else:
-            error = response.json().get("detail", "Unknown error") if response else "No response"
-            self.log_result("Decision Creation", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
-            return False
-            
-    def test_3_update_decision_with_factors(self):
-        """Test 3: Update decision with factors"""
-        factors_data = {
-            "factors": [
-                {"id": "f1", "name": "Salary", "category": "primary", "rating": 90, "order": 0},
-                {"id": "f2", "name": "Work-Life Balance", "category": "primary", "rating": 80, "order": 1},
-                {"id": "f3", "name": "Growth Opportunity", "category": "secondary", "rating": 70, "order": 2},
-                {"id": "f4", "name": "Location", "category": "secondary", "rating": 60, "order": 3}
-            ]
-        }
-        
-        response = self.make_request("PUT", f"/decisions/{self.decision_id}", factors_data)
-        if response and response.status_code == 200:
-            self.log_result("Decision Update with Factors", "PASS", "4 factors added successfully")
-            return True
-        else:
-            error = response.json().get("detail", "Unknown error") if response else "No response"
-            self.log_result("Decision Update with Factors", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
-            return False
-            
-    def test_4_get_cld_empty(self):
-        """Test 4: GET /api/cld/{decision_id} - Should return null"""
-        response = self.make_request("GET", f"/cld/{self.decision_id}")
-        if response and response.status_code == 200:
-            data = response.json()
-            if data.get("cld") is None:
-                self.log_result("GET CLD (Empty)", "PASS", "Returns null as expected")
-                return True
-            else:
-                self.log_result("GET CLD (Empty)", "FAIL", f"Expected null, got: {data.get('cld')}")
-                return False
-        else:
-            error = response.json().get("detail", "Unknown error") if response else "No response"
-            self.log_result("GET CLD (Empty)", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
-            return False
-            
-    def test_5_save_cld(self):
-        """Test 5: POST /api/cld/{decision_id}/save - Save CLD"""
-        cld_data = {
-            "nodes": [
-                {"factor_id": "f1", "name": "Salary", "x": 200, "y": 60, "centrality": 0.8, "classification": "primary", "priority_rank": 1, "gap_multiplier": 2.0, "base_value": 60, "locked": False},
-                {"factor_id": "f2", "name": "Work-Life Balance", "x": 340, "y": 200, "centrality": 0.7, "classification": "primary", "priority_rank": 2, "gap_multiplier": 1.5, "base_value": 45, "locked": False},
-                {"factor_id": "f3", "name": "Growth Opportunity", "x": 200, "y": 340, "centrality": 0.5, "classification": "secondary", "priority_rank": 3, "gap_multiplier": 1.0, "base_value": 55, "locked": False},
-                {"factor_id": "f4", "name": "Location", "x": 60, "y": 200, "centrality": 0.3, "classification": "secondary", "priority_rank": 4, "gap_multiplier": 0.5, "base_value": 40, "locked": False}
-            ],
-            "links": [
-                {"from_id": "f1", "to_id": "f2", "link_type": "balancing", "strength": 7, "delay": 0, "description": "Higher salary often means less balance"},
-                {"from_id": "f3", "to_id": "f1", "link_type": "reinforcing", "strength": 8, "delay": 1, "description": "Growth leads to higher salary"},
-                {"from_id": "f2", "to_id": "f3", "link_type": "reinforcing", "strength": 5, "delay": 0, "description": "Balance enables learning"},
-                {"from_id": "f4", "to_id": "f2", "link_type": "reinforcing", "strength": 6, "delay": 0, "description": "Good location improves balance"}
-            ],
-            "loops": [
-                {"name": "B1: Salary-Balance Tradeoff", "loop_type": "balancing", "factor_ids": ["f1", "f2", "f3"]}
-            ],
-            "layout_type": "circular"
-        }
-        
-        response = self.make_request("POST", f"/cld/{self.decision_id}/save", cld_data)
-        if response and response.status_code == 200:
-            data = response.json()
-            self.log_result("Save CLD", "PASS", f"CLD saved successfully: {data.get('message')}")
-            return True
-        else:
-            error = response.json().get("detail", "Unknown error") if response else "No response"
-            self.log_result("Save CLD", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
-            return False
-            
-    def test_6_get_cld_saved(self):
-        """Test 6: GET /api/cld/{decision_id} - Should return saved CLD"""
-        response = self.make_request("GET", f"/cld/{self.decision_id}")
-        if response and response.status_code == 200:
-            data = response.json()
-            cld = data.get("cld")
-            if cld and "nodes" in cld and "links" in cld and "loops" in cld:
-                nodes_count = len(cld.get("nodes", []))
-                links_count = len(cld.get("links", []))
-                loops_count = len(cld.get("loops", []))
-                self.log_result("GET CLD (Saved)", "PASS", f"CLD retrieved: {nodes_count} nodes, {links_count} links, {loops_count} loops")
-                return True
-            else:
-                self.log_result("GET CLD (Saved)", "FAIL", f"Invalid CLD structure: {cld}")
-                return False
-        else:
-            error = response.json().get("detail", "Unknown error") if response else "No response"
-            self.log_result("GET CLD (Saved)", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
-            return False
-            
-    def test_7_get_cld_list(self):
-        """Test 7: GET /api/cld/list - Should return list with saved CLD"""
-        response = self.make_request("GET", "/cld/list")
-        if response and response.status_code == 200:
-            data = response.json()
-            clds = data.get("clds", [])
-            if len(clds) >= 1:
-                self.log_result("GET CLD List", "PASS", f"Found {len(clds)} CLD(s)")
-                return True
-            else:
-                self.log_result("GET CLD List", "FAIL", f"Expected at least 1 CLD, found {len(clds)}")
-                return False
-        else:
-            error = response.json().get("detail", "Unknown error") if response else "No response"
-            self.log_result("GET CLD List", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
-            return False
-            
-    def test_8_update_node(self):
-        """Test 8: PUT /api/cld/{decision_id}/node/f1 - Update node"""
-        node_update = {
-            "base_value": 70,
-            "locked": True
-        }
-        
-        response = self.make_request("PUT", f"/cld/{self.decision_id}/node/f1", node_update)
-        if response and response.status_code == 200:
-            self.log_result("Update Node", "PASS", "Node f1 updated successfully")
-            return True
-        else:
-            error = response.json().get("detail", "Unknown error") if response else "No response"
-            self.log_result("Update Node", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
-            return False
-            
-    def test_9_update_link(self):
-        """Test 9: PUT /api/cld/{decision_id}/link - Update link"""
-        link_update = {
-            "from_id": "f1",
-            "to_id": "f2",
-            "strength": 9
-        }
-        
-        response = self.make_request("PUT", f"/cld/{self.decision_id}/link", link_update)
-        if response and response.status_code == 200:
-            self.log_result("Update Link", "PASS", "Link f1->f2 updated successfully")
-            return True
-        else:
-            error = response.json().get("detail", "Unknown error") if response else "No response"
-            self.log_result("Update Link", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
-            return False
-            
-    def test_10_simulate_positive_shock(self):
-        """Test 10: POST /api/cld/{decision_id}/simulate - Positive shock"""
-        simulation_data = {
-            "shock_factor_id": "f3",
-            "shock_delta": 25,
-            "time_steps": 5,
-            "dampening": 0.7
-        }
-        
-        response = self.make_request("POST", f"/cld/{self.decision_id}/simulate", simulation_data)
-        if response and response.status_code == 200:
-            data = response.json()
-            required_fields = ["timeline", "final_values", "total_impact", "stability", "most_affected", "baseline"]
-            if all(field in data for field in required_fields):
-                timeline_steps = len(data.get("timeline", []))
-                stability = data.get("stability")
-                self.log_result("Simulate Positive Shock", "PASS", f"Simulation completed: {timeline_steps} steps, stability: {stability}")
-                return True
-            else:
-                missing = [f for f in required_fields if f not in data]
-                self.log_result("Simulate Positive Shock", "FAIL", f"Missing fields: {missing}")
-                return False
-        else:
-            error = response.json().get("detail", "Unknown error") if response else "No response"
-            self.log_result("Simulate Positive Shock", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
-            return False
-            
-    def test_11_simulate_negative_shock(self):
-        """Test 11: POST /api/cld/{decision_id}/simulate - Negative shock"""
-        simulation_data = {
-            "shock_factor_id": "f1",
-            "shock_delta": -20,
-            "time_steps": 8,
-            "dampening": 0.5
-        }
-        
-        response = self.make_request("POST", f"/cld/{self.decision_id}/simulate", simulation_data)
-        if response and response.status_code == 200:
-            data = response.json()
-            timeline_steps = len(data.get("timeline", []))
-            stability = data.get("stability")
-            total_impact = data.get("total_impact", {})
-            f1_impact = total_impact.get("f1", 0)
-            self.log_result("Simulate Negative Shock", "PASS", f"Negative shock simulation: {timeline_steps} steps, f1 impact: {f1_impact}")
-            return True
-        else:
-            error = response.json().get("detail", "Unknown error") if response else "No response"
-            self.log_result("Simulate Negative Shock", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
-            return False
-            
-    def test_12_layout_force(self):
-        """Test 12: POST /api/cld/{decision_id}/layout - Force layout"""
-        layout_data = {
-            "layout_type": "force"
-        }
-        
-        response = self.make_request("POST", f"/cld/{self.decision_id}/layout", layout_data)
-        if response and response.status_code == 200:
-            data = response.json()
-            nodes = data.get("nodes", [])
-            layout_type = data.get("layout_type")
-            if nodes and layout_type == "force":
-                self.log_result("Layout Force", "PASS", f"Force layout computed for {len(nodes)} nodes")
-                return True
-            else:
-                self.log_result("Layout Force", "FAIL", f"Invalid response: {data}")
-                return False
-        else:
-            error = response.json().get("detail", "Unknown error") if response else "No response"
-            self.log_result("Layout Force", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
-            return False
-            
-    def test_13_layout_hierarchical(self):
-        """Test 13: POST /api/cld/{decision_id}/layout - Hierarchical layout"""
-        layout_data = {
-            "layout_type": "hierarchical"
-        }
-        
-        response = self.make_request("POST", f"/cld/{self.decision_id}/layout", layout_data)
-        if response and response.status_code == 200:
-            data = response.json()
-            nodes = data.get("nodes", [])
-            layout_type = data.get("layout_type")
-            if nodes and layout_type == "hierarchical":
-                self.log_result("Layout Hierarchical", "PASS", f"Hierarchical layout computed for {len(nodes)} nodes")
-                return True
-            else:
-                self.log_result("Layout Hierarchical", "FAIL", f"Invalid response: {data}")
-                return False
-        else:
-            error = response.json().get("detail", "Unknown error") if response else "No response"
-            self.log_result("Layout Hierarchical", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
-            return False
-            
-    def test_14_delete_cld(self):
-        """Test 14: DELETE /api/cld/{decision_id} - Delete CLD"""
-        response = self.make_request("DELETE", f"/cld/{self.decision_id}")
-        if response and response.status_code == 200:
-            self.log_result("Delete CLD", "PASS", "CLD deleted successfully")
-            return True
-        else:
-            error = response.json().get("detail", "Unknown error") if response else "No response"
-            self.log_result("Delete CLD", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
-            return False
-            
-    def test_15_get_cld_after_delete(self):
-        """Test 15: GET /api/cld/{decision_id} - Should return null after delete"""
-        response = self.make_request("GET", f"/cld/{self.decision_id}")
-        if response and response.status_code == 200:
-            data = response.json()
-            if data.get("cld") is None:
-                self.log_result("GET CLD (After Delete)", "PASS", "Returns null after deletion")
-                return True
-            else:
-                self.log_result("GET CLD (After Delete)", "FAIL", f"Expected null, got: {data.get('cld')}")
-                return False
-        else:
-            error = response.json().get("detail", "Unknown error") if response else "No response"
-            self.log_result("GET CLD (After Delete)", "FAIL", f"Status: {response.status_code if response else 'None'}, Error: {error}")
-            return False
-            
-    def run_all_tests(self):
-        """Run all CLD Engine tests in sequence"""
-        print("🚀 Starting CLD Engine Comprehensive Testing")
-        print("=" * 60)
-        
-        tests = [
-            self.test_1_register_user,
-            self.test_2_create_decision,
-            self.test_3_update_decision_with_factors,
-            self.test_4_get_cld_empty,
-            self.test_5_save_cld,
-            self.test_6_get_cld_saved,
-            self.test_7_get_cld_list,
-            self.test_8_update_node,
-            self.test_9_update_link,
-            self.test_10_simulate_positive_shock,
-            self.test_11_simulate_negative_shock,
-            self.test_12_layout_force,
-            self.test_13_layout_hierarchical,
-            self.test_14_delete_cld,
-            self.test_15_get_cld_after_delete
+        tasks = [
+            {
+                "task": "Morning Standup",
+                "from_time": "09:00",
+                "to_time": "09:30",
+                "task_duration": "30m",
+                "priority": "high",
+                "life_area": "Career",
+                "is_routine": True,
+                "frequency": "daily"
+            },
+            {
+                "task": "Deep Work Session",
+                "from_time": "10:00",
+                "to_time": "12:00",
+                "task_duration": "2h",
+                "priority": "high",
+                "life_area": "Career"
+            },
+            {
+                "task": "Lunch Break",
+                "from_time": "12:00",
+                "to_time": "13:00",
+                "task_duration": "1h",
+                "priority": "low",
+                "life_area": "Health",
+                "is_routine": True,
+                "frequency": "daily"
+            },
+            {
+                "task": "Team Meeting",
+                "from_time": "14:00",
+                "to_time": "15:00",
+                "task_duration": "1h",
+                "priority": "medium",
+                "life_area": "Career"
+            },
+            {
+                "task": "Email Processing",
+                "from_time": "16:00",
+                "to_time": "17:00",
+                "task_duration": "1h",
+                "priority": "low",
+                "life_area": "Career",
+                "is_routine": True,
+                "frequency": "daily"
+            }
         ]
         
-        passed = 0
-        failed = 0
+        success_count = 0
+        for i, task_data in enumerate(tasks, 3):
+            self.log(f"   Creating task {i-2}/5: {task_data['task']}")
+            response = self.make_request("POST", "/ctt/tasks", task_data)
+            
+            if response and response.status_code == 200:
+                data = response.json()
+                self.created_tasks.append(data)
+                self.log(f"   ✅ Created: {data.get('task')} ({data.get('from_time')} - {data.get('to_time')})")
+                success_count += 1
+            else:
+                self.log(f"   ❌ Failed to create task: {response.status_code if response else 'No response'}")
+                if response:
+                    self.log(f"      Error: {response.text}")
         
-        for test in tests:
-            try:
-                if test():
-                    passed += 1
-                else:
-                    failed += 1
-            except Exception as e:
-                self.log_result(test.__name__, "ERROR", f"Exception: {str(e)}")
-                failed += 1
+        self.log(f"✅ CTT Tasks created: {success_count}/5")
+        return success_count == 5
+    
+    def test_lifestyle_routines_creation(self):
+        """Step 3: Create Lifestyle Routines"""
+        self.log("🔧 Step 3: Creating Lifestyle Routines")
+        
+        routines = [
+            {
+                "name": "Morning Exercise",
+                "time_slot": "06:30",
+                "frequency": "daily",
+                "priority": "high",
+                "life_area": "Health",
+                "category": "health"
+            },
+            {
+                "name": "Evening Meditation",
+                "time_slot": "21:00",
+                "frequency": "daily",
+                "priority": "medium",
+                "life_area": "Mental_Health",
+                "category": "wellness"
+            }
+        ]
+        
+        success_count = 0
+        for i, routine_data in enumerate(routines, 8):
+            self.log(f"   Creating routine {i-7}/2: {routine_data['name']}")
+            response = self.make_request("POST", "/lifestyle/routines", routine_data)
+            
+            if response and response.status_code == 200:
+                data = response.json()
+                self.created_routines.append(data)
+                self.log(f"   ✅ Created: {data.get('name')} at {data.get('time_slot')}")
+                success_count += 1
+            else:
+                self.log(f"   ❌ Failed to create routine: {response.status_code if response else 'No response'}")
+                if response:
+                    self.log(f"      Error: {response.text}")
+        
+        self.log(f"✅ Lifestyle Routines created: {success_count}/2")
+        return success_count == 2
+    
+    def test_time_dezider_preferences(self):
+        """Step 4: Test Time Dezider Preferences"""
+        self.log("🔧 Step 4: Testing Time Dezider Preferences")
+        
+        # Get default preferences
+        self.log("   Getting default preferences...")
+        response = self.make_request("GET", "/time-dezider/preferences")
+        
+        if response and response.status_code == 200:
+            prefs = response.json()
+            self.log(f"   ✅ Default preferences: day_start={prefs.get('day_start')}, day_end={prefs.get('day_end')}")
+        else:
+            self.log(f"   ❌ Failed to get preferences: {response.status_code if response else 'No response'}")
+            return False
+        
+        # Update preferences
+        self.log("   Updating preferences...")
+        update_data = {
+            "day_start": "06:00",
+            "day_end": "22:00"
+        }
+        response = self.make_request("PUT", "/time-dezider/preferences", update_data)
+        
+        if response and response.status_code == 200:
+            updated_prefs = response.json()
+            self.log(f"   ✅ Updated preferences: day_start={updated_prefs.get('day_start')}, day_end={updated_prefs.get('day_end')}")
+            return True
+        else:
+            self.log(f"   ❌ Failed to update preferences: {response.status_code if response else 'No response'}")
+            return False
+    
+    def test_daily_schedule_aggregation(self):
+        """Step 5: Test Daily Schedule Aggregation"""
+        self.log("🔧 Step 5: Testing Daily Schedule Aggregation")
+        
+        params = {"date": "2026-03-26"}
+        response = self.make_request("GET", "/time-dezider/daily", params=params)
+        
+        if response and response.status_code == 200:
+            data = response.json()
+            blocks = data.get("blocks", [])
+            stats = data.get("stats", {})
+            
+            self.log(f"   ✅ Daily schedule retrieved for {data.get('date')}")
+            self.log(f"   📊 Stats:")
+            self.log(f"      - Total blocks: {stats.get('total_blocks', 0)}")
+            self.log(f"      - Scheduled minutes: {stats.get('scheduled_minutes', 0)}")
+            self.log(f"      - Free minutes: {stats.get('free_minutes', 0)}")
+            self.log(f"      - Utilization: {stats.get('utilization_percent', 0)}%")
+            
+            # Verify we have blocks from CTT and Lifestyle
+            ctt_blocks = [b for b in blocks if b.get("source_type") == "ctt"]
+            lifestyle_blocks = [b for b in blocks if b.get("source_type") == "lifestyle"]
+            
+            self.log(f"   📋 Block breakdown:")
+            self.log(f"      - CTT tasks: {len(ctt_blocks)}")
+            self.log(f"      - Lifestyle routines: {len(lifestyle_blocks)}")
+            
+            # Verify required fields in response
+            required_fields = ["blocks", "stats"]
+            required_stats = ["scheduled_minutes", "free_minutes", "utilization_percent"]
+            
+            missing_fields = [f for f in required_fields if f not in data]
+            missing_stats = [s for s in required_stats if s not in stats]
+            
+            if not missing_fields and not missing_stats:
+                self.log("   ✅ All required fields present in response")
+                return True
+            else:
+                self.log(f"   ❌ Missing fields: {missing_fields + missing_stats}")
+                return False
+        else:
+            self.log(f"   ❌ Failed to get daily schedule: {response.status_code if response else 'No response'}")
+            if response:
+                self.log(f"      Error: {response.text}")
+            return False
+    
+    def test_unplanned_task_workflow(self):
+        """Step 6: Test Unplanned Task Workflow"""
+        self.log("🔧 Step 6: Testing Unplanned Task Workflow")
+        
+        # Add unplanned task
+        self.log("   Adding unplanned task...")
+        unplanned_data = {
+            "date": "2026-03-26",
+            "title": "Urgent Client Call",
+            "duration_minutes": 60,
+            "priority": "high"
+        }
+        
+        response = self.make_request("POST", "/time-dezider/unplanned-task", unplanned_data)
+        
+        if response and response.status_code == 200:
+            data = response.json()
+            self.unplanned_block_id = data.get("block_id")
+            self.log(f"   ✅ Unplanned task created: {data.get('title')} (ID: {self.unplanned_block_id})")
+        else:
+            self.log(f"   ❌ Failed to create unplanned task: {response.status_code if response else 'No response'}")
+            return False
+        
+        # Verify it appears in daily schedule
+        self.log("   Verifying unplanned task in daily schedule...")
+        params = {"date": "2026-03-26"}
+        response = self.make_request("GET", "/time-dezider/daily", params=params)
+        
+        if response and response.status_code == 200:
+            data = response.json()
+            blocks = data.get("blocks", [])
+            unplanned_blocks = [b for b in blocks if b.get("source_type") == "unplanned"]
+            
+            if unplanned_blocks:
+                self.log(f"   ✅ Unplanned task found in schedule: {len(unplanned_blocks)} unplanned block(s)")
+            else:
+                self.log("   ❌ Unplanned task not found in daily schedule")
+                return False
+        else:
+            self.log("   ❌ Failed to verify unplanned task in schedule")
+            return False
+        
+        # Delete unplanned task
+        if self.unplanned_block_id:
+            self.log("   Deleting unplanned task...")
+            response = self.make_request("DELETE", f"/time-dezider/unplanned-task/{self.unplanned_block_id}")
+            
+            if response and response.status_code == 200:
+                self.log("   ✅ Unplanned task deleted successfully")
+                return True
+            else:
+                self.log(f"   ❌ Failed to delete unplanned task: {response.status_code if response else 'No response'}")
+                return False
+        
+        return True
+    
+    def test_time_store_budget(self):
+        """Step 7: Test Time Store Budget Analysis"""
+        self.log("🔧 Step 7: Testing Time Store Budget Analysis")
+        
+        # Test daily budget
+        self.log("   Getting daily time budget...")
+        params = {"period": "daily"}
+        response = self.make_request("GET", "/time-store/budget", params=params)
+        
+        if response and response.status_code == 200:
+            data = response.json()
+            self.log(f"   ✅ Daily budget retrieved:")
+            self.log(f"      - Available minutes: {data.get('available_minutes', 0)}")
+            self.log(f"      - Committed minutes: {data.get('committed_minutes', 0)}")
+            self.log(f"      - Free minutes: {data.get('free_minutes', 0)}")
+            self.log(f"      - Utilization: {data.get('utilization_percent', 0)}%")
+            
+            # Verify required fields
+            required_fields = ["by_area", "by_type", "items"]
+            missing_fields = [f for f in required_fields if f not in data]
+            
+            if not missing_fields:
+                by_area = data.get("by_area", {})
+                by_type = data.get("by_type", {})
+                items = data.get("items", [])
                 
-        print("\n" + "=" * 60)
-        print(f"🎯 CLD Engine Testing Complete")
-        print(f"✅ Passed: {passed}")
-        print(f"❌ Failed: {failed}")
-        print(f"📊 Success Rate: {(passed/(passed+failed)*100):.1f}%")
+                self.log(f"      - By area: {len(by_area)} areas")
+                self.log(f"      - By type: {len(by_type)} types")
+                self.log(f"      - Items: {len(items)} items")
+                
+                daily_success = True
+            else:
+                self.log(f"   ❌ Missing fields in daily budget: {missing_fields}")
+                daily_success = False
+        else:
+            self.log(f"   ❌ Failed to get daily budget: {response.status_code if response else 'No response'}")
+            daily_success = False
         
-        return passed, failed, self.test_results
+        # Test weekly budget
+        self.log("   Getting weekly time budget...")
+        params = {"period": "weekly"}
+        response = self.make_request("GET", "/time-store/budget", params=params)
+        
+        if response and response.status_code == 200:
+            data = response.json()
+            self.log(f"   ✅ Weekly budget retrieved:")
+            self.log(f"      - Available minutes: {data.get('available_minutes', 0)}")
+            self.log(f"      - Committed minutes: {data.get('committed_minutes', 0)}")
+            self.log(f"      - Free minutes: {data.get('free_minutes', 0)}")
+            self.log(f"      - Utilization: {data.get('utilization_percent', 0)}%")
+            weekly_success = True
+        else:
+            self.log(f"   ❌ Failed to get weekly budget: {response.status_code if response else 'No response'}")
+            weekly_success = False
+        
+        return daily_success and weekly_success
+    
+    def run_all_tests(self):
+        """Run all tests in sequence"""
+        self.log("🚀 Starting Time Dezider + Time Store Backend Testing")
+        self.log("=" * 60)
+        
+        test_results = []
+        
+        # Step 1: User Registration
+        test_results.append(("User Registration", self.test_user_registration()))
+        
+        if not self.session_token:
+            self.log("❌ Cannot continue without authentication")
+            return False
+        
+        # Step 2: Create CTT Tasks
+        test_results.append(("CTT Tasks Creation", self.test_ctt_tasks_creation()))
+        
+        # Step 3: Create Lifestyle Routines
+        test_results.append(("Lifestyle Routines Creation", self.test_lifestyle_routines_creation()))
+        
+        # Step 4: Test Time Dezider Preferences
+        test_results.append(("Time Dezider Preferences", self.test_time_dezider_preferences()))
+        
+        # Step 5: Test Daily Schedule Aggregation
+        test_results.append(("Daily Schedule Aggregation", self.test_daily_schedule_aggregation()))
+        
+        # Step 6: Test Unplanned Task Workflow
+        test_results.append(("Unplanned Task Workflow", self.test_unplanned_task_workflow()))
+        
+        # Step 7: Test Time Store Budget
+        test_results.append(("Time Store Budget Analysis", self.test_time_store_budget()))
+        
+        # Summary
+        self.log("=" * 60)
+        self.log("📊 TEST RESULTS SUMMARY")
+        self.log("=" * 60)
+        
+        passed = 0
+        total = len(test_results)
+        
+        for test_name, result in test_results:
+            status = "✅ PASSED" if result else "❌ FAILED"
+            self.log(f"{status} - {test_name}")
+            if result:
+                passed += 1
+        
+        self.log("=" * 60)
+        self.log(f"🎯 OVERALL RESULT: {passed}/{total} tests passed ({(passed/total)*100:.1f}%)")
+        
+        if passed == total:
+            self.log("🎉 ALL TESTS PASSED! Time Dezider + Time Store backend is working correctly.")
+            return True
+        else:
+            self.log(f"⚠️  {total - passed} test(s) failed. Please check the logs above for details.")
+            return False
+
+def main():
+    """Main test execution"""
+    tester = TimeDezizerTester()
+    success = tester.run_all_tests()
+    
+    if success:
+        print("\n🎉 Time Dezider + Time Store backend testing completed successfully!")
+        exit(0)
+    else:
+        print("\n❌ Some tests failed. Please review the output above.")
+        exit(1)
 
 if __name__ == "__main__":
-    tester = CLDEngineTest()
-    passed, failed, results = tester.run_all_tests()
-    
-    # Print detailed results
-    print("\n📋 Detailed Test Results:")
-    for result in results:
-        status_icon = "✅" if result["status"] == "PASS" else "❌" if result["status"] == "FAIL" else "⚠️"
-        print(f"{status_icon} {result['test']}: {result['details']}")
+    main()
