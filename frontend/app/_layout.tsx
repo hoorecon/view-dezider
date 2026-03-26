@@ -44,9 +44,13 @@ export default function RootLayout() {
           name="prr/new" 
           options={{ 
             presentation: 'modal',
-            headerShown: true,
-            headerTitle: 'New PRR Decision',
-            headerTintColor: COLORS.primary,
+            headerShown: false,
+          }} 
+        />
+        <Stack.Screen 
+          name="tools/new-decision" 
+          options={{ 
+            headerShown: false,
           }} 
         />
         <Stack.Screen 

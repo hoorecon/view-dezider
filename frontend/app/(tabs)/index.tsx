@@ -217,16 +217,16 @@ export default function HomeScreen() {
           <View style={styles.quickActions}>
             <TouchableOpacity
               style={styles.actionCard}
-              onPress={() => router.push('/prr/new')}
+              onPress={() => router.push('/tools/new-decision')}
             >
               <LinearGradient
-                colors={[COLORS.primary, COLORS.primaryDark]}
+                colors={['#6366F1', '#8B5CF6']}
                 style={styles.actionIcon}
               >
-                <Ionicons name="analytics" size={24} color={COLORS.white} />
+                <Ionicons name="compass" size={24} color={COLORS.white} />
               </LinearGradient>
-              <Text style={styles.actionTitle}>PRR Decision</Text>
-              <Text style={styles.actionSubtitle}>10-step analysis</Text>
+              <Text style={styles.actionTitle}>New Decision</Text>
+              <Text style={styles.actionSubtitle}>HOS Decision Engine</Text>
             </TouchableOpacity>
 
             <TouchableOpacity

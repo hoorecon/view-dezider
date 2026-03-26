@@ -20,6 +20,7 @@ interface OrgBranding {
   id: string;
   name: string;
   slug: string;
+  org_type?: string;
   logo_url?: string;
   primary_color?: string;
   accent_color?: string;
@@ -36,6 +37,7 @@ interface AuthState {
   setLoading: (loading: boolean) => void;
   setSessionToken: (token: string | null) => void;
   setOrgBranding: (branding: OrgBranding | null) => void;
+  setSession: (sessionToken: string, userData: any) => Promise<void>;
   login: (email: string, password: string, orgId?: string) => Promise<void>;
   register: (email: string, password: string, name: string, orgId?: string) => Promise<void>;
   loginWithGoogle: (sessionId: string) => Promise<void>;
@@ -55,6 +57,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   setLoading: (isLoading) => set({ isLoading }),
   setSessionToken: (sessionToken) => set({ sessionToken }),
   setOrgBranding: (orgBranding) => set({ orgBranding }),
+
+  setSession: async (sessionToken: string, userData: any) => {
+    await AsyncStorage.setItem('session_token', sessionToken);
+    if (userData.org_id) await AsyncStorage.setItem('org_id', userData.org_id);
+    set({ user: userData, isAuthenticated: true, sessionToken });
+  },
 
   fetchOrgBranding: async (slug: string) => {
     try {

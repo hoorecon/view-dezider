@@ -748,6 +748,7 @@ async def create_organization(request: Request, user: dict = Depends(get_current
         "id": str(uuid.uuid4()),
         "name": name,
         "slug": slug,
+        "org_type": body.get("org_type", "BUSINESS").upper(),  # BUSINESS / NONPROFIT / GOVERNMENT
         "logo_url": body.get("logo_url", ""),
         "primary_color": body.get("primary_color", "#6C63FF"),
         "accent_color": body.get("accent_color", "#FF6584"),
@@ -774,6 +775,7 @@ async def get_organization_by_slug(slug: str):
         "id": org["id"],
         "name": org["name"],
         "slug": org["slug"],
+        "org_type": org.get("org_type", "BUSINESS"),
         "logo_url": org.get("logo_url", ""),
         "primary_color": org.get("primary_color", "#6C63FF"),
         "accent_color": org.get("accent_color", "#FF6584"),
@@ -3340,11 +3342,15 @@ from routes.tools import router as tools_router
 from routes.admin import router as admin_router
 from routes.ctt_gem import router as ctt_gem_router
 from routes.lifestyle import router as lifestyle_router
+from routes.decision_intake import router as decision_intake_router
+from routes.org_auth import router as org_auth_router
 
 api_router.include_router(tools_router)
 api_router.include_router(admin_router)
 api_router.include_router(ctt_gem_router)
 api_router.include_router(lifestyle_router)
+api_router.include_router(decision_intake_router)
+api_router.include_router(org_auth_router)
 
 
 # Include the router in the main app
