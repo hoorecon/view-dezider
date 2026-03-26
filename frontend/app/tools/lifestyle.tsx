@@ -198,6 +198,108 @@ export default function LifestyleScreen() {
     );
   };
 
+  // Today's status
+  const [todayStatus, setTodayStatus] = useState<any>(null);
+  const [completingId, setCompletingId] = useState<string | null>(null);
+
+  const fetchTodayStatus = useCallback(async () => {
+    try {
+      const res = await api.get('/lifestyle/today-status');
+      setTodayStatus(res.data);
+    } catch (e) { console.error(e); }
+  }, []);
+
+  useEffect(() => { fetchTodayStatus(); }, [fetchTodayStatus]);
+
+  const handleToggleComplete = async (routineId: string, isCompleted: boolean) => {
+    setCompletingId(routineId);
+    try {
+      if (isCompleted) {
+        await api.delete(`/lifestyle/routines/${routineId}/uncomplete`);
+      } else {
+        await api.post(`/lifestyle/routines/${routineId}/complete`, {});
+      }
+      fetchTodayStatus();
+      fetchRoutines();
+    } catch (e: any) {
+      Alert.alert('Error', e?.response?.data?.detail || 'Failed to update completion');
+    } finally {
+      setCompletingId(null);
+    }
+  };
+
+  const handleSyncCalendar = async (routineId: string, name: string) => {
+    try {
+      const statusRes = await api.get('/oauth/calendar/status');
+      if (!statusRes.data?.connected) {
+        Alert.alert('Connect Calendar', 'Please connect Google Calendar first', [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Connect', onPress: () => router.push('/tools/google-calendar' as any) },
+        ]);
+        return;
+      }
+      const res = await api.post(`/lifestyle/routines/${routineId}/sync-calendar`, { timezone: 'Asia/Kolkata' });
+      Alert.alert('Synced!', `Recurring event for "${name}" added to your Google Calendar`);
+      fetchRoutines();
+    } catch (e: any) {
+      Alert.alert('Error', e?.response?.data?.detail || 'Failed to sync');
+    }
+  };
+
+  const renderTodayStatus = () => {
+    if (!todayStatus || todayStatus.total_due === 0) return null;
+    const pct = todayStatus.completion_rate;
+    const progressColor = pct >= 80 ? '#10B981' : pct >= 50 ? '#F59E0B' : '#EF4444';
+
+    return (
+      <View style={s.todayCard}>
+        <View style={s.todayHeader}>
+          <Ionicons name="today" size={20} color={COLORS.primary} />
+          <Text style={s.todayTitle}>Today's Routines</Text>
+          <View style={[s.todayBadge, { backgroundColor: progressColor + '20' }]}>
+            <Text style={[s.todayBadgeText, { color: progressColor }]}>
+              {todayStatus.completed}/{todayStatus.total_due}
+            </Text>
+          </View>
+        </View>
+        {/* Progress bar */}
+        <View style={s.progressBar}>
+          <View style={[s.progressFill, { width: `${pct}%`, backgroundColor: progressColor }]} />
+        </View>
+        {/* Today's routine checklist */}
+        {todayStatus.routines.map((r: any) => (
+          <TouchableOpacity
+            key={r.routine_id}
+            style={s.todayItem}
+            onPress={() => handleToggleComplete(r.routine_id, r.completed_today)}
+          >
+            {completingId === r.routine_id ? (
+              <ActivityIndicator size="small" color={COLORS.primary} style={{ width: 24 }} />
+            ) : (
+              <Ionicons
+                name={r.completed_today ? 'checkmark-circle' : 'ellipse-outline'}
+                size={22}
+                color={r.completed_today ? '#10B981' : COLORS.textMuted}
+              />
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={[s.todayItemName, r.completed_today && s.todayItemDone]}>
+                {r.name}
+              </Text>
+              {r.time_slot ? <Text style={s.todayItemTime}>{r.time_slot}</Text> : null}
+            </View>
+            {r.current_streak > 0 && (
+              <View style={s.streakBadge}>
+                <Ionicons name="flame" size={12} color="#F59E0B" />
+                <Text style={s.streakText}>{r.current_streak}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
+  };
+
   const renderRoutineCard = (routine: any) => (
     <TouchableOpacity
       key={routine.routine_id}
@@ -223,18 +325,43 @@ export default function LifestyleScreen() {
           </View>
         )}
         <View style={{ flex: 1 }} />
+        {/* Calendar Sync icon */}
+        {routine.synced_to_calendar ? (
+          <View style={{ marginRight: 6 }}>
+            <Ionicons name="calendar" size={14} color="#4285F4" />
+          </View>
+        ) : (
+          <TouchableOpacity
+            onPress={(e) => { e.stopPropagation?.(); handleSyncCalendar(routine.routine_id, routine.name); }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={{ marginRight: 6 }}
+          >
+            <Ionicons name="calendar-outline" size={14} color={COLORS.textMuted} />
+          </TouchableOpacity>
+        )}
         <TouchableOpacity onPress={() => handleDeleteRoutine(routine.routine_id, routine.name)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Ionicons name="trash-outline" size={16} color={COLORS.textMuted} />
         </TouchableOpacity>
       </View>
       <Text style={s.routineName} numberOfLines={2}>{routine.name || 'Untitled Routine'}</Text>
       {routine.description ? <Text style={s.routineDesc} numberOfLines={1}>{routine.description}</Text> : null}
-      {routine.time_slot ? (
-        <View style={s.routineMeta}>
-          <Ionicons name="time-outline" size={11} color={COLORS.textMuted} />
-          <Text style={s.routineMetaText}>{routine.time_slot}</Text>
-        </View>
-      ) : null}
+      <View style={s.routineBottom}>
+        {routine.time_slot ? (
+          <View style={s.routineMeta}>
+            <Ionicons name="time-outline" size={11} color={COLORS.textMuted} />
+            <Text style={s.routineMetaText}>{routine.time_slot}</Text>
+          </View>
+        ) : null}
+        {routine.current_streak > 0 && (
+          <View style={s.streakBadge}>
+            <Ionicons name="flame" size={12} color="#F59E0B" />
+            <Text style={s.streakText}>{routine.current_streak} streak</Text>
+          </View>
+        )}
+        {routine.total_completions > 0 && (
+          <Text style={s.completionCount}>{routine.total_completions} done</Text>
+        )}
+      </View>
     </TouchableOpacity>
   );
 
@@ -344,7 +471,9 @@ export default function LifestyleScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         >
           {activeTab === 'routines' ? (
-            routines.length === 0 ? (
+            <>
+              {renderTodayStatus()}
+              {routines.length === 0 ? (
               <View style={s.empty}>
                 <View style={s.emptyIcon}><Ionicons name="repeat" size={48} color={COLORS.textMuted} /></View>
                 <Text style={s.emptyTitle}>No Routines Yet</Text>
@@ -362,7 +491,8 @@ export default function LifestyleScreen() {
               </View>
             ) : (
               routines.map(renderRoutineCard)
-            )
+            )}
+            </>
           ) : (
             assessments.length === 0 ? (
               <View style={s.empty}>
@@ -463,4 +593,21 @@ const s = StyleSheet.create({
   emptyActions: { flexDirection: 'row', gap: 12, marginTop: 20 },
   emptyBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: '#065F46' },
   emptyBtnText: { fontSize: 13, fontWeight: '600', color: '#FFF' },
+
+  // Today's status card
+  todayCard: { backgroundColor: COLORS.white, borderRadius: 14, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: '#059669' + '30' },
+  todayHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  todayTitle: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary, flex: 1 },
+  todayBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  todayBadgeText: { fontSize: 12, fontWeight: '700' },
+  progressBar: { height: 6, backgroundColor: COLORS.divider, borderRadius: 3, marginBottom: 12 },
+  progressFill: { height: 6, borderRadius: 3 },
+  todayItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderTopWidth: 1, borderTopColor: COLORS.divider },
+  todayItemName: { fontSize: 14, color: COLORS.textPrimary, flex: 1 },
+  todayItemDone: { textDecorationLine: 'line-through', color: COLORS.textMuted },
+  todayItemTime: { fontSize: 11, color: COLORS.textMuted },
+  streakBadge: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  streakText: { fontSize: 10, fontWeight: '700', color: '#D97706' },
+  routineBottom: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 10, marginTop: 4 },
+  completionCount: { fontSize: 10, color: COLORS.textMuted },
 });
