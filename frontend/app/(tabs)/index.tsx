@@ -452,6 +452,24 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
+          <View style={styles.quickActions}>
+            <TouchableOpacity
+              style={styles.actionCard}
+              onPress={() => router.push('/tools/deo' as any)}
+            >
+              <LinearGradient
+                colors={['#059669', '#10B981']}
+                style={styles.actionIcon}
+              >
+                <Ionicons name="git-network" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>DEO</Text>
+              <Text style={styles.actionSubtitle}>Import & API</Text>
+            </TouchableOpacity>
+
+            <View style={[styles.actionCard, { opacity: 0 }]} />
+          </View>
+
           <TouchableOpacity
             style={styles.calendarCard}
             onPress={() => router.push('/tools/calendar-view')}
