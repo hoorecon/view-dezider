@@ -42,6 +42,81 @@ DEFAULT_QUALITATIVE_FACTORS = [
 ]
 
 
+SUPPORTED_COUNTRIES = [
+    {"code": "IN", "name": "India", "flag": "🇮🇳"},
+    {"code": "US", "name": "United States", "flag": "🇺🇸"},
+    {"code": "GB", "name": "United Kingdom", "flag": "🇬🇧"},
+    {"code": "SG", "name": "Singapore", "flag": "🇸🇬"},
+    {"code": "AE", "name": "UAE", "flag": "🇦🇪"},
+    {"code": "AU", "name": "Australia", "flag": "🇦🇺"},
+    {"code": "CA", "name": "Canada", "flag": "🇨🇦"},
+]
+
+SUPPORTED_LANGUAGES = [
+    {"code": "en", "name": "English"},
+    {"code": "ta", "name": "Tamil"},
+    {"code": "hi", "name": "Hindi"},
+    {"code": "te", "name": "Telugu"},
+    {"code": "kn", "name": "Kannada"},
+    {"code": "ml", "name": "Malayalam"},
+    {"code": "mr", "name": "Marathi"},
+    {"code": "bn", "name": "Bengali"},
+    {"code": "gu", "name": "Gujarati"},
+]
+
+
+# ================================================================
+# LOCATION & LANGUAGE CONFIG ENDPOINTS
+# ================================================================
+
+@router.get("/solutions-store/config/countries")
+async def get_supported_countries():
+    """Return list of supported countries for filtering."""
+    return {"countries": SUPPORTED_COUNTRIES}
+
+
+@router.get("/solutions-store/config/languages")
+async def get_supported_languages():
+    """Return list of supported languages for filtering."""
+    return {"languages": SUPPORTED_LANGUAGES}
+
+
+@router.get("/solutions-store/user-preferences")
+async def get_user_preferences(user: dict = Depends(get_current_user)):
+    """Get user's location/language preferences for Solutions Store."""
+    prefs = await db.user_preferences.find_one(
+        {"user_id": user["user_id"], "module": "solutions_store"},
+        {"_id": 0}
+    )
+    if not prefs:
+        return {"country": "IN", "language": "en", "city": "Chennai", "state": "TN"}
+    return prefs.get("preferences", {"country": "IN", "language": "en", "city": "Chennai", "state": "TN"})
+
+
+@router.put("/solutions-store/user-preferences")
+async def update_user_preferences(request: Request, user: dict = Depends(get_current_user)):
+    """Update user's location/language preferences for Solutions Store."""
+    body = await request.json()
+    prefs = {
+        "country": body.get("country", "IN"),
+        "language": body.get("language", "en"),
+        "city": body.get("city", ""),
+        "state": body.get("state", ""),
+    }
+    await db.user_preferences.update_one(
+        {"user_id": user["user_id"], "module": "solutions_store"},
+        {"$set": {
+            "user_id": user["user_id"],
+            "module": "solutions_store",
+            "preferences": prefs,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True
+    )
+    return {"message": "Preferences updated", "preferences": prefs}
+
+
+
 # ================================================================
 # SOLUTIONS STORE ENDPOINTS
 # ================================================================
@@ -132,6 +207,7 @@ async def list_solutions(
     category_id: Optional[str] = None,
     country: Optional[str] = None,
     city: Optional[str] = None,
+    language: Optional[str] = None,
     visibility: Optional[str] = None,
     user: dict = Depends(get_current_user),
 ):
@@ -158,6 +234,8 @@ async def list_solutions(
         query["category_id"] = category_id
     if country:
         query["country"] = country
+    if language:
+        query["language"] = language
     if city:
         query["city"] = {"$regex": city, "$options": "i"}
 
@@ -275,6 +353,7 @@ async def browse_solutions_by_hierarchy(
     sub_area_id: Optional[str] = None,
     type: Optional[str] = None,
     country: Optional[str] = None,
+    language: Optional[str] = None,
     user: dict = Depends(get_current_user),
 ):
     """Browse solutions organized by the HOS hierarchy."""
@@ -296,6 +375,8 @@ async def browse_solutions_by_hierarchy(
         query["type"] = type.upper()
     if country:
         query["country"] = country
+    if language:
+        query["language"] = language
 
     solutions = await db.solutions_store.find(query, {"_id": 0}).sort("name", 1).to_list(200)
 
@@ -327,6 +408,7 @@ async def search_solutions(
     q: str = Query(..., min_length=2),
     type: Optional[str] = None,
     country: Optional[str] = None,
+    language: Optional[str] = None,
     user: dict = Depends(get_current_user),
 ):
     """Full-text search across solutions."""
@@ -344,6 +426,8 @@ async def search_solutions(
         query["type"] = type.upper()
     if country:
         query["country"] = country
+    if language:
+        query["language"] = language
 
     solutions = await db.solutions_store.find(
         query, {"_id": 0, "score": {"$meta": "textScore"}}

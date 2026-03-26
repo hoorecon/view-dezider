@@ -43,6 +43,45 @@ export default function SolutionsStoreScreen() {
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [showFilterModal, setShowFilterModal] = useState(false);
 
+  // Location & Language
+  const [selectedCountry, setSelectedCountry] = useState('IN');
+  const [selectedLanguage, setSelectedLanguage] = useState('en');
+  const [countries, setCountries] = useState<any[]>([]);
+  const [languages, setLanguages] = useState<any[]>([]);
+  const [showLocationModal, setShowLocationModal] = useState(false);
+
+  useEffect(() => {
+    // Load config and user prefs
+    (async () => {
+      try {
+        const [cRes, lRes, pRes] = await Promise.all([
+          api.get('/solutions-store/config/countries'),
+          api.get('/solutions-store/config/languages'),
+          api.get('/solutions-store/user-preferences', { headers: { Authorization: `Bearer ${session}` } }).catch(() => null),
+        ]);
+        setCountries(cRes.data?.countries || []);
+        setLanguages(lRes.data?.languages || []);
+        if (pRes?.data) {
+          setSelectedCountry(pRes.data.country || 'IN');
+          setSelectedLanguage(pRes.data.language || 'en');
+        }
+      } catch (e) {
+        console.error('Config load error:', e);
+      }
+    })();
+  }, [session]);
+
+  const saveLocationPrefs = async (country: string, lang: string) => {
+    setSelectedCountry(country);
+    setSelectedLanguage(lang);
+    try {
+      await api.put('/solutions-store/user-preferences',
+        { country, language: lang },
+        { headers: { Authorization: `Bearer ${session}` } }
+      );
+    } catch (e) { console.error('Save prefs error:', e); }
+  };
+
   const fetchData = useCallback(async () => {
     try {
       const [areasRes, solsRes] = await Promise.all([
@@ -51,6 +90,8 @@ export default function SolutionsStoreScreen() {
           params: {
             ...(selectedArea ? { life_area_id: selectedArea } : {}),
             ...(selectedType ? { type: selectedType } : {}),
+            country: selectedCountry,
+            language: selectedLanguage,
           },
           headers: { Authorization: `Bearer ${session}` },
         }),
@@ -63,7 +104,7 @@ export default function SolutionsStoreScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [session, selectedArea, selectedType]);
+  }, [session, selectedArea, selectedType, selectedCountry, selectedLanguage]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -211,6 +252,24 @@ export default function SolutionsStoreScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Location & Language Selector */}
+      <TouchableOpacity
+        style={styles.locationBar}
+        onPress={() => setShowLocationModal(true)}
+      >
+        <Ionicons name="location" size={14} color={COLORS.primary} />
+        <Text style={styles.locationText}>
+          {countries.find(c => c.code === selectedCountry)?.flag || '🌍'}{' '}
+          {countries.find(c => c.code === selectedCountry)?.name || selectedCountry}
+        </Text>
+        <View style={styles.locationDivider} />
+        <Ionicons name="language" size={14} color={COLORS.secondary} />
+        <Text style={styles.locationText}>
+          {languages.find(l => l.code === selectedLanguage)?.name || selectedLanguage}
+        </Text>
+        <Ionicons name="chevron-down" size={14} color={COLORS.textMuted} />
+      </TouchableOpacity>
+
       {/* Search */}
       <View style={styles.searchRow}>
         <View style={styles.searchBox}>
@@ -272,6 +331,58 @@ export default function SolutionsStoreScreen() {
           </View>
         }
       />
+
+      {/* Location/Language Selector Modal */}
+      <Modal visible={showLocationModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Location & Language</Text>
+              <TouchableOpacity onPress={() => setShowLocationModal(false)}>
+                <Ionicons name="close" size={24} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSection}>Country</Text>
+            <ScrollView style={{ maxHeight: 200 }}>
+              {countries.map(c => (
+                <TouchableOpacity key={c.code}
+                  style={[styles.locationOption, selectedCountry === c.code && styles.locationOptionActive]}
+                  onPress={() => { saveLocationPrefs(c.code, selectedLanguage); }}
+                >
+                  <Text style={styles.locationFlag}>{c.flag}</Text>
+                  <Text style={[styles.locationOptionText, selectedCountry === c.code && { color: COLORS.primary, fontWeight: '700' }]}>
+                    {c.name}
+                  </Text>
+                  {selectedCountry === c.code && <Ionicons name="checkmark-circle" size={18} color={COLORS.primary} />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <Text style={[styles.modalSection, { marginTop: 16 }]}>Language</Text>
+            <ScrollView style={{ maxHeight: 200 }}>
+              {languages.map(l => (
+                <TouchableOpacity key={l.code}
+                  style={[styles.locationOption, selectedLanguage === l.code && styles.locationOptionActive]}
+                  onPress={() => { saveLocationPrefs(selectedCountry, l.code); }}
+                >
+                  <Ionicons name="language" size={16} color={selectedLanguage === l.code ? COLORS.secondary : COLORS.textMuted} />
+                  <Text style={[styles.locationOptionText, selectedLanguage === l.code && { color: COLORS.secondary, fontWeight: '700' }]}>
+                    {l.name}
+                  </Text>
+                  {selectedLanguage === l.code && <Ionicons name="checkmark-circle" size={18} color={COLORS.secondary} />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity style={styles.applyBtn}
+              onPress={() => { setShowLocationModal(false); fetchData(); }}
+            >
+              <Text style={styles.applyBtnText}>Apply Filters</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -320,4 +431,33 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', paddingTop: 60 },
   emptyText: { fontSize: 16, color: COLORS.textSecondary, marginTop: 12 },
   emptySubtext: { fontSize: 13, color: COLORS.textMuted, marginTop: 4 },
+  // Location bar
+  locationBar: {
+    flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 8,
+    backgroundColor: COLORS.surface, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
+    borderWidth: 1, borderColor: COLORS.border, gap: 6,
+  },
+  locationText: { fontSize: 12, color: COLORS.textSecondary },
+  locationDivider: { width: 1, height: 14, backgroundColor: COLORS.border, marginHorizontal: 4 },
+  // Modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  modalContent: {
+    backgroundColor: COLORS.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 20, maxHeight: '75%',
+  },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: COLORS.text },
+  modalSection: { fontSize: 14, fontWeight: '600', color: COLORS.textSecondary, marginBottom: 8 },
+  locationOption: {
+    flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12,
+    borderRadius: 10, gap: 10, marginBottom: 4,
+  },
+  locationOptionActive: { backgroundColor: COLORS.primary + '15' },
+  locationFlag: { fontSize: 18 },
+  locationOptionText: { flex: 1, fontSize: 14, color: COLORS.text },
+  applyBtn: {
+    backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 14,
+    alignItems: 'center', marginTop: 16,
+  },
+  applyBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
 });
