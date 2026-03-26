@@ -18,7 +18,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import Slider from '@react-native-community/slider';
 import { COLORS } from '../constants/colors';
-import type { Factor } from '../types/decision';
+
+interface Factor {
+  id: string;
+  name: string;
+  category?: string;
+  rating?: number;
+  order?: number;
+  parent_id?: string;
+}
 
 // ========================
 // TYPES
