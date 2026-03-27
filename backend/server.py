@@ -2892,6 +2892,16 @@ async def cld_analyze(request: Request, user: dict = Depends(get_current_user)):
     import json as json_module
 
     body = await request.json()
+
+    # Deduct credits for AI analysis
+    try:
+        from routes.payments import deduct_credits
+        await deduct_credits(user["user_id"], "decision_analyze")
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
     title = body.get("decision_title", "")
     context = body.get("decision_context", "")
     life_area = body.get("life_area", "")

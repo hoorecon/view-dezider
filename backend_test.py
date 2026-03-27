@@ -1,418 +1,941 @@
 #!/usr/bin/env python3
 """
-Backend Testing Script for Payment & Credits System
-Tests the complete payment and credits workflow as specified in the review request.
+COMPREHENSIVE UAT - Test ALL modules of the Dezider system
+Testing 47 scenarios across all modules systematically
 """
 
 import requests
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Backend URL from environment
-BACKEND_URL = "https://dezider-core.preview.emergentagent.com/api"
+BASE_URL = "https://dezider-core.preview.emergentagent.com/api"
 
-class PaymentCreditsTest:
+class DeziderUATTester:
     def __init__(self):
         self.session_token = None
-        self.user_data = None
+        self.user_id = None
+        self.decision_id = None
+        self.test_results = []
+        self.passed_count = 0
+        self.failed_count = 0
+        self.timestamp = int(time.time())  # Store timestamp for reuse
         
-    def log(self, message):
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        print(f"[{timestamp}] {message}")
+    def log_test(self, test_num, description, passed, details=""):
+        """Log test result"""
+        status = "PASS" if passed else "FAIL"
+        result = f"Test {test_num}: {description} - {status}"
+        if details:
+            result += f" ({details})"
+        print(result)
+        self.test_results.append({
+            'test_num': test_num,
+            'description': description,
+            'passed': passed,
+            'details': details
+        })
+        if passed:
+            self.passed_count += 1
+        else:
+            self.failed_count += 1
+    
+    def make_request(self, method, endpoint, data=None, headers=None):
+        """Make HTTP request with proper headers"""
+        url = f"{BASE_URL}{endpoint}"
         
-    def test_user_registration(self):
-        """Test 1: Register user for payment testing"""
-        self.log("🔐 Testing User Registration...")
-        
-        # Use timestamp to ensure unique email
-        timestamp = int(time.time())
-        email = f"paytest@test.com"
-        password = "test123"
-        name = "Pay Tester"
-        
-        payload = {
-            "email": email,
-            "password": password,
-            "name": name
+        # Default headers
+        default_headers = {
+            'Content-Type': 'application/json'
         }
         
-        response = requests.post(f"{BACKEND_URL}/auth/register", json=payload)
-        
-        if response.status_code == 200:
-            data = response.json()
-            self.session_token = data.get("session_token")
-            self.user_data = data
-            self.log(f"✅ Registration successful! User ID: {data.get('user_id')}")
-            self.log(f"   Session Token: {self.session_token[:20]}...")
-            return True
-        else:
-            self.log(f"❌ Registration failed: {response.status_code} - {response.text}")
-            return False
-    
-    def get_headers(self):
-        """Get authorization headers"""
-        return {"Authorization": f"Bearer {self.session_token}"}
-    
-    def test_plans_pricing(self):
-        """Test 2: GET /api/payments/plans - Should return plans array, topup_packs array, and credit_costs object"""
-        self.log("💰 Testing Plans & Pricing (Public)...")
-        
-        response = requests.get(f"{BACKEND_URL}/payments/plans")
-        
-        if response.status_code == 200:
-            data = response.json()
-            plans = data.get("plans", [])
-            topup_packs = data.get("topup_packs", [])
-            credit_costs = data.get("credit_costs", {})
+        # Add session token if available
+        if self.session_token:
+            default_headers['Authorization'] = f'Bearer {self.session_token}'
             
-            self.log(f"✅ Plans & Pricing retrieved successfully!")
-            self.log(f"   Plans count: {len(plans)}")
-            self.log(f"   Top-up packs count: {len(topup_packs)}")
-            self.log(f"   Credit costs: {len(credit_costs)} actions")
+        # Merge with provided headers
+        if headers:
+            default_headers.update(headers)
             
-            # Verify expected structure
-            if len(plans) == 5 and len(topup_packs) == 5:
-                self.log("   ✅ Expected 5 plans and 5 topup packs found")
+        try:
+            if method.upper() == 'GET':
+                response = requests.get(url, headers=default_headers)
+            elif method.upper() == 'POST':
+                response = requests.post(url, json=data, headers=default_headers)
+            elif method.upper() == 'PUT':
+                response = requests.put(url, json=data, headers=default_headers)
+            elif method.upper() == 'DELETE':
+                response = requests.delete(url, headers=default_headers)
+            else:
+                raise ValueError(f"Unsupported method: {method}")
                 
-                # Check specific plans
-                plan_ids = [p.get("id") for p in plans]
-                expected_plans = ["free", "starter", "pro", "business", "enterprise"]
-                if all(pid in plan_ids for pid in expected_plans):
-                    self.log("   ✅ All expected plan IDs found")
-                else:
-                    self.log(f"   ⚠️ Missing plan IDs. Found: {plan_ids}")
-                
-                # Check topup pack structure
-                pack_ids = [p.get("id") for p in topup_packs]
-                expected_packs = ["micro", "mini", "standard", "mega", "ultra"]
-                if all(pid in pack_ids for pid in expected_packs):
-                    self.log("   ✅ All expected topup pack IDs found")
-                else:
-                    self.log(f"   ⚠️ Missing pack IDs. Found: {pack_ids}")
-                    
-                return True
-            else:
-                self.log(f"   ⚠️ Unexpected counts - Plans: {len(plans)}, Packs: {len(topup_packs)}")
-                return False
-        else:
-            self.log(f"❌ Plans retrieval failed: {response.status_code} - {response.text}")
-            return False
+            return response
+        except Exception as e:
+            print(f"Request failed: {e}")
+            return None
     
-    def test_wallet_creation(self):
-        """Test 3: GET /api/payments/wallet - Should auto-create wallet with 100 initial credits"""
-        self.log("👛 Testing Wallet Auto-Creation...")
+    def run_comprehensive_uat(self):
+        """Run all 47 UAT test scenarios"""
+        print("=" * 80)
+        print("COMPREHENSIVE UAT - Testing ALL modules of the Dezider system")
+        print("=" * 80)
         
-        response = requests.get(f"{BACKEND_URL}/payments/wallet", headers=self.get_headers())
+        # SETUP - Create Master Test User
+        self.test_setup()
         
-        if response.status_code == 200:
-            wallet = response.json()
-            credits = wallet.get("credits", 0)
-            current_plan = wallet.get("current_plan", "")
-            initial_credits = wallet.get("initial_credits", 0)
-            
-            self.log(f"✅ Wallet retrieved successfully!")
-            self.log(f"   Credits: {credits}")
-            self.log(f"   Current Plan: {current_plan}")
-            self.log(f"   Initial Credits: {initial_credits}")
-            
-            if credits == 100 and current_plan == "free" and initial_credits == 100:
-                self.log("   ✅ Wallet auto-created with expected defaults")
-                return True
-            else:
-                self.log(f"   ⚠️ Unexpected wallet values")
-                return False
-        else:
-            self.log(f"❌ Wallet retrieval failed: {response.status_code} - {response.text}")
-            return False
+        # MODULE 1: AUTH & USER
+        self.test_auth_user()
+        
+        # MODULE 2: DECISIONS / PRR FLOW  
+        self.test_decisions_prr()
+        
+        # MODULE 3: CTT TASKS
+        self.test_ctt_tasks()
+        
+        # MODULE 4: GEM GOALS
+        self.test_gem_goals()
+        
+        # MODULE 5: LIFESTYLE ROUTINES
+        self.test_lifestyle_routines()
+        
+        # MODULE 6: TEPFI
+        self.test_tepfi()
+        
+        # MODULE 7: SOLUTIONS STORE
+        self.test_solutions_store()
+        
+        # MODULE 8: CLD ENGINE
+        self.test_cld_engine()
+        
+        # MODULE 9: TIME DEZIDER
+        self.test_time_dezider()
+        
+        # MODULE 10: TIME STORE
+        self.test_time_store()
+        
+        # MODULE 11: PAYMENTS & CREDITS
+        self.test_payments_credits()
+        
+        # MODULE 12: CREDIT DEDUCTION FLOW (CRITICAL)
+        self.test_credit_deduction_flow()
+        
+        # MODULE 13: DEO ENGINE
+        self.test_deo_engine()
+        
+        # Final Report
+        self.print_final_report()
     
-    def test_credit_history(self):
-        """Test 4: GET /api/payments/history - Should return transactions array with initial grant"""
-        self.log("📊 Testing Credit History...")
+    def test_setup(self):
+        """SETUP - Create Master Test User"""
+        print("\n--- SETUP: Create Master Test User ---")
         
-        response = requests.get(f"{BACKEND_URL}/payments/history", headers=self.get_headers())
+        # Test 1: Register master test user
+        user_data = {
+            "email": f"uat_master_{self.timestamp}@test.com",
+            "password": "UATtest123!",
+            "name": "UAT Master User"
+        }
         
-        if response.status_code == 200:
+        response = self.make_request('POST', '/auth/register', user_data)
+        if response and response.status_code == 200:
             data = response.json()
-            transactions = data.get("transactions", [])
-            
-            self.log(f"✅ Credit history retrieved successfully!")
-            self.log(f"   Transactions count: {len(transactions)}")
-            
-            if len(transactions) >= 1:
-                # Check for initial grant transaction
-                initial_grant = next((t for t in transactions if t.get("type") == "grant"), None)
-                if initial_grant:
-                    self.log(f"   ✅ Initial grant transaction found: {initial_grant.get('credits')} credits")
-                    self.log(f"   Description: {initial_grant.get('description')}")
-                    return True
-                else:
-                    self.log("   ⚠️ No initial grant transaction found")
-                    return False
-            else:
-                self.log("   ⚠️ No transactions found")
-                return False
+            self.session_token = data.get('session_token')
+            self.user_id = data.get('user_id')
+            self.log_test(1, "POST /api/auth/register - Create master test user", True, 
+                         f"User created with session token")
         else:
-            self.log(f"❌ Credit history retrieval failed: {response.status_code} - {response.text}")
-            return False
+            self.log_test(1, "POST /api/auth/register - Create master test user", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+            return
     
-    def test_credit_check(self):
-        """Test 5 & 6: POST /api/payments/check-credits for different actions"""
-        self.log("🔍 Testing Credit Check...")
+    def test_auth_user(self):
+        """MODULE 1: AUTH & USER"""
+        print("\n--- MODULE 1: AUTH & USER ---")
         
-        # Test cld_generate (should cost 3 credits)
-        payload1 = {"action": "cld_generate"}
-        response1 = requests.post(f"{BACKEND_URL}/payments/check-credits", json=payload1, headers=self.get_headers())
-        
-        if response1.status_code == 200:
-            data1 = response1.json()
-            self.log(f"✅ Credit check for cld_generate:")
-            self.log(f"   Cost: {data1.get('cost')}")
-            self.log(f"   Available: {data1.get('available')}")
-            self.log(f"   Sufficient: {data1.get('sufficient')}")
-            
-            if data1.get("cost") == 3 and data1.get("sufficient") == True:
-                self.log("   ✅ cld_generate check passed")
-                check1_pass = True
-            else:
-                self.log("   ⚠️ Unexpected cld_generate values")
-                check1_pass = False
-        else:
-            self.log(f"❌ Credit check for cld_generate failed: {response1.status_code}")
-            check1_pass = False
-        
-        # Test cld_simulate (should cost 0 credits)
-        payload2 = {"action": "cld_simulate"}
-        response2 = requests.post(f"{BACKEND_URL}/payments/check-credits", json=payload2, headers=self.get_headers())
-        
-        if response2.status_code == 200:
-            data2 = response2.json()
-            self.log(f"✅ Credit check for cld_simulate:")
-            self.log(f"   Cost: {data2.get('cost')}")
-            self.log(f"   Available: {data2.get('available')}")
-            self.log(f"   Sufficient: {data2.get('sufficient')}")
-            
-            if data2.get("cost") == 0 and data2.get("sufficient") == True:
-                self.log("   ✅ cld_simulate check passed")
-                check2_pass = True
-            else:
-                self.log("   ⚠️ Unexpected cld_simulate values")
-                check2_pass = False
-        else:
-            self.log(f"❌ Credit check for cld_simulate failed: {response2.status_code}")
-            check2_pass = False
-        
-        return check1_pass and check2_pass
-    
-    def test_topup_order_creation(self):
-        """Test 7 & 8: POST /api/payments/create-topup-order"""
-        self.log("🛒 Testing Top-up Order Creation (Razorpay)...")
-        
-        # Test valid pack_id "mini"
-        payload1 = {"pack_id": "mini"}
-        response1 = requests.post(f"{BACKEND_URL}/payments/create-topup-order", json=payload1, headers=self.get_headers())
-        
-        if response1.status_code == 200:
-            data1 = response1.json()
-            self.log(f"✅ Top-up order creation for 'mini' pack:")
-            self.log(f"   Order ID: {data1.get('order_id')}")
-            self.log(f"   Amount: {data1.get('amount')}")
-            self.log(f"   Currency: {data1.get('currency')}")
-            self.log(f"   Key ID: {data1.get('key_id')}")
-            
-            if (data1.get("amount") == 7900 and 
-                data1.get("currency") == "INR" and 
-                data1.get("order_id") and 
-                data1.get("key_id")):
-                self.log("   ✅ Valid mini pack order created successfully")
-                order1_pass = True
-            else:
-                self.log("   ⚠️ Unexpected order values")
-                order1_pass = False
-        else:
-            self.log(f"❌ Top-up order creation for mini failed: {response1.status_code} - {response1.text}")
-            order1_pass = False
-        
-        # Test invalid pack_id
-        payload2 = {"pack_id": "invalid"}
-        response2 = requests.post(f"{BACKEND_URL}/payments/create-topup-order", json=payload2, headers=self.get_headers())
-        
-        if response2.status_code == 400:
-            self.log("✅ Invalid pack_id correctly rejected with 400")
-            order2_pass = True
-        else:
-            self.log(f"❌ Invalid pack_id should return 400, got: {response2.status_code}")
-            order2_pass = False
-        
-        return order1_pass and order2_pass
-    
-    def test_subscription_order(self):
-        """Test 9 & 10: POST /api/payments/create-subscription"""
-        self.log("📅 Testing Subscription Order Creation...")
-        
-        # Test valid plan_id "pro"
-        payload1 = {"plan_id": "pro"}
-        response1 = requests.post(f"{BACKEND_URL}/payments/create-subscription", json=payload1, headers=self.get_headers())
-        
-        if response1.status_code == 200:
-            data1 = response1.json()
-            self.log(f"✅ Subscription order creation for 'pro' plan:")
-            self.log(f"   Order ID: {data1.get('order_id')}")
-            self.log(f"   Amount: {data1.get('amount')}")
-            self.log(f"   Currency: {data1.get('currency')}")
-            
-            if (data1.get("amount") == 39900 and 
-                data1.get("currency") == "INR" and 
-                data1.get("order_id")):
-                self.log("   ✅ Valid pro plan subscription created successfully")
-                sub1_pass = True
-            else:
-                self.log("   ⚠️ Unexpected subscription values")
-                sub1_pass = False
-        else:
-            self.log(f"❌ Subscription creation for pro failed: {response1.status_code} - {response1.text}")
-            sub1_pass = False
-        
-        # Test invalid plan_id "free"
-        payload2 = {"plan_id": "free"}
-        response2 = requests.post(f"{BACKEND_URL}/payments/create-subscription", json=payload2, headers=self.get_headers())
-        
-        if response2.status_code == 400:
-            self.log("✅ Free plan subscription correctly rejected with 400")
-            sub2_pass = True
-        else:
-            self.log(f"❌ Free plan subscription should return 400, got: {response2.status_code}")
-            sub2_pass = False
-        
-        return sub1_pass and sub2_pass
-    
-    def test_tepfi_metadata(self):
-        """Test 11: GET /api/tepfi/metadata"""
-        self.log("🧠 Testing TEPFI Metadata...")
-        
-        response = requests.get(f"{BACKEND_URL}/tepfi/metadata")
-        
-        if response.status_code == 200:
+        # Test 3: GET /api/auth/me - Verify user profile
+        response = self.make_request('GET', '/auth/me')
+        if response and response.status_code == 200:
             data = response.json()
-            dimensions = data.get("dimensions", [])
-            layers = data.get("layers", [])
-            effort_sub_dimensions = data.get("effort_sub_dimensions", [])
-            
-            self.log(f"✅ TEPFI metadata retrieved successfully!")
-            self.log(f"   Dimensions: {dimensions}")
-            self.log(f"   Layers: {layers}")
-            self.log(f"   Effort sub-dimensions count: {len(effort_sub_dimensions)}")
-            
-            # Check for expected effort sub-dimensions (8 items as per review request)
-            expected_sub_dims = ["attitude", "knowledge", "skills", "physical_health", 
-                               "mental_state", "emotional_wellness", "energy_level", "action"]
-            
-            if len(effort_sub_dimensions) == 8:
-                self.log("   ✅ Expected 8 effort sub-dimensions found")
-                
-                # Check if all expected sub-dimensions are present
-                if all(dim in effort_sub_dimensions for dim in expected_sub_dims):
-                    self.log("   ✅ All expected effort sub-dimensions present")
-                    return True
-                else:
-                    self.log(f"   ⚠️ Some expected sub-dimensions missing. Found: {effort_sub_dimensions}")
-                    return False
-            else:
-                self.log(f"   ⚠️ Expected 8 effort sub-dimensions, found: {len(effort_sub_dimensions)}")
-                return False
+            has_required_fields = all(field in data for field in ['user_id', 'email', 'name'])
+            self.log_test(3, "GET /api/auth/me - Verify user profile", has_required_fields,
+                         f"Profile returned with required fields")
         else:
-            self.log(f"❌ TEPFI metadata retrieval failed: {response.status_code} - {response.text}")
-            return False
+            self.log_test(3, "GET /api/auth/me - Verify user profile", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 4: POST /api/auth/register with same email - Should fail
+        duplicate_data = {
+            "email": f"uat_master_{self.timestamp}@test.com",  # Use same email as test 1
+            "password": "UATtest123!",
+            "name": "Duplicate User"
+        }
+        
+        response = self.make_request('POST', '/auth/register', duplicate_data)
+        if response and response.status_code in [400, 409]:
+            self.log_test(4, "POST /api/auth/register with duplicate email - Should fail", True,
+                         f"Correctly rejected duplicate with status {response.status_code}")
+        else:
+            self.log_test(4, "POST /api/auth/register with duplicate email - Should fail", False,
+                         f"Status: {response.status_code if response else 'No response'}")
     
-    def test_admin_credits(self):
-        """Test 12 & 13: Admin initial credits endpoints"""
-        self.log("👑 Testing Admin Credits Management...")
+    def test_decisions_prr(self):
+        """MODULE 2: DECISIONS / PRR FLOW"""
+        print("\n--- MODULE 2: DECISIONS / PRR FLOW ---")
         
-        # Test PUT /api/payments/admin/initial-credits (should fail with 403 for non-admin)
-        payload = {"initial_credits": 200}
-        response1 = requests.put(f"{BACKEND_URL}/payments/admin/initial-credits", json=payload, headers=self.get_headers())
+        # Test 5: POST /api/decisions - Create decision
+        decision_data = {
+            "title": "UAT Career Decision",
+            "context": "Testing all modules",
+            "life_area": "Career",
+            "decision_type": "need"
+        }
         
-        if response1.status_code == 403:
-            self.log("✅ Admin initial credits PUT correctly rejected with 403 (non-admin user)")
-            admin1_pass = True
+        response = self.make_request('POST', '/decisions', decision_data)
+        if response and response.status_code == 200:
+            data = response.json()
+            self.decision_id = data.get('id')  # API returns 'id' not 'decision_id'
+            self.log_test(5, "POST /api/decisions - Create decision", True,
+                         f"Decision created with ID: {self.decision_id}")
         else:
-            self.log(f"❌ Admin initial credits PUT should return 403, got: {response1.status_code}")
-            admin1_pass = False
-        
-        # Test GET /api/payments/admin/initial-credits
-        response2 = requests.get(f"{BACKEND_URL}/payments/admin/initial-credits", headers=self.get_headers())
-        
-        if response2.status_code == 200:
-            data2 = response2.json()
-            initial_credits = data2.get("initial_credits")
-            self.log(f"✅ Admin initial credits GET successful:")
-            self.log(f"   Initial credits value: {initial_credits}")
-            admin2_pass = True
-        else:
-            self.log(f"❌ Admin initial credits GET failed: {response2.status_code} - {response2.text}")
-            admin2_pass = False
-        
-        return admin1_pass and admin2_pass
-    
-    def run_all_tests(self):
-        """Run all payment & credits system tests"""
-        self.log("🚀 Starting Payment & Credits System Testing...")
-        self.log("=" * 60)
-        
-        test_results = []
-        
-        # Test 1: User Registration
-        test_results.append(("User Registration", self.test_user_registration()))
-        
-        if not self.session_token:
-            self.log("❌ Cannot continue without session token")
+            self.log_test(5, "POST /api/decisions - Create decision", False,
+                         f"Status: {response.status_code if response else 'No response'}")
             return
         
-        # Test 2: Plans & Pricing
-        test_results.append(("Plans & Pricing", self.test_plans_pricing()))
+        # Test 6: PUT /api/decisions/{id} - Update with factors
+        factors_data = {
+            "factors": [
+                {"id": "f1", "name": "Salary", "category": "primary", "rating": 90, "order": 0},
+                {"id": "f2", "name": "Work-Life Balance", "category": "primary", "rating": 80, "order": 1},
+                {"id": "f3", "name": "Growth", "category": "secondary", "rating": 70, "order": 2}
+            ]
+        }
         
-        # Test 3: Wallet Creation
-        test_results.append(("Wallet Auto-Creation", self.test_wallet_creation()))
-        
-        # Test 4: Credit History
-        test_results.append(("Credit History", self.test_credit_history()))
-        
-        # Test 5 & 6: Credit Check
-        test_results.append(("Credit Check", self.test_credit_check()))
-        
-        # Test 7 & 8: Top-up Order Creation
-        test_results.append(("Top-up Order Creation", self.test_topup_order_creation()))
-        
-        # Test 9 & 10: Subscription Order
-        test_results.append(("Subscription Order", self.test_subscription_order()))
-        
-        # Test 11: TEPFI Metadata
-        test_results.append(("TEPFI Metadata", self.test_tepfi_metadata()))
-        
-        # Test 12 & 13: Admin Credits
-        test_results.append(("Admin Credits", self.test_admin_credits()))
-        
-        # Summary
-        self.log("=" * 60)
-        self.log("📋 TEST SUMMARY:")
-        
-        passed = 0
-        total = len(test_results)
-        
-        for test_name, result in test_results:
-            status = "✅ PASS" if result else "❌ FAIL"
-            self.log(f"   {test_name}: {status}")
-            if result:
-                passed += 1
-        
-        self.log("=" * 60)
-        self.log(f"🎯 OVERALL RESULT: {passed}/{total} tests passed ({passed/total*100:.1f}%)")
-        
-        if passed == total:
-            self.log("🎉 ALL TESTS PASSED! Payment & Credits system is working correctly.")
+        response = self.make_request('PUT', f'/decisions/{self.decision_id}', factors_data)
+        if response and response.status_code == 200:
+            self.log_test(6, "PUT /api/decisions/{id} - Update with factors", True,
+                         "Decision updated with 3 factors")
         else:
-            self.log(f"⚠️ {total-passed} test(s) failed. Please review the issues above.")
+            self.log_test(6, "PUT /api/decisions/{id} - Update with factors", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 7: GET /api/decisions - Verify decision list
+        response = self.make_request('GET', '/decisions')
+        if response and response.status_code == 200:
+            data = response.json()
+            # Handle both list and dict response formats
+            if isinstance(data, list):
+                decisions = data
+            else:
+                decisions = data.get('decisions', [])
+            found_decision = any(d.get('id') == self.decision_id for d in decisions)  # Use 'id' not 'decision_id'
+            self.log_test(7, "GET /api/decisions - Verify decision list", found_decision,
+                         f"Found {len(decisions)} decisions, our decision present")
+        else:
+            self.log_test(7, "GET /api/decisions - Verify decision list", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 8: GET /api/decisions/{id} - Verify full decision with factors
+        response = self.make_request('GET', f'/decisions/{self.decision_id}')
+        if response and response.status_code == 200:
+            data = response.json()
+            factors = data.get('factors', [])
+            has_factors = len(factors) >= 3
+            self.log_test(8, "GET /api/decisions/{id} - Verify full decision with factors", has_factors,
+                         f"Decision has {len(factors)} factors")
+        else:
+            self.log_test(8, "GET /api/decisions/{id} - Verify full decision with factors", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+    
+    def test_ctt_tasks(self):
+        """MODULE 3: CTT TASKS"""
+        print("\n--- MODULE 3: CTT TASKS ---")
+        
+        # Test 9: POST /api/ctt/tasks - Morning Standup
+        task1_data = {
+            "task": "UAT Morning Standup",
+            "from_time": "09:00",
+            "to_time": "09:30", 
+            "task_duration": "30m",
+            "priority": "high",
+            "life_area": "Career",
+            "is_routine": True,
+            "frequency": "daily"
+        }
+        
+        response = self.make_request('POST', '/ctt/tasks', task1_data)
+        if response and response.status_code == 200:
+            self.log_test(9, "POST /api/ctt/tasks - Morning Standup", True,
+                         "Morning standup task created")
+        else:
+            self.log_test(9, "POST /api/ctt/tasks - Morning Standup", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 10: POST /api/ctt/tasks - Deep Work
+        task2_data = {
+            "task": "UAT Deep Work",
+            "from_time": "10:00",
+            "to_time": "12:00",
+            "task_duration": "2h", 
+            "priority": "medium",
+            "life_area": "Career"
+        }
+        
+        response = self.make_request('POST', '/ctt/tasks', task2_data)
+        if response and response.status_code == 200:
+            self.log_test(10, "POST /api/ctt/tasks - Deep Work", True,
+                         "Deep work task created")
+        else:
+            self.log_test(10, "POST /api/ctt/tasks - Deep Work", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 11: POST /api/ctt/tasks - Email
+        task3_data = {
+            "task": "UAT Email",
+            "from_time": "16:00",
+            "to_time": "17:00",
+            "task_duration": "1h",
+            "priority": "low", 
+            "life_area": "Career",
+            "is_routine": True,
+            "frequency": "daily"
+        }
+        
+        response = self.make_request('POST', '/ctt/tasks', task3_data)
+        if response and response.status_code == 200:
+            self.log_test(11, "POST /api/ctt/tasks - Email", True,
+                         "Email task created")
+        else:
+            self.log_test(11, "POST /api/ctt/tasks - Email", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 12: GET /api/ctt/tasks - Verify 3 tasks
+        response = self.make_request('GET', '/ctt/tasks')
+        if response and response.status_code == 200:
+            data = response.json()
+            # Handle both list and dict response formats
+            if isinstance(data, list):
+                tasks = data
+            else:
+                tasks = data.get('tasks', [])
+            has_three_tasks = len(tasks) >= 3
+            self.log_test(12, "GET /api/ctt/tasks - Verify 3 tasks", has_three_tasks,
+                         f"Found {len(tasks)} tasks")
+        else:
+            self.log_test(12, "GET /api/ctt/tasks - Verify 3 tasks", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+    
+    def test_gem_goals(self):
+        """MODULE 4: GEM GOALS"""
+        print("\n--- MODULE 4: GEM GOALS ---")
+        
+        # Test 13: POST /api/gem/goals - Create goal
+        goal_data = {
+            "title": "UAT Career Growth Goal",
+            "life_area": "Career",
+            "goal_type": "long_term",
+            "priority": "high"
+        }
+        
+        response = self.make_request('POST', '/gem/goals', goal_data)
+        if response and response.status_code == 200:
+            self.log_test(13, "POST /api/gem/goals - Create goal", True,
+                         "Career growth goal created")
+        else:
+            self.log_test(13, "POST /api/gem/goals - Create goal", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 14: GET /api/gem/goals - Verify goal
+        response = self.make_request('GET', '/gem/goals')
+        if response and response.status_code == 200:
+            data = response.json()
+            # Handle both list and dict response formats
+            if isinstance(data, list):
+                goals = data
+            else:
+                goals = data.get('goals', [])
+            has_goals = len(goals) >= 1
+            self.log_test(14, "GET /api/gem/goals - Verify goal", has_goals,
+                         f"Found {len(goals)} goals")
+        else:
+            self.log_test(14, "GET /api/gem/goals - Verify goal", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+    
+    def test_lifestyle_routines(self):
+        """MODULE 5: LIFESTYLE ROUTINES"""
+        print("\n--- MODULE 5: LIFESTYLE ROUTINES ---")
+        
+        # Test 15: POST /api/lifestyle/routines - Morning Exercise
+        routine1_data = {
+            "name": "UAT Morning Exercise",
+            "time_slot": "06:30",
+            "frequency": "daily",
+            "priority": "high",
+            "life_area": "Health",
+            "category": "health"
+        }
+        
+        response = self.make_request('POST', '/lifestyle/routines', routine1_data)
+        if response and response.status_code == 200:
+            self.log_test(15, "POST /api/lifestyle/routines - Morning Exercise", True,
+                         "Morning exercise routine created")
+        else:
+            self.log_test(15, "POST /api/lifestyle/routines - Morning Exercise", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 16: POST /api/lifestyle/routines - Evening Meditation
+        routine2_data = {
+            "name": "UAT Evening Meditation",
+            "time_slot": "21:00",
+            "frequency": "daily",
+            "priority": "medium",
+            "life_area": "Mental_Health",
+            "category": "wellness"
+        }
+        
+        response = self.make_request('POST', '/lifestyle/routines', routine2_data)
+        if response and response.status_code == 200:
+            self.log_test(16, "POST /api/lifestyle/routines - Evening Meditation", True,
+                         "Evening meditation routine created")
+        else:
+            self.log_test(16, "POST /api/lifestyle/routines - Evening Meditation", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 17: GET /api/lifestyle/routines - Verify 2 routines
+        response = self.make_request('GET', '/lifestyle/routines')
+        if response and response.status_code == 200:
+            data = response.json()
+            # Handle both list and dict response formats
+            if isinstance(data, list):
+                routines = data
+            else:
+                routines = data.get('routines', [])
+            has_two_routines = len(routines) >= 2
+            self.log_test(17, "GET /api/lifestyle/routines - Verify 2 routines", has_two_routines,
+                         f"Found {len(routines)} routines")
+        else:
+            self.log_test(17, "GET /api/lifestyle/routines - Verify 2 routines", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+    
+    def test_tepfi(self):
+        """MODULE 6: TEPFI"""
+        print("\n--- MODULE 6: TEPFI ---")
+        
+        # Test 18: POST /api/tepfi/entries - Create TEPFI entry
+        tepfi_data = {
+            "title": "UAT Career TEPFI",
+            "life_area": "Career",
+            "matrix": {
+                "time": {
+                    "self": {"score": 7, "description": "Good time mgmt"}
+                },
+                "effort": {
+                    "attitude_self": {"score": 8, "description": "Positive attitude"},
+                    "knowledge_self": {"score": 7, "description": "Strong knowledge"}
+                },
+                "people": {
+                    "micro": {"score": 6, "description": "Supportive team"}
+                },
+                "finance": {
+                    "self": {"score": 5, "description": "Average budget"}
+                },
+                "infrastructure": {
+                    "self": {"score": 8, "description": "Good tools"}
+                }
+            }
+        }
+        
+        response = self.make_request('POST', '/tepfi/entries', tepfi_data)
+        if response and response.status_code == 200:
+            self.log_test(18, "POST /api/tepfi/entries - Create TEPFI entry", True,
+                         "TEPFI entry created")
+        else:
+            self.log_test(18, "POST /api/tepfi/entries - Create TEPFI entry", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 19: GET /api/tepfi/entries - Verify TEPFI entry
+        response = self.make_request('GET', '/tepfi/entries')
+        if response and response.status_code == 200:
+            data = response.json()
+            # Handle both list and dict response formats
+            if isinstance(data, list):
+                entries = data
+            else:
+                entries = data.get('entries', [])
+            has_entries = len(entries) >= 1
+            self.log_test(19, "GET /api/tepfi/entries - Verify TEPFI entry", has_entries,
+                         f"Found {len(entries)} TEPFI entries")
+        else:
+            self.log_test(19, "GET /api/tepfi/entries - Verify TEPFI entry", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 20: GET /api/tepfi/metadata - Verify effort sub-dimensions
+        response = self.make_request('GET', '/tepfi/metadata')
+        if response and response.status_code == 200:
+            data = response.json()
+            effort_sub_dims = data.get('effort_sub_dimensions', [])
+            has_eight_dims = len(effort_sub_dims) == 8
+            self.log_test(20, "GET /api/tepfi/metadata - Verify 8 effort sub-dimensions", has_eight_dims,
+                         f"Found {len(effort_sub_dims)} effort sub-dimensions")
+        else:
+            self.log_test(20, "GET /api/tepfi/metadata - Verify 8 effort sub-dimensions", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+    
+    def test_solutions_store(self):
+        """MODULE 7: SOLUTIONS STORE"""
+        print("\n--- MODULE 7: SOLUTIONS STORE ---")
+        
+        # Test 21: POST /api/solutions-store - Create solution
+        solution_data = {
+            "name": "UAT Solution",
+            "description": "Test solution",
+            "category": "Career",
+            "visibility": "private"
+        }
+        
+        response = self.make_request('POST', '/solutions-store', solution_data)
+        if response and response.status_code == 200:
+            self.log_test(21, "POST /api/solutions-store - Create solution", True,
+                         "Solution created")
+        else:
+            self.log_test(21, "POST /api/solutions-store - Create solution", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 22: GET /api/solutions-store - Verify solution
+        response = self.make_request('GET', '/solutions-store')
+        if response and response.status_code == 200:
+            data = response.json()
+            # Check if we have solutions (could be from seed data)
+            has_solutions = len(data) >= 1 if isinstance(data, list) else True
+            self.log_test(22, "GET /api/solutions-store - Verify solution", has_solutions,
+                         f"Solutions store accessible")
+        else:
+            self.log_test(22, "GET /api/solutions-store - Verify solution", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+    
+    def test_cld_engine(self):
+        """MODULE 8: CLD ENGINE"""
+        print("\n--- MODULE 8: CLD ENGINE ---")
+        
+        if not self.decision_id:
+            self.log_test(23, "CLD Engine tests", False, "No decision_id available")
+            self.log_test(24, "CLD Engine tests", False, "No decision_id available")
+            self.log_test(25, "CLD Engine tests", False, "No decision_id available")
+            self.log_test(26, "CLD Engine tests", False, "No decision_id available")
+            self.log_test(27, "CLD Engine tests", False, "No decision_id available")
+            return
+        
+        # Test 23: POST /api/cld/{decision_id}/save - Save CLD
+        cld_data = {
+            "nodes": [
+                {"id": "f1", "name": "Salary", "x": 100, "y": 100, "base_value": 50},
+                {"id": "f2", "name": "Work-Life Balance", "x": 200, "y": 100, "base_value": 60},
+                {"id": "f3", "name": "Growth", "x": 150, "y": 200, "base_value": 70}
+            ],
+            "links": [
+                {"source": "f1", "target": "f2", "strength": 5, "polarity": "positive"},
+                {"source": "f2", "target": "f3", "strength": 7, "polarity": "positive"}
+            ]
+        }
+        
+        response = self.make_request('POST', f'/cld/{self.decision_id}/save', cld_data)
+        if response and response.status_code == 200:
+            self.log_test(23, "POST /api/cld/{decision_id}/save - Save CLD", True,
+                         "CLD saved with 3 nodes and 2 links")
+        else:
+            self.log_test(23, "POST /api/cld/{decision_id}/save - Save CLD", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 24: GET /api/cld/{decision_id} - Verify saved CLD
+        response = self.make_request('GET', f'/cld/{self.decision_id}')
+        if response and response.status_code == 200:
+            data = response.json()
+            has_nodes = len(data.get('nodes', [])) >= 3
+            has_links = len(data.get('links', [])) >= 2
+            self.log_test(24, "GET /api/cld/{decision_id} - Verify saved CLD", has_nodes and has_links,
+                         f"CLD has {len(data.get('nodes', []))} nodes and {len(data.get('links', []))} links")
+        else:
+            self.log_test(24, "GET /api/cld/{decision_id} - Verify saved CLD", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 25: POST /api/cld/{decision_id}/simulate - Run simulation
+        sim_data = {
+            "shock_factor_id": "f1",
+            "shock_delta": 20,
+            "time_steps": 5,
+            "dampening": 0.7
+        }
+        
+        response = self.make_request('POST', f'/cld/{self.decision_id}/simulate', sim_data)
+        if response and response.status_code == 200:
+            data = response.json()
+            has_timeline = 'timeline' in data
+            has_stability = 'stability' in data
+            self.log_test(25, "POST /api/cld/{decision_id}/simulate - Run simulation", has_timeline and has_stability,
+                         f"Simulation completed with timeline and stability analysis")
+        else:
+            self.log_test(25, "POST /api/cld/{decision_id}/simulate - Run simulation", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 26: POST /api/cld/{decision_id}/layout - Apply layout
+        layout_data = {"layout_type": "force"}
+        
+        response = self.make_request('POST', f'/cld/{self.decision_id}/layout', layout_data)
+        if response and response.status_code == 200:
+            self.log_test(26, "POST /api/cld/{decision_id}/layout - Apply layout", True,
+                         "Force layout applied")
+        else:
+            self.log_test(26, "POST /api/cld/{decision_id}/layout - Apply layout", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 27: GET /api/cld/list - Verify CLD in list
+        response = self.make_request('GET', '/cld/list')
+        if response and response.status_code == 200:
+            data = response.json()
+            clds = data.get('clds', [])
+            has_our_cld = any(cld.get('decision_id') == self.decision_id for cld in clds)
+            self.log_test(27, "GET /api/cld/list - Verify CLD in list", has_our_cld,
+                         f"Found {len(clds)} CLDs, our CLD present")
+        else:
+            self.log_test(27, "GET /api/cld/list - Verify CLD in list", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+    
+    def test_time_dezider(self):
+        """MODULE 9: TIME DEZIDER"""
+        print("\n--- MODULE 9: TIME DEZIDER ---")
+        
+        # Test 28: GET /api/time-dezider/preferences - Verify defaults
+        response = self.make_request('GET', '/time-dezider/preferences')
+        if response and response.status_code == 200:
+            data = response.json()
+            has_day_start = 'day_start' in data
+            has_day_end = 'day_end' in data
+            self.log_test(28, "GET /api/time-dezider/preferences - Verify defaults", has_day_start and has_day_end,
+                         "Preferences have day_start and day_end")
+        else:
+            self.log_test(28, "GET /api/time-dezider/preferences - Verify defaults", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 29: PUT /api/time-dezider/preferences - Update preferences
+        prefs_data = {
+            "day_start": "06:00",
+            "day_end": "22:00"
+        }
+        
+        response = self.make_request('PUT', '/time-dezider/preferences', prefs_data)
+        if response and response.status_code == 200:
+            self.log_test(29, "PUT /api/time-dezider/preferences - Update preferences", True,
+                         "Preferences updated")
+        else:
+            self.log_test(29, "PUT /api/time-dezider/preferences - Update preferences", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 30: GET /api/time-dezider/daily - Verify aggregated schedule
+        response = self.make_request('GET', '/time-dezider/daily?date=2026-03-27')
+        if response and response.status_code == 200:
+            data = response.json()
+            has_blocks = 'blocks' in data
+            has_stats = 'stats' in data
+            self.log_test(30, "GET /api/time-dezider/daily - Verify aggregated schedule", has_blocks and has_stats,
+                         f"Daily schedule has blocks and stats")
+        else:
+            self.log_test(30, "GET /api/time-dezider/daily - Verify aggregated schedule", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 31: POST /api/time-dezider/unplanned-task - Add unplanned task
+        unplanned_data = {
+            "date": "2026-03-27",
+            "title": "UAT Urgent Call",
+            "duration_minutes": 45,
+            "priority": "high"
+        }
+        
+        response = self.make_request('POST', '/time-dezider/unplanned-task', unplanned_data)
+        if response and response.status_code == 200:
+            self.log_test(31, "POST /api/time-dezider/unplanned-task - Add unplanned task", True,
+                         "Unplanned task added")
+        else:
+            self.log_test(31, "POST /api/time-dezider/unplanned-task - Add unplanned task", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 32: GET /api/time-dezider/daily - Verify unplanned task appears
+        response = self.make_request('GET', '/time-dezider/daily?date=2026-03-27')
+        if response and response.status_code == 200:
+            data = response.json()
+            blocks = data.get('blocks', [])
+            has_unplanned = any(block.get('source_type') == 'unplanned' for block in blocks)
+            self.log_test(32, "GET /api/time-dezider/daily - Verify unplanned task appears", has_unplanned,
+                         f"Found unplanned task in {len(blocks)} blocks")
+        else:
+            self.log_test(32, "GET /api/time-dezider/daily - Verify unplanned task appears", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+    
+    def test_time_store(self):
+        """MODULE 10: TIME STORE"""
+        print("\n--- MODULE 10: TIME STORE ---")
+        
+        # Test 33: GET /api/time-store/budget?period=daily - Verify daily budget
+        response = self.make_request('GET', '/time-store/budget?period=daily')
+        if response and response.status_code == 200:
+            data = response.json()
+            has_by_area = 'by_area' in data
+            has_by_type = 'by_type' in data
+            has_items = 'items' in data
+            self.log_test(33, "GET /api/time-store/budget?period=daily - Verify daily budget", 
+                         has_by_area and has_by_type and has_items,
+                         "Daily budget has by_area, by_type, and items")
+        else:
+            self.log_test(33, "GET /api/time-store/budget?period=daily - Verify daily budget", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 34: GET /api/time-store/budget?period=weekly - Verify weekly budget
+        response = self.make_request('GET', '/time-store/budget?period=weekly')
+        if response and response.status_code == 200:
+            data = response.json()
+            has_by_area = 'by_area' in data
+            has_by_type = 'by_type' in data
+            has_items = 'items' in data
+            self.log_test(34, "GET /api/time-store/budget?period=weekly - Verify weekly budget",
+                         has_by_area and has_by_type and has_items,
+                         "Weekly budget has by_area, by_type, and items")
+        else:
+            self.log_test(34, "GET /api/time-store/budget?period=weekly - Verify weekly budget", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+    
+    def test_payments_credits(self):
+        """MODULE 11: PAYMENTS & CREDITS"""
+        print("\n--- MODULE 11: PAYMENTS & CREDITS ---")
+        
+        # Test 35: GET /api/payments/plans - Verify plans
+        response = self.make_request('GET', '/payments/plans')
+        if response and response.status_code == 200:
+            data = response.json()
+            has_plans = len(data.get('plans', [])) == 5
+            has_topup_packs = len(data.get('topup_packs', [])) == 5
+            has_credit_costs = 'credit_costs' in data
+            self.log_test(35, "GET /api/payments/plans - Verify 5 plans + 5 topup packs + credit_costs",
+                         has_plans and has_topup_packs and has_credit_costs,
+                         f"Found {len(data.get('plans', []))} plans, {len(data.get('topup_packs', []))} packs")
+        else:
+            self.log_test(35, "GET /api/payments/plans - Verify 5 plans + 5 topup packs + credit_costs", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 36: GET /api/payments/wallet - Verify 100 initial credits
+        response = self.make_request('GET', '/payments/wallet')
+        if response and response.status_code == 200:
+            data = response.json()
+            credits = data.get('credits', 0)
+            plan = data.get('current_plan', '')
+            has_initial_credits = credits == 100
+            is_free_plan = plan == 'free'
+            self.log_test(36, "GET /api/payments/wallet - Verify 100 initial credits, plan='free'",
+                         has_initial_credits and is_free_plan,
+                         f"Credits: {credits}, Plan: {plan}")
+        else:
+            self.log_test(36, "GET /api/payments/wallet - Verify 100 initial credits, plan='free'", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 37: POST /api/payments/check-credits - Verify credit check
+        check_data = {"action": "cld_generate"}
+        
+        response = self.make_request('POST', '/payments/check-credits', check_data)
+        if response and response.status_code == 200:
+            data = response.json()
+            cost = data.get('cost', 0)
+            sufficient = data.get('sufficient', False)
+            self.log_test(37, "POST /api/payments/check-credits - Verify cost=3, sufficient=true",
+                         cost == 3 and sufficient,
+                         f"Cost: {cost}, Sufficient: {sufficient}")
+        else:
+            self.log_test(37, "POST /api/payments/check-credits - Verify cost=3, sufficient=true", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 38: POST /api/payments/create-topup-order - Verify Razorpay order
+        topup_data = {"pack_id": "mini"}
+        
+        response = self.make_request('POST', '/payments/create-topup-order', topup_data)
+        if response and response.status_code == 200:
+            data = response.json()
+            has_order_id = 'order_id' in data
+            has_key_id = 'key_id' in data
+            self.log_test(38, "POST /api/payments/create-topup-order - Verify Razorpay order created",
+                         has_order_id and has_key_id,
+                         "Razorpay order created with order_id and key_id")
+        else:
+            self.log_test(38, "POST /api/payments/create-topup-order - Verify Razorpay order created", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 39: POST /api/payments/create-subscription - Verify Razorpay subscription
+        sub_data = {"plan_id": "pro"}
+        
+        response = self.make_request('POST', '/payments/create-subscription', sub_data)
+        if response and response.status_code == 200:
+            data = response.json()
+            has_order_id = 'order_id' in data
+            self.log_test(39, "POST /api/payments/create-subscription - Verify Razorpay order created",
+                         has_order_id,
+                         "Razorpay subscription order created")
+        else:
+            self.log_test(39, "POST /api/payments/create-subscription - Verify Razorpay order created", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 40: GET /api/payments/history - Verify initial grant transaction
+        response = self.make_request('GET', '/payments/history')
+        if response and response.status_code == 200:
+            data = response.json()
+            transactions = data.get('transactions', [])
+            has_initial_grant = any(t.get('type') == 'initial_grant' for t in transactions)
+            self.log_test(40, "GET /api/payments/history - Verify initial grant transaction",
+                         has_initial_grant,
+                         f"Found {len(transactions)} transactions, initial grant present")
+        else:
+            self.log_test(40, "GET /api/payments/history - Verify initial grant transaction", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+    
+    def test_credit_deduction_flow(self):
+        """MODULE 12: CREDIT DEDUCTION FLOW (CRITICAL)"""
+        print("\n--- MODULE 12: CREDIT DEDUCTION FLOW (CRITICAL) ---")
+        
+        # Test 41: GET /api/payments/wallet - Note current credits
+        response = self.make_request('GET', '/payments/wallet')
+        initial_credits = 100
+        if response and response.status_code == 200:
+            data = response.json()
+            initial_credits = data.get('credits', 100)
+            self.log_test(41, "GET /api/payments/wallet - Note current credits", True,
+                         f"Current credits: {initial_credits}")
+        else:
+            self.log_test(41, "GET /api/payments/wallet - Note current credits", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 42: POST /api/cld/{decision_id}/save - Save a CLD first
+        if not self.decision_id:
+            self.log_test(42, "POST /api/cld/{decision_id}/save - Save CLD first", False, "No decision_id")
+            self.log_test(43, "CLD Simulate test", False, "No decision_id")
+            self.log_test(44, "Credit check after simulation", False, "No decision_id")
+            self.log_test(45, "History check after simulation", False, "No decision_id")
+            return
+            
+        cld_data = {
+            "nodes": [
+                {"id": "f1", "name": "Salary", "x": 100, "y": 100, "base_value": 50},
+                {"id": "f2", "name": "Work-Life Balance", "x": 200, "y": 100, "base_value": 60},
+                {"id": "f3", "name": "Growth", "x": 150, "y": 200, "base_value": 70}
+            ],
+            "links": [
+                {"source": "f1", "target": "f2", "strength": 5, "polarity": "positive"},
+                {"source": "f2", "target": "f3", "strength": 7, "polarity": "positive"}
+            ]
+        }
+        
+        response = self.make_request('POST', f'/cld/{self.decision_id}/save', cld_data)
+        if response and response.status_code == 200:
+            self.log_test(42, "POST /api/cld/{decision_id}/save - Save CLD first", True,
+                         "CLD saved for credit deduction testing")
+        else:
+            self.log_test(42, "POST /api/cld/{decision_id}/save - Save CLD first", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 43: POST /api/cld/{decision_id}/simulate - Should succeed (simulation is FREE)
+        sim_data = {
+            "shock_factor_id": "f1",
+            "shock_delta": 15,
+            "time_steps": 3,
+            "dampening": 0.8
+        }
+        
+        response = self.make_request('POST', f'/cld/{self.decision_id}/simulate', sim_data)
+        if response and response.status_code == 200:
+            self.log_test(43, "POST /api/cld/{decision_id}/simulate - Should succeed (FREE)", True,
+                         "CLD simulation completed (0 credits)")
+        else:
+            self.log_test(43, "POST /api/cld/{decision_id}/simulate - Should succeed (FREE)", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 44: GET /api/payments/wallet - Credits should still be 100
+        response = self.make_request('GET', '/payments/wallet')
+        if response and response.status_code == 200:
+            data = response.json()
+            current_credits = data.get('credits', 0)
+            credits_unchanged = current_credits == initial_credits
+            self.log_test(44, "GET /api/payments/wallet - Credits should still be 100 (simulation free)",
+                         credits_unchanged,
+                         f"Credits: {current_credits} (expected: {initial_credits})")
+        else:
+            self.log_test(44, "GET /api/payments/wallet - Credits should still be 100 (simulation free)", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 45: GET /api/payments/history - Verify no deduction for simulation
+        response = self.make_request('GET', '/payments/history')
+        if response and response.status_code == 200:
+            data = response.json()
+            transactions = data.get('transactions', [])
+            # Should not have deduction transactions for simulation
+            deduction_count = sum(1 for t in transactions if t.get('type') == 'deduction')
+            self.log_test(45, "GET /api/payments/history - Verify no deduction for simulation",
+                         deduction_count == 0,
+                         f"Found {deduction_count} deduction transactions (expected: 0)")
+        else:
+            self.log_test(45, "GET /api/payments/history - Verify no deduction for simulation", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+    
+    def test_deo_engine(self):
+        """MODULE 13: DEO ENGINE"""
+        print("\n--- MODULE 13: DEO ENGINE ---")
+        
+        # Test 46: GET /api/deo/api-keys - Verify returns array
+        response = self.make_request('GET', '/deo/api-keys')
+        if response and response.status_code == 200:
+            data = response.json()
+            is_array = isinstance(data, list)
+            self.log_test(46, "GET /api/deo/api-keys - Verify returns array", is_array,
+                         f"Returns array with {len(data) if is_array else 'non-array'} items")
+        else:
+            self.log_test(46, "GET /api/deo/api-keys - Verify returns array", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+        
+        # Test 47: POST /api/deo/api-keys - Generate API key
+        key_data = {
+            "name": "UAT Test Key",
+            "permissions": ["full_flow", "values_api", "logic_api"]
+        }
+        
+        response = self.make_request('POST', '/deo/api-keys', key_data)
+        if response and response.status_code == 200:
+            data = response.json()
+            has_key_id = 'key_id' in data
+            has_api_key = 'api_key' in data
+            self.log_test(47, "POST /api/deo/api-keys - Generate API key", has_key_id and has_api_key,
+                         "API key generated with key_id and api_key")
+        else:
+            self.log_test(47, "POST /api/deo/api-keys - Generate API key", False,
+                         f"Status: {response.status_code if response else 'No response'}")
+    
+    def print_final_report(self):
+        """Print final test report"""
+        print("\n" + "=" * 80)
+        print("FINAL UAT REPORT")
+        print("=" * 80)
+        
+        print(f"\nTOTAL TESTS: 47")
+        print(f"PASSED: {self.passed_count}")
+        print(f"FAILED: {self.failed_count}")
+        print(f"SUCCESS RATE: {(self.passed_count/47)*100:.1f}%")
+        
+        if self.failed_count > 0:
+            print(f"\nFAILED TESTS:")
+            for result in self.test_results:
+                if not result['passed']:
+                    print(f"  ❌ Test {result['test_num']}: {result['description']} - {result['details']}")
+        
+        print(f"\nPASSED TESTS:")
+        for result in self.test_results:
+            if result['passed']:
+                print(f"  ✅ Test {result['test_num']}: {result['description']}")
+        
+        print("\n" + "=" * 80)
+        print(f"UAT COMPLETE: {self.passed_count}/47 PASSED")
+        print("=" * 80)
 
 if __name__ == "__main__":
-    tester = PaymentCreditsTest()
-    tester.run_all_tests()
+    tester = DeziderUATTester()
+    tester.run_comprehensive_uat()

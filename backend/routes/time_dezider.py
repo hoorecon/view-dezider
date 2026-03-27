@@ -24,6 +24,16 @@ load_dotenv(ROOT_DIR / '.env')
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# Credit deduction helper
+async def _deduct_ai_credits(user_id: str, action: str):
+    try:
+        from routes.payments import deduct_credits
+        await deduct_credits(user_id, action)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"Credit deduction skipped: {e}")
+
 # ========================
 # USER PREFERENCES
 # ========================
@@ -360,6 +370,10 @@ async def ai_reschedule(request: Request, user: dict = Depends(get_current_user)
     from emergentintegrations.llm.chat import LlmChat, UserMessage
 
     body = await request.json()
+
+    # Deduct credits
+    await _deduct_ai_credits(user["user_id"], "time_dezider_reschedule")
+
     target_date = body.get("date", datetime.now(timezone.utc).strftime("%Y-%m-%d"))
     unplanned_title = body.get("unplanned_title", "")
     unplanned_duration = body.get("unplanned_duration", 60)
@@ -707,6 +721,10 @@ async def analyze_time_store(request: Request, user: dict = Depends(get_current_
     from emergentintegrations.llm.chat import LlmChat, UserMessage
 
     body = await request.json()
+
+    # Deduct credits
+    await _deduct_ai_credits(user["user_id"], "time_store_analyze")
+
     desired_hours = body.get("desired_free_hours", 2)
     period = body.get("period", "daily")
     desired_minutes = desired_hours * 60

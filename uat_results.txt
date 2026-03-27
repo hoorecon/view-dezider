@@ -1,0 +1,34 @@
+================================================================================
+COMPREHENSIVE UAT - Testing ALL modules of the Dezider system
+================================================================================
+
+--- SETUP: Create Master Test User ---
+Test 1: POST /api/auth/register - Create master test user - PASS (User created with session token)
+
+--- MODULE 1: AUTH & USER ---
+Test 3: GET /api/auth/me - Verify user profile - PASS (Profile returned with required fields)
+Test 4: POST /api/auth/register with duplicate email - Should fail - FAIL (Status: No response)
+
+--- MODULE 2: DECISIONS / PRR FLOW ---
+Test 5: POST /api/decisions - Create decision - PASS (Decision created with ID: c80e300f-f7ea-47f2-b873-7ce6db7ba398)
+Test 6: PUT /api/decisions/{id} - Update with factors - PASS (Decision updated with 3 factors)
+Test 7: GET /api/decisions - Verify decision list - PASS (Found 1 decisions, our decision present)
+Test 8: GET /api/decisions/{id} - Verify full decision with factors - PASS (Decision has 3 factors)
+
+--- MODULE 3: CTT TASKS ---
+Test 9: POST /api/ctt/tasks - Morning Standup - PASS (Morning standup task created)
+Test 10: POST /api/ctt/tasks - Deep Work - PASS (Deep work task created)
+Test 11: POST /api/ctt/tasks - Email - PASS (Email task created)
+Test 12: GET /api/ctt/tasks - Verify 3 tasks - PASS (Found 3 tasks)
+
+--- MODULE 4: GEM GOALS ---
+Test 13: POST /api/gem/goals - Create goal - PASS (Career growth goal created)
+Traceback (most recent call last):
+  File "/app/backend_test.py", line 929, in <module>
+    tester.run_comprehensive_uat()
+  File "/app/backend_test.py", line 96, in run_comprehensive_uat
+    self.test_gem_goals()
+  File "/app/backend_test.py", line 351, in test_gem_goals
+    goals = data.get('goals', [])
+            ^^^^^^^^
+AttributeError: 'list' object has no attribute 'get'

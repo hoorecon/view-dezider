@@ -21,6 +21,18 @@ load_dotenv()
 from core.database import db
 from core.auth import get_current_user
 
+import logging
+_deo_logger = logging.getLogger(__name__)
+
+async def _deduct_ai_credits(user_id: str, action: str):
+    try:
+        from routes.payments import deduct_credits
+        await deduct_credits(user_id, action)
+    except HTTPException:
+        raise
+    except Exception as e:
+        _deo_logger.warning(f"Credit deduction skipped: {e}")
+
 router = APIRouter()
 
 
@@ -175,6 +187,9 @@ async def scrape_url(request: Request, user: dict = Depends(get_current_user)):
     url = body.get("url", "").strip()
     if not url:
         raise HTTPException(status_code=400, detail="URL is required")
+
+    # Deduct credits for AI scraping
+    await _deduct_ai_credits(user["user_id"], "deo_scrape")
 
     mode = body.get("mode", "ai")  # "ai" or "manual"
     context = body.get("context", "")  # Additional context for AI

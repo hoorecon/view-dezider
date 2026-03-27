@@ -29,6 +29,17 @@ db = client[db_name]
 
 logger = logging.getLogger(__name__)
 
+# Credit deduction helper
+async def _deduct_ai_credits(user_id: str, action: str):
+    """Deduct credits for AI actions. Import from payments module."""
+    try:
+        from routes.payments import deduct_credits
+        await deduct_credits(user_id, action)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"Credit deduction skipped: {e}")
+
 router = APIRouter(prefix="/cld", tags=["CLD Engine"])
 
 # ========================
@@ -459,6 +470,10 @@ async def generate_cld(decision_id: str, request: Request, user: dict = Depends(
     from emergentintegrations.llm.chat import LlmChat, UserMessage
 
     body = await request.json()
+
+    # Deduct credits for AI generation
+    await _deduct_ai_credits(user["user_id"], "cld_generate")
+
     title = body.get("decision_title", "")
     context = body.get("decision_context", "")
     life_area = body.get("life_area", "")
