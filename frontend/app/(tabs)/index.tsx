@@ -244,6 +244,33 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* GEM Flight Model — Orchestrator */}
+          <TouchableOpacity
+            style={styles.cttCard}
+            onPress={() => router.push('/tools/gem-flight' as any)}
+            activeOpacity={0.7}
+          >
+            <LinearGradient
+              colors={['#0C1445', '#1A237E', '#3949AB']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.cttGradient}
+            >
+              <View style={styles.cttHeader}>
+                <View style={styles.cttIconWrap}>
+                  <Ionicons name="airplane" size={24} color="#FFF" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cttTitle}>GEM Flight Model</Text>
+                  <Text style={styles.cttSubtitle}>
+                    Navigate your goals like a pilot — from Point A to Point B
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.7)" />
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+
           {/* Collaborate & Insights */}
           <Text style={styles.sectionTitle}>Collaborate & Insights</Text>
           <View style={styles.colabRow}>

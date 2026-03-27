@@ -446,7 +446,7 @@ async def link_ctt_task(project_id: str, request: Request, user: dict = Depends(
     task_id = body.get("task_id")
     step_num = body.get("step_num", 6)
 
-    result = await db.flight_projects.update_one(
+    await db.flight_projects.update_one(
         {"project_id": project_id, "user_id": user["user_id"]},
         {"$addToSet": {"linked_ctt_tasks": {"task_id": task_id, "step": step_num}},
          "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}}
@@ -460,9 +460,385 @@ async def link_routine(project_id: str, request: Request, user: dict = Depends(g
     body = await request.json()
     routine_id = body.get("routine_id")
 
-    result = await db.flight_projects.update_one(
+    await db.flight_projects.update_one(
         {"project_id": project_id, "user_id": user["user_id"]},
         {"$addToSet": {"linked_routines": routine_id},
          "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}}
     )
     return {"message": "Routine linked"}
+
+
+# ========================
+# FLIGHT DYNAMICS ENGINE
+# ========================
+
+@router.get("/projects/{project_id}/flight-dynamics")
+async def get_flight_dynamics(project_id: str, user: dict = Depends(get_current_user)):
+    """
+    Compute real-time flight dynamics based on all linked module data.
+    Returns altitude, speed, turbulence, ETA, heading, fuel, and crash risk.
+    This powers the animated airplane visualization.
+    """
+    project = await db.flight_projects.find_one(
+        {"project_id": project_id, "user_id": user["user_id"]},
+        {"_id": 0}
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    uid = user["user_id"]
+    now = datetime.now(timezone.utc)
+
+    # --- 1. ALTITUDE: Overall project health (0-40000 ft)
+    # Based on step completion, secrets scores, and task progress
+    steps = project.get("steps", {})
+    completed_steps = sum(1 for s in steps.values() if s.get("status") == "completed")
+    in_progress_steps = sum(1 for s in steps.values() if s.get("status") == "in_progress")
+    step_score = (completed_steps * 14) + (in_progress_steps * 5)  # max ~100
+
+    secrets_scores = project.get("secrets_scores", {})
+    avg_secret = 0
+    if secrets_scores:
+        scores = [v.get("manual_score") or v.get("auto_score", 0) for v in secrets_scores.values()]
+        avg_secret = sum(scores) / max(len(scores), 1)  # 0-10
+
+    base_altitude = (step_score * 200) + (avg_secret * 1000)  # max ~30000
+    altitude = min(40000, max(1000, int(base_altitude)))
+
+    # --- 2. SPEED: Task completion velocity (0-900 knots)
+    ctt_tasks = await db.ctt_tasks.find({"user_id": uid}, {"_id": 0}).to_list(200)
+    total_tasks = len(ctt_tasks)
+    done_tasks = sum(1 for t in ctt_tasks if t.get("status") == "done")
+    in_progress_tasks = sum(1 for t in ctt_tasks if t.get("status") == "in_progress")
+    blocked_tasks = sum(1 for t in ctt_tasks if t.get("status") == "blocked")
+
+    velocity = 0
+    if total_tasks > 0:
+        velocity = ((done_tasks * 100 + in_progress_tasks * 40) / total_tasks)
+    speed = min(900, max(100, int(velocity * 9)))  # knots
+
+    # --- 3. TURBULENCE: Risk and instability indicators (0-10, 10=severe)
+    turbulence_factors = []
+
+    # Blocked tasks increase turbulence
+    if total_tasks > 0:
+        block_ratio = blocked_tasks / total_tasks
+        turbulence_factors.append(block_ratio * 10)
+
+    # Low TEPFI scores = turbulence
+    tepfi_entries = await db.tepfi_entries.find({"user_id": uid}, {"_id": 0}).to_list(50)
+    if tepfi_entries:
+        all_scores = []
+        for entry in tepfi_entries:
+            matrix = entry.get("matrix", {})
+            for dim_key, dim_val in matrix.items():
+                if isinstance(dim_val, dict):
+                    for layer_key, layer_val in dim_val.items():
+                        if isinstance(layer_val, dict) and "score" in layer_val:
+                            all_scores.append(layer_val["score"])
+        if all_scores:
+            avg_tepfi = sum(all_scores) / len(all_scores)
+            turbulence_factors.append(max(0, (5 - avg_tepfi)))  # Low scores = high turbulence
+
+    # CLD imbalance = turbulence
+    clds = await db.cld_diagrams.find({"user_id": uid}, {"_id": 0}).to_list(10)
+    if clds:
+        total_links = sum(len(c.get("links", [])) for c in clds)
+        reinforcing = sum(1 for c in clds for lk in c.get("links", []) if lk.get("link_type") == "reinforcing")
+        if total_links > 0:
+            imbalance = abs(0.5 - reinforcing / total_links) * 10
+            turbulence_factors.append(imbalance)
+
+    # Overdue or stale steps
+    for step_key, step_data in steps.items():
+        if step_data.get("status") == "in_progress" and step_data.get("started_at"):
+            try:
+                started = datetime.fromisoformat(step_data["started_at"].replace("Z", "+00:00"))
+                days_stuck = (now - started).days
+                if days_stuck > 14:
+                    turbulence_factors.append(min(3, days_stuck / 10))
+            except (ValueError, TypeError):
+                pass
+
+    turbulence = min(10, round(sum(turbulence_factors) / max(len(turbulence_factors), 1), 1))
+
+    # --- 4. FUEL: Energy / resource levels from TEPFI (0-100%)
+    fuel = 50  # default
+    if tepfi_entries:
+        energy_scores = []
+        for entry in tepfi_entries:
+            effort = entry.get("matrix", {}).get("effort", {})
+            for key in ["energy_level_self", "energy_level_micro", "energy_level_macro"]:
+                cell = effort.get(key, {})
+                if isinstance(cell, dict) and "score" in cell:
+                    energy_scores.append(cell["score"])
+        if energy_scores:
+            fuel = min(100, int((sum(energy_scores) / len(energy_scores)) * 10))
+
+    # --- 5. ETA: Projected completion based on velocity
+    progress = project.get("progress_percent", 0)
+    remaining = 100 - progress
+    if speed > 200:
+        eta_days = max(1, int(remaining / (speed / 90)))
+    elif speed > 0:
+        eta_days = max(1, int(remaining / (speed / 45)))
+    else:
+        eta_days = 999  # stalled
+
+    # Check time_bound from SMART goal
+    time_bound = project.get("goal_smart", {}).get("time_bound", "")
+    deadline_str = None
+    days_to_deadline = None
+    on_time = True
+    if time_bound:
+        try:
+            deadline = datetime.fromisoformat(time_bound.replace("Z", "+00:00"))
+            days_to_deadline = (deadline - now).days
+            deadline_str = time_bound
+            on_time = eta_days <= days_to_deadline if days_to_deadline > 0 else False
+        except (ValueError, TypeError):
+            pass
+
+    # --- 6. CRASH RISK: Extreme danger indicator (0-100%)
+    crash_factors = []
+    if fuel < 20:
+        crash_factors.append(30)
+    if turbulence > 7:
+        crash_factors.append(25)
+    if blocked_tasks > total_tasks * 0.5 and total_tasks > 3:
+        crash_factors.append(25)
+    if days_to_deadline is not None and days_to_deadline < 0:
+        crash_factors.append(40)  # past deadline
+    if project.get("status") == "paused":
+        crash_factors.append(15)
+    crash_risk = min(100, sum(crash_factors))
+
+    # --- 7. HEADING: Current direction / phase label
+    current_step = project.get("current_step", 1)
+    current_gear = project.get("current_gear", 0)
+    if current_step <= 2:
+        phase = "pre_flight"
+        heading_label = "Pre-Flight Check"
+    elif current_step <= 4:
+        phase = "takeoff"
+        heading_label = "Takeoff & Climb"
+    elif current_step == 5:
+        phase = "climbing"
+        heading_label = "Climbing to Cruise"
+    elif current_step == 6:
+        phase = "cruise"
+        heading_label = f"Cruising — Gear {current_gear}"
+    elif current_step == 7 and project.get("status") == "completed":
+        phase = "landed"
+        heading_label = "Landed Successfully!"
+    elif current_step == 7:
+        phase = "descent"
+        heading_label = "Final Descent & Landing"
+    else:
+        phase = "taxiing"
+        heading_label = "Taxiing"
+
+    # --- 8. WEATHER: Based on routine adherence
+    routines = await db.lifestyle_routines.find({"user_id": uid, "is_active": True}, {"_id": 0}).to_list(100)
+    total_streaks = sum(r.get("streak", 0) for r in routines)
+    avg_streak = total_streaks / max(len(routines), 1)
+    if avg_streak >= 7:
+        weather = "clear"
+        weather_label = "Clear Skies"
+    elif avg_streak >= 3:
+        weather = "partly_cloudy"
+        weather_label = "Partly Cloudy"
+    elif avg_streak >= 1:
+        weather = "overcast"
+        weather_label = "Overcast"
+    else:
+        weather = "stormy"
+        weather_label = "Stormy"
+
+    # Log flight event
+    event = {
+        "event_id": str(uuid.uuid4()),
+        "project_id": project_id,
+        "user_id": uid,
+        "timestamp": now.isoformat(),
+        "altitude": altitude,
+        "speed": speed,
+        "turbulence": turbulence,
+        "fuel": fuel,
+        "crash_risk": crash_risk,
+        "phase": phase,
+    }
+    await db.flight_events.insert_one(event)
+
+    return {
+        "altitude": altitude,
+        "altitude_label": f"{altitude:,} ft",
+        "max_altitude": 40000,
+        "speed": speed,
+        "speed_label": f"{speed} knots",
+        "max_speed": 900,
+        "turbulence": turbulence,
+        "turbulence_label": "Severe" if turbulence > 7 else "Moderate" if turbulence > 4 else "Light" if turbulence > 1 else "Smooth",
+        "fuel": fuel,
+        "fuel_label": f"{fuel}%",
+        "eta_days": eta_days,
+        "deadline": deadline_str,
+        "days_to_deadline": days_to_deadline,
+        "on_time": on_time,
+        "crash_risk": crash_risk,
+        "crash_label": "Critical" if crash_risk > 70 else "Warning" if crash_risk > 40 else "Caution" if crash_risk > 15 else "Safe",
+        "phase": phase,
+        "heading": heading_label,
+        "weather": weather,
+        "weather_label": weather_label,
+        "current_step": current_step,
+        "current_gear": current_gear,
+        "progress_percent": progress,
+        "tasks_summary": {
+            "total": total_tasks,
+            "done": done_tasks,
+            "in_progress": in_progress_tasks,
+            "blocked": blocked_tasks,
+        },
+        "routines_summary": {
+            "total": len(routines),
+            "avg_streak": round(avg_streak, 1),
+        },
+    }
+
+
+# ========================
+# FLIGHT EVENT LOG
+# ========================
+
+@router.get("/projects/{project_id}/flight-log")
+async def get_flight_log(project_id: str, user: dict = Depends(get_current_user), limit: int = 20):
+    """Get recent flight events for trend visualization"""
+    events = await db.flight_events.find(
+        {"project_id": project_id, "user_id": user["user_id"]},
+        {"_id": 0}
+    ).sort("timestamp", -1).limit(limit).to_list(limit)
+    return {"events": list(reversed(events))}
+
+
+# ========================
+# iGIS STUBS (Astrology, Energy Healing, Manifestation)
+# ========================
+
+@router.get("/projects/{project_id}/igis/astrology")
+async def igis_astrology_stub(project_id: str, user: dict = Depends(get_current_user)):
+    """[STUB] Astrology-based grace and timing insights"""
+    return {
+        "status": "stub",
+        "module": "astrology",
+        "message": "Astrology integration coming soon. This module will analyze planetary alignments for optimal decision timing.",
+        "placeholder_data": {
+            "favorable_periods": [
+                {"label": "Career moves", "timing": "Next 2 weeks", "confidence": "N/A"},
+                {"label": "Financial decisions", "timing": "After 15th", "confidence": "N/A"},
+            ],
+            "current_energy": "Neutral",
+            "grace_score": 5,
+        }
+    }
+
+
+@router.get("/projects/{project_id}/igis/energy-healing")
+async def igis_energy_healing_stub(project_id: str, user: dict = Depends(get_current_user)):
+    """[STUB] Energy healing and chakra balance insights"""
+    return {
+        "status": "stub",
+        "module": "energy_healing",
+        "message": "Energy Healing integration coming soon. This module will map your TEPFI energy patterns to chakra alignment.",
+        "placeholder_data": {
+            "chakras": [
+                {"name": "Root", "area": "Security & Finance", "balance": "N/A"},
+                {"name": "Sacral", "area": "Creativity & Relationships", "balance": "N/A"},
+                {"name": "Solar Plexus", "area": "Willpower & Career", "balance": "N/A"},
+                {"name": "Heart", "area": "Love & Emotional Health", "balance": "N/A"},
+                {"name": "Throat", "area": "Communication & Social", "balance": "N/A"},
+                {"name": "Third Eye", "area": "Intuition & Knowledge", "balance": "N/A"},
+                {"name": "Crown", "area": "Spirituality & Purpose", "balance": "N/A"},
+            ],
+            "overall_energy": "Balanced",
+            "recommended_practice": "Meditation & Breathwork",
+        }
+    }
+
+
+@router.get("/projects/{project_id}/igis/manifestation")
+async def igis_manifestation_stub(project_id: str, user: dict = Depends(get_current_user)):
+    """[STUB] Manifestation tracking and visualization"""
+    return {
+        "status": "stub",
+        "module": "manifestation",
+        "message": "Manifestation integration coming soon. This module will help track visualization exercises and affirmation alignment.",
+        "placeholder_data": {
+            "affirmations": [
+                "I am making consistent progress toward my goals",
+                "I attract the resources and people I need",
+                "I trust the process and stay committed",
+            ],
+            "visualization_score": "N/A",
+            "alignment_level": "N/A",
+        }
+    }
+
+
+# ========================
+# FLIGHT SUMMARY / DASHBOARD
+# ========================
+
+@router.get("/projects/{project_id}/dashboard")
+async def get_flight_dashboard(project_id: str, user: dict = Depends(get_current_user)):
+    """
+    Comprehensive flight dashboard combining project data, scores, dynamics,
+    and linked module summaries. Single endpoint for the frontend.
+    """
+    project = await db.flight_projects.find_one(
+        {"project_id": project_id, "user_id": user["user_id"]},
+        {"_id": 0}
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    uid = user["user_id"]
+
+    # Get linked tasks summary
+    linked_task_ids = [lt.get("task_id") for lt in project.get("linked_ctt_tasks", [])]
+    linked_tasks = []
+    if linked_task_ids:
+        linked_tasks = await db.ctt_tasks.find(
+            {"task_id": {"$in": linked_task_ids}, "user_id": uid},
+            {"_id": 0, "task_id": 1, "title": 1, "status": 1, "priority": 1}
+        ).to_list(50)
+
+    # Get linked routines summary
+    linked_routine_ids = project.get("linked_routines", [])
+    linked_routines = []
+    if linked_routine_ids:
+        linked_routines = await db.lifestyle_routines.find(
+            {"routine_id": {"$in": linked_routine_ids}, "user_id": uid},
+            {"_id": 0, "routine_id": 1, "title": 1, "streak": 1, "frequency": 1}
+        ).to_list(50)
+
+    # Get linked decisions summary
+    linked_decision_ids = project.get("linked_decisions", [])
+    linked_decisions = []
+    if linked_decision_ids:
+        linked_decisions = await db.decisions.find(
+            {"decision_id": {"$in": linked_decision_ids}, "user_id": uid},
+            {"_id": 0, "decision_id": 1, "title": 1, "status": 1, "decision_type": 1}
+        ).to_list(20)
+
+    return {
+        "project": project,
+        "linked_tasks": linked_tasks,
+        "linked_routines": linked_routines,
+        "linked_decisions": linked_decisions,
+        "config": {
+            "secrets": SECRETS_CONFIG,
+            "seven_steps": SEVEN_STEPS,
+            "gears": GEARS,
+        }
+    }
