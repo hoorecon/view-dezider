@@ -157,14 +157,17 @@ async def get_daily_schedule(request: Request, user: dict = Depends(get_current_
         # If deadline matches
         elif deadline and target_date in str(deadline):
             applies = True
-        # If it's a routine
+        # If it's a routine with a time set (applies daily/weekly)
         elif is_routine and from_time:
             applies = True
-        # If from_time contains the target date
+        # If from_time contains the target date (e.g., "2026-03-27 09:00")
         elif from_time and target_date in str(from_time):
             applies = True
+        # If from_time is just a time (HH:MM format, no date) - it's a recurring/undated task
+        elif from_time and len(str(from_time).strip()) <= 5 and ":" in str(from_time):
+            applies = True
         # If no date info but task is open, include it
-        elif not deadline and not from_time and task.get("current_status") == "open":
+        elif not deadline and task.get("current_status") == "open":
             applies = True
 
         if not applies:
