@@ -555,6 +555,26 @@ export default function HomeScreen() {
             </LinearGradient>
           </TouchableOpacity>
 
+          {/* Credits & Subscription Banner */}
+          <TouchableOpacity
+            style={styles.calendarCard}
+            onPress={() => router.push('/tools/subscription' as any)}
+          >
+            <LinearGradient
+              colors={['#1E293B', '#334155']}
+              style={styles.calendarGradient}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="diamond-outline" size={22} color="#FFF" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.calendarTitle}>Credits & Subscription</Text>
+                  <Text style={styles.calendarSub}>Manage your plan, buy credits, view history</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.6)" />
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+
           {/* Stats */}
           <Text style={styles.sectionTitle}>Your Progress</Text>
           <View style={styles.statsGrid}>

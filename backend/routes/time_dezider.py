@@ -808,7 +808,7 @@ ACTIVE GOALS:
 
 ANALYSIS TASK: For each activity, evaluate using ALL 5 TEPFI dimensions:
 1. **TIME** (Self/Micro/Macro): Can the time allocation be reduced?
-2. **EFFORT** (Self/Micro/Macro): Can the effort be reduced by simplifying or finding easier methods?
+2. **EFFORT** (8 sub-dimensions × 3 layers): Attitude, Knowledge, Skills, Physical Health, Mental State, Emotional Wellness, Energy Level, Action - Can effort be optimized through any of these components?
 3. **PEOPLE** (Self/Micro/Macro): Can someone else do it? Name specific people from TEPFI micro/macro data if available
 4. **FINANCE** (Self/Micro/Macro): Can money solve this? (Hire help, buy automation tools, outsource)
 5. **INFRASTRUCTURE** (Self/Micro/Macro): Can tools/systems automate this?

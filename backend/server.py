@@ -3366,6 +3366,10 @@ api_router.include_router(cld_router)
 from routes.time_dezider import router as time_dezider_router
 api_router.include_router(time_dezider_router)
 
+# Payments + Credits Router
+from routes.payments import router as payments_router
+api_router.include_router(payments_router)
+
 
 # Include the router in the main app
 app.include_router(api_router)

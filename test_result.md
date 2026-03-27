@@ -2417,6 +2417,111 @@ agent_communication:
   - agent: "testing"
     message: "🎉 TIME DEZIDER + TIME STORE COMPREHENSIVE TESTING COMPLETE: All 7 test scenarios passed successfully with 100% success rate! ✅ SETUP & AUTHENTICATION: User registration (timetest@test.com) and session token generation working correctly. ✅ CTT TASKS CREATION: All 5 CTT tasks created successfully with proper from_time/to_time slots and task_duration fields. ✅ LIFESTYLE ROUTINES CREATION: Both lifestyle routines created successfully with time_slot and frequency fields. ✅ TIME DEZIDER PREFERENCES: GET/PUT /api/time-dezider/preferences working correctly with day_start/day_end configuration. ✅ DAILY SCHEDULE AGGREGATION: GET /api/time-dezider/daily returns unified timeline with CTT + Lifestyle blocks, proper stats calculation (scheduled/free minutes, utilization %), and all required response fields. ✅ UNPLANNED TASK WORKFLOW: Complete lifecycle working - POST creates unplanned task, GET daily schedule includes it, DELETE removes it successfully. ✅ TIME STORE BUDGET ANALYSIS: Both daily and weekly budget analysis working with proper by_area/by_type breakdown and time allocation calculations. Complete Time Dezider + Time Store functionality verified end-to-end with realistic time management scenarios. Backend URL: https://dezider-core.preview.emergentagent.com/api working correctly."
 
+  - task: "Payment & Credits System - Plans & Pricing API"
+    implemented: true
+    working: true
+    file: "routes/payments.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented GET /api/payments/plans returning 5 subscription plans (free, starter, pro, business, enterprise), 5 top-up packs (micro, mini, standard, mega, ultra), and credit costs for 7 AI actions"
+      - working: true
+        agent: "testing"
+        comment: "✅ PLANS & PRICING API TESTING PASSED: GET /api/payments/plans returns proper structure with 5 plans, 5 topup packs, and 7 credit cost actions. All expected plan IDs (free, starter, pro, business, enterprise) and pack IDs (micro, mini, standard, mega, ultra) found. Public endpoint working correctly without authentication."
+
+  - task: "Payment & Credits System - Wallet Management"
+    implemented: true
+    working: true
+    file: "routes/payments.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented GET /api/payments/wallet with auto-creation of credit wallets, 100 default initial credits, and GET /api/payments/history for transaction tracking"
+      - working: true
+        agent: "testing"
+        comment: "✅ WALLET MANAGEMENT TESTING PASSED: GET /api/payments/wallet auto-creates wallet with 100 initial credits and 'free' current plan. GET /api/payments/history returns transaction array with initial grant of 100 credits. Wallet auto-creation and transaction logging working correctly."
+
+  - task: "Payment & Credits System - Credit Check & Deduction"
+    implemented: true
+    working: true
+    file: "routes/payments.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented POST /api/payments/check-credits for pre-action credit validation with different costs per AI action (cld_generate=3, cld_simulate=0, etc.)"
+      - working: true
+        agent: "testing"
+        comment: "✅ CREDIT CHECK TESTING PASSED: POST /api/payments/check-credits correctly returns cost=3 and sufficient=true for cld_generate action, cost=0 and sufficient=true for cld_simulate action. Credit checking logic working correctly for different AI actions."
+
+  - task: "Payment & Credits System - Razorpay Top-up Orders"
+    implemented: true
+    working: true
+    file: "routes/payments.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented POST /api/payments/create-topup-order with Razorpay integration for credit top-up packs, order creation, and payment processing"
+      - working: true
+        agent: "testing"
+        comment: "✅ RAZORPAY TOP-UP ORDERS TESTING PASSED: POST /api/payments/create-topup-order successfully creates orders for 'mini' pack (amount=7900, currency=INR) with proper order_id and key_id. Invalid pack_id correctly rejected with 400 status. Razorpay integration working correctly."
+
+  - task: "Payment & Credits System - Razorpay Subscriptions"
+    implemented: true
+    working: true
+    file: "routes/payments.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented POST /api/payments/create-subscription with Razorpay integration for monthly subscription plans and recurring billing"
+      - working: true
+        agent: "testing"
+        comment: "✅ RAZORPAY SUBSCRIPTIONS TESTING PASSED: POST /api/payments/create-subscription successfully creates subscription orders for 'pro' plan (amount=39900, currency=INR) with proper order_id. Free plan subscription correctly rejected with 400 status. Subscription order creation working correctly."
+
+  - task: "Payment & Credits System - TEPFI Metadata API"
+    implemented: true
+    working: true
+    file: "routes/ctt_gem.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented GET /api/tepfi/metadata returning TEPFI framework dimensions, layers, and 8 effort sub-dimensions for decision analysis"
+      - working: true
+        agent: "testing"
+        comment: "✅ TEPFI METADATA API TESTING PASSED: GET /api/tepfi/metadata returns proper structure with dimensions ['time', 'effort', 'people', 'finance', 'infrastructure'], layers ['self', 'micro', 'macro'], and 8 effort sub-dimensions including attitude, knowledge, skills, physical_health, mental_state, emotional_wellness, energy_level, action. All expected metadata present."
+
+  - task: "Payment & Credits System - Admin Initial Credits"
+    implemented: true
+    working: true
+    file: "routes/payments.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented PUT /api/payments/admin/initial-credits and GET /api/payments/admin/initial-credits for admin configuration of default initial credits for new users"
+      - working: true
+        agent: "testing"
+        comment: "✅ ADMIN INITIAL CREDITS TESTING PASSED: PUT /api/payments/admin/initial-credits correctly returns 403 for non-admin users (proper security control). GET /api/payments/admin/initial-credits successfully returns initial_credits value (100). Admin access controls working correctly."
+
 test_plan:
   current_focus: []
   stuck_tasks: []
@@ -2488,6 +2593,8 @@ test_plan:
     message: "Full CLD Engine backend implemented in routes/cld.py with: CRUD (save/load/delete per decision), dynamic simulation (what-if propagation with dampening/stability), AI generation (enhanced prompt with auto-save), layout computation (circular/force/hierarchical), node/link property editing. Frontend enhanced CLDViewer.tsx with simulation panel, node/link edit modals, layout switching, CLD persistence. Standalone CLD Engine screen at tools/cld-engine.tsx. Please test all CLD endpoints comprehensively."
   - agent: "testing"
     message: "🎯 CLD ENGINE COMPREHENSIVE TESTING COMPLETE: All 15 CLD Engine tests passed successfully with 100% success rate! ✅ SETUP & AUTHENTICATION: User registration (cldtest2@test.com) and decision creation working correctly. ✅ CLD CRUD OPERATIONS: (1) GET /api/cld/{decision_id} correctly returns null when no CLD exists, (2) POST /api/cld/{decision_id}/save successfully saves CLD with 4 nodes (Salary, Work-Life Balance, Growth Opportunity, Location), 4 causal links (balancing/reinforcing), 1 feedback loop, (3) GET retrieval returns complete CLD structure, (4) GET /api/cld/list shows saved CLDs, (5) PUT node/link updates working (base_value: 70, locked: true, strength: 9), (6) DELETE removes CLD completely. ✅ DYNAMIC SIMULATION: Both positive (+25 to Growth) and negative (-20 to Salary) shock simulations working with proper timeline, stability analysis, and impact calculations. ✅ LAYOUT COMPUTATION: Force-directed and hierarchical layout algorithms working correctly with updated node positions. Complete CLD Engine functionality verified end-to-end with realistic career decision scenario. Backend URL: https://dezider-core.preview.emergentagent.com/api working correctly."
+  - agent: "testing"
+    message: "🎉 PAYMENT & CREDITS SYSTEM COMPREHENSIVE TESTING COMPLETE: All 9/9 tests passed successfully with 100% success rate! ✅ USER REGISTRATION: Registration with paytest@test.com working correctly with session token generation. ✅ PLANS & PRICING API: GET /api/payments/plans returns 5 subscription plans (free, starter, pro, business, enterprise), 5 topup packs (micro, mini, standard, mega, ultra), and 7 credit cost actions. ✅ WALLET MANAGEMENT: GET /api/payments/wallet auto-creates wallet with 100 initial credits and 'free' current plan. GET /api/payments/history returns transaction array with initial grant. ✅ CREDIT CHECK: POST /api/payments/check-credits correctly returns cost=3/sufficient=true for cld_generate, cost=0/sufficient=true for cld_simulate. ✅ RAZORPAY TOP-UP ORDERS: POST /api/payments/create-topup-order successfully creates orders for 'mini' pack (amount=7900 INR) with proper order_id and key_id. Invalid pack_id correctly rejected with 400. ✅ RAZORPAY SUBSCRIPTIONS: POST /api/payments/create-subscription successfully creates subscription orders for 'pro' plan (amount=39900 INR). Free plan correctly rejected with 400. ✅ TEPFI METADATA: GET /api/tepfi/metadata returns proper structure with 5 dimensions, 3 layers, and 8 effort sub-dimensions. ✅ ADMIN INITIAL CREDITS: PUT correctly returns 403 for non-admin users, GET returns initial_credits value (100). Complete Payment & Credits system functionality verified end-to-end with Razorpay integration working correctly. Backend URL: https://dezider-core.preview.emergentagent.com/api working correctly."
 
 test_plan:
   current_focus: []

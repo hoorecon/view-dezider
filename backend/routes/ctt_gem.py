@@ -17,6 +17,12 @@ LIFE_AREAS = [
 TEPFI_DIMENSIONS = ["time", "effort", "people", "finance", "infrastructure"]
 TEPFI_LAYERS = ["self", "micro", "macro"]
 
+# Effort sub-dimensions (8 components of the "effort" dimension)
+EFFORT_SUB_DIMENSIONS = [
+    "attitude", "knowledge", "skills", "physical_health",
+    "mental_state", "emotional_wellness", "energy_level", "action"
+]
+
 # ========================
 # CTT TASKS
 # ========================
@@ -672,6 +678,26 @@ async def tepfi_dashboard(user: dict = Depends(get_current_user)):
         "total_entries": len(entries),
         "by_area": by_area,
         "avg_matrix": avg_matrix,
+    }
+
+
+@router.get("/tepfi/metadata")
+async def tepfi_metadata():
+    """Get TEPFI framework metadata including effort sub-dimensions"""
+    return {
+        "dimensions": TEPFI_DIMENSIONS,
+        "layers": TEPFI_LAYERS,
+        "effort_sub_dimensions": EFFORT_SUB_DIMENSIONS,
+        "effort_sub_labels": {
+            "attitude": "Attitude",
+            "knowledge": "Knowledge",
+            "skills": "Skills",
+            "physical_health": "Physical Health",
+            "mental_state": "Mental State",
+            "emotional_wellness": "Emotional Wellness",
+            "energy_level": "Energy Level",
+            "action": "Action",
+        },
     }
 
 

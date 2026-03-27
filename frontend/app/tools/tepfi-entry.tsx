@@ -13,10 +13,21 @@ import Slider from '@react-native-community/slider';
 
 const DIMENSIONS = [
   { id: 'time', name: 'Time', icon: 'time', color: '#3B82F6', desc: 'Time allocated & required' },
-  { id: 'effort', name: 'Effort', icon: 'flash', color: '#F59E0B', desc: 'Energy & capacity needed' },
+  { id: 'effort', name: 'Effort', icon: 'flash', color: '#F59E0B', desc: '8 components: Attitude to Action' },
   { id: 'people', name: 'People', icon: 'people', color: '#10B981', desc: 'Human resources involved' },
   { id: 'finance', name: 'Finance', icon: 'cash', color: '#8B5CF6', desc: 'Financial resources needed' },
   { id: 'infrastructure', name: 'Infrastructure', icon: 'construct', color: '#EF4444', desc: 'Tools, tech & facilities' },
+];
+
+const EFFORT_SUBS = [
+  { id: 'attitude', name: 'Attitude', icon: 'happy', desc: 'Mindset & willingness' },
+  { id: 'knowledge', name: 'Knowledge', icon: 'book', desc: 'Information & understanding' },
+  { id: 'skills', name: 'Skills', icon: 'construct', desc: 'Practical abilities' },
+  { id: 'physical_health', name: 'Physical Health', icon: 'fitness', desc: 'Physical capacity & health' },
+  { id: 'mental_state', name: 'Mental State', icon: 'bulb', desc: 'Mental clarity & focus' },
+  { id: 'emotional_wellness', name: 'Emotional Wellness', icon: 'heart', desc: 'Emotional resilience' },
+  { id: 'energy_level', name: 'Energy Level', icon: 'flash', desc: 'Available energy & stamina' },
+  { id: 'action', name: 'Action', icon: 'rocket', desc: 'Execution & initiative' },
 ];
 
 const LAYERS = [
@@ -43,10 +54,25 @@ type Matrix = Record<string, Record<string, { description: string; score: number
 function buildEmptyMatrix(): Matrix {
   const m: Matrix = {};
   DIMENSIONS.forEach(d => {
-    m[d.id] = {};
-    LAYERS.forEach(l => {
-      m[d.id][l.id] = { description: '', score: 0, notes: '' };
-    });
+    if (d.id === 'effort') {
+      // Effort has 8 sub-dimensions, each with 3 layers
+      m[d.id] = {};
+      EFFORT_SUBS.forEach(sub => {
+        LAYERS.forEach(l => {
+          const key = `${sub.id}_${l.id}`;
+          m[d.id][key] = { description: '', score: 0, notes: '' };
+        });
+      });
+      // Also keep aggregate layer-level entries for backward compat
+      LAYERS.forEach(l => {
+        m[d.id][l.id] = { description: '', score: 0, notes: '' };
+      });
+    } else {
+      m[d.id] = {};
+      LAYERS.forEach(l => {
+        m[d.id][l.id] = { description: '', score: 0, notes: '' };
+      });
+    }
   });
   return m;
 }
@@ -210,7 +236,52 @@ export default function TEPFIEntryScreen() {
 
               {expandedDim === dim.id && (
                 <View style={st.dimContent}>
-                  {LAYERS.map(layer => (
+                  {dim.id === 'effort' ? (
+                    /* Effort: Show 8 sub-dimensions, each with 3 layers */
+                    EFFORT_SUBS.map(sub => (
+                      <View key={sub.id} style={st.layerCard}>
+                        <View style={st.layerHeader}>
+                          <Ionicons name={sub.icon as any} size={16} color="#F59E0B" />
+                          <Text style={[st.layerName, { color: '#F59E0B' }]}>{sub.name}</Text>
+                          <Text style={st.layerDesc}>{sub.desc}</Text>
+                        </View>
+                        {LAYERS.map(layer => {
+                          const cellKey = `${sub.id}_${layer.id}`;
+                          return (
+                            <View key={layer.id} style={{ marginBottom: 8, paddingLeft: 4 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                                <Ionicons name={layer.icon as any} size={12} color={layer.color} />
+                                <Text style={{ fontSize: 11, fontWeight: '600', color: layer.color }}>{layer.name}</Text>
+                                <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.textPrimary, marginLeft: 'auto' }}>
+                                  {matrix[dim.id]?.[cellKey]?.score || 0}/10
+                                </Text>
+                              </View>
+                              <Slider
+                                style={{ height: 28 }}
+                                minimumValue={0}
+                                maximumValue={10}
+                                step={1}
+                                value={matrix[dim.id]?.[cellKey]?.score || 0}
+                                onValueChange={(v: number) => updateCell(dim.id, cellKey, 'score', Math.round(v))}
+                                minimumTrackTintColor="#F59E0B"
+                                maximumTrackTintColor={COLORS.divider}
+                                thumbTintColor="#F59E0B"
+                              />
+                              <TextInput
+                                style={[st.cellInput, { minHeight: 32, fontSize: 12 }]}
+                                value={matrix[dim.id]?.[cellKey]?.description || ''}
+                                onChangeText={(t) => updateCell(dim.id, cellKey, 'description', t)}
+                                placeholder={`${sub.name} at ${layer.name.toLowerCase()} level?`}
+                                placeholderTextColor={COLORS.textMuted}
+                              />
+                            </View>
+                          );
+                        })}
+                      </View>
+                    ))
+                  ) : (
+                    /* Other dimensions: Standard 3 layers */
+                    LAYERS.map(layer => (
                     <View key={layer.id} style={st.layerCard}>
                       <View style={st.layerHeader}>
                         <Ionicons name={layer.icon as any} size={16} color={layer.color} />
@@ -249,7 +320,8 @@ export default function TEPFIEntryScreen() {
                         multiline
                       />
                     </View>
-                  ))}
+                  ))
+                  )}
                 </View>
               )}
             </View>
