@@ -324,8 +324,15 @@ async def simulate_cld(decision_id: str, sim: SimulationRequest, user: dict = De
     if not nodes or not links:
         raise HTTPException(status_code=400, detail="CLD has no nodes or links for simulation")
 
+    # Normalize node factor_id (handle both 'factor_id' and 'id' field names)
+    for node in nodes:
+        if "factor_id" not in node and "id" in node:
+            node["factor_id"] = node["id"]
+        elif "factor_id" not in node:
+            node["factor_id"] = str(node.get("name", "unknown"))
+
     # Validate shock factor exists
-    shock_node = next((n for n in nodes if n["factor_id"] == sim.shock_factor_id), None)
+    shock_node = next((n for n in nodes if n.get("factor_id") == sim.shock_factor_id), None)
     if not shock_node:
         raise HTTPException(status_code=404, detail=f"Factor {sim.shock_factor_id} not found in CLD")
 
@@ -345,7 +352,7 @@ async def simulate_cld(decision_id: str, sim: SimulationRequest, user: dict = De
     # Initialize values
     values = {}
     for node in nodes:
-        values[node["factor_id"]] = node.get("base_value", 50.0)
+        values[node.get("factor_id")] = node.get("base_value", 50.0)
 
     baseline = dict(values)
     timeline = []
@@ -383,7 +390,7 @@ async def simulate_cld(decision_id: str, sim: SimulationRequest, user: dict = De
                             pending_changes.append((apply_step, edge["to_id"], delta))
                         else:
                             # Check if node is locked
-                            target_node = next((n for n in nodes if n["factor_id"] == edge["to_id"]), None)
+                            target_node = next((n for n in nodes if n.get("factor_id") == edge["to_id"]), None)
                             if not target_node or not target_node.get("locked", False):
                                 changes[edge["to_id"]] += delta
         else:
@@ -401,14 +408,14 @@ async def simulate_cld(decision_id: str, sim: SimulationRequest, user: dict = De
                             if edge["delay"] > 0:
                                 pending_changes.append((apply_step, edge["to_id"], delta))
                             else:
-                                target_node = next((n for n in nodes if n["factor_id"] == edge["to_id"]), None)
+                                target_node = next((n for n in nodes if n.get("factor_id") == edge["to_id"]), None)
                                 if not target_node or not target_node.get("locked", False):
                                     changes[edge["to_id"]] += delta
 
         # Apply pending changes for this step
         for pc_step, pc_fid, pc_delta in pending_changes:
             if pc_step == step:
-                target_node = next((n for n in nodes if n["factor_id"] == pc_fid), None)
+                target_node = next((n for n in nodes if n.get("factor_id") == pc_fid), None)
                 if not target_node or not target_node.get("locked", False):
                     changes[pc_fid] += pc_delta
 
