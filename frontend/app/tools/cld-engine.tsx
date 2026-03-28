@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View,
   Text,
@@ -75,7 +76,7 @@ export default function CLDEngineScreen() {
   };
 
   const deleteCLD = async (decisionId: string) => {
-    Alert.alert('Delete CLD', 'Remove the saved CLD diagram for this decision?', [
+    showAlert('Delete CLD', 'Remove the saved CLD diagram for this decision?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete', style: 'destructive', onPress: async () => {
@@ -83,7 +84,7 @@ export default function CLDEngineScreen() {
             await api.delete(`/cld/${decisionId}`);
             setClds(prev => prev.filter(c => c.decision_id !== decisionId));
           } catch {
-            Alert.alert('Error', 'Failed to delete CLD');
+            showAlert('Error', 'Failed to delete CLD');
           }
         },
       },

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View,
   Text,
@@ -67,7 +68,7 @@ export default function Test123Detail() {
         setCurrentTest(response.data.completed_test + 1);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to load session');
+      showAlert('Error', 'Failed to load session');
       router.back();
     } finally {
       setLoading(false);
@@ -80,7 +81,7 @@ export default function Test123Detail() {
       await api.put(`/test123/${id}`, updates);
       setSession({ ...session!, ...updates });
     } catch (error) {
-      Alert.alert('Error', 'Failed to save changes');
+      showAlert('Error', 'Failed to save changes');
     } finally {
       setSaving(false);
     }
@@ -99,7 +100,7 @@ export default function Test123Detail() {
 
   const handleWhatIWant = async () => {
     if (!whatIWant.trim()) {
-      Alert.alert('Error', 'Please describe what you want');
+      showAlert('Error', 'Please describe what you want');
       return;
     }
     await saveSession({ what_i_want: whatIWant, completed_test: 1 });
@@ -115,7 +116,7 @@ export default function Test123Detail() {
 
   const handleWorstCase = async () => {
     if (!worstCase.trim()) {
-      Alert.alert('Error', 'Please describe the worst case scenario');
+      showAlert('Error', 'Please describe the worst case scenario');
       return;
     }
     await saveSession({ worst_case_scenario: worstCase });
@@ -158,7 +159,7 @@ export default function Test123Detail() {
 
   const handleFinalDecision = async () => {
     if (!actionPlan.trim() || !finalDecision.trim()) {
-      Alert.alert('Error', 'Please fill in your action plan and final decision');
+      showAlert('Error', 'Please fill in your action plan and final decision');
       return;
     }
     await saveSession({

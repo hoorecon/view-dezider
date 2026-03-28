@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Platform, KeyboardAvoidingView, Switch,
@@ -123,7 +124,7 @@ export default function CTTTaskScreen() {
       setSourceType(d.source_type || 'manual');
       setSourceId(d.source_id || '');
     } catch (e) {
-      Alert.alert('Error', 'Failed to load task');
+      showAlert('Error', 'Failed to load task');
       router.back();
     } finally {
       setLoading(false);
@@ -132,7 +133,7 @@ export default function CTTTaskScreen() {
 
   const handleSave = async () => {
     if (!task.trim()) {
-      Alert.alert('Required', 'Task name is required');
+      showAlert('Required', 'Task name is required');
       return;
     }
     setSaving(true);
@@ -168,7 +169,7 @@ export default function CTTTaskScreen() {
       }
       router.back();
     } catch (e) {
-      Alert.alert('Error', 'Failed to save task');
+      showAlert('Error', 'Failed to save task');
     } finally {
       setSaving(false);
     }
@@ -225,11 +226,11 @@ export default function CTTTaskScreen() {
           {editId && (
             <TouchableOpacity
               style={st.deleteBtn}
-              onPress={() => Alert.alert('Delete', 'Delete this task?', [
+              onPress={() => showAlert('Delete', 'Delete this task?', [
                 { text: 'Cancel', style: 'cancel' },
                 { text: 'Delete', style: 'destructive', onPress: async () => {
                   try { await api.delete(`/ctt/tasks/${editId}`); router.back(); }
-                  catch (e) { Alert.alert('Error', 'Failed to delete'); }
+                  catch (e) { showAlert('Error', 'Failed to delete'); }
                 }},
               ])}
             >
@@ -491,7 +492,7 @@ export default function CTTTaskScreen() {
                     headers: { Authorization: `Bearer ${session}` },
                   });
                   if (!statusRes.data?.connected) {
-                    Alert.alert('Connect Calendar', 'Please connect your Google Calendar first.', [
+                    showAlert('Connect Calendar', 'Please connect your Google Calendar first.', [
                       { text: 'Cancel', style: 'cancel' },
                       { text: 'Connect', onPress: () => router.push('/tools/google-calendar' as any) },
                     ]);
@@ -501,14 +502,14 @@ export default function CTTTaskScreen() {
                     task_id: editId,
                     timezone: 'Asia/Kolkata',
                   }, { headers: { Authorization: `Bearer ${session}` } });
-                  Alert.alert('Synced!', 'Task added to your Google Calendar', [
+                  showAlert('Synced!', 'Task added to your Google Calendar', [
                     { text: 'OK' },
                     { text: 'Open Link', onPress: () => {
                       if (res.data?.html_link) Linking.openURL(res.data.html_link);
                     }},
                   ]);
                 } catch (e: any) {
-                  Alert.alert('Error', e?.response?.data?.detail || 'Failed to sync to calendar');
+                  showAlert('Error', e?.response?.data?.detail || 'Failed to sync to calendar');
                 }
               }}
             >

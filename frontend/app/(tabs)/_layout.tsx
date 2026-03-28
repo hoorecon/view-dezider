@@ -3,8 +3,17 @@ import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import { Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+
+  // Calculate proper bottom padding for the tab bar
+  // On iOS/Android: use safe area insets to avoid overlapping with gesture bar
+  // On web: use a minimal padding
+  const bottomPadding = Platform.OS === 'web' ? 8 : Math.max(insets.bottom, 8);
+  const tabBarHeight = Platform.OS === 'web' ? 64 : (56 + bottomPadding);
+
   return (
     <Tabs
       screenOptions={{
@@ -13,13 +22,20 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: COLORS.white,
           borderTopColor: COLORS.border,
-          height: Platform.OS === 'ios' ? 88 : 64,
-          paddingBottom: Platform.OS === 'ios' ? 28 : 8,
-          paddingTop: 8,
+          borderTopWidth: 1,
+          height: tabBarHeight,
+          paddingBottom: bottomPadding,
+          paddingTop: 6,
+          // Ensure the tab bar is above the phone's gesture area
+          ...(Platform.OS !== 'web' ? { position: 'absolute' as const, bottom: 0, left: 0, right: 0 } : {}),
         },
         tabBarLabelStyle: {
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: '600',
+          marginTop: 2,
+        },
+        tabBarIconStyle: {
+          marginBottom: -2,
         },
         headerShown: false,
       }}
@@ -36,7 +52,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="prr"
         options={{
-          title: 'Decision Box',
+          title: 'Decisions',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="analytics" size={size} color={color} />
           ),

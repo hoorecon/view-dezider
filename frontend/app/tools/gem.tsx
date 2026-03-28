@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, Alert, ActivityIndicator,
@@ -56,11 +57,11 @@ export default function GEMScreen() {
   const onRefresh = async () => { setRefreshing(true); await fetchData(); setRefreshing(false); };
 
   const handleDelete = (id: string) => {
-    Alert.alert('Delete','Delete this goal?',[
+    showAlert('Delete','Delete this goal?',[
       {text:'Cancel',style:'cancel'},
       {text:'Delete',style:'destructive',onPress:async()=>{
         try { await api.delete(`/gem/goals/${id}`); fetchData(); }
-        catch(e) { Alert.alert('Error','Failed'); }
+        catch(e) { showAlert('Error','Failed'); }
       }},
     ]);
   };

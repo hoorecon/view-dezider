@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, ActivityIndicator, Alert, Modal, TextInput,
@@ -178,7 +179,7 @@ export default function GemFlightDetailScreen() {
     } catch (e: any) {
       console.error('Flight fetch error:', e);
       if (e?.response?.status === 404) {
-        Alert.alert('Not Found', 'Flight project not found');
+        showAlert('Not Found', 'Flight project not found');
         router.back();
       }
     } finally {
@@ -199,7 +200,7 @@ export default function GemFlightDetailScreen() {
       setStepNotes('');
       fetchAll();
     } catch (e: any) {
-      Alert.alert('Error', e?.response?.data?.detail || 'Failed to update step');
+      showAlert('Error', e?.response?.data?.detail || 'Failed to update step');
     }
   };
 
@@ -208,7 +209,7 @@ export default function GemFlightDetailScreen() {
       await api.put(`/gem-flight/projects/${id}/gear/${gear}`, {});
       fetchAll();
     } catch (e: any) {
-      Alert.alert('Error', 'Failed to update gear');
+      showAlert('Error', 'Failed to update gear');
     }
   };
 
@@ -218,7 +219,7 @@ export default function GemFlightDetailScreen() {
       setIgisData(res.data);
       setShowIgisModal(module);
     } catch (e) {
-      Alert.alert('Error', 'Failed to load module');
+      showAlert('Error', 'Failed to load module');
     }
   };
 

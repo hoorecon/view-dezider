@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View,
   Text,
@@ -47,7 +48,7 @@ export default function AdminTemplates() {
       const resp = await api.get('/decision-templates/all');
       setTemplates(resp.data || []);
     } catch (err) {
-      Alert.alert('Error', 'Failed to load templates');
+      showAlert('Error', 'Failed to load templates');
     } finally {
       setLoading(false);
     }
@@ -57,14 +58,14 @@ export default function AdminTemplates() {
     try {
       await api.post(`/decision-templates/${templateId}/approve`);
       setTemplates(templates.map(t => t.id === templateId ? { ...t, is_approved: true } : t));
-      Alert.alert('Success', 'Template approved');
+      showAlert('Success', 'Template approved');
     } catch (err) {
-      Alert.alert('Error', 'Failed to approve template');
+      showAlert('Error', 'Failed to approve template');
     }
   };
 
   const handleDelete = async (templateId: string) => {
-    Alert.alert('Delete Template', 'Are you sure you want to delete this template?', [
+    showAlert('Delete Template', 'Are you sure you want to delete this template?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -74,7 +75,7 @@ export default function AdminTemplates() {
             await api.delete(`/decision-templates/${templateId}`);
             setTemplates(templates.filter(t => t.id !== templateId));
           } catch (err) {
-            Alert.alert('Error', 'Failed to delete template');
+            showAlert('Error', 'Failed to delete template');
           }
         },
       },
@@ -101,9 +102,9 @@ export default function AdminTemplates() {
       });
       setTemplates(templates.map(t => t.id === editingTemplate.id ? { ...t, ...form } : t));
       setEditModal(false);
-      Alert.alert('Success', 'Template updated');
+      showAlert('Success', 'Template updated');
     } catch (err) {
-      Alert.alert('Error', 'Failed to update template');
+      showAlert('Error', 'Failed to update template');
     }
   };
 

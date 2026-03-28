@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, Alert, ActivityIndicator, Linking,
@@ -59,9 +60,9 @@ export default function CalendarViewScreen() {
       const res = await api.post('/calendar/batch-export', {});
       const tasks = res.data?.tasks || [];
       if (tasks.length === 0) {
-        Alert.alert('No Tasks', 'No tasks with deadlines found to export.');
+        showAlert('No Tasks', 'No tasks with deadlines found to export.');
       } else {
-        Alert.alert(
+        showAlert(
           'Export to Google Calendar',
           `${tasks.length} tasks ready. Each will open in Google Calendar.`,
           [
@@ -75,7 +76,7 @@ export default function CalendarViewScreen() {
           ],
         );
       }
-    } catch (e) { Alert.alert('Error', 'Failed to generate calendar links'); }
+    } catch (e) { showAlert('Error', 'Failed to generate calendar links'); }
     finally { setExporting(false); }
   };
 
@@ -85,7 +86,7 @@ export default function CalendarViewScreen() {
       if (res.data?.calendar_url) {
         Linking.openURL(res.data.calendar_url);
       }
-    } catch (e) { Alert.alert('Error', 'Failed to generate calendar link'); }
+    } catch (e) { showAlert('Error', 'Failed to generate calendar link'); }
   };
 
   const sortedDates = Object.keys(byDate).sort();

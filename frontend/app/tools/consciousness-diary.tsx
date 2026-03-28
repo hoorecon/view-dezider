@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, ActivityIndicator, Alert, TextInput,
@@ -107,10 +108,10 @@ export default function ConsciousnessDiaryScreen() {
         date: todayDate,
         ...form,
       });
-      Alert.alert('Saved', 'Diary entry saved successfully');
+      showAlert('Saved', 'Diary entry saved successfully');
       fetchAll();
     } catch (e: any) {
-      Alert.alert('Error', e?.response?.data?.detail || 'Failed to save');
+      showAlert('Error', e?.response?.data?.detail || 'Failed to save');
     } finally {
       setSaving(false);
     }
@@ -124,10 +125,10 @@ export default function ConsciousnessDiaryScreen() {
         levels[k] = { score: v };
       }
       await api.put('/consciousness-diary/self-awareness', { levels });
-      Alert.alert('Saved', 'Self-awareness levels updated');
+      showAlert('Saved', 'Self-awareness levels updated');
       fetchAll();
     } catch (e: any) {
-      Alert.alert('Error', 'Failed to save');
+      showAlert('Error', 'Failed to save');
     } finally {
       setSaving(false);
     }

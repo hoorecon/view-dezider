@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Platform, KeyboardAvoidingView, Switch,
@@ -79,13 +80,13 @@ export default function LifestyleRoutineScreen() {
       setUnit(d.unit || '');
       setIsActive(d.is_active !== false);
     } catch (e) {
-      Alert.alert('Error', 'Failed to load routine');
+      showAlert('Error', 'Failed to load routine');
       router.back();
     } finally { setLoading(false); }
   };
 
   const handleSave = async () => {
-    if (!name.trim()) { Alert.alert('Required', 'Routine name is required'); return; }
+    if (!name.trim()) { showAlert('Required', 'Routine name is required'); return; }
     setSaving(true);
     try {
       const payload = {
@@ -106,7 +107,7 @@ export default function LifestyleRoutineScreen() {
         await api.post('/lifestyle/routines', payload);
       }
       router.back();
-    } catch (e) { Alert.alert('Error', 'Failed to save'); }
+    } catch (e) { showAlert('Error', 'Failed to save'); }
     finally { setSaving(false); }
   };
 
@@ -131,11 +132,11 @@ export default function LifestyleRoutineScreen() {
           {editId && (
             <TouchableOpacity
               style={st.deleteBtn}
-              onPress={() => Alert.alert('Delete', 'Delete this routine?', [
+              onPress={() => showAlert('Delete', 'Delete this routine?', [
                 { text: 'Cancel', style: 'cancel' },
                 { text: 'Delete', style: 'destructive', onPress: async () => {
                   try { await api.delete(`/lifestyle/routines/${editId}`); router.back(); }
-                  catch (e) { Alert.alert('Error', 'Failed to delete'); }
+                  catch (e) { showAlert('Error', 'Failed to delete'); }
                 }},
               ])}
             >

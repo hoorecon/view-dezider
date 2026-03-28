@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, Alert, ActivityIndicator, TextInput, Modal,
@@ -89,7 +90,7 @@ export default function GemFlightScreen() {
 
   const createProject = async () => {
     if (!form.title.trim()) {
-      Alert.alert('Required', 'Please enter a project title');
+      showAlert('Required', 'Please enter a project title');
       return;
     }
     setCreating(true);
@@ -99,21 +100,21 @@ export default function GemFlightScreen() {
       setForm({ title: '', vision: '', goal: '', point_a: '', point_b: '', life_area: '', specific: '', measurable: '', achievable: '', realistic: '', time_bound: '' });
       router.push(`/tools/gem-flight-detail?id=${res.data.project_id}` as any);
     } catch (e: any) {
-      Alert.alert('Error', e?.response?.data?.detail || 'Failed to create project');
+      showAlert('Error', e?.response?.data?.detail || 'Failed to create project');
     } finally {
       setCreating(false);
     }
   };
 
   const deleteProject = (id: string) => {
-    Alert.alert('Delete Flight', 'Are you sure you want to delete this flight project?', [
+    showAlert('Delete Flight', 'Are you sure you want to delete this flight project?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete', style: 'destructive', onPress: async () => {
           try {
             await api.delete(`/gem-flight/projects/${id}`);
             fetchProjects();
-          } catch { Alert.alert('Error', 'Failed to delete'); }
+          } catch { showAlert('Error', 'Failed to delete'); }
         }
       },
     ]);

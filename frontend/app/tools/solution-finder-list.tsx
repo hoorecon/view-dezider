@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View,
   Text,
@@ -46,7 +47,7 @@ export default function SolutionFinderListScreen() {
   };
 
   const handleDelete = (id: string) => {
-    Alert.alert('Delete', 'Are you sure you want to delete this entry?', [
+    showAlert('Delete', 'Are you sure you want to delete this entry?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -56,7 +57,7 @@ export default function SolutionFinderListScreen() {
             await api.delete(`/solution-finders/${id}`);
             fetchEntries();
           } catch (e) {
-            Alert.alert('Error', 'Failed to delete');
+            showAlert('Error', 'Failed to delete');
           }
         },
       },

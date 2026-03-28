@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, ActivityIndicator, Alert,
@@ -67,7 +68,7 @@ export default function TimeStoreScreen() {
       (res.data?.suggestions || []).forEach((s: any) => ids.add(s.activity_id));
       setSelectedIds(ids);
     } catch (err: any) {
-      Alert.alert('Error', err?.response?.data?.detail || 'Analysis failed');
+      showAlert('Error', err?.response?.data?.detail || 'Analysis failed');
     } finally {
       setAnalyzing(false);
     }
@@ -83,17 +84,17 @@ export default function TimeStoreScreen() {
 
   const applySuggestions = async () => {
     if (selectedIds.size === 0) {
-      Alert.alert('Select Suggestions', 'Please select at least one suggestion to apply.');
+      showAlert('Select Suggestions', 'Please select at least one suggestion to apply.');
       return;
     }
     const selected = (suggestions?.suggestions || []).filter((s: any) => selectedIds.has(s.activity_id));
     try {
       const res = await api.post('/time-store/apply', { suggestions: selected });
-      Alert.alert('Applied', `${res.data.applied} optimizations applied.`);
+      showAlert('Applied', `${res.data.applied} optimizations applied.`);
       setSuggestions(null);
       fetchBudget();
     } catch {
-      Alert.alert('Error', 'Failed to apply suggestions');
+      showAlert('Error', 'Failed to apply suggestions');
     }
   };
 

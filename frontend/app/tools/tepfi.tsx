@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, Alert, ActivityIndicator, Dimensions,
@@ -73,11 +74,11 @@ export default function TEPFIScreen() {
   const onRefresh = async () => { setRefreshing(true); await fetchData(); setRefreshing(false); };
 
   const handleDelete = (id: string) => {
-    Alert.alert('Delete', 'Delete this TEPFI assessment?', [
+    showAlert('Delete', 'Delete this TEPFI assessment?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {
         try { await api.delete(`/tepfi/entries/${id}`); fetchData(); }
-        catch (e) { Alert.alert('Error', 'Failed to delete'); }
+        catch (e) { showAlert('Error', 'Failed to delete'); }
       }},
     ]);
   };

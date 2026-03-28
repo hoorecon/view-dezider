@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View,
   Text,
@@ -46,7 +47,7 @@ export default function SolutionMatrixListScreen() {
   };
 
   const handleDelete = (id: string) => {
-    Alert.alert('Delete', 'Delete this entry?', [
+    showAlert('Delete', 'Delete this entry?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete', style: 'destructive',
@@ -55,7 +56,7 @@ export default function SolutionMatrixListScreen() {
             await api.delete(`/solution-matrices/${id}`);
             fetchEntries();
           } catch (e) {
-            Alert.alert('Error', 'Failed to delete');
+            showAlert('Error', 'Failed to delete');
           }
         },
       },

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Platform, KeyboardAvoidingView,
@@ -110,7 +111,7 @@ export default function TEPFIEntryScreen() {
       setOverallNotes(d.overall_notes || '');
       if (d.matrix) setMatrix(d.matrix);
     } catch (e) {
-      Alert.alert('Error', 'Failed to load entry');
+      showAlert('Error', 'Failed to load entry');
       router.back();
     } finally {
       setLoading(false);
@@ -132,7 +133,7 @@ export default function TEPFIEntryScreen() {
 
   const handleSave = async () => {
     if (!title.trim()) {
-      Alert.alert('Required', 'Please enter a title for this assessment');
+      showAlert('Required', 'Please enter a title for this assessment');
       return;
     }
     setSaving(true);
@@ -151,7 +152,7 @@ export default function TEPFIEntryScreen() {
       }
       router.back();
     } catch (e) {
-      Alert.alert('Error', 'Failed to save');
+      showAlert('Error', 'Failed to save');
     } finally {
       setSaving(false);
     }

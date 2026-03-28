@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View,
   Text,
@@ -61,34 +62,34 @@ export default function ExpertsScreen() {
 
   const handleSave = async () => {
     if (!form.name.trim() || !form.email.trim()) {
-      Alert.alert('Error', 'Name and email are required');
+      showAlert('Error', 'Name and email are required');
       return;
     }
     setSaving(true);
     try {
       if (editingExpert) {
         await api.put(`/experts/${editingExpert.id}`, form);
-        Alert.alert('Success', 'Expert updated');
+        showAlert('Success', 'Expert updated');
       } else {
         await api.post('/experts', form);
-        Alert.alert('Success', 'Expert added');
+        showAlert('Success', 'Expert added');
       }
       setShowForm(false);
       fetchExperts();
     } catch (err: any) {
-      Alert.alert('Error', err?.response?.data?.detail || 'Failed to save');
+      showAlert('Error', err?.response?.data?.detail || 'Failed to save');
     } finally { setSaving(false); }
   };
 
   const handleDelete = (expert: Expert) => {
-    Alert.alert('Delete Expert', `Remove ${expert.name}?`, [
+    showAlert('Delete Expert', `Remove ${expert.name}?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete', style: 'destructive', onPress: async () => {
           try {
             await api.delete(`/experts/${expert.id}`);
             fetchExperts();
-          } catch { Alert.alert('Error', 'Failed to delete'); }
+          } catch { showAlert('Error', 'Failed to delete'); }
         }
       },
     ]);
@@ -98,7 +99,7 @@ export default function ExpertsScreen() {
     try {
       await api.put(`/experts/${expert.id}`, { is_active: !expert.is_active });
       fetchExperts();
-    } catch { Alert.alert('Error', 'Failed to update'); }
+    } catch { showAlert('Error', 'Failed to update'); }
   };
 
   return (

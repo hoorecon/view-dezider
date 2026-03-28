@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator,
   StyleSheet, Alert, KeyboardAvoidingView, Platform,
@@ -77,9 +78,9 @@ export default function AddSolutionScreen() {
   };
 
   const submit = async () => {
-    if (!form.name.trim()) return Alert.alert('Error', 'Name is required');
-    if (!form.type) return Alert.alert('Error', 'Select a type');
-    if (!form.life_area_id) return Alert.alert('Error', 'Select a life area');
+    if (!form.name.trim()) return showAlert('Error', 'Name is required');
+    if (!form.type) return showAlert('Error', 'Select a type');
+    if (!form.life_area_id) return showAlert('Error', 'Select a life area');
 
     setSubmitting(true);
     try {
@@ -104,11 +105,11 @@ export default function AddSolutionScreen() {
       const successMsg = form.visibility === 'PUBLIC'
         ? 'Solution submitted for admin review. It will be visible to everyone once approved!'
         : 'Solution added to store!';
-      Alert.alert('Success', successMsg, [
+      showAlert('Success', successMsg, [
         { text: 'OK', onPress: () => router.back() },
       ]);
     } catch (e: any) {
-      Alert.alert('Error', e?.response?.data?.detail || 'Failed to create solution');
+      showAlert('Error', e?.response?.data?.detail || 'Failed to create solution');
     } finally {
       setSubmitting(false);
     }

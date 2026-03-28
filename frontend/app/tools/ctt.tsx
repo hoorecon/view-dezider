@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, Alert, ActivityIndicator, Linking, Dimensions,
@@ -123,23 +124,23 @@ export default function CTTScreen() {
     try {
       const res = await api.post('/ctt/aggregate');
       const count = res.data?.imported || 0;
-      Alert.alert(
+      showAlert(
         'Import Complete',
         count > 0
           ? `${count} new action items imported from your Decisions, Solution Finders & Matrices`
           : 'No new items to import. All action items are already tracked.',
       );
       if (count > 0) await fetchData();
-    } catch (e) { Alert.alert('Error', 'Failed to aggregate tasks'); }
+    } catch (e) { showAlert('Error', 'Failed to aggregate tasks'); }
     finally { setAggregating(false); }
   };
 
   const handleDelete = (id: string, taskName: string) => {
-    Alert.alert('Delete Task', `Are you sure you want to delete "${taskName}"?`, [
+    showAlert('Delete Task', `Are you sure you want to delete "${taskName}"?`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {
         try { await api.delete(`/ctt/tasks/${id}`); fetchData(); }
-        catch (e) { Alert.alert('Error', 'Failed to delete task'); }
+        catch (e) { showAlert('Error', 'Failed to delete task'); }
       }},
     ]);
   };
@@ -148,7 +149,7 @@ export default function CTTScreen() {
     try {
       await api.put(`/ctt/tasks/${id}`, { current_status: status });
       fetchData();
-    } catch (e) { Alert.alert('Error', 'Failed to update status'); }
+    } catch (e) { showAlert('Error', 'Failed to update status'); }
   };
 
   const updateDayStatus = async (taskId: string, date: string, currentDayStatus: Record<string, string>) => {
@@ -166,7 +167,7 @@ export default function CTTScreen() {
       }
       await api.put(`/ctt/tasks/${taskId}/day-status`, nextStatus ? { [date]: nextStatus } : { [date]: '' });
       fetchData();
-    } catch (e) { Alert.alert('Error', 'Failed to update day status'); }
+    } catch (e) { showAlert('Error', 'Failed to update day status'); }
   };
 
   const openCalendar = async (taskId: string) => {
@@ -175,7 +176,7 @@ export default function CTTScreen() {
       if (res.data?.calendar_url) {
         Linking.openURL(res.data.calendar_url);
       }
-    } catch (e) { Alert.alert('Error', 'Could not open calendar'); }
+    } catch (e) { showAlert('Error', 'Could not open calendar'); }
   };
 
   const getSourceColor = (source: string) => {

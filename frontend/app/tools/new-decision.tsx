@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
   ActivityIndicator, Alert, KeyboardAvoidingView, Platform, FlatList,
@@ -133,11 +134,11 @@ export default function NewDecisionIntake() {
   const handleCreateDecision = async (templateId?: string, sourceType?: string) => {
     const title = customTitle.trim() || searchText.trim();
     if (!title && !templateId) {
-      Alert.alert('Title Required', 'Please enter a decision title or select a template.');
+      showAlert('Title Required', 'Please enter a decision title or select a template.');
       return;
     }
     if (!selectedArea || !selectedAskType) {
-      Alert.alert('Missing Context', 'Please select a life area and ask type.');
+      showAlert('Missing Context', 'Please select a life area and ask type.');
       return;
     }
 
@@ -158,7 +159,7 @@ export default function NewDecisionIntake() {
       const factorsLoaded = r.data.factors_loaded || 0;
 
       if (factorsLoaded > 0) {
-        Alert.alert(
+        showAlert(
           'Template Loaded',
           `${factorsLoaded} pre-configured factors loaded with classifications, priorities & ratings. You can review and modify them in the PRR flow.`,
           [{ text: 'Start Analysis', onPress: () => router.replace(`/prr/${decisionId}`) }]
@@ -167,7 +168,7 @@ export default function NewDecisionIntake() {
         router.replace(`/prr/${decisionId}`);
       }
     } catch (e: any) {
-      Alert.alert('Error', e.response?.data?.detail || 'Failed to create decision');
+      showAlert('Error', e.response?.data?.detail || 'Failed to create decision');
     } finally {
       setCreating(false);
     }

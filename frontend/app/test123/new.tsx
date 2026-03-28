@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View,
   Text,
@@ -23,7 +24,7 @@ export default function NewTest123() {
 
   const handleCreate = async () => {
     if (!situation.trim()) {
-      Alert.alert('Error', 'Please describe the situation');
+      showAlert('Error', 'Please describe the situation');
       return;
     }
 
@@ -32,7 +33,7 @@ export default function NewTest123() {
       const response = await api.post('/test123', { situation });
       router.replace(`/test123/${response.data.id}`);
     } catch (error) {
-      Alert.alert('Error', 'Failed to create session');
+      showAlert('Error', 'Failed to create session');
     } finally {
       setLoading(false);
     }

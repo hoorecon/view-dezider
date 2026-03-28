@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View,
   Text,
@@ -87,11 +88,11 @@ export default function OrgMembersScreen() {
 
     // Can't modify self or someone at equal/higher level
     if (member.user_id === user?.user_id) {
-      Alert.alert('Info', 'Cannot change your own role');
+      showAlert('Info', 'Cannot change your own role');
       return;
     }
     if (memberLevel >= myLevel) {
-      Alert.alert('Info', 'Cannot modify a user with equal or higher org role');
+      showAlert('Info', 'Cannot modify a user with equal or higher org role');
       return;
     }
 
@@ -99,7 +100,7 @@ export default function OrgMembersScreen() {
     const assignableRoles = ORG_ROLES.filter(r => r.level < myLevel && r.level !== memberLevel);
 
     if (assignableRoles.length === 0) {
-      Alert.alert('Info', 'No roles available to assign');
+      showAlert('Info', 'No roles available to assign');
       return;
     }
 
@@ -109,7 +110,7 @@ export default function OrgMembersScreen() {
     }));
     buttons.push({ text: 'Cancel', onPress: () => {}, style: 'cancel' } as any);
 
-    Alert.alert(
+    showAlert(
       `Change Role: ${member.name || member.email}`,
       `Current: ${getOrgRoleMeta(member.org_role || 'org_member').label}`,
       buttons
@@ -121,10 +122,10 @@ export default function OrgMembersScreen() {
       await api.put(`/organizations/${orgId}/members/${targetUserId}/role`, {
         org_role: newRole,
       });
-      Alert.alert('Success', `Role updated to ${getOrgRoleMeta(newRole).label}`);
+      showAlert('Success', `Role updated to ${getOrgRoleMeta(newRole).label}`);
       if (orgId) await fetchMembers(orgId);
     } catch (e: any) {
-      Alert.alert('Error', e.response?.data?.detail || 'Failed to update role');
+      showAlert('Error', e.response?.data?.detail || 'Failed to update role');
     }
   };
 
@@ -133,15 +134,15 @@ export default function OrgMembersScreen() {
     const memberLevel = getOrgRoleLevel(member.org_role || 'org_member');
 
     if (member.user_id === user?.user_id) {
-      Alert.alert('Info', 'Cannot remove yourself');
+      showAlert('Info', 'Cannot remove yourself');
       return;
     }
     if (memberLevel >= myLevel) {
-      Alert.alert('Info', 'Cannot remove a user with equal or higher org role');
+      showAlert('Info', 'Cannot remove a user with equal or higher org role');
       return;
     }
 
-    Alert.alert(
+    showAlert(
       'Remove Member',
       `Remove ${member.name || member.email} from the organization?`,
       [
@@ -152,10 +153,10 @@ export default function OrgMembersScreen() {
           onPress: async () => {
             try {
               await api.delete(`/organizations/${orgId}/members/${member.user_id}`);
-              Alert.alert('Removed', 'Member removed from organization');
+              showAlert('Removed', 'Member removed from organization');
               if (orgId) await fetchMembers(orgId);
             } catch (e: any) {
-              Alert.alert('Error', e.response?.data?.detail || 'Failed to remove member');
+              showAlert('Error', e.response?.data?.detail || 'Failed to remove member');
             }
           },
         },

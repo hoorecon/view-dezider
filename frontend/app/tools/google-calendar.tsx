@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert,
   StyleSheet, RefreshControl, Modal, TextInput, Platform,
@@ -90,12 +91,12 @@ export default function GoogleCalendarScreen() {
         }
       }
     } catch (e) {
-      Alert.alert('Error', 'Failed to start Google Calendar connection');
+      showAlert('Error', 'Failed to start Google Calendar connection');
     }
   };
 
   const handleDisconnect = () => {
-    Alert.alert(
+    showAlert(
       'Disconnect Calendar',
       'Are you sure you want to disconnect your Google Calendar?',
       [
@@ -111,7 +112,7 @@ export default function GoogleCalendarScreen() {
               setGoogleEmail('');
               setEvents([]);
             } catch (e) {
-              Alert.alert('Error', 'Failed to disconnect calendar');
+              showAlert('Error', 'Failed to disconnect calendar');
             }
           },
         },
@@ -120,8 +121,8 @@ export default function GoogleCalendarScreen() {
   };
 
   const handleCreateEvent = async () => {
-    if (!newEvent.summary.trim()) return Alert.alert('Required', 'Event title is required');
-    if (!newEvent.date) return Alert.alert('Required', 'Date is required');
+    if (!newEvent.summary.trim()) return showAlert('Required', 'Event title is required');
+    if (!newEvent.date) return showAlert('Required', 'Date is required');
 
     setCreating(true);
     try {
@@ -141,19 +142,19 @@ export default function GoogleCalendarScreen() {
         timezone: 'Asia/Kolkata',
       }, { headers: { Authorization: `Bearer ${session}` } });
 
-      Alert.alert('Success', 'Event added to Google Calendar!');
+      showAlert('Success', 'Event added to Google Calendar!');
       setShowCreateModal(false);
       setNewEvent({ summary: '', description: '', location: '', date: '', startTime: '09:00', endTime: '10:00', all_day: false });
       fetchEvents();
     } catch (e: any) {
-      Alert.alert('Error', e?.response?.data?.detail || 'Failed to create event');
+      showAlert('Error', e?.response?.data?.detail || 'Failed to create event');
     } finally {
       setCreating(false);
     }
   };
 
   const handleDeleteEvent = (eventId: string, title: string) => {
-    Alert.alert('Delete Event', `Remove "${title}" from your calendar?`, [
+    showAlert('Delete Event', `Remove "${title}" from your calendar?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete', style: 'destructive',
@@ -164,7 +165,7 @@ export default function GoogleCalendarScreen() {
             });
             setEvents(prev => prev.filter(e => e.id !== eventId));
           } catch (e) {
-            Alert.alert('Error', 'Failed to delete event');
+            showAlert('Error', 'Failed to delete event');
           }
         },
       },

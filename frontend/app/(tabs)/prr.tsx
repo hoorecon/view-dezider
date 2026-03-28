@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View,
   Text,
@@ -312,7 +313,7 @@ export default function PRRScreen() {
         data={decisions}
         renderItem={renderDecision}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: 100 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListHeaderComponent={renderHeader}
@@ -344,7 +345,7 @@ export default function PRRScreen() {
           onClose={() => { setCloneModalVisible(false); setCloneTarget(null); }}
           decision={cloneTarget}
           onCloneSuccess={(newId) => { fetchDecisions(selectedFolder); router.push(`/prr/${newId}`); }}
-          onTemplateSuccess={() => Alert.alert('Template Saved', 'Decision saved as template.')}
+          onTemplateSuccess={() => showAlert('Template Saved', 'Decision saved as template.')}
         />
       )}
 

@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View,
   Text,
@@ -175,15 +176,15 @@ export default function JournalScreen() {
 
   const handleCreate = async () => {
     if (!formTitle.trim()) {
-      Alert.alert('Error', 'Please enter a title');
+      showAlert('Error', 'Please enter a title');
       return;
     }
     if (!formLinkedModule) {
-      Alert.alert('Link Required', 'Please link this journal entry to a module (Decision, GEM, CTT, etc.)');
+      showAlert('Link Required', 'Please link this journal entry to a module (Decision, GEM, CTT, etc.)');
       return;
     }
     if (!formEntryType) {
-      Alert.alert('Type Required', 'Please select whether this is a Best Practice or Learning');
+      showAlert('Type Required', 'Please select whether this is a Best Practice or Learning');
       return;
     }
 
@@ -202,7 +203,7 @@ export default function JournalScreen() {
       fetchEntries();
       fetchReminders();
     } catch (error) {
-      Alert.alert('Error', 'Failed to create entry');
+      showAlert('Error', 'Failed to create entry');
     } finally {
       setSaving(false);
     }
@@ -232,14 +233,14 @@ export default function JournalScreen() {
       setDetailModalVisible(false);
       fetchEntries();
     } catch (error) {
-      Alert.alert('Error', 'Failed to update entry');
+      showAlert('Error', 'Failed to update entry');
     } finally {
       setUpdatingEntry(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    Alert.alert('Delete Entry', 'Are you sure you want to delete this journal entry?', [
+    showAlert('Delete Entry', 'Are you sure you want to delete this journal entry?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -249,7 +250,7 @@ export default function JournalScreen() {
             await api.delete(`/journal/${id}`);
             setEntries(entries.filter((e) => e.id !== id));
           } catch (error) {
-            Alert.alert('Error', 'Failed to delete entry');
+            showAlert('Error', 'Failed to delete entry');
           }
         },
       },
@@ -431,7 +432,7 @@ export default function JournalScreen() {
         data={entries}
         renderItem={renderEntry}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: 100 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListHeaderComponent={

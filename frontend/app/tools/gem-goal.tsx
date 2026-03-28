@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Platform, KeyboardAvoidingView,
@@ -50,13 +51,13 @@ export default function GEMGoalScreen() {
       setLifeArea(d.life_area||''); setGoalType(d.goal_type||'aspiration');
       setPriority(d.priority||'medium'); setStatus(d.status||'active');
       setTargetDate(d.target_date||''); setProgress(d.progress_percent||0);
-    } catch(e) { Alert.alert('Error','Failed to load'); }
+    } catch(e) { showAlert('Error','Failed to load'); }
     finally { setLoading(false); }
   };
 
   const handleSave = async () => {
-    if(!title.trim()) { Alert.alert('Required','Goal title is required'); return; }
-    if(!lifeArea) { Alert.alert('Required','Select a life area'); return; }
+    if(!title.trim()) { showAlert('Required','Goal title is required'); return; }
+    if(!lifeArea) { showAlert('Required','Select a life area'); return; }
     setSaving(true);
     try {
       const payload = {
@@ -66,8 +67,8 @@ export default function GEMGoalScreen() {
       };
       if(editId) await api.put(`/gem/goals/${editId}`, payload);
       else await api.post('/gem/goals', payload);
-      Alert.alert('Saved','Goal saved!', [{text:'OK',onPress:()=>router.back()}]);
-    } catch(e) { Alert.alert('Error','Failed to save'); }
+      showAlert('Saved','Goal saved!', [{text:'OK',onPress:()=>router.back()}]);
+    } catch(e) { showAlert('Error','Failed to save'); }
     finally { setSaving(false); }
   };
 

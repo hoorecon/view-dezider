@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator,
   StyleSheet, Alert, Modal, KeyboardAvoidingView, Platform,
@@ -59,7 +60,7 @@ export default function SolutionDetailScreen() {
       setSolution(res.data);
     } catch (e: any) {
       console.error('Fetch error:', e);
-      Alert.alert('Error', 'Failed to load solution');
+      showAlert('Error', 'Failed to load solution');
     } finally {
       setLoading(false);
     }
@@ -71,7 +72,7 @@ export default function SolutionDetailScreen() {
       .map(([k, v]) => ({ factor_name: k, rating: v, comment: '' }));
 
     if (qualitative_factors.length === 0) {
-      Alert.alert('Missing Ratings', 'Please rate at least one qualitative factor.');
+      showAlert('Missing Ratings', 'Please rate at least one qualitative factor.');
       return;
     }
 
@@ -91,10 +92,10 @@ export default function SolutionDetailScreen() {
       setReviewCons('');
       setFactorRatings({});
       fetchSolution(); // Refresh
-      Alert.alert('Success', 'Review submitted!');
+      showAlert('Success', 'Review submitted!');
     } catch (e: any) {
       const msg = e?.response?.data?.detail || 'Failed to submit review';
-      Alert.alert('Error', msg);
+      showAlert('Error', msg);
     } finally {
       setSubmitting(false);
     }

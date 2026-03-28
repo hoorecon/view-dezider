@@ -152,6 +152,7 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -898,11 +899,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: COLORS.textPrimary,
+    textAlign: 'center',
   },
   actionSubtitle: {
     fontSize: 12,
     color: COLORS.textSecondary,
     marginTop: 2,
+    textAlign: 'center',
   },
   colabRow: {
     flexDirection: 'row',

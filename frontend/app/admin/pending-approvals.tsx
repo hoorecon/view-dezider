@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator,
   StyleSheet, Alert, RefreshControl,
@@ -38,7 +39,7 @@ export default function PendingApprovalsScreen() {
       setPending(res.data?.solutions || []);
     } catch (e: any) {
       if (e?.response?.status === 403) {
-        Alert.alert('Access Denied', 'Admin access required');
+        showAlert('Access Denied', 'Admin access required');
         router.back();
       }
     } finally {
@@ -50,7 +51,7 @@ export default function PendingApprovalsScreen() {
   useEffect(() => { fetchPending(); }, [fetchPending]);
 
   const handleApprove = async (solutionId: string, name: string) => {
-    Alert.alert(
+    showAlert(
       'Approve Solution',
       `Make "${name}" visible to all users?`,
       [
@@ -64,9 +65,9 @@ export default function PendingApprovalsScreen() {
                 headers: { Authorization: `Bearer ${session}` },
               });
               setPending(prev => prev.filter(s => s.solution_id !== solutionId));
-              Alert.alert('Approved', `"${name}" is now publicly visible.`);
+              showAlert('Approved', `"${name}" is now publicly visible.`);
             } catch (e) {
-              Alert.alert('Error', 'Failed to approve solution');
+              showAlert('Error', 'Failed to approve solution');
             }
           },
         },
@@ -76,7 +77,7 @@ export default function PendingApprovalsScreen() {
 
   const handleReject = async (solutionId: string) => {
     if (!rejectReason.trim()) {
-      return Alert.alert('Required', 'Please provide a reason for rejection');
+      return showAlert('Required', 'Please provide a reason for rejection');
     }
     try {
       await api.put(`/solutions-store/reject/${solutionId}`, { reason: rejectReason }, {
@@ -85,9 +86,9 @@ export default function PendingApprovalsScreen() {
       setPending(prev => prev.filter(s => s.solution_id !== solutionId));
       setRejectingId(null);
       setRejectReason('');
-      Alert.alert('Rejected', 'Solution has been rejected.');
+      showAlert('Rejected', 'Solution has been rejected.');
     } catch (e) {
-      Alert.alert('Error', 'Failed to reject solution');
+      showAlert('Error', 'Failed to reject solution');
     }
   };
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View,
   Text,
@@ -163,7 +164,7 @@ export default function SolutionMatrixScreen() {
       setQ4Contingency(d.q4_contingency_plans || '');
       setActionItems(d.action_items?.length ? d.action_items : [{ who: '', what: '', by_when: '', status: 'pending' }]);
     } catch (e) {
-      Alert.alert('Error', 'Failed to load entry');
+      showAlert('Error', 'Failed to load entry');
     } finally {
       setLoading(false);
     }
@@ -171,7 +172,7 @@ export default function SolutionMatrixScreen() {
 
   const handleSave = async () => {
     if (!areaOfLife || !smartGoal.trim()) {
-      Alert.alert('Required', 'Please select area and enter SMART goal');
+      showAlert('Required', 'Please select area and enter SMART goal');
       return;
     }
     setSaving(true);
@@ -205,11 +206,11 @@ export default function SolutionMatrixScreen() {
       } else {
         await api.post('/solution-matrices', payload);
       }
-      Alert.alert('Saved', 'Solution Matrix saved successfully!', [
+      showAlert('Saved', 'Solution Matrix saved successfully!', [
         { text: 'OK', onPress: () => router.back() }
       ]);
     } catch (e) {
-      Alert.alert('Error', 'Failed to save');
+      showAlert('Error', 'Failed to save');
     } finally {
       setSaving(false);
     }

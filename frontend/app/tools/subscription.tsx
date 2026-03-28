@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, ActivityIndicator, Alert, Linking, Platform,
@@ -64,7 +65,7 @@ export default function SubscriptionScreen() {
       // Open Razorpay checkout
       await openRazorpay(data.order_id, data.amount, data.key_id, data.user_name, data.user_email, 'subscription', planId);
     } catch (err: any) {
-      Alert.alert('Error', err?.response?.data?.detail || 'Failed to create subscription');
+      showAlert('Error', err?.response?.data?.detail || 'Failed to create subscription');
     } finally {
       setProcessing(false);
     }
@@ -77,7 +78,7 @@ export default function SubscriptionScreen() {
       const data = res.data;
       await openRazorpay(data.order_id, data.amount, data.key_id, data.user_name, data.user_email, 'topup', packId);
     } catch (err: any) {
-      Alert.alert('Error', err?.response?.data?.detail || 'Failed to create order');
+      showAlert('Error', err?.response?.data?.detail || 'Failed to create order');
     } finally {
       setProcessing(false);
     }
@@ -88,7 +89,7 @@ export default function SubscriptionScreen() {
     // Razorpay doesn't have native Expo SDK, so we redirect to a checkout page
     const checkoutUrl = `${BASE_URL}/api/payments/checkout?order_id=${orderId}&key_id=${keyId}&amount=${amount}&name=${encodeURIComponent(name)}&email=${encodeURIComponent(email)}&type=${type}&item_id=${itemId}`;
 
-    Alert.alert(
+    showAlert(
       'Complete Payment',
       `You'll be redirected to Razorpay to complete your ₹${(amount / 100).toFixed(0)} payment.`,
       [
@@ -117,10 +118,10 @@ export default function SubscriptionScreen() {
                           razorpay_payment_id: response.razorpay_payment_id,
                           razorpay_signature: response.razorpay_signature,
                         });
-                        Alert.alert('Success', 'Payment verified! Credits added to your wallet.');
+                        showAlert('Success', 'Payment verified! Credits added to your wallet.');
                         fetchData();
                       } catch {
-                        Alert.alert('Verification Failed', 'Payment was made but verification failed. Contact support.');
+                        showAlert('Verification Failed', 'Payment was made but verification failed. Contact support.');
                       }
                     },
                   });
@@ -145,10 +146,10 @@ export default function SubscriptionScreen() {
                             razorpay_payment_id: response.razorpay_payment_id,
                             razorpay_signature: response.razorpay_signature,
                           });
-                          Alert.alert('Success', 'Payment verified! Credits added.');
+                          showAlert('Success', 'Payment verified! Credits added.');
                           fetchData();
                         } catch {
-                          Alert.alert('Error', 'Verification failed.');
+                          showAlert('Error', 'Verification failed.');
                         }
                       },
                     });
@@ -161,7 +162,7 @@ export default function SubscriptionScreen() {
                 Linking.openURL(checkoutUrl);
               }
             } catch {
-              Alert.alert('Error', 'Failed to open payment gateway');
+              showAlert('Error', 'Failed to open payment gateway');
             }
           },
         },

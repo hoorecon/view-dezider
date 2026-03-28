@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View,
   Text,
@@ -109,7 +110,7 @@ export default function SolutionFinderScreen() {
       setQ4Contingency(d.q4_contingency_plans || '');
       setActionItems(d.action_items?.length ? d.action_items : [{ action: '', who: '', by_when: '', status: 'pending' }]);
     } catch (e) {
-      Alert.alert('Error', 'Failed to load entry');
+      showAlert('Error', 'Failed to load entry');
     } finally {
       setLoading(false);
     }
@@ -117,11 +118,11 @@ export default function SolutionFinderScreen() {
 
   const handleSave = async () => {
     if (!areaOfLife) {
-      Alert.alert('Required', 'Please select an area of life');
+      showAlert('Required', 'Please select an area of life');
       return;
     }
     if (!smartGoal.trim()) {
-      Alert.alert('Required', 'Please enter a SMART goal');
+      showAlert('Required', 'Please enter a SMART goal');
       return;
     }
 
@@ -151,11 +152,11 @@ export default function SolutionFinderScreen() {
       } else {
         await api.post('/solution-finders', payload);
       }
-      Alert.alert('Saved', 'Solution Finder saved successfully!', [
+      showAlert('Saved', 'Solution Finder saved successfully!', [
         { text: 'OK', onPress: () => router.back() }
       ]);
     } catch (e) {
-      Alert.alert('Error', 'Failed to save');
+      showAlert('Error', 'Failed to save');
     } finally {
       setSaving(false);
     }

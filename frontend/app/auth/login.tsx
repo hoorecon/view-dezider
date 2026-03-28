@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View,
   Text,
@@ -134,7 +135,7 @@ export default function LoginScreen() {
       const api = (await import('../../src/utils/api')).default;
       await api.post(`/org-auth/resend-otp?verification_id=${verificationId}`);
       setOtpError('');
-      Alert.alert('OTP Resent', 'A new code has been sent to your WhatsApp.');
+      showAlert('OTP Resent', 'A new code has been sent to your WhatsApp.');
     } catch (err: any) {
       setOtpError(err.response?.data?.detail || 'Failed to resend');
     } finally {

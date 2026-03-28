@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View,
   Text,
@@ -88,9 +89,9 @@ export default function AdminSettingsScreen() {
         min_duration: parseInt(minDuration) || 5,
         max_duration: parseInt(maxDuration) || 120,
       });
-      Alert.alert('Saved', 'Call configuration updated');
+      showAlert('Saved', 'Call configuration updated');
     } catch (e) {
-      Alert.alert('Error', 'Failed to save call config');
+      showAlert('Error', 'Failed to save call config');
     } finally {
       setSaving(false);
     }
@@ -98,7 +99,7 @@ export default function AdminSettingsScreen() {
 
   const handleSaveOrgBranding = async () => {
     if (!orgId) {
-      Alert.alert('Info', 'No organization linked to your account');
+      showAlert('Info', 'No organization linked to your account');
       return;
     }
     setSaving(true);
@@ -110,9 +111,9 @@ export default function AdminSettingsScreen() {
         accent_color: orgAccentColor,
         tagline: orgTagline,
       });
-      Alert.alert('Saved', 'Organization branding updated');
+      showAlert('Saved', 'Organization branding updated');
     } catch (e) {
-      Alert.alert('Error', 'Failed to update branding. Ensure you have admin rights.');
+      showAlert('Error', 'Failed to update branding. Ensure you have admin rights.');
     } finally {
       setSaving(false);
     }
@@ -124,7 +125,7 @@ export default function AdminSettingsScreen() {
     try {
       await api.put('/admin/feature-flags', newFlags);
     } catch (e) {
-      Alert.alert('Error', 'Failed to update feature flag');
+      showAlert('Error', 'Failed to update feature flag');
       setFlags(prev => ({ ...prev, [key]: !value }));
     }
   };

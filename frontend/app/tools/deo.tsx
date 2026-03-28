@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator,
   StyleSheet, Alert, Modal, FlatList, Platform, KeyboardAvoidingView,
@@ -77,7 +78,7 @@ export default function DEOScreen() {
 
   // === IMPORT HANDLERS ===
   const handleScrape = async () => {
-    if (!importUrl.trim()) return Alert.alert('Required', 'Enter a URL to import from');
+    if (!importUrl.trim()) return showAlert('Required', 'Enter a URL to import from');
     setScraping(true);
     try {
       const body: any = { url: importUrl.trim(), mode: importMode, context: importContext };
@@ -92,10 +93,10 @@ export default function DEOScreen() {
       if (products.length > 0) {
         setShowPreview(true);
       } else {
-        Alert.alert('No Products Found', 'The AI couldn\'t extract any products from this URL. Try manual mode or a different page.');
+        showAlert('No Products Found', 'The AI couldn\'t extract any products from this URL. Try manual mode or a different page.');
       }
     } catch (e: any) {
-      Alert.alert('Scrape Failed', e?.response?.data?.detail || 'Failed to fetch and analyze URL');
+      showAlert('Scrape Failed', e?.response?.data?.detail || 'Failed to fetch and analyze URL');
     } finally {
       setScraping(false);
     }
@@ -103,7 +104,7 @@ export default function DEOScreen() {
 
   const handleImport = async () => {
     const selected = scrapedProducts.filter((_, i) => selectedProducts.has(i));
-    if (selected.length === 0) return Alert.alert('Select Products', 'Please select at least one product to import');
+    if (selected.length === 0) return showAlert('Select Products', 'Please select at least one product to import');
     setImporting(true);
     try {
       const res = await api.post('/deo/import', {
@@ -113,12 +114,12 @@ export default function DEOScreen() {
         language: 'en',
         visibility: 'PRIVATE',
       }, { headers: { Authorization: `Bearer ${session}` } });
-      Alert.alert('Imported!', `${res.data?.total || 0} solutions imported into your Solutions Store`);
+      showAlert('Imported!', `${res.data?.total || 0} solutions imported into your Solutions Store`);
       setShowPreview(false);
       setScrapedProducts([]);
       setImportUrl('');
     } catch (e: any) {
-      Alert.alert('Import Failed', e?.response?.data?.detail || 'Failed to import solutions');
+      showAlert('Import Failed', e?.response?.data?.detail || 'Failed to import solutions');
     } finally {
       setImporting(false);
     }
@@ -134,7 +135,7 @@ export default function DEOScreen() {
 
   // === API KEY HANDLERS ===
   const handleCreateKey = async () => {
-    if (!newKeyName.trim()) return Alert.alert('Required', 'API key name is required');
+    if (!newKeyName.trim()) return showAlert('Required', 'API key name is required');
     setCreatingKey(true);
     try {
       const res = await api.post('/deo/api-keys', {
@@ -145,14 +146,14 @@ export default function DEOScreen() {
       fetchApiKeys();
       setNewKeyName('');
     } catch (e: any) {
-      Alert.alert('Error', e?.response?.data?.detail || 'Failed to create key');
+      showAlert('Error', e?.response?.data?.detail || 'Failed to create key');
     } finally {
       setCreatingKey(false);
     }
   };
 
   const handleRevokeKey = (keyId: string, name: string) => {
-    Alert.alert('Revoke Key', `Revoke "${name}"? This cannot be undone.`, [
+    showAlert('Revoke Key', `Revoke "${name}"? This cannot be undone.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Revoke', style: 'destructive',
@@ -160,7 +161,7 @@ export default function DEOScreen() {
           try {
             await api.delete(`/deo/api-keys/${keyId}`, { headers: { Authorization: `Bearer ${session}` } });
             fetchApiKeys();
-          } catch (e) { Alert.alert('Error', 'Failed to revoke key'); }
+          } catch (e) { showAlert('Error', 'Failed to revoke key'); }
         },
       },
     ]);
@@ -168,7 +169,7 @@ export default function DEOScreen() {
 
   const copyToClipboard = async (text: string) => {
     await Clipboard.setStringAsync(text);
-    Alert.alert('Copied', 'Copied to clipboard');
+    showAlert('Copied', 'Copied to clipboard');
   };
 
   // === DOCS ===
@@ -179,7 +180,7 @@ export default function DEOScreen() {
       });
       setSdkInfo(res.data);
     } catch (e) {
-      Alert.alert('Error', 'Failed to fetch API docs. Generate an API key first.');
+      showAlert('Error', 'Failed to fetch API docs. Generate an API key first.');
     }
   };
 

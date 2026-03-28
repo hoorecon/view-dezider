@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View,
   Text,
@@ -91,7 +92,7 @@ export default function NewPRRDecision() {
     if (!title.trim()) setTitle(template.name);
     if (!context.trim()) setContext(template.description);
     setShowTemplates(false);
-    Alert.alert(
+    showAlert(
       'Template Applied',
       `"${template.name}" will pre-load ${template.factors.length} factors with classification, prioritization & ratings when you proceed.`
     );
@@ -99,11 +100,11 @@ export default function NewPRRDecision() {
 
   const handleCreate = async () => {
     if (!title.trim()) {
-      Alert.alert('Error', 'Please enter a decision title');
+      showAlert('Error', 'Please enter a decision title');
       return;
     }
     if (!context.trim()) {
-      Alert.alert('Error', 'Please describe the decision context');
+      showAlert('Error', 'Please describe the decision context');
       return;
     }
 
@@ -129,7 +130,7 @@ export default function NewPRRDecision() {
 
       router.replace(`/prr/${decisionId}`);
     } catch (error) {
-      Alert.alert('Error', 'Failed to create decision');
+      showAlert('Error', 'Failed to create decision');
     } finally {
       setLoading(false);
     }

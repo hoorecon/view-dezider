@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { showAlert } from '../src/utils/alert';
 import {
   View,
   Text,
@@ -93,11 +94,11 @@ export default function InboxScreen() {
         assessments: numAssessments,
         note,
       });
-      Alert.alert('Submitted!', 'Your contribution has been submitted');
+      showAlert('Submitted!', 'Your contribution has been submitted');
       setContributeModal(null);
       fetchShares();
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.detail || 'Failed to submit');
+      showAlert('Error', error.response?.data?.detail || 'Failed to submit');
     } finally {
       setSubmitting(false);
     }

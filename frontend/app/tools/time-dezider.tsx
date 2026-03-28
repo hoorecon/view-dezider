@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, ActivityIndicator, Alert, Modal, TextInput,
@@ -100,7 +101,7 @@ export default function TimeDeziderScreen() {
 
   const addUnplannedTask = async () => {
     if (!newTitle.trim()) {
-      Alert.alert('Required', 'Please enter a task title');
+      showAlert('Required', 'Please enter a task title');
       return;
     }
     try {
@@ -117,14 +118,14 @@ export default function TimeDeziderScreen() {
       setNewStartTime('');
       fetchSchedule();
     } catch {
-      Alert.alert('Error', 'Failed to add task');
+      showAlert('Error', 'Failed to add task');
     }
   };
 
   const requestReschedule = async () => {
     const unplanned = blocks.filter(b => b.source_type === 'unplanned');
     if (unplanned.length === 0) {
-      Alert.alert('No Unplanned Tasks', 'Add an unplanned task first to get rescheduling suggestions.');
+      showAlert('No Unplanned Tasks', 'Add an unplanned task first to get rescheduling suggestions.');
       return;
     }
     setRescheduling(true);
@@ -139,7 +140,7 @@ export default function TimeDeziderScreen() {
       setSuggestions(res.data.suggestions || []);
       setShowSuggestions(true);
     } catch (err: any) {
-      Alert.alert('Error', err?.response?.data?.detail || 'Rescheduling failed');
+      showAlert('Error', err?.response?.data?.detail || 'Rescheduling failed');
     } finally {
       setRescheduling(false);
     }
@@ -151,9 +152,9 @@ export default function TimeDeziderScreen() {
       setShowSuggestions(false);
       setSuggestions([]);
       fetchSchedule();
-      Alert.alert('Applied', `${selected.length} changes applied to your schedule.`);
+      showAlert('Applied', `${selected.length} changes applied to your schedule.`);
     } catch {
-      Alert.alert('Error', 'Failed to apply changes');
+      showAlert('Error', 'Failed to apply changes');
     }
   };
 
@@ -162,7 +163,7 @@ export default function TimeDeziderScreen() {
       await api.delete(`/time-dezider/unplanned-task/${blockId.replace('unplanned_', '')}`);
       fetchSchedule();
     } catch {
-      Alert.alert('Error', 'Failed to remove task');
+      showAlert('Error', 'Failed to remove task');
     }
   };
 
@@ -175,7 +176,7 @@ export default function TimeDeziderScreen() {
       setShowPrefs(false);
       fetchSchedule();
     } catch {
-      Alert.alert('Error', 'Failed to save preferences');
+      showAlert('Error', 'Failed to save preferences');
     }
   };
 
@@ -285,7 +286,7 @@ export default function TimeDeziderScreen() {
                 }]}
                 onPress={() => {
                   if (block.source_type === 'unplanned') {
-                    Alert.alert(block.title, `Duration: ${block.duration_minutes}m\nPriority: ${block.priority}`, [
+                    showAlert(block.title, `Duration: ${block.duration_minutes}m\nPriority: ${block.priority}`, [
                       { text: 'Remove', style: 'destructive', onPress: () => removeUnplanned(block.source_id) },
                       { text: 'OK' },
                     ]);

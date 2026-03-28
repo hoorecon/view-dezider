@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   TextInput,
   Switch,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,6 +21,7 @@ import { Card } from '../../src/components/Card';
 import { GradientButton } from '../../src/components/GradientButton';
 import { Input } from '../../src/components/Input';
 import api from '../../src/utils/api';
+import { showAlert } from '../../src/utils/alert';
 
 interface AssessmentQuestion {
   id: string;
@@ -55,7 +57,7 @@ function WowoToggle({ label, flagKey }: { label: string; flagKey: string }) {
       await api.put('/admin/feature-flags', flags);
       setEnabled(val);
     } catch (e) {
-      Alert.alert('Error', 'Failed to update feature flag');
+      showAlert('Error', 'Failed to update feature flag');
     } finally {
       setToggling(false);
     }
@@ -155,7 +157,7 @@ export default function ProfileScreen() {
   const handleSubmitAssessment = async () => {
     const unanswered = questions.filter((q) => !answers[q.id]);
     if (unanswered.length > 0) {
-      Alert.alert('Incomplete', 'Please answer all questions');
+      showAlert('Incomplete', 'Please answer all questions');
       return;
     }
 
@@ -165,16 +167,16 @@ export default function ProfileScreen() {
       setAssessmentResult(response.data);
       setShowQuiz(false);
       setAnswers({});
-      Alert.alert('Assessment Complete', `Your dominant mode is: ${response.data.dominant_mode}`);
+      showAlert('Assessment Complete', `Your dominant mode is: ${response.data.dominant_mode}`);
     } catch (error) {
-      Alert.alert('Error', 'Failed to submit assessment');
+      showAlert('Error', 'Failed to submit assessment');
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleLogout = () => {
-    Alert.alert(
+    showAlert(
       'Logout',
       'Are you sure you want to logout?',
       [
@@ -214,7 +216,7 @@ export default function ProfileScreen() {
       setShowSetPassword(false);
       setNewPassword('');
       setConfirmPassword('');
-      Alert.alert('Success', 'Password set successfully! You can now also login with email and password.');
+      showAlert('Success', 'Password set successfully! You can now also login with email and password.');
     } catch (err: any) {
       setPasswordError(err.response?.data?.detail || 'Failed to set password');
     } finally {
@@ -223,7 +225,7 @@ export default function ProfileScreen() {
   };
 
   const handleAdminSetup = async () => {
-    Alert.alert(
+    showAlert(
       'Become Super Admin',
       'This will make you the Super Admin. This can only be done once.',
       [
@@ -234,9 +236,9 @@ export default function ProfileScreen() {
             try {
               await api.post('/admin/setup');
               setUserRole('super_admin');
-              Alert.alert('Success', 'You are now Super Admin!');
+              showAlert('Success', 'You are now Super Admin!');
             } catch (err: any) {
-              Alert.alert('Error', err.response?.data?.detail || 'Setup failed');
+              showAlert('Error', err.response?.data?.detail || 'Setup failed');
             }
           },
         },
@@ -255,24 +257,24 @@ export default function ProfileScreen() {
 
   const handlePromoteUser = async () => {
     if (!promoteEmail.trim()) {
-      Alert.alert('Error', 'Please enter an email address');
+      showAlert('Error', 'Please enter an email address');
       return;
     }
     setAdminLoading(true);
     try {
       await api.post('/admin/promote', { email: promoteEmail.trim(), role: promoteRole });
-      Alert.alert('Success', `${promoteEmail} promoted to ${promoteRole === 'co_admin' ? 'Co-Admin' : 'Admin'}`);
+      showAlert('Success', `${promoteEmail} promoted to ${promoteRole === 'co_admin' ? 'Co-Admin' : 'Admin'}`);
       setPromoteEmail('');
       fetchAdminUsers();
     } catch (err: any) {
-      Alert.alert('Error', err.response?.data?.detail || 'Promotion failed');
+      showAlert('Error', err.response?.data?.detail || 'Promotion failed');
     } finally {
       setAdminLoading(false);
     }
   };
 
   const handleDemoteUser = (email: string, role: string) => {
-    Alert.alert(
+    showAlert(
       'Demote User',
       `Remove ${role} role from ${email}?`,
       [
@@ -284,9 +286,9 @@ export default function ProfileScreen() {
             try {
               await api.post('/admin/demote', { email });
               fetchAdminUsers();
-              Alert.alert('Done', `${email} demoted to regular user`);
+              showAlert('Done', `${email} demoted to regular user`);
             } catch (err: any) {
-              Alert.alert('Error', err.response?.data?.detail || 'Demotion failed');
+              showAlert('Error', err.response?.data?.detail || 'Demotion failed');
             }
           },
         },
@@ -920,7 +922,7 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
         <View style={styles.header}>
           <Text style={styles.title}>Profile</Text>
         </View>

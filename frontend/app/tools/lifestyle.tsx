@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, Alert, ActivityIndicator, Dimensions,
@@ -83,14 +84,14 @@ export default function LifestyleScreen() {
     try {
       const res = await api.post('/lifestyle/import-from-ctt');
       const count = res.data?.imported || 0;
-      Alert.alert(
+      showAlert(
         'Import Complete',
         count > 0
           ? `${count} routine(s) imported from CTT`
           : 'No new routines to import. All CTT routines are already tracked.',
       );
       if (count > 0) fetchData();
-    } catch (e) { Alert.alert('Error', 'Failed to import from CTT'); }
+    } catch (e) { showAlert('Error', 'Failed to import from CTT'); }
     finally { setImporting(false); }
   };
 
@@ -104,17 +105,17 @@ export default function LifestyleScreen() {
       }
     } catch (e: any) {
       const detail = e?.response?.data?.detail || 'Failed to start assessment';
-      Alert.alert('Cannot Start', detail);
+      showAlert('Cannot Start', detail);
     }
     finally { setStarting(false); }
   };
 
   const handleDeleteRoutine = (id: string, name: string) => {
-    Alert.alert('Delete Routine', `Delete "${name}"?`, [
+    showAlert('Delete Routine', `Delete "${name}"?`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {
         try { await api.delete(`/lifestyle/routines/${id}`); fetchData(); }
-        catch (e) { Alert.alert('Error', 'Failed to delete'); }
+        catch (e) { showAlert('Error', 'Failed to delete'); }
       }},
     ]);
   };
@@ -222,7 +223,7 @@ export default function LifestyleScreen() {
       fetchTodayStatus();
       fetchRoutines();
     } catch (e: any) {
-      Alert.alert('Error', e?.response?.data?.detail || 'Failed to update completion');
+      showAlert('Error', e?.response?.data?.detail || 'Failed to update completion');
     } finally {
       setCompletingId(null);
     }
@@ -232,17 +233,17 @@ export default function LifestyleScreen() {
     try {
       const statusRes = await api.get('/oauth/calendar/status');
       if (!statusRes.data?.connected) {
-        Alert.alert('Connect Calendar', 'Please connect Google Calendar first', [
+        showAlert('Connect Calendar', 'Please connect Google Calendar first', [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Connect', onPress: () => router.push('/tools/google-calendar' as any) },
         ]);
         return;
       }
       const res = await api.post(`/lifestyle/routines/${routineId}/sync-calendar`, { timezone: 'Asia/Kolkata' });
-      Alert.alert('Synced!', `Recurring event for "${name}" added to your Google Calendar`);
+      showAlert('Synced!', `Recurring event for "${name}" added to your Google Calendar`);
       fetchRoutines();
     } catch (e: any) {
-      Alert.alert('Error', e?.response?.data?.detail || 'Failed to sync');
+      showAlert('Error', e?.response?.data?.detail || 'Failed to sync');
     }
   };
 
