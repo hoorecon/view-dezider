@@ -1,25 +1,26 @@
 #!/usr/bin/env python3
 """
-Comprehensive Backend Testing for GEM Flight Model
-Tests all endpoints as specified in the review request
+Consciousness Diary Backend API Testing
+Tests all consciousness diary endpoints comprehensively as per review request.
 """
 
 import requests
 import json
-import time
+import uuid
 from datetime import datetime, timedelta
+import sys
 
 # Backend URL from frontend/.env
 BACKEND_URL = "https://dezider-core.preview.emergentagent.com/api"
 
-class GEMFlightTester:
+class ConsciousnessDiaryTester:
     def __init__(self):
         self.session = requests.Session()
         self.user_token = None
-        self.user_data = None
-        self.project_id = None
-        self.task_id = None
-        self.routine_id = None
+        self.user_email = "diary_test@test.com"
+        self.user_password = "Test123!"
+        self.test_entry_id = None
+        self.test_project_id = None
         
     def log(self, message):
         print(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
@@ -28,465 +29,478 @@ class GEMFlightTester:
         """Step 1: Register a new test user"""
         self.log("🔐 Testing user registration...")
         
-        timestamp = int(time.time())
-        email = f"gemflight_test@test.com"
-        password = "Test123!"
+        # Add timestamp to make email unique
+        timestamp = int(datetime.now().timestamp())
+        self.user_email = f"diary_test_{timestamp}@test.com"
         
-        response = self.session.post(f"{BACKEND_URL}/auth/register", json={
-            "email": email,
-            "password": password,
-            "name": "GEM Flight Test User"
-        })
+        payload = {
+            "email": self.user_email,
+            "password": self.user_password,
+            "name": "Diary Test User"
+        }
+        
+        response = self.session.post(f"{BACKEND_URL}/auth/register", json=payload)
         
         if response.status_code == 200:
             data = response.json()
             self.user_token = data.get("session_token")
-            self.user_data = data
             self.session.headers.update({"Authorization": f"Bearer {self.user_token}"})
-            self.log(f"✅ User registered successfully: {email}")
+            self.log(f"✅ User registration successful: {self.user_email}")
             return True
         else:
-            self.log(f"❌ Registration failed: {response.status_code} - {response.text}")
+            self.log(f"❌ User registration failed: {response.status_code} - {response.text}")
             return False
-            
+    
     def test_config_endpoint(self):
-        """Step 2: Test config endpoint"""
-        self.log("⚙️ Testing config endpoint...")
+        """Step 2: Test GET /api/consciousness-diary/config"""
+        self.log("📋 Testing consciousness diary config endpoint...")
         
-        response = self.session.get(f"{BACKEND_URL}/gem-flight/config")
+        response = self.session.get(f"{BACKEND_URL}/consciousness-diary/config")
         
         if response.status_code == 200:
             data = response.json()
-            secrets = data.get("secrets", [])
-            seven_steps = data.get("seven_steps", [])
-            gears = data.get("gears", [])
+            awareness_levels = data.get("awareness_levels", [])
+            metrics_schema = data.get("metrics_schema", [])
             
-            if len(secrets) == 12 and len(seven_steps) == 7 and len(gears) == 4:
-                self.log(f"✅ Config endpoint working: {len(secrets)} secrets, {len(seven_steps)} steps, {len(gears)} gears")
+            if len(awareness_levels) == 6 and len(metrics_schema) == 8:
+                self.log(f"✅ Config endpoint working: {len(awareness_levels)} awareness levels, {len(metrics_schema)} metrics")
                 return True
             else:
-                self.log(f"❌ Config data incomplete: {len(secrets)} secrets, {len(seven_steps)} steps, {len(gears)} gears")
+                self.log(f"❌ Config endpoint data mismatch: {len(awareness_levels)} levels, {len(metrics_schema)} metrics")
                 return False
         else:
             self.log(f"❌ Config endpoint failed: {response.status_code} - {response.text}")
             return False
-            
-    def test_create_flight_project(self):
-        """Step 3: Create flight project"""
-        self.log("🚀 Testing flight project creation...")
+    
+    def test_create_diary_entry(self):
+        """Step 3: Test POST /api/consciousness-diary/entries with ALL 8 metrics"""
+        self.log("📝 Testing diary entry creation with all 8 metrics...")
         
-        project_data = {
-            "title": "Career Transition 2026",
-            "vision": "Become a senior tech lead at a top company",
-            "goal": "Get promoted to senior tech lead within 12 months",
-            "point_a": "Mid-level software engineer",
-            "point_b": "Senior tech lead at a FAANG company",
-            "life_area": "career",
-            "specific": "Get promoted to senior tech lead position",
-            "measurable": "Achieve promotion within 12 months with 25% salary increase",
-            "achievable": "Build leadership skills and technical expertise",
-            "realistic": "Based on current performance and market demand",
-            "time_bound": (datetime.now() + timedelta(days=365)).isoformat()
+        today = datetime.now().strftime("%Y-%m-%d")
+        
+        payload = {
+            "date": today,
+            "anger": {
+                "count": 3,
+                "avg_duration_mins": 15,
+                "avg_intensity": 6
+            },
+            "sadness": {
+                "count": 2,
+                "avg_duration_mins": 20,
+                "avg_intensity": 4
+            },
+            "fear": {
+                "count": 1,
+                "avg_duration_mins": 10,
+                "avg_intensity": 3
+            },
+            "emotional_outlets": {
+                "time_impact_pct": 20,
+                "money_impact_pct": 10,
+                "health_impact_pct": 30,
+                "relationships_impact_pct": 15
+            },
+            "ads": {
+                "time_impact_pct": 25,
+                "money_impact_pct": 15,
+                "health_impact_pct": 10,
+                "relationships_impact_pct": 20
+            },
+            "sit_still": {
+                "achieved": True,
+                "comfort_score": 7
+            },
+            "peacefulness": {
+                "peaceful_hours": 6,
+                "depth_score": 7
+            },
+            "solution_leadership": {
+                "problems_with_solutions": 5,
+                "problems_without_solutions": 2
+            },
+            "overall_reflection": "Today I managed my anger better than yesterday"
         }
         
-        response = self.session.post(f"{BACKEND_URL}/gem-flight/projects", json=project_data)
+        response = self.session.post(f"{BACKEND_URL}/consciousness-diary/entries", json=payload)
         
         if response.status_code == 200:
             data = response.json()
-            self.project_id = data.get("project_id")
-            self.log(f"✅ Flight project created: {self.project_id}")
-            self.log(f"   Title: {data.get('title')}")
-            self.log(f"   Current Step: {data.get('current_step')}")
-            self.log(f"   Progress: {data.get('progress_percent')}%")
-            return True
-        else:
-            self.log(f"❌ Project creation failed: {response.status_code} - {response.text}")
-            return False
+            self.test_entry_id = data.get("entry_id")
+            metrics = data.get("metrics", {})
             
-    def test_list_projects(self):
-        """Step 4: List projects"""
-        self.log("📋 Testing project listing...")
-        
-        response = self.session.get(f"{BACKEND_URL}/gem-flight/projects")
-        
-        if response.status_code == 200:
-            data = response.json()
-            projects = data.get("projects", [])
+            # Verify all 8 metrics are present
+            expected_metrics = ["anger", "sadness", "fear", "emotional_outlets", "ads", "sit_still", "peacefulness", "solution_leadership"]
+            present_metrics = [m for m in expected_metrics if m in metrics]
             
-            if len(projects) > 0 and any(p.get("project_id") == self.project_id for p in projects):
-                self.log(f"✅ Project listing working: Found {len(projects)} projects including our test project")
+            if len(present_metrics) == 8:
+                self.log(f"✅ Diary entry created successfully with all 8 metrics: {self.test_entry_id}")
                 return True
             else:
-                self.log(f"❌ Project not found in list: {len(projects)} projects")
+                self.log(f"❌ Diary entry missing metrics: {set(expected_metrics) - set(present_metrics)}")
                 return False
         else:
-            self.log(f"❌ Project listing failed: {response.status_code} - {response.text}")
+            self.log(f"❌ Diary entry creation failed: {response.status_code} - {response.text}")
             return False
-            
-    def test_get_single_project(self):
-        """Step 5: Get single project"""
-        self.log("🔍 Testing single project retrieval...")
+    
+    def test_get_todays_entry(self):
+        """Step 4: Test GET /api/consciousness-diary/entries?date=<today>"""
+        self.log("📖 Testing get today's diary entry...")
         
-        response = self.session.get(f"{BACKEND_URL}/gem-flight/projects/{self.project_id}")
+        today = datetime.now().strftime("%Y-%m-%d")
+        response = self.session.get(f"{BACKEND_URL}/consciousness-diary/entries?date={today}")
         
         if response.status_code == 200:
             data = response.json()
-            self.log(f"✅ Single project retrieval working")
-            self.log(f"   Title: {data.get('title')}")
-            self.log(f"   Vision: {data.get('vision')}")
-            self.log(f"   Current Step: {data.get('current_step')}")
-            return True
-        else:
-            self.log(f"❌ Single project retrieval failed: {response.status_code} - {response.text}")
-            return False
+            entry = data.get("entry")
+            daily_context = data.get("daily_context")
             
-    def test_update_project(self):
-        """Step 6: Update project"""
-        self.log("✏️ Testing project update...")
+            if entry and entry.get("entry_id") == self.test_entry_id:
+                self.log("✅ Today's entry retrieved successfully with daily_context")
+                return True
+            else:
+                self.log(f"❌ Today's entry not found or mismatched: {entry}")
+                return False
+        else:
+            self.log(f"❌ Get today's entry failed: {response.status_code} - {response.text}")
+            return False
+    
+    def test_update_entry(self):
+        """Step 5: Test PUT /api/consciousness-diary/entries/{entry_id}"""
+        self.log("✏️ Testing diary entry update...")
         
-        update_data = {
-            "vision": "Become a senior tech lead at a top company with team leadership responsibilities",
-            "goal": "Get promoted to senior tech lead within 12 months and lead a team of 5+ engineers"
+        if not self.test_entry_id:
+            self.log("❌ No entry ID available for update test")
+            return False
+        
+        payload = {
+            "anger": {
+                "count": 4,  # Modified from 3
+                "avg_duration_mins": 20,  # Modified from 15
+                "avg_intensity": 7  # Modified from 6
+            },
+            "overall_reflection": "Updated: Today I managed my anger better than yesterday, but had one more incident"
         }
         
-        response = self.session.put(f"{BACKEND_URL}/gem-flight/projects/{self.project_id}", json=update_data)
+        response = self.session.put(f"{BACKEND_URL}/consciousness-diary/entries/{self.test_entry_id}", json=payload)
         
         if response.status_code == 200:
             data = response.json()
-            self.log(f"✅ Project update working")
-            self.log(f"   Updated Vision: {data.get('vision')}")
-            self.log(f"   Updated Goal: {data.get('goal')}")
-            return True
-        else:
-            self.log(f"❌ Project update failed: {response.status_code} - {response.text}")
-            return False
+            updated_anger = data.get("metrics", {}).get("anger", {})
             
-    def test_step_management(self):
-        """Step 7: Test step management"""
-        self.log("📈 Testing step management...")
-        
-        # Start step 1
-        response = self.session.put(f"{BACKEND_URL}/gem-flight/projects/{self.project_id}/step/1", json={
-            "status": "in_progress",
-            "notes": "Defining SMART goals for career transition"
-        })
-        
-        if response.status_code != 200:
-            self.log(f"❌ Step 1 in_progress failed: {response.status_code} - {response.text}")
-            return False
-            
-        # Complete step 1
-        response = self.session.put(f"{BACKEND_URL}/gem-flight/projects/{self.project_id}/step/1", json={
-            "status": "completed"
-        })
-        
-        if response.status_code == 200:
-            data = response.json()
-            current_step = data.get("current_step")
-            progress = data.get("progress_percent")
-            self.log(f"✅ Step 1 completed - Current Step: {current_step}, Progress: {progress}%")
-        else:
-            self.log(f"❌ Step 1 completion failed: {response.status_code} - {response.text}")
-            return False
-            
-        # Complete steps 2-5 to reach step 6
-        for step in range(2, 6):
-            response = self.session.put(f"{BACKEND_URL}/gem-flight/projects/{self.project_id}/step/{step}", json={
-                "status": "completed",
-                "notes": f"Completed step {step}"
-            })
-            
-            if response.status_code == 200:
-                data = response.json()
-                self.log(f"✅ Step {step} completed - Progress: {data.get('progress_percent')}%")
-            else:
-                self.log(f"❌ Step {step} completion failed: {response.status_code} - {response.text}")
-                return False
-                
-        return True
-        
-    def test_gear_management(self):
-        """Step 8: Test gear management after reaching step 6"""
-        self.log("⚙️ Testing gear management...")
-        
-        # Start step 6 (should auto-set gear to 1)
-        response = self.session.put(f"{BACKEND_URL}/gem-flight/projects/{self.project_id}/step/6", json={
-            "status": "in_progress"
-        })
-        
-        if response.status_code == 200:
-            data = response.json()
-            self.log(f"✅ Step 6 started - should auto-set gear to 1")
-        else:
-            self.log(f"❌ Step 6 start failed: {response.status_code} - {response.text}")
-            return False
-            
-        # Change to gear 2
-        response = self.session.put(f"{BACKEND_URL}/gem-flight/projects/{self.project_id}/gear/2", json={})
-        
-        if response.status_code == 200:
-            data = response.json()
-            current_gear = data.get("current_gear")
-            self.log(f"✅ Gear management working - Current Gear: {current_gear}")
-            return True
-        else:
-            self.log(f"❌ Gear change failed: {response.status_code} - {response.text}")
-            return False
-            
-    def test_flight_score(self):
-        """Step 9: Test auto-compute flight scores"""
-        self.log("🎯 Testing flight score computation...")
-        
-        response = self.session.get(f"{BACKEND_URL}/gem-flight/projects/{self.project_id}/flight-score")
-        
-        if response.status_code == 200:
-            data = response.json()
-            scores = data.get("scores", {})
-            overall_health = data.get("overall_health")
-            gis = data.get("gis", {})
-            igis = data.get("igis", {})
-            
-            self.log(f"✅ Flight scores computed successfully")
-            self.log(f"   Overall Health: {overall_health}")
-            self.log(f"   Secrets Count: {len(scores)}")
-            self.log(f"   GIS: {gis}")
-            self.log(f"   iGIS: {igis}")
-            return True
-        else:
-            self.log(f"❌ Flight score computation failed: {response.status_code} - {response.text}")
-            return False
-            
-    def test_flight_dynamics(self):
-        """Step 10: Test flight dynamics"""
-        self.log("✈️ Testing flight dynamics...")
-        
-        response = self.session.get(f"{BACKEND_URL}/gem-flight/projects/{self.project_id}/flight-dynamics")
-        
-        if response.status_code == 200:
-            data = response.json()
-            
-            required_fields = [
-                "altitude", "speed", "turbulence", "fuel", "eta_days", 
-                "crash_risk", "phase", "heading", "weather", 
-                "tasks_summary", "routines_summary"
-            ]
-            
-            missing_fields = [field for field in required_fields if field not in data]
-            
-            if not missing_fields:
-                self.log(f"✅ Flight dynamics working")
-                self.log(f"   Altitude: {data.get('altitude_label')}")
-                self.log(f"   Speed: {data.get('speed_label')}")
-                self.log(f"   Turbulence: {data.get('turbulence_label')}")
-                self.log(f"   Fuel: {data.get('fuel_label')}")
-                self.log(f"   ETA: {data.get('eta_days')} days")
-                self.log(f"   Crash Risk: {data.get('crash_label')}")
-                self.log(f"   Phase: {data.get('heading')}")
-                self.log(f"   Weather: {data.get('weather_label')}")
+            if updated_anger.get("count") == 4 and updated_anger.get("avg_duration_mins") == 20:
+                self.log("✅ Diary entry updated successfully")
                 return True
             else:
-                self.log(f"❌ Flight dynamics missing fields: {missing_fields}")
+                self.log(f"❌ Diary entry update verification failed: {updated_anger}")
                 return False
         else:
-            self.log(f"❌ Flight dynamics failed: {response.status_code} - {response.text}")
+            self.log(f"❌ Diary entry update failed: {response.status_code} - {response.text}")
             return False
-            
-    def test_flight_event_log(self):
-        """Step 11: Test flight event log"""
-        self.log("📊 Testing flight event log...")
+    
+    def test_create_second_entry(self):
+        """Step 6: Test creating a second entry for yesterday"""
+        self.log("📝 Testing second diary entry creation (yesterday)...")
         
-        response = self.session.get(f"{BACKEND_URL}/gem-flight/projects/{self.project_id}/flight-log")
+        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        
+        payload = {
+            "date": yesterday,
+            "anger": {
+                "count": 1,
+                "avg_duration_mins": 5,
+                "avg_intensity": 3
+            },
+            "sadness": {
+                "count": 0,
+                "avg_duration_mins": 0,
+                "avg_intensity": 0
+            },
+            "fear": {
+                "count": 2,
+                "avg_duration_mins": 15,
+                "avg_intensity": 5
+            },
+            "emotional_outlets": {
+                "time_impact_pct": 10,
+                "money_impact_pct": 5,
+                "health_impact_pct": 15,
+                "relationships_impact_pct": 8
+            },
+            "ads": {
+                "time_impact_pct": 30,
+                "money_impact_pct": 20,
+                "health_impact_pct": 5,
+                "relationships_impact_pct": 25
+            },
+            "sit_still": {
+                "achieved": False,
+                "comfort_score": 4
+            },
+            "peacefulness": {
+                "peaceful_hours": 4,
+                "depth_score": 5
+            },
+            "solution_leadership": {
+                "problems_with_solutions": 3,
+                "problems_without_solutions": 4
+            },
+            "overall_reflection": "Yesterday was more challenging with fear and ADS impact"
+        }
+        
+        response = self.session.post(f"{BACKEND_URL}/consciousness-diary/entries", json=payload)
         
         if response.status_code == 200:
             data = response.json()
-            events = data.get("events", [])
-            
-            self.log(f"✅ Flight event log working - {len(events)} events recorded")
-            if events:
-                latest_event = events[-1]
-                self.log(f"   Latest Event: Altitude {latest_event.get('altitude')}ft, Speed {latest_event.get('speed')} knots")
+            self.log(f"✅ Second diary entry created for yesterday: {data.get('entry_id')}")
             return True
         else:
-            self.log(f"❌ Flight event log failed: {response.status_code} - {response.text}")
+            self.log(f"❌ Second diary entry creation failed: {response.status_code} - {response.text}")
             return False
-            
-    def test_dashboard(self):
-        """Step 12: Test dashboard endpoint"""
-        self.log("📊 Testing dashboard endpoint...")
+    
+    def test_history_endpoint(self):
+        """Step 7: Test GET /api/consciousness-diary/history?days=7"""
+        self.log("📊 Testing diary history endpoint...")
         
-        response = self.session.get(f"{BACKEND_URL}/gem-flight/projects/{self.project_id}/dashboard")
+        response = self.session.get(f"{BACKEND_URL}/consciousness-diary/history?days=7")
         
         if response.status_code == 200:
             data = response.json()
+            entries = data.get("entries", [])
+            total = data.get("total", 0)
             
-            required_keys = ["project", "linked_tasks", "linked_routines", "linked_decisions", "config"]
-            missing_keys = [key for key in required_keys if key not in data]
-            
-            if not missing_keys:
-                project = data.get("project", {})
-                config = data.get("config", {})
-                
-                self.log(f"✅ Dashboard endpoint working")
-                self.log(f"   Project: {project.get('title')}")
-                self.log(f"   Linked Tasks: {len(data.get('linked_tasks', []))}")
-                self.log(f"   Linked Routines: {len(data.get('linked_routines', []))}")
-                self.log(f"   Linked Decisions: {len(data.get('linked_decisions', []))}")
-                self.log(f"   Config Secrets: {len(config.get('secrets', []))}")
+            if total >= 2:  # Should have at least our 2 test entries
+                self.log(f"✅ History endpoint working: {total} entries found")
                 return True
             else:
-                self.log(f"❌ Dashboard missing keys: {missing_keys}")
+                self.log(f"❌ History endpoint insufficient entries: {total}")
                 return False
         else:
-            self.log(f"❌ Dashboard failed: {response.status_code} - {response.text}")
+            self.log(f"❌ History endpoint failed: {response.status_code} - {response.text}")
             return False
-            
-    def test_link_modules(self):
-        """Step 13: Test linking modules (tasks and routines)"""
-        self.log("🔗 Testing module linking...")
+    
+    def test_self_awareness_get(self):
+        """Step 8a: Test GET /api/consciousness-diary/self-awareness"""
+        self.log("🧠 Testing get self-awareness levels...")
         
-        # First create a CTT task
-        task_response = self.session.post(f"{BACKEND_URL}/ctt/tasks", json={
-            "title": "Complete senior engineer certification",
-            "priority": "high",
-            "status": "open",
-            "life_area": "career"
-        })
-        
-        if task_response.status_code == 200:
-            task_data = task_response.json()
-            self.task_id = task_data.get("task_id")
-            self.log(f"✅ CTT task created: {self.task_id}")
-        else:
-            self.log(f"❌ CTT task creation failed: {task_response.status_code} - {task_response.text}")
-            return False
-            
-        # Link the task to the project
-        link_response = self.session.post(f"{BACKEND_URL}/gem-flight/projects/{self.project_id}/link-task", json={
-            "task_id": self.task_id,
-            "step_num": 6
-        })
-        
-        if link_response.status_code == 200:
-            self.log(f"✅ Task linked to project")
-        else:
-            self.log(f"❌ Task linking failed: {link_response.status_code} - {link_response.text}")
-            return False
-            
-        # Create a lifestyle routine
-        routine_response = self.session.post(f"{BACKEND_URL}/lifestyle/routines", json={
-            "title": "Daily skill building",
-            "description": "Practice coding and leadership skills daily",
-            "life_area": "career",
-            "frequency": "daily",
-            "time_slot": "19:00",
-            "priority": "high",
-            "category": "skill_development",
-            "expected_value": "2 hours",
-            "unit": "hours"
-        })
-        
-        if routine_response.status_code == 200:
-            routine_data = routine_response.json()
-            self.routine_id = routine_data.get("routine_id")
-            self.log(f"✅ Lifestyle routine created: {self.routine_id}")
-        else:
-            self.log(f"❌ Lifestyle routine creation failed: {routine_response.status_code} - {routine_response.text}")
-            return False
-            
-        # Link the routine to the project
-        link_routine_response = self.session.post(f"{BACKEND_URL}/gem-flight/projects/{self.project_id}/link-routine", json={
-            "routine_id": self.routine_id
-        })
-        
-        if link_routine_response.status_code == 200:
-            self.log(f"✅ Routine linked to project")
-            
-            # Verify dashboard now shows linked items
-            dashboard_response = self.session.get(f"{BACKEND_URL}/gem-flight/projects/{self.project_id}/dashboard")
-            if dashboard_response.status_code == 200:
-                dashboard_data = dashboard_response.json()
-                linked_tasks = dashboard_data.get("linked_tasks", [])
-                linked_routines = dashboard_data.get("linked_routines", [])
-                
-                self.log(f"✅ Dashboard shows {len(linked_tasks)} linked tasks and {len(linked_routines)} linked routines")
-                return True
-            else:
-                self.log(f"❌ Dashboard verification failed: {dashboard_response.status_code}")
-                return False
-        else:
-            self.log(f"❌ Routine linking failed: {link_routine_response.status_code} - {link_routine_response.text}")
-            return False
-            
-    def test_igis_stubs(self):
-        """Step 14: Test iGIS stub endpoints"""
-        self.log("🔮 Testing iGIS stub endpoints...")
-        
-        igis_endpoints = [
-            ("astrology", "Astrology"),
-            ("energy-healing", "Energy Healing"),
-            ("manifestation", "Manifestation")
-        ]
-        
-        all_passed = True
-        
-        for endpoint, name in igis_endpoints:
-            response = self.session.get(f"{BACKEND_URL}/gem-flight/projects/{self.project_id}/igis/{endpoint}")
-            
-            if response.status_code == 200:
-                data = response.json()
-                if data.get("status") == "stub" and "placeholder_data" in data:
-                    self.log(f"✅ {name} stub working - Status: {data.get('status')}")
-                else:
-                    self.log(f"❌ {name} stub malformed - Missing status or placeholder_data")
-                    all_passed = False
-            else:
-                self.log(f"❌ {name} stub failed: {response.status_code} - {response.text}")
-                all_passed = False
-                
-        return all_passed
-        
-    def test_delete_project(self):
-        """Step 15: Test project deletion"""
-        self.log("🗑️ Testing project deletion...")
-        
-        response = self.session.delete(f"{BACKEND_URL}/gem-flight/projects/{self.project_id}")
+        response = self.session.get(f"{BACKEND_URL}/consciousness-diary/self-awareness")
         
         if response.status_code == 200:
-            self.log(f"✅ Project deleted successfully")
+            data = response.json()
+            levels = data.get("levels", {})
+            overall_level = data.get("overall_level", 0)
             
-            # Verify it's gone
-            get_response = self.session.get(f"{BACKEND_URL}/gem-flight/projects/{self.project_id}")
-            if get_response.status_code == 404:
-                self.log(f"✅ Project deletion verified - 404 on subsequent GET")
+            # Should have 6 levels with default scores
+            if len(levels) == 6 and overall_level > 0:
+                self.log(f"✅ Self-awareness levels retrieved: overall={overall_level}")
                 return True
             else:
-                self.log(f"❌ Project still exists after deletion")
+                self.log(f"❌ Self-awareness levels incomplete: {len(levels)} levels, overall={overall_level}")
                 return False
         else:
-            self.log(f"❌ Project deletion failed: {response.status_code} - {response.text}")
+            self.log(f"❌ Get self-awareness failed: {response.status_code} - {response.text}")
             return False
+    
+    def test_self_awareness_update(self):
+        """Step 8b: Test PUT /api/consciousness-diary/self-awareness"""
+        self.log("🧠 Testing update self-awareness levels...")
+        
+        payload = {
+            "levels": {
+                "1": {"score": 8, "notes": "Strong thought awareness"},
+                "2": {"score": 6},
+                "3": {"score": 7},
+                "5": {"score": 5},
+                "6": {"score": 4}
+            }
+        }
+        
+        response = self.session.put(f"{BACKEND_URL}/consciousness-diary/self-awareness", json=payload)
+        
+        if response.status_code == 200:
+            data = response.json()
+            levels = data.get("levels", {})
+            overall_level = data.get("overall_level", 0)
             
+            # Verify Level 4 is auto-calculated and not manually settable
+            level_4 = levels.get("4", {})
+            if (level_4.get("source") == "auto_calculated" and 
+                levels.get("1", {}).get("score") == 8 and
+                overall_level > 0):
+                self.log(f"✅ Self-awareness updated: Level 4 auto-calculated, overall={overall_level}")
+                return True
+            else:
+                self.log(f"❌ Self-awareness update verification failed: Level 4={level_4}")
+                return False
+        else:
+            self.log(f"❌ Update self-awareness failed: {response.status_code} - {response.text}")
+            return False
+    
+    def test_emotional_wellness(self):
+        """Step 9: Test GET /api/consciousness-diary/emotional-wellness?days=7"""
+        self.log("💚 Testing emotional wellness endpoint...")
+        
+        response = self.session.get(f"{BACKEND_URL}/consciousness-diary/emotional-wellness?days=7")
+        
+        if response.status_code == 200:
+            data = response.json()
+            wellness_score = data.get("wellness_score", 0)
+            metrics_summary = data.get("metrics_summary", {})
+            trend_direction = data.get("trend_direction", "")
+            
+            # Should have all 8 metric aggregations
+            expected_metrics = ["anger", "sadness", "fear", "emotional_outlets", "ads", "sit_still", "peacefulness", "solution_leadership"]
+            present_metrics = [m for m in expected_metrics if m in metrics_summary]
+            
+            if len(present_metrics) == 8 and wellness_score > 0:
+                self.log(f"✅ Emotional wellness working: score={wellness_score}, trend={trend_direction}")
+                return True
+            else:
+                self.log(f"❌ Emotional wellness incomplete: {len(present_metrics)}/8 metrics, score={wellness_score}")
+                return False
+        else:
+            self.log(f"❌ Emotional wellness failed: {response.status_code} - {response.text}")
+            return False
+    
+    def test_daily_context(self):
+        """Step 10: Test GET /api/consciousness-diary/daily-context?date=<today>"""
+        self.log("📅 Testing daily context endpoint...")
+        
+        today = datetime.now().strftime("%Y-%m-%d")
+        response = self.session.get(f"{BACKEND_URL}/consciousness-diary/daily-context?date={today}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            tasks = data.get("tasks", [])
+            routines = data.get("routines", [])
+            unplanned = data.get("unplanned", [])
+            
+            # Should return data structure even if empty
+            if isinstance(tasks, list) and isinstance(routines, list) and isinstance(unplanned, list):
+                self.log(f"✅ Daily context working: {len(tasks)} tasks, {len(routines)} routines, {len(unplanned)} unplanned")
+                return True
+            else:
+                self.log(f"❌ Daily context structure invalid: tasks={type(tasks)}, routines={type(routines)}")
+                return False
+        else:
+            self.log(f"❌ Daily context failed: {response.status_code} - {response.text}")
+            return False
+    
+    def test_delete_entry(self):
+        """Step 11: Test DELETE /api/consciousness-diary/entries/{entry_id}"""
+        self.log("🗑️ Testing diary entry deletion...")
+        
+        if not self.test_entry_id:
+            self.log("❌ No entry ID available for deletion test")
+            return False
+        
+        response = self.session.delete(f"{BACKEND_URL}/consciousness-diary/entries/{self.test_entry_id}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("message") == "Entry deleted":
+                self.log("✅ Diary entry deleted successfully")
+                return True
+            else:
+                self.log(f"❌ Delete response unexpected: {data}")
+                return False
+        else:
+            self.log(f"❌ Diary entry deletion failed: {response.status_code} - {response.text}")
+            return False
+    
+    def test_gem_flight_project_creation(self):
+        """Helper: Create a GEM flight project for iGIS testing"""
+        self.log("🚀 Creating GEM flight project for iGIS testing...")
+        
+        payload = {
+            "title": "Test Flight Project",
+            "vision": "Achieve consciousness mastery",
+            "goal": "Complete self-awareness journey",
+            "life_area": "spirituality_religion"
+        }
+        
+        response = self.session.post(f"{BACKEND_URL}/gem-flight/projects", json=payload)
+        
+        if response.status_code == 200:
+            data = response.json()
+            self.test_project_id = data.get("project_id")
+            self.log(f"✅ GEM flight project created: {self.test_project_id}")
+            return True
+        else:
+            self.log(f"❌ GEM flight project creation failed: {response.status_code} - {response.text}")
+            return False
+    
+    def test_gem_flight_igis_emotional_wellness(self):
+        """Step 12a: Test GET /api/gem-flight/projects/{pid}/igis/emotional-wellness"""
+        self.log("💚 Testing GEM Flight iGIS emotional wellness...")
+        
+        if not self.test_project_id:
+            self.log("❌ No project ID available for iGIS testing")
+            return False
+        
+        response = self.session.get(f"{BACKEND_URL}/gem-flight/projects/{self.test_project_id}/igis/emotional-wellness")
+        
+        if response.status_code == 200:
+            data = response.json()
+            status = data.get("status")
+            module = data.get("module")
+            
+            if module == "emotional_wellness" and status in ["ok", "no_data"]:
+                self.log(f"✅ GEM Flight iGIS emotional wellness working: status={status}")
+                return True
+            else:
+                self.log(f"❌ GEM Flight iGIS emotional wellness unexpected response: {data}")
+                return False
+        else:
+            self.log(f"❌ GEM Flight iGIS emotional wellness failed: {response.status_code} - {response.text}")
+            return False
+    
+    def test_gem_flight_igis_self_awareness(self):
+        """Step 12b: Test GET /api/gem-flight/projects/{pid}/igis/self-awareness"""
+        self.log("🧠 Testing GEM Flight iGIS self-awareness...")
+        
+        if not self.test_project_id:
+            self.log("❌ No project ID available for iGIS testing")
+            return False
+        
+        response = self.session.get(f"{BACKEND_URL}/gem-flight/projects/{self.test_project_id}/igis/self-awareness")
+        
+        if response.status_code == 200:
+            data = response.json()
+            status = data.get("status")
+            module = data.get("module")
+            
+            if module == "self_awareness" and status in ["ok", "no_data"]:
+                self.log(f"✅ GEM Flight iGIS self-awareness working: status={status}")
+                return True
+            else:
+                self.log(f"❌ GEM Flight iGIS self-awareness unexpected response: {data}")
+                return False
+        else:
+            self.log(f"❌ GEM Flight iGIS self-awareness failed: {response.status_code} - {response.text}")
+            return False
+    
     def run_all_tests(self):
-        """Run all GEM Flight Model tests"""
-        self.log("🚀 Starting GEM Flight Model Comprehensive Testing")
-        self.log("=" * 60)
+        """Run all consciousness diary tests in sequence"""
+        self.log("🎯 Starting Consciousness Diary Backend API Testing")
+        self.log(f"Backend URL: {BACKEND_URL}")
         
         tests = [
             ("User Registration", self.test_user_registration),
             ("Config Endpoint", self.test_config_endpoint),
-            ("Create Flight Project", self.test_create_flight_project),
-            ("List Projects", self.test_list_projects),
-            ("Get Single Project", self.test_get_single_project),
-            ("Update Project", self.test_update_project),
-            ("Step Management", self.test_step_management),
-            ("Gear Management", self.test_gear_management),
-            ("Flight Score Computation", self.test_flight_score),
-            ("Flight Dynamics", self.test_flight_dynamics),
-            ("Flight Event Log", self.test_flight_event_log),
-            ("Dashboard Endpoint", self.test_dashboard),
-            ("Link Modules", self.test_link_modules),
-            ("iGIS Stubs", self.test_igis_stubs),
-            ("Delete Project", self.test_delete_project),
+            ("Create Diary Entry", self.test_create_diary_entry),
+            ("Get Today's Entry", self.test_get_todays_entry),
+            ("Update Entry", self.test_update_entry),
+            ("Create Second Entry", self.test_create_second_entry),
+            ("History Endpoint", self.test_history_endpoint),
+            ("Get Self-Awareness", self.test_self_awareness_get),
+            ("Update Self-Awareness", self.test_self_awareness_update),
+            ("Emotional Wellness", self.test_emotional_wellness),
+            ("Daily Context", self.test_daily_context),
+            ("Delete Entry", self.test_delete_entry),
+            ("Create GEM Flight Project", self.test_gem_flight_project_creation),
+            ("GEM Flight iGIS Emotional Wellness", self.test_gem_flight_igis_emotional_wellness),
+            ("GEM Flight iGIS Self-Awareness", self.test_gem_flight_igis_self_awareness),
         ]
         
         passed = 0
@@ -500,11 +514,10 @@ class GEMFlightTester:
                 else:
                     failed += 1
             except Exception as e:
-                self.log(f"❌ {test_name} crashed: {str(e)}")
+                self.log(f"❌ {test_name} exception: {str(e)}")
                 failed += 1
-                
-        self.log("\n" + "=" * 60)
-        self.log(f"🎯 GEM FLIGHT MODEL TESTING COMPLETE")
+        
+        self.log(f"\n🎯 CONSCIOUSNESS DIARY TESTING COMPLETE")
         self.log(f"✅ Passed: {passed}")
         self.log(f"❌ Failed: {failed}")
         self.log(f"📊 Success Rate: {(passed/(passed+failed)*100):.1f}%")
@@ -512,5 +525,8 @@ class GEMFlightTester:
         return passed, failed
 
 if __name__ == "__main__":
-    tester = GEMFlightTester()
+    tester = ConsciousnessDiaryTester()
     passed, failed = tester.run_all_tests()
+    
+    # Exit with error code if any tests failed
+    sys.exit(0 if failed == 0 else 1)

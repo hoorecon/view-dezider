@@ -582,6 +582,27 @@ export default function HomeScreen() {
             </LinearGradient>
           </TouchableOpacity>
 
+          {/* Consciousness Diary */}
+          <TouchableOpacity
+            style={styles.calendarCard}
+            onPress={() => router.push('/tools/consciousness-diary' as any)}
+            activeOpacity={0.7}
+          >
+            <LinearGradient
+              colors={['#1E1B4B', '#3730A3']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.calendarGradient}
+            >
+              <Ionicons name="eye" size={24} color="#FFF" />
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.calendarTitle}>Consciousness Diary</Text>
+                <Text style={styles.calendarSub}>Track self-awareness, emotions & inner wellness</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
+            </LinearGradient>
+          </TouchableOpacity>
+
           {/* Credits & Subscription Banner */}
           <TouchableOpacity
             style={styles.calendarCard}

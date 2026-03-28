@@ -3384,6 +3384,10 @@ api_router.include_router(payments_router)
 from routes.gem_flight import router as gem_flight_router
 api_router.include_router(gem_flight_router)
 
+# Consciousness Diary Router
+from routes.consciousness_diary import router as consciousness_diary_router
+api_router.include_router(consciousness_diary_router)
+
 
 # Include the router in the main app
 app.include_router(api_router)

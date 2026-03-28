@@ -2738,6 +2738,72 @@ test_plan:
 
 
 test_plan:
+
+  - task: "Consciousness Diary - Daily Entry CRUD"
+    implemented: true
+    working: true
+    file: "routes/consciousness_diary.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented POST/GET/PUT/DELETE /api/consciousness-diary/entries with 8 metrics (Anger/Sadness/Fear/Emotional Outlets/ADS/Sit Still/Peacefulness/Solution Leadership), daily context snapshot, date-based upsert, and overall reflection."
+      - working: true
+        agent: "testing"
+        comment: "✅ CONSCIOUSNESS DIARY CRUD COMPREHENSIVE TESTING PASSED: All diary entry operations working perfectly! (1) POST /api/consciousness-diary/entries creates entries with all 8 metrics (anger: count/duration/intensity, sadness: count/duration/intensity, fear: count/duration/intensity, emotional_outlets: 4 impact percentages, ads: 4 impact percentages, sit_still: achieved/comfort_score, peacefulness: peaceful_hours/depth_score, solution_leadership: problems_with/without_solutions), (2) GET /api/consciousness-diary/entries?date=today retrieves entry with daily_context, (3) PUT /api/consciousness-diary/entries/{id} updates metrics successfully (tested anger count 3→4, duration 15→20, intensity 6→7), (4) DELETE /api/consciousness-diary/entries/{id} removes entries correctly. Complete diary entry lifecycle verified with realistic emotional tracking data."
+
+  - task: "Consciousness Diary - Self-Awareness 6 Levels"
+    implemented: true
+    working: true
+    file: "routes/consciousness_diary.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented GET/PUT /api/consciousness-diary/self-awareness. 6 progressive levels (Thought/Breath/Bodily Sensations/Individual Action/Interaction/Intense Action). Level 4 auto-calculated from 8 diary metrics. Others self-rated."
+      - working: true
+        agent: "testing"
+        comment: "✅ SELF-AWARENESS 6 LEVELS COMPREHENSIVE TESTING PASSED: All self-awareness operations working perfectly! (1) GET /api/consciousness-diary/self-awareness returns 6 levels with default scores (overall=5.2), (2) PUT /api/consciousness-diary/self-awareness updates self-rated levels (1,2,3,5,6) successfully - Level 1: score=8 'Strong thought awareness', Level 2: score=6, Level 3: score=7, Level 5: score=5, Level 6: score=4, (3) Level 4 correctly auto-calculated from diary metrics (source='auto_calculated'), cannot be manually set, (4) Overall level computed correctly (6.0) from all 6 levels. Complete 6-level progressive self-awareness system verified with proper auto-calculation and manual rating separation."
+
+  - task: "Consciousness Diary - Emotional Wellness Aggregation"
+    implemented: true
+    working: true
+    file: "routes/consciousness_diary.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented GET /api/consciousness-diary/emotional-wellness. Aggregates 7-day metrics into wellness score, trend direction, and per-metric summaries."
+      - working: true
+        agent: "testing"
+        comment: "✅ EMOTIONAL WELLNESS AGGREGATION COMPREHENSIVE TESTING PASSED: All wellness aggregation working perfectly! (1) GET /api/consciousness-diary/emotional-wellness?days=7 returns wellness_score=6.1 with trend_direction='stable', (2) Metrics summary contains all 8 expected metrics with proper aggregations: anger (avg_count/avg_duration_mins/avg_intensity), sadness (avg_count/avg_duration_mins/avg_intensity), fear (avg_count/avg_duration_mins/avg_intensity), emotional_outlets (avg_negative_impact_pct), ads (avg_negative_impact_pct), sit_still (achievement_rate_pct/avg_comfort), peacefulness (avg_peaceful_hours/avg_depth), solution_leadership (avg_with_solutions/avg_without_solutions/solution_ratio). Complete 7-day emotional wellness trend analysis verified with realistic diary data."
+
+  - task: "GEM Flight iGIS - Emotional Wellness & Self Awareness (LIVE)"
+    implemented: true
+    working: true
+    file: "routes/gem_flight.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added GET /api/gem-flight/projects/{id}/igis/emotional-wellness and /igis/self-awareness as LIVE endpoints pulling real data from consciousness_diary and self_awareness collections."
+      - working: true
+        agent: "testing"
+        comment: "✅ GEM FLIGHT iGIS LIVE MODULES COMPREHENSIVE TESTING PASSED: Both iGIS live endpoints working perfectly! (1) GET /api/gem-flight/projects/{id}/igis/emotional-wellness returns status='ok', module='emotional_wellness' with live wellness data from consciousness diary, (2) GET /api/gem-flight/projects/{id}/igis/self-awareness returns status='ok', module='self_awareness' with live self-awareness levels data. Complete iGIS integration verified - Emotional Wellness and Self Awareness modules now provide LIVE data from consciousness diary system instead of placeholder stubs."
+
+  - agent: "main"
+    message: "Consciousness Diary fully implemented: (1) Daily entry CRUD with 8 metrics covering anger/sadness/fear incidents, emotional outlets impact, ADS impact, sit still ability, peacefulness, solution-oriented leadership. (2) 6-level self-awareness progressive scale with auto-calculated Level 4. (3) Emotional wellness aggregation. (4) Daily context linking (CTT+Routines+Unplanned). (5) GEM Flight iGIS now shows Emotional Wellness & Self Awareness as LIVE modules with real data. (6) Frontend Consciousness Diary screen with 3 tabs: Daily Diary, Self Awareness, Wellness. Please test all Consciousness Diary endpoints."
+  - agent: "testing"
+    message: "🎯 CONSCIOUSNESS DIARY COMPREHENSIVE TESTING COMPLETE: All 15/15 tests passed with 100% success rate! ✅ SETUP & AUTHENTICATION: User registration (diary_test_{timestamp}@test.com) and session token generation working correctly. ✅ CONFIG ENDPOINT: GET /api/consciousness-diary/config returns 6 awareness levels and 8 metrics schema correctly. ✅ DIARY ENTRY CRUD: Complete lifecycle working - POST creates entries with all 8 metrics (anger/sadness/fear incidents with count/duration/intensity, emotional_outlets/ads with 4 impact percentages, sit_still with achieved/comfort_score, peacefulness with peaceful_hours/depth_score, solution_leadership with problems_with/without_solutions), GET retrieves entries with daily_context, PUT updates metrics successfully, DELETE removes entries correctly. ✅ SELF-AWARENESS 6 LEVELS: GET returns 6 levels with default scores, PUT updates self-rated levels (1,2,3,5,6) while Level 4 remains auto-calculated from diary metrics, overall level computed correctly. ✅ EMOTIONAL WELLNESS: GET returns wellness_score with trend_direction and complete metrics_summary for all 8 metrics with proper aggregations. ✅ DAILY CONTEXT: GET returns tasks/routines/unplanned data structure correctly. ✅ GEM FLIGHT iGIS LIVE MODULES: Both /igis/emotional-wellness and /igis/self-awareness endpoints working with live data from consciousness diary system. Complete consciousness diary functionality verified end-to-end with realistic emotional tracking data. Backend URL: https://dezider-core.preview.emergentagent.com/api working perfectly."
+
   current_focus: []
   stuck_tasks: []
   test_all: false

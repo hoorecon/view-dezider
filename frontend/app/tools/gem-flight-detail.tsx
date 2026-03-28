@@ -11,8 +11,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
 // ========================
 // TYPE DEFINITIONS
 // ========================
@@ -747,6 +745,30 @@ function ModulesTab({ dashboard, dynamics, onFetchIgis, gis, igis }: {
   gis?: Record<string, any>;
   igis?: Record<string, any>;
 }) {
+  const router = useRouter();
+  const [ewData, setEwData] = useState<any>(null);
+  const [saData, setSaData] = useState<any>(null);
+  const [loadingLive, setLoadingLive] = useState(true);
+
+  useEffect(() => {
+    const fetchLive = async () => {
+      try {
+        const pid = dashboard.project.project_id;
+        const [ewRes, saRes] = await Promise.all([
+          api.get(`/gem-flight/projects/${pid}/igis/emotional-wellness`),
+          api.get(`/gem-flight/projects/${pid}/igis/self-awareness`),
+        ]);
+        setEwData(ewRes.data);
+        setSaData(saRes.data);
+      } catch (e) {
+        console.log('Live iGIS fetch error:', e);
+      } finally {
+        setLoadingLive(false);
+      }
+    };
+    fetchLive();
+  }, [dashboard.project.project_id]);
+
   return (
     <View>
       {/* GIS Model */}
@@ -772,10 +794,110 @@ function ModulesTab({ dashboard, dynamics, onFetchIgis, gis, igis }: {
         </View>
       </View>
 
-      {/* iGIS Model (Inner) */}
+      {/* iGIS Model (Inner) — LIVE Modules */}
       <Text style={s.sectionTitle}>iGIS Model (Inner Awareness)</Text>
-      <Text style={s.sectionDesc}>Inner dimensions that complement your external efforts</Text>
+      <Text style={s.sectionDesc}>Inner dimensions complementing your external efforts</Text>
 
+      {/* Emotional Wellness — LIVE */}
+      <TouchableOpacity
+        style={s.liveIgisCard}
+        onPress={() => router.push('/tools/consciousness-diary' as any)}
+        activeOpacity={0.7}
+      >
+        <LinearGradient colors={['#1E1B4B', '#312E81']} style={s.liveIgisGradient}>
+          <View style={s.liveIgisHeader}>
+            <Text style={s.liveIgisEmoji}>💚</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={s.liveIgisTitle}>Emotional Wellness</Text>
+              <Text style={s.liveIgisDesc}>Tracked from your Consciousness Diary</Text>
+            </View>
+            <View style={s.liveBadge}>
+              <View style={s.liveDot} />
+              <Text style={s.liveBadgeText}>LIVE</Text>
+            </View>
+          </View>
+          {loadingLive ? (
+            <ActivityIndicator size="small" color="#818CF8" style={{ marginTop: 10 }} />
+          ) : ewData?.status === 'ok' ? (
+            <View style={s.liveMetricsRow}>
+              <View style={s.liveMetric}>
+                <Text style={[s.liveMetricVal, { color: ewData.wellness_score > 7 ? '#10B981' : ewData.wellness_score > 4 ? '#F59E0B' : '#EF4444' }]}>
+                  {ewData.wellness_score}
+                </Text>
+                <Text style={s.liveMetricLabel}>Wellness</Text>
+              </View>
+              <View style={s.liveMetric}>
+                <Text style={s.liveMetricVal}>{ewData.avg_peacefulness || 0}</Text>
+                <Text style={s.liveMetricLabel}>Peace</Text>
+              </View>
+              <View style={s.liveMetric}>
+                <Text style={[s.liveMetricVal, { color: '#EF4444' }]}>{ewData.avg_anger_intensity || 0}</Text>
+                <Text style={s.liveMetricLabel}>Anger</Text>
+              </View>
+              <View style={s.liveMetric}>
+                <Text style={s.liveMetricVal}>{ewData.entries_count}</Text>
+                <Text style={s.liveMetricLabel}>Entries</Text>
+              </View>
+            </View>
+          ) : (
+            <Text style={s.liveNoData}>Tap to start your Consciousness Diary →</Text>
+          )}
+        </LinearGradient>
+      </TouchableOpacity>
+
+      {/* Self Awareness — LIVE */}
+      <TouchableOpacity
+        style={s.liveIgisCard}
+        onPress={() => router.push('/tools/consciousness-diary' as any)}
+        activeOpacity={0.7}
+      >
+        <LinearGradient colors={['#1C1917', '#292524']} style={s.liveIgisGradient}>
+          <View style={s.liveIgisHeader}>
+            <Text style={s.liveIgisEmoji}>👁️</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={s.liveIgisTitle}>Self Awareness @ Conscious Leadership</Text>
+              <Text style={s.liveIgisDesc}>6 progressive levels of inner awareness</Text>
+            </View>
+            <View style={s.liveBadge}>
+              <View style={s.liveDot} />
+              <Text style={s.liveBadgeText}>LIVE</Text>
+            </View>
+          </View>
+          {loadingLive ? (
+            <ActivityIndicator size="small" color="#818CF8" style={{ marginTop: 10 }} />
+          ) : saData?.status === 'ok' ? (
+            <View style={{ marginTop: 10 }}>
+              <View style={s.liveMetricsRow}>
+                <View style={s.liveMetric}>
+                  <Text style={[s.liveMetricVal, { color: '#818CF8' }]}>{saData.overall_level}</Text>
+                  <Text style={s.liveMetricLabel}>Overall</Text>
+                </View>
+                {Object.entries(saData.levels || {}).slice(0, 4).map(([k, v]: [string, any]) => (
+                  <View key={k} style={s.liveMetric}>
+                    <Text style={s.liveMetricVal}>{v.score || 0}</Text>
+                    <Text style={s.liveMetricLabel}>L{k}</Text>
+                  </View>
+                ))}
+              </View>
+              <View style={s.saLevelBar}>
+                {[1, 2, 3, 4, 5, 6].map(l => {
+                  const score = saData.levels?.[String(l)]?.score || 0;
+                  return (
+                    <View key={l} style={s.saLevelSegment}>
+                      <View style={[s.saLevelFill, { height: `${(score / 10) * 100}%`, backgroundColor: l === 4 ? '#F59E0B' : '#818CF8' }]} />
+                      <Text style={s.saLevelNum}>{l}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          ) : (
+            <Text style={s.liveNoData}>Tap to set your self-awareness levels →</Text>
+          )}
+        </LinearGradient>
+      </TouchableOpacity>
+
+      {/* Stub Modules */}
       <View style={s.igisGrid}>
         {[
           { key: 'astrology', label: 'Astrology', emoji: '🔮', color: '#8B5CF6', desc: 'Timing & grace insights' },
@@ -1016,6 +1138,26 @@ const s = StyleSheet.create({
   igisDesc: { fontSize: 9, color: 'rgba(255,255,255,0.4)', textAlign: 'center' },
   igisStub: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, marginTop: 4 },
   igisStubText: { fontSize: 9, fontWeight: '700' },
+
+  // Live iGIS Cards
+  liveIgisCard: { marginBottom: 12, borderRadius: 14, overflow: 'hidden' },
+  liveIgisGradient: { padding: 14 },
+  liveIgisHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  liveIgisEmoji: { fontSize: 28 },
+  liveIgisTitle: { fontSize: 14, fontWeight: '700', color: '#FFF' },
+  liveIgisDesc: { fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 2 },
+  liveBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(16,185,129,0.2)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981' },
+  liveBadgeText: { fontSize: 9, fontWeight: '800', color: '#10B981' },
+  liveMetricsRow: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' },
+  liveMetric: { alignItems: 'center' },
+  liveMetricVal: { fontSize: 18, fontWeight: '800', color: '#FFF' },
+  liveMetricLabel: { fontSize: 9, color: 'rgba(255,255,255,0.5)', fontWeight: '600', marginTop: 2 },
+  liveNoData: { fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 10, fontStyle: 'italic' },
+  saLevelBar: { flexDirection: 'row', gap: 6, marginTop: 10, height: 50, alignItems: 'flex-end' },
+  saLevelSegment: { flex: 1, height: '100%', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 4, justifyContent: 'flex-end', alignItems: 'center', overflow: 'hidden' },
+  saLevelFill: { width: '100%', borderRadius: 4 },
+  saLevelNum: { fontSize: 8, fontWeight: '700', color: 'rgba(255,255,255,0.5)', marginBottom: 2, position: 'absolute', bottom: -1 },
 
   // Linked Modules
   linkedCard: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, padding: 14, marginBottom: 12 },

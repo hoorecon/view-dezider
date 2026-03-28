@@ -12,7 +12,7 @@ import os
 import math
 import json as json_module
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, Request
 from core.database import db
@@ -722,8 +722,104 @@ async def get_flight_log(project_id: str, user: dict = Depends(get_current_user)
 
 
 # ========================
-# iGIS STUBS (Astrology, Energy Healing, Manifestation)
+# iGIS MODULES
+# Astrology, Energy Healing, Manifestation = STUBS
+# Emotional Wellness, Self Awareness = LIVE (from Consciousness Diary)
 # ========================
+
+@router.get("/projects/{project_id}/igis/emotional-wellness")
+async def igis_emotional_wellness(project_id: str, user: dict = Depends(get_current_user)):
+    """[LIVE] Emotional Wellness from Consciousness Diary data"""
+    uid = user["user_id"]
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
+
+    entries = await db.consciousness_diary.find(
+        {"user_id": uid, "date": {"$gte": cutoff}},
+        {"_id": 0}
+    ).to_list(7)
+
+    if not entries:
+        return {
+            "status": "no_data",
+            "module": "emotional_wellness",
+            "message": "No diary entries found. Start your Consciousness Diary to track emotional wellness.",
+            "wellness_score": 0,
+            "metrics_summary": {},
+        }
+
+    # Aggregate recent metrics
+    anger_int, sadness_int, fear_int = [], [], []
+    sit_comfort, peace_depth = [], []
+    sol_ratio_vals = []
+
+    for entry in entries:
+        m = entry.get("metrics", {})
+        if m.get("anger", {}).get("avg_intensity") is not None:
+            anger_int.append(m["anger"]["avg_intensity"])
+        if m.get("sadness", {}).get("avg_intensity") is not None:
+            sadness_int.append(m["sadness"]["avg_intensity"])
+        if m.get("fear", {}).get("avg_intensity") is not None:
+            fear_int.append(m["fear"]["avg_intensity"])
+        if m.get("sit_still", {}).get("comfort_score") is not None:
+            sit_comfort.append(m["sit_still"]["comfort_score"])
+        if m.get("peacefulness", {}).get("depth_score") is not None:
+            peace_depth.append(m["peacefulness"]["depth_score"])
+        sl = m.get("solution_leadership", {})
+        total_sl = (sl.get("problems_with_solutions", 0) + sl.get("problems_without_solutions", 0))
+        if total_sl > 0:
+            sol_ratio_vals.append(sl["problems_with_solutions"] / total_sl * 10)
+
+    def avg(lst):
+        return round(sum(lst) / len(lst), 1) if lst else 0
+
+    neg = (avg(anger_int) + avg(sadness_int) + avg(fear_int)) / 3
+    pos = (avg(sit_comfort) + avg(peace_depth) + avg(sol_ratio_vals)) / 3
+    wellness = round(max(0, min(10, (10 - neg + pos) / 2)), 1)
+
+    return {
+        "status": "ok",
+        "module": "emotional_wellness",
+        "wellness_score": wellness,
+        "entries_count": len(entries),
+        "avg_anger_intensity": avg(anger_int),
+        "avg_sadness_intensity": avg(sadness_int),
+        "avg_fear_intensity": avg(fear_int),
+        "avg_peacefulness": avg(peace_depth),
+        "avg_stillness_comfort": avg(sit_comfort),
+        "solution_orientation": avg(sol_ratio_vals),
+    }
+
+
+@router.get("/projects/{project_id}/igis/self-awareness")
+async def igis_self_awareness(project_id: str, user: dict = Depends(get_current_user)):
+    """[LIVE] Self-Awareness Levels from Consciousness Diary"""
+    uid = user["user_id"]
+
+    sa = await db.self_awareness.find_one({"user_id": uid}, {"_id": 0})
+    if not sa:
+        return {
+            "status": "no_data",
+            "module": "self_awareness",
+            "message": "No self-awareness data. Rate your levels in the Consciousness Diary to begin tracking.",
+            "levels": {},
+            "overall_level": 0,
+        }
+
+    return {
+        "status": "ok",
+        "module": "self_awareness",
+        "levels": sa.get("levels", {}),
+        "overall_level": sa.get("overall_level", 0),
+        "level_names": {str(l["level"]): l["name"] for l in [
+            {"level": 1, "name": "Thought Level"},
+            {"level": 2, "name": "Breath Level"},
+            {"level": 3, "name": "Bodily Sensations Level"},
+            {"level": 4, "name": "Individual Action Level"},
+            {"level": 5, "name": "Interaction Level"},
+            {"level": 6, "name": "Intense Action Level"},
+        ]},
+        "updated_at": sa.get("updated_at"),
+    }
 
 @router.get("/projects/{project_id}/igis/astrology")
 async def igis_astrology_stub(project_id: str, user: dict = Depends(get_current_user)):
