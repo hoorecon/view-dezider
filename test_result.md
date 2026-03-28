@@ -2804,7 +2804,32 @@ test_plan:
   - agent: "testing"
     message: "🎯 CONSCIOUSNESS DIARY COMPREHENSIVE TESTING COMPLETE: All 15/15 tests passed with 100% success rate! ✅ SETUP & AUTHENTICATION: User registration (diary_test_{timestamp}@test.com) and session token generation working correctly. ✅ CONFIG ENDPOINT: GET /api/consciousness-diary/config returns 6 awareness levels and 8 metrics schema correctly. ✅ DIARY ENTRY CRUD: Complete lifecycle working - POST creates entries with all 8 metrics (anger/sadness/fear incidents with count/duration/intensity, emotional_outlets/ads with 4 impact percentages, sit_still with achieved/comfort_score, peacefulness with peaceful_hours/depth_score, solution_leadership with problems_with/without_solutions), GET retrieves entries with daily_context, PUT updates metrics successfully, DELETE removes entries correctly. ✅ SELF-AWARENESS 6 LEVELS: GET returns 6 levels with default scores, PUT updates self-rated levels (1,2,3,5,6) while Level 4 remains auto-calculated from diary metrics, overall level computed correctly. ✅ EMOTIONAL WELLNESS: GET returns wellness_score with trend_direction and complete metrics_summary for all 8 metrics with proper aggregations. ✅ DAILY CONTEXT: GET returns tasks/routines/unplanned data structure correctly. ✅ GEM FLIGHT iGIS LIVE MODULES: Both /igis/emotional-wellness and /igis/self-awareness endpoints working with live data from consciousness diary system. Complete consciousness diary functionality verified end-to-end with realistic emotional tracking data. Backend URL: https://dezider-core.preview.emergentagent.com/api working perfectly."
 
+  - agent: "main"
+    message: "BACKEND REFACTORING COMPLETE: Refactored server.py from 3413 lines to 140 lines. All inline routes extracted into 8 new modular files: auth_routes.py (auth/push/search), organizations.py (org CRUD), decisions.py (PRR CRUD/templates/test123/journal/sharing/MPPS), notifications.py (experts+notifications), analytics.py (folder analytics/decision meta), ai_tools.py (TEPFI/factor data/CLD analyze), video_calls.py (call sessions), decision_templates.py (admin templates). Created core/helpers.py (shared notification utils). Updated core/auth.py (added require_admin/co_admin/super_admin). Quick sanity check: 23/23 endpoints passed. Now needs full regression testing via testing agent to verify all routes are functionally identical."
+
+  - task: "Backend Refactoring - server.py 3413 → 140 lines"
+    implemented: true
+    working: true
+    file: "server.py + routes/*.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Complete refactoring: 3413 lines → 140 lines. All routes extracted into modular files. 23/23 quick sanity checks passed. Needs full regression test."
+      - working: true
+        agent: "testing"
+        comment: "🎉 BACKEND REFACTORING REGRESSION TEST COMPLETE: 100% SUCCESS RATE (35/35 tests passed)! ✅ COMPREHENSIVE TESTING: All core flows verified after massive refactoring from 3413 lines to 140 lines. ✅ AUTH FLOW: Registration, login, auth/me, logout all working correctly. ✅ PRR DECISIONS: Complete CRUD operations, factor management, decision cloning, template save/use all functional. ✅ TEST123: Instant decision sessions create/list/update working. ✅ ASSESSMENT: Questions retrieval, submission, history all working. ✅ JOURNAL: Entry CRUD operations functional. ✅ ORGANIZATIONS: Create/get operations working. ✅ NOTIFICATIONS: List and unread count working. ✅ ANALYTICS: Folder analytics working. ✅ EXPERTS: List endpoint working. ✅ CALL SESSIONS: Config and session creation working. ✅ DECISION TEMPLATES: List and create operations working. ✅ STATS & FOLDERS: Dashboard stats and folder list working. ✅ HEALTH CHECK: API health endpoint working. All route paths IDENTICAL after refactoring. No breaking changes detected. Modular architecture successfully implemented with full backward compatibility."
+
+test_plan:
   current_focus: []
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "BACKEND REFACTORING COMPLETE: Refactored server.py from 3413 lines to 140 lines. All inline routes extracted into 8 new modular files: auth_routes.py (auth/push/search), organizations.py (org CRUD), decisions.py (PRR CRUD/templates/test123/journal/sharing/MPPS), notifications.py (experts+notifications), analytics.py (folder analytics/decision meta), ai_tools.py (TEPFI/factor data/CLD analyze), video_calls.py (call sessions), decision_templates.py (admin templates). Created core/helpers.py (shared notification utils). Updated core/auth.py (added require_admin/co_admin/super_admin). Quick sanity check: 23/23 endpoints passed. Now needs full regression testing via testing agent to verify all routes are functionally identical."
+  - agent: "testing"
+    message: "🎉 BACKEND REFACTORING REGRESSION TEST COMPLETE: 100% SUCCESS RATE (35/35 tests passed)! Comprehensive testing verified all core flows work identically after massive refactoring. All 17 endpoint categories tested: Health Check, Auth Flow (4 tests), PRR Decisions CRUD (5 tests), Decision Clone, Templates (3 tests), Test123 (3 tests), Assessment (3 tests), Journal (3 tests), Stats & Folders (2 tests), Organizations (2 tests), Notifications (2 tests), Analytics, Experts, Call Sessions (2 tests), Decision Templates (2 tests), Decision Meta. Route paths remain IDENTICAL. No breaking changes detected. Modular architecture successfully implemented with full backward compatibility. Backend URL: https://dezider-core.preview.emergentagent.com/api working perfectly."
