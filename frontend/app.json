@@ -21,7 +21,9 @@
         "backgroundColor": "#000"
       },
       "edgeToEdgeEnabled": true,
-      "permissions": ["RECORD_AUDIO"]
+      "permissions": [
+        "RECORD_AUDIO"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -39,7 +41,8 @@
           "backgroundColor": "#000"
         }
       ],
-      "expo-speech-recognition"
+      "expo-speech-recognition",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true

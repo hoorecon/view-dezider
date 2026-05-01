@@ -1,0 +1,336 @@
+"""SWOT Analysis Module — Create, manage, and convert to PRR Decision factors"""
+
+import uuid
+import os
+import json as json_module
+import logging
+from datetime import datetime, timezone
+from typing import Optional, List
+from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException, Depends
+from core.database import db
+from core.auth import get_current_user
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/swot", tags=["SWOT Analysis"])
+
+
+# ========================
+# MODELS
+# ========================
+
+class SwotItem(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    text: str
+    description: str = ""
+    impact: int = 5  # 1-10
+
+
+class SwotCreate(BaseModel):
+    title: str
+    context: str = ""
+    life_area: Optional[str] = None
+    decision_type: Optional[str] = None
+
+
+class SwotUpdate(BaseModel):
+    title: Optional[str] = None
+    context: Optional[str] = None
+    strengths: Optional[List[SwotItem]] = None
+    weaknesses: Optional[List[SwotItem]] = None
+    opportunities: Optional[List[SwotItem]] = None
+    threats: Optional[List[SwotItem]] = None
+    life_area: Optional[str] = None
+    decision_type: Optional[str] = None
+
+
+# ========================
+# CRUD ROUTES
+# ========================
+
+@router.post("")
+async def create_swot(data: SwotCreate, user: dict = Depends(get_current_user)):
+    """Create a new SWOT analysis"""
+    doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["user_id"],
+        "title": data.title,
+        "context": data.context,
+        "life_area": data.life_area,
+        "decision_type": data.decision_type,
+        "strengths": [],
+        "weaknesses": [],
+        "opportunities": [],
+        "threats": [],
+        "converted_decision_id": None,
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
+    }
+    await db.swot_analyses.insert_one(doc)
+    return {"id": doc["id"], "message": "SWOT analysis created"}
+
+
+@router.get("")
+async def list_swot(user: dict = Depends(get_current_user)):
+    """List all SWOT analyses for the user"""
+    docs = await db.swot_analyses.find(
+        {"user_id": user["user_id"]}, {"_id": 0}
+    ).sort("created_at", -1).to_list(100)
+    return docs
+
+
+@router.get("/{analysis_id}")
+async def get_swot(analysis_id: str, user: dict = Depends(get_current_user)):
+    """Get a specific SWOT analysis"""
+    doc = await db.swot_analyses.find_one(
+        {"id": analysis_id, "user_id": user["user_id"]}, {"_id": 0}
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="SWOT analysis not found")
+    return doc
+
+
+@router.put("/{analysis_id}")
+async def update_swot(analysis_id: str, data: SwotUpdate, user: dict = Depends(get_current_user)):
+    """Update a SWOT analysis"""
+    existing = await db.swot_analyses.find_one(
+        {"id": analysis_id, "user_id": user["user_id"]}, {"_id": 0}
+    )
+    if not existing:
+        raise HTTPException(status_code=404, detail="SWOT analysis not found")
+    update_dict = {k: v for k, v in data.dict().items() if v is not None}
+    for key in ["strengths", "weaknesses", "opportunities", "threats"]:
+        if key in update_dict:
+            update_dict[key] = [item if isinstance(item, dict) else item.dict() for item in update_dict[key]]
+    update_dict["updated_at"] = datetime.now(timezone.utc)
+    await db.swot_analyses.update_one({"id": analysis_id}, {"$set": update_dict})
+    return {"message": "SWOT analysis updated"}
+
+
+@router.delete("/{analysis_id}")
+async def delete_swot(analysis_id: str, user: dict = Depends(get_current_user)):
+    """Delete a SWOT analysis"""
+    result = await db.swot_analyses.delete_one({"id": analysis_id, "user_id": user["user_id"]})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="SWOT analysis not found")
+    return {"message": "SWOT analysis deleted"}
+
+
+# ========================
+# CONVERT TO PRR DECISION
+# ========================
+
+@router.post("/{analysis_id}/convert-to-decision")
+async def convert_to_decision(analysis_id: str, user: dict = Depends(get_current_user)):
+    """Convert SWOT analysis into a PRR Decision with AI-generated expected values.
+    
+    - Strengths (internal positive) → factors as-is
+    - Opportunities (external positive) → factors as-is
+    - Weaknesses (internal negative) → prefixed with 'NOT '
+    - Threats (external negative) → prefixed with 'NOT '
+    - AI generates expected values for all factors
+    """
+    doc = await db.swot_analyses.find_one(
+        {"id": analysis_id, "user_id": user["user_id"]}, {"_id": 0}
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="SWOT analysis not found")
+
+    strengths = doc.get("strengths", [])
+    weaknesses = doc.get("weaknesses", [])
+    opportunities = doc.get("opportunities", [])
+    threats = doc.get("threats", [])
+
+    total = len(strengths) + len(weaknesses) + len(opportunities) + len(threats)
+    if total == 0:
+        raise HTTPException(status_code=400, detail="Add at least one item in any SWOT quadrant before converting")
+
+    # Build factor list with source metadata
+    raw_factors = []
+    order = 0
+
+    for s in strengths:
+        raw_factors.append({
+            "name": s["text"],
+            "source": "strength",
+            "nature": "internal",
+            "polarity": "positive",
+            "description": s.get("description", ""),
+            "importance": s.get("impact", 5),
+            "order": order,
+        })
+        order += 1
+
+    for o in opportunities:
+        raw_factors.append({
+            "name": o["text"],
+            "source": "opportunity",
+            "nature": "external",
+            "polarity": "positive",
+            "description": o.get("description", ""),
+            "importance": o.get("impact", 5),
+            "order": order,
+        })
+        order += 1
+
+    for w in weaknesses:
+        raw_factors.append({
+            "name": f"NOT {w['text']}",
+            "source": "weakness",
+            "nature": "internal",
+            "polarity": "negative",
+            "description": w.get("description", ""),
+            "importance": w.get("impact", 5),
+            "order": order,
+        })
+        order += 1
+
+    for t in threats:
+        raw_factors.append({
+            "name": f"NOT {t['text']}",
+            "source": "threat",
+            "nature": "external",
+            "polarity": "negative",
+            "description": t.get("description", ""),
+            "importance": t.get("impact", 5),
+            "order": order,
+        })
+        order += 1
+
+    # AI-generate expected values
+    factors_with_values = await _ai_generate_expected_values(
+        doc["title"], doc.get("context", ""), raw_factors, user["user_id"]
+    )
+
+    # Create PRR Decision
+    decision_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+
+    prr_factors = []
+    for idx, f in enumerate(factors_with_values):
+        prr_factors.append({
+            "id": str(uuid.uuid4()),
+            "name": f["name"],
+            "category": "primary" if f.get("polarity") == "positive" else "secondary",
+            "rating": f["importance"],
+            "order": idx,
+            "unit": f.get("unit"),
+            "expected_value": f.get("expected_value"),
+            "data_type": f.get("data_type"),
+            "operator": None,
+            "gap_multiplier": 1.0,
+            "parent_id": None,
+            "weight": None,
+        })
+
+    s_count = len(strengths)
+    w_count = len(weaknesses)
+    o_count = len(opportunities)
+    t_count = len(threats)
+
+    decision_doc = {
+        "id": decision_id,
+        "user_id": user["user_id"],
+        "title": doc["title"],
+        "context": doc.get("context", ""),
+        "factors": prr_factors,
+        "options": [],
+        "chosen_option_id": None,
+        "decision_case": None,
+        "notes": f"Converted from SWOT Analysis. S:{s_count} W:{w_count} O:{o_count} T:{t_count}.",
+        "reflection": "",
+        "final_notes": "",
+        "folder": "",
+        "life_area": doc.get("life_area"),
+        "decision_type": doc.get("decision_type"),
+        "rating_gap_multiplier": 1.0,
+        "mpps_option_id": None,
+        "mpps_improvements": [],
+        "mpps_projected_worth": None,
+        "mpps_timeframe": None,
+        "implementation_review_date": None,
+        "status": "in_progress",
+        "source_module": "swot",
+        "source_id": analysis_id,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    await db.decisions.insert_one(decision_doc)
+    await db.swot_analyses.update_one(
+        {"id": analysis_id},
+        {"$set": {"converted_decision_id": decision_id, "updated_at": now}}
+    )
+
+    return {
+        "decision_id": decision_id,
+        "factors_count": len(prr_factors),
+        "message": f"Created PRR Decision with {len(prr_factors)} factors from SWOT (S:{s_count} W:{w_count} O:{o_count} T:{t_count})",
+    }
+
+
+async def _ai_generate_expected_values(title: str, context: str, raw_factors: list, user_id: str) -> list:
+    """Use AI to generate expected values for each factor."""
+    api_key = os.getenv("EMERGENT_LLM_KEY")
+    if not api_key:
+        return raw_factors
+
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+        factor_lines = []
+        for f in raw_factors:
+            source_label = f.get("source", "")
+            nature = f.get("nature", "")
+            factor_lines.append(
+                f"- {f['name']} (source: {source_label}/{nature}, impact: {f['importance']}/10, desc: {f.get('description', '')})"
+            )
+
+        prompt = f"""You are a decision analysis expert. For the following decision, generate realistic expected values for each factor derived from a SWOT analysis.
+
+Decision: {title}
+Context: {context}
+
+Factors (derived from SWOT — strengths/opportunities become positive factors, weaknesses/threats are prefixed with NOT to represent desired absence):
+{chr(10).join(factor_lines)}
+
+For EACH factor, provide:
+1. expected_value: A realistic target/benchmark value (string). For "NOT X" factors, the expected value should represent the ideal state (e.g., "NOT High Employee Turnover" → expected_value: "< 5% annual turnover")
+2. unit: The measurement unit (e.g., "INR", "hours", "rating/10", "percentage", "count", "yes/no")
+3. data_type: "quantitative" or "qualitative"
+
+Return ONLY a valid JSON array, one object per factor, in the SAME ORDER:
+[{{{{
+  "name": "factor name",
+  "expected_value": "value",
+  "unit": "unit",
+  "data_type": "quantitative|qualitative"
+}}}}]
+
+Return ONLY valid JSON, no markdown fences."""
+
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"swot_{user_id}_{uuid.uuid4().hex[:8]}",
+            system_message="You are a decision analysis expert. Return only valid JSON arrays."
+        ).with_model("openai", "gpt-4.1-mini")
+
+        response = await chat.send_message(UserMessage(text=prompt))
+        response_text = response.strip()
+        if response_text.startswith("```"):
+            response_text = response_text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+
+        ai_values = json_module.loads(response_text)
+
+        for i, f in enumerate(raw_factors):
+            if i < len(ai_values):
+                ai = ai_values[i]
+                f["expected_value"] = ai.get("expected_value", "")
+                f["unit"] = ai.get("unit", "")
+                f["data_type"] = ai.get("data_type", "qualitative")
+
+        return raw_factors
+
+    except Exception as e:
+        logger.error(f"AI expected value generation failed for SWOT: {e}")
+        return raw_factors
