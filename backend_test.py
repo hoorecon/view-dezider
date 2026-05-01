@@ -1,517 +1,745 @@
-#!/usr/bin/env python3
 """
-Razorpay E2E Payment Flow Testing
-Backend URL: https://dezider-core.preview.emergentagent.com/api
-
-Test the complete payment & credits flow end-to-end with LIVE Razorpay keys.
+Backend API Testing for Pros & Cons and SWOT Analysis Modules
+Tests all CRUD operations and convert-to-decision functionality
 """
 
 import requests
 import json
-import hmac
-import hashlib
 import time
 from datetime import datetime
 
-# Configuration
+# Backend URL from frontend/.env
 BASE_URL = "https://dezider-core.preview.emergentagent.com/api"
-RAZORPAY_KEY_SECRET = "nWomtUqYGunPQ1P37O1VNuM5"  # From review request
 
-class RazorpayPaymentTester:
-    def __init__(self):
-        self.session = requests.Session()
-        self.user_token = None
-        self.user_data = None
-        self.test_email = f"razorpay_test_{int(time.time())}@example.com"
-        
-    def log(self, message):
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
-        
-    def test_user_registration(self):
-        """Step 1: Register a test user"""
-        self.log("🔐 Step 1: Registering test user...")
-        
-        payload = {
-            "email": self.test_email,
-            "password": "SecurePass123!",
-            "name": "Razorpay Test User"
+# Test results tracking
+test_results = []
+
+def log_test(test_name, passed, details=""):
+    """Log test result"""
+    status = "✅ PASS" if passed else "❌ FAIL"
+    test_results.append({
+        "test": test_name,
+        "passed": passed,
+        "details": details
+    })
+    print(f"{status}: {test_name}")
+    if details:
+        print(f"  Details: {details}")
+
+def print_summary():
+    """Print test summary"""
+    total = len(test_results)
+    passed = sum(1 for r in test_results if r["passed"])
+    failed = total - passed
+    
+    print("\n" + "="*80)
+    print(f"TEST SUMMARY: {passed}/{total} tests passed ({failed} failed)")
+    print("="*80)
+    
+    if failed > 0:
+        print("\nFailed Tests:")
+        for r in test_results:
+            if not r["passed"]:
+                print(f"  ❌ {r['test']}: {r['details']}")
+    print()
+
+# ============================================================================
+# AUTHENTICATION SETUP
+# ============================================================================
+
+def register_user():
+    """Register a new test user"""
+    timestamp = int(time.time())
+    email = f"proscons_swot_test_{timestamp}@example.com"
+    password = "TestPass123!"
+    name = f"Test User {timestamp}"
+    phone = f"+91987654{timestamp % 10000:04d}"
+    
+    response = requests.post(
+        f"{BASE_URL}/auth/register",
+        json={
+            "email": email,
+            "password": password,
+            "name": name,
+            "phone": phone
         }
-        
-        response = self.session.post(f"{BASE_URL}/auth/register", json=payload)
-        
-        if response.status_code == 200:
-            data = response.json()
-            self.user_token = data.get("session_token")
-            self.user_data = data
-            self.session.headers.update({"Authorization": f"Bearer {self.user_token}"})
-            self.log(f"✅ User registered successfully: {data.get('email')}")
-            self.log(f"   User ID: {data.get('user_id')}")
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        log_test("User Registration", True, f"Registered {email}")
+        return data.get("session_token"), email
+    else:
+        log_test("User Registration", False, f"Status: {response.status_code}, Response: {response.text}")
+        return None, None
+
+def login_user(email, password):
+    """Login with credentials"""
+    response = requests.post(
+        f"{BASE_URL}/auth/login",
+        json={"email": email, "password": password}
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        log_test("User Login", True, f"Logged in as {email}")
+        return data.get("session_token")
+    else:
+        log_test("User Login", False, f"Status: {response.status_code}, Response: {response.text}")
+        return None
+
+# ============================================================================
+# PROS & CONS MODULE TESTS
+# ============================================================================
+
+def test_pros_cons_create(token):
+    """Test: Create Pros & Cons analysis"""
+    response = requests.post(
+        f"{BASE_URL}/pros-cons",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "title": "Should I accept the job offer at TechCorp?",
+            "context": "Received a job offer from TechCorp as Senior Software Engineer. Need to decide whether to accept or stay at current company.",
+            "life_area": "career",
+            "decision_type": "need"
+        }
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        if "id" in data and "message" in data:
+            log_test("Pros & Cons - Create", True, f"Created analysis with ID: {data['id']}")
+            return data["id"]
+        else:
+            log_test("Pros & Cons - Create", False, f"Missing fields in response: {data}")
+            return None
+    else:
+        log_test("Pros & Cons - Create", False, f"Status: {response.status_code}, Response: {response.text}")
+        return None
+
+def test_pros_cons_list(token):
+    """Test: List all Pros & Cons analyses"""
+    response = requests.get(
+        f"{BASE_URL}/pros-cons",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        if isinstance(data, list):
+            log_test("Pros & Cons - List", True, f"Retrieved {len(data)} analyses")
             return True
         else:
-            self.log(f"❌ Registration failed: {response.status_code} - {response.text}")
+            log_test("Pros & Cons - List", False, f"Expected list, got: {type(data)}")
             return False
-            
-    def test_pricing_plans(self):
-        """Step 2: Test pricing & plans endpoint (public)"""
-        self.log("💰 Step 2: Testing pricing & plans endpoint...")
-        
-        response = self.session.get(f"{BASE_URL}/payments/plans")
-        
-        if response.status_code == 200:
-            data = response.json()
-            plans = data.get("plans", [])
-            topup_packs = data.get("topup_packs", [])
-            credit_costs = data.get("credit_costs", {})
-            
-            self.log(f"✅ Plans endpoint working: {len(plans)} plans, {len(topup_packs)} topup packs")
-            
-            # Verify expected plans
-            expected_plans = ["free", "starter", "pro", "business", "enterprise"]
-            plan_ids = [p.get("id") for p in plans]
-            for plan_id in expected_plans:
-                if plan_id in plan_ids:
-                    self.log(f"   ✓ Found plan: {plan_id}")
-                else:
-                    self.log(f"   ❌ Missing plan: {plan_id}")
-                    
-            # Verify expected topup packs
-            expected_packs = ["micro", "mini", "standard", "mega", "ultra"]
-            pack_ids = [p.get("id") for p in topup_packs]
-            for pack_id in expected_packs:
-                if pack_id in pack_ids:
-                    self.log(f"   ✓ Found pack: {pack_id}")
-                else:
-                    self.log(f"   ❌ Missing pack: {pack_id}")
-                    
-            # Verify credit costs
-            expected_actions = ["cld_generate", "decision_analyze"]
-            for action in expected_actions:
-                if action in credit_costs:
-                    self.log(f"   ✓ Credit cost for {action}: {credit_costs[action]}")
-                else:
-                    self.log(f"   ❌ Missing credit cost for: {action}")
-                    
+    else:
+        log_test("Pros & Cons - List", False, f"Status: {response.status_code}, Response: {response.text}")
+        return False
+
+def test_pros_cons_get(token, analysis_id):
+    """Test: Get specific Pros & Cons analysis"""
+    response = requests.get(
+        f"{BASE_URL}/pros-cons/{analysis_id}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        required_fields = ["id", "title", "context", "pros", "cons", "converted_decision_id"]
+        missing = [f for f in required_fields if f not in data]
+        if not missing:
+            log_test("Pros & Cons - Get", True, f"Retrieved analysis: {data['title']}")
             return True
         else:
-            self.log(f"❌ Plans endpoint failed: {response.status_code} - {response.text}")
+            log_test("Pros & Cons - Get", False, f"Missing fields: {missing}")
             return False
-            
-    def test_wallet_creation(self):
-        """Step 3: Test wallet auto-creation with initial credits"""
-        self.log("💳 Step 3: Testing wallet auto-creation...")
-        
-        response = self.session.get(f"{BASE_URL}/payments/wallet")
-        
-        if response.status_code == 200:
-            wallet = response.json()
-            credits = wallet.get("credits", 0)
-            current_plan = wallet.get("current_plan", "")
-            total_purchased = wallet.get("total_purchased", 0)
-            total_used = wallet.get("total_used", 0)
-            
-            self.log(f"✅ Wallet created successfully:")
-            self.log(f"   Credits: {credits}")
-            self.log(f"   Current plan: {current_plan}")
-            self.log(f"   Total purchased: {total_purchased}")
-            self.log(f"   Total used: {total_used}")
-            
-            # Verify expected initial state
-            if credits == 100 and current_plan == "free" and total_purchased == 0 and total_used == 0:
-                self.log("   ✅ Wallet state matches expected initial values")
-                return True
-            else:
-                self.log("   ❌ Wallet state doesn't match expected values")
-                return False
-        else:
-            self.log(f"❌ Wallet creation failed: {response.status_code} - {response.text}")
-            return False
-            
-    def test_credit_check(self):
-        """Step 4: Test credit check for different actions"""
-        self.log("🔍 Step 4: Testing credit check functionality...")
-        
-        # Test cld_generate action (cost=3)
-        payload = {"action": "cld_generate"}
-        response = self.session.post(f"{BASE_URL}/payments/check-credits", json=payload)
-        
-        if response.status_code == 200:
-            data = response.json()
-            cost = data.get("cost")
-            sufficient = data.get("sufficient")
-            available = data.get("available")
-            
-            self.log(f"✅ Credit check for cld_generate:")
-            self.log(f"   Cost: {cost}, Available: {available}, Sufficient: {sufficient}")
-            
-            if cost == 3 and sufficient == True:
-                self.log("   ✅ Credit check working correctly")
-            else:
-                self.log("   ❌ Credit check values incorrect")
-                return False
-        else:
-            self.log(f"❌ Credit check failed: {response.status_code} - {response.text}")
-            return False
-            
-        # Test decision_analyze action (cost=2)
-        payload = {"action": "decision_analyze"}
-        response = self.session.post(f"{BASE_URL}/payments/check-credits", json=payload)
-        
-        if response.status_code == 200:
-            data = response.json()
-            cost = data.get("cost")
-            
-            self.log(f"✅ Credit check for decision_analyze: cost={cost}")
-            
-            if cost == 2:
-                self.log("   ✅ Decision analyze cost correct")
-                return True
-            else:
-                self.log("   ❌ Decision analyze cost incorrect")
-                return False
-        else:
-            self.log(f"❌ Decision analyze credit check failed: {response.status_code} - {response.text}")
-            return False
-            
-    def test_topup_order_creation(self):
-        """Step 5: Test top-up order creation (creates real Razorpay order)"""
-        self.log("🛒 Step 5: Testing top-up order creation...")
-        
-        payload = {"pack_id": "micro"}
-        response = self.session.post(f"{BASE_URL}/payments/create-topup-order", json=payload)
-        
-        if response.status_code == 200:
-            data = response.json()
-            order_id = data.get("order_id")
-            amount = data.get("amount")
-            key_id = data.get("key_id")
-            pack = data.get("pack", {})
-            
-            self.log(f"✅ Top-up order created successfully:")
-            self.log(f"   Order ID: {order_id}")
-            self.log(f"   Amount: {amount} paise")
-            self.log(f"   Key ID: {key_id}")
-            self.log(f"   Pack: {pack.get('name')} ({pack.get('credits')} credits)")
-            
-            # Store order_id for payment verification
-            self.topup_order_id = order_id
-            self.topup_pack_credits = pack.get("credits", 0)
-            
-            if order_id and amount == 2900 and key_id:
-                self.log("   ✅ Order creation successful with correct values")
-                return True
-            else:
-                self.log("   ❌ Order creation values incorrect")
-                return False
-        else:
-            self.log(f"❌ Top-up order creation failed: {response.status_code} - {response.text}")
-            return False
-            
-    def test_subscription_order_creation(self):
-        """Step 6: Test subscription order creation"""
-        self.log("📅 Step 6: Testing subscription order creation...")
-        
-        payload = {"plan_id": "starter"}
-        response = self.session.post(f"{BASE_URL}/payments/create-subscription", json=payload)
-        
-        if response.status_code == 200:
-            data = response.json()
-            order_id = data.get("order_id")
-            amount = data.get("amount")
-            plan = data.get("plan", {})
-            
-            self.log(f"✅ Subscription order created successfully:")
-            self.log(f"   Order ID: {order_id}")
-            self.log(f"   Amount: {amount} paise")
-            self.log(f"   Plan: {plan.get('name')} ({plan.get('credits_per_month')} credits/month)")
-            
-            # Store order_id for webhook testing
-            self.subscription_order_id = order_id
-            self.subscription_plan_credits = plan.get("credits_per_month", 0)
-            
-            if order_id and amount == 14900:
-                self.log("   ✅ Subscription order creation successful")
-                return True
-            else:
-                self.log("   ❌ Subscription order values incorrect")
-                return False
-        else:
-            self.log(f"❌ Subscription order creation failed: {response.status_code} - {response.text}")
-            return False
-            
-    def test_payment_verification(self):
-        """Step 7: Test payment verification with simulated signature"""
-        self.log("✅ Step 7: Testing payment verification...")
-        
-        if not hasattr(self, 'topup_order_id'):
-            self.log("❌ No top-up order ID available for verification")
-            return False
-            
-        # Simulate payment verification
-        fake_payment_id = "pay_simulated_test"
-        
-        # Calculate HMAC-SHA256 signature as specified in review request
-        signature_payload = f"{self.topup_order_id}|{fake_payment_id}"
-        signature = hmac.new(
-            RAZORPAY_KEY_SECRET.encode('utf-8'),
-            signature_payload.encode('utf-8'),
-            hashlib.sha256
-        ).hexdigest()
-        
-        payload = {
-            "razorpay_order_id": self.topup_order_id,
-            "razorpay_payment_id": fake_payment_id,
-            "razorpay_signature": signature
-        }
-        
-        response = self.session.post(f"{BASE_URL}/payments/verify", json=payload)
-        
-        if response.status_code == 200:
-            data = response.json()
-            message = data.get("message")
-            credits_added = data.get("credits_added")
-            wallet = data.get("wallet", {})
-            
-            self.log(f"✅ Payment verification successful:")
-            self.log(f"   Message: {message}")
-            self.log(f"   Credits added: {credits_added}")
-            self.log(f"   New wallet balance: {wallet.get('credits')}")
-            
-            # Verify credits were added correctly (100 initial + 50 micro pack = 150)
-            expected_credits = 100 + self.topup_pack_credits
-            if wallet.get("credits") == expected_credits and credits_added == self.topup_pack_credits:
-                self.log(f"   ✅ Credits added correctly: {expected_credits} total")
-                return True
-            else:
-                self.log(f"   ❌ Credits not added correctly. Expected: {expected_credits}, Got: {wallet.get('credits')}")
-                return False
-        else:
-            self.log(f"❌ Payment verification failed: {response.status_code} - {response.text}")
-            return False
-            
-    def test_wallet_after_payment(self):
-        """Step 8: Verify wallet state after payment"""
-        self.log("💳 Step 8: Verifying wallet after payment...")
-        
-        response = self.session.get(f"{BASE_URL}/payments/wallet")
-        
-        if response.status_code == 200:
-            wallet = response.json()
-            credits = wallet.get("credits")
-            total_purchased = wallet.get("total_purchased")
-            
-            self.log(f"✅ Wallet state after payment:")
-            self.log(f"   Credits: {credits}")
-            self.log(f"   Total purchased: {total_purchased}")
-            
-            # Should have 150 credits (100 initial + 50 micro pack) and 50 total purchased
-            if credits == 150 and total_purchased == 50:
-                self.log("   ✅ Wallet state correct after payment")
-                return True
-            else:
-                self.log("   ❌ Wallet state incorrect after payment")
-                return False
-        else:
-            self.log(f"❌ Wallet check failed: {response.status_code} - {response.text}")
-            return False
-            
-    def test_payment_history(self):
-        """Step 9: Test payment history"""
-        self.log("📊 Step 9: Testing payment history...")
-        
-        response = self.session.get(f"{BASE_URL}/payments/history")
-        
-        if response.status_code == 200:
-            data = response.json()
-            transactions = data.get("transactions", [])
-            
-            self.log(f"✅ Payment history retrieved: {len(transactions)} transactions")
-            
-            # Should have at least 2 transactions: initial grant + purchase
-            if len(transactions) >= 2:
-                for i, tx in enumerate(transactions[:3]):  # Show first 3
-                    tx_type = tx.get("type")
-                    credits = tx.get("credits")
-                    description = tx.get("description", "")
-                    self.log(f"   Transaction {i+1}: {tx_type} - {credits} credits - {description}")
-                    
-                # Verify we have both grant and purchase transactions
-                tx_types = [tx.get("type") for tx in transactions]
-                if "grant" in tx_types and "purchase" in tx_types:
-                    self.log("   ✅ Both initial grant and purchase transactions found")
-                    return True
-                else:
-                    self.log("   ❌ Missing expected transaction types")
-                    return False
-            else:
-                self.log("   ❌ Insufficient transaction history")
-                return False
-        else:
-            self.log(f"❌ Payment history failed: {response.status_code} - {response.text}")
-            return False
-            
-    def test_webhook_simulation(self):
-        """Step 10: Test webhook simulation for subscription"""
-        self.log("🔗 Step 10: Testing webhook simulation...")
-        
-        if not hasattr(self, 'subscription_order_id'):
-            self.log("❌ No subscription order ID available for webhook")
-            return False
-            
-        # Simulate webhook payload for payment.captured event
-        webhook_payload = {
-            "event": "payment.captured",
-            "payload": {
-                "payment": {
-                    "entity": {
-                        "id": "pay_webhook_test",
-                        "order_id": self.subscription_order_id,
-                        "status": "captured"
-                    }
+    else:
+        log_test("Pros & Cons - Get", False, f"Status: {response.status_code}, Response: {response.text}")
+        return False
+
+def test_pros_cons_update(token, analysis_id):
+    """Test: Update Pros & Cons with items"""
+    response = requests.put(
+        f"{BASE_URL}/pros-cons/{analysis_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "pros": [
+                {
+                    "id": "pro1",
+                    "text": "Higher Salary",
+                    "description": "30% salary increase compared to current role",
+                    "importance": 9
+                },
+                {
+                    "id": "pro2",
+                    "text": "Better Work-Life Balance",
+                    "description": "Flexible work hours and remote work options",
+                    "importance": 8
+                },
+                {
+                    "id": "pro3",
+                    "text": "Career Growth Opportunities",
+                    "description": "Clear path to leadership roles",
+                    "importance": 7
                 }
-            }
+            ],
+            "cons": [
+                {
+                    "id": "con1",
+                    "text": "Longer Commute",
+                    "description": "45 minutes each way vs current 15 minutes",
+                    "importance": 6
+                },
+                {
+                    "id": "con2",
+                    "text": "Unknown Company Culture",
+                    "description": "Risk of not fitting in with new team",
+                    "importance": 7
+                }
+            ]
         }
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        if "message" in data:
+            log_test("Pros & Cons - Update", True, "Added 3 pros and 2 cons")
+            return True
+        else:
+            log_test("Pros & Cons - Update", False, f"Unexpected response: {data}")
+            return False
+    else:
+        log_test("Pros & Cons - Update", False, f"Status: {response.status_code}, Response: {response.text}")
+        return False
+
+def test_pros_cons_convert_empty(token, analysis_id):
+    """Test: Convert should fail with no items"""
+    # Create a new empty analysis
+    response = requests.post(
+        f"{BASE_URL}/pros-cons",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "title": "Empty Analysis",
+            "context": "Test empty conversion"
+        }
+    )
+    
+    if response.status_code == 200:
+        empty_id = response.json()["id"]
         
-        # Remove Authorization header for webhook (no auth required)
-        headers = self.session.headers.copy()
-        if "Authorization" in headers:
-            del headers["Authorization"]
-            
-        response = requests.post(
-            f"{BASE_URL}/payments/webhook", 
-            json=webhook_payload,
-            headers=headers
+        # Try to convert empty analysis
+        convert_response = requests.post(
+            f"{BASE_URL}/pros-cons/{empty_id}/convert-to-decision",
+            headers={"Authorization": f"Bearer {token}"}
         )
         
-        if response.status_code == 200:
-            data = response.json()
-            status = data.get("status")
-            
-            self.log(f"✅ Webhook processed successfully: {status}")
-            
-            # Check if credits were added (this might not happen immediately)
-            time.sleep(1)  # Brief delay
-            wallet_response = self.session.get(f"{BASE_URL}/payments/wallet")
-            if wallet_response.status_code == 200:
-                wallet = wallet_response.json()
-                credits = wallet.get("credits")
-                self.log(f"   Wallet credits after webhook: {credits}")
-                
+        if convert_response.status_code == 400:
+            log_test("Pros & Cons - Convert Empty (Validation)", True, "Correctly rejected empty analysis")
             return True
         else:
-            self.log(f"❌ Webhook simulation failed: {response.status_code} - {response.text}")
+            log_test("Pros & Cons - Convert Empty (Validation)", False, f"Expected 400, got {convert_response.status_code}")
             return False
-            
-    def test_credit_deduction(self):
-        """Step 11: Test credit deduction (indirect test)"""
-        self.log("💸 Step 11: Testing credit deduction...")
+    else:
+        log_test("Pros & Cons - Convert Empty (Validation)", False, "Failed to create empty analysis")
+        return False
+
+def test_pros_cons_convert(token, analysis_id):
+    """Test: Convert Pros & Cons to PRR Decision with AI"""
+    print("\n⏳ Converting Pros & Cons to Decision (may take 5-10 seconds for LLM call)...")
+    
+    response = requests.post(
+        f"{BASE_URL}/pros-cons/{analysis_id}/convert-to-decision",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=30  # 30 second timeout for LLM call
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        required_fields = ["decision_id", "factors_count", "message"]
+        missing = [f for f in required_fields if f not in data]
         
-        # Test time_store_analyze action (cost=5, sufficient=true with 150+ credits)
-        payload = {"action": "time_store_analyze"}
-        response = self.session.post(f"{BASE_URL}/payments/check-credits", json=payload)
-        
-        if response.status_code == 200:
-            data = response.json()
-            cost = data.get("cost")
-            sufficient = data.get("sufficient")
-            available = data.get("available")
-            
-            self.log(f"✅ Credit deduction check for time_store_analyze:")
-            self.log(f"   Cost: {cost}, Available: {available}, Sufficient: {sufficient}")
-            
-            if cost == 5 and sufficient == True:
-                self.log("   ✅ Credit deduction check working correctly")
-                return True
+        if not missing:
+            expected_factors = 5  # 3 pros + 2 cons
+            if data["factors_count"] == expected_factors:
+                log_test("Pros & Cons - Convert to Decision", True, 
+                        f"Created decision {data['decision_id']} with {data['factors_count']} factors")
+                return data["decision_id"]
             else:
-                self.log("   ❌ Credit deduction check failed")
-                return False
+                log_test("Pros & Cons - Convert to Decision", False, 
+                        f"Expected {expected_factors} factors, got {data['factors_count']}")
+                return None
         else:
-            self.log(f"❌ Credit deduction check failed: {response.status_code} - {response.text}")
-            return False
-            
-    def test_admin_initial_credits(self):
-        """Step 12: Test admin initial credits endpoints"""
-        self.log("👑 Step 12: Testing admin initial credits...")
-        
-        # Test PUT (should fail for non-admin)
-        payload = {"initial_credits": 200}
-        response = self.session.put(f"{BASE_URL}/payments/admin/initial-credits", json=payload)
-        
-        if response.status_code == 403:
-            self.log("✅ PUT admin initial credits correctly denied for non-admin user")
+            log_test("Pros & Cons - Convert to Decision", False, f"Missing fields: {missing}")
+            return None
+    else:
+        log_test("Pros & Cons - Convert to Decision", False, 
+                f"Status: {response.status_code}, Response: {response.text}")
+        return None
+
+def test_pros_cons_verify_conversion(token, analysis_id, decision_id):
+    """Test: Verify conversion updated analysis and created decision"""
+    # Check analysis has converted_decision_id
+    analysis_response = requests.get(
+        f"{BASE_URL}/pros-cons/{analysis_id}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    if analysis_response.status_code == 200:
+        analysis = analysis_response.json()
+        if analysis.get("converted_decision_id") == decision_id:
+            log_test("Pros & Cons - Verify Conversion Link", True, 
+                    f"Analysis correctly linked to decision {decision_id}")
         else:
-            self.log(f"❌ PUT admin initial credits should have returned 403, got: {response.status_code}")
+            log_test("Pros & Cons - Verify Conversion Link", False, 
+                    f"Expected decision_id {decision_id}, got {analysis.get('converted_decision_id')}")
             return False
-            
-        # Test GET (should work)
-        response = self.session.get(f"{BASE_URL}/payments/admin/initial-credits")
+    else:
+        log_test("Pros & Cons - Verify Conversion Link", False, "Failed to retrieve analysis")
+        return False
+    
+    # Check decision exists and has correct factors
+    decision_response = requests.get(
+        f"{BASE_URL}/decisions/{decision_id}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    if decision_response.status_code == 200:
+        decision = decision_response.json()
+        factors = decision.get("factors", [])
         
-        if response.status_code == 200:
-            data = response.json()
-            initial_credits = data.get("initial_credits")
-            
-            self.log(f"✅ GET admin initial credits successful: {initial_credits}")
-            
-            if isinstance(initial_credits, int) and initial_credits >= 0:
-                self.log("   ✅ Initial credits value is valid")
-                return True
+        # Verify factor count
+        if len(factors) != 5:
+            log_test("Pros & Cons - Verify Decision Factors", False, 
+                    f"Expected 5 factors, got {len(factors)}")
+            return False
+        
+        # Verify pros are as-is and cons are prefixed with "NOT "
+        pros_count = sum(1 for f in factors if not f["name"].startswith("NOT "))
+        cons_count = sum(1 for f in factors if f["name"].startswith("NOT "))
+        
+        if pros_count == 3 and cons_count == 2:
+            log_test("Pros & Cons - Verify Decision Factors", True, 
+                    f"Decision has 3 pros (as-is) and 2 cons (prefixed with NOT)")
+        else:
+            log_test("Pros & Cons - Verify Decision Factors", False, 
+                    f"Expected 3 pros and 2 cons, got {pros_count} pros and {cons_count} cons")
+            return False
+        
+        # Verify source metadata
+        if decision.get("source_module") == "pros_cons" and decision.get("source_id") == analysis_id:
+            log_test("Pros & Cons - Verify Decision Metadata", True, 
+                    "Decision correctly linked to source analysis")
+        else:
+            log_test("Pros & Cons - Verify Decision Metadata", False, 
+                    f"Source metadata incorrect: {decision.get('source_module')}, {decision.get('source_id')}")
+            return False
+        
+        return True
+    else:
+        log_test("Pros & Cons - Verify Decision Factors", False, 
+                f"Failed to retrieve decision: {decision_response.status_code}")
+        return False
+
+def test_pros_cons_delete(token, analysis_id):
+    """Test: Delete Pros & Cons analysis"""
+    response = requests.delete(
+        f"{BASE_URL}/pros-cons/{analysis_id}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        if "message" in data:
+            log_test("Pros & Cons - Delete", True, f"Deleted analysis {analysis_id}")
+            return True
+        else:
+            log_test("Pros & Cons - Delete", False, f"Unexpected response: {data}")
+            return False
+    else:
+        log_test("Pros & Cons - Delete", False, f"Status: {response.status_code}, Response: {response.text}")
+        return False
+
+# ============================================================================
+# SWOT ANALYSIS MODULE TESTS
+# ============================================================================
+
+def test_swot_create(token):
+    """Test: Create SWOT analysis"""
+    response = requests.post(
+        f"{BASE_URL}/swot",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "title": "Should I start a consulting business?",
+            "context": "Considering leaving corporate job to start independent consulting practice in software architecture.",
+            "life_area": "career",
+            "decision_type": "aspiration"
+        }
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        if "id" in data and "message" in data:
+            log_test("SWOT - Create", True, f"Created analysis with ID: {data['id']}")
+            return data["id"]
+        else:
+            log_test("SWOT - Create", False, f"Missing fields in response: {data}")
+            return None
+    else:
+        log_test("SWOT - Create", False, f"Status: {response.status_code}, Response: {response.text}")
+        return None
+
+def test_swot_list(token):
+    """Test: List all SWOT analyses"""
+    response = requests.get(
+        f"{BASE_URL}/swot",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        if isinstance(data, list):
+            log_test("SWOT - List", True, f"Retrieved {len(data)} analyses")
+            return True
+        else:
+            log_test("SWOT - List", False, f"Expected list, got: {type(data)}")
+            return False
+    else:
+        log_test("SWOT - List", False, f"Status: {response.status_code}, Response: {response.text}")
+        return False
+
+def test_swot_get(token, analysis_id):
+    """Test: Get specific SWOT analysis"""
+    response = requests.get(
+        f"{BASE_URL}/swot/{analysis_id}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        required_fields = ["id", "title", "context", "strengths", "weaknesses", 
+                          "opportunities", "threats", "converted_decision_id"]
+        missing = [f for f in required_fields if f not in data]
+        if not missing:
+            log_test("SWOT - Get", True, f"Retrieved analysis: {data['title']}")
+            return True
+        else:
+            log_test("SWOT - Get", False, f"Missing fields: {missing}")
+            return False
+    else:
+        log_test("SWOT - Get", False, f"Status: {response.status_code}, Response: {response.text}")
+        return False
+
+def test_swot_update(token, analysis_id):
+    """Test: Update SWOT with all 4 quadrants"""
+    response = requests.put(
+        f"{BASE_URL}/swot/{analysis_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "strengths": [
+                {
+                    "id": "s1",
+                    "text": "15 years of industry experience",
+                    "description": "Deep expertise in software architecture",
+                    "impact": 9
+                },
+                {
+                    "id": "s2",
+                    "text": "Strong professional network",
+                    "description": "Connections with potential clients",
+                    "impact": 8
+                }
+            ],
+            "weaknesses": [
+                {
+                    "id": "w1",
+                    "text": "No business management experience",
+                    "description": "Never run a business before",
+                    "impact": 7
+                },
+                {
+                    "id": "w2",
+                    "text": "Limited savings buffer",
+                    "description": "Only 6 months of runway",
+                    "impact": 8
+                }
+            ],
+            "opportunities": [
+                {
+                    "id": "o1",
+                    "text": "Growing demand for cloud architecture",
+                    "description": "Market expanding rapidly",
+                    "impact": 9
+                },
+                {
+                    "id": "o2",
+                    "text": "Remote work normalization",
+                    "description": "Can work with clients globally",
+                    "impact": 7
+                }
+            ],
+            "threats": [
+                {
+                    "id": "t1",
+                    "text": "Economic recession risk",
+                    "description": "Companies cutting consulting budgets",
+                    "impact": 8
+                },
+                {
+                    "id": "t2",
+                    "text": "Established competitors",
+                    "description": "Big consulting firms dominate market",
+                    "impact": 6
+                }
+            ]
+        }
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        if "message" in data:
+            log_test("SWOT - Update", True, "Added 2 items to each quadrant (S:2 W:2 O:2 T:2)")
+            return True
+        else:
+            log_test("SWOT - Update", False, f"Unexpected response: {data}")
+            return False
+    else:
+        log_test("SWOT - Update", False, f"Status: {response.status_code}, Response: {response.text}")
+        return False
+
+def test_swot_convert_empty(token):
+    """Test: Convert should fail with no items"""
+    # Create a new empty analysis
+    response = requests.post(
+        f"{BASE_URL}/swot",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "title": "Empty SWOT",
+            "context": "Test empty conversion"
+        }
+    )
+    
+    if response.status_code == 200:
+        empty_id = response.json()["id"]
+        
+        # Try to convert empty analysis
+        convert_response = requests.post(
+            f"{BASE_URL}/swot/{empty_id}/convert-to-decision",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        
+        if convert_response.status_code == 400:
+            log_test("SWOT - Convert Empty (Validation)", True, "Correctly rejected empty analysis")
+            return True
+        else:
+            log_test("SWOT - Convert Empty (Validation)", False, f"Expected 400, got {convert_response.status_code}")
+            return False
+    else:
+        log_test("SWOT - Convert Empty (Validation)", False, "Failed to create empty analysis")
+        return False
+
+def test_swot_convert(token, analysis_id):
+    """Test: Convert SWOT to PRR Decision with AI"""
+    print("\n⏳ Converting SWOT to Decision (may take 5-10 seconds for LLM call)...")
+    
+    response = requests.post(
+        f"{BASE_URL}/swot/{analysis_id}/convert-to-decision",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=30  # 30 second timeout for LLM call
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        required_fields = ["decision_id", "factors_count", "message"]
+        missing = [f for f in required_fields if f not in data]
+        
+        if not missing:
+            expected_factors = 8  # 2S + 2W + 2O + 2T
+            if data["factors_count"] == expected_factors:
+                log_test("SWOT - Convert to Decision", True, 
+                        f"Created decision {data['decision_id']} with {data['factors_count']} factors")
+                return data["decision_id"]
             else:
-                self.log("   ❌ Initial credits value is invalid")
-                return False
+                log_test("SWOT - Convert to Decision", False, 
+                        f"Expected {expected_factors} factors, got {data['factors_count']}")
+                return None
         else:
-            self.log(f"❌ GET admin initial credits failed: {response.status_code} - {response.text}")
+            log_test("SWOT - Convert to Decision", False, f"Missing fields: {missing}")
+            return None
+    else:
+        log_test("SWOT - Convert to Decision", False, 
+                f"Status: {response.status_code}, Response: {response.text}")
+        return None
+
+def test_swot_verify_conversion(token, analysis_id, decision_id):
+    """Test: Verify SWOT conversion with proper factor transformation"""
+    # Check analysis has converted_decision_id
+    analysis_response = requests.get(
+        f"{BASE_URL}/swot/{analysis_id}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    if analysis_response.status_code == 200:
+        analysis = analysis_response.json()
+        if analysis.get("converted_decision_id") == decision_id:
+            log_test("SWOT - Verify Conversion Link", True, 
+                    f"Analysis correctly linked to decision {decision_id}")
+        else:
+            log_test("SWOT - Verify Conversion Link", False, 
+                    f"Expected decision_id {decision_id}, got {analysis.get('converted_decision_id')}")
             return False
-            
-    def run_all_tests(self):
-        """Run all payment flow tests"""
-        self.log("🚀 Starting Razorpay E2E Payment Flow Testing...")
-        self.log(f"Backend URL: {BASE_URL}")
-        self.log(f"Test Email: {self.test_email}")
-        self.log("=" * 80)
+    else:
+        log_test("SWOT - Verify Conversion Link", False, "Failed to retrieve analysis")
+        return False
+    
+    # Check decision exists and has correct factors
+    decision_response = requests.get(
+        f"{BASE_URL}/decisions/{decision_id}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    if decision_response.status_code == 200:
+        decision = decision_response.json()
+        factors = decision.get("factors", [])
         
-        tests = [
-            ("User Registration", self.test_user_registration),
-            ("Pricing & Plans (Public)", self.test_pricing_plans),
-            ("Wallet Auto-creation", self.test_wallet_creation),
-            ("Credit Check", self.test_credit_check),
-            ("Top-up Order Creation", self.test_topup_order_creation),
-            ("Subscription Order Creation", self.test_subscription_order_creation),
-            ("Payment Verification", self.test_payment_verification),
-            ("Wallet After Payment", self.test_wallet_after_payment),
-            ("Payment History", self.test_payment_history),
-            ("Webhook Simulation", self.test_webhook_simulation),
-            ("Credit Deduction Check", self.test_credit_deduction),
-            ("Admin Initial Credits", self.test_admin_initial_credits),
-        ]
+        # Verify factor count
+        if len(factors) != 8:
+            log_test("SWOT - Verify Decision Factors", False, 
+                    f"Expected 8 factors, got {len(factors)}")
+            return False
         
-        passed = 0
-        failed = 0
+        # Verify S/O are as-is and W/T are prefixed with "NOT "
+        positive_count = sum(1 for f in factors if not f["name"].startswith("NOT "))
+        negative_count = sum(1 for f in factors if f["name"].startswith("NOT "))
         
-        for test_name, test_func in tests:
-            self.log(f"\n{'='*20} {test_name} {'='*20}")
-            try:
-                if test_func():
-                    passed += 1
-                    self.log(f"✅ {test_name} PASSED")
-                else:
-                    failed += 1
-                    self.log(f"❌ {test_name} FAILED")
-            except Exception as e:
-                failed += 1
-                self.log(f"❌ {test_name} FAILED with exception: {str(e)}")
-                
-        self.log("\n" + "="*80)
-        self.log(f"🎯 RAZORPAY E2E PAYMENT FLOW TESTING COMPLETE")
-        self.log(f"✅ Passed: {passed}")
-        self.log(f"❌ Failed: {failed}")
-        self.log(f"📊 Success Rate: {(passed/(passed+failed)*100):.1f}%")
-        
-        if failed == 0:
-            self.log("🎉 ALL TESTS PASSED! Razorpay payment flow is working correctly.")
+        if positive_count == 4 and negative_count == 4:
+            log_test("SWOT - Verify Decision Factors", True, 
+                    f"Decision has 4 positive factors (S+O) and 4 negative factors (W+T prefixed with NOT)")
         else:
-            self.log(f"⚠️  {failed} test(s) failed. Please review the failures above.")
-            
-        return passed, failed
+            log_test("SWOT - Verify Decision Factors", False, 
+                    f"Expected 4 positive and 4 negative, got {positive_count} positive and {negative_count} negative")
+            return False
+        
+        # Verify source metadata
+        if decision.get("source_module") == "swot" and decision.get("source_id") == analysis_id:
+            log_test("SWOT - Verify Decision Metadata", True, 
+                    "Decision correctly linked to source analysis")
+        else:
+            log_test("SWOT - Verify Decision Metadata", False, 
+                    f"Source metadata incorrect: {decision.get('source_module')}, {decision.get('source_id')}")
+            return False
+        
+        return True
+    else:
+        log_test("SWOT - Verify Decision Factors", False, 
+                f"Failed to retrieve decision: {decision_response.status_code}")
+        return False
+
+def test_swot_delete(token, analysis_id):
+    """Test: Delete SWOT analysis"""
+    response = requests.delete(
+        f"{BASE_URL}/swot/{analysis_id}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        if "message" in data:
+            log_test("SWOT - Delete", True, f"Deleted analysis {analysis_id}")
+            return True
+        else:
+            log_test("SWOT - Delete", False, f"Unexpected response: {data}")
+            return False
+    else:
+        log_test("SWOT - Delete", False, f"Status: {response.status_code}, Response: {response.text}")
+        return False
+
+# ============================================================================
+# MAIN TEST EXECUTION
+# ============================================================================
+
+def main():
+    print("="*80)
+    print("PROS & CONS + SWOT ANALYSIS MODULE TESTING")
+    print(f"Backend URL: {BASE_URL}")
+    print("="*80)
+    print()
+    
+    # Step 1: Register and authenticate
+    print("STEP 1: Authentication Setup")
+    print("-" * 80)
+    token, email = register_user()
+    if not token:
+        print("❌ Failed to register user. Aborting tests.")
+        return
+    
+    print()
+    
+    # Step 2: Test Pros & Cons Module
+    print("STEP 2: Pros & Cons Module Tests")
+    print("-" * 80)
+    
+    pc_id = test_pros_cons_create(token)
+    if pc_id:
+        test_pros_cons_list(token)
+        test_pros_cons_get(token, pc_id)
+        test_pros_cons_update(token, pc_id)
+        test_pros_cons_convert_empty(token, pc_id)
+        
+        pc_decision_id = test_pros_cons_convert(token, pc_id)
+        if pc_decision_id:
+            test_pros_cons_verify_conversion(token, pc_id, pc_decision_id)
+        
+        # Don't delete yet - keep for verification
+    
+    print()
+    
+    # Step 3: Test SWOT Analysis Module
+    print("STEP 3: SWOT Analysis Module Tests")
+    print("-" * 80)
+    
+    swot_id = test_swot_create(token)
+    if swot_id:
+        test_swot_list(token)
+        test_swot_get(token, swot_id)
+        test_swot_update(token, swot_id)
+        test_swot_convert_empty(token)
+        
+        swot_decision_id = test_swot_convert(token, swot_id)
+        if swot_decision_id:
+            test_swot_verify_conversion(token, swot_id, swot_decision_id)
+        
+        # Don't delete yet - keep for verification
+    
+    print()
+    
+    # Step 4: Verify decisions list includes both converted decisions
+    print("STEP 4: Verify Converted Decisions in Decision List")
+    print("-" * 80)
+    
+    decisions_response = requests.get(
+        f"{BASE_URL}/decisions",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    
+    if decisions_response.status_code == 200:
+        decisions = decisions_response.json()
+        pc_found = any(d.get("source_module") == "pros_cons" for d in decisions)
+        swot_found = any(d.get("source_module") == "swot" for d in decisions)
+        
+        if pc_found and swot_found:
+            log_test("Verify Decisions List", True, 
+                    "Both converted decisions appear in decisions list")
+        else:
+            log_test("Verify Decisions List", False, 
+                    f"Pros&Cons found: {pc_found}, SWOT found: {swot_found}")
+    else:
+        log_test("Verify Decisions List", False, 
+                f"Failed to retrieve decisions: {decisions_response.status_code}")
+    
+    print()
+    
+    # Print summary
+    print_summary()
 
 if __name__ == "__main__":
-    tester = RazorpayPaymentTester()
-    tester.run_all_tests()
+    main()

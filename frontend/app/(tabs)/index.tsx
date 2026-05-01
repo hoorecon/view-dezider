@@ -245,6 +245,38 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Decision Kickstarters — Pros & Cons + SWOT */}
+          <Text style={styles.sectionTitle}>Decision Kickstarters</Text>
+          <View style={styles.quickActions}>
+            <TouchableOpacity
+              style={styles.actionCard}
+              onPress={() => router.push('/tools/pros-cons' as any)}
+            >
+              <LinearGradient
+                colors={['#059669', '#10B981']}
+                style={styles.actionIcon}
+              >
+                <Ionicons name="swap-horizontal" size={24} color={COLORS.white} />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Pros & Cons</Text>
+              <Text style={styles.actionSubtitle}>Weigh advantages vs risks</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionCard}
+              onPress={() => router.push('/tools/swot' as any)}
+            >
+              <LinearGradient
+                colors={['#1E40AF', '#3B82F6']}
+                style={styles.actionIcon}
+              >
+                <Ionicons name="grid" size={24} color={COLORS.white} />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>SWOT Analysis</Text>
+              <Text style={styles.actionSubtitle}>Strategic 4-quadrant view</Text>
+            </TouchableOpacity>
+          </View>
+
           {/* GEM Flight Model — Orchestrator */}
           <TouchableOpacity
             style={styles.cttCard}
