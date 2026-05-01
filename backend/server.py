@@ -53,6 +53,7 @@ from routes.gem_flight import router as gem_flight_router
 from routes.consciousness_diary import router as consciousness_diary_router
 from routes.pros_cons import router as pros_cons_router
 from routes.swot import router as swot_router
+from routes.admin_docs import router as admin_docs_router
 
 
 # ========================
@@ -86,6 +87,7 @@ api_router.include_router(gem_flight_router)
 api_router.include_router(consciousness_diary_router)
 api_router.include_router(pros_cons_router)
 api_router.include_router(swot_router)
+api_router.include_router(admin_docs_router)
 
 # ========================
 # HEALTH CHECK

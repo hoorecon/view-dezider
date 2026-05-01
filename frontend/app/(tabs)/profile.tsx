@@ -842,6 +842,23 @@ export default function ProfileScreen() {
         <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
       </TouchableOpacity>
 
+      {/* Documentation Hub - Admin Only */}
+      {userRole !== 'user' && (
+        <TouchableOpacity
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#6366F130', marginBottom: 12 }}
+          onPress={() => router.push('/admin/docs' as any)}
+        >
+          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#1E293B', alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="library" size={18} color="#FFF" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>Documentation Hub</Text>
+            <Text style={{ fontSize: 12, color: COLORS.textMuted }}>PRD, SRS, Test Cases, API Catalog & more</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+        </TouchableOpacity>
+      )}
+
       {/* Goals Execution Manager */}
       <TouchableOpacity
         style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}
