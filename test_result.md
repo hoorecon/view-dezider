@@ -3025,6 +3025,21 @@ agent_communication:
         agent: "testing"
         comment: "✅ SESSION MODE + CONFIG OVERRIDE COMPREHENSIVE TESTING PASSED: All 3 session mode tests successful! (1) POST /api/decisions with context field successfully creates decision for collaboration testing (decision_id returned), (2) POST /api/collaboration/sessions with session_mode='live_sync' and mode_config_override={leader_weight_pct: 70} successfully creates collaboration session, both fields stored correctly in session document, (3) GET /api/collaboration/sessions/{id} correctly retrieves session with session_mode='live_sync' and mode_config_override={leader_weight_pct: 70} preserved. Config override functionality working - user-specified leader_weight_pct overrides default 50% from command mode. Complete session mode and config override functionality verified end-to-end."
 
+  - task: "Video Call Endpoints for LIVE_SYNC Collaboration Sessions"
+    implemented: true
+    working: true
+    file: "routes/collaboration.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented complete video call lifecycle for LIVE_SYNC collaboration sessions: POST /api/collaboration/sessions auto-creates Jitsi room for live_sync mode with call_room_url/call_id/call_room_id fields. POST /start-call starts/gets call. POST /join-call records participant joining. GET /call-status returns call state. POST /screen-share toggles screen sharing. POST /end-call ends call (host only). Error handling: 400 for async sessions trying to start call, 403 for non-host trying to end call."
+      - working: true
+        agent: "testing"
+        comment: "✅ VIDEO CALL ENDPOINTS COMPREHENSIVE TESTING PASSED: All 14 test scenarios successful with 100% success rate! Complete video call lifecycle verified end-to-end: (1) User registration working for host and participant users, (2) Decision modes retrieval working (mode_id: equal), (3) Contact creation working for participant linking, (4) Decision creation working with proper context field, (5) POST /api/collaboration/sessions with session_mode='live_sync' successfully creates collaboration session with all required call fields: call_room_url (https://meet.jit.si/vd-collab-*), call_id, call_room_id - auto-creates Jitsi room on session creation, (6) POST /api/collaboration/sessions/{session_id}/start-call successfully starts call with status='live', provider='jitsi', proper room_url, participants_joined array initialized, (7) POST /api/collaboration/sessions/{session_id}/join-call successfully records participant joining with call_id and room_url returned, (8) GET /api/collaboration/sessions/{session_id}/call-status returns proper call state: has_call=true, status='live', participants_joined count=1, screen_sharing_by field present, (9) POST /api/collaboration/sessions/{session_id}/screen-share with {sharing: true} successfully enables screen sharing with screen_sharing_by='Video Call Host', (10) POST /api/collaboration/sessions/{session_id}/end-call successfully ends call with status='ended', (11) GET /api/collaboration/sessions/{session_id}/call-status after ending correctly shows status='ended', (12) POST /api/collaboration/sessions with session_mode='async' successfully creates async session, (13) POST /api/collaboration/sessions/{async_session_id}/start-call on async session correctly returns 400 error with message 'Video calls are only available for Live Sync sessions'. Complete video call functionality verified with proper Jitsi integration, participant management, screen sharing, and error handling. Backend URL: https://dezider-core.preview.emergentagent.com/api working correctly."
+
 test_plan:
   current_focus: []
   stuck_tasks: []
@@ -3080,6 +3095,30 @@ DIGILOCKER eKYC:
 3. GET /api/collaboration/digilocker/status - returns verification status.
 
 BIOMETRIC FRAMEWORK:
+
+  - agent: "main"
+    message: "VIDEO CALL FOR LIVE_SYNC sessions. Test new endpoints:
+
+VIDEO CALL LIFECYCLE:
+1. POST /api/collaboration/sessions - Create session with session_mode='live_sync'. Should auto-create Jitsi room. Response should include call_room_url, call_id, call_room_id.
+2. POST /api/collaboration/sessions/{session_id}/start-call - Start/get call. Returns room_url, status='live', participants_joined, provider='jitsi'
+3. POST /api/collaboration/sessions/{session_id}/join-call - Join call as participant. Returns room_url.
+4. GET /api/collaboration/sessions/{session_id}/call-status - Get call status. Returns has_call=true, status, participants_joined, screen_sharing_by.
+5. POST /api/collaboration/sessions/{session_id}/screen-share - Toggle screen share {sharing: true}. Returns screen_sharing_by.
+6. POST /api/collaboration/sessions/{session_id}/end-call - End call (host only). Returns status='ended'.
+7. GET /api/collaboration/sessions/{session_id}/call-status - After ending, status should be 'ended'.
+
+ERROR CASES:
+8. POST /api/collaboration/sessions/{session_id}/start-call on an ASYNC session - Should return 400 'Video calls are only available for Live Sync sessions'
+9. POST /api/collaboration/sessions/{session_id}/end-call by non-host - Should return 403
+
+FLOW: Register → Promote admin → Create contact → Create decision → Create live_sync collab session (verify call_room_url in response) → Start call → Join call → Check status → Toggle screen share → End call → Verify ended status → Try start-call on async session (expect 400)
+
+Backend URL: https://dezider-core.preview.emergentagent.com/api"
+
+  - agent: "testing"
+    message: "🎉 VIDEO CALL ENDPOINTS FOR LIVE_SYNC COLLABORATION SESSIONS COMPREHENSIVE TESTING COMPLETE: All 14 test scenarios passed successfully with 100% success rate! ✅ AUTHENTICATION & SETUP: Host and participant user registration working correctly (videocall_host_{timestamp}@test.com, videocall_participant_{timestamp}@test.com), decision modes retrieval working (mode_id: equal), contact creation working for participant linking, decision creation working with proper context field. ✅ LIVE_SYNC SESSION CREATION WITH AUTO JITSI ROOM: POST /api/collaboration/sessions with session_mode='live_sync' successfully creates collaboration session with all required call fields auto-populated: call_room_url (https://meet.jit.si/vd-collab-8ac3032f0fc1), call_id (call_6f15680dd386), call_room_id (vd-collab-8ac3032f0fc1) - Jitsi room automatically created on session creation. ✅ VIDEO CALL LIFECYCLE: (1) POST /api/collaboration/sessions/{session_id}/start-call successfully starts call with status='live', provider='jitsi', proper room_url, participants_joined array initialized with host, (2) POST /api/collaboration/sessions/{session_id}/join-call successfully records participant joining with call_id and room_url returned, (3) GET /api/collaboration/sessions/{session_id}/call-status returns proper call state: has_call=true, status='live', participants_joined count=1, screen_sharing_by field present, (4) POST /api/collaboration/sessions/{session_id}/screen-share with {sharing: true} successfully enables screen sharing with screen_sharing_by='Video Call Host', (5) POST /api/collaboration/sessions/{session_id}/end-call successfully ends call with status='ended', (6) GET /api/collaboration/sessions/{session_id}/call-status after ending correctly shows status='ended'. ✅ ERROR HANDLING: (1) POST /api/collaboration/sessions with session_mode='async' successfully creates async session (session_id: collab_40076abd20fc), (2) POST /api/collaboration/sessions/{async_session_id}/start-call on async session correctly returns 400 error with message 'Video calls are only available for Live Sync sessions'. Complete video call functionality verified with proper Jitsi integration, auto room creation, participant management, screen sharing toggle, call lifecycle management, and error handling. All endpoints working correctly. Backend URL: https://dezider-core.preview.emergentagent.com/api working correctly."
+
 
   - agent: "main"
     message: "NEW INCIDENT RESPONSE + AUDIT TRAIL system. Test these new endpoints:

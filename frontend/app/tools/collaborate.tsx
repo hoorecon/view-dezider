@@ -521,6 +521,22 @@ export default function CollaborateScreen() {
                       {new Date(s.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                     </Text>
                   </View>
+                  {/* Video Call Button for Live Sync */}
+                  {s.session_mode === 'live_sync' && s.status === 'active' && (
+                    <TouchableOpacity style={styles.joinCallBtn}
+                      onPress={() => router.push({ pathname: '/tools/collab-call', params: { sessionId: s.id } } as any)}>
+                      <View style={styles.joinCallIcon}>
+                        <Ionicons name="videocam" size={16} color="#FFF" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.joinCallTitle}>
+                          {s.call_room_url ? 'Join Video Call' : 'Start Video Call'}
+                        </Text>
+                        <Text style={styles.joinCallSub}>Jitsi Meet • Screen sharing enabled</Text>
+                      </View>
+                      <Ionicons name="arrow-forward" size={16} color="#059669" />
+                    </TouchableOpacity>
+                  )}
                 </TouchableOpacity>
               );
             })
@@ -791,6 +807,12 @@ const styles = StyleSheet.create({
   // Verify join button
   verifyJoinBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: '#F5F3FF', marginRight: 8 },
   verifyJoinText: { fontSize: 10, fontWeight: '600', color: '#7C3AED' },
+
+  // Video Call join button
+  joinCallBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, marginTop: 8, borderRadius: 10, backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0' },
+  joinCallIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#059669', justifyContent: 'center', alignItems: 'center' },
+  joinCallTitle: { fontSize: 13, fontWeight: '700', color: '#059669' },
+  joinCallSub: { fontSize: 10, color: '#6B7280', marginTop: 1 },
 
   // Verification Modal styles
   verifyCard: { backgroundColor: '#F9FAFB', borderRadius: 12, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#E5E7EB' },

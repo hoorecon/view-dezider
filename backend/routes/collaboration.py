@@ -233,6 +233,43 @@ async def create_collaboration_session(request: Request, user: dict = Depends(ge
 
     await db.collaboration_sessions.insert_one(session_doc)
 
+    # Auto-create Jitsi room for live_sync sessions
+    if session_mode == "live_sync":
+        config = await db.app_config.find_one({"key": "call_settings"}, {"_id": 0})
+        config_val = config.get("value", {}) if config else {}
+        jitsi_domain = config_val.get("jitsi_domain", "meet.jit.si")
+        room_id = f"vd-collab-{session_id[-12:]}"
+        room_url = f"https://{jitsi_domain}/{room_id}"
+
+        call_doc = {
+            "id": f"call_{uuid.uuid4().hex[:12]}",
+            "collaboration_session_id": session_id,
+            "room_id": room_id,
+            "room_url": room_url,
+            "provider": config_val.get("provider", "jitsi"),
+            "jitsi_domain": jitsi_domain,
+            "status": "waiting",  # waiting, live, ended
+            "host_id": user["user_id"],
+            "host_name": user.get("name", user.get("email", "")),
+            "participants_joined": [],
+            "screen_sharing_by": None,
+            "recording_enabled": False,
+            "created_at": now,
+            "started_at": None,
+            "ended_at": None,
+            "duration_minutes": 60,
+        }
+        await db.collab_calls.insert_one(call_doc)
+
+        # Attach room_url to session
+        await db.collaboration_sessions.update_one(
+            {"id": session_id},
+            {"$set": {"call_room_url": room_url, "call_id": call_doc["id"], "call_room_id": room_id}}
+        )
+        session_doc["call_room_url"] = room_url
+        session_doc["call_id"] = call_doc["id"]
+        session_doc["call_room_id"] = room_id
+
     # Send notifications to linked users
     if notify_participants:
         for p in participants:
@@ -293,6 +330,209 @@ async def get_session(session_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Access denied")
 
     return session
+
+
+# ========================
+# VIDEO CALL FOR LIVE_SYNC
+# ========================
+
+@router.post("/sessions/{session_id}/start-call")
+async def start_or_get_call(session_id: str, request: Request, user: dict = Depends(get_current_user)):
+    """Start or get existing video call for a live_sync collaboration session."""
+    session = await db.collaboration_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not session:
+        raise HTTPException(404, "Session not found")
+    if session.get("session_mode") != "live_sync":
+        raise HTTPException(400, "Video calls are only available for Live Sync sessions")
+
+    # Check existing call
+    call = await db.collab_calls.find_one({"collaboration_session_id": session_id}, {"_id": 0})
+
+    if call and call.get("status") != "ended":
+        # Mark as live if still waiting
+        if call["status"] == "waiting":
+            await db.collab_calls.update_one(
+                {"id": call["id"]},
+                {"$set": {"status": "live", "started_at": datetime.now(timezone.utc).isoformat()}}
+            )
+            call["status"] = "live"
+        return {
+            "call_id": call["id"],
+            "room_url": call["room_url"],
+            "room_id": call["room_id"],
+            "status": call["status"],
+            "provider": call.get("provider", "jitsi"),
+            "jitsi_domain": call.get("jitsi_domain", "meet.jit.si"),
+            "participants_joined": call.get("participants_joined", []),
+            "screen_sharing_by": call.get("screen_sharing_by"),
+        }
+
+    # Create new call if none exists or previous ended
+    config = await db.app_config.find_one({"key": "call_settings"}, {"_id": 0})
+    config_val = config.get("value", {}) if config else {}
+    jitsi_domain = config_val.get("jitsi_domain", "meet.jit.si")
+    room_id = f"vd-collab-{uuid.uuid4().hex[:10]}"
+    room_url = f"https://{jitsi_domain}/{room_id}"
+    now = datetime.now(timezone.utc).isoformat()
+
+    call_doc = {
+        "id": f"call_{uuid.uuid4().hex[:12]}",
+        "collaboration_session_id": session_id,
+        "room_id": room_id,
+        "room_url": room_url,
+        "provider": config_val.get("provider", "jitsi"),
+        "jitsi_domain": jitsi_domain,
+        "status": "live",
+        "host_id": user["user_id"],
+        "host_name": user.get("name", user.get("email", "")),
+        "participants_joined": [{
+            "user_id": user["user_id"],
+            "name": user.get("name", "Host"),
+            "joined_at": now,
+            "role": "host",
+        }],
+        "screen_sharing_by": None,
+        "recording_enabled": False,
+        "created_at": now,
+        "started_at": now,
+        "ended_at": None,
+        "duration_minutes": 60,
+    }
+    await db.collab_calls.insert_one(call_doc)
+
+    # Update session with call info
+    await db.collaboration_sessions.update_one(
+        {"id": session_id},
+        {"$set": {"call_room_url": room_url, "call_id": call_doc["id"], "call_room_id": room_id}}
+    )
+
+    # Notify participants
+    for p in session.get("participants", []):
+        if p.get("linked_user_id"):
+            await db.notifications.insert_one({
+                "id": f"notif_{uuid.uuid4().hex[:12]}",
+                "user_id": p["linked_user_id"],
+                "type": "call_started",
+                "title": f"Live Call Started: {session.get('title', 'Collaboration')}",
+                "message": f"{user.get('name', 'Host')} started a live video call. Join now!",
+                "data": {"session_id": session_id, "room_url": room_url, "call_id": call_doc["id"]},
+                "read": False,
+                "created_at": now,
+            })
+
+    return {
+        "call_id": call_doc["id"],
+        "room_url": room_url,
+        "room_id": room_id,
+        "status": "live",
+        "provider": call_doc["provider"],
+        "jitsi_domain": jitsi_domain,
+        "participants_joined": call_doc["participants_joined"],
+        "message": "Call started. Participants have been notified.",
+    }
+
+
+@router.post("/sessions/{session_id}/join-call")
+async def join_call(session_id: str, request: Request, user: dict = Depends(get_current_user)):
+    """Record a participant joining the call."""
+    call = await db.collab_calls.find_one(
+        {"collaboration_session_id": session_id, "status": {"$in": ["waiting", "live"]}}, {"_id": 0}
+    )
+    if not call:
+        raise HTTPException(404, "No active call for this session")
+
+    now = datetime.now(timezone.utc).isoformat()
+    already = any(p["user_id"] == user["user_id"] for p in call.get("participants_joined", []))
+
+    if not already:
+        await db.collab_calls.update_one(
+            {"id": call["id"]},
+            {"$push": {"participants_joined": {
+                "user_id": user["user_id"],
+                "name": user.get("name", "Participant"),
+                "joined_at": now,
+                "role": "participant",
+            }}}
+        )
+
+    return {
+        "call_id": call["id"],
+        "room_url": call["room_url"],
+        "room_id": call["room_id"],
+        "status": call["status"],
+        "provider": call.get("provider", "jitsi"),
+        "jitsi_domain": call.get("jitsi_domain", "meet.jit.si"),
+    }
+
+
+@router.post("/sessions/{session_id}/end-call")
+async def end_call(session_id: str, user: dict = Depends(get_current_user)):
+    """End the video call for a session (host only)."""
+    call = await db.collab_calls.find_one(
+        {"collaboration_session_id": session_id, "status": {"$in": ["waiting", "live"]}}, {"_id": 0}
+    )
+    if not call:
+        raise HTTPException(404, "No active call for this session")
+    if call["host_id"] != user["user_id"]:
+        raise HTTPException(403, "Only the host can end the call")
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.collab_calls.update_one(
+        {"id": call["id"]},
+        {"$set": {"status": "ended", "ended_at": now}}
+    )
+
+    return {"call_id": call["id"], "status": "ended", "ended_at": now, "message": "Call ended"}
+
+
+@router.get("/sessions/{session_id}/call-status")
+async def get_call_status(session_id: str, user: dict = Depends(get_current_user)):
+    """Get current call status for a session."""
+    call = await db.collab_calls.find_one(
+        {"collaboration_session_id": session_id}, {"_id": 0},
+        sort=[("created_at", -1)]
+    )
+    if not call:
+        return {"has_call": False, "status": None}
+
+    return {
+        "has_call": True,
+        "call_id": call["id"],
+        "room_url": call["room_url"],
+        "room_id": call["room_id"],
+        "status": call["status"],
+        "provider": call.get("provider", "jitsi"),
+        "jitsi_domain": call.get("jitsi_domain", "meet.jit.si"),
+        "host_name": call.get("host_name", ""),
+        "participants_joined": call.get("participants_joined", []),
+        "screen_sharing_by": call.get("screen_sharing_by"),
+        "started_at": call.get("started_at"),
+        "ended_at": call.get("ended_at"),
+    }
+
+
+@router.post("/sessions/{session_id}/screen-share")
+async def toggle_screen_share(session_id: str, request: Request, user: dict = Depends(get_current_user)):
+    """Toggle screen sharing status for a call."""
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+
+    sharing = body.get("sharing", True)
+    call = await db.collab_calls.find_one(
+        {"collaboration_session_id": session_id, "status": "live"}, {"_id": 0}
+    )
+    if not call:
+        raise HTTPException(404, "No active call")
+
+    await db.collab_calls.update_one(
+        {"id": call["id"]},
+        {"$set": {"screen_sharing_by": user.get("name", user["user_id"]) if sharing else None}}
+    )
+
+    return {"screen_sharing_by": user.get("name") if sharing else None, "sharing": sharing}
 
 
 @router.post("/sessions/{session_id}/contribute")

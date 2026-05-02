@@ -1,421 +1,383 @@
-"""Backend API Testing for DigiLocker Integration and Solution Finder Collaboration"""
+"""
+Backend API Testing for Video Call Endpoints in LIVE_SYNC Collaboration Sessions
+Tests all video call functionality for multi-user collaboration
+"""
 
 import requests
 import json
 import time
 from datetime import datetime
 
-# Backend URL from review request
+# Backend URL
 BASE_URL = "https://dezider-core.preview.emergentagent.com/api"
 
-class TestRunner:
-    def __init__(self):
-        self.session_token = None
-        self.user_id = None
-        self.decision_id = None
-        self.results = []
-        
-    def log(self, test_name, status, message, details=None):
-        """Log test result"""
-        result = {
-            "test": test_name,
-            "status": status,
-            "message": message,
-            "details": details,
-            "timestamp": datetime.now().isoformat()
-        }
-        self.results.append(result)
-        status_icon = "✅" if status == "PASS" else "❌" if status == "FAIL" else "⏭️"
-        print(f"{status_icon} {test_name}: {message}")
-        if details:
-            print(f"   Details: {details}")
-    
-    def register_user(self):
-        """Register a new test user"""
-        timestamp = int(time.time())
-        email = f"digilocker_test_{timestamp}@test.com"
-        
-        try:
-            response = requests.post(
-                f"{BASE_URL}/auth/register",
-                json={
-                    "email": email,
-                    "password": "TestPass123!",
-                    "name": "DigiLocker Test User"
-                },
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                self.session_token = data.get("session_token")
-                self.user_id = data.get("user_id")
-                self.log("User Registration", "PASS", f"Registered user: {email}", 
-                        {"user_id": self.user_id, "email": email})
-                return True
-            else:
-                self.log("User Registration", "FAIL", f"Status {response.status_code}", 
-                        {"response": response.text})
-                return False
-        except Exception as e:
-            self.log("User Registration", "FAIL", f"Exception: {str(e)}")
-            return False
-    
-    def login_user(self, email, password):
-        """Login existing user"""
-        try:
-            response = requests.post(
-                f"{BASE_URL}/auth/login",
-                json={"email": email, "password": password},
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                self.session_token = data.get("session_token")
-                self.user_id = data.get("user_id")
-                self.log("User Login", "PASS", f"Logged in: {email}")
-                return True
-            else:
-                self.log("User Login", "FAIL", f"Status {response.status_code}", 
-                        {"response": response.text})
-                return False
-        except Exception as e:
-            self.log("User Login", "FAIL", f"Exception: {str(e)}")
-            return False
-    
-    def test_digilocker_initiate_not_configured(self):
-        """Test DigiLocker initiate endpoint without SANDBOX_API_KEY - should return not_configured with setup_options"""
-        try:
-            headers = {"Authorization": f"Bearer {self.session_token}"}
-            response = requests.post(
-                f"{BASE_URL}/collaboration/digilocker/initiate",
-                headers=headers,
-                json={},
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                status = data.get("status")
-                setup_options = data.get("setup_options", [])
-                
-                # Check if status is 'not_configured' or 'initiated'
-                if status == "not_configured":
-                    # Verify setup_options array exists and has TWO providers
-                    if len(setup_options) == 2:
-                        providers = [opt.get("provider") for opt in setup_options]
-                        
-                        # Check for both providers
-                        has_sandbox = any("sandbox.co.in" in p for p in providers)
-                        has_official = any("DigiLocker Official" in p for p in providers)
-                        
-                        if has_sandbox and has_official:
-                            # Verify env_vars are present for each provider
-                            sandbox_opt = next((opt for opt in setup_options if "sandbox.co.in" in opt.get("provider", "")), None)
-                            official_opt = next((opt for opt in setup_options if "DigiLocker Official" in opt.get("provider", "")), None)
-                            
-                            sandbox_env_vars = sandbox_opt.get("env_vars", []) if sandbox_opt else []
-                            official_env_vars = official_opt.get("env_vars", []) if official_opt else []
-                            
-                            if sandbox_env_vars and official_env_vars:
-                                self.log("DigiLocker Initiate - Not Configured Response", "PASS",
-                                        "Returns status='not_configured' with setup_options array containing TWO providers with env_vars",
-                                        {
-                                            "status": status,
-                                            "setup_options_count": len(setup_options),
-                                            "providers": providers,
-                                            "sandbox_env_vars": sandbox_env_vars,
-                                            "official_env_vars": official_env_vars
-                                        })
-                                return True
-                            else:
-                                self.log("DigiLocker Initiate - Not Configured Response", "FAIL",
-                                        "env_vars missing for one or both providers",
-                                        {"sandbox_env_vars": sandbox_env_vars, "official_env_vars": official_env_vars})
-                                return False
-                        else:
-                            self.log("DigiLocker Initiate - Not Configured Response", "FAIL",
-                                    "Missing required providers (sandbox.co.in or DigiLocker Official)",
-                                    {"providers": providers})
-                            return False
-                    else:
-                        self.log("DigiLocker Initiate - Not Configured Response", "FAIL",
-                                f"Expected 2 providers in setup_options, got {len(setup_options)}",
-                                {"setup_options": setup_options})
-                        return False
-                elif status == "initiated":
-                    # API is configured, so it initiated the flow
-                    self.log("DigiLocker Initiate - Not Configured Response", "PASS",
-                            "API is configured (SANDBOX_API_KEY present), initiated flow successfully",
-                            {"status": status, "provider": data.get("provider")})
-                    return True
-                else:
-                    self.log("DigiLocker Initiate - Not Configured Response", "FAIL",
-                            f"Unexpected status: {status}",
-                            {"response": data})
-                    return False
-            else:
-                self.log("DigiLocker Initiate - Not Configured Response", "FAIL",
-                        f"Status {response.status_code}",
-                        {"response": response.text})
-                return False
-        except Exception as e:
-            self.log("DigiLocker Initiate - Not Configured Response", "FAIL", f"Exception: {str(e)}")
-            return False
-    
-    def test_digilocker_callback_without_session_id(self):
-        """Test DigiLocker callback endpoint without session_id - should return 400"""
-        try:
-            headers = {"Authorization": f"Bearer {self.session_token}"}
-            response = requests.post(
-                f"{BASE_URL}/collaboration/digilocker/callback",
-                headers=headers,
-                json={},  # No session_id
-                timeout=30
-            )
-            
-            # Should return 400 Bad Request
-            if response.status_code == 400:
-                data = response.json()
-                detail = data.get("detail", "")
-                
-                if "session_id" in detail.lower():
-                    self.log("DigiLocker Callback - Missing session_id", "PASS",
-                            "Returns 400 error when session_id is missing",
-                            {"status_code": 400, "error_message": detail})
-                    return True
-                else:
-                    self.log("DigiLocker Callback - Missing session_id", "FAIL",
-                            "Returns 400 but error message doesn't mention session_id",
-                            {"error_message": detail})
-                    return False
-            else:
-                self.log("DigiLocker Callback - Missing session_id", "FAIL",
-                        f"Expected 400, got {response.status_code}",
-                        {"response": response.text})
-                return False
-        except Exception as e:
-            self.log("DigiLocker Callback - Missing session_id", "FAIL", f"Exception: {str(e)}")
-            return False
-    
-    def create_decision(self):
-        """Create a test decision for collaboration"""
-        try:
-            headers = {"Authorization": f"Bearer {self.session_token}"}
-            response = requests.post(
-                f"{BASE_URL}/decisions",
-                headers=headers,
-                json={
-                    "title": "Test Decision for Collaboration",
-                    "description": "Testing collaboration session creation",
-                    "decision_type": "aspiration",
-                    "life_area": "career"
-                },
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                self.decision_id = data.get("id")
-                self.log("Create Decision", "PASS", f"Created decision: {self.decision_id}")
-                return True
-            else:
-                self.log("Create Decision", "FAIL", f"Status {response.status_code}",
-                        {"response": response.text})
-                return False
-        except Exception as e:
-            self.log("Create Decision", "FAIL", f"Exception: {str(e)}")
-            return False
-    
-    def create_solution_finder(self):
-        """Create a test solution finder entry"""
-        try:
-            headers = {"Authorization": f"Bearer {self.session_token}"}
-            response = requests.post(
-                f"{BASE_URL}/solution-finders",
-                headers=headers,
-                json={
-                    "area_of_life": "career",
-                    "smart_goal": "Test Solution Finder for Collaboration",
-                    "milestones": ["Milestone 1", "Milestone 2"],
-                    "q1_all_concerns": "Test concerns",
-                    "q2_primary_concerns": "Primary test concerns",
-                    "q3_solutions": "Test solutions",
-                    "q3_capabilities": "Test capabilities",
-                    "q3_resources": "Test resources",
-                    "q4_negative_consequences": "Test consequences",
-                    "q4_mitigation_plans": "Test mitigation",
-                    "q4_contingency_plans": "Test contingency",
-                    "action_items": []
-                },
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                sf_entry_id = data.get("entry_id")
-                self.log("Create Solution Finder", "PASS", f"Created solution finder: {sf_entry_id}",
-                        {"entry_id": sf_entry_id})
-                return sf_entry_id
-            else:
-                self.log("Create Solution Finder", "FAIL", f"Status {response.status_code}",
-                        {"response": response.text})
-                return None
-        except Exception as e:
-            self.log("Create Solution Finder", "FAIL", f"Exception: {str(e)}")
-            return None
-    
-    def create_contact(self):
-        """Create a test contact for collaboration"""
-        try:
-            headers = {"Authorization": f"Bearer {self.session_token}"}
-            timestamp = int(time.time())
-            response = requests.post(
-                f"{BASE_URL}/contacts",
-                headers=headers,
-                json={
-                    "name": "Test Contact",
-                    "email": f"contact_{timestamp}@test.com",
-                    "phone": "+919876543210",
-                    "is_sme": False
-                },
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                contact_id = data.get("id")
-                self.log("Create Contact", "PASS", f"Created contact: {contact_id}")
-                return contact_id
-            else:
-                self.log("Create Contact", "FAIL", f"Status {response.status_code}",
-                        {"response": response.text})
-                return None
-        except Exception as e:
-            self.log("Create Contact", "FAIL", f"Exception: {str(e)}")
-            return None
-    
-    def test_solution_finder_collab_session(self, sf_entry_id, contact_id):
-        """Test creating collaboration session with module_type='solution_finder'"""
-        try:
-            headers = {"Authorization": f"Bearer {self.session_token}"}
-            response = requests.post(
-                f"{BASE_URL}/collaboration/sessions",
-                headers=headers,
-                json={
-                    "module_type": "solution_finder",
-                    "module_id": sf_entry_id,
-                    "title": "Test Solution Finder Collaboration",
-                    "decision_mode_id": "equal",
-                    "participant_contact_ids": [contact_id],
-                    "notify_participants": False,
-                    "session_mode": "async"
-                },
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                session_id = data.get("id")
-                module_type = data.get("module_type")
-                module_id = data.get("module_id")
-                
-                if module_type == "solution_finder" and module_id == sf_entry_id:
-                    self.log("Solution Finder Collaboration Session", "PASS",
-                            "Successfully created collaboration session with module_type='solution_finder'",
-                            {
-                                "session_id": session_id,
-                                "module_type": module_type,
-                                "module_id": module_id,
-                                "title": data.get("title"),
-                                "decision_mode": data.get("decision_mode_id")
-                            })
-                    return True
-                else:
-                    self.log("Solution Finder Collaboration Session", "FAIL",
-                            "Session created but module_type or module_id mismatch",
-                            {"expected_module_type": "solution_finder", "got": module_type,
-                             "expected_module_id": sf_entry_id, "got": module_id})
-                    return False
-            else:
-                self.log("Solution Finder Collaboration Session", "FAIL",
-                        f"Status {response.status_code}",
-                        {"response": response.text})
-                return False
-        except Exception as e:
-            self.log("Solution Finder Collaboration Session", "FAIL", f"Exception: {str(e)}")
-            return False
-    
-    def print_summary(self):
-        """Print test summary"""
-        print("\n" + "="*80)
-        print("TEST SUMMARY")
-        print("="*80)
-        
-        total = len(self.results)
-        passed = sum(1 for r in self.results if r["status"] == "PASS")
-        failed = sum(1 for r in self.results if r["status"] == "FAIL")
-        skipped = sum(1 for r in self.results if r["status"] == "SKIP")
-        
-        print(f"Total Tests: {total}")
-        print(f"✅ Passed: {passed}")
-        print(f"❌ Failed: {failed}")
-        print(f"⏭️ Skipped: {skipped}")
-        print(f"Success Rate: {(passed/total*100):.1f}%" if total > 0 else "N/A")
-        
-        if failed > 0:
-            print("\n" + "="*80)
-            print("FAILED TESTS:")
-            print("="*80)
-            for r in self.results:
-                if r["status"] == "FAIL":
-                    print(f"❌ {r['test']}: {r['message']}")
-                    if r.get("details"):
-                        print(f"   {r['details']}")
-        
-        print("\n" + "="*80)
-        return passed, failed, skipped
+# Test results tracking
+test_results = []
 
-def main():
-    print("="*80)
-    print("DIGILOCKER INTEGRATION & SOLUTION FINDER COLLABORATION TESTING")
-    print("="*80)
-    print(f"Backend URL: {BASE_URL}")
-    print(f"Test Started: {datetime.now().isoformat()}")
+def log_test(test_name, passed, details=""):
+    """Log test result"""
+    status = "✅ PASSED" if passed else "❌ FAILED"
+    result = f"{status}: {test_name}"
+    if details:
+        result += f" - {details}"
+    print(result)
+    test_results.append({"test": test_name, "passed": passed, "details": details})
+    return passed
+
+def register_user(email, password, name):
+    """Register a new user"""
+    url = f"{BASE_URL}/auth/register"
+    payload = {
+        "email": email,
+        "password": password,
+        "name": name
+    }
+    response = requests.post(url, json=payload)
+    if response.status_code == 200:
+        data = response.json()
+        return data.get("session_token"), data.get("user_id")
+    return None, None
+
+def login_user(email, password):
+    """Login user"""
+    url = f"{BASE_URL}/auth/login"
+    payload = {"email": email, "password": password}
+    response = requests.post(url, json=payload)
+    if response.status_code == 200:
+        data = response.json()
+        return data.get("session_token"), data.get("user_id")
+    return None, None
+
+def promote_to_admin(token, user_id):
+    """Promote user to admin (requires existing admin)"""
+    url = f"{BASE_URL}/admin/users/{user_id}/promote"
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = {"role": "admin"}
+    response = requests.post(url, json=payload, headers=headers)
+    return response.status_code == 200
+
+def create_decision_mode(token):
+    """Get decision modes (auto-seeds if not exists)"""
+    url = f"{BASE_URL}/collaboration/decision-modes"
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        modes = response.json()
+        return modes[0]["id"] if modes else "equal"
+    return "equal"
+
+def create_contact(token, name, email):
+    """Create a contact"""
+    url = f"{BASE_URL}/contacts"
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = {
+        "name": name,
+        "email": email,
+        "phone": "+919876543210",
+        "is_sme": False
+    }
+    response = requests.post(url, json=payload, headers=headers)
+    if response.status_code == 200:
+        data = response.json()
+        return data.get("id")
+    return None
+
+def create_decision(token, title):
+    """Create a PRR decision"""
+    url = f"{BASE_URL}/decisions"
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = {
+        "title": title,
+        "context": "Test decision for video call collaboration",
+        "folder": "career"
+    }
+    response = requests.post(url, json=payload, headers=headers)
+    if response.status_code == 200:
+        data = response.json()
+        return data.get("id")
+    else:
+        print(f"Decision creation failed: Status {response.status_code}, Response: {response.text}")
+    return None
+
+def create_collaboration_session(token, decision_id, contact_ids, session_mode="live_sync"):
+    """Create a collaboration session"""
+    url = f"{BASE_URL}/collaboration/sessions"
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = {
+        "module_type": "decision",
+        "module_id": decision_id,
+        "title": "Video Call Test Session",
+        "decision_mode_id": "equal",
+        "participant_contact_ids": contact_ids,
+        "session_mode": session_mode,
+        "notify_participants": True,
+        "notify_mode": True
+    }
+    response = requests.post(url, json=payload, headers=headers)
+    return response
+
+def start_call(token, session_id):
+    """Start or get video call"""
+    url = f"{BASE_URL}/collaboration/sessions/{session_id}/start-call"
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.post(url, headers=headers)
+    return response
+
+def join_call(token, session_id):
+    """Join video call"""
+    url = f"{BASE_URL}/collaboration/sessions/{session_id}/join-call"
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.post(url, headers=headers)
+    return response
+
+def get_call_status(token, session_id):
+    """Get call status"""
+    url = f"{BASE_URL}/collaboration/sessions/{session_id}/call-status"
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.get(url, headers=headers)
+    return response
+
+def toggle_screen_share(token, session_id, sharing=True):
+    """Toggle screen sharing"""
+    url = f"{BASE_URL}/collaboration/sessions/{session_id}/screen-share"
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = {"sharing": sharing}
+    response = requests.post(url, json=payload, headers=headers)
+    return response
+
+def end_call(token, session_id):
+    """End video call"""
+    url = f"{BASE_URL}/collaboration/sessions/{session_id}/end-call"
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.post(url, headers=headers)
+    return response
+
+def run_video_call_tests():
+    """Run comprehensive video call endpoint tests"""
+    print("\n" + "="*80)
+    print("VIDEO CALL ENDPOINTS TESTING FOR LIVE_SYNC COLLABORATION SESSIONS")
     print("="*80 + "\n")
     
-    runner = TestRunner()
+    timestamp = int(time.time())
     
-    # Step 1: Register user
-    if not runner.register_user():
-        print("\n❌ Failed to register user. Aborting tests.")
+    # Test 1: Register Host User
+    print("Test 1: Register Host User")
+    host_email = f"videocall_host_{timestamp}@test.com"
+    host_token, host_user_id = register_user(host_email, "password123", "Video Call Host")
+    log_test("Register Host User", host_token is not None, f"Email: {host_email}")
+    
+    if not host_token:
+        print("❌ Cannot proceed without host user registration")
         return
     
-    # Step 2: Test DigiLocker initiate endpoint
-    runner.test_digilocker_initiate_not_configured()
+    # Test 2: Register Participant User
+    print("\nTest 2: Register Participant User")
+    participant_email = f"videocall_participant_{timestamp}@test.com"
+    participant_token, participant_user_id = register_user(participant_email, "password123", "Video Call Participant")
+    log_test("Register Participant User", participant_token is not None, f"Email: {participant_email}")
     
-    # Step 3: Test DigiLocker callback without session_id
-    runner.test_digilocker_callback_without_session_id()
+    if not participant_token:
+        print("❌ Cannot proceed without participant user registration")
+        return
     
-    # Step 4: Create decision (for context)
-    runner.create_decision()
+    # Test 3: Get Decision Modes
+    print("\nTest 3: Get Decision Modes")
+    mode_id = create_decision_mode(host_token)
+    log_test("Get Decision Modes", mode_id is not None, f"Mode ID: {mode_id}")
     
-    # Step 5: Create solution finder entry
-    sf_entry_id = runner.create_solution_finder()
+    # Test 4: Create Contact for Participant
+    print("\nTest 4: Create Contact for Participant")
+    contact_id = create_contact(host_token, "Video Call Participant", participant_email)
+    log_test("Create Contact", contact_id is not None, f"Contact ID: {contact_id}")
     
-    # Step 6: Create contact for collaboration
-    contact_id = runner.create_contact()
+    if not contact_id:
+        print("❌ Cannot proceed without contact creation")
+        return
     
-    # Step 7: Test Solution Finder collaboration session
-    if sf_entry_id and contact_id:
-        runner.test_solution_finder_collab_session(sf_entry_id, contact_id)
+    # Test 5: Create Decision
+    print("\nTest 5: Create Decision")
+    decision_id = create_decision(host_token, "Video Call Test Decision")
+    log_test("Create Decision", decision_id is not None, f"Decision ID: {decision_id}")
+    
+    if not decision_id:
+        print("❌ Cannot proceed without decision creation")
+        return
+    
+    # Test 6: Create LIVE_SYNC Collaboration Session with Call Fields
+    print("\nTest 6: Create LIVE_SYNC Collaboration Session")
+    session_response = create_collaboration_session(host_token, decision_id, [contact_id], "live_sync")
+    session_created = session_response.status_code == 200
+    
+    if session_created:
+        session_data = session_response.json()
+        session_id = session_data.get("id")
+        has_call_room_url = "call_room_url" in session_data
+        has_call_id = "call_id" in session_data
+        has_call_room_id = "call_room_id" in session_data
+        
+        details = f"Session ID: {session_id}, Has call_room_url: {has_call_room_url}, Has call_id: {has_call_id}, Has call_room_id: {has_call_room_id}"
+        log_test("Create LIVE_SYNC Session with Call Fields", 
+                 has_call_room_url and has_call_id and has_call_room_id, 
+                 details)
+        
+        if not (has_call_room_url and has_call_id and has_call_room_id):
+            print(f"❌ Session missing call fields. Response: {json.dumps(session_data, indent=2)}")
+            return
     else:
-        runner.log("Solution Finder Collaboration Session", "SKIP",
-                  "Skipped due to missing solution finder or contact")
+        log_test("Create LIVE_SYNC Session", False, f"Status: {session_response.status_code}")
+        print(f"Response: {session_response.text}")
+        return
     
-    # Print summary
-    runner.print_summary()
+    # Test 7: Start Call
+    print("\nTest 7: Start Call")
+    start_response = start_call(host_token, session_id)
+    start_success = start_response.status_code == 200
+    
+    if start_success:
+        start_data = start_response.json()
+        has_room_url = "room_url" in start_data
+        has_status = start_data.get("status") == "live"
+        has_provider = start_data.get("provider") == "jitsi"
+        has_participants = "participants_joined" in start_data
+        
+        details = f"Status: {start_data.get('status')}, Provider: {start_data.get('provider')}, Room URL: {start_data.get('room_url')}"
+        log_test("Start Call", has_room_url and has_status and has_provider and has_participants, details)
+    else:
+        log_test("Start Call", False, f"Status: {start_response.status_code}, Response: {start_response.text}")
+        return
+    
+    # Test 8: Join Call (Participant)
+    print("\nTest 8: Join Call (Participant)")
+    join_response = join_call(participant_token, session_id)
+    join_success = join_response.status_code == 200
+    
+    if join_success:
+        join_data = join_response.json()
+        has_room_url = "room_url" in join_data
+        has_call_id = "call_id" in join_data
+        
+        details = f"Call ID: {join_data.get('call_id')}, Room URL: {join_data.get('room_url')}"
+        log_test("Join Call", has_room_url and has_call_id, details)
+    else:
+        log_test("Join Call", False, f"Status: {join_response.status_code}, Response: {join_response.text}")
+    
+    # Test 9: Check Call Status
+    print("\nTest 9: Check Call Status")
+    status_response = get_call_status(host_token, session_id)
+    status_success = status_response.status_code == 200
+    
+    if status_success:
+        status_data = status_response.json()
+        has_call = status_data.get("has_call") == True
+        is_live = status_data.get("status") == "live"
+        has_participants = len(status_data.get("participants_joined", [])) >= 1
+        has_screen_sharing = "screen_sharing_by" in status_data
+        
+        details = f"Has call: {has_call}, Status: {status_data.get('status')}, Participants: {len(status_data.get('participants_joined', []))}"
+        log_test("Check Call Status", has_call and is_live and has_participants and has_screen_sharing, details)
+    else:
+        log_test("Check Call Status", False, f"Status: {status_response.status_code}, Response: {status_response.text}")
+    
+    # Test 10: Toggle Screen Share (Enable)
+    print("\nTest 10: Toggle Screen Share (Enable)")
+    share_response = toggle_screen_share(host_token, session_id, True)
+    share_success = share_response.status_code == 200
+    
+    if share_success:
+        share_data = share_response.json()
+        screen_sharing_by = share_data.get("screen_sharing_by")
+        is_sharing = share_data.get("sharing") == True
+        
+        details = f"Screen sharing by: {screen_sharing_by}, Sharing: {is_sharing}"
+        log_test("Enable Screen Share", screen_sharing_by is not None and is_sharing, details)
+    else:
+        log_test("Enable Screen Share", False, f"Status: {share_response.status_code}, Response: {share_response.text}")
+    
+    # Test 11: End Call
+    print("\nTest 11: End Call")
+    end_response = end_call(host_token, session_id)
+    end_success = end_response.status_code == 200
+    
+    if end_success:
+        end_data = end_response.json()
+        is_ended = end_data.get("status") == "ended"
+        
+        details = f"Status: {end_data.get('status')}"
+        log_test("End Call", is_ended, details)
+    else:
+        log_test("End Call", False, f"Status: {end_response.status_code}, Response: {end_response.text}")
+    
+    # Test 12: Verify Call Ended
+    print("\nTest 12: Verify Call Ended")
+    verify_response = get_call_status(host_token, session_id)
+    verify_success = verify_response.status_code == 200
+    
+    if verify_success:
+        verify_data = verify_response.json()
+        is_ended = verify_data.get("status") == "ended"
+        
+        details = f"Status: {verify_data.get('status')}"
+        log_test("Verify Call Ended", is_ended, details)
+    else:
+        log_test("Verify Call Ended", False, f"Status: {verify_response.status_code}, Response: {verify_response.text}")
+    
+    # Test 13: Create ASYNC Session
+    print("\nTest 13: Create ASYNC Session")
+    async_decision_id = create_decision(host_token, "Async Test Decision")
+    if async_decision_id:
+        async_session_response = create_collaboration_session(host_token, async_decision_id, [contact_id], "async")
+        async_created = async_session_response.status_code == 200
+        
+        if async_created:
+            async_session_data = async_session_response.json()
+            async_session_id = async_session_data.get("id")
+            session_mode = async_session_data.get("session_mode")
+            
+            details = f"Session ID: {async_session_id}, Mode: {session_mode}"
+            log_test("Create ASYNC Session", session_mode == "async", details)
+            
+            # Test 14: Try Start Call on ASYNC Session (Should Fail with 400)
+            print("\nTest 14: Try Start Call on ASYNC Session (Expect 400 Error)")
+            async_start_response = start_call(host_token, async_session_id)
+            should_fail = async_start_response.status_code == 400
+            
+            if should_fail:
+                error_data = async_start_response.json()
+                error_message = error_data.get("detail", "")
+                details = f"Status: {async_start_response.status_code}, Error: {error_message}"
+                log_test("ASYNC Session Start Call Error", "Live Sync" in error_message or "live_sync" in error_message, details)
+            else:
+                log_test("ASYNC Session Start Call Error", False, f"Expected 400, got {async_start_response.status_code}")
+        else:
+            log_test("Create ASYNC Session", False, f"Status: {async_session_response.status_code}")
+    else:
+        log_test("Create ASYNC Session", False, "Failed to create decision for async session")
+    
+    # Print Summary
+    print("\n" + "="*80)
+    print("TEST SUMMARY")
+    print("="*80)
+    
+    passed_count = sum(1 for r in test_results if r["passed"])
+    total_count = len(test_results)
+    
+    print(f"\nTotal Tests: {total_count}")
+    print(f"Passed: {passed_count}")
+    print(f"Failed: {total_count - passed_count}")
+    print(f"Success Rate: {(passed_count/total_count*100):.1f}%\n")
+    
+    # Print failed tests
+    failed_tests = [r for r in test_results if not r["passed"]]
+    if failed_tests:
+        print("FAILED TESTS:")
+        for test in failed_tests:
+            print(f"  ❌ {test['test']}")
+            if test['details']:
+                print(f"     {test['details']}")
+    else:
+        print("🎉 ALL TESTS PASSED!")
+    
+    print("\n" + "="*80 + "\n")
 
 if __name__ == "__main__":
-    main()
+    run_video_call_tests()
