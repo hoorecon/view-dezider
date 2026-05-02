@@ -876,6 +876,23 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       )}
 
+      {/* Incident Response - Admin Only */}
+      {userRole !== 'user' && (
+        <TouchableOpacity
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#DC262630', marginBottom: 12 }}
+          onPress={() => router.push('/admin/incident-response' as any)}
+        >
+          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#DC2626', alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="shield" size={18} color="#FFF" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>Incident Response</Text>
+            <Text style={{ fontSize: 12, color: COLORS.textMuted }}>CERT-In compliance, breach alerts & audit trail</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+        </TouchableOpacity>
+      )}
+
       {/* Goals Execution Manager */}
       <TouchableOpacity
         style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}

@@ -7,6 +7,7 @@ from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Request, Depends
 from core.database import db
 from core.auth import get_current_user, require_admin
+from routes.audit_trail import log_audit_event, get_client_ip
 
 router = APIRouter(prefix="/collaboration", tags=["Multi-User Collaboration"])
 
@@ -738,8 +739,19 @@ async def verify_totp(request: Request, user: dict = Depends(get_current_user)):
     totp = pyotp.TOTP(doc["secret"])
     if totp.verify(code, valid_window=1):
         await db.user_totp.update_one({"user_id": user["user_id"]}, {"$set": {"verified": True}})
+        await log_audit_event(
+            action="totp_verified", entity_type="totp", entity_id=user["user_id"],
+            user_id=user["user_id"], details="TOTP authenticator app verified successfully",
+            ip_address=get_client_ip(request), sensitive_data_accessed=True,
+            data_fields_accessed=["totp_secret"]
+        )
         return {"verified": True, "message": "Authenticator app verified successfully"}
 
+    await log_audit_event(
+        action="totp_verify_failed", entity_type="totp", entity_id=user["user_id"],
+        user_id=user["user_id"], details="TOTP verification failed - invalid code",
+        ip_address=get_client_ip(request), sensitive_data_accessed=True,
+    )
     raise HTTPException(status_code=400, detail="Invalid code. Please try again.")
 
 
@@ -832,6 +844,11 @@ async def initiate_digilocker(request: Request, user: dict = Depends(get_current
                 "message": "Redirect user to authorization_url to complete Aadhaar verification via DigiLocker.",
             }
         except Exception as e:
+            await log_audit_event(
+                action="digilocker_initiate_failed", entity_type="digilocker", entity_id=user["user_id"],
+                user_id=user["user_id"], details=f"DigiLocker API call failed: {str(e)}",
+                sensitive_data_accessed=True,
+            )
             return {
                 "status": "error",
                 "provider": "sandbox.co.in",
@@ -933,9 +950,15 @@ async def digilocker_callback(request: Request, user: dict = Depends(get_current
 
 
 @router.get("/digilocker/status")
-async def digilocker_status(user: dict = Depends(get_current_user)):
+async def digilocker_status(request: Request, user: dict = Depends(get_current_user)):
     """Check DigiLocker verification status."""
     kyc = await db.user_kyc.find_one({"user_id": user["user_id"], "method": "digilocker"}, {"_id": 0})
+    await log_audit_event(
+        action="digilocker_status_check", entity_type="digilocker", entity_id=user["user_id"],
+        user_id=user["user_id"], details=f"DigiLocker status checked. Verified: {bool(kyc and kyc.get('verified'))}",
+        ip_address=get_client_ip(request), sensitive_data_accessed=True,
+        data_fields_accessed=["kyc_verification_status"],
+    )
     if kyc and kyc.get("verified"):
         return {"verified": True, "method": "digilocker", "verified_at": kyc.get("verified_at")}
     return {"verified": False}
@@ -1048,18 +1071,40 @@ async def verify_biometric(request: Request, user: dict = Depends(get_current_us
         raise HTTPException(status_code=400, detail="Biometric data or device token required")
 
     if device_token:
+        await log_audit_event(
+            action="biometric_verified", entity_type="biometric", entity_id=user["user_id"],
+            user_id=user["user_id"], details=f"Biometric device auth verified ({biometric_type})",
+            ip_address=get_client_ip(request), sensitive_data_accessed=True,
+            data_fields_accessed=["biometric_template", "device_token"],
+        )
         return {"verified": True, "method": "device_biometric", "type": biometric_type}
 
     stored = await db.user_biometrics.find_one(
         {"user_id": user["user_id"], "type": biometric_type}, {"_id": 0}
     )
     if not stored:
+        await log_audit_event(
+            action="biometric_verify_failed", entity_type="biometric", entity_id=user["user_id"],
+            user_id=user["user_id"], details=f"No {biometric_type} registered",
+            ip_address=get_client_ip(request), sensitive_data_accessed=True,
+        )
         raise HTTPException(status_code=404, detail="No biometric registered for this type")
 
     live_hash = hash(live_template)
     if live_hash == stored.get("template_hash"):
+        await log_audit_event(
+            action="biometric_verified", entity_type="biometric", entity_id=user["user_id"],
+            user_id=user["user_id"], details=f"Biometric template match verified ({biometric_type})",
+            ip_address=get_client_ip(request), sensitive_data_accessed=True,
+            data_fields_accessed=["biometric_template"],
+        )
         return {"verified": True, "method": "server_biometric", "type": biometric_type}
 
+    await log_audit_event(
+        action="biometric_verify_failed", entity_type="biometric", entity_id=user["user_id"],
+        user_id=user["user_id"], details=f"Biometric template mismatch ({biometric_type})",
+        ip_address=get_client_ip(request), sensitive_data_accessed=True,
+    )
     raise HTTPException(status_code=400, detail="Biometric verification failed")
 
 
