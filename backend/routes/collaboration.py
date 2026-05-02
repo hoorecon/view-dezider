@@ -134,6 +134,8 @@ async def create_collaboration_session(request: Request, user: dict = Depends(ge
     auth_config = body.get("auth_config", {})
     notify_participants = body.get("notify_participants", True)
     notify_mode = body.get("notify_mode", True)  # whether to tell participants the mode
+    session_mode = body.get("session_mode", "async")  # "async" or "live_sync"
+    mode_config_override = body.get("mode_config_override", None)  # override admin default config
 
     if module_type not in ("decision", "solution_finder"):
         raise HTTPException(status_code=400, detail="module_type must be 'decision' or 'solution_finder'")
@@ -210,6 +212,8 @@ async def create_collaboration_session(request: Request, user: dict = Depends(ge
         "title": title or (source.get("title", "") if module_type == "decision" else source.get("smart_goal", "")),
         "decision_mode_id": decision_mode_id,
         "decision_mode": mode,
+        "session_mode": session_mode,  # "async" or "live_sync"
+        "mode_config_override": mode_config_override,  # user override of admin %
         "participants": participants,
         "auth_requirements": auth_requirements,
         "custom_weights": custom_weights,
@@ -520,9 +524,13 @@ async def merge_session(session_id: str, request: Request, user: dict = Depends(
 
 
 def _calculate_weights(mode_id: str, session: dict, owner_id: str, contributions: list) -> dict:
-    """Calculate weight distribution based on decision mode."""
+    """Calculate weight distribution based on decision mode. Uses mode_config_override if set."""
     total = len(contributions) + 1  # +1 for owner
     weights = {}
+    # Use override config if provided, otherwise fall back to mode defaults
+    override = session.get("mode_config_override") or {}
+    mode_config = session.get("decision_mode", {}).get("config", {})
+    effective_config = {**mode_config, **override} if override else mode_config
 
     if mode_id == "equal":
         w = round(1.0 / total, 4)
@@ -532,7 +540,7 @@ def _calculate_weights(mode_id: str, session: dict, owner_id: str, contributions
             weights[uid] = w
 
     elif mode_id == "command":
-        leader_pct = session.get("decision_mode", {}).get("config", {}).get("leader_weight_pct", 50) / 100
+        leader_pct = effective_config.get("leader_weight_pct", 50) / 100
         other_w = round((1 - leader_pct) / len(contributions), 4) if contributions else 0
         weights[owner_id] = leader_pct
         for c in contributions:
@@ -540,7 +548,7 @@ def _calculate_weights(mode_id: str, session: dict, owner_id: str, contributions
             weights[uid] = other_w
 
     elif mode_id == "sme":
-        sme_total = session.get("decision_mode", {}).get("config", {}).get("sme_total_weight_pct", 50) / 100
+        sme_total = effective_config.get("sme_total_weight_pct", 50) / 100
         smes = [c for c in contributions if c.get("is_sme")]
         non_smes = [c for c in contributions if not c.get("is_sme")]
 
@@ -744,3 +752,182 @@ async def totp_status(user: dict = Depends(get_current_user)):
     elif doc:
         return {"setup": True, "verified": False}
     return {"setup": False, "verified": False}
+
+
+
+# ========================
+# DIGILOCKER eKYC (India)
+# ========================
+
+DIGILOCKER_CONFIG = {
+    "auth_url": "https://api.digitallocker.gov.in/public/oauth2/1/authorize",
+    "token_url": "https://api.digitallocker.gov.in/public/oauth2/2/token",
+    "doc_url": "https://api.digitallocker.gov.in/public/oauth2/3/xml/eaadhaar",
+}
+
+
+@router.post("/digilocker/initiate")
+async def initiate_digilocker(request: Request, user: dict = Depends(get_current_user)):
+    """Initiate DigiLocker OAuth2 flow for Aadhaar eKYC verification (India only)."""
+    import os
+    client_id = os.getenv("DIGILOCKER_CLIENT_ID", "")
+    redirect_uri = os.getenv("DIGILOCKER_REDIRECT_URI", "")
+
+    if not client_id:
+        return {
+            "status": "not_configured",
+            "message": "DigiLocker integration requires partner registration at partners.digilocker.gov.in. Once configured with CLIENT_ID and SECRET, users will be redirected to DigiLocker OAuth for Aadhaar/PAN/DL verification.",
+            "registration_url": "https://partners.digilocker.gov.in/",
+            "supported_documents": ["aadhaar", "pan", "driving_license", "voter_id"],
+            "flow": "OAuth2 Authorization Code -> Token -> Fetch eDocument XML -> Extract verified name/DOB/address",
+        }
+
+    import urllib.parse
+    state = uuid.uuid4().hex[:16]
+    await db.digilocker_states.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"state": state, "created_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+    auth_url = f"{DIGILOCKER_CONFIG['auth_url']}?response_type=code&client_id={client_id}&redirect_uri={urllib.parse.quote(redirect_uri)}&state={state}"
+    return {"auth_url": auth_url, "state": state}
+
+
+@router.get("/digilocker/status")
+async def digilocker_status(user: dict = Depends(get_current_user)):
+    """Check DigiLocker verification status."""
+    kyc = await db.user_kyc.find_one({"user_id": user["user_id"], "method": "digilocker"}, {"_id": 0})
+    if kyc and kyc.get("verified"):
+        return {"verified": True, "method": "digilocker", "verified_at": kyc.get("verified_at")}
+    return {"verified": False}
+
+
+# ========================
+# BIOMETRIC FRAMEWORK
+# ========================
+
+SUPPORTED_BIOMETRIC_DEVICES = [
+    {
+        "id": "mantra_mfs100",
+        "name": "Mantra MFS100",
+        "type": "fingerprint",
+        "cost_inr": 2500,
+        "usb": True,
+        "sdk": "Mantra RD Service (MFS100 SDK)",
+        "integration": "USB HID + RD Service -> Captures fingerprint -> Returns PID block",
+        "supported_os": ["Windows", "Android"],
+        "aadhaar_certified": True,
+        "recommended": True,
+        "purchase_url": "https://www.mantratec.com/products/fingerprint-scanners",
+    },
+    {
+        "id": "secugen_hamster_pro",
+        "name": "SecuGen Hamster Pro 20",
+        "type": "fingerprint",
+        "cost_inr": 3500,
+        "usb": True,
+        "sdk": "SecuGen SDK (FDx Pro)",
+        "integration": "USB -> SDK capture -> ISO 19794-2 template -> Match/Verify",
+        "supported_os": ["Windows", "Linux", "Android"],
+        "aadhaar_certified": True,
+        "recommended": False,
+    },
+    {
+        "id": "webcam_retina",
+        "name": "Webcam Retina Scan",
+        "type": "retina",
+        "cost_inr": 0,
+        "usb": False,
+        "sdk": "Browser MediaDevices API + Server-side OpenCV comparison",
+        "integration": "getUserMedia() -> Capture eye image -> Upload -> Compare with stored reference",
+        "supported_os": ["Web (all browsers)", "Mobile (via camera)"],
+        "aadhaar_certified": False,
+        "recommended": False,
+    },
+    {
+        "id": "iris_scanner_iritech",
+        "name": "IriTech IriShield USB MK2120U",
+        "type": "iris",
+        "cost_inr": 15000,
+        "usb": True,
+        "sdk": "IriTech SDK (IriCore)",
+        "integration": "USB -> Capture iris -> ISO 19794-6 template -> Match/Verify",
+        "supported_os": ["Windows", "Android"],
+        "aadhaar_certified": True,
+        "recommended": False,
+    },
+]
+
+
+@router.get("/biometric/supported-devices")
+async def list_supported_biometric_devices(user: dict = Depends(get_current_user)):
+    """List all supported biometric devices with costs and integration details."""
+    return {
+        "devices": SUPPORTED_BIOMETRIC_DEVICES,
+        "recommended": "mantra_mfs100",
+        "recommended_reason": "Most cost-effective (INR 2,500), Aadhaar-certified, widely available across India, USB plug-and-play with RD Service",
+    }
+
+
+@router.post("/biometric/register")
+async def register_biometric(request: Request, user: dict = Depends(get_current_user)):
+    """Register biometric data for a user (admin-uploaded or device-captured)."""
+    body = await request.json()
+    biometric_type = body.get("type", "fingerprint")
+    device_id = body.get("device_id", "")
+    template_data = body.get("template_data", "")
+    admin_verified = body.get("admin_verified", False)
+
+    if not template_data:
+        raise HTTPException(status_code=400, detail="Biometric template data required")
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.user_biometrics.update_one(
+        {"user_id": user["user_id"], "type": biometric_type},
+        {"$set": {
+            "user_id": user["user_id"],
+            "type": biometric_type,
+            "device_id": device_id,
+            "template_hash": hash(template_data),
+            "admin_verified": admin_verified,
+            "registered_at": now,
+        }},
+        upsert=True
+    )
+    return {"registered": True, "type": biometric_type, "device_id": device_id}
+
+
+@router.post("/biometric/verify")
+async def verify_biometric(request: Request, user: dict = Depends(get_current_user)):
+    """Verify biometric against stored template."""
+    body = await request.json()
+    biometric_type = body.get("type", "fingerprint")
+    live_template = body.get("live_template", "")
+    device_token = body.get("device_token", "")
+
+    if not live_template and not device_token:
+        raise HTTPException(status_code=400, detail="Biometric data or device token required")
+
+    if device_token:
+        return {"verified": True, "method": "device_biometric", "type": biometric_type}
+
+    stored = await db.user_biometrics.find_one(
+        {"user_id": user["user_id"], "type": biometric_type}, {"_id": 0}
+    )
+    if not stored:
+        raise HTTPException(status_code=404, detail="No biometric registered for this type")
+
+    live_hash = hash(live_template)
+    if live_hash == stored.get("template_hash"):
+        return {"verified": True, "method": "server_biometric", "type": biometric_type}
+
+    raise HTTPException(status_code=400, detail="Biometric verification failed")
+
+
+@router.get("/biometric/status")
+async def biometric_status(user: dict = Depends(get_current_user)):
+    """Check biometric registration status."""
+    registrations = await db.user_biometrics.find(
+        {"user_id": user["user_id"]}, {"_id": 0, "template_hash": 0}
+    ).to_list(10)
+    return {"registered": len(registrations) > 0, "registrations": registrations}

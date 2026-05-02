@@ -22,6 +22,15 @@ SOCIAL_STATUS_OPTIONS = ["student", "employed", "self_employed", "business_owner
 RELATIONSHIP_OPTIONS = ["single", "married", "divorced", "widowed", "in_relationship", "prefer_not_to_say"]
 IMPORT_SOURCES = ["manual", "email", "mobile", "whatsapp", "linkedin"]
 
+ORG_TYPE_OPTIONS = ["individual", "business", "ngo", "association", "govt"]
+ORG_SUBTYPE_MAP = {
+    "individual": ["freelancer", "consultant", "professional"],
+    "business": ["sole_proprietorship", "partnership_firm", "llp", "pvt_ltd", "public_ltd"],
+    "ngo": ["trust", "society", "section_8_company", "cooperative"],
+    "association": ["trade_association", "industry_body", "professional_body", "chamber_of_commerce"],
+    "govt": ["central_govt", "state_govt", "psu", "autonomous_body", "local_body"],
+}
+
 
 @router.post("")
 async def create_contact(request: Request, user: dict = Depends(get_current_user)):
@@ -55,6 +64,9 @@ async def create_contact(request: Request, user: dict = Depends(get_current_user
         "organization": body.get("organization", ""),
         "designation": body.get("designation", ""),
         "business_network": body.get("business_network", ""),
+        # Organization classification
+        "org_type": body.get("org_type", ""),
+        "org_subtype": body.get("org_subtype", ""),
         # Social
         "social_status": body.get("social_status", ""),
         "relationship_status": body.get("relationship_status", ""),
@@ -177,6 +189,9 @@ async def get_filter_options(user: dict = Depends(get_current_user)):
 
     options["tags"] = await db.contacts.distinct("tags", {"user_id": user["user_id"]})
     options["tags"] = [t for t in sorted(options["tags"]) if t]
+    # Org type/subtype options
+    options["org_type_options"] = ORG_TYPE_OPTIONS
+    options["org_subtype_map"] = ORG_SUBTYPE_MAP
 
     return options
 
@@ -202,6 +217,7 @@ async def update_contact(contact_id: str, request: Request, user: dict = Depends
         "profession", "skills", "organization", "designation", "business_network",
         "social_status", "relationship_status", "caste", "religion", "political_party",
         "tags", "notes", "is_sme", "sme_domains", "profile_image",
+        "org_type", "org_subtype",
     ]
     update = {}
     for field in allowed:
