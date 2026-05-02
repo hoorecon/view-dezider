@@ -1,6 +1,6 @@
 """
-Backend API Testing for Admin Documentation Hub
-Tests all admin docs endpoints with proper authentication flow
+Comprehensive Backend Testing for Contact List and Multi-User Collaboration Engine
+Tests all endpoints as per review request
 """
 
 import requests
@@ -16,541 +16,482 @@ test_results = []
 
 def log_test(test_name, passed, details=""):
     """Log test result"""
-    status = "✅ PASSED" if passed else "❌ FAILED"
+    status = "✅ PASS" if passed else "❌ FAIL"
     result = f"{status}: {test_name}"
     if details:
-        result += f" — {details}"
+        result += f" - {details}"
     print(result)
     test_results.append({"test": test_name, "passed": passed, "details": details})
     return passed
 
-def test_admin_docs_hub():
-    """Test Admin Documentation Hub endpoints"""
-    print("\n" + "="*80)
-    print("ADMIN DOCUMENTATION HUB TESTING")
-    print("="*80 + "\n")
+def register_user(name, email, password):
+    """Register a new user"""
+    url = f"{BASE_URL}/auth/register"
+    payload = {
+        "name": name,
+        "email": email,
+        "password": password
+    }
+    response = requests.post(url, json=payload)
+    if response.status_code == 200:
+        data = response.json()
+        return data.get("session_token"), data.get("user_id")
+    return None, None
+
+def login_user(email, password):
+    """Login user"""
+    url = f"{BASE_URL}/auth/login"
+    payload = {
+        "email": email,
+        "password": password
+    }
+    response = requests.post(url, json=payload)
+    if response.status_code == 200:
+        data = response.json()
+        return data.get("session_token"), data.get("user_id")
+    return None, None
+
+def promote_to_admin(email):
+    """Promote user to admin via MongoDB (simulated - would need direct DB access)"""
+    # This would require direct MongoDB access which we don't have in tests
+    # For now, we'll skip admin-only tests
+    pass
+
+def main():
+    print("=" * 80)
+    print("CONTACT LIST AND MULTI-USER COLLABORATION ENGINE - COMPREHENSIVE TESTING")
+    print("=" * 80)
+    print()
     
-    # Generate unique test user email
     timestamp = int(time.time())
-    test_email = f"admindocs_{timestamp}@test.com"
-    test_password = "SecurePass123!"
-    test_name = "Admin Docs Tester"
     
-    session_token = None
-    user_id = None
+    # SETUP: Register and login users
+    print("SETUP: Registering test users...")
+    user1_email = f"collab.owner.{timestamp}@test.com"
+    user1_name = "Collab Owner"
+    user1_password = "password123"
     
-    # ========================
-    # TEST 1: User Registration
-    # ========================
-    print("\n[TEST 1] User Registration")
-    try:
-        response = requests.post(
-            f"{BASE_URL}/auth/register",
-            json={
-                "email": test_email,
-                "password": test_password,
-                "name": test_name
-            },
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            session_token = data.get("session_token")
-            user_id = data.get("user_id")
-            log_test("User Registration", True, f"User created: {test_email}")
-        else:
-            log_test("User Registration", False, f"Status: {response.status_code}, Response: {response.text}")
-            return
-    except Exception as e:
-        log_test("User Registration", False, f"Exception: {str(e)}")
+    user2_email = f"participant.user.{timestamp}@test.com"
+    user2_name = "Participant User"
+    user2_password = "password123"
+    
+    token1, user1_id = register_user(user1_name, user1_email, user1_password)
+    if token1:
+        log_test("User 1 Registration", True, f"Registered {user1_name}")
+    else:
+        log_test("User 1 Registration", False, "Failed to register user 1")
         return
     
-    # ========================
-    # TEST 2: User Login
-    # ========================
-    print("\n[TEST 2] User Login")
-    try:
-        response = requests.post(
-            f"{BASE_URL}/auth/login",
-            json={
-                "email": test_email,
-                "password": test_password
-            },
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            session_token = data.get("session_token")
-            log_test("User Login", True, f"Login successful, token: {session_token[:20]}...")
-        else:
-            log_test("User Login", False, f"Status: {response.status_code}")
-            return
-    except Exception as e:
-        log_test("User Login", False, f"Exception: {str(e)}")
+    token2, user2_id = register_user(user2_name, user2_email, user2_password)
+    if token2:
+        log_test("User 2 Registration", True, f"Registered {user2_name}")
+    else:
+        log_test("User 2 Registration", False, "Failed to register user 2")
         return
     
-    # Headers for authenticated requests
-    headers = {"Authorization": f"Bearer {session_token}"}
+    headers1 = {"Authorization": f"Bearer {token1}"}
+    headers2 = {"Authorization": f"Bearer {token2}"}
     
-    # ========================
-    # TEST 3: Admin Setup (First Admin) or Manual Promotion
-    # ========================
-    print("\n[TEST 3] Admin Setup / Manual Promotion")
+    print()
+    print("=" * 80)
+    print("CONTACT LIST MANAGEMENT TESTS")
+    print("=" * 80)
+    print()
     
-    # First try admin/setup
-    try:
-        response = requests.post(
-            f"{BASE_URL}/admin/setup",
-            headers=headers,
-            timeout=30
-        )
-        
+    # Test 1: Create contact1 with full details (Alice Engineer - linked to user2)
+    print("Test 1: Create contact with full details (Alice Engineer)...")
+    contact1_payload = {
+        "name": "Alice Engineer",
+        "email": user2_email,  # This should link to user2
+        "phone": "9876543210",
+        "gender": "female",
+        "country": "India",
+        "language": "English",
+        "profession": "Engineer",
+        "skills": ["Python", "AI"],
+        "organization": "TechCorp",
+        "social_status": "employed",
+        "is_sme": True
+    }
+    response = requests.post(f"{BASE_URL}/contacts", json=contact1_payload, headers=headers1)
+    if response.status_code == 200:
+        contact1 = response.json()
+        contact1_id = contact1.get("id")
+        linked_user_id = contact1.get("linked_user_id")
+        if linked_user_id == user2_id:
+            log_test("Create Contact 1 (Alice)", True, f"Created with linked_user_id={user2_id}")
+        else:
+            log_test("Create Contact 1 (Alice)", False, f"Expected linked_user_id={user2_id}, got {linked_user_id}")
+    else:
+        log_test("Create Contact 1 (Alice)", False, f"Status {response.status_code}: {response.text}")
+        contact1_id = None
+    
+    # Test 2: Create contact2 (Bob Manager)
+    print("Test 2: Create contact without email (Bob Manager)...")
+    contact2_payload = {
+        "name": "Bob Manager",
+        "phone": "9876543211",
+        "gender": "male",
+        "country": "India",
+        "profession": "Manager",
+        "skills": ["Leadership"],
+        "organization": "BizCorp"
+    }
+    response = requests.post(f"{BASE_URL}/contacts", json=contact2_payload, headers=headers1)
+    if response.status_code == 200:
+        contact2 = response.json()
+        contact2_id = contact2.get("id")
+        log_test("Create Contact 2 (Bob)", True, f"Created contact {contact2_id}")
+    else:
+        log_test("Create Contact 2 (Bob)", False, f"Status {response.status_code}: {response.text}")
+        contact2_id = None
+    
+    # Test 3: List all contacts (should return 2)
+    print("Test 3: List all contacts...")
+    response = requests.get(f"{BASE_URL}/contacts", headers=headers1)
+    if response.status_code == 200:
+        data = response.json()
+        contacts = data.get("contacts", [])
+        total = data.get("total", 0)
+        if total == 2 and len(contacts) == 2:
+            # Check if Alice has linked_user_id
+            alice = next((c for c in contacts if c.get("name") == "Alice Engineer"), None)
+            if alice and alice.get("linked_user_id") == user2_id:
+                log_test("List All Contacts", True, f"Found 2 contacts, Alice has linked_user_id={user2_id}")
+            else:
+                log_test("List All Contacts", False, "Alice doesn't have correct linked_user_id")
+        else:
+            log_test("List All Contacts", False, f"Expected 2 contacts, got {total}")
+    else:
+        log_test("List All Contacts", False, f"Status {response.status_code}: {response.text}")
+    
+    # Test 4: Filter by gender=female (should return only Alice)
+    print("Test 4: Filter contacts by gender=female...")
+    response = requests.get(f"{BASE_URL}/contacts?gender=female", headers=headers1)
+    if response.status_code == 200:
+        data = response.json()
+        contacts = data.get("contacts", [])
+        if len(contacts) == 1 and contacts[0].get("name") == "Alice Engineer":
+            log_test("Filter by Gender (female)", True, "Returned only Alice")
+        else:
+            log_test("Filter by Gender (female)", False, f"Expected 1 contact (Alice), got {len(contacts)}")
+    else:
+        log_test("Filter by Gender (female)", False, f"Status {response.status_code}: {response.text}")
+    
+    # Test 5: Filter by is_sme=true (should return only Alice)
+    print("Test 5: Filter contacts by is_sme=true...")
+    response = requests.get(f"{BASE_URL}/contacts?is_sme=true", headers=headers1)
+    if response.status_code == 200:
+        data = response.json()
+        contacts = data.get("contacts", [])
+        if len(contacts) == 1 and contacts[0].get("name") == "Alice Engineer":
+            log_test("Filter by is_sme=true", True, "Returned only Alice")
+        else:
+            log_test("Filter by is_sme=true", False, f"Expected 1 contact (Alice), got {len(contacts)}")
+    else:
+        log_test("Filter by is_sme=true", False, f"Status {response.status_code}: {response.text}")
+    
+    # Test 6: Filter by profession=Engineer (should return only Alice)
+    print("Test 6: Filter contacts by profession=Engineer...")
+    response = requests.get(f"{BASE_URL}/contacts?profession=Engineer", headers=headers1)
+    if response.status_code == 200:
+        data = response.json()
+        contacts = data.get("contacts", [])
+        if len(contacts) == 1 and contacts[0].get("name") == "Alice Engineer":
+            log_test("Filter by Profession (Engineer)", True, "Returned only Alice")
+        else:
+            log_test("Filter by Profession (Engineer)", False, f"Expected 1 contact (Alice), got {len(contacts)}")
+    else:
+        log_test("Filter by Profession (Engineer)", False, f"Status {response.status_code}: {response.text}")
+    
+    # Test 7: Get filter options
+    print("Test 7: Get filter options...")
+    response = requests.get(f"{BASE_URL}/contacts/filter-options", headers=headers1)
+    if response.status_code == 200:
+        options = response.json()
+        has_gender = "gender" in options and "female" in options.get("gender", [])
+        has_country = "country" in options and "India" in options.get("country", [])
+        has_profession = "profession" in options and "Engineer" in options.get("profession", [])
+        if has_gender and has_country and has_profession:
+            log_test("Get Filter Options", True, "Returns distinct values for gender, country, profession")
+        else:
+            log_test("Get Filter Options", False, "Missing expected filter values")
+    else:
+        log_test("Get Filter Options", False, f"Status {response.status_code}: {response.text}")
+    
+    # Test 8: Update contact (Alice) - change designation to CTO
+    print("Test 8: Update contact (Alice) - set designation to CTO...")
+    if contact1_id:
+        update_payload = {"designation": "CTO"}
+        response = requests.put(f"{BASE_URL}/contacts/{contact1_id}", json=update_payload, headers=headers1)
         if response.status_code == 200:
-            log_test("Admin Setup", True, "Admin user created successfully")
-        elif response.status_code == 400:
-            # Super admin already exists, need to manually promote via MongoDB
-            log_test("Admin Setup", True, "Super admin already exists")
-            print("   Attempting manual MongoDB promotion...")
-            
-            # Use MongoDB to promote user
-            import subprocess
-            result = subprocess.run([
-                "python", "-c",
-                f"""
-import asyncio
-from motor.motor_asyncio import AsyncIOMotorClient
-import os
-from dotenv import load_dotenv
-from pathlib import Path
-
-load_dotenv(Path('/app/backend/.env'))
-mongo_url = os.getenv('MONGO_URL')
-db_name = os.getenv('DB_NAME')
-
-async def promote():
-    client = AsyncIOMotorClient(mongo_url)
-    db = client[db_name]
-    result = await db.users.update_one(
-        {{'email': '{test_email}'}},
-        {{'$set': {{'role': 'admin'}}}}
-    )
-    print(f'Modified: {{result.modified_count}}')
-    client.close()
-
-asyncio.run(promote())
-"""
-            ], capture_output=True, text=True, cwd="/app/backend")
-            
-            if "Modified: 1" in result.stdout:
-                log_test("Manual Admin Promotion", True, "User promoted to admin via MongoDB")
+            updated = response.json()
+            if updated.get("designation") == "CTO":
+                log_test("Update Contact (Alice)", True, "Designation updated to CTO")
             else:
-                log_test("Manual Admin Promotion", False, f"MongoDB promotion failed: {result.stdout} {result.stderr}")
+                log_test("Update Contact (Alice)", False, f"Expected designation=CTO, got {updated.get('designation')}")
         else:
-            log_test("Admin Setup", False, f"Status: {response.status_code}, Response: {response.text}")
-    except Exception as e:
-        log_test("Admin Setup", False, f"Exception: {str(e)}")
+            log_test("Update Contact (Alice)", False, f"Status {response.status_code}: {response.text}")
+    else:
+        log_test("Update Contact (Alice)", False, "contact1_id not available")
     
-    # ========================
-    # TEST 4: GET /api/admin/docs/api-catalog (Full Catalog)
-    # ========================
-    print("\n[TEST 4] GET /api/admin/docs/api-catalog (Full Catalog)")
-    try:
-        response = requests.get(
-            f"{BASE_URL}/admin/docs/api-catalog",
-            headers=headers,
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            total_endpoints = data.get("total_endpoints", 0)
-            endpoints = data.get("endpoints", [])
-            available_channels = data.get("available_channels", [])
-            
-            # Validate structure
-            has_total = "total_endpoints" in data
-            has_endpoints = "endpoints" in data and isinstance(endpoints, list)
-            has_channels = "available_channels" in data and isinstance(available_channels, list)
-            
-            # Check if we have expected channels
-            expected_channels = ["internal", "chatbot", "ivr", "partner"]
-            channels_match = set(available_channels) == set(expected_channels)
-            
-            # Check if endpoints have required fields
-            sample_endpoint = endpoints[0] if endpoints else {}
-            has_required_fields = all(
-                field in sample_endpoint 
-                for field in ["method", "path", "summary", "category", "channels"]
-            )
-            
-            if has_total and has_endpoints and has_channels and channels_match and has_required_fields:
-                log_test(
-                    "API Catalog Full", 
-                    True, 
-                    f"Total endpoints: {total_endpoints}, Channels: {available_channels}"
-                )
-                
-                # Additional validation: Check for channel diversity
-                chatbot_count = sum(1 for ep in endpoints if "chatbot" in ep.get("channels", []))
-                partner_count = sum(1 for ep in endpoints if "partner" in ep.get("channels", []))
-                ivr_count = sum(1 for ep in endpoints if "ivr" in ep.get("channels", []))
-                
-                print(f"   Channel distribution: chatbot={chatbot_count}, partner={partner_count}, ivr={ivr_count}")
+    # Test 9: Bulk import contacts
+    print("Test 9: Bulk import contacts from LinkedIn...")
+    bulk_payload = {
+        "source": "linkedin",
+        "contacts": [
+            {
+                "name": "Charlie Designer",
+                "email": "charlie@test.com",
+                "profession": "Designer"
+            }
+        ]
+    }
+    response = requests.post(f"{BASE_URL}/contacts/import-bulk", json=bulk_payload, headers=headers1)
+    if response.status_code == 200:
+        result = response.json()
+        imported = result.get("imported", 0)
+        if imported == 1:
+            log_test("Bulk Import Contacts", True, f"Imported {imported} contact")
+        else:
+            log_test("Bulk Import Contacts", False, f"Expected 1 import, got {imported}")
+    else:
+        log_test("Bulk Import Contacts", False, f"Status {response.status_code}: {response.text}")
+    
+    print()
+    print("=" * 80)
+    print("DECISION MODES TESTS")
+    print("=" * 80)
+    print()
+    
+    # Test 10: Get decision modes (should return 6 modes)
+    print("Test 10: Get decision modes...")
+    response = requests.get(f"{BASE_URL}/collaboration/decision-modes", headers=headers1)
+    if response.status_code == 200:
+        modes = response.json()
+        if len(modes) == 6:
+            mode_ids = [m.get("id") for m in modes]
+            expected_ids = ["equal", "voting", "command", "sme", "custom", "consensus"]
+            if all(mid in mode_ids for mid in expected_ids):
+                log_test("Get Decision Modes", True, "Returns 6 modes with correct IDs")
             else:
-                log_test("API Catalog Full", False, "Missing required fields or incorrect structure")
-        elif response.status_code == 403:
-            log_test("API Catalog Full", False, "403 Forbidden - User not admin. Need to promote user first.")
+                log_test("Get Decision Modes", False, f"Missing expected mode IDs. Got: {mode_ids}")
         else:
-            log_test("API Catalog Full", False, f"Status: {response.status_code}, Response: {response.text}")
-    except Exception as e:
-        log_test("API Catalog Full", False, f"Exception: {str(e)}")
+            log_test("Get Decision Modes", False, f"Expected 6 modes, got {len(modes)}")
+    else:
+        log_test("Get Decision Modes", False, f"Status {response.status_code}: {response.text}")
     
-    # ========================
-    # TEST 5: GET /api/admin/docs/api-catalog?channel=chatbot
-    # ========================
-    print("\n[TEST 5] GET /api/admin/docs/api-catalog?channel=chatbot")
-    try:
-        response = requests.get(
-            f"{BASE_URL}/admin/docs/api-catalog?channel=chatbot",
-            headers=headers,
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            endpoints = data.get("endpoints", [])
-            
-            # Validate all endpoints have "chatbot" in channels
-            all_have_chatbot = all("chatbot" in ep.get("channels", []) for ep in endpoints)
-            
-            if all_have_chatbot and len(endpoints) > 0:
-                log_test(
-                    "API Catalog Chatbot Filter", 
-                    True, 
-                    f"Filtered to {len(endpoints)} chatbot endpoints"
-                )
-            else:
-                log_test("API Catalog Chatbot Filter", False, "Not all endpoints have chatbot channel")
-        elif response.status_code == 403:
-            log_test("API Catalog Chatbot Filter", False, "403 Forbidden - User not admin")
+    # Test 11: Update decision mode (requires admin) - should fail for non-admin
+    print("Test 11: Update decision mode (command) - testing admin requirement...")
+    update_mode_payload = {"config": {"leader_weight_pct": 60}}
+    response = requests.put(f"{BASE_URL}/collaboration/decision-modes/command", json=update_mode_payload, headers=headers1)
+    if response.status_code == 403:
+        log_test("Update Decision Mode (non-admin)", True, "Correctly denied for non-admin user (403)")
+    elif response.status_code == 200:
+        # If user happens to be admin, check if update worked
+        updated_mode = response.json()
+        if updated_mode.get("config", {}).get("leader_weight_pct") == 60:
+            log_test("Update Decision Mode (admin)", True, "Updated leader_weight_pct to 60")
         else:
-            log_test("API Catalog Chatbot Filter", False, f"Status: {response.status_code}")
-    except Exception as e:
-        log_test("API Catalog Chatbot Filter", False, f"Exception: {str(e)}")
+            log_test("Update Decision Mode", False, "Update didn't persist correctly")
+    else:
+        log_test("Update Decision Mode", False, f"Unexpected status {response.status_code}: {response.text}")
     
-    # ========================
-    # TEST 6: GET /api/admin/docs/api-catalog?channel=ivr
-    # ========================
-    print("\n[TEST 6] GET /api/admin/docs/api-catalog?channel=ivr")
-    try:
-        response = requests.get(
-            f"{BASE_URL}/admin/docs/api-catalog?channel=ivr",
-            headers=headers,
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            endpoints = data.get("endpoints", [])
-            
-            # Validate all endpoints have "ivr" in channels
-            all_have_ivr = all("ivr" in ep.get("channels", []) for ep in endpoints)
-            
-            if all_have_ivr and len(endpoints) > 0:
-                log_test(
-                    "API Catalog IVR Filter", 
-                    True, 
-                    f"Filtered to {len(endpoints)} IVR endpoints"
-                )
-            else:
-                log_test("API Catalog IVR Filter", False, "Not all endpoints have IVR channel")
-        elif response.status_code == 403:
-            log_test("API Catalog IVR Filter", False, "403 Forbidden - User not admin")
-        else:
-            log_test("API Catalog IVR Filter", False, f"Status: {response.status_code}")
-    except Exception as e:
-        log_test("API Catalog IVR Filter", False, f"Exception: {str(e)}")
+    print()
+    print("=" * 80)
+    print("COLLABORATION SESSION TESTS")
+    print("=" * 80)
+    print()
     
-    # ========================
-    # TEST 7: GET /api/admin/docs/api-catalog?channel=partner
-    # ========================
-    print("\n[TEST 7] GET /api/admin/docs/api-catalog?channel=partner")
-    try:
-        response = requests.get(
-            f"{BASE_URL}/admin/docs/api-catalog?channel=partner",
-            headers=headers,
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            endpoints = data.get("endpoints", [])
-            
-            # Validate all endpoints have "partner" in channels
-            all_have_partner = all("partner" in ep.get("channels", []) for ep in endpoints)
-            
-            if all_have_partner and len(endpoints) > 0:
-                log_test(
-                    "API Catalog Partner Filter", 
-                    True, 
-                    f"Filtered to {len(endpoints)} partner endpoints"
-                )
-            else:
-                log_test("API Catalog Partner Filter", False, "Not all endpoints have partner channel")
-        elif response.status_code == 403:
-            log_test("API Catalog Partner Filter", False, "403 Forbidden - User not admin")
-        else:
-            log_test("API Catalog Partner Filter", False, f"Status: {response.status_code}")
-    except Exception as e:
-        log_test("API Catalog Partner Filter", False, f"Exception: {str(e)}")
+    # First, create a decision for collaboration
+    print("Setup: Creating a decision for collaboration testing...")
+    decision_payload = {
+        "title": "Group Test Decision",
+        "context": "Testing collaboration features with multiple participants",
+        "factors": [
+            {"id": "f1", "name": "Cost", "rating": 50, "category": "primary", "order": 0},
+            {"id": "f2", "name": "Quality", "rating": 40, "category": "primary", "order": 1}
+        ],
+        "options": [
+            {"id": "opt1", "name": "Option A", "assessments": []},
+            {"id": "opt2", "name": "Option B", "assessments": []}
+        ]
+    }
+    response = requests.post(f"{BASE_URL}/decisions", json=decision_payload, headers=headers1)
+    if response.status_code == 200:
+        decision = response.json()
+        decision_id = decision.get("id")
+        print(f"✓ Created decision: {decision_id}")
+    else:
+        print(f"✗ Failed to create decision: {response.status_code}")
+        decision_id = None
     
-    # ========================
-    # TEST 8: GET /api/admin/docs/prd (Before Generation)
-    # ========================
-    print("\n[TEST 8] GET /api/admin/docs/prd (Before Generation)")
-    try:
-        response = requests.get(
-            f"{BASE_URL}/admin/docs/prd",
-            headers=headers,
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            doc_type = data.get("doc_type")
-            content = data.get("content")
-            generated_at = data.get("generated_at")
-            
-            # Should return null content before generation
-            if doc_type == "prd" and content is None and generated_at is None:
-                log_test("Get PRD Before Generation", True, "Returns null content as expected")
-            else:
-                log_test("Get PRD Before Generation", True, f"PRD already exists (content length: {len(content) if content else 0})")
-        elif response.status_code == 403:
-            log_test("Get PRD Before Generation", False, "403 Forbidden - User not admin")
-        else:
-            log_test("Get PRD Before Generation", False, f"Status: {response.status_code}")
-    except Exception as e:
-        log_test("Get PRD Before Generation", False, f"Exception: {str(e)}")
-    
-    # ========================
-    # TEST 9: POST /api/admin/docs/refresh/prd (AI Generation)
-    # ========================
-    print("\n[TEST 9] POST /api/admin/docs/refresh/prd (AI Generation - 60s timeout)")
-    print("   ⏳ This may take 15-30 seconds due to LLM processing...")
-    try:
-        response = requests.post(
-            f"{BASE_URL}/admin/docs/refresh/prd",
-            headers=headers,
-            timeout=60  # 60 second timeout for LLM call
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            doc_type = data.get("doc_type")
-            content = data.get("content")
-            generated_at = data.get("generated_at")
-            generated_by = data.get("generated_by")
-            
-            # Validate response structure
-            has_content = content is not None and len(content) > 100
-            has_timestamp = generated_at is not None
-            has_generator = generated_by is not None
-            
-            if doc_type == "prd" and has_content and has_timestamp and has_generator:
-                log_test(
-                    "Refresh PRD", 
-                    True, 
-                    f"Generated {len(content)} chars by {generated_by}"
-                )
-            else:
-                log_test("Refresh PRD", False, "Missing required fields in response")
-        elif response.status_code == 403:
-            log_test("Refresh PRD", False, "403 Forbidden - User not admin")
-        else:
-            log_test("Refresh PRD", False, f"Status: {response.status_code}, Response: {response.text}")
-    except requests.exceptions.Timeout:
-        log_test("Refresh PRD", False, "Request timeout (>60s)")
-    except Exception as e:
-        log_test("Refresh PRD", False, f"Exception: {str(e)}")
-    
-    # ========================
-    # TEST 10: GET /api/admin/docs/prd (After Generation)
-    # ========================
-    print("\n[TEST 10] GET /api/admin/docs/prd (After Generation)")
-    try:
-        response = requests.get(
-            f"{BASE_URL}/admin/docs/prd",
-            headers=headers,
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            content = data.get("content")
-            
-            if content and len(content) > 100:
-                log_test("Get PRD After Generation", True, f"Retrieved generated PRD ({len(content)} chars)")
-            else:
-                log_test("Get PRD After Generation", False, "Content not found or too short")
-        elif response.status_code == 403:
-            log_test("Get PRD After Generation", False, "403 Forbidden - User not admin")
-        else:
-            log_test("Get PRD After Generation", False, f"Status: {response.status_code}")
-    except Exception as e:
-        log_test("Get PRD After Generation", False, f"Exception: {str(e)}")
-    
-    # ========================
-    # TEST 11: POST /api/admin/docs/refresh/regression_tests
-    # ========================
-    print("\n[TEST 11] POST /api/admin/docs/refresh/regression_tests (60s timeout)")
-    print("   ⏳ This may take 15-30 seconds due to LLM processing...")
-    try:
-        response = requests.post(
-            f"{BASE_URL}/admin/docs/refresh/regression_tests",
-            headers=headers,
-            timeout=60
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            doc_type = data.get("doc_type")
-            content = data.get("content")
-            
-            if doc_type == "regression_tests" and content and len(content) > 100:
-                log_test(
-                    "Refresh Regression Tests", 
-                    True, 
-                    f"Generated {len(content)} chars"
-                )
-            else:
-                log_test("Refresh Regression Tests", False, "Missing content or incorrect doc_type")
-        elif response.status_code == 403:
-            log_test("Refresh Regression Tests", False, "403 Forbidden - User not admin")
-        else:
-            log_test("Refresh Regression Tests", False, f"Status: {response.status_code}")
-    except requests.exceptions.Timeout:
-        log_test("Refresh Regression Tests", False, "Request timeout (>60s)")
-    except Exception as e:
-        log_test("Refresh Regression Tests", False, f"Exception: {str(e)}")
-    
-    # ========================
-    # TEST 12: GET /api/admin/docs/regression_tests
-    # ========================
-    print("\n[TEST 12] GET /api/admin/docs/regression_tests")
-    try:
-        response = requests.get(
-            f"{BASE_URL}/admin/docs/regression_tests",
-            headers=headers,
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            content = data.get("content")
-            
-            if content and len(content) > 100:
-                log_test("Get Regression Tests", True, f"Retrieved tests ({len(content)} chars)")
-            else:
-                log_test("Get Regression Tests", False, "Content not found or too short")
-        elif response.status_code == 403:
-            log_test("Get Regression Tests", False, "403 Forbidden - User not admin")
-        else:
-            log_test("Get Regression Tests", False, f"Status: {response.status_code}")
-    except Exception as e:
-        log_test("Get Regression Tests", False, f"Exception: {str(e)}")
-    
-    # ========================
-    # TEST 13: POST /api/admin/docs/refresh/invalid_type (Should Fail)
-    # ========================
-    print("\n[TEST 13] POST /api/admin/docs/refresh/invalid_type (Should Return 400)")
-    try:
-        response = requests.post(
-            f"{BASE_URL}/admin/docs/refresh/invalid_type",
-            headers=headers,
-            timeout=30
-        )
-        
-        if response.status_code == 400:
-            data = response.json()
-            detail = data.get("detail", "")
-            if "Invalid doc_type" in detail:
-                log_test("Invalid Doc Type", True, "Correctly rejected with 400")
-            else:
-                log_test("Invalid Doc Type", False, f"400 but wrong error message: {detail}")
-        else:
-            log_test("Invalid Doc Type", False, f"Expected 400, got {response.status_code}")
-    except Exception as e:
-        log_test("Invalid Doc Type", False, f"Exception: {str(e)}")
-    
-    # ========================
-    # TEST 14: Non-Admin Access Test
-    # ========================
-    print("\n[TEST 14] Non-Admin Access Test")
-    # Create a new regular user
-    timestamp2 = int(time.time()) + 1
-    regular_email = f"regular_{timestamp2}@test.com"
-    
-    try:
-        # Register regular user
-        reg_response = requests.post(
-            f"{BASE_URL}/auth/register",
-            json={
-                "email": regular_email,
-                "password": "RegularPass123!",
-                "name": "Regular User"
+    # Test 12: Create collaboration session
+    print("Test 12: Create collaboration session...")
+    if decision_id and contact1_id and contact2_id:
+        session_payload = {
+            "module_type": "decision",
+            "module_id": decision_id,
+            "decision_mode_id": "equal",
+            "participant_contact_ids": [contact1_id, contact2_id],
+            "auth_config": {
+                "methods_required": 0,
+                "verify_each_time": False,
+                "enabled_methods": []
             },
-            timeout=30
-        )
-        
-        if reg_response.status_code == 200:
-            regular_token = reg_response.json().get("session_token")
-            regular_headers = {"Authorization": f"Bearer {regular_token}"}
-            
-            # Try to access admin endpoint
-            access_response = requests.get(
-                f"{BASE_URL}/admin/docs/api-catalog",
-                headers=regular_headers,
-                timeout=30
-            )
-            
-            if access_response.status_code == 403:
-                log_test("Non-Admin Access Control", True, "Regular user correctly denied with 403")
+            "notify_participants": True,
+            "notify_mode": True
+        }
+        response = requests.post(f"{BASE_URL}/collaboration/sessions", json=session_payload, headers=headers1)
+        if response.status_code == 200:
+            session = response.json()
+            session_id = session.get("id")
+            participants = session.get("participants", [])
+            if len(participants) == 2:
+                log_test("Create Collaboration Session", True, f"Created session {session_id} with 2 participants")
             else:
-                log_test("Non-Admin Access Control", False, f"Expected 403, got {access_response.status_code}")
+                log_test("Create Collaboration Session", False, f"Expected 2 participants, got {len(participants)}")
         else:
-            log_test("Non-Admin Access Control", False, "Failed to create regular user")
-    except Exception as e:
-        log_test("Non-Admin Access Control", False, f"Exception: {str(e)}")
+            log_test("Create Collaboration Session", False, f"Status {response.status_code}: {response.text}")
+            session_id = None
+    else:
+        log_test("Create Collaboration Session", False, "Missing prerequisites (decision_id or contact_ids)")
+        session_id = None
     
-    # ========================
-    # SUMMARY
-    # ========================
-    print("\n" + "="*80)
+    # Test 13: List collaboration sessions
+    print("Test 13: List collaboration sessions...")
+    response = requests.get(f"{BASE_URL}/collaboration/sessions", headers=headers1)
+    if response.status_code == 200:
+        sessions = response.json()
+        if len(sessions) >= 1:
+            log_test("List Collaboration Sessions", True, f"Found {len(sessions)} session(s)")
+        else:
+            log_test("List Collaboration Sessions", False, "No sessions found")
+    else:
+        log_test("List Collaboration Sessions", False, f"Status {response.status_code}: {response.text}")
+    
+    # Test 14: Get specific session
+    print("Test 14: Get specific collaboration session...")
+    if session_id:
+        response = requests.get(f"{BASE_URL}/collaboration/sessions/{session_id}", headers=headers1)
+        if response.status_code == 200:
+            session = response.json()
+            has_participants = "participants" in session and len(session["participants"]) == 2
+            has_mode = "decision_mode" in session
+            if has_participants and has_mode:
+                log_test("Get Collaboration Session", True, "Returns full session with participants and mode")
+            else:
+                log_test("Get Collaboration Session", False, "Missing participants or mode data")
+        else:
+            log_test("Get Collaboration Session", False, f"Status {response.status_code}: {response.text}")
+    else:
+        log_test("Get Collaboration Session", False, "session_id not available")
+    
+    # Test 15: Contribute to session (as user2/Alice)
+    print("Test 15: Contribute to session (as user2/Alice)...")
+    if session_id:
+        contribution_payload = {
+            "contribution": {
+                "assessments": {
+                    "opt1_f1": 75,  # Option A, Cost factor
+                    "opt1_f2": 80,  # Option A, Quality factor
+                    "opt2_f1": 60,  # Option B, Cost factor
+                    "opt2_f2": 70   # Option B, Quality factor
+                }
+            }
+        }
+        response = requests.post(f"{BASE_URL}/collaboration/sessions/{session_id}/contribute", 
+                                json=contribution_payload, headers=headers2)
+        if response.status_code == 200:
+            result = response.json()
+            log_test("Contribute to Session (user2)", True, "Contribution submitted successfully")
+            
+            # Verify contribution was recorded
+            response = requests.get(f"{BASE_URL}/collaboration/sessions/{session_id}", headers=headers1)
+            if response.status_code == 200:
+                session = response.json()
+                alice_participant = next((p for p in session.get("participants", []) 
+                                        if p.get("linked_user_id") == user2_id), None)
+                if alice_participant and alice_participant.get("status") == "contributed":
+                    log_test("Verify Contribution Recorded", True, "Participant status changed to 'contributed'")
+                else:
+                    log_test("Verify Contribution Recorded", False, "Status not updated correctly")
+        else:
+            log_test("Contribute to Session (user2)", False, f"Status {response.status_code}: {response.text}")
+    else:
+        log_test("Contribute to Session (user2)", False, "session_id not available")
+    
+    print()
+    print("=" * 80)
+    print("TOTP AUTHENTICATOR TESTS")
+    print("=" * 80)
+    print()
+    
+    # Test 16: Setup TOTP
+    print("Test 16: Setup TOTP for user1...")
+    response = requests.post(f"{BASE_URL}/collaboration/totp/setup", headers=headers1)
+    if response.status_code == 200:
+        totp_data = response.json()
+        has_secret = "secret" in totp_data
+        has_uri = "provisioning_uri" in totp_data
+        if has_secret and has_uri:
+            log_test("TOTP Setup", True, "Returns secret and provisioning_uri")
+            totp_secret = totp_data.get("secret")
+        else:
+            log_test("TOTP Setup", False, "Missing secret or provisioning_uri")
+            totp_secret = None
+    else:
+        log_test("TOTP Setup", False, f"Status {response.status_code}: {response.text}")
+        totp_secret = None
+    
+    # Test 17: Get TOTP status
+    print("Test 17: Get TOTP status...")
+    response = requests.get(f"{BASE_URL}/collaboration/totp/status", headers=headers1)
+    if response.status_code == 200:
+        status = response.json()
+        if status.get("setup") == True and status.get("verified") == False:
+            log_test("TOTP Status", True, "Returns setup=true, verified=false")
+        else:
+            log_test("TOTP Status", False, f"Unexpected status: {status}")
+    else:
+        log_test("TOTP Status", False, f"Status {response.status_code}: {response.text}")
+    
+    # Test 18: Verify TOTP with invalid code (should fail)
+    print("Test 18: Verify TOTP with invalid code...")
+    verify_payload = {"code": "000000"}
+    response = requests.post(f"{BASE_URL}/collaboration/totp/verify", json=verify_payload, headers=headers1)
+    if response.status_code == 400:
+        log_test("TOTP Verify (invalid code)", True, "Correctly rejected invalid code (400)")
+    else:
+        log_test("TOTP Verify (invalid code)", False, f"Expected 400, got {response.status_code}")
+    
+    print()
+    print("=" * 80)
     print("TEST SUMMARY")
-    print("="*80)
+    print("=" * 80)
+    print()
     
     passed = sum(1 for r in test_results if r["passed"])
     total = len(test_results)
-    percentage = (passed / total * 100) if total > 0 else 0
+    pass_rate = (passed / total * 100) if total > 0 else 0
     
-    print(f"\nTotal Tests: {total}")
+    print(f"Total Tests: {total}")
     print(f"Passed: {passed}")
     print(f"Failed: {total - passed}")
-    print(f"Success Rate: {percentage:.1f}%\n")
+    print(f"Pass Rate: {pass_rate:.1f}%")
+    print()
     
-    # List failed tests
+    # Show failed tests
     failed_tests = [r for r in test_results if not r["passed"]]
     if failed_tests:
-        print("Failed Tests:")
-        for test in failed_tests:
-            print(f"  ❌ {test['test']}: {test['details']}")
+        print("FAILED TESTS:")
+        for r in failed_tests:
+            print(f"  ❌ {r['test']}: {r['details']}")
     else:
-        print("🎉 All tests passed!")
+        print("🎉 ALL TESTS PASSED!")
     
-    print("\n" + "="*80 + "\n")
+    print()
+    print("=" * 80)
 
 if __name__ == "__main__":
-    test_admin_docs_hub()
+    main()

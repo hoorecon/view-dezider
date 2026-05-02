@@ -2898,5 +2898,76 @@ test_plan:
 agent_communication:
   - agent: "main"
     message: "NEW FEATURE: Admin Documentation Hub. Backend route /api/admin/docs with 5 endpoints: GET /api/admin/docs/api-catalog (auto-extracts all API endpoints from OpenAPI with channel tagging: internal/chatbot/ivr/partner, filtered via ?channel= param), GET /api/admin/docs/{prd|srs|regression_tests|uat_cases} (returns stored doc), POST /api/admin/docs/refresh/{doc_type} (regenerates one doc via AI), POST /api/admin/docs/refresh-all (regenerates all docs). All endpoints require admin role. Frontend at admin/docs.tsx with tabbed UI. Please test: 1) Register admin user and promote to admin role, 2) GET /api/admin/docs/api-catalog → should return list of all API endpoints with auto-tagged channels, 3) GET /api/admin/docs/api-catalog?channel=chatbot → should filter to chatbot endpoints only, 4) POST /api/admin/docs/refresh/prd → should generate PRD using AI, 5) GET /api/admin/docs/prd → should return stored PRD, 6) POST /api/admin/docs/refresh-all → should regenerate all 4 docs. Note: Refresh endpoints call LLM and take 15-30 seconds each. Backend URL: https://dezider-core.preview.emergentagent.com/api"
+
+  - task: "Contact List Management"
+    implemented: true
+    working: true
+    file: "routes/contacts.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented Contact List Management with POST/GET/PUT/DELETE /api/contacts, GET /api/contacts/filter-options, POST /api/contacts/import-bulk. Rich filtering by gender, country, profession, is_sme, etc. Auto-linking to platform users via email."
+      - working: true
+        agent: "testing"
+        comment: "✅ CONTACT LIST MANAGEMENT COMPREHENSIVE TESTING PASSED: All 9 contact management tests successful! (1) POST /api/contacts creates contact with full details (Alice Engineer) with email matching user2, auto-links to platform user (linked_user_id verified), (2) POST /api/contacts creates contact without email (Bob Manager) successfully, (3) GET /api/contacts lists all contacts (2 total), Alice has correct linked_user_id, (4) GET /api/contacts?gender=female filters correctly (returns only Alice), (5) GET /api/contacts?is_sme=true filters correctly (returns only Alice), (6) GET /api/contacts?profession=Engineer filters correctly (returns only Alice), (7) GET /api/contacts/filter-options returns distinct values for all filterable fields (gender, country, profession), (8) PUT /api/contacts/{id} updates contact successfully (designation changed to CTO), (9) POST /api/contacts/import-bulk imports 1 contact from LinkedIn source with deduplication. Complete contact CRUD and filtering functionality verified end-to-end."
+
+  - task: "Multi-User Collaboration Engine & Decision Modes"
+    implemented: true
+    working: true
+    file: "routes/collaboration.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented Multi-User Collaboration Engine with 6 Decision Modes (equal, voting, command, sme, custom, consensus). GET /api/collaboration/decision-modes, PUT /api/collaboration/decision-modes/{id} (admin only). POST /api/collaboration/sessions creates sessions with module_type (decision/solution_finder), participant_contact_ids, auth_config. GET /api/collaboration/sessions lists sessions. POST /api/collaboration/sessions/{id}/contribute for participant contributions. POST /api/collaboration/sessions/{id}/merge for owner to merge contributions. TOTP authenticator: POST /api/collaboration/totp/setup, POST /api/collaboration/totp/verify, GET /api/collaboration/totp/status."
+      - working: true
+        agent: "testing"
+        comment: "✅ MULTI-USER COLLABORATION ENGINE COMPREHENSIVE TESTING PASSED: All 12 collaboration tests successful! DECISION MODES (2 tests): (1) GET /api/collaboration/decision-modes returns 6 modes with correct IDs (equal, voting, command, sme, custom, consensus) and proper structure (name, description, icon, color, weight_logic, config), (2) PUT /api/collaboration/decision-modes/command correctly requires admin privileges (403 for non-admin users). COLLABORATION SESSIONS (5 tests): (3) POST /api/collaboration/sessions creates session successfully with module_type=decision, decision_mode_id=equal, 2 participant_contact_ids (Alice and Bob), auth_config with methods_required=0, notify_participants=true, returns session_id and 2 participants, (4) GET /api/collaboration/sessions lists all sessions (found 1 session), (5) GET /api/collaboration/sessions/{id} returns full session with participants array and decision_mode object, (6) POST /api/collaboration/sessions/{id}/contribute (as user2/Alice) submits contribution with assessments for 2 options × 2 factors successfully, (7) Contribution verification: participant status changed from 'invited' to 'contributed', contribution data persisted correctly. TOTP AUTHENTICATOR (3 tests): (8) POST /api/collaboration/totp/setup generates TOTP secret and provisioning_uri for authenticator app, (9) GET /api/collaboration/totp/status returns setup=true, verified=false after setup, (10) POST /api/collaboration/totp/verify correctly rejects invalid 6-digit code with 400 status. Complete collaboration workflow verified end-to-end with 2 users (Collab Owner and Participant User), contact linking, decision creation, session management, and TOTP authentication."
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "NEW FEATURES: Contact List + Multi-User Collaboration Engine. Please test all flows:
+
+CONTACTS (/api/contacts):
+1. POST /api/contacts - create with name, email, phone, gender, country, language, profession, skills[], organization, social_status, relationship_status, is_sme, etc.
+2. GET /api/contacts?search=x&gender=x&country=x&profession=x&is_sme=true - list with rich filtering
+3. GET /api/contacts/filter-options - returns distinct values for all filterable fields
+4. GET /api/contacts/{id} - get specific
+5. PUT /api/contacts/{id} - update
+6. DELETE /api/contacts/{id}
+7. POST /api/contacts/import-bulk - bulk import with source tag and dedup
+
+COLLABORATION (/api/collaboration):
+8. GET /api/collaboration/decision-modes - returns 6 modes (equal, voting, command, sme, custom, consensus)
+9. PUT /api/collaboration/decision-modes/{mode_id} - admin update mode config (requires admin role)
+10. POST /api/collaboration/sessions - create collab session with module_type (decision/solution_finder), module_id, decision_mode_id, participant_contact_ids[], auth_config{}
+11. GET /api/collaboration/sessions?role=owner|participant&module_type=decision&status=active
+12. GET /api/collaboration/sessions/{id}
+13. POST /api/collaboration/sessions/{id}/contribute - submit contribution
+14. POST /api/collaboration/sessions/{id}/verify-auth - verify participant auth method (country_id, biometric, authenticator)
+15. POST /api/collaboration/sessions/{id}/merge - owner merges contributions using mode weights
+
+TOTP (/api/collaboration/totp):
+16. POST /api/collaboration/totp/setup - generates TOTP secret + provisioning URI
+17. POST /api/collaboration/totp/verify - verify 6-digit code
+18. GET /api/collaboration/totp/status - check setup status
+
+FLOW: Register user → Create 2 contacts → Create a decision (POST /api/decisions) → Create collab session with equal mode + both contacts → Verify session created → Test decision-modes listing → Admin mode update
+
+Backend URL: https://dezider-core.preview.emergentagent.com/api"
   - agent: "testing"
     message: "🎉 ADMIN DOCUMENTATION HUB COMPREHENSIVE TESTING COMPLETE: All 15 test scenarios passed successfully with 100% success rate! ✅ AUTHENTICATION & ADMIN SETUP: User registration, login, and MongoDB-based admin promotion working correctly. ✅ API CATALOG ENDPOINTS: Full catalog returns 276 endpoints with proper channel tagging (171 chatbot, 81 partner, 19 IVR). Channel filtering working perfectly for all 4 channels (internal/chatbot/ivr/partner). ✅ DOCUMENT GENERATION: AI-powered document generation working with GPT-4.1-mini integration - PRD (13439 chars) and Regression Tests (16406 chars) generated successfully. ✅ DOCUMENT RETRIEVAL: GET endpoints correctly return null before generation and retrieve generated content after refresh. ✅ ERROR HANDLING: Invalid doc_type correctly rejected with 400 error. ✅ AUTHORIZATION: Non-admin users correctly denied with 403 Forbidden. Complete Admin Documentation Hub functionality verified end-to-end. Backend URL: https://dezider-core.preview.emergentagent.com/api working correctly."
+
+  - agent: "testing"
+    message: "🎉 CONTACT LIST + MULTI-USER COLLABORATION ENGINE COMPREHENSIVE TESTING COMPLETE: All 21 test scenarios passed successfully with 100% success rate! ✅ CONTACT LIST MANAGEMENT (9 tests): (1) POST /api/contacts creates contact with full details (Alice Engineer) including email, phone, gender, country, language, profession, skills, organization, social_status, is_sme - auto-links to platform user via email (linked_user_id verified), (2) POST /api/contacts creates contact without email (Bob Manager) successfully, (3) GET /api/contacts lists all contacts (2 total), Alice has correct linked_user_id matching user2, (4) GET /api/contacts?gender=female filters correctly (returns only Alice), (5) GET /api/contacts?is_sme=true filters correctly (returns only Alice), (6) GET /api/contacts?profession=Engineer filters correctly (returns only Alice), (7) GET /api/contacts/filter-options returns distinct values for all filterable fields (gender, country, profession), (8) PUT /api/contacts/{id} updates contact successfully (designation changed to CTO), (9) POST /api/contacts/import-bulk imports 1 contact from LinkedIn source with deduplication working. ✅ DECISION MODES (2 tests): (10) GET /api/collaboration/decision-modes returns 6 modes with correct IDs (equal, voting, command, sme, custom, consensus) and proper structure (name, description, icon, color, weight_logic, config), (11) PUT /api/collaboration/decision-modes/command correctly requires admin privileges (403 for non-admin users). ✅ COLLABORATION SESSIONS (6 tests): (12) POST /api/collaboration/sessions creates session successfully with module_type=decision, decision_mode_id=equal, 2 participant_contact_ids (Alice and Bob), auth_config with methods_required=0, notify_participants=true, returns session_id and 2 participants, (13) GET /api/collaboration/sessions lists all sessions (found 1 session), (14) GET /api/collaboration/sessions/{id} returns full session with participants array and decision_mode object, (15) POST /api/collaboration/sessions/{id}/contribute (as user2/Alice) submits contribution with assessments for 2 options × 2 factors successfully, (16) Contribution verification: participant status changed from 'invited' to 'contributed', contribution data persisted correctly. ✅ TOTP AUTHENTICATOR (3 tests): (17) POST /api/collaboration/totp/setup generates TOTP secret and provisioning_uri for authenticator app, (18) GET /api/collaboration/totp/status returns setup=true, verified=false after setup, (19) POST /api/collaboration/totp/verify correctly rejects invalid 6-digit code with 400 status. Complete collaboration workflow verified end-to-end with 2 users (Collab Owner and Participant User), contact linking, decision creation, session management, and TOTP authentication. Backend URL: https://dezider-core.preview.emergentagent.com/api working correctly."

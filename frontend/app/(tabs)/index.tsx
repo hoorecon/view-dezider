@@ -277,6 +277,38 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Multi-User Collaboration */}
+          <Text style={styles.sectionTitle}>Collaboration</Text>
+          <View style={styles.quickActions}>
+            <TouchableOpacity
+              style={styles.actionCard}
+              onPress={() => router.push('/tools/contacts' as any)}
+            >
+              <LinearGradient
+                colors={['#1E293B', '#475569']}
+                style={styles.actionIcon}
+              >
+                <Ionicons name="people" size={24} color={COLORS.white} />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Contacts</Text>
+              <Text style={styles.actionSubtitle}>Manage & filter participants</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionCard}
+              onPress={() => router.push('/tools/collaborate' as any)}
+            >
+              <LinearGradient
+                colors={['#7C3AED', '#A855F7']}
+                style={styles.actionIcon}
+              >
+                <Ionicons name="git-network" size={24} color={COLORS.white} />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Group Decisions</Text>
+              <Text style={styles.actionSubtitle}>Multi-user collaboration</Text>
+            </TouchableOpacity>
+          </View>
+
           {/* GEM Flight Model — Orchestrator */}
           <TouchableOpacity
             style={styles.cttCard}

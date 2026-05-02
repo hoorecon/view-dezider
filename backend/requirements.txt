@@ -28,6 +28,7 @@ filelock==3.24.3
 flake8==7.3.0
 frozenlist==1.8.0
 fsspec==2026.2.0
+git-filter-repo==2.47.0
 google-ai-generativelanguage==0.6.15
 google-api-core==2.30.0
 google-api-python-client==2.190.0
@@ -91,6 +92,7 @@ pyflakes==3.4.0
 Pygments==2.19.2
 PyJWT==2.11.0
 pymongo==4.5.0
+pyotp==2.9.0
 pyparsing==3.3.2
 pytest==9.0.2
 python-dateutil==2.9.0.post0
