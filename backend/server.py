@@ -62,6 +62,7 @@ from routes.contacts import router as contacts_router
 from routes.collaboration import router as collaboration_router
 from routes.incident_response import router as incident_router
 from routes.audit_trail import router as audit_trail_router
+from routes.face_auth import router as face_auth_router
 
 
 # ========================
@@ -100,6 +101,7 @@ api_router.include_router(contacts_router)
 api_router.include_router(collaboration_router)
 api_router.include_router(incident_router)
 api_router.include_router(audit_trail_router)
+api_router.include_router(face_auth_router)
 
 # ========================
 # HEALTH CHECK

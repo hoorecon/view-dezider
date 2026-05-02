@@ -31,7 +31,11 @@ export default function CollabCallScreen() {
   const [showParticipants, setShowParticipants] = useState(false);
   const [screenSharing, setScreenSharing] = useState(false);
   const [ending, setEnding] = useState(false);
+  const [presenceInterval, setPresenceInterval] = useState(300);
+  const [lastPresenceCheck, setLastPresenceCheck] = useState<string | null>(null);
+  const [presenceDue, setPresenceDue] = useState(false);
   const pollRef = useRef<any>(null);
+  const presenceRef = useRef<any>(null);
 
   const startOrGetCall = async () => {
     try {
@@ -73,7 +77,25 @@ export default function CollabCallScreen() {
   useEffect(() => {
     startOrGetCall();
     pollRef.current = setInterval(pollCallStatus, 8000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+
+    // Fetch presence check config
+    const fetchPresenceConfig = async () => {
+      try {
+        const res = await api.get('/face-auth/presence-config', { params: { session_id: sessionId } });
+        const interval = res.data?.effective_interval_seconds || 300;
+        setPresenceInterval(interval);
+        // Start presence timer
+        presenceRef.current = setInterval(() => {
+          setPresenceDue(true);
+        }, interval * 1000);
+      } catch (e) {}
+    };
+    fetchPresenceConfig();
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      if (presenceRef.current) clearInterval(presenceRef.current);
+    };
   }, []);
 
   const handleEndCall = async () => {
@@ -245,6 +267,24 @@ export default function CollabCallScreen() {
         )}
       </View>
 
+      {/* Presence Check Banner */}
+      {presenceDue && (
+        <TouchableOpacity style={styles.presenceBanner}
+          onPress={() => {
+            setPresenceDue(false);
+            setLastPresenceCheck(new Date().toISOString());
+            router.push({ pathname: '/tools/face-auth', params: { mode: 'presence', sessionId } } as any);
+          }}>
+          <View style={styles.presencePulse} />
+          <Ionicons name="eye" size={18} color="#FFF" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.presenceTitle}>Presence Verification Required</Text>
+            <Text style={styles.presenceSub}>Tap to verify your identity (every {Math.round(presenceInterval / 60)} min)</Text>
+          </View>
+          <Ionicons name="arrow-forward" size={16} color="rgba(255,255,255,0.7)" />
+        </TouchableOpacity>
+      )}
+
       {/* Bottom Controls */}
       <View style={styles.bottomControls}>
         <TouchableOpacity style={[styles.controlBtn, screenSharing && styles.controlBtnActive]}
@@ -336,4 +376,10 @@ const styles = StyleSheet.create({
   controlBtnActive: { backgroundColor: '#3B82F6' },
   controlLabel: { fontSize: 10, fontWeight: '600', color: '#9CA3AF' },
   endCallBtn: { backgroundColor: '#DC2626', paddingHorizontal: 20 },
+
+  // Presence check
+  presenceBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#F97316' },
+  presencePulse: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FFF' },
+  presenceTitle: { fontSize: 13, fontWeight: '700', color: '#FFF' },
+  presenceSub: { fontSize: 10, color: 'rgba(255,255,255,0.8)', marginTop: 1 },
 });

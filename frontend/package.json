@@ -24,6 +24,7 @@
     "axios": "^1.13.6",
     "expo": "~54.0.34",
     "expo-blur": "~15.0.8",
+    "expo-camera": "^55.0.16",
     "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.13",
     "expo-device": "~8.0.10",

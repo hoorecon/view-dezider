@@ -332,6 +332,12 @@ export default function CollaborateScreen() {
                     value={overrideFields.deadline_hours || ''}
                     onChangeText={v => setOverrideFields({...overrideFields, deadline_hours: v})} />
                 </View>
+                <View style={styles.overrideFieldRow}>
+                  <Text style={styles.overrideFieldLabel}>Presence Check (Seconds)</Text>
+                  <TextInput style={styles.overrideFieldInput} keyboardType="numeric" placeholder="300"
+                    value={overrideFields.presence_check_interval || ''}
+                    onChangeText={v => setOverrideFields({...overrideFields, presence_check_interval: v})} />
+                </View>
               </View>
             )}
           </View>
@@ -698,6 +704,32 @@ export default function CollaborateScreen() {
                   </View>
                 )}
               </View>
+
+              {/* Face Authentication */}
+              <View style={styles.verifyCard}>
+                <View style={styles.verifyCardHeader}>
+                  <View style={[styles.verifyIcon, { backgroundColor: '#F0FDF4' }]}>
+                    <Ionicons name="scan" size={20} color="#059669" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.verifyCardTitle}>Face Authentication + Liveness</Text>
+                    <Text style={styles.verifyCardDesc}>Camera-based face match with continuous presence</Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity style={[styles.verifyActionBtn, { backgroundColor: '#059669' }]}
+                    onPress={() => { setShowVerifyModal(false); router.push({ pathname: '/tools/face-auth', params: { mode: 'register' } } as any); }}>
+                    <Ionicons name="person-add" size={14} color="#FFF" />
+                    <Text style={styles.verifyActionText}>Register Face</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.verifyActionBtn, { backgroundColor: '#3B82F6' }]}
+                    onPress={() => { setShowVerifyModal(false); router.push({ pathname: '/tools/face-auth', params: { mode: 'verify' } } as any); }}>
+                    <Ionicons name="shield-checkmark" size={14} color="#FFF" />
+                    <Text style={styles.verifyActionText}>Verify</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
             </ScrollView>
           </View>
         </View>
