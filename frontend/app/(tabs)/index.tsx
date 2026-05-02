@@ -482,6 +482,27 @@ export default function HomeScreen() {
             </LinearGradient>
           </TouchableOpacity>
 
+          {/* Social Learning Pipeline */}
+          <TouchableOpacity
+            style={styles.calendarCard}
+            onPress={() => router.push('/tools/social-learning' as any)}
+            activeOpacity={0.7}
+          >
+            <LinearGradient
+              colors={['#7C3AED', '#A855F7']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.calendarGradient}
+            >
+              <Ionicons name="newspaper" size={24} color="#FFF" />
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.calendarTitle}>Social Learning</Text>
+                <Text style={styles.calendarSub}>News → Intelligence → Templates for decisions</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
+            </LinearGradient>
+          </TouchableOpacity>
+
           {/* GEM + TEPFI + Calendar Quick Actions */}
           <Text style={styles.sectionTitle}>Management Tools</Text>
           <View style={styles.quickActions}>

@@ -18,11 +18,16 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 export default function Step6() {
-  const { decision, addOption, addOptionFromStore, removeOption, newOptionName, setNewOptionName, setCurrentStep } = useDecision();
+  const { decision, addOption, addOptionByName, addOptionFromStore, removeOption, newOptionName, setNewOptionName, setCurrentStep, saveDecision } = useDecision();
 
   const [showStoreModal, setShowStoreModal] = useState(false);
   const [storeSolutions, setStoreSolutions] = useState<any[]>([]);
   const [loadingStore, setLoadingStore] = useState(false);
+
+  // Social Learning Templates
+  const [showSLModal, setShowSLModal] = useState(false);
+  const [slTemplates, setSlTemplates] = useState<any[]>([]);
+  const [loadingSL, setLoadingSL] = useState(false);
 
   const fetchStoreSolutions = async () => {
     setLoadingStore(true);
@@ -54,6 +59,31 @@ export default function Step6() {
   const isAlreadyAdded = (solutionId: string) =>
     decision.options.some(o => o.solution_id === solutionId);
 
+  // Social Learning Templates
+  const fetchSLTemplates = async () => {
+    setLoadingSL(true);
+    try {
+      const res = await api.get('/social-learning/templates-for-decision', {
+        params: { life_area: decision.life_area || undefined, limit: 20 },
+      });
+      setSlTemplates(res.data?.templates || []);
+    } catch (e) {
+      console.error('Failed to load SL templates:', e);
+      setSlTemplates([]);
+    } finally {
+      setLoadingSL(false);
+    }
+  };
+
+  const handleUseSLTemplate = (t: any) => {
+    // Add each suggested option from the template
+    const opts = t.options_to_evaluate || [];
+    opts.forEach((opt: string) => {
+      addOptionByName(opt);
+    });
+    setShowSLModal(false);
+  };
+
   return (
     <View style={styles.stepContent}>
       <Text style={styles.stepTitle}>Step 6: Define Options</Text>
@@ -77,6 +107,24 @@ export default function Step6() {
           </Text>
         </View>
         <Ionicons name="chevron-forward" size={18} color={COLORS.primary} />
+      </TouchableOpacity>
+
+      {/* Social Learning Templates Button */}
+      <TouchableOpacity
+        style={[localStyles.storeButton, { backgroundColor: '#F5F3FF', borderColor: '#DDD6FE' }]}
+        onPress={() => { setShowSLModal(true); fetchSLTemplates(); }}
+        activeOpacity={0.7}
+      >
+        <View style={[localStyles.storeIconWrap, { backgroundColor: '#7C3AED' }]}>
+          <Ionicons name="newspaper" size={20} color="#FFF" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[localStyles.storeButtonTitle, { color: '#7C3AED' }]}>Social Learning Templates</Text>
+          <Text style={[localStyles.storeButtonSub, { color: '#8B5CF6' }]}>
+            Options from real-world scenarios & news
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color="#7C3AED" />
       </TouchableOpacity>
 
       {/* Current Options */}
@@ -212,6 +260,77 @@ export default function Step6() {
                     </TouchableOpacity>
                   );
                 }}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Social Learning Templates Modal */}
+      <Modal visible={showSLModal} animationType="slide" transparent>
+        <View style={localStyles.modalOverlay}>
+          <View style={localStyles.modalContent}>
+            <View style={localStyles.modalHeader}>
+              <View>
+                <Text style={localStyles.modalTitle}>Social Learning Templates</Text>
+                <Text style={localStyles.modalSubtitle}>
+                  Options from real-world scenarios
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowSLModal(false)} style={localStyles.closeBtn}>
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            {loadingSL ? (
+              <ActivityIndicator size="large" color="#7C3AED" style={{ marginTop: 40 }} />
+            ) : slTemplates.length === 0 ? (
+              <View style={localStyles.emptyState}>
+                <Ionicons name="newspaper-outline" size={48} color={COLORS.textMuted} />
+                <Text style={localStyles.emptyText}>No social learning templates available</Text>
+                <Text style={localStyles.emptySubtext}>Upload news in Social Learning to generate templates</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={slTemplates}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={{ paddingBottom: 20 }}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={[localStyles.solCard, { borderLeftWidth: 3, borderLeftColor: '#7C3AED' }]}
+                    onPress={() => handleUseSLTemplate(item)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={localStyles.solCardTop}>
+                      <View style={[localStyles.solTypeBadge, { backgroundColor: '#F5F3FF' }]}>
+                        <Ionicons name={item.tier === 3 ? 'diamond' : 'shield-checkmark'} size={14} color="#7C3AED" />
+                        <Text style={[localStyles.solTypeText, { color: '#7C3AED' }]}>
+                          {item.tier === 3 ? 'Premium' : 'Authorized'}
+                        </Text>
+                      </View>
+                      <View style={[localStyles.solTypeBadge, { backgroundColor: item.category === 'problem' ? '#FEF2F2' : item.category === 'need' ? '#FFFBEB' : '#ECFDF5' }]}>
+                        <Text style={[localStyles.solTypeText, { color: item.category === 'problem' ? '#EF4444' : item.category === 'need' ? '#D97706' : '#059669' }]}>
+                          {item.category}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={localStyles.solName} numberOfLines={1}>{item.scenario_title || item.title}</Text>
+                    <Text style={localStyles.solDesc} numberOfLines={2}>{item.problem_statement}</Text>
+                    {(item.options_to_evaluate || []).length > 0 && (
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+                        {item.options_to_evaluate.map((opt: string, idx: number) => (
+                          <View key={idx} style={{ backgroundColor: '#F5F3FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                            <Text style={{ fontSize: 10, color: '#7C3AED', fontWeight: '500' }}>+ {opt}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                    <View style={localStyles.selectBadge}>
+                      <Ionicons name="add-circle" size={16} color="#7C3AED" />
+                      <Text style={[localStyles.selectText, { color: '#7C3AED' }]}>Tap to add options from template</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
               />
             )}
           </View>

@@ -89,6 +89,22 @@ export default function SolutionFinderScreen() {
   const [q4Contingency, setQ4Contingency] = useState('');
   const [actionItems, setActionItems] = useState<ActionItem[]>([{ action: '', who: '', by_when: '', status: 'pending' }]);
 
+  // Social Learning for Q4
+  const [showSLRiskModal, setShowSLRiskModal] = useState(false);
+  const [slRiskTemplates, setSlRiskTemplates] = useState<any[]>([]);
+  const [loadingSLRisk, setLoadingSLRisk] = useState(false);
+
+  // Prefill from Social Learning templates
+  useEffect(() => {
+    if (params.from_social_learning) {
+      if (params.prefill_goal) setSmartGoal(params.prefill_goal as string);
+      if (params.prefill_concerns) setQ1AllConcerns(params.prefill_concerns as string);
+      if (params.prefill_risks) setQ4Mitigation(params.prefill_risks as string);
+      if (params.prefill_actions) setQ4Contingency(params.prefill_actions as string);
+      if (params.prefill_area) setAreaOfLife(params.prefill_area as string);
+    }
+  }, [params.from_social_learning]);
+
   const steps = [
     { title: 'Life Area & Goal', icon: 'flag' },
     { title: 'Concerns', icon: 'alert-circle' },
@@ -126,6 +142,33 @@ export default function SolutionFinderScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Social Learning templates for Q4 Risk
+  const fetchSLRiskTemplates = async () => {
+    setLoadingSLRisk(true);
+    try {
+      const res = await api.get('/social-learning/templates-for-solution-finder', {
+        params: { life_area: areaOfLife || undefined, limit: 20 },
+      });
+      setSlRiskTemplates(res.data?.templates || []);
+    } catch (e) {
+      console.error('Failed to load SL risk templates:', e);
+      setSlRiskTemplates([]);
+    } finally {
+      setLoadingSLRisk(false);
+    }
+  };
+
+  const applySLRiskTemplate = (t: any) => {
+    const concerns = (t.main_concerns || []).join('\n');
+    const risks = (t.risk_management_questions || []).join('\n');
+    const actions = (t.recommended_actions || []).join('\n');
+    if (concerns) setQ4NegConsequences(prev => prev ? prev + '\n' + concerns : concerns);
+    if (risks) setQ4Mitigation(prev => prev ? prev + '\n' + risks : risks);
+    if (actions) setQ4Contingency(prev => prev ? prev + '\n' + actions : actions);
+    setShowSLRiskModal(false);
+    showAlert('Applied', 'Risk insights from Social Learning have been added to Q4.');
   };
 
   const handleSave = async () => {
@@ -446,6 +489,19 @@ export default function SolutionFinderScreen() {
           <View>
             <Text style={styles.sectionHeader}>Q4. Risk Management</Text>
 
+            {/* Social Learning Risk Templates */}
+            <TouchableOpacity
+              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F5F3FF', borderRadius: 10, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: '#DDD6FE', gap: 10 }}
+              onPress={() => { setShowSLRiskModal(true); fetchSLRiskTemplates(); }}
+            >
+              <Ionicons name="newspaper" size={18} color="#7C3AED" />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#7C3AED' }}>Load from Social Learning</Text>
+                <Text style={{ fontSize: 10, color: '#8B5CF6' }}>Auto-fill risks from real-world scenarios</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#7C3AED" />
+            </TouchableOpacity>
+
             <Text style={styles.stepLabel}>Possible Negative Consequences</Text>
             <TextInput
               style={styles.textArea}
@@ -744,6 +800,64 @@ export default function SolutionFinderScreen() {
                   </>
                 )}
               </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Social Learning Risk Templates Modal */}
+        <Modal visible={showSLRiskModal} transparent animationType="slide">
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+            <View style={{ backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '70%' }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Ionicons name="newspaper" size={20} color="#7C3AED" />
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: '#1F2937' }}>Social Learning Risks</Text>
+                </View>
+                <TouchableOpacity onPress={() => setShowSLRiskModal(false)}>
+                  <Ionicons name="close" size={24} color="#6B7280" />
+                </TouchableOpacity>
+              </View>
+              <Text style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 12 }}>
+                Select a template to auto-populate risk insights
+              </Text>
+              {loadingSLRisk ? (
+                <ActivityIndicator size="large" color="#7C3AED" style={{ marginTop: 40 }} />
+              ) : slRiskTemplates.length === 0 ? (
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <Ionicons name="newspaper-outline" size={40} color="#D1D5DB" />
+                  <Text style={{ fontSize: 14, color: '#9CA3AF', marginTop: 8 }}>No risk templates available</Text>
+                </View>
+              ) : (
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  {slRiskTemplates.map((t: any) => (
+                    <TouchableOpacity
+                      key={t.id}
+                      style={{ backgroundColor: '#F9FAFB', borderRadius: 10, padding: 12, marginBottom: 8, borderLeftWidth: 3, borderLeftColor: '#7C3AED' }}
+                      onPress={() => applySLRiskTemplate(t)}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: '#1F2937' }} numberOfLines={1}>
+                        {t.scenario_title || t.title}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }} numberOfLines={2}>
+                        {t.smart_goal || 'Risk insights from social learning'}
+                      </Text>
+                      {(t.main_concerns || []).length > 0 && (
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+                          {t.main_concerns.slice(0, 2).map((c: string, i: number) => (
+                            <View key={i} style={{ backgroundColor: '#FEF2F2', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                              <Text style={{ fontSize: 9, color: '#EF4444' }}>⚠ {c}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 }}>
+                        <Ionicons name="add-circle" size={14} color="#7C3AED" />
+                        <Text style={{ fontSize: 10, color: '#7C3AED', fontWeight: '500' }}>Tap to apply</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
             </View>
           </View>
         </Modal>

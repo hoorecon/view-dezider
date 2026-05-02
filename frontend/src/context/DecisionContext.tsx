@@ -29,6 +29,7 @@ interface DecisionContextType {
 
   // Option operations
   addOption: () => void;
+  addOptionByName: (name: string) => void;
   addOptionFromStore: (name: string, solutionId: string) => void;
   removeOption: (optionId: string) => void;
   newOptionName: string;
@@ -230,6 +231,20 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const updatedOptions = [...decision!.options, newOption];
     saveDecision({ options: updatedOptions });
     setNewOptionName('');
+  };
+
+  const addOptionByName = (name: string) => {
+    if (!name.trim()) return;
+    const exists = decision!.options.some(o => o.name.toLowerCase() === name.trim().toLowerCase());
+    if (exists) return;
+    const newOption: DecisionOption = {
+      id: `option_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: name.trim(),
+      assessments: [],
+      worth_percentage: 0,
+    };
+    const updatedOptions = [...decision!.options, newOption];
+    saveDecision({ options: updatedOptions });
   };
 
   const addOptionFromStore = (name: string, solutionId: string) => {
@@ -460,7 +475,7 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     fetchDecision,
     addFactor, updateFactor, removeFactor, moveFactorUp, moveFactorDown, applyRatingsAndContinue,
     newFactorName, setNewFactorName,
-    addOption, addOptionFromStore, removeOption,
+    addOption, addOptionByName, addOptionFromStore, removeOption,
     newOptionName, setNewOptionName,
     updateAssessment, getAssessmentValue, getAssessmentMode, getUnitValue, getActualValue, getAssessmentKey,
     selectOption,
