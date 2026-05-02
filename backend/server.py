@@ -63,6 +63,7 @@ from routes.collaboration import router as collaboration_router
 from routes.incident_response import router as incident_router
 from routes.audit_trail import router as audit_trail_router
 from routes.face_auth import router as face_auth_router
+from routes.social_learning import router as social_learning_router
 
 
 # ========================
