@@ -19,6 +19,7 @@ interface DecisionContextType {
 
   // Factor operations
   addFactor: () => void;
+  addFactorsFromTemplate: (templateFactors: any[]) => number;
   updateFactor: (factorId: string, updates: Partial<Factor>) => void;
   removeFactor: (factorId: string) => void;
   moveFactorUp: (factorId: string) => void;
@@ -166,6 +167,36 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const updatedFactors = [...decision!.factors, newFactor];
     saveDecision({ factors: updatedFactors });
     setNewFactorName('');
+  };
+
+  const addFactorsFromTemplate = (templateFactors: any[]) => {
+    const existingNames = new Set(decision!.factors.map(f => f.name.toLowerCase()));
+    const newFactors: Factor[] = [];
+    let orderStart = decision!.factors.length;
+
+    for (const tf of templateFactors) {
+      const name = (tf.name || '').trim();
+      if (!name || existingNames.has(name.toLowerCase())) continue;
+      existingNames.add(name.toLowerCase());
+
+      const priority = tf.priority || 5;
+      newFactors.push({
+        id: `factor_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        name,
+        category: priority >= 7 ? 'primary' : 'secondary',
+        rating: Math.min(priority * 10, 100),
+        order: orderStart++,
+        expected_value: tf.expected_value_pct ?? undefined,
+        factor_type: tf.factor_type === 'quantitative' ? 'quantitative' : 'qualitative',
+        data_type: tf.factor_type === 'quantitative' ? 'numeric' : 'text',
+      });
+    }
+
+    if (newFactors.length > 0) {
+      const updatedFactors = [...decision!.factors, ...newFactors];
+      saveDecision({ factors: updatedFactors });
+    }
+    return newFactors.length;
   };
 
   const updateFactor = (factorId: string, updates: Partial<Factor>) => {
@@ -473,7 +504,7 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     isCompleted: isCompleted || false,
     saveDecision,
     fetchDecision,
-    addFactor, updateFactor, removeFactor, moveFactorUp, moveFactorDown, applyRatingsAndContinue,
+    addFactor, addFactorsFromTemplate, updateFactor, removeFactor, moveFactorUp, moveFactorDown, applyRatingsAndContinue,
     newFactorName, setNewFactorName,
     addOption, addOptionByName, addOptionFromStore, removeOption,
     newOptionName, setNewOptionName,

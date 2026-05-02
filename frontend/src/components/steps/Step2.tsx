@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Modal, FlatList, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/colors';
 import { Card } from '../Card';
@@ -7,6 +7,7 @@ import { GradientButton } from '../GradientButton';
 import { useDecision } from '../../context/DecisionContext';
 import { styles } from '../../styles/decisionStyles';
 import type { Factor, FactorDataSource } from '../../types/decision';
+import api from '../../utils/api';
 import {
   UNIT_PRESETS,
   NUMERIC_OPERATORS,
@@ -22,7 +23,7 @@ const DATA_SOURCE_TYPES = [
 
 export default function Step2() {
   const {
-    decision, saveDecision, updateFactor, removeFactor, addFactor,
+    decision, saveDecision, updateFactor, removeFactor, addFactor, addFactorsFromTemplate,
     newFactorName, setNewFactorName,
     expectedInputs, setExpectedInputs,
     newSubFactorName, setNewSubFactorName,
@@ -34,6 +35,36 @@ export default function Step2() {
   } = useDecision();
 
   const [showDataSourceConfig, setShowDataSourceConfig] = useState<{ [key: string]: boolean }>({});
+
+  // Social Learning Templates for Factors
+  const [showSLFactorModal, setShowSLFactorModal] = useState(false);
+  const [slFactorTemplates, setSlFactorTemplates] = useState<any[]>([]);
+  const [loadingSLFactors, setLoadingSLFactors] = useState(false);
+
+  const fetchSLFactorTemplates = async () => {
+    setLoadingSLFactors(true);
+    try {
+      const res = await api.get('/social-learning/templates-for-decision', {
+        params: { life_area: decision.life_area || undefined, limit: 20 },
+      });
+      setSlFactorTemplates(res.data?.templates || []);
+    } catch (e) {
+      console.error('Failed to load SL factor templates:', e);
+      setSlFactorTemplates([]);
+    } finally {
+      setLoadingSLFactors(false);
+    }
+  };
+
+  const handleImportFactors = (t: any) => {
+    const factors = t.factors || [];
+    if (factors.length === 0) return;
+    const added = addFactorsFromTemplate(factors);
+    setShowSLFactorModal(false);
+    if (added > 0) {
+      // Alert through a simple visual feedback
+    }
+  };
 
   const handleExpectedValueChange = (factorId: string, value: string) => {
     setExpectedInputs({ ...expectedInputs, [factorId]: value });
@@ -447,12 +478,105 @@ export default function Step2() {
         </TouchableOpacity>
       </View>
 
+      {/* Social Learning Factors Import */}
+      <TouchableOpacity
+        style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F5F3FF', borderRadius: 12, padding: 12, marginTop: 8, marginBottom: 8, borderWidth: 1, borderColor: '#DDD6FE', gap: 10 }}
+        onPress={() => { setShowSLFactorModal(true); fetchSLFactorTemplates(); }}
+      >
+        <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#7C3AED', justifyContent: 'center', alignItems: 'center' }}>
+          <Ionicons name="newspaper" size={16} color="#FFF" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: '#7C3AED' }}>Import Factors from Social Learning</Text>
+          <Text style={{ fontSize: 10, color: '#8B5CF6' }}>Pre-prioritized factors from real-world scenarios</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color="#7C3AED" />
+      </TouchableOpacity>
+
       <GradientButton
         title="Continue to Classification"
         onPress={() => setCurrentStep(3)}
         disabled={topLevelFactors.length < 2}
         style={styles.continueButton}
       />
+
+      {/* Social Learning Factor Templates Modal */}
+      <Modal visible={showSLFactorModal} transparent animationType="slide">
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '80%' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="newspaper" size={20} color="#7C3AED" />
+                <Text style={{ fontSize: 16, fontWeight: '700', color: '#1F2937' }}>Import Factors</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowSLFactorModal(false)}>
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 4 }}>
+              Factors are auto-grouped: Priority ≥ 7 → Primary (Mandatory), {'<'} 7 → Secondary (Optional)
+            </Text>
+            <Text style={{ fontSize: 11, color: '#D1D5DB', marginBottom: 12 }}>
+              Expected values & factor types are pre-filled from AI analysis
+            </Text>
+
+            {loadingSLFactors ? (
+              <ActivityIndicator size="large" color="#7C3AED" style={{ marginTop: 40 }} />
+            ) : slFactorTemplates.length === 0 ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <Ionicons name="newspaper-outline" size={40} color="#D1D5DB" />
+                <Text style={{ fontSize: 14, color: '#9CA3AF', marginTop: 8 }}>No templates available</Text>
+                <Text style={{ fontSize: 12, color: '#D1D5DB', marginTop: 4, textAlign: 'center' }}>Upload news in Social Learning to generate factor templates</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={slFactorTemplates}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={{ paddingBottom: 20 }}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={{ backgroundColor: '#F9FAFB', borderRadius: 10, padding: 12, marginBottom: 8, borderLeftWidth: 3, borderLeftColor: '#7C3AED' }}
+                    onPress={() => handleImportFactors(item)}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#1F2937' }} numberOfLines={1}>
+                      {item.scenario_title || item.title}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }} numberOfLines={1}>
+                      {item.category} • {(item.factors || []).length} factors
+                    </Text>
+                    {(item.factors || []).length > 0 && (
+                      <View style={{ marginTop: 6 }}>
+                        {(item.factors || []).slice(0, 4).map((f: any, idx: number) => (
+                          <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: (f.priority || 5) >= 7 ? '#EF4444' : '#F59E0B' }} />
+                            <Text style={{ fontSize: 11, color: '#374151', flex: 1 }} numberOfLines={1}>{f.name}</Text>
+                            <Text style={{ fontSize: 9, color: (f.priority || 5) >= 7 ? '#EF4444' : '#D97706', fontWeight: '600' }}>
+                              P{f.priority || 5} • {(f.priority || 5) >= 7 ? 'Primary' : 'Secondary'}
+                            </Text>
+                            {f.expected_value_pct !== undefined && (
+                              <Text style={{ fontSize: 9, color: '#6B7280' }}>Exp: {f.expected_value_pct}%</Text>
+                            )}
+                          </View>
+                        ))}
+                        {(item.factors || []).length > 4 && (
+                          <Text style={{ fontSize: 10, color: '#9CA3AF', marginTop: 2 }}>
+                            +{(item.factors || []).length - 4} more factors
+                          </Text>
+                        )}
+                      </View>
+                    )}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 }}>
+                      <Ionicons name="download" size={14} color="#7C3AED" />
+                      <Text style={{ fontSize: 10, color: '#7C3AED', fontWeight: '500' }}>Tap to import all factors</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

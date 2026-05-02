@@ -36,7 +36,7 @@ const TABS = [
 const INPUT_MODES = [
   { key: 'text', label: 'Text', icon: 'create', desc: 'Paste news article' },
   { key: 'file', label: 'File', icon: 'document-attach', desc: 'PDF, DOCX, TXT, Image' },
-  { key: 'audio', label: 'Audio', icon: 'mic', desc: 'English only' },
+  { key: 'audio', label: 'Audio/Video', icon: 'mic', desc: 'English only' },
 ];
 
 const CATEGORY_ICONS: Record<string, { icon: string; color: string }> = {
@@ -281,37 +281,37 @@ export default function SocialLearningScreen() {
   };
 
   const handleAudioUpload = async () => {
-    // Pick audio file via document picker
+    // Pick audio or video file via document picker
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['audio/*'],
+        type: ['audio/*', 'video/*'],
         copyToCacheDirectory: true,
       });
 
       if (result.canceled || !result.assets || result.assets.length === 0) return;
 
-      const audioFile = result.assets[0];
+      const mediaFile = result.assets[0];
       setUploading(true);
 
       const formData = new FormData();
       formData.append('audio', {
-        uri: audioFile.uri,
-        name: audioFile.name || 'audio.wav',
-        type: audioFile.mimeType || 'audio/wav',
+        uri: mediaFile.uri,
+        name: mediaFile.name || 'media.wav',
+        type: mediaFile.mimeType || 'audio/wav',
       } as any);
       if (title) formData.append('title', title);
       if (sourceName) formData.append('source_name', sourceName);
 
       const res = await api.post('/social-learning/upload-audio', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 90000,
+        timeout: 120000,
       });
       setLastResult(res.data);
       setTitle('');
       setSourceName('');
-      showAlert('Success', 'Audio transcribed and template created!');
+      showAlert('Success', 'Media transcribed and template created!');
     } catch (e: any) {
-      showAlert('Error', e.response?.data?.detail || 'Failed to process audio');
+      showAlert('Error', e.response?.data?.detail || 'Failed to process media');
     } finally {
       setUploading(false);
     }
@@ -573,7 +573,7 @@ export default function SocialLearningScreen() {
           <View style={styles.audioInfo}>
             <Ionicons name="information-circle" size={16} color={COLORS.info} />
             <Text style={styles.audioInfoText}>
-              English audio only. Select a pre-recorded audio file (WAV, MP3, OGG, M4A).
+              English audio/video only. Select audio (WAV, MP3, OGG, M4A) or video (MP4, MOV, AVI, MKV). Audio will be extracted from video automatically.
             </Text>
           </View>
 
@@ -595,7 +595,7 @@ export default function SocialLearningScreen() {
             ) : (
               <>
                 <Ionicons name="mic" size={18} color="#FFF" />
-                <Text style={styles.uploadBtnText}>Pick Audio & Transcribe</Text>
+                <Text style={styles.uploadBtnText}>Pick Audio/Video & Transcribe</Text>
               </>
             )}
           </TouchableOpacity>

@@ -77,6 +77,15 @@ ALLOWED_AUDIO_TYPES = {
     "audio/mp4": "mp4",
     "audio/x-m4a": "m4a",
 }
+ALLOWED_VIDEO_TYPES = {
+    "video/mp4": "mp4",
+    "video/mpeg": "mpeg",
+    "video/quicktime": "mov",
+    "video/x-msvideo": "avi",
+    "video/webm": "webm",
+    "video/x-matroska": "mkv",
+    "video/3gpp": "3gp",
+}
 
 
 # ========================
@@ -204,6 +213,45 @@ class STTEngine:
             raise ValueError("Could not understand the audio. Please speak clearly and try again.")
         except sr.RequestError as e:
             raise ValueError(f"Speech recognition service unavailable: {str(e)}")
+
+    @staticmethod
+    def extract_audio_from_video(video_bytes: bytes, video_format: str) -> bytes:
+        """
+        Extract audio track from a video file using ffmpeg.
+        Returns WAV audio bytes.
+        """
+        import subprocess
+
+        with tempfile.NamedTemporaryFile(suffix=f".{video_format}", delete=False) as tmp_video:
+            tmp_video.write(video_bytes)
+            tmp_video.flush()
+            video_path = tmp_video.name
+
+        wav_path = video_path + ".wav"
+        try:
+            result = subprocess.run(
+                [
+                    "ffmpeg", "-i", video_path,
+                    "-vn",                  # No video
+                    "-acodec", "pcm_s16le", # WAV codec
+                    "-ar", "16000",         # 16kHz sample rate
+                    "-ac", "1",             # Mono
+                    "-y",                   # Overwrite
+                    wav_path,
+                ],
+                capture_output=True, text=True, timeout=120,
+            )
+            if result.returncode != 0:
+                raise ValueError(f"ffmpeg failed: {result.stderr[:300]}")
+
+            with open(wav_path, "rb") as f:
+                return f.read()
+        finally:
+            for p in [video_path, wav_path]:
+                try:
+                    os.unlink(p)
+                except OSError:
+                    pass
 
     @staticmethod
     def _convert_to_wav(audio_bytes: bytes, audio_format: str) -> bytes:
@@ -633,26 +681,52 @@ async def upload_news_audio(
     title: Optional[str] = Form(None),
     user: dict = Depends(get_current_user),
 ):
-    """Upload audio file (English only). Transcribes then classifies."""
+    """Upload audio or video file (English only). Extracts audio from video, transcribes, then classifies."""
     if not EMERGENT_LLM_KEY:
         raise HTTPException(500, "AI engine not configured (EMERGENT_LLM_KEY missing)")
 
-    # Validate audio type
+    # Determine if audio or video
     content_type = audio.content_type or ""
     audio_format = ALLOWED_AUDIO_TYPES.get(content_type)
+    video_format = ALLOWED_VIDEO_TYPES.get(content_type)
+    is_video = False
 
-    if not audio_format:
+    if not audio_format and not video_format:
         ext = (audio.filename or "").rsplit(".", 1)[-1].lower() if audio.filename else ""
-        ext_map = {"wav": "wav", "mp3": "mp3", "ogg": "ogg", "webm": "webm", "m4a": "m4a", "mp4": "mp4"}
-        audio_format = ext_map.get(ext)
+        audio_ext_map = {"wav": "wav", "mp3": "mp3", "ogg": "ogg", "webm": "webm", "m4a": "m4a"}
+        video_ext_map = {"mp4": "mp4", "mov": "mov", "avi": "avi", "mkv": "mkv", "mpeg": "mpeg", "3gp": "3gp"}
+        audio_format = audio_ext_map.get(ext)
+        if not audio_format:
+            video_format = video_ext_map.get(ext)
 
-    if not audio_format:
-        raise HTTPException(400, f"Unsupported audio type: {content_type}. Allowed: WAV, MP3, OGG, WEBM, M4A")
+    if not audio_format and not video_format:
+        raise HTTPException(
+            400,
+            f"Unsupported media type: {content_type}. "
+            "Allowed audio: WAV, MP3, OGG, WEBM, M4A. "
+            "Allowed video: MP4, MOV, AVI, MKV, WEBM, 3GP"
+        )
 
-    # Read audio
-    audio_bytes = await audio.read()
-    if len(audio_bytes) > MAX_FILE_SIZE_MB * 1024 * 1024:
-        raise HTTPException(400, f"Audio file too large. Maximum size: {MAX_FILE_SIZE_MB}MB")
+    is_video = video_format is not None
+
+    # Read file
+    file_bytes = await audio.read()
+    max_size = 50 if is_video else MAX_FILE_SIZE_MB  # 50MB for video, 10MB for audio
+    if len(file_bytes) > max_size * 1024 * 1024:
+        raise HTTPException(400, f"File too large. Maximum size: {max_size}MB")
+
+    # If video, extract audio track first
+    if is_video:
+        try:
+            audio_bytes = stt_engine.extract_audio_from_video(file_bytes, video_format)
+            audio_format = "wav"  # ffmpeg outputs WAV
+        except ValueError as e:
+            raise HTTPException(400, f"Video audio extraction failed: {str(e)}")
+        except Exception as e:
+            logger.error(f"Video audio extraction failed: {e}")
+            raise HTTPException(500, f"Could not extract audio from video: {str(e)}")
+    else:
+        audio_bytes = file_bytes
 
     # Transcribe (English only)
     try:
@@ -673,11 +747,12 @@ async def upload_news_audio(
         logger.error(f"AI classification failed: {e}")
         raise HTTPException(500, f"AI classification failed: {str(e)}")
 
+    input_mode = "video" if is_video else "audio"
     template_id = f"SLT-{uuid.uuid4().hex[:10].upper()}"
     template = build_template_doc(
         template_id, classification, transcribed_text, user,
         source_name=source_name or audio.filename,
-        title=title, input_mode="audio",
+        title=title, input_mode=input_mode,
     )
     template["transcribed_text"] = transcribed_text
 
@@ -686,7 +761,7 @@ async def upload_news_audio(
     await log_audit_event(
         action="social_learning_created", entity_type="social_learning",
         entity_id=template_id, user_id=user["user_id"],
-        details=f"News uploaded (audio): {template['title'][:60]} [{template['category']}]",
+        details=f"News uploaded ({input_mode}): {template['title'][:60]} [{template['category']}]",
         ip_address=get_client_ip(request),
     )
 
