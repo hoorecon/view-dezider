@@ -8,11 +8,15 @@ import logging
 from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, APIRouter
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 
 # Load env
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
+
+# Ensure static dir exists
+(ROOT_DIR / 'static').mkdir(exist_ok=True)
 
 # ========================
 # APP + ROUTER SETUP
@@ -137,6 +141,9 @@ from core.database import client
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
+# Mount static files for document downloads
+app.mount("/api/static", StaticFiles(directory=str(ROOT_DIR / "static")), name="static")
 
 
 # ========================
