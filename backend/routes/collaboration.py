@@ -768,29 +768,168 @@ DIGILOCKER_CONFIG = {
 
 @router.post("/digilocker/initiate")
 async def initiate_digilocker(request: Request, user: dict = Depends(get_current_user)):
-    """Initiate DigiLocker OAuth2 flow for Aadhaar eKYC verification (India only)."""
+    """Initiate DigiLocker OAuth2 flow for Aadhaar eKYC verification.
+    Supports: 
+    - sandbox.co.in API (SANDBOX_API_KEY + SANDBOX_AUTH_TOKEN)
+    - Official DigiLocker (DIGILOCKER_CLIENT_ID + SECRET)
+    """
     import os
+    import httpx
+
+    sandbox_api_key = os.getenv("SANDBOX_API_KEY", "")
+    sandbox_auth_token = os.getenv("SANDBOX_AUTH_TOKEN", "")
     client_id = os.getenv("DIGILOCKER_CLIENT_ID", "")
     redirect_uri = os.getenv("DIGILOCKER_REDIRECT_URI", "")
 
-    if not client_id:
-        return {
-            "status": "not_configured",
-            "message": "DigiLocker integration requires partner registration at partners.digilocker.gov.in. Once configured with CLIENT_ID and SECRET, users will be redirected to DigiLocker OAuth for Aadhaar/PAN/DL verification.",
-            "registration_url": "https://partners.digilocker.gov.in/",
-            "supported_documents": ["aadhaar", "pan", "driving_license", "voter_id"],
-            "flow": "OAuth2 Authorization Code -> Token -> Fetch eDocument XML -> Extract verified name/DOB/address",
-        }
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
 
-    import urllib.parse
-    state = uuid.uuid4().hex[:16]
-    await db.digilocker_states.update_one(
-        {"user_id": user["user_id"]},
-        {"$set": {"state": state, "created_at": datetime.now(timezone.utc).isoformat()}},
+    # Option 1: sandbox.co.in DigiLocker API
+    if sandbox_api_key and sandbox_auth_token:
+        base_url = os.getenv("SANDBOX_BASE_URL", "https://test-api.sandbox.co.in")
+        callback_url = body.get("redirect_url", redirect_uri or "https://example.com/callback")
+
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    f"{base_url}/kyc/digilocker/sessions/init",
+                    headers={
+                        "Authorization": sandbox_auth_token,
+                        "x-api-key": sandbox_api_key,
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "@entity": "in.co.sandbox.kyc.digilocker.session.request",
+                        "flow": "signin",
+                        "doc_types": ["aadhaar"],
+                        "redirect_url": callback_url,
+                    }
+                )
+                data = resp.json()
+
+            session_id = data.get("data", {}).get("session_id") or data.get("session_id")
+            auth_url = data.get("data", {}).get("authorization_url") or data.get("authorization_url")
+
+            if session_id:
+                await db.digilocker_states.update_one(
+                    {"user_id": user["user_id"]},
+                    {"$set": {
+                        "session_id": session_id,
+                        "provider": "sandbox",
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                    }},
+                    upsert=True
+                )
+
+            return {
+                "status": "initiated",
+                "provider": "sandbox.co.in",
+                "session_id": session_id,
+                "authorization_url": auth_url,
+                "message": "Redirect user to authorization_url to complete Aadhaar verification via DigiLocker.",
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "provider": "sandbox.co.in",
+                "message": f"DigiLocker API call failed: {str(e)}",
+            }
+
+    # Option 2: Official DigiLocker
+    if client_id:
+        import urllib.parse
+        state = uuid.uuid4().hex[:16]
+        await db.digilocker_states.update_one(
+            {"user_id": user["user_id"]},
+            {"$set": {"state": state, "provider": "official", "created_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True
+        )
+        auth_url = f"https://digilocker.meripehchaan.gov.in/public/oauth2/1/authorize?response_type=code&client_id={client_id}&redirect_uri={urllib.parse.quote(redirect_uri)}&state={state}"
+        return {"status": "initiated", "provider": "official_digilocker", "auth_url": auth_url, "state": state}
+
+    # Not configured
+    return {
+        "status": "not_configured",
+        "message": "DigiLocker integration requires API keys. Add SANDBOX_API_KEY + SANDBOX_AUTH_TOKEN (sandbox.co.in) or DIGILOCKER_CLIENT_ID + SECRET to your environment.",
+        "setup_options": [
+            {"provider": "sandbox.co.in", "url": "https://sandbox.co.in", "env_vars": ["SANDBOX_API_KEY", "SANDBOX_AUTH_TOKEN"]},
+            {"provider": "DigiLocker Official", "url": "https://partners.digilocker.gov.in/", "env_vars": ["DIGILOCKER_CLIENT_ID", "DIGILOCKER_CLIENT_SECRET", "DIGILOCKER_REDIRECT_URI"]},
+        ],
+        "supported_documents": ["aadhaar", "pan", "driving_license", "voter_id"],
+    }
+
+
+@router.post("/digilocker/callback")
+async def digilocker_callback(request: Request, user: dict = Depends(get_current_user)):
+    """Process DigiLocker callback after user authorization. Fetches Aadhaar + profile."""
+    import os
+    import httpx
+
+    body = await request.json()
+    session_id = body.get("session_id")
+
+    if not session_id:
+        raise HTTPException(400, "session_id required")
+
+    sandbox_api_key = os.getenv("SANDBOX_API_KEY", "")
+    sandbox_auth_token = os.getenv("SANDBOX_AUTH_TOKEN", "")
+    base_url = os.getenv("SANDBOX_BASE_URL", "https://test-api.sandbox.co.in")
+
+    if not (sandbox_api_key and sandbox_auth_token):
+        raise HTTPException(400, "DigiLocker API not configured")
+
+    headers = {
+        "Authorization": sandbox_auth_token,
+        "x-api-key": sandbox_api_key,
+    }
+
+    profile_data = {}
+    doc_data = {}
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            # Fetch user profile
+            profile_resp = await client.get(
+                f"{base_url}/kyc/digilocker/sessions/{session_id}/user/profile",
+                headers=headers,
+            )
+            if profile_resp.status_code == 200:
+                profile_data = profile_resp.json().get("data", profile_resp.json())
+
+            # Fetch Aadhaar document
+            doc_resp = await client.get(
+                f"{base_url}/kyc/digilocker/sessions/{session_id}/documents/aadhaar",
+                headers=headers,
+            )
+            if doc_resp.status_code == 200:
+                doc_data = doc_resp.json().get("data", doc_resp.json())
+    except Exception as e:
+        raise HTTPException(500, f"DigiLocker API error: {str(e)}")
+
+    # Save verified KYC
+    await db.user_kyc.update_one(
+        {"user_id": user["user_id"], "method": "digilocker"},
+        {"$set": {
+            "verified": True,
+            "provider": "sandbox",
+            "session_id": session_id,
+            "profile": profile_data,
+            "document_meta": {k: v for k, v in doc_data.items() if k != "document_url"},
+            "verified_at": datetime.now(timezone.utc).isoformat(),
+        }},
         upsert=True
     )
-    auth_url = f"{DIGILOCKER_CONFIG['auth_url']}?response_type=code&client_id={client_id}&redirect_uri={urllib.parse.quote(redirect_uri)}&state={state}"
-    return {"auth_url": auth_url, "state": state}
+
+    return {
+        "status": "verified",
+        "name": profile_data.get("name"),
+        "dob": profile_data.get("dob"),
+        "gender": profile_data.get("gender"),
+        "has_aadhaar": bool(doc_data),
+    }
 
 
 @router.get("/digilocker/status")

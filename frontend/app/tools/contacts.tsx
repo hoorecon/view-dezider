@@ -16,6 +16,14 @@ const GENDER_OPTIONS = ['male', 'female', 'non_binary', 'prefer_not_to_say'];
 const AGE_GROUPS = ['18-25', '26-35', '36-45', '46-55', '56-65', '65+'];
 const SOCIAL_STATUS = ['student', 'employed', 'self_employed', 'business_owner', 'retired', 'homemaker'];
 const REL_STATUS = ['single', 'married', 'divorced', 'widowed', 'in_relationship', 'prefer_not_to_say'];
+const ORG_TYPES = ['individual', 'business', 'ngo', 'association', 'govt'];
+const ORG_SUBTYPE_MAP: Record<string, string[]> = {
+  individual: ['freelancer', 'consultant', 'professional'],
+  business: ['sole_proprietorship', 'partnership_firm', 'llp', 'pvt_ltd', 'public_ltd'],
+  ngo: ['trust', 'society', 'section_8_company', 'cooperative'],
+  association: ['trade_association', 'industry_body', 'professional_body', 'chamber_of_commerce'],
+  govt: ['central_govt', 'state_govt', 'psu', 'autonomous_body', 'local_body'],
+};
 
 export default function ContactsScreen() {
   const router = useRouter();
@@ -76,7 +84,8 @@ export default function ContactsScreen() {
     setForm({ name: '', email: '', phone: '', whatsapp: '', gender: '', age_group: '', country: '', language: '',
       profession: '', skills: [], organization: '', designation: '', business_network: '',
       social_status: '', relationship_status: '', caste: '', religion: '', political_party: '',
-      tags: [], notes: '', is_sme: false, sme_domains: [] });
+      tags: [], notes: '', is_sme: false, sme_domains: [],
+      org_type: '', org_subtype: '' });
     setFormStep(0);
     setShowModal(true);
   };
@@ -178,6 +187,28 @@ export default function ContactsScreen() {
       );
       case 2: return (
         <View>
+          <Text style={styles.inputLabel}>Organization Type</Text>
+          <View style={styles.chipRow}>
+            {ORG_TYPES.map(ot => (
+              <TouchableOpacity key={ot} style={[styles.chip, form.org_type === ot && styles.chipActive]}
+                onPress={() => setForm({...form, org_type: form.org_type === ot ? '' : ot, org_subtype: ''})}>
+                <Text style={[styles.chipText, form.org_type === ot && {color:'#FFF'}]}>{ot.replace('_',' ')}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {form.org_type && ORG_SUBTYPE_MAP[form.org_type] && (
+            <>
+              <Text style={styles.inputLabel}>Org Sub-Type</Text>
+              <View style={styles.chipRow}>
+                {ORG_SUBTYPE_MAP[form.org_type].map(st => (
+                  <TouchableOpacity key={st} style={[styles.chip, form.org_subtype === st && styles.chipActive]}
+                    onPress={() => setForm({...form, org_subtype: form.org_subtype === st ? '' : st})}>
+                    <Text style={[styles.chipText, form.org_subtype === st && {color:'#FFF'}]}>{st.replace(/_/g,' ')}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          )}
           <Text style={styles.inputLabel}>Profession</Text>
           <TextInput style={styles.textInput} placeholder="e.g., Engineer" value={form.profession || ''} onChangeText={v => setForm({...form, profession: v})} />
           <Text style={styles.inputLabel}>Organization</Text>
@@ -344,6 +375,7 @@ export default function ContactsScreen() {
                     {c.organization ? <Text style={styles.contactMeta}>• {c.organization}</Text> : null}
                   </View>
                   <View style={styles.tagRow}>
+                    {c.org_type ? <View style={[styles.miniTag, {backgroundColor: '#EEF2FF'}]}><Ionicons name="business" size={10} color="#6366F1" /><Text style={[styles.miniTagText, {color: '#6366F1'}]}>{c.org_type}{c.org_subtype ? ` / ${c.org_subtype.replace(/_/g,' ')}` : ''}</Text></View> : null}
                     {c.country ? <View style={styles.miniTag}><Text style={styles.miniTagText}>{c.country}</Text></View> : null}
                     {c.language ? <View style={styles.miniTag}><Text style={styles.miniTagText}>{c.language}</Text></View> : null}
                     {c.linked_user_id ? <View style={[styles.miniTag, {backgroundColor: '#ECFDF5'}]}><Ionicons name="link" size={10} color="#059669" /><Text style={[styles.miniTagText, {color: '#059669'}]}>Linked</Text></View> : null}

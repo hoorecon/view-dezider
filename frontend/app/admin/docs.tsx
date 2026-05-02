@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, RefreshControl,
+  ActivityIndicator, RefreshControl, Share, Platform,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,6 +10,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 
 type DocType = 'prd' | 'srs' | 'regression_tests' | 'uat_cases' | 'api_catalog';
 
@@ -74,6 +76,7 @@ export default function AdminDocsScreen() {
   const [channelFilter, setChannelFilter] = useState<string | null>(null);
   const [expandedEndpoints, setExpandedEndpoints] = useState<Set<string>>(new Set());
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [exportingPostman, setExportingPostman] = useState(false);
 
   const fetchDocs = async () => {
     try {
@@ -140,6 +143,44 @@ export default function AdminDocsScreen() {
       showAlert('Error', err.response?.data?.detail || 'Failed to regenerate all');
     } finally {
       setRefreshingAll(false);
+    }
+  };
+
+  const handleExportPostman = async () => {
+    setExportingPostman(true);
+    try {
+      const res = await api.get('/admin/docs/postman-collection');
+      const jsonStr = JSON.stringify(res.data, null, 2);
+
+      if (Platform.OS === 'web') {
+        // Web: trigger download via blob
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'ViewDezider_API_Collection.json';
+        a.click();
+        URL.revokeObjectURL(url);
+        showAlert('Exported', 'Postman Collection downloaded successfully.');
+      } else {
+        // Native: save to file system and share
+        const fileUri = FileSystem.documentDirectory + 'ViewDezider_API_Collection.json';
+        await FileSystem.writeAsStringAsync(fileUri, jsonStr);
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(fileUri, {
+            mimeType: 'application/json',
+            dialogTitle: 'Export Postman Collection',
+            UTI: 'public.json',
+          });
+        } else {
+          showAlert('Saved', `Collection saved to: ${fileUri}`);
+        }
+      }
+    } catch (err: any) {
+      showAlert('Error', err.response?.data?.detail || 'Failed to export Postman collection');
+    } finally {
+      setExportingPostman(false);
     }
   };
 
@@ -236,6 +277,26 @@ export default function AdminDocsScreen() {
   // ========== RENDER API CATALOG ==========
   const renderApiCatalog = () => (
     <View>
+      {/* Postman Export Button */}
+      <TouchableOpacity
+        style={[styles.postmanExportBtn, exportingPostman && { opacity: 0.5 }]}
+        onPress={handleExportPostman}
+        disabled={exportingPostman}
+      >
+        {exportingPostman ? (
+          <ActivityIndicator color="#FFF" size="small" />
+        ) : (
+          <>
+            <Ionicons name="download-outline" size={18} color="#FFF" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.postmanExportTitle}>Export Postman Collection</Text>
+              <Text style={styles.postmanExportSub}>Download v2.1 JSON with all endpoints</Text>
+            </View>
+            <Ionicons name="arrow-forward" size={16} color="rgba(255,255,255,0.7)" />
+          </>
+        )}
+      </TouchableOpacity>
+
       {/* Channel Filters */}
       <View style={styles.channelFilters}>
         <TouchableOpacity
@@ -643,4 +704,13 @@ const styles = StyleSheet.create({
   },
   mdBlockquoteText: { fontSize: 13, color: '#4338CA', fontStyle: 'italic' },
   mdHr: { height: 1, backgroundColor: '#E5E7EB', marginVertical: 12 },
+
+  // Postman Export
+  postmanExportBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: '#F97316', borderRadius: 14, padding: 16,
+    marginBottom: 16,
+  },
+  postmanExportTitle: { fontSize: 14, fontWeight: '700', color: '#FFF' },
+  postmanExportSub: { fontSize: 11, color: 'rgba(255,255,255,0.8)', marginTop: 1 },
 });

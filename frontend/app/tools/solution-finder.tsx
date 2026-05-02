@@ -12,6 +12,7 @@ import {
   RefreshControl,
   Platform,
   KeyboardAvoidingView,
+  Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -59,6 +60,17 @@ export default function SolutionFinderScreen() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
+  const [savedId, setSavedId] = useState<string | null>(editId || null);
+
+  // Collaboration
+  const [showCollabModal, setShowCollabModal] = useState(false);
+  const [collabModes, setCollabModes] = useState<any[]>([]);
+  const [collabContacts, setCollabContacts] = useState<any[]>([]);
+  const [collabSelectedMode, setCollabSelectedMode] = useState('equal');
+  const [collabSelectedContacts, setCollabSelectedContacts] = useState<Set<string>>(new Set());
+  const [collabSessionMode, setCollabSessionMode] = useState('async');
+  const [collabCreating, setCollabCreating] = useState(false);
+  const [existingCollabs, setExistingCollabs] = useState<any[]>([]);
 
   // Form state
   const [areaOfLife, setAreaOfLife] = useState('');
@@ -150,7 +162,8 @@ export default function SolutionFinderScreen() {
       if (editId) {
         await api.put(`/solution-finders/${editId}`, payload);
       } else {
-        await api.post('/solution-finders', payload);
+        const res = await api.post('/solution-finders', payload);
+        if (res.data?.id) setSavedId(res.data.id);
       }
       showAlert('Saved', 'Solution Finder saved successfully!', [
         { text: 'OK', onPress: () => router.back() }
@@ -180,6 +193,60 @@ export default function SolutionFinderScreen() {
     const updated = [...actionItems];
     updated[i] = { ...updated[i], [field]: val };
     setActionItems(updated);
+  };
+
+  // ======== COLLABORATION ========
+  const openCollabModal = async () => {
+    if (!savedId) {
+      showAlert('Save First', 'Please save this Solution Finder entry before starting a collaboration session.');
+      return;
+    }
+    try {
+      const [modesRes, contactsRes, sessionsRes] = await Promise.all([
+        api.get('/collaboration/decision-modes').catch(() => ({ data: [] })),
+        api.get('/contacts?limit=100').catch(() => ({ data: [] })),
+        api.get('/collaboration/sessions').catch(() => ({ data: [] })),
+      ]);
+      setCollabModes(modesRes.data || []);
+      setCollabContacts(contactsRes.data || []);
+      // Filter sessions linked to this solution finder
+      const linked = (sessionsRes.data || []).filter((s: any) => s.module_id === savedId && s.module_type === 'solution_finder');
+      setExistingCollabs(linked);
+    } catch (e) { /* ignore */ }
+    setShowCollabModal(true);
+  };
+
+  const handleCreateCollab = async () => {
+    if (collabSelectedContacts.size === 0) {
+      showAlert('Required', 'Select at least one participant');
+      return;
+    }
+    setCollabCreating(true);
+    try {
+      await api.post('/collaboration/sessions', {
+        module_type: 'solution_finder',
+        module_id: savedId,
+        title: `${areaOfLife ? areaOfLife.replace(/_/g, ' ') + ': ' : ''}${smartGoal.slice(0, 50) || 'Solution Finder'}`,
+        decision_mode_id: collabSelectedMode,
+        participant_contact_ids: Array.from(collabSelectedContacts),
+        auth_config: { methods_required: 0, verify_each_time: false, enabled_methods: [] },
+        notify_participants: true,
+        session_mode: collabSessionMode,
+      });
+      showAlert('Session Created', 'Group collaboration session launched! Participants will be notified.');
+      setShowCollabModal(false);
+      setCollabSelectedContacts(new Set());
+    } catch (err: any) {
+      showAlert('Error', err.response?.data?.detail || 'Failed to create session');
+    } finally {
+      setCollabCreating(false);
+    }
+  };
+
+  const toggleCollabContact = (id: string) => {
+    const newSet = new Set(collabSelectedContacts);
+    if (newSet.has(id)) newSet.delete(id); else newSet.add(id);
+    setCollabSelectedContacts(newSet);
   };
 
   if (loading) {
@@ -503,6 +570,9 @@ export default function SolutionFinderScreen() {
             <Text style={styles.headerTitle}>Simple Solution Finder</Text>
             <Text style={styles.headerSub}>Step {currentStep + 1} of {steps.length}</Text>
           </View>
+          <TouchableOpacity style={styles.collabHdrBtn} onPress={openCollabModal}>
+            <Ionicons name="people" size={18} color="#7C3AED" />
+          </TouchableOpacity>
         </LinearGradient>
 
         {/* Step Indicators */}
@@ -572,6 +642,111 @@ export default function SolutionFinderScreen() {
             </TouchableOpacity>
           )}
         </View>
+
+        {/* Collaboration Modal */}
+        <Modal visible={showCollabModal} transparent animationType="slide">
+          <View style={styles.collabOverlay}>
+            <View style={styles.collabModalContent}>
+              <View style={styles.collabModalHeader}>
+                <Ionicons name="people" size={22} color="#7C3AED" />
+                <Text style={styles.collabModalTitle}>Group Collaborate</Text>
+                <View style={{ flex: 1 }} />
+                <TouchableOpacity onPress={() => setShowCollabModal(false)}>
+                  <Ionicons name="close" size={24} color="#6B7280" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
+                {/* Existing Sessions */}
+                {existingCollabs.length > 0 && (
+                  <View style={styles.existingCollabSection}>
+                    <Text style={styles.collabSectionTitle}>Active Sessions ({existingCollabs.length})</Text>
+                    {existingCollabs.map((s: any) => (
+                      <View key={s.id} style={styles.existingCollabCard}>
+                        <Ionicons name="git-network" size={16} color="#7C3AED" />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.existingCollabTitle}>{s.title}</Text>
+                          <Text style={styles.existingCollabMeta}>
+                            {s.session_mode === 'live_sync' ? 'Live Sync' : 'Async'} • {(s.participants || []).length} people
+                          </Text>
+                        </View>
+                        <View style={[styles.existingCollabStatus, { backgroundColor: s.status === 'active' ? '#ECFDF5' : '#EFF6FF' }]}>
+                          <Text style={{ fontSize: 10, fontWeight: '600', color: s.status === 'active' ? '#059669' : '#3B82F6' }}>
+                            {s.status}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Create New */}
+                <Text style={styles.collabSectionTitle}>New Session</Text>
+
+                {/* Session Mode */}
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                  {[{key: 'async', label: 'Async', icon: 'time-outline'}, {key: 'live_sync', label: 'Live Sync', icon: 'videocam-outline'}].map(m => (
+                    <TouchableOpacity key={m.key}
+                      style={[styles.collabModeChip, collabSessionMode === m.key && styles.collabModeChipActive]}
+                      onPress={() => setCollabSessionMode(m.key)}>
+                      <Ionicons name={m.icon as any} size={14} color={collabSessionMode === m.key ? '#FFF' : '#6B7280'} />
+                      <Text style={[styles.collabModeChipText, collabSessionMode === m.key && { color: '#FFF' }]}>{m.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Decision Mode */}
+                {collabModes.length > 0 && (
+                  <View style={{ marginBottom: 12 }}>
+                    <Text style={styles.collabFieldLabel}>Decision Mode</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      <View style={{ flexDirection: 'row', gap: 6 }}>
+                        {collabModes.map((mode: any) => (
+                          <TouchableOpacity key={mode.id}
+                            style={[styles.collabModeChip, collabSelectedMode === mode.id && styles.collabModeChipActive]}
+                            onPress={() => setCollabSelectedMode(mode.id)}>
+                            <Text style={[styles.collabModeChipText, collabSelectedMode === mode.id && { color: '#FFF' }]}>{mode.name}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </ScrollView>
+                  </View>
+                )}
+
+                {/* Select Participants */}
+                <Text style={styles.collabFieldLabel}>Participants ({collabSelectedContacts.size} selected)</Text>
+                {collabContacts.length === 0 ? (
+                  <Text style={styles.collabNoContacts}>No contacts found. Add contacts from the Contacts screen first.</Text>
+                ) : (
+                  collabContacts.map((c: any) => (
+                    <TouchableOpacity key={c.id}
+                      style={[styles.collabContactRow, collabSelectedContacts.has(c.id) && styles.collabContactRowActive]}
+                      onPress={() => toggleCollabContact(c.id)}>
+                      <View style={styles.collabContactAvatar}>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFF' }}>{(c.name || '?')[0].toUpperCase()}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.collabContactName}>{c.name}</Text>
+                        <Text style={styles.collabContactMeta}>{[c.profession, c.org_type].filter(Boolean).join(' • ')}</Text>
+                      </View>
+                      <Ionicons name={collabSelectedContacts.has(c.id) ? 'checkmark-circle' : 'ellipse-outline'} size={20}
+                        color={collabSelectedContacts.has(c.id) ? '#059669' : '#D1D5DB'} />
+                    </TouchableOpacity>
+                  ))
+                )}
+              </ScrollView>
+
+              <TouchableOpacity style={styles.collabLaunchBtn} onPress={handleCreateCollab} disabled={collabCreating}>
+                {collabCreating ? <ActivityIndicator color="#FFF" size="small" /> : (
+                  <>
+                    <Ionicons name="rocket" size={16} color="#FFF" />
+                    <Text style={styles.collabLaunchText}>Launch Group Session</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -734,4 +909,29 @@ const styles = StyleSheet.create({
   navBtnPrimaryText: {
     fontSize: 14, fontWeight: '600', color: '#FFF',
   },
+
+  // Collaboration integration styles
+  collabHdrBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center' },
+  collabOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end', alignItems: 'center' },
+  collabModalContent: { width: '100%', maxWidth: 500, backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '80%' },
+  collabModalHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
+  collabModalTitle: { fontSize: 18, fontWeight: '700', color: '#1F2937' },
+  collabSectionTitle: { fontSize: 14, fontWeight: '700', color: '#374151', marginBottom: 8, marginTop: 4 },
+  existingCollabSection: { marginBottom: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', paddingBottom: 12 },
+  existingCollabCard: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 8, backgroundColor: '#F5F3FF', marginBottom: 6 },
+  existingCollabTitle: { fontSize: 12, fontWeight: '600', color: '#374151' },
+  existingCollabMeta: { fontSize: 10, color: '#9CA3AF', marginTop: 1 },
+  existingCollabStatus: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  collabModeChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: '#E5E7EB' },
+  collabModeChipActive: { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
+  collabModeChipText: { fontSize: 12, fontWeight: '600', color: '#6B7280' },
+  collabFieldLabel: { fontSize: 12, fontWeight: '600', color: '#6B7280', marginBottom: 6 },
+  collabNoContacts: { fontSize: 12, color: '#9CA3AF', fontStyle: 'italic', marginBottom: 12 },
+  collabContactRow: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 8, backgroundColor: '#F9FAFB', marginBottom: 4 },
+  collabContactRowActive: { backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0' },
+  collabContactAvatar: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#7C3AED', justifyContent: 'center', alignItems: 'center' },
+  collabContactName: { fontSize: 12, fontWeight: '600', color: '#374151' },
+  collabContactMeta: { fontSize: 10, color: '#9CA3AF' },
+  collabLaunchBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#059669', borderRadius: 12, paddingVertical: 14, marginTop: 12 },
+  collabLaunchText: { fontSize: 14, fontWeight: '700', color: '#FFF' },
 });

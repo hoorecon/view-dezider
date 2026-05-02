@@ -24,6 +24,11 @@ const AUTH_METHODS = [
   { key: 'authenticator', label: 'Authenticator App', icon: 'key', desc: 'TOTP 6-digit code' },
 ];
 
+const SESSION_MODES = [
+  { key: 'async', label: 'Asynchronous', icon: 'time-outline', desc: 'Participants contribute at their own pace', color: '#3B82F6' },
+  { key: 'live_sync', label: 'Live Sync', icon: 'videocam-outline', desc: 'Real-time collaboration with video call', color: '#059669' },
+];
+
 export default function CollaborateScreen() {
   const router = useRouter();
   const [sessions, setSessions] = useState<any[]>([]);
@@ -32,7 +37,7 @@ export default function CollaborateScreen() {
 
   // Create session
   const [showCreate, setShowCreate] = useState(false);
-  const [createStep, setCreateStep] = useState(0); // 0=select module, 1=select mode, 2=select participants, 3=auth config
+  const [createStep, setCreateStep] = useState(0); // 0=select module, 1=select mode, 2=select participants, 3=session config, 4=auth config
   const [modules, setModules] = useState<any[]>([]);
   const [selectedModule, setSelectedModule] = useState<any>(null);
   const [modes, setModes] = useState<any[]>([]);
@@ -45,6 +50,20 @@ export default function CollaborateScreen() {
   const [notifyMode, setNotifyMode] = useState(true);
   const [creating, setCreating] = useState(false);
   const [smeFilter, setSmeFilter] = useState(false);
+  const [sessionMode, setSessionMode] = useState<string>('async');
+  const [modeConfigOverride, setModeConfigOverride] = useState<any>(null);
+  const [showOverride, setShowOverride] = useState(false);
+  const [overrideFields, setOverrideFields] = useState<Record<string, string>>({});
+
+  // Verification Modal
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [verifySession, setVerifySession] = useState<any>(null);
+  const [verifyMethod, setVerifyMethod] = useState('');
+  const [verifyInput, setVerifyInput] = useState('');
+  const [verifying, setVerifying] = useState(false);
+  const [totpStatus, setTotpStatus] = useState<any>(null);
+  const [biometricStatus, setBiometricStatus] = useState<any>(null);
+  const [digilockerStatus, setDigilockerStatus] = useState<any>(null);
 
   const fetchSessions = async () => {
     try {
@@ -66,6 +85,10 @@ export default function CollaborateScreen() {
     setSelectedMode('equal');
     setSelectedContacts(new Set());
     setAuthConfig({ methods_required: 0, verify_each_time: false, enabled_methods: [] });
+    setSessionMode('async');
+    setModeConfigOverride(null);
+    setShowOverride(false);
+    setOverrideFields({});
 
     // Fetch all modules (decisions + solution finders)
     try {
@@ -100,6 +123,10 @@ export default function CollaborateScreen() {
         auth_config: authConfig,
         notify_participants: notifyParticipants,
         notify_mode: notifyMode,
+        session_mode: sessionMode,
+        mode_config_override: showOverride && Object.keys(overrideFields).length > 0
+          ? Object.fromEntries(Object.entries(overrideFields).map(([k, v]) => [k, parseFloat(v) || v]))
+          : null,
       });
       setShowCreate(false);
       showAlert('Session Created', `Collaboration session created with ${selectedContacts.size} participant(s). Mode: ${modes.find((m: any) => m.id === selectedMode)?.name || selectedMode}`);
@@ -227,6 +254,91 @@ export default function CollaborateScreen() {
       );
       case 3: return (
         <View>
+          <Text style={styles.stepTitle}>Session Configuration</Text>
+          <Text style={styles.stepHint}>Choose how participants will collaborate and optionally override mode settings.</Text>
+          
+          {/* Session Mode Toggle */}
+          <Text style={[styles.inputLabel, { marginTop: 4, marginBottom: 8 }]}>Collaboration Mode</Text>
+          {SESSION_MODES.map(sm => (
+            <TouchableOpacity key={sm.key}
+              style={[styles.sessionModeCard, sessionMode === sm.key && { borderColor: sm.color, backgroundColor: sm.color + '08' }]}
+              onPress={() => setSessionMode(sm.key)}>
+              <View style={[styles.sessionModeIcon, { backgroundColor: sm.color }]}>
+                <Ionicons name={sm.icon as any} size={20} color="#FFF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.sessionModeLabel, sessionMode === sm.key && { color: sm.color }]}>{sm.label}</Text>
+                <Text style={styles.sessionModeDesc}>{sm.desc}</Text>
+              </View>
+              <Ionicons name={sessionMode === sm.key ? 'radio-button-on' : 'radio-button-off'} size={22} color={sessionMode === sm.key ? sm.color : '#D1D5DB'} />
+            </TouchableOpacity>
+          ))}
+
+          {sessionMode === 'live_sync' && (
+            <View style={styles.liveSyncInfo}>
+              <Ionicons name="information-circle" size={16} color="#059669" />
+              <Text style={styles.liveSyncInfoText}>A video call link will be generated when the session starts. Participants join in real-time.</Text>
+            </View>
+          )}
+
+          {/* Mode Config Override */}
+          <View style={styles.overrideSection}>
+            <TouchableOpacity style={styles.overrideToggle} onPress={() => setShowOverride(!showOverride)}>
+              <Ionicons name={showOverride ? 'checkbox' : 'square-outline'} size={20} color={showOverride ? '#7C3AED' : COLORS.textMuted} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.overrideLabel}>Override Mode Configuration</Text>
+                <Text style={styles.overrideHint}>Customize percentages and weights for this session only</Text>
+              </View>
+              <Ionicons name={showOverride ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textMuted} />
+            </TouchableOpacity>
+            
+            {showOverride && (
+              <View style={styles.overrideFields}>
+                {selectedMode === 'command' && (
+                  <View style={styles.overrideFieldRow}>
+                    <Text style={styles.overrideFieldLabel}>Leader Weight %</Text>
+                    <TextInput style={styles.overrideFieldInput} keyboardType="numeric" placeholder="60"
+                      value={overrideFields.leader_weight_pct || ''}
+                      onChangeText={v => setOverrideFields({...overrideFields, leader_weight_pct: v})} />
+                  </View>
+                )}
+                {selectedMode === 'sme' && (
+                  <View style={styles.overrideFieldRow}>
+                    <Text style={styles.overrideFieldLabel}>SME Weight Multiplier</Text>
+                    <TextInput style={styles.overrideFieldInput} keyboardType="numeric" placeholder="2.0"
+                      value={overrideFields.sme_weight_multiplier || ''}
+                      onChangeText={v => setOverrideFields({...overrideFields, sme_weight_multiplier: v})} />
+                  </View>
+                )}
+                {selectedMode === 'voting' && (
+                  <View style={styles.overrideFieldRow}>
+                    <Text style={styles.overrideFieldLabel}>Approval Threshold %</Text>
+                    <TextInput style={styles.overrideFieldInput} keyboardType="numeric" placeholder="51"
+                      value={overrideFields.threshold_pct || ''}
+                      onChangeText={v => setOverrideFields({...overrideFields, threshold_pct: v})} />
+                  </View>
+                )}
+                {selectedMode === 'consensus' && (
+                  <View style={styles.overrideFieldRow}>
+                    <Text style={styles.overrideFieldLabel}>Consensus Threshold %</Text>
+                    <TextInput style={styles.overrideFieldInput} keyboardType="numeric" placeholder="80"
+                      value={overrideFields.consensus_pct || ''}
+                      onChangeText={v => setOverrideFields({...overrideFields, consensus_pct: v})} />
+                  </View>
+                )}
+                <View style={styles.overrideFieldRow}>
+                  <Text style={styles.overrideFieldLabel}>Deadline (Hours)</Text>
+                  <TextInput style={styles.overrideFieldInput} keyboardType="numeric" placeholder="48"
+                    value={overrideFields.deadline_hours || ''}
+                    onChangeText={v => setOverrideFields({...overrideFields, deadline_hours: v})} />
+                </View>
+              </View>
+            )}
+          </View>
+        </View>
+      );
+      case 4: return (
+        <View>
           <Text style={styles.stepTitle}>Participant Authentication</Text>
           <Text style={styles.stepHint}>Configure identity verification for participants. Select which methods and how many required.</Text>
           
@@ -269,6 +381,72 @@ export default function CollaborateScreen() {
           )}
         </View>
       );
+    }
+  };
+
+  const fetchVerificationStatus = async () => {
+    try {
+      const [totp, bio, digi] = await Promise.all([
+        api.get('/collaboration/totp/setup').catch(() => ({ data: null })),
+        api.get('/collaboration/biometric/status').catch(() => ({ data: null })),
+        api.get('/collaboration/digilocker/status').catch(() => ({ data: null })),
+      ]);
+      setTotpStatus(totp.data);
+      setBiometricStatus(bio.data);
+      setDigilockerStatus(digi.data);
+    } catch (e) { /* ignore */ }
+  };
+
+  const handleVerify = async (method: string) => {
+    setVerifying(true);
+    try {
+      if (method === 'country_id') {
+        const res = await api.post('/collaboration/digilocker/initiate');
+        if (res.data?.status === 'not_configured') {
+          showAlert('DigiLocker', 'DigiLocker integration is not configured yet. Contact your administrator to set DIGILOCKER_CLIENT_ID and DIGILOCKER_CLIENT_SECRET in server environment.');
+        } else if (res.data?.auth_url) {
+          showAlert('DigiLocker', 'DigiLocker OAuth URL generated. In production, you would be redirected to complete KYC verification.');
+        } else {
+          showAlert('DigiLocker', res.data?.message || 'DigiLocker initiation received.');
+        }
+      } else if (method === 'biometric') {
+        const res = await api.post('/collaboration/biometric/register', {
+          type: 'fingerprint',
+          device_id: 'mantra_mfs100',
+          template_data: 'device_fingerprint_' + Date.now(),
+        });
+        showAlert('Biometric', res.data?.message || 'Biometric registration submitted.');
+      } else if (method === 'authenticator') {
+        const res = await api.get('/collaboration/totp/setup');
+        if (res.data?.secret) {
+          showAlert('TOTP Setup', `Secret: ${res.data.secret}\n\nScan the QR code in your Authenticator app, then verify with the 6-digit code.`);
+        } else {
+          showAlert('TOTP', res.data?.message || 'TOTP setup response received.');
+        }
+      }
+      await fetchVerificationStatus();
+    } catch (err: any) {
+      showAlert('Error', err.response?.data?.detail || 'Verification failed');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const handleTotpVerify = async () => {
+    if (!verifyInput || verifyInput.length !== 6) {
+      showAlert('Invalid', 'Enter a valid 6-digit code');
+      return;
+    }
+    setVerifying(true);
+    try {
+      const res = await api.post('/collaboration/totp/verify', { code: verifyInput });
+      showAlert('TOTP', res.data?.verified ? 'Verification successful!' : 'Invalid code. Please try again.');
+      setVerifyInput('');
+      await fetchVerificationStatus();
+    } catch (err: any) {
+      showAlert('Error', err.response?.data?.detail || 'TOTP verification failed');
+    } finally {
+      setVerifying(false);
     }
   };
 
@@ -324,7 +502,21 @@ export default function CollaborateScreen() {
                     <Text style={styles.participantText}>
                       {contributed}/{(s.participants || []).length} contributed
                     </Text>
+                    {s.session_mode && (
+                      <View style={[styles.modeBadge, { backgroundColor: s.session_mode === 'live_sync' ? '#ECFDF5' : '#EFF6FF' }]}>
+                        <Ionicons name={s.session_mode === 'live_sync' ? 'videocam' : 'time'} size={10}
+                          color={s.session_mode === 'live_sync' ? '#059669' : '#3B82F6'} />
+                        <Text style={[styles.modeBadgeText, { color: s.session_mode === 'live_sync' ? '#059669' : '#3B82F6' }]}>
+                          {s.session_mode === 'live_sync' ? 'Live' : 'Async'}
+                        </Text>
+                      </View>
+                    )}
                     <View style={{ flex: 1 }} />
+                    <TouchableOpacity style={styles.verifyJoinBtn}
+                      onPress={() => { setVerifySession(s); setShowVerifyModal(true); fetchVerificationStatus(); }}>
+                      <Ionicons name="shield-checkmark" size={12} color="#7C3AED" />
+                      <Text style={styles.verifyJoinText}>Verify</Text>
+                    </TouchableOpacity>
                     <Text style={styles.sessionDate}>
                       {new Date(s.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                     </Text>
@@ -350,7 +542,7 @@ export default function CollaborateScreen() {
 
               {/* Step indicator */}
               <View style={styles.steps}>
-                {['Module', 'Mode', 'People', 'Auth'].map((s, i) => (
+                {['Module', 'Mode', 'People', 'Config', 'Auth'].map((s, i) => (
                   <View key={i} style={styles.stepItem}>
                     <View style={[styles.stepDot, createStep >= i && { backgroundColor: '#7C3AED' }]}>
                       <Text style={[styles.stepDotText, createStep >= i && { color: '#FFF' }]}>{i + 1}</Text>
@@ -371,7 +563,7 @@ export default function CollaborateScreen() {
                   </TouchableOpacity>
                 )}
                 <View style={{ flex: 1 }} />
-                {createStep < 3 ? (
+                {createStep < 4 ? (
                   <TouchableOpacity style={styles.nextBtn} onPress={() => {
                     if (createStep === 0 && !selectedModule) { showAlert('Required', 'Select a module first'); return; }
                     if (createStep === 2 && selectedContacts.size === 0) { showAlert('Required', 'Select at least one participant'); return; }
@@ -395,6 +587,106 @@ export default function CollaborateScreen() {
           </KeyboardAvoidingView>
         </View>
       </Modal>
+
+      {/* Verification Modal */}
+      <Modal visible={showVerifyModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: 520 }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Identity Verification</Text>
+              <TouchableOpacity onPress={() => setShowVerifyModal(false)}>
+                <Ionicons name="close" size={24} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+              <Text style={styles.stepHint}>Complete verification to participate in this session. Select a method below.</Text>
+              
+              {/* DigiLocker */}
+              <View style={styles.verifyCard}>
+                <View style={styles.verifyCardHeader}>
+                  <View style={[styles.verifyIcon, { backgroundColor: '#EEF2FF' }]}>
+                    <Ionicons name="card" size={20} color="#6366F1" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.verifyCardTitle}>DigiLocker (Aadhaar / Country ID)</Text>
+                    <Text style={styles.verifyCardDesc}>Govt-issued identity verification</Text>
+                  </View>
+                  {digilockerStatus?.verified ? (
+                    <View style={styles.verifiedBadge}><Ionicons name="checkmark-circle" size={16} color="#059669" /><Text style={styles.verifiedText}>Verified</Text></View>
+                  ) : null}
+                </View>
+                {!digilockerStatus?.verified && (
+                  <TouchableOpacity style={[styles.verifyActionBtn, { backgroundColor: '#6366F1' }]}
+                    onPress={() => handleVerify('country_id')} disabled={verifying}>
+                    {verifying ? <ActivityIndicator color="#FFF" size="small" /> : (
+                      <><Ionicons name="open-outline" size={14} color="#FFF" /><Text style={styles.verifyActionText}>Initiate DigiLocker</Text></>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Biometric */}
+              <View style={styles.verifyCard}>
+                <View style={styles.verifyCardHeader}>
+                  <View style={[styles.verifyIcon, { backgroundColor: '#FFF7ED' }]}>
+                    <Ionicons name="finger-print" size={20} color="#F97316" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.verifyCardTitle}>Biometric Authentication</Text>
+                    <Text style={styles.verifyCardDesc}>Fingerprint / Retina via supported device</Text>
+                  </View>
+                  {biometricStatus?.registrations?.length > 0 ? (
+                    <View style={styles.verifiedBadge}><Ionicons name="checkmark-circle" size={16} color="#059669" /><Text style={styles.verifiedText}>Enrolled</Text></View>
+                  ) : null}
+                </View>
+                <TouchableOpacity style={[styles.verifyActionBtn, { backgroundColor: '#F97316' }]}
+                  onPress={() => handleVerify('biometric')} disabled={verifying}>
+                  {verifying ? <ActivityIndicator color="#FFF" size="small" /> : (
+                    <><Ionicons name="finger-print" size={14} color="#FFF" /><Text style={styles.verifyActionText}>{biometricStatus?.registrations?.length > 0 ? 'Re-register' : 'Register Biometric'}</Text></>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              {/* TOTP Authenticator */}
+              <View style={styles.verifyCard}>
+                <View style={styles.verifyCardHeader}>
+                  <View style={[styles.verifyIcon, { backgroundColor: '#ECFDF5' }]}>
+                    <Ionicons name="key" size={20} color="#059669" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.verifyCardTitle}>Authenticator App (TOTP)</Text>
+                    <Text style={styles.verifyCardDesc}>Google Authenticator / Authy / Microsoft</Text>
+                  </View>
+                  {totpStatus?.totp_configured ? (
+                    <View style={styles.verifiedBadge}><Ionicons name="checkmark-circle" size={16} color="#059669" /><Text style={styles.verifiedText}>Active</Text></View>
+                  ) : null}
+                </View>
+                {!totpStatus?.totp_configured ? (
+                  <TouchableOpacity style={[styles.verifyActionBtn, { backgroundColor: '#059669' }]}
+                    onPress={() => handleVerify('authenticator')} disabled={verifying}>
+                    {verifying ? <ActivityIndicator color="#FFF" size="small" /> : (
+                      <><Ionicons name="qr-code" size={14} color="#FFF" /><Text style={styles.verifyActionText}>Setup TOTP</Text></>
+                    )}
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.totpVerifyRow}>
+                    <TextInput style={styles.totpInput} placeholder="6-digit code" keyboardType="numeric"
+                      maxLength={6} value={verifyInput} onChangeText={setVerifyInput} />
+                    <TouchableOpacity style={[styles.verifyActionBtn, { backgroundColor: '#059669', flex: 0 }]}
+                      onPress={handleTotpVerify} disabled={verifying}>
+                      {verifying ? <ActivityIndicator color="#FFF" size="small" /> : (
+                        <Text style={styles.verifyActionText}>Verify</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -472,4 +764,44 @@ const styles = StyleSheet.create({
   nextBtnText: { fontSize: 14, fontWeight: '600', color: '#FFF' },
   createBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 10, backgroundColor: '#059669' },
   createBtnText: { fontSize: 14, fontWeight: '700', color: '#FFF' },
+
+  // Session Mode styles
+  sessionModeCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 12, backgroundColor: '#F9FAFB', marginBottom: 8, borderWidth: 1.5, borderColor: '#E5E7EB' },
+  sessionModeIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  sessionModeLabel: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
+  sessionModeDesc: { fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
+  liveSyncInfo: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#ECFDF5', padding: 10, borderRadius: 8, marginBottom: 12 },
+  liveSyncInfoText: { fontSize: 11, color: '#059669', flex: 1 },
+  inputLabel: { fontSize: 13, fontWeight: '600', color: COLORS.textPrimary, marginBottom: 4 },
+
+  // Override styles
+  overrideSection: { marginTop: 16, borderTopWidth: 1, borderTopColor: '#F3F4F6', paddingTop: 12 },
+  overrideToggle: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  overrideLabel: { fontSize: 13, fontWeight: '600', color: COLORS.textPrimary },
+  overrideHint: { fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
+  overrideFields: { marginTop: 12, backgroundColor: '#F5F3FF', borderRadius: 10, padding: 12, gap: 10 },
+  overrideFieldRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  overrideFieldLabel: { fontSize: 12, fontWeight: '600', color: '#5B21B6', flex: 1 },
+  overrideFieldInput: { width: 80, borderWidth: 1, borderColor: '#DDD6FE', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, fontSize: 14, fontWeight: '700', color: '#7C3AED', backgroundColor: '#FFF', textAlign: 'center' },
+
+  // Session mode badge
+  modeBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginLeft: 6 },
+  modeBadgeText: { fontSize: 10, fontWeight: '600' },
+
+  // Verify join button
+  verifyJoinBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: '#F5F3FF', marginRight: 8 },
+  verifyJoinText: { fontSize: 10, fontWeight: '600', color: '#7C3AED' },
+
+  // Verification Modal styles
+  verifyCard: { backgroundColor: '#F9FAFB', borderRadius: 12, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#E5E7EB' },
+  verifyCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  verifyIcon: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  verifyCardTitle: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
+  verifyCardDesc: { fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
+  verifiedBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: '#ECFDF5' },
+  verifiedText: { fontSize: 10, fontWeight: '600', color: '#059669' },
+  verifyActionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 8, flex: 1 },
+  verifyActionText: { fontSize: 12, fontWeight: '700', color: '#FFF' },
+  totpVerifyRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  totpInput: { flex: 1, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 16, fontWeight: '700', letterSpacing: 4, textAlign: 'center' },
 });
