@@ -103,6 +103,7 @@ api_router.include_router(collaboration_router)
 api_router.include_router(incident_router)
 api_router.include_router(audit_trail_router)
 api_router.include_router(face_auth_router)
+api_router.include_router(social_learning_router)
 
 # ========================
 # HEALTH CHECK
