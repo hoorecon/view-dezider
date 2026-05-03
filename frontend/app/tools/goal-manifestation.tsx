@@ -185,8 +185,9 @@ export default function GoalManifestationScreen() {
         placeholder="What do you wish to manifest?" placeholderTextColor={COLORS.textMuted} multiline />
 
       {/* Stage tabs */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 12 }}>
-        <View style={{ flexDirection: 'row', gap: 6 }}>
+      <Text style={st.stageTabLabel}>Navigate Stages:</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12, maxHeight: 44 }}>
+        <View style={{ flexDirection: 'row', gap: 6, paddingVertical: 4 }}>
           {stages.map(s => (
             <TouchableOpacity key={s.stage_number}
               style={[st.stageTab, currentStage === s.stage_number && { backgroundColor: s.color, borderColor: s.color }]}
@@ -362,6 +363,7 @@ const st = StyleSheet.create({
 
   stageTab: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.white },
   stageTabText: { fontSize: 12, fontWeight: '700', color: COLORS.textMuted },
+  stageTabLabel: { fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, marginTop: 8, marginBottom: 4 },
 
   stageCard: { backgroundColor: COLORS.white, borderRadius: 14, padding: 14, borderLeftWidth: 4, borderWidth: 1, borderColor: COLORS.border },
   stageIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
