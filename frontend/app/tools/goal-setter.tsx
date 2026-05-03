@@ -1,0 +1,266 @@
+import React, { useState, useCallback } from 'react';
+import { showAlert } from '../../src/utils/alert';
+import {
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  TextInput, ActivityIndicator, KeyboardAvoidingView, Platform,
+  RefreshControl,
+} from 'react-native';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { COLORS } from '../../src/constants/colors';
+import { AudioGuidePlayer } from '../../src/components/AudioGuidePlayer';
+import api from '../../src/utils/api';
+
+const AUDIO_URL = 'https://customer-assets.emergentagent.com/job_a7a2d7ec-9ce2-470b-8ff8-d26638aa4277/artifacts/unvj7j0c_Goal%20Setter.mp3';
+
+const SMART_FIELDS = [
+  { id: 'specific', letter: 'S', name: 'Specific', color: '#3B82F6', prompt: 'What exactly do you want to achieve?', hint: 'Be precise about the outcome' },
+  { id: 'measurable', letter: 'M', name: 'Measurable', color: '#10B981', prompt: 'How will you measure success?', hint: 'Define the metric' },
+  { id: 'achievable', letter: 'A', name: 'Achievable', color: '#F59E0B', prompt: 'Is it achievable with current capabilities?', hint: 'Skills, knowledge, finances, support' },
+  { id: 'realistic', letter: 'R', name: 'Realistic', color: '#8B5CF6', prompt: 'Is it realistic in your environment?', hint: 'Market, competition, timing' },
+  { id: 'timebound', letter: 'T', name: 'Time-bound', color: '#EF4444', prompt: 'What is the timeline & milestones?', hint: 'Deadlines and interim checkpoints' },
+];
+
+export default function GoalSetterScreen() {
+  const router = useRouter();
+  const [mode, setMode] = useState<'list' | 'create'>('list');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [goals, setGoals] = useState<any[]>([]);
+  const [dashboard, setDashboard] = useState<any>(null);
+  const [guideOpen, setGuideOpen] = useState(false);
+
+  // Form
+  const [title, setTitle] = useState('');
+  const [challenge, setChallenge] = useState('');
+  const [specific, setSpecific] = useState('');
+  const [measurable, setMeasurable] = useState('');
+  const [achievable, setAchievable] = useState('');
+  const [realistic, setRealistic] = useState('');
+  const [timebound, setTimebound] = useState('');
+
+  const fetchData = async () => {
+    try {
+      const [dashRes, goalsRes] = await Promise.all([
+        api.get('/goal-setter/dashboard'),
+        api.get('/goal-setter/goals'),
+      ]);
+      setDashboard(dashRes.data);
+      setGoals(goalsRes.data || []);
+    } catch (e) { console.error('Goal setter fetch:', e); }
+    finally { setLoading(false); }
+  };
+
+  useFocusEffect(useCallback(() => { setLoading(true); fetchData(); }, []));
+  const onRefresh = async () => { setRefreshing(true); await fetchData(); setRefreshing(false); };
+
+  const resetForm = () => {
+    setTitle(''); setChallenge(''); setSpecific(''); setMeasurable('');
+    setAchievable(''); setRealistic(''); setTimebound('');
+  };
+
+  const handleSave = async () => {
+    if (!title.trim()) { showAlert('Required', 'Enter a goal title'); return; }
+    setSaving(true);
+    try {
+      await api.post('/goal-setter/goals', {
+        title: title.trim(), challenge: challenge.trim(),
+        specific, measurable, achievable, realistic, timebound,
+      });
+      showAlert('Saved', 'SMART Goal created!');
+      resetForm(); setMode('list'); fetchData();
+    } catch (e) { showAlert('Error', 'Failed to save'); }
+    finally { setSaving(false); }
+  };
+
+  const handleDelete = (id: string) => {
+    showAlert('Delete', 'Remove this goal?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        try { await api.delete(`/goal-setter/goals/${id}`); fetchData(); }
+        catch (e) { showAlert('Error', 'Failed to delete'); }
+      }},
+    ]);
+  };
+
+  const smartValues = { specific, measurable, achievable, realistic, timebound };
+  const smartSetters: Record<string, (v: string) => void> = {
+    specific: setSpecific, measurable: setMeasurable, achievable: setAchievable,
+    realistic: setRealistic, timebound: setTimebound,
+  };
+
+  const renderList = () => (
+    <>
+      {dashboard && (
+        <View style={s.statsRow}>
+          <View style={s.statBox}><Text style={s.statNum}>{dashboard.total_goals}</Text><Text style={s.statLabel}>Total</Text></View>
+          <View style={s.statBox}><Text style={s.statNum}>{dashboard.active_goals}</Text><Text style={s.statLabel}>Active</Text></View>
+          <View style={s.statBox}><Text style={s.statNum}>{dashboard.completed_goals}</Text><Text style={s.statLabel}>Done</Text></View>
+          <View style={s.statBox}><Text style={s.statNum}>{dashboard.avg_progress}%</Text><Text style={s.statLabel}>Avg Progress</Text></View>
+        </View>
+      )}
+      {goals.length === 0 ? (
+        <View style={s.empty}>
+          <View style={s.emptyIcon}><Ionicons name="flag-outline" size={48} color={COLORS.textMuted} /></View>
+          <Text style={s.emptyTitle}>No SMART Goals Yet</Text>
+          <Text style={s.emptySub}>Define what you want to achieve — focus on the WHAT, not the HOW</Text>
+        </View>
+      ) : (
+        goals.map(g => (
+          <TouchableOpacity key={g.goal_id} style={s.goalCard} activeOpacity={0.7}>
+            <View style={s.goalRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.goalTitle} numberOfLines={1}>{g.title}</Text>
+                <Text style={s.goalSub}>{g.status} · {g.created_at?.split('T')[0]}</Text>
+              </View>
+              <TouchableOpacity onPress={() => handleDelete(g.goal_id)}><Ionicons name="trash-outline" size={16} color={COLORS.textMuted} /></TouchableOpacity>
+            </View>
+            <View style={s.smartBar}>
+              {SMART_FIELDS.map(f => (
+                <View key={f.id} style={[s.smartDot, { backgroundColor: g[f.id] ? f.color : COLORS.divider }]}>
+                  <Text style={[s.smartDotText, { color: g[f.id] ? '#FFF' : COLORS.textMuted }]}>{f.letter}</Text>
+                </View>
+              ))}
+            </View>
+          </TouchableOpacity>
+        ))
+      )}
+    </>
+  );
+
+  const renderForm = () => (
+    <>
+      {/* Audio Guide */}
+      <TouchableOpacity style={s.guideHeader} onPress={() => setGuideOpen(!guideOpen)}>
+        <Ionicons name="headset" size={18} color="#059669" />
+        <Text style={s.guideLabel}>Audio Guide: SMART Goals</Text>
+        <Ionicons name={guideOpen ? 'chevron-up' : 'chevron-down'} size={16} color="#059669" />
+      </TouchableOpacity>
+      {guideOpen && (
+        <View style={s.guideBody}>
+          <AudioGuidePlayer uri={AUDIO_URL} title="Goal Setter — SMART Framework" color="#059669" />
+          <Text style={s.guideText}>Focus on WHAT you really want without worrying about HOW. Define your best possible SMART goal for this challenge.</Text>
+        </View>
+      )}
+
+      <Text style={s.formLabel}>Goal Title *</Text>
+      <TextInput style={s.input} value={title} onChangeText={setTitle} placeholder="What is your goal?" placeholderTextColor={COLORS.textMuted} />
+
+      <Text style={s.formLabel}>Challenge / Context</Text>
+      <TextInput style={[s.input, { minHeight: 60 }]} value={challenge} onChangeText={setChallenge} placeholder="What challenge does this goal address?" placeholderTextColor={COLORS.textMuted} multiline />
+
+      {/* SMART Fields */}
+      {SMART_FIELDS.map(f => (
+        <View key={f.id} style={s.smartField}>
+          <View style={[s.smartLetterBadge, { backgroundColor: f.color }]}>
+            <Text style={s.smartLetterText}>{f.letter}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.smartName}>{f.name}</Text>
+            <Text style={s.smartPrompt}>{f.prompt}</Text>
+            <TextInput style={s.smartInput} value={smartValues[f.id as keyof typeof smartValues]}
+              onChangeText={smartSetters[f.id]} placeholder={f.hint}
+              placeholderTextColor={COLORS.textMuted} multiline />
+          </View>
+        </View>
+      ))}
+    </>
+  );
+
+  return (
+    <SafeAreaView style={s.container} edges={['top']}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <LinearGradient colors={['#059669', '#10B981']} style={s.header}>
+          <TouchableOpacity onPress={() => mode === 'create' ? setMode('list') : router.back()} style={s.backBtn}>
+            <Ionicons name="arrow-back" size={22} color="#FFF" />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <Text style={s.headerTitle}>Goal Setter</Text>
+            <Text style={s.headerSub}>SMART Framework</Text>
+          </View>
+          {mode === 'list' && (
+            <TouchableOpacity onPress={() => { resetForm(); setMode('create'); }} style={s.addBtn}>
+              <Ionicons name="add" size={22} color="#FFF" />
+            </TouchableOpacity>
+          )}
+        </LinearGradient>
+
+        {loading ? (
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator size="large" color="#059669" /></View>
+        ) : (
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: mode === 'create' ? 100 : 32 }}
+            refreshControl={mode === 'list' ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} /> : undefined}>
+            {mode === 'list' ? renderList() : renderForm()}
+          </ScrollView>
+        )}
+
+        {mode === 'create' && (
+          <View style={s.bottom}>
+            <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.7 }]} onPress={handleSave} disabled={saving}>
+              {saving ? <ActivityIndicator size="small" color="#FFF" /> : (
+                <><Ionicons name="checkmark-circle" size={18} color="#FFF" /><Text style={s.saveBtnText}>Save SMART Goal</Text></>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {mode === 'list' && goals.length > 0 && (
+          <View style={s.bottom}>
+            <TouchableOpacity style={s.saveBtn} onPress={() => { resetForm(); setMode('create'); }}>
+              <Ionicons name="add-circle" size={18} color="#FFF" /><Text style={s.saveBtnText}>New SMART Goal</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.background },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, paddingBottom: 18 },
+  backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#FFF' },
+  headerSub: { fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
+  addBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
+
+  statsRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  statBox: { flex: 1, backgroundColor: COLORS.white, borderRadius: 12, padding: 10, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border },
+  statNum: { fontSize: 16, fontWeight: '700', color: '#059669' },
+  statLabel: { fontSize: 9, color: COLORS.textMuted, marginTop: 2, textTransform: 'uppercase' },
+
+  goalCard: { backgroundColor: COLORS.white, borderRadius: 14, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: COLORS.border },
+  goalRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  goalTitle: { fontSize: 15, fontWeight: '600', color: COLORS.textPrimary },
+  goalSub: { fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
+  smartBar: { flexDirection: 'row', gap: 6 },
+  smartDot: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  smartDotText: { fontSize: 11, fontWeight: '700' },
+
+  guideHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14, backgroundColor: '#ECFDF5', borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: '#A7F3D0' },
+  guideLabel: { flex: 1, fontSize: 13, fontWeight: '600', color: '#059669' },
+  guideBody: { backgroundColor: '#F0FDF4', borderRadius: 12, padding: 14, marginBottom: 12 },
+  guideText: { fontSize: 13, color: '#065F46', lineHeight: 20, fontStyle: 'italic', marginTop: 10 },
+
+  formLabel: { fontSize: 13, fontWeight: '600', color: COLORS.textPrimary, marginTop: 12, marginBottom: 4 },
+  input: { backgroundColor: COLORS.white, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: COLORS.textPrimary, textAlignVertical: 'top' },
+
+  smartField: { flexDirection: 'row', gap: 10, marginTop: 14, alignItems: 'flex-start' },
+  smartLetterBadge: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
+  smartLetterText: { fontSize: 16, fontWeight: '800', color: '#FFF' },
+  smartName: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
+  smartPrompt: { fontSize: 12, color: COLORS.textMuted, marginTop: 1, marginBottom: 4 },
+  smartInput: { backgroundColor: COLORS.background, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, color: COLORS.textPrimary, minHeight: 50, textAlignVertical: 'top' },
+
+  bottom: { padding: 16, paddingBottom: Platform.OS === 'ios' ? 20 : 16, borderTopWidth: 1, borderTopColor: COLORS.border, backgroundColor: COLORS.white },
+  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#059669', borderRadius: 14, paddingVertical: 16 },
+  saveBtnText: { fontSize: 16, fontWeight: '700', color: '#FFF' },
+
+  empty: { alignItems: 'center', paddingTop: 40 },
+  emptyIcon: { width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.divider, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: COLORS.textPrimary },
+  emptySub: { fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', marginTop: 8, paddingHorizontal: 32, lineHeight: 20 },
+});

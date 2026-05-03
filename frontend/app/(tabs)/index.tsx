@@ -700,6 +700,59 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Goal & Manifestation Modules */}
+          <Text style={styles.sectionTitle}>Goals & Manifestation</Text>
+          <View style={styles.quickActions}>
+            <TouchableOpacity
+              style={styles.actionCard}
+              onPress={() => router.push('/tools/goal-setter' as any)}
+            >
+              <LinearGradient
+                colors={['#059669', '#10B981']}
+                style={styles.actionIcon}
+              >
+                <Ionicons name="flag" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Goal Setter</Text>
+              <Text style={styles.actionSubtitle}>SMART Framework</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionCard}
+              onPress={() => router.push('/tools/goal-manifestation' as any)}
+            >
+              <LinearGradient
+                colors={['#7C3AED', '#9333EA']}
+                style={styles.actionIcon}
+              >
+                <Ionicons name="sparkles" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Manifestation</Text>
+              <Text style={styles.actionSubtitle}>CAB-FAME 7 Stages</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Unconditional Happiness */}
+          <TouchableOpacity
+            style={styles.calendarCard}
+            onPress={() => router.push('/tools/unconditional-happiness' as any)}
+            activeOpacity={0.7}
+          >
+            <LinearGradient
+              colors={['#EC4899', '#F472B6']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.calendarGradient}
+            >
+              <Ionicons name="happy" size={24} color="#FFF" />
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.calendarTitle}>Unconditional Happiness</Text>
+                <Text style={styles.calendarSub}>Celebrate life without conditions — streak tracking</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
+            </LinearGradient>
+          </TouchableOpacity>
+
           {/* Consciousness Diary */}
           <TouchableOpacity
             style={styles.calendarCard}

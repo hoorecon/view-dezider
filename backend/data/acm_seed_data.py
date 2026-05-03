@@ -1205,4 +1205,113 @@ ACM_MODULES = [
             },
         ],
     },
+
+    # ────────────────────────────────────────────────────
+    # MODULE 25: Goal Setter (SMART)
+    # ────────────────────────────────────────────────────
+    {
+        "module_id": "goal_setter",
+        "module_name": "Goal Setter — SMART Framework",
+        "module_icon": "flag",
+        "module_description": "Define best possible SMART goals: Specific, Measurable, Achievable, Realistic, Time-bound",
+        "order": 25,
+        "features": [
+            {
+                "feature_id": "smart_goals",
+                "feature_name": "SMART Goal Creation",
+                "release_stage": "ga_trial",
+                "quota_unit": "goals/month",
+                "quota_resets": "monthly",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _full(3), "trial": _full(),
+                    "paid_starter": _full(20), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+        ],
+    },
+
+    # ────────────────────────────────────────────────────
+    # MODULE 26: Goal Manifestation (CAB-FAME)
+    # ────────────────────────────────────────────────────
+    {
+        "module_id": "goal_manifestation",
+        "module_name": "Goal Manifestation — CAB-FAME",
+        "module_icon": "sparkles",
+        "module_description": "7-stage Wish Fulfillment: Cosmic Consciousness → Awakening → Believing → Feeling → Actions → Manifestation → Effect",
+        "order": 26,
+        "features": [
+            {
+                "feature_id": "cabfame_journeys",
+                "feature_name": "CAB-FAME Journeys",
+                "release_stage": "ga_trial",
+                "quota_unit": "journeys/month",
+                "quota_resets": "monthly",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _full(2), "trial": _full(),
+                    "paid_starter": _full(10), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+            {
+                "feature_id": "kalphavriksha_meditation",
+                "feature_name": "KalphaVriksha Meditation Audio",
+                "release_stage": "ga_trial",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _full(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+        ],
+    },
+
+    # ────────────────────────────────────────────────────
+    # MODULE 27: Unconditional Happiness
+    # ────────────────────────────────────────────────────
+    {
+        "module_id": "unconditional_happiness",
+        "module_name": "Unconditional Happiness",
+        "module_icon": "happy",
+        "module_description": "Shift from conditional to unconditional happiness through guided reflection and celebration",
+        "order": 27,
+        "features": [
+            {
+                "feature_id": "uh_sessions",
+                "feature_name": "Happiness Practice Sessions",
+                "release_stage": "ga_trial",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _full(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+            {
+                "feature_id": "uh_streaks",
+                "feature_name": "Happiness Streak Tracking",
+                "release_stage": "ga_trial",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _full(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+        ],
+    },
 ]
