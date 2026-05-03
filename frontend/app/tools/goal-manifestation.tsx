@@ -31,17 +31,20 @@ export default function GoalManifestationScreen() {
   const [stageInputs, setStageInputs] = useState<Record<string, string>>({});
   const [expandedSteps, setExpandedSteps] = useState<Record<string, boolean>>({});
   const [editId, setEditId] = useState('');
+  const [meditationPrefs, setMeditationPrefs] = useState<Record<string, any>>({});
 
   const fetchData = async () => {
     try {
-      const [fwRes, jRes, dRes] = await Promise.all([
+      const [fwRes, jRes, dRes, medRes] = await Promise.all([
         api.get('/goal-manifestation/framework'),
         api.get('/goal-manifestation/journeys'),
         api.get('/goal-manifestation/dashboard'),
+        api.get('/meditation-settings/preferences').catch(() => ({ data: { meditations: {} } })),
       ]);
       setStages(fwRes.data?.stages || []);
       setJourneys(jRes.data || []);
       setDashboard(dRes.data);
+      setMeditationPrefs(medRes.data?.meditations || {});
     } catch (e) { console.error('Manifestation fetch:', e); }
     finally { setLoading(false); }
   };
@@ -95,6 +98,27 @@ export default function GoalManifestationScreen() {
   };
 
   const activeStage = stages.find(s => s.stage_number === currentStage);
+
+  // Resolve meditation URLs from user prefs
+  const resolveStepLink = (step: any): string => {
+    if (step.id === '1.1' && meditationPrefs.guru_invocation?.resolved_url) {
+      return meditationPrefs.guru_invocation.resolved_url;
+    }
+    if (step.id === '1.6' && meditationPrefs.stillness_meditation?.resolved_url) {
+      return meditationPrefs.stillness_meditation.resolved_url;
+    }
+    if (step.id === '4.4' && meditationPrefs.guru_invocation?.resolved_url) {
+      return meditationPrefs.guru_invocation.resolved_url;
+    }
+    return step.link || '';
+  };
+
+  const resolveStageAudio = (stage: Stage): string => {
+    if (stage.stage_number === 4 && meditationPrefs.goal_manifestation?.resolved_url) {
+      return meditationPrefs.goal_manifestation.resolved_url;
+    }
+    return stage.audio_url || '';
+  };
 
   const renderList = () => (
     <>
@@ -189,14 +213,16 @@ export default function GoalManifestationScreen() {
           </View>
 
           {/* Audio player if stage has one */}
-          {activeStage.audio_url && (
+          {(activeStage.audio_url || (activeStage.stage_number === 4 && meditationPrefs.goal_manifestation)) && (
             <View style={{ marginBottom: 10 }}>
-              <AudioGuidePlayer uri={activeStage.audio_url} title={activeStage.audio_title || 'Meditation'} color={activeStage.color} />
+              <AudioGuidePlayer uri={resolveStageAudio(activeStage)} title={activeStage.audio_title || 'Meditation'} color={activeStage.color} />
             </View>
           )}
 
           {/* Steps */}
-          {activeStage.steps.map((step: any) => (
+          {activeStage.steps.map((step: any) => {
+            const resolvedLink = resolveStepLink(step);
+            return (
             <View key={step.id} style={st.stepItem}>
               <TouchableOpacity style={st.stepHeader} onPress={() => toggleStep(step.id)}>
                 <Text style={st.stepId}>{step.id}</Text>
@@ -210,13 +236,16 @@ export default function GoalManifestationScreen() {
                   {step.content && <Text style={st.stepContent}>{step.content}</Text>}
                   {step.followup && <Text style={st.stepFollowup}>{step.followup}</Text>}
 
-                  {/* YouTube / external links */}
-                  {step.link && (
-                    <TouchableOpacity style={st.linkBtn} onPress={() => Linking.openURL(step.link)}>
-                      <Ionicons name={step.link.includes('youtube') ? 'logo-youtube' : 'link'} size={16} color="#EF4444" />
+                  {/* YouTube / external links — uses resolved URL from user prefs */}
+                  {resolvedLink ? (
+                    <TouchableOpacity style={st.linkBtn} onPress={() => Linking.openURL(resolvedLink)}>
+                      <Ionicons name={resolvedLink.includes('youtube') ? 'logo-youtube' : 'link'} size={16} color="#EF4444" />
                       <Text style={st.linkText}>{step.link_label || 'Open Link'}</Text>
+                      {meditationPrefs[step.id === '1.1' || step.id === '4.4' ? 'guru_invocation' : 'stillness_meditation']?.source_type !== 'default' && (
+                        <Text style={st.customBadge}>CUSTOM</Text>
+                      )}
                     </TouchableOpacity>
-                  )}
+                  ) : null}
 
                   {/* User input field */}
                   {step.has_input && (
@@ -229,7 +258,7 @@ export default function GoalManifestationScreen() {
                 </View>
               )}
             </View>
-          ))}
+          )})}
 
           {/* Stage navigation */}
           <View style={st.stageNav}>
@@ -350,6 +379,7 @@ const st = StyleSheet.create({
 
   linkBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: '#FEF2F2', borderRadius: 10, marginTop: 4, alignSelf: 'flex-start' },
   linkText: { fontSize: 12, fontWeight: '600', color: '#EF4444' },
+  customBadge: { fontSize: 8, fontWeight: '700', color: '#10B981', backgroundColor: '#10B98118', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 4, marginLeft: 4 },
 
   stepInput: { backgroundColor: COLORS.background, borderRadius: 10, borderWidth: 1, borderColor: '#7C3AED30', paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, color: COLORS.textPrimary, marginTop: 6, minHeight: 44, textAlignVertical: 'top' },
 

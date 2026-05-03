@@ -71,6 +71,7 @@ from routes.lifestyle_eval import router as lee_router
 from routes.goal_setter import router as goal_setter_router
 from routes.goal_manifestation import router as goal_manifestation_router
 from routes.unconditional_happiness import router as uh_router
+from routes.meditation_settings import router as meditation_settings_router
 
 
 # ========================
@@ -118,6 +119,7 @@ api_router.include_router(lee_router)
 api_router.include_router(goal_setter_router)
 api_router.include_router(goal_manifestation_router)
 api_router.include_router(uh_router)
+api_router.include_router(meditation_settings_router)
 
 # ========================
 # HEALTH CHECK
