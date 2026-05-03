@@ -956,6 +956,20 @@ ACM_MODULES = [
                     "paid_enterprise": _full(), "paid_api": _hidden(),
                 },
             },
+            {
+                "feature_id": "eg_effective_outlets_advisor",
+                "feature_name": "Effective Outlets Advisor (9 Constructive Techniques)",
+                "release_stage": "ga_trial",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _read(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
         ],
     },
 

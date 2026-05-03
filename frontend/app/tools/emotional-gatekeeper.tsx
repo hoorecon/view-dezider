@@ -62,6 +62,11 @@ export default function EmotionalGatekeeperScreen() {
   };
 
   const startSession = async (type: string) => {
+    // Advisor navigates directly, no session needed
+    if (type === 'advisor') {
+      router.push('/tools/eg-advisor' as any);
+      return;
+    }
     try {
       const res = await api.post('/emotional-gatekeeper/sessions', { session_type: type });
       const sid = res.data.id;
@@ -103,6 +108,11 @@ export default function EmotionalGatekeeperScreen() {
       id: 'aim', title: 'AIM Manager', icon: 'flame' as const,
       desc: 'Addictions & Irritations Manager', colors: [EG_COLORS.aim, '#EA580C'],
       stat: dashboard?.aim_sessions || 0, label: 'Sessions',
+    },
+    {
+      id: 'advisor', title: 'Effective Outlets Advisor', icon: 'leaf' as const,
+      desc: '9 constructive techniques with guided practice', colors: ['#10B981', '#047857'],
+      stat: 0, label: 'Practices', isDirectNav: true,
     },
   ];
 

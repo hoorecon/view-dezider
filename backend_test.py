@@ -1,978 +1,445 @@
-#!/usr/bin/env python3
 """
-Comprehensive Backend API Testing for Emotional Gatekeeper Module
-Tests all endpoints as specified in the review request
+Backend API Testing for Effective Outlets Advisor Endpoints
+Testing all endpoints on https://dezider-core.preview.emergentagent.com/api
 """
 
 import requests
 import json
-import time
 from datetime import datetime
 
-# Backend URL
+# Configuration
 BASE_URL = "https://dezider-core.preview.emergentagent.com/api"
+TEST_USER = {
+    "email": "advisor_test@test.com",
+    "password": "Test123!",
+    "name": "Advisor Tester"
+}
 
-# Test results tracking
-test_results = []
+# Global variables
 session_token = None
-user_email = None
+test_results = []
+
 
 def log_test(test_name, passed, details=""):
     """Log test result"""
     status = "✅ PASSED" if passed else "❌ FAILED"
-    test_results.append({
-        "test": test_name,
-        "passed": passed,
-        "details": details
-    })
-    print(f"{status}: {test_name}")
+    result = f"{status}: {test_name}"
     if details:
-        print(f"  Details: {details}")
+        result += f" - {details}"
+    test_results.append(result)
+    print(result)
 
-def print_summary():
-    """Print test summary"""
-    passed = sum(1 for r in test_results if r["passed"])
-    total = len(test_results)
-    print("\n" + "="*80)
-    print(f"TEST SUMMARY: {passed}/{total} tests passed ({passed*100//total}% success rate)")
-    print("="*80)
-    
-    if any(not r["passed"] for r in test_results):
-        print("\n❌ FAILED TESTS:")
-        for r in test_results:
-            if not r["passed"]:
-                print(f"  - {r['test']}: {r['details']}")
 
-# ============================================================================
-# AUTHENTICATION TESTS
-# ============================================================================
-
-def test_user_registration():
+def test_1_register_user():
     """Test 1: Register a new test user"""
-    global session_token, user_email
+    global session_token
     
-    timestamp = int(time.time())
-    user_email = f"egtest_{timestamp}@emotionalgateway.com"
+    url = f"{BASE_URL}/auth/register"
+    response = requests.post(url, json=TEST_USER)
     
+    if response.status_code == 200:
+        data = response.json()
+        session_token = data.get("session_token")
+        log_test("User Registration", True, f"Registered with session_token")
+        return True
+    else:
+        log_test("User Registration", False, f"Status: {response.status_code}, Response: {response.text}")
+        return False
+
+
+def test_2_get_all_outlets():
+    """Test 2: GET /api/emotional-gatekeeper/advisor/outlets"""
+    url = f"{BASE_URL}/emotional-gatekeeper/advisor/outlets"
+    headers = {"Authorization": f"Bearer {session_token}"}
+    
+    response = requests.get(url, headers=headers)
+    
+    if response.status_code == 200:
+        data = response.json()
+        outlets = data.get("outlets", [])
+        forgiveness = data.get("forgiveness_affirmations", [])
+        
+        # Verify outlets count
+        if len(outlets) != 9:
+            log_test("Get All Outlets - Count", False, f"Expected 9 outlets, got {len(outlets)}")
+            return False
+        
+        # Verify forgiveness affirmations count
+        if len(forgiveness) != 7:
+            log_test("Get All Outlets - Forgiveness Count", False, f"Expected 7 categories, got {len(forgiveness)}")
+            return False
+        
+        # Verify outlet structure
+        required_fields = ["id", "number", "name", "category", "relief_type", "duration", "instructions", "description"]
+        for outlet in outlets:
+            for field in required_fields:
+                if field not in outlet:
+                    log_test("Get All Outlets - Structure", False, f"Missing field '{field}' in outlet")
+                    return False
+        
+        # Verify forgiveness structure
+        required_forgiveness_fields = ["id", "title", "icon", "frequency", "sections"]
+        for aff in forgiveness:
+            for field in required_forgiveness_fields:
+                if field not in aff:
+                    log_test("Get All Outlets - Forgiveness Structure", False, f"Missing field '{field}' in affirmation")
+                    return False
+        
+        log_test("Get All Outlets", True, f"9 outlets and 7 forgiveness categories with proper structure")
+        return True
+    else:
+        log_test("Get All Outlets", False, f"Status: {response.status_code}, Response: {response.text}")
+        return False
+
+
+def test_3_get_practice_history_empty():
+    """Test 3: GET /api/emotional-gatekeeper/advisor/my-practices (empty)"""
+    url = f"{BASE_URL}/emotional-gatekeeper/advisor/my-practices"
+    headers = {"Authorization": f"Bearer {session_token}"}
+    
+    response = requests.get(url, headers=headers)
+    
+    if response.status_code == 200:
+        data = response.json()
+        logs = data.get("logs", [])
+        stats = data.get("stats", {})
+        
+        if len(logs) != 0:
+            log_test("Get Practice History (Empty)", False, f"Expected 0 logs, got {len(logs)}")
+            return False
+        
+        if stats.get("total_practices") != 0:
+            log_test("Get Practice History (Empty)", False, f"Expected 0 total_practices, got {stats.get('total_practices')}")
+            return False
+        
+        if stats.get("streak") != 0:
+            log_test("Get Practice History (Empty)", False, f"Expected 0 streak, got {stats.get('streak')}")
+            return False
+        
+        log_test("Get Practice History (Empty)", True, "Empty logs and 0 stats")
+        return True
+    else:
+        log_test("Get Practice History (Empty)", False, f"Status: {response.status_code}, Response: {response.text}")
+        return False
+
+
+def test_4_log_practice_joint_exercise():
+    """Test 4: POST /api/emotional-gatekeeper/advisor/practice-log - Joint Exercise"""
+    url = f"{BASE_URL}/emotional-gatekeeper/advisor/practice-log"
+    headers = {"Authorization": f"Bearer {session_token}"}
     payload = {
-        "email": user_email,
-        "password": "SecurePass123!",
-        "name": "Emma Gatekeeper"
+        "outlet_id": "joint_exercise",
+        "duration_seconds": 300
     }
     
-    try:
-        response = requests.post(f"{BASE_URL}/auth/register", json=payload, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if "session_token" in data and "user_id" in data:
-                session_token = data["session_token"]
-                log_test("User Registration", True, f"Registered {user_email} with session token")
-                return True
-            else:
-                log_test("User Registration", False, "Missing session_token or user_id in response")
-                return False
-        else:
-            log_test("User Registration", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("User Registration", False, f"Exception: {str(e)}")
-        return False
-
-# ============================================================================
-# EMOTIONAL GATEKEEPER - DASHBOARD & SESSIONS
-# ============================================================================
-
-def test_dashboard_empty():
-    """Test 2: Dashboard should show zeros initially"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        response = requests.get(f"{BASE_URL}/emotional-gatekeeper/dashboard", headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            # Check for expected structure - API returns different field names
-            if "total_sessions" in data:
-                log_test("Dashboard (Empty)", True, f"Dashboard returned: total_sessions={data.get('total_sessions', 0)}")
-                return True
-            else:
-                log_test("Dashboard (Empty)", False, f"Missing total_sessions field in response: {data}")
-                return False
-        else:
-            log_test("Dashboard (Empty)", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("Dashboard (Empty)", False, f"Exception: {str(e)}")
-        return False
-
-def test_create_trap_session():
-    """Test 3: Create a trap session"""
-    global trap_session_id
+    response = requests.post(url, json=payload, headers=headers)
     
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        payload = {
-            "session_type": "trap",
-            "title": "Test Trap Session"
-        }
-        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/sessions", json=payload, headers=headers, timeout=10)
+    if response.status_code == 200:
+        data = response.json()
+        logged = data.get("logged", {})
         
-        if response.status_code == 200:
-            data = response.json()
-            # API returns 'id' instead of 'session_id'
-            if "id" in data:
-                trap_session_id = data["id"]
-                log_test("Create Trap Session", True, f"Created session: {trap_session_id}")
-                return True
-            else:
-                log_test("Create Trap Session", False, f"Missing id in response: {data}")
-                return False
-        else:
-            log_test("Create Trap Session", False, f"Status {response.status_code}: {response.text}")
+        if logged.get("outlet_id") != "joint_exercise":
+            log_test("Log Practice - Joint Exercise", False, f"outlet_id mismatch")
             return False
-    except Exception as e:
-        log_test("Create Trap Session", False, f"Exception: {str(e)}")
+        
+        if logged.get("duration_seconds") != 300:
+            log_test("Log Practice - Joint Exercise", False, f"duration_seconds mismatch")
+            return False
+        
+        if not logged.get("id"):
+            log_test("Log Practice - Joint Exercise", False, f"Missing id field")
+            return False
+        
+        log_test("Log Practice - Joint Exercise", True, f"Logged with id: {logged.get('id')}")
+        return True
+    else:
+        log_test("Log Practice - Joint Exercise", False, f"Status: {response.status_code}, Response: {response.text}")
         return False
 
-def test_list_sessions():
-    """Test 4: List sessions should return at least 1"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        response = requests.get(f"{BASE_URL}/emotional-gatekeeper/sessions", headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if "sessions" in data and "total" in data:
-                if data["total"] >= 1:
-                    log_test("List Sessions", True, f"Found {data['total']} session(s)")
-                    return True
-                else:
-                    log_test("List Sessions", False, f"Expected at least 1 session, got {data['total']}")
-                    return False
-            else:
-                log_test("List Sessions", False, f"Missing expected fields: {data}")
-                return False
-        else:
-            log_test("List Sessions", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("List Sessions", False, f"Exception: {str(e)}")
-        return False
 
-def test_get_session_detail():
-    """Test 5: Get session detail"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        response = requests.get(f"{BASE_URL}/emotional-gatekeeper/sessions/{trap_session_id}", headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            # API returns 'id' instead of 'session_id'
-            if "id" in data and "session_type" in data:
-                log_test("Get Session Detail", True, f"Retrieved session: {data.get('title', 'N/A')}")
-                return True
-            else:
-                log_test("Get Session Detail", False, f"Missing expected fields: {data}")
-                return False
-        else:
-            log_test("Get Session Detail", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("Get Session Detail", False, f"Exception: {str(e)}")
-        return False
-
-# ============================================================================
-# BREAKING THE TRAP FLOW
-# ============================================================================
-
-def test_trap_capture():
-    """Test 6: Trap - Capture step"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        payload = {
-            "situation": "Worried about job performance review",
-            "category": "career",
-            "intensity": 7
-        }
-        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/trap/{trap_session_id}/capture", 
-                                json=payload, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            log_test("Trap - Capture", True, f"Captured trap situation")
-            return True
-        else:
-            log_test("Trap - Capture", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("Trap - Capture", False, f"Exception: {str(e)}")
-        return False
-
-def test_trap_landscaping():
-    """Test 7: Trap - Landscaping step"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        payload = {
-            "scanning_for": "career risks",
-            "scanning_patterns": ["failure", "rejection"],
-            "scanning_without_urgency": True,
-            "repeated_concern": "losing job"
-        }
-        response = requests.put(f"{BASE_URL}/emotional-gatekeeper/trap/{trap_session_id}/landscaping", 
-                               json=payload, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            log_test("Trap - Landscaping", True, f"Landscaping completed")
-            return True
-        else:
-            log_test("Trap - Landscaping", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("Trap - Landscaping", False, f"Exception: {str(e)}")
-        return False
-
-def test_trap_linking():
-    """Test 8: Trap - Linking step"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        payload = {
-            "trigger_description": "performance review email",
-            "trigger_type": "external",
-            "linking_meaning": "I might get fired"
-        }
-        response = requests.put(f"{BASE_URL}/emotional-gatekeeper/trap/{trap_session_id}/linking", 
-                               json=payload, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            log_test("Trap - Linking", True, f"Linking completed")
-            return True
-        else:
-            log_test("Trap - Linking", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("Trap - Linking", False, f"Exception: {str(e)}")
-        return False
-
-def test_trap_looping():
-    """Test 9: Trap - Looping step"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        payload = {
-            "repeating_thought": "What if I lose my job",
-            "getting_new_solution": False,
-            "emotion_increasing": "increasing",
-            "intensity_before": 7,
-            "intensity_after": 9
-        }
-        response = requests.put(f"{BASE_URL}/emotional-gatekeeper/trap/{trap_session_id}/looping", 
-                               json=payload, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            log_test("Trap - Looping", True, f"Looping completed")
-            return True
-        else:
-            log_test("Trap - Looping", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("Trap - Looping", False, f"Exception: {str(e)}")
-        return False
-
-def test_trap_analyze():
-    """Test 10: Trap - AI Analysis (may take 5-15 seconds)"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/trap/{trap_session_id}/analyze", 
-                                headers=headers, timeout=30)
-        
-        if response.status_code == 200:
-            data = response.json()
-            # API returns nested structure with 'analysis' key
-            if "analysis" in data and "current_stage" in data["analysis"]:
-                log_test("Trap - AI Analysis", True, f"AI analysis completed with stage: {data['analysis'].get('current_stage', 'N/A')}")
-                return True
-            else:
-                log_test("Trap - AI Analysis", False, f"Missing expected AI fields: {data}")
-                return False
-        else:
-            log_test("Trap - AI Analysis", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("Trap - AI Analysis", False, f"Exception: {str(e)}")
-        return False
-
-# ============================================================================
-# BREAKING THE LOOP FLOW
-# ============================================================================
-
-def test_create_loop_session():
-    """Test 11: Create a loop session"""
-    global loop_session_id
+def test_5_log_practice_super_brain_yoga():
+    """Test 5: POST /api/emotional-gatekeeper/advisor/practice-log - Super Brain Yoga"""
+    url = f"{BASE_URL}/emotional-gatekeeper/advisor/practice-log"
+    headers = {"Authorization": f"Bearer {session_token}"}
+    payload = {
+        "outlet_id": "super_brain_yoga",
+        "duration_seconds": 200,
+        "notes": "14 reps done"
+    }
     
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        payload = {
-            "session_type": "loop",
-            "title": "Test Loop Session"
-        }
-        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/sessions", json=payload, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if "id" in data:
-                loop_session_id = data["id"]
-                log_test("Create Loop Session", True, f"Created session: {loop_session_id}")
-                return True
-            else:
-                log_test("Create Loop Session", False, f"Missing id: {data}")
-                return False
-        else:
-            log_test("Create Loop Session", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("Create Loop Session", False, f"Exception: {str(e)}")
-        return False
-
-def test_loop_capture():
-    """Test 12: Loop - Capture step"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        payload = {
-            "repeated_thought": "I am not good enough",
-            "emotion": "anxiety",
-            "repeat_count_today": 5,
-            "fear": "being inadequate",
-            "trying_to_solve": "self-worth"
-        }
-        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/loop/{loop_session_id}/capture", 
-                                json=payload, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            log_test("Loop - Capture", True, f"Loop captured")
-            return True
-        else:
-            log_test("Loop - Capture", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("Loop - Capture", False, f"Exception: {str(e)}")
-        return False
-
-def test_loop_recommend():
-    """Test 13: Loop - AI Recommendation (may take 5-15 seconds)"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/loop/{loop_session_id}/recommend", 
-                                headers=headers, timeout=30)
-        
-        if response.status_code == 200:
-            data = response.json()
-            # API returns nested structure with 'recommendation' key
-            if "recommendation" in data and "recommended_method" in data["recommendation"]:
-                log_test("Loop - AI Recommendation", True, f"Recommended method: {data['recommendation'].get('recommended_method', 'N/A')}")
-                return True
-            else:
-                log_test("Loop - AI Recommendation", False, f"Missing recommended_method: {data}")
-                return False
-        else:
-            log_test("Loop - AI Recommendation", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("Loop - AI Recommendation", False, f"Exception: {str(e)}")
-        return False
-
-def test_loop_method():
-    """Test 14: Loop - Method selection"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        payload = {
-            "selected_method": "i_dont_know",
-            "method_answers": {
-                "q0": "I'm sure I struggle",
-                "q1": "I'm not sure about outcomes",
-                "q2": "Yes I can try"
-            }
-        }
-        response = requests.put(f"{BASE_URL}/emotional-gatekeeper/loop/{loop_session_id}/method", 
-                               json=payload, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            log_test("Loop - Method Selection", True, f"Method selected")
-            return True
-        else:
-            log_test("Loop - Method Selection", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("Loop - Method Selection", False, f"Exception: {str(e)}")
-        return False
-
-def test_loop_reframe():
-    """Test 15: Loop - AI Reframe (may take 5-15 seconds)"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/loop/{loop_session_id}/reframe", 
-                                headers=headers, timeout=30)
-        
-        if response.status_code == 200:
-            data = response.json()
-            # API returns nested structure with 'reframe' key
-            if "reframe" in data and "new_perspective" in data["reframe"] and "calming_statement" in data["reframe"]:
-                log_test("Loop - AI Reframe", True, f"Reframe completed")
-                return True
-            else:
-                log_test("Loop - AI Reframe", False, f"Missing expected fields: {data}")
-                return False
-        else:
-            log_test("Loop - AI Reframe", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("Loop - AI Reframe", False, f"Exception: {str(e)}")
-        return False
-
-# ============================================================================
-# BREAKING LIMITATIONS FLOW
-# ============================================================================
-
-def test_create_limitation_session():
-    """Test 16: Create a limitation session"""
-    global limitation_session_id
+    response = requests.post(url, json=payload, headers=headers)
     
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        payload = {
-            "session_type": "limitation",
-            "title": "Test Limitation Session"
-        }
-        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/sessions", json=payload, headers=headers, timeout=10)
+    if response.status_code == 200:
+        data = response.json()
+        logged = data.get("logged", {})
         
-        if response.status_code == 200:
-            data = response.json()
-            if "id" in data:
-                limitation_session_id = data["id"]
-                log_test("Create Limitation Session", True, f"Created session: {limitation_session_id}")
-                return True
-            else:
-                log_test("Create Limitation Session", False, f"Missing id: {data}")
-                return False
-        else:
-            log_test("Create Limitation Session", False, f"Status {response.status_code}: {response.text}")
+        if logged.get("outlet_id") != "super_brain_yoga":
+            log_test("Log Practice - Super Brain Yoga", False, f"outlet_id mismatch")
             return False
-    except Exception as e:
-        log_test("Create Limitation Session", False, f"Exception: {str(e)}")
+        
+        if logged.get("notes") != "14 reps done":
+            log_test("Log Practice - Super Brain Yoga", False, f"notes mismatch")
+            return False
+        
+        log_test("Log Practice - Super Brain Yoga", True, f"Logged with notes")
+        return True
+    else:
+        log_test("Log Practice - Super Brain Yoga", False, f"Status: {response.status_code}, Response: {response.text}")
         return False
 
-def test_limitation_capture():
-    """Test 17: Limitation - Capture step"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        payload = {
-            "limitation_statement": "I can never start a business",
-            "why_limited": "Failed before",
-            "origin": "past failure",
-            "belief_duration": "5 years",
-            "cost_of_limitation": "Stayed in unfulfilling job"
-        }
-        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/limitation/{limitation_session_id}/capture", 
-                                json=payload, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            log_test("Limitation - Capture", True, f"Limitation captured")
-            return True
-        else:
-            log_test("Limitation - Capture", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("Limitation - Capture", False, f"Exception: {str(e)}")
-        return False
 
-def test_limitation_classify():
-    """Test 18: Limitation - AI Classification (may take 5-15 seconds)"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/limitation/{limitation_session_id}/classify", 
-                                headers=headers, timeout=30)
-        
-        if response.status_code == 200:
-            data = response.json()
-            # API returns nested structure with 'classification' key
-            if "classification" in data and "category" in data["classification"] and "confidence" in data["classification"]:
-                log_test("Limitation - AI Classification", True, f"Category: {data['classification'].get('category', 'N/A')}, Confidence: {data['classification'].get('confidence', 'N/A')}")
-                return True
-            else:
-                log_test("Limitation - AI Classification", False, f"Missing expected fields: {data}")
-                return False
-        else:
-            log_test("Limitation - AI Classification", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("Limitation - AI Classification", False, f"Exception: {str(e)}")
-        return False
-
-def test_limitation_flow():
-    """Test 19: Limitation - Flow step"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        payload = {
-            "answers": {
-                "q0": "I failed once 5 years ago",
-                "q1": "I have new skills now",
-                "q2": "Yes significantly"
-            }
-        }
-        response = requests.put(f"{BASE_URL}/emotional-gatekeeper/limitation/{limitation_session_id}/flow", 
-                               json=payload, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            log_test("Limitation - Flow", True, f"Flow completed")
-            return True
-        else:
-            log_test("Limitation - Flow", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("Limitation - Flow", False, f"Exception: {str(e)}")
-        return False
-
-def test_limitation_reframe():
-    """Test 20: Limitation - AI Reframe (may take 5-15 seconds)"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/limitation/{limitation_session_id}/reframe", 
-                                headers=headers, timeout=30)
-        
-        if response.status_code == 200:
-            data = response.json()
-            # API returns nested structure with 'reframe' key
-            if "reframe" in data and "old_belief" in data["reframe"] and "new_belief" in data["reframe"] and "affirmation" in data["reframe"]:
-                log_test("Limitation - AI Reframe", True, f"Reframe completed")
-                return True
-            else:
-                log_test("Limitation - AI Reframe", False, f"Missing expected fields: {data}")
-                return False
-        else:
-            log_test("Limitation - AI Reframe", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("Limitation - AI Reframe", False, f"Exception: {str(e)}")
-        return False
-
-# ============================================================================
-# OUTLET ANALYZER
-# ============================================================================
-
-def test_outlet_strategies():
-    """Test 21: Get outlet strategies"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        response = requests.get(f"{BASE_URL}/emotional-gatekeeper/outlet/strategies", headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if "strategies" in data:
-                log_test("Outlet - Get Strategies", True, f"Found {len(data['strategies'])} strategies")
-                return True
-            else:
-                log_test("Outlet - Get Strategies", False, f"Missing strategies field: {data}")
-                return False
-        else:
-            log_test("Outlet - Get Strategies", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("Outlet - Get Strategies", False, f"Exception: {str(e)}")
-        return False
-
-def test_create_outlet_session():
-    """Test 22: Create an outlet session"""
-    global outlet_session_id
+def test_6_log_practice_release_technique():
+    """Test 6: POST /api/emotional-gatekeeper/advisor/practice-log - Release Technique"""
+    url = f"{BASE_URL}/emotional-gatekeeper/advisor/practice-log"
+    headers = {"Authorization": f"Bearer {session_token}"}
+    payload = {
+        "outlet_id": "release_technique",
+        "duration_seconds": 120
+    }
     
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        payload = {
-            "session_type": "outlet",
-            "title": "Test Outlet Session"
-        }
-        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/sessions", json=payload, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if "id" in data:
-                outlet_session_id = data["id"]
-                log_test("Create Outlet Session", True, f"Created session: {outlet_session_id}")
-                return True
-            else:
-                log_test("Create Outlet Session", False, f"Missing id: {data}")
-                return False
-        else:
-            log_test("Create Outlet Session", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("Create Outlet Session", False, f"Exception: {str(e)}")
-        return False
-
-def test_outlet_analyze():
-    """Test 23: Outlet - AI Analysis (may take 5-15 seconds)"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        payload = {
-            "entries": [
-                {
-                    "strategy_id": "social_media",
-                    "frequency": "often",
-                    "is_compulsive": True
-                },
-                {
-                    "strategy_id": "yoga_meditation",
-                    "frequency": "rarely"
-                }
-            ]
-        }
-        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/outlet/{outlet_session_id}/analyze", 
-                                json=payload, headers=headers, timeout=30)
-        
-        if response.status_code == 200:
-            data = response.json()
-            log_test("Outlet - AI Analysis", True, f"Analysis completed")
-            return True
-        else:
-            log_test("Outlet - AI Analysis", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("Outlet - AI Analysis", False, f"Exception: {str(e)}")
-        return False
-
-# ============================================================================
-# AIM MANAGER
-# ============================================================================
-
-def test_aim_options():
-    """Test 24: Get AIM options"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        response = requests.get(f"{BASE_URL}/emotional-gatekeeper/aim/options", headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if "life_areas" in data and "occurrences" in data:
-                log_test("AIM - Get Options", True, f"Found {len(data['life_areas'])} life areas")
-                return True
-            else:
-                log_test("AIM - Get Options", False, f"Missing expected fields: {data}")
-                return False
-        else:
-            log_test("AIM - Get Options", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("AIM - Get Options", False, f"Exception: {str(e)}")
-        return False
-
-def test_create_aim_session():
-    """Test 25: Create an AIM session"""
-    global aim_session_id
+    response = requests.post(url, json=payload, headers=headers)
     
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        payload = {
-            "session_type": "aim",
-            "title": "Test AIM Session"
-        }
-        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/sessions", json=payload, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if "id" in data:
-                aim_session_id = data["id"]
-                log_test("Create AIM Session", True, f"Created session: {aim_session_id}")
-                return True
-            else:
-                log_test("Create AIM Session", False, f"Missing id: {data}")
-                return False
-        else:
-            log_test("Create AIM Session", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("Create AIM Session", False, f"Exception: {str(e)}")
+    if response.status_code == 200:
+        log_test("Log Practice - Release Technique", True, "Logged successfully")
+        return True
+    else:
+        log_test("Log Practice - Release Technique", False, f"Status: {response.status_code}, Response: {response.text}")
         return False
 
-def test_aim_save():
-    """Test 26: AIM - Save addictions and irritations"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        payload = {
-            "addictions": [
-                {
-                    "area_of_life": "career",
-                    "addiction": "Scrolling social media",
-                    "triggering_situations": "boredom",
-                    "positive_impact_pct": 10,
-                    "negative_impact_pct": 80
-                }
-            ],
-            "irritations": [
-                {
-                    "area_of_life": "emotional_relationships",
-                    "irritation": "Being interrupted",
-                    "probable_reaction": "Getting angry"
-                }
-            ]
-        }
-        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/aim/{aim_session_id}/save", 
-                                json=payload, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            log_test("AIM - Save Data", True, f"AIM data saved")
-            return True
-        else:
-            log_test("AIM - Save Data", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("AIM - Save Data", False, f"Exception: {str(e)}")
-        return False
 
-def test_aim_analyze():
-    """Test 27: AIM - AI Analysis (may take 5-15 seconds)"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/aim/{aim_session_id}/analyze", 
-                                headers=headers, timeout=30)
-        
-        if response.status_code == 200:
-            data = response.json()
-            log_test("AIM - AI Analysis", True, f"Analysis completed")
-            return True
-        else:
-            log_test("AIM - AI Analysis", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("AIM - AI Analysis", False, f"Exception: {str(e)}")
-        return False
-
-# ============================================================================
-# COMMITMENTS & JOURNAL
-# ============================================================================
-
-def test_create_commitment():
-    """Test 28: Create a commitment"""
-    global commitment_id
+def test_7_log_practice_forgiveness_affirmation():
+    """Test 7: POST /api/emotional-gatekeeper/advisor/practice-log - Forgiveness Affirmation"""
+    url = f"{BASE_URL}/emotional-gatekeeper/advisor/practice-log"
+    headers = {"Authorization": f"Bearer {session_token}"}
+    payload = {
+        "outlet_id": "forgiveness_affirmations",
+        "affirmation_category": "forgiving_yourself"
+    }
     
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        payload = {
-            "commitment_type": "immediate",
-            "commitment_text": "I will practice mindfulness daily"
-        }
-        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/sessions/{trap_session_id}/commitments", 
-                                json=payload, headers=headers, timeout=10)
+    response = requests.post(url, json=payload, headers=headers)
+    
+    if response.status_code == 200:
+        data = response.json()
+        logged = data.get("logged", {})
         
-        if response.status_code == 200:
-            data = response.json()
-            if "id" in data:
-                commitment_id = data["id"]
-                log_test("Create Commitment", True, f"Created commitment: {commitment_id}")
-                return True
-            else:
-                log_test("Create Commitment", False, f"Missing id: {data}")
-                return False
-        else:
-            log_test("Create Commitment", False, f"Status {response.status_code}: {response.text}")
+        if logged.get("affirmation_category") != "forgiving_yourself":
+            log_test("Log Practice - Forgiveness Affirmation", False, f"affirmation_category mismatch")
             return False
-    except Exception as e:
-        log_test("Create Commitment", False, f"Exception: {str(e)}")
+        
+        log_test("Log Practice - Forgiveness Affirmation", True, "Logged with affirmation_category")
+        return True
+    else:
+        log_test("Log Practice - Forgiveness Affirmation", False, f"Status: {response.status_code}, Response: {response.text}")
         return False
 
-def test_complete_commitment():
-    """Test 29: Complete a commitment"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        response = requests.put(f"{BASE_URL}/emotional-gatekeeper/commitments/{commitment_id}/complete", 
-                               headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            log_test("Complete Commitment", True, f"Commitment completed")
-            return True
-        else:
-            log_test("Complete Commitment", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("Complete Commitment", False, f"Exception: {str(e)}")
+
+def test_8_log_practice_hoorecon_o_pono():
+    """Test 8: POST /api/emotional-gatekeeper/advisor/practice-log - HOORECON-o-Pono"""
+    url = f"{BASE_URL}/emotional-gatekeeper/advisor/practice-log"
+    headers = {"Authorization": f"Bearer {session_token}"}
+    payload = {
+        "outlet_id": "hoorecon_o_pono",
+        "duration_seconds": 120
+    }
+    
+    response = requests.post(url, json=payload, headers=headers)
+    
+    if response.status_code == 200:
+        log_test("Log Practice - HOORECON-o-Pono", True, "Logged successfully")
+        return True
+    else:
+        log_test("Log Practice - HOORECON-o-Pono", False, f"Status: {response.status_code}, Response: {response.text}")
         return False
 
-def test_create_journal():
-    """Test 30: Create a journal entry"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        payload = {
-            "journal_content": "Today I realized my thoughts are not facts"
-        }
-        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/sessions/{trap_session_id}/journal", 
-                                json=payload, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            log_test("Create Journal Entry", True, f"Journal entry created")
-            return True
-        else:
-            log_test("Create Journal Entry", False, f"Status {response.status_code}: {response.text}")
-            return False
-    except Exception as e:
-        log_test("Create Journal Entry", False, f"Exception: {str(e)}")
+
+def test_9_log_practice_invalid_outlet():
+    """Test 9: POST /api/emotional-gatekeeper/advisor/practice-log - Invalid outlet (error case)"""
+    url = f"{BASE_URL}/emotional-gatekeeper/advisor/practice-log"
+    headers = {"Authorization": f"Bearer {session_token}"}
+    payload = {
+        "outlet_id": "invalid_outlet"
+    }
+    
+    response = requests.post(url, json=payload, headers=headers)
+    
+    if response.status_code == 400:
+        log_test("Log Practice - Invalid Outlet (Error Case)", True, "Correctly rejected with 400")
+        return True
+    else:
+        log_test("Log Practice - Invalid Outlet (Error Case)", False, f"Expected 400, got {response.status_code}")
         return False
 
-# ============================================================================
-# AI REPORT
-# ============================================================================
 
-def test_generate_report():
-    """Test 31: Generate AI breakthrough report (may take 5-15 seconds)"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/sessions/{trap_session_id}/report", 
-                                headers=headers, timeout=30)
+def test_10_save_gratitude_journal():
+    """Test 10: POST /api/emotional-gatekeeper/advisor/gratitude"""
+    url = f"{BASE_URL}/emotional-gatekeeper/advisor/gratitude"
+    headers = {"Authorization": f"Bearer {session_token}"}
+    payload = {
+        "entries": ["My health", "My family", "This beautiful morning"]
+    }
+    
+    response = requests.post(url, json=payload, headers=headers)
+    
+    if response.status_code == 200:
+        data = response.json()
         
-        if response.status_code == 200:
-            data = response.json()
-            log_test("Generate AI Report", True, f"Report generated")
-            return True
-        else:
-            log_test("Generate AI Report", False, f"Status {response.status_code}: {response.text}")
+        if data.get("entries_count") != 3:
+            log_test("Save Gratitude Journal", False, f"Expected entries_count=3, got {data.get('entries_count')}")
             return False
-    except Exception as e:
-        log_test("Generate AI Report", False, f"Exception: {str(e)}")
+        
+        saved = data.get("saved", {})
+        if len(saved.get("entries", [])) != 3:
+            log_test("Save Gratitude Journal", False, f"Expected 3 entries in saved object")
+            return False
+        
+        log_test("Save Gratitude Journal", True, "Saved 3 gratitude entries")
+        return True
+    else:
+        log_test("Save Gratitude Journal", False, f"Status: {response.status_code}, Response: {response.text}")
         return False
 
-# ============================================================================
-# DASHBOARD AFTER DATA
-# ============================================================================
 
-def test_dashboard_with_data():
-    """Test 32: Dashboard should show non-zero counts"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        response = requests.get(f"{BASE_URL}/emotional-gatekeeper/dashboard", headers=headers, timeout=10)
+def test_11_get_gratitude_history():
+    """Test 11: GET /api/emotional-gatekeeper/advisor/gratitude-history"""
+    url = f"{BASE_URL}/emotional-gatekeeper/advisor/gratitude-history"
+    headers = {"Authorization": f"Bearer {session_token}"}
+    
+    response = requests.get(url, headers=headers)
+    
+    if response.status_code == 200:
+        data = response.json()
+        journals = data.get("journals", [])
+        total = data.get("total", 0)
         
-        if response.status_code == 200:
-            data = response.json()
-            if "total_sessions" in data:
-                if data["total_sessions"] > 0:
-                    log_test("Dashboard (With Data)", True, f"Dashboard shows {data['total_sessions']} sessions")
-                    return True
-                else:
-                    log_test("Dashboard (With Data)", False, f"Expected non-zero sessions, got {data['total_sessions']}")
-                    return False
-            else:
-                log_test("Dashboard (With Data)", False, f"Missing total_sessions: {data}")
-                return False
-        else:
-            log_test("Dashboard (With Data)", False, f"Status {response.status_code}: {response.text}")
+        if total != 1:
+            log_test("Get Gratitude History", False, f"Expected total=1, got {total}")
             return False
-    except Exception as e:
-        log_test("Dashboard (With Data)", False, f"Exception: {str(e)}")
+        
+        if len(journals) != 1:
+            log_test("Get Gratitude History", False, f"Expected 1 journal entry, got {len(journals)}")
+            return False
+        
+        log_test("Get Gratitude History", True, "1 journal entry found")
+        return True
+    else:
+        log_test("Get Gratitude History", False, f"Status: {response.status_code}, Response: {response.text}")
         return False
 
-# ============================================================================
-# DELETE SESSION
-# ============================================================================
 
-def test_delete_session():
-    """Test 33: Delete a session"""
-    try:
-        headers = {"Authorization": f"Bearer {session_token}"}
-        response = requests.delete(f"{BASE_URL}/emotional-gatekeeper/sessions/{trap_session_id}", 
-                                  headers=headers, timeout=10)
+def test_12_get_practice_history_after_logging():
+    """Test 12: GET /api/emotional-gatekeeper/advisor/my-practices (after logging)"""
+    url = f"{BASE_URL}/emotional-gatekeeper/advisor/my-practices"
+    headers = {"Authorization": f"Bearer {session_token}"}
+    
+    response = requests.get(url, headers=headers)
+    
+    if response.status_code == 200:
+        data = response.json()
+        stats = data.get("stats", {})
         
-        if response.status_code == 200:
-            log_test("Delete Session", True, f"Session deleted successfully")
-            return True
-        else:
-            log_test("Delete Session", False, f"Status {response.status_code}: {response.text}")
+        # We logged 5 practices + 1 gratitude auto-log = 6 total
+        total_practices = stats.get("total_practices", 0)
+        if total_practices < 6:
+            log_test("Get Practice History (After Logging)", False, f"Expected >= 6 practices, got {total_practices}")
             return False
-    except Exception as e:
-        log_test("Delete Session", False, f"Exception: {str(e)}")
+        
+        streak = stats.get("streak", 0)
+        if streak < 1:
+            log_test("Get Practice History (After Logging)", False, f"Expected streak >= 1, got {streak}")
+            return False
+        
+        outlet_counts = stats.get("outlet_counts", {})
+        if len(outlet_counts) == 0:
+            log_test("Get Practice History (After Logging)", False, f"Expected outlet_counts to have entries")
+            return False
+        
+        log_test("Get Practice History (After Logging)", True, f"total_practices={total_practices}, streak={streak}, outlet_counts={len(outlet_counts)} types")
+        return True
+    else:
+        log_test("Get Practice History (After Logging)", False, f"Status: {response.status_code}, Response: {response.text}")
         return False
 
-# ============================================================================
-# MAIN TEST EXECUTION
-# ============================================================================
 
-def main():
+def test_13_get_sms_recommendations_no_analysis():
+    """Test 13: GET /api/emotional-gatekeeper/advisor/sms-recommendations (no analysis yet)"""
+    url = f"{BASE_URL}/emotional-gatekeeper/advisor/sms-recommendations"
+    headers = {"Authorization": f"Bearer {session_token}"}
+    
+    response = requests.get(url, headers=headers)
+    
+    if response.status_code == 200:
+        data = response.json()
+        
+        if data.get("has_analysis") != False:
+            log_test("Get SMS Recommendations (No Analysis)", False, f"Expected has_analysis=false, got {data.get('has_analysis')}")
+            return False
+        
+        if "Complete the Outlet Analyzer first" not in data.get("message", ""):
+            log_test("Get SMS Recommendations (No Analysis)", False, f"Expected message about completing Outlet Analyzer")
+            return False
+        
+        log_test("Get SMS Recommendations (No Analysis)", True, "Correctly returns has_analysis=false with message")
+        return True
+    else:
+        log_test("Get SMS Recommendations (No Analysis)", False, f"Status: {response.status_code}, Response: {response.text}")
+        return False
+
+
+def run_all_tests():
     """Run all tests in sequence"""
+    print("\n" + "="*80)
+    print("EFFECTIVE OUTLETS ADVISOR - BACKEND API TESTING")
+    print("="*80 + "\n")
+    
+    tests = [
+        test_1_register_user,
+        test_2_get_all_outlets,
+        test_3_get_practice_history_empty,
+        test_4_log_practice_joint_exercise,
+        test_5_log_practice_super_brain_yoga,
+        test_6_log_practice_release_technique,
+        test_7_log_practice_forgiveness_affirmation,
+        test_8_log_practice_hoorecon_o_pono,
+        test_9_log_practice_invalid_outlet,
+        test_10_save_gratitude_journal,
+        test_11_get_gratitude_history,
+        test_12_get_practice_history_after_logging,
+        test_13_get_sms_recommendations_no_analysis,
+    ]
+    
+    passed = 0
+    failed = 0
+    
+    for test_func in tests:
+        try:
+            if test_func():
+                passed += 1
+            else:
+                failed += 1
+        except Exception as e:
+            log_test(test_func.__name__, False, f"Exception: {str(e)}")
+            failed += 1
+        print()  # Empty line between tests
+    
+    # Summary
+    print("\n" + "="*80)
+    print("TEST SUMMARY")
     print("="*80)
-    print("EMOTIONAL GATEKEEPER MODULE - COMPREHENSIVE BACKEND TESTING")
-    print("="*80)
-    print(f"Backend URL: {BASE_URL}")
-    print(f"Test started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("="*80)
-    print()
+    print(f"Total Tests: {passed + failed}")
+    print(f"✅ Passed: {passed}")
+    print(f"❌ Failed: {failed}")
+    print(f"Success Rate: {(passed / (passed + failed) * 100):.1f}%")
+    print("="*80 + "\n")
     
-    # Authentication
-    if not test_user_registration():
-        print("\n❌ Authentication failed. Cannot proceed with tests.")
-        print_summary()
-        return
+    # Detailed results
+    print("\nDETAILED RESULTS:")
+    print("-" * 80)
+    for result in test_results:
+        print(result)
+    print("-" * 80)
     
-    # Dashboard & Sessions
-    test_dashboard_empty()
-    test_create_trap_session()
-    test_list_sessions()
-    test_get_session_detail()
-    
-    # Breaking the Trap Flow
-    test_trap_capture()
-    test_trap_landscaping()
-    test_trap_linking()
-    test_trap_looping()
-    test_trap_analyze()
-    
-    # Breaking the Loop Flow
-    test_create_loop_session()
-    test_loop_capture()
-    test_loop_recommend()
-    test_loop_method()
-    test_loop_reframe()
-    
-    # Breaking Limitations Flow
-    test_create_limitation_session()
-    test_limitation_capture()
-    test_limitation_classify()
-    test_limitation_flow()
-    test_limitation_reframe()
-    
-    # Outlet Analyzer
-    test_outlet_strategies()
-    test_create_outlet_session()
-    test_outlet_analyze()
-    
-    # AIM Manager
-    test_aim_options()
-    test_create_aim_session()
-    test_aim_save()
-    test_aim_analyze()
-    
-    # Commitments & Journal
-    test_create_commitment()
-    test_complete_commitment()
-    test_create_journal()
-    
-    # AI Report
-    test_generate_report()
-    
-    # Dashboard After Data
-    test_dashboard_with_data()
-    
-    # Delete Session
-    test_delete_session()
-    
-    # Print summary
-    print()
-    print_summary()
-    print()
-    print(f"Test completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("="*80)
+    return passed, failed
+
 
 if __name__ == "__main__":
-    main()
+    run_all_tests()
