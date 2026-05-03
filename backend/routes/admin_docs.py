@@ -292,6 +292,132 @@ async def get_api_catalog(
 
 
 # ========================
+# POSTMAN COLLECTION EXPORT
+# ========================
+
+@router.get("/postman-collection")
+async def export_postman_collection(
+    request: Request,
+    user: dict = Depends(require_admin)
+):
+    """Export full API catalog as Postman Collection v2.1 JSON (downloadable)."""
+    from fastapi.responses import JSONResponse
+    from server import app as fastapi_app
+    openapi = fastapi_app.openapi()
+    paths = openapi.get("paths", {})
+    definitions = {}
+    if "components" in openapi and "schemas" in openapi["components"]:
+        definitions = openapi["components"]["schemas"]
+
+    # Build Postman collection v2.1
+    items_by_category = {}
+    for path, methods in paths.items():
+        for method, detail in methods.items():
+            if method not in ("get", "post", "put", "delete", "patch"):
+                continue
+
+            category = _get_category(path)
+            channels = _get_channels(path)
+
+            # Build request body
+            req_body_raw = None
+            req_body = detail.get("requestBody", {})
+            if req_body:
+                content = req_body.get("content", {})
+                json_content = content.get("application/json", {})
+                schema = json_content.get("schema", {})
+                if schema:
+                    sample = _generate_sample_payload(schema, definitions)
+                    if sample:
+                        req_body_raw = json_module.dumps(sample, indent=2)
+
+            # Build query params
+            query_params = []
+            path_vars = []
+            for p in detail.get("parameters", []):
+                if p.get("in") == "query":
+                    query_params.append({
+                        "key": p["name"],
+                        "value": "",
+                        "description": p.get("description", ""),
+                        "disabled": not p.get("required", False),
+                    })
+                elif p.get("in") == "path":
+                    path_vars.append({
+                        "key": p["name"],
+                        "value": f"{{{{SAMPLE_{p['name'].upper()}}}}}",
+                        "description": p.get("description", ""),
+                    })
+
+            # Replace FastAPI {param} with Postman :param
+            postman_url = path.replace("{", ":").replace("}", "")
+
+            pm_request = {
+                "method": method.upper(),
+                "header": [
+                    {"key": "Content-Type", "value": "application/json"},
+                    {"key": "Authorization", "value": "Bearer {{AUTH_TOKEN}}"},
+                ],
+                "url": {
+                    "raw": "{{BASE_URL}}" + postman_url + ("?" + "&".join(f"{q['key']}=" for q in query_params) if query_params else ""),
+                    "host": ["{{BASE_URL}}"],
+                    "path": [s for s in postman_url.strip("/").split("/") if s],
+                    "query": query_params,
+                    "variable": path_vars,
+                },
+            }
+            if req_body_raw:
+                pm_request["body"] = {
+                    "mode": "raw",
+                    "raw": req_body_raw,
+                    "options": {"raw": {"language": "json"}},
+                }
+
+            item = {
+                "name": detail.get("summary") or f"{method.upper()} {path}",
+                "request": pm_request,
+                "response": [],
+            }
+
+            # Add description with channel info
+            desc_parts = []
+            if detail.get("description"):
+                desc_parts.append(detail["description"])
+            desc_parts.append(f"Channels: {', '.join(channels)}")
+            item["request"]["description"] = "\n".join(desc_parts)
+
+            if category not in items_by_category:
+                items_by_category[category] = []
+            items_by_category[category].append(item)
+
+    # Build folder structure
+    folders = []
+    for cat_name, items in sorted(items_by_category.items()):
+        folders.append({
+            "name": cat_name,
+            "item": items,
+        })
+
+    collection = {
+        "info": {
+            "name": "View Dezider API — Full Collection",
+            "description": "Auto-generated Postman Collection from View Dezider OpenAPI schema.\nGenerated: " + datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'),
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        },
+        "item": folders,
+        "variable": [
+            {"key": "BASE_URL", "value": "https://your-domain.com/api", "type": "string"},
+            {"key": "AUTH_TOKEN", "value": "session_xxx", "type": "string"},
+        ],
+    }
+
+    return JSONResponse(
+        content=collection,
+        headers={"Content-Disposition": 'attachment; filename="ViewDezider_API_Collection.json"'},
+    )
+
+
+# ========================
 # DOC GENERATION & STORAGE
 # ========================
 
@@ -573,128 +699,3 @@ def _fallback_doc(doc_type: str, api_summary: str) -> str:
 """
 
 
-
-# ========================
-# POSTMAN COLLECTION EXPORT
-# ========================
-
-@router.get("/postman-collection")
-async def export_postman_collection(
-    request: Request,
-    user: dict = Depends(require_admin)
-):
-    """Export full API catalog as Postman Collection v2.1 JSON (downloadable)."""
-    from fastapi.responses import JSONResponse
-    from server import app as fastapi_app
-    openapi = fastapi_app.openapi()
-    paths = openapi.get("paths", {})
-    definitions = {}
-    if "components" in openapi and "schemas" in openapi["components"]:
-        definitions = openapi["components"]["schemas"]
-
-    # Build Postman collection v2.1
-    items_by_category = {}
-    for path, methods in paths.items():
-        for method, detail in methods.items():
-            if method not in ("get", "post", "put", "delete", "patch"):
-                continue
-
-            category = _get_category(path)
-            channels = _get_channels(path)
-
-            # Build request body
-            req_body_raw = None
-            req_body = detail.get("requestBody", {})
-            if req_body:
-                content = req_body.get("content", {})
-                json_content = content.get("application/json", {})
-                schema = json_content.get("schema", {})
-                if schema:
-                    sample = _generate_sample_payload(schema, definitions)
-                    if sample:
-                        req_body_raw = json_module.dumps(sample, indent=2)
-
-            # Build query params
-            query_params = []
-            path_vars = []
-            for p in detail.get("parameters", []):
-                if p.get("in") == "query":
-                    query_params.append({
-                        "key": p["name"],
-                        "value": "",
-                        "description": p.get("description", ""),
-                        "disabled": not p.get("required", False),
-                    })
-                elif p.get("in") == "path":
-                    path_vars.append({
-                        "key": p["name"],
-                        "value": f"{{{{SAMPLE_{p['name'].upper()}}}}}",
-                        "description": p.get("description", ""),
-                    })
-
-            # Replace FastAPI {param} with Postman :param
-            postman_url = path.replace("{", ":").replace("}", "")
-
-            pm_request = {
-                "method": method.upper(),
-                "header": [
-                    {"key": "Content-Type", "value": "application/json"},
-                    {"key": "Authorization", "value": "Bearer {{AUTH_TOKEN}}"},
-                ],
-                "url": {
-                    "raw": "{{BASE_URL}}" + postman_url + ("?" + "&".join(f"{q['key']}=" for q in query_params) if query_params else ""),
-                    "host": ["{{BASE_URL}}"],
-                    "path": [s for s in postman_url.strip("/").split("/") if s],
-                    "query": query_params,
-                    "variable": path_vars,
-                },
-            }
-            if req_body_raw:
-                pm_request["body"] = {
-                    "mode": "raw",
-                    "raw": req_body_raw,
-                    "options": {"raw": {"language": "json"}},
-                }
-
-            item = {
-                "name": detail.get("summary") or f"{method.upper()} {path}",
-                "request": pm_request,
-                "response": [],
-            }
-
-            # Add description with channel info
-            desc_parts = []
-            if detail.get("description"):
-                desc_parts.append(detail["description"])
-            desc_parts.append(f"Channels: {', '.join(channels)}")
-            item["request"]["description"] = "\n".join(desc_parts)
-
-            if category not in items_by_category:
-                items_by_category[category] = []
-            items_by_category[category].append(item)
-
-    # Build folder structure
-    folders = []
-    for cat_name, items in sorted(items_by_category.items()):
-        folders.append({
-            "name": cat_name,
-            "item": items,
-        })
-
-    collection = {
-        "info": {
-            "name": "View Dezider API — Full Collection",
-            "description": "Auto-generated Postman Collection from View Dezider OpenAPI schema.\nGenerated: " + datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'),
-            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-        },
-        "item": folders,
-        "variable": [
-            {"key": "BASE_URL", "value": "https://your-domain.com/api", "type": "string"},
-            {"key": "AUTH_TOKEN", "value": "session_xxx", "type": "string"},
-        ],
-    }
-
-    return JSONResponse(
-        content=collection,
-        headers={"Content-Disposition": 'attachment; filename="ViewDezider_API_Collection.json"'},
-    )
