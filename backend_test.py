@@ -1,902 +1,596 @@
 """
-Comprehensive Backend API Testing for PNA Framework and Lifestyle Designer
-Tests all endpoints with realistic data and proper authentication flow
+Conflict Breaker Backend API Testing
+Tests all 9-stage guided tool endpoints
 """
 import requests
 import json
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 
-# Backend URL from environment
-BACKEND_URL = "https://dezider-core.preview.emergentagent.com/api"
+# Backend URL from frontend/.env
+BASE_URL = "https://dezider-core.preview.emergentagent.com/api"
 
-# Test user credentials
-timestamp = int(time.time())
-TEST_EMAIL = f"pna_lifestyle_test_{timestamp}@test.com"
-TEST_PASSWORD = "SecurePass123!"
-TEST_NAME = "PNA Lifestyle Tester"
-
-# Global session token
-session_token = None
+# Test results tracking
+test_results = []
 
 def log_test(test_name, passed, details=""):
-    """Log test results"""
+    """Log test result"""
     status = "✅ PASSED" if passed else "❌ FAILED"
-    print(f"{status}: {test_name}")
+    result = f"{status}: {test_name}"
     if details:
-        print(f"  Details: {details}")
-    print()
+        result += f" - {details}"
+    print(result)
+    test_results.append({"test": test_name, "passed": passed, "details": details})
 
-def register_user():
-    """Register a new test user"""
-    global session_token
-    print("=" * 80)
-    print("REGISTERING TEST USER")
-    print("=" * 80)
+def test_conflict_breaker():
+    """Test complete Conflict Breaker workflow"""
     
-    response = requests.post(
-        f"{BACKEND_URL}/auth/register",
-        json={
-            "email": TEST_EMAIL,
-            "password": TEST_PASSWORD,
-            "name": TEST_NAME
-        }
-    )
+    print("\n" + "="*80)
+    print("CONFLICT BREAKER BACKEND API TESTING")
+    print("="*80 + "\n")
     
-    if response.status_code == 200:
-        data = response.json()
-        session_token = data.get("session_token")
-        log_test("User Registration", True, f"User ID: {data.get('user_id')}, Email: {TEST_EMAIL}")
-        return True
-    else:
-        log_test("User Registration", False, f"Status: {response.status_code}, Response: {response.text}")
-        return False
-
-def login_user():
-    """Login with test user"""
-    global session_token
-    print("=" * 80)
-    print("LOGGING IN")
-    print("=" * 80)
+    # Generate unique test user
+    timestamp = int(time.time())
+    test_email = f"conflict.tester.{timestamp}@workplace.com"
+    test_password = "SecurePass123!"
+    test_name = "Maya Chen"
     
-    response = requests.post(
-        f"{BACKEND_URL}/auth/login",
-        json={
-            "email": TEST_EMAIL,
-            "password": TEST_PASSWORD
-        }
-    )
+    session_token = None
+    session_id = None
     
-    if response.status_code == 200:
-        data = response.json()
-        session_token = data.get("session_token")
-        log_test("User Login", True, f"Session token obtained")
-        return True
-    else:
-        log_test("User Login", False, f"Status: {response.status_code}, Response: {response.text}")
-        return False
-
-def get_headers():
-    """Get authorization headers"""
-    return {
-        "Authorization": f"Bearer {session_token}",
-        "Content-Type": "application/json"
-    }
-
-# ═══════════════════════════════════════════════════════════════
-# PNA FRAMEWORK TESTS
-# ═══════════════════════════════════════════════════════════════
-
-def test_pna_meta():
-    """Test GET /api/pna/meta"""
-    print("=" * 80)
-    print("TEST 1: PNA Meta Endpoint")
-    print("=" * 80)
-    
-    response = requests.get(f"{BACKEND_URL}/pna/meta")
-    
-    if response.status_code == 200:
-        data = response.json()
-        has_life_areas = "life_areas" in data and len(data["life_areas"]) == 10
-        has_categories = "categories" in data and len(data["categories"]) == 3
-        has_statuses = "statuses" in data
-        has_priorities = "priorities" in data
+    # ========================================================================
+    # TEST 1: User Registration
+    # ========================================================================
+    print("\n[TEST 1] User Registration")
+    try:
+        response = requests.post(
+            f"{BASE_URL}/auth/register",
+            json={
+                "name": test_name,
+                "email": test_email,
+                "password": test_password
+            },
+            timeout=10
+        )
         
-        passed = has_life_areas and has_categories and has_statuses and has_priorities
-        log_test(
-            "GET /api/pna/meta",
-            passed,
-            f"Life areas: {len(data.get('life_areas', []))}, Categories: {len(data.get('categories', []))}, Statuses: {data.get('statuses')}, Priorities: {data.get('priorities')}"
-        )
-        return data
-    else:
-        log_test("GET /api/pna/meta", False, f"Status: {response.status_code}")
-        return None
-
-def test_create_pna_item(life_area, category, title, priority="high", impact_score=8, urgency_score=7, description=""):
-    """Test POST /api/pna/items"""
-    print(f"Creating PNA item: {title}")
-    
-    response = requests.post(
-        f"{BACKEND_URL}/pna/items",
-        headers=get_headers(),
-        json={
-            "life_area": life_area,
-            "category": category,
-            "title": title,
-            "priority": priority,
-            "impact_score": impact_score,
-            "urgency_score": urgency_score,
-            "description": description
-        }
-    )
-    
-    if response.status_code == 200:
-        data = response.json()
-        item_id = data.get("item_id")
-        log_test(
-            f"POST /api/pna/items - Create {category}",
-            True,
-            f"Item ID: {item_id}, Title: {title}"
-        )
-        return item_id
-    else:
-        log_test(f"POST /api/pna/items - Create {category}", False, f"Status: {response.status_code}, Response: {response.text}")
-        return None
-
-def test_list_pna_items():
-    """Test GET /api/pna/items"""
-    print("=" * 80)
-    print("TEST 3: List PNA Items")
-    print("=" * 80)
-    
-    response = requests.get(
-        f"{BACKEND_URL}/pna/items",
-        headers=get_headers()
-    )
-    
-    if response.status_code == 200:
-        data = response.json()
-        log_test(
-            "GET /api/pna/items",
-            True,
-            f"Found {len(data)} items"
-        )
-        return data
-    else:
-        log_test("GET /api/pna/items", False, f"Status: {response.status_code}")
-        return []
-
-def test_get_pna_item(item_id):
-    """Test GET /api/pna/items/{item_id}"""
-    print(f"Getting PNA item: {item_id}")
-    
-    response = requests.get(
-        f"{BACKEND_URL}/pna/items/{item_id}",
-        headers=get_headers()
-    )
-    
-    if response.status_code == 200:
-        data = response.json()
-        log_test(
-            f"GET /api/pna/items/{item_id}",
-            True,
-            f"Title: {data.get('title')}, Status: {data.get('status')}"
-        )
-        return data
-    else:
-        log_test(f"GET /api/pna/items/{item_id}", False, f"Status: {response.status_code}")
-        return None
-
-def test_update_pna_item(item_id, updates):
-    """Test PUT /api/pna/items/{item_id}"""
-    print(f"Updating PNA item: {item_id}")
-    
-    response = requests.put(
-        f"{BACKEND_URL}/pna/items/{item_id}",
-        headers=get_headers(),
-        json=updates
-    )
-    
-    if response.status_code == 200:
-        data = response.json()
-        log_test(
-            f"PUT /api/pna/items/{item_id}",
-            True,
-            f"Updated status to: {data.get('status')}"
-        )
-        return data
-    else:
-        log_test(f"PUT /api/pna/items/{item_id}", False, f"Status: {response.status_code}")
-        return None
-
-def test_pna_dashboard():
-    """Test GET /api/pna/dashboard"""
-    print("=" * 80)
-    print("TEST 4: PNA Dashboard")
-    print("=" * 80)
-    
-    response = requests.get(
-        f"{BACKEND_URL}/pna/dashboard",
-        headers=get_headers()
-    )
-    
-    if response.status_code == 200:
-        data = response.json()
-        has_counts = "by_category" in data and "by_status" in data
-        has_areas = "area_summaries" in data
-        has_recent = "recent" in data
-        
-        passed = has_counts and has_areas and has_recent
-        log_test(
-            "GET /api/pna/dashboard",
-            passed,
-            f"Total: {data.get('total')}, By category: {data.get('by_category')}, By status: {data.get('by_status')}"
-        )
-        return data
-    else:
-        log_test("GET /api/pna/dashboard", False, f"Status: {response.status_code}")
-        return None
-
-def test_pna_area_detail(area_id):
-    """Test GET /api/pna/areas/{area_id}"""
-    print(f"Getting area detail for: {area_id}")
-    
-    response = requests.get(
-        f"{BACKEND_URL}/pna/areas/{area_id}",
-        headers=get_headers()
-    )
-    
-    if response.status_code == 200:
-        data = response.json()
-        log_test(
-            f"GET /api/pna/areas/{area_id}",
-            True,
-            f"Problems: {len(data.get('problems', []))}, Needs: {len(data.get('needs', []))}, Aspirations: {len(data.get('aspirations', []))}"
-        )
-        return data
-    else:
-        log_test(f"GET /api/pna/areas/{area_id}", False, f"Status: {response.status_code}")
-        return None
-
-def test_bulk_status_update(item_ids, new_status):
-    """Test POST /api/pna/items/bulk-status"""
-    print(f"Bulk updating {len(item_ids)} items to status: {new_status}")
-    
-    response = requests.post(
-        f"{BACKEND_URL}/pna/items/bulk-status",
-        headers=get_headers(),
-        json={
-            "item_ids": item_ids,
-            "status": new_status
-        }
-    )
-    
-    if response.status_code == 200:
-        data = response.json()
-        log_test(
-            "POST /api/pna/items/bulk-status",
-            True,
-            f"Updated {data.get('updated')} items to '{new_status}'"
-        )
-        return data
-    else:
-        log_test("POST /api/pna/items/bulk-status", False, f"Status: {response.status_code}")
-        return None
-
-def test_convert_to_decision(item_id):
-    """Test POST /api/pna/items/{item_id}/convert-to-decision"""
-    print(f"Converting PNA item to decision: {item_id}")
-    
-    response = requests.post(
-        f"{BACKEND_URL}/pna/items/{item_id}/convert-to-decision",
-        headers=get_headers(),
-        json={}
-    )
-    
-    if response.status_code == 200:
-        data = response.json()
-        log_test(
-            f"POST /api/pna/items/{item_id}/convert-to-decision",
-            True,
-            f"Decision ID: {data.get('decision_id')}, Message: {data.get('message')}"
-        )
-        return data.get("decision_id")
-    else:
-        log_test(f"POST /api/pna/items/{item_id}/convert-to-decision", False, f"Status: {response.status_code}")
-        return None
-
-def test_convert_to_goal(item_id):
-    """Test POST /api/pna/items/{item_id}/convert-to-goal"""
-    print(f"Converting PNA item to goal: {item_id}")
-    
-    response = requests.post(
-        f"{BACKEND_URL}/pna/items/{item_id}/convert-to-goal",
-        headers=get_headers(),
-        json={}
-    )
-    
-    if response.status_code == 200:
-        data = response.json()
-        log_test(
-            f"POST /api/pna/items/{item_id}/convert-to-goal",
-            True,
-            f"Goal ID: {data.get('goal_id')}, Message: {data.get('message')}"
-        )
-        return data.get("goal_id")
-    else:
-        log_test(f"POST /api/pna/items/{item_id}/convert-to-goal", False, f"Status: {response.status_code}")
-        return None
-
-def test_delete_pna_item(item_id):
-    """Test DELETE /api/pna/items/{item_id}"""
-    print(f"Deleting PNA item: {item_id}")
-    
-    response = requests.delete(
-        f"{BACKEND_URL}/pna/items/{item_id}",
-        headers=get_headers()
-    )
-    
-    if response.status_code == 200:
-        data = response.json()
-        log_test(
-            f"DELETE /api/pna/items/{item_id}",
-            True,
-            f"Deleted: {data.get('deleted')}"
-        )
-        return True
-    else:
-        log_test(f"DELETE /api/pna/items/{item_id}", False, f"Status: {response.status_code}")
-        return False
-
-# ═══════════════════════════════════════════════════════════════
-# LIFESTYLE DESIGNER TESTS
-# ═══════════════════════════════════════════════════════════════
-
-def test_lifestyle_meta():
-    """Test GET /api/lifestyle-designer/meta"""
-    print("=" * 80)
-    print("TEST 5: Lifestyle Designer Meta")
-    print("=" * 80)
-    
-    response = requests.get(f"{BACKEND_URL}/lifestyle-designer/meta")
-    
-    if response.status_code == 200:
-        data = response.json()
-        has_life_areas = "life_areas" in data and len(data["life_areas"]) == 10
-        has_day_types = "day_types" in data and len(data["day_types"]) == 3
-        
-        passed = has_life_areas and has_day_types
-        log_test(
-            "GET /api/lifestyle-designer/meta",
-            passed,
-            f"Life areas: {len(data.get('life_areas', []))}, Day types: {data.get('day_types')}"
-        )
-        return data
-    else:
-        log_test("GET /api/lifestyle-designer/meta", False, f"Status: {response.status_code}")
-        return None
-
-def test_create_lifestyle_plan(name, allocations, is_active=True):
-    """Test POST /api/lifestyle-designer/plans"""
-    print(f"Creating lifestyle plan: {name}")
-    
-    response = requests.post(
-        f"{BACKEND_URL}/lifestyle-designer/plans",
-        headers=get_headers(),
-        json={
-            "name": name,
-            "description": f"Test plan: {name}",
-            "allocations": allocations,
-            "is_active": is_active
-        }
-    )
-    
-    if response.status_code == 200:
-        data = response.json()
-        plan_id = data.get("plan_id")
-        log_test(
-            f"POST /api/lifestyle-designer/plans - {name}",
-            True,
-            f"Plan ID: {plan_id}, Active: {data.get('is_active')}"
-        )
-        return plan_id
-    else:
-        log_test(f"POST /api/lifestyle-designer/plans - {name}", False, f"Status: {response.status_code}, Response: {response.text}")
-        return None
-
-def test_list_lifestyle_plans():
-    """Test GET /api/lifestyle-designer/plans"""
-    print("=" * 80)
-    print("TEST 6: List Lifestyle Plans")
-    print("=" * 80)
-    
-    response = requests.get(
-        f"{BACKEND_URL}/lifestyle-designer/plans",
-        headers=get_headers()
-    )
-    
-    if response.status_code == 200:
-        data = response.json()
-        log_test(
-            "GET /api/lifestyle-designer/plans",
-            True,
-            f"Found {len(data)} plans"
-        )
-        return data
-    else:
-        log_test("GET /api/lifestyle-designer/plans", False, f"Status: {response.status_code}")
-        return []
-
-def test_get_active_plan():
-    """Test GET /api/lifestyle-designer/active-plan"""
-    print("=" * 80)
-    print("TEST 7: Get Active Plan")
-    print("=" * 80)
-    
-    response = requests.get(
-        f"{BACKEND_URL}/lifestyle-designer/active-plan",
-        headers=get_headers()
-    )
-    
-    if response.status_code == 200:
-        data = response.json()
-        active_plan = data.get("active_plan")
-        if active_plan:
-            log_test(
-                "GET /api/lifestyle-designer/active-plan",
-                True,
-                f"Active plan: {active_plan.get('name')} (ID: {active_plan.get('plan_id')})"
-            )
+        if response.status_code == 200:
+            data = response.json()
+            session_token = data.get("session_token")
+            if session_token:
+                log_test("User Registration", True, f"Registered {test_email}")
+            else:
+                log_test("User Registration", False, "No session_token in response")
         else:
-            log_test(
-                "GET /api/lifestyle-designer/active-plan",
-                True,
-                "No active plan (expected if none activated)"
-            )
-        return active_plan
-    else:
-        log_test("GET /api/lifestyle-designer/active-plan", False, f"Status: {response.status_code}")
-        return None
-
-def test_update_lifestyle_plan(plan_id, updates):
-    """Test PUT /api/lifestyle-designer/plans/{plan_id}"""
-    print(f"Updating lifestyle plan: {plan_id}")
-    
-    response = requests.put(
-        f"{BACKEND_URL}/lifestyle-designer/plans/{plan_id}",
-        headers=get_headers(),
-        json=updates
-    )
-    
-    if response.status_code == 200:
-        data = response.json()
-        log_test(
-            f"PUT /api/lifestyle-designer/plans/{plan_id}",
-            True,
-            f"Updated name to: {data.get('name')}"
-        )
-        return data
-    else:
-        log_test(f"PUT /api/lifestyle-designer/plans/{plan_id}", False, f"Status: {response.status_code}")
-        return None
-
-def test_activate_plan(plan_id):
-    """Test POST /api/lifestyle-designer/plans/{plan_id}/activate"""
-    print(f"Activating plan: {plan_id}")
-    
-    response = requests.post(
-        f"{BACKEND_URL}/lifestyle-designer/plans/{plan_id}/activate",
-        headers=get_headers(),
-        json={}
-    )
-    
-    if response.status_code == 200:
-        data = response.json()
-        log_test(
-            f"POST /api/lifestyle-designer/plans/{plan_id}/activate",
-            True,
-            f"Message: {data.get('message')}"
-        )
-        return True
-    else:
-        log_test(f"POST /api/lifestyle-designer/plans/{plan_id}/activate", False, f"Status: {response.status_code}")
-        return False
-
-def test_lifestyle_comparison(days=7):
-    """Test GET /api/lifestyle-designer/comparison"""
-    print("=" * 80)
-    print(f"TEST 8: Lifestyle Comparison (last {days} days)")
-    print("=" * 80)
-    
-    response = requests.get(
-        f"{BACKEND_URL}/lifestyle-designer/comparison?days={days}",
-        headers=get_headers()
-    )
-    
-    if response.status_code == 200:
-        data = response.json()
-        log_test(
-            "GET /api/lifestyle-designer/comparison",
-            True,
-            f"Plan: {data.get('plan_name')}, Days analyzed: {data.get('days_analyzed')}"
-        )
-        return data
-    elif response.status_code == 400:
-        # Expected if no active plan or no LEE data
-        log_test(
-            "GET /api/lifestyle-designer/comparison",
-            True,
-            "No active plan or LEE data (expected for new user)"
-        )
-        return None
-    else:
-        log_test("GET /api/lifestyle-designer/comparison", False, f"Status: {response.status_code}")
-        return None
-
-def test_save_override(date, life_area, hours, reason):
-    """Test POST /api/lifestyle-designer/overrides"""
-    print(f"Saving override for {date}, {life_area}: {hours}h")
-    
-    response = requests.post(
-        f"{BACKEND_URL}/lifestyle-designer/overrides",
-        headers=get_headers(),
-        json={
-            "date": date,
-            "life_area": life_area,
-            "hours": hours,
-            "reason": reason
-        }
-    )
-    
-    if response.status_code == 200:
-        data = response.json()
-        log_test(
-            "POST /api/lifestyle-designer/overrides",
-            True,
-            f"Override saved: {data.get('message')}"
-        )
-        return True
-    else:
-        log_test("POST /api/lifestyle-designer/overrides", False, f"Status: {response.status_code}")
-        return False
-
-def test_list_overrides():
-    """Test GET /api/lifestyle-designer/overrides"""
-    print("=" * 80)
-    print("TEST 9: List Overrides")
-    print("=" * 80)
-    
-    response = requests.get(
-        f"{BACKEND_URL}/lifestyle-designer/overrides",
-        headers=get_headers()
-    )
-    
-    if response.status_code == 200:
-        data = response.json()
-        log_test(
-            "GET /api/lifestyle-designer/overrides",
-            True,
-            f"Found {len(data)} overrides"
-        )
-        return data
-    else:
-        log_test("GET /api/lifestyle-designer/overrides", False, f"Status: {response.status_code}")
-        return []
-
-def test_delete_override(date, life_area):
-    """Test DELETE /api/lifestyle-designer/overrides/{date}/{life_area}"""
-    print(f"Deleting override for {date}, {life_area}")
-    
-    response = requests.delete(
-        f"{BACKEND_URL}/lifestyle-designer/overrides/{date}/{life_area}",
-        headers=get_headers()
-    )
-    
-    if response.status_code == 200:
-        data = response.json()
-        log_test(
-            f"DELETE /api/lifestyle-designer/overrides/{date}/{life_area}",
-            True,
-            f"Deleted: {data.get('deleted')}"
-        )
-        return True
-    else:
-        log_test(f"DELETE /api/lifestyle-designer/overrides/{date}/{life_area}", False, f"Status: {response.status_code}")
-        return False
-
-def test_lifestyle_dashboard():
-    """Test GET /api/lifestyle-designer/dashboard"""
-    print("=" * 80)
-    print("TEST 10: Lifestyle Designer Dashboard")
-    print("=" * 80)
-    
-    response = requests.get(
-        f"{BACKEND_URL}/lifestyle-designer/dashboard",
-        headers=get_headers()
-    )
-    
-    if response.status_code == 200:
-        data = response.json()
-        log_test(
-            "GET /api/lifestyle-designer/dashboard",
-            True,
-            f"Total plans: {data.get('total_plans')}, Active plan: {data.get('active_plan')}"
-        )
-        return data
-    else:
-        log_test("GET /api/lifestyle-designer/dashboard", False, f"Status: {response.status_code}")
-        return None
-
-def test_delete_lifestyle_plan(plan_id):
-    """Test DELETE /api/lifestyle-designer/plans/{plan_id}"""
-    print(f"Deleting lifestyle plan: {plan_id}")
-    
-    response = requests.delete(
-        f"{BACKEND_URL}/lifestyle-designer/plans/{plan_id}",
-        headers=get_headers()
-    )
-    
-    if response.status_code == 200:
-        data = response.json()
-        log_test(
-            f"DELETE /api/lifestyle-designer/plans/{plan_id}",
-            True,
-            f"Deleted: {data.get('deleted')}"
-        )
-        return True
-    else:
-        log_test(f"DELETE /api/lifestyle-designer/plans/{plan_id}", False, f"Status: {response.status_code}")
-        return False
-
-# ═══════════════════════════════════════════════════════════════
-# MAIN TEST EXECUTION
-# ═══════════════════════════════════════════════════════════════
-
-def run_all_tests():
-    """Run all PNA and Lifestyle Designer tests"""
-    print("\n")
-    print("╔" + "═" * 78 + "╗")
-    print("║" + " " * 15 + "PNA FRAMEWORK & LIFESTYLE DESIGNER API TESTS" + " " * 19 + "║")
-    print("╚" + "═" * 78 + "╝")
-    print("\n")
-    
-    # Step 1: Register and login
-    if not register_user():
-        print("❌ Failed to register user. Aborting tests.")
+            log_test("User Registration", False, f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        log_test("User Registration", False, f"Exception: {str(e)}")
         return
     
-    if not login_user():
-        print("❌ Failed to login. Aborting tests.")
+    # ========================================================================
+    # TEST 2: User Login
+    # ========================================================================
+    print("\n[TEST 2] User Login")
+    try:
+        response = requests.post(
+            f"{BASE_URL}/auth/login",
+            json={
+                "email": test_email,
+                "password": test_password
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            session_token = data.get("session_token")
+            if session_token:
+                log_test("User Login", True, f"Login successful")
+            else:
+                log_test("User Login", False, "No session_token in response")
+        else:
+            log_test("User Login", False, f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        log_test("User Login", False, f"Exception: {str(e)}")
         return
     
-    # ═══════════════════════════════════════════════════════════════
-    # PNA FRAMEWORK TESTS
-    # ═══════════════════════════════════════════════════════════════
+    # Headers for authenticated requests
+    headers = {"Authorization": f"Bearer {session_token}"}
     
-    print("\n")
-    print("╔" + "═" * 78 + "╗")
-    print("║" + " " * 25 + "PNA FRAMEWORK TESTS" + " " * 34 + "║")
-    print("╚" + "═" * 78 + "╝")
-    print("\n")
+    # ========================================================================
+    # TEST 3: GET /api/conflict-breaker/meta
+    # ========================================================================
+    print("\n[TEST 3] GET /api/conflict-breaker/meta")
+    try:
+        response = requests.get(
+            f"{BASE_URL}/conflict-breaker/meta",
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            stages = data.get("stages", [])
+            silence_patterns = data.get("silence_patterns", [])
+            violence_patterns = data.get("violence_patterns", [])
+            
+            if len(stages) == 9 and len(silence_patterns) > 0 and len(violence_patterns) > 0:
+                log_test("GET /api/conflict-breaker/meta", True, 
+                        f"9 stages, {len(silence_patterns)} silence patterns, {len(violence_patterns)} violence patterns")
+            else:
+                log_test("GET /api/conflict-breaker/meta", False, 
+                        f"Expected 9 stages, got {len(stages)}")
+        else:
+            log_test("GET /api/conflict-breaker/meta", False, 
+                    f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        log_test("GET /api/conflict-breaker/meta", False, f"Exception: {str(e)}")
     
-    # Test 1: Get PNA meta
-    test_pna_meta()
+    # ========================================================================
+    # TEST 4: POST /api/conflict-breaker/sessions (Create Session)
+    # ========================================================================
+    print("\n[TEST 4] POST /api/conflict-breaker/sessions")
+    try:
+        response = requests.post(
+            f"{BASE_URL}/conflict-breaker/sessions",
+            headers=headers,
+            json={
+                "title": "Discuss project delay with partner",
+                "conversation_type": "prepare",
+                "other_party_role": "co-founder"
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            session_id = data.get("session_id")
+            if session_id:
+                log_test("POST /api/conflict-breaker/sessions", True, 
+                        f"Session created: {session_id}")
+            else:
+                log_test("POST /api/conflict-breaker/sessions", False, 
+                        "No session_id in response")
+                return
+        else:
+            log_test("POST /api/conflict-breaker/sessions", False, 
+                    f"Status {response.status_code}: {response.text}")
+            return
+    except Exception as e:
+        log_test("POST /api/conflict-breaker/sessions", False, f"Exception: {str(e)}")
+        return
     
-    # Test 2: Create PNA items
-    print("=" * 80)
-    print("TEST 2: Create PNA Items")
-    print("=" * 80)
+    # ========================================================================
+    # TEST 5: GET /api/conflict-breaker/sessions (List Sessions)
+    # ========================================================================
+    print("\n[TEST 5] GET /api/conflict-breaker/sessions")
+    try:
+        response = requests.get(
+            f"{BASE_URL}/conflict-breaker/sessions",
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if isinstance(data, list) and len(data) > 0:
+                log_test("GET /api/conflict-breaker/sessions", True, 
+                        f"Found {len(data)} session(s)")
+            else:
+                log_test("GET /api/conflict-breaker/sessions", False, 
+                        "Expected list with sessions")
+        else:
+            log_test("GET /api/conflict-breaker/sessions", False, 
+                    f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        log_test("GET /api/conflict-breaker/sessions", False, f"Exception: {str(e)}")
     
-    item1_id = test_create_pna_item(
-        life_area="finance",
-        category="problem",
-        title="Debt management",
-        priority="high",
-        impact_score=8,
-        urgency_score=7,
-        description="Need to reduce debt"
-    )
+    # ========================================================================
+    # TEST 6: POST /api/conflict-breaker/sessions/{sid}/crucial-check (Stage 1)
+    # ========================================================================
+    print("\n[TEST 6] POST /api/conflict-breaker/sessions/{sid}/crucial-check")
+    try:
+        response = requests.post(
+            f"{BASE_URL}/conflict-breaker/sessions/{session_id}/crucial-check",
+            headers=headers,
+            json={
+                "about": "Project delay discussion",
+                "who_involved": "Co-founder Ravi",
+                "at_stake": "Trust and investor confidence",
+                "opinions_differ": "I think we missed the deadline, he thinks it was unavoidable",
+                "emotions_strong": "I feel frustrated and disappointed",
+                "if_avoid": "The problem will repeat",
+                "if_handle_poorly": "He may feel attacked",
+                "desired_result": "Clarity and accountability",
+                "stakes_score": 7,
+                "emotion_score": 6,
+                "opinion_difference_score": 5,
+                "relationship_sensitivity_score": 7,
+                "urgency_score": 8
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            classification = data.get("classification")
+            if classification:
+                log_test("POST crucial-check (Stage 1)", True, 
+                        f"Classification: {classification}")
+            else:
+                log_test("POST crucial-check (Stage 1)", False, 
+                        "No classification in response")
+        else:
+            log_test("POST crucial-check (Stage 1)", False, 
+                    f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        log_test("POST crucial-check (Stage 1)", False, f"Exception: {str(e)}")
     
-    item2_id = test_create_pna_item(
-        life_area="holistic_health",
-        category="aspiration",
-        title="Run marathon",
-        priority="medium",
-        impact_score=6,
-        urgency_score=5,
-        description="Complete a full marathon by end of year"
-    )
+    # ========================================================================
+    # TEST 7: POST /api/conflict-breaker/sessions/{sid}/motive-clarity (Stage 2)
+    # ========================================================================
+    print("\n[TEST 7] POST /api/conflict-breaker/sessions/{sid}/motive-clarity")
+    try:
+        response = requests.post(
+            f"{BASE_URL}/conflict-breaker/sessions/{session_id}/motive-clarity",
+            headers=headers,
+            json={
+                "want_for_self": "To be heard",
+                "want_for_other": "To understand without attack",
+                "want_for_relationship": "Keep trust intact",
+                "what_i_want": "Accountability",
+                "what_i_do_not_want": "Insulting him"
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "want_for_self" in data:
+                log_test("POST motive-clarity (Stage 2)", True, 
+                        "Motive clarity saved")
+            else:
+                log_test("POST motive-clarity (Stage 2)", False, 
+                        "Missing expected fields")
+        else:
+            log_test("POST motive-clarity (Stage 2)", False, 
+                    f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        log_test("POST motive-clarity (Stage 2)", False, f"Exception: {str(e)}")
     
-    # Test 3: List items
-    test_list_pna_items()
+    # ========================================================================
+    # TEST 8: POST /api/conflict-breaker/sessions/{sid}/safety-diagnosis (Stage 3)
+    # ========================================================================
+    print("\n[TEST 8] POST /api/conflict-breaker/sessions/{sid}/safety-diagnosis")
+    try:
+        response = requests.post(
+            f"{BASE_URL}/conflict-breaker/sessions/{session_id}/safety-diagnosis",
+            headers=headers,
+            json={
+                "visible_topic": "Missed deadline",
+                "hidden_emotional_issue": "Feel ignored",
+                "user_pattern": "silence",
+                "user_subpatterns": ["Avoiding", "Masking"],
+                "other_pattern": "violence",
+                "other_subpatterns": ["Blaming"]
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "user_pattern" in data and "other_pattern" in data:
+                log_test("POST safety-diagnosis (Stage 3)", True, 
+                        f"Patterns: {data['user_pattern']} / {data['other_pattern']}")
+            else:
+                log_test("POST safety-diagnosis (Stage 3)", False, 
+                        "Missing expected fields")
+        else:
+            log_test("POST safety-diagnosis (Stage 3)", False, 
+                    f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        log_test("POST safety-diagnosis (Stage 3)", False, f"Exception: {str(e)}")
     
-    # Test 4: Get single item
-    if item1_id:
-        test_get_pna_item(item1_id)
+    # ========================================================================
+    # TEST 9: POST /api/conflict-breaker/sessions/{sid}/make-safe (Stage 4)
+    # ========================================================================
+    print("\n[TEST 9] POST /api/conflict-breaker/sessions/{sid}/make-safe")
+    try:
+        response = requests.post(
+            f"{BASE_URL}/conflict-breaker/sessions/{session_id}/make-safe",
+            headers=headers,
+            json={
+                "safety_repair_method": "contrasting",
+                "mutual_purpose_at_risk": "Yes, he thinks I only blame",
+                "mutual_respect_at_risk": "He may feel judged",
+                "contrast_they_wrongly_think": "He thinks I am blaming",
+                "contrast_i_actually_mean": "I want process improvement"
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "safety_repair_method" in data:
+                log_test("POST make-safe (Stage 4)", True, 
+                        f"Repair method: {data['safety_repair_method']}")
+            else:
+                log_test("POST make-safe (Stage 4)", False, 
+                        "Missing expected fields")
+        else:
+            log_test("POST make-safe (Stage 4)", False, 
+                    f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        log_test("POST make-safe (Stage 4)", False, f"Exception: {str(e)}")
     
-    # Test 5: Update item
-    if item1_id:
-        print("=" * 80)
-        print("TEST 5: Update PNA Item")
-        print("=" * 80)
-        test_update_pna_item(item1_id, {"status": "in_progress"})
+    # ========================================================================
+    # TEST 10: POST /api/conflict-breaker/sessions/{sid}/story-map (Stage 5)
+    # ========================================================================
+    print("\n[TEST 10] POST /api/conflict-breaker/sessions/{sid}/story-map")
+    try:
+        response = requests.post(
+            f"{BASE_URL}/conflict-breaker/sessions/{session_id}/story-map",
+            headers=headers,
+            json={
+                "what_i_saw_heard": "Report was 5 days late",
+                "observable_facts": "Deadline was Monday, delivered Saturday",
+                "meaning_i_added": "He does not care about deadlines",
+                "assumed_motive": "Lazy attitude",
+                "emotion": "Frustration",
+                "emotional_intensity": 7,
+                "clever_story_type": "villain"
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "emotion" in data and "clever_story_type" in data:
+                log_test("POST story-map (Stage 5)", True, 
+                        f"Story type: {data['clever_story_type']}, Emotion: {data['emotion']}")
+            else:
+                log_test("POST story-map (Stage 5)", False, 
+                        "Missing expected fields")
+        else:
+            log_test("POST story-map (Stage 5)", False, 
+                    f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        log_test("POST story-map (Stage 5)", False, f"Exception: {str(e)}")
     
-    # Test 6: Dashboard
-    test_pna_dashboard()
+    # ========================================================================
+    # TEST 11: POST /api/conflict-breaker/sessions/{sid}/script-builder (Stage 6)
+    # ========================================================================
+    print("\n[TEST 11] POST /api/conflict-breaker/sessions/{sid}/script-builder")
+    try:
+        response = requests.post(
+            f"{BASE_URL}/conflict-breaker/sessions/{session_id}/script-builder",
+            headers=headers,
+            json={
+                "facts_to_begin": "The report was delivered 5 days late",
+                "my_interpretation": "I am worried about investor impact",
+                "tentative_framing": "I may be wrong but",
+                "question_to_invite": "How do you see it?",
+                "what_to_avoid": "Never say always or lazy"
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "facts_to_begin" in data:
+                log_test("POST script-builder (Stage 6)", True, 
+                        "Script builder saved")
+            else:
+                log_test("POST script-builder (Stage 6)", False, 
+                        "Missing expected fields")
+        else:
+            log_test("POST script-builder (Stage 6)", False, 
+                    f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        log_test("POST script-builder (Stage 6)", False, f"Exception: {str(e)}")
     
-    # Test 7: Area detail
-    print("=" * 80)
-    print("TEST 7: PNA Area Detail")
-    print("=" * 80)
-    test_pna_area_detail("finance")
+    # ========================================================================
+    # TEST 12: POST /api/conflict-breaker/sessions/{sid}/listening-plan (Stage 7)
+    # ========================================================================
+    print("\n[TEST 12] POST /api/conflict-breaker/sessions/{sid}/listening-plan")
+    try:
+        response = requests.post(
+            f"{BASE_URL}/conflict-breaker/sessions/{session_id}/listening-plan",
+            headers=headers,
+            json={
+                "ask_question": "What happened from your side?",
+                "mirror_statement": "You seem stressed",
+                "what_they_feel": "Pressured",
+                "what_they_fear": "Being blamed",
+                "what_they_want": "More time"
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "ask_question" in data:
+                log_test("POST listening-plan (Stage 7)", True, 
+                        "Listening plan saved")
+            else:
+                log_test("POST listening-plan (Stage 7)", False, 
+                        "Missing expected fields")
+        else:
+            log_test("POST listening-plan (Stage 7)", False, 
+                    f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        log_test("POST listening-plan (Stage 7)", False, f"Exception: {str(e)}")
     
-    # Test 8: Bulk status update
-    if item1_id and item2_id:
-        print("=" * 80)
-        print("TEST 8: Bulk Status Update")
-        print("=" * 80)
-        test_bulk_status_update([item1_id, item2_id], "resolved")
+    # ========================================================================
+    # TEST 13: POST /api/conflict-breaker/sessions/{sid}/action-plan (Stage 8)
+    # ========================================================================
+    print("\n[TEST 13] POST /api/conflict-breaker/sessions/{sid}/action-plan")
+    try:
+        response = requests.post(
+            f"{BASE_URL}/conflict-breaker/sessions/{session_id}/action-plan",
+            headers=headers,
+            json={
+                "decision_method": "consult",
+                "final_decision": "Weekly updates every Friday",
+                "owner": "Ravi",
+                "task": "Send weekly progress report",
+                "deadline": "Every Friday 5 PM",
+                "followup_date": "Next Monday"
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "decision_method" in data and "final_decision" in data:
+                log_test("POST action-plan (Stage 8)", True, 
+                        f"Decision method: {data['decision_method']}")
+            else:
+                log_test("POST action-plan (Stage 8)", False, 
+                        "Missing expected fields")
+        else:
+            log_test("POST action-plan (Stage 8)", False, 
+                    f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        log_test("POST action-plan (Stage 8)", False, f"Exception: {str(e)}")
     
-    # Test 9: Convert to decision
-    if item1_id:
-        print("=" * 80)
-        print("TEST 9: Convert PNA Item to Decision")
-        print("=" * 80)
-        test_convert_to_decision(item1_id)
+    # ========================================================================
+    # TEST 14: POST /api/conflict-breaker/sessions/{sid}/closure (Stage 9)
+    # ========================================================================
+    print("\n[TEST 14] POST /api/conflict-breaker/sessions/{sid}/closure")
+    try:
+        response = requests.post(
+            f"{BASE_URL}/conflict-breaker/sessions/{session_id}/closure",
+            headers=headers,
+            json={
+                "journal_content": "Good conversation, agreed on weekly updates",
+                "personal_learning": "Starting with facts works better",
+                "resolved_status": "resolved"
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "journal_content" in data and "resolved_status" in data:
+                log_test("POST closure (Stage 9)", True, 
+                        f"Status: {data['resolved_status']}")
+            else:
+                log_test("POST closure (Stage 9)", False, 
+                        "Missing expected fields")
+        else:
+            log_test("POST closure (Stage 9)", False, 
+                    f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        log_test("POST closure (Stage 9)", False, f"Exception: {str(e)}")
     
-    # Test 10: Convert to goal
-    if item2_id:
-        print("=" * 80)
-        print("TEST 10: Convert PNA Item to Goal")
-        print("=" * 80)
-        test_convert_to_goal(item2_id)
+    # ========================================================================
+    # TEST 15: GET /api/conflict-breaker/sessions/{sid}/full
+    # ========================================================================
+    print("\n[TEST 15] GET /api/conflict-breaker/sessions/{sid}/full")
+    try:
+        response = requests.get(
+            f"{BASE_URL}/conflict-breaker/sessions/{session_id}/full",
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            required_keys = ["session", "crucial_check", "motive_clarity", "safety_diagnosis", 
+                           "make_safe", "story_map", "script_builder", "listening_plan", 
+                           "action_plan", "closure"]
+            
+            missing_keys = [k for k in required_keys if k not in data]
+            if not missing_keys:
+                log_test("GET /api/conflict-breaker/sessions/{sid}/full", True, 
+                        "All stage data retrieved")
+            else:
+                log_test("GET /api/conflict-breaker/sessions/{sid}/full", False, 
+                        f"Missing keys: {missing_keys}")
+        else:
+            log_test("GET /api/conflict-breaker/sessions/{sid}/full", False, 
+                    f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        log_test("GET /api/conflict-breaker/sessions/{sid}/full", False, f"Exception: {str(e)}")
     
-    # Test 11: Delete item (create a new one first)
-    print("=" * 80)
-    print("TEST 11: Delete PNA Item")
-    print("=" * 80)
-    item3_id = test_create_pna_item(
-        life_area="career",
-        category="need",
-        title="Skill upgrade",
-        priority="medium",
-        description="Learn new programming language"
-    )
-    if item3_id:
-        test_delete_pna_item(item3_id)
+    # ========================================================================
+    # TEST 16: POST /api/conflict-breaker/sessions/{sid}/ai-generate/crucial_check
+    # ========================================================================
+    print("\n[TEST 16] POST /api/conflict-breaker/sessions/{sid}/ai-generate/crucial_check")
+    try:
+        response = requests.post(
+            f"{BASE_URL}/conflict-breaker/sessions/{session_id}/ai-generate/crucial_check",
+            headers=headers,
+            timeout=30  # AI calls may take longer
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "stage" in data and "ai_output" in data:
+                ai_output_preview = data["ai_output"][:100] + "..." if len(data["ai_output"]) > 100 else data["ai_output"]
+                log_test("POST ai-generate/crucial_check", True, 
+                        f"AI output generated: {ai_output_preview}")
+            else:
+                log_test("POST ai-generate/crucial_check", False, 
+                        "Missing stage or ai_output in response")
+        else:
+            log_test("POST ai-generate/crucial_check", False, 
+                    f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        log_test("POST ai-generate/crucial_check", False, f"Exception: {str(e)}")
     
-    # ═══════════════════════════════════════════════════════════════
-    # LIFESTYLE DESIGNER TESTS
-    # ═══════════════════════════════════════════════════════════════
+    # ========================================================================
+    # TEST 17: GET /api/conflict-breaker/dashboard
+    # ========================================================================
+    print("\n[TEST 17] GET /api/conflict-breaker/dashboard")
+    try:
+        response = requests.get(
+            f"{BASE_URL}/conflict-breaker/dashboard",
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            total_sessions = data.get("total_sessions", 0)
+            by_status = data.get("by_status", {})
+            
+            if total_sessions > 0:
+                log_test("GET /api/conflict-breaker/dashboard", True, 
+                        f"Total sessions: {total_sessions}, Status breakdown: {by_status}")
+            else:
+                log_test("GET /api/conflict-breaker/dashboard", False, 
+                        "Expected at least 1 session")
+        else:
+            log_test("GET /api/conflict-breaker/dashboard", False, 
+                    f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        log_test("GET /api/conflict-breaker/dashboard", False, f"Exception: {str(e)}")
     
-    print("\n")
-    print("╔" + "═" * 78 + "╗")
-    print("║" + " " * 22 + "LIFESTYLE DESIGNER TESTS" + " " * 32 + "║")
-    print("╚" + "═" * 78 + "╝")
-    print("\n")
-    
-    # Test 12: Get Lifestyle meta
-    test_lifestyle_meta()
-    
-    # Test 13: Create lifestyle plan
-    print("=" * 80)
-    print("TEST 13: Create Lifestyle Plans")
-    print("=" * 80)
-    
-    # Create first plan with allocations
-    allocations1 = {
-        "weekday": {
-            "career": {"hours": 8, "priority": "high", "notes": "Work hours"},
-            "holistic_health": {"hours": 2, "priority": "high", "notes": "Exercise and meditation"},
-            "relationships": {"hours": 2, "priority": "medium", "notes": "Family time"},
-            "finance": {"hours": 1, "priority": "medium", "notes": "Financial planning"}
-        },
-        "saturday": {
-            "holistic_health": {"hours": 3, "priority": "high", "notes": ""},
-            "relationships": {"hours": 4, "priority": "high", "notes": ""},
-            "personal_dreams": {"hours": 3, "priority": "medium", "notes": ""}
-        },
-        "sunday": {
-            "spirituality": {"hours": 2, "priority": "high", "notes": ""},
-            "relationships": {"hours": 4, "priority": "high", "notes": ""},
-            "holistic_health": {"hours": 2, "priority": "medium", "notes": ""}
-        }
-    }
-    
-    plan1_id = test_create_lifestyle_plan("My Ideal Day", allocations1, is_active=True)
-    
-    # Test 14: List plans
-    test_list_lifestyle_plans()
-    
-    # Test 15: Get active plan
-    test_get_active_plan()
-    
-    # Test 16: Update plan
-    if plan1_id:
-        print("=" * 80)
-        print("TEST 16: Update Lifestyle Plan")
-        print("=" * 80)
-        test_update_lifestyle_plan(plan1_id, {"name": "My Updated Ideal Day"})
-    
-    # Test 17: Create second plan
-    print("=" * 80)
-    print("TEST 17: Create Second Plan")
-    print("=" * 80)
-    
-    allocations2 = {
-        "weekday": {
-            "career": {"hours": 6, "priority": "medium", "notes": ""},
-            "holistic_health": {"hours": 3, "priority": "high", "notes": ""},
-            "relationships": {"hours": 3, "priority": "high", "notes": ""}
-        },
-        "saturday": {
-            "personal_dreams": {"hours": 5, "priority": "high", "notes": ""},
-            "relationships": {"hours": 3, "priority": "high", "notes": ""}
-        },
-        "sunday": {
-            "spirituality": {"hours": 3, "priority": "high", "notes": ""},
-            "relationships": {"hours": 5, "priority": "high", "notes": ""}
-        }
-    }
-    
-    plan2_id = test_create_lifestyle_plan("Weekend Mode", allocations2, is_active=False)
-    
-    # Test 18: Activate second plan
-    if plan2_id:
-        print("=" * 80)
-        print("TEST 18: Activate Second Plan")
-        print("=" * 80)
-        test_activate_plan(plan2_id)
-    
-    # Test 19: Verify active plan switched
-    print("=" * 80)
-    print("TEST 19: Verify Active Plan Switched")
-    print("=" * 80)
-    test_get_active_plan()
-    
-    # Test 20: Comparison (will work even with no LEE data)
-    test_lifestyle_comparison(days=7)
-    
-    # Test 21: Save manual override
-    print("=" * 80)
-    print("TEST 21: Save Manual Override")
-    print("=" * 80)
-    today = datetime.now().strftime("%Y-%m-%d")
-    test_save_override(today, "career", 9, "Extra work on project deadline")
-    
-    # Test 22: List overrides
-    test_list_overrides()
-    
-    # Test 23: Delete override
-    print("=" * 80)
-    print("TEST 23: Delete Override")
-    print("=" * 80)
-    test_delete_override(today, "career")
-    
-    # Test 24: Dashboard
-    test_lifestyle_dashboard()
-    
-    # Test 25: Delete plan
-    if plan1_id:
-        print("=" * 80)
-        print("TEST 25: Delete Lifestyle Plan")
-        print("=" * 80)
-        test_delete_lifestyle_plan(plan1_id)
-    
-    # ═══════════════════════════════════════════════════════════════
+    # ========================================================================
     # SUMMARY
-    # ═══════════════════════════════════════════════════════════════
+    # ========================================================================
+    print("\n" + "="*80)
+    print("TEST SUMMARY")
+    print("="*80)
     
-    print("\n")
-    print("╔" + "═" * 78 + "╗")
-    print("║" + " " * 30 + "TEST SUMMARY" + " " * 36 + "║")
-    print("╚" + "═" * 78 + "╝")
-    print("\n")
-    print("✅ All PNA Framework and Lifestyle Designer API tests completed!")
-    print(f"   Test user: {TEST_EMAIL}")
-    print(f"   Backend URL: {BACKEND_URL}")
-    print("\n")
+    passed_count = sum(1 for r in test_results if r["passed"])
+    total_count = len(test_results)
+    
+    print(f"\nTotal Tests: {total_count}")
+    print(f"Passed: {passed_count}")
+    print(f"Failed: {total_count - passed_count}")
+    print(f"Success Rate: {(passed_count/total_count*100):.1f}%\n")
+    
+    # Show failed tests
+    failed_tests = [r for r in test_results if not r["passed"]]
+    if failed_tests:
+        print("\n❌ FAILED TESTS:")
+        for r in failed_tests:
+            print(f"  - {r['test']}: {r['details']}")
+    else:
+        print("\n🎉 ALL TESTS PASSED!")
+    
+    print("\n" + "="*80 + "\n")
 
 if __name__ == "__main__":
-    run_all_tests()
+    test_conflict_breaker()

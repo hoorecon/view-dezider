@@ -625,6 +625,207 @@ async def get_full_session(session_id: str, user: dict = Depends(get_current_use
 # DASHBOARD
 # ═══════════════════════════════════════════════════════════════
 
+# ═══════════════════════════════════════════════════════════════
+# AI GENERATION — Across stages
+# ═══════════════════════════════════════════════════════════════
+
+async def _ai_generate(prompt: str) -> str:
+    """Helper to call LLM for Conflict Breaker AI features."""
+    import os
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    api_key = os.getenv("EMERGENT_LLM_KEY")
+    if not api_key:
+        raise HTTPException(500, "LLM key not configured")
+    chat = LlmChat(api_key=api_key, model="openai/gpt-4.1-mini")
+    resp = await chat.send_message_async(UserMessage(content=prompt))
+    return resp.text.strip()
+
+
+@router.post("/sessions/{session_id}/ai-generate/{stage}")
+async def ai_generate_for_stage(session_id: str, stage: str, user: dict = Depends(get_current_user)):
+    """Generate AI insights for a specific stage using all data collected so far."""
+    q = {"session_id": session_id, "user_id": user["user_id"]}
+    p = {"_id": 0}
+    session = await db.conflict_breaker_sessions.find_one(q, p)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    # Gather context from all stages
+    ctx = {
+        "session": session,
+        "crucial_check": await db.conflict_crucial_check.find_one(q, p) or {},
+        "motive": await db.conflict_motive_clarity.find_one(q, p) or {},
+        "safety": await db.conflict_safety_diagnosis.find_one(q, p) or {},
+        "make_safe": await db.conflict_make_safe.find_one(q, p) or {},
+        "story": await db.conflict_story_map.find_one(q, p) or {},
+        "script": await db.conflict_script_builder.find_one(q, p) or {},
+        "listening": await db.conflict_listening_plan.find_one(q, p) or {},
+        "action": await db.conflict_action_plan.find_one(q, p) or {},
+        "closure": await db.conflict_journal.find_one(q, p) or {},
+    }
+
+    base = (
+        f"Conversation: {ctx['crucial_check'].get('about', ctx['session'].get('title',''))}\n"
+        f"Other party: {ctx['crucial_check'].get('who_involved', ctx['session'].get('other_party_role',''))}\n"
+        f"Stakes: {ctx['crucial_check'].get('stakes_score', '?')}/10, "
+        f"Emotion: {ctx['crucial_check'].get('emotion_score', '?')}/10, "
+        f"Opinion diff: {ctx['crucial_check'].get('opinion_difference_score', '?')}/10\n"
+        f"Desired result: {ctx['crucial_check'].get('desired_result', '')}\n"
+    )
+
+    prompts = {
+        "crucial_check": (
+            f"You are a dialogue coach. Based on this situation, classify the conversation and give guidance.\n{base}\n"
+            f"At stake: {ctx['crucial_check'].get('at_stake', '')}\n"
+            f"If avoided: {ctx['crucial_check'].get('if_avoid', '')}\n"
+            f"If handled poorly: {ctx['crucial_check'].get('if_handle_poorly', '')}\n\n"
+            "Provide:\n1. Classification (Normal / Sensitive / Crucial / High-Risk Crucial / Repair Needed)\n"
+            "2. Why this classification\n3. Key preparation advice (2-3 sentences)\n"
+            "Keep it direct, calm, non-preachy. No therapeutic diagnosis."
+        ),
+        "motive_clarity": (
+            f"You are a dialogue coach helping clarify true motive before a difficult conversation.\n{base}\n"
+            f"Want for self: {ctx['motive'].get('want_for_self', '')}\n"
+            f"Want for other: {ctx['motive'].get('want_for_other', '')}\n"
+            f"Want for relationship: {ctx['motive'].get('want_for_relationship', '')}\n"
+            f"What I want: {ctx['motive'].get('what_i_want', '')}\n"
+            f"What I don't want: {ctx['motive'].get('what_i_do_not_want', '')}\n\n"
+            "Generate:\n1. True motive statement (1 sentence)\n"
+            "2. Warning if unhealthy motive detected (win/punish/prove/escape/save face)\n"
+            "3. An 'AND statement' that combines what they want AND don't want\n"
+            "Example: 'I want accountability AND relationship safety.'\n"
+            "Keep tone mature, leadership-oriented."
+        ),
+        "safety_diagnosis": (
+            f"You are a dialogue coach analyzing conversation safety patterns.\n{base}\n"
+            f"Visible topic: {ctx['safety'].get('visible_topic', '')}\n"
+            f"Hidden emotional issue: {ctx['safety'].get('hidden_emotional_issue', '')}\n"
+            f"User pattern: {ctx['safety'].get('user_pattern', '')} ({', '.join(ctx['safety'].get('user_subpatterns', []))})\n"
+            f"Other person pattern: {ctx['safety'].get('other_pattern', '')} ({', '.join(ctx['safety'].get('other_subpatterns', []))})\n"
+            f"Body signals: {ctx['safety'].get('body_signals', '')}\n"
+            f"Emotion rising: {ctx['safety'].get('emotion_rising', '')}\n\n"
+            "Generate:\n1. Current conversation risk assessment\n"
+            "2. User's stress pattern analysis\n"
+            "3. Other person's possible safety reaction\n"
+            "4. Recommended pause instruction\n"
+            "Be direct, calm. Not preachy."
+        ),
+        "make_safe": (
+            f"You are a dialogue coach helping restore safety.\n{base}\n"
+            f"Repair method chosen: {ctx['make_safe'].get('safety_repair_method', '')}\n"
+            f"Mutual purpose at risk: {ctx['make_safe'].get('mutual_purpose_at_risk', '')}\n"
+            f"Mutual respect at risk: {ctx['make_safe'].get('mutual_respect_at_risk', '')}\n"
+            f"Did I hurt them: {ctx['make_safe'].get('did_i_hurt', '')}\n"
+            f"Apology draft input: {ctx['make_safe'].get('apology_draft', '')}\n"
+            f"Contrasting input: do not mean={ctx['make_safe'].get('contrast_they_wrongly_think', '')}, "
+            f"do mean={ctx['make_safe'].get('contrast_i_actually_mean', '')}\n"
+            f"CRIB: I ask={ctx['make_safe'].get('crib_what_i_ask','')}, They ask={ctx['make_safe'].get('crib_what_they_ask','')}\n\n"
+            "Generate based on the repair method chosen:\n"
+            "- If apology: A sincere apology draft\n"
+            "- If contrasting: A 'I do not mean... I do mean...' statement\n"
+            "- If crib: Mutual Purpose statement + win-win options\n"
+            "Keep it genuine, not corporate-speak."
+        ),
+        "story_map": (
+            f"You are a dialogue coach helping separate facts from stories.\n{base}\n"
+            f"What I saw/heard: {ctx['story'].get('what_i_saw_heard', '')}\n"
+            f"Observable facts: {ctx['story'].get('observable_facts', '')}\n"
+            f"Meaning I added: {ctx['story'].get('meaning_i_added', '')}\n"
+            f"Assumed motive: {ctx['story'].get('assumed_motive', '')}\n"
+            f"Judgment: {ctx['story'].get('judgment', '')}\n"
+            f"Label used: {ctx['story'].get('label_used', '')}\n"
+            f"Emotion: {ctx['story'].get('emotion', '')} (intensity: {ctx['story'].get('emotional_intensity', '?')})\n"
+            f"Clever story type: {ctx['story'].get('clever_story_type', '')}\n"
+            f"My role: {ctx['story'].get('my_role_in_problem', '')}\n\n"
+            "Generate:\n1. Facts only (stripped of interpretation)\n"
+            "2. Story being told\n3. Possible alternative story\n"
+            "4. Emotional driver\n5. Healthier interpretation\n"
+            "6. Recommended conversation opening line\n"
+            "Do not blame, do not diagnose. Be calm, factual."
+        ),
+        "script_builder": (
+            f"You are a dialogue coach building a respectful conversation script.\n{base}\n"
+            f"Facts to begin: {ctx['script'].get('facts_to_begin', '')}\n"
+            f"My interpretation: {ctx['script'].get('my_interpretation', '')}\n"
+            f"Tentative framing: {ctx['script'].get('tentative_framing', '')}\n"
+            f"Invite their view: {ctx['script'].get('question_to_invite', '')}\n"
+            f"What to avoid: {ctx['script'].get('what_to_avoid', '')}\n\n"
+            f"Context from earlier stages:\n"
+            f"True motive: {ctx['motive'].get('want_for_self', '')} AND {ctx['motive'].get('want_for_relationship', '')}\n"
+            f"Facts: {ctx['story'].get('observable_facts', '')}\n\n"
+            "Generate a STATE conversation script:\n"
+            "1. Opening safety sentence\n2. Facts statement\n"
+            "3. My concern (tentative)\n4. Invitation to respond\n"
+            "5. Respectful closing\n\n"
+            "RULES: No blaming. No threats. No sarcasm. If user wrote harsh language, rewrite into respectful, factual, tentative language."
+        ),
+        "listening_plan": (
+            f"You are a dialogue coach building a listening plan.\n{base}\n"
+            f"What they might feel: {ctx['listening'].get('what_they_feel', '')}\n"
+            f"What they might fear: {ctx['listening'].get('what_they_fear', '')}\n"
+            f"What they might want: {ctx['listening'].get('what_they_want', '')}\n"
+            f"What I haven't understood: {ctx['listening'].get('what_i_havent_understood', '')}\n\n"
+            "Generate AMPP listening tools:\n"
+            "1. Ask question (to understand their view)\n"
+            "2. Mirror statement (reflect their emotion)\n"
+            "3. Paraphrase draft (restate what they said)\n"
+            "4. Prime statement (gently offer possible concern)\n"
+            "5. Agree-Build-Compare response template\n"
+            "Keep it natural, not scripted-sounding."
+        ),
+        "action_plan": (
+            f"You are a dialogue coach converting conversation into action.\n{base}\n"
+            f"Decision method: {ctx['action'].get('decision_method', '')}\n"
+            f"Final decision: {ctx['action'].get('final_decision', '')}\n"
+            f"Owner: {ctx['action'].get('owner', '')}\n"
+            f"Task: {ctx['action'].get('task', '')}\n"
+            f"Deadline: {ctx['action'].get('deadline', '')}\n"
+            f"Follow-up date: {ctx['action'].get('followup_date', '')}\n"
+            f"Unresolved: {ctx['action'].get('unresolved_concerns', '')}\n\n"
+            "Generate a clear, formatted Action Agreement:\n"
+            "Decision | Owner | Task | Deadline | Support | Follow-up | Success Measure | Unresolved"
+        ),
+        "report": (
+            f"You are generating a Conflict Breakthrough Report.\n\n"
+            f"SESSION: {ctx['session'].get('title', '')}\n"
+            f"TYPE: {ctx['session'].get('conversation_type', '')}\n{base}\n"
+            f"CLASSIFICATION: {ctx['crucial_check'].get('classification', '')}\n"
+            f"TRUE MOTIVE: {ctx['motive'].get('want_for_self', '')} AND {ctx['motive'].get('want_for_relationship', '')}\n"
+            f"PATTERN: {ctx['safety'].get('user_pattern', '')} / {ctx['safety'].get('other_pattern', '')}\n"
+            f"SAFETY REPAIR: {ctx['make_safe'].get('safety_repair_method', '')}\n"
+            f"FACTS: {ctx['story'].get('observable_facts', '')}\n"
+            f"STORY: {ctx['story'].get('meaning_i_added', '')}\n"
+            f"EMOTION: {ctx['story'].get('emotion', '')} ({ctx['story'].get('emotional_intensity', '')})\n"
+            f"SCRIPT: {ctx['script'].get('final_script', '')}\n"
+            f"DECISION: {ctx['action'].get('final_decision', '')}\n"
+            f"LEARNING: {ctx['closure'].get('personal_learning', '')}\n\n"
+            "Generate a comprehensive Conflict Breakthrough Report with these sections:\n"
+            "1. Conversation Summary\n2. Why This Is a Crucial Conversation\n"
+            "3. What I Really Want\n4. My Silence/Violence Pattern\n"
+            "5. Other Person's Possible Safety Concern\n6. Facts vs Story\n"
+            "7. Emotional Driver\n8. Safety Repair Needed\n"
+            "9. Conversation Script\n10. Listening Plan\n"
+            "11. Mutual Purpose\n12. Action Agreement\n"
+            "13. Follow-Up Plan\n14. Personal Learning\n"
+            "15. One-Line Commitment\n\n"
+            "Tone: Direct, calm, mature, non-blaming, practical. Not therapeutic diagnosis."
+        ),
+    }
+
+    if stage not in prompts:
+        raise HTTPException(400, f"Invalid stage. Use: {list(prompts.keys())}")
+
+    ai_text = await _ai_generate(prompts[stage])
+
+    # Store AI output in the session
+    await db.conflict_breaker_sessions.update_one(
+        {"session_id": session_id},
+        {"$set": {f"ai_{stage}": ai_text, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+
+    return {"stage": stage, "ai_output": ai_text}
+
+
 @router.get("/dashboard")
 async def cb_dashboard(user: dict = Depends(get_current_user)):
     sessions = await db.conflict_breaker_sessions.find(

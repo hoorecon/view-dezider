@@ -668,6 +668,27 @@ export default function HomeScreen() {
             </LinearGradient>
           </TouchableOpacity>
 
+          {/* The Conflict Breaker */}
+          <TouchableOpacity
+            style={styles.calendarCard}
+            onPress={() => router.push('/tools/conflict-breaker' as any)}
+            activeOpacity={0.7}
+          >
+            <LinearGradient
+              colors={['#7C2D12', '#DC2626']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.calendarGradient}
+            >
+              <Ionicons name="flash" size={24} color="#FFF" />
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.calendarTitle}>The Conflict Breaker</Text>
+                <Text style={styles.calendarSub}>Prepare for Crucial Conversations with clarity & respect</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
+            </LinearGradient>
+          </TouchableOpacity>
+
           {/* PNA Framework */}
           <TouchableOpacity
             style={styles.calendarCard}
