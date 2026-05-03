@@ -838,32 +838,32 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </Card>
 
+          {/* Emotional Gatekeeper */}
+          <TouchableOpacity
+            style={styles.calendarCard}
+            onPress={() => router.push('/tools/emotional-gatekeeper' as any)}
+            activeOpacity={0.7}
+          >
+            <LinearGradient
+              colors={['#F59E0B', '#D97706']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.calendarGradient}
+            >
+              <Ionicons name="heart-circle" size={24} color="#FFF" />
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.calendarTitle}>Emotional Gatekeeper</Text>
+                <Text style={styles.calendarSub}>Break traps, loops & limitations with AI coaching</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
+            </LinearGradient>
+          </TouchableOpacity>
+
           {/* Coming Soon Modules */}
           <Text style={styles.sectionTitle}>Coming Soon</Text>
           <View style={{ gap: 10, marginBottom: 16 }}>
             <TouchableOpacity
               activeOpacity={0.7}
-              onPress={() => showAlert('Coming Soon', 'Emotional Gatekeeper is under development. This module will help you assess decisions through emotional intelligence filters before committing.')}
-              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#FBBF2420', gap: 12 }}
-            >
-              <LinearGradient
-                colors={['#F59E0B', '#D97706']}
-                style={{ width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' }}
-              >
-                <Ionicons name="heart-circle" size={24} color="#FFF" />
-              </LinearGradient>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.textPrimary }}>Emotional Gatekeeper</Text>
-                <Text style={{ fontSize: 12, color: COLORS.textMuted }}>Filter decisions through emotional intelligence</Text>
-              </View>
-              <View style={{ backgroundColor: '#FFFBEB', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }}>
-                <Text style={{ fontSize: 10, fontWeight: '600', color: '#D97706' }}>SOON</Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => showAlert('Coming Soon', 'The Conflict Breaker is under development. This module will provide structured frameworks for resolving interpersonal and organizational conflicts.')}
               style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#EF444420', gap: 12 }}
             >
               <LinearGradient

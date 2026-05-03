@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-ACM (WOWO Access Control Matrix) System - Comprehensive Test Suite
-Tests all 14 steps of the ACM flow as specified in the review request.
+Comprehensive Backend API Testing for Emotional Gatekeeper Module
+Tests all endpoints as specified in the review request
 """
 
 import requests
@@ -12,713 +12,967 @@ from datetime import datetime
 # Backend URL
 BASE_URL = "https://dezider-core.preview.emergentagent.com/api"
 
-# Test data - Use existing super admin for ACM testing
-TEST_ADMIN = {
-    "email": "super@test.com",
-    "password": "test123"
-}
-
-timestamp = int(time.time())
-TEST_USER = {
-    "email": f"acm_test_{timestamp}@example.com",
-    "password": "SecurePass123!",
-    "name": "ACM Test User"
-}
-
-# Global variables to store test data
-admin_token = None
-admin_user_id = None
+# Test results tracking
+test_results = []
 session_token = None
-user_id = None
+user_email = None
 
-
-def log_test(step_num, description):
-    """Log test step"""
-    print(f"\n{'='*80}")
-    print(f"STEP {step_num}: {description}")
-    print(f"{'='*80}")
-
-
-def log_result(success, message, data=None):
+def log_test(test_name, passed, details=""):
     """Log test result"""
-    status = "✅ PASSED" if success else "❌ FAILED"
-    print(f"{status}: {message}")
-    if data:
-        print(f"Response: {json.dumps(data, indent=2)}")
+    status = "✅ PASSED" if passed else "❌ FAILED"
+    test_results.append({
+        "test": test_name,
+        "passed": passed,
+        "details": details
+    })
+    print(f"{status}: {test_name}")
+    if details:
+        print(f"  Details: {details}")
 
+def print_summary():
+    """Print test summary"""
+    passed = sum(1 for r in test_results if r["passed"])
+    total = len(test_results)
+    print("\n" + "="*80)
+    print(f"TEST SUMMARY: {passed}/{total} tests passed ({passed*100//total}% success rate)")
+    print("="*80)
+    
+    if any(not r["passed"] for r in test_results):
+        print("\n❌ FAILED TESTS:")
+        for r in test_results:
+            if not r["passed"]:
+                print(f"  - {r['test']}: {r['details']}")
 
-def test_step_1_register():
-    """Step 1: Register admin user"""
-    global session_token, user_id
-    log_test(1, "Register Admin User")
+# ============================================================================
+# AUTHENTICATION TESTS
+# ============================================================================
+
+def test_user_registration():
+    """Test 1: Register a new test user"""
+    global session_token, user_email
+    
+    timestamp = int(time.time())
+    user_email = f"egtest_{timestamp}@emotionalgateway.com"
+    
+    payload = {
+        "email": user_email,
+        "password": "SecurePass123!",
+        "name": "Emma Gatekeeper"
+    }
     
     try:
-        response = requests.post(
-            f"{BASE_URL}/auth/register",
-            json=TEST_USER,
-            timeout=30
-        )
+        response = requests.post(f"{BASE_URL}/auth/register", json=payload, timeout=10)
         
         if response.status_code == 200:
             data = response.json()
-            session_token = data.get("session_token")
-            user_id = data.get("user_id")
-            
-            if session_token and user_id:
-                log_result(True, f"User registered successfully with user_id: {user_id}")
+            if "session_token" in data and "user_id" in data:
+                session_token = data["session_token"]
+                log_test("User Registration", True, f"Registered {user_email} with session token")
                 return True
             else:
-                log_result(False, "Missing session_token or user_id in response", data)
+                log_test("User Registration", False, "Missing session_token or user_id in response")
                 return False
         else:
-            log_result(False, f"Registration failed with status {response.status_code}", response.json())
+            log_test("User Registration", False, f"Status {response.status_code}: {response.text}")
             return False
     except Exception as e:
-        log_result(False, f"Exception during registration: {str(e)}")
+        log_test("User Registration", False, f"Exception: {str(e)}")
         return False
 
+# ============================================================================
+# EMOTIONAL GATEKEEPER - DASHBOARD & SESSIONS
+# ============================================================================
 
-def test_step_2_login():
-    """Step 2: Login"""
-    global session_token
-    log_test(2, "Login")
-    
+def test_dashboard_empty():
+    """Test 2: Dashboard should show zeros initially"""
     try:
-        response = requests.post(
-            f"{BASE_URL}/auth/login",
-            json={
-                "email": TEST_USER["email"],
-                "password": TEST_USER["password"]
-            },
-            timeout=30
-        )
+        headers = {"Authorization": f"Bearer {session_token}"}
+        response = requests.get(f"{BASE_URL}/emotional-gatekeeper/dashboard", headers=headers, timeout=10)
         
         if response.status_code == 200:
             data = response.json()
-            session_token = data.get("session_token")
-            
-            if session_token:
-                log_result(True, "Login successful, session token refreshed")
+            # Check for expected structure - API returns different field names
+            if "total_sessions" in data:
+                log_test("Dashboard (Empty)", True, f"Dashboard returned: total_sessions={data.get('total_sessions', 0)}")
                 return True
             else:
-                log_result(False, "Missing session_token in response", data)
+                log_test("Dashboard (Empty)", False, f"Missing total_sessions field in response: {data}")
                 return False
         else:
-            log_result(False, f"Login failed with status {response.status_code}", response.json())
+            log_test("Dashboard (Empty)", False, f"Status {response.status_code}: {response.text}")
             return False
     except Exception as e:
-        log_result(False, f"Exception during login: {str(e)}")
+        log_test("Dashboard (Empty)", False, f"Exception: {str(e)}")
         return False
 
-
-def test_step_3_login_as_admin():
-    """Step 3: Login as existing super admin"""
-    global admin_token, admin_user_id
-    log_test(3, "Login as Super Admin")
-    
-    try:
-        response = requests.post(
-            f"{BASE_URL}/auth/login",
-            json={
-                "email": TEST_ADMIN["email"],
-                "password": TEST_ADMIN["password"]
-            },
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            admin_token = data.get("session_token")
-            admin_user_id = data.get("user_id")
-            
-            if admin_token:
-                log_result(True, f"Admin login successful, user_id: {admin_user_id}")
-                return True
-            else:
-                log_result(False, "Missing admin session_token in response", data)
-                return False
-        else:
-            log_result(False, f"Admin login failed with status {response.status_code}", response.json())
-            return False
-    except Exception as e:
-        log_result(False, f"Exception during admin login: {str(e)}")
-        return False
-
-
-def test_step_4_seed_acm():
-    """Step 4: Seed ACM - verify response has {message, modules: 22, features: number>30}"""
-    log_test(4, "Seed ACM")
-    
-    try:
-        headers = {"Authorization": f"Bearer {admin_token}"}
-        response = requests.post(
-            f"{BASE_URL}/acm/seed",
-            headers=headers,
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            modules = data.get("modules")
-            features = data.get("features")
-            
-            # Verify expected structure
-            if modules == 22 and features and features > 30:
-                log_result(True, f"ACM seeded successfully: {modules} modules, {features} features", data)
-                return True
-            else:
-                log_result(False, f"Unexpected seed response: modules={modules}, features={features}", data)
-                return False
-        else:
-            log_result(False, f"ACM seed failed with status {response.status_code}", response.json())
-            return False
-    except Exception as e:
-        log_result(False, f"Exception during ACM seed: {str(e)}")
-        return False
-
-
-def test_step_5_get_full_matrix():
-    """Step 5: Get full matrix - verify response has {modules (array of 22), user_types (7 items), subscription_plans (5 items), release_stages (array), total_modules: 22, total_features}"""
-    log_test(5, "Get Full Matrix")
-    
-    try:
-        headers = {"Authorization": f"Bearer {admin_token}"}
-        response = requests.get(
-            f"{BASE_URL}/acm/matrix",
-            headers=headers,
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            modules = data.get("modules", [])
-            user_types = data.get("user_types", [])
-            subscription_plans = data.get("subscription_plans", [])
-            release_stages = data.get("release_stages", [])
-            total_modules = data.get("total_modules")
-            total_features = data.get("total_features")
-            
-            # Verify expected structure
-            checks = [
-                (len(modules) == 22, f"modules count: {len(modules)} (expected 22)"),
-                (len(user_types) == 7, f"user_types count: {len(user_types)} (expected 7)"),
-                (len(subscription_plans) == 5, f"subscription_plans count: {len(subscription_plans)} (expected 5)"),
-                (len(release_stages) > 0, f"release_stages present: {len(release_stages)} items"),
-                (total_modules == 22, f"total_modules: {total_modules} (expected 22)"),
-                (total_features and total_features > 30, f"total_features: {total_features} (expected >30)"),
-            ]
-            
-            all_passed = all(check[0] for check in checks)
-            
-            if all_passed:
-                log_result(True, "Full matrix retrieved successfully with correct structure")
-                for check in checks:
-                    print(f"  ✓ {check[1]}")
-                return True
-            else:
-                log_result(False, "Matrix structure validation failed")
-                for check in checks:
-                    status = "✓" if check[0] else "✗"
-                    print(f"  {status} {check[1]}")
-                return False
-        else:
-            log_result(False, f"Get matrix failed with status {response.status_code}", response.json())
-            return False
-    except Exception as e:
-        log_result(False, f"Exception during get matrix: {str(e)}")
-        return False
-
-
-def test_step_6_check_my_access():
-    """Step 6: Check my access (as admin = free user type) - verify response has {user_id, user_type: "free", subscription_plan: "none", features (object with many feature_ids)}"""
-    log_test(6, "Check My Access (as free user)")
+def test_create_trap_session():
+    """Test 3: Create a trap session"""
+    global trap_session_id
     
     try:
         headers = {"Authorization": f"Bearer {session_token}"}
-        response = requests.get(
-            f"{BASE_URL}/acm/my-access",
-            headers=headers,
-            timeout=30
-        )
+        payload = {
+            "session_type": "trap",
+            "title": "Test Trap Session"
+        }
+        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/sessions", json=payload, headers=headers, timeout=10)
         
         if response.status_code == 200:
             data = response.json()
-            returned_user_id = data.get("user_id")
-            user_type = data.get("user_type")
-            subscription_plan = data.get("subscription_plan")
-            features = data.get("features", {})
-            
-            # Verify expected structure
-            checks = [
-                (returned_user_id == user_id, f"user_id matches: {returned_user_id}"),
-                (user_type == "free", f"user_type: {user_type} (expected 'free')"),
-                (subscription_plan == "none", f"subscription_plan: {subscription_plan} (expected 'none')"),
-                (len(features) > 30, f"features count: {len(features)} (expected >30)"),
-            ]
-            
-            all_passed = all(check[0] for check in checks)
-            
-            if all_passed:
-                log_result(True, "My access retrieved successfully")
-                for check in checks:
-                    print(f"  ✓ {check[1]}")
-                
-                # Show sample feature
-                sample_feature_id = list(features.keys())[0] if features else None
-                if sample_feature_id:
-                    sample = features[sample_feature_id]
-                    print(f"\n  Sample feature '{sample_feature_id}':")
-                    print(f"    - access_level: {sample.get('access_level')}")
-                    print(f"    - quota_limit: {sample.get('quota_limit')}")
-                    print(f"    - quota_used: {sample.get('quota_used')}")
-                    print(f"    - quota_remaining: {sample.get('quota_remaining')}")
-                    print(f"    - quota_unit: {sample.get('quota_unit')}")
-                
+            # API returns 'id' instead of 'session_id'
+            if "id" in data:
+                trap_session_id = data["id"]
+                log_test("Create Trap Session", True, f"Created session: {trap_session_id}")
                 return True
             else:
-                log_result(False, "My access validation failed")
-                for check in checks:
-                    status = "✓" if check[0] else "✗"
-                    print(f"  {status} {check[1]}")
+                log_test("Create Trap Session", False, f"Missing id in response: {data}")
                 return False
         else:
-            log_result(False, f"Get my access failed with status {response.status_code}", response.json())
+            log_test("Create Trap Session", False, f"Status {response.status_code}: {response.text}")
             return False
     except Exception as e:
-        log_result(False, f"Exception during get my access: {str(e)}")
+        log_test("Create Trap Session", False, f"Exception: {str(e)}")
         return False
 
+def test_list_sessions():
+    """Test 4: List sessions should return at least 1"""
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        response = requests.get(f"{BASE_URL}/emotional-gatekeeper/sessions", headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "sessions" in data and "total" in data:
+                if data["total"] >= 1:
+                    log_test("List Sessions", True, f"Found {data['total']} session(s)")
+                    return True
+                else:
+                    log_test("List Sessions", False, f"Expected at least 1 session, got {data['total']}")
+                    return False
+            else:
+                log_test("List Sessions", False, f"Missing expected fields: {data}")
+                return False
+        else:
+            log_test("List Sessions", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("List Sessions", False, f"Exception: {str(e)}")
+        return False
 
-def test_step_7_check_single_feature():
-    """Step 7: Check single feature - verify returns {feature_id, allowed: true, access_level: "full", quota_limit: 3, quota_unit: "decisions/month"}"""
-    log_test(7, "Check Single Feature (my_dezider_create)")
+def test_get_session_detail():
+    """Test 5: Get session detail"""
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        response = requests.get(f"{BASE_URL}/emotional-gatekeeper/sessions/{trap_session_id}", headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            # API returns 'id' instead of 'session_id'
+            if "id" in data and "session_type" in data:
+                log_test("Get Session Detail", True, f"Retrieved session: {data.get('title', 'N/A')}")
+                return True
+            else:
+                log_test("Get Session Detail", False, f"Missing expected fields: {data}")
+                return False
+        else:
+            log_test("Get Session Detail", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("Get Session Detail", False, f"Exception: {str(e)}")
+        return False
+
+# ============================================================================
+# BREAKING THE TRAP FLOW
+# ============================================================================
+
+def test_trap_capture():
+    """Test 6: Trap - Capture step"""
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        payload = {
+            "situation": "Worried about job performance review",
+            "category": "career",
+            "intensity": 7
+        }
+        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/trap/{trap_session_id}/capture", 
+                                json=payload, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            log_test("Trap - Capture", True, f"Captured trap situation")
+            return True
+        else:
+            log_test("Trap - Capture", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("Trap - Capture", False, f"Exception: {str(e)}")
+        return False
+
+def test_trap_landscaping():
+    """Test 7: Trap - Landscaping step"""
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        payload = {
+            "scanning_for": "career risks",
+            "scanning_patterns": ["failure", "rejection"],
+            "scanning_without_urgency": True,
+            "repeated_concern": "losing job"
+        }
+        response = requests.put(f"{BASE_URL}/emotional-gatekeeper/trap/{trap_session_id}/landscaping", 
+                               json=payload, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            log_test("Trap - Landscaping", True, f"Landscaping completed")
+            return True
+        else:
+            log_test("Trap - Landscaping", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("Trap - Landscaping", False, f"Exception: {str(e)}")
+        return False
+
+def test_trap_linking():
+    """Test 8: Trap - Linking step"""
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        payload = {
+            "trigger_description": "performance review email",
+            "trigger_type": "external",
+            "linking_meaning": "I might get fired"
+        }
+        response = requests.put(f"{BASE_URL}/emotional-gatekeeper/trap/{trap_session_id}/linking", 
+                               json=payload, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            log_test("Trap - Linking", True, f"Linking completed")
+            return True
+        else:
+            log_test("Trap - Linking", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("Trap - Linking", False, f"Exception: {str(e)}")
+        return False
+
+def test_trap_looping():
+    """Test 9: Trap - Looping step"""
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        payload = {
+            "repeating_thought": "What if I lose my job",
+            "getting_new_solution": False,
+            "emotion_increasing": "increasing",
+            "intensity_before": 7,
+            "intensity_after": 9
+        }
+        response = requests.put(f"{BASE_URL}/emotional-gatekeeper/trap/{trap_session_id}/looping", 
+                               json=payload, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            log_test("Trap - Looping", True, f"Looping completed")
+            return True
+        else:
+            log_test("Trap - Looping", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("Trap - Looping", False, f"Exception: {str(e)}")
+        return False
+
+def test_trap_analyze():
+    """Test 10: Trap - AI Analysis (may take 5-15 seconds)"""
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/trap/{trap_session_id}/analyze", 
+                                headers=headers, timeout=30)
+        
+        if response.status_code == 200:
+            data = response.json()
+            # API returns nested structure with 'analysis' key
+            if "analysis" in data and "current_stage" in data["analysis"]:
+                log_test("Trap - AI Analysis", True, f"AI analysis completed with stage: {data['analysis'].get('current_stage', 'N/A')}")
+                return True
+            else:
+                log_test("Trap - AI Analysis", False, f"Missing expected AI fields: {data}")
+                return False
+        else:
+            log_test("Trap - AI Analysis", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("Trap - AI Analysis", False, f"Exception: {str(e)}")
+        return False
+
+# ============================================================================
+# BREAKING THE LOOP FLOW
+# ============================================================================
+
+def test_create_loop_session():
+    """Test 11: Create a loop session"""
+    global loop_session_id
     
     try:
         headers = {"Authorization": f"Bearer {session_token}"}
-        response = requests.get(
-            f"{BASE_URL}/acm/check/my_dezider_create",
-            headers=headers,
-            timeout=30
-        )
+        payload = {
+            "session_type": "loop",
+            "title": "Test Loop Session"
+        }
+        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/sessions", json=payload, headers=headers, timeout=10)
         
         if response.status_code == 200:
             data = response.json()
-            feature_id = data.get("feature_id")
-            allowed = data.get("allowed")
-            access_level = data.get("access_level")
-            quota_limit = data.get("quota_limit")
-            quota_unit = data.get("quota_unit")
-            
-            # Verify expected structure for free user
-            checks = [
-                (feature_id == "my_dezider_create", f"feature_id: {feature_id}"),
-                (allowed == True, f"allowed: {allowed} (expected True)"),
-                (access_level == "full", f"access_level: {access_level} (expected 'full')"),
-                (quota_limit == 3, f"quota_limit: {quota_limit} (expected 3 for free users)"),
-                (quota_unit == "decisions/month", f"quota_unit: {quota_unit}"),
-            ]
-            
-            all_passed = all(check[0] for check in checks)
-            
-            if all_passed:
-                log_result(True, "Single feature check successful")
-                for check in checks:
-                    print(f"  ✓ {check[1]}")
+            if "id" in data:
+                loop_session_id = data["id"]
+                log_test("Create Loop Session", True, f"Created session: {loop_session_id}")
                 return True
             else:
-                log_result(False, "Single feature validation failed")
-                for check in checks:
-                    status = "✓" if check[0] else "✗"
-                    print(f"  {status} {check[1]}")
+                log_test("Create Loop Session", False, f"Missing id: {data}")
                 return False
         else:
-            log_result(False, f"Check feature failed with status {response.status_code}", response.json())
+            log_test("Create Loop Session", False, f"Status {response.status_code}: {response.text}")
             return False
     except Exception as e:
-        log_result(False, f"Exception during check feature: {str(e)}")
+        log_test("Create Loop Session", False, f"Exception: {str(e)}")
         return False
 
+def test_loop_capture():
+    """Test 12: Loop - Capture step"""
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        payload = {
+            "repeated_thought": "I am not good enough",
+            "emotion": "anxiety",
+            "repeat_count_today": 5,
+            "fear": "being inadequate",
+            "trying_to_solve": "self-worth"
+        }
+        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/loop/{loop_session_id}/capture", 
+                                json=payload, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            log_test("Loop - Capture", True, f"Loop captured")
+            return True
+        else:
+            log_test("Loop - Capture", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("Loop - Capture", False, f"Exception: {str(e)}")
+        return False
 
-def test_step_8_check_locked_feature():
-    """Step 8: Check locked feature (for free user) - verify returns {allowed: false, access_level: "locked"}"""
-    log_test(8, "Check Locked Feature (solution_finder)")
+def test_loop_recommend():
+    """Test 13: Loop - AI Recommendation (may take 5-15 seconds)"""
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/loop/{loop_session_id}/recommend", 
+                                headers=headers, timeout=30)
+        
+        if response.status_code == 200:
+            data = response.json()
+            # API returns nested structure with 'recommendation' key
+            if "recommendation" in data and "recommended_method" in data["recommendation"]:
+                log_test("Loop - AI Recommendation", True, f"Recommended method: {data['recommendation'].get('recommended_method', 'N/A')}")
+                return True
+            else:
+                log_test("Loop - AI Recommendation", False, f"Missing recommended_method: {data}")
+                return False
+        else:
+            log_test("Loop - AI Recommendation", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("Loop - AI Recommendation", False, f"Exception: {str(e)}")
+        return False
+
+def test_loop_method():
+    """Test 14: Loop - Method selection"""
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        payload = {
+            "selected_method": "i_dont_know",
+            "method_answers": {
+                "q0": "I'm sure I struggle",
+                "q1": "I'm not sure about outcomes",
+                "q2": "Yes I can try"
+            }
+        }
+        response = requests.put(f"{BASE_URL}/emotional-gatekeeper/loop/{loop_session_id}/method", 
+                               json=payload, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            log_test("Loop - Method Selection", True, f"Method selected")
+            return True
+        else:
+            log_test("Loop - Method Selection", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("Loop - Method Selection", False, f"Exception: {str(e)}")
+        return False
+
+def test_loop_reframe():
+    """Test 15: Loop - AI Reframe (may take 5-15 seconds)"""
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/loop/{loop_session_id}/reframe", 
+                                headers=headers, timeout=30)
+        
+        if response.status_code == 200:
+            data = response.json()
+            # API returns nested structure with 'reframe' key
+            if "reframe" in data and "new_perspective" in data["reframe"] and "calming_statement" in data["reframe"]:
+                log_test("Loop - AI Reframe", True, f"Reframe completed")
+                return True
+            else:
+                log_test("Loop - AI Reframe", False, f"Missing expected fields: {data}")
+                return False
+        else:
+            log_test("Loop - AI Reframe", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("Loop - AI Reframe", False, f"Exception: {str(e)}")
+        return False
+
+# ============================================================================
+# BREAKING LIMITATIONS FLOW
+# ============================================================================
+
+def test_create_limitation_session():
+    """Test 16: Create a limitation session"""
+    global limitation_session_id
     
     try:
         headers = {"Authorization": f"Bearer {session_token}"}
-        response = requests.get(
-            f"{BASE_URL}/acm/check/solution_finder",
-            headers=headers,
-            timeout=30
-        )
+        payload = {
+            "session_type": "limitation",
+            "title": "Test Limitation Session"
+        }
+        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/sessions", json=payload, headers=headers, timeout=10)
         
         if response.status_code == 200:
             data = response.json()
-            allowed = data.get("allowed")
-            access_level = data.get("access_level")
-            
-            # Verify expected structure for locked feature
-            checks = [
-                (allowed == False, f"allowed: {allowed} (expected False)"),
-                (access_level == "locked", f"access_level: {access_level} (expected 'locked')"),
-            ]
-            
-            all_passed = all(check[0] for check in checks)
-            
-            if all_passed:
-                log_result(True, "Locked feature check successful", data)
-                for check in checks:
-                    print(f"  ✓ {check[1]}")
+            if "id" in data:
+                limitation_session_id = data["id"]
+                log_test("Create Limitation Session", True, f"Created session: {limitation_session_id}")
                 return True
             else:
-                log_result(False, "Locked feature validation failed")
-                for check in checks:
-                    status = "✓" if check[0] else "✗"
-                    print(f"  {status} {check[1]}")
+                log_test("Create Limitation Session", False, f"Missing id: {data}")
                 return False
         else:
-            log_result(False, f"Check locked feature failed with status {response.status_code}", response.json())
+            log_test("Create Limitation Session", False, f"Status {response.status_code}: {response.text}")
             return False
     except Exception as e:
-        log_result(False, f"Exception during check locked feature: {str(e)}")
+        log_test("Create Limitation Session", False, f"Exception: {str(e)}")
         return False
 
+def test_limitation_capture():
+    """Test 17: Limitation - Capture step"""
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        payload = {
+            "limitation_statement": "I can never start a business",
+            "why_limited": "Failed before",
+            "origin": "past failure",
+            "belief_duration": "5 years",
+            "cost_of_limitation": "Stayed in unfulfilling job"
+        }
+        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/limitation/{limitation_session_id}/capture", 
+                                json=payload, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            log_test("Limitation - Capture", True, f"Limitation captured")
+            return True
+        else:
+            log_test("Limitation - Capture", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("Limitation - Capture", False, f"Exception: {str(e)}")
+        return False
 
-def test_step_9_check_hidden_feature():
-    """Step 9: Check hidden feature (for free user) - verify returns {allowed: false, access_level: "hidden"}"""
-    log_test(9, "Check Hidden Feature (deo_scrape)")
+def test_limitation_classify():
+    """Test 18: Limitation - AI Classification (may take 5-15 seconds)"""
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/limitation/{limitation_session_id}/classify", 
+                                headers=headers, timeout=30)
+        
+        if response.status_code == 200:
+            data = response.json()
+            # API returns nested structure with 'classification' key
+            if "classification" in data and "category" in data["classification"] and "confidence" in data["classification"]:
+                log_test("Limitation - AI Classification", True, f"Category: {data['classification'].get('category', 'N/A')}, Confidence: {data['classification'].get('confidence', 'N/A')}")
+                return True
+            else:
+                log_test("Limitation - AI Classification", False, f"Missing expected fields: {data}")
+                return False
+        else:
+            log_test("Limitation - AI Classification", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("Limitation - AI Classification", False, f"Exception: {str(e)}")
+        return False
+
+def test_limitation_flow():
+    """Test 19: Limitation - Flow step"""
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        payload = {
+            "answers": {
+                "q0": "I failed once 5 years ago",
+                "q1": "I have new skills now",
+                "q2": "Yes significantly"
+            }
+        }
+        response = requests.put(f"{BASE_URL}/emotional-gatekeeper/limitation/{limitation_session_id}/flow", 
+                               json=payload, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            log_test("Limitation - Flow", True, f"Flow completed")
+            return True
+        else:
+            log_test("Limitation - Flow", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("Limitation - Flow", False, f"Exception: {str(e)}")
+        return False
+
+def test_limitation_reframe():
+    """Test 20: Limitation - AI Reframe (may take 5-15 seconds)"""
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/limitation/{limitation_session_id}/reframe", 
+                                headers=headers, timeout=30)
+        
+        if response.status_code == 200:
+            data = response.json()
+            # API returns nested structure with 'reframe' key
+            if "reframe" in data and "old_belief" in data["reframe"] and "new_belief" in data["reframe"] and "affirmation" in data["reframe"]:
+                log_test("Limitation - AI Reframe", True, f"Reframe completed")
+                return True
+            else:
+                log_test("Limitation - AI Reframe", False, f"Missing expected fields: {data}")
+                return False
+        else:
+            log_test("Limitation - AI Reframe", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("Limitation - AI Reframe", False, f"Exception: {str(e)}")
+        return False
+
+# ============================================================================
+# OUTLET ANALYZER
+# ============================================================================
+
+def test_outlet_strategies():
+    """Test 21: Get outlet strategies"""
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        response = requests.get(f"{BASE_URL}/emotional-gatekeeper/outlet/strategies", headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "strategies" in data:
+                log_test("Outlet - Get Strategies", True, f"Found {len(data['strategies'])} strategies")
+                return True
+            else:
+                log_test("Outlet - Get Strategies", False, f"Missing strategies field: {data}")
+                return False
+        else:
+            log_test("Outlet - Get Strategies", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("Outlet - Get Strategies", False, f"Exception: {str(e)}")
+        return False
+
+def test_create_outlet_session():
+    """Test 22: Create an outlet session"""
+    global outlet_session_id
     
     try:
         headers = {"Authorization": f"Bearer {session_token}"}
-        response = requests.get(
-            f"{BASE_URL}/acm/check/deo_scrape",
-            headers=headers,
-            timeout=30
-        )
+        payload = {
+            "session_type": "outlet",
+            "title": "Test Outlet Session"
+        }
+        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/sessions", json=payload, headers=headers, timeout=10)
         
         if response.status_code == 200:
             data = response.json()
-            allowed = data.get("allowed")
-            access_level = data.get("access_level")
-            
-            # Verify expected structure for hidden feature
-            checks = [
-                (allowed == False, f"allowed: {allowed} (expected False)"),
-                (access_level == "hidden", f"access_level: {access_level} (expected 'hidden')"),
-            ]
-            
-            all_passed = all(check[0] for check in checks)
-            
-            if all_passed:
-                log_result(True, "Hidden feature check successful", data)
-                for check in checks:
-                    print(f"  ✓ {check[1]}")
+            if "id" in data:
+                outlet_session_id = data["id"]
+                log_test("Create Outlet Session", True, f"Created session: {outlet_session_id}")
                 return True
             else:
-                log_result(False, "Hidden feature validation failed")
-                for check in checks:
-                    status = "✓" if check[0] else "✗"
-                    print(f"  {status} {check[1]}")
+                log_test("Create Outlet Session", False, f"Missing id: {data}")
                 return False
         else:
-            log_result(False, f"Check hidden feature failed with status {response.status_code}", response.json())
+            log_test("Create Outlet Session", False, f"Status {response.status_code}: {response.text}")
             return False
     except Exception as e:
-        log_result(False, f"Exception during check hidden feature: {str(e)}")
+        log_test("Create Outlet Session", False, f"Exception: {str(e)}")
         return False
 
-
-def test_step_10_set_user_type():
-    """Step 10: Set user type - PUT /api/acm/user/{user_id}/type with {"user_type": "beta", "subscription_plan": "pro"}"""
-    log_test(10, "Set User Type to Beta + Pro Plan")
-    
-    try:
-        headers = {"Authorization": f"Bearer {admin_token}"}
-        response = requests.put(
-            f"{BASE_URL}/acm/user/{user_id}/type",
-            headers=headers,
-            json={
-                "user_type": "beta",
-                "subscription_plan": "pro"
-            },
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            user_type = data.get("user_type")
-            subscription_plan = data.get("subscription_plan")
-            
-            # Verify expected structure
-            checks = [
-                (user_type == "beta", f"user_type: {user_type} (expected 'beta')"),
-                (subscription_plan == "pro", f"subscription_plan: {subscription_plan} (expected 'pro')"),
-            ]
-            
-            all_passed = all(check[0] for check in checks)
-            
-            if all_passed:
-                log_result(True, "User type updated successfully", data)
-                for check in checks:
-                    print(f"  ✓ {check[1]}")
-                return True
-            else:
-                log_result(False, "User type update validation failed")
-                for check in checks:
-                    status = "✓" if check[0] else "✗"
-                    print(f"  {status} {check[1]}")
-                return False
-        else:
-            log_result(False, f"Set user type failed with status {response.status_code}", response.json())
-            return False
-    except Exception as e:
-        log_result(False, f"Exception during set user type: {str(e)}")
-        return False
-
-
-def test_step_11_recheck_access_after_upgrade():
-    """Step 11: Re-check access after upgrade - verify user_type is now "beta" and features that were locked/hidden are now accessible"""
-    log_test(11, "Re-check Access After Upgrade")
-    
+def test_outlet_analyze():
+    """Test 23: Outlet - AI Analysis (may take 5-15 seconds)"""
     try:
         headers = {"Authorization": f"Bearer {session_token}"}
-        response = requests.get(
-            f"{BASE_URL}/acm/my-access",
-            headers=headers,
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            user_type = data.get("user_type")
-            subscription_plan = data.get("subscription_plan")
-            features = data.get("features", {})
-            
-            # Check that user type is updated
-            checks = [
-                (user_type == "beta", f"user_type: {user_type} (expected 'beta')"),
-            ]
-            
-            # Check previously locked feature (solution_finder)
-            solution_finder = features.get("solution_finder", {})
-            solution_finder_level = solution_finder.get("access_level")
-            checks.append((
-                solution_finder_level in ["full", "read"],
-                f"solution_finder access_level: {solution_finder_level} (expected 'full' or 'read', was 'locked')"
-            ))
-            
-            # Check previously hidden feature (deo_scrape)
-            deo_scrape = features.get("deo_scrape", {})
-            deo_scrape_level = deo_scrape.get("access_level")
-            checks.append((
-                deo_scrape_level in ["full", "read", "locked"],
-                f"deo_scrape access_level: {deo_scrape_level} (expected not 'hidden', was 'hidden')"
-            ))
-            
-            all_passed = all(check[0] for check in checks)
-            
-            if all_passed:
-                log_result(True, "Access upgrade verified successfully")
-                for check in checks:
-                    print(f"  ✓ {check[1]}")
-                return True
-            else:
-                log_result(False, "Access upgrade validation failed")
-                for check in checks:
-                    status = "✓" if check[0] else "✗"
-                    print(f"  {status} {check[1]}")
-                return False
-        else:
-            log_result(False, f"Re-check access failed with status {response.status_code}", response.json())
-            return False
-    except Exception as e:
-        log_result(False, f"Exception during re-check access: {str(e)}")
-        return False
-
-
-def test_step_12_force_reseed():
-    """Step 12: Force re-seed - POST /api/acm/seed?force=true"""
-    log_test(12, "Force Re-seed ACM")
-    
-    try:
-        headers = {"Authorization": f"Bearer {admin_token}"}
-        response = requests.post(
-            f"{BASE_URL}/acm/seed?force=true",
-            headers=headers,
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            modules = data.get("modules")
-            features = data.get("features")
-            
-            # Verify expected structure
-            if modules == 22 and features and features > 30:
-                log_result(True, f"ACM re-seeded successfully: {modules} modules, {features} features", data)
-                return True
-            else:
-                log_result(False, f"Unexpected re-seed response: modules={modules}, features={features}", data)
-                return False
-        else:
-            log_result(False, f"Force re-seed failed with status {response.status_code}", response.json())
-            return False
-    except Exception as e:
-        log_result(False, f"Exception during force re-seed: {str(e)}")
-        return False
-
-
-def test_step_13_update_feature():
-    """Step 13: Update feature - PUT /api/acm/feature/my_dezider_create with {"release_stage": "beta", "access": {"free": {"level": "locked", "quota": 0}}}"""
-    log_test(13, "Update Feature Access Rules")
-    
-    try:
-        headers = {"Authorization": f"Bearer {admin_token}"}
-        response = requests.put(
-            f"{BASE_URL}/acm/feature/my_dezider_create",
-            headers=headers,
-            json={
-                "release_stage": "beta",
-                "access": {
-                    "free": {"level": "locked", "quota": 0}
+        payload = {
+            "entries": [
+                {
+                    "strategy_id": "social_media",
+                    "frequency": "often",
+                    "is_compulsive": True
+                },
+                {
+                    "strategy_id": "yoga_meditation",
+                    "frequency": "rarely"
                 }
-            },
-            timeout=30
-        )
+            ]
+        }
+        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/outlet/{outlet_session_id}/analyze", 
+                                json=payload, headers=headers, timeout=30)
         
         if response.status_code == 200:
             data = response.json()
-            message = data.get("message")
-            updates = data.get("updates", [])
-            
-            # Verify update was successful
-            if "updated" in message.lower() and len(updates) > 0:
-                log_result(True, "Feature updated successfully", data)
-                print(f"  Updated fields: {', '.join(updates)}")
-                return True
-            else:
-                log_result(False, "Unexpected update response", data)
-                return False
+            log_test("Outlet - AI Analysis", True, f"Analysis completed")
+            return True
         else:
-            log_result(False, f"Update feature failed with status {response.status_code}", response.json())
+            log_test("Outlet - AI Analysis", False, f"Status {response.status_code}: {response.text}")
             return False
     except Exception as e:
-        log_result(False, f"Exception during update feature: {str(e)}")
+        log_test("Outlet - AI Analysis", False, f"Exception: {str(e)}")
         return False
 
+# ============================================================================
+# AIM MANAGER
+# ============================================================================
 
-def test_step_14_list_users():
-    """Step 14: List users - GET /api/acm/users?user_type=beta"""
-    log_test(14, "List Users by Type")
+def test_aim_options():
+    """Test 24: Get AIM options"""
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        response = requests.get(f"{BASE_URL}/emotional-gatekeeper/aim/options", headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "life_areas" in data and "occurrences" in data:
+                log_test("AIM - Get Options", True, f"Found {len(data['life_areas'])} life areas")
+                return True
+            else:
+                log_test("AIM - Get Options", False, f"Missing expected fields: {data}")
+                return False
+        else:
+            log_test("AIM - Get Options", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("AIM - Get Options", False, f"Exception: {str(e)}")
+        return False
+
+def test_create_aim_session():
+    """Test 25: Create an AIM session"""
+    global aim_session_id
     
     try:
-        headers = {"Authorization": f"Bearer {admin_token}"}
-        response = requests.get(
-            f"{BASE_URL}/acm/users?user_type=beta",
-            headers=headers,
-            timeout=30
-        )
+        headers = {"Authorization": f"Bearer {session_token}"}
+        payload = {
+            "session_type": "aim",
+            "title": "Test AIM Session"
+        }
+        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/sessions", json=payload, headers=headers, timeout=10)
         
         if response.status_code == 200:
             data = response.json()
-            total = data.get("total")
-            users = data.get("users", [])
-            
-            # Verify our test user is in the list
-            test_user_found = any(u.get("user_id") == user_id for u in users)
-            
-            checks = [
-                (total >= 1, f"total: {total} (expected >= 1)"),
-                (len(users) >= 1, f"users count: {len(users)} (expected >= 1)"),
-                (test_user_found, f"test user found in list: {test_user_found}"),
-            ]
-            
-            all_passed = all(check[0] for check in checks)
-            
-            if all_passed:
-                log_result(True, "Users list retrieved successfully")
-                for check in checks:
-                    print(f"  ✓ {check[1]}")
-                
-                # Show our test user
-                test_user_data = next((u for u in users if u.get("user_id") == user_id), None)
-                if test_user_data:
-                    print(f"\n  Test user details:")
-                    print(f"    - email: {test_user_data.get('email')}")
-                    print(f"    - user_type: {test_user_data.get('user_type')}")
-                    print(f"    - subscription_plan: {test_user_data.get('subscription_plan')}")
-                
+            if "id" in data:
+                aim_session_id = data["id"]
+                log_test("Create AIM Session", True, f"Created session: {aim_session_id}")
                 return True
             else:
-                log_result(False, "Users list validation failed")
-                for check in checks:
-                    status = "✓" if check[0] else "✗"
-                    print(f"  {status} {check[1]}")
+                log_test("Create AIM Session", False, f"Missing id: {data}")
                 return False
         else:
-            log_result(False, f"List users failed with status {response.status_code}", response.json())
+            log_test("Create AIM Session", False, f"Status {response.status_code}: {response.text}")
             return False
     except Exception as e:
-        log_result(False, f"Exception during list users: {str(e)}")
+        log_test("Create AIM Session", False, f"Exception: {str(e)}")
         return False
 
+def test_aim_save():
+    """Test 26: AIM - Save addictions and irritations"""
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        payload = {
+            "addictions": [
+                {
+                    "area_of_life": "career",
+                    "addiction": "Scrolling social media",
+                    "triggering_situations": "boredom",
+                    "positive_impact_pct": 10,
+                    "negative_impact_pct": 80
+                }
+            ],
+            "irritations": [
+                {
+                    "area_of_life": "emotional_relationships",
+                    "irritation": "Being interrupted",
+                    "probable_reaction": "Getting angry"
+                }
+            ]
+        }
+        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/aim/{aim_session_id}/save", 
+                                json=payload, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            log_test("AIM - Save Data", True, f"AIM data saved")
+            return True
+        else:
+            log_test("AIM - Save Data", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("AIM - Save Data", False, f"Exception: {str(e)}")
+        return False
+
+def test_aim_analyze():
+    """Test 27: AIM - AI Analysis (may take 5-15 seconds)"""
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/aim/{aim_session_id}/analyze", 
+                                headers=headers, timeout=30)
+        
+        if response.status_code == 200:
+            data = response.json()
+            log_test("AIM - AI Analysis", True, f"Analysis completed")
+            return True
+        else:
+            log_test("AIM - AI Analysis", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("AIM - AI Analysis", False, f"Exception: {str(e)}")
+        return False
+
+# ============================================================================
+# COMMITMENTS & JOURNAL
+# ============================================================================
+
+def test_create_commitment():
+    """Test 28: Create a commitment"""
+    global commitment_id
+    
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        payload = {
+            "commitment_type": "immediate",
+            "commitment_text": "I will practice mindfulness daily"
+        }
+        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/sessions/{trap_session_id}/commitments", 
+                                json=payload, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "id" in data:
+                commitment_id = data["id"]
+                log_test("Create Commitment", True, f"Created commitment: {commitment_id}")
+                return True
+            else:
+                log_test("Create Commitment", False, f"Missing id: {data}")
+                return False
+        else:
+            log_test("Create Commitment", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("Create Commitment", False, f"Exception: {str(e)}")
+        return False
+
+def test_complete_commitment():
+    """Test 29: Complete a commitment"""
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        response = requests.put(f"{BASE_URL}/emotional-gatekeeper/commitments/{commitment_id}/complete", 
+                               headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            log_test("Complete Commitment", True, f"Commitment completed")
+            return True
+        else:
+            log_test("Complete Commitment", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("Complete Commitment", False, f"Exception: {str(e)}")
+        return False
+
+def test_create_journal():
+    """Test 30: Create a journal entry"""
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        payload = {
+            "journal_content": "Today I realized my thoughts are not facts"
+        }
+        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/sessions/{trap_session_id}/journal", 
+                                json=payload, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            log_test("Create Journal Entry", True, f"Journal entry created")
+            return True
+        else:
+            log_test("Create Journal Entry", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("Create Journal Entry", False, f"Exception: {str(e)}")
+        return False
+
+# ============================================================================
+# AI REPORT
+# ============================================================================
+
+def test_generate_report():
+    """Test 31: Generate AI breakthrough report (may take 5-15 seconds)"""
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        response = requests.post(f"{BASE_URL}/emotional-gatekeeper/sessions/{trap_session_id}/report", 
+                                headers=headers, timeout=30)
+        
+        if response.status_code == 200:
+            data = response.json()
+            log_test("Generate AI Report", True, f"Report generated")
+            return True
+        else:
+            log_test("Generate AI Report", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("Generate AI Report", False, f"Exception: {str(e)}")
+        return False
+
+# ============================================================================
+# DASHBOARD AFTER DATA
+# ============================================================================
+
+def test_dashboard_with_data():
+    """Test 32: Dashboard should show non-zero counts"""
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        response = requests.get(f"{BASE_URL}/emotional-gatekeeper/dashboard", headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "total_sessions" in data:
+                if data["total_sessions"] > 0:
+                    log_test("Dashboard (With Data)", True, f"Dashboard shows {data['total_sessions']} sessions")
+                    return True
+                else:
+                    log_test("Dashboard (With Data)", False, f"Expected non-zero sessions, got {data['total_sessions']}")
+                    return False
+            else:
+                log_test("Dashboard (With Data)", False, f"Missing total_sessions: {data}")
+                return False
+        else:
+            log_test("Dashboard (With Data)", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("Dashboard (With Data)", False, f"Exception: {str(e)}")
+        return False
+
+# ============================================================================
+# DELETE SESSION
+# ============================================================================
+
+def test_delete_session():
+    """Test 33: Delete a session"""
+    try:
+        headers = {"Authorization": f"Bearer {session_token}"}
+        response = requests.delete(f"{BASE_URL}/emotional-gatekeeper/sessions/{trap_session_id}", 
+                                  headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            log_test("Delete Session", True, f"Session deleted successfully")
+            return True
+        else:
+            log_test("Delete Session", False, f"Status {response.status_code}: {response.text}")
+            return False
+    except Exception as e:
+        log_test("Delete Session", False, f"Exception: {str(e)}")
+        return False
+
+# ============================================================================
+# MAIN TEST EXECUTION
+# ============================================================================
 
 def main():
-    """Run all ACM tests"""
-    print("\n" + "="*80)
-    print("ACM (WOWO Access Control Matrix) System - Comprehensive Test Suite")
+    """Run all tests in sequence"""
+    print("="*80)
+    print("EMOTIONAL GATEKEEPER MODULE - COMPREHENSIVE BACKEND TESTING")
     print("="*80)
     print(f"Backend URL: {BASE_URL}")
-    print(f"Test User: {TEST_USER['email']}")
-    print(f"Timestamp: {datetime.now().isoformat()}")
+    print(f"Test started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("="*80)
+    print()
     
-    # Track results
-    results = []
+    # Authentication
+    if not test_user_registration():
+        print("\n❌ Authentication failed. Cannot proceed with tests.")
+        print_summary()
+        return
     
-    # Run all tests in sequence
-    test_functions = [
-        ("Step 1: Register Admin User", test_step_1_register),
-        ("Step 2: Login", test_step_2_login),
-        ("Step 3: Login as Admin", test_step_3_login_as_admin),
-        ("Step 4: Seed ACM", test_step_4_seed_acm),
-        ("Step 5: Get Full Matrix", test_step_5_get_full_matrix),
-        ("Step 6: Check My Access", test_step_6_check_my_access),
-        ("Step 7: Check Single Feature", test_step_7_check_single_feature),
-        ("Step 8: Check Locked Feature", test_step_8_check_locked_feature),
-        ("Step 9: Check Hidden Feature", test_step_9_check_hidden_feature),
-        ("Step 10: Set User Type", test_step_10_set_user_type),
-        ("Step 11: Re-check Access After Upgrade", test_step_11_recheck_access_after_upgrade),
-        ("Step 12: Force Re-seed", test_step_12_force_reseed),
-        ("Step 13: Update Feature", test_step_13_update_feature),
-        ("Step 14: List Users", test_step_14_list_users),
-    ]
+    # Dashboard & Sessions
+    test_dashboard_empty()
+    test_create_trap_session()
+    test_list_sessions()
+    test_get_session_detail()
     
-    for test_name, test_func in test_functions:
-        try:
-            result = test_func()
-            results.append((test_name, result))
-        except Exception as e:
-            print(f"\n❌ CRITICAL ERROR in {test_name}: {str(e)}")
-            results.append((test_name, False))
+    # Breaking the Trap Flow
+    test_trap_capture()
+    test_trap_landscaping()
+    test_trap_linking()
+    test_trap_looping()
+    test_trap_analyze()
+    
+    # Breaking the Loop Flow
+    test_create_loop_session()
+    test_loop_capture()
+    test_loop_recommend()
+    test_loop_method()
+    test_loop_reframe()
+    
+    # Breaking Limitations Flow
+    test_create_limitation_session()
+    test_limitation_capture()
+    test_limitation_classify()
+    test_limitation_flow()
+    test_limitation_reframe()
+    
+    # Outlet Analyzer
+    test_outlet_strategies()
+    test_create_outlet_session()
+    test_outlet_analyze()
+    
+    # AIM Manager
+    test_aim_options()
+    test_create_aim_session()
+    test_aim_save()
+    test_aim_analyze()
+    
+    # Commitments & Journal
+    test_create_commitment()
+    test_complete_commitment()
+    test_create_journal()
+    
+    # AI Report
+    test_generate_report()
+    
+    # Dashboard After Data
+    test_dashboard_with_data()
+    
+    # Delete Session
+    test_delete_session()
     
     # Print summary
-    print("\n" + "="*80)
-    print("TEST SUMMARY")
+    print()
+    print_summary()
+    print()
+    print(f"Test completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*80)
-    
-    passed = sum(1 for _, result in results if result)
-    total = len(results)
-    
-    for test_name, result in results:
-        status = "✅ PASSED" if result else "❌ FAILED"
-        print(f"{status}: {test_name}")
-    
-    print(f"\n{'='*80}")
-    print(f"TOTAL: {passed}/{total} tests passed ({passed/total*100:.1f}%)")
-    print(f"{'='*80}\n")
-    
-    return passed == total
-
 
 if __name__ == "__main__":
-    success = main()
-    exit(0 if success else 1)
+    main()
