@@ -180,7 +180,7 @@ export default function SwotScreen() {
   const handleConvertToDecision = async () => {
     if (!selectedAnalysis) return;
     if (selectedAnalysis.converted_decision_id) {
-      showAlert('Already Converted', 'This SWOT analysis has already been converted to a PRR Decision.');
+      showAlert('Already Converted', 'This SWOT analysis has already been converted to a My Dezider Decision.');
       return;
     }
     const totalItems =
@@ -195,8 +195,8 @@ export default function SwotScreen() {
     }
 
     showAlert(
-      'Convert to PRR Decision',
-      `This will create a PRR Decision with ${totalItems} factors.\n\nStrengths + Opportunities → Factors (as-is)\nWeaknesses + Threats → Factors (prefixed with "NOT")\n\nAI will generate expected values.`,
+      'Convert to My Dezider',
+      `This will create a My Dezider with ${totalItems} factors.\n\nStrengths + Opportunities → Factors (as-is)\nWeaknesses + Threats → Factors (prefixed with "NOT")\n\nAI will generate expected values.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -378,7 +378,7 @@ export default function SwotScreen() {
             <View style={styles.infoBox}>
               <Ionicons name="information-circle" size={18} color="#6366F1" />
               <Text style={styles.infoText}>
-                When you convert: Strengths & Opportunities → PRR factors as-is. Weaknesses & Threats are prefixed with "NOT" (e.g., "High cost" → "NOT High cost") and become PRR factors. AI generates expected values for all.
+                When you convert: Strengths & Opportunities → My Dezider factors as-is. Weaknesses & Threats are prefixed with "NOT" (e.g., "High cost" → "NOT High cost") and become My Dezider factors. AI generates expected values for all.
               </Text>
             </View>
           </ScrollView>
@@ -491,7 +491,7 @@ export default function SwotScreen() {
                   ) : (
                     <>
                       <Ionicons name="flash" size={20} color="#FFF" />
-                      <Text style={styles.convertText}>Convert to PRR Decision</Text>
+                      <Text style={styles.convertText}>Convert to My Dezider</Text>
                     </>
                   )}
                 </LinearGradient>
@@ -515,7 +515,7 @@ export default function SwotScreen() {
                   style={styles.convertGradient}
                 >
                   <Ionicons name="open-outline" size={20} color="#FFF" />
-                  <Text style={styles.convertText}>Open PRR Decision</Text>
+                  <Text style={styles.convertText}>Open My Dezider</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -564,7 +564,7 @@ export default function SwotScreen() {
           <View style={styles.howItWorks}>
             <Ionicons name="bulb-outline" size={20} color="#2563EB" />
             <Text style={styles.howItWorksText}>
-              Map your Strengths, Weaknesses, Opportunities & Threats. Then convert them into PRR factors with AI-generated expected values.
+              Map your Strengths, Weaknesses, Opportunities & Threats. Then convert them into My Dezider factors with AI-generated expected values.
             </Text>
           </View>
 

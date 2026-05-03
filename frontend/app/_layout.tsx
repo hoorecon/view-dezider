@@ -57,7 +57,7 @@ export default function RootLayout() {
           name="prr/[id]" 
           options={{ 
             headerShown: true,
-            headerTitle: 'PRR Decision',
+            headerTitle: 'My Dezider',
             headerTintColor: COLORS.primary,
           }} 
         />

@@ -1,6 +1,6 @@
 """
-Face Authentication + Continuous Presence System Testing
-Tests face auth endpoints with error handling and presence config
+Backend API Testing for Social Learning URL Upload Endpoint
+Tests the NEW Social Learning URL upload endpoint at /api/social-learning/upload-url
 """
 
 import requests
@@ -11,20 +11,25 @@ from datetime import datetime
 # Backend URL
 BASE_URL = "https://dezider-core.preview.emergentagent.com/api"
 
-# Test results
+# Test results tracking
 test_results = []
 
 def log_test(test_name, passed, details=""):
     """Log test result"""
     status = "✅ PASSED" if passed else "❌ FAILED"
-    test_results.append({
+    result = {
         "test": test_name,
+        "status": status,
         "passed": passed,
-        "details": details
-    })
-    print(f"{status}: {test_name}")
+        "details": details,
+        "timestamp": datetime.now().isoformat()
+    }
+    test_results.append(result)
+    print(f"\n{status}: {test_name}")
     if details:
         print(f"  Details: {details}")
+    return passed
+
 
 def print_summary():
     """Print test summary"""
@@ -33,7 +38,7 @@ def print_summary():
     failed = total - passed
     
     print("\n" + "="*80)
-    print("FACE AUTHENTICATION + CONTINUOUS PRESENCE TEST SUMMARY")
+    print("TEST SUMMARY")
     print("="*80)
     print(f"Total Tests: {total}")
     print(f"Passed: {passed}")
@@ -47,326 +52,454 @@ def print_summary():
             if not r["passed"]:
                 print(f"  ❌ {r['test']}: {r['details']}")
 
-# Test invalid base64 image (short invalid jpeg)
-INVALID_IMAGE_BASE64 = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////"
 
-def main():
-    print("Starting Face Authentication + Continuous Presence System Tests...")
-    print(f"Backend URL: {BASE_URL}\n")
+# Global variables for auth
+auth_token = None
+user_email = None
+
+
+def test_1_register_user():
+    """Test 1: Register a new user"""
+    global auth_token, user_email
     
-    # Step 1: Register user
-    print("\n--- STEP 1: User Registration ---")
     timestamp = int(time.time())
-    email = f"faceauth_{timestamp}@test.com"
-    password = "SecurePass123!"
-    name = "Face Auth Test User"
+    user_email = f"urltest{timestamp}@test.com"
     
-    register_data = {
-        "email": email,
-        "password": password,
-        "name": name
+    payload = {
+        "name": "URL Test User",
+        "email": user_email,
+        "password": "Test1234!",
+        "phone": f"987654{timestamp % 10000:04d}"
     }
     
     try:
-        resp = requests.post(f"{BASE_URL}/auth/register", json=register_data, timeout=10)
-        if resp.status_code == 200:
-            user_data = resp.json()
-            session_token = user_data.get("session_token")
-            user_id = user_data.get("user_id")
-            log_test("User Registration", True, f"User created: {email}")
-            print(f"Session Token: {session_token[:20]}...")
+        response = requests.post(f"{BASE_URL}/auth/register", json=payload, timeout=30)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "session_token" in data:
+                auth_token = data["session_token"]
+                return log_test(
+                    "User Registration",
+                    True,
+                    f"Registered user: {user_email}, got session token"
+                )
+            else:
+                return log_test("User Registration", False, "No session_token in response")
         else:
-            log_test("User Registration", False, f"Status {resp.status_code}: {resp.text}")
-            return
+            return log_test(
+                "User Registration",
+                False,
+                f"Status {response.status_code}: {response.text[:200]}"
+            )
     except Exception as e:
-        log_test("User Registration", False, str(e))
+        return log_test("User Registration", False, f"Exception: {str(e)}")
+
+
+def test_2_login_user():
+    """Test 2: Login with registered user"""
+    global auth_token
+    
+    payload = {
+        "email": user_email,
+        "password": "Test1234!"
+    }
+    
+    try:
+        response = requests.post(f"{BASE_URL}/auth/login", json=payload, timeout=30)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "session_token" in data:
+                auth_token = data["session_token"]
+                return log_test(
+                    "User Login",
+                    True,
+                    f"Login successful, got session token"
+                )
+            else:
+                return log_test("User Login", False, "No session_token in response")
+        else:
+            return log_test(
+                "User Login",
+                False,
+                f"Status {response.status_code}: {response.text[:200]}"
+            )
+    except Exception as e:
+        return log_test("User Login", False, f"Exception: {str(e)}")
+
+
+def test_3_url_upload_valid_news():
+    """Test 3: URL Upload - Valid News URL (BBC News)"""
+    
+    headers = {"Authorization": f"Bearer {auth_token}"}
+    # Using BBC News which is more scraping-friendly
+    payload = {
+        "url": "https://www.bbc.com/news/technology"
+    }
+    
+    try:
+        # This is a long-running test (URL scraping + AI classification)
+        response = requests.post(
+            f"{BASE_URL}/social-learning/upload-url",
+            json=payload,
+            headers=headers,
+            timeout=90  # 90 seconds timeout for AI processing
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Verify required fields
+            required_fields = [
+                "id", "title", "category", "life_areas", "factors",
+                "detected_language", "english_summary", "concerns",
+                "life_scenario_template", "input_mode"
+            ]
+            
+            missing_fields = [f for f in required_fields if f not in data]
+            
+            if missing_fields:
+                return log_test(
+                    "URL Upload - Valid News URL",
+                    False,
+                    f"Missing fields: {missing_fields}"
+                )
+            
+            # Verify ID format
+            if not data["id"].startswith("SLT-"):
+                return log_test(
+                    "URL Upload - Valid News URL",
+                    False,
+                    f"Invalid ID format: {data['id']}"
+                )
+            
+            # Verify input_mode
+            if data["input_mode"] != "url":
+                return log_test(
+                    "URL Upload - Valid News URL",
+                    False,
+                    f"Wrong input_mode: {data['input_mode']}, expected 'url'"
+                )
+            
+            # Verify category is one of the valid values
+            if data["category"] not in ["problem", "need", "aspiration"]:
+                return log_test(
+                    "URL Upload - Valid News URL",
+                    False,
+                    f"Invalid category: {data['category']}"
+                )
+            
+            return log_test(
+                "URL Upload - Valid News URL",
+                True,
+                f"Template created: {data['id']}, category: {data['category']}, "
+                f"language: {data['detected_language']}, factors: {len(data['factors'])}"
+            )
+        else:
+            return log_test(
+                "URL Upload - Valid News URL",
+                False,
+                f"Status {response.status_code}: {response.text[:300]}"
+            )
+    except requests.Timeout:
+        return log_test(
+            "URL Upload - Valid News URL",
+            False,
+            "Request timeout (>90s) - AI processing took too long"
+        )
+    except Exception as e:
+        return log_test("URL Upload - Valid News URL", False, f"Exception: {str(e)}")
+
+
+def test_4_url_upload_with_optional_fields():
+    """Test 4: URL Upload - With Optional Fields (The Guardian)"""
+    
+    headers = {"Authorization": f"Bearer {auth_token}"}
+    payload = {
+        "url": "https://www.theguardian.com/technology",
+        "title": "Technology News Article",
+        "source_name": "The Guardian"
+    }
+    
+    try:
+        response = requests.post(
+            f"{BASE_URL}/social-learning/upload-url",
+            json=payload,
+            headers=headers,
+            timeout=90
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Verify template created
+            if not data.get("id", "").startswith("SLT-"):
+                return log_test(
+                    "URL Upload - With Optional Fields",
+                    False,
+                    f"Invalid ID: {data.get('id')}"
+                )
+            
+            # Verify input_mode
+            if data.get("input_mode") != "url":
+                return log_test(
+                    "URL Upload - With Optional Fields",
+                    False,
+                    f"Wrong input_mode: {data.get('input_mode')}"
+                )
+            
+            # Verify optional fields were used (source_name might be overridden by domain extraction)
+            # The backend extracts source_name from domain if not provided, so we check if it's set
+            if not data.get("source_name"):
+                return log_test(
+                    "URL Upload - With Optional Fields",
+                    False,
+                    f"source_name not set: {data.get('source_name')}"
+                )
+            
+            return log_test(
+                "URL Upload - With Optional Fields",
+                True,
+                f"Template created: {data['id']}, title: {data.get('title', 'N/A')[:50]}, "
+                f"source: {data.get('source_name')}"
+            )
+        else:
+            return log_test(
+                "URL Upload - With Optional Fields",
+                False,
+                f"Status {response.status_code}: {response.text[:300]}"
+            )
+    except requests.Timeout:
+        return log_test(
+            "URL Upload - With Optional Fields",
+            False,
+            "Request timeout (>90s)"
+        )
+    except Exception as e:
+        return log_test("URL Upload - With Optional Fields", False, f"Exception: {str(e)}")
+
+
+def test_5_url_upload_invalid_url():
+    """Test 5: URL Upload - Invalid URL"""
+    
+    headers = {"Authorization": f"Bearer {auth_token}"}
+    payload = {
+        "url": "not-a-url"
+    }
+    
+    try:
+        response = requests.post(
+            f"{BASE_URL}/social-learning/upload-url",
+            json=payload,
+            headers=headers,
+            timeout=30
+        )
+        
+        # Should return 400 error
+        if response.status_code == 400:
+            return log_test(
+                "URL Upload - Invalid URL",
+                True,
+                f"Correctly rejected invalid URL with 400 error: {response.text[:100]}"
+            )
+        else:
+            return log_test(
+                "URL Upload - Invalid URL",
+                False,
+                f"Expected 400 error, got {response.status_code}: {response.text[:200]}"
+            )
+    except Exception as e:
+        return log_test("URL Upload - Invalid URL", False, f"Exception: {str(e)}")
+
+
+def test_6_url_upload_unreachable_url():
+    """Test 6: URL Upload - Unreachable URL"""
+    
+    headers = {"Authorization": f"Bearer {auth_token}"}
+    payload = {
+        "url": "https://this-domain-does-not-exist-xyz123.com/page"
+    }
+    
+    try:
+        response = requests.post(
+            f"{BASE_URL}/social-learning/upload-url",
+            json=payload,
+            headers=headers,
+            timeout=45
+        )
+        
+        # Should return 400 error
+        if response.status_code == 400:
+            return log_test(
+                "URL Upload - Unreachable URL",
+                True,
+                f"Correctly rejected unreachable URL with 400 error: {response.text[:100]}"
+            )
+        else:
+            return log_test(
+                "URL Upload - Unreachable URL",
+                False,
+                f"Expected 400 error, got {response.status_code}: {response.text[:200]}"
+            )
+    except Exception as e:
+        return log_test("URL Upload - Unreachable URL", False, f"Exception: {str(e)}")
+
+
+def test_7_my_templates_check():
+    """Test 7: My Templates Check - Verify URL-uploaded templates appear"""
+    
+    headers = {"Authorization": f"Bearer {auth_token}"}
+    
+    try:
+        response = requests.get(
+            f"{BASE_URL}/social-learning/my-templates",
+            headers=headers,
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            if "templates" not in data:
+                return log_test(
+                    "My Templates Check",
+                    False,
+                    "No 'templates' key in response"
+                )
+            
+            templates = data["templates"]
+            
+            # Check if we have URL-uploaded templates
+            url_templates = [t for t in templates if t.get("input_mode") == "url"]
+            
+            if len(url_templates) == 0:
+                return log_test(
+                    "My Templates Check",
+                    False,
+                    f"No URL-uploaded templates found. Total templates: {len(templates)}"
+                )
+            
+            # Verify template structure
+            for t in url_templates[:1]:  # Check first URL template
+                if not t.get("id", "").startswith("SLT-"):
+                    return log_test(
+                        "My Templates Check",
+                        False,
+                        f"Invalid template ID: {t.get('id')}"
+                    )
+            
+            return log_test(
+                "My Templates Check",
+                True,
+                f"Found {len(url_templates)} URL-uploaded templates out of {len(templates)} total. "
+                f"Sample IDs: {[t['id'] for t in url_templates[:3]]}"
+            )
+        else:
+            return log_test(
+                "My Templates Check",
+                False,
+                f"Status {response.status_code}: {response.text[:200]}"
+            )
+    except Exception as e:
+        return log_test("My Templates Check", False, f"Exception: {str(e)}")
+
+
+def test_8_stats_check():
+    """Test 8: Stats Check - Verify stats reflect new uploads"""
+    
+    headers = {"Authorization": f"Bearer {auth_token}"}
+    
+    try:
+        response = requests.get(
+            f"{BASE_URL}/social-learning/stats",
+            headers=headers,
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            required_fields = [
+                "tier_1_user_templates",
+                "tier_2_authorized",
+                "tier_3_solutions",
+                "my_templates"
+            ]
+            
+            missing_fields = [f for f in required_fields if f not in data]
+            
+            if missing_fields:
+                return log_test(
+                    "Stats Check",
+                    False,
+                    f"Missing fields: {missing_fields}"
+                )
+            
+            # Verify my_templates count is > 0
+            my_count = data.get("my_templates", 0)
+            if my_count == 0:
+                return log_test(
+                    "Stats Check",
+                    False,
+                    "my_templates count is 0, expected > 0"
+                )
+            
+            return log_test(
+                "Stats Check",
+                True,
+                f"Stats retrieved: my_templates={my_count}, "
+                f"tier_1={data.get('tier_1_user_templates')}, "
+                f"tier_2={data.get('tier_2_authorized')}, "
+                f"tier_3={data.get('tier_3_solutions')}"
+            )
+        else:
+            return log_test(
+                "Stats Check",
+                False,
+                f"Status {response.status_code}: {response.text[:200]}"
+            )
+    except Exception as e:
+        return log_test("Stats Check", False, f"Exception: {str(e)}")
+
+
+def run_all_tests():
+    """Run all tests in sequence"""
+    print("="*80)
+    print("SOCIAL LEARNING URL UPLOAD ENDPOINT TESTING")
+    print("="*80)
+    print(f"Backend URL: {BASE_URL}")
+    print(f"Test Start Time: {datetime.now().isoformat()}")
+    print("="*80)
+    
+    # Setup tests
+    if not test_1_register_user():
+        print("\n⚠️  Registration failed, cannot continue with remaining tests")
+        print_summary()
         return
     
-    headers = {"Authorization": f"Bearer {session_token}"}
+    if not test_2_login_user():
+        print("\n⚠️  Login failed, cannot continue with remaining tests")
+        print_summary()
+        return
     
-    # Step 2: Login to get fresh token
-    print("\n--- STEP 2: User Login ---")
-    login_data = {"email": email, "password": password}
-    try:
-        resp = requests.post(f"{BASE_URL}/auth/login", json=login_data, timeout=10)
-        if resp.status_code == 200:
-            login_result = resp.json()
-            session_token = login_result.get("session_token")
-            headers = {"Authorization": f"Bearer {session_token}"}
-            log_test("User Login", True, "Login successful")
-        else:
-            log_test("User Login", False, f"Status {resp.status_code}: {resp.text}")
-    except Exception as e:
-        log_test("User Login", False, str(e))
+    print("\n" + "="*80)
+    print("AUTHENTICATION SUCCESSFUL - Starting URL Upload Tests")
+    print("="*80)
     
-    # Step 3: Promote to admin for admin config tests
-    print("\n--- STEP 3: Promote to Admin ---")
-    try:
-        # Update user role directly via MongoDB would be needed, but we'll test admin endpoints
-        # and expect 403 for non-admin operations
-        log_test("Admin Setup Note", True, "Will test admin endpoints (expect 403 for non-admin)")
-    except Exception as e:
-        log_test("Admin Setup", False, str(e))
+    # Main URL upload tests
+    test_3_url_upload_valid_news()
+    test_4_url_upload_with_optional_fields()
+    test_5_url_upload_invalid_url()
+    test_6_url_upload_unreachable_url()
     
-    # TEST 1: Face Status (no registration yet)
-    print("\n--- TEST 1: Face Status (No Registration) ---")
-    try:
-        resp = requests.get(f"{BASE_URL}/face-auth/status", headers=headers, timeout=10)
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get("registered") == False:
-                log_test("Face Status - No Registration", True, "Returns registered=false as expected")
-            else:
-                log_test("Face Status - No Registration", False, f"Expected registered=false, got {data}")
-        else:
-            log_test("Face Status - No Registration", False, f"Status {resp.status_code}: {resp.text}")
-    except Exception as e:
-        log_test("Face Status - No Registration", False, str(e))
-    
-    # TEST 2: Face Register with non-face image (expect graceful 400)
-    print("\n--- TEST 2: Face Register with Invalid Image ---")
-    try:
-        register_face_data = {"image_base64": INVALID_IMAGE_BASE64}
-        resp = requests.post(f"{BASE_URL}/face-auth/register", json=register_face_data, headers=headers, timeout=10)
-        if resp.status_code == 400:
-            error_msg = resp.json().get("detail", "")
-            if "No face detected" in error_msg or "Invalid image" in error_msg:
-                log_test("Face Register - Invalid Image Error Handling", True, f"Gracefully rejected with: {error_msg}")
-            else:
-                log_test("Face Register - Invalid Image Error Handling", False, f"Unexpected error: {error_msg}")
-        else:
-            log_test("Face Register - Invalid Image Error Handling", False, f"Expected 400, got {resp.status_code}")
-    except Exception as e:
-        log_test("Face Register - Invalid Image Error Handling", False, str(e))
-    
-    # TEST 3: Face Liveness Check with invalid image
-    print("\n--- TEST 3: Face Liveness Check ---")
-    try:
-        liveness_data = {"image_base64": INVALID_IMAGE_BASE64}
-        resp = requests.post(f"{BASE_URL}/face-auth/liveness-check", json=liveness_data, headers=headers, timeout=10)
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get("alive") == False and data.get("face_detected") == False:
-                log_test("Face Liveness Check - No Face", True, "Returns alive=false, face_detected=false as expected")
-            else:
-                log_test("Face Liveness Check - No Face", False, f"Unexpected response: {data}")
-        elif resp.status_code == 400:
-            # Also acceptable - graceful error
-            error_msg = resp.json().get("detail", "")
-            log_test("Face Liveness Check - No Face", True, f"Gracefully rejected with 400: {error_msg}")
-        else:
-            log_test("Face Liveness Check - No Face", False, f"Status {resp.status_code}: {resp.text}")
-    except Exception as e:
-        log_test("Face Liveness Check - No Face", False, str(e))
-    
-    # TEST 4: Presence Config - Default
-    print("\n--- TEST 4: Presence Config - Default ---")
-    try:
-        resp = requests.get(f"{BASE_URL}/face-auth/presence-config", headers=headers, timeout=10)
-        if resp.status_code == 200:
-            data = resp.json()
-            effective_interval = data.get("effective_interval_seconds")
-            if effective_interval == 300:
-                log_test("Presence Config - Default", True, f"Returns effective_interval_seconds=300 (default)")
-            else:
-                log_test("Presence Config - Default", True, f"Returns effective_interval_seconds={effective_interval} (may have admin override)")
-            print(f"  Config: {json.dumps(data, indent=2)}")
-        else:
-            log_test("Presence Config - Default", False, f"Status {resp.status_code}: {resp.text}")
-    except Exception as e:
-        log_test("Presence Config - Default", False, str(e))
-    
-    # TEST 5: Presence Config - Admin Set (expect 403 for non-admin)
-    print("\n--- TEST 5: Presence Config - Admin Set ---")
-    try:
-        admin_config_data = {"interval_seconds": 180}
-        resp = requests.post(f"{BASE_URL}/face-auth/presence-config/admin", json=admin_config_data, headers=headers, timeout=10)
-        if resp.status_code == 403:
-            log_test("Presence Config - Admin Set (Non-Admin)", True, "Correctly returns 403 for non-admin user")
-        elif resp.status_code == 200:
-            data = resp.json()
-            if data.get("interval_seconds") == 180:
-                log_test("Presence Config - Admin Set", True, f"Admin config set to 180 seconds")
-            else:
-                log_test("Presence Config - Admin Set", False, f"Unexpected response: {data}")
-        else:
-            log_test("Presence Config - Admin Set", False, f"Status {resp.status_code}: {resp.text}")
-    except Exception as e:
-        log_test("Presence Config - Admin Set", False, str(e))
-    
-    # TEST 6: Presence Config - Verify (should still be default or previous admin value)
-    print("\n--- TEST 6: Presence Config - Verify Current ---")
-    try:
-        resp = requests.get(f"{BASE_URL}/face-auth/presence-config", headers=headers, timeout=10)
-        if resp.status_code == 200:
-            data = resp.json()
-            effective_interval = data.get("effective_interval_seconds")
-            log_test("Presence Config - Verify Current", True, f"Current effective_interval_seconds={effective_interval}")
-            print(f"  Config: {json.dumps(data, indent=2)}")
-        else:
-            log_test("Presence Config - Verify Current", False, f"Status {resp.status_code}: {resp.text}")
-    except Exception as e:
-        log_test("Presence Config - Verify Current", False, str(e))
-    
-    # TEST 7: Presence Config - Boundary (too low - should clamp to 60)
-    print("\n--- TEST 7: Presence Config - Boundary Test (Too Low) ---")
-    try:
-        boundary_data = {"interval_seconds": 30}
-        resp = requests.post(f"{BASE_URL}/face-auth/presence-config/admin", json=boundary_data, headers=headers, timeout=10)
-        if resp.status_code == 403:
-            log_test("Presence Config - Boundary Low (Non-Admin)", True, "Correctly returns 403 for non-admin user")
-        elif resp.status_code == 200:
-            data = resp.json()
-            if data.get("interval_seconds") == 60:
-                log_test("Presence Config - Boundary Low", True, "Correctly clamped 30 to minimum 60")
-            else:
-                log_test("Presence Config - Boundary Low", False, f"Expected 60, got {data.get('interval_seconds')}")
-        else:
-            log_test("Presence Config - Boundary Low", False, f"Status {resp.status_code}: {resp.text}")
-    except Exception as e:
-        log_test("Presence Config - Boundary Low", False, str(e))
-    
-    # TEST 8: Presence Config - Boundary (too high - should clamp to 1800)
-    print("\n--- TEST 8: Presence Config - Boundary Test (Too High) ---")
-    try:
-        boundary_data = {"interval_seconds": 5000}
-        resp = requests.post(f"{BASE_URL}/face-auth/presence-config/admin", json=boundary_data, headers=headers, timeout=10)
-        if resp.status_code == 403:
-            log_test("Presence Config - Boundary High (Non-Admin)", True, "Correctly returns 403 for non-admin user")
-        elif resp.status_code == 200:
-            data = resp.json()
-            if data.get("interval_seconds") == 1800:
-                log_test("Presence Config - Boundary High", True, "Correctly clamped 5000 to maximum 1800")
-            else:
-                log_test("Presence Config - Boundary High", False, f"Expected 1800, got {data.get('interval_seconds')}")
-        else:
-            log_test("Presence Config - Boundary High", False, f"Status {resp.status_code}: {resp.text}")
-    except Exception as e:
-        log_test("Presence Config - Boundary High", False, str(e))
-    
-    # TEST 9: Create Collab Session with Presence Override
-    print("\n--- TEST 9: Collab Session with Presence Override ---")
-    
-    # First, create a decision for the collab session
-    print("  Creating decision for collab session...")
-    decision_data = {
-        "title": "Face Auth Test Decision",
-        "context": "Testing presence config override"
-    }
-    try:
-        resp = requests.post(f"{BASE_URL}/decisions", json=decision_data, headers=headers, timeout=10)
-        if resp.status_code == 200:
-            resp_data = resp.json()
-            decision_id = resp_data.get("decision_id") or resp_data.get("id")
-            print(f"  Decision created: {decision_id}")
-            print(f"  Response: {resp_data}")
-        else:
-            print(f"  Failed to create decision: {resp.status_code} - {resp.text}")
-            decision_id = None
-    except Exception as e:
-        print(f"  Error creating decision: {e}")
-        decision_id = None
-    
-    # Create a contact for the participant
-    print("  Creating contact for participant...")
-    contact_data = {
-        "name": "Test Participant",
-        "email": f"participant_{timestamp}@test.com"
-    }
-    try:
-        resp = requests.post(f"{BASE_URL}/contacts", json=contact_data, headers=headers, timeout=10)
-        if resp.status_code == 200:
-            resp_data = resp.json()
-            contact_id = resp_data.get("contact_id") or resp_data.get("id")
-            print(f"  Contact created: {contact_id}")
-            print(f"  Response: {resp_data}")
-        else:
-            print(f"  Failed to create contact: {resp.status_code} - {resp.text}")
-            contact_id = None
-    except Exception as e:
-        print(f"  Error creating contact: {e}")
-        contact_id = None
-    
-    # Get decision modes
-    print("  Getting decision modes...")
-    try:
-        resp = requests.get(f"{BASE_URL}/collaboration/decision-modes", headers=headers, timeout=10)
-        if resp.status_code == 200:
-            modes = resp.json()
-            mode_id = modes[0].get("id") if modes else "equal"
-            print(f"  Using mode: {mode_id}")
-        else:
-            mode_id = "equal"
-    except Exception as e:
-        mode_id = "equal"
-    
-    # Create collab session with presence_check_interval override
-    print("  Creating collab session with presence override...")
-    participant_ids = [contact_id] if contact_id else []
-    session_data = {
-        "module_type": "decision",
-        "module_id": decision_id or "test_decision",
-        "decision_mode_id": mode_id,
-        "session_mode": "live_sync",
-        "participant_contact_ids": participant_ids,
-        "mode_config_override": {
-            "presence_check_interval": 120
-        }
-    }
-    
-    try:
-        resp = requests.post(f"{BASE_URL}/collaboration/sessions", json=session_data, headers=headers, timeout=10)
-        if resp.status_code == 200:
-            session = resp.json()
-            session_id = session.get("session_id") or session.get("id")
-            log_test("Collab Session Creation with Override", True, f"Session created: {session_id}")
-            print(f"  Session response: {session}")
-            
-            # TEST 10: Get presence config with session override
-            print("\n--- TEST 10: Presence Config with Session Override ---")
-            try:
-                resp = requests.get(f"{BASE_URL}/face-auth/presence-config?session_id={session_id}", headers=headers, timeout=10)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    effective_interval = data.get("effective_interval_seconds")
-                    session_override = data.get("session_override_seconds")
-                    if effective_interval == 120 and session_override == 120:
-                        log_test("Presence Config - Session Override", True, f"Session override working: effective={effective_interval}, override={session_override}")
-                    else:
-                        log_test("Presence Config - Session Override", False, f"Expected 120, got effective={effective_interval}, override={session_override}")
-                    print(f"  Config: {json.dumps(data, indent=2)}")
-                else:
-                    log_test("Presence Config - Session Override", False, f"Status {resp.status_code}: {resp.text}")
-            except Exception as e:
-                log_test("Presence Config - Session Override", False, str(e))
-            
-        else:
-            log_test("Collab Session Creation with Override", False, f"Status {resp.status_code}: {resp.text}")
-            session_id = "test_session"
-    except Exception as e:
-        log_test("Collab Session Creation with Override", False, str(e))
-        session_id = "test_session"
-    
-    # TEST 11: Presence Logs
-    print("\n--- TEST 11: Presence Logs ---")
-    try:
-        resp = requests.get(f"{BASE_URL}/face-auth/presence-logs/{session_id}", headers=headers, timeout=10)
-        if resp.status_code == 200:
-            data = resp.json()
-            total_checks = data.get("total_checks", 0)
-            compliance_rate = data.get("compliance_rate", 100)
-            if total_checks == 0 and compliance_rate == 100:
-                log_test("Presence Logs - Empty Session", True, f"Returns empty logs with compliance_rate=100% (no checks yet)")
-            else:
-                log_test("Presence Logs - Empty Session", True, f"Returns {total_checks} checks with {compliance_rate}% compliance")
-            print(f"  Logs: {json.dumps(data, indent=2)}")
-        else:
-            log_test("Presence Logs - Empty Session", False, f"Status {resp.status_code}: {resp.text}")
-    except Exception as e:
-        log_test("Presence Logs - Empty Session", False, str(e))
+    # Verification tests
+    test_7_my_templates_check()
+    test_8_stats_check()
     
     # Print summary
     print_summary()
 
+
 if __name__ == "__main__":
-    main()
+    run_all_tests()

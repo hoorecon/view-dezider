@@ -287,7 +287,7 @@ export default function NewPRRDecision() {
             />
 
             <View style={styles.tip}>
-              <Text style={styles.tipTitle}>PRR Tip:</Text>
+              <Text style={styles.tipTitle}>Dezider Tip:</Text>
               <Text style={styles.tipText}>
                 {selectedTemplate
                   ? `Template "${selectedTemplate.name}" will pre-load factors. You can customize them in Step 2.`

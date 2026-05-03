@@ -52,7 +52,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="prr"
         options={{
-          title: 'Decisions',
+          title: 'My Dezider',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="analytics" size={size} color={color} />
           ),

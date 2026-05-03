@@ -603,6 +603,132 @@ async def upload_news(data: NewsUploadRequest, request: Request, user: dict = De
     return template
 
 
+class UrlUploadRequest(BaseModel):
+    url: str
+    title: Optional[str] = None
+    source_name: Optional[str] = None
+
+
+@router.post("/upload-url")
+async def upload_news_url(data: UrlUploadRequest, request: Request, user: dict = Depends(get_current_user)):
+    """Scrape a URL, extract text content, and classify it. English only for now."""
+    import httpx
+    from bs4 import BeautifulSoup
+
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(500, "AI engine not configured (EMERGENT_LLM_KEY missing)")
+
+    url = data.url.strip()
+    if not url.startswith(("http://", "https://")):
+        raise HTTPException(400, "URL must start with http:// or https://")
+
+    # Fetch the page
+    try:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+            }
+            resp = await client.get(url, headers=headers)
+            resp.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(400, f"URL returned error: {e.response.status_code}")
+    except httpx.ConnectError:
+        raise HTTPException(400, "Could not connect to the URL. Please check the address.")
+    except httpx.TimeoutException:
+        raise HTTPException(400, "URL took too long to respond (>30s).")
+    except Exception as e:
+        raise HTTPException(400, f"Failed to fetch URL: {str(e)}")
+
+    # Parse HTML and extract text
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    # Remove script, style, nav, footer, sidebar elements
+    for tag in soup(["script", "style", "nav", "footer", "header", "aside", "form", "noscript", "iframe"]):
+        tag.decompose()
+
+    # Try to get the main article content
+    article_text = ""
+
+    # Priority 1: <article> tag
+    article = soup.find("article")
+    if article:
+        article_text = article.get_text(separator="\n", strip=True)
+
+    # Priority 2: main content area
+    if not article_text or len(article_text) < 100:
+        main = soup.find("main") or soup.find("div", {"role": "main"})
+        if main:
+            article_text = main.get_text(separator="\n", strip=True)
+
+    # Priority 3: largest text block
+    if not article_text or len(article_text) < 100:
+        paragraphs = soup.find_all("p")
+        article_text = "\n".join(p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 30)
+
+    # Priority 4: full body text
+    if not article_text or len(article_text) < 100:
+        body = soup.find("body")
+        if body:
+            article_text = body.get_text(separator="\n", strip=True)
+
+    # Extract page title if not provided
+    page_title = data.title
+    if not page_title:
+        title_tag = soup.find("title")
+        if title_tag:
+            page_title = title_tag.get_text(strip=True)
+
+    # Extract source name from domain if not provided
+    source_name = data.source_name
+    if not source_name:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        source_name = parsed.netloc.replace("www.", "")
+
+    # Clean up text
+    lines = article_text.split("\n")
+    cleaned_lines = [line.strip() for line in lines if len(line.strip()) > 10]
+    extracted_text = "\n".join(cleaned_lines)
+
+    if len(extracted_text) < 50:
+        raise HTTPException(400, "Could not extract sufficient text from the URL. The page may require JavaScript or have restricted access.")
+
+    # Truncate to reasonable length for AI
+    if len(extracted_text) > 8000:
+        extracted_text = extracted_text[:8000]
+
+    # AI Classification
+    try:
+        classification = await classify_news(extracted_text)
+    except Exception as e:
+        logger.error(f"AI classification failed: {e}")
+        raise HTTPException(500, f"AI classification failed: {str(e)}")
+
+    template_id = f"SLT-{uuid.uuid4().hex[:10].upper()}"
+    template = build_template_doc(
+        template_id, classification, extracted_text, user,
+        source_url=url, source_name=source_name,
+        title=page_title, input_mode="url",
+    )
+    template["scraped_url"] = url
+    template["scraped_title"] = page_title
+
+    await db.social_learning_templates.insert_one(template)
+
+    await log_audit_event(
+        action="social_learning_created", entity_type="social_learning",
+        entity_id=template_id, user_id=user["user_id"],
+        details=f"News uploaded (URL): {template['title'][:60]} [{template['category']}] from {source_name}",
+        ip_address=get_client_ip(request),
+    )
+
+    template.pop("original_content", None)
+    template.pop("_id", None)
+    return template
+
+
 @router.post("/upload-file")
 async def upload_news_file(
     request: Request,

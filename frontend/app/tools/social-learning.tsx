@@ -35,6 +35,7 @@ const TABS = [
 
 const INPUT_MODES = [
   { key: 'text', label: 'Text', icon: 'create', desc: 'Paste news article' },
+  { key: 'url', label: 'URL', icon: 'link', desc: 'Fetch from link' },
   { key: 'file', label: 'File', icon: 'document-attach', desc: 'PDF, DOCX, TXT, Image' },
   { key: 'audio', label: 'Audio/Video', icon: 'mic', desc: 'English only' },
 ];
@@ -92,6 +93,7 @@ export default function SocialLearningScreen() {
   // Upload State
   const [inputMode, setInputMode] = useState('text');
   const [newsText, setNewsText] = useState('');
+  const [newsUrl, setNewsUrl] = useState('');
   const [sourceUrl, setSourceUrl] = useState('');
   const [sourceName, setSourceName] = useState('');
   const [title, setTitle] = useState('');
@@ -219,6 +221,31 @@ export default function SocialLearningScreen() {
       showAlert('Success', 'News classified and template created!');
     } catch (e: any) {
       showAlert('Error', e.response?.data?.detail || 'Failed to upload news');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleUrlUpload = async () => {
+    const trimmedUrl = newsUrl.trim();
+    if (!trimmedUrl || !trimmedUrl.startsWith('http')) {
+      showAlert('Invalid URL', 'Please enter a valid URL starting with http:// or https://');
+      return;
+    }
+    setUploading(true);
+    try {
+      const res = await api.post('/social-learning/upload-url', {
+        url: trimmedUrl,
+        title: title || undefined,
+        source_name: sourceName || undefined,
+      }, { timeout: 60000 });
+      setLastResult(res.data);
+      setNewsUrl('');
+      setTitle('');
+      setSourceName('');
+      showAlert('Success', 'URL content fetched, classified, and template created!');
+    } catch (e: any) {
+      showAlert('Error', e.response?.data?.detail || 'Failed to fetch URL');
     } finally {
       setUploading(false);
     }
@@ -494,6 +521,60 @@ export default function SocialLearningScreen() {
             autoCapitalize="none"
             keyboardType="url"
           />
+        </>
+      )}
+
+      {/* URL Input Mode */}
+      {inputMode === 'url' && (
+        <>
+          <View style={styles.audioInfo}>
+            <Ionicons name="information-circle" size={16} color={COLORS.info} />
+            <Text style={styles.audioInfoText}>
+              Paste a news article URL. The content will be automatically scraped and classified. English only for now.
+            </Text>
+          </View>
+
+          <TextInput
+            style={styles.input}
+            placeholder="https://example.com/news-article"
+            placeholderTextColor={COLORS.textMuted}
+            value={newsUrl}
+            onChangeText={setNewsUrl}
+            autoCapitalize="none"
+            keyboardType="url"
+            autoCorrect={false}
+          />
+
+          <TextInput
+            style={styles.input}
+            placeholder="Title (optional - auto-detected from page)"
+            placeholderTextColor={COLORS.textMuted}
+            value={title}
+            onChangeText={setTitle}
+          />
+
+          <TextInput
+            style={styles.input}
+            placeholder="Source name (optional - auto-detected from domain)"
+            placeholderTextColor={COLORS.textMuted}
+            value={sourceName}
+            onChangeText={setSourceName}
+          />
+
+          <TouchableOpacity
+            style={[styles.uploadBtn, (uploading || !newsUrl.trim().startsWith('http')) && styles.uploadBtnDisabled]}
+            onPress={handleUrlUpload}
+            disabled={uploading || !newsUrl.trim().startsWith('http')}
+          >
+            {uploading ? (
+              <ActivityIndicator color="#FFF" size="small" />
+            ) : (
+              <>
+                <Ionicons name="link" size={18} color="#FFF" />
+                <Text style={styles.uploadBtnText}>Fetch & Classify</Text>
+              </>
+            )}
+          </TouchableOpacity>
         </>
       )}
 
@@ -1097,7 +1178,7 @@ export default function SocialLearningScreen() {
                       onPress={() => handleUseInDecision(t)}
                     >
                       <Ionicons name="git-branch" size={16} color="#FFF" />
-                      <Text style={styles.useBtnText}>Use in PRR Decision</Text>
+                      <Text style={styles.useBtnText}>Use in My Dezider</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.useSolutionBtn}

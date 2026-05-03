@@ -25,7 +25,7 @@ const PRIORITY_COLORS: Record<string, string> = {
   critical: '#EF4444', high: '#F59E0B', medium: '#3B82F6', low: '#6B7280',
 };
 const SOURCE_LABELS: Record<string, string> = {
-  manual: 'Manual', decision: 'PRR Decision', solution_finder: 'Solution Finder',
+  manual: 'Manual', decision: 'My Dezider', solution_finder: 'Solution Finder',
   solution_matrix: 'Solution Matrix', gem: 'GEM Goal',
 };
 const SOURCE_ICONS: Record<string, string> = {

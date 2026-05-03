@@ -253,10 +253,10 @@ export default function PRRScreen() {
     <View style={styles.emptyContainer}>
       <Ionicons name="analytics-outline" size={56} color={COLORS.textMuted} />
       <Text style={styles.emptyTitle}>
-        {selectedFolder ? `No decisions in ${selectedFolderData?.name || 'this folder'}` : 'No PRR Decisions Yet'}
+        {selectedFolder ? `No decisions in ${selectedFolderData?.name || 'this folder'}` : 'No Decisions Yet'}
       </Text>
       <Text style={styles.emptyText}>
-        {selectedFolder ? 'Create a new decision in this life area' : 'Start making better decisions with the PRR system'}
+        {selectedFolder ? 'Create a new decision in this life area' : 'Start making better decisions with My Dezider'}
       </Text>
       <TouchableOpacity
         style={styles.emptyButton}

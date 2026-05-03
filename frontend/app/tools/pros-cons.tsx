@@ -180,7 +180,7 @@ export default function ProsConsScreen() {
   const handleConvertToDecision = async () => {
     if (!selectedAnalysis) return;
     if (selectedAnalysis.converted_decision_id) {
-      showAlert('Already Converted', 'This analysis has already been converted to a PRR Decision.');
+      showAlert('Already Converted', 'This analysis has already been converted to a My Dezider.');
       return;
     }
     const totalItems = (selectedAnalysis.pros?.length || 0) + (selectedAnalysis.cons?.length || 0);
@@ -190,8 +190,8 @@ export default function ProsConsScreen() {
     }
 
     showAlert(
-      'Convert to PRR Decision',
-      `This will create a PRR Decision with ${totalItems} factors.\n\nPros → Factors (as-is)\nCons → Factors (prefixed with "NOT")\n\nAI will generate expected values for each factor.`,
+      'Convert to My Dezider',
+      `This will create a My Dezider with ${totalItems} factors.\n\nPros → Factors (as-is)\nCons → Factors (prefixed with "NOT")\n\nAI will generate expected values for each factor.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -415,7 +415,7 @@ export default function ProsConsScreen() {
             <View style={styles.infoBox}>
               <Ionicons name="information-circle" size={18} color="#6366F1" />
               <Text style={styles.infoText}>
-                When you convert: Pros become PRR factors as-is. Cons are prefixed with "NOT" (e.g., "High cost" → "NOT High cost") and become factors. AI generates expected values for each.
+                When you convert: Pros become My Dezider factors as-is. Cons are prefixed with "NOT" (e.g., "High cost" → "NOT High cost") and become factors. AI generates expected values for each.
               </Text>
             </View>
           </ScrollView>
@@ -518,7 +518,7 @@ export default function ProsConsScreen() {
                   ) : (
                     <>
                       <Ionicons name="flash" size={20} color="#FFF" />
-                      <Text style={styles.convertText}>Convert to PRR Decision</Text>
+                      <Text style={styles.convertText}>Convert to My Dezider</Text>
                     </>
                   )}
                 </LinearGradient>
@@ -542,7 +542,7 @@ export default function ProsConsScreen() {
                   style={styles.convertGradient}
                 >
                   <Ionicons name="open-outline" size={20} color="#FFF" />
-                  <Text style={styles.convertText}>Open PRR Decision</Text>
+                  <Text style={styles.convertText}>Open My Dezider</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -591,7 +591,7 @@ export default function ProsConsScreen() {
           <View style={styles.howItWorks}>
             <Ionicons name="bulb-outline" size={20} color="#F59E0B" />
             <Text style={styles.howItWorksText}>
-              List your pros & cons, rate importance, then convert to a full PRR Decision with AI-generated expected values.
+              List your pros & cons, rate importance, then convert to a full My Dezider with AI-generated expected values.
             </Text>
           </View>
 

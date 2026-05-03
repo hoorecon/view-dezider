@@ -163,7 +163,7 @@ export default function CollaborateScreen() {
       case 0: return (
         <View>
           <Text style={styles.stepTitle}>Select Decision / Problem</Text>
-          <Text style={styles.stepHint}>Choose the PRR Decision or Solution Finder to collaborate on.</Text>
+          <Text style={styles.stepHint}>Choose the My Dezider or Solution Finder to collaborate on.</Text>
           <ScrollView style={{ maxHeight: 350 }} showsVerticalScrollIndicator={false}>
             {modules.length === 0 ? (
               <Text style={styles.noItems}>No decisions or problems found. Create one first.</Text>
@@ -497,7 +497,7 @@ export default function CollaborateScreen() {
                   <View style={styles.sessionHeader}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.sessionTitle} numberOfLines={1}>{s.title}</Text>
-                      <Text style={styles.sessionMeta}>{s.module_type === 'decision' ? 'PRR Decision' : 'Solution Finder'} • {s.decision_mode?.name}</Text>
+                      <Text style={styles.sessionMeta}>{s.module_type === 'decision' ? 'My Dezider' : 'Solution Finder'} • {s.decision_mode?.name}</Text>
                     </View>
                     <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
                       <Text style={[styles.statusText, { color: status.text }]}>{status.label}</Text>

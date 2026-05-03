@@ -3473,3 +3473,85 @@ agent_communication:
       - working: true
         agent: "testing"
         comment: "✅ ERROR HANDLING TESTING PASSED: All validation and error handling working correctly. (1) POST /api/social-learning/upload with content < 50 chars correctly rejected with 400 status and error message 'News content must be at least 50 characters', (2) POST /api/social-learning/upload-file without file correctly rejected with 422 Unprocessable Entity status. Input validation and error responses working as designed."
+
+
+  - task: "Social Learning - URL News Fetch & Classify"
+    implemented: true
+    working: "NA"
+    file: "routes/social_learning.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented POST /api/social-learning/upload-url. Scrapes URL using httpx + BeautifulSoup, extracts article text (prioritizes article/main/p tags), auto-detects page title and source domain. English only for now. Max 8000 chars sent to AI classification."
+
+  - task: "Social Learning - Video Upload (Audio Extraction)"
+    implemented: true
+    working: "NA"
+    file: "routes/social_learning.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Updated POST /api/social-learning/upload-audio to accept video files (MP4, MOV, AVI, MKV, WEBM, 3GP). Uses ffmpeg to extract audio track from video, then runs STT pipeline. Max 50MB for video, 10MB for audio."
+
+  - task: "My Dezider Rename (PRR → My Dezider)"
+    implemented: true
+    working: "NA"
+    file: "multiple frontend files"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Renamed all user-facing PRR references to 'My Dezider' across index.tsx, _layout.tsx, prr.tsx, swot.tsx, pros-cons.tsx, collaborate.tsx, journal.tsx, ctt.tsx, social-learning.tsx, new decision."
+
+  - task: "Coming Soon Modules (Emotional Gatekeeper + Conflict Breaker)"
+    implemented: true
+    working: "NA"
+    file: "app/(tabs)/index.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added 2 Coming Soon module cards on home page: Emotional Gatekeeper (amber gradient) and The Conflict Breaker (red gradient). Both show 'Coming Soon' alert on tap with description."
+
+  - task: "Step 2 Factor Import from Social Learning"
+    implemented: true
+    working: "NA"
+    file: "src/components/steps/Step2.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added 'Import Factors from Social Learning' button and modal in Step 2. Factors are auto-grouped: Priority ≥ 7 → Primary (Mandatory), < 7 → Secondary (Optional). Expected values and factor types are pre-filled."
+
+  - task: "Social Learning - URL News Fetch & Classify"
+    implemented: true
+    working: true
+    file: "routes/social_learning.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented POST /api/social-learning/upload-url. Scrapes URL using httpx + BeautifulSoup, extracts article text (prioritizes article/main/p tags), auto-detects page title and source domain. English only for now. Max 8000 chars sent to AI classification."
+      - working: true
+        agent: "testing"
+        comment: "✅ SOCIAL LEARNING URL UPLOAD COMPREHENSIVE TESTING PASSED: All 8 test scenarios successful with 100% success rate! Complete URL upload workflow verified end-to-end: (1) User Registration working - created urltest{timestamp}@test.com with session token, (2) User Login working - authenticated successfully, (3) URL Upload - Valid News URL: POST /api/social-learning/upload-url with BBC News technology URL (https://www.bbc.com/news/technology) successfully scraped, extracted text, and classified via GPT-4.1-mini - created template SLT-FDF55C018E with category: problem, detected_language: english, 3 factors extracted, (4) URL Upload - With Optional Fields: POST with The Guardian URL (https://www.theguardian.com/technology) plus title and source_name parameters successfully created template SLT-DA8D2D977E - optional fields processed correctly, source_name extracted from domain, (5) URL Upload - Invalid URL: POST with 'not-a-url' correctly rejected with 400 error 'URL must start with http:// or https://', (6) URL Upload - Unreachable URL: POST with non-existent domain correctly rejected with 400 error 'Could not connect to the URL', (7) My Templates Check: GET /api/social-learning/my-templates correctly returns 2 URL-uploaded templates with input_mode='url', proper template IDs starting with 'SLT-', (8) Stats Check: GET /api/social-learning/stats correctly reflects new uploads with my_templates=2, tier_1=7. Complete URL scraping + AI classification pipeline functional. NOTE: Wikipedia URLs blocked with 403 (anti-scraping measures) - tested with BBC News and The Guardian which are more scraping-friendly. URL validation, error handling, and AI classification all working correctly. Backend URL: https://dezider-core.preview.emergentagent.com/api working correctly."
+
+agent_communication:
+  - agent: "main"
+    message: "NEW ENDPOINTS TO TEST: (1) POST /api/social-learning/upload-url with body {url, title?, source_name?} - fetches URL content and classifies. Test with a real news URL like 'https://economictimes.indiatimes.com'. (2) Updated POST /api/social-learning/upload-audio now also accepts video MIME types (video/mp4, video/quicktime, etc.) and extracts audio via ffmpeg. Backend URL: https://dezider-core.preview.emergentagent.com/api. Auth required for all endpoints."
+  - agent: "testing"
+    message: "✅ SOCIAL LEARNING URL UPLOAD ENDPOINT COMPREHENSIVE TESTING COMPLETE: All 8 test scenarios passed successfully with 100% success rate! Tested complete URL upload workflow: (1) User registration and authentication working, (2) URL Upload - Valid News URL: BBC News technology page successfully scraped and classified with AI (GPT-4.1-mini), created template with 3 factors, category: problem, language: english, (3) URL Upload - With Optional Fields: The Guardian technology page successfully processed with title and source_name parameters, (4) URL Upload - Invalid URL: correctly rejected with 400 error, (5) URL Upload - Unreachable URL: correctly rejected with 400 error, (6) My Templates Check: 2 URL-uploaded templates found with input_mode='url', (7) Stats Check: stats correctly reflect new uploads. Complete URL scraping + AI classification pipeline functional. NOTE: Wikipedia URLs blocked with 403 errors due to anti-scraping measures - tested with BBC News and The Guardian which are more scraping-friendly. All validation, error handling, and AI classification working correctly. Backend URL: https://dezider-core.preview.emergentagent.com/api working correctly."

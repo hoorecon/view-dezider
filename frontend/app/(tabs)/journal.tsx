@@ -55,7 +55,7 @@ interface Reminder {
 }
 
 const MODULE_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
-  decision: { label: 'PRR Decision', icon: 'compass', color: '#8E24AA' },
+  decision: { label: 'My Dezider', icon: 'compass', color: '#8E24AA' },
   solution_finder: { label: 'Solution Finder', icon: 'search', color: '#0097A7' },
   solution_matrix: { label: 'Solution Matrix', icon: 'grid', color: '#E91E63' },
   gem: { label: 'GEM Goal', icon: 'flag', color: '#F59E0B' },
