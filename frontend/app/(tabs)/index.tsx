@@ -668,6 +668,48 @@ export default function HomeScreen() {
             </LinearGradient>
           </TouchableOpacity>
 
+          {/* PNA Framework */}
+          <TouchableOpacity
+            style={styles.calendarCard}
+            onPress={() => router.push('/tools/pna' as any)}
+            activeOpacity={0.7}
+          >
+            <LinearGradient
+              colors={['#4338CA', '#6366F1']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.calendarGradient}
+            >
+              <Ionicons name="layers" size={24} color="#FFF" />
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.calendarTitle}>PNA Framework</Text>
+                <Text style={styles.calendarSub}>Track Problems, Needs & Aspirations across 10 life areas</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
+            </LinearGradient>
+          </TouchableOpacity>
+
+          {/* Lifestyle Designer */}
+          <TouchableOpacity
+            style={styles.calendarCard}
+            onPress={() => router.push('/tools/lifestyle-designer' as any)}
+            activeOpacity={0.7}
+          >
+            <LinearGradient
+              colors={['#7C2D12', '#EA580C']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.calendarGradient}
+            >
+              <Ionicons name="color-palette" size={24} color="#FFF" />
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.calendarTitle}>Lifestyle Designer</Text>
+                <Text style={styles.calendarSub}>Design your ideal day — plan hours per life area & compare</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
+            </LinearGradient>
+          </TouchableOpacity>
+
           {/* EVE Modules: AALA & LEE */}
           <Text style={styles.sectionTitle}>EVE — Evaluation & Tracking</Text>
           <View style={styles.quickActions}>

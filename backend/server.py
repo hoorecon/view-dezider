@@ -72,6 +72,9 @@ from routes.goal_setter import router as goal_setter_router
 from routes.goal_manifestation import router as goal_manifestation_router
 from routes.unconditional_happiness import router as uh_router
 from routes.meditation_settings import router as meditation_settings_router
+from routes.conflict_breaker import router as conflict_breaker_router
+from routes.pna import router as pna_router
+from routes.lifestyle_designer import router as lifestyle_designer_router
 
 
 # ========================
@@ -120,6 +123,9 @@ api_router.include_router(goal_setter_router)
 api_router.include_router(goal_manifestation_router)
 api_router.include_router(uh_router)
 api_router.include_router(meditation_settings_router)
+api_router.include_router(conflict_breaker_router)
+api_router.include_router(pna_router)
+api_router.include_router(lifestyle_designer_router)
 
 # ========================
 # HEALTH CHECK

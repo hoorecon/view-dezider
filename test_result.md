@@ -4139,4 +4139,53 @@ agent_communication:
 agent_communication:
   - agent: "testing"
     message: "✅ FRONTEND TESTING COMPLETE - 4 SCREENS TESTED: Tested Goal Setter, Goal Manifestation, Unconditional Happiness, and Meditation Settings screens on mobile dimensions (iPhone 14: 390x844). Results: (1) Goal Setter - FULLY WORKING ✓, (2) Goal Manifestation - PARTIALLY WORKING (stage tabs not visible), (3) Unconditional Happiness - FULLY WORKING ✓, (4) Meditation Settings - NOT WORKING (401 auth error). Total screenshots captured: 6. See individual task status_history for detailed findings."
+  - agent: "testing"
+    message: "🎉 PNA FRAMEWORK & LIFESTYLE DESIGNER COMPREHENSIVE TESTING COMPLETE: All 28 tests passed (100% success rate)! ✅ PNA FRAMEWORK (14 tests): (1) Meta endpoint returns 10 life areas, 3 categories, statuses, priorities, (2) Create PNA items working with all fields (life_area, category, title, priority, impact_score, urgency_score, description), (3) List/Get/Update/Delete CRUD operations all functional, (4) Dashboard returns comprehensive stats (total, by_category, by_status, by_priority, area_summaries, open_critical, recent), (5) Area detail endpoint groups items by category (problems/needs/aspirations), (6) Bulk status update successfully updates multiple items, (7) Convert to decision creates PRR decision and links PNA item, (8) Convert to goal creates GEM goal and links PNA item. ✅ LIFESTYLE DESIGNER (14 tests): (1) Meta endpoint returns 10 life areas and 3 day_types (weekday/saturday/sunday), (2) Create plan with allocations for all day types working (tested with realistic 'My Ideal Day' and 'Weekend Mode' plans), (3) List/Get/Update/Delete plan CRUD operations all functional, (4) Activate plan workflow correctly deactivates other plans and activates selected plan, (5) Active plan retrieval working correctly, (6) Comparison endpoint returns plan vs actual data (works with 0 LEE logs for new users), (7) Manual override CRUD working (save/list/delete overrides for specific date and life area), (8) Dashboard returns total_plans, active_plan info, quick_comparison. ✅ COMPLETE WORKFLOWS TESTED: PNA item creation → bulk status update → convert to decision/goal → delete. Lifestyle plan creation → update → activate → comparison → manual override → delete. Test user: pna_lifestyle_test_1777848921@test.com. Backend URL: https://dezider-core.preview.emergentagent.com/api working correctly."
+
+
+
+  - task: "PNA Framework Backend - CRUD, Dashboard, Area Detail, Convert to Decision/Goal"
+    implemented: true
+    working: true
+    file: "routes/pna.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Implemented PNA backend with: GET /pna/meta, POST/GET/PUT/DELETE /pna/items, POST /pna/items/bulk-status, GET /pna/dashboard, GET /pna/areas/{area_id}, POST /pna/items/{id}/convert-to-decision, POST /pna/items/{id}/convert-to-goal. Mounted in server.py. ACM seed data added."
+        - working: true
+          agent: "testing"
+          comment: "✅ PNA FRAMEWORK COMPREHENSIVE TESTING PASSED: All 14 PNA endpoints tested successfully! (1) GET /api/pna/meta returns 10 life areas, 3 categories (problem/need/aspiration), statuses, priorities ✓, (2) POST /api/pna/items creates items with all fields (life_area, category, title, priority, impact_score, urgency_score, description) - tested with 'Debt management' problem and 'Run marathon' aspiration ✓, (3) GET /api/pna/items lists all user items (2 items) ✓, (4) GET /api/pna/items/{item_id} retrieves single item with correct data ✓, (5) PUT /api/pna/items/{item_id} updates item status from 'open' to 'in_progress' ✓, (6) GET /api/pna/dashboard returns comprehensive stats: total, by_category, by_status, by_priority, area_summaries, open_critical, recent items ✓, (7) GET /api/pna/areas/finance returns grouped items: problems (1), needs (0), aspirations (0) with area metadata ✓, (8) POST /api/pna/items/bulk-status successfully updates 2 items to 'resolved' status ✓, (9) POST /api/pna/items/{id}/convert-to-decision creates PRR decision from PNA item, returns decision_id, updates item status to 'converted', links decision ✓, (10) POST /api/pna/items/{id}/convert-to-goal creates GEM goal from PNA item, returns goal_id, updates item status to 'converted', links goal ✓, (11) DELETE /api/pna/items/{item_id} successfully deletes item ✓. Complete PNA Framework functionality verified end-to-end with realistic data (finance debt management problem, holistic health marathon aspiration, career skill upgrade need). All CRUD operations, dashboard analytics, area filtering, bulk operations, and conversion workflows working correctly."
+
+  - task: "Lifestyle Designer Backend - Plan CRUD, Activate, Comparison, Manual Overrides"
+    implemented: true
+    working: true
+    file: "routes/lifestyle_designer.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Implemented Lifestyle Designer backend with: GET /lifestyle-designer/meta, POST/GET/PUT/DELETE /lifestyle-designer/plans, POST /lifestyle-designer/plans/{id}/activate, GET /lifestyle-designer/active-plan, GET /lifestyle-designer/comparison, POST/GET/DELETE /lifestyle-designer/overrides, GET /lifestyle-designer/dashboard. Mounted in server.py. ACM seed data added."
+        - working: true
+          agent: "testing"
+          comment: "✅ LIFESTYLE DESIGNER COMPREHENSIVE TESTING PASSED: All 14 Lifestyle Designer endpoints tested successfully! (1) GET /api/lifestyle-designer/meta returns 10 life areas and 3 day_types (weekday/saturday/sunday) ✓, (2) POST /api/lifestyle-designer/plans creates plan with allocations for all day types - tested 'My Ideal Day' with weekday (career: 8h, holistic_health: 2h, relationships: 2h, finance: 1h), saturday (holistic_health: 3h, relationships: 4h, personal_dreams: 3h), sunday (spirituality: 2h, relationships: 4h, holistic_health: 2h), is_active: true ✓, (3) GET /api/lifestyle-designer/plans lists all plans (1 plan) ✓, (4) GET /api/lifestyle-designer/active-plan returns active plan with correct name and plan_id ✓, (5) PUT /api/lifestyle-designer/plans/{plan_id} updates plan name from 'My Ideal Day' to 'My Updated Ideal Day' ✓, (6) POST /api/lifestyle-designer/plans creates second plan 'Weekend Mode' with different allocations, is_active: false ✓, (7) POST /api/lifestyle-designer/plans/{plan_id}/activate successfully activates second plan, deactivates first plan ✓, (8) GET /api/lifestyle-designer/active-plan verifies active plan switched to 'Weekend Mode' ✓, (9) GET /api/lifestyle-designer/comparison?days=7 returns comparison data with plan_name, days_analyzed (0 for new user with no LEE data - expected behavior) ✓, (10) POST /api/lifestyle-designer/overrides saves manual override for date 2026-05-03, career area, 9 hours, reason 'Extra work on project deadline' ✓, (11) GET /api/lifestyle-designer/overrides lists overrides (1 override) ✓, (12) DELETE /api/lifestyle-designer/overrides/{date}/{life_area} successfully deletes override ✓, (13) GET /api/lifestyle-designer/dashboard returns total_plans (2), active_plan info, quick_comparison (null for no LEE data) ✓, (14) DELETE /api/lifestyle-designer/plans/{plan_id} successfully deletes plan ✓. Complete Lifestyle Designer functionality verified end-to-end with realistic lifestyle allocation data across weekday/saturday/sunday patterns. All plan CRUD, activation workflow, comparison logic, manual override management, and dashboard analytics working correctly."
+
+  - task: "Admin Docs Revision - Updated channel rules, category maps, AI prompts for all 30+ modules"
+    implemented: true
+    working: "NA"
+    file: "routes/admin_docs.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Updated CHANNEL_RULES and CATEGORY_MAP to include AALA, LEE, Goal Setter, Goal Manifestation, Unconditional Happiness, Meditation Settings, Conflict Breaker, PNA, and Lifestyle Designer. Updated all 4 AI doc generation prompts (PRD, SRS, Regression Tests, UAT Cases) to comprehensively cover all 30+ modules."
+
+test_plan: "Test PNA Framework backend (CRUD, dashboard, area detail, convert endpoints) and Lifestyle Designer backend (plan CRUD, activate, comparison, overrides). Both require authentication. Use register + login flow to get session token first."
+
 

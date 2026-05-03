@@ -1207,6 +1207,102 @@ ACM_MODULES = [
     },
 
     # ────────────────────────────────────────────────────
+    # MODULE 28: PNA (Problems / Needs / Aspirations)
+    # ────────────────────────────────────────────────────
+    {
+        "module_id": "pna",
+        "module_name": "PNA — Problems / Needs / Aspirations",
+        "module_icon": "layers",
+        "module_description": "Track and manage Problems, Needs, and Aspirations across 10 life areas",
+        "order": 28,
+        "features": [
+            {
+                "feature_id": "pna_items",
+                "feature_name": "PNA Item Management",
+                "release_stage": "ga_trial",
+                "quota_unit": "items",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _full(10), "trial": _full(),
+                    "paid_starter": _full(50), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+            {
+                "feature_id": "pna_convert",
+                "feature_name": "Convert PNA to Decision/Goal",
+                "release_stage": "ga_paid",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _locked(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+        ],
+    },
+
+    # ────────────────────────────────────────────────────
+    # MODULE 29: Lifestyle Designer
+    # ────────────────────────────────────────────────────
+    {
+        "module_id": "lifestyle_designer",
+        "module_name": "Lifestyle Designer",
+        "module_icon": "color-palette",
+        "module_description": "Plan ideal lifestyle allocations and compare planned vs actual",
+        "order": 29,
+        "features": [
+            {
+                "feature_id": "ld_plans",
+                "feature_name": "Lifestyle Plan Management",
+                "release_stage": "ga_trial",
+                "quota_unit": "plans",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _full(1), "trial": _full(),
+                    "paid_starter": _full(5), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+            {
+                "feature_id": "ld_comparison",
+                "feature_name": "Planned vs Actual Comparison",
+                "release_stage": "ga_paid",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _locked(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+            {
+                "feature_id": "ld_overrides",
+                "feature_name": "Manual Override Actuals",
+                "release_stage": "ga_paid",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _locked(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+        ],
+    },
+
+    # ────────────────────────────────────────────────────
     # MODULE 25: Goal Setter (SMART)
     # ────────────────────────────────────────────────────
     {

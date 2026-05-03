@@ -58,6 +58,15 @@ CHANNEL_RULES = {
     "/collaboration": ["internal", "chatbot", "partner"],
     "/digilocker": ["internal"],
     "/biometric": ["internal"],
+    "/aala": ["internal", "chatbot"],
+    "/lifestyle-eval": ["internal", "chatbot"],
+    "/goal-setter": ["internal", "chatbot"],
+    "/goal-manifestation": ["internal", "chatbot"],
+    "/unconditional-happiness": ["internal", "chatbot"],
+    "/meditation-settings": ["internal"],
+    "/conflict-breaker": ["internal", "chatbot"],
+    "/pna": ["internal", "chatbot"],
+    "/lifestyle-designer": ["internal", "chatbot"],
 }
 
 CATEGORY_MAP = {
@@ -101,6 +110,15 @@ CATEGORY_MAP = {
     "/collaboration": "Multi-User Collaboration",
     "/digilocker": "DigiLocker eKYC (India)",
     "/biometric": "Biometric Authentication",
+    "/aala": "AALA (Accrued Assets & Liabilities Analysis)",
+    "/lifestyle-eval": "LEE (Lifestyle Effectiveness Evaluation)",
+    "/goal-setter": "Goal Setter (SMART Framework)",
+    "/goal-manifestation": "Goal Manifestation (CAB-FAME)",
+    "/unconditional-happiness": "Unconditional Happiness Tracker",
+    "/meditation-settings": "Meditation Audio Settings",
+    "/conflict-breaker": "Conflict Breaker (Crucial Conversations)",
+    "/pna": "PNA (Problems / Needs / Aspirations)",
+    "/lifestyle-designer": "Lifestyle Designer",
 }
 
 
@@ -398,15 +416,29 @@ Based on the following API endpoints, reverse-engineer the full product requirem
 The PRD must include:
 1. Product Overview & Vision
 2. Target Users (Individual, Business, Government/NonProfit)
-3. Core Features (PRR Decision Engine, Test123, Pros & Cons, SWOT, Solutions Store, CLD, GEM Flight, CTT, Lifestyle Dezider, etc.)
+3. Core Features covering ALL modules:
+   - PRR Decision Engine (10-step), Test123 Quick Decisions, Pros & Cons, SWOT
+   - Solutions Store with ReviewNet, DEO Engine (Inbound scraping + Outbound APIs)
+   - CLD (Causal Loop Diagrams), GEM Flight Model, CTT Task Tracker
+   - Lifestyle Dezider with routines, streaks, and LEE (Lifestyle Effectiveness Evaluation)
+   - AALA (Accrued Assets & Liabilities Analysis)
+   - Goal Setter (SMART), Goal Manifestation (CAB-FAME 7 stages)
+   - Unconditional Happiness Tracker, Meditation Settings (custom audio per user)
+   - Emotional Gatekeeper sub-tools (Doubt, Limitation, Loop breakers)
+   - Consciousness Diary, Time Dezider, HOS Decision Intake
+   - PNA Framework (Problems/Needs/Aspirations across 10 life areas)
+   - Lifestyle Designer (plan ideal lifestyle allocations vs actuals)
+   - Conflict Breaker (guided crucial conversations — 9 stages)
+   - WOWO Access Control Matrix (role-based feature gating)
+   - Org Admin hierarchy (super_admin, admin, co_admin, user)
 4. User Stories for each major feature
-5. Non-functional Requirements (performance, security, scalability)
-6. Integration Requirements (Google Calendar, Razorpay, WhatsApp OTP, AI/LLM)
+5. Non-functional Requirements (performance, security, scalability to 10k concurrent)
+6. Integration Requirements (Google Calendar OAuth, Razorpay, WhatsApp OTP via UltraMsg, Emergent LLM/AI, DigiLocker eKYC)
 7. Platform Support (Web, Android, iOS, Chatbot, IVR)
 
 Format in clean Markdown with proper headings.""",
 
-            "srs": f"""You are a systems architect. Generate a detailed System Requirements Specification (SRS) for "View Dezider" — a multi-platform Decision Intelligence system.
+            "srs": f"""You are a systems architect. Generate a detailed System Requirements Specification (SRS) for "View Dezider" — a multi-platform Decision Intelligence system with 30+ modules.
 
 Based on these API endpoints:
 
@@ -414,37 +446,50 @@ Based on these API endpoints:
 
 The SRS must include:
 1. System Overview & Architecture (FastAPI + MongoDB + Expo React Native)
-2. Functional Requirements per module (with endpoint mappings)
-3. Data Models / Schema Definitions
-4. Authentication & Authorization (Session tokens, Role hierarchy: user/admin/co_admin/super_admin, Org roles)
-5. External Integrations (Google Calendar OAuth, Razorpay, WhatsApp OTP via UltraMsg, Emergent LLM)
-6. API Design Patterns (RESTful, prefix /api, JWT-like session tokens)
-7. Security Requirements
-8. Performance Requirements
+2. Functional Requirements per module (with endpoint mappings) covering:
+   - Core Decision modules (PRR, Test123, Pros-Cons, SWOT, CLD, HOS)
+   - Execution modules (CTT, GEM, GEM Flight)
+   - Evaluation modules (AALA, LEE, Lifestyle Designer, PNA)
+   - Growth modules (Goal Setter, Goal Manifestation CAB-FAME, Unconditional Happiness)
+   - Self-Awareness (Emotional Gatekeeper, Consciousness Diary, Meditation Settings)
+   - External Integration modules (Solutions Store, DEO, Google Calendar)
+   - Collaboration modules (Conflict Breaker, Shared Steps, Video Calls)
+   - Admin modules (WOWO ACM, Org Auth, Feature Flags, Payments)
+3. Data Models / Schema Definitions (all 30+ collections)
+4. Authentication & Authorization (Session tokens, Role hierarchy, Org roles, WOWO ACM)
+5. External Integrations (Google Calendar OAuth, Razorpay, UltraMsg, Emergent LLM, DigiLocker)
+6. API Design Patterns (RESTful, prefix /api, session tokens)
+7. Security & Privacy Requirements
+8. Performance Requirements (10k concurrent users target)
 9. Deployment Architecture (Kubernetes, Expo Web/Mobile)
 
 Format in clean Markdown with proper headings.""",
 
-            "regression_tests": f"""You are a QA lead. Generate comprehensive regression test cases for "View Dezider" Decision Intelligence platform.
+            "regression_tests": f"""You are a QA lead. Generate comprehensive regression test cases for "View Dezider" Decision Intelligence platform with 30+ modules and 500+ API endpoints.
 
 Based on these API endpoints:
 
 {api_summary}
 
-Generate test cases covering:
-1. Authentication Flow (Register, Login, Session, Logout, Password Reset)
-2. PRR Decision CRUD (Create, Read, Update, Delete, Clone, Share)
+Generate test cases covering ALL modules:
+1. Authentication Flow (Register, Login, Session, Logout, Password Reset, OTP)
+2. PRR Decision CRUD (Create, Read, Update, Delete, Clone, Share — 10 steps)
 3. Factor & Option Management
-4. Test123 Quick Decisions
-5. Pros & Cons (CRUD + Convert to Decision)
-6. SWOT Analysis (CRUD + Convert to Decision)
-7. CTT Task Tracker
-8. GEM Goals
-9. Solutions Store
-10. Payments & Credits
-11. Admin Operations
-12. Notifications
-13. Edge Cases (empty data, unauthorized access, invalid IDs)
+4. Test123 Quick Decisions, Pros & Cons, SWOT Analysis
+5. CTT Task Tracker, GEM Goals, GEM Flight
+6. Solutions Store & ReviewNet
+7. DEO Engine (Scraping import + API Keys)
+8. CLD (Causal Loop Diagrams) CRUD + Simulation
+9. AALA (Assets & Liabilities)
+10. LEE (Lifestyle Effectiveness Evaluation)
+11. Goal Setter (SMART) + Goal Manifestation (CAB-FAME)
+12. Unconditional Happiness + Meditation Settings
+13. PNA Framework (Problems/Needs/Aspirations) — CRUD + Convert to Decision/Goal
+14. Lifestyle Designer — Plan CRUD + Comparison + Manual Overrides
+15. Conflict Breaker (when available)
+16. Payments & Credits
+17. Admin Operations + WOWO ACM
+18. Edge Cases (empty data, unauthorized access, invalid IDs, role escalation)
 
 Format each test case as:
 **TC-XXX: [Title]**
@@ -455,23 +500,28 @@ Format each test case as:
 
 Format in clean Markdown.""",
 
-            "uat_cases": f"""You are a UAT coordinator. Generate Quick User Acceptance Test scenarios for "View Dezider" — covering the critical user journeys.
+            "uat_cases": f"""You are a UAT coordinator. Generate User Acceptance Test scenarios for "View Dezider" — covering ALL critical user journeys across 30+ modules.
 
 Based on these API endpoints:
 
 {api_summary}
 
-Generate concise UAT scenarios for:
+Generate UAT scenarios for:
 1. New User Onboarding (Register → First Decision → Complete PRR flow)
-2. Pros & Cons → PRR Conversion Flow
-3. SWOT Analysis → PRR Conversion Flow
-4. Task Management (CTT) with Decision linkage
-5. Solutions Store browsing and integration
-6. Payment & Credit purchase
-7. Admin operations (user management, settings, approvals)
-8. Multi-platform verification (Web + Mobile)
-9. Chatbot interaction flows
-10. IVR basic decision flow
+2. Pros & Cons / SWOT → PRR Conversion Flow
+3. Task Management (CTT) with Decision linkage + Calendar sync
+4. Goal Setting → Manifestation (CAB-FAME 7 stages) + Meditation
+5. Solutions Store browsing + Integration into PRR Step 6/7
+6. AALA Assessment + LEE Daily Logging
+7. PNA Framework — Add items across life areas → Convert to Decision/Goal
+8. Lifestyle Designer — Create plan, set allocations, compare vs LEE actuals
+9. Unconditional Happiness daily tracking + streaks
+10. Emotional Gatekeeper sub-tools
+11. Payment & Credit purchase
+12. Admin operations (user management, WOWO settings, doc generation)
+13. Multi-platform verification (Web + Mobile)
+14. DEO Engine import from external URLs
+15. Org Admin hierarchy and collaboration
 
 Each scenario should be:
 **UAT-XXX: [Scenario Title]**

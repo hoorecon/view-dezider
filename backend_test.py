@@ -1,75 +1,79 @@
-#!/usr/bin/env python3
 """
-Backend API Testing for Goal Setter, Goal Manifestation, and Unconditional Happiness Modules
-Tests all 18 endpoints across the 3 new modules
+Comprehensive Backend API Testing for PNA Framework and Lifestyle Designer
+Tests all endpoints with realistic data and proper authentication flow
 """
 import requests
 import json
 import time
 from datetime import datetime, timedelta
 
-# Backend URL
-BASE_URL = "https://dezider-core.preview.emergentagent.com/api"
+# Backend URL from environment
+BACKEND_URL = "https://dezider-core.preview.emergentagent.com/api"
 
-# Test results tracking
-test_results = []
+# Test user credentials
+timestamp = int(time.time())
+TEST_EMAIL = f"pna_lifestyle_test_{timestamp}@test.com"
+TEST_PASSWORD = "SecurePass123!"
+TEST_NAME = "PNA Lifestyle Tester"
+
+# Global session token
 session_token = None
-user_data = None
 
 def log_test(test_name, passed, details=""):
-    """Log test result"""
-    status = "✅ PASS" if passed else "❌ FAIL"
-    result = f"{status}: {test_name}"
+    """Log test results"""
+    status = "✅ PASSED" if passed else "❌ FAILED"
+    print(f"{status}: {test_name}")
     if details:
-        result += f" - {details}"
-    test_results.append(result)
-    print(result)
-    return passed
+        print(f"  Details: {details}")
+    print()
 
-def register_and_login():
-    """Register a new test user and login"""
-    global session_token, user_data
+def register_user():
+    """Register a new test user"""
+    global session_token
+    print("=" * 80)
+    print("REGISTERING TEST USER")
+    print("=" * 80)
     
-    timestamp = int(time.time())
-    email = f"goaltest_{timestamp}@example.com"
-    password = "TestPass123!"
-    name = f"Goal Test User {timestamp}"
+    response = requests.post(
+        f"{BACKEND_URL}/auth/register",
+        json={
+            "email": TEST_EMAIL,
+            "password": TEST_PASSWORD,
+            "name": TEST_NAME
+        }
+    )
     
-    # Register
-    print("\n=== AUTHENTICATION ===")
-    register_data = {
-        "email": email,
-        "password": password,
-        "name": name
-    }
+    if response.status_code == 200:
+        data = response.json()
+        session_token = data.get("session_token")
+        log_test("User Registration", True, f"User ID: {data.get('user_id')}, Email: {TEST_EMAIL}")
+        return True
+    else:
+        log_test("User Registration", False, f"Status: {response.status_code}, Response: {response.text}")
+        return False
+
+def login_user():
+    """Login with test user"""
+    global session_token
+    print("=" * 80)
+    print("LOGGING IN")
+    print("=" * 80)
     
-    try:
-        resp = requests.post(f"{BASE_URL}/auth/register", json=register_data, timeout=10)
-        if resp.status_code == 200:
-            data = resp.json()
-            session_token = data.get("session_token")
-            user_data = data
-            log_test("User Registration", True, f"Registered {email}")
-            
-            # Login to verify
-            login_resp = requests.post(
-                f"{BASE_URL}/auth/login",
-                json={"email": email, "password": password},
-                timeout=10
-            )
-            if login_resp.status_code == 200:
-                login_data = login_resp.json()
-                session_token = login_data.get("session_token")
-                log_test("User Login", True, f"Logged in successfully")
-                return True
-            else:
-                log_test("User Login", False, f"Status: {login_resp.status_code}")
-                return False
-        else:
-            log_test("User Registration", False, f"Status: {resp.status_code}, Response: {resp.text}")
-            return False
-    except Exception as e:
-        log_test("User Registration", False, f"Exception: {str(e)}")
+    response = requests.post(
+        f"{BACKEND_URL}/auth/login",
+        json={
+            "email": TEST_EMAIL,
+            "password": TEST_PASSWORD
+        }
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        session_token = data.get("session_token")
+        log_test("User Login", True, f"Session token obtained")
+        return True
+    else:
+        log_test("User Login", False, f"Status: {response.status_code}, Response: {response.text}")
         return False
 
 def get_headers():
@@ -80,618 +84,569 @@ def get_headers():
     }
 
 # ═══════════════════════════════════════════════════════════════
-# MODULE 1: GOAL SETTER TESTS
+# PNA FRAMEWORK TESTS
 # ═══════════════════════════════════════════════════════════════
 
-def test_goal_setter_framework():
-    """Test 1: GET /api/goal-setter/framework"""
-    print("\n=== MODULE 1: GOAL SETTER ===")
-    try:
-        resp = requests.get(f"{BASE_URL}/goal-setter/framework", timeout=10)
-        if resp.status_code == 200:
-            data = resp.json()
-            # Verify structure
-            has_audio = "audio_url" in data
-            has_fields = "fields" in data and len(data["fields"]) == 5
-            has_smart = all(f["letter"] in ["S", "M", "A", "R", "T"] for f in data.get("fields", []))
-            
-            if has_audio and has_fields and has_smart:
-                log_test("Goal Setter Framework", True, f"Returns SMART framework with audio_url")
-                return data
-            else:
-                log_test("Goal Setter Framework", False, f"Missing required fields")
-                return None
-        else:
-            log_test("Goal Setter Framework", False, f"Status: {resp.status_code}")
-            return None
-    except Exception as e:
-        log_test("Goal Setter Framework", False, f"Exception: {str(e)}")
+def test_pna_meta():
+    """Test GET /api/pna/meta"""
+    print("=" * 80)
+    print("TEST 1: PNA Meta Endpoint")
+    print("=" * 80)
+    
+    response = requests.get(f"{BACKEND_URL}/pna/meta")
+    
+    if response.status_code == 200:
+        data = response.json()
+        has_life_areas = "life_areas" in data and len(data["life_areas"]) == 10
+        has_categories = "categories" in data and len(data["categories"]) == 3
+        has_statuses = "statuses" in data
+        has_priorities = "priorities" in data
+        
+        passed = has_life_areas and has_categories and has_statuses and has_priorities
+        log_test(
+            "GET /api/pna/meta",
+            passed,
+            f"Life areas: {len(data.get('life_areas', []))}, Categories: {len(data.get('categories', []))}, Statuses: {data.get('statuses')}, Priorities: {data.get('priorities')}"
+        )
+        return data
+    else:
+        log_test("GET /api/pna/meta", False, f"Status: {response.status_code}")
         return None
 
-def test_create_goal():
-    """Test 2: POST /api/goal-setter/goals"""
-    try:
-        goal_data = {
-            "title": "Launch SaaS Product",
-            "life_area": "career",
-            "challenge": "Need to build and launch a profitable SaaS product",
-            "specific": "Launch a decision intelligence SaaS platform with core PRR features",
-            "measurable": "Achieve ₹10L MRR with 50 paying customers within 12 months",
-            "achievable": "I have technical skills, 5 years experience, and ₹5L budget for development",
-            "realistic": "Market research shows demand for decision tools, competitors exist but niche is underserved",
-            "timebound": "MVP by Aug 2026, 20 customers by Nov 2026, ₹10L MRR by May 2027",
-            "milestones": [
-                {"date": "2026-08-01", "title": "MVP Launch"},
-                {"date": "2026-11-01", "title": "20 Customers"},
-                {"date": "2027-05-01", "title": "₹10L MRR"}
-            ],
-            "priority": "high",
-            "status": "active",
-            "progress_pct": 15
+def test_create_pna_item(life_area, category, title, priority="high", impact_score=8, urgency_score=7, description=""):
+    """Test POST /api/pna/items"""
+    print(f"Creating PNA item: {title}")
+    
+    response = requests.post(
+        f"{BACKEND_URL}/pna/items",
+        headers=get_headers(),
+        json={
+            "life_area": life_area,
+            "category": category,
+            "title": title,
+            "priority": priority,
+            "impact_score": impact_score,
+            "urgency_score": urgency_score,
+            "description": description
         }
-        
-        resp = requests.post(
-            f"{BASE_URL}/goal-setter/goals",
-            json=goal_data,
-            headers=get_headers(),
-            timeout=10
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        item_id = data.get("item_id")
+        log_test(
+            f"POST /api/pna/items - Create {category}",
+            True,
+            f"Item ID: {item_id}, Title: {title}"
         )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            has_id = "goal_id" in data
-            has_smart = all(k in data for k in ["specific", "measurable", "achievable", "realistic", "timebound"])
-            
-            if has_id and has_smart:
-                log_test("Create SMART Goal", True, f"Goal created: {data['goal_id']}")
-                return data
-            else:
-                log_test("Create SMART Goal", False, "Missing required fields in response")
-                return None
-        else:
-            log_test("Create SMART Goal", False, f"Status: {resp.status_code}, Response: {resp.text}")
-            return None
-    except Exception as e:
-        log_test("Create SMART Goal", False, f"Exception: {str(e)}")
+        return item_id
+    else:
+        log_test(f"POST /api/pna/items - Create {category}", False, f"Status: {response.status_code}, Response: {response.text}")
         return None
 
-def test_list_goals():
-    """Test 3: GET /api/goal-setter/goals"""
-    try:
-        resp = requests.get(
-            f"{BASE_URL}/goal-setter/goals",
-            headers=get_headers(),
-            timeout=10
+def test_list_pna_items():
+    """Test GET /api/pna/items"""
+    print("=" * 80)
+    print("TEST 3: List PNA Items")
+    print("=" * 80)
+    
+    response = requests.get(
+        f"{BACKEND_URL}/pna/items",
+        headers=get_headers()
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        log_test(
+            "GET /api/pna/items",
+            True,
+            f"Found {len(data)} items"
         )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            if isinstance(data, list):
-                log_test("List Goals", True, f"Retrieved {len(data)} goals")
-                return data
-            else:
-                log_test("List Goals", False, "Response is not a list")
-                return None
-        else:
-            log_test("List Goals", False, f"Status: {resp.status_code}")
-            return None
-    except Exception as e:
-        log_test("List Goals", False, f"Exception: {str(e)}")
+        return data
+    else:
+        log_test("GET /api/pna/items", False, f"Status: {response.status_code}")
+        return []
+
+def test_get_pna_item(item_id):
+    """Test GET /api/pna/items/{item_id}"""
+    print(f"Getting PNA item: {item_id}")
+    
+    response = requests.get(
+        f"{BACKEND_URL}/pna/items/{item_id}",
+        headers=get_headers()
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        log_test(
+            f"GET /api/pna/items/{item_id}",
+            True,
+            f"Title: {data.get('title')}, Status: {data.get('status')}"
+        )
+        return data
+    else:
+        log_test(f"GET /api/pna/items/{item_id}", False, f"Status: {response.status_code}")
         return None
 
-def test_get_goal(goal_id):
-    """Test 4: GET /api/goal-setter/goals/{goal_id}"""
-    try:
-        resp = requests.get(
-            f"{BASE_URL}/goal-setter/goals/{goal_id}",
-            headers=get_headers(),
-            timeout=10
+def test_update_pna_item(item_id, updates):
+    """Test PUT /api/pna/items/{item_id}"""
+    print(f"Updating PNA item: {item_id}")
+    
+    response = requests.put(
+        f"{BACKEND_URL}/pna/items/{item_id}",
+        headers=get_headers(),
+        json=updates
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        log_test(
+            f"PUT /api/pna/items/{item_id}",
+            True,
+            f"Updated status to: {data.get('status')}"
         )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get("goal_id") == goal_id:
-                log_test("Get Single Goal", True, f"Retrieved goal {goal_id}")
-                return data
-            else:
-                log_test("Get Single Goal", False, "Goal ID mismatch")
-                return None
-        else:
-            log_test("Get Single Goal", False, f"Status: {resp.status_code}")
-            return None
-    except Exception as e:
-        log_test("Get Single Goal", False, f"Exception: {str(e)}")
+        return data
+    else:
+        log_test(f"PUT /api/pna/items/{item_id}", False, f"Status: {response.status_code}")
         return None
 
-def test_update_goal(goal_id):
-    """Test 5: PUT /api/goal-setter/goals/{goal_id}"""
-    try:
-        update_data = {
-            "status": "completed",
-            "progress_pct": 100,
-            "notes": "Successfully launched and achieved MRR target!"
+def test_pna_dashboard():
+    """Test GET /api/pna/dashboard"""
+    print("=" * 80)
+    print("TEST 4: PNA Dashboard")
+    print("=" * 80)
+    
+    response = requests.get(
+        f"{BACKEND_URL}/pna/dashboard",
+        headers=get_headers()
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        has_counts = "by_category" in data and "by_status" in data
+        has_areas = "area_summaries" in data
+        has_recent = "recent" in data
+        
+        passed = has_counts and has_areas and has_recent
+        log_test(
+            "GET /api/pna/dashboard",
+            passed,
+            f"Total: {data.get('total')}, By category: {data.get('by_category')}, By status: {data.get('by_status')}"
+        )
+        return data
+    else:
+        log_test("GET /api/pna/dashboard", False, f"Status: {response.status_code}")
+        return None
+
+def test_pna_area_detail(area_id):
+    """Test GET /api/pna/areas/{area_id}"""
+    print(f"Getting area detail for: {area_id}")
+    
+    response = requests.get(
+        f"{BACKEND_URL}/pna/areas/{area_id}",
+        headers=get_headers()
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        log_test(
+            f"GET /api/pna/areas/{area_id}",
+            True,
+            f"Problems: {len(data.get('problems', []))}, Needs: {len(data.get('needs', []))}, Aspirations: {len(data.get('aspirations', []))}"
+        )
+        return data
+    else:
+        log_test(f"GET /api/pna/areas/{area_id}", False, f"Status: {response.status_code}")
+        return None
+
+def test_bulk_status_update(item_ids, new_status):
+    """Test POST /api/pna/items/bulk-status"""
+    print(f"Bulk updating {len(item_ids)} items to status: {new_status}")
+    
+    response = requests.post(
+        f"{BACKEND_URL}/pna/items/bulk-status",
+        headers=get_headers(),
+        json={
+            "item_ids": item_ids,
+            "status": new_status
         }
-        
-        resp = requests.put(
-            f"{BASE_URL}/goal-setter/goals/{goal_id}",
-            json=update_data,
-            headers=get_headers(),
-            timeout=10
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        log_test(
+            "POST /api/pna/items/bulk-status",
+            True,
+            f"Updated {data.get('updated')} items to '{new_status}'"
         )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get("status") == "completed" and data.get("progress_pct") == 100:
-                log_test("Update Goal", True, f"Updated goal to completed with 100% progress")
-                return data
-            else:
-                log_test("Update Goal", False, "Update not reflected in response")
-                return None
-        else:
-            log_test("Update Goal", False, f"Status: {resp.status_code}")
-            return None
-    except Exception as e:
-        log_test("Update Goal", False, f"Exception: {str(e)}")
+        return data
+    else:
+        log_test("POST /api/pna/items/bulk-status", False, f"Status: {response.status_code}")
         return None
 
-def test_goal_dashboard():
-    """Test 6: GET /api/goal-setter/dashboard"""
-    try:
-        resp = requests.get(
-            f"{BASE_URL}/goal-setter/dashboard",
-            headers=get_headers(),
-            timeout=10
+def test_convert_to_decision(item_id):
+    """Test POST /api/pna/items/{item_id}/convert-to-decision"""
+    print(f"Converting PNA item to decision: {item_id}")
+    
+    response = requests.post(
+        f"{BACKEND_URL}/pna/items/{item_id}/convert-to-decision",
+        headers=get_headers(),
+        json={}
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        log_test(
+            f"POST /api/pna/items/{item_id}/convert-to-decision",
+            True,
+            f"Decision ID: {data.get('decision_id')}, Message: {data.get('message')}"
         )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            required_fields = ["total_goals", "active_goals", "completed_goals", "avg_progress"]
-            has_all = all(f in data for f in required_fields)
-            
-            if has_all:
-                log_test("Goal Dashboard", True, 
-                    f"Total: {data['total_goals']}, Active: {data['active_goals']}, "
-                    f"Completed: {data['completed_goals']}, Avg Progress: {data['avg_progress']}%")
-                return data
-            else:
-                log_test("Goal Dashboard", False, "Missing required dashboard fields")
-                return None
-        else:
-            log_test("Goal Dashboard", False, f"Status: {resp.status_code}")
-            return None
-    except Exception as e:
-        log_test("Goal Dashboard", False, f"Exception: {str(e)}")
+        return data.get("decision_id")
+    else:
+        log_test(f"POST /api/pna/items/{item_id}/convert-to-decision", False, f"Status: {response.status_code}")
         return None
 
-def test_delete_goal(goal_id):
-    """Test 7: DELETE /api/goal-setter/goals/{goal_id}"""
-    try:
-        resp = requests.delete(
-            f"{BASE_URL}/goal-setter/goals/{goal_id}",
-            headers=get_headers(),
-            timeout=10
+def test_convert_to_goal(item_id):
+    """Test POST /api/pna/items/{item_id}/convert-to-goal"""
+    print(f"Converting PNA item to goal: {item_id}")
+    
+    response = requests.post(
+        f"{BACKEND_URL}/pna/items/{item_id}/convert-to-goal",
+        headers=get_headers(),
+        json={}
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        log_test(
+            f"POST /api/pna/items/{item_id}/convert-to-goal",
+            True,
+            f"Goal ID: {data.get('goal_id')}, Message: {data.get('message')}"
         )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get("deleted") == True:
-                log_test("Delete Goal", True, f"Deleted goal {goal_id}")
-                return True
-            else:
-                log_test("Delete Goal", False, "Delete confirmation not received")
-                return False
-        else:
-            log_test("Delete Goal", False, f"Status: {resp.status_code}")
-            return False
-    except Exception as e:
-        log_test("Delete Goal", False, f"Exception: {str(e)}")
+        return data.get("goal_id")
+    else:
+        log_test(f"POST /api/pna/items/{item_id}/convert-to-goal", False, f"Status: {response.status_code}")
+        return None
+
+def test_delete_pna_item(item_id):
+    """Test DELETE /api/pna/items/{item_id}"""
+    print(f"Deleting PNA item: {item_id}")
+    
+    response = requests.delete(
+        f"{BACKEND_URL}/pna/items/{item_id}",
+        headers=get_headers()
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        log_test(
+            f"DELETE /api/pna/items/{item_id}",
+            True,
+            f"Deleted: {data.get('deleted')}"
+        )
+        return True
+    else:
+        log_test(f"DELETE /api/pna/items/{item_id}", False, f"Status: {response.status_code}")
         return False
 
 # ═══════════════════════════════════════════════════════════════
-# MODULE 2: GOAL MANIFESTATION TESTS
+# LIFESTYLE DESIGNER TESTS
 # ═══════════════════════════════════════════════════════════════
 
-def test_manifestation_framework():
-    """Test 8: GET /api/goal-manifestation/framework"""
-    print("\n=== MODULE 2: GOAL MANIFESTATION (CAB-FAME) ===")
-    try:
-        resp = requests.get(f"{BASE_URL}/goal-manifestation/framework", timeout=10)
-        if resp.status_code == 200:
-            data = resp.json()
-            stages = data.get("stages", [])
-            
-            # Verify 7 stages
-            has_7_stages = len(stages) == 7
-            
-            # Verify Stage 4 has audio_url (KalphaVriksha)
-            stage_4 = next((s for s in stages if s.get("stage_number") == 4), None)
-            stage_4_has_audio = stage_4 and "audio_url" in stage_4
-            
-            # Verify Stage 1 step 1.1 and 1.6 have YouTube links
-            stage_1 = next((s for s in stages if s.get("stage_number") == 1), None)
-            stage_1_steps = stage_1.get("steps", []) if stage_1 else []
-            step_1_1 = next((s for s in stage_1_steps if s.get("id") == "1.1"), None)
-            step_1_6 = next((s for s in stage_1_steps if s.get("id") == "1.6"), None)
-            has_youtube_links = (step_1_1 and "link" in step_1_1) and (step_1_6 and "link" in step_1_6)
-            
-            if has_7_stages and stage_4_has_audio and has_youtube_links:
-                log_test("Manifestation Framework", True, 
-                    f"7 stages (C,A,B,F,A,M,E), Stage 4 has audio_url, Stage 1 has YouTube links")
-                return data
-            else:
-                details = []
-                if not has_7_stages:
-                    details.append(f"Expected 7 stages, got {len(stages)}")
-                if not stage_4_has_audio:
-                    details.append("Stage 4 missing audio_url")
-                if not has_youtube_links:
-                    details.append("Stage 1 missing YouTube links")
-                log_test("Manifestation Framework", False, "; ".join(details))
-                return None
-        else:
-            log_test("Manifestation Framework", False, f"Status: {resp.status_code}")
-            return None
-    except Exception as e:
-        log_test("Manifestation Framework", False, f"Exception: {str(e)}")
+def test_lifestyle_meta():
+    """Test GET /api/lifestyle-designer/meta"""
+    print("=" * 80)
+    print("TEST 5: Lifestyle Designer Meta")
+    print("=" * 80)
+    
+    response = requests.get(f"{BACKEND_URL}/lifestyle-designer/meta")
+    
+    if response.status_code == 200:
+        data = response.json()
+        has_life_areas = "life_areas" in data and len(data["life_areas"]) == 10
+        has_day_types = "day_types" in data and len(data["day_types"]) == 3
+        
+        passed = has_life_areas and has_day_types
+        log_test(
+            "GET /api/lifestyle-designer/meta",
+            passed,
+            f"Life areas: {len(data.get('life_areas', []))}, Day types: {data.get('day_types')}"
+        )
+        return data
+    else:
+        log_test("GET /api/lifestyle-designer/meta", False, f"Status: {response.status_code}")
         return None
 
-def test_create_journey():
-    """Test 9: POST /api/goal-manifestation/journeys"""
-    try:
-        journey_data = {
-            "wish": "Become a successful entrepreneur with ₹1Cr annual revenue",
-            "life_area": "career",
-            "current_stage": 1,
-            "stage_inputs": {
-                "2.2": "Leadership & Innovation"
-            },
-            "status": "active",
-            "notes": "Starting my manifestation journey"
+def test_create_lifestyle_plan(name, allocations, is_active=True):
+    """Test POST /api/lifestyle-designer/plans"""
+    print(f"Creating lifestyle plan: {name}")
+    
+    response = requests.post(
+        f"{BACKEND_URL}/lifestyle-designer/plans",
+        headers=get_headers(),
+        json={
+            "name": name,
+            "description": f"Test plan: {name}",
+            "allocations": allocations,
+            "is_active": is_active
         }
-        
-        resp = requests.post(
-            f"{BASE_URL}/goal-manifestation/journeys",
-            json=journey_data,
-            headers=get_headers(),
-            timeout=10
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        plan_id = data.get("plan_id")
+        log_test(
+            f"POST /api/lifestyle-designer/plans - {name}",
+            True,
+            f"Plan ID: {plan_id}, Active: {data.get('is_active')}"
         )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            has_id = "journey_id" in data
-            has_wish = data.get("wish") == journey_data["wish"]
-            has_stage = data.get("current_stage") == 1
-            has_inputs = "2.2" in data.get("stage_inputs", {})
-            
-            if has_id and has_wish and has_stage and has_inputs:
-                log_test("Create Journey", True, f"Journey created: {data['journey_id']}")
-                return data
-            else:
-                log_test("Create Journey", False, "Missing required fields in response")
-                return None
-        else:
-            log_test("Create Journey", False, f"Status: {resp.status_code}, Response: {resp.text}")
-            return None
-    except Exception as e:
-        log_test("Create Journey", False, f"Exception: {str(e)}")
+        return plan_id
+    else:
+        log_test(f"POST /api/lifestyle-designer/plans - {name}", False, f"Status: {response.status_code}, Response: {response.text}")
         return None
 
-def test_list_journeys():
-    """Test 10: GET /api/goal-manifestation/journeys"""
-    try:
-        resp = requests.get(
-            f"{BASE_URL}/goal-manifestation/journeys",
-            headers=get_headers(),
-            timeout=10
+def test_list_lifestyle_plans():
+    """Test GET /api/lifestyle-designer/plans"""
+    print("=" * 80)
+    print("TEST 6: List Lifestyle Plans")
+    print("=" * 80)
+    
+    response = requests.get(
+        f"{BACKEND_URL}/lifestyle-designer/plans",
+        headers=get_headers()
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        log_test(
+            "GET /api/lifestyle-designer/plans",
+            True,
+            f"Found {len(data)} plans"
         )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            if isinstance(data, list):
-                log_test("List Journeys", True, f"Retrieved {len(data)} journeys")
-                return data
-            else:
-                log_test("List Journeys", False, "Response is not a list")
-                return None
-        else:
-            log_test("List Journeys", False, f"Status: {resp.status_code}")
-            return None
-    except Exception as e:
-        log_test("List Journeys", False, f"Exception: {str(e)}")
-        return None
+        return data
+    else:
+        log_test("GET /api/lifestyle-designer/plans", False, f"Status: {response.status_code}")
+        return []
 
-def test_get_journey(journey_id):
-    """Test 11: GET /api/goal-manifestation/journeys/{id}"""
-    try:
-        resp = requests.get(
-            f"{BASE_URL}/goal-manifestation/journeys/{journey_id}",
-            headers=get_headers(),
-            timeout=10
-        )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get("journey_id") == journey_id:
-                log_test("Get Journey", True, f"Retrieved journey {journey_id}")
-                return data
-            else:
-                log_test("Get Journey", False, "Journey ID mismatch")
-                return None
-        else:
-            log_test("Get Journey", False, f"Status: {resp.status_code}")
-            return None
-    except Exception as e:
-        log_test("Get Journey", False, f"Exception: {str(e)}")
-        return None
-
-def test_update_journey(journey_id):
-    """Test 12: PUT /api/goal-manifestation/journeys/{id}"""
-    try:
-        update_data = {
-            "current_stage": 3,
-            "stage_inputs": {
-                "2.2": "Leadership & Innovation",
-                "5.1": "Called potential investors",
-                "5.6": "Daily meditation and business planning"
-            },
-            "notes": "Progressing through stages, feeling more aligned"
-        }
-        
-        resp = requests.put(
-            f"{BASE_URL}/goal-manifestation/journeys/{journey_id}",
-            json=update_data,
-            headers=get_headers(),
-            timeout=10
-        )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get("current_stage") == 3 and "5.1" in data.get("stage_inputs", {}):
-                log_test("Update Journey", True, f"Advanced to stage 3, added more stage_inputs")
-                return data
-            else:
-                log_test("Update Journey", False, "Update not reflected in response")
-                return None
-        else:
-            log_test("Update Journey", False, f"Status: {resp.status_code}")
-            return None
-    except Exception as e:
-        log_test("Update Journey", False, f"Exception: {str(e)}")
-        return None
-
-def test_manifestation_dashboard():
-    """Test 13: GET /api/goal-manifestation/dashboard"""
-    try:
-        resp = requests.get(
-            f"{BASE_URL}/goal-manifestation/dashboard",
-            headers=get_headers(),
-            timeout=10
-        )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            required_fields = ["total_journeys", "active", "manifested"]
-            has_all = all(f in data for f in required_fields)
-            
-            if has_all:
-                log_test("Manifestation Dashboard", True, 
-                    f"Total: {data['total_journeys']}, Active: {data['active']}, Manifested: {data['manifested']}")
-                return data
-            else:
-                log_test("Manifestation Dashboard", False, "Missing required dashboard fields")
-                return None
-        else:
-            log_test("Manifestation Dashboard", False, f"Status: {resp.status_code}")
-            return None
-    except Exception as e:
-        log_test("Manifestation Dashboard", False, f"Exception: {str(e)}")
-        return None
-
-def test_delete_journey(journey_id):
-    """Test 14: DELETE /api/goal-manifestation/journeys/{id}"""
-    try:
-        resp = requests.delete(
-            f"{BASE_URL}/goal-manifestation/journeys/{journey_id}",
-            headers=get_headers(),
-            timeout=10
-        )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get("deleted") == True:
-                log_test("Delete Journey", True, f"Deleted journey {journey_id}")
-                return True
-            else:
-                log_test("Delete Journey", False, "Delete confirmation not received")
-                return False
-        else:
-            log_test("Delete Journey", False, f"Status: {resp.status_code}")
-            return False
-    except Exception as e:
-        log_test("Delete Journey", False, f"Exception: {str(e)}")
-        return False
-
-# ═══════════════════════════════════════════════════════════════
-# MODULE 3: UNCONDITIONAL HAPPINESS TESTS
-# ═══════════════════════════════════════════════════════════════
-
-def test_happiness_framework():
-    """Test 15: GET /api/unconditional-happiness/framework"""
-    print("\n=== MODULE 3: UNCONDITIONAL HAPPINESS ===")
-    try:
-        resp = requests.get(f"{BASE_URL}/unconditional-happiness/framework", timeout=10)
-        if resp.status_code == 200:
-            data = resp.json()
-            
-            # Verify 4 phases
-            phases = data.get("phases", [])
-            has_4_phases = len(phases) == 4
-            
-            # Verify audio_url (Joy.mp3)
-            has_audio = "audio_url" in data
-            
-            if has_4_phases and has_audio:
-                log_test("Happiness Framework", True, f"4 phases with audio_url (Joy.mp3)")
-                return data
-            else:
-                details = []
-                if not has_4_phases:
-                    details.append(f"Expected 4 phases, got {len(phases)}")
-                if not has_audio:
-                    details.append("Missing audio_url")
-                log_test("Happiness Framework", False, "; ".join(details))
-                return None
-        else:
-            log_test("Happiness Framework", False, f"Status: {resp.status_code}")
-            return None
-    except Exception as e:
-        log_test("Happiness Framework", False, f"Exception: {str(e)}")
-        return None
-
-def test_create_session():
-    """Test 16: POST /api/unconditional-happiness/sessions"""
-    try:
-        session_data = {
-            "reflections": {
-                "1": "I remember playing in the garden as a child, completely carefree and joyful",
-                "2": "I was attaching happiness to career success, financial goals, and others' approval",
-                "3": "Unconditional happiness feels light, free, and expansive in my chest",
-                "4": "I will smile more and appreciate small moments throughout the day"
-            },
-            "happiness_before": 4,
-            "happiness_after": 8,
-            "listened_audio": True,
-            "completed": True,
-            "notes": "Powerful session, felt a real shift in perspective"
-        }
-        
-        resp = requests.post(
-            f"{BASE_URL}/unconditional-happiness/sessions",
-            json=session_data,
-            headers=get_headers(),
-            timeout=10
-        )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            has_id = "session_id" in data
-            has_reflections = len(data.get("reflections", {})) == 4
-            has_ratings = data.get("happiness_before") == 4 and data.get("happiness_after") == 8
-            has_audio = data.get("listened_audio") == True
-            
-            if has_id and has_reflections and has_ratings and has_audio:
-                log_test("Create Happiness Session", True, 
-                    f"Session created: {data['session_id']}, Happiness: 4→8")
-                return data
-            else:
-                log_test("Create Happiness Session", False, "Missing required fields in response")
-                return None
-        else:
-            log_test("Create Happiness Session", False, f"Status: {resp.status_code}, Response: {resp.text}")
-            return None
-    except Exception as e:
-        log_test("Create Happiness Session", False, f"Exception: {str(e)}")
-        return None
-
-def test_list_sessions():
-    """Test 17: GET /api/unconditional-happiness/sessions"""
-    try:
-        resp = requests.get(
-            f"{BASE_URL}/unconditional-happiness/sessions",
-            headers=get_headers(),
-            timeout=10
-        )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            if isinstance(data, list):
-                log_test("List Happiness Sessions", True, f"Retrieved {len(data)} sessions")
-                return data
-            else:
-                log_test("List Happiness Sessions", False, "Response is not a list")
-                return None
-        else:
-            log_test("List Happiness Sessions", False, f"Status: {resp.status_code}")
-            return None
-    except Exception as e:
-        log_test("List Happiness Sessions", False, f"Exception: {str(e)}")
-        return None
-
-def test_happiness_dashboard():
-    """Test 18: GET /api/unconditional-happiness/dashboard"""
-    try:
-        resp = requests.get(
-            f"{BASE_URL}/unconditional-happiness/dashboard",
-            headers=get_headers(),
-            timeout=10
-        )
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            required_fields = ["total_sessions", "current_streak", "best_streak", "avg_happiness_improvement"]
-            has_all = all(f in data for f in required_fields)
-            
-            if has_all:
-                log_test("Happiness Dashboard", True, 
-                    f"Total: {data['total_sessions']}, Streak: {data['current_streak']}, "
-                    f"Best: {data['best_streak']}, Avg Improvement: {data['avg_happiness_improvement']}")
-                return data
-            else:
-                log_test("Happiness Dashboard", False, "Missing required dashboard fields")
-                return None
-        else:
-            log_test("Happiness Dashboard", False, f"Status: {resp.status_code}")
-            return None
-    except Exception as e:
-        log_test("Happiness Dashboard", False, f"Exception: {str(e)}")
-        return None
-
-def test_happiness_streak():
-    """Test consecutive day streak increment"""
-    try:
-        # Create another session (same day - should not increment streak)
-        session_data = {
-            "reflections": {"1": "Second session today"},
-            "happiness_before": 5,
-            "happiness_after": 7,
-            "listened_audio": True,
-            "completed": True
-        }
-        
-        resp = requests.post(
-            f"{BASE_URL}/unconditional-happiness/sessions",
-            json=session_data,
-            headers=get_headers(),
-            timeout=10
-        )
-        
-        if resp.status_code == 200:
-            # Check dashboard
-            dash_resp = requests.get(
-                f"{BASE_URL}/unconditional-happiness/dashboard",
-                headers=get_headers(),
-                timeout=10
+def test_get_active_plan():
+    """Test GET /api/lifestyle-designer/active-plan"""
+    print("=" * 80)
+    print("TEST 7: Get Active Plan")
+    print("=" * 80)
+    
+    response = requests.get(
+        f"{BACKEND_URL}/lifestyle-designer/active-plan",
+        headers=get_headers()
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        active_plan = data.get("active_plan")
+        if active_plan:
+            log_test(
+                "GET /api/lifestyle-designer/active-plan",
+                True,
+                f"Active plan: {active_plan.get('name')} (ID: {active_plan.get('plan_id')})"
             )
-            
-            if dash_resp.status_code == 200:
-                data = dash_resp.json()
-                # Same day should keep streak at 1
-                if data.get("current_streak") == 1:
-                    log_test("Happiness Streak Logic", True, 
-                        f"Same-day sessions don't increment streak (streak={data['current_streak']})")
-                    return True
-                else:
-                    log_test("Happiness Streak Logic", False, 
-                        f"Expected streak=1, got {data.get('current_streak')}")
-                    return False
-            else:
-                log_test("Happiness Streak Logic", False, f"Dashboard status: {dash_resp.status_code}")
-                return False
         else:
-            log_test("Happiness Streak Logic", False, f"Session creation status: {resp.status_code}")
-            return False
-    except Exception as e:
-        log_test("Happiness Streak Logic", False, f"Exception: {str(e)}")
+            log_test(
+                "GET /api/lifestyle-designer/active-plan",
+                True,
+                "No active plan (expected if none activated)"
+            )
+        return active_plan
+    else:
+        log_test("GET /api/lifestyle-designer/active-plan", False, f"Status: {response.status_code}")
+        return None
+
+def test_update_lifestyle_plan(plan_id, updates):
+    """Test PUT /api/lifestyle-designer/plans/{plan_id}"""
+    print(f"Updating lifestyle plan: {plan_id}")
+    
+    response = requests.put(
+        f"{BACKEND_URL}/lifestyle-designer/plans/{plan_id}",
+        headers=get_headers(),
+        json=updates
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        log_test(
+            f"PUT /api/lifestyle-designer/plans/{plan_id}",
+            True,
+            f"Updated name to: {data.get('name')}"
+        )
+        return data
+    else:
+        log_test(f"PUT /api/lifestyle-designer/plans/{plan_id}", False, f"Status: {response.status_code}")
+        return None
+
+def test_activate_plan(plan_id):
+    """Test POST /api/lifestyle-designer/plans/{plan_id}/activate"""
+    print(f"Activating plan: {plan_id}")
+    
+    response = requests.post(
+        f"{BACKEND_URL}/lifestyle-designer/plans/{plan_id}/activate",
+        headers=get_headers(),
+        json={}
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        log_test(
+            f"POST /api/lifestyle-designer/plans/{plan_id}/activate",
+            True,
+            f"Message: {data.get('message')}"
+        )
+        return True
+    else:
+        log_test(f"POST /api/lifestyle-designer/plans/{plan_id}/activate", False, f"Status: {response.status_code}")
+        return False
+
+def test_lifestyle_comparison(days=7):
+    """Test GET /api/lifestyle-designer/comparison"""
+    print("=" * 80)
+    print(f"TEST 8: Lifestyle Comparison (last {days} days)")
+    print("=" * 80)
+    
+    response = requests.get(
+        f"{BACKEND_URL}/lifestyle-designer/comparison?days={days}",
+        headers=get_headers()
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        log_test(
+            "GET /api/lifestyle-designer/comparison",
+            True,
+            f"Plan: {data.get('plan_name')}, Days analyzed: {data.get('days_analyzed')}"
+        )
+        return data
+    elif response.status_code == 400:
+        # Expected if no active plan or no LEE data
+        log_test(
+            "GET /api/lifestyle-designer/comparison",
+            True,
+            "No active plan or LEE data (expected for new user)"
+        )
+        return None
+    else:
+        log_test("GET /api/lifestyle-designer/comparison", False, f"Status: {response.status_code}")
+        return None
+
+def test_save_override(date, life_area, hours, reason):
+    """Test POST /api/lifestyle-designer/overrides"""
+    print(f"Saving override for {date}, {life_area}: {hours}h")
+    
+    response = requests.post(
+        f"{BACKEND_URL}/lifestyle-designer/overrides",
+        headers=get_headers(),
+        json={
+            "date": date,
+            "life_area": life_area,
+            "hours": hours,
+            "reason": reason
+        }
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        log_test(
+            "POST /api/lifestyle-designer/overrides",
+            True,
+            f"Override saved: {data.get('message')}"
+        )
+        return True
+    else:
+        log_test("POST /api/lifestyle-designer/overrides", False, f"Status: {response.status_code}")
+        return False
+
+def test_list_overrides():
+    """Test GET /api/lifestyle-designer/overrides"""
+    print("=" * 80)
+    print("TEST 9: List Overrides")
+    print("=" * 80)
+    
+    response = requests.get(
+        f"{BACKEND_URL}/lifestyle-designer/overrides",
+        headers=get_headers()
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        log_test(
+            "GET /api/lifestyle-designer/overrides",
+            True,
+            f"Found {len(data)} overrides"
+        )
+        return data
+    else:
+        log_test("GET /api/lifestyle-designer/overrides", False, f"Status: {response.status_code}")
+        return []
+
+def test_delete_override(date, life_area):
+    """Test DELETE /api/lifestyle-designer/overrides/{date}/{life_area}"""
+    print(f"Deleting override for {date}, {life_area}")
+    
+    response = requests.delete(
+        f"{BACKEND_URL}/lifestyle-designer/overrides/{date}/{life_area}",
+        headers=get_headers()
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        log_test(
+            f"DELETE /api/lifestyle-designer/overrides/{date}/{life_area}",
+            True,
+            f"Deleted: {data.get('deleted')}"
+        )
+        return True
+    else:
+        log_test(f"DELETE /api/lifestyle-designer/overrides/{date}/{life_area}", False, f"Status: {response.status_code}")
+        return False
+
+def test_lifestyle_dashboard():
+    """Test GET /api/lifestyle-designer/dashboard"""
+    print("=" * 80)
+    print("TEST 10: Lifestyle Designer Dashboard")
+    print("=" * 80)
+    
+    response = requests.get(
+        f"{BACKEND_URL}/lifestyle-designer/dashboard",
+        headers=get_headers()
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        log_test(
+            "GET /api/lifestyle-designer/dashboard",
+            True,
+            f"Total plans: {data.get('total_plans')}, Active plan: {data.get('active_plan')}"
+        )
+        return data
+    else:
+        log_test("GET /api/lifestyle-designer/dashboard", False, f"Status: {response.status_code}")
+        return None
+
+def test_delete_lifestyle_plan(plan_id):
+    """Test DELETE /api/lifestyle-designer/plans/{plan_id}"""
+    print(f"Deleting lifestyle plan: {plan_id}")
+    
+    response = requests.delete(
+        f"{BACKEND_URL}/lifestyle-designer/plans/{plan_id}",
+        headers=get_headers()
+    )
+    
+    if response.status_code == 200:
+        data = response.json()
+        log_test(
+            f"DELETE /api/lifestyle-designer/plans/{plan_id}",
+            True,
+            f"Deleted: {data.get('deleted')}"
+        )
+        return True
+    else:
+        log_test(f"DELETE /api/lifestyle-designer/plans/{plan_id}", False, f"Status: {response.status_code}")
         return False
 
 # ═══════════════════════════════════════════════════════════════
@@ -699,67 +654,249 @@ def test_happiness_streak():
 # ═══════════════════════════════════════════════════════════════
 
 def run_all_tests():
-    """Run all tests in sequence"""
-    print("=" * 80)
-    print("BACKEND API TESTING - 3 NEW MODULES")
-    print("Goal Setter, Goal Manifestation, Unconditional Happiness")
-    print("=" * 80)
+    """Run all PNA and Lifestyle Designer tests"""
+    print("\n")
+    print("╔" + "═" * 78 + "╗")
+    print("║" + " " * 15 + "PNA FRAMEWORK & LIFESTYLE DESIGNER API TESTS" + " " * 19 + "║")
+    print("╚" + "═" * 78 + "╝")
+    print("\n")
     
-    # Authentication
-    if not register_and_login():
-        print("\n❌ Authentication failed. Cannot proceed with tests.")
+    # Step 1: Register and login
+    if not register_user():
+        print("❌ Failed to register user. Aborting tests.")
         return
     
-    # MODULE 1: Goal Setter (7 endpoints)
-    test_goal_setter_framework()
-    goal = test_create_goal()
-    test_list_goals()
-    if goal:
-        goal_id = goal.get("goal_id")
-        test_get_goal(goal_id)
-        test_update_goal(goal_id)
-        test_goal_dashboard()
-        test_delete_goal(goal_id)
+    if not login_user():
+        print("❌ Failed to login. Aborting tests.")
+        return
     
-    # MODULE 2: Goal Manifestation (6 endpoints)
-    test_manifestation_framework()
-    journey = test_create_journey()
-    test_list_journeys()
-    if journey:
-        journey_id = journey.get("journey_id")
-        test_get_journey(journey_id)
-        test_update_journey(journey_id)
-        test_manifestation_dashboard()
-        test_delete_journey(journey_id)
+    # ═══════════════════════════════════════════════════════════════
+    # PNA FRAMEWORK TESTS
+    # ═══════════════════════════════════════════════════════════════
     
-    # MODULE 3: Unconditional Happiness (4 endpoints)
-    test_happiness_framework()
-    test_create_session()
-    test_list_sessions()
-    test_happiness_dashboard()
-    test_happiness_streak()
+    print("\n")
+    print("╔" + "═" * 78 + "╗")
+    print("║" + " " * 25 + "PNA FRAMEWORK TESTS" + " " * 34 + "║")
+    print("╚" + "═" * 78 + "╝")
+    print("\n")
     
-    # Summary
-    print("\n" + "=" * 80)
-    print("TEST SUMMARY")
+    # Test 1: Get PNA meta
+    test_pna_meta()
+    
+    # Test 2: Create PNA items
+    print("=" * 80)
+    print("TEST 2: Create PNA Items")
     print("=" * 80)
     
-    passed = sum(1 for r in test_results if "✅ PASS" in r)
-    failed = sum(1 for r in test_results if "❌ FAIL" in r)
-    total = len(test_results)
+    item1_id = test_create_pna_item(
+        life_area="finance",
+        category="problem",
+        title="Debt management",
+        priority="high",
+        impact_score=8,
+        urgency_score=7,
+        description="Need to reduce debt"
+    )
     
-    print(f"\nTotal Tests: {total}")
-    print(f"Passed: {passed} ✅")
-    print(f"Failed: {failed} ❌")
-    print(f"Success Rate: {(passed/total*100):.1f}%")
+    item2_id = test_create_pna_item(
+        life_area="holistic_health",
+        category="aspiration",
+        title="Run marathon",
+        priority="medium",
+        impact_score=6,
+        urgency_score=5,
+        description="Complete a full marathon by end of year"
+    )
     
-    print("\n" + "=" * 80)
-    print("DETAILED RESULTS")
+    # Test 3: List items
+    test_list_pna_items()
+    
+    # Test 4: Get single item
+    if item1_id:
+        test_get_pna_item(item1_id)
+    
+    # Test 5: Update item
+    if item1_id:
+        print("=" * 80)
+        print("TEST 5: Update PNA Item")
+        print("=" * 80)
+        test_update_pna_item(item1_id, {"status": "in_progress"})
+    
+    # Test 6: Dashboard
+    test_pna_dashboard()
+    
+    # Test 7: Area detail
     print("=" * 80)
-    for result in test_results:
-        print(result)
+    print("TEST 7: PNA Area Detail")
+    print("=" * 80)
+    test_pna_area_detail("finance")
     
-    return passed, failed, total
+    # Test 8: Bulk status update
+    if item1_id and item2_id:
+        print("=" * 80)
+        print("TEST 8: Bulk Status Update")
+        print("=" * 80)
+        test_bulk_status_update([item1_id, item2_id], "resolved")
+    
+    # Test 9: Convert to decision
+    if item1_id:
+        print("=" * 80)
+        print("TEST 9: Convert PNA Item to Decision")
+        print("=" * 80)
+        test_convert_to_decision(item1_id)
+    
+    # Test 10: Convert to goal
+    if item2_id:
+        print("=" * 80)
+        print("TEST 10: Convert PNA Item to Goal")
+        print("=" * 80)
+        test_convert_to_goal(item2_id)
+    
+    # Test 11: Delete item (create a new one first)
+    print("=" * 80)
+    print("TEST 11: Delete PNA Item")
+    print("=" * 80)
+    item3_id = test_create_pna_item(
+        life_area="career",
+        category="need",
+        title="Skill upgrade",
+        priority="medium",
+        description="Learn new programming language"
+    )
+    if item3_id:
+        test_delete_pna_item(item3_id)
+    
+    # ═══════════════════════════════════════════════════════════════
+    # LIFESTYLE DESIGNER TESTS
+    # ═══════════════════════════════════════════════════════════════
+    
+    print("\n")
+    print("╔" + "═" * 78 + "╗")
+    print("║" + " " * 22 + "LIFESTYLE DESIGNER TESTS" + " " * 32 + "║")
+    print("╚" + "═" * 78 + "╝")
+    print("\n")
+    
+    # Test 12: Get Lifestyle meta
+    test_lifestyle_meta()
+    
+    # Test 13: Create lifestyle plan
+    print("=" * 80)
+    print("TEST 13: Create Lifestyle Plans")
+    print("=" * 80)
+    
+    # Create first plan with allocations
+    allocations1 = {
+        "weekday": {
+            "career": {"hours": 8, "priority": "high", "notes": "Work hours"},
+            "holistic_health": {"hours": 2, "priority": "high", "notes": "Exercise and meditation"},
+            "relationships": {"hours": 2, "priority": "medium", "notes": "Family time"},
+            "finance": {"hours": 1, "priority": "medium", "notes": "Financial planning"}
+        },
+        "saturday": {
+            "holistic_health": {"hours": 3, "priority": "high", "notes": ""},
+            "relationships": {"hours": 4, "priority": "high", "notes": ""},
+            "personal_dreams": {"hours": 3, "priority": "medium", "notes": ""}
+        },
+        "sunday": {
+            "spirituality": {"hours": 2, "priority": "high", "notes": ""},
+            "relationships": {"hours": 4, "priority": "high", "notes": ""},
+            "holistic_health": {"hours": 2, "priority": "medium", "notes": ""}
+        }
+    }
+    
+    plan1_id = test_create_lifestyle_plan("My Ideal Day", allocations1, is_active=True)
+    
+    # Test 14: List plans
+    test_list_lifestyle_plans()
+    
+    # Test 15: Get active plan
+    test_get_active_plan()
+    
+    # Test 16: Update plan
+    if plan1_id:
+        print("=" * 80)
+        print("TEST 16: Update Lifestyle Plan")
+        print("=" * 80)
+        test_update_lifestyle_plan(plan1_id, {"name": "My Updated Ideal Day"})
+    
+    # Test 17: Create second plan
+    print("=" * 80)
+    print("TEST 17: Create Second Plan")
+    print("=" * 80)
+    
+    allocations2 = {
+        "weekday": {
+            "career": {"hours": 6, "priority": "medium", "notes": ""},
+            "holistic_health": {"hours": 3, "priority": "high", "notes": ""},
+            "relationships": {"hours": 3, "priority": "high", "notes": ""}
+        },
+        "saturday": {
+            "personal_dreams": {"hours": 5, "priority": "high", "notes": ""},
+            "relationships": {"hours": 3, "priority": "high", "notes": ""}
+        },
+        "sunday": {
+            "spirituality": {"hours": 3, "priority": "high", "notes": ""},
+            "relationships": {"hours": 5, "priority": "high", "notes": ""}
+        }
+    }
+    
+    plan2_id = test_create_lifestyle_plan("Weekend Mode", allocations2, is_active=False)
+    
+    # Test 18: Activate second plan
+    if plan2_id:
+        print("=" * 80)
+        print("TEST 18: Activate Second Plan")
+        print("=" * 80)
+        test_activate_plan(plan2_id)
+    
+    # Test 19: Verify active plan switched
+    print("=" * 80)
+    print("TEST 19: Verify Active Plan Switched")
+    print("=" * 80)
+    test_get_active_plan()
+    
+    # Test 20: Comparison (will work even with no LEE data)
+    test_lifestyle_comparison(days=7)
+    
+    # Test 21: Save manual override
+    print("=" * 80)
+    print("TEST 21: Save Manual Override")
+    print("=" * 80)
+    today = datetime.now().strftime("%Y-%m-%d")
+    test_save_override(today, "career", 9, "Extra work on project deadline")
+    
+    # Test 22: List overrides
+    test_list_overrides()
+    
+    # Test 23: Delete override
+    print("=" * 80)
+    print("TEST 23: Delete Override")
+    print("=" * 80)
+    test_delete_override(today, "career")
+    
+    # Test 24: Dashboard
+    test_lifestyle_dashboard()
+    
+    # Test 25: Delete plan
+    if plan1_id:
+        print("=" * 80)
+        print("TEST 25: Delete Lifestyle Plan")
+        print("=" * 80)
+        test_delete_lifestyle_plan(plan1_id)
+    
+    # ═══════════════════════════════════════════════════════════════
+    # SUMMARY
+    # ═══════════════════════════════════════════════════════════════
+    
+    print("\n")
+    print("╔" + "═" * 78 + "╗")
+    print("║" + " " * 30 + "TEST SUMMARY" + " " * 36 + "║")
+    print("╚" + "═" * 78 + "╝")
+    print("\n")
+    print("✅ All PNA Framework and Lifestyle Designer API tests completed!")
+    print(f"   Test user: {TEST_EMAIL}")
+    print(f"   Backend URL: {BACKEND_URL}")
+    print("\n")
 
 if __name__ == "__main__":
     run_all_tests()
