@@ -668,6 +668,38 @@ export default function HomeScreen() {
             </LinearGradient>
           </TouchableOpacity>
 
+          {/* EVE Modules: AALA & LEE */}
+          <Text style={styles.sectionTitle}>EVE — Evaluation & Tracking</Text>
+          <View style={styles.quickActions}>
+            <TouchableOpacity
+              style={styles.actionCard}
+              onPress={() => router.push('/tools/aala' as any)}
+            >
+              <LinearGradient
+                colors={['#0EA5E9', '#2563EB']}
+                style={styles.actionIcon}
+              >
+                <Ionicons name="wallet" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>AALA</Text>
+              <Text style={styles.actionSubtitle}>Assets & Liabilities</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionCard}
+              onPress={() => router.push('/tools/lifestyle-eval' as any)}
+            >
+              <LinearGradient
+                colors={['#7C3AED', '#A855F7']}
+                style={styles.actionIcon}
+              >
+                <Ionicons name="analytics" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Lifestyle Eval</Text>
+              <Text style={styles.actionSubtitle}>Actual vs Planned</Text>
+            </TouchableOpacity>
+          </View>
+
           {/* Consciousness Diary */}
           <TouchableOpacity
             style={styles.calendarCard}

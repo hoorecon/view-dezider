@@ -1015,6 +1015,116 @@ ACM_MODULES = [
     },
 
     # ────────────────────────────────────────────────────
+    # MODULE 23: AALA (Accrued Assets & Liabilities Analysis)
+    # ────────────────────────────────────────────────────
+    {
+        "module_id": "aala",
+        "module_name": "AALA — Assets & Liabilities Analysis",
+        "module_icon": "wallet",
+        "module_description": "Circle of Influence assessment: track assets & liabilities across 10 life areas",
+        "order": 23,
+        "features": [
+            {
+                "feature_id": "aala_assessment",
+                "feature_name": "AALA Baseline Assessment",
+                "release_stage": "ga_trial",
+                "quota_unit": "assessments/month",
+                "quota_resets": "monthly",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _full(1), "trial": _full(),
+                    "paid_starter": _full(5), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+            {
+                "feature_id": "aala_tracking",
+                "feature_name": "Periodic Snapshot Tracking",
+                "release_stage": "ga_paid",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _locked(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+            {
+                "feature_id": "aala_solution_matrix_sync",
+                "feature_name": "Auto-Populate Solution Matrix",
+                "release_stage": "ga_paid",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _locked(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+        ],
+    },
+
+    # ────────────────────────────────────────────────────
+    # MODULE 24: LEE (Lifestyle Effectiveness Evaluation)
+    # ────────────────────────────────────────────────────
+    {
+        "module_id": "lifestyle_eval",
+        "module_name": "Lifestyle Effectiveness Evaluation",
+        "module_icon": "analytics",
+        "module_description": "Track actual daily lifestyle vs planned — time allocation across life areas",
+        "order": 24,
+        "features": [
+            {
+                "feature_id": "lee_daily_log",
+                "feature_name": "Daily Activity Logging",
+                "release_stage": "ga_trial",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _full(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+            {
+                "feature_id": "lee_planned_vs_actual",
+                "feature_name": "Planned vs Actual Comparison",
+                "release_stage": "ga_paid",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _locked(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+            {
+                "feature_id": "lee_summary",
+                "feature_name": "Summary & Analytics Dashboard",
+                "release_stage": "ga_paid",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _locked(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+        ],
+    },
+
+    # ────────────────────────────────────────────────────
     # MODULE 21: Credits & Subscription
     # ────────────────────────────────────────────────────
     {
