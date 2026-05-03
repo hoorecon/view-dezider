@@ -62,9 +62,13 @@ export default function EmotionalGatekeeperScreen() {
   };
 
   const startSession = async (type: string) => {
-    // Advisor navigates directly, no session needed
+    // Direct navigation tools (no session creation needed)
     if (type === 'advisor') {
       router.push('/tools/eg-advisor' as any);
+      return;
+    }
+    if (type === 'emotional_reception') {
+      router.push('/tools/eg-emotional-reception' as any);
       return;
     }
     try {
@@ -111,8 +115,13 @@ export default function EmotionalGatekeeperScreen() {
     },
     {
       id: 'advisor', title: 'Effective Outlets Advisor', icon: 'leaf' as const,
-      desc: '9 constructive techniques with guided practice', colors: ['#10B981', '#047857'],
+      desc: '10 constructive techniques with guided practice', colors: ['#10B981', '#047857'],
       stat: 0, label: 'Practices', isDirectNav: true,
+    },
+    {
+      id: 'emotional_reception', title: 'Emotional Reception', icon: 'water' as const,
+      desc: 'Just Be in the Here and Now — 5 min EQ builder', colors: ['#0EA5E9', '#0369A1'],
+      stat: 0, label: 'Sessions', isDirectNav: true,
     },
   ];
 
