@@ -835,29 +835,140 @@ ACM_MODULES = [
     },
 
     # ────────────────────────────────────────────────────
-    # MODULE 20: Coming Soon (Unreleased)
+    # MODULE 20: Emotional Gatekeeper
+    # ────────────────────────────────────────────────────
+    {
+        "module_id": "emotional_gatekeeper",
+        "module_name": "Emotional Gatekeeper",
+        "module_icon": "heart-circle",
+        "module_description": "Self-introspection engine: Break traps, loops & limitations with AI coaching",
+        "order": 20,
+        "features": [
+            {
+                "feature_id": "eg_dashboard",
+                "feature_name": "Gatekeeper Dashboard & Streaks",
+                "release_stage": "ga_trial",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _read(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+            {
+                "feature_id": "eg_breaking_trap",
+                "feature_name": "Breaking the Trap (Landscaping → Linking → Looping)",
+                "release_stage": "ga_trial",
+                "quota_unit": "sessions/month",
+                "quota_resets": "monthly",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _full(2), "trial": _full(),
+                    "paid_starter": _full(10), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+            {
+                "feature_id": "eg_breaking_loop",
+                "feature_name": "Breaking the Loop (4 Methods: IDK, All Is Well, Both, This Too Shall Pass)",
+                "release_stage": "ga_trial",
+                "quota_unit": "sessions/month",
+                "quota_resets": "monthly",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _full(2), "trial": _full(),
+                    "paid_starter": _full(10), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+            {
+                "feature_id": "eg_breaking_limitations",
+                "feature_name": "Breaking Limitations (Past Self/Others, External, Fear of Unknown)",
+                "release_stage": "ga_trial",
+                "quota_unit": "sessions/month",
+                "quota_resets": "monthly",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _full(2), "trial": _full(),
+                    "paid_starter": _full(10), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+            {
+                "feature_id": "eg_outlet_analyzer",
+                "feature_name": "Emotional Outlet Analyzer (Physical/Mental/Emotional/Energy)",
+                "release_stage": "ga_paid",
+                "quota_unit": "analyses/month",
+                "quota_resets": "monthly",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _locked(), "trial": _full(),
+                    "paid_starter": _full(5), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+            {
+                "feature_id": "eg_aim_manager",
+                "feature_name": "AIM — Addictions & Irritations Manager",
+                "release_stage": "ga_paid",
+                "quota_unit": "sessions/month",
+                "quota_resets": "monthly",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _locked(), "trial": _full(),
+                    "paid_starter": _full(5), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+            {
+                "feature_id": "eg_voice_input",
+                "feature_name": "Voice Recording Input (Audio Transcription)",
+                "release_stage": "ga_paid",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _locked(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+            {
+                "feature_id": "eg_ai_reports",
+                "feature_name": "AI Breakthrough Reports & Commitments",
+                "release_stage": "ga_paid",
+                "quota_unit": "reports/month",
+                "quota_resets": "monthly",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _locked(), "trial": _full(3),
+                    "paid_starter": _full(10), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+        ],
+    },
+
+    # ────────────────────────────────────────────────────
+    # MODULE 20b: Coming Soon (Unreleased)
     # ────────────────────────────────────────────────────
     {
         "module_id": "coming_soon",
         "module_name": "Coming Soon Modules",
         "module_icon": "sparkles",
         "module_description": "Modules under development — available to testers and beta users only",
-        "order": 20,
+        "order": 25,
         "features": [
-            {
-                "feature_id": "emotional_gatekeeper",
-                "feature_name": "Emotional Gatekeeper",
-                "release_stage": "beta",
-                "quota_unit": "toggle",
-                "quota_resets": "none",
-                "access": {
-                    "unit_tester": _full(), "integration_tester": _full(),
-                    "alpha": _hidden(), "beta": _full(),
-                    "free": _hidden(), "trial": _hidden(),
-                    "paid_starter": _hidden(), "paid_pro": _locked(),
-                    "paid_enterprise": _locked(), "paid_api": _hidden(),
-                },
-            },
             {
                 "feature_id": "conflict_breaker",
                 "feature_name": "The Conflict Breaker",
