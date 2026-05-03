@@ -79,6 +79,15 @@ Multi-user Decision Making App based on a 10-step Proactive Risk Response (PRR) 
 - Progress tracking per goal
 - Dashboard with aggregated stats by area, type, status
 
+### 12. Social Learning Engine (P0 - DONE)
+- 3-Tier Knowledge Pyramid: Personal → Admin-Authorized → AI-Synthesized
+- Input: Text, URL scraping, File (PDF/DOCX/Image OCR), Audio/Video
+- AI classification via GPT-4.1-mini: Region, OrgType, Life Area, Scenario mapping
+- Factor extraction with P1-P10 priority, mandatory/optional, expected values
+- Risk extraction with probability, impact, mitigation, contingency
+- 3-tier integration into My Dezider (Step 2) and Solution Finder (Q4)
+- Refactored into modular package (11 files) from 1800-line monolith
+
 ## Architecture
 ```
 /app
@@ -90,7 +99,13 @@ Multi-user Decision Making App based on a 10-step Proactive Risk Response (PRR) 
 │   └── routes/ (Modular endpoints)
 │       ├── tools.py (Solution Finder + Matrix)
 │       ├── admin.py (Feature Flags + Call Config)
-│       └── ctt_gem.py (CTT Task Tracker + GEM Goals)
+│       ├── ctt_gem.py (CTT Task Tracker + GEM Goals)
+│       └── social_learning/ (Refactored package)
+│           ├── __init__.py (Router aggregation)
+│           ├── constants.py, models.py, helpers.py
+│           ├── ai_engine.py, file_extraction.py, stt_engine.py
+│           ├── upload_routes.py, template_routes.py
+│           ├── admin_routes.py, integration_routes.py, stats_routes.py
 ├── frontend/
 │   ├── app/
 │   │   ├── (tabs)/ (index, profile, prr)
