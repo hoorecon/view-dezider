@@ -294,73 +294,130 @@ stt_engine = STTEngine()
 # AI ENGINE
 # ========================
 
+async def get_hos_hierarchy_for_prompt() -> str:
+    """Fetch the HOS Life Area → Sub Area hierarchy from DB for AI prompt context."""
+    life_areas = await db.hos_life_areas.find({}, {"_id": 0}).sort("order", 1).to_list(20)
+    sub_areas = await db.hos_sub_areas.find({}, {"_id": 0}).sort("order", 1).to_list(100)
+
+    # Build a lookup
+    sa_by_la: dict = {}
+    for sa in sub_areas:
+        la_id = sa["life_area_id"]
+        if la_id not in sa_by_la:
+            sa_by_la[la_id] = []
+        sa_by_la[la_id].append(sa)
+
+    lines = []
+    for la in life_areas:
+        subs = sa_by_la.get(la["id"], [])
+        sub_names = ", ".join(s["name"] for s in subs)
+        lines.append(f"- {la['name']} (id: {la['id']}): [{sub_names}]")
+
+    return "\n".join(lines)
+
+
 async def classify_news(content: str) -> dict:
-    """Use GPT to classify news into Problem/Need/Aspiration, extract factors, concerns, life areas."""
+    """Use GPT to classify news with full HOS hierarchy, enhanced factors, risks."""
     from emergentintegrations.llm.chat import LlmChat, UserMessage
 
     supported_langs = ", ".join(SUPPORTED_LANGUAGES)
 
-    prompt = f"""You are an expert analyst for the View Dezider decision intelligence platform. 
-Analyze this news article/content and extract structured insights.
-The content may be in any of these languages: {supported_langs}. Detect and translate to English.
+    # Get the actual HOS hierarchy from DB
+    hierarchy = await get_hos_hierarchy_for_prompt()
+
+    prompt = f"""You are an expert analyst for View Dezider — a decision intelligence platform.
+Analyze the news content below. Detect language, translate to English, and extract structured intelligence.
+Supported languages: {supported_langs}
+
+LIFE AREA HIERARCHY (from our database):
+{hierarchy}
+
+ORG TYPES: {', '.join(ORG_TYPES)}
 
 NEWS CONTENT:
 \"\"\"
-{content[:4000]}
+{content[:5000]}
 \"\"\"
 
-Respond ONLY with valid JSON (no markdown, no explanation) in this exact structure:
+Respond ONLY with valid JSON (no markdown, no explanation):
 {{
   "detected_language": "<one of: {supported_langs}>",
   "english_summary": "<2-3 sentence summary in English>",
   "original_title": "<title extracted or generated from the content>",
   "category": "<exactly one of: problem, need, aspiration>",
   "category_reasoning": "<1 sentence why this category>",
-  "life_areas": ["<list of applicable life areas from: {', '.join(LIFE_AREAS)}>"],
-  "primary_life_area": "<the single most relevant life area>",
-  "life_area_sub_area": "<specific sub-area within the primary life area, e.g. 'retirement planning' under finance_wealth>",
+
+  "region_hierarchy": {{
+    "level": "<global/continent/country/state/city/area>",
+    "global_region": "<e.g. Asia, Europe, Global>",
+    "continent": "<e.g. Asia>",
+    "country": "<e.g. India>",
+    "state": "<state name if applicable, else null>",
+    "city": "<city name if applicable, else null>",
+    "area": "<specific locality if applicable, else null>"
+  }},
+
   "org_types": ["<list of applicable org types from: {', '.join(ORG_TYPES)}>"],
-  "geo_regions": ["<Indian state(s) or 'pan_india' if national>"],
-  "geo_district": "<specific district if mentioned, else null>",
-  "factors": [
-    {{
-      "name": "<factor name>",
-      "description": "<what this factor means in context>",
-      "priority": <1-10 integer, 10=highest>,
-      "expected_value_pct": <0-100 integer, assessment percentage>,
-      "factor_type": "<quantitative or qualitative>"
-    }}
-  ],
-  "concerns": [
-    {{
-      "concern": "<risk/concern statement>",
-      "severity": "<high/medium/low>",
-      "mitigation": "<how to mitigate this>"
-    }}
-  ],
-  "root_causes": ["<list of root causes identified>"],
-  "lessons_learned": ["<list of lessons from this experience>"],
-  "what_could_prevent": "<how this situation could have been avoided>",
-  "life_scenario_template": {{
-    "scenario_title": "<clear title for this life scenario>",
-    "scenario_description": "<what situation/pattern this represents>",
-    "who_is_affected": "<who typically faces this scenario>",
-    "typical_trigger": "<what typically triggers this situation>",
-    "decision_entry_point": {{
-      "problem_statement": "<clear problem statement for PRR Step 1>",
-      "key_factors": ["<factors for PRR Step 3>"],
-      "options_to_evaluate": ["<potential options for PRR Step 6>"],
-      "risk_checkpoints": ["<proactive risk checks>"]
-    }},
-    "solution_finder_entry_point": {{
-      "smart_goal": "<what the person should aim for>",
-      "main_concerns": ["<top concerns for Q1/Q2>"],
-      "risk_management_questions": ["<Q4 risk questions to ask proactively>"],
-      "recommended_actions": ["<preventive action items for Q5>"]
+
+  "life_area_mapping": {{
+    "primary_life_area_id": "<life area ID from hierarchy above, e.g. la_finance>",
+    "primary_life_area_name": "<full name>",
+    "sub_area_1": "<most specific sub-area name from hierarchy>",
+    "sub_area_2": "<second-level specificity if applicable, else null>"
+  }},
+  "secondary_life_areas": ["<additional applicable life area IDs>"],
+
+  "scenario_mapping": {{
+    "matches_predefined": <true if this maps to a common/known scenario>,
+    "predefined_scenario_title": "<title of matching known scenario, or null>",
+    "suggested_new_scenario": {{
+      "title": "<suggested new scenario title for this sub-area>",
+      "description": "<what this scenario represents>",
+      "who_is_affected": "<who typically faces this>",
+      "typical_trigger": "<what triggers this situation>"
     }}
   }},
+
+  "learnings_for_mydezider": {{
+    "factors": [
+      {{
+        "name": "<factor name>",
+        "description": "<what this factor means in this context>",
+        "practical_priority": "<P1 to P10, P1=highest situational priority>",
+        "practical_priority_num": <1-10 integer>,
+        "classification": "<mandatory or optional>",
+        "expected_value": "<expected value or benchmark>",
+        "expected_value_pct": <0-100 integer>,
+        "factor_type": "<quantitative or qualitative>",
+        "unit": "<unit of measurement if quantitative, else null>",
+        "reasoning": "<why this factor matters in this scenario>"
+      }}
+    ],
+    "summary": "<brief summary of what a decision-maker should evaluate>"
+  }},
+
+  "learnings_for_solution_finder": {{
+    "risks": [
+      {{
+        "risk_name": "<risk name>",
+        "description": "<what this risk means>",
+        "probability": <1-10 integer, likelihood of occurrence>,
+        "impact": <1-10 integer, severity of impact>,
+        "risk_index": <probability x impact, 1-100>,
+        "mitigation_plan": "<actionable mitigation strategy>",
+        "contingency_plan": "<backup plan if risk materializes>",
+        "personalization_note": "<how to adapt this to current times>"
+      }}
+    ],
+    "summary": "<brief summary of risk landscape for this scenario>"
+  }},
+
+  "root_causes": ["<list of root causes identified>"],
+  "lessons_learned": ["<key takeaways from this event>"],
+  "what_could_prevent": "<how this situation could have been prevented>",
+
   "tags": ["<relevant tags>"],
-  "severity_score": <1-10, how severe/impactful is this incident>
+  "severity_score": <1-10, how severe/impactful is this>
 }}"""
 
     chat = LlmChat(
@@ -512,8 +569,35 @@ async def require_admin(user: dict):
 def build_template_doc(template_id: str, classification: dict, content: str,
                        user: dict, source_url: str = None, source_name: str = None,
                        title: str = None, input_mode: str = "text") -> dict:
-    """Build a template document from AI classification."""
+    """Build a template document from enhanced AI classification."""
     now = datetime.now(timezone.utc).isoformat()
+
+    # Extract the new structured data
+    la_mapping = classification.get("life_area_mapping", {})
+    region = classification.get("region_hierarchy", {})
+    scenario = classification.get("scenario_mapping", {})
+    mydezider = classification.get("learnings_for_mydezider", {})
+    solution_finder = classification.get("learnings_for_solution_finder", {})
+
+    # Backward-compatible life_areas list
+    life_areas = [la_mapping.get("primary_life_area_id", "")]
+    life_areas += classification.get("secondary_life_areas", [])
+    life_areas = [la for la in life_areas if la]
+
+    # Factors: enrich with approval status
+    factors = mydezider.get("factors", [])
+    for f in factors:
+        f["approved"] = False  # User must review and approve
+        f["modified_by_user"] = False
+
+    # Risks: enrich with approval status
+    risks = solution_finder.get("risks", [])
+    for r in risks:
+        r["approved"] = False
+        r["modified_by_user"] = False
+        # Ensure risk_index is computed
+        if "risk_index" not in r:
+            r["risk_index"] = (r.get("probability", 5)) * (r.get("impact", 5))
 
     return {
         "id": template_id,
@@ -536,23 +620,46 @@ def build_template_doc(template_id: str, classification: dict, content: str,
         "title": classification.get("original_title", title or "Untitled"),
         "category": classification.get("category", "problem"),
         "category_reasoning": classification.get("category_reasoning", ""),
-        "life_areas": classification.get("life_areas", []),
-        "primary_life_area": classification.get("primary_life_area", ""),
-        "life_area_sub_area": classification.get("life_area_sub_area", ""),
+
+        # Region Hierarchy
+        "region_hierarchy": region,
+        "geo_level": region.get("level", "global"),
+
+        # Life Area Mapping (enhanced)
+        "life_area_mapping": la_mapping,
+        "life_areas": life_areas,
+        "primary_life_area": la_mapping.get("primary_life_area_id", ""),
+        "life_area_sub_area": la_mapping.get("sub_area_1", ""),
+        "life_area_sub_area_2": la_mapping.get("sub_area_2"),
+        "secondary_life_areas": classification.get("secondary_life_areas", []),
+
+        # Org Types
         "org_types": classification.get("org_types", []),
-        "geo_regions": classification.get("geo_regions", []),
-        "geo_district": classification.get("geo_district"),
+
+        # Scenario Mapping
+        "scenario_mapping": scenario,
+
         "severity_score": classification.get("severity_score", 5),
 
-        # Extracted Intelligence
-        "factors": classification.get("factors", []),
-        "concerns": classification.get("concerns", []),
+        # Learnings for My Dezider (Factors)
+        "learnings_mydezider": {
+            "factors": factors,
+            "summary": mydezider.get("summary", ""),
+        },
+        # Backward compat
+        "factors": factors,
+
+        # Learnings for Solution Finder (Risks)
+        "learnings_solution_finder": {
+            "risks": risks,
+            "summary": solution_finder.get("summary", ""),
+        },
+        # Backward compat
+        "concerns": [{"concern": r.get("risk_name", ""), "severity": "high" if r.get("risk_index", 0) >= 50 else "medium" if r.get("risk_index", 0) >= 25 else "low", "mitigation": r.get("mitigation_plan", "")} for r in risks],
+
         "root_causes": classification.get("root_causes", []),
         "lessons_learned": classification.get("lessons_learned", []),
         "what_could_prevent": classification.get("what_could_prevent", ""),
-
-        # Life Scenario Template (entry point for Decision & Solution Finder)
-        "life_scenario_template": classification.get("life_scenario_template", {}),
 
         "tags": classification.get("tags", []),
 
@@ -979,6 +1086,183 @@ async def delete_template(template_id: str, user: dict = Depends(get_current_use
 
 
 # ========================
+# FACTOR/RISK REVIEW & APPROVAL
+# ========================
+
+class FactorApprovalRequest(BaseModel):
+    approved_factor_indices: List[int] = []  # indices of factors user approves
+    modified_factors: Optional[List[dict]] = None  # user-modified factors
+
+
+class RiskApprovalRequest(BaseModel):
+    approved_risk_indices: List[int] = []
+    modified_risks: Optional[List[dict]] = None
+
+
+@router.post("/template/{template_id}/approve-factors")
+async def approve_factors(template_id: str, data: FactorApprovalRequest, user: dict = Depends(get_current_user)):
+    """User reviews and approves specific factors (with or without modifications)."""
+    template = await db.social_learning_templates.find_one({"id": template_id})
+    if not template:
+        raise HTTPException(404, "Template not found")
+    if template["created_by"] != user["user_id"]:
+        raise HTTPException(403, "Only the creator can approve factors")
+
+    factors = template.get("factors", [])
+    learnings = template.get("learnings_mydezider", {})
+    lm_factors = learnings.get("factors", factors)
+
+    # Mark approved indices
+    for i, f in enumerate(lm_factors):
+        f["approved"] = i in data.approved_factor_indices
+
+    # Apply user modifications
+    if data.modified_factors:
+        for mf in data.modified_factors:
+            idx = mf.get("index")
+            if idx is not None and 0 <= idx < len(lm_factors):
+                for key in ["name", "expected_value", "expected_value_pct", "classification", "practical_priority", "practical_priority_num"]:
+                    if key in mf:
+                        lm_factors[idx][key] = mf[key]
+                lm_factors[idx]["modified_by_user"] = True
+                lm_factors[idx]["approved"] = True
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.social_learning_templates.update_one(
+        {"id": template_id},
+        {"$set": {
+            "learnings_mydezider.factors": lm_factors,
+            "factors": lm_factors,
+            "updated_at": now,
+        }}
+    )
+    return {"id": template_id, "approved_count": sum(1 for f in lm_factors if f.get("approved")), "total": len(lm_factors)}
+
+
+@router.post("/template/{template_id}/approve-risks")
+async def approve_risks(template_id: str, data: RiskApprovalRequest, user: dict = Depends(get_current_user)):
+    """User reviews and approves specific risks (with or without modifications)."""
+    template = await db.social_learning_templates.find_one({"id": template_id})
+    if not template:
+        raise HTTPException(404, "Template not found")
+    if template["created_by"] != user["user_id"]:
+        raise HTTPException(403, "Only the creator can approve risks")
+
+    learnings = template.get("learnings_solution_finder", {})
+    risks = learnings.get("risks", [])
+
+    for i, r in enumerate(risks):
+        r["approved"] = i in data.approved_risk_indices
+
+    if data.modified_risks:
+        for mr in data.modified_risks:
+            idx = mr.get("index")
+            if idx is not None and 0 <= idx < len(risks):
+                for key in ["risk_name", "probability", "impact", "mitigation_plan", "contingency_plan"]:
+                    if key in mr:
+                        risks[idx][key] = mr[key]
+                if "probability" in mr or "impact" in mr:
+                    risks[idx]["risk_index"] = risks[idx].get("probability", 5) * risks[idx].get("impact", 5)
+                risks[idx]["modified_by_user"] = True
+                risks[idx]["approved"] = True
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.social_learning_templates.update_one(
+        {"id": template_id},
+        {"$set": {
+            "learnings_solution_finder.risks": risks,
+            "updated_at": now,
+        }}
+    )
+    return {"id": template_id, "approved_count": sum(1 for r in risks if r.get("approved")), "total": len(risks)}
+
+
+class ReAnalyzeRequest(BaseModel):
+    additional_context: str
+    focus_area: Optional[str] = None  # "factors", "risks", "both"
+
+
+@router.post("/template/{template_id}/re-analyze")
+async def re_analyze_template(template_id: str, data: ReAnalyzeRequest, request: Request, user: dict = Depends(get_current_user)):
+    """Re-analyze a template with additional user context."""
+    template = await db.social_learning_templates.find_one({"id": template_id})
+    if not template:
+        raise HTTPException(404, "Template not found")
+    if template["created_by"] != user["user_id"]:
+        raise HTTPException(403, "Only the creator can re-analyze")
+
+    original_content = template.get("original_content", "")
+    if not original_content:
+        raise HTTPException(400, "No original content available for re-analysis")
+
+    # Re-classify with additional context
+    enhanced_content = f"""{original_content}
+
+--- ADDITIONAL USER CONTEXT ---
+{data.additional_context}
+{f"Focus on: {data.focus_area}" if data.focus_area else ""}"""
+
+    try:
+        classification = await classify_news(enhanced_content)
+    except Exception as e:
+        logger.error(f"Re-analysis failed: {e}")
+        raise HTTPException(500, f"Re-analysis failed: {str(e)}")
+
+    # Build updated fields
+    la_mapping = classification.get("life_area_mapping", {})
+    region = classification.get("region_hierarchy", {})
+    scenario = classification.get("scenario_mapping", {})
+    mydezider = classification.get("learnings_for_mydezider", {})
+    solution_finder = classification.get("learnings_for_solution_finder", {})
+
+    factors = mydezider.get("factors", [])
+    for f in factors:
+        f["approved"] = False
+        f["modified_by_user"] = False
+
+    risks = solution_finder.get("risks", [])
+    for r in risks:
+        r["approved"] = False
+        r["modified_by_user"] = False
+        if "risk_index" not in r:
+            r["risk_index"] = r.get("probability", 5) * r.get("impact", 5)
+
+    life_areas = [la_mapping.get("primary_life_area_id", "")]
+    life_areas += classification.get("secondary_life_areas", [])
+    life_areas = [la for la in life_areas if la]
+
+    now = datetime.now(timezone.utc).isoformat()
+    update = {
+        "english_summary": classification.get("english_summary", template.get("english_summary", "")),
+        "title": classification.get("original_title", template.get("title", "")),
+        "category": classification.get("category", template.get("category", "")),
+        "region_hierarchy": region,
+        "geo_level": region.get("level", "global"),
+        "life_area_mapping": la_mapping,
+        "life_areas": life_areas,
+        "primary_life_area": la_mapping.get("primary_life_area_id", ""),
+        "life_area_sub_area": la_mapping.get("sub_area_1", ""),
+        "life_area_sub_area_2": la_mapping.get("sub_area_2"),
+        "scenario_mapping": scenario,
+        "learnings_mydezider": {"factors": factors, "summary": mydezider.get("summary", "")},
+        "factors": factors,
+        "learnings_solution_finder": {"risks": risks, "summary": solution_finder.get("summary", "")},
+        "root_causes": classification.get("root_causes", []),
+        "lessons_learned": classification.get("lessons_learned", []),
+        "severity_score": classification.get("severity_score", 5),
+        "tags": classification.get("tags", []),
+        "updated_at": now,
+        "re_analysis_context": data.additional_context,
+        "re_analysis_count": template.get("re_analysis_count", 0) + 1,
+    }
+
+    await db.social_learning_templates.update_one({"id": template_id}, {"$set": update})
+
+    updated = await db.social_learning_templates.find_one({"id": template_id}, {"_id": 0, "original_content": 0})
+    return updated
+
+
+# ========================
 # TIER 2: Admin Approval → Authorized Social Learning Templates
 # ========================
 
@@ -1207,167 +1491,263 @@ async def get_social_solution(solution_id: str, user: dict = Depends(get_current
 @router.get("/templates-for-decision")
 async def get_templates_for_decision(
     life_area: Optional[str] = None,
+    sub_area: Optional[str] = None,
     category: Optional[str] = None,
+    org_type: Optional[str] = None,
+    region: Optional[str] = None,
+    include_personal: bool = False,
     limit: int = 20,
     user: dict = Depends(get_current_user),
 ):
-    """Get templates usable in PRR decision flow (Step 6/7).
-    Returns authorized (Tier 2) and premium (Tier 3) templates.
+    """Get factor suggestions for My Dezider decision flow.
+    Returns 3-tier structure: Personal (Tier 1), Admin-Authorized (Tier 2), AI-Derived (Tier 3).
+    Filters by OrgType, Region, LifeArea, SubArea, Scenario.
     """
-    results = []
+    tier_1 = []
+    tier_2 = []
+    tier_3 = []
 
-    # Tier 2: Authorized templates
-    t2_query: dict = {"status": "authorized", "tier": 2}
-    if life_area:
-        t2_query["$or"] = [
-            {"life_areas": life_area},
-            {"primary_life_area": life_area},
-        ]
-    if category:
-        t2_query["category"] = category
+    # Helper to build factor suggestion from template
+    def extract_factors(t, source_tier, source_label):
+        factors = t.get("factors", [])
+        learnings = t.get("learnings_mydezider", {})
+        if learnings.get("factors"):
+            factors = learnings["factors"]
 
-    t2_templates = await db.social_learning_templates.find(
-        t2_query, {"_id": 0, "original_content": 0}
-    ).sort("severity_score", -1).limit(limit).to_list(limit)
-
-    for t in t2_templates:
-        scenario = t.get("life_scenario_template", {})
-        decision_ep = scenario.get("decision_entry_point", {})
-        results.append({
-            "id": t["id"],
-            "tier": 2,
+        scenario = t.get("scenario_mapping", {})
+        return {
+            "id": t.get("id", ""),
+            "tier": source_tier,
+            "source": source_label,
             "title": t.get("title", ""),
             "category": t.get("category", ""),
             "life_areas": t.get("life_areas", []),
             "primary_life_area": t.get("primary_life_area", ""),
             "sub_area": t.get("life_area_sub_area", ""),
-            "scenario_title": scenario.get("scenario_title", ""),
-            "problem_statement": decision_ep.get("problem_statement", ""),
-            "key_factors": decision_ep.get("key_factors", []),
-            "options_to_evaluate": decision_ep.get("options_to_evaluate", []),
-            "risk_checkpoints": decision_ep.get("risk_checkpoints", []),
-            "factors": t.get("factors", []),
+            "sub_area_2": t.get("life_area_sub_area_2"),
+            "region_hierarchy": t.get("region_hierarchy", {}),
+            "org_types": t.get("org_types", []),
+            "scenario_title": scenario.get("suggested_new_scenario", {}).get("title", "") or scenario.get("predefined_scenario_title", ""),
             "severity_score": t.get("severity_score", 5),
-            "source": "authorized",
-        })
+            "factors": [
+                {
+                    "name": f.get("name", ""),
+                    "description": f.get("description", ""),
+                    "practical_priority": f.get("practical_priority", "P5"),
+                    "practical_priority_num": f.get("practical_priority_num", 5),
+                    "classification": f.get("classification", "optional"),
+                    "expected_value": f.get("expected_value", ""),
+                    "expected_value_pct": f.get("expected_value_pct", 50),
+                    "factor_type": f.get("factor_type", "qualitative"),
+                    "unit": f.get("unit"),
+                    "approved": f.get("approved", False),
+                }
+                for f in factors
+            ],
+            "factor_summary": learnings.get("summary", ""),
+        }
 
-    # Tier 3: Premium synthesized
-    t3_query: dict = {"status": "active", "tier": 3}
+    # Build base query filters
+    base_filter: dict = {}
     if life_area:
-        t3_query["$or"] = [
-            {"life_areas": life_area},
-            {"primary_life_area": life_area},
+        base_filter["$or"] = [{"life_areas": life_area}, {"primary_life_area": life_area}]
+    if sub_area:
+        base_filter["life_area_sub_area"] = {"$regex": sub_area, "$options": "i"}
+    if category:
+        base_filter["category"] = category
+    if org_type:
+        base_filter["org_types"] = org_type
+    if region:
+        base_filter["$or"] = base_filter.get("$or", []) + [
+            {"region_hierarchy.country": {"$regex": region, "$options": "i"}},
+            {"region_hierarchy.state": {"$regex": region, "$options": "i"}},
         ]
 
+    # Tier 1: User's own templates (personal)
+    if include_personal:
+        t1_query = {**base_filter, "created_by": user["user_id"]}
+        t1_query.setdefault("status", {"$in": ["draft", "submitted", "authorized"]})
+        t1_templates = await db.social_learning_templates.find(
+            t1_query, {"_id": 0, "original_content": 0}
+        ).sort("severity_score", -1).limit(limit).to_list(limit)
+        for t in t1_templates:
+            tier_1.append(extract_factors(t, 1, "personal"))
+
+    # Tier 2: Admin-authorized templates
+    t2_query = {**base_filter, "status": "authorized", "tier": 2}
+    t2_templates = await db.social_learning_templates.find(
+        t2_query, {"_id": 0, "original_content": 0}
+    ).sort("severity_score", -1).limit(limit).to_list(limit)
+    for t in t2_templates:
+        tier_2.append(extract_factors(t, 2, "authorized"))
+
+    # Tier 3: AI-derived Social Solution Templates
+    t3_query: dict = {"status": "active", "tier": 3}
+    if life_area:
+        t3_query["$or"] = [{"life_areas": life_area}, {"primary_life_area": life_area}]
     t3_solutions = await db.social_solution_templates.find(
         t3_query, {"_id": 0}
     ).sort("created_at", -1).limit(limit // 2).to_list(limit // 2)
-
     for s in t3_solutions:
-        scenario = s.get("premium_life_scenario", {})
-        decision_ep = scenario.get("decision_entry_point", {})
-        results.append({
+        synth_factors = s.get("synthesized_factors", [])
+        tier_3.append({
             "id": s["id"],
             "tier": 3,
+            "source": "ai_derived",
             "title": s.get("title", ""),
             "category": s.get("category", ""),
             "life_areas": s.get("life_areas", []),
             "primary_life_area": s.get("primary_life_area", ""),
             "sub_area": s.get("life_area_sub_area", ""),
-            "scenario_title": scenario.get("scenario_title", ""),
-            "problem_statement": decision_ep.get("problem_statement", ""),
-            "key_factors": decision_ep.get("key_factors", []),
-            "options_to_evaluate": decision_ep.get("options_to_evaluate", []),
-            "risk_checkpoints": decision_ep.get("risk_checkpoints", []),
-            "factors": s.get("synthesized_factors", []),
             "severity_score": 8,
-            "source": "premium",
+            "scenario_title": s.get("pattern_identified", ""),
+            "source_count": s.get("source_count", 0),
+            "factors": [
+                {
+                    "name": f.get("name", ""),
+                    "description": "",
+                    "practical_priority_num": f.get("priority", 5),
+                    "practical_priority": f"P{f.get('priority', 5)}",
+                    "classification": "mandatory" if f.get("priority", 5) >= 7 else "optional",
+                    "expected_value_pct": f.get("expected_value_pct", 50),
+                    "factor_type": "qualitative",
+                    "confidence": f.get("confidence", "medium"),
+                    "supporting_template_count": f.get("supporting_template_count", 1),
+                }
+                for f in synth_factors
+            ],
+            "factor_summary": s.get("accuracy_notes", ""),
         })
 
-    return {"templates": results, "total": len(results)}
+    return {
+        "tier_1_personal": tier_1,
+        "tier_2_authorized": tier_2,
+        "tier_3_ai_derived": tier_3,
+        "total": len(tier_1) + len(tier_2) + len(tier_3),
+    }
 
 
 @router.get("/templates-for-solution-finder")
 async def get_templates_for_solution_finder(
     life_area: Optional[str] = None,
+    sub_area: Optional[str] = None,
     category: Optional[str] = None,
+    org_type: Optional[str] = None,
+    region: Optional[str] = None,
+    include_personal: bool = False,
     limit: int = 20,
     user: dict = Depends(get_current_user),
 ):
-    """Get templates usable in Solution Finder Q4 risk management.
-    Returns life scenario entry points for Solution Finder.
+    """Get risk suggestions for Solution Finder Q4.
+    Returns 3-tier structure: Personal (Tier 1), Admin-Authorized (Tier 2), AI-Derived (Tier 3).
     """
-    results = []
+    tier_1 = []
+    tier_2 = []
+    tier_3 = []
 
-    # Tier 2
-    t2_query: dict = {"status": "authorized", "tier": 2}
-    if life_area:
-        t2_query["$or"] = [
-            {"life_areas": life_area},
-            {"primary_life_area": life_area},
-        ]
-    if category:
-        t2_query["category"] = category
-
-    t2_templates = await db.social_learning_templates.find(
-        t2_query, {"_id": 0, "original_content": 0}
-    ).sort("severity_score", -1).limit(limit).to_list(limit)
-
-    for t in t2_templates:
-        scenario = t.get("life_scenario_template", {})
-        sf_ep = scenario.get("solution_finder_entry_point", {})
-        results.append({
-            "id": t["id"],
-            "tier": 2,
+    def extract_risks(t, source_tier, source_label):
+        learnings = t.get("learnings_solution_finder", {})
+        risks = learnings.get("risks", [])
+        scenario = t.get("scenario_mapping", {})
+        return {
+            "id": t.get("id", ""),
+            "tier": source_tier,
+            "source": source_label,
             "title": t.get("title", ""),
             "category": t.get("category", ""),
             "life_areas": t.get("life_areas", []),
             "primary_life_area": t.get("primary_life_area", ""),
             "sub_area": t.get("life_area_sub_area", ""),
-            "scenario_title": scenario.get("scenario_title", ""),
-            "smart_goal": sf_ep.get("smart_goal", ""),
-            "main_concerns": sf_ep.get("main_concerns", []),
-            "risk_management_questions": sf_ep.get("risk_management_questions", []),
-            "recommended_actions": sf_ep.get("recommended_actions", []),
-            "concerns": t.get("concerns", []),
+            "region_hierarchy": t.get("region_hierarchy", {}),
+            "org_types": t.get("org_types", []),
+            "scenario_title": scenario.get("suggested_new_scenario", {}).get("title", "") or scenario.get("predefined_scenario_title", ""),
             "severity_score": t.get("severity_score", 5),
-            "source": "authorized",
-        })
+            "risks": [
+                {
+                    "risk_name": r.get("risk_name", ""),
+                    "description": r.get("description", ""),
+                    "probability": r.get("probability", 5),
+                    "impact": r.get("impact", 5),
+                    "risk_index": r.get("risk_index", 25),
+                    "mitigation_plan": r.get("mitigation_plan", ""),
+                    "contingency_plan": r.get("contingency_plan", ""),
+                    "personalization_note": r.get("personalization_note", ""),
+                    "approved": r.get("approved", False),
+                }
+                for r in risks
+            ],
+            "risk_summary": learnings.get("summary", ""),
+        }
 
-    # Tier 3
+    base_filter: dict = {}
+    if life_area:
+        base_filter["$or"] = [{"life_areas": life_area}, {"primary_life_area": life_area}]
+    if sub_area:
+        base_filter["life_area_sub_area"] = {"$regex": sub_area, "$options": "i"}
+    if category:
+        base_filter["category"] = category
+    if org_type:
+        base_filter["org_types"] = org_type
+
+    # Tier 1: Personal
+    if include_personal:
+        t1_query = {**base_filter, "created_by": user["user_id"]}
+        t1_query.setdefault("status", {"$in": ["draft", "submitted", "authorized"]})
+        t1_templates = await db.social_learning_templates.find(
+            t1_query, {"_id": 0, "original_content": 0}
+        ).sort("severity_score", -1).limit(limit).to_list(limit)
+        for t in t1_templates:
+            tier_1.append(extract_risks(t, 1, "personal"))
+
+    # Tier 2: Authorized
+    t2_query = {**base_filter, "status": "authorized", "tier": 2}
+    t2_templates = await db.social_learning_templates.find(
+        t2_query, {"_id": 0, "original_content": 0}
+    ).sort("severity_score", -1).limit(limit).to_list(limit)
+    for t in t2_templates:
+        tier_2.append(extract_risks(t, 2, "authorized"))
+
+    # Tier 3: AI-derived
     t3_query: dict = {"status": "active", "tier": 3}
     if life_area:
-        t3_query["$or"] = [
-            {"life_areas": life_area},
-            {"primary_life_area": life_area},
-        ]
-
+        t3_query["$or"] = [{"life_areas": life_area}, {"primary_life_area": life_area}]
     t3_solutions = await db.social_solution_templates.find(
         t3_query, {"_id": 0}
     ).sort("created_at", -1).limit(limit // 2).to_list(limit // 2)
-
     for s in t3_solutions:
-        scenario = s.get("premium_life_scenario", {})
-        sf_ep = scenario.get("solution_finder_entry_point", {})
-        results.append({
+        synth_concerns = s.get("synthesized_concerns", [])
+        tier_3.append({
             "id": s["id"],
             "tier": 3,
+            "source": "ai_derived",
             "title": s.get("title", ""),
             "category": s.get("category", ""),
             "life_areas": s.get("life_areas", []),
             "primary_life_area": s.get("primary_life_area", ""),
-            "sub_area": s.get("life_area_sub_area", ""),
-            "scenario_title": scenario.get("scenario_title", ""),
-            "smart_goal": sf_ep.get("smart_goal", ""),
-            "main_concerns": sf_ep.get("main_concerns", []),
-            "risk_management_questions": sf_ep.get("risk_management_questions", []),
-            "recommended_actions": sf_ep.get("recommended_actions", []),
-            "concerns": s.get("synthesized_concerns", []),
             "severity_score": 8,
-            "source": "premium",
+            "source_count": s.get("source_count", 0),
+            "risks": [
+                {
+                    "risk_name": c.get("concern", ""),
+                    "description": "",
+                    "probability": 6,
+                    "impact": 7 if c.get("severity") == "high" else 5 if c.get("severity") == "medium" else 3,
+                    "risk_index": 6 * (7 if c.get("severity") == "high" else 5 if c.get("severity") == "medium" else 3),
+                    "mitigation_plan": c.get("mitigation_consensus", ""),
+                    "contingency_plan": "",
+                    "frequency": c.get("frequency", ""),
+                }
+                for c in synth_concerns
+            ],
+            "risk_summary": s.get("accuracy_notes", ""),
         })
 
-    return {"templates": results, "total": len(results)}
+    return {
+        "tier_1_personal": tier_1,
+        "tier_2_authorized": tier_2,
+        "tier_3_ai_derived": tier_3,
+        "total": len(tier_1) + len(tier_2) + len(tier_3),
+    }
 
 
 # ========================

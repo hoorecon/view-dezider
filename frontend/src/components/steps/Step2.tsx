@@ -45,9 +45,14 @@ export default function Step2() {
     setLoadingSLFactors(true);
     try {
       const res = await api.get('/social-learning/templates-for-decision', {
-        params: { life_area: decision.life_area || undefined, limit: 20 },
+        params: { life_area: decision.life_area || undefined, include_personal: true, limit: 20 },
       });
-      setSlFactorTemplates(res.data?.templates || []);
+      // Combine all 3 tiers into a flat list with tier labels
+      const all: any[] = [];
+      (res.data?.tier_1_personal || []).forEach((t: any) => all.push({ ...t, _tierLabel: 'Personal' }));
+      (res.data?.tier_2_authorized || []).forEach((t: any) => all.push({ ...t, _tierLabel: 'Authorized' }));
+      (res.data?.tier_3_ai_derived || []).forEach((t: any) => all.push({ ...t, _tierLabel: 'AI Premium' }));
+      setSlFactorTemplates(all);
     } catch (e) {
       console.error('Failed to load SL factor templates:', e);
       setSlFactorTemplates([]);
@@ -536,23 +541,31 @@ export default function Step2() {
                 contentContainerStyle={{ paddingBottom: 20 }}
                 renderItem={({ item }) => (
                   <TouchableOpacity
-                    style={{ backgroundColor: '#F9FAFB', borderRadius: 10, padding: 12, marginBottom: 8, borderLeftWidth: 3, borderLeftColor: '#7C3AED' }}
+                    style={{ backgroundColor: '#F9FAFB', borderRadius: 10, padding: 12, marginBottom: 8, borderLeftWidth: 3, borderLeftColor: item.tier === 3 ? '#7C3AED' : item.tier === 2 ? '#059669' : '#6B7280' }}
                     onPress={() => handleImportFactors(item)}
                   >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                      <View style={{ backgroundColor: item.tier === 3 ? '#F5F3FF' : item.tier === 2 ? '#ECFDF5' : '#F3F4F6', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                        <Text style={{ fontSize: 9, fontWeight: '700', color: item.tier === 3 ? '#7C3AED' : item.tier === 2 ? '#059669' : '#6B7280' }}>
+                          {item._tierLabel || (item.tier === 3 ? 'AI Premium' : item.tier === 2 ? 'Authorized' : 'Personal')}
+                        </Text>
+                      </View>
+                      <Text style={{ fontSize: 11, color: '#6B7280' }}>{item.category}</Text>
+                    </View>
                     <Text style={{ fontSize: 13, fontWeight: '600', color: '#1F2937' }} numberOfLines={1}>
                       {item.scenario_title || item.title}
                     </Text>
                     <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }} numberOfLines={1}>
-                      {item.category} • {(item.factors || []).length} factors
+                      {(item.factors || []).length} factors • {item.sub_area || ''}
                     </Text>
                     {(item.factors || []).length > 0 && (
                       <View style={{ marginTop: 6 }}>
                         {(item.factors || []).slice(0, 4).map((f: any, idx: number) => (
                           <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: (f.priority || 5) >= 7 ? '#EF4444' : '#F59E0B' }} />
+                            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: f.classification === 'mandatory' ? '#EF4444' : '#F59E0B' }} />
                             <Text style={{ fontSize: 11, color: '#374151', flex: 1 }} numberOfLines={1}>{f.name}</Text>
-                            <Text style={{ fontSize: 9, color: (f.priority || 5) >= 7 ? '#EF4444' : '#D97706', fontWeight: '600' }}>
-                              P{f.priority || 5} • {(f.priority || 5) >= 7 ? 'Primary' : 'Secondary'}
+                            <Text style={{ fontSize: 9, color: f.classification === 'mandatory' ? '#EF4444' : '#D97706', fontWeight: '600' }}>
+                              {f.practical_priority || `P${f.practical_priority_num || 5}`} • {f.classification === 'mandatory' ? 'Mandatory' : 'Optional'}
                             </Text>
                             {f.expected_value_pct !== undefined && (
                               <Text style={{ fontSize: 9, color: '#6B7280' }}>Exp: {f.expected_value_pct}%</Text>

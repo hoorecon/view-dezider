@@ -3475,6 +3475,43 @@ agent_communication:
         comment: "✅ ERROR HANDLING TESTING PASSED: All validation and error handling working correctly. (1) POST /api/social-learning/upload with content < 50 chars correctly rejected with 400 status and error message 'News content must be at least 50 characters', (2) POST /api/social-learning/upload-file without file correctly rejected with 422 Unprocessable Entity status. Input validation and error responses working as designed."
 
 
+  - task: "Enhanced AI Classification with HOS Hierarchy"
+    implemented: true
+    working: "NA"
+    file: "routes/social_learning.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+
+  - task: "Factor/Risk Review & Approval Endpoints"
+    implemented: true
+    working: "NA"
+    file: "routes/social_learning.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+
+  - task: "Re-Analysis Endpoint"
+    implemented: true
+    working: "NA"
+    file: "routes/social_learning.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+
+  - task: "3-Tier Integration Endpoints"
+    implemented: true
+    working: "NA"
+    file: "routes/social_learning.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+
+agent_communication:
+  - agent: "main"
+    message: "ENHANCED ENDPOINTS TO TEST: (1) POST /api/social-learning/upload with a news article - should now return region_hierarchy, life_area_mapping with sub_areas, scenario_mapping, learnings_mydezider.factors (with practical_priority P1-P10, classification mandatory/optional, expected_value), learnings_solution_finder.risks (with probability, impact, risk_index=prob*impact, mitigation_plan, contingency_plan). (2) POST /api/social-learning/template/{id}/approve-factors with {approved_factor_indices: [0,1,2]} (3) POST /api/social-learning/template/{id}/approve-risks with {approved_risk_indices: [0]} (4) POST /api/social-learning/template/{id}/re-analyze with {additional_context: 'Focus on financial aspects for a small business in Mumbai'} (5) GET /api/social-learning/templates-for-decision?include_personal=true - should return {tier_1_personal, tier_2_authorized, tier_3_ai_derived} (6) GET /api/social-learning/templates-for-solution-finder?include_personal=true - same 3-tier structure with risks. Backend URL: https://dezider-core.preview.emergentagent.com/api. IMPORTANT: First seed HOS data with POST /api/hos/seed. Auth required. Use timeout 60s+ for upload endpoints."
+
+
   - task: "Social Learning - URL News Fetch & Classify"
     implemented: true
     working: "NA"

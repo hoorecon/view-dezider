@@ -149,9 +149,14 @@ export default function SolutionFinderScreen() {
     setLoadingSLRisk(true);
     try {
       const res = await api.get('/social-learning/templates-for-solution-finder', {
-        params: { life_area: areaOfLife || undefined, limit: 20 },
+        params: { life_area: areaOfLife || undefined, include_personal: true, limit: 20 },
       });
-      setSlRiskTemplates(res.data?.templates || []);
+      // Combine all 3 tiers
+      const all: any[] = [];
+      (res.data?.tier_1_personal || []).forEach((t: any) => all.push({ ...t, _tierLabel: 'Personal' }));
+      (res.data?.tier_2_authorized || []).forEach((t: any) => all.push({ ...t, _tierLabel: 'Authorized' }));
+      (res.data?.tier_3_ai_derived || []).forEach((t: any) => all.push({ ...t, _tierLabel: 'AI Premium' }));
+      setSlRiskTemplates(all);
     } catch (e) {
       console.error('Failed to load SL risk templates:', e);
       setSlRiskTemplates([]);
@@ -161,14 +166,18 @@ export default function SolutionFinderScreen() {
   };
 
   const applySLRiskTemplate = (t: any) => {
-    const concerns = (t.main_concerns || []).join('\n');
-    const risks = (t.risk_management_questions || []).join('\n');
-    const actions = (t.recommended_actions || []).join('\n');
-    if (concerns) setQ4NegConsequences(prev => prev ? prev + '\n' + concerns : concerns);
-    if (risks) setQ4Mitigation(prev => prev ? prev + '\n' + risks : risks);
-    if (actions) setQ4Contingency(prev => prev ? prev + '\n' + actions : actions);
+    const risks = t.risks || [];
+    const riskLines = risks.map((r: any) =>
+      `[Risk Index: ${r.risk_index || 'N/A'}] ${r.risk_name} (Prob: ${r.probability}/10, Impact: ${r.impact}/10)`
+    ).join('\n');
+    const mitigations = risks.map((r: any) => r.mitigation_plan).filter(Boolean).join('\n');
+    const contingencies = risks.map((r: any) => r.contingency_plan).filter(Boolean).join('\n');
+
+    if (riskLines) setQ4NegConsequences(prev => prev ? prev + '\n' + riskLines : riskLines);
+    if (mitigations) setQ4Mitigation(prev => prev ? prev + '\n' + mitigations : mitigations);
+    if (contingencies) setQ4Contingency(prev => prev ? prev + '\n' + contingencies : contingencies);
     setShowSLRiskModal(false);
-    showAlert('Applied', 'Risk insights from Social Learning have been added to Q4.');
+    showAlert('Applied', `${risks.length} risks with mitigations & contingencies added from ${t._tierLabel || 'Social Learning'}.`);
   };
 
   const handleSave = async () => {
@@ -832,27 +841,38 @@ export default function SolutionFinderScreen() {
                   {slRiskTemplates.map((t: any) => (
                     <TouchableOpacity
                       key={t.id}
-                      style={{ backgroundColor: '#F9FAFB', borderRadius: 10, padding: 12, marginBottom: 8, borderLeftWidth: 3, borderLeftColor: '#7C3AED' }}
+                      style={{ backgroundColor: '#F9FAFB', borderRadius: 10, padding: 12, marginBottom: 8, borderLeftWidth: 3, borderLeftColor: t.tier === 3 ? '#7C3AED' : t.tier === 2 ? '#059669' : '#6B7280' }}
                       onPress={() => applySLRiskTemplate(t)}
                     >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                        <View style={{ backgroundColor: t.tier === 3 ? '#F5F3FF' : t.tier === 2 ? '#ECFDF5' : '#F3F4F6', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                          <Text style={{ fontSize: 9, fontWeight: '700', color: t.tier === 3 ? '#7C3AED' : t.tier === 2 ? '#059669' : '#6B7280' }}>
+                            {t._tierLabel}
+                          </Text>
+                        </View>
+                        <Text style={{ fontSize: 10, color: '#9CA3AF' }}>{(t.risks || []).length} risks</Text>
+                      </View>
                       <Text style={{ fontSize: 13, fontWeight: '600', color: '#1F2937' }} numberOfLines={1}>
                         {t.scenario_title || t.title}
                       </Text>
-                      <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }} numberOfLines={2}>
-                        {t.smart_goal || 'Risk insights from social learning'}
-                      </Text>
-                      {(t.main_concerns || []).length > 0 && (
-                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
-                          {t.main_concerns.slice(0, 2).map((c: string, i: number) => (
-                            <View key={i} style={{ backgroundColor: '#FEF2F2', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
-                              <Text style={{ fontSize: 9, color: '#EF4444' }}>⚠ {c}</Text>
+                      {(t.risks || []).length > 0 && (
+                        <View style={{ marginTop: 6 }}>
+                          {(t.risks || []).slice(0, 3).map((r: any, i: number) => (
+                            <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 3 }}>
+                              <View style={{ width: 18, height: 18, borderRadius: 4, backgroundColor: (r.risk_index || 0) >= 50 ? '#FEF2F2' : (r.risk_index || 0) >= 25 ? '#FFFBEB' : '#ECFDF5', justifyContent: 'center', alignItems: 'center' }}>
+                                <Text style={{ fontSize: 8, fontWeight: '700', color: (r.risk_index || 0) >= 50 ? '#EF4444' : (r.risk_index || 0) >= 25 ? '#D97706' : '#059669' }}>
+                                  {r.risk_index || '?'}
+                                </Text>
+                              </View>
+                              <Text style={{ fontSize: 10, color: '#374151', flex: 1 }} numberOfLines={1}>{r.risk_name}</Text>
+                              <Text style={{ fontSize: 8, color: '#9CA3AF' }}>P{r.probability} × I{r.impact}</Text>
                             </View>
                           ))}
                         </View>
                       )}
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 }}>
                         <Ionicons name="add-circle" size={14} color="#7C3AED" />
-                        <Text style={{ fontSize: 10, color: '#7C3AED', fontWeight: '500' }}>Tap to apply</Text>
+                        <Text style={{ fontSize: 10, color: '#7C3AED', fontWeight: '500' }}>Tap to apply risks + mitigations</Text>
                       </View>
                     </TouchableOpacity>
                   ))}
