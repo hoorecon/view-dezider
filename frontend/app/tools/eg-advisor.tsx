@@ -153,7 +153,9 @@ export default function EGAdvisorScreen() {
   };
 
   const handleOutletAction = (outlet: Outlet) => {
-    if (outlet.has_affirmation_browser) {
+    if ((outlet as any).has_guided_flow) {
+      router.push('/tools/eg-emotional-reception' as any);
+    } else if (outlet.has_affirmation_browser) {
       openForgivenessBrowser();
     } else if (outlet.has_journal_entry) {
       setGratitudeModal(true);
@@ -295,6 +297,16 @@ export default function EGAdvisorScreen() {
                           </View>
 
                           {/* Action Button */}
+                          {(outlet as any).has_guided_flow && (
+                            <TouchableOpacity
+                              style={[s.actionBtn, { backgroundColor: outlet.color }]}
+                              onPress={() => router.push('/tools/eg-emotional-reception' as any)}
+                            >
+                              <Ionicons name="play-circle" size={20} color="#FFF" />
+                              <Text style={s.actionBtnText}>Start 5-Minute Guided Practice</Text>
+                            </TouchableOpacity>
+                          )}
+
                           {outlet.has_audio_play && (
                             <TouchableOpacity
                               style={[s.actionBtn, { backgroundColor: isPlayingThis ? '#EF4444' : outlet.color }]}

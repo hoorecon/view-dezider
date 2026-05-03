@@ -264,6 +264,26 @@ EFFECTIVE_OUTLETS = [
         "has_audio_play": True,
         "tip": "Ho'oponopono is an ancient Hawaiian practice of reconciliation and forgiveness. HOORECON-o-Pono adds Trust and Cherish for deeper healing.",
     },
+    {
+        "id": "emotional_reception",
+        "number": "10",
+        "name": "Emotional Reception",
+        "category": "emotional",
+        "relief_type": "Inner Stability (EQ Builder)",
+        "duration": "5 mins",
+        "icon": "leaf",
+        "color": "#0EA5E9",
+        "description": "Just Be in the Here and Now — a guided 5-minute practice to simply BE with your pain without doing anything. This builds your Emotional Quotient (EQ) dramatically.",
+        "instructions": [
+            "Acknowledge what burden you are carrying right now",
+            "Accept the inevitability of this moment — do not resist",
+            "Follow the 7 DON'Ts for 5 minutes",
+            "Simply BE with the feeling — no action, no escape, no analysis",
+            "After 5 minutes, notice the shift in your inner stability",
+        ],
+        "has_guided_flow": True,
+        "tip": "Nobody on earth can change the reality of this very moment. If we're against this moment, we're against the whole Universe. Be wise and realize this inevitability.",
+    },
 ]
 
 
@@ -575,4 +595,95 @@ async def get_sms_recommendations(user: dict = Depends(get_current_user)):
         "recommendations": recommendations,
         "overall_pattern": analysis.get("overall_pattern") if isinstance(analysis, dict) else None,
         "top_recommendations": analysis.get("top_recommendations") if isinstance(analysis, dict) else None,
+    }
+
+
+# ============================================================
+# EMOTIONAL RECEPTION — Guided Flow Endpoint
+# ============================================================
+
+class EmotionalReceptionLog(BaseModel):
+    burden: str  # What burden they're carrying
+    wants_settled: bool = True
+    accepted_donts: bool = True
+    chose_to_be: bool  # True = "Yes I can wait 5 mins", False = "No I can't"
+    completed_5_min: Optional[bool] = None  # Did they complete the timer?
+    intensity_before: Optional[int] = None  # 1-10
+    intensity_after: Optional[int] = None  # 1-10
+    reflection: Optional[str] = None  # Post-practice reflection
+
+
+@router.post("/advisor/emotional-reception/log")
+async def log_emotional_reception(data: EmotionalReceptionLog, user: dict = Depends(get_current_user)):
+    """Log a complete Emotional Reception session with all guided flow data."""
+    now = datetime.now(timezone.utc).isoformat()
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    doc = {
+        "id": f"ER-{uuid.uuid4().hex[:8].upper()}",
+        "user_id": user["user_id"],
+        "burden": data.burden,
+        "wants_settled": data.wants_settled,
+        "accepted_donts": data.accepted_donts,
+        "chose_to_be": data.chose_to_be,
+        "completed_5_min": data.completed_5_min,
+        "intensity_before": data.intensity_before,
+        "intensity_after": data.intensity_after,
+        "reflection": data.reflection,
+        "date": today,
+        "created_at": now,
+    }
+
+    await db.emotional_reception_logs.insert_one(doc)
+
+    # Also log as advisor practice
+    practice = {
+        "id": f"PL-{uuid.uuid4().hex[:8].upper()}",
+        "user_id": user["user_id"],
+        "outlet_id": "emotional_reception",
+        "duration_seconds": 300 if data.completed_5_min else 0,
+        "notes": f"Burden: {data.burden}" + (f" | Reflection: {data.reflection}" if data.reflection else ""),
+        "date": today,
+        "created_at": now,
+    }
+    await db.advisor_practice_logs.insert_one(practice)
+
+    # Compute EQ growth
+    completed_count = await db.emotional_reception_logs.count_documents({
+        "user_id": user["user_id"], "completed_5_min": True,
+    })
+    total_count = await db.emotional_reception_logs.count_documents({
+        "user_id": user["user_id"],
+    })
+
+    doc.pop("_id", None)
+    return {
+        "logged": doc,
+        "eq_stats": {
+            "total_attempts": total_count,
+            "successful_completions": completed_count,
+            "eq_score": min(10, round(completed_count * 0.5 + 1, 1)),  # Simple EQ growth metric
+        },
+    }
+
+
+@router.get("/advisor/emotional-reception/history")
+async def get_emotional_reception_history(user: dict = Depends(get_current_user)):
+    """Get Emotional Reception practice history with EQ growth."""
+    logs = await db.emotional_reception_logs.find(
+        {"user_id": user["user_id"]},
+        {"_id": 0},
+    ).sort("created_at", -1).to_list(100)
+
+    completed = sum(1 for l in logs if l.get("completed_5_min"))
+    total = len(logs)
+
+    return {
+        "logs": logs,
+        "eq_stats": {
+            "total_attempts": total,
+            "successful_completions": completed,
+            "completion_rate": round(completed / total * 100, 1) if total > 0 else 0,
+            "eq_score": min(10, round(completed * 0.5 + 1, 1)),
+        },
     }

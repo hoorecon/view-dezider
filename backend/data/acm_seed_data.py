@@ -970,6 +970,20 @@ ACM_MODULES = [
                     "paid_enterprise": _full(), "paid_api": _hidden(),
                 },
             },
+            {
+                "feature_id": "eg_emotional_reception",
+                "feature_name": "Emotional Reception — 5-min 'Just BE' Guided Practice",
+                "release_stage": "ga_trial",
+                "quota_unit": "sessions/month",
+                "quota_resets": "monthly",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _full(3), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
         ],
     },
 

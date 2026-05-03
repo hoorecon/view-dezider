@@ -1,445 +1,407 @@
 """
-Backend API Testing for Effective Outlets Advisor Endpoints
-Testing all endpoints on https://dezider-core.preview.emergentagent.com/api
+Backend API Testing for Emotional Reception Endpoints
+Tests all Emotional Reception functionality as per review request
 """
 
 import requests
 import json
 from datetime import datetime
 
-# Configuration
+# Backend URL from environment
 BASE_URL = "https://dezider-core.preview.emergentagent.com/api"
-TEST_USER = {
-    "email": "advisor_test@test.com",
-    "password": "Test123!",
-    "name": "Advisor Tester"
-}
 
-# Global variables
+# Test credentials
+TEST_EMAIL = "reception_test@test.com"
+TEST_PASSWORD = "Test123!"
+TEST_NAME = "Reception Tester"
+
+# Global session token
 session_token = None
-test_results = []
 
 
-def log_test(test_name, passed, details=""):
-    """Log test result"""
-    status = "✅ PASSED" if passed else "❌ FAILED"
-    result = f"{status}: {test_name}"
+def print_test(test_name, passed, details=""):
+    """Print test result with formatting"""
+    status = "✅ PASS" if passed else "❌ FAIL"
+    print(f"\n{status}: {test_name}")
     if details:
-        result += f" - {details}"
-    test_results.append(result)
-    print(result)
+        print(f"   {details}")
 
 
-def test_1_register_user():
-    """Test 1: Register a new test user"""
+def test_1_register():
+    """Test 1: Register new user"""
     global session_token
     
     url = f"{BASE_URL}/auth/register"
-    response = requests.post(url, json=TEST_USER)
+    payload = {
+        "email": TEST_EMAIL,
+        "password": TEST_PASSWORD,
+        "name": TEST_NAME
+    }
     
-    if response.status_code == 200:
+    try:
+        response = requests.post(url, json=payload)
         data = response.json()
-        session_token = data.get("session_token")
-        log_test("User Registration", True, f"Registered with session_token")
-        return True
-    else:
-        log_test("User Registration", False, f"Status: {response.status_code}, Response: {response.text}")
+        
+        if response.status_code == 200 and "session_token" in data:
+            session_token = data["session_token"]
+            print_test("User Registration", True, f"Registered {TEST_EMAIL} with session token")
+            return True
+        elif response.status_code == 400 and ("already" in data.get("detail", "").lower() or "registered" in data.get("detail", "").lower()):
+            # User already exists, try login
+            print_test("User Registration", True, f"User already exists, will login instead")
+            return test_1b_login()
+        else:
+            print_test("User Registration", False, f"Status: {response.status_code}, Response: {data}")
+            return False
+    except Exception as e:
+        print_test("User Registration", False, f"Exception: {str(e)}")
         return False
 
 
-def test_2_get_all_outlets():
-    """Test 2: GET /api/emotional-gatekeeper/advisor/outlets"""
+def test_1b_login():
+    """Test 1b: Login existing user"""
+    global session_token
+    
+    url = f"{BASE_URL}/auth/login"
+    payload = {
+        "email": TEST_EMAIL,
+        "password": TEST_PASSWORD
+    }
+    
+    try:
+        response = requests.post(url, json=payload)
+        data = response.json()
+        
+        if response.status_code == 200 and "session_token" in data:
+            session_token = data["session_token"]
+            print_test("User Login", True, f"Logged in {TEST_EMAIL}")
+            return True
+        else:
+            print_test("User Login", False, f"Status: {response.status_code}, Response: {data}")
+            return False
+    except Exception as e:
+        print_test("User Login", False, f"Exception: {str(e)}")
+        return False
+
+
+def test_2_verify_outlets():
+    """Test 2: Verify outlets include Emotional Reception (outlet #10)"""
+    
     url = f"{BASE_URL}/emotional-gatekeeper/advisor/outlets"
     headers = {"Authorization": f"Bearer {session_token}"}
     
-    response = requests.get(url, headers=headers)
-    
-    if response.status_code == 200:
+    try:
+        response = requests.get(url, headers=headers)
         data = response.json()
+        
+        if response.status_code != 200:
+            print_test("Verify Outlets", False, f"Status: {response.status_code}")
+            return False
+        
         outlets = data.get("outlets", [])
-        forgiveness = data.get("forgiveness_affirmations", [])
+        total_outlets = len(outlets)
         
-        # Verify outlets count
-        if len(outlets) != 9:
-            log_test("Get All Outlets - Count", False, f"Expected 9 outlets, got {len(outlets)}")
-            return False
-        
-        # Verify forgiveness affirmations count
-        if len(forgiveness) != 7:
-            log_test("Get All Outlets - Forgiveness Count", False, f"Expected 7 categories, got {len(forgiveness)}")
-            return False
-        
-        # Verify outlet structure
-        required_fields = ["id", "number", "name", "category", "relief_type", "duration", "instructions", "description"]
+        # Find emotional_reception outlet
+        emotional_reception = None
         for outlet in outlets:
-            for field in required_fields:
-                if field not in outlet:
-                    log_test("Get All Outlets - Structure", False, f"Missing field '{field}' in outlet")
-                    return False
+            if outlet.get("id") == "emotional_reception":
+                emotional_reception = outlet
+                break
         
-        # Verify forgiveness structure
-        required_forgiveness_fields = ["id", "title", "icon", "frequency", "sections"]
-        for aff in forgiveness:
-            for field in required_forgiveness_fields:
-                if field not in aff:
-                    log_test("Get All Outlets - Forgiveness Structure", False, f"Missing field '{field}' in affirmation")
-                    return False
+        if not emotional_reception:
+            print_test("Verify Outlets", False, f"Emotional Reception outlet not found. Total outlets: {total_outlets}")
+            return False
         
-        log_test("Get All Outlets", True, f"9 outlets and 7 forgiveness categories with proper structure")
-        return True
-    else:
-        log_test("Get All Outlets", False, f"Status: {response.status_code}, Response: {response.text}")
+        # Verify outlet properties
+        checks = []
+        checks.append(("id", emotional_reception.get("id") == "emotional_reception"))
+        checks.append(("number", emotional_reception.get("number") == "10"))
+        checks.append(("has_guided_flow", emotional_reception.get("has_guided_flow") == True))
+        checks.append(("category", emotional_reception.get("category") == "emotional"))
+        
+        all_passed = all(check[1] for check in checks)
+        
+        if all_passed:
+            details = f"Found {total_outlets} outlets including Emotional Reception (#10) with correct properties (id, number, has_guided_flow, category)"
+            print_test("Verify Outlets", True, details)
+            return True
+        else:
+            failed_checks = [check[0] for check in checks if not check[1]]
+            details = f"Total outlets: {total_outlets}, Failed checks: {failed_checks}"
+            print_test("Verify Outlets", False, details)
+            return False
+            
+    except Exception as e:
+        print_test("Verify Outlets", False, f"Exception: {str(e)}")
         return False
 
 
-def test_3_get_practice_history_empty():
-    """Test 3: GET /api/emotional-gatekeeper/advisor/my-practices (empty)"""
-    url = f"{BASE_URL}/emotional-gatekeeper/advisor/my-practices"
+def test_3_log_completed_5min():
+    """Test 3: Log Emotional Reception - Completed 5 mins"""
+    
+    url = f"{BASE_URL}/emotional-gatekeeper/advisor/emotional-reception/log"
+    headers = {"Authorization": f"Bearer {session_token}"}
+    payload = {
+        "burden": "Work pressure and deadline stress",
+        "wants_settled": True,
+        "accepted_donts": True,
+        "chose_to_be": True,
+        "completed_5_min": True,
+        "intensity_before": 8,
+        "intensity_after": 4,
+        "reflection": "I noticed the stress became lighter simply by observing it"
+    }
+    
+    try:
+        response = requests.post(url, json=payload, headers=headers)
+        data = response.json()
+        
+        if response.status_code != 200:
+            print_test("Log Completed 5min", False, f"Status: {response.status_code}, Response: {data}")
+            return False
+        
+        # Verify response structure
+        logged = data.get("logged")
+        eq_stats = data.get("eq_stats")
+        
+        if not logged or not eq_stats:
+            print_test("Log Completed 5min", False, "Missing logged or eq_stats in response")
+            return False
+        
+        # Verify eq_stats
+        total_attempts = eq_stats.get("total_attempts")
+        successful_completions = eq_stats.get("successful_completions")
+        
+        if total_attempts >= 1 and successful_completions >= 1:
+            details = f"Logged successfully. EQ Stats: {total_attempts} attempts, {successful_completions} completions"
+            print_test("Log Completed 5min", True, details)
+            return True
+        else:
+            print_test("Log Completed 5min", False, f"Unexpected eq_stats: {eq_stats}")
+            return False
+            
+    except Exception as e:
+        print_test("Log Completed 5min", False, f"Exception: {str(e)}")
+        return False
+
+
+def test_4_log_not_completed():
+    """Test 4: Log Emotional Reception - Did NOT complete"""
+    
+    url = f"{BASE_URL}/emotional-gatekeeper/advisor/emotional-reception/log"
+    headers = {"Authorization": f"Bearer {session_token}"}
+    payload = {
+        "burden": "Argument with partner",
+        "wants_settled": True,
+        "accepted_donts": True,
+        "chose_to_be": True,
+        "completed_5_min": False,
+        "intensity_before": 9,
+        "intensity_after": 7
+    }
+    
+    try:
+        response = requests.post(url, json=payload, headers=headers)
+        data = response.json()
+        
+        if response.status_code != 200:
+            print_test("Log NOT Completed", False, f"Status: {response.status_code}, Response: {data}")
+            return False
+        
+        eq_stats = data.get("eq_stats")
+        
+        if not eq_stats:
+            print_test("Log NOT Completed", False, "Missing eq_stats in response")
+            return False
+        
+        total_attempts = eq_stats.get("total_attempts")
+        successful_completions = eq_stats.get("successful_completions")
+        
+        # Should have 2 attempts, 1 completion (from previous test)
+        if total_attempts >= 2 and successful_completions >= 1:
+            details = f"Logged successfully. EQ Stats: {total_attempts} attempts, {successful_completions} completions"
+            print_test("Log NOT Completed", True, details)
+            return True
+        else:
+            print_test("Log NOT Completed", False, f"Unexpected eq_stats: {eq_stats}")
+            return False
+            
+    except Exception as e:
+        print_test("Log NOT Completed", False, f"Exception: {str(e)}")
+        return False
+
+
+def test_5_log_chose_not_to_wait():
+    """Test 5: Log Emotional Reception - Chose NOT to wait"""
+    
+    url = f"{BASE_URL}/emotional-gatekeeper/advisor/emotional-reception/log"
+    headers = {"Authorization": f"Bearer {session_token}"}
+    payload = {
+        "burden": "Financial anxiety",
+        "wants_settled": True,
+        "accepted_donts": True,
+        "chose_to_be": False,
+        "intensity_before": 6
+    }
+    
+    try:
+        response = requests.post(url, json=payload, headers=headers)
+        data = response.json()
+        
+        if response.status_code != 200:
+            print_test("Log Chose NOT to Wait", False, f"Status: {response.status_code}, Response: {data}")
+            return False
+        
+        eq_stats = data.get("eq_stats")
+        
+        if not eq_stats:
+            print_test("Log Chose NOT to Wait", False, "Missing eq_stats in response")
+            return False
+        
+        total_attempts = eq_stats.get("total_attempts")
+        
+        # Should have 3 attempts now
+        if total_attempts >= 3:
+            details = f"Logged successfully. Total attempts: {total_attempts}"
+            print_test("Log Chose NOT to Wait", True, details)
+            return True
+        else:
+            print_test("Log Chose NOT to Wait", False, f"Expected 3+ attempts, got {total_attempts}")
+            return False
+            
+    except Exception as e:
+        print_test("Log Chose NOT to Wait", False, f"Exception: {str(e)}")
+        return False
+
+
+def test_6_get_history():
+    """Test 6: Get Emotional Reception History"""
+    
+    url = f"{BASE_URL}/emotional-gatekeeper/advisor/emotional-reception/history"
     headers = {"Authorization": f"Bearer {session_token}"}
     
-    response = requests.get(url, headers=headers)
-    
-    if response.status_code == 200:
+    try:
+        response = requests.get(url, headers=headers)
         data = response.json()
+        
+        if response.status_code != 200:
+            print_test("Get History", False, f"Status: {response.status_code}, Response: {data}")
+            return False
+        
         logs = data.get("logs", [])
-        stats = data.get("stats", {})
+        eq_stats = data.get("eq_stats")
         
-        if len(logs) != 0:
-            log_test("Get Practice History (Empty)", False, f"Expected 0 logs, got {len(logs)}")
+        if not eq_stats:
+            print_test("Get History", False, "Missing eq_stats in response")
             return False
         
-        if stats.get("total_practices") != 0:
-            log_test("Get Practice History (Empty)", False, f"Expected 0 total_practices, got {stats.get('total_practices')}")
-            return False
+        total_attempts = eq_stats.get("total_attempts")
+        successful_completions = eq_stats.get("successful_completions")
+        completion_rate = eq_stats.get("completion_rate")
         
-        if stats.get("streak") != 0:
-            log_test("Get Practice History (Empty)", False, f"Expected 0 streak, got {stats.get('streak')}")
+        # Should have 3 logs, 1 successful completion
+        if len(logs) >= 3 and total_attempts >= 3 and successful_completions >= 1:
+            details = f"Found {len(logs)} logs. EQ Stats: {total_attempts} attempts, {successful_completions} completions, {completion_rate}% completion rate"
+            print_test("Get History", True, details)
+            return True
+        else:
+            details = f"Logs: {len(logs)}, Attempts: {total_attempts}, Completions: {successful_completions}"
+            print_test("Get History", False, details)
             return False
-        
-        log_test("Get Practice History (Empty)", True, "Empty logs and 0 stats")
-        return True
-    else:
-        log_test("Get Practice History (Empty)", False, f"Status: {response.status_code}, Response: {response.text}")
+            
+    except Exception as e:
+        print_test("Get History", False, f"Exception: {str(e)}")
         return False
 
 
-def test_4_log_practice_joint_exercise():
-    """Test 4: POST /api/emotional-gatekeeper/advisor/practice-log - Joint Exercise"""
-    url = f"{BASE_URL}/emotional-gatekeeper/advisor/practice-log"
-    headers = {"Authorization": f"Bearer {session_token}"}
-    payload = {
-        "outlet_id": "joint_exercise",
-        "duration_seconds": 300
-    }
+def test_7_verify_practice_logged():
+    """Test 7: Verify practice was auto-logged"""
     
-    response = requests.post(url, json=payload, headers=headers)
-    
-    if response.status_code == 200:
-        data = response.json()
-        logged = data.get("logged", {})
-        
-        if logged.get("outlet_id") != "joint_exercise":
-            log_test("Log Practice - Joint Exercise", False, f"outlet_id mismatch")
-            return False
-        
-        if logged.get("duration_seconds") != 300:
-            log_test("Log Practice - Joint Exercise", False, f"duration_seconds mismatch")
-            return False
-        
-        if not logged.get("id"):
-            log_test("Log Practice - Joint Exercise", False, f"Missing id field")
-            return False
-        
-        log_test("Log Practice - Joint Exercise", True, f"Logged with id: {logged.get('id')}")
-        return True
-    else:
-        log_test("Log Practice - Joint Exercise", False, f"Status: {response.status_code}, Response: {response.text}")
-        return False
-
-
-def test_5_log_practice_super_brain_yoga():
-    """Test 5: POST /api/emotional-gatekeeper/advisor/practice-log - Super Brain Yoga"""
-    url = f"{BASE_URL}/emotional-gatekeeper/advisor/practice-log"
-    headers = {"Authorization": f"Bearer {session_token}"}
-    payload = {
-        "outlet_id": "super_brain_yoga",
-        "duration_seconds": 200,
-        "notes": "14 reps done"
-    }
-    
-    response = requests.post(url, json=payload, headers=headers)
-    
-    if response.status_code == 200:
-        data = response.json()
-        logged = data.get("logged", {})
-        
-        if logged.get("outlet_id") != "super_brain_yoga":
-            log_test("Log Practice - Super Brain Yoga", False, f"outlet_id mismatch")
-            return False
-        
-        if logged.get("notes") != "14 reps done":
-            log_test("Log Practice - Super Brain Yoga", False, f"notes mismatch")
-            return False
-        
-        log_test("Log Practice - Super Brain Yoga", True, f"Logged with notes")
-        return True
-    else:
-        log_test("Log Practice - Super Brain Yoga", False, f"Status: {response.status_code}, Response: {response.text}")
-        return False
-
-
-def test_6_log_practice_release_technique():
-    """Test 6: POST /api/emotional-gatekeeper/advisor/practice-log - Release Technique"""
-    url = f"{BASE_URL}/emotional-gatekeeper/advisor/practice-log"
-    headers = {"Authorization": f"Bearer {session_token}"}
-    payload = {
-        "outlet_id": "release_technique",
-        "duration_seconds": 120
-    }
-    
-    response = requests.post(url, json=payload, headers=headers)
-    
-    if response.status_code == 200:
-        log_test("Log Practice - Release Technique", True, "Logged successfully")
-        return True
-    else:
-        log_test("Log Practice - Release Technique", False, f"Status: {response.status_code}, Response: {response.text}")
-        return False
-
-
-def test_7_log_practice_forgiveness_affirmation():
-    """Test 7: POST /api/emotional-gatekeeper/advisor/practice-log - Forgiveness Affirmation"""
-    url = f"{BASE_URL}/emotional-gatekeeper/advisor/practice-log"
-    headers = {"Authorization": f"Bearer {session_token}"}
-    payload = {
-        "outlet_id": "forgiveness_affirmations",
-        "affirmation_category": "forgiving_yourself"
-    }
-    
-    response = requests.post(url, json=payload, headers=headers)
-    
-    if response.status_code == 200:
-        data = response.json()
-        logged = data.get("logged", {})
-        
-        if logged.get("affirmation_category") != "forgiving_yourself":
-            log_test("Log Practice - Forgiveness Affirmation", False, f"affirmation_category mismatch")
-            return False
-        
-        log_test("Log Practice - Forgiveness Affirmation", True, "Logged with affirmation_category")
-        return True
-    else:
-        log_test("Log Practice - Forgiveness Affirmation", False, f"Status: {response.status_code}, Response: {response.text}")
-        return False
-
-
-def test_8_log_practice_hoorecon_o_pono():
-    """Test 8: POST /api/emotional-gatekeeper/advisor/practice-log - HOORECON-o-Pono"""
-    url = f"{BASE_URL}/emotional-gatekeeper/advisor/practice-log"
-    headers = {"Authorization": f"Bearer {session_token}"}
-    payload = {
-        "outlet_id": "hoorecon_o_pono",
-        "duration_seconds": 120
-    }
-    
-    response = requests.post(url, json=payload, headers=headers)
-    
-    if response.status_code == 200:
-        log_test("Log Practice - HOORECON-o-Pono", True, "Logged successfully")
-        return True
-    else:
-        log_test("Log Practice - HOORECON-o-Pono", False, f"Status: {response.status_code}, Response: {response.text}")
-        return False
-
-
-def test_9_log_practice_invalid_outlet():
-    """Test 9: POST /api/emotional-gatekeeper/advisor/practice-log - Invalid outlet (error case)"""
-    url = f"{BASE_URL}/emotional-gatekeeper/advisor/practice-log"
-    headers = {"Authorization": f"Bearer {session_token}"}
-    payload = {
-        "outlet_id": "invalid_outlet"
-    }
-    
-    response = requests.post(url, json=payload, headers=headers)
-    
-    if response.status_code == 400:
-        log_test("Log Practice - Invalid Outlet (Error Case)", True, "Correctly rejected with 400")
-        return True
-    else:
-        log_test("Log Practice - Invalid Outlet (Error Case)", False, f"Expected 400, got {response.status_code}")
-        return False
-
-
-def test_10_save_gratitude_journal():
-    """Test 10: POST /api/emotional-gatekeeper/advisor/gratitude"""
-    url = f"{BASE_URL}/emotional-gatekeeper/advisor/gratitude"
-    headers = {"Authorization": f"Bearer {session_token}"}
-    payload = {
-        "entries": ["My health", "My family", "This beautiful morning"]
-    }
-    
-    response = requests.post(url, json=payload, headers=headers)
-    
-    if response.status_code == 200:
-        data = response.json()
-        
-        if data.get("entries_count") != 3:
-            log_test("Save Gratitude Journal", False, f"Expected entries_count=3, got {data.get('entries_count')}")
-            return False
-        
-        saved = data.get("saved", {})
-        if len(saved.get("entries", [])) != 3:
-            log_test("Save Gratitude Journal", False, f"Expected 3 entries in saved object")
-            return False
-        
-        log_test("Save Gratitude Journal", True, "Saved 3 gratitude entries")
-        return True
-    else:
-        log_test("Save Gratitude Journal", False, f"Status: {response.status_code}, Response: {response.text}")
-        return False
-
-
-def test_11_get_gratitude_history():
-    """Test 11: GET /api/emotional-gatekeeper/advisor/gratitude-history"""
-    url = f"{BASE_URL}/emotional-gatekeeper/advisor/gratitude-history"
-    headers = {"Authorization": f"Bearer {session_token}"}
-    
-    response = requests.get(url, headers=headers)
-    
-    if response.status_code == 200:
-        data = response.json()
-        journals = data.get("journals", [])
-        total = data.get("total", 0)
-        
-        if total != 1:
-            log_test("Get Gratitude History", False, f"Expected total=1, got {total}")
-            return False
-        
-        if len(journals) != 1:
-            log_test("Get Gratitude History", False, f"Expected 1 journal entry, got {len(journals)}")
-            return False
-        
-        log_test("Get Gratitude History", True, "1 journal entry found")
-        return True
-    else:
-        log_test("Get Gratitude History", False, f"Status: {response.status_code}, Response: {response.text}")
-        return False
-
-
-def test_12_get_practice_history_after_logging():
-    """Test 12: GET /api/emotional-gatekeeper/advisor/my-practices (after logging)"""
     url = f"{BASE_URL}/emotional-gatekeeper/advisor/my-practices"
     headers = {"Authorization": f"Bearer {session_token}"}
     
-    response = requests.get(url, headers=headers)
-    
-    if response.status_code == 200:
-        data = response.json()
-        stats = data.get("stats", {})
-        
-        # We logged 5 practices + 1 gratitude auto-log = 6 total
-        total_practices = stats.get("total_practices", 0)
-        if total_practices < 6:
-            log_test("Get Practice History (After Logging)", False, f"Expected >= 6 practices, got {total_practices}")
-            return False
-        
-        streak = stats.get("streak", 0)
-        if streak < 1:
-            log_test("Get Practice History (After Logging)", False, f"Expected streak >= 1, got {streak}")
-            return False
-        
-        outlet_counts = stats.get("outlet_counts", {})
-        if len(outlet_counts) == 0:
-            log_test("Get Practice History (After Logging)", False, f"Expected outlet_counts to have entries")
-            return False
-        
-        log_test("Get Practice History (After Logging)", True, f"total_practices={total_practices}, streak={streak}, outlet_counts={len(outlet_counts)} types")
-        return True
-    else:
-        log_test("Get Practice History (After Logging)", False, f"Status: {response.status_code}, Response: {response.text}")
-        return False
-
-
-def test_13_get_sms_recommendations_no_analysis():
-    """Test 13: GET /api/emotional-gatekeeper/advisor/sms-recommendations (no analysis yet)"""
-    url = f"{BASE_URL}/emotional-gatekeeper/advisor/sms-recommendations"
-    headers = {"Authorization": f"Bearer {session_token}"}
-    
-    response = requests.get(url, headers=headers)
-    
-    if response.status_code == 200:
+    try:
+        response = requests.get(url, headers=headers)
         data = response.json()
         
-        if data.get("has_analysis") != False:
-            log_test("Get SMS Recommendations (No Analysis)", False, f"Expected has_analysis=false, got {data.get('has_analysis')}")
+        if response.status_code != 200:
+            print_test("Verify Practice Auto-logged", False, f"Status: {response.status_code}, Response: {data}")
             return False
         
-        if "Complete the Outlet Analyzer first" not in data.get("message", ""):
-            log_test("Get SMS Recommendations (No Analysis)", False, f"Expected message about completing Outlet Analyzer")
-            return False
+        logs = data.get("logs", [])
         
-        log_test("Get SMS Recommendations (No Analysis)", True, "Correctly returns has_analysis=false with message")
-        return True
-    else:
-        log_test("Get SMS Recommendations (No Analysis)", False, f"Status: {response.status_code}, Response: {response.text}")
+        # Filter for emotional_reception practices
+        er_practices = [log for log in logs if log.get("outlet_id") == "emotional_reception"]
+        
+        if len(er_practices) >= 3:
+            details = f"Found {len(er_practices)} emotional_reception practice logs (expected 3+)"
+            print_test("Verify Practice Auto-logged", True, details)
+            return True
+        else:
+            details = f"Found {len(er_practices)} emotional_reception practices, expected 3+"
+            print_test("Verify Practice Auto-logged", False, details)
+            return False
+            
+    except Exception as e:
+        print_test("Verify Practice Auto-logged", False, f"Exception: {str(e)}")
         return False
 
 
 def run_all_tests():
-    """Run all tests in sequence"""
-    print("\n" + "="*80)
-    print("EFFECTIVE OUTLETS ADVISOR - BACKEND API TESTING")
-    print("="*80 + "\n")
+    """Run all Emotional Reception tests"""
+    print("=" * 80)
+    print("EMOTIONAL RECEPTION ENDPOINTS TESTING")
+    print("=" * 80)
+    print(f"Backend URL: {BASE_URL}")
+    print(f"Test User: {TEST_EMAIL}")
+    print("=" * 80)
     
-    tests = [
-        test_1_register_user,
-        test_2_get_all_outlets,
-        test_3_get_practice_history_empty,
-        test_4_log_practice_joint_exercise,
-        test_5_log_practice_super_brain_yoga,
-        test_6_log_practice_release_technique,
-        test_7_log_practice_forgiveness_affirmation,
-        test_8_log_practice_hoorecon_o_pono,
-        test_9_log_practice_invalid_outlet,
-        test_10_save_gratitude_journal,
-        test_11_get_gratitude_history,
-        test_12_get_practice_history_after_logging,
-        test_13_get_sms_recommendations_no_analysis,
-    ]
+    results = []
     
-    passed = 0
-    failed = 0
+    # Test 1: Authentication
+    results.append(("Authentication", test_1_register()))
     
-    for test_func in tests:
-        try:
-            if test_func():
-                passed += 1
-            else:
-                failed += 1
-        except Exception as e:
-            log_test(test_func.__name__, False, f"Exception: {str(e)}")
-            failed += 1
-        print()  # Empty line between tests
+    if not session_token:
+        print("\n❌ CRITICAL: Authentication failed. Cannot proceed with other tests.")
+        return
+    
+    # Test 2: Verify outlets
+    results.append(("Verify Outlets", test_2_verify_outlets()))
+    
+    # Test 3: Log completed 5 min
+    results.append(("Log Completed 5min", test_3_log_completed_5min()))
+    
+    # Test 4: Log not completed
+    results.append(("Log NOT Completed", test_4_log_not_completed()))
+    
+    # Test 5: Log chose not to wait
+    results.append(("Log Chose NOT to Wait", test_5_log_chose_not_to_wait()))
+    
+    # Test 6: Get history
+    results.append(("Get History", test_6_get_history()))
+    
+    # Test 7: Verify practice auto-logged
+    results.append(("Verify Practice Auto-logged", test_7_verify_practice_logged()))
     
     # Summary
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("TEST SUMMARY")
-    print("="*80)
-    print(f"Total Tests: {passed + failed}")
-    print(f"✅ Passed: {passed}")
-    print(f"❌ Failed: {failed}")
-    print(f"Success Rate: {(passed / (passed + failed) * 100):.1f}%")
-    print("="*80 + "\n")
+    print("=" * 80)
     
-    # Detailed results
-    print("\nDETAILED RESULTS:")
-    print("-" * 80)
-    for result in test_results:
-        print(result)
-    print("-" * 80)
+    passed = sum(1 for _, result in results if result)
+    total = len(results)
     
-    return passed, failed
+    for test_name, result in results:
+        status = "✅ PASS" if result else "❌ FAIL"
+        print(f"{status}: {test_name}")
+    
+    print("=" * 80)
+    print(f"TOTAL: {passed}/{total} tests passed ({round(passed/total*100, 1)}%)")
+    print("=" * 80)
+    
+    return passed == total
 
 
 if __name__ == "__main__":
-    run_all_tests()
+    success = run_all_tests()
+    exit(0 if success else 1)
