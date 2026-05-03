@@ -72,10 +72,31 @@ async def get_templates_for_decision(
             "factor_summary": learnings.get("summary", ""),
         }
 
+    # Resolve life_area slug to HOS ID (decision flow uses slugs like "finance",
+    # but AI classification uses HOS IDs like "la_finance")
+    life_area_variants = []
+    if life_area:
+        life_area_variants.append(life_area)
+        # Look up the HOS life area by slug to get its id (and vice versa)
+        hos_la = await db.hos_life_areas.find_one(
+            {"$or": [{"slug": life_area}, {"id": life_area}]}, {"_id": 0}
+        )
+        if hos_la:
+            life_area_variants.append(hos_la["id"])
+            life_area_variants.append(hos_la.get("slug", ""))
+        # Also check common prefix pattern
+        if not life_area.startswith("la_"):
+            life_area_variants.append(f"la_{life_area}")
+        # Deduplicate
+        life_area_variants = list(set(v for v in life_area_variants if v))
+
     # Build base query filters
     base_filter: dict = {}
-    if life_area:
-        base_filter["$or"] = [{"life_areas": life_area}, {"primary_life_area": life_area}]
+    if life_area_variants:
+        base_filter["$or"] = [
+            {"life_areas": {"$in": life_area_variants}},
+            {"primary_life_area": {"$in": life_area_variants}},
+        ]
     if sub_area:
         base_filter["life_area_sub_area"] = {"$regex": sub_area, "$options": "i"}
     if category:
@@ -83,10 +104,12 @@ async def get_templates_for_decision(
     if org_type:
         base_filter["org_types"] = org_type
     if region:
-        base_filter["$or"] = base_filter.get("$or", []) + [
+        la_or = base_filter.get("$or", [])
+        la_or.extend([
             {"region_hierarchy.country": {"$regex": region, "$options": "i"}},
             {"region_hierarchy.state": {"$regex": region, "$options": "i"}},
-        ]
+        ])
+        base_filter["$or"] = la_or
 
     # Tier 1: User's own templates (personal)
     if include_personal:
@@ -108,8 +131,11 @@ async def get_templates_for_decision(
 
     # Tier 3: AI-derived Social Solution Templates
     t3_query: dict = {"status": "active", "tier": 3}
-    if life_area:
-        t3_query["$or"] = [{"life_areas": life_area}, {"primary_life_area": life_area}]
+    if life_area_variants:
+        t3_query["$or"] = [
+            {"life_areas": {"$in": life_area_variants}},
+            {"primary_life_area": {"$in": life_area_variants}},
+        ]
     t3_solutions = await db.social_solution_templates.find(
         t3_query, {"_id": 0}
     ).sort("created_at", -1).limit(limit // 2).to_list(limit // 2)
@@ -204,9 +230,26 @@ async def get_templates_for_solution_finder(
             "risk_summary": learnings.get("summary", ""),
         }
 
-    base_filter: dict = {}
+    # Resolve life_area slug to HOS ID (same as templates-for-decision)
+    life_area_variants = []
     if life_area:
-        base_filter["$or"] = [{"life_areas": life_area}, {"primary_life_area": life_area}]
+        life_area_variants.append(life_area)
+        hos_la = await db.hos_life_areas.find_one(
+            {"$or": [{"slug": life_area}, {"id": life_area}]}, {"_id": 0}
+        )
+        if hos_la:
+            life_area_variants.append(hos_la["id"])
+            life_area_variants.append(hos_la.get("slug", ""))
+        if not life_area.startswith("la_"):
+            life_area_variants.append(f"la_{life_area}")
+        life_area_variants = list(set(v for v in life_area_variants if v))
+
+    base_filter: dict = {}
+    if life_area_variants:
+        base_filter["$or"] = [
+            {"life_areas": {"$in": life_area_variants}},
+            {"primary_life_area": {"$in": life_area_variants}},
+        ]
     if sub_area:
         base_filter["life_area_sub_area"] = {"$regex": sub_area, "$options": "i"}
     if category:
@@ -234,8 +277,11 @@ async def get_templates_for_solution_finder(
 
     # Tier 3: AI-derived
     t3_query: dict = {"status": "active", "tier": 3}
-    if life_area:
-        t3_query["$or"] = [{"life_areas": life_area}, {"primary_life_area": life_area}]
+    if life_area_variants:
+        t3_query["$or"] = [
+            {"life_areas": {"$in": life_area_variants}},
+            {"primary_life_area": {"$in": life_area_variants}},
+        ]
     t3_solutions = await db.social_solution_templates.find(
         t3_query, {"_id": 0}
     ).sort("created_at", -1).limit(limit // 2).to_list(limit // 2)

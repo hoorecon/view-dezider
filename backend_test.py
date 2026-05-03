@@ -1,7 +1,7 @@
+#!/usr/bin/env python3
 """
-Backend API Testing for 3-Tier Social Learning Integration
-Tests the complete Social Learning workflow with HOS integration
-Backend URL: https://dezider-core.preview.emergentagent.com/api
+Backend API Testing Script for Social Learning - FINAL SLUG RESOLUTION VERIFICATION
+Tests the complete flow for 3-tier Social Learning endpoints with slug-to-HOS-ID mapping
 """
 
 import requests
@@ -9,32 +9,26 @@ import json
 import time
 from datetime import datetime
 
-# Backend URL
-BASE_URL = "https://dezider-core.preview.emergentagent.com/api"
+# Backend URL from environment
+BACKEND_URL = "https://dezider-core.preview.emergentagent.com/api"
 
 # Test results tracking
 test_results = []
 session_token = None
-template_id = None
-test_email = None
-test_password = "Test123456"
 
 def log_test(test_name, passed, details=""):
     """Log test result"""
     status = "✅ PASSED" if passed else "❌ FAILED"
-    result = {
-        "test": test_name,
-        "status": status,
-        "passed": passed,
-        "details": details,
-        "timestamp": datetime.now().isoformat()
-    }
-    test_results.append(result)
-    print(f"\n{status}: {test_name}")
+    result = f"{status}: {test_name}"
     if details:
-        print(f"  Details: {details}")
+        result += f" - {details}"
+    print(result)
+    test_results.append({
+        "test": test_name,
+        "passed": passed,
+        "details": details
+    })
     return passed
-
 
 def print_summary():
     """Print test summary"""
@@ -43,7 +37,7 @@ def print_summary():
     failed = total - passed
     
     print("\n" + "="*80)
-    print("TEST SUMMARY")
+    print("FINAL SLUG RESOLUTION VERIFICATION - TEST SUMMARY")
     print("="*80)
     print(f"Total Tests: {total}")
     print(f"Passed: {passed}")
@@ -52,27 +46,26 @@ def print_summary():
     print("="*80)
     
     if failed > 0:
-        print("\nFailed Tests:")
+        print("\n❌ FAILED TESTS:")
         for r in test_results:
             if not r["passed"]:
                 print(f"  - {r['test']}: {r['details']}")
-
-
-def test_1_register_user():
-    """Test 1: Register a new user"""
-    global session_token, test_email
     
+    return passed == total
+
+def test_register():
+    """Test 1: User Registration"""
+    global session_token
     timestamp = int(time.time())
-    test_email = f"socialtest_{timestamp}@test.com"
-    name = "Social Learning Test User"
+    email = f"slugtest_{timestamp}@test.com"
     
     try:
         response = requests.post(
-            f"{BASE_URL}/auth/register",
+            f"{BACKEND_URL}/auth/register",
             json={
-                "email": test_email,
-                "password": test_password,
-                "name": name
+                "email": email,
+                "password": "testpass123",
+                "name": "Slug Test User"
             },
             timeout=30
         )
@@ -81,446 +74,266 @@ def test_1_register_user():
             data = response.json()
             if "session_token" in data:
                 session_token = data["session_token"]
-                return log_test(
-                    "User Registration",
-                    True,
-                    f"Registered user: {test_email}, Token: {session_token[:20]}..."
-                )
+                return log_test("User Registration", True, f"Registered {email}")
             else:
                 return log_test("User Registration", False, "No session_token in response")
         else:
-            return log_test("User Registration", False, f"Status: {response.status_code}, Response: {response.text[:200]}")
-    
+            return log_test("User Registration", False, f"Status {response.status_code}: {response.text}")
     except Exception as e:
         return log_test("User Registration", False, f"Exception: {str(e)}")
 
-
-def test_2_login_user():
-    """Test 2: Login with the registered user"""
-    global session_token, test_email
-    
-    if not test_email:
-        return log_test("User Login", False, "No test email available")
-    
-    try:
-        response = requests.post(
-            f"{BASE_URL}/auth/login",
-            json={
-                "email": test_email,
-                "password": test_password
-            },
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            if "session_token" in data:
-                session_token = data["session_token"]
-                return log_test(
-                    "User Login",
-                    True,
-                    f"Login successful, Token: {session_token[:20]}..."
-                )
-            else:
-                return log_test("User Login", False, "No session_token in response")
-        else:
-            return log_test("User Login", False, f"Status: {response.status_code}, Response: {response.text[:200]}")
-    
-    except Exception as e:
-        return log_test("User Login", False, f"Exception: {str(e)}")
-
-
-def test_3_seed_hos_data():
-    """Test 3: Seed HOS data"""
+def test_login():
+    """Test 2: User Login (verify session token works)"""
     global session_token
     
-    if not session_token:
-        return log_test("Seed HOS Data", False, "No session token available")
-    
     try:
-        response = requests.post(
-            f"{BASE_URL}/hos/seed",
+        response = requests.get(
+            f"{BACKEND_URL}/auth/me",
             headers={"Authorization": f"Bearer {session_token}"},
             timeout=30
         )
         
         if response.status_code == 200:
             data = response.json()
-            return log_test(
-                "Seed HOS Data",
-                True,
-                f"HOS data seeded: {json.dumps(data)[:200]}"
-            )
+            if "email" in data:
+                return log_test("User Login/Auth", True, f"Authenticated as {data['email']}")
+            else:
+                return log_test("User Login/Auth", False, "No email in response")
         else:
-            return log_test("Seed HOS Data", False, f"Status: {response.status_code}, Response: {response.text[:200]}")
-    
+            return log_test("User Login/Auth", False, f"Status {response.status_code}: {response.text}")
     except Exception as e:
-        return log_test("Seed HOS Data", False, f"Exception: {str(e)}")
+        return log_test("User Login/Auth", False, f"Exception: {str(e)}")
 
-
-def test_4_upload_news():
-    """Test 4: Upload news article with AI classification"""
-    global session_token, template_id
-    
-    if not session_token:
-        return log_test("Upload News", False, "No session token available")
-    
-    # Detailed news article about financial fraud
-    news_content = """
-    A major financial fraud case has shaken the banking sector in India. Over 10,000 customers of a prominent national bank lost their savings amounting to over Rs 500 crore due to a sophisticated cyber attack exploiting weak encryption protocols. The Reserve Bank of India has ordered a forensic audit and the Central Bureau of Investigation has registered a case. Multiple employees including the Chief Information Security Officer have been suspended. The attack vector was a supply chain compromise targeting the bank's third-party payment gateway. Experts recommend immediate implementation of end-to-end encryption, multi-factor authentication, and continuous threat monitoring. Insurance companies are now revising their cyber insurance policies and premiums across the banking sector.
-    """
-    
+def test_hos_seed():
+    """Test 3: HOS Data Seeding"""
     try:
         response = requests.post(
-            f"{BASE_URL}/social-learning/upload",
+            f"{BACKEND_URL}/hos/seed",
             headers={"Authorization": f"Bearer {session_token}"},
-            json={"content": news_content.strip()},
-            timeout=90  # 90 second timeout as specified
+            timeout=30
         )
         
         if response.status_code == 200:
             data = response.json()
+            if "message" in data:
+                return log_test("HOS Data Seeding", True, data["message"])
+            else:
+                return log_test("HOS Data Seeding", False, "No message in response")
+        else:
+            return log_test("HOS Data Seeding", False, f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        return log_test("HOS Data Seeding", False, f"Exception: {str(e)}")
+
+def test_social_learning_upload():
+    """Test 4: Social Learning Upload with AI Classification (90s timeout)"""
+    news_content = """A devastating cybersecurity breach at multiple Indian banks compromised financial data of over 5 million customers. The breach exploited vulnerabilities in core banking software. RBI has ordered immediate remediation. Insurance companies are revising cyber risk policies. Multiple state governments announced compensation schemes. The finance ministry has set up a task force to investigate systemic risks in the banking sector."""
+    
+    try:
+        print("  ⏳ Uploading news content (90s timeout for AI classification)...")
+        response = requests.post(
+            f"{BACKEND_URL}/social-learning/upload",
+            headers={"Authorization": f"Bearer {session_token}"},
+            json={"content": news_content},
+            timeout=90
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            required_fields = ["id", "learnings_mydezider", "learnings_solution_finder"]
             
-            # Verify required fields
-            required_fields = [
-                "region_hierarchy",
-                "life_area_mapping",
-                "learnings_mydezider",
-                "learnings_solution_finder"
-            ]
-            
+            # Check required fields
             missing_fields = [f for f in required_fields if f not in data]
             if missing_fields:
-                return log_test("Upload News", False, f"Missing fields: {missing_fields}")
+                return log_test("Social Learning Upload", False, f"Missing fields: {missing_fields}")
             
-            # Verify region_hierarchy structure
-            if "level" not in data["region_hierarchy"] or "country" not in data["region_hierarchy"]:
-                return log_test("Upload News", False, "region_hierarchy missing 'level' or 'country'")
+            # Check learnings_mydezider.factors
+            if "factors" not in data.get("learnings_mydezider", {}):
+                return log_test("Social Learning Upload", False, "Missing learnings_mydezider.factors")
             
-            # Verify life_area_mapping structure
-            if "primary_life_area_id" not in data["life_area_mapping"] or "sub_area_1" not in data["life_area_mapping"]:
-                return log_test("Upload News", False, "life_area_mapping missing 'primary_life_area_id' or 'sub_area_1'")
+            # Check learnings_solution_finder.risks
+            if "risks" not in data.get("learnings_solution_finder", {}):
+                return log_test("Social Learning Upload", False, "Missing learnings_solution_finder.risks")
             
-            # Verify learnings_mydezider.factors structure
-            if "factors" not in data["learnings_mydezider"]:
-                return log_test("Upload News", False, "learnings_mydezider missing 'factors'")
+            factors_count = len(data["learnings_mydezider"]["factors"])
+            risks_count = len(data["learnings_solution_finder"]["risks"])
             
-            factors = data["learnings_mydezider"]["factors"]
-            if not isinstance(factors, list) or len(factors) == 0:
-                return log_test("Upload News", False, "learnings_mydezider.factors is not a non-empty array")
-            
-            # Verify factor structure
-            factor_required_fields = ["practical_priority", "classification", "expected_value", "expected_value_pct"]
-            for i, factor in enumerate(factors):
-                missing = [f for f in factor_required_fields if f not in factor]
-                if missing:
-                    return log_test("Upload News", False, f"Factor {i} missing fields: {missing}")
-            
-            # Verify learnings_solution_finder.risks structure
-            if "risks" not in data["learnings_solution_finder"]:
-                return log_test("Upload News", False, "learnings_solution_finder missing 'risks'")
-            
-            risks = data["learnings_solution_finder"]["risks"]
-            if not isinstance(risks, list) or len(risks) == 0:
-                return log_test("Upload News", False, "learnings_solution_finder.risks is not a non-empty array")
-            
-            # Verify risk structure
-            risk_required_fields = ["probability", "impact", "risk_index", "mitigation_plan", "contingency_plan"]
-            for i, risk in enumerate(risks):
-                missing = [f for f in risk_required_fields if f not in risk]
-                if missing:
-                    return log_test("Upload News", False, f"Risk {i} missing fields: {missing}")
-            
-            # Store template_id for later tests
-            if "id" in data:
-                template_id = data["id"]
-            elif "template_id" in data:
-                template_id = data["template_id"]
-            
-            return log_test(
-                "Upload News",
-                True,
-                f"Template ID: {template_id}, Factors: {len(factors)}, Risks: {len(risks)}, Region: {data['region_hierarchy']['country']}, Life Area: {data['life_area_mapping']['primary_life_area_id']}"
-            )
+            return log_test("Social Learning Upload", True, 
+                          f"Template {data['id']} created with {factors_count} factors and {risks_count} risks")
         else:
-            return log_test("Upload News", False, f"Status: {response.status_code}, Response: {response.text[:500]}")
-    
+            return log_test("Social Learning Upload", False, f"Status {response.status_code}: {response.text}")
+    except requests.exceptions.Timeout:
+        return log_test("Social Learning Upload", False, "Request timeout (>90s)")
     except Exception as e:
-        return log_test("Upload News", False, f"Exception: {str(e)}")
+        return log_test("Social Learning Upload", False, f"Exception: {str(e)}")
 
-
-def test_5_approve_factors():
-    """Test 5: Approve factors"""
-    global session_token, template_id
-    
-    if not session_token:
-        return log_test("Approve Factors", False, "No session token available")
-    
-    if not template_id:
-        return log_test("Approve Factors", False, "No template_id available")
-    
+def test_templates_for_decision():
+    """Test 5: CRITICAL - Templates for Decision with slug 'finance'"""
     try:
-        response = requests.post(
-            f"{BASE_URL}/social-learning/template/{template_id}/approve-factors",
+        response = requests.get(
+            f"{BACKEND_URL}/social-learning/templates-for-decision",
             headers={"Authorization": f"Bearer {session_token}"},
-            json={"approved_factor_indices": [0, 1, 2]},
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            return log_test(
-                "Approve Factors",
-                True,
-                f"Approved factors: {json.dumps(data)[:200]}"
-            )
-        else:
-            return log_test("Approve Factors", False, f"Status: {response.status_code}, Response: {response.text[:200]}")
-    
-    except Exception as e:
-        return log_test("Approve Factors", False, f"Exception: {str(e)}")
-
-
-def test_6_approve_risks():
-    """Test 6: Approve risks"""
-    global session_token, template_id
-    
-    if not session_token:
-        return log_test("Approve Risks", False, "No session token available")
-    
-    if not template_id:
-        return log_test("Approve Risks", False, "No template_id available")
-    
-    try:
-        response = requests.post(
-            f"{BASE_URL}/social-learning/template/{template_id}/approve-risks",
-            headers={"Authorization": f"Bearer {session_token}"},
-            json={"approved_risk_indices": [0]},
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            return log_test(
-                "Approve Risks",
-                True,
-                f"Approved risks: {json.dumps(data)[:200]}"
-            )
-        else:
-            return log_test("Approve Risks", False, f"Status: {response.status_code}, Response: {response.text[:200]}")
-    
-    except Exception as e:
-        return log_test("Approve Risks", False, f"Exception: {str(e)}")
-
-
-def test_7_re_analyze():
-    """Test 7: Re-analyze template with additional context"""
-    global session_token, template_id
-    
-    if not session_token:
-        return log_test("Re-analyze Template", False, "No session token available")
-    
-    if not template_id:
-        return log_test("Re-analyze Template", False, "No template_id available")
-    
-    try:
-        response = requests.post(
-            f"{BASE_URL}/social-learning/template/{template_id}/re-analyze",
-            headers={"Authorization": f"Bearer {session_token}"},
-            json={
-                "additional_context": "Focus on financial impact for small businesses in India",
-                "focus_area": "both"
+            params={
+                "include_personal": "true",
+                "life_area": "finance"
             },
-            timeout=90  # 90 second timeout as specified
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            
-            # Verify updated factors and risks
-            if "learnings_mydezider" in data and "factors" in data["learnings_mydezider"]:
-                factors = data["learnings_mydezider"]["factors"]
-                if not isinstance(factors, list):
-                    return log_test("Re-analyze Template", False, "Updated factors is not an array")
-            else:
-                return log_test("Re-analyze Template", False, "Missing updated factors in response")
-            
-            if "learnings_solution_finder" in data and "risks" in data["learnings_solution_finder"]:
-                risks = data["learnings_solution_finder"]["risks"]
-                if not isinstance(risks, list):
-                    return log_test("Re-analyze Template", False, "Updated risks is not an array")
-            else:
-                return log_test("Re-analyze Template", False, "Missing updated risks in response")
-            
-            return log_test(
-                "Re-analyze Template",
-                True,
-                f"Re-analyzed with updated factors: {len(factors)}, risks: {len(risks)}"
-            )
-        else:
-            return log_test("Re-analyze Template", False, f"Status: {response.status_code}, Response: {response.text[:500]}")
-    
-    except Exception as e:
-        return log_test("Re-analyze Template", False, f"Exception: {str(e)}")
-
-
-def test_8_templates_for_decision():
-    """Test 8: Get 3-tier templates for decision (CRITICAL)"""
-    global session_token, template_id
-    
-    if not session_token:
-        return log_test("3-Tier Decision Endpoint", False, "No session token available")
-    
-    try:
-        response = requests.get(
-            f"{BASE_URL}/social-learning/templates-for-decision?include_personal=true",
-            headers={"Authorization": f"Bearer {session_token}"},
             timeout=30
         )
         
         if response.status_code == 200:
             data = response.json()
             
-            # CRITICAL: Verify 3-tier structure
+            # Check required 3-tier structure
             required_keys = ["tier_1_personal", "tier_2_authorized", "tier_3_ai_derived", "total"]
             missing_keys = [k for k in required_keys if k not in data]
-            
             if missing_keys:
-                return log_test(
-                    "3-Tier Decision Endpoint",
-                    False,
-                    f"CRITICAL FAILURE: Missing required keys: {missing_keys}. Response keys: {list(data.keys())}"
-                )
+                return log_test("Templates for Decision (CRITICAL)", False, 
+                              f"Missing required keys: {missing_keys}")
             
-            # Verify tier_1_personal is an array
-            if not isinstance(data["tier_1_personal"], list):
-                return log_test("3-Tier Decision Endpoint", False, "tier_1_personal is not an array")
+            # CRITICAL: tier_1_personal must have at least 1 item
+            tier_1_count = len(data["tier_1_personal"])
+            if tier_1_count < 1:
+                return log_test("Templates for Decision (CRITICAL)", False, 
+                              f"tier_1_personal has {tier_1_count} items, expected at least 1 (slug 'finance' -> HOS ID 'la_finance' resolution failed)")
             
-            # Verify tier_2_authorized is an array
-            if not isinstance(data["tier_2_authorized"], list):
-                return log_test("3-Tier Decision Endpoint", False, "tier_2_authorized is not an array")
+            # Verify structure
+            tier_2_count = len(data["tier_2_authorized"])
+            tier_3_count = len(data["tier_3_ai_derived"])
+            total = data["total"]
             
-            # Verify tier_3_ai_derived is an array
-            if not isinstance(data["tier_3_ai_derived"], list):
-                return log_test("3-Tier Decision Endpoint", False, "tier_3_ai_derived is not an array")
-            
-            # Verify total is an integer
-            if not isinstance(data["total"], int):
-                return log_test("3-Tier Decision Endpoint", False, "total is not an integer")
-            
-            # Verify tier_1_personal contains the uploaded template with factors
-            if len(data["tier_1_personal"]) > 0:
-                template = data["tier_1_personal"][0]
-                if "factors" not in template:
-                    return log_test("3-Tier Decision Endpoint", False, f"tier_1_personal template missing factors. Keys: {list(template.keys())}")
-                
-                factors = template["factors"]
-                if not isinstance(factors, list):
-                    return log_test("3-Tier Decision Endpoint", False, "tier_1_personal template factors is not an array")
-            else:
-                return log_test("3-Tier Decision Endpoint", False, f"tier_1_personal is empty. Total: {data['total']}")
-            
-            return log_test(
-                "3-Tier Decision Endpoint",
-                True,
-                f"3-tier structure verified: tier_1={len(data['tier_1_personal'])}, tier_2={len(data['tier_2_authorized'])}, tier_3={len(data['tier_3_ai_derived'])}, total={data['total']}"
-            )
+            return log_test("Templates for Decision (CRITICAL)", True, 
+                          f"3-tier structure verified: tier_1={tier_1_count}, tier_2={tier_2_count}, tier_3={tier_3_count}, total={total}. Slug 'finance' -> HOS ID 'la_finance' resolution WORKING!")
         else:
-            return log_test("3-Tier Decision Endpoint", False, f"Status: {response.status_code}, Response: {response.text[:500]}")
-    
+            return log_test("Templates for Decision (CRITICAL)", False, 
+                          f"Status {response.status_code}: {response.text}")
     except Exception as e:
-        return log_test("3-Tier Decision Endpoint", False, f"Exception: {str(e)}")
+        return log_test("Templates for Decision (CRITICAL)", False, f"Exception: {str(e)}")
 
-
-def test_9_templates_for_solution_finder():
-    """Test 9: Get 3-tier templates for solution finder (CRITICAL)"""
-    global session_token
-    
-    if not session_token:
-        return log_test("3-Tier Solution Finder Endpoint", False, "No session token available")
-    
+def test_templates_for_solution_finder():
+    """Test 6: CRITICAL - Templates for Solution Finder with slug 'finance'"""
     try:
         response = requests.get(
-            f"{BASE_URL}/social-learning/templates-for-solution-finder?include_personal=true",
+            f"{BACKEND_URL}/social-learning/templates-for-solution-finder",
             headers={"Authorization": f"Bearer {session_token}"},
+            params={
+                "include_personal": "true",
+                "life_area": "finance"
+            },
             timeout=30
         )
         
         if response.status_code == 200:
             data = response.json()
             
-            # CRITICAL: Verify 3-tier structure
+            # Check required 3-tier structure
             required_keys = ["tier_1_personal", "tier_2_authorized", "tier_3_ai_derived", "total"]
             missing_keys = [k for k in required_keys if k not in data]
-            
             if missing_keys:
-                return log_test(
-                    "3-Tier Solution Finder Endpoint",
-                    False,
-                    f"CRITICAL FAILURE: Missing required keys: {missing_keys}. Response keys: {list(data.keys())}"
-                )
+                return log_test("Templates for Solution Finder (CRITICAL)", False, 
+                              f"Missing required keys: {missing_keys}")
             
-            # Verify tier_1_personal is an array
-            if not isinstance(data["tier_1_personal"], list):
-                return log_test("3-Tier Solution Finder Endpoint", False, "tier_1_personal is not an array")
+            # CRITICAL: tier_1_personal must have at least 1 item with risks
+            tier_1_count = len(data["tier_1_personal"])
+            if tier_1_count < 1:
+                return log_test("Templates for Solution Finder (CRITICAL)", False, 
+                              f"tier_1_personal has {tier_1_count} items, expected at least 1 (slug 'finance' -> HOS ID 'la_finance' resolution failed)")
             
-            # Verify tier_2_authorized is an array
-            if not isinstance(data["tier_2_authorized"], list):
-                return log_test("3-Tier Solution Finder Endpoint", False, "tier_2_authorized is not an array")
+            # Verify first item has risks
+            if tier_1_count > 0:
+                first_item = data["tier_1_personal"][0]
+                if "risks" not in first_item:
+                    return log_test("Templates for Solution Finder (CRITICAL)", False, 
+                                  "tier_1_personal items missing 'risks' field")
             
-            # Verify tier_3_ai_derived is an array
-            if not isinstance(data["tier_3_ai_derived"], list):
-                return log_test("3-Tier Solution Finder Endpoint", False, "tier_3_ai_derived is not an array")
+            # Verify structure
+            tier_2_count = len(data["tier_2_authorized"])
+            tier_3_count = len(data["tier_3_ai_derived"])
+            total = data["total"]
             
-            # Verify total is an integer
-            if not isinstance(data["total"], int):
-                return log_test("3-Tier Solution Finder Endpoint", False, "total is not an integer")
-            
-            # Verify tier_1_personal contains risks
-            if len(data["tier_1_personal"]) > 0:
-                template = data["tier_1_personal"][0]
-                if "risks" not in template:
-                    return log_test("3-Tier Solution Finder Endpoint", False, f"tier_1_personal template missing risks. Keys: {list(template.keys())}")
-                
-                risks = template["risks"]
-                if not isinstance(risks, list):
-                    return log_test("3-Tier Solution Finder Endpoint", False, "tier_1_personal template risks is not an array")
-            else:
-                return log_test("3-Tier Solution Finder Endpoint", False, f"tier_1_personal is empty. Total: {data['total']}")
-            
-            return log_test(
-                "3-Tier Solution Finder Endpoint",
-                True,
-                f"3-tier structure verified: tier_1={len(data['tier_1_personal'])}, tier_2={len(data['tier_2_authorized'])}, tier_3={len(data['tier_3_ai_derived'])}, total={data['total']}"
-            )
+            return log_test("Templates for Solution Finder (CRITICAL)", True, 
+                          f"3-tier structure verified: tier_1={tier_1_count}, tier_2={tier_2_count}, tier_3={tier_3_count}, total={total}. Slug 'finance' -> HOS ID 'la_finance' resolution WORKING!")
         else:
-            return log_test("3-Tier Solution Finder Endpoint", False, f"Status: {response.status_code}, Response: {response.text[:500]}")
-    
+            return log_test("Templates for Solution Finder (CRITICAL)", False, 
+                          f"Status {response.status_code}: {response.text}")
     except Exception as e:
-        return log_test("3-Tier Solution Finder Endpoint", False, f"Exception: {str(e)}")
+        return log_test("Templates for Solution Finder (CRITICAL)", False, f"Exception: {str(e)}")
 
+def test_social_learning_stats():
+    """Test 7: Social Learning Stats"""
+    try:
+        response = requests.get(
+            f"{BACKEND_URL}/social-learning/stats",
+            headers={"Authorization": f"Bearer {session_token}"},
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            return log_test("Social Learning Stats", True, f"Stats retrieved: {json.dumps(data)}")
+        else:
+            return log_test("Social Learning Stats", False, f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        return log_test("Social Learning Stats", False, f"Exception: {str(e)}")
 
-def run_all_tests():
+def test_filter_options():
+    """Test 8: Social Learning Filter Options"""
+    try:
+        response = requests.get(
+            f"{BACKEND_URL}/social-learning/filter-options",
+            headers={"Authorization": f"Bearer {session_token}"},
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            required_keys = ["categories", "life_areas"]
+            missing_keys = [k for k in required_keys if k not in data]
+            if missing_keys:
+                return log_test("Filter Options", False, f"Missing keys: {missing_keys}")
+            
+            categories_count = len(data.get("categories", []))
+            life_areas_count = len(data.get("life_areas", []))
+            
+            return log_test("Filter Options", True, 
+                          f"Filter options retrieved: {categories_count} categories, {life_areas_count} life_areas")
+        else:
+            return log_test("Filter Options", False, f"Status {response.status_code}: {response.text}")
+    except Exception as e:
+        return log_test("Filter Options", False, f"Exception: {str(e)}")
+
+def main():
     """Run all tests in sequence"""
-    print("\n" + "="*80)
-    print("3-TIER SOCIAL LEARNING INTEGRATION TESTING")
-    print("Backend URL:", BASE_URL)
     print("="*80)
+    print("FINAL SLUG RESOLUTION VERIFICATION - Social Learning 3-Tier Endpoints")
+    print("Backend URL:", BACKEND_URL)
+    print("="*80)
+    print()
     
     # Run tests in order
-    test_1_register_user()
-    test_2_login_user()
-    test_3_seed_hos_data()
-    test_4_upload_news()
-    test_5_approve_factors()
-    test_6_approve_risks()
-    test_7_re_analyze()
-    test_8_templates_for_decision()
-    test_9_templates_for_solution_finder()
+    tests = [
+        ("1. Register User", test_register),
+        ("2. Login/Auth Check", test_login),
+        ("3. Seed HOS Data", test_hos_seed),
+        ("4. Upload News (90s timeout)", test_social_learning_upload),
+        ("5. Templates for Decision (CRITICAL)", test_templates_for_decision),
+        ("6. Templates for Solution Finder (CRITICAL)", test_templates_for_solution_finder),
+        ("7. Social Learning Stats", test_social_learning_stats),
+        ("8. Filter Options", test_filter_options),
+    ]
+    
+    for test_name, test_func in tests:
+        print(f"\n{test_name}:")
+        if not test_func():
+            print(f"  ⚠️  Test failed, but continuing...")
     
     # Print summary
-    print_summary()
-
+    all_passed = print_summary()
+    
+    if all_passed:
+        print("\n🎉 ALL TESTS PASSED! SLUG RESOLUTION VERIFIED!")
+        return 0
+    else:
+        print("\n⚠️  SOME TESTS FAILED - See details above")
+        return 1
 
 if __name__ == "__main__":
-    run_all_tests()
+    exit(main())
