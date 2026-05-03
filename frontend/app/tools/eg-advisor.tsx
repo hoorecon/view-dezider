@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
+import { AudioGuidePlayer } from '../../src/components/AudioGuidePlayer';
 import api from '../../src/utils/api';
 
 interface Outlet {
@@ -17,6 +18,7 @@ interface Outlet {
   affirmation_text?: string; has_audio_play?: boolean;
   has_affirmation_browser?: boolean; has_journal_entry?: boolean;
   is_redirect?: boolean; redirect_to?: string;
+  audio_url?: string; script?: string; has_guided_flow?: boolean;
 }
 interface AffirmationCategory {
   id: string; title: string; icon: string; frequency: string;
@@ -268,6 +270,22 @@ export default function EGAdvisorScreen() {
                       {isExpanded && (
                         <View style={[s.expandedCard, { borderLeftColor: outlet.color }]}>
                           <Text style={s.expandDesc}>{outlet.description}</Text>
+
+                          {/* Script Text (detailed IVR content) */}
+                          {(outlet as any).script && (
+                            <View style={s.scriptBox}>
+                              <Text style={s.scriptText}>{(outlet as any).script}</Text>
+                            </View>
+                          )}
+
+                          {/* Audio Guide Player */}
+                          {outlet.audio_url && (
+                            <AudioGuidePlayer
+                              uri={outlet.audio_url}
+                              title={`Listen: ${outlet.name}`}
+                              color={outlet.color}
+                            />
+                          )}
 
                           {/* Instructions */}
                           <Text style={s.instrTitle}>How to Practice:</Text>
@@ -579,6 +597,8 @@ const s = StyleSheet.create({
     marginLeft: 8, borderLeftWidth: 3,
   },
   expandDesc: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 19, marginBottom: 12 },
+  scriptBox: { backgroundColor: '#F8FAFC', borderRadius: 10, padding: 14, marginBottom: 12, borderLeftWidth: 3, borderLeftColor: '#CBD5E1' },
+  scriptText: { fontSize: 13, color: '#475569', lineHeight: 20, fontStyle: 'italic' },
   instrTitle: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 8 },
   instrRow: { flexDirection: 'row', gap: 8, marginBottom: 6, alignItems: 'flex-start' },
   instrDot: { width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center' },

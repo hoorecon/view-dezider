@@ -1,6 +1,6 @@
 """Emotional Gatekeeper — Effective Outlets Advisor Routes
 
-A prescriptive guide with 9 constructive emotional outlets that replace
+A prescriptive guide with 10 constructive emotional outlets that replace
 destructive habits. Includes guided practices, audio affirmations, forgiveness
 templates, practice logging, and AI-personalised recommendations.
 """
@@ -18,6 +18,20 @@ from .ai_engine import EMERGENT_LLM_KEY
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+# ============================================================
+# AUDIO ASSETS
+# ============================================================
+
+AUDIO_ASSETS = {
+    "pillow_hitting": "https://customer-assets.emergentagent.com/job_a7a2d7ec-9ce2-470b-8ff8-d26638aa4277/artifacts/1i24pmdq_Pillow%20Hitting.mp3",
+    "forgiveness_affirmations": "https://customer-assets.emergentagent.com/job_a7a2d7ec-9ce2-470b-8ff8-d26638aa4277/artifacts/m6ofm5vj_Forgiveness%20Affirmations.mp3",
+    "gibberish": "https://customer-assets.emergentagent.com/job_a7a2d7ec-9ce2-470b-8ff8-d26638aa4277/artifacts/aohh56m9_Gibberish.mp3",
+    "breaking_loop": "https://customer-assets.emergentagent.com/job_a7a2d7ec-9ce2-470b-8ff8-d26638aa4277/artifacts/qgkdw529_Breaking%20the%20LOOP.mp3",
+    "breaking_limitations": "https://customer-assets.emergentagent.com/job_a7a2d7ec-9ce2-470b-8ff8-d26638aa4277/artifacts/qrq3iqkh_Breaking%20the%20LIMITATIONS.mp3",
+    "emotional_reception": "https://customer-assets.emergentagent.com/job_a7a2d7ec-9ce2-470b-8ff8-d26638aa4277/artifacts/2jpb8a7c_BEING%20with%20my%20BEING.mp3",
+}
 
 
 # ============================================================
@@ -123,18 +137,20 @@ EFFECTIVE_OUTLETS = [
         "duration": "5-10 mins",
         "icon": "chatbubbles",
         "color": "#8B5CF6",
-        "description": "Speak nonsensical sounds loudly to release mental clutter. The mind cannot hold structured thoughts while producing random sounds.",
+        "audio_url": AUDIO_ASSETS["gibberish"],
+        "description": "The word 'gibberish' comes from an Enlightened Sufi mystic, Jabbar. He never spoke any language, just uttered nonsense. Yet he had thousands of disciples because what he was saying was: 'Your mind is nothing but gibberish. Put it aside and you will have a taste of your OWN BEING.'",
+        "script": "Use gibberish and go crazy with absolute awareness so that you become the center of the cyclone. Just throw out all mind garbage and create the SPACE in which the Buddha appears.\n\nWhile sitting, close your eyes and begin to say nonsense sounds \u2014 any sounds or words, so long as they make no sense. Just speak any language that you don't know! Allow yourself to express whatever needs to be expressed within you. Throw everything out.\n\nThe mind thinks, always, in terms of words. Gibberish helps to break up this pattern of continual verbalization. Without suppressing your thoughts, you can throw them out. Let your body also be expressive.",
         "instructions": [
             "Find a private space where you won't be disturbed",
             "Set a timer for 5-10 minutes",
-            "Start making random, nonsensical sounds — any language-like noise",
-            "Move your body freely while doing this — shake hands, stomp feet",
-            "Let out ALL frustration, confusion, and mental noise through these sounds",
-            "Don't try to make sense — the point is non-sense",
+            "Close your eyes and begin to say nonsense sounds \u2014 any sounds or words, so long as they make no sense",
+            "Speak any language that you don't know! Allow yourself to express whatever needs to be expressed",
+            "Move your body freely \u2014 shake hands, stomp feet",
+            "Throw out ALL mind garbage with absolute awareness",
             "When the timer ends, sit in complete silence for 2 minutes",
-            "Notice the sudden mental clarity and stillness",
+            "Notice the sudden mental clarity and stillness \u2014 the SPACE in which the Buddha appears",
         ],
-        "tip": "Osho's Gibberish Meditation technique. The contrast between chaos and silence afterwards creates profound mental clarity.",
+        "tip": "Osho's Gibberish Meditation technique. The contrast between chaos and silence afterwards creates profound mental clarity. The mind thinks in words \u2014 gibberish breaks this pattern.",
     },
     {
         "id": "pillow_hitting",
@@ -145,18 +161,20 @@ EFFECTIVE_OUTLETS = [
         "duration": "3-5 mins",
         "icon": "flash",
         "color": "#EC4899",
-        "description": "Physically release pent-up anger and frustration by hitting a pillow or cushion. Safe, effective, and immediately cathartic.",
+        "audio_url": AUDIO_ASSETS["pillow_hitting"],
+        "description": "When you feel angry, there is no need to be angry against someone; just BE angry. Let it be a meditation.",
+        "script": "Close the room, sit by yourself, and let the anger come up as much as it can. If you feel like beating, beat a pillow. Do whatsoever you want to do; the pillow will never object. If you want to kill the pillow, have a knife and kill it. It helps, it helps tremendously. One can never imagine how helpful a pillow can be.\n\nJust beat it, bite it, and throw it. If you are against somebody in particular, write on the pillow or stick a particular picture on it. You will feel ridiculous, foolish, but anger is ridiculous; you cannot do anything about it.\n\nSo let it be and enjoy it like an energy phenomenon. It IS an energy phenomenon. If you are not hurting anybody there is nothing wrong in it. When you try this, you will see that the idea of hurting somebody by and by disappears.",
         "instructions": [
-            "Take a large, firm pillow or cushion",
-            "Kneel on the floor or bed in front of it",
-            "Start hitting the pillow with both fists — alternate or together",
-            "Let out sounds — shout, scream, growl if needed",
-            "Don't hold back — this is your safe release",
-            "Continue for 3-5 minutes or until you feel the intensity subside",
+            "Close the room, sit by yourself",
+            "Let the anger come up as much as it can",
+            "Beat the pillow \u2014 hit it, bite it, throw it",
+            "If against someone specific, write their name on the pillow or stick a picture",
+            "Let out sounds \u2014 shout, scream, growl if needed",
+            "Enjoy it like an energy phenomenon \u2014 it IS an energy phenomenon",
+            "Continue until the intensity subsides",
             "When done, hug the pillow gently and take 5 deep breaths",
-            "Notice how the anger has transformed into calm",
         ],
-        "tip": "This is one of the most effective immediate anger management techniques recommended by therapists worldwide.",
+        "tip": "Anger is ridiculous; you cannot do anything about it. So let it be. If you are not hurting anybody, there is nothing wrong in it. The idea of hurting somebody will by and by disappear.",
     },
     {
         "id": "release_technique",
@@ -189,6 +207,7 @@ EFFECTIVE_OUTLETS = [
         "duration": "5-10 mins per affirmation",
         "icon": "heart-half",
         "color": "#7C3AED",
+        "audio_url": AUDIO_ASSETS["forgiveness_affirmations"],
         "description": "Structured forgiveness affirmations from Prana Violet Healing. 7 categories covering all relationships — friends, ex-partners, karmic cords, self, family, in-laws, and spouse.",
         "instructions": [
             "Choose the affirmation category that resonates with your current need",
@@ -273,6 +292,7 @@ EFFECTIVE_OUTLETS = [
         "duration": "5 mins",
         "icon": "leaf",
         "color": "#0EA5E9",
+        "audio_url": AUDIO_ASSETS["emotional_reception"],
         "description": "Just Be in the Here and Now — a guided 5-minute practice to simply BE with your pain without doing anything. This builds your Emotional Quotient (EQ) dramatically.",
         "instructions": [
             "Acknowledge what burden you are carrying right now",
@@ -419,10 +439,11 @@ class GratitudeEntry(BaseModel):
 
 @router.get("/advisor/outlets")
 async def get_effective_outlets(user: dict = Depends(get_current_user)):
-    """Get all 9 effective outlet techniques with full instructions."""
+    """Get all 10 effective outlet techniques with full instructions."""
     return {
         "outlets": EFFECTIVE_OUTLETS,
         "forgiveness_affirmations": FORGIVENESS_AFFIRMATIONS,
+        "audio_assets": AUDIO_ASSETS,
         "total_outlets": len(EFFECTIVE_OUTLETS),
         "categories": ["physical", "energy", "mental", "emotional", "spiritual", "behavioral"],
     }
