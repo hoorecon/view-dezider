@@ -753,3 +753,171 @@ async def compute_layout(decision_id: str, request: Request, user: dict = Depend
     )
 
     return {"nodes": nodes, "layout_type": layout_type}
+
+
+# ════════════════════════════════════════════════════════
+# CLD REFINEMENTS: Master CLD + Module-Specific CLDs
+# ════════════════════════════════════════════════════════
+
+MODULE_TYPES = ["master", "decision", "conflict_breaker", "pna", "goal", "lifestyle", "emotional_gatekeeper", "aala"]
+
+
+@router.post("/module/{module_type}/generate")
+async def generate_module_cld(module_type: str, request: Request, user: dict = Depends(get_current_user)):
+    """Generate a CLD for a specific module or a master CLD aggregating all modules."""
+    if module_type not in MODULE_TYPES:
+        raise HTTPException(400, f"Invalid module_type. Use: {MODULE_TYPES}")
+
+    body = await request.json() if request.headers.get("content-type") == "application/json" else {}
+    context_id = body.get("context_id", "")  # e.g., session_id, goal_id, etc.
+
+    # Gather context based on module type
+    uid = user["user_id"]
+    context_parts = []
+
+    if module_type in ["master", "pna"]:
+        pna_items = await db.pna_items.find({"user_id": uid}, {"_id": 0}).to_list(50)
+        if pna_items:
+            pna_text = "\n".join([f"- [{i['category'].upper()}] {i['title']} ({i['life_area']}): {i.get('description','')}" for i in pna_items[:20]])
+            context_parts.append(f"PNA Items:\n{pna_text}")
+
+    if module_type in ["master", "goal"]:
+        goals = await db.gem_goals.find({"user_id": uid}, {"_id": 0}).to_list(20)
+        if goals:
+            goals_text = "\n".join([f"- {g['title']} ({g.get('life_area','')}) [{g.get('status','')}]" for g in goals[:10]])
+            context_parts.append(f"Goals:\n{goals_text}")
+
+    if module_type in ["master", "conflict_breaker"]:
+        cb_sessions = await db.conflict_breaker_sessions.find({"user_id": uid}, {"_id": 0}).to_list(10)
+        if cb_sessions:
+            cb_text = "\n".join([f"- {c.get('title','')} (stakes:{c.get('stakes_score','?')}, emotion:{c.get('emotion_score','?')})" for c in cb_sessions[:5]])
+            context_parts.append(f"Conflict Breaker Sessions:\n{cb_text}")
+
+    if module_type in ["master", "lifestyle"]:
+        plan = await db.lifestyle_plans.find_one({"user_id": uid, "is_active": True}, {"_id": 0})
+        if plan:
+            areas = []
+            for area_id, alloc in (plan.get("allocations", {}).get("weekday", {})).items():
+                if isinstance(alloc, dict) and alloc.get("hours", 0) > 0:
+                    areas.append(f"{area_id}: {alloc['hours']}h")
+            context_parts.append(f"Lifestyle Plan ({plan['name']}): {', '.join(areas)}")
+
+    if module_type in ["master", "aala"]:
+        aala = await db.aala_records.find({"user_id": uid}, {"_id": 0}).to_list(20)
+        if aala:
+            aala_text = "\n".join([f"- {a.get('category','')}: {a.get('name','')} ({a.get('type','')}) = {a.get('value',0)}" for a in aala[:10]])
+            context_parts.append(f"AALA Records:\n{aala_text}")
+
+    if module_type in ["master", "decision"]:
+        decisions = await db.decisions.find({"user_id": uid}, {"_id": 0}).to_list(10)
+        if decisions:
+            dec_text = "\n".join([f"- {d.get('title','')} [{d.get('status','')}]" for d in decisions[:5]])
+            context_parts.append(f"Decisions:\n{dec_text}")
+
+    if not context_parts:
+        context_parts.append("No data available in this module yet. Generate a basic CLD showing general life area interactions.")
+
+    full_context = "\n\n".join(context_parts)
+
+    # Generate via AI
+    api_key = os.environ.get("EMERGENT_LLM_KEY")
+    if not api_key:
+        raise HTTPException(500, "LLM key not configured")
+
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    chat = LlmChat(
+        api_key=api_key,
+        session_id=f"cld_module_{uid}_{uuid.uuid4().hex[:8]}",
+        system_message="You are a Systems Thinking expert. Generate Causal Loop Diagrams showing cause-effect relationships."
+    ).with_model("openai", "gpt-4.1-mini")
+
+    prompt = f"""Analyze this user's {module_type} data and generate a Causal Loop Diagram.
+
+USER CONTEXT:
+{full_context}
+
+Generate a JSON CLD with nodes and links showing causal relationships.
+Each node: {{"factor_id": "f1", "label": "Factor Name", "value": 50, "x": <random 50-550>, "y": <random 50-350>}}
+Each link: {{"source": "f1", "target": "f2", "polarity": "+", "strength": 0.7, "label": "description"}}
+
+Polarity: "+" means same direction (increase causes increase), "-" means opposite.
+Generate 6-12 nodes and 8-15 links showing meaningful causal loops.
+
+RESPOND WITH ONLY VALID JSON:
+{{"nodes": [...], "links": [...]}}"""
+
+    try:
+        resp = await chat.send_message_async(UserMessage(content=prompt))
+        text = resp.text.strip()
+        # Extract JSON
+        if "```" in text:
+            text = text.split("```")[1].replace("json", "").strip()
+        cld_data = json_module.loads(text)
+    except Exception as e:
+        logger.error(f"CLD AI generation failed: {e}")
+        raise HTTPException(500, f"AI generation failed: {str(e)}")
+
+    # Store as module CLD
+    cld_id = f"CLD-{module_type.upper()}-{uuid.uuid4().hex[:8].upper()}"
+    now = datetime.now(timezone.utc)
+    doc = {
+        "cld_id": cld_id,
+        "user_id": uid,
+        "module_type": module_type,
+        "context_id": context_id,
+        "decision_id": f"module_{module_type}_{context_id or 'default'}",
+        "nodes": cld_data.get("nodes", []),
+        "links": cld_data.get("links", []),
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    # Upsert: one CLD per module per user (or per context_id)
+    await db.cld_diagrams.update_one(
+        {"user_id": uid, "module_type": module_type, "context_id": context_id or "default"},
+        {"$set": doc},
+        upsert=True
+    )
+
+    return doc
+
+
+@router.get("/module/{module_type}")
+async def get_module_cld(module_type: str, request: Request, user: dict = Depends(get_current_user)):
+    """Get the CLD for a specific module."""
+    context_id = request.query_params.get("context_id", "default")
+    cld = await db.cld_diagrams.find_one(
+        {"user_id": user["user_id"], "module_type": module_type, "context_id": context_id},
+        {"_id": 0}
+    )
+    if not cld:
+        return {"cld": None, "message": f"No CLD found for {module_type}. Generate one first."}
+    return cld
+
+
+@router.get("/module-list")
+async def list_module_clds(user: dict = Depends(get_current_user)):
+    """List all module CLDs for the user."""
+    clds = await db.cld_diagrams.find(
+        {"user_id": user["user_id"], "module_type": {"$exists": True}},
+        {"_id": 0, "cld_id": 1, "module_type": 1, "context_id": 1, "updated_at": 1,
+         "nodes": {"$slice": 0}, "links": {"$slice": 0}}
+    ).to_list(50)
+
+    # Count nodes/links per CLD
+    full_clds = await db.cld_diagrams.find(
+        {"user_id": user["user_id"], "module_type": {"$exists": True}},
+        {"_id": 0}
+    ).to_list(50)
+
+    result = []
+    for c in full_clds:
+        result.append({
+            "cld_id": c.get("cld_id"),
+            "module_type": c.get("module_type"),
+            "context_id": c.get("context_id"),
+            "node_count": len(c.get("nodes", [])),
+            "link_count": len(c.get("links", [])),
+            "updated_at": str(c.get("updated_at", "")),
+        })
+    return result

@@ -629,14 +629,18 @@ async def get_full_session(session_id: str, user: dict = Depends(get_current_use
 # AI GENERATION — Across stages
 # ═══════════════════════════════════════════════════════════════
 
-async def _ai_generate(prompt: str) -> str:
+async def _ai_generate(prompt: str, session_id: str = "") -> str:
     """Helper to call LLM for Conflict Breaker AI features."""
     import os
     from emergentintegrations.llm.chat import LlmChat, UserMessage
     api_key = os.getenv("EMERGENT_LLM_KEY")
     if not api_key:
         raise HTTPException(500, "LLM key not configured")
-    chat = LlmChat(api_key=api_key, model="openai/gpt-4.1-mini")
+    chat = LlmChat(
+        api_key=api_key,
+        session_id=f"cb_{session_id}_{uuid.uuid4().hex[:8]}",
+        system_message="You are a mature, calm dialogue coach helping users prepare for crucial conversations. Be direct, practical, non-blaming. Not therapeutic diagnosis."
+    ).with_model("openai", "gpt-4.1-mini")
     resp = await chat.send_message_async(UserMessage(content=prompt))
     return resp.text.strip()
 
@@ -815,7 +819,7 @@ async def ai_generate_for_stage(session_id: str, stage: str, user: dict = Depend
     if stage not in prompts:
         raise HTTPException(400, f"Invalid stage. Use: {list(prompts.keys())}")
 
-    ai_text = await _ai_generate(prompts[stage])
+    ai_text = await _ai_generate(prompts[stage], session_id)
 
     # Store AI output in the session
     await db.conflict_breaker_sessions.update_one(

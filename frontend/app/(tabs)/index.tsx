@@ -668,6 +668,27 @@ export default function HomeScreen() {
             </LinearGradient>
           </TouchableOpacity>
 
+          {/* AI Solution Assistant */}
+          <TouchableOpacity
+            style={styles.calendarCard}
+            onPress={() => router.push('/tools/ai-assistant' as any)}
+            activeOpacity={0.7}
+          >
+            <LinearGradient
+              colors={['#312E81', '#818CF8']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.calendarGradient}
+            >
+              <Ionicons name="chatbubble-ellipses" size={24} color="#FFF" />
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.calendarTitle}>AI Solution Assistant</Text>
+                <Text style={styles.calendarSub}>Personal advisor across all modules — 6 languages</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
+            </LinearGradient>
+          </TouchableOpacity>
+
           {/* The Conflict Breaker */}
           <TouchableOpacity
             style={styles.calendarCard}

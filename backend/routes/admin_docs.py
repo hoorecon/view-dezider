@@ -67,6 +67,7 @@ CHANNEL_RULES = {
     "/conflict-breaker": ["internal", "chatbot"],
     "/pna": ["internal", "chatbot"],
     "/lifestyle-designer": ["internal", "chatbot"],
+    "/ai-assistant": ["internal", "chatbot"],
 }
 
 CATEGORY_MAP = {
@@ -119,6 +120,7 @@ CATEGORY_MAP = {
     "/conflict-breaker": "Conflict Breaker (Crucial Conversations)",
     "/pna": "PNA (Problems / Needs / Aspirations)",
     "/lifestyle-designer": "Lifestyle Designer",
+    "/ai-assistant": "AI Solution Assistant",
 }
 
 
