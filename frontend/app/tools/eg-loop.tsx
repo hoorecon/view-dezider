@@ -9,7 +9,24 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import { VoiceInput } from '../../src/components/VoiceInput';
+import { AudioGuidePlayer } from '../../src/components/AudioGuidePlayer';
 import api from '../../src/utils/api';
+
+const LOOP_AUDIO_URL = 'https://customer-assets.emergentagent.com/job_a7a2d7ec-9ce2-470b-8ff8-d26638aa4277/artifacts/qgkdw529_Breaking%20the%20LOOP.mp3';
+
+const LOOP_SCRIPT = `A thought keeps coming to your mind again and again — like a broken record. You are looping. This happens because the mind cannot accept uncertainty. It keeps replaying the same scenario, hoping to find a resolution that may never come.
+
+The 4 powerful methods to break this loop:
+
+1. "I Don't Know" — Accept uncertainty. Stop labeling things as good or bad. When you truly say "I don't know," the mind stops its frantic search for answers and the loop weakens.
+
+2. "All Is Well" — Trust life's goodness. Find the silver lining. When you affirm that all is well, you shift from anxiety to trust, and the repeating thought loses its grip.
+
+3. "Both Good and Bad" — See the duality. Every situation carries both aspects. When you hold both perspectives simultaneously, the mind stops fixating on just one side.
+
+4. "This Too Shall Pass" — Recognize impermanence. Nothing — absolutely nothing — lasts forever. When you see the temporary nature of this thought, it naturally fades.
+
+Choose the method that resonates most. Answer the reflection questions honestly. Let the loop dissolve.`;
 
 const METHODS = [
   { id: 'i_dont_know', name: "I Don't Know", icon: 'help-circle' as const, color: '#6366F1',
@@ -31,6 +48,7 @@ export default function EGLoopScreen() {
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [guideExpanded, setGuideExpanded] = useState(false);
 
   // Step 0: Capture
   const [repeatedThought, setRepeatedThought] = useState('');
@@ -83,8 +101,44 @@ export default function EGLoopScreen() {
 
   const methodObj = METHODS.find(m => m.id === selectedMethod);
 
+  const renderAudioGuide = () => (
+    <View style={s.audioGuideContainer}>
+      <TouchableOpacity
+        style={s.audioGuideHeader}
+        onPress={() => setGuideExpanded(!guideExpanded)}
+        activeOpacity={0.7}
+      >
+        <View style={s.audioGuideIcon}>
+          <Ionicons name="headset" size={20} color="#8B5CF6" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.audioGuideTitle}>Audio Guide: Breaking the Loop</Text>
+          <Text style={s.audioGuideSub}>Listen to the guided briefing before you begin</Text>
+        </View>
+        <Ionicons name={guideExpanded ? 'chevron-up' : 'chevron-down'} size={18} color="#8B5CF6" />
+      </TouchableOpacity>
+      {guideExpanded && (
+        <View style={s.audioGuideBody}>
+          <AudioGuidePlayer
+            uri={LOOP_AUDIO_URL}
+            title="Breaking the LOOP — Guided Audio"
+            color="#8B5CF6"
+          />
+          <View style={s.scriptBox}>
+            <View style={s.scriptHeader}>
+              <Ionicons name="document-text" size={16} color="#7C3AED" />
+              <Text style={s.scriptLabel}>Briefing Script</Text>
+            </View>
+            <Text style={s.scriptText}>{LOOP_SCRIPT}</Text>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+
   const renderStep0 = () => (
     <View style={s.stepContent}>
+      {renderAudioGuide()}
       <Text style={s.stepTitle}>What thought keeps repeating in your mind?</Text>
       <View style={s.inputRow}>
         <TextInput style={s.textArea} multiline placeholder="The thought I keep having..."
@@ -274,4 +328,16 @@ const s = StyleSheet.create({
   limitBtnText: { fontSize: 14, fontWeight: '700', color: '#FFF' },
   doneBtn: { alignItems: 'center', paddingVertical: 14, marginTop: 10 },
   doneBtnText: { fontSize: 14, fontWeight: '600', color: COLORS.textMuted },
+
+  // Audio Guide
+  audioGuideContainer: { backgroundColor: '#FFF', borderRadius: 14, marginBottom: 16, borderWidth: 1, borderColor: '#EDE9FE', overflow: 'hidden' },
+  audioGuideHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 },
+  audioGuideIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#EDE9FE', justifyContent: 'center', alignItems: 'center' },
+  audioGuideTitle: { fontSize: 14, fontWeight: '700', color: '#5B21B6' },
+  audioGuideSub: { fontSize: 11, color: '#7C3AED', marginTop: 2 },
+  audioGuideBody: { paddingHorizontal: 14, paddingBottom: 14 },
+  scriptBox: { backgroundColor: '#F8FAFC', borderRadius: 10, padding: 14, marginTop: 10, borderLeftWidth: 3, borderLeftColor: '#8B5CF6' },
+  scriptHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  scriptLabel: { fontSize: 12, fontWeight: '700', color: '#7C3AED', textTransform: 'uppercase' },
+  scriptText: { fontSize: 13, color: '#475569', lineHeight: 20, fontStyle: 'italic' },
 });

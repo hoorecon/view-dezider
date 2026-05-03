@@ -9,7 +9,22 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import { VoiceInput } from '../../src/components/VoiceInput';
+import { AudioGuidePlayer } from '../../src/components/AudioGuidePlayer';
 import api from '../../src/utils/api';
+
+const LIMITATION_AUDIO_URL = 'https://customer-assets.emergentagent.com/job_a7a2d7ec-9ce2-470b-8ff8-d26638aa4277/artifacts/qrq3iqkh_Breaking%20the%20LIMITATIONS.mp3';
+
+const LIMITATION_SCRIPT = `Every human being carries invisible limitations — beliefs that silently dictate what they think they can and cannot do. These limitations are not real walls. They are mental constructs built from 4 sources:
+
+1. Past Experience of Self — "I failed before, so I'll fail again." But you are NOT the same person you were then. You've grown, learned, and evolved. Past failure does not equal future failure.
+
+2. Past Experience of Others — "It didn't work for them, so it won't work for me." But YOUR situation is fundamentally different. Different skills, different timing, different resources. Their story is not yours.
+
+3. External Inputs — Social media, news, advertisements, opinions. Information designed to influence you, not inform you. Ask: Is this source authentic? What is the intention behind this information?
+
+4. Fear of the Unknown — "I don't know how, so I can't." But unknown does NOT mean difficult. And even difficult does NOT mean impossible. Everything you know today was once unknown to you.
+
+Identify which source created YOUR limitation. Challenge the hidden assumption. Replace the old belief with an empowering one. You are far more capable than your limitations suggest.`;
 
 const CATEGORIES = [
   { id: 'past_self', name: 'Past Experience of Self', icon: 'person', color: '#EF4444',
@@ -31,6 +46,7 @@ export default function EGLimitationScreen() {
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [guideExpanded, setGuideExpanded] = useState(false);
 
   // Step 0: Capture
   const [limitStatement, setLimitStatement] = useState('');
@@ -82,8 +98,44 @@ export default function EGLimitationScreen() {
 
   const catObj = CATEGORIES.find(c => c.id === selectedCat);
 
+  const renderAudioGuide = () => (
+    <View style={s.audioGuideContainer}>
+      <TouchableOpacity
+        style={s.audioGuideHeader}
+        onPress={() => setGuideExpanded(!guideExpanded)}
+        activeOpacity={0.7}
+      >
+        <View style={s.audioGuideIcon}>
+          <Ionicons name="headset" size={20} color="#1D4ED8" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.audioGuideTitle}>Audio Guide: Breaking Limitations</Text>
+          <Text style={s.audioGuideSub}>Listen to the guided briefing before you begin</Text>
+        </View>
+        <Ionicons name={guideExpanded ? 'chevron-up' : 'chevron-down'} size={18} color="#1D4ED8" />
+      </TouchableOpacity>
+      {guideExpanded && (
+        <View style={s.audioGuideBody}>
+          <AudioGuidePlayer
+            uri={LIMITATION_AUDIO_URL}
+            title="Breaking the LIMITATIONS — Guided Audio"
+            color="#3B82F6"
+          />
+          <View style={s.scriptBox}>
+            <View style={s.scriptHeader}>
+              <Ionicons name="document-text" size={16} color="#1D4ED8" />
+              <Text style={s.scriptLabel}>Briefing Script</Text>
+            </View>
+            <Text style={s.scriptText}>{LIMITATION_SCRIPT}</Text>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+
   const renderStep0 = () => (
     <View style={s.stepContent}>
+      {renderAudioGuide()}
       <Text style={s.stepTitle}>What belief is limiting you?</Text>
       <Text style={s.stepHint}>Name the limitation honestly. Awareness is the first step.</Text>
       <View style={s.inputRow}>
@@ -261,4 +313,16 @@ const s = StyleSheet.create({
   affirmText: { fontSize: 14, fontWeight: '600', color: '#1D4ED8', fontStyle: 'italic', textAlign: 'center' },
   doneBtn: { alignItems: 'center', paddingVertical: 14, marginTop: 10 },
   doneBtnText: { fontSize: 14, fontWeight: '600', color: COLORS.textMuted },
+
+  // Audio Guide
+  audioGuideContainer: { backgroundColor: '#FFF', borderRadius: 14, marginBottom: 16, borderWidth: 1, borderColor: '#DBEAFE', overflow: 'hidden' },
+  audioGuideHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 },
+  audioGuideIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#DBEAFE', justifyContent: 'center', alignItems: 'center' },
+  audioGuideTitle: { fontSize: 14, fontWeight: '700', color: '#1E40AF' },
+  audioGuideSub: { fontSize: 11, color: '#3B82F6', marginTop: 2 },
+  audioGuideBody: { paddingHorizontal: 14, paddingBottom: 14 },
+  scriptBox: { backgroundColor: '#F8FAFC', borderRadius: 10, padding: 14, marginTop: 10, borderLeftWidth: 3, borderLeftColor: '#3B82F6' },
+  scriptHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  scriptLabel: { fontSize: 12, fontWeight: '700', color: '#1D4ED8', textTransform: 'uppercase' },
+  scriptText: { fontSize: 13, color: '#475569', lineHeight: 20, fontStyle: 'italic' },
 });
