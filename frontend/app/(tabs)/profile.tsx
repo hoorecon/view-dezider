@@ -910,6 +910,23 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       )}
 
+      {/* WOWO — Access Control Matrix */}
+      {userRole !== 'user' && (
+        <TouchableOpacity
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#8B5CF630', marginBottom: 12 }}
+          onPress={() => router.push('/admin/acm' as any)}
+        >
+          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="shield-checkmark" size={18} color="#FFF" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>WOWO — Access Control Matrix</Text>
+            <Text style={{ fontSize: 12, color: COLORS.textMuted }}>User types, subscriptions, feature gating & quotas</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+        </TouchableOpacity>
+      )}
+
       {/* Goals Execution Manager */}
       <TouchableOpacity
         style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}

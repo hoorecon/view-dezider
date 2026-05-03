@@ -64,6 +64,7 @@ from routes.incident_response import router as incident_router
 from routes.audit_trail import router as audit_trail_router
 from routes.face_auth import router as face_auth_router
 from routes.social_learning import router as social_learning_router
+from routes.acm import router as acm_router
 
 
 # ========================
@@ -104,6 +105,7 @@ api_router.include_router(incident_router)
 api_router.include_router(audit_trail_router)
 api_router.include_router(face_auth_router)
 api_router.include_router(social_learning_router)
+api_router.include_router(acm_router)
 
 # ========================
 # HEALTH CHECK

@@ -3420,10 +3420,8 @@ metadata:
 
 test_plan:
   current_focus:
-    - "3-Tier Integration Endpoints"
-    - "Factor/Risk Review & Approval Endpoints"
-    - "Re-Analysis Endpoint"
-    - "Enhanced AI Classification with HOS Hierarchy"
+    - "ACM (WOWO Access Control Matrix) System"
+    - "ACM Seed, Matrix, User Type, Feature Access Endpoints"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -3635,3 +3633,31 @@ test_plan:
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
+
+  - task: "ACM (WOWO Access Control Matrix) System"
+    implemented: true
+    working: true
+    file: "routes/acm.py, core/acm_engine.py, data/acm_seed_data.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented complete WOWO Access Control Matrix system with 22 modules, 43 features, 7 user types, 5 subscription plans. Features: ACM seeding, full matrix view, feature access checking, user type management, feature updates, user listing, quota tracking."
+      - working: true
+        agent: "testing"
+        comment: "✅ ACM SYSTEM COMPREHENSIVE TESTING PASSED: All 14 test scenarios successful with 100% success rate! Complete end-to-end ACM workflow verified: (1) User Registration working - created test user with session token, (2) User Login working - authenticated successfully, (3) Admin Login working - logged in as existing super admin (super@test.com), (4) ACM Seeding working - POST /api/acm/seed returns proper structure with 22 modules and 43 features, (5) Full Matrix Retrieval working - GET /api/acm/matrix returns complete matrix with 22 modules, 7 user_types (unit_tester, integration_tester, alpha, beta, free, trial, paid), 5 subscription_plans (none, starter, pro, enterprise, api), 7 release_stages, total_modules: 22, total_features: 43, (6) My Access Check working - GET /api/acm/my-access returns user_id, user_type: 'free', subscription_plan: 'none', features object with 43 feature_ids, each feature has access_level, quota_limit, quota_used, quota_remaining, quota_unit, (7) Single Feature Check working - GET /api/acm/check/my_dezider_create returns feature_id, allowed: true, access_level: 'full', quota_limit: 3, quota_unit: 'decisions/month' for free users, (8) Locked Feature Check working - GET /api/acm/check/solution_finder returns allowed: false, access_level: 'locked', upgrade_message for free users, (9) Hidden Feature Check working - GET /api/acm/check/deo_scrape returns allowed: false, access_level: 'hidden' for free users, (10) Set User Type working - PUT /api/acm/user/{user_id}/type with user_type: 'beta', subscription_plan: 'pro' successfully updates user, (11) Re-check Access After Upgrade working - GET /api/acm/my-access after upgrade shows user_type: 'beta', previously locked feature 'solution_finder' now has access_level: 'full', previously hidden feature 'deo_scrape' now has access_level: 'full', (12) Force Re-seed working - POST /api/acm/seed?force=true successfully re-seeds ACM with 22 modules and 43 features, (13) Update Feature working - PUT /api/acm/feature/my_dezider_create with release_stage: 'beta' and access rules successfully updates feature, (14) List Users working - GET /api/acm/users?user_type=beta returns total: 1, users array with test user showing correct user_type: 'beta' and subscription_plan: 'pro'. Complete ACM functionality verified end-to-end with proper access control, quota management, user type upgrades, and feature visibility rules. Backend URL: https://dezider-core.preview.emergentagent.com/api working correctly."
+
+agent_communication:
+  - agent: "main"
+    message: "Implemented complete WOWO Access Control Matrix (ACM) system. Features: (1) ACM Seeding with 22 modules, 43 features, 7 user types, 5 subscription plans, 7 release stages, (2) Full Matrix View (admin only), (3) Feature Access Checking (per user), (4) User Type & Plan Management (admin only), (5) Feature Update (admin only), (6) User Listing by Type/Plan (admin only), (7) Quota Tracking & Usage Stats. Access levels: full, read, locked, hidden. Quota units: decisions/month, sessions/month, analyses/month, worksheets/month, scrapes/month, toggle. User types: unit_tester, integration_tester, alpha, beta, free, trial, paid. Subscription plans: none, starter, pro, enterprise, api. Please test all ACM endpoints comprehensively with the 14-step test flow."
+  - agent: "testing"
+    message: "🎉 ACM (WOWO ACCESS CONTROL MATRIX) SYSTEM COMPREHENSIVE TESTING COMPLETE: All 14 test scenarios passed successfully with 100% success rate! ✅ AUTHENTICATION & SETUP: User registration, login, and admin login working correctly (used existing super admin: super@test.com). ✅ ACM SEEDING: POST /api/acm/seed returns 22 modules, 43 features with proper structure. ✅ FULL MATRIX: GET /api/acm/matrix returns complete matrix with 22 modules, 7 user_types, 5 subscription_plans, 7 release_stages. ✅ MY ACCESS: GET /api/acm/my-access returns user_id, user_type: 'free', subscription_plan: 'none', 43 features with access_level/quota_limit/quota_used/quota_remaining/quota_unit. ✅ SINGLE FEATURE CHECK: GET /api/acm/check/my_dezider_create returns allowed: true, access_level: 'full', quota_limit: 3, quota_unit: 'decisions/month' for free users. ✅ LOCKED FEATURE: GET /api/acm/check/solution_finder returns allowed: false, access_level: 'locked' with upgrade message for free users. ✅ HIDDEN FEATURE: GET /api/acm/check/deo_scrape returns allowed: false, access_level: 'hidden' for free users. ✅ SET USER TYPE: PUT /api/acm/user/{user_id}/type successfully upgrades user to user_type: 'beta', subscription_plan: 'pro'. ✅ ACCESS UPGRADE VERIFICATION: After upgrade, previously locked 'solution_finder' now has access_level: 'full', previously hidden 'deo_scrape' now has access_level: 'full'. ✅ FORCE RE-SEED: POST /api/acm/seed?force=true successfully re-seeds ACM. ✅ UPDATE FEATURE: PUT /api/acm/feature/my_dezider_create successfully updates release_stage and access rules. ✅ LIST USERS: GET /api/acm/users?user_type=beta returns test user with correct user_type and subscription_plan. Complete ACM functionality verified end-to-end with proper access control matrix, quota management, user type upgrades, feature visibility rules (full/read/locked/hidden), and admin-only operations. Backend URL: https://dezider-core.preview.emergentagent.com/api working correctly. Test file: /app/backend_test.py"
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
