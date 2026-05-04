@@ -8,7 +8,7 @@ import json
 from datetime import datetime, timedelta
 
 # Backend URL from environment
-BASE_URL = "https://dezider-core.preview.emergentagent.com/api"
+BASE_URL = "https://voice-browse-epic.preview.emergentagent.com/api"
 
 # Test credentials - use unique timestamp to avoid conflicts
 timestamp = int(datetime.now().timestamp())

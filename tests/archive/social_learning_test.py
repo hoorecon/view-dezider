@@ -9,7 +9,7 @@ import time
 from datetime import datetime
 
 # Backend URL
-BASE_URL = "https://dezider-core.preview.emergentagent.com/api"
+BASE_URL = "https://voice-browse-epic.preview.emergentagent.com/api"
 
 # Test results
 test_results = []

@@ -10,7 +10,7 @@ import time
 from datetime import datetime
 
 # Backend URL from environment
-BASE_URL = "https://dezider-core.preview.emergentagent.com/api"
+BASE_URL = "https://voice-browse-epic.preview.emergentagent.com/api"
 
 class TimeDeziderTester:
     def __init__(self):

@@ -6,7 +6,7 @@ import time
 from datetime import datetime
 
 # Backend URL from frontend/.env
-BASE_URL = "https://dezider-core.preview.emergentagent.com/api"
+BASE_URL = "https://voice-browse-epic.preview.emergentagent.com/api"
 
 def log_test(test_name, status, details=""):
     """Log test results with timestamp"""

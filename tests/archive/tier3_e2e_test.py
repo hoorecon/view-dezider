@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timedelta
 
 # Backend URL from environment
-BASE_URL = "https://dezider-core.preview.emergentagent.com/api"
+BASE_URL = "https://voice-browse-epic.preview.emergentagent.com/api"
 
 class Tier3E2ETester:
     def __init__(self):

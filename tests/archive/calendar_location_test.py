@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timezone
 
 # Configuration
-BASE_URL = "https://dezider-core.preview.emergentagent.com/api"
+BASE_URL = "https://voice-browse-epic.preview.emergentagent.com/api"
 HEADERS = {"Content-Type": "application/json"}
 
 class CalendarLocationTester:
