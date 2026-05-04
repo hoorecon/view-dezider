@@ -151,6 +151,7 @@ from routes.conflict_breaker import router as conflict_breaker_router
 from routes.pna import router as pna_router
 from routes.lifestyle_designer import router as lifestyle_designer_router
 from routes.ai_assistant import router as ai_assistant_router
+from routes.public_pulse import router as public_pulse_router
 
 
 # ========================
@@ -203,6 +204,7 @@ api_router.include_router(conflict_breaker_router)
 api_router.include_router(pna_router)
 api_router.include_router(lifestyle_designer_router)
 api_router.include_router(ai_assistant_router)
+api_router.include_router(public_pulse_router)
 
 
 # ========================

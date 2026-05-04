@@ -220,6 +220,30 @@ INDEX_SPECS: dict[str, list] = {
     "admin_docs": [{"keys": [("doc_type", 1)], "unique": True}],
     "app_settings": [{"keys": [("key", 1)], "unique": True}],
     "app_config": [{"keys": [("key", 1)], "unique": True}],
+
+    # ─── Public Pulse ───────────────────────────────────────────
+    "pp_consent_records": [
+        ("user_id", 1),
+        [("user_id", 1), ("withdrawn", 1), ("timestamp", -1)],
+    ],
+    "pp_demographic_profiles": [{"keys": [("user_id", 1)], "unique": True}],
+    "pp_tool_sessions": [
+        ("user_id", 1),
+        ("session_id", 1),
+        [("tool_slug", 1), ("completed", 1), ("contributed_to_research", 1)],
+        [("answers.district", 1), ("answers.age_group", 1)],
+        ("started_at", -1),
+    ],
+    "pp_feedback_items": [
+        ("user_id", 1),
+        ("status", 1),
+        [("user_id", 1), ("created_at", -1)],
+    ],
+    "pp_audit_logs": [
+        ("user_id", 1),
+        ("timestamp", -1),
+    ],
+    "pp_config": [{"keys": [("key", 1)], "unique": True}],
 }
 
 

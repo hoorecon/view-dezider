@@ -973,6 +973,19 @@ test_plan:
   test_all: false
   test_priority: "stuck_first"
 
+public_pulse_module:
+  - task: "Public Pulse — Phase 1 Citizen MVP (27 endpoints + ACM)"
+    implemented: true
+    working: true
+    file: "routes/public_pulse.py, models/public_pulse_models.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ COMPREHENSIVE PUBLIC PULSE TESTING PASSED — 51/51 assertions in /app/backend_test_public_pulse.py. (1) ACM updated correctly: total_modules=32, total_features=82; module 'public_pulse' has all 4 expected features (pp_self_discovery_tools, pp_consent_management, pp_public_dashboards, pp_feedback_rectification). (2) Consent (4 endpoints): GET /consent/options returns version 'v1.0-2026-05', 4 purposes, data_categories array; GET /consent/me correctly returns {active:false} when no record; POST /consent creates record and returns {ok:true,record:{...}}; GET /consent/me returns active record after submission; POST /consent/withdraw flips withdrawn=true and subsequent /consent/me returns active=false. (3) Profile (3 endpoints): /profile/options returns 5 age_groups, 10 professions, 8 education_levels, 7 income_brackets, 4 genders; PUT /profile upserts profile (TN/Coimbatore/25-34 saved + retrieved). (4) Tools meta (2 endpoints): /tools lists exactly 3 tools (life_direction, marriage_readiness, govt_benefit_finder); /tools/{slug} returns step counts 4/5/5 respectively. (5) Tool flow life_direction: start returned current_step=1; step 1 returned current_step=2 + real teaser '{lead: People in Coimbatore are choosing: High income (40%)..., n:20, synthetic:false}' (cohort hit due to seeded data); step 2 returned partial_result {label:'Transition Zone', color:'#F59E0B'} as expected for satisfaction=3; step 3-4 progressed cleanly; complete returned score=79, band='high', insight, 2 recommendations, hidden_value_hook. (6) Tool flow marriage_readiness (5 steps) and govt_benefit_finder (5 steps) — both walked end-to-end and completed successfully with score/band/insight/recommendations. (7) Sessions read: GET /tools/sessions/me returned 3 sessions; GET /tools/sessions/{id} returned the specific session. (8) Dashboards (5): pre-seed all returned data:[] (no buckets met threshold) and rectification-tracker correctly returned blocked:true with reason 'Insufficient sample size (0 < 10)'; post-seed (240 sessions inserted via admin/seed-demo-data?count=80, exactly 3×80) all four aggregate dashboards returned populated data arrays — district-demand-heatmap=5 buckets, youth-job-priority=6, marriage-support-need=5 (under by_concern.data), scheme-awareness=6. K-anonymity blocking confirmed (rectification dashboard fired blocked:true when feedback total<threshold). (9) Feedback (3 endpoints): /feedback/types returned 5 types & 8 states; POST /feedback returned {ok:true, feedback_id, status:'new'}; /feedback/me listed the submitted item. (10) Admin (3 endpoints): GET /admin/k-thresholds returned values+defaults; PUT /admin/k-threshold {teaser,25} accepted; PUT with threshold=4 correctly rejected (400 'Threshold must be >= 5'); POST /admin/seed-demo-data?count=80 → {ok:true, inserted:240}; DELETE /admin/seed-demo-data cleared seeded sessions. (11) Auth gating: non-admin user correctly received 403 on /admin/k-thresholds and /admin/seed-demo-data; unauthenticated /consent/me → 401. No 5xx errors observed across all endpoints. Backend logs clean (only known passlib bcrypt-version warning, unrelated). Test file: /app/backend_test_public_pulse.py."
+
 backend_p0_p1_hardening:
   - task: "P0 Health & Readiness Endpoints"
     implemented: true

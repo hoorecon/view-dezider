@@ -1563,4 +1563,75 @@ ACM_MODULES = [
             },
         ],
     },
+
+    # ────────────────────────────────────────────────────
+    # MODULE 32: Public Pulse — Public Decision Intelligence
+    # ────────────────────────────────────────────────────
+    {
+        "module_id": "public_pulse",
+        "module_name": "Public Pulse",
+        "module_icon": "pulse",
+        "module_description": "Consent-based decision intelligence + market research. 3 self-discovery Score™ tools, k-anonymized public dashboards, feedback & rectification flow.",
+        "order": 32,
+        "features": [
+            {
+                "feature_id": "pp_self_discovery_tools",
+                "feature_name": "Self-Discovery Score™ Tools (3 templates)",
+                "release_stage": "beta",
+                "quota_unit": "sessions/month",
+                "quota_resets": "monthly",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": {"enabled": True, "quota": 5},
+                    "trial": _full(), "paid_starter": _full(),
+                    "paid_pro": _full(), "paid_enterprise": _full(),
+                    "paid_api": _hidden(),
+                },
+            },
+            {
+                "feature_id": "pp_consent_management",
+                "feature_name": "Consent Management (granular, withdrawable)",
+                "release_stage": "ga_trial",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _full(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+            {
+                "feature_id": "pp_public_dashboards",
+                "feature_name": "Public Insights Dashboards (k-anonymized)",
+                "release_stage": "beta",
+                "quota_unit": "views",
+                "quota_resets": "daily",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _full(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+            {
+                "feature_id": "pp_feedback_rectification",
+                "feature_name": "Feedback & Rectification Flow",
+                "release_stage": "beta",
+                "quota_unit": "submissions/month",
+                "quota_resets": "monthly",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": {"enabled": True, "quota": 3},
+                    "trial": _full(), "paid_starter": _full(),
+                    "paid_pro": _full(), "paid_enterprise": _full(),
+                    "paid_api": _hidden(),
+                },
+            },
+        ],
+    },
 ]
