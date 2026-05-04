@@ -61,7 +61,11 @@ app.add_middleware(SlowAPIMiddleware)
 # ========================
 @app.middleware("http")
 async def request_observability_middleware(request: Request, call_next):
-    """Attach a per-request id, log latency, and surface slow queries."""
+    """Attach a per-request id, log latency, and surface slow queries.
+
+    On unhandled exceptions we still produce a JSON 500 with the X-Request-ID
+    header so clients can quote it when reporting bugs.
+    """
     request_id = request.headers.get("X-Request-ID", uuid.uuid4().hex[:12])
     request.state.request_id = request_id
     start = time.perf_counter()
@@ -73,7 +77,18 @@ async def request_observability_middleware(request: Request, call_next):
             f"req={request_id} {request.method} {request.url.path} "
             f"FAILED in {elapsed_ms:.0f}ms — {type(e).__name__}"
         )
-        raise
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "Internal server error",
+                "request_id": request_id,
+                "error_type": type(e).__name__,
+            },
+            headers={
+                "X-Request-ID": request_id,
+                "X-Response-Time-MS": f"{elapsed_ms:.0f}",
+            },
+        )
     elapsed_ms = (time.perf_counter() - start) * 1000
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Response-Time-MS"] = f"{elapsed_ms:.0f}"
