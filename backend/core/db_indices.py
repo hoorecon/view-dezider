@@ -244,6 +244,27 @@ INDEX_SPECS: dict[str, list] = {
         ("timestamp", -1),
     ],
     "pp_config": [{"keys": [("key", 1)], "unique": True}],
+
+    # ─── Public Pulse Phase 2: Orgs ─────────────────────────────
+    "pp_org_applications": [
+        ("user_id", 1),
+        ("status", 1),
+        [("user_id", 1), ("org_type", 1), ("status", 1)],
+        [("status", 1), ("submitted_at", 1)],
+    ],
+    "pp_orgs": [
+        {"keys": [("org_id", 1)], "unique": True},
+        {"keys": [("slug", 1)], "unique": True, "sparse": True},
+        ("status", 1),
+        ("district", 1),
+        [("status", 1), ("org_type", 1)],
+    ],
+    "pp_org_members": [
+        [("org_id", 1), ("user_id", 1)],
+        ("user_id", 1),
+        [("org_id", 1), ("role", 1)],
+    ],
+    "pp_admin_config": [{"keys": [("key", 1)], "unique": True}],
 }
 
 

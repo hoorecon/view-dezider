@@ -974,6 +974,18 @@ test_plan:
   test_priority: "stuck_first"
 
 public_pulse_module:
+  - task: "Public Pulse Phase 2 — Org/Gov/Admin Portal (27 endpoints + E2E flow)"
+    implemented: true
+    working: true
+    file: "routes/public_pulse_org.py, models/public_pulse_org_models.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ PUBLIC PULSE PHASE 2 FULLY PASSED — 51/51 assertions in /app/backend_test_public_pulse_phase2.py covering all 27 new endpoints + the end-to-end flow requested. Summary: (1) Admin config runtime-tunable: GET /public-pulse/admin/config returns 4 keys {application_eligibility, reapply_cooldown_days, feedback_visibility, feedback_routing} + org_types[8]; PUT updates (cooldown default=10, override govt_dept=60 persisted); non-admin → 403. (2) Org application lifecycle: /orgs/types returns exact 8 codes {ngo, msme, industry_association, govt_dept, political_org, education_institute, media, other}; /orgs/eligibility/{org_type} correctly returns eligible:false with 'Verify your email first.' blocker for un-verified user, flips to true after email_verified=true; POST /orgs/apply returns 200 with application_id; /orgs/my-applications and /orgs/my-application/{id} return owner's apps. (3) Admin moderation: /admin/orgs/pending, /admin/orgs/all?status=pending, /admin/orgs/application/{id} all operate correctly; POST /admin/orgs/application/{id}/review with decision:approve creates PPOrg, adds applicant as org_admin, returns org_id. (4) Org context: /orgs/my-orgs lists the new org with my_role='org_admin'; /orgs/{id} as member returns full (owner_user_id + my_role); as non-member returns PUBLIC ONLY fields (no owner_user_id/my_role leak). (5) Invites: org_admin-only enforced (citizen → 403); unregistered email → 404; registered email → 200. (6) Members endpoint members-only (non-member → 403). (7) Dashboard with k-threshold: cold-start correctly returns blocked:true + k_threshold. (8) Feedback routing: exact match returns auto_routed:true with org object; fuzzy/partial returns auto_routed:false + suggestions[]; confirm-route with in-list org_id → 200, with invalid org_id → 400; skip-routing escalates to admin. (9) Feedback workflow state machine: queue shows assigned feedback; claim first-come; action:acknowledge → new_status:acknowledged; action:respond → status:responded + response_text visible to citizen via /feedback/me; invalid transition (close from 'new') correctly returns 400 with the enforcement message 'Cannot close from status 'new'. Allowed from: ['responded', 'action_taken', 'resolution_review']'. (10) Admin oversight: /admin/audit-logs returns all expected action types {org_application_submit, org_application_approve, feedback_acknowledge, feedback_respond, admin_config_update}; ?action filter works; /admin/feedback/escalated lists skipped feedback; /admin/feedback/{id}/assign-to-org?org_id=... manually routes. (11) Reapply cooldown: while pending → 403 with 'pending application' blocker; after rejection within cooldown (10 days) → 403 with 'Please wait 10 more day(s)' blocker; after PUT config cooldown=0 → next application succeeds → validates runtime-tunable config. (12) ACM verified: /acm/matrix reports 32 modules & 83 features (after /acm/seed?force=true); public_pulse module now lists all 5 features including the newly-added pp_org_portal. (13) Gotchas honoured: bulk super_admin promotion via DB update_one, email_verified explicit DB set, unique timestamped display_names to avoid stale-data collisions from prior test runs. Backend logs clean (only known passlib bcrypt-version warning, unrelated). Test file: /app/backend_test_public_pulse_phase2.py."
+
   - task: "Public Pulse — Phase 1 Citizen MVP (27 endpoints + ACM)"
     implemented: true
     working: true
@@ -4623,3 +4635,24 @@ agent_communication:
 
       NO REGRESSIONS detected from the models/ package extraction (decisions_models.py, collaboration_data.py, solutions_store_data.py) or from the production rate-limit restoration in .env.
 
+
+  - agent: "testing"
+    message: |
+      ✅ PUBLIC PULSE PHASE 2 — ORG/GOV/ADMIN PORTAL: 51/51 PASS (test file /app/backend_test_public_pulse_phase2.py).
+
+      Verified all 27 new endpoints under /api/public-pulse/* (orgs + admin + feedback-workflow) and the full end-to-end flow exactly as specified in the review request:
+        • Admin runtime-tunable config: GET/PUT /public-pulse/admin/config (4 config keys + 8 org types; non-admin correctly blocked; reapply cooldown PUT persists with default + govt_dept override).
+        • Org applications: /orgs/types (8 codes), /orgs/eligibility/{type} flips false→true on email_verified, POST /orgs/apply returns 200 with application, /orgs/my-applications + /orgs/my-application/{id} functional.
+        • Admin moderation: /admin/orgs/pending, /admin/orgs/all?status=..., /admin/orgs/application/{id}; POST .../review decision=approve creates PPOrg + org_admin membership and returns org_id.
+        • Org context: /orgs/my-orgs lists approved org with my_role=org_admin; GET /orgs/{id} returns full payload for member, PUBLIC-ONLY fields for non-member (owner_user_id & my_role correctly absent).
+        • Invites: admin-only (citizen → 403), unregistered email → 404, registered → 200.
+        • Members endpoint members-only (non-member 403). Dashboard k-threshold blocks with blocked:true on cold start.
+        • Feedback routing: exact-match entity auto_routed:true with full org payload; fuzzy partial match → auto_routed:false + suggestions[]; confirm-route rejects org_id NOT in suggestions (400); skip-routing escalates to admin queue.
+        • Org feedback queue + state machine: claim first-come, action:acknowledge→acknowledged, action:respond→responded with response_text visible to citizen via /feedback/me. Invalid transition enforced: action:close from status=new → 400 "Cannot close from status 'new'. Allowed from: ['responded', 'action_taken', 'resolution_review']".
+        • Admin oversight: audit-logs contains {org_application_submit, org_application_approve, feedback_acknowledge, feedback_respond, admin_config_update}; ?action filter works; /admin/feedback/escalated lists skipped items; /admin/feedback/{id}/assign-to-org?org_id=... manually routes.
+        • Reapply cooldown: 2nd same-org-type while pending → 403 ("pending application" blocker); after rejection within 10-day cooldown → 403 ("Please wait 10 more day(s) before re-applying as this org type."); after PUT config cooldown=0 → next apply succeeds (validates runtime-tunable config end-to-end).
+        • ACM integrity verified: /acm/matrix reports 32 modules & 83 features after /acm/seed?force=true. public_pulse module lists all 5 features incl. the newly-added pp_org_portal.
+
+      Important note for main agent: pp_org_portal only appears in /acm/matrix after POST /api/acm/seed?force=true is called (ACM cache is refreshed to 83 features on demand). Before re-seeding it still showed the older 82-feature manifest. If the product relies on automatic Phase 2 feature visibility at boot, consider making the seeder idempotently upsert on boot (or bumping ACM_MANIFEST_VERSION to force refresh) rather than requiring an explicit admin POST. Not a blocker — behaviour is correct once seeded.
+
+      No 5xx errors, no auth/CORS regressions. Backend logs show only the pre-existing passlib bcrypt-version warning (unrelated). DB indexes: 196 at boot, consistent with the 13 new Phase 2 indexes claim. Rate limits not hit.

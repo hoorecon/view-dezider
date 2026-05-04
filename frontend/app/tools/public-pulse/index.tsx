@@ -184,6 +184,19 @@ export default function PublicPulseHome() {
           <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
         </TouchableOpacity>
 
+        {/* Org / Gov Portal CTA */}
+        <TouchableOpacity
+          style={styles.orgCta}
+          onPress={() => router.push('/tools/public-pulse/org' as any)}
+        >
+          <Ionicons name="business" size={22} color="#7C3AED" />
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={styles.dashCtaTitle}>Org / Gov Portal</Text>
+            <Text style={styles.dashCtaSub}>Register NGO/MSME/Govt · See rectification queue · Dashboard</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+        </TouchableOpacity>
+
         <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
@@ -236,6 +249,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#EFF6FF',
     borderRadius: 14, padding: 16, marginTop: 12,
     borderWidth: 1, borderColor: '#BFDBFE',
+  },
+  orgCta: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#F5F3FF',
+    borderRadius: 14, padding: 16, marginTop: 12,
+    borderWidth: 1, borderColor: '#DDD6FE',
   },
   dashCtaTitle: { fontSize: 14, fontWeight: '700', color: COLORS.text },
   dashCtaSub: { fontSize: 12, color: '#6B7280', marginTop: 2 },

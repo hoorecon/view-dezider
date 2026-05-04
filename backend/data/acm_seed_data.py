@@ -1632,6 +1632,21 @@ ACM_MODULES = [
                     "paid_api": _hidden(),
                 },
             },
+            {
+                "feature_id": "pp_org_portal",
+                "feature_name": "Org / Gov Portal — Registration, Dashboard, Rectification Workflow",
+                "release_stage": "beta",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": {"enabled": True, "quota": 0},
+                    "trial": _full(), "paid_starter": _full(),
+                    "paid_pro": _full(), "paid_enterprise": _full(),
+                    "paid_api": _hidden(),
+                },
+            },
         ],
     },
 ]
