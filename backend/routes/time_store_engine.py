@@ -181,19 +181,25 @@ async def list_services(
     limit: int = 50,
 ):
     """Surface Solutions Store listings that claim to save time, filtered by
-    requested save bucket. Orgs are auto-linked via solution.posted_by_org_id.
+    requested save bucket. Orgs are auto-linked via solution.org_id.
     """
-    q: Dict[str, Any] = {"published": True}
+    # Solutions Store uses the `solutions_store` collection with
+    # approval_status="approved" + visibility="PUBLIC" as the gate.
+    q: Dict[str, Any] = {
+        "approval_status": "approved",
+        "visibility": "PUBLIC",
+        "status": "active",
+    }
     if save_minutes_per_day:
-        q["time_save_per_day_min"] = {"$gte": int(save_minutes_per_day) - 30}
+        q["time_save_per_day_min"] = {"$gte": max(0, int(save_minutes_per_day) - 30)}
     if save_minutes_per_week:
-        q["time_save_per_week_min"] = {"$gte": int(save_minutes_per_week) - 60}
+        q["time_save_per_week_min"] = {"$gte": max(0, int(save_minutes_per_week) - 60)}
 
-    cursor = db.solutions_store_solutions.find(q, {"_id": 0}).limit(min(max(limit, 1), 200))
+    cursor = db.solutions_store.find(q, {"_id": 0}).limit(min(max(limit, 1), 200))
     services = await cursor.to_list(200)
 
     # Attach org branding for each
-    org_ids = list({s.get("posted_by_org_id") for s in services if s.get("posted_by_org_id")})
+    org_ids = list({s.get("org_id") for s in services if s.get("org_id")})
     orgs: Dict[str, Dict] = {}
     if org_ids:
         async for o in db.pp_orgs.find(
@@ -204,12 +210,12 @@ async def list_services(
             orgs[o["org_id"]] = o
     enriched = []
     for s in services:
-        oid = s.get("posted_by_org_id")
+        oid = s.get("org_id")
         enriched.append({
             "solution_id": s.get("solution_id"),
-            "title": s.get("title"),
-            "description": s.get("description", "")[:400],
-            "price_inr": s.get("price_inr"),
+            "title": s.get("name") or s.get("title"),
+            "description": (s.get("description") or "")[:400],
+            "price_inr": s.get("price_inr") or s.get("price_range"),
             "price_model": s.get("price_model"),
             "time_save_per_day_min": s.get("time_save_per_day_min"),
             "time_save_per_week_min": s.get("time_save_per_week_min"),

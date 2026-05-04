@@ -1,76 +1,83 @@
 # UAT Test Cases — Dezider
 
-_metadata: { "version": "3.4", "updated": "2026-05-04" }
+_metadata: { "version": "3.5", "updated": "2026-05-04" }
 
-UAT scripts grouped by area. Each scenario is independently runnable in
-5–10 minutes by a non-engineer using the production app + a real account.
+## How to UAT
+1. Login with a test account (see `/app/memory/test_credentials.md`). Free tier is fine for most tests.
+2. Walk each scenario top-to-bottom in the order listed. Each scenario is independently runnable in 5–10 min.
+3. Flag anything that doesn't behave as "Expected" under the "Comments" column.
 
-## Auth & onboarding
+## Auth (unchanged)
+AUTH-01..05 (signup, persistence, forgot-password, logout, brute-force).
 
-| ID | Scenario | Steps | Expected |
-|---|---|---|---|
-| AUTH-01 | New signup | Open app → sign up with new email | Verification mail → click link → lands on tools hub |
-| AUTH-02 | Login persistence | Sign in → close app → reopen 24h later | Still signed in (token TTL is 7 days) |
-| AUTH-03 | Forgot password | Tap "Forgot" → enter email | Email arrives within 30 s; reset link valid 1h |
-| AUTH-04 | Logout | Profile → Logout | Lands on /auth/login; cannot reach tools |
-| AUTH-05 | Brute force protection | 11 wrong passwords in a minute | 11th attempt rate-limited (429) |
-
-## Solution Matrix (NEW)
-
-| ID | Scenario | Steps | Expected |
-|---|---|---|---|
-| SM-01 | Standard mode quick fill | Open Solution Matrix → Step 4 → toggle Standard | Only SELF/MICRO/MACRO tabs; no OrgType row |
-| SM-02 | Accurate mode | Toggle Accurate | OrgType chips appear (Individual/Org/Govt/Nature) |
-| SM-03 | Influence annotation | Tap "Add +/-" on Time field | Positive + Negative inputs expand; persist on save |
-| SM-04 | Use template | Tap albums icon → pick "Home Renovation" | Wizard auto-fills with template data |
-| SM-05 | PDF export | Save matrix → tap download icon | PDF downloads on web; opens URL on mobile |
-| SM-06 | Locked OrgType | (free tier) Open Accurate mode | Govt + Nature chips show lock icon; tapping shows upgrade modal |
+## Solution Matrix v3.4
+SM-01..06 (Standard/Accurate modes, influences +/-, templates picker, PDF export, locked OrgType).
 
 ## Public Pulse
+PP-01..06 (consent, withdraw, tool run, feedback, dashboards, YoY tab).
+
+## Public Sub-Portal
+PORTAL-01..05 (open by slug, anon feedback, bad slug, iframe embed, resolved feed).
+
+## Voice navigation
+VOICE-01..06 (bubble visibility rules, language picker, hint chips).
+
+## DPDP
+DPDP-01..04 (export, delete-request, cancel-within-grace, admin purge).
+
+---
+
+## Daily Time Log (NEW v3.5)
 
 | ID | Scenario | Steps | Expected |
 |---|---|---|---|
-| PP-01 | Consent flow | First-run | Consent screen appears; cannot skip |
-| PP-02 | Withdraw consent | Profile → Privacy | Withdraw button; immediate effect |
-| PP-03 | Take a research tool | Tools → Pulse → Life Direction | Wizard runs; submit → thank-you screen |
-| PP-04 | Submit feedback | Pulse → Feedback | Form accepts up to 4000 chars; success toast |
-| PP-05 | Dashboards | Pulse → Insights | At least 5 tabs render; some may be k-anon-blocked early on |
-| PP-06 | YoY trend | Insights → YoY tab | Target picker; tiles + monthly bars OR k-anon block |
+| DTL-01 | Fresh user opens log for today | Navigate `/tools/daily-time-log` | Loads with 0 blocks, streak 0, all 4 key timings show defaults (06:30 / 22:30 / 09:30 / 18:30) |
+| DTL-02 | Set key timings via Time Dezider settings | Time Dezider screen → gear icon → change wake to `05:30` → Save → go back to DTL | Same timings reflected in DTL header; persists across sessions |
+| DTL-03 | Add a manual block | DTL → tap “Add block” → category Lifestyle → 06:00–07:00 → label “Run” → Save | Block appears in timeline with green border and `LIFESTYLE` tag |
+| DTL-04 | Auto-rollup from CTT | Mark a CTT task `done` for today → DTL refresh-rollup | A new block appears tagged `AUTO` with correct duration estimate |
+| DTL-05 | Auto-rollup from Meditation | Complete a meditation session today → DTL | Meditation block auto-appears |
+| DTL-06 | Edit a manual block | Pencil icon on a manual block → change end time → Save | Duration updates; Category totals row recalculates |
+| DTL-07 | Cannot delete auto block | Trash icon on an `AUTO` block | Alert “Auto-imported blocks cannot be deleted. Edit the source record instead.” |
+| DTL-08 | Streak increments | Log ≥15 min for today → reload | Streak chip shows 1🔥 (or current+1 if you've logged earlier days) |
+| DTL-09 | Week strip navigation | Tap a date chip → view that date | Timeline shows that day's blocks (empty if none logged) |
+| DTL-10 | Open Weekly Review | DTL → calendar icon top-right | Shows 7-day bar chart + streak tile + variance notes |
+| DTL-11 | Weekly adherence calculation | If Lifestyle Designer has a plan, Weekly Review shows `adherence_pct` and a note like “Lifestyle adherence within ±10% of plan” | Text matches actual lifestyle minutes vs planned |
 
-## Public Sub-Portal (NEW)
-
-| ID | Scenario | Steps | Expected |
-|---|---|---|---|
-| PORTAL-01 | Open by slug | Visit `/p/coimbatore-skills-foundation-5b9c19` | Branded header + about + form (no login required) |
-| PORTAL-02 | Submit anonymous feedback | Fill form on portal | Success message #ID |
-| PORTAL-03 | Bad slug | Visit `/p/does-not-exist` | Error card with "Go home" |
-| PORTAL-04 | Iframe embed | Add `<script src="/api/embed/{slug}/widget.js" data-target="x"></script>` to a govt site | Widget loads; submission works from third-party domain |
-| PORTAL-05 | Resolved feedback | After org marks one feedback resolved | Item appears in `/p/{slug}/feedback/public` list |
-
-## Voice navigation (NEW)
+## Time Dezider — Raja Guru (NEW v3.5)
 
 | ID | Scenario | Steps | Expected |
 |---|---|---|---|
-| VOICE-01 | Bubble visibility | Sign in → land on tools hub | Mic bubble visible bottom-right |
-| VOICE-02 | Pre-login hidden | On /auth/login | Bubble NOT visible |
-| VOICE-03 | Inside wizard hidden | Open PRR step 3 | Bubble NOT visible |
-| VOICE-04 | English voice command | Tap bubble → say "open goal setter" | Sheet closes, navigates to /tools/goal-setter |
-| VOICE-05 | Hindi voice command | Switch to हिन्दी → say "लक्ष्य निर्धारण" | Navigates to /tools/goal-setter |
-| VOICE-06 | Hint chip | Tap "goal setter" hint | Navigates immediately (no voice needed) |
+| TD-01 | Morning intent-setter | Navigate `/tools/time-dezider` → Morning tab | Intro “Good morning, Raja…”, key timings strip, up to 5 picks ranked by score, raja_note at bottom |
+| TD-02 | Pick comes from CTT | Create a high-priority CTT task with due today → return to Morning tab | Task appears as a pick with TASK chip and score > 15 |
+| TD-03 | Pick comes from Lifestyle | Have a Lifestyle Designer plan with morning fitness → go to Morning tab in actual morning | Fitness area appears with reason “Best window for this is now” |
+| TD-04 | Accept feedback | Tap green checkmark on any pick | Alert “Recorded: accept”; feedback row inserted in `time_dezider_feedback` |
+| TD-05 | Defer feedback | Tap amber clock on a pick | Alert “Recorded: defer” |
+| TD-06 | Skip feedback | Tap red cross on a pick | Alert “Recorded: skip” |
+| TD-07 | Midday tab | Tap Midday | Intro “Raja, half the day is done…” + up to 4 picks |
+| TD-08 | Evening retrospective | Tap Evening | Intro “sun sets with grace”, Wins + Gaps lists populated from today's DTL |
+| TD-09 | Next-action | Tap Now | Single highest-score pick returned, raja_note “Do it for 5 minutes” |
+| TD-10 | Settings — key timings | Gear icon → change bed_time to 23:30 → Save | DTL + Raja Guru pick up new timing immediately |
+| TD-11 | Settings — nudge cadence | Toggle `nudge_hourly=true` → Save | Persists; GET `/raja-guru/preferences` returns true |
+| TD-12 | Empty-state copy | Fresh user with no CTT / Lifestyle plan → Morning tab | Shows “No plan is still a plan — but a weaker one…” |
 
-## DPDP (NEW)
+## Time Store (NEW v3.5)
 
 | ID | Scenario | Steps | Expected |
 |---|---|---|---|
-| DPDP-01 | Export my data | Profile → Privacy → Export | JSON file downloads with my data |
-| DPDP-02 | Delete request | Profile → Privacy → Delete | 7-day grace warning; confirm |
-| DPDP-03 | Cancel within grace | Profile → Privacy → Cancel deletion | Status returns to "none" |
-| DPDP-04 | Grace expiry | (admin only) Wait 7 days, hit purge endpoint | User record tombstoned, all data purged |
+| TS-01 | Time Audit empty | Fresh user | Audit tab shows 0h saveable + empty-state copy |
+| TS-02 | Time Audit with signals | Add a CTT task priority=`low` duration=`45` → return to Audit | Opportunity card appears, lever tag `People`, suggested action `delegate`, ~45 min/event |
+| TS-03 | Delegate an opportunity | Tap `Delegate` on an audit card → confirm description | Delegation modal closes; navigates to Delegations tab; new row appears with status OPEN |
+| TS-04 | Services — 30 min/day bucket | Services tab → 30m/day chip | 5 seeded services render (Personal Admin Assistant, Chore Concierge, Expense & GST, Meal Prep, Social Media) with prices, org badge |
+| TS-05 | Services — 120 min/day bucket | Services tab → 2h/day chip | Only services with time_save ≥ 90 min/day show (Personal Admin Assistant, Meal Prep) |
+| TS-06 | Purchase (MOCKED) | Tap `Buy back time` on any service | Alert with order ID + status `PENDING_PAYMENT` + note about MOCKED payment |
+| TS-07 | Purchases history | Purchases tab | Previous order shows with MOCKED badge + PENDING_PAYMENT status |
+| TS-08 | Delegations tab | Delegations tab | Row from TS-03 visible with estimated minutes saved |
+| TS-09 | TEPFI lever labels | Observe each opportunity card in Audit tab | Each shows its lever chip (People / Finance / Time), matching the suggested_action |
 
-## Performance / load (manual)
-
+## Performance (manual)
 | ID | Scenario | Expected |
 |---|---|---|
-| PERF-01 | Open list of 100 matrices | < 2 s on 4G |
-| PERF-02 | PDF for 60-cell matrix | < 3 s end-to-end |
-| PERF-03 | YoY dashboard | < 2 s with k-anon-friendly data |
+| PERF-01 | Open Daily Time Log with 20 blocks | < 2 s on 4G |
+| PERF-02 | Raja Guru day-plan with 50 CTT tasks | < 1.5 s |
+| PERF-03 | Time Audit with 100 CTT tasks + full Matrix | < 2.5 s |
+| PERF-04 | Time Store services list (25 results) | < 1 s |

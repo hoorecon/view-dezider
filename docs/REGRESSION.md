@@ -1,18 +1,20 @@
-# Regression Test Catalogue
+# Regression Test Catalogue — Dezider
 
-_metadata: { "version": "3.4", "updated": "2026-05-04" }
+_metadata: { "version": "3.5", "updated": "2026-05-04" }
 
-All regression suites live in `/app/tests/` plus the legacy
-`/app/backend_test_regression.py` (kept for backward-compat with CI).
+All suites live in `/app/tests/` plus the legacy `/app/backend_test_regression.py`.
 
-## Suites
+## Suites (v3.5)
 
 | File | Coverage | Last result |
 |---|---|---|
 | `tests/test_solution_matrix_orgtype.py` | Solution Matrix nested OrgType + modes + influences + templates + PDF | 61 / 61 |
 | `tests/test_yoy_and_portal_smoke.py` | YoY analytics + sub-portal endpoints | 13 / 13 |
-| `tests/test_hardening.py` | Security headers, body cap, gzip, audit log, DPDP, idempotency, metrics | NEW — see below |
+| `tests/test_hardening.py` | Security headers, body cap, gzip, audit log, DPDP, metrics | 23 / 23 |
+| `tests/test_dtl_timedezider_timestore.py` (NEW) | Daily Time Log + Raja Guru + Time Store | 31 / 31 |
 | `backend_test_regression.py` | Auth + ACM + Solutions Store + 30+ legacy modules | 28 / 28 |
+
+**TOTAL: 156 / 156 PASSING** — 0 regressions between v3.4 and v3.5.
 
 ## How to run
 
@@ -21,69 +23,66 @@ cd /app
 python tests/test_solution_matrix_orgtype.py
 python tests/test_yoy_and_portal_smoke.py
 python tests/test_hardening.py
+python tests/test_dtl_timedezider_timestore.py
 python backend_test_regression.py
 ```
 
-Exit code 0 = green; non-zero on any failure.
+Exit code 0 = green; non-zero on any failure. For CI, chain them with `&&`.
 
-## CI integration
+## CI integration (sample GitHub Actions)
 
 ```yaml
-# .github/workflows/api-tests.yml
-steps:
-  - name: Run regression
-    run: |
-      python tests/test_solution_matrix_orgtype.py
-      python tests/test_yoy_and_portal_smoke.py
-      python tests/test_hardening.py
-      python backend_test_regression.py
+name: API regression
+on: [push, pull_request]
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    services:
+      mongo: { image: mongo:7, ports: ['27017:27017'] }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - name: Install deps
+        run: pip install -r backend/requirements.txt
+      - name: Start backend
+        run: cd backend && (uvicorn server:app --host 0.0.0.0 --port 8001 &)
+      - name: Run suites
+        run: |
+          sleep 5
+          python tests/test_solution_matrix_orgtype.py
+          python tests/test_yoy_and_portal_smoke.py
+          python tests/test_hardening.py
+          python tests/test_dtl_timedezider_timestore.py
+          python backend_test_regression.py
 ```
 
-## What's covered
+## What's covered — v3.5 additions
 
-### Solution Matrix (61 cases)
-- Full nested 84-cell roundtrip
-- Partial PUT preserves untouched layers
-- Legacy flat payload normalises to both `individual` and `aggregate` slots
-- Empty POST creates 5-slot defaults
-- `matrix_mode` normalisation (case + invalid → "accurate")
-- Influences (positive + negative) per-field roundtrip
-- Energy<->capacity legacy mirror
-- Templates list returns ≥4 covering all OrgTypes
-- Template detail + 404 on unknown
-- PDF Accurate-mode + Standard-mode return application/pdf
-- 404 on PDF for missing entry
-- Cleanup of all created entries
+### Daily Time Log (11 assertions)
+- Preferences GET+POST for 4 key timings + 5 nudge flags
+- Day upsert persists manual blocks with correct minute math
+- Auto-rollup adds CTT / Lifestyle / Meditation / Journal sources
+- Per-category rollup correctness (CTT = 90 min for 09:30–11:00)
+- refresh-rollup endpoint
+- Streak increments on first >=15 min day
+- Week view returns exactly 7 day slots
+- Weekly-review returns shape keys (variance_notes, total_logged_minutes)
 
-### YoY + Portal smoke (13 cases)
-- /yoy/overall, /yoy/feedback returns 200 with k_threshold
-- /yoy/tool/{slug} for known + 404 for unknown
-- /p/{slug} unknown → 404
-- /embed/{slug} unknown → 404
-- /embed/{slug}/widget.js unknown → 404
-- Auth-optional feedback POST → 404 for unknown slug (slug check first)
+### Time Dezider (10 assertions)
+- All 4 slots (day-plan, midday-check, evening-retro, next-action) return 200 with expected fields
+- Preferences toggle persists
+- Feedback accept returns ok; invalid decision returns 400
 
-### Hardening (NEW — see test_hardening.py)
-- Security headers present on every response
-- Body > 10MB → 413
-- gzip when Accept-Encoding: gzip and body > 1KB
-- DPDP export round-trip
-- DPDP delete-request -> cancel-delete -> status reflects state
-- Audit log written on DPDP actions
-- /metrics returns Prometheus text
-- /health/live, /health/version respond fast
-
-### Auth + ACM regression (28 cases)
-- Register/login/me/logout/refresh
-- Forgot-password rate limit
-- ACM my-access shape
-- Solutions Store countries + languages dict shape
-- Public Pulse Phase 1+2 endpoints
-- Plus a sweep of every tool's CRUD smoke
+### Time Store (10 assertions)
+- Time-audit returns opportunities + total_minutes_saveable_per_week
+- Services endpoint returns list + buckets
+- Purchases / delegations list endpoints
+- Delegate POST happy path + bad source_type = 400
+- Purchase unknown solution = 404
 
 ## Adding a new suite
-
-1. Drop a new `tests/test_<area>.py` that exits with non-zero on any failure.
+1. Drop a `tests/test_<area>.py` that exits non-zero on failure.
 2. Add a row to the table above.
 3. Append the run command to CI.
-4. Bump the version + add a CHANGELOG line in this doc.
+4. Bump version in this doc's `_metadata`.

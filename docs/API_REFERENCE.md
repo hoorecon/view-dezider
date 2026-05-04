@@ -1,133 +1,118 @@
 # REST API Reference — Dezider
 
-_metadata: { "version": "3.4", "updated": "2026-05-04" }
+_metadata: { "version": "3.5", "updated": "2026-05-04" }
 
-Base URL: `/api`. Auth: `Authorization: Bearer <session_token>` (from `/auth/login`).
-Response headers from every endpoint:
-- `X-Request-ID` (12-char hex; quote when reporting bugs)
-- `X-Response-Time-MS` (server-measured)
-- `X-RateLimit-*` (when slowapi headers enabled)
+Base URL: `/api`. Auth: `Authorization: Bearer <session_token>` from `/auth/login`.
+Every response carries `X-Request-ID`, `X-Response-Time-MS`, security headers.
 
 ---
 
-## Public / no-auth endpoints
+## Health & observability (public)
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/health` | Liveness (returns ok) |
-| GET | `/health/ready` | Mongo reachability probe (200/503) |
-| GET | `/health/live` | k8s liveness probe (no DB) |
+| GET | `/health` | Basic ok |
+| GET | `/health/ready` | Mongo reachability |
+| GET | `/health/live` | Pure process health (no DB) |
 | GET | `/health/version` | Build version + commit + env |
-| GET | `/metrics` | Prometheus text (Bearer-token gated if `METRICS_TOKEN` set) |
-| GET | `/metrics/json` | Admin-only JSON metric snapshot |
-| GET | `/p/{slug}` | Org sub-portal branding/about |
-| GET | `/p/{slug}/feedback/public` | Resolved feedback for an org |
-| POST | `/p/{slug}/feedback` | Submit feedback (auth optional) |
-| GET | `/embed/{slug}` | Iframe-safe widget (HTML) |
-| GET | `/embed/{slug}/widget.js` | Auto-iframe injector JS |
-| GET | `/public-pulse/dashboards/{key}` | k-anon insights |
-| GET | `/public-pulse/analytics/yoy/overall` | YoY all sessions |
-| GET | `/public-pulse/analytics/yoy/feedback` | YoY feedback items |
-| GET | `/public-pulse/analytics/yoy/tool/{slug}` | YoY by tool |
-| GET | `/feature-flags/public` | Public feature flag dump |
+| GET | `/metrics` | Prometheus text (Bearer-gated if `METRICS_TOKEN` set) |
+| GET | `/metrics/json` | Admin JSON snapshot |
 
 ## Auth
-
-| Method | Path | Description |
-|---|---|---|
-| POST | `/auth/register` | Email + password + name |
-| POST | `/auth/login` | Returns `session_token` |
-| POST | `/auth/logout` | Invalidates token |
-| POST | `/auth/refresh` | Rotates token |
-| GET | `/auth/me` | Current user |
-| POST | `/auth/forgot-password` | Send reset email (rate-limited) |
-| POST | `/auth/reset-password` | Apply reset token |
-| POST | `/auth/change-password` | Auth required |
+Same as v3.4 — register / login / logout / refresh / me / forgot / reset / change.
 
 ## DPDP / GDPR (auth)
-
-| Method | Path | Description |
-|---|---|---|
-| GET | `/dpdp/export` | Download all my data as JSON |
-| POST | `/dpdp/delete-request` | Mark account for delete (7-day grace) |
-| POST | `/dpdp/cancel-delete` | Cancel within grace window |
-| GET | `/dpdp/status` | My deletion status |
-| GET | `/dpdp/admin/audit-log` | Admin only: query audit log |
-| POST | `/dpdp/admin/purge-pending` | Admin/cron: hard-delete past grace |
+export / delete-request / cancel-delete / status / admin/audit-log / admin/purge-pending.
 
 ## Solution Matrix (auth)
+CRUD + templates list/detail + PDF export. See `/docs/PRD.md` §3.3.
+
+## Public Pulse
+Consent / feedback / sessions / dashboards. YoY analytics at `/public-pulse/analytics/yoy/{overall|feedback|tool/{slug}}`.
+
+## Public Sub-Portal (no auth)
+`/p/{slug}`, `/p/{slug}/feedback/public`, `POST /p/{slug}/feedback`, `/embed/{slug}`, `/embed/{slug}/widget.js`.
+
+## Daily Time Log (auth) — NEW v3.5
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/solution-matrices/templates` | List 4 starter templates |
-| GET | `/solution-matrices/templates/{id}` | Get one template payload |
-| POST | `/solution-matrices` | Create entry |
-| GET | `/solution-matrices` | List my entries |
-| GET | `/solution-matrices/{id}` | Get one |
-| PUT | `/solution-matrices/{id}` | Update one |
-| DELETE | `/solution-matrices/{id}` | Delete one |
-| GET | `/solution-matrices/{id}/pdf` | Landscape A4 PDF (mode-aware) |
+| GET | `/daily-time-log/preferences` | 4 key timings + nudge cadence |
+| POST | `/daily-time-log/preferences` | upsert above |
+| POST | `/daily-time-log` | upsert day (manual blocks + auto-merge) |
+| GET | `/daily-time-log/{YYYY-MM-DD}` | fetch one day (auto-rollup included) |
+| POST | `/daily-time-log/{date}/refresh-rollup` | force re-scan source modules |
+| GET | `/daily-time-log/week?start_date=YYYY-MM-DD` | 7-day strip |
+| GET | `/daily-time-log/streaks` | current + longest + last_log_date |
+| GET | `/daily-time-log/weekly-review?start_date=` | adherence + variance + category totals |
 
-### Solution Matrix payload schema (key fields)
-
+### Payload shape
 ```json
 {
-  "matrix_mode": "standard|accurate",
-  "matrix_self": {
-    "aggregate":  { /* used in standard mode */ },
-    "individual": { "time":"", "energy":"", "people":"", "finance":"", "infrastructure":"",
-                    "summary":"", "knowledge_skills":"",
-                    "influences": { "time": {"positive":"", "negative":""}, ... } },
-    "org":   { ... },
-    "govt":  { ... },
-    "nature": { ... }
-  },
-  "matrix_micro": { ... },
-  "matrix_macro": { ... }
+  "log_date": "2026-05-04",
+  "key_timings": {"wake_up":"06:30","bed_time":"22:30","business_start":"09:30","business_end":"18:30"},
+  "blocks": [
+    {"start":"06:00","end":"07:00","category":"lifestyle","label":"Morning run"},
+    {"start":"09:30","end":"11:00","category":"ctt","ref_type":"ctt_task","ref_id":"task-123","label":"Deep work"}
+  ],
+  "overall_mood": 4, "overall_energy": 4, "reflection": "good start",
+  "run_auto_rollup": true
 }
 ```
 
-## Solution Finder (auth) — `/solution-finders/*`
-Similar 5 endpoints (POST/GET/PUT/DELETE/list).
+Block categories: `lifestyle | ctt | meditation | journal | sleep | break | learning | other`. `auto_sourced=true` for auto-rollup blocks.
 
-## Public Pulse — Org admin (auth + role)
-
-| Method | Path | Description |
-|---|---|---|
-| POST | `/public-pulse/orgs/apply` | Submit org application |
-| GET | `/public-pulse/orgs/{org_id}/dashboard` | Org dashboard |
-| GET | `/public-pulse/orgs/{org_id}/feedback` | Inbound feedback list |
-| PUT | `/public-pulse/orgs/{org_id}/feedback/{fid}` | Update status / response |
-| PUT | `/p/{slug}/config` | Admin: portal config (allow domains, CTA label…) |
-| POST | `/public-pulse/orgs/{org_id}/members/invite` | Invite a member |
-
-## Tools (auth) — by route prefix
-
-- `/goal-setter/*`, `/goal-manifestation/*`
-- `/aala/*`, `/aaaa/*`, `/pna/*`
-- `/cld/*` (LLM-backed)
-- `/tepfi/*`, `/swot/*`, `/pros-cons/*`
-- `/conflict-breaker/*`, `/emotional-gatekeeper/*`
-- `/lifestyle/*`, `/lifestyle-eval/*`, `/lifestyle-designer/*`
-- `/gem-flight/*`, `/gem-goal/*`, `/time-dezider/*`
-- `/consciousness-diary/*`, `/meditation/*`, `/unconditional-happiness/*`
-- `/ctt/*`, `/ctt-tasks/*`
-- `/ai-assistant/*` (LLM-backed; 503 when budget exhausted)
-
-Full route list: see Postman collection.
-
-## ACM (auth)
+## Time Dezider — Raja Guru (auth) — NEW v3.5
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/acm/my-access` | All features visible/locked/full for current user |
-| GET | `/acm/feature/{id}` | Single feature meta |
-| POST | `/acm/seed?force=true` | Admin: re-seed ACM (idempotent) |
+| GET | `/raja-guru/day-plan` | morning intent-setter |
+| GET | `/raja-guru/midday-check` | midday recalibration |
+| GET | `/raja-guru/evening-retro` | evening retro (wins + gaps) |
+| GET | `/raja-guru/next-action` | event-driven "what now?" |
+| GET | `/raja-guru/preferences` | nudge cadence flags |
+| POST | `/raja-guru/preferences` | toggle nudge flags |
+| POST | `/raja-guru/feedback` | record accept/defer/skip |
+
+Response shape (day-plan):
+```json
+{
+  "intro": "Good morning, Raja. ...",
+  "key_timings": {...},
+  "total_planned_minutes": 240,
+  "picks": [
+    {"kind":"ctt_task","ref_id":"t-1","title":"Ship investor deck","estimated_minutes":90,"score":34.5,"reason":"Urgent + high importance"},
+    {"kind":"lifestyle_area","ref_id":"fitness","title":"Fitness","estimated_minutes":45,"score":21.0,"reason":"Best window for this is now — morning compounds."}
+  ],
+  "raja_note": "Accept 2-3 non-negotiables. Defer the rest with dignity."
+}
+```
+
+## Time Store (auth) — NEW v3.5
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/time-store/time-audit` | CTT+Lifestyle+Matrix save opportunities |
+| GET | `/time-store/services?save_minutes_per_day=30\|60\|120` | eligible services |
+| GET | `/time-store/services?save_minutes_per_week=180\|300\|600\|900` | per-week filter |
+| POST | `/time-store/purchase` | buy a service (MOCKED payment) |
+| GET | `/time-store/purchases` | my orders |
+| POST | `/time-store/delegate` | delegate a task to contact / org / family |
+| GET | `/time-store/delegations` | my delegation inbox |
+
+Service response includes `org` branding (display_name, slug, brand_color) so the UI renders per-org cards.
+
+## Admin Docs (admin auth)
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/admin-docs` | list all 12 handbook docs with version + updated |
+| GET | `/admin-docs/{slug}` | fetch one doc (markdown body + parsed metadata) |
+
+Slugs: `INDEX, PRD, SRS, API_REFERENCE, POSTMAN, REGRESSION, UAT, ACM, WOWO, CLD, SECURITY, DEPLOYMENT`.
 
 ## Conventions
-
-- All POST/PUT bodies are JSON.
-- Date-times are ISO 8601 (`2026-05-04T14:33:00Z`).
-- `entry_id` / `feedback_id` are server-issued UUIDs (do not assume formats).
-- Pagination: `?limit=NN&skip=NN` (default `limit=100`, `skip=0`, max `limit=500`).
-- Error envelope: `{ "detail": "<message>", "request_id": "..." }`.
+- All dates: ISO 8601 (`2026-05-04` or `2026-05-04T14:33:00Z`).
+- Pagination: `?limit=NN&skip=NN`.
+- Errors: `{ "detail": "message", "request_id": "..." }`.
+- UIDs: server-issued UUIDs — don't assume format.

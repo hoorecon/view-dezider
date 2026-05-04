@@ -1,116 +1,74 @@
 # System Requirements Specification — Dezider
 
-_metadata: { "version": "3.4", "updated": "2026-05-04" }
+_metadata: { "version": "3.5", "updated": "2026-05-04" }
 
-## 1. System architecture
+## 1. Architecture
+Expo frontend → NGINX ingress → FastAPI pods → MongoDB replica-set.
+4 API pods baseline, HPA 4–40. Mongo M30 (3 nodes prod). DPDP purge = k8s CronJob.
 
-```
-          +------------------+      +-------------------+
-  Mobile  |   Expo (RN)      | --→  | NGINX / Ingress   | --→ [api pods (FastAPI)]
-  Web     |   /app/frontend  |      | (terminates TLS,  |        |
-  Org/Govt|   widget iframe  |      |  /api -> 8001)    |        v
-  iframe  +------------------+      +-------------------+    [MongoDB]
-                                                              ↑
-                                                          [auto-snapshot]
-```
-
-- **Frontend**: Expo Router (RN), single codebase for iOS + Android + web preview.
-- **Backend**: FastAPI on uvicorn (uvloop + httptools), behind NGINX. 4 worker pods baseline (HPA 4–40).
-- **Database**: MongoDB 7 replica-set (3 nodes prod). Single node ok for dev/stage.
-- **Job runner**: synchronous for now (no Celery). DPDP purge cron is a k8s `CronJob` hitting `/api/dpdp/admin/purge-pending` hourly.
-
-## 2. Tech stack
-
+## 2. Stack
 | Layer | Tech | Version |
 |---|---|---|
-| Mobile / web | Expo | SDK 53 |
-|  | React Native | 0.79 |
+| Mobile/Web | Expo SDK | 53 |
 |  | expo-router | 5.x |
 |  | expo-speech-recognition | latest |
-|  | nativewind | 4 |
 |  | zustand / react-hook-form | latest |
 | API | FastAPI | 0.118 |
-|  | uvicorn | 0.30 (uvloop) |
+|  | uvicorn (uvloop+httptools) | 0.30 |
 |  | motor (mongo async) | 3.7 |
 |  | pydantic | 2.x |
-|  | slowapi (rate-limit) | 0.1 |
+|  | slowapi | 0.1 |
 |  | reportlab (PDF) | 4.4 |
-|  | LiteLLM via Emergent universal key | latest |
-| Storage | MongoDB | 7 |
-| Observability | Internal counters + Prometheus text format | n/a |
-| Container | Python 3.11 slim | n/a |
+| DB | MongoDB | 7 (3-node replica) |
+| Obs | In-process counters + Prometheus text | n/a |
 
-## 3. Module-to-collection map
+## 3. Collections (v3.5 additions in **bold**)
 
-(High-traffic collections only. Full list in WOWO.md.)
+Core: `users, user_sessions, user_subscriptions, user_wallets, **user_preferences** (NEW — 4 key timings + nudge cadence), user_streaks`
 
-- `users`, `user_sessions`, `user_subscriptions`, `user_wallets`
-- `decisions`, `factors`, `options`, `option_scores`
-- `solution_finders`, `solution_matrices`
-- `goal_setter_entries`, `goal_manifestations`, `unconditional_happiness`, `aala_entries`, `pna_entries`
-- `clds`, `cld_simulations`
-- `tepfi_matrices`, `swot_analyses`, `pros_cons_lists`
-- `journal_entries`, `consciousness_diary_entries`, `meditation_sessions`
-- `notifications`, `audit_log`, `idempotency_keys`
-- `acm_modules`, `acm_features`, `acm_state`
-- `pp_consents`, `pp_demographic_profiles`, `pp_tool_sessions`, `pp_feedback_items`, `pp_orgs`, `pp_org_memberships`, `pp_portal_config`
+Decisions: `decisions, factors, options, option_scores, solution_finders, solution_matrices, goal_setter_entries, goal_manifestations, unconditional_happiness, aala_entries, pna_entries, clds, cld_simulations, tepfi_matrices, swot_analyses, pros_cons_lists, journal_entries, consciousness_diary_entries, meditation_sessions`
 
-## 4. Index plan (top of mind)
+**Accountability (NEW v3.5)**: `daily_time_logs, user_streaks, time_dezider_feedback, time_store_purchases, time_store_delegations`
 
-200 indexes installed at boot via `core/database.ensure_indexes()`. Examples:
+ACM: `acm_modules, acm_features, acm_state, acm_quota_counters`
 
-- `users.email` UNIQUE
-- `user_sessions.session_token` UNIQUE
-- `audit_log.actor_id, ts -1`
-- `pp_tool_sessions.tool_slug, started_at`
-- `pp_orgs.slug` UNIQUE
-- `idempotency_keys.expires_at` (TTL)
+Public Pulse: `pp_consents, pp_demographic_profiles, pp_tool_sessions, pp_feedback_items, pp_orgs, pp_org_memberships, pp_portal_config`
 
-## 5. Hardening posture
+Auditing: `audit_log, idempotency_keys`
 
-| Concern | Mitigation | Implementation |
+Solutions Store: `solutions_store` (NEW optional fields: `time_save_per_day_min`, `time_save_per_week_min`)
+
+## 4. Index plan
+210+ indexes installed at boot. New in v3.5:
+- `daily_time_logs.user_id, log_date` (compound, unique)
+- `user_streaks.user_id, streak_key`
+- `time_store_purchases.user_id, created_at -1`
+- `time_store_delegations.requester_id, created_at -1`
+- `time_dezider_feedback.user_id, created_at -1`
+- `solutions_store.time_save_per_day_min` (sparse)
+- `solutions_store.time_save_per_week_min` (sparse)
+
+## 5. Hardening (unchanged from v3.4)
+Body cap 10 MB, GZip 1 KB, sec headers, HSTS in prod, PII redaction on logs, audit log, DPDP endpoints, idempotency helper, circuit breaker + retry-with-jitter, /metrics.
+
+## 6. Performance targets (v3.5 additions)
+
+| Endpoint family | Target p95 | Measured (synth) |
 |---|---|---|
-| Brute-force login | Rate limit 10/min/user | `core/rate_limiting.py` |
-| Memory-bomb requests | 10 MB body cap | `BodySizeLimitMiddleware` |
-| XSS via response | CSP + X-Content-Type | `SecurityHeadersMiddleware` |
-| Clickjacking | X-Frame-Options SAMEORIGIN (override per-route) | same |
-| MITM | HSTS 2y in prod | same |
-| PII leakage in logs | Email/phone/Aadhaar/PAN regex redaction | `redact_pii` filter |
-| Replay/dup mutations | Idempotency-Key dedupe (24h TTL) | `core/hardening.get_idempotent_response` |
-| LLM cost burst | 10/min AI cap + 503 fallback | `core/llm_errors.py` |
-| Outbound deps flake | Circuit breaker + retry-with-jitter | `core.hardening.with_retry` |
-| Data subject rights | DPDP export/delete/cancel + 7-day grace + admin purge | `routes/dpdp.py` |
-| Audit visibility | Append-only `audit_log` collection | `core.hardening.write_audit` |
-| Slow ops | `> 800ms` lines logged separately | `SlowRequestLoggerMiddleware` |
-| Disaster recovery | Daily mongodump + 5-min replica oplog | runbook `DEPLOYMENT.md` |
+| `/daily-time-log/{date}` with rollup | 400 ms | 80–200 ms |
+| `/daily-time-log/weekly-review` | 500 ms | 100–220 ms |
+| `/raja-guru/day-plan` | 300 ms | 40–120 ms |
+| `/raja-guru/next-action` | 250 ms | 30–90 ms |
+| `/time-store/time-audit` | 400 ms | 60–180 ms |
+| `/time-store/services?save_minutes_per_day=30` | 300 ms | 40–100 ms |
 
-## 6. Performance targets vs. measured
+## 7. Capacity model (unchanged)
+1 M users, 1% DAU, 25% peak-hour, 3 req/min/user → ~7.5k req/min. Headroom 16k req/min across 4×4 pods.
 
-| Endpoint family | Target p95 | Measured (synthetic) |
-|---|---|---|
-| Auth (`/auth/*`) | 200 ms | 80–150 ms |
-| Reads (`GET /tools/...`) | 250 ms | 30–80 ms |
-| Writes (`POST /tools/...`) | 350 ms | 50–120 ms |
-| Public Pulse dashboards | 500 ms | 80–300 ms (k-anon-friendly aggregations) |
-| YoY analytics | 600 ms | 120–350 ms |
-| Solution Matrix PDF | 1.5 s | 0.5–1.0 s for 60-cell |
-| AI endpoints | 8 s | bypassed (503 due to budget) |
+## 8. Failure modes (unchanged v3.4)
+Mongo failover 5–15 s of 503s; LLM budget exhausted → 503s on AI endpoints only; bad migration → mongorestore runbook.
 
-## 7. Capacity model
-
-- 1 M total users, 1% DAU = 10 K daily active.
-- Peak hour 25% of daily → 2,500 users/hour, ~3 req/min/user → 7,500 req/min.
-- 4 pods × 4 workers × 1k req/min/worker = 16,000 req/min headroom.
-- Mongo M30 (3 nodes) handles 6k ops/sec read + 2k write — well above projected.
-
-Scale-out trigger: CPU > 65% for 60 s (HPA), memory > 75% for 60 s.
-
-## 8. Failure modes
-
-| Failure | Impact | Recovery |
-|---|---|---|
-| Mongo primary failover | 5–15 s of 503s | replica auto-promotes, motor reconnects |
-| LLM budget exhausted | All AI endpoints 503 | retry queue (planned); read-only degraded mode active |
-| Slowapi key store overflows | n/a (in-memory; reset on restart) | bounded by per-user cap |
-| API pod OOM | k8s restarts; HPA may add pod | LivenessProbe |
-| Bad migration | Restore last snapshot (≤5 min RPO) | `mongorestore` runbook |
+## 9. v3.5 specific risk
+- Auto-rollup can pull large result sets if user has 1000+ CTT tasks completed on a single day. Mitigation: limit on each source collection (200 CTT, 20 meditation, 20 journal).
+- Time Store audit scans user's full Matrix. Matrix rows capped at 84 cells, so bounded.
+- Raja Guru scoring is CPU-bounded; p99 observed ≈ 60 ms for 50-task workload.

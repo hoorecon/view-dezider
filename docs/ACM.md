@@ -1,99 +1,63 @@
 # Access Control Matrix (ACM) — Dezider
 
-_metadata: { "version": "3.4", "updated": "2026-05-04", "seed_version": "2026-05-04-03" }
+_metadata: { "version": "3.5", "updated": "2026-05-04", "seed_version": "2026-05-04-04" }
 
 ## Concept
-
-Every feature in Dezider is gated by an entry in the `acm_features` collection.
-A feature has:
-
-- **`feature_id`** — stable string ID (used in code via `checkFeature(id)`).
-- **`feature_name`** — human-readable label.
-- **`release_stage`** — the lifecycle bucket (see below).
-- **`access`** — a per-tier dict declaring `full` / `locked` / `hidden` plus optional quota.
-
-## Release stages
-
-| Stage | Visible to |
-|---|---|
-| `internal_only` | unit_tester, integration_tester (admin) |
-| `alpha` | + alpha members |
-| `beta` | + beta members |
-| `ga_free` | everyone (including free) |
-| `ga_paid` | trial + every paid tier |
-| `ga_enterprise` | enterprise + api |
-| `deprecated` | hidden everywhere new, still works for grandfathered users |
+Every feature gated by a row in `acm_features`. Feature has `feature_id`,
+`feature_name`, `release_stage`, and per-tier `access` (`full` | `locked` | `hidden`,
+optional `quota`).
 
 ## Tier ladder
+`unit_tester < integration_tester < alpha < beta < free < trial < paid_starter < paid_pro < paid_enterprise < paid_api`
 
-```
-unit_tester < integration_tester < alpha < beta < free < trial
-           < paid_starter < paid_pro < paid_enterprise < paid_api
-```
+## Release stages
+`internal_only | alpha | beta | ga_free | ga_paid | ga_enterprise | deprecated`
 
-## Access verbs
-
-| Verb | Meaning | UI behaviour |
-|---|---|---|
-| `full` | usable, optionally with `quota` | normal control |
-| `locked` | visible but click → upgrade prompt | greyed + lock icon |
-| `hidden` | not even rendered | n/a |
-
-## Module-feature counts (v3.4 seed)
-
+## Counts (v3.5)
 ```
 Total modules: 32
 Total features: 89
-Seed version: 2026-05-04-03
+Seed version: 2026-05-04-04
 ```
 
-### Notable additions in v3.4
+## Notable features by release stage
 
-- `solution_matrix_orgtype_individual` (ga_free, full for all)
-- `solution_matrix_orgtype_org` (ga_paid, locked on free)
-- `solution_matrix_orgtype_govt` (ga_paid, locked on free + starter)
-- `solution_matrix_orgtype_nature` (ga_paid, locked on free + starter)
-- `solution_matrix_pdf_export` (ga_paid; trial = 5/month, starter = 10/month, pro+ = unlimited)
-- `solution_matrix_templates` (ga_free, full for all)
+### ga_free (everyone)
+- `solution_matrix_orgtype_individual`
+- `solution_matrix_templates`
+- `daily_time_log` (implicit via /api route, no explicit feature_id yet)
+- `time_dezider_guidance`
 
-## How features get checked
+### ga_paid (trial + paid)
+- `solution_matrix_orgtype_org / govt / nature`
+- `solution_matrix_pdf_export` (trial = 5/month, starter = 10/month, pro+ unlimited)
+- `solution_matrix` (7-step advanced)
 
-### Backend
-```python
-from core.acm_engine import user_can_access
-allowed = await user_can_access(user_id, "solution_matrix_pdf_export")
+### Cross-module ACM hooks
+- `pp_org_portal` — gates the white-label sub-portal
+- `pp_dashboards_yoy` — gates the Phase 3 YoY tab
+- `handbook_viewer` (admin only)
+
+## Runtime API
+```
+GET  /api/acm/my-access            → { features: { id: {access_level, quota, quota_used} } }
+GET  /api/acm/feature/{feature_id} → single feature meta
+POST /api/acm/seed?force=true      → admin re-seed (idempotent)
 ```
 
-### Frontend
+## Frontend check
 ```ts
-import { useACM } from '@/hooks/useACM';
 const { checkFeature } = useACM();
 const pdf = checkFeature('solution_matrix_pdf_export');
-// pdf.access_level === 'full' | 'locked' | 'hidden'
+if (pdf.access_level === 'locked') { ... }
 ```
 
-## Re-seeding
-
-The seed runs **automatically on boot** if `ACM_SEED_VERSION` in
-`acm_seed_data.py` differs from the latest record in `acm_state`. To
-force a re-seed without bumping the version, hit:
-
-```bash
-curl -X POST -H "Authorization: Bearer <admin-token>" \
-  http://localhost:8001/api/acm/seed?force=true
-```
-
-## Adding a new feature
-
-1. Open `backend/data/acm_seed_data.py`.
-2. Find the relevant module section (or add a new module entry to `MODULES`).
-3. Append a feature dict with `feature_id`, `feature_name`, `release_stage`, `quota_unit`, `quota_resets`, and `access` (one entry per tier).
-4. Bump `ACM_SEED_VERSION` (date-based, eg `2026-05-04-04`).
-5. Restart the backend → auto-reseed runs.
-6. Verify with `GET /api/acm/my-access`.
+## How to add a feature (playbook)
+1. Edit `backend/data/acm_seed_data.py` — find module section.
+2. Append a feature dict with `feature_id`, `feature_name`, `release_stage`, `quota_unit`, `quota_resets`, `access`.
+3. Bump `ACM_SEED_VERSION` (date-based).
+4. Restart backend — auto-reseed runs.
+5. Verify with `GET /api/acm/my-access`.
 
 ## Quota helpers
-
-For monthly-quota features, the per-tier `_full(N)` helper produces
-`{"access": "full", "quota": N}`. The runtime tracks usage in
-`acm_quota_counters` keyed by user + feature + month.
+`_full(N)` → `{access:'full', quota:N}`. Usage tracked in `acm_quota_counters` keyed by (user, feature, month).

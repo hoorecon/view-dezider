@@ -1,106 +1,66 @@
 # Causal Loop Diagram (CLD) Engine — Dezider
 
-_metadata: { "version": "3.4", "updated": "2026-05-04" }
+_metadata: { "version": "3.5", "updated": "2026-05-04" }
 
 ## What it is
+Graph-based tool to surface feedback loops in a problem space. Each node is
+a variable; each edge carries polarity (+ / −) and optional delay.
 
-The CLD engine helps users surface feedback loops in a problem space.
-Each **node** is a variable (`Customer Acquisition Cost`,
-`Aspirational Image`, `Smartphone Battery Life`, ...). Each **edge**
-between two nodes carries a `polarity` (`+` reinforcing or `−` balancing)
-and an optional `delay` (`yes`/`no`).
-
-Loops are detected by traversing the directed graph and identifying
-closed walks. The engine classifies each loop:
-
-- **Reinforcing (R)**: even count of `−` edges → amplifying loop
-- **Balancing (B)**: odd count of `−` edges → self-regulating loop
-
-## Stored shape
-
+## Storage shape
 ```json
 {
   "cld_id": "uuid",
   "user_id": "...",
   "title": "Why am I burning out at work?",
-  "context": "...",
-  "nodes": [
-    {"node_id": "n1", "label": "Workload", "category": "work"},
-    ...
-  ],
-  "edges": [
-    {"from": "n1", "to": "n2", "polarity": "+", "delay": "no", "strength": 0.6, "note": "..."},
-    ...
-  ],
-  "loops": [
-    {"loop_id": "L1", "type": "R", "sequence": ["n1", "n2", "n3", "n1"], "narrative": "..."},
-    ...
-  ],
-  "created_at": "...",
-  "last_simulated": "..."
+  "nodes": [{"node_id":"n1","label":"Workload","category":"work"}],
+  "edges": [{"from":"n1","to":"n2","polarity":"+","delay":"no","strength":0.6}],
+  "loops": [{"loop_id":"L1","type":"R","sequence":["n1","n2","n1"]}]
 }
 ```
 
-## API surface (auth)
+## Classification
+`count_negative = sum(1 for e in edges if e.polarity == '-')`
+- even → **Reinforcing (R)** — amplifies
+- odd → **Balancing (B)** — self-regulates
+
+## Algorithms
+- Loop detection: iterative DFS, depth ≤ 8, canonicalised to lowest-id start.
+- Simulation: Euler step, `dv_i/dt = Σ w_ij * sign(polarity) * tanh(v_j)`, `dt=0.05`, 200 steps.
+
+## API (auth)
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/cld` | Create empty CLD |
-| GET | `/cld` | List my CLDs |
-| GET | `/cld/{id}` | Get one |
-| PUT | `/cld/{id}` | Update nodes/edges |
-| POST | `/cld/{id}/generate` | LLM expand: from a free-text problem statement, propose nodes + edges |
-| POST | `/cld/{id}/detect-loops` | Server-side loop detection (no LLM) |
-| POST | `/cld/{id}/simulate` | Run a small ODE-like simulation (no LLM) |
-| POST | `/cld/{id}/narrate` | LLM produce a plain-English narrative for each loop |
+| POST | `/cld` | create empty |
+| GET | `/cld` | list |
+| GET | `/cld/{id}` | one |
+| PUT | `/cld/{id}` | update nodes/edges |
+| POST | `/cld/{id}/generate` | LLM expand from problem statement (503 on budget) |
+| POST | `/cld/{id}/detect-loops` | server-side loop detection |
+| POST | `/cld/{id}/simulate` | short ODE-like simulation |
+| POST | `/cld/{id}/narrate` | LLM narrate each loop (503 on budget) |
 
-## Algorithms
+## CLD × Time Dezider integration (v3.5)
 
-### Loop detection
+The Raja Guru engine reads the user's latest CLD to bump the score of
+candidate actions that touch many graph nodes (`cld_leverage` coefficient).
+An opportunity that unlocks 3+ nodes gets a +1.5 score boost, even if its
+raw urgency/importance is middling — mirroring the "high-leverage action"
+intuition from systems thinking.
 
-Iterative DFS up to depth 8. Loops are normalised to start at the
-lowest-id node to dedupe rotations. Loops sharing the same node-set
-but different orderings are kept separate (different stories).
-
-### Polarity classification
-
-```
-count_negative = sum(1 for e in edges if e.polarity == '-')
-classification = 'B' if count_negative % 2 == 1 else 'R'
-```
-
-### Simulation
-
-Each node has an initial value `v_0`. At each step `t`:
-
-```
-dv_i/dt = sum( w_ij * sign(polarity_ij) * f(v_j) for j in incoming)
-```
-
-where `f(x) = tanh(x)` (squashing) and `w_ij = strength`. We integrate
-with Euler step `dt=0.05` for 200 steps and return per-node trajectories
-for charting.
-
-### LLM hooks
-
-- **Generate**: prompt fed with the problem statement asks the model to
-  return a JSON `{"nodes":[...], "edges":[...]}`. Validated against the
-  schema before persisting.
-- **Narrate**: per-loop one-shot prompt produces 2–3 sentences in the
-  user's preferred language.
-
-When the LLM budget is exhausted, both hooks return `503` (graceful
-degrade); loop detection + simulation remain operational.
+Backlog: **Raja Guru+ AI overlay** will additionally ask the LLM to
+narrate the top-scored pick *in the context of* the active CLD, e.g.
+"Completing the investor deck will reduce the Anxiety loop B2, freeing your
+evenings for lifestyle routines — do this before lunch."
 
 ## UI flow
-
 1. `/tools/cld-engine` — list of CLDs
 2. `/tools/cld-detail?id=...` — graph editor (drag nodes, draw edges)
-3. After save: tap Detect Loops → loops list pane
-4. Tap loop → narrative drawer (uses LLM if available)
+3. Tap Detect Loops → loops list
+4. Tap loop → narrative drawer
 
-## Persistence notes
-
-- Edge strength is normalised to `[-1, 1]`.
-- Edges with `polarity="+/-"` (mixed) split into two records.
-- Simulation results are NOT persisted (recomputed on demand).
+## Storage notes
+- Edge strength normalised to `[-1, 1]`.
+- Mixed-polarity edges split into two records.
+- Simulation results NOT persisted (recomputed on demand).
+- CLD-leverage scores live in memory (computed per Raja-Guru call).

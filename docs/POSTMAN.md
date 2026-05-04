@@ -1,48 +1,49 @@
 # Postman / Insomnia collection — Dezider API
 
-_metadata: { "version": "3.4", "updated": "2026-05-04" }
+_metadata: { "version": "3.5", "updated": "2026-05-04" }
 
-The canonical importable JSON lives at `/app/docs/Postman_Collection.json`
-(sibling to this doc). Below is the human-readable index of what's in it.
+Collection JSON: `/app/docs/Postman_Collection.json` (updated for v3.5 with
+Daily Time Log / Raja Guru / Time Store folders).
 
-Import into Postman: File → Import → select `Postman_Collection.json`.
-Set the **`baseUrl`** environment variable to `http://localhost:8001` for
-dev or `https://YOUR-DOMAIN.com` for stage/prod.
+## Environments
+- **Local Dev** (`baseUrl` = http://localhost:8001)
+- **Stage** (`baseUrl` = https://stage.dezider.app)
 
-The collection ships with two pre-configured environments:
+## Folders (v3.5)
 
-- **Dezider Local Dev** (`baseUrl` = http://localhost:8001)
-- **Dezider Stage** (`baseUrl` = https://stage.dezider.app)
-
-## Folder layout
-
-1. **0. Auth** — register / login / logout / me / refresh / forgot / reset / change
-2. **1. Health & Metrics** — health/ready/live/version, /metrics, /metrics/json
-3. **2. DPDP** — export / delete-request / cancel / status / admin/audit-log / admin/purge-pending
+1. **0. Auth** — register / login / me / logout
+2. **1. Health & Metrics** — health, ready, live, version, metrics
+3. **2. DPDP** — export, delete-request, cancel, status, admin/audit-log, admin/purge
 4. **3. Solution Matrix** — templates list/detail, CRUD, PDF export
 5. **4. Solution Finder** — CRUD
-6. **5. Public Pulse** — consent / feedback / sessions / dashboards / YoY analytics
-7. **6. Public Pulse Org** — apply / dashboard / feedback / members
+6. **5. Public Pulse** — consent, feedback, dashboards, YoY analytics
+7. **6. Public Pulse Org** — apply, dashboard, feedback, members
 8. **7. Public Sub-Portal** — /p/{slug}, /embed/{slug}, widget.js
 9. **8. ACM** — my-access, feature, admin/seed
-10. **9. Tools (sample)** — goal-setter, AALA, CLD, conflict-breaker, lifestyle-eval
+10. **9. Daily Time Log** (NEW) — preferences, upsert-day, get-day, refresh-rollup, week, streaks, weekly-review
+11. **10. Time Dezider — Raja Guru** (NEW) — day-plan, midday-check, evening-retro, next-action, preferences, feedback
+12. **11. Time Store** (NEW) — time-audit, services, purchase, purchases, delegate, delegations
+13. **12. Tools (sample)** — goal-setter, AALA, CLD, conflict-breaker
 
 ## Auth flow tip
-
-The collection's pre-request scripts read `session_token` from the
-environment. After running **Auth → Login**, the test script copies
-`session_token` from the response into the env automatically; subsequent
-requests pick it up.
+After **Auth → Login**, the test script copies `session_token` into the env
+automatically. Other requests pick it up via the collection-level Bearer auth.
 
 ## Smoke test sequence (CI)
 
-1. `POST /auth/register` (random email)
-2. `POST /auth/login`
-3. `GET /auth/me`
-4. `GET /solution-matrices/templates`
-5. `POST /solution-matrices` (with template payload)
-6. `GET /solution-matrices/{id}/pdf`
-7. `GET /dpdp/status`
-8. `GET /public-pulse/analytics/yoy/overall`
-9. `GET /p/coimbatore-skills-foundation-5b9c19`
-10. `POST /auth/logout`
+```
+POST /auth/register           (random email)
+POST /auth/login
+GET  /auth/me
+GET  /solution-matrices/templates
+POST /solution-matrices       (accurate mode)
+GET  /solution-matrices/{id}/pdf
+GET  /dpdp/status
+GET  /daily-time-log/preferences
+POST /daily-time-log          (one day, 2 blocks)
+GET  /daily-time-log/streaks
+GET  /raja-guru/day-plan
+GET  /time-store/time-audit
+GET  /time-store/services?save_minutes_per_day=30
+POST /auth/logout
+```
