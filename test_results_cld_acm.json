@@ -1,0 +1,87 @@
+{
+  "summary": {
+    "total": 11,
+    "passed": 2,
+    "failed": 9,
+    "success_rate": 18.181818181818183
+  },
+  "tests": [
+    {
+      "test": "User Registration",
+      "status": "\u2705 PASSED",
+      "passed": true,
+      "details": "User: expand_test_1777887722@test.com, Token: session_0ad46b2f8324...",
+      "timestamp": "2026-05-04T09:42:02.559434"
+    },
+    {
+      "test": "CLD Module CTT Generate",
+      "status": "\u274c FAILED",
+      "passed": false,
+      "details": "Status: 500, Response: {\"detail\":\"AI generation failed: Failed to generate chat completion: litellm.BadRequestError: OpenAIException - Budget has been exceeded! Current cost: 0.42548039999999965, Max budget: 0.4\"}",
+      "timestamp": "2026-05-04T09:42:02.775612"
+    },
+    {
+      "test": "CLD Module TEPFI Generate",
+      "status": "\u274c FAILED",
+      "passed": false,
+      "details": "Status: 500, Response: {\"detail\":\"AI generation failed: Failed to generate chat completion: litellm.BadRequestError: OpenAIException - Budget has been exceeded! Current cost: 0.42548039999999965, Max budget: 0.4\"}",
+      "timestamp": "2026-05-04T09:42:02.968586"
+    },
+    {
+      "test": "CLD Module Consciousness Generate",
+      "status": "\u274c FAILED",
+      "passed": false,
+      "details": "Status: 500, Response: {\"detail\":\"AI generation failed: Failed to generate chat completion: litellm.BadRequestError: OpenAIException - Budget has been exceeded! Current cost: 0.42548039999999965, Max budget: 0.4\"}",
+      "timestamp": "2026-05-04T09:42:03.119263"
+    },
+    {
+      "test": "CLD List Modules",
+      "status": "\u274c FAILED",
+      "passed": false,
+      "details": "Expected at least 3 modules, got: 0",
+      "timestamp": "2026-05-04T09:42:03.265514"
+    },
+    {
+      "test": "CLD Get Module CTT",
+      "status": "\u274c FAILED",
+      "passed": false,
+      "details": "Wrong module_type: None",
+      "timestamp": "2026-05-04T09:42:03.360165"
+    },
+    {
+      "test": "CLD Invalid Module Type Validation",
+      "status": "\u2705 PASSED",
+      "passed": true,
+      "details": "Correctly rejected invalid module type with error message",
+      "timestamp": "2026-05-04T09:42:03.461314"
+    },
+    {
+      "test": "ACM Matrix",
+      "status": "\u274c FAILED",
+      "passed": false,
+      "details": "Status: 403, Response: {\"detail\":\"Admin access required\"}",
+      "timestamp": "2026-05-04T09:42:03.599731"
+    },
+    {
+      "test": "ACM Conflict Breaker Module",
+      "status": "\u274c FAILED",
+      "passed": false,
+      "details": "Status: 403",
+      "timestamp": "2026-05-04T09:42:03.706787"
+    },
+    {
+      "test": "ACM AI Solution Assistant Module",
+      "status": "\u274c FAILED",
+      "passed": false,
+      "details": "Status: 403",
+      "timestamp": "2026-05-04T09:42:03.808969"
+    },
+    {
+      "test": "ACM CLD Engine Module",
+      "status": "\u274c FAILED",
+      "passed": false,
+      "details": "Status: 403",
+      "timestamp": "2026-05-04T09:42:03.925397"
+    }
+  ]
+}

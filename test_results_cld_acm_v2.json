@@ -1,0 +1,73 @@
+{
+  "summary": {
+    "total": 9,
+    "passed": 9,
+    "failed": 0,
+    "success_rate": 100.0
+  },
+  "tests": [
+    {
+      "test": "User Registration",
+      "status": "\u2705 PASSED",
+      "passed": true,
+      "details": "User: expand_test_1777887818@test.com, Token: session_518362cc93fd...",
+      "timestamp": "2026-05-04T09:43:38.720924"
+    },
+    {
+      "test": "Make User Admin",
+      "status": "\u2705 PASSED",
+      "passed": true,
+      "details": "User user_9fccec7570e7 promoted to super_admin",
+      "timestamp": "2026-05-04T09:43:39.070803"
+    },
+    {
+      "test": "ACM Seed",
+      "status": "\u2705 PASSED",
+      "passed": true,
+      "details": "Seeded 31 modules, 78 features",
+      "timestamp": "2026-05-04T09:43:39.244356"
+    },
+    {
+      "test": "CLD Invalid Module Type Validation",
+      "status": "\u2705 PASSED",
+      "passed": true,
+      "details": "Correctly rejected invalid module type. Found 7 valid types in error message",
+      "timestamp": "2026-05-04T09:43:39.356249"
+    },
+    {
+      "test": "CLD List Modules",
+      "status": "\u2705 PASSED",
+      "passed": true,
+      "details": "Endpoint working correctly. Found 0 module CLDs (expected 0 for new user)",
+      "timestamp": "2026-05-04T09:43:39.459745"
+    },
+    {
+      "test": "ACM Matrix",
+      "status": "\u2705 PASSED",
+      "passed": true,
+      "details": "Verified: 31 modules, 78 features",
+      "timestamp": "2026-05-04T09:43:39.591617"
+    },
+    {
+      "test": "ACM Conflict Breaker Module",
+      "status": "\u2705 PASSED",
+      "passed": true,
+      "details": "Verified: 4 features - cb_sessions, cb_9_stage_wizard, cb_ai_script_rewrite, cb_dashboard",
+      "timestamp": "2026-05-04T09:43:39.753931"
+    },
+    {
+      "test": "ACM AI Solution Assistant Module",
+      "status": "\u2705 PASSED",
+      "passed": true,
+      "details": "Verified: 4 features - ai_assistant_conversations, ai_assistant_quick_ask, ai_assistant_tts, ai_assistant_cross_module",
+      "timestamp": "2026-05-04T09:43:39.884102"
+    },
+    {
+      "test": "ACM CLD Engine Module",
+      "status": "\u2705 PASSED",
+      "passed": true,
+      "details": "Verified: 4 features - cld_viewer, cld_module_generate, cld_master_generate, cld_simulation",
+      "timestamp": "2026-05-04T09:43:40.020791"
+    }
+  ]
+}

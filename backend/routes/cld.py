@@ -136,7 +136,24 @@ async def list_clds(user: dict = Depends(get_current_user)):
 # CLD REFINEMENTS: Module-Specific CLDs (MUST be before /{decision_id})
 # ════════════════════════════════════════════════════════
 
-MODULE_TYPES = ["master", "decision", "conflict_breaker", "pna", "goal", "lifestyle", "emotional_gatekeeper", "aala"]
+MODULE_TYPES = [
+    "master",          # Aggregates ALL modules
+    "decision",        # PRR Decisions
+    "conflict_breaker",# Crucial Conversations
+    "pna",            # Problems/Needs/Aspirations
+    "goal",           # GEM Goals + Goal Setter + Goal Manifestation
+    "lifestyle",      # Lifestyle Designer + Lifestyle Dezider
+    "emotional_gatekeeper",  # Emotional tools
+    "aala",           # Assets & Liabilities
+    "ctt",            # Centralized Task Tracker
+    "solutions_store",# Solutions Store + DEO
+    "unconditional_happiness",  # UH tracker
+    "time_dezider",   # Time management
+    "tepfi",          # TEPFI Resource Matrix
+    "consciousness",  # Consciousness Diary
+    "ai_assistant",   # AI conversations context
+    "meditation",     # KalphaVriksha + Meditation Settings
+]
 
 
 @router.get("/list-modules")
@@ -210,6 +227,54 @@ async def generate_module_cld(module_type: str, request: Request, user: dict = D
         if decisions:
             dec_text = "\n".join([f"- {d.get('title','')} [{d.get('status','')}]" for d in decisions[:5]])
             context_parts.append(f"Decisions:\n{dec_text}")
+
+    if module_type in ["master", "ctt"]:
+        tasks = await db.ctt_tasks.find({"user_id": uid}, {"_id": 0}).to_list(20)
+        if tasks:
+            task_text = "\n".join([f"- {t.get('title','')} [{t.get('status','')}] priority:{t.get('priority','')}" for t in tasks[:10]])
+            context_parts.append(f"CTT Tasks:\n{task_text}")
+
+    if module_type in ["master", "solutions_store"]:
+        solutions = await db.solutions_store.find({"user_id": uid}, {"_id": 0}).to_list(10)
+        if solutions:
+            sol_text = "\n".join([f"- {s.get('name','')} ({s.get('category','')}) rating:{s.get('avg_rating','?')}" for s in solutions[:5]])
+            context_parts.append(f"Solutions Store:\n{sol_text}")
+
+    if module_type in ["master", "unconditional_happiness"]:
+        uh_entries = await db.unconditional_happiness.find({"user_id": uid}, {"_id": 0}).sort("date", -1).to_list(14)
+        if uh_entries:
+            uh_text = "\n".join([f"- {e.get('date','')}: score={e.get('score',0)}, gratitude_count={len(e.get('gratitudes',[]))}" for e in uh_entries[:7]])
+            context_parts.append(f"Unconditional Happiness (last 7 days):\n{uh_text}")
+
+    if module_type in ["master", "time_dezider"]:
+        time_entries = await db.time_dezider_entries.find({"user_id": uid}, {"_id": 0}).to_list(10)
+        if time_entries:
+            time_text = "\n".join([f"- {t.get('activity','')} ({t.get('life_area','')}) hours:{t.get('hours',0)}" for t in time_entries[:5]])
+            context_parts.append(f"Time Dezider:\n{time_text}")
+
+    if module_type in ["master", "tepfi"]:
+        tepfi = await db.tepfi_entries.find({"user_id": uid}, {"_id": 0}).to_list(10)
+        if tepfi:
+            tepfi_text = "\n".join([f"- {t.get('resource_type','')}: {t.get('name','')} (score:{t.get('score',0)})" for t in tepfi[:5]])
+            context_parts.append(f"TEPFI Resources:\n{tepfi_text}")
+
+    if module_type in ["master", "consciousness"]:
+        diary = await db.consciousness_diary.find({"user_id": uid}, {"_id": 0}).sort("date", -1).to_list(10)
+        if diary:
+            diary_text = "\n".join([f"- {d.get('date','')}: {d.get('insight','')[:60]}" for d in diary[:5]])
+            context_parts.append(f"Consciousness Diary:\n{diary_text}")
+
+    if module_type in ["master", "ai_assistant"]:
+        convos = await db.ai_assistant_conversations.find({"user_id": uid}, {"_id": 0}).to_list(10)
+        if convos:
+            convo_text = "\n".join([f"- {c.get('title','')} ({c.get('language','en')}) msgs:{c.get('message_count',0)}" for c in convos[:5]])
+            context_parts.append(f"AI Assistant Conversations:\n{convo_text}")
+
+    if module_type in ["master", "meditation"]:
+        med_sessions = await db.meditation_sessions.find({"user_id": uid}, {"_id": 0}).sort("date", -1).to_list(10)
+        if med_sessions:
+            med_text = "\n".join([f"- {m.get('date','')}: {m.get('type','')} duration:{m.get('duration_mins',0)}min" for m in med_sessions[:5]])
+            context_parts.append(f"Meditation Sessions:\n{med_text}")
 
     if not context_parts:
         context_parts.append("No data available in this module yet. Generate a basic CLD showing general life area interactions.")
