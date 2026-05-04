@@ -973,6 +973,18 @@ test_plan:
   test_all: false
   test_priority: "stuck_first"
 
+  - task: "Solution Matrix — OrgType nested schema + legacy normalisation"
+    implemented: true
+    working: true
+    file: "backend/models/solution_matrix_models.py, backend/routes/tools.py, tests/test_solution_matrix_orgtype.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Completed carry-forward items #4-#6 from prior session. (1) NEW models/solution_matrix_models.py with MatrixResourceCell + MatrixLayerSet Pydantic schemas + helpers empty_layer_set() / normalise_layer_set() / empty_resource_cell() — canonical shape is matrix_{self,micro,macro}.{individual,org,govt,nature}.{7 resource fields} = 84 cells total. (2) routes/tools.py: POST /solution-matrices defaults now nested; PUT /solution-matrices/{id} normalises incoming matrix_* fields through normalise_layer_set() — so legacy FLAT payloads (no OrgType keys) auto-migrate to individual slot with org/govt/nature zeroed, and partial OrgType updates merge correctly. (3) NEW tests/test_solution_matrix_orgtype.py — 31/31 assertions PASS covering: full 84-cell roundtrip (POST + GET), partial PUT preserves untouched cells in matrix_micro/macro, legacy flat auto-migration, missing matrix fields default to fully-nested empty shape, empty POST defaults. (4) Regression suite re-run: 26/28 pass (the 2 'failures' are pre-existing benign test-side assertion mismatches on SolutionsStore config/countries shape — NOT regressions from this change). Frontend solution-matrix.tsx already aligned with nested shape from prior session — no frontend changes needed. Still pending as polish items (tracked in /app/memory/carry_forward.md): PDF export for 84-cell layout, AI CLD hook for solution_matrix module_type, per-OrgType ACM feature gating, starter templates per OrgType."
+
 public_pulse_module:
   - task: "Public Pulse Phase 2 — Org/Gov/Admin Portal (27 endpoints + E2E flow)"
     implemented: true

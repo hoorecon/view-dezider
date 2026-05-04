@@ -4,6 +4,11 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request, Depends
 from core.database import db
 from core.auth import get_current_user
+from models.solution_matrix_models import (
+    empty_layer_set,
+    normalise_layer_set,
+    MATRIX_PARENT_LAYERS,
+)
 
 router = APIRouter()
 
@@ -126,18 +131,9 @@ async def create_solution_matrix(request: Request, user: dict = Depends(get_curr
         "simpler_help_aspect": body.get("simpler_help_aspect", ""),
         "simpler_help_level": body.get("simpler_help_level", ""),
         "simpler_help_from": body.get("simpler_help_from", ""),
-        "matrix_self": body.get("matrix_self", {
-            "summary": "", "knowledge_skills": "", "capacity": "",
-            "time": "", "people": "", "finance": "", "infrastructure": "",
-        }),
-        "matrix_micro": body.get("matrix_micro", {
-            "summary": "", "knowledge_skills": "", "capacity": "",
-            "time": "", "people": "", "finance": "", "infrastructure": "",
-        }),
-        "matrix_macro": body.get("matrix_macro", {
-            "summary": "", "knowledge_skills": "", "capacity": "",
-            "time": "", "people": "", "finance": "", "infrastructure": "",
-        }),
+        "matrix_self": normalise_layer_set(body.get("matrix_self")),
+        "matrix_micro": normalise_layer_set(body.get("matrix_micro")),
+        "matrix_macro": normalise_layer_set(body.get("matrix_macro")),
         "solution_category": body.get("solution_category", {
             "completely_solvable": False, "partially_solvable": False,
             "not_solvable": False, "patience_period": False,
@@ -199,7 +195,11 @@ async def update_solution_matrix(entry_id: str, request: Request, user: dict = D
     ]
     for field in allowed:
         if field in body:
-            update_fields[field] = body[field]
+            if field in MATRIX_PARENT_LAYERS:
+                # Normalise nested OrgType layout (accepts flat legacy too)
+                update_fields[field] = normalise_layer_set(body[field])
+            else:
+                update_fields[field] = body[field]
     update_fields["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     await db.solution_matrices.update_one(
