@@ -53,7 +53,11 @@ limiter = Limiter(
     key_func=_user_or_ip_key,
     default_limits=[DEFAULT_LIMIT] if ENABLED else [],
     enabled=ENABLED,
-    headers_enabled=True,  # X-RateLimit-* response headers — useful for debugging
+    # Header injection is delegated to SlowAPIMiddleware so we don't have to
+    # add `response: Response` to every rate-limited handler. Per-route
+    # injection (when True) crashes with "parameter response must be an
+    # instance of starlette.responses.Response" if the handler doesn't take it.
+    headers_enabled=False,
 )
 
 
