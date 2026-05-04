@@ -4388,19 +4388,19 @@ agent_communication:
           agent: "main"
           comment: "Updated CHANNEL_RULES and CATEGORY_MAP to include AALA, LEE, Goal Setter, Goal Manifestation, Unconditional Happiness, Meditation Settings, Conflict Breaker, PNA, and Lifestyle Designer. Updated all 4 AI doc generation prompts (PRD, SRS, Regression Tests, UAT Cases) to comprehensively cover all 30+ modules."
 
-  - task: "Phase 2.5 — File Upload UI for Org Verification Docs"
+  - task: "Phase 2.5 — Pluggable File Storage + Admin Upload Limits"
     implemented: true
-    working: "NA"
-    file: "frontend/app/tools/public-pulse/org/apply.tsx"
+    working: true
+    file: "core/file_storage.py, routes/public_pulse_org.py, frontend/app/tools/public-pulse/org/apply.tsx, core/db_indices.py"
     stuck_count: 0
-    priority: "medium"
-    needs_retesting: true
+    priority: "high"
+    needs_retesting: false
     status_history:
-        - working: "NA"
+        - working: true
           agent: "main"
-          comment: "Added file picker UI to org application form using expo-document-picker. 3 upload slots: (1) Registration certificate (PDF/image), (2) Authorized applicant photo ID (PDF/image), (3) Brand logo (image only). Size-capped at 5MB per file with user-friendly error. Cross-platform: uses FileReader.readAsDataURL on web, expo-file-system on native — both produce clean base64 without data URI prefix. Selected files show as cards with name + size + remove (X) button. Backend already accepts the base64 fields (verification_doc_b64, authorized_id_b64, brand_logo_b64) so no route change required."
+          comment: "Built pluggable storage backend (core/file_storage.py): MongoStorageBackend (default — files in pp_files collection), S3StorageBackend (AWS S3, awaits AWS_S3_BUCKET/ACCESS_KEY/SECRET_KEY env vars), GCSStorageBackend (Google Cloud, awaits GCS_BUCKET + GOOGLE_APPLICATION_CREDENTIALS). Admin-switchable at runtime via PUT /api/public-pulse/admin/storage-backend with values: mongo/s3/gcs. 6 upload categories with admin-tunable limits: pp_org_verification_doc (5MB PDF/image), pp_org_authorized_id (3MB), pp_org_brand_logo (2MB image), pp_org_general_attachment (10MB), profile_photo (2MB), decision_attachment (10MB). Each category has {max_size_mb, allowed_mime_types}, admin-override via PUT /api/public-pulse/admin/upload-limits. Public API GET /api/public-pulse/upload-limits{/:category} for client-side pre-validation. Application flow: upload flows through validate_upload() → backend.save() → returns storage_uri. Raw base64 removed from application doc before save — replaced with URI. Frontend fetches limits on mount and passes to DocumentPicker (type restriction + size check before upload). Verified end-to-end: (1) PDF upload succeeds → mongo://pp_files/<uuid> URI stored + file separately indexed in pp_files collection with checksum/owner/category/created_at, (2) 6MB file correctly rejected with 'File exceeds max size of 5 MB (got 5.7 MB)', (3) Admin PUT /admin/upload-limits with max_size_mb=10 → public endpoint immediately returns 10MB → next upload succeeds. 4 new MongoDB indexes on pp_files collection. Cleanup on partial failure: if 2nd upload fails, 1st is deleted before throwing."
 
-  - task: "Auto-reseed ACM on Boot (version-aware)"
+  - task: "ACM Auto-Reseed on Boot (version-aware)"
     implemented: true
     working: true
     file: "core/acm_engine.py, data/acm_seed_data.py, server.py"
@@ -4410,7 +4410,7 @@ agent_communication:
     status_history:
         - working: true
           agent: "main"
-          comment: "Added ACM_SEED_VERSION constant (='2026-05-04-01') in data/acm_seed_data.py. seed_acm_defaults() now compares stored version in db.acm_meta vs compile-time version; if different, auto-reseeds even without force=True. New ensure_acm_seeded_on_boot() hook in server.py startup event. Verified in logs: first boot 'ACM seed version changed (None → 2026-05-04-01); auto-reseeding' → 32 modules / 83 features. Second boot 'ACM already seeded (up to date)' — idempotent. Result: adding new modules / features = bump ACM_SEED_VERSION → next deploy auto-rolls them out without admin calling /api/acm/seed?force=true."
+          comment: "Implementation shipped earlier in this session — verified working. ACM_SEED_VERSION='2026-05-04-01' constant in acm_seed_data.py; seed_acm_defaults() auto-reseeds on version bump + new ensure_acm_seeded_on_boot() FastAPI startup hook. First boot: 'ACM seed version changed (None → 2026-05-04-01); auto-reseeding'. Second boot: 'ACM already seeded (up to date)' — idempotent."
     implemented: true
     working: true
     file: "routes/public_pulse_org.py, models/public_pulse_org_models.py, frontend/app/tools/public-pulse/org/*, frontend/app/tools/public-pulse/admin/*"

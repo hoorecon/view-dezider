@@ -14,10 +14,10 @@ import { showAlert } from '../../../../src/utils/alert';
 
 type OrgType = { code: string; label: string; icon: string };
 
-const MAX_FILE_MB = 5;
-const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
+const DEFAULT_MAX_MB = 5;
 
 type PickedDoc = { name: string; size: number; mime: string; b64: string } | null;
+type Limit = { max_size_mb: number; allowed_mime_types: string[]; label?: string };
 
 export default function OrgApplyScreen() {
   const router = useRouter();
@@ -41,8 +41,14 @@ export default function OrgApplyScreen() {
   const [authorizedId, setAuthorizedId] = useState<PickedDoc>(null);
   const [brandLogo, setBrandLogo] = useState<PickedDoc>(null);
 
+  // Upload limits from server (admin-tunable)
+  const [limits, setLimits] = useState<Record<string, Limit>>({});
+
   useEffect(() => {
     api.get('/public-pulse/orgs/types').then((r) => setTypes(r.data.types || [])).catch(() => {});
+    api.get('/public-pulse/upload-limits')
+      .then((r) => setLimits(r.data.limits || {}))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -52,30 +58,46 @@ export default function OrgApplyScreen() {
     }).catch(() => setEligible(null));
   }, [orgType]);
 
-  const pickFile = async (setter: (d: PickedDoc) => void, mode: 'doc' | 'image') => {
+  const pickFile = async (setter: (d: PickedDoc) => void, category: string) => {
+    const limit = limits[category] || { max_size_mb: DEFAULT_MAX_MB, allowed_mime_types: ['*/*'] };
+    const maxBytes = limit.max_size_mb * 1024 * 1024;
+    const accept = limit.allowed_mime_types.length && !limit.allowed_mime_types.includes('*/*')
+      ? limit.allowed_mime_types : '*/*';
     try {
       const res = await DocumentPicker.getDocumentAsync({
-        type: mode === 'image' ? 'image/*' : ['application/pdf', 'image/*'],
+        type: accept as any,
         copyToCacheDirectory: true,
         multiple: false,
       });
       if (res.canceled) return;
       const asset = res.assets[0];
       if (!asset) return;
-      if (asset.size && asset.size > MAX_FILE_BYTES) {
-        showAlert('File too large', `Maximum allowed size is ${MAX_FILE_MB} MB. Your file is ${(asset.size / 1024 / 1024).toFixed(1)} MB.`);
+      if (asset.size && asset.size > maxBytes) {
+        showAlert(
+          'File too large',
+          `Maximum allowed size for ${limit.label || category} is ${limit.max_size_mb} MB. Your file is ${(asset.size / 1024 / 1024).toFixed(1)} MB.`,
+        );
         return;
       }
+      // MIME validation client-side (server will also validate)
+      const mime = asset.mimeType || 'application/octet-stream';
+      if (limit.allowed_mime_types.length && !limit.allowed_mime_types.includes('*/*')
+          && !limit.allowed_mime_types.includes(mime)) {
+        showAlert(
+          'File type not allowed',
+          `Allowed types: ${limit.allowed_mime_types.join(', ')}. Your file is ${mime}.`,
+        );
+        return;
+      }
+
       let b64: string;
       if (Platform.OS === 'web') {
-        // On web, DocumentPicker returns a file:// / blob: URI — fetch it and convert
         const response = await fetch(asset.uri);
         const blob = await response.blob();
         b64 = await new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.onloadend = () => {
             const result = reader.result as string;
-            // Strip `data:...;base64,` prefix
             resolve(result.split(',')[1] || result);
           };
           reader.onerror = reject;
@@ -84,7 +106,7 @@ export default function OrgApplyScreen() {
       } else {
         b64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
       }
-      setter({ name: asset.name, size: asset.size || 0, mime: asset.mimeType || 'application/octet-stream', b64 });
+      setter({ name: asset.name, size: asset.size || 0, mime, b64 });
     } catch (e: any) {
       showAlert('Pick error', e?.message || 'Could not pick file');
     }
@@ -136,29 +158,36 @@ export default function OrgApplyScreen() {
     }
   };
 
-  const renderUploadRow = (label: string, doc: PickedDoc, setter: (d: PickedDoc) => void, hint: string, isImage = false) => (
-    <View style={styles.uploadBlock}>
-      <Text style={styles.label}>{label}</Text>
-      <Text style={styles.hint}>{hint} · PDF or image · max {MAX_FILE_MB} MB</Text>
-      {doc ? (
-        <View style={styles.docCard}>
-          <Ionicons name={isImage ? 'image' : 'document'} size={22} color={COLORS.primary} />
-          <View style={{ flex: 1, marginLeft: 10 }}>
-            <Text style={styles.docName} numberOfLines={1}>{doc.name}</Text>
-            <Text style={styles.docSize}>{(doc.size / 1024).toFixed(0)} KB</Text>
+  const renderUploadRow = (label: string, doc: PickedDoc, setter: (d: PickedDoc) => void, category: string, isImage = false) => {
+    const limit = limits[category];
+    const sizeStr = limit ? `max ${limit.max_size_mb} MB` : `max ${DEFAULT_MAX_MB} MB`;
+    const typeStr = limit?.allowed_mime_types?.length && !limit.allowed_mime_types.includes('*/*')
+      ? limit.allowed_mime_types.map((t) => t.split('/')[1]).join(' / ')
+      : 'PDF / image';
+    return (
+      <View style={styles.uploadBlock}>
+        <Text style={styles.label}>{label}</Text>
+        <Text style={styles.hint}>{typeStr} · {sizeStr}</Text>
+        {doc ? (
+          <View style={styles.docCard}>
+            <Ionicons name={isImage ? 'image' : 'document'} size={22} color={COLORS.primary} />
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={styles.docName} numberOfLines={1}>{doc.name}</Text>
+              <Text style={styles.docSize}>{(doc.size / 1024).toFixed(0)} KB · {doc.mime}</Text>
+            </View>
+            <TouchableOpacity onPress={() => setter(null)} style={styles.removeBtn}>
+              <Ionicons name="close-circle" size={22} color="#EF4444" />
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity onPress={() => setter(null)} style={styles.removeBtn}>
-            <Ionicons name="close-circle" size={22} color="#EF4444" />
+        ) : (
+          <TouchableOpacity style={styles.uploadBtn} onPress={() => pickFile(setter, category)}>
+            <Ionicons name="cloud-upload" size={20} color={COLORS.primary} />
+            <Text style={styles.uploadBtnTxt}>Upload file</Text>
           </TouchableOpacity>
-        </View>
-      ) : (
-        <TouchableOpacity style={styles.uploadBtn} onPress={() => pickFile(setter, isImage ? 'image' : 'doc')}>
-          <Ionicons name="cloud-upload" size={20} color={COLORS.primary} />
-          <Text style={styles.uploadBtnTxt}>Upload file</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
+        )}
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -248,19 +277,19 @@ export default function OrgApplyScreen() {
               'Registration certificate',
               verificationDoc,
               setVerificationDoc,
-              'E.g., Society registration, MCA certificate, 12A/80G, Govt gazette',
+              'pp_org_verification_doc',
             )}
             {renderUploadRow(
               "Your photo ID (as authorized applicant)",
               authorizedId,
               setAuthorizedId,
-              'Govt-issued ID proving you represent this org',
+              'pp_org_authorized_id',
             )}
             {renderUploadRow(
               'Brand logo (optional)',
               brandLogo,
               setBrandLogo,
-              'Will appear on your org profile + future white-label portal',
+              'pp_org_brand_logo',
               true,
             )}
           </View>

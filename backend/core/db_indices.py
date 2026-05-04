@@ -265,6 +265,14 @@ INDEX_SPECS: dict[str, list] = {
         [("org_id", 1), ("role", 1)],
     ],
     "pp_admin_config": [{"keys": [("key", 1)], "unique": True}],
+
+    # ─── Public Pulse File Storage ─────────────────────────────
+    "pp_files": [
+        {"keys": [("file_id", 1)], "unique": True},
+        ("owner_user_id", 1),
+        ("category", 1),
+        ("created_at", -1),
+    ],
 }
 
 

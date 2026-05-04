@@ -12,9 +12,15 @@ Features:
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, Request
+from pydantic import BaseModel
 
 from core.database import db
 from core.auth import get_current_user, require_admin
+from core.file_storage import (
+    DEFAULT_UPLOAD_LIMITS, DEFAULT_STORAGE_BACKEND,
+    get_upload_limit, get_storage_backend_name,
+    save_upload, delete_upload, UploadValidationError,
+)
 from models.public_pulse_org_models import (
     ORG_TYPES, ORG_STATUSES, ORG_MEMBER_ROLES,
     DEFAULT_ADMIN_CONFIG,
@@ -146,7 +152,11 @@ async def check_eligibility(org_type: str, user: dict = Depends(get_current_user
 
 @router.post("/orgs/apply")
 async def submit_application(req: OrgApplicationSubmit, user: dict = Depends(get_current_user)):
-    """Submit a new org application."""
+    """Submit a new org application.
+
+    Any uploaded base64 fields are persisted via the configured storage backend
+    (Mongo / S3 / GCS), and the raw base64 is replaced with a `storage_uri`.
+    """
     valid_types = {t["code"] for t in ORG_TYPES}
     if req.org_type not in valid_types:
         raise HTTPException(400, f"Invalid org_type. Valid: {list(valid_types)}")
@@ -155,19 +165,175 @@ async def submit_application(req: OrgApplicationSubmit, user: dict = Depends(get
     if blockers:
         raise HTTPException(403, detail={"code": "not_eligible", "blockers": blockers})
 
-    app = OrgApplication(user_id=user["user_id"], **req.dict())
-    await db.pp_org_applications.insert_one(app.dict())
+    # Persist uploads via the configured storage backend
+    storage_meta: Dict[str, Dict[str, Any]] = {}
+    try:
+        if req.verification_doc_b64:
+            meta = await save_upload(
+                req.verification_doc_b64,
+                req.verification_doc_name or "verification.pdf",
+                _infer_mime(req.verification_doc_name or "verification.pdf"),
+                "pp_org_verification_doc", user["user_id"],
+            )
+            storage_meta["verification_doc"] = meta
+        if req.authorized_id_b64:
+            meta = await save_upload(
+                req.authorized_id_b64,
+                req.authorized_id_name or "id_proof.pdf",
+                _infer_mime(req.authorized_id_name or "id_proof.pdf"),
+                "pp_org_authorized_id", user["user_id"],
+            )
+            storage_meta["authorized_id"] = meta
+        if req.brand_logo_b64:
+            meta = await save_upload(
+                req.brand_logo_b64, "logo.png", "image/png",
+                "pp_org_brand_logo", user["user_id"],
+            )
+            storage_meta["brand_logo"] = meta
+    except UploadValidationError as e:
+        # Clean up partial uploads on validation failure
+        for m in storage_meta.values():
+            try:
+                await delete_upload(m.get("storage_uri", ""))
+            except Exception:
+                pass
+        raise HTTPException(400, detail={"code": "upload_invalid", "message": str(e)})
+
+    # Replace raw base64 with storage URIs in the application doc
+    app_data = req.dict()
+    for fld in ("verification_doc_b64", "authorized_id_b64", "brand_logo_b64"):
+        app_data.pop(fld, None)
+    app = OrgApplication(user_id=user["user_id"], **app_data)
+    app_dict = app.dict()
+    if storage_meta.get("verification_doc"):
+        app_dict["verification_doc_uri"] = storage_meta["verification_doc"]["storage_uri"]
+        app_dict["verification_doc_meta"] = storage_meta["verification_doc"]
+    if storage_meta.get("authorized_id"):
+        app_dict["authorized_id_uri"] = storage_meta["authorized_id"]["storage_uri"]
+        app_dict["authorized_id_meta"] = storage_meta["authorized_id"]
+    if storage_meta.get("brand_logo"):
+        app_dict["brand_logo_uri"] = storage_meta["brand_logo"]["storage_uri"]
+        app_dict["brand_logo_meta"] = storage_meta["brand_logo"]
+
+    await db.pp_org_applications.insert_one(app_dict)
     await db.pp_audit_logs.insert_one({
         "user_id": user["user_id"],
         "action": "org_application_submit",
-        "details": {"application_id": app.application_id, "org_type": req.org_type},
+        "details": {
+            "application_id": app.application_id,
+            "org_type": req.org_type,
+            "uploads": list(storage_meta.keys()),
+        },
         "timestamp": datetime.now(timezone.utc),
     })
-    out = app.dict()
-    # Strip heavy doc fields from response to save bandwidth
-    for fld in ("verification_doc_b64", "authorized_id_b64", "brand_logo_b64"):
-        out[fld] = "[uploaded]" if out.get(fld) else None
-    return {"ok": True, "application": out}
+    out = {k: v for k, v in app_dict.items() if k not in ("verification_doc_b64", "authorized_id_b64", "brand_logo_b64")}
+    out.pop("_id", None)
+    return {"ok": True, "application": out, "uploads": storage_meta}
+
+
+def _infer_mime(filename: str) -> str:
+    """Cheap MIME inference from filename extension."""
+    import mimetypes
+    mime, _ = mimetypes.guess_type(filename)
+    return mime or "application/octet-stream"
+
+
+# ============================================================
+# UPLOAD LIMITS API (public + admin-tunable)
+# ============================================================
+
+class UploadLimitUpdate(BaseModel):
+    category: str
+    max_size_mb: Optional[int] = None
+    allowed_mime_types: Optional[List[str]] = None
+
+
+class StorageBackendUpdate(BaseModel):
+    backend: str  # "mongo" | "s3" | "gcs"
+
+
+@router.get("/upload-limits")
+async def get_upload_limits_public():
+    """Public — any client can query limits to pre-validate before uploading."""
+    cfg = await db.pp_admin_config.find_one({"key": "upload_limits"}, {"_id": 0})
+    overrides = (cfg or {}).get("value", {})
+    merged = {}
+    for category, defaults in DEFAULT_UPLOAD_LIMITS.items():
+        merged[category] = {**defaults, **(overrides.get(category) or {})}
+    backend_name = await get_storage_backend_name()
+    return {"limits": merged, "storage_backend": backend_name}
+
+
+@router.get("/upload-limits/{category}")
+async def get_upload_limit_one(category: str):
+    """Fetch limits for a single upload category."""
+    if category not in DEFAULT_UPLOAD_LIMITS:
+        raise HTTPException(404, f"Unknown category. Valid: {list(DEFAULT_UPLOAD_LIMITS.keys())}")
+    limits = await get_upload_limit(category)
+    return {"category": category, **limits}
+
+
+@router.get("/admin/upload-limits")
+async def admin_get_upload_limits(user: dict = Depends(require_admin)):
+    """Admin — view current + default limits side-by-side."""
+    cfg = await db.pp_admin_config.find_one({"key": "upload_limits"}, {"_id": 0})
+    overrides = (cfg or {}).get("value", {})
+    return {
+        "defaults": DEFAULT_UPLOAD_LIMITS,
+        "overrides": overrides,
+        "storage_backend": await get_storage_backend_name(),
+    }
+
+
+@router.put("/admin/upload-limits")
+async def admin_put_upload_limits(req: UploadLimitUpdate, user: dict = Depends(require_admin)):
+    """Admin — update limits for a specific category (merges with defaults)."""
+    if req.category not in DEFAULT_UPLOAD_LIMITS:
+        raise HTTPException(400, f"Unknown category. Valid: {list(DEFAULT_UPLOAD_LIMITS.keys())}")
+    if req.max_size_mb is not None and (req.max_size_mb < 1 or req.max_size_mb > 100):
+        raise HTTPException(400, "max_size_mb must be between 1 and 100")
+
+    cfg = await db.pp_admin_config.find_one({"key": "upload_limits"}, {"_id": 0})
+    current = (cfg or {}).get("value", {})
+    existing = current.get(req.category, {})
+    merged = {**existing}
+    if req.max_size_mb is not None:
+        merged["max_size_mb"] = req.max_size_mb
+    if req.allowed_mime_types is not None:
+        merged["allowed_mime_types"] = req.allowed_mime_types
+    current[req.category] = merged
+
+    await db.pp_admin_config.update_one(
+        {"key": "upload_limits"},
+        {"$set": {"key": "upload_limits", "value": current, "updated_by": user["user_id"], "updated_at": datetime.now(timezone.utc)}},
+        upsert=True,
+    )
+    await db.pp_audit_logs.insert_one({
+        "user_id": user["user_id"],
+        "action": "upload_limits_update",
+        "details": {"category": req.category, "new": merged},
+        "timestamp": datetime.now(timezone.utc),
+    })
+    return {"ok": True, "category": req.category, "effective": {**DEFAULT_UPLOAD_LIMITS.get(req.category, {}), **merged}}
+
+
+@router.put("/admin/storage-backend")
+async def admin_put_storage_backend(req: StorageBackendUpdate, user: dict = Depends(require_admin)):
+    """Admin — switch storage backend. Existing files keep their original URIs."""
+    if req.backend not in ("mongo", "s3", "gcs"):
+        raise HTTPException(400, "backend must be one of: mongo, s3, gcs")
+    await db.pp_admin_config.update_one(
+        {"key": "storage_backend"},
+        {"$set": {"key": "storage_backend", "value": req.backend, "updated_by": user["user_id"], "updated_at": datetime.now(timezone.utc)}},
+        upsert=True,
+    )
+    await db.pp_audit_logs.insert_one({
+        "user_id": user["user_id"],
+        "action": "storage_backend_update",
+        "details": {"new_backend": req.backend},
+        "timestamp": datetime.now(timezone.utc),
+    })
+    return {"ok": True, "backend": req.backend, "note": "New uploads use this backend. Existing files keep their original URIs."}
 
 
 @router.get("/orgs/my-applications")
