@@ -6,7 +6,7 @@ Full CLD (Causal Loop Diagram) Engine
 - AI-powered causal analysis
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi import APIRouter, HTTPException, Depends, Request, Path as PathParam
 from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
 from pathlib import Path
@@ -847,8 +847,8 @@ RESPOND WITH ONLY VALID JSON:
 {{"nodes": [...], "links": [...]}}"""
 
     try:
-        resp = await chat.send_message_async(UserMessage(content=prompt))
-        text = resp.text.strip()
+        resp = await chat.send_message(UserMessage(text=prompt))
+        text = resp.strip()
         # Extract JSON
         if "```" in text:
             text = text.split("```")[1].replace("json", "").strip()
@@ -882,29 +882,10 @@ RESPOND WITH ONLY VALID JSON:
     return doc
 
 
-@router.get("/module/{module_type}")
-async def get_module_cld(module_type: str, request: Request, user: dict = Depends(get_current_user)):
-    """Get the CLD for a specific module."""
-    context_id = request.query_params.get("context_id", "default")
-    cld = await db.cld_diagrams.find_one(
-        {"user_id": user["user_id"], "module_type": module_type, "context_id": context_id},
-        {"_id": 0}
-    )
-    if not cld:
-        return {"cld": None, "message": f"No CLD found for {module_type}. Generate one first."}
-    return cld
-
-
-@router.get("/module-list")
+@router.get("/list-modules")
 async def list_module_clds(user: dict = Depends(get_current_user)):
     """List all module CLDs for the user."""
-    clds = await db.cld_diagrams.find(
-        {"user_id": user["user_id"], "module_type": {"$exists": True}},
-        {"_id": 0, "cld_id": 1, "module_type": 1, "context_id": 1, "updated_at": 1,
-         "nodes": {"$slice": 0}, "links": {"$slice": 0}}
-    ).to_list(50)
-
-    # Count nodes/links per CLD
+    # Get all module CLDs with full data
     full_clds = await db.cld_diagrams.find(
         {"user_id": user["user_id"], "module_type": {"$exists": True}},
         {"_id": 0}
@@ -921,3 +902,20 @@ async def list_module_clds(user: dict = Depends(get_current_user)):
             "updated_at": str(c.get("updated_at", "")),
         })
     return result
+
+
+@router.get("/module/{module_type}")
+async def get_module_cld(module_type: str, request: Request, user: dict = Depends(get_current_user)):
+    """Get the CLD for a specific module."""
+    # Redirect to list endpoint if module_type is "list"
+    if module_type == "list":
+        raise HTTPException(404, "Use /module-list endpoint instead")
+    
+    context_id = request.query_params.get("context_id", "default")
+    cld = await db.cld_diagrams.find_one(
+        {"user_id": user["user_id"], "module_type": module_type, "context_id": context_id},
+        {"_id": 0}
+    )
+    if not cld:
+        return {"cld": None, "message": f"No CLD found for {module_type}. Generate one first."}
+    return cld

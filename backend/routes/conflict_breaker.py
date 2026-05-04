@@ -641,8 +641,8 @@ async def _ai_generate(prompt: str, session_id: str = "") -> str:
         session_id=f"cb_{session_id}_{uuid.uuid4().hex[:8]}",
         system_message="You are a mature, calm dialogue coach helping users prepare for crucial conversations. Be direct, practical, non-blaming. Not therapeutic diagnosis."
     ).with_model("openai", "gpt-4.1-mini")
-    resp = await chat.send_message_async(UserMessage(content=prompt))
-    return resp.text.strip()
+    resp = await chat.send_message(UserMessage(text=prompt))
+    return resp.strip()
 
 
 @router.post("/sessions/{session_id}/ai-generate/{stage}")

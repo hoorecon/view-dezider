@@ -225,8 +225,8 @@ GUIDELINES:
         prompt = f"Previous conversation:\n{history}\n\nUser's new message: {user_message}"
 
     try:
-        resp = await chat.send_message_async(UserMessage(content=prompt))
-        ai_response = resp.text.strip()
+        resp = await chat.send_message(UserMessage(text=prompt))
+        ai_response = resp.strip()
     except Exception as e:
         raise HTTPException(500, f"AI generation failed: {str(e)}")
 
@@ -286,5 +286,5 @@ async def quick_ask(request: Request, user: dict = Depends(get_current_user)):
         system_message=f"You are a personal advisor. Respond in {lang_name}. Be concise and practical.\n\nUser Context:\n{user_context}"
     ).with_model("openai", "gpt-4.1-mini")
 
-    resp = await chat.send_message_async(UserMessage(content=question))
-    return {"question": question, "answer": resp.text.strip(), "language": language}
+    resp = await chat.send_message(UserMessage(text=question))
+    return {"question": question, "answer": resp.strip(), "language": language}

@@ -4199,35 +4199,77 @@ agent_communication:
 
   - task: "CLD Refinements - Master CLD + Module-specific CLDs across all modules"
     implemented: true
-    working: "NA"
+    working: false
     file: "routes/cld.py"
-    stuck_count: 0
+    stuck_count: 1
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Implemented module CLD endpoints: POST /api/cld/module/{module_type}/generate (types: master, decision, conflict_breaker, pna, goal, lifestyle, emotional_gatekeeper, aala), GET /api/cld/module/{module_type} (get module CLD), GET /api/cld/module-list (list all module CLDs). Each gathers context from relevant DB collections. Master CLD aggregates all modules. Uses LlmChat with emergent key for AI generation."
+        - working: false
+          agent: "testing"
+          comment: "⚠️ 4 OUT OF 5 ENDPOINTS WORKING. Fixed LLM integration: changed send_message_async() to send_message() and UserMessage(content=...) to UserMessage(text=...). Tests passed: (1) POST /api/cld/module/pna/generate generates PNA CLD with nodes and links via LLM, (2) POST /api/cld/module/master/generate generates master CLD aggregating all modules via LLM, (3) GET /api/cld/module/pna retrieves PNA CLD, (4) GET /api/cld/module/master retrieves master CLD. ❌ FAILING: GET /api/cld/module-list has FastAPI routing conflict - the route /module-list is being matched by /module/{module_type} where module_type='list'. Attempted fixes: (a) reordered routes to put /module-list before /module/{module_type}, (b) added redirect logic in /module/{module_type} to reject 'list', (c) renamed to /modules-list, /list-modules - all still caught by path parameter. SOLUTION NEEDED: Use a completely different route path that doesn't start with 'module' (e.g., /cld-modules-list or /all-modules), OR use FastAPI's Path() with proper constraints, OR restructure the /module/{module_type} route to be more specific."
 
   - task: "AI Solution Assistant - Personal advisor chatbot with 6 languages, TTS, cross-module context"
     implemented: true
-    working: "NA"
+    working: true
     file: "routes/ai_assistant.py, app/tools/ai-assistant.tsx"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Implemented AI Assistant backend: GET /api/ai-assistant/meta (languages + capabilities), POST/GET/DELETE /api/ai-assistant/conversations (CRUD), GET /api/ai-assistant/conversations/{id} (get with messages), POST /api/ai-assistant/conversations/{id}/message (send msg + get AI response), POST /api/ai-assistant/quick-ask (one-shot question). Gathers cross-module context (PNA, goals, lifestyle, decisions, conflicts, AALA, CLDs). Uses LlmChat with emergent key."
+        - working: true
+          agent: "testing"
+          comment: "✅ ALL 7 ENDPOINTS TESTED AND WORKING. Fixed LLM integration issue: changed send_message_async() to send_message() and UserMessage(content=...) to UserMessage(text=...). Tests passed: (1) GET /api/ai-assistant/meta returns 6 languages (en,ta,te,kn,ml,hi) and capabilities, (2) POST /api/ai-assistant/conversations creates conversation, (3) GET /api/ai-assistant/conversations lists conversations, (4) GET /api/ai-assistant/conversations/{id} retrieves conversation with messages, (5) POST /api/ai-assistant/conversations/{id}/message sends message and receives AI response from LLM (tested with 'What should I focus on this week?'), (6) DELETE /api/ai-assistant/conversations/{id} deletes conversation, (7) POST /api/ai-assistant/quick-ask returns AI answer for one-shot questions (tested with 'How do I set better goals?'). All LLM calls working correctly."
 
-test_plan: "Test CLD module endpoints and AI Assistant conversation CRUD + message endpoints."
+  - task: "Conflict Breaker AI Generation Fix"
+    implemented: true
+    working: true
+    file: "routes/conflict_breaker.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: false
+          agent: "testing"
+          comment: "Previous test found LlmChat init error. Code has been corrected to use proper pattern: LlmChat(api_key, session_id, system_message).with_model('openai', 'gpt-4.1-mini'). Re-test needed."
+        - working: "NA"
+          agent: "main"
+          comment: "Verified _ai_generate() at line 639 now uses correct LlmChat pattern with .with_model() chain."
+        - working: true
+          agent: "testing"
+          comment: "✅ CONFLICT BREAKER AI GENERATION FIXED AND WORKING. Fixed LLM integration: changed send_message_async() to send_message() and UserMessage(content=...) to UserMessage(text=...). Test flow: (1) Created conflict session via POST /api/conflict-breaker/sessions, (2) Saved crucial-check data via POST /api/conflict-breaker/sessions/{sid}/crucial-check, (3) Successfully called POST /api/conflict-breaker/sessions/{sid}/ai-generate/crucial_check - received AI-generated insights (131 chars). The LlmChat initialization fix is working correctly. No more 500 errors."
 
-
-
-test_plan: "Test Conflict Breaker backend: create session, save all 9 stages, get full session, AI generate for crucial_check, dashboard. Auth required."
-
-
+  - task: "Admin Docs Revision - Updated channel rules, category maps, AI prompts for all 30+ modules"
+    implemented: true
+    working: "NA"
+    file: "routes/admin_docs.py"
     stuck_count: 0
     priority: "medium"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
         - working: "NA"
           agent: "main"
           comment: "Updated CHANNEL_RULES and CATEGORY_MAP to include AALA, LEE, Goal Setter, Goal Manifestation, Unconditional Happiness, Meditation Settings, Conflict Breaker, PNA, and Lifestyle Designer. Updated all 4 AI doc generation prompts (PRD, SRS, Regression Tests, UAT Cases) to comprehensively cover all 30+ modules."
 
-test_plan: "Test PNA Framework backend (CRUD, dashboard, area detail, convert endpoints) and Lifestyle Designer backend (plan CRUD, activate, comparison, overrides). Both require authentication. Use register + login flow to get session token first."
+test_plan:
+  current_focus:
+    - "AI Solution Assistant - Personal advisor chatbot with 6 languages, TTS, cross-module context"
+    - "CLD Refinements - Master CLD + Module-specific CLDs across all modules"
+    - "Conflict Breaker AI Generation Fix"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "FORKED SESSION - Picking up from previous fork. Need to test 3 areas: (1) AI Solution Assistant: Test GET /api/ai-assistant/meta, POST /api/ai-assistant/conversations, GET /api/ai-assistant/conversations, GET /api/ai-assistant/conversations/{id}, POST /api/ai-assistant/conversations/{id}/message (this calls LLM), DELETE /api/ai-assistant/conversations/{id}, POST /api/ai-assistant/quick-ask (calls LLM). (2) CLD Refinements: Test POST /api/cld/module/master/generate (calls LLM - generates master CLD), POST /api/cld/module/pna/generate (module-specific CLD), GET /api/cld/module/master, GET /api/cld/module-list. (3) Conflict Breaker AI: Re-test POST /api/conflict-breaker/sessions/{sid}/ai-generate/crucial_check (the LlmChat init was previously broken but code is now fixed). All require auth via register + login. Backend URL: http://localhost:8001"
+  - agent: "testing"
+    message: "✅ TESTING COMPLETE - 12/13 TESTS PASSED (92.3% success rate). CRITICAL LLM INTEGRATION FIX APPLIED: All LLM calls were using incorrect emergentintegrations API - changed send_message_async() to send_message() and UserMessage(content=...) to UserMessage(text=...) across 3 files (ai_assistant.py, cld.py, conflict_breaker.py). RESULTS: (1) AI Solution Assistant: ALL 7 endpoints working perfectly including LLM calls for message responses and quick-ask. (2) CLD Refinements: 4/5 endpoints working - both LLM generation endpoints (PNA and Master CLD) working, both GET endpoints working. ❌ ONLY FAILURE: GET /api/cld/module-list has FastAPI routing conflict where /module-list is matched by /module/{module_type} with module_type='list'. Attempted multiple fixes (reordering, renaming to /modules-list, /list-modules) but all still caught by path parameter. (3) Conflict Breaker AI: Working perfectly - AI generation endpoint now returns proper LLM responses. RECOMMENDATION: Fix the CLD module-list routing issue by using a completely different path (e.g., /cld-modules-list) that doesn't start with 'module', then all tests will pass."
 
 

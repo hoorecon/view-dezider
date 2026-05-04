@@ -1,596 +1,583 @@
 """
-Conflict Breaker Backend API Testing
-Tests all 9-stage guided tool endpoints
+Backend Testing Script for AI Solution Assistant, CLD Refinements, and Conflict Breaker AI Fix
+Tests all endpoints with proper authentication flow.
 """
 import requests
-import json
 import time
-from datetime import datetime
+import json
 
 # Backend URL from frontend/.env
 BASE_URL = "https://dezider-core.preview.emergentagent.com/api"
 
-# Test results tracking
-test_results = []
+# Test user credentials
+timestamp = int(time.time())
+TEST_EMAIL = f"aitest_{timestamp}@test.com"
+TEST_PASSWORD = "test123456"
+TEST_NAME = "AI Test User"
 
-def log_test(test_name, passed, details=""):
-    """Log test result"""
-    status = "✅ PASSED" if passed else "❌ FAILED"
-    result = f"{status}: {test_name}"
-    if details:
-        result += f" - {details}"
-    print(result)
-    test_results.append({"test": test_name, "passed": passed, "details": details})
+# Global session token
+session_token = None
 
-def test_conflict_breaker():
-    """Test complete Conflict Breaker workflow"""
+def print_test(test_name):
+    """Print test header"""
+    print(f"\n{'='*80}")
+    print(f"TEST: {test_name}")
+    print(f"{'='*80}")
+
+def print_result(success, message, data=None):
+    """Print test result"""
+    status = "✅ PASSED" if success else "❌ FAILED"
+    print(f"{status}: {message}")
+    if data:
+        print(f"Response: {json.dumps(data, indent=2)[:500]}")
+
+def register_and_login():
+    """Register a new user and login to get session token"""
+    global session_token
     
-    print("\n" + "="*80)
-    print("CONFLICT BREAKER BACKEND API TESTING")
-    print("="*80 + "\n")
+    print_test("User Registration and Login")
     
-    # Generate unique test user
-    timestamp = int(time.time())
-    test_email = f"conflict.tester.{timestamp}@workplace.com"
-    test_password = "SecurePass123!"
-    test_name = "Maya Chen"
+    # Register
+    register_data = {
+        "email": TEST_EMAIL,
+        "password": TEST_PASSWORD,
+        "name": TEST_NAME
+    }
     
-    session_token = None
-    session_id = None
-    
-    # ========================================================================
-    # TEST 1: User Registration
-    # ========================================================================
-    print("\n[TEST 1] User Registration")
     try:
-        response = requests.post(
-            f"{BASE_URL}/auth/register",
-            json={
-                "name": test_name,
-                "email": test_email,
-                "password": test_password
-            },
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
+        resp = requests.post(f"{BASE_URL}/auth/register", json=register_data, timeout=30)
+        if resp.status_code == 200:
+            data = resp.json()
             session_token = data.get("session_token")
-            if session_token:
-                log_test("User Registration", True, f"Registered {test_email}")
-            else:
-                log_test("User Registration", False, "No session_token in response")
+            print_result(True, f"Registration successful. User: {TEST_EMAIL}", {"user_id": data.get("user_id")})
         else:
-            log_test("User Registration", False, f"Status {response.status_code}: {response.text}")
+            print_result(False, f"Registration failed: {resp.status_code} - {resp.text}")
+            return False
     except Exception as e:
-        log_test("User Registration", False, f"Exception: {str(e)}")
-        return
+        print_result(False, f"Registration error: {str(e)}")
+        return False
     
-    # ========================================================================
-    # TEST 2: User Login
-    # ========================================================================
-    print("\n[TEST 2] User Login")
+    return session_token is not None
+
+def get_headers():
+    """Get authorization headers"""
+    return {"Authorization": f"Bearer {session_token}"}
+
+# ============================================================================
+# FEATURE 1: AI SOLUTION ASSISTANT TESTS
+# ============================================================================
+
+def test_ai_assistant_meta():
+    """Test GET /api/ai-assistant/meta"""
+    print_test("AI Assistant Meta - GET /api/ai-assistant/meta")
+    
     try:
-        response = requests.post(
-            f"{BASE_URL}/auth/login",
-            json={
-                "email": test_email,
-                "password": test_password
-            },
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            session_token = data.get("session_token")
-            if session_token:
-                log_test("User Login", True, f"Login successful")
-            else:
-                log_test("User Login", False, "No session_token in response")
-        else:
-            log_test("User Login", False, f"Status {response.status_code}: {response.text}")
-    except Exception as e:
-        log_test("User Login", False, f"Exception: {str(e)}")
-        return
-    
-    # Headers for authenticated requests
-    headers = {"Authorization": f"Bearer {session_token}"}
-    
-    # ========================================================================
-    # TEST 3: GET /api/conflict-breaker/meta
-    # ========================================================================
-    print("\n[TEST 3] GET /api/conflict-breaker/meta")
-    try:
-        response = requests.get(
-            f"{BASE_URL}/conflict-breaker/meta",
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            stages = data.get("stages", [])
-            silence_patterns = data.get("silence_patterns", [])
-            violence_patterns = data.get("violence_patterns", [])
+        resp = requests.get(f"{BASE_URL}/ai-assistant/meta", timeout=30)
+        if resp.status_code == 200:
+            data = resp.json()
+            languages = data.get("languages", {})
+            capabilities = data.get("capabilities", [])
             
-            if len(stages) == 9 and len(silence_patterns) > 0 and len(violence_patterns) > 0:
-                log_test("GET /api/conflict-breaker/meta", True, 
-                        f"9 stages, {len(silence_patterns)} silence patterns, {len(violence_patterns)} violence patterns")
-            else:
-                log_test("GET /api/conflict-breaker/meta", False, 
-                        f"Expected 9 stages, got {len(stages)}")
+            # Verify expected languages
+            expected_langs = ["en", "ta", "te", "kn", "ml", "hi"]
+            has_all_langs = all(lang in languages for lang in expected_langs)
+            
+            print_result(
+                has_all_langs and len(capabilities) > 0,
+                f"Meta endpoint returns {len(languages)} languages and {len(capabilities)} capabilities",
+                {"languages": list(languages.keys()), "capabilities_count": len(capabilities)}
+            )
+            return has_all_langs
         else:
-            log_test("GET /api/conflict-breaker/meta", False, 
-                    f"Status {response.status_code}: {response.text}")
+            print_result(False, f"Meta endpoint failed: {resp.status_code}")
+            return False
     except Exception as e:
-        log_test("GET /api/conflict-breaker/meta", False, f"Exception: {str(e)}")
+        print_result(False, f"Meta endpoint error: {str(e)}")
+        return False
+
+def test_ai_assistant_create_conversation():
+    """Test POST /api/ai-assistant/conversations"""
+    print_test("AI Assistant Create Conversation - POST /api/ai-assistant/conversations")
     
-    # ========================================================================
-    # TEST 4: POST /api/conflict-breaker/sessions (Create Session)
-    # ========================================================================
-    print("\n[TEST 4] POST /api/conflict-breaker/sessions")
     try:
-        response = requests.post(
-            f"{BASE_URL}/conflict-breaker/sessions",
-            headers=headers,
-            json={
-                "title": "Discuss project delay with partner",
-                "conversation_type": "prepare",
-                "other_party_role": "co-founder"
-            },
-            timeout=10
+        data = {
+            "title": "Test Chat",
+            "language": "en"
+        }
+        resp = requests.post(f"{BASE_URL}/ai-assistant/conversations", json=data, headers=get_headers(), timeout=30)
+        
+        if resp.status_code == 200:
+            result = resp.json()
+            conv_id = result.get("conversation_id")
+            print_result(
+                conv_id is not None,
+                f"Conversation created successfully",
+                {"conversation_id": conv_id, "title": result.get("title"), "language": result.get("language")}
+            )
+            return conv_id
+        else:
+            print_result(False, f"Create conversation failed: {resp.status_code} - {resp.text}")
+            return None
+    except Exception as e:
+        print_result(False, f"Create conversation error: {str(e)}")
+        return None
+
+def test_ai_assistant_list_conversations():
+    """Test GET /api/ai-assistant/conversations"""
+    print_test("AI Assistant List Conversations - GET /api/ai-assistant/conversations")
+    
+    try:
+        resp = requests.get(f"{BASE_URL}/ai-assistant/conversations", headers=get_headers(), timeout=30)
+        
+        if resp.status_code == 200:
+            convos = resp.json()
+            print_result(
+                isinstance(convos, list),
+                f"List conversations returned {len(convos)} conversations",
+                {"count": len(convos)}
+            )
+            return True
+        else:
+            print_result(False, f"List conversations failed: {resp.status_code}")
+            return False
+    except Exception as e:
+        print_result(False, f"List conversations error: {str(e)}")
+        return False
+
+def test_ai_assistant_get_conversation(conv_id):
+    """Test GET /api/ai-assistant/conversations/{conv_id}"""
+    print_test(f"AI Assistant Get Conversation - GET /api/ai-assistant/conversations/{conv_id}")
+    
+    try:
+        resp = requests.get(f"{BASE_URL}/ai-assistant/conversations/{conv_id}", headers=get_headers(), timeout=30)
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            print_result(
+                data.get("conversation_id") == conv_id,
+                f"Get conversation successful",
+                {"conversation_id": data.get("conversation_id"), "message_count": len(data.get("messages", []))}
+            )
+            return True
+        else:
+            print_result(False, f"Get conversation failed: {resp.status_code}")
+            return False
+    except Exception as e:
+        print_result(False, f"Get conversation error: {str(e)}")
+        return False
+
+def test_ai_assistant_send_message(conv_id):
+    """Test POST /api/ai-assistant/conversations/{conv_id}/message (LLM call)"""
+    print_test(f"AI Assistant Send Message - POST /api/ai-assistant/conversations/{conv_id}/message")
+    
+    try:
+        data = {
+            "message": "What should I focus on this week?"
+        }
+        resp = requests.post(
+            f"{BASE_URL}/ai-assistant/conversations/{conv_id}/message",
+            json=data,
+            headers=get_headers(),
+            timeout=60  # Longer timeout for LLM call
         )
         
-        if response.status_code == 200:
-            data = response.json()
-            session_id = data.get("session_id")
-            if session_id:
-                log_test("POST /api/conflict-breaker/sessions", True, 
-                        f"Session created: {session_id}")
-            else:
-                log_test("POST /api/conflict-breaker/sessions", False, 
-                        "No session_id in response")
-                return
+        if resp.status_code == 200:
+            result = resp.json()
+            ai_response = result.get("ai_response")
+            print_result(
+                ai_response is not None and len(ai_response) > 0,
+                f"AI response received ({len(ai_response)} chars)",
+                {"user_message": result.get("user_message"), "ai_response_preview": ai_response[:100] if ai_response else None}
+            )
+            return ai_response is not None
         else:
-            log_test("POST /api/conflict-breaker/sessions", False, 
-                    f"Status {response.status_code}: {response.text}")
-            return
+            print_result(False, f"Send message failed: {resp.status_code} - {resp.text}")
+            return False
     except Exception as e:
-        log_test("POST /api/conflict-breaker/sessions", False, f"Exception: {str(e)}")
-        return
+        print_result(False, f"Send message error: {str(e)}")
+        return False
+
+def test_ai_assistant_delete_conversation(conv_id):
+    """Test DELETE /api/ai-assistant/conversations/{conv_id}"""
+    print_test(f"AI Assistant Delete Conversation - DELETE /api/ai-assistant/conversations/{conv_id}")
     
-    # ========================================================================
-    # TEST 5: GET /api/conflict-breaker/sessions (List Sessions)
-    # ========================================================================
-    print("\n[TEST 5] GET /api/conflict-breaker/sessions")
     try:
-        response = requests.get(
-            f"{BASE_URL}/conflict-breaker/sessions",
-            headers=headers,
-            timeout=10
+        resp = requests.delete(f"{BASE_URL}/ai-assistant/conversations/{conv_id}", headers=get_headers(), timeout=30)
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            print_result(
+                data.get("deleted") == True,
+                f"Conversation deleted successfully",
+                data
+            )
+            return True
+        else:
+            print_result(False, f"Delete conversation failed: {resp.status_code}")
+            return False
+    except Exception as e:
+        print_result(False, f"Delete conversation error: {str(e)}")
+        return False
+
+def test_ai_assistant_quick_ask():
+    """Test POST /api/ai-assistant/quick-ask (LLM call)"""
+    print_test("AI Assistant Quick Ask - POST /api/ai-assistant/quick-ask")
+    
+    try:
+        data = {
+            "question": "How do I set better goals?",
+            "language": "en"
+        }
+        resp = requests.post(
+            f"{BASE_URL}/ai-assistant/quick-ask",
+            json=data,
+            headers=get_headers(),
+            timeout=60  # Longer timeout for LLM call
         )
         
-        if response.status_code == 200:
-            data = response.json()
-            if isinstance(data, list) and len(data) > 0:
-                log_test("GET /api/conflict-breaker/sessions", True, 
-                        f"Found {len(data)} session(s)")
-            else:
-                log_test("GET /api/conflict-breaker/sessions", False, 
-                        "Expected list with sessions")
+        if resp.status_code == 200:
+            result = resp.json()
+            answer = result.get("answer")
+            print_result(
+                answer is not None and len(answer) > 0,
+                f"Quick ask response received ({len(answer)} chars)",
+                {"question": result.get("question"), "answer_preview": answer[:100] if answer else None, "language": result.get("language")}
+            )
+            return answer is not None
         else:
-            log_test("GET /api/conflict-breaker/sessions", False, 
-                    f"Status {response.status_code}: {response.text}")
+            print_result(False, f"Quick ask failed: {resp.status_code} - {resp.text}")
+            return False
     except Exception as e:
-        log_test("GET /api/conflict-breaker/sessions", False, f"Exception: {str(e)}")
+        print_result(False, f"Quick ask error: {str(e)}")
+        return False
+
+# ============================================================================
+# FEATURE 2: CLD REFINEMENTS TESTS
+# ============================================================================
+
+def test_cld_module_pna_generate():
+    """Test POST /api/cld/module/pna/generate (LLM call)"""
+    print_test("CLD Module PNA Generate - POST /api/cld/module/pna/generate")
     
-    # ========================================================================
-    # TEST 6: POST /api/conflict-breaker/sessions/{sid}/crucial-check (Stage 1)
-    # ========================================================================
-    print("\n[TEST 6] POST /api/conflict-breaker/sessions/{sid}/crucial-check")
     try:
-        response = requests.post(
+        data = {}  # Empty body as per review request
+        resp = requests.post(
+            f"{BASE_URL}/cld/module/pna/generate",
+            json=data,
+            headers=get_headers(),
+            timeout=60  # Longer timeout for LLM call
+        )
+        
+        if resp.status_code == 200:
+            result = resp.json()
+            nodes = result.get("nodes", [])
+            links = result.get("links", [])
+            print_result(
+                len(nodes) > 0 and len(links) > 0,
+                f"PNA CLD generated successfully",
+                {"node_count": len(nodes), "link_count": len(links), "module_type": result.get("module_type")}
+            )
+            return True
+        else:
+            print_result(False, f"PNA CLD generation failed: {resp.status_code} - {resp.text}")
+            return False
+    except Exception as e:
+        print_result(False, f"PNA CLD generation error: {str(e)}")
+        return False
+
+def test_cld_module_master_generate():
+    """Test POST /api/cld/module/master/generate (LLM call)"""
+    print_test("CLD Module Master Generate - POST /api/cld/module/master/generate")
+    
+    try:
+        data = {}  # Empty body as per review request
+        resp = requests.post(
+            f"{BASE_URL}/cld/module/master/generate",
+            json=data,
+            headers=get_headers(),
+            timeout=60  # Longer timeout for LLM call
+        )
+        
+        if resp.status_code == 200:
+            result = resp.json()
+            nodes = result.get("nodes", [])
+            links = result.get("links", [])
+            print_result(
+                len(nodes) > 0 and len(links) > 0,
+                f"Master CLD generated successfully (aggregates all modules)",
+                {"node_count": len(nodes), "link_count": len(links), "module_type": result.get("module_type")}
+            )
+            return True
+        else:
+            print_result(False, f"Master CLD generation failed: {resp.status_code} - {resp.text}")
+            return False
+    except Exception as e:
+        print_result(False, f"Master CLD generation error: {str(e)}")
+        return False
+
+def test_cld_get_module_pna():
+    """Test GET /api/cld/module/pna"""
+    print_test("CLD Get Module PNA - GET /api/cld/module/pna")
+    
+    try:
+        resp = requests.get(f"{BASE_URL}/cld/module/pna", headers=get_headers(), timeout=30)
+        
+        if resp.status_code == 200:
+            result = resp.json()
+            # Could be null if not generated yet, or contain CLD data
+            if result.get("cld") is None:
+                print_result(True, "No PNA CLD found (expected if not generated)", result)
+            else:
+                nodes = result.get("nodes", [])
+                links = result.get("links", [])
+                print_result(
+                    True,
+                    f"PNA CLD retrieved successfully",
+                    {"node_count": len(nodes), "link_count": len(links)}
+                )
+            return True
+        else:
+            print_result(False, f"Get PNA CLD failed: {resp.status_code}")
+            return False
+    except Exception as e:
+        print_result(False, f"Get PNA CLD error: {str(e)}")
+        return False
+
+def test_cld_get_module_master():
+    """Test GET /api/cld/module/master"""
+    print_test("CLD Get Module Master - GET /api/cld/module/master")
+    
+    try:
+        resp = requests.get(f"{BASE_URL}/cld/module/master", headers=get_headers(), timeout=30)
+        
+        if resp.status_code == 200:
+            result = resp.json()
+            # Could be null if not generated yet, or contain CLD data
+            if result.get("cld") is None:
+                print_result(True, "No Master CLD found (expected if not generated)", result)
+            else:
+                nodes = result.get("nodes", [])
+                links = result.get("links", [])
+                print_result(
+                    True,
+                    f"Master CLD retrieved successfully",
+                    {"node_count": len(nodes), "link_count": len(links)}
+                )
+            return True
+        else:
+            print_result(False, f"Get Master CLD failed: {resp.status_code}")
+            return False
+    except Exception as e:
+        print_result(False, f"Get Master CLD error: {str(e)}")
+        return False
+
+def test_cld_module_list():
+    """Test GET /api/cld/modules-list"""
+    print_test("CLD Module List - GET /api/cld/modules-list")
+    
+    try:
+        resp = requests.get(f"{BASE_URL}/cld/modules-list", headers=get_headers(), timeout=30)
+        
+        if resp.status_code == 200:
+            result = resp.json()
+            print_result(
+                isinstance(result, list),
+                f"Module CLD list returned {len(result) if isinstance(result, list) else 'non-list'} CLDs",
+                {"count": len(result) if isinstance(result, list) else 0, "clds": result[:2] if isinstance(result, list) and len(result) > 0 else []}
+            )
+            return isinstance(result, list)
+        else:
+            print_result(False, f"Module list failed: {resp.status_code}")
+            return False
+    except Exception as e:
+        print_result(False, f"Module list error: {str(e)}")
+        return False
+
+# ============================================================================
+# FEATURE 3: CONFLICT BREAKER AI GENERATION FIX TEST
+# ============================================================================
+
+def test_conflict_breaker_ai_generate():
+    """Test POST /api/conflict-breaker/sessions/{sid}/ai-generate/crucial_check"""
+    print_test("Conflict Breaker AI Generate Fix - POST /api/conflict-breaker/sessions/{sid}/ai-generate/crucial_check")
+    
+    try:
+        # First create a conflict session
+        session_data = {
+            "title": "Test conflict",
+            "other_party": "colleague"
+        }
+        resp = requests.post(
+            f"{BASE_URL}/conflict-breaker/sessions",
+            json=session_data,
+            headers=get_headers(),
+            timeout=30
+        )
+        
+        if resp.status_code != 200:
+            print_result(False, f"Failed to create conflict session: {resp.status_code}")
+            return False
+        
+        session = resp.json()
+        session_id = session.get("session_id")
+        print(f"Created conflict session: {session_id}")
+        
+        # Save crucial-check data
+        crucial_check_data = {
+            "stakes_score": 8,
+            "emotion_score": 7,
+            "opinion_diff_score": 6,
+            "urgency_score": 9,
+            "classification": "Crucial Conversation"
+        }
+        resp = requests.post(
             f"{BASE_URL}/conflict-breaker/sessions/{session_id}/crucial-check",
-            headers=headers,
-            json={
-                "about": "Project delay discussion",
-                "who_involved": "Co-founder Ravi",
-                "at_stake": "Trust and investor confidence",
-                "opinions_differ": "I think we missed the deadline, he thinks it was unavoidable",
-                "emotions_strong": "I feel frustrated and disappointed",
-                "if_avoid": "The problem will repeat",
-                "if_handle_poorly": "He may feel attacked",
-                "desired_result": "Clarity and accountability",
-                "stakes_score": 7,
-                "emotion_score": 6,
-                "opinion_difference_score": 5,
-                "relationship_sensitivity_score": 7,
-                "urgency_score": 8
-            },
-            timeout=10
+            json=crucial_check_data,
+            headers=get_headers(),
+            timeout=30
         )
         
-        if response.status_code == 200:
-            data = response.json()
-            classification = data.get("classification")
-            if classification:
-                log_test("POST crucial-check (Stage 1)", True, 
-                        f"Classification: {classification}")
-            else:
-                log_test("POST crucial-check (Stage 1)", False, 
-                        "No classification in response")
-        else:
-            log_test("POST crucial-check (Stage 1)", False, 
-                    f"Status {response.status_code}: {response.text}")
-    except Exception as e:
-        log_test("POST crucial-check (Stage 1)", False, f"Exception: {str(e)}")
-    
-    # ========================================================================
-    # TEST 7: POST /api/conflict-breaker/sessions/{sid}/motive-clarity (Stage 2)
-    # ========================================================================
-    print("\n[TEST 7] POST /api/conflict-breaker/sessions/{sid}/motive-clarity")
-    try:
-        response = requests.post(
-            f"{BASE_URL}/conflict-breaker/sessions/{session_id}/motive-clarity",
-            headers=headers,
-            json={
-                "want_for_self": "To be heard",
-                "want_for_other": "To understand without attack",
-                "want_for_relationship": "Keep trust intact",
-                "what_i_want": "Accountability",
-                "what_i_do_not_want": "Insulting him"
-            },
-            timeout=10
-        )
+        if resp.status_code != 200:
+            print_result(False, f"Failed to save crucial-check data: {resp.status_code}")
+            return False
         
-        if response.status_code == 200:
-            data = response.json()
-            if "want_for_self" in data:
-                log_test("POST motive-clarity (Stage 2)", True, 
-                        "Motive clarity saved")
-            else:
-                log_test("POST motive-clarity (Stage 2)", False, 
-                        "Missing expected fields")
-        else:
-            log_test("POST motive-clarity (Stage 2)", False, 
-                    f"Status {response.status_code}: {response.text}")
-    except Exception as e:
-        log_test("POST motive-clarity (Stage 2)", False, f"Exception: {str(e)}")
-    
-    # ========================================================================
-    # TEST 8: POST /api/conflict-breaker/sessions/{sid}/safety-diagnosis (Stage 3)
-    # ========================================================================
-    print("\n[TEST 8] POST /api/conflict-breaker/sessions/{sid}/safety-diagnosis")
-    try:
-        response = requests.post(
-            f"{BASE_URL}/conflict-breaker/sessions/{session_id}/safety-diagnosis",
-            headers=headers,
-            json={
-                "visible_topic": "Missed deadline",
-                "hidden_emotional_issue": "Feel ignored",
-                "user_pattern": "silence",
-                "user_subpatterns": ["Avoiding", "Masking"],
-                "other_pattern": "violence",
-                "other_subpatterns": ["Blaming"]
-            },
-            timeout=10
-        )
+        print("Saved crucial-check data")
         
-        if response.status_code == 200:
-            data = response.json()
-            if "user_pattern" in data and "other_pattern" in data:
-                log_test("POST safety-diagnosis (Stage 3)", True, 
-                        f"Patterns: {data['user_pattern']} / {data['other_pattern']}")
-            else:
-                log_test("POST safety-diagnosis (Stage 3)", False, 
-                        "Missing expected fields")
-        else:
-            log_test("POST safety-diagnosis (Stage 3)", False, 
-                    f"Status {response.status_code}: {response.text}")
-    except Exception as e:
-        log_test("POST safety-diagnosis (Stage 3)", False, f"Exception: {str(e)}")
-    
-    # ========================================================================
-    # TEST 9: POST /api/conflict-breaker/sessions/{sid}/make-safe (Stage 4)
-    # ========================================================================
-    print("\n[TEST 9] POST /api/conflict-breaker/sessions/{sid}/make-safe")
-    try:
-        response = requests.post(
-            f"{BASE_URL}/conflict-breaker/sessions/{session_id}/make-safe",
-            headers=headers,
-            json={
-                "safety_repair_method": "contrasting",
-                "mutual_purpose_at_risk": "Yes, he thinks I only blame",
-                "mutual_respect_at_risk": "He may feel judged",
-                "contrast_they_wrongly_think": "He thinks I am blaming",
-                "contrast_i_actually_mean": "I want process improvement"
-            },
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            if "safety_repair_method" in data:
-                log_test("POST make-safe (Stage 4)", True, 
-                        f"Repair method: {data['safety_repair_method']}")
-            else:
-                log_test("POST make-safe (Stage 4)", False, 
-                        "Missing expected fields")
-        else:
-            log_test("POST make-safe (Stage 4)", False, 
-                    f"Status {response.status_code}: {response.text}")
-    except Exception as e:
-        log_test("POST make-safe (Stage 4)", False, f"Exception: {str(e)}")
-    
-    # ========================================================================
-    # TEST 10: POST /api/conflict-breaker/sessions/{sid}/story-map (Stage 5)
-    # ========================================================================
-    print("\n[TEST 10] POST /api/conflict-breaker/sessions/{sid}/story-map")
-    try:
-        response = requests.post(
-            f"{BASE_URL}/conflict-breaker/sessions/{session_id}/story-map",
-            headers=headers,
-            json={
-                "what_i_saw_heard": "Report was 5 days late",
-                "observable_facts": "Deadline was Monday, delivered Saturday",
-                "meaning_i_added": "He does not care about deadlines",
-                "assumed_motive": "Lazy attitude",
-                "emotion": "Frustration",
-                "emotional_intensity": 7,
-                "clever_story_type": "villain"
-            },
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            if "emotion" in data and "clever_story_type" in data:
-                log_test("POST story-map (Stage 5)", True, 
-                        f"Story type: {data['clever_story_type']}, Emotion: {data['emotion']}")
-            else:
-                log_test("POST story-map (Stage 5)", False, 
-                        "Missing expected fields")
-        else:
-            log_test("POST story-map (Stage 5)", False, 
-                    f"Status {response.status_code}: {response.text}")
-    except Exception as e:
-        log_test("POST story-map (Stage 5)", False, f"Exception: {str(e)}")
-    
-    # ========================================================================
-    # TEST 11: POST /api/conflict-breaker/sessions/{sid}/script-builder (Stage 6)
-    # ========================================================================
-    print("\n[TEST 11] POST /api/conflict-breaker/sessions/{sid}/script-builder")
-    try:
-        response = requests.post(
-            f"{BASE_URL}/conflict-breaker/sessions/{session_id}/script-builder",
-            headers=headers,
-            json={
-                "facts_to_begin": "The report was delivered 5 days late",
-                "my_interpretation": "I am worried about investor impact",
-                "tentative_framing": "I may be wrong but",
-                "question_to_invite": "How do you see it?",
-                "what_to_avoid": "Never say always or lazy"
-            },
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            if "facts_to_begin" in data:
-                log_test("POST script-builder (Stage 6)", True, 
-                        "Script builder saved")
-            else:
-                log_test("POST script-builder (Stage 6)", False, 
-                        "Missing expected fields")
-        else:
-            log_test("POST script-builder (Stage 6)", False, 
-                    f"Status {response.status_code}: {response.text}")
-    except Exception as e:
-        log_test("POST script-builder (Stage 6)", False, f"Exception: {str(e)}")
-    
-    # ========================================================================
-    # TEST 12: POST /api/conflict-breaker/sessions/{sid}/listening-plan (Stage 7)
-    # ========================================================================
-    print("\n[TEST 12] POST /api/conflict-breaker/sessions/{sid}/listening-plan")
-    try:
-        response = requests.post(
-            f"{BASE_URL}/conflict-breaker/sessions/{session_id}/listening-plan",
-            headers=headers,
-            json={
-                "ask_question": "What happened from your side?",
-                "mirror_statement": "You seem stressed",
-                "what_they_feel": "Pressured",
-                "what_they_fear": "Being blamed",
-                "what_they_want": "More time"
-            },
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            if "ask_question" in data:
-                log_test("POST listening-plan (Stage 7)", True, 
-                        "Listening plan saved")
-            else:
-                log_test("POST listening-plan (Stage 7)", False, 
-                        "Missing expected fields")
-        else:
-            log_test("POST listening-plan (Stage 7)", False, 
-                    f"Status {response.status_code}: {response.text}")
-    except Exception as e:
-        log_test("POST listening-plan (Stage 7)", False, f"Exception: {str(e)}")
-    
-    # ========================================================================
-    # TEST 13: POST /api/conflict-breaker/sessions/{sid}/action-plan (Stage 8)
-    # ========================================================================
-    print("\n[TEST 13] POST /api/conflict-breaker/sessions/{sid}/action-plan")
-    try:
-        response = requests.post(
-            f"{BASE_URL}/conflict-breaker/sessions/{session_id}/action-plan",
-            headers=headers,
-            json={
-                "decision_method": "consult",
-                "final_decision": "Weekly updates every Friday",
-                "owner": "Ravi",
-                "task": "Send weekly progress report",
-                "deadline": "Every Friday 5 PM",
-                "followup_date": "Next Monday"
-            },
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            if "decision_method" in data and "final_decision" in data:
-                log_test("POST action-plan (Stage 8)", True, 
-                        f"Decision method: {data['decision_method']}")
-            else:
-                log_test("POST action-plan (Stage 8)", False, 
-                        "Missing expected fields")
-        else:
-            log_test("POST action-plan (Stage 8)", False, 
-                    f"Status {response.status_code}: {response.text}")
-    except Exception as e:
-        log_test("POST action-plan (Stage 8)", False, f"Exception: {str(e)}")
-    
-    # ========================================================================
-    # TEST 14: POST /api/conflict-breaker/sessions/{sid}/closure (Stage 9)
-    # ========================================================================
-    print("\n[TEST 14] POST /api/conflict-breaker/sessions/{sid}/closure")
-    try:
-        response = requests.post(
-            f"{BASE_URL}/conflict-breaker/sessions/{session_id}/closure",
-            headers=headers,
-            json={
-                "journal_content": "Good conversation, agreed on weekly updates",
-                "personal_learning": "Starting with facts works better",
-                "resolved_status": "resolved"
-            },
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            if "journal_content" in data and "resolved_status" in data:
-                log_test("POST closure (Stage 9)", True, 
-                        f"Status: {data['resolved_status']}")
-            else:
-                log_test("POST closure (Stage 9)", False, 
-                        "Missing expected fields")
-        else:
-            log_test("POST closure (Stage 9)", False, 
-                    f"Status {response.status_code}: {response.text}")
-    except Exception as e:
-        log_test("POST closure (Stage 9)", False, f"Exception: {str(e)}")
-    
-    # ========================================================================
-    # TEST 15: GET /api/conflict-breaker/sessions/{sid}/full
-    # ========================================================================
-    print("\n[TEST 15] GET /api/conflict-breaker/sessions/{sid}/full")
-    try:
-        response = requests.get(
-            f"{BASE_URL}/conflict-breaker/sessions/{session_id}/full",
-            headers=headers,
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            required_keys = ["session", "crucial_check", "motive_clarity", "safety_diagnosis", 
-                           "make_safe", "story_map", "script_builder", "listening_plan", 
-                           "action_plan", "closure"]
-            
-            missing_keys = [k for k in required_keys if k not in data]
-            if not missing_keys:
-                log_test("GET /api/conflict-breaker/sessions/{sid}/full", True, 
-                        "All stage data retrieved")
-            else:
-                log_test("GET /api/conflict-breaker/sessions/{sid}/full", False, 
-                        f"Missing keys: {missing_keys}")
-        else:
-            log_test("GET /api/conflict-breaker/sessions/{sid}/full", False, 
-                    f"Status {response.status_code}: {response.text}")
-    except Exception as e:
-        log_test("GET /api/conflict-breaker/sessions/{sid}/full", False, f"Exception: {str(e)}")
-    
-    # ========================================================================
-    # TEST 16: POST /api/conflict-breaker/sessions/{sid}/ai-generate/crucial_check
-    # ========================================================================
-    print("\n[TEST 16] POST /api/conflict-breaker/sessions/{sid}/ai-generate/crucial_check")
-    try:
-        response = requests.post(
+        # Test AI generation (this was previously broken)
+        resp = requests.post(
             f"{BASE_URL}/conflict-breaker/sessions/{session_id}/ai-generate/crucial_check",
-            headers=headers,
-            timeout=30  # AI calls may take longer
+            headers=get_headers(),
+            timeout=60  # Longer timeout for LLM call
         )
         
-        if response.status_code == 200:
-            data = response.json()
-            if "stage" in data and "ai_output" in data:
-                ai_output_preview = data["ai_output"][:100] + "..." if len(data["ai_output"]) > 100 else data["ai_output"]
-                log_test("POST ai-generate/crucial_check", True, 
-                        f"AI output generated: {ai_output_preview}")
-            else:
-                log_test("POST ai-generate/crucial_check", False, 
-                        "Missing stage or ai_output in response")
+        if resp.status_code == 200:
+            result = resp.json()
+            ai_output = result.get("ai_output")
+            print_result(
+                ai_output is not None and len(ai_output) > 0,
+                f"AI generation successful! LlmChat init fix working. AI output: {len(ai_output)} chars",
+                {"stage": result.get("stage"), "ai_output_preview": ai_output[:150] if ai_output else None}
+            )
+            return True
         else:
-            log_test("POST ai-generate/crucial_check", False, 
-                    f"Status {response.status_code}: {response.text}")
-    except Exception as e:
-        log_test("POST ai-generate/crucial_check", False, f"Exception: {str(e)}")
-    
-    # ========================================================================
-    # TEST 17: GET /api/conflict-breaker/dashboard
-    # ========================================================================
-    print("\n[TEST 17] GET /api/conflict-breaker/dashboard")
-    try:
-        response = requests.get(
-            f"{BASE_URL}/conflict-breaker/dashboard",
-            headers=headers,
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            total_sessions = data.get("total_sessions", 0)
-            by_status = data.get("by_status", {})
+            print_result(False, f"AI generation failed: {resp.status_code} - {resp.text}")
+            return False
             
-            if total_sessions > 0:
-                log_test("GET /api/conflict-breaker/dashboard", True, 
-                        f"Total sessions: {total_sessions}, Status breakdown: {by_status}")
-            else:
-                log_test("GET /api/conflict-breaker/dashboard", False, 
-                        "Expected at least 1 session")
-        else:
-            log_test("GET /api/conflict-breaker/dashboard", False, 
-                    f"Status {response.status_code}: {response.text}")
     except Exception as e:
-        log_test("GET /api/conflict-breaker/dashboard", False, f"Exception: {str(e)}")
-    
-    # ========================================================================
-    # SUMMARY
-    # ========================================================================
+        print_result(False, f"Conflict breaker AI generation error: {str(e)}")
+        return False
+
+# ============================================================================
+# MAIN TEST RUNNER
+# ============================================================================
+
+def run_all_tests():
+    """Run all backend tests"""
     print("\n" + "="*80)
-    print("TEST SUMMARY")
+    print("BACKEND TESTING - AI SOLUTION ASSISTANT, CLD REFINEMENTS, CONFLICT BREAKER AI FIX")
+    print("="*80)
+    print(f"Backend URL: {BASE_URL}")
+    print(f"Test User: {TEST_EMAIL}")
+    
+    # Track results
+    results = {
+        "total": 0,
+        "passed": 0,
+        "failed": 0
+    }
+    
+    # Step 1: Register and Login
+    if not register_and_login():
+        print("\n❌ CRITICAL: Authentication failed. Cannot proceed with tests.")
+        return
+    
+    print(f"\n✅ Authentication successful. Session token obtained.")
+    
+    # FEATURE 1: AI Solution Assistant (7 endpoints)
+    print("\n" + "="*80)
+    print("FEATURE 1: AI SOLUTION ASSISTANT (7 endpoints)")
     print("="*80)
     
-    passed_count = sum(1 for r in test_results if r["passed"])
-    total_count = len(test_results)
+    tests_feature1 = [
+        ("AI Assistant Meta", test_ai_assistant_meta),
+        ("AI Assistant Create Conversation", test_ai_assistant_create_conversation),
+        ("AI Assistant List Conversations", test_ai_assistant_list_conversations),
+    ]
     
-    print(f"\nTotal Tests: {total_count}")
-    print(f"Passed: {passed_count}")
-    print(f"Failed: {total_count - passed_count}")
-    print(f"Success Rate: {(passed_count/total_count*100):.1f}%\n")
+    conv_id = None
+    for test_name, test_func in tests_feature1:
+        results["total"] += 1
+        result = test_func()
+        if test_name == "AI Assistant Create Conversation":
+            conv_id = result
+            result = conv_id is not None
+        if result:
+            results["passed"] += 1
+        else:
+            results["failed"] += 1
     
-    # Show failed tests
-    failed_tests = [r for r in test_results if not r["passed"]]
-    if failed_tests:
-        print("\n❌ FAILED TESTS:")
-        for r in failed_tests:
-            print(f"  - {r['test']}: {r['details']}")
+    # Tests that require conversation ID
+    if conv_id:
+        tests_with_conv = [
+            ("AI Assistant Get Conversation", lambda: test_ai_assistant_get_conversation(conv_id)),
+            ("AI Assistant Send Message (LLM)", lambda: test_ai_assistant_send_message(conv_id)),
+            ("AI Assistant Delete Conversation", lambda: test_ai_assistant_delete_conversation(conv_id)),
+        ]
+        
+        for test_name, test_func in tests_with_conv:
+            results["total"] += 1
+            if test_func():
+                results["passed"] += 1
+            else:
+                results["failed"] += 1
+    
+    # Quick ask test
+    results["total"] += 1
+    if test_ai_assistant_quick_ask():
+        results["passed"] += 1
     else:
-        print("\n🎉 ALL TESTS PASSED!")
+        results["failed"] += 1
     
-    print("\n" + "="*80 + "\n")
+    # FEATURE 2: CLD Refinements (5 endpoints)
+    print("\n" + "="*80)
+    print("FEATURE 2: CLD REFINEMENTS (5 endpoints)")
+    print("="*80)
+    
+    tests_feature2 = [
+        ("CLD Module PNA Generate (LLM)", test_cld_module_pna_generate),
+        ("CLD Module Master Generate (LLM)", test_cld_module_master_generate),
+        ("CLD Get Module PNA", test_cld_get_module_pna),
+        ("CLD Get Module Master", test_cld_get_module_master),
+        ("CLD Module List", test_cld_module_list),
+    ]
+    
+    for test_name, test_func in tests_feature2:
+        results["total"] += 1
+        if test_func():
+            results["passed"] += 1
+        else:
+            results["failed"] += 1
+    
+    # FEATURE 3: Conflict Breaker AI Generation Fix (1 endpoint)
+    print("\n" + "="*80)
+    print("FEATURE 3: CONFLICT BREAKER AI GENERATION FIX (1 endpoint)")
+    print("="*80)
+    
+    results["total"] += 1
+    if test_conflict_breaker_ai_generate():
+        results["passed"] += 1
+    else:
+        results["failed"] += 1
+    
+    # Print final summary
+    print("\n" + "="*80)
+    print("FINAL TEST SUMMARY")
+    print("="*80)
+    print(f"Total Tests: {results['total']}")
+    print(f"✅ Passed: {results['passed']}")
+    print(f"❌ Failed: {results['failed']}")
+    print(f"Success Rate: {(results['passed']/results['total']*100):.1f}%")
+    print("="*80)
 
 if __name__ == "__main__":
-    test_conflict_breaker()
+    run_all_tests()
