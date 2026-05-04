@@ -31,7 +31,7 @@ Maintainer's quick-ref for which file does what.
 │   │   ├── _layout.tsx                 ← root stack + GlobalVoiceNav mount
 │   │   ├── (tabs)/                     ← main tab nav
 │   │   ├── auth/                       ← login/register/forgot/reset
-│   │   ├── admin/                      ← admin-only screens (incl. docs viewer)
+│   │   ├── admin/                      ← admin-only screens (incl. /admin/handbook viewer)
 │   │   ├── tools/                      ← every tool (solution-matrix, goal-setter, ...)
 │   │   └── p/[slug].tsx                ← public org sub-portal page
 │   └── src/

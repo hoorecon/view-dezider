@@ -86,7 +86,7 @@ export default function AdminDocsListScreen() {
             <TouchableOpacity
               key={it.slug}
               style={styles.card}
-              onPress={() => router.push(`/admin/docs/${it.slug}` as any)}
+              onPress={() => router.push(`/admin/handbook/${it.slug}` as any)}
             >
               <View style={[styles.iconBubble, { backgroundColor: COLORS.primary + '15' }]}>
                 <Ionicons name={(ICONS[it.slug] || 'document-text') as any} size={22} color={COLORS.primary} />

@@ -5014,10 +5014,13 @@ agent_communication:
       and last-updated badges.
 
       NEW Expo Router admin viewer pages:
-        /app/frontend/app/admin/docs/index.tsx   — doc-list page
-        /app/frontend/app/admin/docs/[slug].tsx  — markdown reader (zero-dep
+        /app/frontend/app/admin/handbook/index.tsx   — doc-list page
+        /app/frontend/app/admin/handbook/[slug].tsx  — markdown reader (zero-dep
           inline renderer covering h1-h3, lists, code blocks, tables, **bold**,
           `inline code`, _italic_)
+        (Renamed from /admin/docs/* to /admin/handbook/* to avoid Expo Router
+        collision with legacy /app/frontend/app/admin/docs.tsx — see frontend
+        cycle 2 P0 fix below.)
 
       ============================================================
       E) REGRESSION TEST SUITES — 125 / 125 PASSING
