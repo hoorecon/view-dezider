@@ -968,8 +968,10 @@ metadata:
   run_ui: false
 
 test_plan:
-  current_focus: []
-  stuck_tasks: []
+  current_focus:
+    - "Phase 2.5 — Pluggable File Storage + Admin Upload Limits"
+  stuck_tasks:
+    - "Phase 2.5 — Pluggable File Storage + Admin Upload Limits"
   test_all: false
   test_priority: "stuck_first"
 
@@ -4390,11 +4392,15 @@ agent_communication:
 
   - task: "Phase 2.5 — Pluggable File Storage + Admin Upload Limits"
     implemented: true
-    working: true
+    working: false
     file: "core/file_storage.py, routes/public_pulse_org.py, frontend/app/tools/public-pulse/org/apply.tsx, core/db_indices.py"
-    stuck_count: 0
+    stuck_count: 1
     priority: "high"
-    needs_retesting: false
+    needs_retesting: true
+    status_history:
+        - working: false
+          agent: "testing"
+          comment: "❌ P0 BLOCKER — frontend/app/tools/public-pulse/org/apply.tsx is BROKEN: SyntaxError 'return' outside of function at line 349:2. The component's `return (` JSX block was placed AFTER `StyleSheet.create({...});` (line 347), i.e. OUTSIDE the OrgApplyScreen function body. Metro bundler refuses to compile, and because Expo Router bundles routes together, the SyntaxError overlay (red 'Server Error' screen) is rendered on EVERY Public Pulse route — /tools/public-pulse, /consent, /run, /result, /feedback, /dashboards, /org, /org/apply, /admin all show the same crash, blocking 100% of Phase-1+2+2.5 frontend flows. Fix: move the `return (...)` JSX block back inside the OrgApplyScreen function (before its closing `}`), and place `const styles = StyleSheet.create({...});` AFTER the component (not in the middle). The test user (user_8bc638a7fa28, email pulse.test.1777907757@example.com, token session_a454be951da34693ab733aa1c468cc93) was created with email_verified=true via Mongo and is ready for re-test once apply.tsx is fixed. Backend is healthy (verified via API register). Browser automation budget consumed: 1/3 invocations. Cannot proceed with Flows 1-6 until syntax bug is fixed and frontend recompiles cleanly."
     status_history:
         - working: true
           agent: "main"
