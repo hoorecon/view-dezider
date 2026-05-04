@@ -432,7 +432,7 @@ export default function ConflictBreakerScreen() {
         value={s5.my_role_in_problem || ''} onChangeText={t => setS5({ ...s5, my_role_in_problem: t })} multiline />
       <QField label="Why would a reasonable person act this way?" helper='"Maybe they were overloaded, unclear, or afraid."'
         value={s5.reasonable_person_reason || ''} onChangeText={t => setS5({ ...s5, reasonable_person_reason: t })} multiline />
-      <QField label="What alternative story is possible?" helper='"Maybe the delay wasn\'t intentional."'
+      <QField label="What alternative story is possible?" helper={'"Maybe the delay was not intentional."'}
         value={s5.alternative_story || ''} onChangeText={t => setS5({ ...s5, alternative_story: t })} multiline />
     </>
   );
