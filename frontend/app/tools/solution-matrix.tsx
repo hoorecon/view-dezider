@@ -71,10 +71,51 @@ interface MatrixLayer {
   infrastructure: string;
 }
 
+// Each parent layer (self/micro/macro) now has 4 OrgType sub-levels.
+interface MatrixLayerSet {
+  individual: MatrixLayer;
+  org: MatrixLayer;
+  govt: MatrixLayer;
+  nature: MatrixLayer;
+}
+
 const emptyMatrix = (): MatrixLayer => ({
   summary: '', knowledge_skills: '', capacity: '',
   time: '', people: '', finance: '', infrastructure: '',
 });
+
+const emptyMatrixSet = (): MatrixLayerSet => ({
+  individual: emptyMatrix(),
+  org: emptyMatrix(),
+  govt: emptyMatrix(),
+  nature: emptyMatrix(),
+});
+
+// Normalise legacy (flat) matrix data to the new nested form.
+// Old records stored { summary, knowledge_skills, ... } — we treat that as `individual` and zero the others.
+const normaliseMatrixSet = (raw: any): MatrixLayerSet => {
+  if (!raw || typeof raw !== 'object') return emptyMatrixSet();
+  const hasLegacyKeys = 'summary' in raw || 'knowledge_skills' in raw;
+  if (hasLegacyKeys && !('individual' in raw)) {
+    return {
+      individual: { ...emptyMatrix(), ...raw },
+      org: emptyMatrix(), govt: emptyMatrix(), nature: emptyMatrix(),
+    };
+  }
+  return {
+    individual: { ...emptyMatrix(), ...(raw.individual || {}) },
+    org: { ...emptyMatrix(), ...(raw.org || {}) },
+    govt: { ...emptyMatrix(), ...(raw.govt || {}) },
+    nature: { ...emptyMatrix(), ...(raw.nature || {}) },
+  };
+};
+
+const ORG_TYPES = [
+  { key: 'individual' as const, label: 'Individual', icon: 'person', color: '#2563EB' },
+  { key: 'org' as const, label: 'Org', icon: 'business', color: '#7C3AED' },
+  { key: 'govt' as const, label: 'Govt', icon: 'shield-checkmark', color: '#F59E0B' },
+  { key: 'nature' as const, label: 'Nature', icon: 'leaf', color: '#10B981' },
+];
 
 interface ActionItem {
   who: string;
@@ -105,10 +146,10 @@ export default function SolutionMatrixScreen() {
   const [simplerHelpAspect, setSimplerHelpAspect] = useState('');
   const [simplerHelpLevel, setSimplerHelpLevel] = useState('');
   const [simplerHelpFrom, setSimplerHelpFrom] = useState('');
-  // Matrix layers (3.1.2)
-  const [matrixSelf, setMatrixSelf] = useState<MatrixLayer>(emptyMatrix());
-  const [matrixMicro, setMatrixMicro] = useState<MatrixLayer>(emptyMatrix());
-  const [matrixMacro, setMatrixMacro] = useState<MatrixLayer>(emptyMatrix());
+  // Matrix layers (3.1.2) — each now has 4 OrgType sub-levels (Individual/Org/Govt/Nature)
+  const [matrixSelf, setMatrixSelf] = useState<MatrixLayerSet>(emptyMatrixSet());
+  const [matrixMicro, setMatrixMicro] = useState<MatrixLayerSet>(emptyMatrixSet());
+  const [matrixMacro, setMatrixMacro] = useState<MatrixLayerSet>(emptyMatrixSet());
   // Solution Category (3.2)
   const [solutionCategory, setSolutionCategory] = useState<Record<string, boolean>>(
     Object.fromEntries(SOLUTION_CATEGORIES.map(c => [c.key, false]))
@@ -154,9 +195,9 @@ export default function SolutionMatrixScreen() {
       setSimplerHelpAspect(d.simpler_help_aspect || '');
       setSimplerHelpLevel(d.simpler_help_level || '');
       setSimplerHelpFrom(d.simpler_help_from || '');
-      setMatrixSelf({ ...emptyMatrix(), ...d.matrix_self });
-      setMatrixMicro({ ...emptyMatrix(), ...d.matrix_micro });
-      setMatrixMacro({ ...emptyMatrix(), ...d.matrix_macro });
+      setMatrixSelf(normaliseMatrixSet(d.matrix_self));
+      setMatrixMicro(normaliseMatrixSet(d.matrix_micro));
+      setMatrixMacro(normaliseMatrixSet(d.matrix_macro));
       if (d.solution_category) setSolutionCategory(prev => ({ ...prev, ...d.solution_category }));
       if (d.solution_sources) setSolutionSources(prev => ({ ...prev, ...d.solution_sources }));
       setQ4NegConsequences(d.q4_negative_consequences || '');
@@ -216,13 +257,20 @@ export default function SolutionMatrixScreen() {
     }
   };
 
-  const updateMatrixField = (layer: 'self' | 'micro' | 'macro', field: string, value: string) => {
-    if (layer === 'self') setMatrixSelf(prev => ({ ...prev, [field]: value }));
-    else if (layer === 'micro') setMatrixMicro(prev => ({ ...prev, [field]: value }));
-    else setMatrixMacro(prev => ({ ...prev, [field]: value }));
+  const updateMatrixField = (
+    layer: 'self' | 'micro' | 'macro',
+    orgType: 'individual' | 'org' | 'govt' | 'nature',
+    field: string,
+    value: string,
+  ) => {
+    const setter = layer === 'self' ? setMatrixSelf : layer === 'micro' ? setMatrixMicro : setMatrixMacro;
+    setter((prev: MatrixLayerSet) => ({
+      ...prev,
+      [orgType]: { ...prev[orgType], [field]: value },
+    }));
   };
 
-  const getMatrixLayer = (layer: 'self' | 'micro' | 'macro') => {
+  const getMatrixLayerSet = (layer: 'self' | 'micro' | 'macro'): MatrixLayerSet => {
     if (layer === 'self') return matrixSelf;
     if (layer === 'micro') return matrixMicro;
     return matrixMacro;
@@ -249,6 +297,7 @@ export default function SolutionMatrixScreen() {
   };
 
   const [activeMatrixTab, setActiveMatrixTab] = useState<'self' | 'micro' | 'macro'>('self');
+  const [activeOrgType, setActiveOrgType] = useState<'individual' | 'org' | 'govt' | 'nature'>('individual');
 
   if (loading) {
     return (
@@ -259,15 +308,20 @@ export default function SolutionMatrixScreen() {
   }
 
   const renderMatrixSection = () => {
-    const layer = getMatrixLayer(activeMatrixTab);
+    const layerSet = getMatrixLayerSet(activeMatrixTab);
+    const layer = layerSet[activeOrgType];
     const layerLabels = { self: 'SELF', micro: 'MICRO', macro: 'MACRO' };
     const layerColors = { self: '#10B981', micro: '#6366F1', macro: '#F59E0B' };
+    const orgTypeMeta = ORG_TYPES.find(o => o.key === activeOrgType)!;
 
     return (
       <View>
         <Text style={styles.sectionHeader}>Solution Matrix (Extended Solutions)</Text>
+        <Text style={styles.sectionHint}>
+          3 Solution Layers × 4 OrgTypes × 7 Resource dimensions
+        </Text>
 
-        {/* Tab selector */}
+        {/* Outer tabs — Solution Layer */}
         <View style={styles.matrixTabs}>
           {(['self', 'micro', 'macro'] as const).map(tab => (
             <TouchableOpacity
@@ -286,7 +340,32 @@ export default function SolutionMatrixScreen() {
           ))}
         </View>
 
-        <View style={[styles.matrixCard, { borderLeftColor: layerColors[activeMatrixTab] }]}>
+        {/* Inner tabs — OrgType sub-level */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.orgTypeTabsScroll}>
+          <View style={styles.orgTypeTabs}>
+            {ORG_TYPES.map(ot => {
+              const sel = activeOrgType === ot.key;
+              return (
+                <TouchableOpacity
+                  key={ot.key}
+                  style={[styles.orgTypeTab, sel && { backgroundColor: ot.color, borderColor: ot.color }]}
+                  onPress={() => setActiveOrgType(ot.key)}
+                >
+                  <Ionicons name={ot.icon as any} size={14} color={sel ? '#FFF' : ot.color} />
+                  <Text style={[styles.orgTypeTabText, sel && { color: '#FFF' }]}>{ot.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </ScrollView>
+
+        <View style={[styles.matrixCard, { borderLeftColor: orgTypeMeta.color }]}>
+          <View style={styles.matrixScope}>
+            <Ionicons name={orgTypeMeta.icon as any} size={12} color={orgTypeMeta.color} />
+            <Text style={[styles.matrixScopeText, { color: orgTypeMeta.color }]}>
+              {layerLabels[activeMatrixTab]} • {orgTypeMeta.label}
+            </Text>
+          </View>
           {MATRIX_FIELDS.map(f => (
             <View key={f.key}>
               <View style={styles.matrixFieldLabel}>
@@ -295,10 +374,10 @@ export default function SolutionMatrixScreen() {
               </View>
               <TextInput
                 style={styles.matrixInput}
-                placeholder={`${layerLabels[activeMatrixTab]} - ${f.label}`}
+                placeholder={`${layerLabels[activeMatrixTab]} / ${orgTypeMeta.label} — ${f.label}`}
                 placeholderTextColor={COLORS.textMuted}
                 value={layer[f.key as keyof MatrixLayer]}
-                onChangeText={v => updateMatrixField(activeMatrixTab, f.key, v)}
+                onChangeText={v => updateMatrixField(activeMatrixTab, activeOrgType, f.key, v)}
                 multiline
                 numberOfLines={2}
               />
