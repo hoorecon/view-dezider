@@ -264,12 +264,17 @@ from core.database import client, ensure_indexes
 
 @app.on_event("startup")
 async def startup_db_client():
-    """Ensure all production indexes exist before serving traffic."""
+    """Ensure all production indexes exist + ACM seed is up to date before serving traffic."""
     try:
         await ensure_indexes()
     except Exception as e:
         # Don't crash boot — index creation is idempotent and self-healing
         logger.error(f"Index initialization failed: {e}")
+    try:
+        from core.acm_engine import ensure_acm_seeded_on_boot
+        await ensure_acm_seeded_on_boot()
+    except Exception as e:
+        logger.error(f"ACM boot seed failed: {e}")
 
 
 @app.on_event("shutdown")

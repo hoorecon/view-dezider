@@ -46,16 +46,36 @@ async def refresh_acm_cache():
 
 
 async def seed_acm_defaults(force: bool = False):
-    """Seed the ACM matrix from acm_seed_data.py into MongoDB."""
-    from data.acm_seed_data import ACM_MODULES, USER_TYPES, SUBSCRIPTION_PLANS, RELEASE_STAGES
+    """Seed the ACM matrix from acm_seed_data.py into MongoDB.
+
+    Version-aware: if `ACM_SEED_VERSION` in acm_seed_data.py has bumped since
+    last seed, we auto-reseed (even without force=True). This lets feature
+    additions (new modules / features) roll out on boot without an admin call.
+    """
+    from data.acm_seed_data import (
+        ACM_MODULES, USER_TYPES, SUBSCRIPTION_PLANS, RELEASE_STAGES, ACM_SEED_VERSION,
+    )
 
     existing = await db.acm_modules.count_documents({})
-    if existing > 0 and not force:
-        await refresh_acm_cache()
-        return {"message": "ACM already seeded", "modules": existing, "features": len(_acm_cache)}
+    stored_meta = await db.acm_meta.find_one({"key": "seed_version"}, {"_id": 0})
+    stored_version = (stored_meta or {}).get("version")
 
-    # Clear and re-seed
-    if force:
+    version_changed = stored_version != ACM_SEED_VERSION
+
+    if existing > 0 and not force and not version_changed:
+        await refresh_acm_cache()
+        return {
+            "message": "ACM already seeded (up to date)",
+            "modules": existing,
+            "features": len(_acm_cache),
+            "seed_version": ACM_SEED_VERSION,
+        }
+
+    if version_changed and existing > 0 and not force:
+        logger.info(f"ACM seed version changed ({stored_version} → {ACM_SEED_VERSION}); auto-reseeding")
+
+    # Clear on explicit force OR on version bump (safer: remove stale modules/features)
+    if force or version_changed:
         await db.acm_modules.delete_many({})
         await db.acm_user_types.delete_many({})
         await db.acm_subscription_plans.delete_many({})
@@ -83,8 +103,40 @@ async def seed_acm_defaults(force: bool = False):
         upsert=True,
     )
 
+    # Persist the seed version
+    await db.acm_meta.update_one(
+        {"key": "seed_version"},
+        {"$set": {
+            "key": "seed_version",
+            "version": ACM_SEED_VERSION,
+            "seeded_at": datetime.now(timezone.utc),
+            "force": force,
+            "version_changed": version_changed,
+        }},
+        upsert=True,
+    )
+
     await refresh_acm_cache()
-    return {"message": "ACM seeded successfully", "modules": len(ACM_MODULES), "features": len(_acm_cache)}
+    return {
+        "message": "ACM seeded successfully",
+        "modules": len(ACM_MODULES),
+        "features": len(_acm_cache),
+        "seed_version": ACM_SEED_VERSION,
+        "was_version_bump": version_changed,
+    }
+
+
+async def ensure_acm_seeded_on_boot():
+    """Idempotent boot-time ACM check — re-seeds only if data missing or version bumped."""
+    try:
+        result = await seed_acm_defaults(force=False)
+        logger.info(
+            f"ACM boot check: {result['message']} "
+            f"(modules={result.get('modules')}, features={result.get('features')}, "
+            f"version={result.get('seed_version')})"
+        )
+    except Exception as e:
+        logger.error(f"ACM boot seed failed: {e}")
 
 
 # ============================================================

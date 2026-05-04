@@ -4388,7 +4388,29 @@ agent_communication:
           agent: "main"
           comment: "Updated CHANNEL_RULES and CATEGORY_MAP to include AALA, LEE, Goal Setter, Goal Manifestation, Unconditional Happiness, Meditation Settings, Conflict Breaker, PNA, and Lifestyle Designer. Updated all 4 AI doc generation prompts (PRD, SRS, Regression Tests, UAT Cases) to comprehensively cover all 30+ modules."
 
-  - task: "Public Pulse — Phase 2 Org/Gov/Admin Portal"
+  - task: "Phase 2.5 — File Upload UI for Org Verification Docs"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/tools/public-pulse/org/apply.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Added file picker UI to org application form using expo-document-picker. 3 upload slots: (1) Registration certificate (PDF/image), (2) Authorized applicant photo ID (PDF/image), (3) Brand logo (image only). Size-capped at 5MB per file with user-friendly error. Cross-platform: uses FileReader.readAsDataURL on web, expo-file-system on native — both produce clean base64 without data URI prefix. Selected files show as cards with name + size + remove (X) button. Backend already accepts the base64 fields (verification_doc_b64, authorized_id_b64, brand_logo_b64) so no route change required."
+
+  - task: "Auto-reseed ACM on Boot (version-aware)"
+    implemented: true
+    working: true
+    file: "core/acm_engine.py, data/acm_seed_data.py, server.py"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "Added ACM_SEED_VERSION constant (='2026-05-04-01') in data/acm_seed_data.py. seed_acm_defaults() now compares stored version in db.acm_meta vs compile-time version; if different, auto-reseeds even without force=True. New ensure_acm_seeded_on_boot() hook in server.py startup event. Verified in logs: first boot 'ACM seed version changed (None → 2026-05-04-01); auto-reseeding' → 32 modules / 83 features. Second boot 'ACM already seeded (up to date)' — idempotent. Result: adding new modules / features = bump ACM_SEED_VERSION → next deploy auto-rolls them out without admin calling /api/acm/seed?force=true."
     implemented: true
     working: true
     file: "routes/public_pulse_org.py, models/public_pulse_org_models.py, frontend/app/tools/public-pulse/org/*, frontend/app/tools/public-pulse/admin/*"
