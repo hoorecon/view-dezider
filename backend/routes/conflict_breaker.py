@@ -642,7 +642,11 @@ async def _ai_generate(prompt: str, session_id: str = "") -> str:
         session_id=f"cb_{session_id}_{uuid.uuid4().hex[:8]}",
         system_message="You are a mature, calm dialogue coach helping users prepare for crucial conversations. Be direct, practical, non-blaming. Not therapeutic diagnosis."
     ).with_model("openai", "gpt-4.1-mini")
-    resp = await chat.send_message(UserMessage(text=prompt))
+    try:
+        resp = await chat.send_message(UserMessage(text=prompt))
+    except Exception as e:
+        from core.llm_errors import llm_error_to_http
+        raise llm_error_to_http(e)
     return resp.strip()
 
 

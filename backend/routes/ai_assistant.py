@@ -230,7 +230,9 @@ GUIDELINES:
         resp = await chat.send_message(UserMessage(text=prompt))
         ai_response = resp.strip()
     except Exception as e:
-        raise HTTPException(500, f"AI generation failed: {str(e)}")
+        from core.llm_errors import llm_error_to_http
+        rid = getattr(request.state, "request_id", None)
+        raise llm_error_to_http(e, request_id=rid)
 
     now = datetime.now(timezone.utc).isoformat()
 
@@ -289,5 +291,10 @@ async def quick_ask(request: Request, user: dict = Depends(get_current_user)):
         system_message=f"You are a personal advisor. Respond in {lang_name}. Be concise and practical.\n\nUser Context:\n{user_context}"
     ).with_model("openai", "gpt-4.1-mini")
 
-    resp = await chat.send_message(UserMessage(text=question))
+    try:
+        resp = await chat.send_message(UserMessage(text=question))
+    except Exception as e:
+        from core.llm_errors import llm_error_to_http
+        rid = getattr(request.state, "request_id", None)
+        raise llm_error_to_http(e, request_id=rid)
     return {"question": question, "answer": resp.strip(), "language": language}

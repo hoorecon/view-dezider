@@ -4538,3 +4538,31 @@ agent_communication:
 
       Test artifact: /app/backend_retest_slowapi.py. Re-run with `python /app/backend_retest_slowapi.py`.
 
+
+  - agent: "testing"
+    message: |
+      ✅ FINAL REGRESSION SWEEP COMPLETE (post-models-extraction + LLM-error polish) — 28/28 effective PASS.
+
+      Test artifact: /app/backend_test_regression.py. Run with `python /app/backend_test_regression.py` (uses BASE_URL=http://localhost:8001 by default).
+
+      ✅ AUTH FLOW (7/7): register → 200 + session_token; login → 200; /auth/me → 200 has_password=true; forgot-password → 200 with otp; reset-password → 200; login with new password → 200. X-Request-ID + X-Response-Time-MS headers on every response.
+
+      ✅ DECISIONS CRUD (5/5) — models extraction to models/decisions_models.py is regression-clean. POST /api/decisions (title+context+folder=career+life_area+decision_type) → 200 id returned, GET list includes new id, GET by id → 200, PUT updates title → 200, DELETE → 200.
+
+      ✅ TEST123 / ASSESSMENT / JOURNAL / FOLDERS (8/8) — ASSESSMENT_QUESTIONS + DECISION_FOLDERS constants survive extraction: POST /api/test123 → 200 id, GET → 200, PUT with what_i_want → 200. GET /api/assessment/questions → 200 with exactly 12 items. POST /api/assessment with all-q*=4 → 200 returns dominant_mode='emotional'. POST /api/journal → 200, GET /api/journal → 200. GET /api/folders → 200 with 10 life-area folders including 'career'.
+
+      ✅ SOLUTIONS STORE (4/4) — solutions_store_data extraction regression-clean. GET /api/solutions-store/config/countries → 200 returns {countries:[7 items including IN,US,GB,SG,AE,AU,CA]}. GET /api/solutions-store/config/languages → 200 returns {languages:[9 items including en,ta,hi,te,kn,ml,mr,bn,gu]}. POST /api/solutions-store/solutions {type:PRODUCT, name,...} → 200 with solution_id. GET /api/solutions-store/solutions → 200 list. (Note: initial test assertion assumed bare-array response; actual response wraps in {countries}/{languages} — harmless test-side shape difference, endpoint behaviour correct.)
+
+      ✅ COLLABORATION (1/1) — DEFAULT_MODES extraction to models/collaboration_data.py regression-clean. GET /api/collaboration/decision-modes → 200 returns exactly 6 modes with ids: command, consensus, custom, equal, sme, voting.
+
+      ✅ LLM ERROR POLISH (2/2) — core/llm_errors.py wired correctly across routes:
+        • POST /api/ai-assistant/quick-ask with valid token → 503 body {"detail":{"code":"llm_budget_exceeded","message":"AI service is temporarily unavailable...","request_id":"3a56f8bcf618"}}. Header Retry-After: 60. X-Request-ID header matches detail.request_id exactly.
+        • POST /api/cld/{decision_id}/generate (nonexistent decision_id, 2 factors) → 503 code=llm_budget_exceeded, Retry-After: 60. Error from LlmChat surfaced cleanly; no raw-text 500 leak.
+
+      ✅ OBSERVABILITY (1/1) — X-Request-ID (12-hex) and X-Response-Time-MS (numeric ms) present on every sampled endpoint: /health, /health/ready, /folders, /assessment/questions, /collaboration/decision-modes. 503 responses also carry X-Request-ID.
+
+      ℹ️ Rate limits (AUTH=10/min, AI=10/min production values) NOT hit during this sweep — spacing was sufficient.
+      ℹ️ LLM endpoints returned 503 due to EMERGENT_LLM_KEY budget cap (current cost ~0.43, max 0.4) — this is the EXPECTED behavior the polish validates. Logs confirm clean mapping: "LLM budget exhausted (request_id=60c6e9c22684)" → 503 in 1563ms with typed JSON body.
+
+      NO REGRESSIONS detected from the models/ package extraction (decisions_models.py, collaboration_data.py, solutions_store_data.py) or from the production rate-limit restoration in .env.
+

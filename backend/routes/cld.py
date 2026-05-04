@@ -315,9 +315,13 @@ RESPOND WITH ONLY VALID JSON:
         if "```" in text:
             text = text.split("```")[1].replace("json", "").strip()
         cld_data = json_module.loads(text)
+    except json_module.JSONDecodeError as e:
+        logger.error(f"CLD AI returned invalid JSON: {e}")
+        raise HTTPException(500, f"AI returned invalid JSON: {str(e)[:100]}")
     except Exception as e:
-        logger.error(f"CLD AI generation failed: {e}")
-        raise HTTPException(500, f"AI generation failed: {str(e)}")
+        from core.llm_errors import llm_error_to_http
+        rid = getattr(request.state, "request_id", None)
+        raise llm_error_to_http(e, request_id=rid)
 
     cld_id = f"CLD-{module_type.upper()}-{uuid.uuid4().hex[:8].upper()}"
     now = datetime.now(timezone.utc)
@@ -816,9 +820,12 @@ Return ONLY valid JSON, no markdown fences, no explanation outside the JSON."""
         }
     except json_module.JSONDecodeError as e:
         raise HTTPException(status_code=500, detail=f"AI returned invalid JSON: {str(e)[:100]}")
+    except HTTPException:
+        raise  # re-raise our typed errors as-is
     except Exception as e:
-        logger.error(f"CLD generation failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"CLD generation failed: {str(e)[:200]}")
+        from core.llm_errors import llm_error_to_http
+        rid = getattr(request.state, "request_id", None)
+        raise llm_error_to_http(e, request_id=rid)
 
 
 # ========================
