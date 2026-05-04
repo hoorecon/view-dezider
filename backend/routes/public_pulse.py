@@ -791,3 +791,240 @@ async def seed_demo_data(user: dict = Depends(require_admin), count: int = 60):
 async def clear_demo_data(user: dict = Depends(require_admin)):
     res = await db.pp_tool_sessions.delete_many({"user_id": {"$regex": "^SEED_"}})
     return {"ok": True, "deleted": res.deleted_count}
+
+
+# ============================================================
+# YEAR-OVER-YEAR TREND ANALYTICS (Phase 3 — non-AI)
+# ============================================================
+# All endpoints honour the same k-anonymity thresholds as the live dashboards.
+# They return a time series bucketed monthly, current window + prior-year window,
+# plus delta metrics. No LLM involved.
+
+from datetime import date, timedelta
+
+
+def _month_key(dt: datetime) -> str:
+    return f"{dt.year:04d}-{dt.month:02d}"
+
+
+def _year_range(end_ts: datetime, years_back: int = 0) -> tuple[datetime, datetime]:
+    """
+    Return (start, end) for a 12-month window ending on the last day of end_ts's
+    month, shifted `years_back` years earlier.
+    """
+    end_year = end_ts.year - years_back
+    end_month = end_ts.month
+    # end = first day of month after `end_month` (exclusive)
+    if end_month == 12:
+        end = datetime(end_year + 1, 1, 1, tzinfo=timezone.utc)
+    else:
+        end = datetime(end_year, end_month + 1, 1, tzinfo=timezone.utc)
+    # start = 12 months before end (exclusive start = inclusive start)
+    start_year = end_year - 1
+    start = datetime(start_year, end_month, 1, tzinfo=timezone.utc) \
+        if end_month != 12 else datetime(end_year, 1, 1, tzinfo=timezone.utc)
+    return start, end
+
+
+async def _monthly_session_count(
+    match: dict,
+    start: datetime,
+    end: datetime,
+) -> List[Dict[str, Any]]:
+    """Aggregate completed, research-contributed session counts per month."""
+    pipeline = [
+        {"$match": {
+            **match,
+            "started_at": {"$gte": start, "$lt": end},
+        }},
+        {"$group": {
+            "_id": {
+                "y": {"$year": "$started_at"},
+                "m": {"$month": "$started_at"},
+            },
+            "n": {"$sum": 1},
+        }},
+        {"$sort": {"_id.y": 1, "_id.m": 1}},
+    ]
+    rows = await db.pp_tool_sessions.aggregate(pipeline).to_list(200)
+    out: List[Dict[str, Any]] = []
+    # fill missing months with 0
+    cursor = datetime(start.year, start.month, 1, tzinfo=timezone.utc)
+    end_cursor = end
+    while cursor < end_cursor:
+        key = _month_key(cursor)
+        hit = next((r for r in rows
+                    if f"{r['_id']['y']:04d}-{r['_id']['m']:02d}" == key), None)
+        out.append({"month": key, "count": int(hit["n"]) if hit else 0})
+        # advance one month
+        if cursor.month == 12:
+            cursor = datetime(cursor.year + 1, 1, 1, tzinfo=timezone.utc)
+        else:
+            cursor = datetime(cursor.year, cursor.month + 1, 1, tzinfo=timezone.utc)
+    return out
+
+
+async def _yoy_payload(dashboard_key: str, base_match: dict) -> Dict[str, Any]:
+    """
+    Build a standard YoY payload:
+      - current_year: 12 months ending latest
+      - previous_year: same 12-month window one year earlier
+      - totals, pct_change, and monthly series (aligned m-1..m-12)
+    Honours the per-dashboard k-anonymity floor on BOTH totals.
+    """
+    threshold = await _get_k_threshold(dashboard_key)
+    now = datetime.now(timezone.utc)
+    cur_start, cur_end = _year_range(now, 0)
+    prev_start, prev_end = _year_range(now, 1)
+
+    current = await _monthly_session_count(base_match, cur_start, cur_end)
+    previous = await _monthly_session_count(base_match, prev_start, prev_end)
+    cur_total = sum(r["count"] for r in current)
+    prev_total = sum(r["count"] for r in previous)
+
+    if cur_total < threshold and prev_total < threshold:
+        return {
+            "dashboard": dashboard_key,
+            "blocked": True,
+            "reason": f"Insufficient sample size ({max(cur_total, prev_total)} < {threshold})",
+            "k_threshold": threshold,
+        }
+
+    # month-index-aligned compare (so Jan-now vs Jan-prev-year line up)
+    series = []
+    for i, cur_row in enumerate(current):
+        prev_row = previous[i] if i < len(previous) else {"count": 0}
+        delta = cur_row["count"] - prev_row["count"]
+        pct = None
+        if prev_row["count"] > 0:
+            pct = round(100 * delta / prev_row["count"], 1)
+        series.append({
+            "month_label": cur_row["month"],
+            "current": cur_row["count"],
+            "previous": prev_row["count"],
+            "delta": delta,
+            "pct_change": pct,
+        })
+
+    overall_pct = None
+    if prev_total > 0:
+        overall_pct = round(100 * (cur_total - prev_total) / prev_total, 1)
+
+    return {
+        "dashboard": dashboard_key,
+        "blocked": False,
+        "k_threshold": threshold,
+        "current_year_total": cur_total,
+        "previous_year_total": prev_total,
+        "delta": cur_total - prev_total,
+        "overall_pct_change": overall_pct,
+        "current_range": {"start": cur_start.isoformat(), "end": cur_end.isoformat()},
+        "previous_range": {"start": prev_start.isoformat(), "end": prev_end.isoformat()},
+        "series": series,
+    }
+
+
+@router.get("/analytics/yoy/overall")
+async def yoy_overall():
+    """YoY trend across ALL research-contributed completed sessions."""
+    return await _yoy_payload(
+        "yoy_overall",
+        {"completed": True, "contributed_to_research": True},
+    )
+
+
+@router.get("/analytics/yoy/tool/{tool_slug}")
+async def yoy_by_tool(tool_slug: str):
+    """YoY trend for a single tool (e.g. life_direction, marriage_readiness)."""
+    if tool_slug not in TOOL_DEFINITIONS:
+        raise HTTPException(status_code=404, detail="Unknown tool_slug")
+    return await _yoy_payload(
+        f"yoy_tool_{tool_slug}",
+        {
+            "completed": True,
+            "contributed_to_research": True,
+            "tool_slug": tool_slug,
+        },
+    )
+
+
+@router.get("/analytics/yoy/feedback")
+async def yoy_feedback():
+    """
+    YoY trend on raw feedback submissions (complaints/suggestions/ideas).
+    Operates over pp_feedback_items rather than pp_tool_sessions.
+    """
+    threshold = await _get_k_threshold("yoy_feedback")
+    now = datetime.now(timezone.utc)
+    cur_start, cur_end = _year_range(now, 0)
+    prev_start, prev_end = _year_range(now, 1)
+
+    async def _counts(start: datetime, end: datetime):
+        pipeline = [
+            {"$match": {"created_at": {"$gte": start, "$lt": end}}},
+            {"$group": {
+                "_id": {
+                    "y": {"$year": "$created_at"},
+                    "m": {"$month": "$created_at"},
+                },
+                "n": {"$sum": 1},
+            }},
+            {"$sort": {"_id.y": 1, "_id.m": 1}},
+        ]
+        rows = await db.pp_feedback_items.aggregate(pipeline).to_list(200)
+        out = []
+        cursor = datetime(start.year, start.month, 1, tzinfo=timezone.utc)
+        while cursor < end:
+            key = _month_key(cursor)
+            hit = next((r for r in rows
+                        if f"{r['_id']['y']:04d}-{r['_id']['m']:02d}" == key), None)
+            out.append({"month": key, "count": int(hit["n"]) if hit else 0})
+            cursor = (datetime(cursor.year + 1, 1, 1, tzinfo=timezone.utc)
+                      if cursor.month == 12
+                      else datetime(cursor.year, cursor.month + 1, 1, tzinfo=timezone.utc))
+        return out
+
+    current = await _counts(cur_start, cur_end)
+    previous = await _counts(prev_start, prev_end)
+    cur_total = sum(r["count"] for r in current)
+    prev_total = sum(r["count"] for r in previous)
+
+    if cur_total < threshold and prev_total < threshold:
+        return {
+            "dashboard": "yoy_feedback",
+            "blocked": True,
+            "reason": f"Insufficient sample size ({max(cur_total, prev_total)} < {threshold})",
+            "k_threshold": threshold,
+        }
+
+    series = []
+    for i, cur_row in enumerate(current):
+        prev_row = previous[i] if i < len(previous) else {"count": 0}
+        delta = cur_row["count"] - prev_row["count"]
+        pct = None
+        if prev_row["count"] > 0:
+            pct = round(100 * delta / prev_row["count"], 1)
+        series.append({
+            "month_label": cur_row["month"],
+            "current": cur_row["count"],
+            "previous": prev_row["count"],
+            "delta": delta,
+            "pct_change": pct,
+        })
+
+    overall_pct = None
+    if prev_total > 0:
+        overall_pct = round(100 * (cur_total - prev_total) / prev_total, 1)
+
+    return {
+        "dashboard": "yoy_feedback",
+        "blocked": False,
+        "k_threshold": threshold,
+        "current_year_total": cur_total,
+        "previous_year_total": prev_total,
+        "delta": cur_total - prev_total,
+        "overall_pct_change": overall_pct,
+        "current_range": {"start": cur_start.isoformat(), "end": cur_end.isoformat()},
+        "previous_range": {"start": prev_start.isoformat(), "end": prev_end.isoformat()},
+        "series": series,
+    }

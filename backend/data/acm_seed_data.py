@@ -20,7 +20,7 @@ Subscription Plans (for paid): starter, pro, enterprise, api
 # Bump this version whenever ACM_MODULES / USER_TYPES / SUBSCRIPTION_PLANS change.
 # Boot-time auto-seed (core/acm_engine.py) reseeds DB iff stored version < this one.
 # Format: "YYYY-MM-DD-N" — human-readable, monotonically sortable.
-ACM_SEED_VERSION = "2026-05-04-01"
+ACM_SEED_VERSION = "2026-05-04-03"
 
 # Release stages (ordered by visibility)
 RELEASE_STAGES = [
@@ -247,6 +247,91 @@ ACM_MODULES = [
                     "free": _locked(), "trial": _full(),
                     "paid_starter": _locked(), "paid_pro": _full(),
                     "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+            # ── Per-OrgType column gating (Accurate mode) ──
+            {
+                "feature_id": "solution_matrix_orgtype_individual",
+                "feature_name": "Matrix — Individual OrgType column",
+                "release_stage": "ga_free",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _full(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _full(),
+                },
+            },
+            {
+                "feature_id": "solution_matrix_orgtype_org",
+                "feature_name": "Matrix — Org OrgType column",
+                "release_stage": "ga_paid",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _locked(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _full(),
+                },
+            },
+            {
+                "feature_id": "solution_matrix_orgtype_govt",
+                "feature_name": "Matrix — Govt OrgType column",
+                "release_stage": "ga_paid",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _locked(), "trial": _full(),
+                    "paid_starter": _locked(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _full(),
+                },
+            },
+            {
+                "feature_id": "solution_matrix_orgtype_nature",
+                "feature_name": "Matrix — Nature OrgType column",
+                "release_stage": "ga_paid",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _locked(), "trial": _full(),
+                    "paid_starter": _locked(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _full(),
+                },
+            },
+            {
+                "feature_id": "solution_matrix_pdf_export",
+                "feature_name": "Matrix — PDF Export",
+                "release_stage": "ga_paid",
+                "quota_unit": "exports/month",
+                "quota_resets": "monthly",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _locked(), "trial": _full(5),
+                    "paid_starter": _full(10), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _full(),
+                },
+            },
+            {
+                "feature_id": "solution_matrix_templates",
+                "feature_name": "Matrix — Starter Templates",
+                "release_stage": "ga_free",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _full(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _full(),
                 },
             },
         ],

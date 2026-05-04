@@ -2,13 +2,19 @@
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi.responses import Response
 from core.database import db
 from core.auth import get_current_user
 from models.solution_matrix_models import (
     empty_layer_set,
     normalise_layer_set,
+    normalise_matrix_mode,
     MATRIX_PARENT_LAYERS,
+    MATRIX_MODES,
+    ORG_TYPES,
 )
+from data.solution_matrix_templates import list_templates, get_template
+from utils.solution_matrix_pdf import render_matrix_pdf
 
 router = APIRouter()
 
@@ -110,6 +116,25 @@ async def delete_solution_finder(entry_id: str, user: dict = Depends(get_current
 # ADVANCED SOLUTION MATRIX
 # ========================
 
+# ---------- Templates ----------
+# NOTE: These routes must be declared BEFORE `/solution-matrices/{entry_id}` so
+# the literal path segments (`templates`) aren't captured by the entry_id route.
+@router.get("/solution-matrices/templates")
+async def list_solution_matrix_templates(user: dict = Depends(get_current_user)):
+    """Return the lightweight list of starter templates for the picker UI."""
+    return {"templates": list_templates()}
+
+
+@router.get("/solution-matrices/templates/{template_id}")
+async def get_solution_matrix_template(template_id: str, user: dict = Depends(get_current_user)):
+    """Return a single template (metadata + payload) for preview / apply."""
+    tpl = get_template(template_id)
+    if not tpl:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return tpl
+
+
+# ---------- CRUD ----------
 @router.post("/solution-matrices")
 async def create_solution_matrix(request: Request, user: dict = Depends(get_current_user)):
     body = await request.json()
@@ -131,6 +156,8 @@ async def create_solution_matrix(request: Request, user: dict = Depends(get_curr
         "simpler_help_aspect": body.get("simpler_help_aspect", ""),
         "simpler_help_level": body.get("simpler_help_level", ""),
         "simpler_help_from": body.get("simpler_help_from", ""),
+        # NEW: user-selectable matrix mode
+        "matrix_mode": normalise_matrix_mode(body.get("matrix_mode")),
         "matrix_self": normalise_layer_set(body.get("matrix_self")),
         "matrix_micro": normalise_layer_set(body.get("matrix_micro")),
         "matrix_macro": normalise_layer_set(body.get("matrix_macro")),
@@ -172,6 +199,10 @@ async def get_solution_matrix(entry_id: str, user: dict = Depends(get_current_us
     )
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
+    # Back-fill defaults so older records render cleanly in the new UI
+    entry.setdefault("matrix_mode", "accurate")
+    for layer in MATRIX_PARENT_LAYERS:
+        entry[layer] = normalise_layer_set(entry.get(layer))
     return entry
 
 
@@ -188,6 +219,7 @@ async def update_solution_matrix(entry_id: str, request: Request, user: dict = D
         "q1_all_concerns", "q2_priority_concerns",
         "simpler_solutions", "simpler_capabilities", "simpler_resources",
         "simpler_help_aspect", "simpler_help_level", "simpler_help_from",
+        "matrix_mode",
         "matrix_self", "matrix_micro", "matrix_macro",
         "solution_category", "solution_sources",
         "q4_negative_consequences", "q4_mitigation_plans", "q4_contingency_plans",
@@ -196,8 +228,9 @@ async def update_solution_matrix(entry_id: str, request: Request, user: dict = D
     for field in allowed:
         if field in body:
             if field in MATRIX_PARENT_LAYERS:
-                # Normalise nested OrgType layout (accepts flat legacy too)
                 update_fields[field] = normalise_layer_set(body[field])
+            elif field == "matrix_mode":
+                update_fields[field] = normalise_matrix_mode(body[field])
             else:
                 update_fields[field] = body[field]
     update_fields["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -215,3 +248,31 @@ async def delete_solution_matrix(entry_id: str, user: dict = Depends(get_current
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Entry not found")
     return {"message": "Entry deleted"}
+
+
+# ---------- PDF Export ----------
+@router.get("/solution-matrices/{entry_id}/pdf")
+async def export_solution_matrix_pdf(entry_id: str, user: dict = Depends(get_current_user)):
+    """Render a Solution Matrix entry as a landscape A4 PDF."""
+    entry = await db.solution_matrices.find_one(
+        {"entry_id": entry_id, "user_id": user["user_id"]}, {"_id": 0}
+    )
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    # Normalise for renderer
+    entry.setdefault("matrix_mode", "accurate")
+    for layer in MATRIX_PARENT_LAYERS:
+        entry[layer] = normalise_layer_set(entry.get(layer))
+    try:
+        pdf_bytes = render_matrix_pdf(entry)
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=f"PDF render failed: {exc}")
+    filename = f"solution_matrix_{entry_id[:8]}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )

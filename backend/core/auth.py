@@ -60,6 +60,20 @@ async def get_current_user(request: Request) -> dict:
     return user_doc
 
 
+async def get_current_user_optional(request: Request):
+    """Return user dict if a valid session exists; otherwise None (no exception).
+
+    Useful for endpoints that work both anonymously and for authenticated
+    users (e.g. the public org sub-portal feedback submission).
+    """
+    try:
+        return await get_current_user(request)
+    except HTTPException:
+        return None
+    except Exception:
+        return None
+
+
 def get_user_role(user: dict) -> str:
     return user.get("role", "user")
 

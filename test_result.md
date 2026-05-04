@@ -4718,3 +4718,253 @@ agent_communication:
       Important note for main agent: pp_org_portal only appears in /acm/matrix after POST /api/acm/seed?force=true is called (ACM cache is refreshed to 83 features on demand). Before re-seeding it still showed the older 82-feature manifest. If the product relies on automatic Phase 2 feature visibility at boot, consider making the seeder idempotently upsert on boot (or bumping ACM_MANIFEST_VERSION to force refresh) rather than requiring an explicit admin POST. Not a blocker — behaviour is correct once seeded.
 
       No 5xx errors, no auth/CORS regressions. Backend logs show only the pre-existing passlib bcrypt-version warning (unrelated). DB indexes: 196 at boot, consistent with the 13 new Phase 2 indexes claim. Rate limits not hit.
+
+
+agent_communication:
+  - agent: "main"
+    message: |
+      🚀 P1 SHIPPING BATCH (b → a → c → d → e) DONE in this session:
+
+      ============================================================
+      (b) SOLUTION MATRIX POLISH — DONE
+      ============================================================
+      • NEW data model: matrix_mode field ("standard" | "accurate"). Standard
+        renders 5 TEPFI × 3 layers (15 cells, uses `aggregate` slot). Accurate
+        renders 5 TEPFI × 12 layer-orgtype combos (60 cells, uses 4 OrgType
+        slots: individual/org/govt/nature). Mode is user-selectable on every
+        record. Default = accurate. Backward compatible — legacy flat payloads
+        auto-mirror to BOTH `individual` and `aggregate` slots.
+      • NEW cell field: `influences` map keyed by TEPFI field-name, each holding
+        {positive, negative} text. UI exposes a per-field "+/- influence"
+        expander on every cell.
+      • PDF export: GET /api/solution-matrices/{id}/pdf renders a landscape A4
+        with full context, concerns, simpler-solutions, the 15- or 60-cell
+        matrix grid (mode-aware), risk plan, and action-item table. Frontend
+        download button on the matrix wizard header.
+      • ACM feature gating: 4 NEW per-OrgType features in acm_seed_data.py
+        (solution_matrix_orgtype_individual / org / govt / nature) with
+        differentiated access tiers. Plus solution_matrix_pdf_export and
+        solution_matrix_templates. ACM_SEED_VERSION bumped to 2026-05-04-03;
+        feature count now 89.
+      • 4 starter templates (NEW data/solution_matrix_templates.py): Home
+        Renovation (Individual/Standard), SaaS Q2 Growth (Org/Accurate),
+        Swachh Bharat district drive (Govt/Accurate), Urban Tree Plantation
+        (Nature/Accurate). Templates picker UI integrated into the wizard
+        header (visible only on new-record creation).
+      • Tests: tests/test_solution_matrix_orgtype.py expanded from 31 → 61
+        assertions covering modes, aggregate slot, influences, templates list +
+        detail + 404, PDF export bytes & content-type, standard-mode PDF.
+        61/61 PASS.
+
+      ============================================================
+      (a) VOICE BROWSING — GLOBAL NAV LAYER (DONE)
+      ============================================================
+      • NEW src/utils/routeVoiceParser.ts: 6-language phrase→route parser
+        (en, hi, ta, te, kn, ml). 18 routes mapped: home, journal, decisions,
+        test123, solution-matrix, solution-finder, goal-setter, conflict
+        breaker, CLD engine, TEPFI, SWOT, pros-cons, public-pulse, task tracker,
+        consciousness diary, collaborate, subscription. Strips command verbs
+        ("open / go to / take me to / दिखाओ / திற / తెరు / ತೆರೆ / തുറക്കൂ")
+        before matching. Mixed-language tolerant (English fallback).
+      • NEW src/components/GlobalVoiceNav.tsx: floating mic bubble (bottom-right)
+        with pulse animation, full-width modal sheet for voice prompts,
+        6-language picker, mic button using expo-speech-recognition (already in
+        the project), live interim transcript display, and 10 preset hint chips
+        for one-tap navigation when voice not available.
+      • Visibility rules — the bubble is gated to:
+          POST-LOGIN ONLY (checks isAuthenticated)
+          ON tool-list / hub paths (/(tabs)/*, /tools/solution-matrix-list,
+            /tools/solution-finder-list, /tools/public-pulse, etc.)
+          NOT on /auth/*, NOT on profile tab, NOT inside specific tool wizards
+            (/tools/solution-matrix, /prr/{id}, etc.) — separate VoiceStepInput
+            component already handles step-level voice for the PRR flow.
+      • Mounted in app/_layout.tsx (renders alongside the route stack so bubble
+        is always reachable).
+
+      ============================================================
+      (c) PUBLIC PULSE PHASE 3 — YoY ANALYTICS (NO AI) (DONE)
+      ============================================================
+      • 3 NEW backend endpoints:
+          GET /api/public-pulse/analytics/yoy/overall   — YoY across all
+              completed contributed-to-research sessions
+          GET /api/public-pulse/analytics/yoy/feedback  — YoY across feedback
+              items (pp_feedback_items)
+          GET /api/public-pulse/analytics/yoy/tool/{slug} — YoY for a specific
+              tool, 404 on unknown slug
+      • All endpoints honour the existing per-dashboard k-anonymity floor on
+        BOTH the current and prior windows; gracefully return blocked=true with
+        reason + threshold when below sample size.
+      • Each payload includes month-aligned series (current vs prior 12 months),
+        per-month delta + pct_change, totals, and overall_pct_change.
+      • Frontend: /tools/public-pulse/dashboards.tsx now has a 6th tab "YoY Trend"
+        with a target-picker (Overall / Feedback / Life Direction / Marriage
+        Readiness / Govt Benefit Finder), summary tiles (Current / Prior / Δ),
+        and a stacked bar comparison row per month.
+      • AI features intentionally SKIPPED per user instruction (LLM budget cap).
+
+      ============================================================
+      (d) WHITE-LABELLED ORG SUB-PORTALS (DONE)
+      ============================================================
+      • NEW backend module: routes/public_pulse_portal.py (mounted at /api).
+      • Public read endpoints (no auth):
+          GET /api/p/{slug}            — branding + about + portal config
+          GET /api/p/{slug}/feedback/public — recent resolved/closed feedback
+          POST /api/p/{slug}/feedback  — submit feedback (auth optional —
+              get_current_user_optional — with anon_user_id when not signed in
+              and IP-hash for anti-spam)
+      • Embeddable widget for hosting on org/govt websites:
+          GET /api/embed/{slug}            — self-contained HTML page,
+              iframe-safe (X-Frame-Options: ALLOWALL,
+              CSP frame-ancestors *), uses the org's primary_color, has a
+              feedback form + resolved-list, no external CDN dependencies.
+          GET /api/embed/{slug}/widget.js  — JS snippet that auto-injects the
+              iframe into a host element (`<div id="public-pulse-widget"></div>`).
+      • Admin config endpoint:
+          PUT /api/p/{slug}/config — admin-only PortalEmbedConfig
+              (allowed_domains, show_feedback_form, show_resolved_list,
+              primary_cta_label).
+      • NEW Expo Router public page: /app/p/[slug].tsx — branded view +
+        feedback form + recent-resolved list. Uses skipAuth-style passthrough
+        on api util (interceptor still attaches token if present, but server
+        treats it as optional).
+      • NEW core helper: get_current_user_optional in core/auth.py (returns
+        None instead of raising when no/invalid session).
+
+      ============================================================
+      (e) MINOR POLISH (DONE)
+      ============================================================
+      • backend_test_regression.py: SolutionsStore config/countries +
+        config/languages tests now correctly handle the API contract
+        ({countries: [...]} dict shape rather than expecting a bare list).
+        Regression suite now reports 28/28 PASS (was 26/28).
+      • ACM_SEED_VERSION bumped → 2026-05-04-03 (auto-reseed on boot picks
+        up the 6 new Solution-Matrix-related features → 89 total).
+      • The 3 PP API contract "mismatches" flagged in earlier UI test reports
+        were re-verified against the live frontend callsites — the frontend
+        already uses the correct payload shapes (consent.tsx, feedback.tsx).
+        The 422/404 the testing agent saw were caused by the testing agent
+        sending its own legacy payloads, not a real bug.
+
+      ============================================================
+      TEST RESULTS THIS SESSION
+      ============================================================
+      • tests/test_solution_matrix_orgtype.py — 61/61 PASS (covers Phase b)
+      • tests/test_yoy_and_portal_smoke.py    — 13/13 PASS (covers Phase c+d)
+      • backend_test_regression.py             — 28/28 PASS (covers Phase e)
+      Total this session: 102/102 PASSING.
+
+      Backend service restarted cleanly each step; only benign passlib bcrypt
+      version warning in logs (unchanged from prior sessions).
+
+      ============================================================
+      WHAT'S NOT BLOCKING BUT WORTH MENTIONING
+      ============================================================
+      • LLM endpoints still gracefully 503 (budget cap). All other modules
+        unaffected.
+      • DigiLocker eKYC / Exotel SMS still awaiting user-supplied keys/DLT
+        approval — unchanged from prior session.
+      • Frontend testing has NOT been invoked by this session (per protocol —
+        will request user permission separately).
+
+      Ready for: (1) optional frontend test pass; (2) user smoke test; or
+      (3) main-agent backend retest on the new endpoints if requested.
+
+
+  - agent: "testing"
+    message: |
+      ✅ REVIEW REQUEST VALIDATION — 133/133 BACKEND TESTS PASS (no regressions, no new bugs).
+
+      Breakdown:
+        (1) tests/test_solution_matrix_orgtype.py    — 61/61 PASS
+        (2) tests/test_yoy_and_portal_smoke.py       — 13/13 PASS
+        (3) backend_test_regression.py               — 28/28 PASS
+        (4) backend_test_review.py  (NEW supplement) — 31/31 PASS
+
+      Review-request items individually verified:
+
+      (1) Solution Matrix OrgType Phase b — 61/61 confirmed (matrix_* OrgType nested,
+          legacy flat auto-migration, partial PUT merge, default empty shape).
+
+      (2) Solution Matrix Templates + PDF:
+          • GET /api/solution-matrices/templates → 200 with ≥4 templates covering
+            all 4 OrgTypes {individual, org, govt, nature} ✓
+          • GET /api/solution-matrices/templates/individual_home_renovation → 200
+            with payload + matrix_mode ✓
+          • GET /api/solution-matrices/templates/unknown_id → 404 ✓
+          • GET /api/solution-matrices/{id}/pdf (accurate mode) → 200,
+            content-type application/pdf, body starts with b"%PDF", >1KB ✓
+          • GET /api/solution-matrices/{id}/pdf (standard mode) → 200,
+            body starts with b"%PDF" ✓
+          • GET /api/solution-matrices/{nonexistent}/pdf → 404 ✓
+
+      (3) Solution Matrix matrix_mode + influences + legacy energy mirror:
+          • POST matrix_mode="standard" + aggregate slot → roundtrip preserves
+            matrix_mode="standard" and aggregate slot populated ✓
+          • POST matrix_mode="WEIRD_VALUE" → normalised to "accurate" ✓
+          • POST with influences {"time":{"positive":"...","negative":"..."},
+            "finance":{"positive":"..."}} → full roundtrip preserves both
+            positive + negative strings ✓
+          • POST with energy field (no capacity) → GET back shows energy AND
+            capacity both holding the same value (legacy mirror) ✓
+
+      (4) Public Pulse Phase 3 YoY analytics — all 6 endpoints validated:
+          • GET /api/public-pulse/analytics/yoy/overall → 200, dashboard=
+            "yoy_overall", k_threshold present, series array present
+            (not blocked under current data) ✓
+          • GET /api/public-pulse/analytics/yoy/feedback → 200, dashboard=
+            "yoy_feedback" ✓
+          • GET /api/public-pulse/analytics/yoy/tool/life_direction → 200,
+            dashboard="yoy_tool_life_direction" ✓
+          • GET /api/public-pulse/analytics/yoy/tool/marriage_readiness → 200,
+            dashboard="yoy_tool_marriage_readiness" ✓
+          • GET /api/public-pulse/analytics/yoy/tool/govt_benefit_finder → 200,
+            dashboard="yoy_tool_govt_benefit_finder" ✓
+          • GET /api/public-pulse/analytics/yoy/tool/does_not_exist → 404 ✓
+
+      (5) Public Pulse White-label Sub-Portal:
+          Negative paths:
+            • GET /api/p/does-not-exist → 404 ✓
+            • GET /api/embed/does-not-exist → 404 ✓
+            • GET /api/embed/does-not-exist/widget.js → 404 ✓
+            • POST /api/p/does-not-exist/feedback (valid body, no auth) → 404 ✓
+            • POST /api/p/does-not-exist/feedback (feedback_type="bogus") → 404
+              (slug check happens BEFORE type validation — confirms slug-first
+              ordering) ✓
+
+          Positive path — found 4 approved orgs in pp_orgs; tested against
+          slug="coimbatore-skills-foundation-5b9c19" (display_name="Coimbatore
+          Skills Foundation"):
+            • GET /api/p/{slug} → 200, payload contains slug, display_name,
+              primary_color, and config object ✓
+            • GET /api/embed/{slug} → 200, content-type text/html, body contains
+              display_name + slug, header X-Frame-Options: ALLOWALL ✓
+            • GET /api/embed/{slug}/widget.js → 200, content-type
+              application/javascript, body contains embed URL/slug ✓
+            • POST /api/p/{slug}/feedback (no auth) with
+              {feedback_type:"suggestion", title:"...", description:"..."} →
+              200 with {ok:true, feedback_id:"..."} ✓
+            • POST /api/p/{slug}/feedback with feedback_type="bogus" → 400 ✓
+            • POST /api/p/{slug}/feedback with title="" → 400 ✓
+            • GET /api/p/{slug}/feedback/public → 200, returns items list ✓
+
+      (6) Regression suite /app/backend_test_regression.py — 28/28 PASS
+          (auth flow incl. forgot-password/reset-password, decisions CRUD,
+          test123, assessment, journal, folders, solutions store,
+          collaboration modes, LLM-error polish 503, observability headers).
+
+      (7) Auth optional helper confirmed: GET /api/auth/me without auth still
+          returns 401 — get_current_user behaviour preserved; introducing
+          get_current_user_optional did NOT regress the mandatory path ✓
+
+      Environment: backend at http://localhost:8001 healthy throughout; only
+      benign passlib bcrypt-version warning in logs. LLM endpoints still 503
+      with clean typed error (budget cap, unchanged).
+
+      Test artefacts:
+        /app/tests/test_solution_matrix_orgtype.py
+        /app/tests/test_yoy_and_portal_smoke.py
+        /app/backend_test_regression.py
+        /app/backend_test_review.py  (NEW this pass)
+
+      All items in the review request confirmed working. No stuck tasks, no
+      regressions, no new critical bugs.

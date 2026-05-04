@@ -1,9 +1,11 @@
 import React, { useEffect } from 'react';
+import { View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from '../src/store/authStore';
 import { COLORS } from '../src/constants/colors';
 import { registerForPushNotifications, addNotificationResponseListener } from '../src/utils/pushNotifications';
+import GlobalVoiceNav from '../src/components/GlobalVoiceNav';
 
 export default function RootLayout() {
   const checkAuth = useAuthStore((state) => state.checkAuth);
@@ -181,6 +183,7 @@ export default function RootLayout() {
           }} 
         />
       </Stack>
+      <GlobalVoiceNav />
     </>
   );
 }

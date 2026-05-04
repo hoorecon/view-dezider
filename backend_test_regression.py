@@ -283,7 +283,8 @@ print("\n========== 4. SOLUTIONS STORE ==========")
 
 r = req("GET", "/solutions-store/config/countries", token=token)
 if r.status_code == 200:
-    arr = r.json()
+    payload = r.json()
+    arr = payload.get("countries") if isinstance(payload, dict) else payload
     log("SolutionsStore: config/countries", isinstance(arr, list) and len(arr) == 7,
         f"status=200 count={len(arr) if isinstance(arr, list) else 'n/a'}")
 else:
@@ -291,7 +292,8 @@ else:
 
 r = req("GET", "/solutions-store/config/languages", token=token)
 if r.status_code == 200:
-    arr = r.json()
+    payload = r.json()
+    arr = payload.get("languages") if isinstance(payload, dict) else payload
     log("SolutionsStore: config/languages", isinstance(arr, list) and len(arr) == 9,
         f"status=200 count={len(arr) if isinstance(arr, list) else 'n/a'}")
 else:
