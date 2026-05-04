@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request, Depends
 from core.database import db
 from core.auth import get_current_user
+from core.rate_limiting import limiter, AI_LIMIT
 
 router = APIRouter(prefix="/ai-assistant", tags=["AI Solution Assistant"])
 
@@ -162,6 +163,7 @@ async def _gather_user_context(user_id: str) -> str:
 
 
 @router.post("/conversations/{conv_id}/message")
+@limiter.limit(AI_LIMIT)
 async def send_message(conv_id: str, request: Request, user: dict = Depends(get_current_user)):
     """Send a message to the AI assistant and get a response."""
     body = await request.json()
@@ -263,6 +265,7 @@ GUIDELINES:
 
 
 @router.post("/quick-ask")
+@limiter.limit(AI_LIMIT)
 async def quick_ask(request: Request, user: dict = Depends(get_current_user)):
     """Quick one-shot question without creating a conversation."""
     body = await request.json()

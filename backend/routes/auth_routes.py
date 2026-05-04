@@ -15,6 +15,7 @@ from core.auth import (
     SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_DAYS, pwd_context,
 )
 from core.helpers import generate_user_id
+from core.rate_limiting import limiter, AUTH_LIMIT
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Auth"])
@@ -55,7 +56,8 @@ class SetPasswordRequest(BaseModel):
 # ========================
 
 @router.post("/auth/register")
-async def register(user_data: UserCreate, response: Response):
+@limiter.limit(AUTH_LIMIT)
+async def register(request: Request, user_data: UserCreate, response: Response):
     """Register a new user with email/password"""
     existing_user = await db.users.find_one({"email": user_data.email}, {"_id": 0})
     if existing_user:
@@ -100,7 +102,8 @@ async def register(user_data: UserCreate, response: Response):
 
 
 @router.post("/auth/login")
-async def login(user_data: UserLogin, response: Response):
+@limiter.limit(AUTH_LIMIT)
+async def login(request: Request, user_data: UserLogin, response: Response):
     """Login with email/password"""
     user_doc = await db.users.find_one({"email": user_data.email}, {"_id": 0})
 
@@ -213,7 +216,8 @@ async def logout(request: Request, response: Response):
 
 
 @router.post("/auth/forgot-password")
-async def forgot_password(data: ForgotPasswordRequest):
+@limiter.limit(AUTH_LIMIT)
+async def forgot_password(request: Request, data: ForgotPasswordRequest):
     """Generate OTP for password reset"""
     user_doc = await db.users.find_one({"email": data.email}, {"_id": 0})
     if not user_doc:
@@ -232,7 +236,8 @@ async def forgot_password(data: ForgotPasswordRequest):
 
 
 @router.post("/auth/reset-password")
-async def reset_password(data: ResetPasswordRequest):
+@limiter.limit(AUTH_LIMIT)
+async def reset_password(request: Request, data: ResetPasswordRequest):
     """Reset password using OTP"""
     reset_doc = await db.password_resets.find_one({"email": data.email, "otp": data.otp})
     if not reset_doc:

@@ -13,6 +13,7 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 from core.database import db
 from core.auth import get_current_user
+from core.rate_limiting import limiter, AI_LIMIT
 import os
 import uuid
 import math
@@ -178,6 +179,7 @@ async def list_module_clds(user: dict = Depends(get_current_user)):
 
 
 @router.post("/module/{module_type}/generate")
+@limiter.limit(AI_LIMIT)
 async def generate_module_cld(module_type: str, request: Request, user: dict = Depends(get_current_user)):
     """Generate a CLD for a specific module or a master CLD aggregating all modules."""
     if module_type not in MODULE_TYPES:

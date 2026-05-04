@@ -8,12 +8,14 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request, Depends
 from core.database import db
 from core.auth import get_current_user
+from core.rate_limiting import limiter, AI_LIMIT
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["AI Tools"])
 
 
 @router.post("/tepfi-auto-map")
+@limiter.limit(AI_LIMIT)
 async def tepfi_auto_map(request: Request, user: dict = Depends(get_current_user)):
     """AI auto-map factors to TEPFI elements and solution layers"""
     from emergentintegrations.llm.chat import LlmChat, UserMessage
@@ -71,6 +73,7 @@ Return ONLY valid JSON array, no markdown, no explanation:
 
 
 @router.post("/factors/fetch-data")
+@limiter.limit(AI_LIMIT)
 async def fetch_factor_data(request: Request, user: dict = Depends(get_current_user)):
     """Fetch actual values for factors from configured data sources (webhook, web_surf, ai_llm)."""
     from emergentintegrations.llm.chat import LlmChat, UserMessage
@@ -238,6 +241,7 @@ Return ONLY valid JSON, no markdown."""
 
 
 @router.post("/cld/analyze")
+@limiter.limit(AI_LIMIT)
 async def cld_analyze(request: Request, user: dict = Depends(get_current_user)):
     """Generate a Causal Loop Diagram from factors and auto-derive Steps 3-5 values."""
     from emergentintegrations.llm.chat import LlmChat, UserMessage

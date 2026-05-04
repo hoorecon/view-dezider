@@ -1,29 +1,89 @@
 """
 View Dezider API — Decision Intelligence by Venture Buddha
-Slim entry point: app init, CORS, and router mounting.
-All route logic is in /routes/*.py
+Slim entry point: app init, CORS, rate-limiting, routers, lifecycle.
+All route logic lives in /routes/*.py
 """
 
 import logging
+import time
+import uuid
 from pathlib import Path
+
 from dotenv import load_dotenv
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 
-# Load env
+# Load env BEFORE importing any module that reads os.environ at import time
 ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
+load_dotenv(ROOT_DIR / ".env")
 
 # Ensure static dir exists
-(ROOT_DIR / 'static').mkdir(exist_ok=True)
+(ROOT_DIR / "static").mkdir(exist_ok=True)
+
+
+# ========================
+# LOGGING (early — so subsequent imports can log)
+# ========================
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
 
 # ========================
 # APP + ROUTER SETUP
 # ========================
-
-app = FastAPI(title="View Dezider API", description="Decision Intelligence by Venture Buddha")
+app = FastAPI(
+    title="View Dezider API",
+    description="Decision Intelligence by Venture Buddha",
+)
 api_router = APIRouter(prefix="/api")
+
+
+# ========================
+# RATE LIMITING (slowapi)
+# ========================
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from core.rate_limiting import limiter
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
+
+# ========================
+# REQUEST LOGGING + REQUEST-ID MIDDLEWARE
+# ========================
+@app.middleware("http")
+async def request_observability_middleware(request: Request, call_next):
+    """Attach a per-request id, log latency, and surface slow queries."""
+    request_id = request.headers.get("X-Request-ID", uuid.uuid4().hex[:12])
+    request.state.request_id = request_id
+    start = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception as e:
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        logger.exception(
+            f"req={request_id} {request.method} {request.url.path} "
+            f"FAILED in {elapsed_ms:.0f}ms — {type(e).__name__}"
+        )
+        raise
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    response.headers["X-Request-ID"] = request_id
+    response.headers["X-Response-Time-MS"] = f"{elapsed_ms:.0f}"
+    # Only log slow requests / errors at INFO; keep success logs quiet to avoid noise
+    if response.status_code >= 500 or elapsed_ms > 1500:
+        logger.warning(
+            f"req={request_id} {request.method} {request.url.path} "
+            f"-> {response.status_code} in {elapsed_ms:.0f}ms"
+        )
+    return response
 
 
 # ========================
@@ -129,13 +189,34 @@ api_router.include_router(pna_router)
 api_router.include_router(lifestyle_designer_router)
 api_router.include_router(ai_assistant_router)
 
+
 # ========================
-# HEALTH CHECK
+# HEALTH CHECK + INFRA STATUS
 # ========================
 
 @api_router.get("/health")
 async def health_check():
     return {"status": "ok", "service": "View Dezider API"}
+
+
+@api_router.get("/health/ready")
+async def readiness_check():
+    """Probes upstream dependencies. Returns 503 if anything is down."""
+    from core.database import client as mongo_client
+    try:
+        # ping is cheap — confirms motor connection is alive
+        await mongo_client.admin.command("ping")
+        mongo_status = "ok"
+        mongo_ok = True
+    except Exception as e:
+        mongo_status = f"error: {str(e)[:80]}"
+        mongo_ok = False
+
+    payload = {
+        "status": "ok" if mongo_ok else "degraded",
+        "checks": {"mongodb": mongo_status},
+    }
+    return JSONResponse(payload, status_code=200 if mongo_ok else 503)
 
 
 # Mount the api_router onto the app
@@ -143,47 +224,39 @@ app.include_router(api_router)
 
 
 # ========================
-# MIDDLEWARE
+# CORS
 # ========================
-
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID", "X-Response-Time-MS", "X-RateLimit-Limit",
+                    "X-RateLimit-Remaining", "X-RateLimit-Reset"],
 )
-
-
-# ========================
-# HEALTH CHECK
-# ========================
-
-@api_router.get("/health")
-async def health_check():
-    return {"status": "ok", "service": "View Dezider API"}
 
 
 # ========================
 # LIFECYCLE EVENTS
 # ========================
+from core.database import client, ensure_indexes
 
-from core.database import client
+
+@app.on_event("startup")
+async def startup_db_client():
+    """Ensure all production indexes exist before serving traffic."""
+    try:
+        await ensure_indexes()
+    except Exception as e:
+        # Don't crash boot — index creation is idempotent and self-healing
+        logger.error(f"Index initialization failed: {e}")
+
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
 
+
 # Mount static files for document downloads
 app.mount("/api/static", StaticFiles(directory=str(ROOT_DIR / "static")), name="static")
-
-
-# ========================
-# LOGGING
-# ========================
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)

@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request, Depends
 from core.database import db
 from core.auth import get_current_user
+from core.rate_limiting import limiter, AI_LIMIT
 
 router = APIRouter(prefix="/conflict-breaker", tags=["Conflict Breaker"])
 
@@ -646,7 +647,8 @@ async def _ai_generate(prompt: str, session_id: str = "") -> str:
 
 
 @router.post("/sessions/{session_id}/ai-generate/{stage}")
-async def ai_generate_for_stage(session_id: str, stage: str, user: dict = Depends(get_current_user)):
+@limiter.limit(AI_LIMIT)
+async def ai_generate_for_stage(session_id: str, stage: str, request: Request, user: dict = Depends(get_current_user)):
     """Generate AI insights for a specific stage using all data collected so far."""
     q = {"session_id": session_id, "user_id": user["user_id"]}
     p = {"_id": 0}
