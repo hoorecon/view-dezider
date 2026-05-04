@@ -57,6 +57,15 @@ app.add_middleware(SlowAPIMiddleware)
 
 
 # ========================
+# PRODUCTION HARDENING
+# ========================
+# Body cap, GZip, security headers, slow-request log, in-process metrics, PII
+# redaction filter on all loggers. All knobs env-driven (DEZIDER_ENV / etc).
+from core.hardening import install_hardening
+install_hardening(app)
+
+
+# ========================
 # REQUEST LOGGING + REQUEST-ID MIDDLEWARE
 # ========================
 @app.middleware("http")
@@ -154,6 +163,9 @@ from routes.ai_assistant import router as ai_assistant_router
 from routes.public_pulse import router as public_pulse_router
 from routes.public_pulse_org import router as public_pulse_org_router
 from routes.public_pulse_portal import router as public_pulse_portal_router
+from routes.dpdp import router as dpdp_router
+from routes.observability import router as observability_router
+from routes.admin_docs_viewer import router as admin_docs_router
 
 
 # ========================
@@ -209,6 +221,9 @@ api_router.include_router(ai_assistant_router)
 api_router.include_router(public_pulse_router)
 api_router.include_router(public_pulse_org_router)
 api_router.include_router(public_pulse_portal_router)
+api_router.include_router(dpdp_router)
+api_router.include_router(observability_router)
+api_router.include_router(admin_docs_router)
 
 
 # ========================

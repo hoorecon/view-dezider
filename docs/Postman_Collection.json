@@ -1,0 +1,106 @@
+{
+  "info": {
+    "name": "Dezider API v3.4",
+    "description": "Generated 2026-05-04. baseUrl + session_token are env vars.",
+    "_postman_id": "dezider-3-4",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key": "baseUrl", "value": "http://localhost:8001"},
+    {"key": "session_token", "value": ""}
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{"key": "token", "value": "{{session_token}}", "type": "string"}]
+  },
+  "item": [
+    {
+      "name": "0. Auth",
+      "item": [
+        {"name": "Register", "request": {"method": "POST", "url": "{{baseUrl}}/api/auth/register",
+          "header": [{"key": "Content-Type", "value": "application/json"}],
+          "body": {"mode": "raw", "raw": "{\n  \"email\": \"smoke{{$randomInt}}@example.com\",\n  \"password\": \"SmokePass2026!\",\n  \"name\": \"Smoke Tester\"\n}"}}},
+        {"name": "Login", "request": {"method": "POST", "url": "{{baseUrl}}/api/auth/login",
+          "header": [{"key": "Content-Type", "value": "application/json"}],
+          "body": {"mode": "raw", "raw": "{\n  \"email\": \"\",\n  \"password\": \"\"\n}"}},
+          "event": [{"listen": "test", "script": {"exec": ["const r = pm.response.json(); if (r.session_token) pm.environment.set('session_token', r.session_token);"]}}]},
+        {"name": "Me", "request": {"method": "GET", "url": "{{baseUrl}}/api/auth/me"}},
+        {"name": "Logout", "request": {"method": "POST", "url": "{{baseUrl}}/api/auth/logout"}}
+      ]
+    },
+    {
+      "name": "1. Health & Metrics",
+      "item": [
+        {"name": "Health", "request": {"method": "GET", "url": "{{baseUrl}}/api/health"}},
+        {"name": "Health Ready", "request": {"method": "GET", "url": "{{baseUrl}}/api/health/ready"}},
+        {"name": "Health Live", "request": {"method": "GET", "url": "{{baseUrl}}/api/health/live"}},
+        {"name": "Version", "request": {"method": "GET", "url": "{{baseUrl}}/api/health/version"}},
+        {"name": "Metrics (Prometheus)", "request": {"method": "GET", "url": "{{baseUrl}}/api/metrics"}},
+        {"name": "Metrics (JSON)", "request": {"method": "GET", "url": "{{baseUrl}}/api/metrics/json"}}
+      ]
+    },
+    {
+      "name": "2. DPDP",
+      "item": [
+        {"name": "Export", "request": {"method": "GET", "url": "{{baseUrl}}/api/dpdp/export"}},
+        {"name": "Delete Request", "request": {"method": "POST", "url": "{{baseUrl}}/api/dpdp/delete-request"}},
+        {"name": "Cancel Delete", "request": {"method": "POST", "url": "{{baseUrl}}/api/dpdp/cancel-delete"}},
+        {"name": "Status", "request": {"method": "GET", "url": "{{baseUrl}}/api/dpdp/status"}},
+        {"name": "Admin Audit Log", "request": {"method": "GET", "url": "{{baseUrl}}/api/dpdp/admin/audit-log?limit=50"}},
+        {"name": "Admin Purge Pending", "request": {"method": "POST", "url": "{{baseUrl}}/api/dpdp/admin/purge-pending"}}
+      ]
+    },
+    {
+      "name": "3. Solution Matrix",
+      "item": [
+        {"name": "List Templates", "request": {"method": "GET", "url": "{{baseUrl}}/api/solution-matrices/templates"}},
+        {"name": "Get Template", "request": {"method": "GET", "url": "{{baseUrl}}/api/solution-matrices/templates/individual_home_renovation"}},
+        {"name": "Create (Standard)", "request": {"method": "POST", "url": "{{baseUrl}}/api/solution-matrices",
+          "header": [{"key": "Content-Type", "value": "application/json"}],
+          "body": {"mode": "raw", "raw": "{\n  \"matrix_mode\": \"standard\",\n  \"area_of_life\": \"career\",\n  \"smart_goal\": \"Sample 3-month plan\",\n  \"matrix_self\": { \"aggregate\": { \"time\": \"5h/wk\", \"energy\": \"moderate\", \"people\": \"self\", \"finance\": \"low\", \"infrastructure\": \"home\", \"influences\": { \"time\": {\"positive\": \"weekends free\", \"negative\": \"weekday busy\"} } } }\n}"}}},
+        {"name": "List My Matrices", "request": {"method": "GET", "url": "{{baseUrl}}/api/solution-matrices"}},
+        {"name": "Get Matrix", "request": {"method": "GET", "url": "{{baseUrl}}/api/solution-matrices/{{entry_id}}"}},
+        {"name": "Update Matrix", "request": {"method": "PUT", "url": "{{baseUrl}}/api/solution-matrices/{{entry_id}}",
+          "header": [{"key": "Content-Type", "value": "application/json"}],
+          "body": {"mode": "raw", "raw": "{\n  \"q1_all_concerns\": \"Updated\"\n}"}}},
+        {"name": "Export PDF", "request": {"method": "GET", "url": "{{baseUrl}}/api/solution-matrices/{{entry_id}}/pdf"}},
+        {"name": "Delete Matrix", "request": {"method": "DELETE", "url": "{{baseUrl}}/api/solution-matrices/{{entry_id}}"}}
+      ]
+    },
+    {
+      "name": "5. Public Pulse",
+      "item": [
+        {"name": "Consent (POST)", "request": {"method": "POST", "url": "{{baseUrl}}/api/public-pulse/consent",
+          "header": [{"key": "Content-Type", "value": "application/json"}],
+          "body": {"mode": "raw", "raw": "{\n  \"purposes\": {\"research\": true},\n  \"data_categories_allowed\": [\"demographic\", \"tool_responses\"]\n}"}}},
+        {"name": "Feedback (POST)", "request": {"method": "POST", "url": "{{baseUrl}}/api/public-pulse/feedback",
+          "header": [{"key": "Content-Type", "value": "application/json"}],
+          "body": {"mode": "raw", "raw": "{\n  \"feedback_text\": \"Sample feedback\",\n  \"feedback_type\": \"suggestion\",\n  \"district\": \"Bengaluru\",\n  \"severity\": \"low\"\n}"}}},
+        {"name": "Dashboard — District Demand", "request": {"method": "GET", "url": "{{baseUrl}}/api/public-pulse/dashboards/district-demand-heatmap"}},
+        {"name": "YoY Overall", "request": {"method": "GET", "url": "{{baseUrl}}/api/public-pulse/analytics/yoy/overall"}},
+        {"name": "YoY Feedback", "request": {"method": "GET", "url": "{{baseUrl}}/api/public-pulse/analytics/yoy/feedback"}},
+        {"name": "YoY Tool", "request": {"method": "GET", "url": "{{baseUrl}}/api/public-pulse/analytics/yoy/tool/life_direction"}}
+      ]
+    },
+    {
+      "name": "7. Public Sub-Portal (no auth)",
+      "item": [
+        {"name": "Get Portal", "request": {"method": "GET", "url": "{{baseUrl}}/api/p/coimbatore-skills-foundation-5b9c19"}},
+        {"name": "Public Feedback", "request": {"method": "GET", "url": "{{baseUrl}}/api/p/coimbatore-skills-foundation-5b9c19/feedback/public"}},
+        {"name": "Submit Feedback", "request": {"method": "POST", "url": "{{baseUrl}}/api/p/coimbatore-skills-foundation-5b9c19/feedback",
+          "header": [{"key": "Content-Type", "value": "application/json"}],
+          "body": {"mode": "raw", "raw": "{\n  \"feedback_type\": \"suggestion\",\n  \"title\": \"Sample\",\n  \"description\": \"Postman submission\"\n}"}}},
+        {"name": "Embed HTML", "request": {"method": "GET", "url": "{{baseUrl}}/api/embed/coimbatore-skills-foundation-5b9c19"}},
+        {"name": "Embed widget.js", "request": {"method": "GET", "url": "{{baseUrl}}/api/embed/coimbatore-skills-foundation-5b9c19/widget.js"}}
+      ]
+    },
+    {
+      "name": "8. ACM",
+      "item": [
+        {"name": "My Access", "request": {"method": "GET", "url": "{{baseUrl}}/api/acm/my-access"}},
+        {"name": "Feature Detail", "request": {"method": "GET", "url": "{{baseUrl}}/api/acm/feature/solution_matrix"}},
+        {"name": "Admin Seed", "request": {"method": "POST", "url": "{{baseUrl}}/api/acm/seed?force=true"}}
+      ]
+    }
+  ]
+}

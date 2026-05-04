@@ -859,12 +859,23 @@ export default function SolutionMatrixScreen() {
           </View>
           <View style={styles.headerActions}>
             {!editId && (
-              <TouchableOpacity onPress={openTemplatePicker} style={styles.headerAction}>
+              <TouchableOpacity
+                onPress={openTemplatePicker}
+                style={styles.headerAction}
+                accessibilityLabel="matrix-templates-icon"
+                testID="matrix-templates-icon"
+              >
                 <Ionicons name="albums" size={20} color="#FFF" />
               </TouchableOpacity>
             )}
             {editId && pdfAccess.access_level !== 'hidden' && (
-              <TouchableOpacity onPress={handleExportPdf} style={styles.headerAction} disabled={exporting}>
+              <TouchableOpacity
+                onPress={handleExportPdf}
+                style={styles.headerAction}
+                disabled={exporting}
+                accessibilityLabel="matrix-download-icon"
+                testID="matrix-download-icon"
+              >
                 {exporting ? <ActivityIndicator size="small" color="#FFF" />
                   : <Ionicons name={pdfAccess.access_level === 'locked' ? 'lock-closed' : 'download'} size={20} color="#FFF" />}
               </TouchableOpacity>
