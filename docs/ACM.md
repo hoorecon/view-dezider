@@ -1,6 +1,6 @@
 # Access Control Matrix (ACM) — Dezider
 
-_metadata: { "version": "3.5", "updated": "2026-05-04", "seed_version": "2026-05-04-04" }
+_metadata: { "version": "3.5.1", "updated": "2026-05-04", "seed_version": "2026-05-04-04" }
 
 ## Concept
 Every feature gated by a row in `acm_features`. Feature has `feature_id`,
@@ -13,7 +13,7 @@ optional `quota`).
 ## Release stages
 `internal_only | alpha | beta | ga_free | ga_paid | ga_enterprise | deprecated`
 
-## Counts (v3.5)
+## Counts (v3.5.1)
 ```
 Total modules: 32
 Total features: 89
@@ -27,6 +27,7 @@ Seed version: 2026-05-04-04
 - `solution_matrix_templates`
 - `daily_time_log` (implicit via /api route, no explicit feature_id yet)
 - `time_dezider_guidance`
+- `privacy_data_export` / `privacy_data_delete` — DPDP rights; no quota
 
 ### ga_paid (trial + paid)
 - `solution_matrix_orgtype_org / govt / nature`

@@ -183,13 +183,14 @@ async def list_services(
     """Surface Solutions Store listings that claim to save time, filtered by
     requested save bucket. Orgs are auto-linked via solution.org_id.
     """
-    # Solutions Store uses the `solutions_store` collection with
-    # approval_status="approved" + visibility="PUBLIC" as the gate.
-    q: Dict[str, Any] = {
-        "approval_status": "approved",
-        "visibility": "PUBLIC",
-        "status": "active",
-    }
+    # Solutions Store has two visibility paths for authorized listings:
+    #   - system-seeded: is_authorized=True
+    #   - user-submitted PUBLIC: visibility=PUBLIC + approval_status=approved
+    vis_clause: List[Dict[str, Any]] = [
+        {"is_authorized": True},
+        {"visibility": "PUBLIC", "approval_status": "approved"},
+    ]
+    q: Dict[str, Any] = {"status": "active", "$or": vis_clause}
     if save_minutes_per_day:
         q["time_save_per_day_min"] = {"$gte": max(0, int(save_minutes_per_day) - 30)}
     if save_minutes_per_week:
@@ -236,7 +237,7 @@ async def list_services(
 # ---------------------------------------------------------------------------
 @router.post("/purchase")
 async def purchase(body: PurchaseBody, request: Request, user: dict = Depends(get_current_user)):
-    sol = await db.solutions_store_solutions.find_one(
+    sol = await db.solutions_store.find_one(
         {"solution_id": body.solution_id}, {"_id": 0},
     )
     if not sol:
@@ -248,8 +249,8 @@ async def purchase(body: PurchaseBody, request: Request, user: dict = Depends(ge
         "order_id": order_id,
         "user_id": user["user_id"],
         "solution_id": body.solution_id,
-        "solution_title": sol.get("title"),
-        "org_id": sol.get("posted_by_org_id"),
+        "solution_title": sol.get("name") or sol.get("title"),
+        "org_id": sol.get("org_id") or sol.get("posted_by_org_id"),
         "price_inr": sol.get("price_inr"),
         "save_minutes_per_day": body.save_minutes_per_day,
         "save_minutes_per_week": body.save_minutes_per_week,

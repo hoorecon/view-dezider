@@ -5559,3 +5559,198 @@ agent_communication:
 
       ✅ 100% GREEN ON ALL REVIEW REQUEST ITEMS — main agent cleared
       to proceed with frontend cycle 2.
+
+
+---
+
+## 2026-05-04 v3.5.1 — Privacy & Data screen + Time Store seed fix
+
+backend:
+  - task: "Time Store /services visibility filter"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/routes/time_store_engine.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Relaxed the filter to accept is_authorized=True OR (visibility=PUBLIC + approval_status=approved) so system-seeded catalogue surfaces in the Time Store. Backend healthy & /services returns 27 items (20 with time_save_per_day_min). Needs backend agent to regression-test the purchase / delegate / time-audit endpoints after the collection-name fix on /time-store/purchase (was solutions_store_solutions, now solutions_store)."
+
+  - task: "Seed time-save metadata on Solutions Store"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/scripts/seed_time_store_services.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Idempotent migration: patched 7 existing items + inserted 8 new time-saver SKUs (BigBasket, Urban Company, UClean, ClearTax, GetFriday VA, FreshMenu, DriveU, Zoho Books). All marked is_authorized=true + approval_status=approved + visibility=PUBLIC with price_inr + price_model + time_save_per_day_min + time_save_per_week_min. Verified via curl /api/time-store/services — returns 20 items with time_save fields."
+
+frontend:
+  - task: "Privacy & Data screen (DPDP Act 2023 UX)"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/tools/privacy-data.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "New screen at /tools/privacy-data bound to GET /api/dpdp/export (triggers Share sheet on native or clipboard on web), POST /api/dpdp/delete-request (requires typed confirmation DELETE MY ACCOUNT + optional reason), POST /api/dpdp/cancel-delete, GET /api/dpdp/status. Link added to Profile tab above Logout. Uses existing showAlert util for cross-platform confirmation."
+
+  - task: "Accountability Trilogy UAT — /tools/daily-time-log, /tools/time-dezider, /tools/time-store"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/tools/{daily-time-log,time-dezider,time-store}.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "All 3 screens built in prior session; backend all green (156/156). Needs frontend E2E UAT to verify render + happy-path CRUD + nudge flow + service purchase (MOCKED). Time Store should now show populated services tab thanks to v3.5.1 seed fix."
+
+metadata:
+  created_by: "main_agent"
+  version: "3.5.1"
+  test_sequence: 18
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "Time Store /services visibility filter"
+    - "Seed time-save metadata on Solutions Store"
+    - "Privacy & Data screen (DPDP Act 2023 UX)"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+
+# ===== v3.5.1 Targeted Regression — Time Store + DPDP (testing agent, 2026-05-04) =====
+
+backend_v3_5_1:
+  - task: "Time Store /services visibility filter"
+    implemented: true
+    working: true
+    file: "backend/routes/time_store_engine.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ PASSED. Tested via /app/backend_test.py against live BE on :8001.
+          - GET /api/time-store/services (no filter) → 200, services.length = 27 (>=20 expected).
+            buckets_per_day=[30,60,120], buckets_per_week=[180,300,600,900] ✓
+            20 services carry time_save_per_day_min / time_save_per_week_min metadata.
+          - GET /api/time-store/services?save_minutes_per_day=60 → 200, 7 services,
+            ALL have time_save_per_day_min >= 30 ✓ (filter relax = -30 working).
+          - GET /api/time-store/services?save_minutes_per_week=300 → 200, 6 services,
+            ALL have time_save_per_week_min >= 240 ✓ (filter relax = -60 working).
+          - Visibility filter relaxation confirmed: catalogue includes both
+            is_authorized=True system-seeded SKUs and PUBLIC/approved listings.
+          - Purchase collection-name fix verified: POST /api/time-store/purchase
+            with a solution_id from the catalogue returned 200
+            { order_id: "TS-81edb3a825", status: "pending_payment",
+              payment_provider: "mock" } — NO 404 (previous bug not present).
+            GET /api/time-store/purchases lists the new order with
+            payment_provider="mock". ✓
+          - Delegate negative case (source_type="INVALID") → 400 ✓
+            Delegate positive case (ctt_task) → 200 + delegation_id "DEL-…" ✓
+            GET /api/time-store/delegations → 200 listing ✓
+          - GET /api/time-store/time-audit → 200; keys present:
+            opportunities (empty as expected for this user), 
+            total_minutes_saveable_per_week=0, total_hours_saveable_per_week=0.0. ✓
+
+  - task: "Seed time-save metadata on Solutions Store"
+    implemented: true
+    working: true
+    file: "backend/scripts/seed_time_store_services.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ PASSED. Idempotency verified by running the seed script a SECOND time:
+            existing patched: 7
+            new inserted:     0
+            total with time_save_per_day_min: 20
+          No duplicate inserts; the upsert-by-seed_key path works. The 7 existing
+          system-seeded SKUs are correctly patched (time_save_per_day_min /
+          time_save_per_week_min). 8 brand-new Time Store SKUs (BigBasket,
+          Urban Company, UClean, ClearTax, GetFriday, FreshMenu, DriveU, Zoho Books)
+          are present and discoverable via /api/time-store/services with the
+          relaxed visibility filter.
+
+  - task: "DPDP user endpoints — export / delete-request / cancel / status roundtrip"
+    implemented: true
+    working: true
+    file: "backend/routes/dpdp.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ PASSED end-to-end as a logged-in regular user
+          (harden_1777921741@example.com).
+          - GET /api/dpdp/status (initial) → 200,
+            { deletion_status:"none", deletion_requested_at:null, deletion_grace_until:null }
+          - GET /api/dpdp/export → 200, 973 bytes, top-level keys
+            ["user_id","email","exported_at","collections"]; collections
+            exported = ["users","user_sessions"] (only collections with rows
+            for this user are emitted, by design).
+          - POST /api/dpdp/delete-request {"confirmation":"DELETE MY ACCOUNT","reason":"uat"}
+            → 200, { deletion_status:"pending", grace_until:"…+7d", grace_days:7 }.
+          - GET /api/dpdp/status → 200,
+            { deletion_status:"pending", deletion_requested_at:<ts>, deletion_grace_until:<ts+7d> } ✓
+          - POST /api/dpdp/cancel-delete → 200, { deletion_status:"cancelled" }.
+          - GET /api/dpdp/status → 200, deletion_status="none" again ✓
+          
+          Note (informational, NOT a failure): the response shape uses
+          `deletion_status` (string: "none"/"pending"/"cancelled"/"purged") and
+          `deletion_grace_until` rather than the test-plan's `has_pending_deletion`
+          (boolean) / `scheduled_purge_at` field names. Behaviour is fully
+          equivalent (pending ⇔ deletion_status=="pending"); if the new
+          "Privacy & Data" UI screen relies on those exact keys, main agent may
+          want to either (a) update the UI to read the actual keys or
+          (b) add the aliased keys to the response. Flagging for awareness only.
+
+agent_communication_v3_5_1:
+  - agent: "testing"
+    message: |
+      v3.5.1 targeted regression complete. All 7 test-plan items pass.
+      Tested via /app/backend_test.py (committed). Highlights:
+      
+      1. Time Store /services: 27 services in catalogue, time_save metadata
+         present on 20 (the 7 system-seeded patched + 13 from the relaxed
+         visibility path including the 8 new SKUs). Per-day & per-week
+         filters work with the documented -30 / -60 relaxation windows.
+      2. Time Store /purchase: collection-name bug fixed — solution lookup
+         now hits db.solutions_store correctly. Order created (TS-…),
+         status=pending_payment, payment_provider="mock" (clearly MOCKED
+         pending Razorpay keys, by design).
+      3. Time Store delegate (neg+pos) and time-audit shape OK.
+      4. DPDP: full roundtrip status → export → delete-request → status(pending)
+         → cancel → status(cleared) is functional.
+         Minor shape-only note: API returns `deletion_status` + 
+         `deletion_grace_until`, NOT `has_pending_deletion` + `scheduled_purge_at`.
+         Frontend Privacy & Data screen should align field names accordingly.
+      5. Seed script `/app/backend/scripts/seed_time_store_services.py` is
+         idempotent — second run reported "new inserted: 0",
+         total with time_save_per_day_min unchanged at 20.
+      
+      No P0 blockers found. No frontend testing performed (per instructions).
+
+    message: "v3.5.1: Added DPDP user-facing screen /tools/privacy-data (the 1 UI gap found during this session's full audit). Fixed /time-store/services query + fixed collection-name bug on /time-store/purchase + seeded 8 genuine time-saver SKUs + patched 7 existing items with time_save metadata. Docs (PRD, API_REFERENCE, WOWO, POSTMAN, INDEX, CLD, ACM, Postman_Collection.json) bumped to v3.5.1. Request backend agent to (a) regression the 3 time-store endpoints (time-audit, services, purchase, purchases, delegate, delegations), (b) verify DPDP 4 user endpoints are reachable with test user, (c) confirm seed script is idempotent. Frontend UAT will follow with explicit user approval."

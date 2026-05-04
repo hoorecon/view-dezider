@@ -1002,6 +1002,21 @@ export default function ProfileScreen() {
         <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
       </TouchableOpacity>
 
+      {/* Privacy & Data (DPDP Act 2023) */}
+      <TouchableOpacity
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}
+        onPress={() => router.push('/tools/privacy-data')}
+      >
+        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#1E40AF', alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="shield-checkmark" size={18} color="#FFF" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>Privacy & Data</Text>
+          <Text style={{ fontSize: 12, color: COLORS.textMuted }}>Export, delete your data (DPDP Act)</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+      </TouchableOpacity>
+
       {/* Logout */}
       <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
         <Ionicons name="log-out-outline" size={20} color={COLORS.error} />

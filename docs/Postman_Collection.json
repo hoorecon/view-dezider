@@ -1,8 +1,8 @@
 {
   "info": {
-    "name": "Dezider API v3.4",
-    "description": "Generated 2026-05-04. baseUrl + session_token are env vars.",
-    "_postman_id": "dezider-3-4",
+    "name": "Dezider API v3.5.1",
+    "description": "Generated 2026-05-04. baseUrl + session_token are env vars. v3.5.1 adds Privacy & Data (DPDP) screen notes and Time Store seed metadata.",
+    "_postman_id": "dezider-3-5-1",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [

@@ -1,6 +1,6 @@
 # REST API Reference — Dezider
 
-_metadata: { "version": "3.5", "updated": "2026-05-04" }
+_metadata: { "version": "3.5.1", "updated": "2026-05-04" }
 
 Base URL: `/api`. Auth: `Authorization: Bearer <session_token>` from `/auth/login`.
 Every response carries `X-Request-ID`, `X-Response-Time-MS`, security headers.
@@ -22,7 +22,17 @@ Every response carries `X-Request-ID`, `X-Response-Time-MS`, security headers.
 Same as v3.4 — register / login / logout / refresh / me / forgot / reset / change.
 
 ## DPDP / GDPR (auth)
-export / delete-request / cancel-delete / status / admin/audit-log / admin/purge-pending.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/dpdp/export` | Download JSON bundle of user's personal data |
+| POST | `/dpdp/delete-request` | Schedule account deletion (requires `confirmation="DELETE MY ACCOUNT"`) |
+| POST | `/dpdp/cancel-delete` | Cancel pending deletion during cooling-off |
+| GET | `/dpdp/status` | Current deletion status (pending / purge ETA / reason) |
+| GET | `/dpdp/admin/audit-log` | Admin: filtered audit events |
+| POST | `/dpdp/admin/purge-pending` | Admin: cron-callable purge of deletions past their grace window |
+
+Front-end surface: `/tools/privacy-data` (linked from Profile tab).
 
 ## Solution Matrix (auth)
 CRUD + templates list/detail + PDF export. See `/docs/PRD.md` §3.3.
@@ -88,12 +98,12 @@ Response shape (day-plan):
 }
 ```
 
-## Time Store (auth) — NEW v3.5
+## Time Store (auth) — NEW v3.5 (schema clarified v3.5.1)
 
 | Method | Path | Description |
 |---|---|---|
 | GET | `/time-store/time-audit` | CTT+Lifestyle+Matrix save opportunities |
-| GET | `/time-store/services?save_minutes_per_day=30\|60\|120` | eligible services |
+| GET | `/time-store/services?save_minutes_per_day=30\|60\|120` | eligible services (see note) |
 | GET | `/time-store/services?save_minutes_per_week=180\|300\|600\|900` | per-week filter |
 | POST | `/time-store/purchase` | buy a service (MOCKED payment) |
 | GET | `/time-store/purchases` | my orders |
@@ -101,6 +111,21 @@ Response shape (day-plan):
 | GET | `/time-store/delegations` | my delegation inbox |
 
 Service response includes `org` branding (display_name, slug, brand_color) so the UI renders per-org cards.
+
+**Visibility filter (v3.5.1)**: `/time-store/services` returns solutions where either `is_authorized=True` (system-seeded catalogue) OR (`visibility="PUBLIC"` AND `approval_status="approved"`). `status="active"` is always required. Bucket filters use `$gte: max(0, requested - 30)` (day) and `$gte: max(0, requested - 60)` (week) so partial matches are still surfaced.
+
+**Solutions Store schema (time-save fields, v3.5.1)**:
+
+| Field | Type | Description |
+|---|---|---|
+| `time_save_per_day_min` | int | Daily minutes reclaimed by using the service |
+| `time_save_per_week_min` | int | Weekly minutes reclaimed |
+| `time_save_rationale` | string | Short explanation for the user |
+| `price_inr` | int | Currency-neutral price (INR) |
+| `price_model` | string | `per_order \| per_visit \| monthly \| annual \| per_hour \| one_time` |
+| `seed_key` | string | Stable key for idempotent re-seeding (system-only) |
+
+Seed script: `backend/scripts/seed_time_store_services.py` — idempotent, safe to re-run.
 
 ## Admin Docs (admin auth)
 

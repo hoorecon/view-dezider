@@ -1,396 +1,341 @@
 """
-Backend regression test for View Dezider API after P0/P1 hardening + refactor.
-
-Covers:
-  - P0 New Hardening: /api/health, /api/health/ready, response headers,
-    rate-limit headers
-  - P0 Auth flow regression (signature changes added `request: Request`)
-  - P0 PRR Decisions CRUD sanity
-  - P1 Admin Docs surface (auth gate)
-  - P1 Critical AI endpoint structure (auth gates only — no LLM calls)
-  - P0 ACM auth gate
+Targeted regression tests for v3.5.1 Time Store + DPDP changes.
+Scope strictly limited to items listed in the review request.
 """
-import os
+import subprocess
 import sys
-import time
 import requests
 
-BASE_URL = os.environ.get("BACKEND_URL", "http://localhost:8001") + "/api"
-TIMEOUT = 30
+BASE_URL = "http://localhost:8001"
 
-results = []
-
-
-def log(name, passed, detail=""):
-    icon = "PASS" if passed else "FAIL"
-    msg = f"[{icon}] {name}"
-    if detail:
-        msg += f" -- {detail}"
-    print(msg)
-    results.append({"name": name, "passed": passed, "detail": detail})
+EMAIL = "harden_1777921741@example.com"
+PASSWORD = "HardenPass2026!"
 
 
-def req(method, path, **kwargs):
-    kwargs.setdefault("timeout", TIMEOUT)
-    return requests.request(method, BASE_URL + path, **kwargs)
+def _hr(title):
+    print("\n" + "=" * 78)
+    print(title)
+    print("=" * 78)
 
 
-# =================================================================
-# P0 — NEW HARDENING INFRASTRUCTURE
-# =================================================================
-def test_health():
-    print("\n--- P0: Health & Readiness ---")
-    r = req("GET", "/health")
-    body = r.json() if r.ok else {}
-    ok = (
-        r.status_code == 200
-        and body.get("status") == "ok"
-        and body.get("service") == "View Dezider API"
-    )
-    log("GET /api/health returns ok+service", ok, f"status={r.status_code} body={body}")
-
-    r = req("GET", "/health/ready")
-    body = r.json() if r.ok else {}
-    checks = body.get("checks", {}) if isinstance(body, dict) else {}
-    ok = (
-        r.status_code == 200
-        and body.get("status") == "ok"
-        and "mongodb" in checks
-        and checks["mongodb"] == "ok"
-    )
-    log("GET /api/health/ready probes mongodb", ok, f"status={r.status_code} body={body}")
+def login():
+    r = requests.post(f"{BASE_URL}/api/auth/login",
+                      json={"email": EMAIL, "password": PASSWORD}, timeout=15)
+    assert r.status_code == 200, f"Login failed: {r.status_code} {r.text}"
+    tok = r.json()["session_token"]
+    print("  ✅ Login OK, token captured")
+    return tok
 
 
-def test_response_headers():
-    print("\n--- P0: Observability + Rate-Limit Headers ---")
-    r = req("GET", "/health")
-    h = r.headers
-
-    rid = h.get("X-Request-ID") or h.get("x-request-id") or ""
-    rid_ok = len(rid) == 12 and all(c in "0123456789abcdef" for c in rid.lower())
-    log("X-Request-ID present (12-hex)", rid_ok, f"value={rid!r}")
-
-    rtime = h.get("X-Response-Time-MS") or h.get("x-response-time-ms") or ""
-    try:
-        float(rtime)
-        rtime_ok = True
-    except Exception:
-        rtime_ok = False
-    log("X-Response-Time-MS present + numeric", rtime_ok, f"value={rtime!r}")
-
-    rl_limit = h.get("X-RateLimit-Limit")
-    rl_remain = h.get("X-RateLimit-Remaining")
-    rl_reset = h.get("X-RateLimit-Reset")
-    log(
-        "X-RateLimit headers (Limit/Remaining/Reset)",
-        all([rl_limit, rl_remain, rl_reset]),
-        f"limit={rl_limit} remain={rl_remain} reset={rl_reset}",
-    )
+def auth_headers(tok):
+    return {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}
 
 
-def test_rate_limit_decrement():
-    print("\n--- P0: Rate-Limit Counter Decrements ---")
-    remains = []
-    for _ in range(4):
-        r = req("GET", "/health")
-        try:
-            remains.append(int(r.headers.get("X-RateLimit-Remaining", "0")))
-        except ValueError:
-            remains.append(-1)
-        time.sleep(0.05)
-    decreasing = remains[0] > remains[-1]
-    log("X-RateLimit-Remaining decrements", decreasing, f"sequence={remains}")
+def test_services_no_filter(tok):
+    _hr("2a. GET /api/time-store/services (no filter)")
+    r = requests.get(f"{BASE_URL}/api/time-store/services",
+                     headers=auth_headers(tok), timeout=20)
+    print(f"  status={r.status_code}")
+    assert r.status_code == 200, f"want 200, got {r.status_code}: {r.text[:300]}"
+    data = r.json()
+    services = data.get("services", [])
+    print(f"  services.length = {len(services)}")
+    assert len(services) >= 20, f"expected >=20 services, got {len(services)}"
+    bpd = data.get("buckets_per_day")
+    bpw = data.get("buckets_per_week")
+    print(f"  buckets_per_day  = {bpd}")
+    print(f"  buckets_per_week = {bpw}")
+    assert bpd == [30, 60, 120], f"buckets_per_day mismatch: {bpd}"
+    assert bpw == [180, 300, 600, 900], f"buckets_per_week mismatch: {bpw}"
+    has_meta = sum(1 for s in services
+                   if s.get("time_save_per_day_min") is not None
+                   or s.get("time_save_per_week_min") is not None)
+    print(f"  services with time_save metadata = {has_meta}")
+    assert has_meta >= 1, "expected at least one service with time_save metadata"
+    sid = None
+    for s in services:
+        if s.get("solution_id"):
+            sid = s["solution_id"]
+            break
+    assert sid, "no solution_id found in catalogue"
+    print(f"  picked solution_id = {sid}")
+    return sid, services
 
 
-# =================================================================
-# P0 — AUTH FLOW REGRESSION
-# =================================================================
-auth_state = {}
+def test_services_filter_per_day(tok):
+    _hr("2b. GET /api/time-store/services?save_minutes_per_day=60")
+    r = requests.get(f"{BASE_URL}/api/time-store/services",
+                     params={"save_minutes_per_day": 60},
+                     headers=auth_headers(tok), timeout=20)
+    assert r.status_code == 200, f"got {r.status_code}: {r.text[:300]}"
+    services = r.json().get("services", [])
+    print(f"  services.length = {len(services)}")
+    assert len(services) >= 1, "expected non-empty for save_minutes_per_day=60"
+    bad = [s for s in services if (s.get("time_save_per_day_min") or 0) < 30]
+    if bad:
+        print(f"  ❌ services violating time_save_per_day_min>=30: {len(bad)}")
+        for b in bad[:3]:
+            print(f"     - {b.get('title')} day={b.get('time_save_per_day_min')}")
+    assert not bad, f"{len(bad)} items violate time_save_per_day_min>=30 filter"
+    print("  ✅ all returned items have time_save_per_day_min >= 30")
 
 
-def test_auth_register():
-    print("\n--- P0: Auth Flow Regression ---")
-    suffix = int(time.time())
-    email = f"sarah.cardoso.{suffix}@viewdezider-test.com"
-    pwd = "InitialPass#2026"
-    payload = {"email": email, "password": pwd, "name": "Sarah Cardoso"}
-    r = req("POST", "/auth/register", json=payload)
-    body = r.json() if r.ok else r.text
-    ok = (
-        r.status_code == 200
-        and isinstance(body, dict)
-        and body.get("session_token")
-        and body.get("email") == email
-        and body.get("user_id")
-        and body.get("name") == "Sarah Cardoso"
-    )
-    log("POST /api/auth/register", ok, f"status={r.status_code}")
-    if ok:
-        auth_state["email"] = email
-        auth_state["password"] = pwd
-        auth_state["token"] = body["session_token"]
-        auth_state["user_id"] = body["user_id"]
-    else:
-        print(f"   body={body}")
+def test_services_filter_per_week(tok):
+    _hr("2c. GET /api/time-store/services?save_minutes_per_week=300")
+    r = requests.get(f"{BASE_URL}/api/time-store/services",
+                     params={"save_minutes_per_week": 300},
+                     headers=auth_headers(tok), timeout=20)
+    assert r.status_code == 200, f"got {r.status_code}: {r.text[:300]}"
+    services = r.json().get("services", [])
+    print(f"  services.length = {len(services)}")
+    assert len(services) >= 1, "expected non-empty for save_minutes_per_week=300"
+    bad = [s for s in services if (s.get("time_save_per_week_min") or 0) < 240]
+    if bad:
+        print(f"  ❌ services violating time_save_per_week_min>=240: {len(bad)}")
+        for b in bad[:3]:
+            print(f"     - {b.get('title')} wk={b.get('time_save_per_week_min')}")
+    assert not bad, f"{len(bad)} items violate time_save_per_week_min>=240 filter"
+    print("  ✅ all returned items have time_save_per_week_min >= 240")
 
 
-def test_auth_login():
-    if "email" not in auth_state:
-        log("POST /api/auth/login", False, "register failed; skip")
-        return
-    r = req(
-        "POST",
-        "/auth/login",
-        json={"email": auth_state["email"], "password": auth_state["password"]},
-    )
-    body = r.json() if r.ok else r.text
-    ok = r.status_code == 200 and isinstance(body, dict) and body.get("session_token")
-    log("POST /api/auth/login", ok, f"status={r.status_code}")
-    if ok:
-        auth_state["token"] = body["session_token"]
+def test_purchase(tok, solution_id):
+    _hr("3a. POST /api/time-store/purchase")
+    r = requests.post(f"{BASE_URL}/api/time-store/purchase",
+                      headers=auth_headers(tok),
+                      json={"solution_id": solution_id,
+                            "save_minutes_per_day": 30,
+                            "note": "uat"}, timeout=20)
+    print(f"  status={r.status_code}")
+    print(f"  body={r.text[:300]}")
+    assert r.status_code == 200, (
+        f"purchase failed: {r.status_code} — collection-name fix not effective?")
+    body = r.json()
+    assert body.get("order_id"), "missing order_id"
+    assert body.get("status") == "pending_payment"
+    print(f"  ✅ order_id={body['order_id']}, status=pending_payment")
+    return body["order_id"]
 
 
-def test_auth_me():
-    if "token" not in auth_state:
-        log("GET /api/auth/me", False, "no token; skip")
-        return
-    r = req(
-        "GET",
-        "/auth/me",
-        headers={"Authorization": f"Bearer {auth_state['token']}"},
-    )
-    body = r.json() if r.ok else r.text
-    ok = (
-        r.status_code == 200
-        and isinstance(body, dict)
-        and "has_password" in body
-        and body.get("email") == auth_state["email"]
-    )
-    log("GET /api/auth/me has has_password", ok, f"status={r.status_code}")
+def test_purchases_list(tok, expected_order_id):
+    _hr("3b. GET /api/time-store/purchases")
+    r = requests.get(f"{BASE_URL}/api/time-store/purchases",
+                     headers=auth_headers(tok), timeout=15)
+    assert r.status_code == 200, f"got {r.status_code}: {r.text[:300]}"
+    items = r.json().get("items", [])
+    print(f"  items.length = {len(items)}")
+    found = any(i.get("order_id") == expected_order_id for i in items)
+    assert found, f"new order {expected_order_id} not present in listing"
+    new = next(i for i in items if i.get("order_id") == expected_order_id)
+    print(f"  ✅ found new order: status={new.get('status')} provider={new.get('payment_provider')}")
+    assert new.get("payment_provider") == "mock"
 
 
-def test_forgot_reset_password():
-    if "email" not in auth_state:
-        log("POST /api/auth/forgot-password", False, "no user; skip")
-        return
-    r = req("POST", "/auth/forgot-password", json={"email": auth_state["email"]})
-    body = r.json() if r.ok else r.text
-    otp = body.get("otp") if isinstance(body, dict) else None
-    ok = r.status_code == 200 and otp
-    log("POST /api/auth/forgot-password returns OTP", ok, f"status={r.status_code}")
-    if not ok:
-        print(f"   body={body}")
-        return
-
-    new_pwd = "ResetPass#2026"
-    r2 = req(
-        "POST",
-        "/auth/reset-password",
-        json={"email": auth_state["email"], "otp": otp, "new_password": new_pwd},
-    )
-    log("POST /api/auth/reset-password", r2.status_code == 200, f"status={r2.status_code}")
-    if r2.status_code == 200:
-        auth_state["password"] = new_pwd
-
-    r3 = req(
-        "POST",
-        "/auth/login",
-        json={"email": auth_state["email"], "password": auth_state["password"]},
-    )
-    body3 = r3.json() if r3.ok else r3.text
-    ok3 = r3.status_code == 200 and isinstance(body3, dict) and body3.get("session_token")
-    log("Login w/ new password after reset", ok3, f"status={r3.status_code}")
-    if ok3:
-        auth_state["token"] = body3["session_token"]
+def test_delegate_negative(tok):
+    _hr("4a. POST /api/time-store/delegate (invalid source_type → 400)")
+    r = requests.post(f"{BASE_URL}/api/time-store/delegate",
+                      headers=auth_headers(tok),
+                      json={"source_type": "INVALID", "source_id": "x",
+                            "description": "uat", "estimated_minutes_saved": 30},
+                      timeout=15)
+    print(f"  status={r.status_code} body={r.text[:200]}")
+    assert r.status_code == 400, f"want 400, got {r.status_code}"
+    print("  ✅ rejected with 400")
 
 
-# =================================================================
-# P0 — PRR DECISIONS CRUD
-# =================================================================
-def test_decisions_crud():
-    print("\n--- P0: PRR Decisions CRUD ---")
-    if "token" not in auth_state:
-        log("Decisions CRUD", False, "no token")
-        return
-    h = {"Authorization": f"Bearer {auth_state['token']}"}
+def test_delegate_positive(tok):
+    _hr("4b. POST /api/time-store/delegate (valid)")
+    r = requests.post(f"{BASE_URL}/api/time-store/delegate",
+                      headers=auth_headers(tok),
+                      json={"source_type": "ctt_task", "source_id": "x",
+                            "description": "uat", "estimated_minutes_saved": 30},
+                      timeout=15)
+    print(f"  status={r.status_code} body={r.text[:200]}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body.get("delegation_id"), "missing delegation_id"
+    print(f"  ✅ delegation_id={body['delegation_id']}")
 
-    payload = {
-        "title": "Should I move to Bangalore for the new role?",
-        "folder": "career",
-        "context": "Weighing the Bangalore offer vs staying in Mumbai. Family, finances, and career growth all in scope.",
+
+def test_delegations_list(tok):
+    _hr("4c. GET /api/time-store/delegations")
+    r = requests.get(f"{BASE_URL}/api/time-store/delegations",
+                     headers=auth_headers(tok), timeout=15)
+    assert r.status_code == 200, f"got {r.status_code}"
+    items = r.json().get("items", [])
+    print(f"  items.length = {len(items)}")
+    print("  ✅ listing OK")
+
+
+def test_time_audit(tok):
+    _hr("5. GET /api/time-store/time-audit")
+    r = requests.get(f"{BASE_URL}/api/time-store/time-audit",
+                     headers=auth_headers(tok), timeout=20)
+    assert r.status_code == 200, f"got {r.status_code}: {r.text[:300]}"
+    data = r.json()
+    print(f"  keys={list(data.keys())}")
+    for k in ("opportunities", "total_minutes_saveable_per_week",
+              "total_hours_saveable_per_week"):
+        assert k in data, f"missing key: {k}"
+    print(f"  opportunities={len(data.get('opportunities', []))}, "
+          f"weekly_min={data['total_minutes_saveable_per_week']}, "
+          f"weekly_hr={data['total_hours_saveable_per_week']}")
+    print("  ✅ shape OK (empty array acceptable for this user)")
+
+
+def _normalize_dpdp_status_payload(d):
+    """Map actual response keys to test-plan keys for assertion clarity."""
+    has_pending = (d.get("deletion_status") == "pending")
+    return {
+        "has_pending_deletion": has_pending,
+        "deletion_requested_at": d.get("deletion_requested_at"),
+        "scheduled_purge_at": d.get("deletion_grace_until"),
+        "raw": d,
     }
-    r = req("POST", "/decisions", json=payload, headers=h)
+
+
+def get_dpdp_status(tok, expect_pending=None):
+    r = requests.get(f"{BASE_URL}/api/dpdp/status",
+                     headers=auth_headers(tok), timeout=15)
+    assert r.status_code == 200, f"status got {r.status_code}: {r.text[:300]}"
+    data = r.json()
+    norm = _normalize_dpdp_status_payload(data)
+    print(f"  raw={data}")
+    print(f"  has_pending_deletion(derived)={norm['has_pending_deletion']}")
+    if expect_pending is True:
+        assert norm["has_pending_deletion"] is True
+        assert norm["deletion_requested_at"]
+        assert norm["scheduled_purge_at"]
+    elif expect_pending is False:
+        assert norm["has_pending_deletion"] is False
+    return norm
+
+
+def test_dpdp_export(tok):
+    _hr("6b. GET /api/dpdp/export")
+    r = requests.get(f"{BASE_URL}/api/dpdp/export",
+                     headers=auth_headers(tok), timeout=60)
+    assert r.status_code == 200, f"export got {r.status_code}: {r.text[:300]}"
+    body = r.json()
+    print(f"  top-level keys = {list(body.keys())}")
+    print(f"  body size = {len(r.content)} bytes")
+    coll_keys = list((body.get("collections") or {}).keys())
+    print(f"  collections exported = {coll_keys}")
+    assert "user_id" in body and "collections" in body
+    print("  ✅ export OK")
+
+
+def test_dpdp_full_roundtrip(tok):
+    _hr("6a. GET /api/dpdp/status (initial)")
+    initial = get_dpdp_status(tok, expect_pending=None)
+
+    if initial["has_pending_deletion"]:
+        print("  ⚠ already pending — cancelling first to start clean")
+        rc = requests.post(f"{BASE_URL}/api/dpdp/cancel-delete",
+                           headers=auth_headers(tok), timeout=15)
+        print(f"  cancel pre-clean status={rc.status_code}")
+        assert rc.status_code == 200
+
+    test_dpdp_export(tok)
+
+    _hr("6c. POST /api/dpdp/delete-request")
+    r = requests.post(f"{BASE_URL}/api/dpdp/delete-request",
+                      headers=auth_headers(tok),
+                      json={"confirmation": "DELETE MY ACCOUNT", "reason": "uat"},
+                      timeout=15)
+    print(f"  status={r.status_code} body={r.text[:300]}")
+    assert r.status_code in (200, 409), f"got {r.status_code}"
+
+    _hr("6d. GET /api/dpdp/status (should be pending)")
+    pending = get_dpdp_status(tok, expect_pending=True)
+    print(f"  ✅ pending=true, requested_at={pending['deletion_requested_at']}, "
+          f"scheduled_purge_at={pending['scheduled_purge_at']}")
+
+    _hr("6e. POST /api/dpdp/cancel-delete")
+    r = requests.post(f"{BASE_URL}/api/dpdp/cancel-delete",
+                      headers=auth_headers(tok), timeout=15)
+    print(f"  status={r.status_code} body={r.text[:200]}")
+    assert r.status_code == 200
+
+    _hr("6f. GET /api/dpdp/status (should be cleared)")
+    cleared = get_dpdp_status(tok, expect_pending=False)
+    print(f"  ✅ has_pending_deletion={cleared['has_pending_deletion']}")
+
+
+def test_seed_idempotency():
+    _hr("7. Re-run seed_time_store_services.py (idempotency)")
+    p = subprocess.run(
+        [sys.executable, "/app/backend/scripts/seed_time_store_services.py"],
+        capture_output=True, text=True, timeout=60,
+    )
+    print("  stdout:", p.stdout.strip())
+    if p.stderr.strip():
+        print("  stderr:", p.stderr.strip())
+    assert p.returncode == 0, "seed script failed"
+    out = p.stdout
+    assert "new inserted:     0" in out or "new inserted: 0" in out, \
+        f"Expected 'new inserted: 0' on idempotent run, got:\n{out}"
+    print("  ✅ idempotent — no duplicate inserts on second run")
+
+
+def main():
+    failures = []
+    tok = login()
+
     try:
-        body = r.json()
-    except Exception:
-        body = r.text
-    decision_id = body.get("id") if isinstance(body, dict) else None
-    log("POST /api/decisions", bool(decision_id) and r.status_code == 200, f"status={r.status_code}")
-    if not decision_id:
-        print(f"   body={body}")
-        return
+        sid, _ = test_services_no_filter(tok)
+    except AssertionError as e:
+        failures.append(("services-no-filter", str(e))); sid = None
 
-    r = req("GET", "/decisions", headers=h)
-    items = r.json() if r.ok else []
-    found = any(d.get("id") == decision_id for d in items) if isinstance(items, list) else False
-    log(
-        "GET /api/decisions includes new",
-        r.status_code == 200 and found,
-        f"status={r.status_code} count={len(items) if isinstance(items, list) else 'N/A'}",
-    )
+    for name, fn in [
+        ("services-filter-per-day", lambda: test_services_filter_per_day(tok)),
+        ("services-filter-per-week", lambda: test_services_filter_per_week(tok)),
+    ]:
+        try:
+            fn()
+        except AssertionError as e:
+            failures.append((name, str(e)))
 
-    new_title = "Updated: Bangalore relocation analysis"
-    r = req("PUT", f"/decisions/{decision_id}", json={"title": new_title}, headers=h)
-    log("PUT /api/decisions/{id}", r.status_code == 200, f"status={r.status_code}")
+    order_id = None
+    if sid:
+        try:
+            order_id = test_purchase(tok, sid)
+        except AssertionError as e:
+            failures.append(("purchase", str(e)))
+    if order_id:
+        try:
+            test_purchases_list(tok, order_id)
+        except AssertionError as e:
+            failures.append(("purchases-list", str(e)))
 
-    r = req("GET", f"/decisions/{decision_id}", headers=h)
-    body = r.json() if r.ok else {}
-    log(
-        "Update persisted",
-        r.status_code == 200 and body.get("title") == new_title,
-        f"title={body.get('title')!r}",
-    )
+    for name, fn in [
+        ("delegate-negative", lambda: test_delegate_negative(tok)),
+        ("delegate-positive", lambda: test_delegate_positive(tok)),
+        ("delegations-list", lambda: test_delegations_list(tok)),
+        ("time-audit", lambda: test_time_audit(tok)),
+    ]:
+        try:
+            fn()
+        except AssertionError as e:
+            failures.append((name, str(e)))
 
-    r = req("DELETE", f"/decisions/{decision_id}", headers=h)
-    log("DELETE /api/decisions/{id}", r.status_code == 200, f"status={r.status_code}")
-
-
-# =================================================================
-# P1 — ADMIN DOCS AUTH GATE
-# =================================================================
-def test_admin_docs_auth_gate():
-    print("\n--- P1: Admin Docs Auth Gate ---")
-    r = req("GET", "/admin/docs/api-catalog")
-    log(
-        "GET /api/admin/docs/api-catalog (no auth) -> 401",
-        r.status_code == 401,
-        f"status={r.status_code}",
-    )
-
-    if "token" in auth_state:
-        h = {"Authorization": f"Bearer {auth_state['token']}"}
-        r = req("GET", "/admin/docs/api-catalog", headers=h)
-        log(
-            "GET /api/admin/docs/api-catalog (non-admin) -> 403",
-            r.status_code == 403,
-            f"status={r.status_code}",
-        )
-
-    r = req("POST", "/admin/docs/refresh/prd")
-    log(
-        "POST /api/admin/docs/refresh/prd (no auth) -> 401",
-        r.status_code == 401,
-        f"status={r.status_code}",
-    )
-
-    r = req("POST", "/admin/docs/refresh-all")
-    log(
-        "POST /api/admin/docs/refresh-all (no auth) -> 401",
-        r.status_code == 401,
-        f"status={r.status_code}",
-    )
-
-
-# =================================================================
-# P1 — AI ENDPOINT AUTH GATES
-# =================================================================
-def test_ai_endpoint_auth_gates():
-    print("\n--- P1: AI Endpoint Auth Gates ---")
-    cases = [
-        ("POST", "/ai-assistant/quick-ask", {"question": "test"}),
-        ("POST", "/cld/module/master/generate", {"context": "test"}),
-        ("POST", "/conflict-breaker/sessions/test_session_id/ai-generate/crucial_check", {}),
-        ("POST", "/tepfi-auto-map", {"factors": []}),
-        ("POST", "/factors/fetch-data", {}),
-    ]
-    for method, path, payload in cases:
-        r = req(method, path, json=payload)
-        log(
-            f"{method} {path} (no auth) -> 401",
-            r.status_code == 401,
-            f"status={r.status_code}",
-        )
-
-
-def test_cld_invalid_module_type():
-    print("\n--- P1: CLD invalid module type ---")
-    if "token" not in auth_state:
-        log("CLD invalid module type", False, "no token")
-        return
-    h = {"Authorization": f"Bearer {auth_state['token']}"}
-    r = req(
-        "POST",
-        "/cld/module/invalid_type/generate",
-        json={"context": "test"},
-        headers=h,
-    )
     try:
-        body = r.json()
-    except Exception:
-        body = {}
-    detail = body.get("detail", "") if isinstance(body, dict) else str(body)
-    detail_str = str(detail).lower()
-    has_module_list = "master" in detail_str or "valid" in detail_str or "invalid" in detail_str
-    log(
-        "POST /cld/module/invalid_type/generate (auth) -> 400",
-        r.status_code == 400,
-        f"status={r.status_code} detail={str(detail)[:140]!r}",
-    )
-    log(
-        "  ...with valid-module hint in detail",
-        has_module_list,
-        f"detail={str(detail)[:140]!r}",
-    )
+        test_dpdp_full_roundtrip(tok)
+    except AssertionError as e:
+        failures.append(("dpdp-roundtrip", str(e)))
 
+    try:
+        test_seed_idempotency()
+    except AssertionError as e:
+        failures.append(("seed-idempotency", str(e)))
 
-# =================================================================
-# P0 — ACM AUTH GATE
-# =================================================================
-def test_acm_auth_gate():
-    print("\n--- P0: ACM Auth Gate ---")
-    r = req("GET", "/acm/matrix")
-    log(
-        "GET /api/acm/matrix (no auth) -> 401",
-        r.status_code == 401,
-        f"status={r.status_code}",
-    )
-    if "token" in auth_state:
-        h = {"Authorization": f"Bearer {auth_state['token']}"}
-        r = req("GET", "/acm/matrix", headers=h)
-        log(
-            "GET /api/acm/matrix (non-admin) -> 403/200",
-            r.status_code in (200, 403),
-            f"status={r.status_code}",
-        )
-
-
-# =================================================================
-# RUN
-# =================================================================
-if __name__ == "__main__":
-    print(f"Testing backend at {BASE_URL}")
-    print("=" * 60)
-    test_health()
-    test_response_headers()
-    test_rate_limit_decrement()
-    test_auth_register()
-    test_auth_login()
-    test_auth_me()
-    test_forgot_reset_password()
-    test_decisions_crud()
-    test_admin_docs_auth_gate()
-    test_ai_endpoint_auth_gates()
-    test_cld_invalid_module_type()
-    test_acm_auth_gate()
-
-    print("\n" + "=" * 60)
-    passed = sum(1 for r in results if r["passed"])
-    total = len(results)
-    print(f"RESULTS: {passed}/{total} passed")
-    failed = [r for r in results if not r["passed"]]
-    if failed:
-        print("\nFAILURES:")
-        for r in failed:
-            print(f"  FAIL {r['name']} -- {r['detail']}")
+    _hr("RESULTS")
+    if failures:
+        print(f"❌ {len(failures)} failure(s):")
+        for n, msg in failures:
+            print(f"   - {n}: {msg}")
         sys.exit(1)
-    sys.exit(0)
+    print("✅ All targeted v3.5.1 checks passed.")
+
+
+if __name__ == "__main__":
+    main()

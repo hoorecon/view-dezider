@@ -1,6 +1,6 @@
 # Dezider — Admin Documentation
 
-Maintained by the engineering team. Last refreshed: **2026-05-04**.
+Maintained by the engineering team. Last refreshed: **2026-05-04 · v3.5.1**.
 
 The documents below are the source of truth for product scope, system
 behaviour, and operational posture. They are authored as plain markdown

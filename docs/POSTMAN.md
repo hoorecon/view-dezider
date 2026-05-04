@@ -1,9 +1,9 @@
 # Postman / Insomnia collection — Dezider API
 
-_metadata: { "version": "3.5", "updated": "2026-05-04" }
+_metadata: { "version": "3.5.1", "updated": "2026-05-04" }
 
-Collection JSON: `/app/docs/Postman_Collection.json` (updated for v3.5 with
-Daily Time Log / Raja Guru / Time Store folders).
+Collection JSON: `/app/docs/Postman_Collection.json` (updated for v3.5.1 with
+Daily Time Log / Raja Guru / Time Store / DPDP folders).
 
 ## Environments
 - **Local Dev** (`baseUrl` = http://localhost:8001)

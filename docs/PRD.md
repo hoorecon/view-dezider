@@ -1,6 +1,6 @@
 # Product Requirements Document — Dezider
 
-_metadata: { "version": "3.5", "updated": "2026-05-04", "author": "engineering" }
+_metadata: { "version": "3.5.1", "updated": "2026-05-04", "author": "engineering" }
 
 ## 1. Vision
 
@@ -65,7 +65,7 @@ white-labelled Org sub-portals). AI clustering deferred on LLM budget.
 ### 3.5 Cross-cutting (enhanced)
 - **Auth**: unchanged
 - **ACM**: 89 features (bumped seed to `2026-05-04-04`)
-- **DPDP / GDPR**: full export / 7-day soft delete / cancel / admin-cron purge
+- **DPDP / GDPR**: full export / 7-day soft delete / cancel / admin-cron purge. User-facing screen at `/tools/privacy-data` (linked from Profile).
 - **Voice nav**: 6 languages, 21 routes (includes daily-time-log, time-dezider, time-store)
 - **Subscription**: unchanged (Razorpay test keys present; live keys pending)
 - **Collaboration / Video / Notifications / Admin**: unchanged
@@ -98,6 +98,7 @@ New hot paths:
 
 ## 7. Changelog
 
+- **3.5.1 (2026-05-04)**: Added `/tools/privacy-data` screen (DPDP user UX — export / delete-request / cancel / status). `/tools/time-store/services` query relaxed to honour `is_authorized=True` system-seeded catalogue + `approval_status=approved` user-submitted items. Seed-time-store-services migration (`backend/scripts/seed_time_store_services.py`) patched 7 existing items and inserted 8 new time-saver SKUs (BigBasket, Urban Company, UClean, ClearTax, GetFriday VA, FreshMenu, DriveU, Zoho Books). Fixed purchase-endpoint collection mismatch (`solutions_store_solutions` → `solutions_store`).
 - **3.5 (2026-05-04)**: Accountability Trilogy (Daily Time Log + Time Dezider Raja Guru + Time Store). 5 seeded time-save services in Solutions Store. ACM seed v04. 156/156 backend tests.
 - **3.4 (2026-05-04)**: Production hardening (sec headers, body cap, gzip, metrics, audit log, DPDP, idempotency), 11 admin docs, deployment scaffolding, in-app docs viewer at `/admin/handbook`.
 - **3.3 (2026-04-15)**: Solution Matrix OrgType nested schema, PP Phase 2.5.

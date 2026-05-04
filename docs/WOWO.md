@@ -1,8 +1,8 @@
 # Ways of Working / Out (WOWO) — Dezider
 
-_metadata: { "version": "3.5", "updated": "2026-05-04" }
+_metadata: { "version": "3.5.1", "updated": "2026-05-04" }
 
-## Folder map (v3.5)
+## Folder map (v3.5.1)
 
 ```
 /app
@@ -20,19 +20,21 @@ _metadata: { "version": "3.5", "updated": "2026-05-04" }
 │   ├── routes/                         ← one file per module — see table
 │   ├── models/                         ← Pydantic schemas (incl. daily_time_log_models.py)
 │   ├── data/                           ← seed data (ACM, HOS, matrix_templates, ...)
+│   ├── scripts/                        ← one-shot migrations (seed_time_store_services.py, …)
 │   ├── utils/                          ← PDF renderer, etc.
 │   └── prompts/                        ← LLM prompt templates
 ├── frontend/
 │   ├── app/                            ← expo-router file-based routes
 │   │   ├── _layout.tsx                 ← root stack + GlobalVoiceNav
-│   │   ├── (tabs)/                     ← main tab nav
+│   │   ├── (tabs)/                     ← main tab nav (Profile has Privacy & Data link)
 │   │   ├── auth/
 │   │   ├── admin/handbook/             ← admin docs viewer (list + [slug])
 │   │   ├── tools/                      ← every tool screen
-│   │   │   ├── daily-time-log.tsx       (NEW v3.5)
-│   │   │   ├── weekly-review.tsx        (NEW v3.5)
-│   │   │   ├── time-dezider.tsx         (REWRITTEN v3.5 — Raja Guru UI)
-│   │   │   └── time-store.tsx           (NEW v3.5)
+│   │   │   ├── daily-time-log.tsx       (v3.5)
+│   │   │   ├── weekly-review.tsx        (v3.5)
+│   │   │   ├── time-dezider.tsx         (v3.5 — Raja Guru UI)
+│   │   │   ├── time-store.tsx           (v3.5)
+│   │   │   └── privacy-data.tsx         (NEW v3.5.1 — DPDP Export / Delete / Cancel)
 │   │   └── p/[slug].tsx                ← public org sub-portal
 │   └── src/
 │       ├── components/GlobalVoiceNav.tsx

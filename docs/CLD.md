@@ -1,6 +1,6 @@
 # Causal Loop Diagram (CLD) Engine — Dezider
 
-_metadata: { "version": "3.5", "updated": "2026-05-04" }
+_metadata: { "version": "3.5.1", "updated": "2026-05-04" }
 
 ## What it is
 Graph-based tool to surface feedback loops in a problem space. Each node is
