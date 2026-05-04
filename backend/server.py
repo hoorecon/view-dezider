@@ -166,6 +166,9 @@ from routes.public_pulse_portal import router as public_pulse_portal_router
 from routes.dpdp import router as dpdp_router
 from routes.observability import router as observability_router
 from routes.admin_docs_viewer import router as admin_docs_viewer_router
+from routes.daily_time_log import router as daily_time_log_router
+from routes.time_dezider_guide import router as time_dezider_guide_router
+from routes.time_store_engine import router as time_store_engine_router
 
 
 # ========================
@@ -224,6 +227,9 @@ api_router.include_router(public_pulse_portal_router)
 api_router.include_router(dpdp_router)
 api_router.include_router(observability_router)
 api_router.include_router(admin_docs_viewer_router)
+api_router.include_router(daily_time_log_router)
+api_router.include_router(time_dezider_guide_router)
+api_router.include_router(time_store_engine_router)
 
 
 # ========================

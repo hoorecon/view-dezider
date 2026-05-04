@@ -284,6 +284,29 @@ export const ROUTE_DICTIONARY: RouteDefinition[] = [
     },
   },
   {
+    id: 'daily_time_log',
+    path: '/tools/daily-time-log',
+    label: 'Daily Time Log',
+    icon: 'stopwatch',
+    keywords: {
+      en: ['daily time log', 'time log', 'log my day', 'time diary'],
+      hi: ['\u0926\u0948\u0928\u093f\u0915 \u0938\u092e\u092f \u0932\u0949\u0917'],
+      ta: ['\u0ba4\u0bc6\u0ba8\u0bbf \u0ba8\u0bc7\u0bb0 \u0baa\u0ba4\u0bbf\u0bb5\u0bc1'],
+      te: ['\u0c26\u0bc8\u0ba8\u0bbf\u0b95 \u0bb8\u092e\u092f \u0bb2\u0bbe\u0c17\u0bcd'],
+      kn: ['\u0ca6\u0bc8\u0ba8\u0bbf\u0b95 \u0cb8\u092e\u092f \u0cb2\u0bbe\u0c97\u0bcd'],
+      ml: ['\u0d26\u0bc8\u0ba8\u0bbf\u0b95 \u0d38\u092e\u092f \u0d32\u0d4b\u0d17\u0bcd'],
+    },
+  },
+  {
+    id: 'time_dezider',
+    path: '/tools/time-dezider',
+    label: 'Time Dezider',
+    icon: 'hourglass',
+    keywords: {
+      en: ['time dezider', 'raja guru', 'day plan', 'daily guide'],
+      hi: ['\u091f\u093e\u0907\u092e \u0921\u093f\u0938\u093e\u0907\u0921\u0930', '\u0930\u093e\u091c\u093e \u0917\u0941\u0930\u0941'],
+      ta: ['\u091f\u0bc8\u092e\u094d \u0b9f\u0bbf\u091a\u0bc8\u0b9f\u0bb0\u094d', '\u0bb0\u093e\u091c \u0b95\u0bc1\u0bb0\u0bc1'],
+      te: ['\u091f\u0bc8\u092e\u094d \u0b9f\u0bbf\u091a\u0bc8\u0b9f\u0bb0\u094d', '\u0bb0\u093e\u091c \u0b97\u0bc1\u0bb0\u0bc1'],\n      kn: ['\u091f\u0bc8\u092e\u094d \u0b9f\u0bbf\u091a\u0bc8\u0b9f\u0bb0\u094d', '\u0bb0\u093e\u091c \u0c97\u0bc1\u0bb0\u0bc1'],\n      ml: ['\u091f\u0bc8\u092e\u094d \u0b9f\u0bbf\u091a\u0bc8\u0b9f\u0bb0\u094d', '\u0bb0\u093e\u091c \u0d17\u0bc1\u0bb0\u0bc1'],\n    },\n  },\n  {\n    id: 'time_store',\n    path: '/tools/time-store',\n    label: 'Time Store',\n    icon: 'cart',\n    keywords: {\n      en: ['time store', 'buy time', 'save time', 'delegate'],\n      hi: ['\u091f\u093e\u0907\u092e \u0938\u094d\u091f\u094b\u0930', '\u0938\u092e\u092f \u0916\u0930\u0940\u0926\u094b'],\n      ta: ['\u091f\u0bc8\u092e\u094d \u0b9a\u094d\u0b9f\u094b\u0bb0\u094d', '\u0ba8\u0bc7\u0bb0\u092e\u094d \u0bb5\u093e\u0b99\u094d\u0b95'],\n      te: ['\u091f\u0bc8\u092e\u094d \u0bb8\u094d\u091f\u094b\u0bb0\u094d', '\u0c38\u092e\u092f\u092e\u0bc1 \u0b95\u094b\u0ba8\u094b'],\n      kn: ['\u091f\u0bc8\u092e\u094d \u0bb8\u094d\u091f\u094b\u0bb0\u094d', '\u0cb8\u092e\u092f \u0b96\u0bb0\u0cbf\u0ba6\u0bb5\u0cbf'],\n      ml: ['\u091f\u0bc8\u092e\u094d \u0bb8\u094d\u091f\u094b\u0bb0\u094d', '\u0bb8\u092e\u092f\u0d02 \u0d35\u093e\u0d99\u0d99\u0d41\u0d15'],\n    },\n  },\n  {
     id: 'subscription',
     path: '/tools/subscription',
     label: 'Subscription',

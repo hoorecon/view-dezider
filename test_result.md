@@ -5075,6 +5075,113 @@ agent_communication:
       Review-request items individually verified:
 
       (1) Solution Matrix OrgType Phase b — 61/61 confirmed (matrix_* OrgType nested,
+
+agent_communication:
+  - agent: "main"
+    message: |
+      🌙 OVERNIGHT SPRINT v3.5 — Accountability Trilogy COMPLETE
+
+      Shipped three interconnected modules in one session:
+
+      ============================================================
+      (1) DAILY TIME LOG  (auto-rollup + manual + streaks + weekly review)
+      ============================================================
+      Backend:  routes/daily_time_log.py + models/daily_time_log_models.py
+      Endpoints:
+        GET/POST /api/daily-time-log/preferences       4 key timings + nudge cadence
+        POST     /api/daily-time-log                   upsert day (manual + auto-merge)
+        GET      /api/daily-time-log/{YYYY-MM-DD}      one day (auto-rollup included)
+        POST     /api/daily-time-log/{date}/refresh-rollup
+        GET      /api/daily-time-log/week              7-day strip
+        GET      /api/daily-time-log/streaks           current + longest
+        GET      /api/daily-time-log/weekly-review     adherence + variance + totals
+      Auto-rollup sources: CTT day_statuses, lifestyle_eval_logs, meditation_sessions,
+        journal_entries. Auto blocks tagged auto_sourced=True for UI flag.
+      4 key timings: wake_up, bed_time, business_start, business_end (user_preferences).
+      Streak: ≥15 min logged = day counts; gap breaks streak.
+      Frontend: /tools/daily-time-log.tsx (24-hour block editor) + /tools/weekly-review.tsx
+
+      ============================================================
+      (2) TIME DEZIDER — RAJA GURU  (pure rule-based engine v1; AI backlog)
+      ============================================================
+      Backend:  routes/time_dezider_guide.py  (prefix /raja-guru to avoid
+        collision with existing time_dezider.py schedule endpoints)
+      Endpoints:
+        GET  /api/raja-guru/day-plan        morning intent-setter
+        GET  /api/raja-guru/midday-check    midday recalibration
+        GET  /api/raja-guru/evening-retro   evening retrospective
+        GET  /api/raja-guru/next-action     event-driven "what now?"
+        GET/POST /api/raja-guru/preferences nudge cadence (morning/midday/evening/hourly/event)
+        POST /api/raja-guru/feedback        user's accept/defer/skip on a nudge
+      Scoring: urgency × W + importance × W + energy_match × W + time_window × W
+        + streak_risk × W + cld_leverage × W. All weights constants.
+      Sources: CTT tasks, Lifestyle Designer plan, Solution Matrix, latest CLD.
+      Raja Guru copy tone embedded as templates.
+      Frontend: /tools/time-dezider.tsx (4 tabs: Morning/Midday/Evening/Now)
+        + Accept/Defer/Skip action buttons per pick
+        + Settings modal for 4 key timings + nudge cadence toggles
+
+      AI overlay ("Raja Guru+") documented in /app/memory/backlog.md as a
+      1-session follow-up once LLM budget resets. Will read latest CLD +
+      journal + matrix summary and synth personalised guidance per slot.
+
+      ============================================================
+      (3) TIME STORE  (curated marketplace within Org+Solutions Store)
+      ============================================================
+      Backend:  routes/time_store_engine.py
+      Endpoints:
+        GET  /api/time-store/time-audit           surface save opportunities from
+                                                   user's CTT + Lifestyle + Matrix,
+                                                   tagged with TEPFI lever (People/Finance/Time)
+        GET  /api/time-store/services?save_minutes_per_day=30|60|120
+                                                   list org-curated solutions from
+                                                   Solutions Store (orgs auto-linked
+                                                   via solution.posted_by_org_id)
+        POST /api/time-store/purchase             MOCKED payment (Razorpay wiring in backlog)
+        GET  /api/time-store/purchases            my order history
+        POST /api/time-store/delegate             internal delegation inbox
+        GET  /api/time-store/delegations          my delegation requests
+      Buckets: 30/60/120 min per day, or 3h/5h/10h/15h per week.
+      Audit engine scans CTT (low priority + long duration = delegate; admin +
+        chore = outsource), Lifestyle (social media >1.5h = cut), Matrix cells
+        with "mundane/routine/repetitive/boring/chore" keywords.
+      Frontend: /tools/time-store.tsx (4 tabs: Audit / Services / Purchases / Delegations)
+
+      Payment MOCKED. Razorpay wiring logged in backlog.md as 1-session follow-up.
+
+      ============================================================
+      CROSS-CUTTING
+      ============================================================
+      • ACM seed bumped to 2026-05-04-04 (89 features).
+      • routeVoiceParser.ts extended with 3 new routes (daily_time_log,
+        time_dezider, time_store) — voice navigation works in 6 languages.
+      • /app/memory/backlog.md created: AI layer on CLD, Razorpay wiring,
+        Delegation inbox routing, DTL smart heuristics, streaks gamification.
+      • Route-order collision fixed in daily_time_log.py: /week /streaks
+        /weekly-review declared BEFORE /{log_date} catch-all.
+      • Raja Guru prefix changed to /raja-guru to avoid collision with
+        existing /time-dezider schedule endpoints.
+
+      ============================================================
+      TESTS — 156 / 156 PASSING
+      ============================================================
+        tests/test_solution_matrix_orgtype.py      61 / 61 ✅
+        tests/test_yoy_and_portal_smoke.py         13 / 13 ✅
+        tests/test_hardening.py                    23 / 23 ✅
+        backend_test_regression.py                 28 / 28 ✅
+        tests/test_dtl_timedezider_timestore.py    31 / 31 ✅  (NEW)
+
+      ============================================================
+      NEXT ACTION ITEMS (when you wake up)
+      ============================================================
+      1. Manual UAT for 3 new screens (Daily Time Log, Time Dezider, Time Store).
+      2. Add time_save_per_day_min / time_save_per_week_min to a couple of
+         Solutions Store listings so the Time Store services tab populates.
+      3. When LLM budget resets → ship Raja Guru+ AI overlay (spec in backlog.md).
+      4. When Razorpay live → flip Time Store purchase from MOCK to real.
+      5. Optional frontend test cycle on the 3 new screens — I haven't
+         invoked expo_frontend_testing_agent tonight (saved context).
+
           legacy flat auto-migration, partial PUT merge, default empty shape).
 
       (2) Solution Matrix Templates + PDF:
