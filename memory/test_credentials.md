@@ -3,11 +3,15 @@
 These are test credentials maintained by the main agent for use by the
 testing agent and any fork agents. They are refreshed when stale.
 
+## Admin user (role=admin) — ACTIVE
+- **Email**: `admin@test.com`
+- **Password**: `AdminPass2026!`
+- **Role**: `admin`
+- **Use for**: admin-only endpoints (DPDP audit log, /api/admin-docs, /api/metrics/json, ACM seed)
+
 ## Primary test user (regular user role)
 - **Email**: `harden_1777921741@example.com`
 - **Password**: `HardenPass2026!`
-- **Token (Bearer)**: `session_0009d555be6b4e5fba9161afb526b463`
-- **Created**: 2026-05-04 18:29 UTC
 - **Role**: `user`
 
 ## How to login fresh (if token expired)

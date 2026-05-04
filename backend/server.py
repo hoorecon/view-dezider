@@ -165,7 +165,7 @@ from routes.public_pulse_org import router as public_pulse_org_router
 from routes.public_pulse_portal import router as public_pulse_portal_router
 from routes.dpdp import router as dpdp_router
 from routes.observability import router as observability_router
-from routes.admin_docs_viewer import router as admin_docs_router
+from routes.admin_docs_viewer import router as admin_docs_viewer_router
 
 
 # ========================
@@ -223,7 +223,7 @@ api_router.include_router(public_pulse_org_router)
 api_router.include_router(public_pulse_portal_router)
 api_router.include_router(dpdp_router)
 api_router.include_router(observability_router)
-api_router.include_router(admin_docs_router)
+api_router.include_router(admin_docs_viewer_router)
 
 
 # ========================

@@ -968,10 +968,66 @@ metadata:
   run_ui: false
 
 test_plan:
-  current_focus: []
-  stuck_tasks: []
+  current_focus:
+    - "v3.4 Cycle 2 Re-test (BLOCKED)"
+  stuck_tasks:
+    - "Expo Router conflict — /admin/docs route duplicate"
   test_all: false
   test_priority: "stuck_first"
+
+frontend_v3_4_cycle2:
+  - task: "v3.4 Cycle 2 Re-test (BLOCKED by Expo Router conflict)"
+    implemented: true
+    working: false
+    file: "app/admin/docs.tsx + app/admin/docs/index.tsx"
+    stuck_count: 1
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: false
+        agent: "testing"
+        comment: |
+          ❌ P0 BLOCKER — entire app bricked by an Expo Router route collision.
+          Every page (login, home, /admin/docs, /tools/solution-matrix, /tools/public-pulse-insights, /p/{slug})
+          renders the red "Server Error" overlay:
+          
+            "Found conflicting screens with the same pattern. The pattern 'admin/docs'
+             resolves to both '__root > admin/docs/index' and '__root > admin/docs'.
+             Patterns must be unique and cannot resolve to more than one screen."
+          
+          Confirmed via `find`:
+            /app/frontend/app/admin/docs.tsx          (legacy flat file)
+            /app/frontend/app/admin/docs/index.tsx    (new list screen — keep)
+            /app/frontend/app/admin/docs/[slug].tsx   (new detail screen — keep)
+          
+          Both `docs.tsx` and `docs/index.tsx` resolve to the SAME route (/admin/docs),
+          so expo-router refuses to mount the navigation tree and shows the red overlay
+          on every screen.
+          
+          FIX (one line): delete /app/frontend/app/admin/docs.tsx — it is superseded by
+          /app/frontend/app/admin/docs/index.tsx. Then restart expo / metro.
+          
+          Cycle 2 results per sub-item:
+            (1) Solution Matrix wizard (matrix-templates-icon)  — UNTESTABLE (Server Error overlay covers screen)
+            (2) Voice Nav bubble visibility                     — UNTESTABLE (no home reachable)
+            (3) Public Pulse YoY tab                            — UNTESTABLE (Server Error overlay)
+            (4a) Public Org Sub-Portal happy path /p/{slug}     — UNTESTABLE (Server Error overlay; backend route is fine, UI bricked)
+            (4b) Bogus slug /p/x error card                     — Cannot distinguish portal-error from app-level Server Error (both look like errors)
+            (5) Admin docs viewer /admin/docs                   — UNTESTABLE (this is the very screen causing the conflict)
+            (6) Cross-cutting (no P0 crash)                     — FAIL — there IS a P0 crash on every screen
+          
+          Login form itself is also unusable because the Server Error overlay blocks
+          input fields (Locator.fill timed out on email field — overlay above DOM).
+          
+          REGRESSION vs cycle 1: All sub-items that were partially passing in cycle 1
+          (portal render, YoY tab, login flow) are now blocked by this overlay.
+          The overlay was introduced together with the new /admin/docs feature.
+          
+          Action for main agent (≤ 1 minute):
+            rm /app/frontend/app/admin/docs.tsx
+            sudo supervisorctl restart expo   # or frontend
+          After that, all 6 sub-items become testable again. Per user's "last cycle"
+          directive I am NOT performing the fix myself — flagging as P0 stuck task.
 
   - task: "Solution Matrix — OrgType nested schema + legacy normalisation"
     implemented: true
