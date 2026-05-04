@@ -4388,7 +4388,24 @@ agent_communication:
           agent: "main"
           comment: "Updated CHANNEL_RULES and CATEGORY_MAP to include AALA, LEE, Goal Setter, Goal Manifestation, Unconditional Happiness, Meditation Settings, Conflict Breaker, PNA, and Lifestyle Designer. Updated all 4 AI doc generation prompts (PRD, SRS, Regression Tests, UAT Cases) to comprehensively cover all 30+ modules."
 
-  - task: "Public Pulse — Phase 1 Citizen MVP"
+  - task: "Public Pulse — Phase 2 Org/Gov/Admin Portal"
+    implemented: true
+    working: true
+    file: "routes/public_pulse_org.py, models/public_pulse_org_models.py, frontend/app/tools/public-pulse/org/*, frontend/app/tools/public-pulse/admin/*"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "Built complete Phase 2 of Public Pulse: 25 new endpoints under /api/public-pulse/* (org application lifecycle, admin moderation, org dashboard, rectification workflow). (1) Admin-configurable everything via pp_admin_config collection: application_eligibility (require_login/tool_use/email_verified) with per-org-type overrides, reapply_cooldown_days per org_type (default 7, govt_dept 30, political_org 14), feedback_visibility per org_type (all_members/admin_only/first_come), feedback_routing (auto_route_exact/confirm_fuzzy/confirm_district). (2) 8 org types: NGO, MSME, Industry Association, Govt Dept, Political Org, Educational Institution, Media, Other. (3) Application flow with blocker validation + cooldown enforcement + pending-check. (4) Admin moderation queue — approve creates PPOrg + adds applicant as org_admin + generates white-label slug for Phase 3. (5) Feedback routing cascade: exact match → auto-route, fuzzy → citizen confirms from top N, district-match → suggestions, skip → admin triage. (6) Unified state-machine endpoint for rectification workflow: acknowledge → respond → action_taken → close → reopen with strict from-state validation. (7) Feedback visibility policy enforcement: all_members/admin_only/first_come (with claim endpoint). (8) Admin oversight: audit logs (all actions tracked), escalated feedback queue, manual assign-to-org override. Frontend: 5 new screens — org home (list my orgs + my applications with status pills), org apply form (org type grid + eligibility blocker banner + full form), org dashboard (aggregates with filter), feedback queue (status filter + action modal for all state transitions), admin moderation (3 tabs: pending/all/audit + review modal with approve/reject + reason). Public Pulse landing updated with Org Portal CTA. ACM updated with pp_org_portal feature (32 modules / 83 features / 196 indexes)."
+        - working: true
+          agent: "testing"
+          comment: "✅ 51/51 assertions PASSED across 25 new endpoints + E2E flow. Runtime-tunable admin config persists correctly. Org application lifecycle (apply → pending → approve → org+member created) works end-to-end. Eligibility blockers work (email_verified gate rejects unverified). Cooldown + pending-check prevents re-submission during active period; after PUT config cooldown=0, re-submit succeeds — proving runtime tunability. Routing: exact match auto-routes, fuzzy returns suggestions list, confirm-route validates in-list, skip-routing escalates. State machine rejects invalid transitions (close-from-new → 400 with enforcement message). Feedback visibility policies (all_members/admin_only/first_come) enforced. Admin audit log captures 5+ action types (admin_config_update, org_application_submit/approve/reject, feedback_acknowledge/respond/action_taken). ACM 32/83 verified. No 5xx errors. Non-blocking observation: pp_org_portal feature requires admin seed (force=true) to appear — suggest auto-reseed on boot in future for zero-touch feature rollout."
+
+agent_communication:
+  - agent: "main"
+    message: "🚀 PUBLIC PULSE PHASE 2 SHIPPED: Org/Gov/Admin portals + runtime-tunable admin config. 25 new endpoints, 5 frontend screens, state-machine rectification workflow, admin moderation queue. Admin-configurable: eligibility rules, cooldown per org type, feedback visibility per org type, routing preferences. Cascade routing (exact→fuzzy→district) with citizen confirmation for non-exact matches. Verified by testing agent: 51/51 assertions pass. ACM 32 modules / 83 features, 196 MongoDB indexes. Phase 3 (AI intelligence layer) deferred — requires LLM budget reset + Phase 2 data foundation."
     implemented: true
     working: true
     file: "routes/public_pulse.py, models/public_pulse_models.py, frontend/app/tools/public-pulse/*"
