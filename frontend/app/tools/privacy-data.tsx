@@ -27,10 +27,9 @@ import { Card } from '../../src/components/Card';
 import { showAlert } from '../../src/utils/alert';
 
 interface DpdpStatus {
-  has_pending_deletion: boolean;
+  deletion_status?: string;            // "none" | "pending" | "cancelled"
   deletion_requested_at?: string | null;
-  scheduled_purge_at?: string | null;
-  reason?: string | null;
+  deletion_grace_until?: string | null;
 }
 
 export default function PrivacyDataScreen() {
@@ -196,14 +195,14 @@ export default function PrivacyDataScreen() {
           <Text style={styles.cardTitle}>Deletion status</Text>
           {loadingStatus ? (
             <ActivityIndicator size="small" color={COLORS.primary} style={{ marginTop: 12 }} />
-          ) : status?.has_pending_deletion ? (
+          ) : (status?.deletion_status === 'pending') ? (
             <View style={styles.pendingBox}>
               <View style={styles.pendingRow}>
                 <Ionicons name="warning" size={18} color="#B45309" />
                 <Text style={styles.pendingTitle}>Deletion pending</Text>
               </View>
               <Text style={styles.pendingLine}>Requested: {formatDate(status.deletion_requested_at)}</Text>
-              <Text style={styles.pendingLine}>Scheduled purge: {formatDate(status.scheduled_purge_at)}</Text>
+              <Text style={styles.pendingLine}>Scheduled purge: {formatDate(status.deletion_grace_until)}</Text>
               {status.reason ? <Text style={styles.pendingLine}>Reason: {status.reason}</Text> : null}
               <TouchableOpacity
                 style={[styles.primaryBtn, { backgroundColor: COLORS.success, marginTop: 14 }]}
@@ -247,7 +246,7 @@ export default function PrivacyDataScreen() {
         </Card>
 
         {/* Delete */}
-        {!status?.has_pending_deletion && (
+        {status?.deletion_status !== 'pending' && (
           <Card style={[styles.card, styles.dangerCard]}>
             <Text style={[styles.cardTitle, { color: COLORS.error }]}>Delete my account</Text>
             <Text style={styles.cardBody}>
