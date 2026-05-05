@@ -7207,9 +7207,49 @@ agent_communication:
     implemented: true
     working: "NA"
     file: "frontend/app/tools/expert-net/manage/[expert_id].tsx, frontend/app/tools/expert-net/recommend.tsx"
-    stuck_count: 0
+    stuck_count: 1
     priority: "high"
     needs_retesting: true
+    test_blocked_by_env: true
+    status_history_addendum: |
+      ⚠️ RETEST 2026-05-05 12:25 — BLOCKED BY CORS IN HEADLESS LOCALHOST TEST ENV (NOT a code bug).
+
+      Setup performed correctly:
+        • Admin login OK (session_591b714c5af048e0acb9c3733c66d2d3)
+        • Fresh expert created under admin: ex_45a1f8a6340c (Dr UAT Expert v2)
+        • localStorage.session_token set BEFORE navigation via context.add_init_script + post-load setItem
+        • Verified token persisted after route navigation (TOKEN_PRESENT=true)
+
+      Console captured during navigation to http://localhost:3000/tools/expert-net/manage/ex_45a1f8a6340c:
+        error: Access to XMLHttpRequest at 'https://voice-browse-epic.preview.emergentagent.com/api/auth/me'
+               from origin 'http://localhost:3000' has been blocked by CORS policy: Response to preflight
+               request doesn't pass access control check: The value of the 'Access-Control-Allow-Origin'
+               header in the response must not be the wildcard '*' when the request's credentials mode
+               is 'include'. The credentials mode of requests initiated by the XMLHttpRequest is
+               controlled by the withCredentials attribute.
+        REQUEST FAILED: .../api/auth/me - net::ERR_FAILED
+        REQUEST FAILED: .../api/expert-net/experts/ex_45a1f8a6340c - net::ERR_FAILED
+
+      ROOT CAUSE: frontend/.env has EXPO_PUBLIC_BACKEND_URL=https://voice-browse-epic.preview.emergentagent.com
+      and frontend/src/utils/api.ts sets `withCredentials: true`. When the test runs at
+      origin http://localhost:3000 (cross-origin to the preview backend) with credentials mode include,
+      Chromium correctly refuses the wildcard CORS header. The route /tools/expert-net/manage/[id]
+      DOES render (no 404, no router shadow); the screen falls back to "Expert not found" because
+      GET /experts/{id} cannot be issued.
+
+      Steps 4–8 could NOT be executed against this environment. Two further browser-tool retries
+      hit "context deadline exceeded" while waiting for tabs to render (because data never arrived).
+
+      RECOMMENDATIONS for main agent:
+        1. Re-test using the public preview origin directly (https://voice-browse-epic.preview.emergentagent.com/tools/expert-net/manage/<id>)
+           where frontend & backend are same-origin and CORS isn't an issue. The same headless harness
+           with localStorage seeding will then exercise all 8 steps end-to-end.
+        2. OR temporarily relax `withCredentials` in src/utils/api.ts (Authorization Bearer header is
+           the actual auth mechanism; cookies are not used) — this would also unblock localhost tests
+           and make backend CORS `*` work.
+        3. Backend functional regression for ExpertNet v3.9.1 is already 38/38 PASS (status above).
+           The blocker is purely a testing-environment cross-origin CORS issue, not a feature defect.
+      
     status_history:
       - working: "NA"
         agent: "main"
