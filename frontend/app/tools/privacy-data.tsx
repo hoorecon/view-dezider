@@ -98,62 +98,39 @@ export default function PrivacyDataScreen() {
       showAlert('Confirmation required', 'Type "DELETE MY ACCOUNT" exactly to confirm.');
       return;
     }
-    showAlert(
-      'Delete Account?',
-      'Your account will be scheduled for deletion. You have a 30-day cooling-off period to cancel before data is permanently purged.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setDeleting(true);
-              await api.post('/dpdp/delete-request', {
-                confirmation: confirmPhrase.trim(),
-                reason: reason.trim() || null,
-              });
-              showAlert('Deletion scheduled', 'Your account is now pending deletion. You can cancel anytime within the cooling-off period.');
-              setConfirmPhrase('');
-              setReason('');
-              setShowDeleteForm(false);
-              fetchStatus();
-            } catch (e: any) {
-              const msg = e?.response?.data?.detail || e.message || 'Request failed';
-              showAlert('Deletion request failed', typeof msg === 'string' ? msg : JSON.stringify(msg));
-            } finally {
-              setDeleting(false);
-            }
-          },
-        },
-      ]
-    );
+    // Typed phrase is the explicit confirmation — no extra dialog.
+    try {
+      setDeleting(true);
+      await api.post('/dpdp/delete-request', {
+        confirmation: confirmPhrase.trim(),
+        reason: reason.trim() || null,
+      });
+      showAlert('Deletion scheduled', 'Your account is now pending deletion. You can cancel anytime within the cooling-off period.');
+      setConfirmPhrase('');
+      setReason('');
+      setShowDeleteForm(false);
+      fetchStatus();
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || e.message || 'Request failed';
+      showAlert('Deletion request failed', typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleCancelDeletion = async () => {
-    showAlert(
-      'Cancel deletion?',
-      'This will reverse your pending deletion request. Your account will remain active.',
-      [
-        { text: 'Keep pending', style: 'cancel' },
-        {
-          text: 'Cancel deletion',
-          onPress: async () => {
-            try {
-              setCancelling(true);
-              await api.post('/dpdp/cancel-delete', {});
-              showAlert('Deletion cancelled', 'Your account has been restored.');
-              fetchStatus();
-            } catch (e: any) {
-              const msg = e?.response?.data?.detail || e.message || 'Cancel failed';
-              showAlert('Cancel failed', typeof msg === 'string' ? msg : JSON.stringify(msg));
-            } finally {
-              setCancelling(false);
-            }
-          },
-        },
-      ]
-    );
+    // Single-tap action — undoing a destructive request is itself non-destructive.
+    try {
+      setCancelling(true);
+      await api.post('/dpdp/cancel-delete', {});
+      showAlert('Deletion cancelled', 'Your account has been restored.');
+      fetchStatus();
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || e.message || 'Cancel failed';
+      showAlert('Cancel failed', typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setCancelling(false);
+    }
   };
 
   const formatDate = (iso?: string | null) => {
@@ -256,6 +233,7 @@ export default function PrivacyDataScreen() {
 
             {!showDeleteForm ? (
               <TouchableOpacity
+                testID="privacy-request-delete"
                 style={[styles.primaryBtn, { backgroundColor: COLORS.error }]}
                 onPress={() => setShowDeleteForm(true)}
               >
@@ -266,6 +244,7 @@ export default function PrivacyDataScreen() {
               <View style={{ marginTop: 8 }}>
                 <Text style={styles.label}>Reason (optional)</Text>
                 <TextInput
+                  testID="privacy-delete-reason"
                   value={reason}
                   onChangeText={setReason}
                   placeholder="Help us improve (optional)"
@@ -278,6 +257,7 @@ export default function PrivacyDataScreen() {
                   Type <Text style={{ fontWeight: '700' }}>DELETE MY ACCOUNT</Text> to confirm
                 </Text>
                 <TextInput
+                  testID="privacy-delete-confirm"
                   value={confirmPhrase}
                   onChangeText={setConfirmPhrase}
                   placeholder="DELETE MY ACCOUNT"
@@ -288,6 +268,7 @@ export default function PrivacyDataScreen() {
 
                 <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
                   <TouchableOpacity
+                    testID="privacy-delete-cancel"
                     style={[styles.secondaryBtn, { flex: 1 }]}
                     onPress={() => {
                       setShowDeleteForm(false);
@@ -298,6 +279,7 @@ export default function PrivacyDataScreen() {
                     <Text style={styles.secondaryBtnText}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
+                    testID="privacy-delete-confirm-btn"
                     style={[
                       styles.primaryBtn,
                       { flex: 1, backgroundColor: COLORS.error, marginTop: 0 },

@@ -213,7 +213,7 @@ export default function DailyTimeLogScreen() {
               })
             )}
 
-            <TouchableOpacity style={styles.addBtn} onPress={() => setEditing({})}>
+            <TouchableOpacity testID="dtl-add-block" style={styles.addBtn} onPress={() => setEditing({})}>
               <Ionicons name="add" size={20} color="#FFF" />
               <Text style={styles.addBtnText}>Add block</Text>
             </TouchableOpacity>
@@ -251,17 +251,17 @@ export default function DailyTimeLogScreen() {
               <View style={styles.row}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.fieldLabel}>Start (HH:MM)</Text>
-                  <TextInput style={styles.input} value={newBlock.start}
+                  <TextInput testID="dtl-block-start" style={styles.input} value={newBlock.start}
                     onChangeText={v => setNewBlock({ ...newBlock, start: v })} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.fieldLabel}>End (HH:MM)</Text>
-                  <TextInput style={styles.input} value={newBlock.end}
+                  <TextInput testID="dtl-block-end" style={styles.input} value={newBlock.end}
                     onChangeText={v => setNewBlock({ ...newBlock, end: v })} />
                 </View>
               </View>
               <Text style={styles.fieldLabel}>Label</Text>
-              <TextInput style={styles.input} value={newBlock.label} placeholder="e.g. Morning run"
+              <TextInput testID="dtl-block-label" style={styles.input} value={newBlock.label} placeholder="e.g. Morning run"
                 placeholderTextColor={COLORS.textMuted}
                 onChangeText={v => setNewBlock({ ...newBlock, label: v })} />
               <Text style={styles.fieldLabel}>Note</Text>
@@ -272,7 +272,7 @@ export default function DailyTimeLogScreen() {
                 <TouchableOpacity onPress={() => setEditing(null)} style={styles.cancelBtn}>
                   <Text style={styles.cancelBtnText}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={saveBlock} disabled={saving}
+                <TouchableOpacity testID="dtl-block-save" onPress={saveBlock} disabled={saving}
                   style={[styles.saveBtn, saving && { opacity: 0.6 }]}>
                   {saving ? <ActivityIndicator size="small" color="#FFF" /> :
                     <Text style={styles.saveBtnText}>Save</Text>}

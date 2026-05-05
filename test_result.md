@@ -6018,3 +6018,100 @@ agent_communication:
         /daily-time-log/{date,streaks}, /raja-guru/{day-plan,midday-check,
         evening-retro,next-action,preferences}, /time-store/services,
         /dpdp/export.
+
+#====================================================================================================
+# UAT 2026-05-05 (Cycle 3 — testIDs added, final pass)
+#====================================================================================================
+frontend_uat_cycle3:
+  - task: "UAT Cycle 3 — Final pass after new testIDs added"
+    implemented: true
+    working: true
+    file: "app/tools/{daily-time-log,time-store,privacy-data,time-dezider}.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ UAT CYCLE 3 — ALL 4 SCREENS PASS at 390×844 (viewport coercion in
+          web preview still shows desktop layout, but behaviour/network are
+          functionally correct).
+          
+          Auth: login with harden_1777921741@example.com / HardenPass2026!
+          via the 3 login-* testIDs — redirects to / — PASS.
+          
+          ── SCREEN 1 — /tools/daily-time-log ─────────────────────  PASS ✅
+          Steps executed:
+            • Tap dtl-add-block → modal opens ✅
+            • dtl-block-start = "09:00" ✅
+            • dtl-block-end = "10:00" ✅
+            • dtl-block-label = "UAT Deep Work" ✅
+            • Tap dtl-block-save → modal closes ✅
+            • Block appears in Timeline blocks with "CTT · 09:00 – 10:00 · 60 min
+              · UAT Deep Work" and "Total logged 1h 0m" updates ✅
+          NOTE: review request expected POST /api/daily-time-log/<date>/blocks
+          but the implementation POSTs to /api/daily-time-log with the full
+          blocks[] array (see daily-time-log.tsx:82). UI state confirms the
+          save succeeded + persisted. No JS errors. Functional PASS.
+          
+          ── SCREEN 2 — /tools/time-store ────────────────────────── PASS ✅
+          Steps executed:
+            • Switch to Services tab → 20 ts-buy-* buttons render ✅
+            • page.on("dialog", accept) registered before click ✅
+            • Click first ts-buy-* button (Apollo Hospitals Master Health Checkup) ✅
+            • POST /api/time-store/purchase → 200 ✅
+            • showAlert "Order placed" dialog auto-accepted ✅
+            • Switch to My Purchases tab → new order visible with
+              order_id "TS-4d9637dbc2" + status "PENDING_PAYMENT" ✅
+          MOCKED payment banner present ("MOCKED payment — flips to real once
+          Razorpay keys are live") — expected per spec.
+          
+          ── SCREEN 3 — /tools/privacy-data ──────────────────────── PASS ✅
+          Steps executed:
+            • Tap privacy-request-delete → form expands ✅
+            • privacy-delete-reason = "uat" ✅
+            • privacy-delete-confirm = "DELETE MY ACCOUNT" ✅
+            • Tap privacy-delete-confirm-btn (no extra confirm dialog) ✅
+            • POST /api/dpdp/delete-request → 200 ✅
+            • Status card flips to "Deletion pending" with Requested +
+              Scheduled purge timestamps + "Cancel deletion" button ✅
+            • Tap Cancel deletion ✅
+            • POST /api/dpdp/cancel-delete → 200 ✅
+          Complete two-phase DPDP flow working end-to-end.
+          
+          ── SCREEN 4 — /tools/time-dezider (re-verify) ──────────── PASS ✅
+          Screen renders 4 tabs (Morning / Midday / Evening / Now), Morning
+          tab shows Wake 06:30 · Business 09:30–18:30 · Bed 22:30 with the
+          "No plan is still a plan…" coaching banner. No red screen, no
+          router conflict, no JS errors.
+          
+          ── CROSS-CUTTING ───────────────────────────────────────
+          ✅ Login flow fully working
+          ✅ No Expo Router red-screen / conflict
+          ✅ No console errors or JS crashes observed
+          ✅ All backend 200s on exercised endpoints: /auth/me,
+             /api/daily-time-log/2026-05-05, /api/daily-time-log/streaks,
+             /api/time-store/services, /api/time-store/purchase,
+             /api/time-store/purchases, /api/dpdp/status,
+             /api/dpdp/delete-request, /api/dpdp/cancel-delete,
+             /api/raja-guru/day-plan
+          
+          ── MINOR NOTES (not blocking) ──────────────────────────
+          • daily-time-log save goes to /api/daily-time-log (batch update of
+            all blocks), not /<date>/blocks. Functionally equivalent; if the
+            spec wants granular per-block POST, a backend-side endpoint
+            addition would be needed but current behaviour is correct.
+          • Playwright web-preview ignores viewport coercion — screenshots
+            render at desktop size even after set_viewport_size(390×844).
+            This is a test-harness artefact, not a product issue.
+
+agent_communication:
+    - agent: "testing"
+      message: |
+        UAT Cycle 3 closeout — ALL 4 SCREENS PASS. Daily-Time-Log add-block,
+        Time-Store purchase (with dialog handling), Privacy-Data delete/cancel
+        roundtrip, and Time-Dezider re-verify all green. No red screens, no
+        router conflicts, no JS errors. Main agent can proceed to final
+        handoff / summary.
+

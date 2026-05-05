@@ -196,7 +196,7 @@ export default function TimeStoreScreen() {
                         </View>
                       )}
                     </View>
-                    <TouchableOpacity style={styles.buyBtn} onPress={() => purchase(s)}>
+                    <TouchableOpacity testID={`ts-buy-${s.solution_id}`} style={styles.buyBtn} onPress={() => purchase(s)}>
                       <Ionicons name="cart" size={14} color="#FFF" />
                       <Text style={styles.buyBtnText}>Buy back time</Text>
                     </TouchableOpacity>
