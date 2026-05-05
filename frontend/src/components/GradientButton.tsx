@@ -20,6 +20,7 @@ interface GradientButtonProps {
   style?: ViewStyle;
   textStyle?: TextStyle;
   icon?: React.ReactNode;
+  testID?: string;
 }
 
 export const GradientButton: React.FC<GradientButtonProps> = ({
@@ -31,10 +32,14 @@ export const GradientButton: React.FC<GradientButtonProps> = ({
   style,
   textStyle,
   icon,
+  testID,
 }) => {
   if (variant === 'outline') {
     return (
       <TouchableOpacity
+        testID={testID}
+        accessibilityRole="button"
+        accessibilityLabel={title}
         style={[styles.outlineButton, style, disabled && styles.disabled]}
         onPress={onPress}
         disabled={disabled || loading}
@@ -54,6 +59,9 @@ export const GradientButton: React.FC<GradientButtonProps> = ({
 
   return (
     <TouchableOpacity
+      testID={testID}
+      accessibilityRole="button"
+      accessibilityLabel={title}
       onPress={onPress}
       disabled={disabled || loading}
       activeOpacity={0.8}

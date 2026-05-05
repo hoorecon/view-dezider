@@ -22,6 +22,7 @@ interface InputProps {
   style?: ViewStyle;
   multiline?: boolean;
   numberOfLines?: number;
+  testID?: string;
 }
 
 export const Input: React.FC<InputProps> = ({
@@ -36,6 +37,7 @@ export const Input: React.FC<InputProps> = ({
   style,
   multiline = false,
   numberOfLines = 1,
+  testID,
 }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
@@ -52,6 +54,8 @@ export const Input: React.FC<InputProps> = ({
         ]}
       >
         <TextInput
+          testID={testID}
+          accessibilityLabel={label || placeholder}
           style={[styles.input, multiline && styles.multilineInput]}
           placeholder={placeholder}
           placeholderTextColor={COLORS.textMuted}

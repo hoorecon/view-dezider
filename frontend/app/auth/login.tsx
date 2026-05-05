@@ -298,6 +298,7 @@ export default function LoginScreen() {
               onChangeText={setEmail}
               keyboardType="email-address"
               autoCapitalize="none"
+              testID="login-email"
             />
 
             <Input
@@ -306,6 +307,7 @@ export default function LoginScreen() {
               value={password}
               onChangeText={setPassword}
               secureTextEntry
+              testID="login-password"
             />
 
             <TouchableOpacity
@@ -320,6 +322,7 @@ export default function LoginScreen() {
               onPress={showOrgInput && orgSlug ? handleOrgLogin : handleLogin}
               loading={loading}
               style={styles.loginButton}
+              testID="login-submit"
             />
 
             <View style={styles.divider}>
