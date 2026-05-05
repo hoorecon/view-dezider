@@ -41,16 +41,23 @@ export default function SolutionDetailScreen() {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'quantitative' | 'reviews'>('overview');
 
-  // Review form state
-  const [reviewText, setReviewText] = useState('');
-  const [reviewPros, setReviewPros] = useState('');
-  const [reviewCons, setReviewCons] = useState('');
+  // ReviewNet state (replaces legacy `solution.reviews` placeholder)
+  const [factors, setFactors] = useState<Array<{factor_id: string; name: string; description?: string; scope_type?: string}>>([]);
   const [factorRatings, setFactorRatings] = useState<Record<string, number>>({});
+  const [aggregates, setAggregates] = useState<any>(null);
+  const [reviewsList, setReviewsList] = useState<any[]>([]);
+  const [segment, setSegment] = useState<'individual' | 'organization' | 'government'>('individual');
+  const [subsegment, setSubsegment] = useState<string>('customer');
+  const [reviewText, setReviewText] = useState('');
+  const [reviewTitle, setReviewTitle] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  useEffect(() => { fetchSolution(); }, [solution_id]);
   useEffect(() => {
-    fetchSolution();
-  }, [solution_id]);
+    if (activeTab === 'reviews' && solution_id) {
+      loadReviewNet();
+    }
+  }, [activeTab, solution_id]);
 
   const fetchSolution = async () => {
     try {
@@ -66,38 +73,62 @@ export default function SolutionDetailScreen() {
     }
   };
 
-  const submitReview = async () => {
-    const qualitative_factors = Object.entries(factorRatings)
-      .filter(([_, v]) => v > 0)
-      .map(([k, v]) => ({ factor_name: k, rating: v, comment: '' }));
+  const loadReviewNet = async () => {
+    try {
+      const [fRes, aRes, rRes] = await Promise.all([
+        api.get(`/review-net/factors?solution_id=${solution_id}`),
+        api.get(`/review-net/aggregates?solution_id=${solution_id}`),
+        api.get(`/review-net/reviews?solution_id=${solution_id}`),
+      ]);
+      setFactors(fRes.data?.factors || []);
+      setAggregates(aRes.data || null);
+      setReviewsList(rRes.data?.items || []);
+    } catch (e: any) {
+      console.warn('ReviewNet load error:', e?.response?.data || e.message);
+    }
+  };
 
-    if (qualitative_factors.length === 0) {
+  const submitReview = async () => {
+    const ratings = Object.fromEntries(Object.entries(factorRatings).filter(([_, v]) => v > 0));
+    if (Object.keys(ratings).length === 0) {
       showAlert('Missing Ratings', 'Please rate at least one qualitative factor.');
       return;
     }
-
     setSubmitting(true);
     try {
-      await api.post('/reviewnet/reviews', {
+      const res = await api.post('/review-net/reviews', {
         solution_id,
-        qualitative_factors,
-        review_text: reviewText,
-        pros: reviewPros.split('\n').filter(Boolean),
-        cons: reviewCons.split('\n').filter(Boolean),
-      }, { headers: { Authorization: `Bearer ${session}` } });
-
+        reviewer_segment: segment,
+        reviewer_subsegment: subsegment,
+        factor_ratings: ratings,
+        title: reviewTitle || undefined,
+        comment: reviewText || undefined,
+      });
       setShowReviewModal(false);
-      setReviewText('');
-      setReviewPros('');
-      setReviewCons('');
-      setFactorRatings({});
-      fetchSolution(); // Refresh
-      showAlert('Success', 'Review submitted!');
+      setReviewText(''); setReviewTitle(''); setFactorRatings({});
+      const status = res.data?.status;
+      const message = status === 'auto_approved'
+        ? 'Review auto-approved and published.'
+        : status === 'pending'
+        ? 'Review submitted — pending admin moderation.'
+        : 'Review processed.';
+      showAlert('Success', message);
+      loadReviewNet();
     } catch (e: any) {
       const msg = e?.response?.data?.detail || 'Failed to submit review';
-      showAlert('Error', msg);
+      showAlert('Error', typeof msg === 'string' ? msg : JSON.stringify(msg));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const voteHelpful = async (review_id: string, helpful: boolean) => {
+    try {
+      await api.post(`/review-net/reviews/${review_id}/helpful`, { helpful });
+      loadReviewNet();
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || 'Vote failed';
+      showAlert('Vote failed', typeof msg === 'string' ? msg : JSON.stringify(msg));
     }
   };
 
@@ -288,45 +319,73 @@ export default function SolutionDetailScreen() {
           </>
         )}
 
-        {/* Reviews Tab (ReviewNet) */}
+        {/* Reviews Tab (ReviewNet v2) */}
         {activeTab === 'reviews' && (
           <>
             <View style={styles.reviewHeader}>
               <View>
                 <Text style={styles.sectionTitle}>ReviewNet</Text>
-                <Text style={styles.sectionSubtitle}>Qualitative ratings & reviews</Text>
+                <Text style={styles.sectionSubtitle}>
+                  {aggregates && aggregates.total_reviews > 0
+                    ? `${aggregates.total_reviews} reviews • avg ${aggregates.overall?.average ?? 0}/5`
+                    : 'Be the first to rate the qualitative factors'}
+                </Text>
               </View>
-              <TouchableOpacity style={styles.addReviewBtn} onPress={() => setShowReviewModal(true)}>
+              <TouchableOpacity testID="rn-add-review" style={styles.addReviewBtn} onPress={() => setShowReviewModal(true)}>
                 <Ionicons name="add" size={16} color={COLORS.text} />
                 <Text style={styles.addReviewText}>Add Review</Text>
               </TouchableOpacity>
             </View>
 
-            {/* Aggregated Quality Scores */}
-            {(solution.quality_scores || []).length > 0 && (
+            {/* Per-segment aggregates */}
+            {aggregates && Object.keys(aggregates.segments || {}).length > 0 && (
               <View style={styles.scoresCard}>
-                <Text style={styles.scoresTitle}>Quality Scores</Text>
-                {solution.quality_scores.map((qs: any, i: number) => (
-                  <View style={styles.scoreRow} key={i}>
-                    <Text style={styles.scoreName}>{qs.factor_name}</Text>
-                    <View style={styles.scoreBar}>
-                      <View style={[styles.scoreBarFill, { width: `${qs.avg_rating * 10}%`,
-                        backgroundColor: qs.avg_rating <= 3 ? COLORS.danger : qs.avg_rating <= 6 ? COLORS.warning : COLORS.accent }]} />
+                <Text style={styles.scoresTitle}>By reviewer segment</Text>
+                {(['individual', 'organization', 'government'] as const).map(seg => {
+                  const sg = aggregates.segments?.[seg];
+                  if (!sg || !sg.review_count) return null;
+                  return (
+                    <View key={seg} style={{ marginBottom: 8 }}>
+                      <Text style={[styles.scoreName, { fontWeight: '700', color: COLORS.text }]}>
+                        {seg.charAt(0).toUpperCase() + seg.slice(1)} · {sg.overall?.avg ?? 0}/5 ({sg.review_count})
+                      </Text>
                     </View>
-                    <Text style={styles.scoreValue}>{qs.avg_rating}/10</Text>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             )}
 
-            {/* Individual Reviews */}
-            {(solution.reviews || []).length === 0 ? (
+            {/* Per-factor aggregates */}
+            {aggregates && aggregates.overall?.per_factor && Object.keys(aggregates.overall.per_factor).length > 0 && (
+              <View style={styles.scoresCard}>
+                <Text style={styles.scoresTitle}>Per-factor average</Text>
+                {factors.map(f => {
+                  const a = aggregates.overall.per_factor[f.factor_id];
+                  if (!a || !a.count) return null;
+                  return (
+                    <View key={f.factor_id} style={styles.scoreRow}>
+                      <Text style={[styles.scoreName, { flex: 1 }]} numberOfLines={1}>{f.name}</Text>
+                      <View style={styles.scoreBar}>
+                        <View style={[styles.scoreBarFill, {
+                          width: `${(a.avg / 5) * 100}%`,
+                          backgroundColor: a.avg < 3 ? COLORS.danger : a.avg < 4 ? COLORS.warning : COLORS.accent,
+                        }]} />
+                      </View>
+                      <Text style={styles.scoreValue}>{a.avg}/5</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
+            {/* Reviews list */}
+            {reviewsList.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="chatbubbles-outline" size={36} color={COLORS.textMuted} />
-                <Text style={styles.emptyText}>No reviews yet. Be the first!</Text>
+                <Text style={styles.emptyText}>No published reviews yet. Be the first!</Text>
               </View>
             ) : (
-              solution.reviews.map((rev: any) => (
+              reviewsList.map((rev: any) => (
                 <View style={styles.reviewCard} key={rev.review_id}>
                   <View style={styles.reviewTop}>
                     <View style={styles.reviewerInfo}>
@@ -334,44 +393,64 @@ export default function SolutionDetailScreen() {
                         <Text style={styles.avatarText}>{(rev.reviewer_name || 'A')[0].toUpperCase()}</Text>
                       </View>
                       <View>
-                        <Text style={styles.reviewerName}>{rev.reviewer_name}</Text>
-                        <Text style={styles.reviewDate}>{new Date(rev.created_at).toLocaleDateString()}</Text>
+                        <Text style={styles.reviewerName}>
+                          {rev.reviewer_name}
+                          {rev.is_verified_buyer && <Text style={{ color: COLORS.accent }}> ✓ Verified</Text>}
+                        </Text>
+                        <Text style={styles.reviewDate}>
+                          {new Date(rev.created_at).toLocaleDateString()} · {rev.reviewer_segment}{rev.reviewer_subsegment ? ` (${rev.reviewer_subsegment})` : ''}
+                        </Text>
                       </View>
                     </View>
                     <View style={styles.reviewRatingBadge}>
                       <Text style={styles.reviewRatingNum}>{rev.overall_rating}</Text>
-                      <Text style={styles.reviewRatingMax}>/10</Text>
+                      <Text style={styles.reviewRatingMax}>/5</Text>
                     </View>
                   </View>
 
-                  {rev.review_text && <Text style={styles.reviewBody}>{rev.review_text}</Text>}
-
-                  {rev.pros?.length > 0 && (
-                    <View style={styles.prosConsRow}>
-                      <Ionicons name="thumbs-up" size={14} color={COLORS.accent} />
-                      <Text style={[styles.prosConsText, { color: COLORS.accent }]}>{rev.pros.join(', ')}</Text>
-                    </View>
-                  )}
-                  {rev.cons?.length > 0 && (
-                    <View style={styles.prosConsRow}>
-                      <Ionicons name="thumbs-down" size={14} color={COLORS.danger} />
-                      <Text style={[styles.prosConsText, { color: COLORS.danger }]}>{rev.cons.join(', ')}</Text>
-                    </View>
-                  )}
+                  {rev.title ? <Text style={[styles.reviewBody, { fontWeight: '700' }]}>{rev.title}</Text> : null}
+                  {rev.comment ? <Text style={styles.reviewBody}>{rev.comment}</Text> : null}
 
                   {/* Factor ratings */}
-                  {rev.qualitative_factors?.length > 0 && (
+                  {rev.factor_ratings && Object.keys(rev.factor_ratings).length > 0 && (
                     <View style={styles.reviewFactors}>
-                      {rev.qualitative_factors.map((qf: any, i: number) => (
-                        <View style={styles.reviewFactorChip} key={i}>
-                          <Text style={styles.reviewFactorName}>{qf.factor_name}</Text>
-                          <Text style={[styles.reviewFactorScore, {
-                            color: qf.rating <= 3 ? COLORS.danger : qf.rating <= 6 ? COLORS.warning : COLORS.accent
-                          }]}>{qf.rating}/10</Text>
-                        </View>
-                      ))}
+                      {Object.entries(rev.factor_ratings).map(([fid, rating]: any, i: number) => {
+                        const factor = factors.find(f => f.factor_id === fid);
+                        const label = factor?.name || fid.replace(/^qf_[a-z_]+_/, '').replace(/_/g, ' ');
+                        const r = Number(rating);
+                        return (
+                          <View key={i} style={styles.reviewFactorChip}>
+                            <Text style={styles.reviewFactorName} numberOfLines={1}>{label}</Text>
+                            <Text style={[styles.reviewFactorScore, {
+                              color: r <= 2 ? COLORS.danger : r <= 3 ? COLORS.warning : COLORS.accent,
+                            }]}>{r}/5</Text>
+                          </View>
+                        );
+                      })}
                     </View>
                   )}
+
+                  {/* Owner reply */}
+                  {rev.owner_reply && (
+                    <View style={{ marginTop: 10, padding: 10, backgroundColor: COLORS.surfaceLight, borderRadius: 10, borderLeftWidth: 3, borderLeftColor: COLORS.primary }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.primary, marginBottom: 4 }}>
+                        Owner reply · {rev.owner_reply.by_user_name}
+                      </Text>
+                      <Text style={{ fontSize: 13, color: COLORS.textSecondary }}>{rev.owner_reply.content}</Text>
+                    </View>
+                  )}
+
+                  {/* Helpfulness */}
+                  <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+                    <TouchableOpacity onPress={() => voteHelpful(rev.review_id, true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Ionicons name="thumbs-up-outline" size={14} color={COLORS.accent} />
+                      <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>{rev.helpful_yes_count || 0}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => voteHelpful(rev.review_id, false)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Ionicons name="thumbs-down-outline" size={14} color={COLORS.danger} />
+                      <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>{rev.helpful_no_count || 0}</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ))
             )}
@@ -379,8 +458,8 @@ export default function SolutionDetailScreen() {
         )}
       </ScrollView>
 
-      {/* Review Modal */}
-      <Modal visible={showReviewModal} animationType="slide" transparent>
+      {/* Review Modal — ReviewNet v2 */}
+      <Modal visible={showReviewModal} animationType="slide" transparent onRequestClose={() => setShowReviewModal(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
@@ -392,42 +471,106 @@ export default function SolutionDetailScreen() {
               </View>
 
               <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-                <Text style={styles.modalLabel}>Rate Qualitative Factors</Text>
-                {DEFAULT_FACTORS.map(f => renderRatingSelector(f))}
+                {/* Segment selector */}
+                <Text style={styles.modalLabel}>I'm reviewing as</Text>
+                <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8 }}>
+                  {(['individual', 'organization', 'government'] as const).map(s => (
+                    <TouchableOpacity
+                      key={s}
+                      onPress={() => {
+                        setSegment(s);
+                        const subs = s === 'individual' ? 'customer'
+                          : s === 'organization' ? 'business_corporate'
+                          : 'regulator';
+                        setSubsegment(subs);
+                      }}
+                      style={[
+                        { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center', backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
+                        segment === s && { backgroundColor: COLORS.primary + '30', borderColor: COLORS.primary },
+                      ]}
+                    >
+                      <Text style={[{ fontSize: 12, color: COLORS.textSecondary, fontWeight: '600' }, segment === s && { color: COLORS.primary }]}>
+                        {s.charAt(0).toUpperCase() + s.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
 
-                <Text style={[styles.modalLabel, { marginTop: 16 }]}>Your Review</Text>
+                {/* Sub-segment chips */}
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+                  {(segment === 'individual' ? ['customer', 'observer', 'expert']
+                    : segment === 'organization' ? ['business_corporate', 'educational_institution', 'ngo_nonprofit']
+                    : ['regulator', 'local_body', 'central_state_dept']
+                  ).map(ss => (
+                    <TouchableOpacity
+                      key={ss}
+                      onPress={() => setSubsegment(ss)}
+                      style={[
+                        { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, backgroundColor: COLORS.surfaceLight, borderWidth: 1, borderColor: COLORS.border },
+                        subsegment === ss && { backgroundColor: COLORS.primary + '20', borderColor: COLORS.primary },
+                      ]}
+                    >
+                      <Text style={[{ fontSize: 11, color: COLORS.textSecondary }, subsegment === ss && { color: COLORS.primary, fontWeight: '700' }]}>
+                        {ss.replace(/_/g, ' ')}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={styles.modalLabel}>Rate Qualitative Factors (1-5 stars)</Text>
+                {factors.length === 0 ? (
+                  <Text style={{ color: COLORS.textMuted, fontSize: 12, marginVertical: 12 }}>Loading factors…</Text>
+                ) : (
+                  factors.map(f => (
+                    <View key={f.factor_id} style={{ marginBottom: 12 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <Text style={{ color: COLORS.text, fontSize: 13, flex: 1 }}>{f.name}</Text>
+                        <Text style={{ color: COLORS.textMuted, fontSize: 11 }}>{f.scope_type}</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        {[1, 2, 3, 4, 5].map(n => (
+                          <TouchableOpacity
+                            key={n}
+                            testID={`rn-rate-${f.factor_id}-${n}`}
+                            onPress={() => setFactorRatings({ ...factorRatings, [f.factor_id]: n })}
+                          >
+                            <Ionicons
+                              name={(factorRatings[f.factor_id] || 0) >= n ? 'star' : 'star-outline'}
+                              size={26}
+                              color={(factorRatings[f.factor_id] || 0) >= n ? COLORS.gold : COLORS.textMuted}
+                            />
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  ))
+                )}
+
+                <Text style={[styles.modalLabel, { marginTop: 8 }]}>Title (optional)</Text>
                 <TextInput
+                  testID="rn-title"
+                  style={[styles.textArea, { height: 40 }]}
+                  placeholder="Headline of your experience"
+                  placeholderTextColor={COLORS.textMuted}
+                  value={reviewTitle}
+                  onChangeText={setReviewTitle}
+                />
+
+                <Text style={styles.modalLabel}>Your Review</Text>
+                <TextInput
+                  testID="rn-comment"
                   style={styles.textArea}
-                  placeholder="Share your experience..."
+                  placeholder="Share your experience…"
                   placeholderTextColor={COLORS.textMuted}
                   value={reviewText}
                   onChangeText={setReviewText}
                   multiline
-                  numberOfLines={3}
-                />
-
-                <Text style={styles.modalLabel}>Pros (one per line)</Text>
-                <TextInput
-                  style={[styles.textArea, { height: 60 }]}
-                  placeholder="Good things..."
-                  placeholderTextColor={COLORS.textMuted}
-                  value={reviewPros}
-                  onChangeText={setReviewPros}
-                  multiline
-                />
-
-                <Text style={styles.modalLabel}>Cons (one per line)</Text>
-                <TextInput
-                  style={[styles.textArea, { height: 60 }]}
-                  placeholder="Areas for improvement..."
-                  placeholderTextColor={COLORS.textMuted}
-                  value={reviewCons}
-                  onChangeText={setReviewCons}
-                  multiline
+                  numberOfLines={4}
                 />
               </ScrollView>
 
               <TouchableOpacity
+                testID="rn-submit-review"
                 style={[styles.submitBtn, submitting && { opacity: 0.6 }]}
                 onPress={submitReview}
                 disabled={submitting}

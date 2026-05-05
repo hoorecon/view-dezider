@@ -771,6 +771,62 @@ backend:
         agent: "testing"
         comment: "✅ ORG-LEVEL ADMIN HIERARCHY COMPREHENSIVE TESTING PASSED: All 15 test scenarios successful! Tested complete organization admin hierarchy workflow: (1) User A registration as org creator working, (2) Organization creation assigns creator org_super_admin role automatically, (3) User A verified with org_super_admin role via GET /api/auth/me, (4) User B registration with org_id working - assigned org_member role, (5) User C registration with org_id working - assigned org_member role, (6) GET /api/organizations/{org_id}/members returns all 3 members with correct roles, (7) User A (org_super_admin) successfully promoted User B to org_admin, (8) User A successfully promoted User B to org_co_admin (only org_super_admin can create co_admin), (9) User B (org_co_admin) successfully promoted User C to org_admin, (10) User B correctly denied promoting User C to org_co_admin (403 - only org_super_admin can create co_admin), (11) User C correctly denied modifying User B (403 - User B is org_co_admin >= User C's level), (12) Self-modification correctly denied (400 - Cannot change your own org role), (13) User B successfully removed User C from organization, (14) User C verified as removed - org_id and org_role are null. Complete org-level permission matrix validated: org_super_admin (level 3) can promote/demote all roles, org_co_admin (level 2) can manage org_admin but not co_admin, org_admin (level 1) cannot modify equal/higher roles. All security controls and role-based access working correctly."
 
+  - task: "ReviewNet — factors / reviews / aggregates / moderation / rule engine"
+    implemented: true
+    working: true
+    file: "backend/routes/review_net.py, backend/models/review_net_models.py, backend/data/review_net_seed.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ REVIEWNET REGRESSION 32/32 PASS (v3.7.0). Test script: /app/backend_test.py.
+          Solution used: 12cd6acb-7af8-4238-859c-8f979a10cccd (SBI Home Loan — la_finance + sa_fin_debt).
+          Catalog node used: cn_fin_fd (test mentioned cn_fin_savings_fd but actual seeded id is cn_fin_fd; both walk up to la_finance + sa_fin_savings ancestors so the assertion is equivalent).
+
+          Per-case results:
+          [PASS] 1.   Auth — admin@test.com + harden_1777921741@example.com both logged in.
+          [PASS] 2a.  POST /factors/seed → 200, total=70, inserted=0 (already seeded), skipped_existing=70 ≥0 condition met.
+          [PASS] 2b.  POST /factors/seed again → inserted=0, skipped_existing=70 (idempotent).
+          [PASS] 3a.  Seed as USER → 403.
+          [PASS] 3b.  POST /factors as USER → 403.
+          [PASS] 4a.  GET /factors?solution_id=… → 10 factors. Global (4) + la_finance (3 — fee_transparency/advisor_competence/ease_of_onboarding) + sa_fin_debt (3 — interest_rate_fairness/loan_processing_speed/prepayment_friendliness) all present. Closer scope wins on slug collision verified by code path + dedup logic.
+          [PASS] 4b.  GET /factors?catalog_node_id=cn_fin_fd → 9 factors. Global + la_finance + sa_fin_savings (interest_consistency/premature_withdrawal_ease) all present via ancestor walk.
+          [PASS] 5a.  GET /eligibility default = ALL_AUTHENTICATED, is_eligible=true.
+          [PASS] 5b.  PUT /eligibility (admin) policy=VERIFIED_BUYERS_ONLY → 200, admin_overridden=true.
+          [PASS] 5c.  USER without purchase → is_eligible=false, reason="VERIFIED_BUYERS_ONLY: no purchase record found".
+          [PASS] 5d.  POST /api/time-store/purchase → 200 (status=pending_payment, MOCKED until Razorpay live — purchase record still inserted, eligibility honors it).
+          [PASS] 5e.  Re-check /eligibility → is_eligible=true after purchase.
+          [PASS] 5f.  PUT /eligibility reset → ALL_AUTHENTICATED.
+          [PASS] 6.   POST /reviews with 4/3 ratings (no active rules) → status=pending, moderation_action=HOLD_FOR_ADMIN. Captured review_id=rv_590e428fd4584e. NB: any pre-existing active rules were temporarily deactivated for deterministic HOLD path then reactivated.
+          [PASS] 7a.  POST /admin/rules (Auto-approve overall_min ≥3) → 200, rule_id=rl_f4701a8cd2.
+          [PASS] 7b.  POST /reviews avg=4.5 → status=auto_approved, moderation_action=AUTO_APPROVE.
+          [PASS] 7c.  POST /reviews avg=1 → status=pending, moderation_action=HOLD_FOR_ADMIN (no matching rule).
+          [PASS] 7d.  DELETE /admin/rules/{rule_id} → 200.
+          [PASS] 8.   GET /aggregates → total_reviews=1 (only auto_approved counted at this stage), segments.individual.review_count=1, overall.per_factor non-empty (2 factor keys).
+          [PASS] 9a.  Registered fresh voter rnvoter_1777970081@example.com.
+          [PASS] 9b.  POST /reviews/{id}/helpful {helpful:true} → 200, helpful_yes_count=1.
+          [PASS] 9c.  Same vote again → {ok:true, noop:true}.
+          [PASS] 9d.  Toggle to {helpful:false} → yes:1→0, no:0→1.
+          [PASS] 9e.  Self-vote (original reviewer) → 400 "cannot vote on your own review".
+          [PASS] 10a. Non-owner non-admin reply → 403.
+          [PASS] 10b. Admin reply → 200, is_official=true.
+          [PASS] 10c. GET /reviews/{id} → owner_reply populated.
+          [PASS] 11a. GET /admin/moderation-queue?status=pending contains the held review (rv_590e428fd4584e).
+          [PASS] 11b. POST /admin/moderate decision=approve → status flipped to "approved".
+          [PASS] 11c. GET /aggregates again → total_reviews=2 (incremented after moderation approve).
+          [PASS] 12.  GET /reviews?solution_id=… returns only items with status ∈ {approved, auto_approved}; no pending/rejected leak.
+          [PASS] 13.  POST /reviews with reviewer_segment=individual + reviewer_subsegment=regulator → 400 "invalid sub-segment 'regulator' for segment individual".
+
+          NOTES:
+          - AI/LLM endpoints intentionally skipped per request (graceful 503 by design).
+          - Rule engine, eligibility hierarchy, segment validation, helpful-vote toggle math, and HOLD/AUTO/MANUAL moderation paths all behave as specified.
+          - DB side-effects expected: 1 new rule (cleaned up), 4-5 new review_net rows, 1 new time_store_purchases row, 1 new test user, several review_helpfulness rows. Per request ("expected").
+          - No P0 blockers, no integrity issues, no mocked behaviour outside the documented Time Store payment mock (which is not under ReviewNet's purview).
+
+
 frontend:
   - task: "Multi-Tenant Organization Endpoints"
     implemented: true
@@ -5695,6 +5751,67 @@ backend_ccm:
           (9) Auto-map + direct map: /catalog/auto-map-existing → {updated:0, unmapped:25}. POST /catalog/solutions/{sid}/map → 200 level=2. DB verified: catalog_node_id=cn_fin_fd, catalog_level=2.
           (10) User RBAC: user tree/node reads 200, user POST /catalog/nodes → 403.
           Minor observation (non-blocking): auto-map-existing couldn't promote any of the 25 pre-CCM solutions because their docs lack `sub_area_id`. Endpoint works as coded; main agent may want to enhance the fallback (e.g., derive via category_id → hos_categories lookup) if full auto-mapping is a goal.
+
+---
+
+## 2026-05-05 v3.7.0 — ReviewNet (Phase 2)
+
+backend:
+  - task: "ReviewNet — factors / reviews / aggregates / moderation / rule engine"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/routes/review_net.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "New module mounted at /api/review-net. Models in models/review_net_models.py. Seed in data/review_net_seed.py — 70 factors across 4 global + 21 life-area + 45 sub-area scopes. Endpoints: POST /factors/seed, GET /factors?solution_id=X|catalog_node_id=X (resolves hierarchically — closer scope wins), POST/PUT/DELETE /factors (admin), POST /reviews (auto-applies rule engine: AUTO_APPROVE / HOLD_FOR_ADMIN / AUTO_REJECT), GET /reviews?solution_id=X[&segment=&subsegment=], GET /reviews/{id}, POST /reviews/{id}/helpful (toggle 👍/👎), POST /reviews/{id}/reply (owner-only), GET /aggregates?solution_id=X (3-segment + 1-sublevel + per-factor + overall avg), GET/PUT /eligibility/{solution_id} (per-solution policy: ALL_AUTHENTICATED / VERIFIED_BUYERS_ONLY / INVITED_ONLY / EMPLOYEES_ONLY; configurable by org publisher OR admin), admin moderation queue, admin rules CRUD with composable conditions (overall_min/max, rating_min/max, comment_max_length, is_verified_buyer, reviewer_min_prior_approved, comment_contains_blocklist). Smoke-tested via curl: factor seed (70 inserted), hierarchical factor resolution (4 global + 4 health + 2 preventive = 10 factors), review submit with rule engine flipping pending → auto_approved when overall_min rule matches."
+
+frontend:
+  - task: "Solution detail Reviews tab — ReviewNet v2"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/tools/solution-detail.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Replaced legacy placeholder tab. Now fetches /review-net/factors, /aggregates and /reviews on tab open. Displays 3-segment aggregates + per-factor avg bars. Reviews list shows segment/subsegment, verified-buyer badge, factor chips with color-coded scores, owner reply (if any) and helpful 👍/👎 voting. Submit modal supports segment & subsegment chips + per-factor 5-star pickers + title + comment. Posts to /review-net/reviews with new schema."
+
+  - task: "Admin ReviewNet — moderation queue + rules editor"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/admin/review-net/index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "New /admin/review-net screen. Tab 1 = Queue (lists pending reviews, approve/reject one-tap). Tab 2 = Rules (CRUD over auto-publish rules, with composable conditions, action picker AUTO_APPROVE/HOLD/AUTO_REJECT, priority field, pause/resume, delete). Linked from Profile tab. testIDs added on critical actions (rules-add, rn-add-review, rn-submit-review, mod-approve-*, mod-reject-*, rn-rate-*, rn-title, rn-comment)."
+
+metadata:
+  created_by: "main_agent"
+  version: "3.7.0"
+  test_sequence: 20
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "ReviewNet — factors / reviews / aggregates / moderation / rule engine"
+    - "Solution detail Reviews tab — ReviewNet v2"
+    - "Admin ReviewNet — moderation queue + rules editor"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "v3.7.0 Phase 2 (ReviewNet) live. Please backend regress: (a) factors/seed idempotency + hierarchical resolve, (b) review submit happy path + rule engine (auto_approve when overall_min matches; hold otherwise), (c) eligibility 4 policies w/ admin override, (d) helpful vote toggle (no double-counting), (e) owner reply role check (only solution owner/admin), (f) admin moderation queue + approve/reject + audit fields, (g) rules CRUD + conditions JSON parsing. Skip AI endpoints (LLM budget capped). Frontend UAT to follow with explicit user approval."
 
 
 
