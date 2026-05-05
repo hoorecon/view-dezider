@@ -405,6 +405,7 @@ function WebinarsTab() {
 // Manage tab — Be an Expert
 // ---------------------------------------------------------------------------
 function ManageTab() {
+  const router = useRouter();
   const [profiles, setProfiles] = useState<Expert[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -466,6 +467,14 @@ function ManageTab() {
             <Switch value={!!p.is_online} onValueChange={() => toggleOnline(p)} />
             {p.accepts_instant_calls && <Text style={[styles.tagPill, { backgroundColor: '#10B98122', color: '#059669' }]}>⚡ Instant</Text>}
           </View>
+          <TouchableOpacity
+            testID={`xn-manage-${p.expert_id}`}
+            style={[styles.btnPrimary, { marginTop: 10 }]}
+            onPress={() => router.push(`/tools/expert-net/manage/${p.expert_id}` as any)}
+          >
+            <Ionicons name="settings" size={14} color="#FFF" />
+            <Text style={styles.btnPrimaryText}>Open dashboard (inbox · schedule · intake · webinars)</Text>
+          </TouchableOpacity>
         </View>
       ))}
 

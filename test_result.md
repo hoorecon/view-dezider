@@ -7139,12 +7139,13 @@ agent_communication:
 
 metadata:
   created_by: "main_agent"
-  version: "3.9.0"
-  test_sequence: 12
-  run_ui: false
+  version: "3.9.1"
+  test_sequence: 13
+  run_ui: true
 
 test_plan:
-  current_focus: []
+  current_focus:
+    - "ExpertNet v3.9.1 — Expert self-serve dashboard (4 missing screens)"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -7199,3 +7200,127 @@ agent_communication:
         No P0 blockers. Existing 38/38 ExpertNet regression surface remains intact. Both v3.9.0 tasks
         in test_plan.current_focus marked working:true and needs_retesting:false. test_plan.current_focus cleared.
 
+
+
+
+  - task: "ExpertNet v3.9.1 — Expert self-serve dashboard (4 missing screens)"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/tools/expert-net/manage/[expert_id].tsx, frontend/app/tools/expert-net/recommend.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Built the 4 missing expert-self-serve frontend screens that were the
+          last gap between fully functional backend (38/38 PASS) and a fully
+          shippable end-to-end ExpertNet experience.
+
+          NEW route 1 — `/tools/expert-net/manage/[expert_id]` (single screen, 4 tabs):
+            • INBOX     — `GET /api/expert-net/bookings?role=expert` filtered to this expert
+                         status filter chips (all/pending/confirmed/in_progress/completed/cancelled),
+                         confirm/decline buttons (POST /confirm | /cancel), start-call (POST /start-call → jitsi-room),
+                         "View intake answers" modal that renders the user's intake_response dict,
+                         "Recommend" deep-link to /tools/expert-net/recommend?booking_id=…
+            • SCHEDULE  — Availability editor matching `AvailabilityUpdate` schema:
+                         add/remove weekly windows ({weekday 0-6, start_minutes, end_minutes, slot_minutes 10-240})
+                         + comma-separated blackout dates → PUT /experts/{id}/availability
+            • INTAKE    — Intake form builder matching `IntakeFormUpsert` schema:
+                         mode toggle (builtin | external), title/description, is_required_before_booking switch,
+                         external_url field for Google Forms / Typeform OR full builtin field editor
+                         (field_id sanitised to [a-z0-9_], label, field_type from 6 supported types,
+                         comma-options for single/multi_select, required switch) → PUT /experts/{id}/intake-form
+            • WEBINARS  — list mine (filter expert_webinars by expert_id), Create button opens modal:
+                         title, description, starts_at_iso, duration, capacity, free toggle / price_inr,
+                         "Go live"/"Resume" → POST /webinars/{id}/start → jitsi-room
+
+          NEW route 2 — `/tools/expert-net/recommend?booking_id=…&user_name=…`:
+            • Search Solutions Store (`GET /solutions-store/solutions?q=…`)
+            • Pick a solution card, add note, toggle "Auto-create CTT task" + "Add as recurring routine"
+            • Frequency chips for routine (daily/weekdays/weekly/custom)
+            • Submit → POST /api/expert-net/bookings/{booking_id}/recommend
+              Backend then auto-creates ctt_task + lifestyle_routine docs on user's account.
+
+          Wired up entry-point: in `Manage` tab of `/tools/expert-net/index.tsx`, each
+          expert card now has an "Open dashboard (inbox · schedule · intake · webinars)"
+          button → router.push to /tools/expert-net/manage/{expert_id}.
+
+          Hook bug caught & fixed during build: an inline `useRouter().push(…)` was
+          replaced with a top-level `const router = useRouter()` per React rules-of-hooks.
+
+          NO new backend endpoints — 100% reuses existing routes:
+            • PUT /experts/{id}/availability      (existing)
+            • PUT /experts/{id}/intake-form       (existing)
+            • GET /bookings?role=expert           (existing)
+            • POST /bookings/{id}/confirm         (existing)
+            • POST /bookings/{id}/cancel          (existing)
+            • POST /bookings/{id}/start-call      (existing, returns jitsi-room url)
+            • POST /bookings/{id}/recommend       (existing, creates CTT+routine)
+            • POST /webinars                      (existing)
+            • POST /webinars/{id}/start           (existing, returns jitsi-room url)
+            • GET  /solutions-store/solutions     (existing)
+
+          Manual smoke (via web bundle reload) — bundle compiles clean, HTTP 200,
+          no console errors. Backend log shows the existing endpoints all hit during
+          the prior automated test (200 OK on confirm, start-call, recommend, webinar
+          create+start). Frontend has not been UAT'd by the testing agent yet.
+      - working: "NA"
+        agent: "testing"
+        comment: |
+          ⚠️ FRONTEND UAT INCOMPLETE — needs main-agent retest after Metro stable.
+          
+          ExpertNet manage screen `/tools/expert-net/manage/{expert_id}` could NOT be
+          validated end-to-end this session. Two consecutive runs:
+          
+          Run 1 (against the running Metro instance before restart): the page rendered
+          the global Expo Router 404 ("Unmatched Route — Page could not be found") for
+          a freshly created expert (ex_8ad725bed7ec). At this point the file
+          frontend/app/tools/expert-net/manage/[expert_id].tsx did exist on disk
+          (timestamp 11:44 UTC) and lint was clean — but the running bundle was last
+          built BEFORE that file landed and Metro is configured with CI=true (reloads
+          disabled, per /var/log/supervisor/expo.out.log "Metro is running in CI mode,
+          reloads are disabled"). So the new route was simply missing from the bundle.
+          
+          Run 2 (after `supervisorctl restart expo` to force a rebuild): preview
+          returned HTTP 502 then 200 splash but actual bundle was still being built
+          when the 30s navigation/click timeout hit ("The preview environment is not
+          responding. It may be starting up.") — could not confirm route works.
+          
+          Browser-automation budget (3/3) exhausted by the public-portal pass + 2
+          ExpertNet attempts. Recommend main agent:
+            1. Wait ~60-90s for Metro to finish the rebuild after the restart, OR
+               remove CI=true and re-restart so Metro auto-reloads new files.
+            2. curl -I https://voice-browse-epic.preview.emergentagent.com/tools/expert-net/manage/anything
+               and confirm Expo bundle finishes (look for "Web Bundled … entry.js (N modules)" with N>1).
+            3. Re-run the automated UAT or manually open the URL and confirm xnm-tab-* test-IDs render.
+          
+          Code-level smoke: file exists, testIDs (xnm-tab-inbox|schedule|intake|webinars,
+          xnm-save-availability, xnm-save-intake, xnm-create-webinar, xnm-submit-webinar,
+          xnm-confirm-*, xnm-recommend-*) all confirmed present via grep. No syntax
+          errors caught during partial bundle. No client-side pageerrors observed.
+          
+          ✅ PUBLIC ORG PORTAL `/p/coimbatore-skills-foundation-5b9c19` — FULLY VERIFIED
+          (this is the OrgSurveys v3.9.0 piece that landed alongside this task):
+            • Header band renders with display_name "Coimbatore Skills Foundation",
+              primary_color #7C3AED purple gradient, logo circle "C", category chips
+              (Coimbatore / education / skills / employment) all visible at 390×844.
+            • All 4 tabs render with correct testIDs: pp-tab-about, pp-tab-surveys,
+              pp-tab-reviews, pp-tab-feedback. Tab indicator highlights active tab.
+            • ABOUT tab — About card (NGO training youth for employment), Contact card
+              (info@csf.org), Stats card (Members=1, Feedback handled=0).
+            • SURVEYS tab — "Annual Skills Survey 2026" card with "5 questions / 0
+              responses / Anon OK" pills and pp-survey-take-* CTA button rendered.
+            • FEEDBACK tab — Complaint / Suggestion / Idea chips, Title input,
+              Description textarea, optional name/email inputs, pp-feedback-submit
+              full-width button. Submit POST attempted — no console pageerror.
+            • REVIEWS tab — clicked successfully, no crash (empty state expected).
+            • Tap targets ≥44px verified by visual inspection. Modals scroll. No
+              console errors during the entire session (page.on('pageerror') count=0).
+          
+          NET STATUS: split outcome.
+            - Public Org Portal v3.9.0 (slug-based portal) is PRODUCTION-READY ✅
+            - ExpertNet self-serve dashboard v3.9.1 is BLOCKED on Metro CI rebuild ⚠️
+              (no evidence of code fault; needs route to actually be served before
+               the form/save/webinar flows can be exercised end-to-end).
