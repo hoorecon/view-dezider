@@ -5636,6 +5636,106 @@ agent_communication:
 # ===== v3.5.1 Targeted Regression — Time Store + DPDP (testing agent, 2026-05-04) =====
 
 backend_v3_5_1:
+
+---
+
+## 2026-05-05 v3.6.0 — Central Catalog Management (CCM) Phase 1
+
+backend:
+  - task: "Central Catalog Management — CRUD + tree + seed"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/routes/catalog.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "New 4-level catalog (L0 life_area, L1 sub_area, L2 category, L3 subcategory). Backbone (L0/L1) projected immutably from hos_seed_data; L2/L3 from data/catalog_seed.py. Endpoints: POST /catalog/seed[?force=true], POST /catalog/auto-map-existing, GET /catalog/tree[?life_area_id], GET /catalog/nodes (filters), GET /catalog/nodes/{id} (with breadcrumb), POST /catalog/nodes (admin create L2/L3), PUT /catalog/nodes/{id}, DELETE /catalog/nodes/{id} (only if leaf+no mappings), POST /catalog/solutions/{sid}/map. Solutions get catalog_node_id + catalog_level + catalog_life_area_id + catalog_sub_area_id stamped. After force-seed: 258 nodes (10 L0 + 80 L1 + 125 L2 + 43 L3) covering Finance/Career/Knowledge/Health/Assets/Relationships."
+
+frontend:
+  - task: "Admin Catalog tree editor"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/admin/catalog/index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "New /admin/catalog screen with collapsible tree, life-area filter chips, +Add child / Edit / Delete actions per node, Seed + Force re-seed buttons. Backbone L0/L1 nodes show lock icon and are read-only. Linked from Profile → Central Catalog row."
+backend_ccm:
+  - task: "Central Catalog Management — CRUD + tree + seed"
+    implemented: true
+    working: true
+    file: "backend/routes/catalog.py, backend/models/catalog_models.py, backend/data/catalog_seed.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ PASSED — 27/27 assertions via /app/backend_test.py against http://localhost:8001.
+          (1) Auth: admin + user login OK.
+          (2) Idempotent seed: 1st 200 (total_nodes=258), 2nd call l2_l3_inserted=0 / skipped=168 (idempotent), user-level call → 403.
+          (3) Force re-seed: wiped=168, inserted=168, total_nodes=258, backbone preserved.
+          (4) Tree shape paths verified:
+              - Finance → Savings → Fixed Deposit → Senior Citizen FD  ✓
+              - Finance → Investments → Mutual Funds → ELSS (Tax-Saver) ✓
+              - Finance → Risk Management → Health Insurance → Family Floater ✓
+              - Finance → Debt → Home Loan (L2 leaf, 0 children) ✓
+              - Career → Fundraise & Growth Capital → Venture Capital (cn_car_vc) ✓
+          (5) GET /catalog/nodes?level=2&life_area_id=la_finance → 34 items, all level=2, all life_area_id=la_finance. GET /catalog/nodes/cn_fin_fd → breadcrumb ["Finance","Savings","Fixed Deposit"], children_count=4, solutions_count present.
+          (6) Admin CRUD L3: create → level=3 (cn_fin_fd_nri_fd), PUT name/sort_order persisted, DELETE 200, re-DELETE 404.
+          (7) Backbone protection: PUT cn_l0_la_finance → 403; DELETE cn_l1_sa_fin_savings → 403.
+          (8) DELETE cn_fin_fd (has children) → 409 with "child" in message.
+          (9) Auto-map + direct map: /catalog/auto-map-existing → {updated:0, unmapped:25}. POST /catalog/solutions/{sid}/map → 200 level=2. DB verified: catalog_node_id=cn_fin_fd, catalog_level=2.
+          (10) User RBAC: user tree/node reads 200, user POST /catalog/nodes → 403.
+          Minor observation (non-blocking): auto-map-existing couldn't promote any of the 25 pre-CCM solutions because their docs lack `sub_area_id`. Endpoint works as coded; main agent may want to enhance the fallback (e.g., derive via category_id → hos_categories lookup) if full auto-mapping is a goal.
+
+
+
+metadata:
+  created_by: "main_agent"
+  version: "3.6.0"
+  test_sequence: 19
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "Central Catalog Management — CRUD + tree + seed"
+    - "Admin Catalog tree editor"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "v3.6.0 Phase 1: CCM backend + admin tree editor live. Phase 2 (ReviewNet) is queued. Please regression-test (a) idempotent + force seed, (b) tree shape (Finance > Savings > FD > Senior Citizen FD must exist), (c) admin CRUD with backbone-protection (cannot rename/delete L0/L1), (d) solutions/{id}/map mutation, (e) 403 enforcement for non-admin on mutators. Frontend UAT will be requested after."
+  - agent: "testing"
+    message: |
+      ✅ CCM BACKEND REGRESSION PASSED — 27/27 assertions pass via /app/backend_test.py against http://localhost:8001.
+      Task: "Central Catalog Management — CRUD + tree + seed" — WORKING.
+      Coverage:
+      (1) Auth: admin@test.com + harden_1777921741@example.com both login OK.
+      (2) Idempotent seed: 1st POST /api/catalog/seed → 200, total_nodes=258 (≥250). 2nd call → l2_l3_inserted=0, l2_l3_skipped_existing=168 (idempotent ✓). Non-admin user → 403 ✓.
+      (3) Force re-seed: POST /api/catalog/seed?force=true → wiped_l2_l3_nodes=168, l2_l3_inserted=168, total_nodes=258 ✓. Backbone preserved.
+      (4) Tree shape — all four required paths present under la_finance:
+          • Finance → Savings → Fixed Deposit → Senior Citizen FD  (cn_fin_fd_senior_citizen) ✓
+          • Finance → Investments → Mutual Funds → ELSS (Tax-Saver) (cn_fin_mutual_funds_elss) ✓
+          • Finance → Risk Management → Health Insurance → Family Floater (cn_fin_health_insurance_family_floater) ✓
+          • Finance → Debt → Home Loan is an L2 leaf with 0 children ✓
+          And Career → Fundraise & Growth Capital → Venture Capital (cn_car_vc) ✓.
+      (5) Read endpoints: GET /catalog/nodes?level=2&life_area_id=la_finance returned 34 items, ALL level=2 and life_area_id=la_finance ✓. GET /catalog/nodes/cn_fin_fd returned {node, ancestors, breadcrumb, children_count=4, solutions_count=0}; breadcrumb = ["Finance","Savings","Fixed Deposit"] ✓.
+      (6) Admin CRUD on L2/L3: POST create L3 "NRI FD" under cn_fin_fd → level=3, node_id=cn_fin_fd_nri_fd. PUT name="NRE/NRO FD" + sort_order=99 → persisted. DELETE → 200. Re-DELETE → 404 ✓.
+      (7) Backbone protection: PUT rename cn_l0_la_finance → 403 ✓. DELETE cn_l1_sa_fin_savings → 403 ✓.
+      (8) Leaf-only delete: DELETE cn_fin_fd (has 4 children) → 409, message mentions "child" ✓.
+      (9) Solution mapping: POST /catalog/auto-map-existing → 200, {updated:0, unmapped:25}. NOTE: updated=0 because solutions_store docs in this DB lack sub_area_id, so the L1 fallback never fires — this is a DATA observation, not a code bug (sum 0+25=25 solutions, within total_solutions). POST /catalog/solutions/{sid}/map {catalog_node_id:"cn_fin_fd"} → 200 level=2; DB-verified doc now has catalog_node_id=cn_fin_fd and catalog_level=2 ✓.
+      (10) User read + RBAC: user GET /catalog/tree → 200, user GET /catalog/nodes/cn_fin_fd → 200, user POST /catalog/nodes → 403 ✓.
+      Minor observation (non-blocking): auto-map-existing found 0 mappable solutions because existing solutions_store docs don't carry sub_area_id — main agent may want to verify this is the intended behavior for the 25 pre-CCM solutions, or extend the fallback logic to derive sub_area_id from life_area_id/category. All endpoints themselves work per spec.
   - task: "Time Store /services visibility filter"
     implemented: true
     working: true

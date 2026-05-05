@@ -765,6 +765,21 @@ export default function ProfileScreen() {
         <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
       </TouchableOpacity>
 
+      {/* Central Catalog (CCM) */}
+      <TouchableOpacity
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}
+        onPress={() => router.push('/admin/catalog' as any)}
+      >
+        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#0F766E', alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="git-branch" size={18} color="#FFF" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>Central Catalog</Text>
+          <Text style={{ fontSize: 12, color: COLORS.textMuted }}>4-level taxonomy that powers Solutions Store</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+      </TouchableOpacity>
+
       {/* Admin Settings */}
       {userRole !== 'user' && (
         <TouchableOpacity

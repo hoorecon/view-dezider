@@ -169,6 +169,7 @@ from routes.admin_docs_viewer import router as admin_docs_viewer_router
 from routes.daily_time_log import router as daily_time_log_router
 from routes.time_dezider_guide import router as time_dezider_guide_router
 from routes.time_store_engine import router as time_store_engine_router
+from routes.catalog import router as catalog_router
 
 
 # ========================
@@ -230,6 +231,7 @@ api_router.include_router(admin_docs_viewer_router)
 api_router.include_router(daily_time_log_router)
 api_router.include_router(time_dezider_guide_router)
 api_router.include_router(time_store_engine_router)
+api_router.include_router(catalog_router)
 
 
 # ========================
