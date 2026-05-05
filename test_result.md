@@ -7324,3 +7324,41 @@ agent_communication:
             - ExpertNet self-serve dashboard v3.9.1 is BLOCKED on Metro CI rebuild ⚠️
               (no evidence of code fault; needs route to actually be served before
                the form/save/webinar flows can be exercised end-to-end).
+      - working: false
+        agent: "testing"
+        comment: |
+          ❌ RETEST v3.9.1 (second attempt) — BLOCKED, same Metro bundle issue confirmed.
+          
+          Environment prep (per instructions):
+            • Waited 30s → curl / returned HTTP 200 HTML.
+            • Logged in via direct API POST /api/auth/login (admin@test.com / AdminPass2026!) → got session_6c0d/session_345ed token.
+            • Injected localStorage `session_token` after navigating to http://localhost:3000/.
+            • Created expert profile via direct backend POST /api/expert-net/experts → success, expert_id=ex_cf96b0a30a14 (Dr UAT Expert, headline=UAT, specializations=[testing], languages=[en], hourly_rate_inr=999, accepts_instant_calls=true).
+          
+          Attempted end-to-end:
+            1. Navigated the browser directly to /tools/expert-net/manage/ex_cf96b0a30a14.
+            2. body.innerText check did NOT contain the literal string "Unmatched Route" / "Page could not be found" so the early-abort guard passed.
+            3. BUT the ACTUAL rendered page (see screenshot) was the ExpertNet INDEX route — the 5-tab screen (Discover / Bookings / Recommendations / Webinars / Be an Expert) with the "Create expert profile" CTA and the "You don't have an expert profile yet" empty state — NOT the 4-tab manage dashboard. No xnm-tab-inbox / xnm-tab-schedule / xnm-tab-intake / xnm-tab-webinars elements were present in the DOM (locator count = 0 for every xnm-tab-* testID → assertion failure "Missing tab: xnm-tab-inbox").
+          
+          Root cause (same as run #1): Expo Router is falling back to /tools/expert-net/index.tsx instead of resolving the new /tools/expert-net/manage/[expert_id].tsx dynamic route. File exists on disk (`frontend/app/tools/expert-net/manage/[expert_id].tsx`, 647 lines, lint-clean, all xnm-tab-* / xnm-save-availability / xnm-save-intake / xnm-create-webinar / xnm-submit-webinar testIDs grep-confirmed). But the RUNNING Metro bundle does not know about the nested manage/ directory — same CI=true reload-disabled state flagged in the previous test run has NOT been resolved yet.
+          
+          Side effects: the API-created empty-state shell also means the "Be an Expert" tab auto-opened its Create sheet because load() hit the API before the just-created profile index propagated in this session — irrelevant to the real blocker though.
+          
+          Browser-automation budget: 3/3 exhausted (login+nav → create-profile sheet ping → direct-URL manage attempt). Cannot make another attempt in this session.
+          
+          PASS/FAIL per step:
+            ✅ Pre-flight HTTP/curl: dev server returns 200 HTML (not 500).
+            ✅ API login + session_token injection into localStorage.
+            ✅ Expert profile creation via backend API (fallback for step 3 UI flow).
+            ❌ Step 4: URL becomes /tools/expert-net/manage/{expert_id} but page content is the ExpertNet index, not the dashboard. Route-level bundle miss.
+            ❌ Step 5: all 4 xnm-tab-* testIDs absent (→ assert failed on first tab).
+            ⏭ Steps 6/7/8/9 (Schedule / Intake / Webinars / Inbox): could NOT be executed — dashboard never rendered.
+            ⏭ Mobile UX checks (tap targets / hscroll / console errors): not meaningful since wrong page rendered.
+          
+          NOTE: Public Org Portal v3.9.0 was re-verified implicitly not needed (per instructions, skipped). That task remains ✅ PRODUCTION-READY per prior run.
+          
+          RECOMMENDED MAIN-AGENT ACTIONS:
+            1. Stop the Expo process and unset `CI=true` in /etc/supervisor/conf.d/*.conf (or wherever metro is launched) so Metro picks up the new file, OR run an explicit `yarn expo export` / `yarn expo start --clear` to force a fresh bundle build.
+            2. After restart: curl http://localhost:3000/tools/expert-net/manage/anything and grep the returned HTML for the string `xnm-tab-` — if absent, the bundle is still stale.
+            3. Alternatively, add the route as an explicit static file OR move the file out of the nested manage/ directory (e.g. /app/tools/expert-net-manage/[expert_id].tsx with an updated push in index.tsx).
+            4. Re-invoke the testing agent for this task only, after confirming the testIDs appear in the served HTML.
