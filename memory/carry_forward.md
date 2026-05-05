@@ -1,23 +1,140 @@
 # Carry-Forward List for the Next Fork
 
-**Last updated:** End of fork session after Public Pulse Phase 1+2+2.5 ship + Solution Matrix OrgType backend hardening.
+**Last updated:** End of fork session after **OrgSurveys v3.9.0** + **ExpertNet Jitsi-Room fix**.
 
 **Read this first** before starting new work so you know what's done, what's blocked, and what's waiting.
 
 ---
 
 ## ✅ Just completed in this fork (do NOT redo)
-- Public Pulse Phase 1 — 27 endpoints + 5 citizen screens (Life Direction / Marriage Readiness / Govt Benefit Finder + 5 public dashboards with k-anonymity + consent layer). Backend 51/51, frontend retest ✅.
-- Public Pulse Phase 2 — 27 endpoints + Org/Gov/Admin portals + state-machine rectification workflow + admin-configurable (cooldown, visibility, routing cascade). Backend 51/51, frontend retest ✅.
-- Public Pulse Phase 2.5 — Pluggable file storage (`core/file_storage.py`: Mongo/S3/GCS backends), admin upload limits API, `apply.tsx` with server-loaded limits. 6 upload categories. ✅
-- P0 Production Hardening — 169+ MongoDB indexes, `slowapi` rate limiting (DEFAULT=120, AUTH=10, AI=10, EXPENSIVE=20/min, all ENV-overridable), request observability (X-Request-ID, X-Response-Time-MS), typed LLM error polish (503 + Retry-After + X-Request-ID on budget/rate-limit/upstream). ✅
-- P1 Refactor — `models/` + `prompts/` packages; `admin_docs.py` 720→343 lines; `decisions.py` -22%. 28/28 regression green. ✅
-- ACM — 32 modules / 83 features; auto-reseed on version bump via `ensure_acm_seeded_on_boot()`. ✅
-- **Solution Matrix OrgType backend hardening** (items 4–6 from prior carry-forward):
-  - New `backend/models/solution_matrix_models.py` with `MatrixResourceCell`, `MatrixLayerSet`, `normalise_layer_set()`
-  - `routes/tools.py` defaults now use nested shape; PUT handler normalises incoming matrix fields
-  - `tests/test_solution_matrix_orgtype.py` — **31/31 assertions pass** covering 84-cell roundtrip, partial update, legacy flat auto-migration, empty defaults
-  - Run with: `python /app/tests/test_solution_matrix_orgtype.py`
+- **OrgSurveys v3.9.0** (Phase 3-B white-label sub-portals) — 8 endpoints under `/api/p/{slug}/surveys/*`
+  - Full CRUD by org admins, public read + submit, anon-or-auth submission
+  - 7 question types: short_text/long_text/single_select/multi_select/rating_5/yes_no/number
+  - Server-side required-field validation, public aggregates with bucket counts + averages
+  - Backend regression: **42/43 PASS** (yes_no bucket label bug fixed post-test)
+  - Module: `backend/routes/org_surveys.py`
+  - Seeded sample: "Annual Skills Survey 2026" on slug `coimbatore-skills-foundation-5b9c19`
+- **RN Public Org Portal** at `frontend/app/p/[slug].tsx` — 4-tab branded page (About / Surveys / Reviews / Feedback) with primary_color theming pulled from org doc
+- **ExpertNet Jitsi-Room v3.9.0** — fixed 3 ExpertNet endpoints to return `video_url=/tools/jitsi-room?room={sid}` instead of broken collab-call URL. New screen `frontend/app/tools/jitsi-room.tsx` mounts public meet.jit.si via WebView (native) / iframe (web). Auth-free.
+- **Pre-existing bug fix**: removed duplicate `myPending` declaration in `frontend/app/tools/solution-detail.tsx` (was blocking entire metro bundle).
+
+---
+
+## 🔴 P0 — External blockers (cannot code around)
+
+| # | Item | Blocker | What unblocks it |
+|---|------|---------|------------------|
+| 1 | DigiLocker eKYC (API Setu) | Awaiting user's API Setu approval + keys | User injects `APISETU_CLIENT_ID/_SECRET/_ENV` into `backend/.env` |
+| 2 | Exotel SMS OTP | Awaiting user's DLT template approval from TRAI | User adds `EXOTEL_*` keys to `.env` |
+| 3 | LLM Budget Reset re-test | Emergent LLM key budget capped | Budget resets naturally — re-run the curl in `/app/memory/pending_verifications.md` |
+
+---
+
+## 🟠 P1 — Ready to ship (no blockers)
+
+### A. Public Pulse Phase 3 — AI Intelligence Layer  *(blocked on LLM budget)*
+- [ ] AI-summarised feedback clusters
+- [ ] Smart recommendations linking score band → schemes
+- [ ] Auto-drafted Org responses
+- [ ] Trend lines / YoY comparisons on the 5 dashboards
+
+### B. White-labelled Org Sub-Portals — *partially shipped this fork*
+- [x] Per-org branded `/p/{slug}` page in Expo (4 tabs, themed)
+- [x] **Org-scoped surveys** (multi-question forms, public submit, aggregates)
+- [x] HTML embed widget (already existed before)
+- [ ] **Org-admin UI to manage their own surveys** (currently admin-only via API; no Expo screen yet)
+- [ ] Social-share OG meta tags for `/api/embed/{slug}`
+- [ ] Per-org CSS overrides beyond primary_color (logo, fonts, hero image)
+
+### C. Solution Matrix OrgType — polish items
+- [ ] PDF export renderer for the 84-cell layout
+- [ ] AI CLD hook for `solution_matrix` module_type *(blocked on LLM budget)*
+- [ ] Per-OrgType ACM feature gating
+- [ ] 4 starter templates (Individual / Org / Govt / Nature)
+
+### D. Voice Browsing — Epic
+- [ ] Global floating voice command bubble + route-aware parser
+- [ ] Voice input in Solution Matrix / Public Pulse / Goal Setter / Conflict Breaker
+- [ ] TTS readout across all tools (extend `expo-speech` beyond AI Assistant)
+- [ ] Multi-language voice (9 Solutions Store languages)
+- [ ] Continuous voice mode + voice undo/redo
+
+### E. ExpertNet — Polish
+- [ ] **Frontend UAT** of the 5 ExpertNet tabs end-to-end (Discover / Bookings / Recommendations / Webinars / Be-an-Expert) — UI was scaffolded in prior fork, video-call routing fixed this fork; needs full visual UAT
+- [ ] Calendar slot picker (calendar grid view) — currently chip list only
+- [ ] Expert ratings & review surface (separate from ReviewNet which is solutions-only)
+- [ ] Push notifications when booking confirmed / call starting / webinar countdown
+
+### F. Minor Polish
+- [ ] Auto-reseed ACM for `pp_org_portal` at boot
+- [ ] Fix benign `backend_test_regression.py` Solutions Store countries/languages assertion
+- [ ] Verify `core/file_storage.py` S3 + GCS code paths once any cloud key is provided
+- [ ] 3 Public Pulse API contract callsites flagged previously (consent/feedback 422; score/submit 404)
+
+---
+
+## 🟡 P2 — Physical device E2E tests (require real phone/camera/SIM)
+
+| # | Test | Why physical device |
+|---|------|---------------------|
+| 4 | Face Authentication / MediaPipe presence tracking | Real camera stream |
+| 5 | Razorpay payment end-to-end | Real UPI/card |
+| 6 | WhatsApp OTP (UltraMsg) end-to-end | Real phone receives SMS |
+| 7 | DigiLocker camera scan (when unblocked) | Real document |
+| 8 | Push notifications via Expo Push API | Real device token |
+
+---
+
+## 📁 Key files added/changed in this fork
+
+### Backend
+- **NEW** `backend/routes/org_surveys.py` — 8 endpoints under `/api/p/{slug}/surveys/*`
+- `backend/server.py` — registers `org_surveys_router`
+- `backend/routes/expert_net.py` — `video_url` now points to `/tools/jitsi-room?room=…`
+
+### Frontend
+- **NEW** `frontend/app/tools/jitsi-room.tsx` — public Jitsi WebView screen (auth-free)
+- `frontend/app/p/[slug].tsx` — rebuilt with 4-tab branded portal (About/Surveys/Reviews/Feedback)
+- `frontend/app/tools/expert-net/index.tsx` — webinar non-host fallback now uses jitsi-room URL
+- `frontend/app/tools/solution-detail.tsx` — removed duplicate `myPending` declaration (bundle fix)
+
+### Tests
+- Backend regression executed by `deep_testing_backend_v2`: **42/43 PASS** (1 minor yes_no bucket-label bug fixed post-test).
+
+### Memory
+- This file (`memory/carry_forward.md`)
+- `memory/test_credentials.md` — unchanged (credentials still valid)
+
+---
+
+## 🧪 Quick health checks for the new fork agent (run at session start)
+
+```bash
+sudo supervisorctl status
+curl -s http://localhost:8001/api/health
+# Expect 200 + {"status":"ok"} on both
+python /app/backend_test_regression.py   # 26-28/28
+python /app/tests/test_solution_matrix_orgtype.py   # 31/31
+```
+
+---
+
+## 🎯 Recommended first-hour plan for the next fork agent
+
+1. Run the health checks above. Log results.
+2. Read `test_result.md` from line 6973 onwards (OrgSurveys + ExpertNet Jitsi-Room sections).
+3. Ask user which P1 item to tackle first — they are all independent and unblocked except A (LLM-blocked).
+4. If LLM budget has reset: knock out the 4 AI verification curls in `pending_verifications.md` first (15 min, unblocks Phase 3-A).
+5. **Hot recommendation**: tackle E (ExpertNet frontend UAT) since it's the only thing standing between the user and a fully shippable ExpertNet module. The video-call fix this fork was the last backend gap.
+6. DO NOT touch any `.env` URL / port values — they are fork-specific.
+
+---
+
+## ⚠️ Known minor issues (NOT blockers)
+
+- ESLint can't parse TypeScript type aliases in `.tsx` files (parser config gap, NOT a real bug — Metro bundles fine).
+- `passlib bcrypt __about__` warning at startup is a benign passlib version mismatch; auth works correctly.
+- Screenshot tool's headless browser cannot reach external preview URLs (sandboxing artifact). External API access works fine for the actual app.
 
 ---
 

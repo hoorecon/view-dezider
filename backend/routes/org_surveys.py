@@ -166,11 +166,11 @@ async def survey_aggregate(slug: str, survey_id: str):
                 for v in val:
                     sv = str(v)[:80]
                     counts[qid]["buckets"][sv] = counts[qid]["buckets"].get(sv, 0) + 1
-            elif isinstance(val, (int, float)):
-                sv = str(val)
-                counts[qid]["buckets"][sv] = counts[qid]["buckets"].get(sv, 0) + 1
             elif isinstance(val, bool):
                 sv = "yes" if val else "no"
+                counts[qid]["buckets"][sv] = counts[qid]["buckets"].get(sv, 0) + 1
+            elif isinstance(val, (int, float)):
+                sv = str(val)
                 counts[qid]["buckets"][sv] = counts[qid]["buckets"].get(sv, 0) + 1
             elif isinstance(val, str):
                 # Only bucket if the question is a single_select / yes_no — skip free-text
