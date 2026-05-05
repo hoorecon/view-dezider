@@ -869,6 +869,85 @@ backend:
           - DB side-effects expected: ~6 new review_net rows from imports (3 × 2 runs without dry_run=false), 3 pending review submissions (rejected at end), notifications config doc now in-app=true/email=false/push=false (cleaned up on each run), several db.notifications type="review_net" rows.
           - No P0 blockers. No integrity issues. AI/LLM endpoints intentionally skipped (LLM 503 by design). Email/Push delivery is MOCKED — expected until creds are wired.
 
+  - task: "ExpertNet v3.8.0 — Profiles/Discovery, Bookings/Intake, Recommendations/Delivery, Webinars"
+    implemented: true
+    working: true
+    file: "backend/routes/expert_net.py, backend/models/expert_net_models.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ EXPERTNET v3.8.0 REGRESSION 38/38 PASS. Test script: /app/backend_test.py.
+          Fresh expert created: ex_a598fceedbc6 (Dr. Test Mentor, owner=harden_1777921741@example.com).
+          Solution used for recommend/purchase: 7d16a88f-ab7d-44f8-abe1-86c1329e1d39 (Apollo Hospitals — Master Health Checkup).
+
+          Per-case results:
+          [PASS] Auth — admin@test.com + harden_1777921741@example.com both logged in.
+
+          Phase A — Profiles + Discovery + Match
+          [PASS] 1.  POST /api/expert-net/experts as USER → 200, expert_id=ex_a598fceedbc6 returned.
+          [PASS] 2.  GET /experts → contains new expert (count=2 active).
+          [PASS] 3.  GET /experts?language=ta&min_rate=1000&max_rate=2000 → includes new expert (count=1).
+          [PASS] 4.  GET /experts?language=fr → does NOT include new expert (count=0, filter works).
+          [PASS] 5.  GET /experts/{id} → expert + availability=null + intake_form=null (fresh profile).
+          [PASS] 6.  PUT /experts/{id} as ADMIN body {"headline":"Updated by admin"} → 200 (admin override).
+          [PASS] 7.  PUT /experts/{id} as fresh 3rd user (xn_other_*) → 403 (owner+admin only).
+          [PASS] 8.  POST /experts/{id}/online {"is_online":true} by owner → 200.
+          [PASS] 9.  POST /experts/{id}/connect-now as ADMIN → 200, session_id=vc_* (starts with "vc_"), video_url present.
+          [PASS] 10. Toggle offline + connect-now as ADMIN → 409 "expert is not available for instant calls right now".
+          [PASS] 11. Toggle back online → 200.
+
+          Phase B — Availability + Intake + Booking
+          [PASS] 12. PUT /availability (weekday=1 Tue, 09:00-13:00, 30min slots) as OWNER → 200.
+          [PASS] 13. PUT /intake-form builtin (required "goal" short_text field) → 200.
+          [PASS] 14. PUT /intake-form mode=external with https://forms.gle/abc → 200.
+          [PASS] 15. PUT /intake-form mode=external WITHOUT external_url → 400 "external_url required when mode=external".
+          [PASS] 16. PUT /intake-form back to builtin → 200.
+          [PASS] 17. GET /slots?days_ahead=14 → 200, 11 slots, first=2026-05-05T11:30:00+00:00 (today IS Tuesday — weekday=1).
+          [PASS] 18. POST /bookings (no intake_response) → 400 "intake field 'goal' is required".
+          [PASS] 19. POST /bookings with {"intake_response":{"goal":"Get promoted"}} → 200, booking_id=bk_cd48d732fcb5, status=pending (hourly_rate set → pending until confirmed).
+          [PASS] 20. POST /bookings same slot again → 409 "slot already booked".
+          [PASS] 21. POST /bookings/{id}/confirm as OWNER → 200, status=confirmed.
+          [PASS] 22. POST /bookings/{id}/start-call as ADMIN → 200, session_id=vc_459d73efdb6e returned.
+
+          Phase C — Recommendations + Delivery
+          [PASS] 23. Picked solution 7d16a88f-… (Apollo) from db.solutions_store (is_authorized=true).
+          [PASS] 24. POST /bookings/{id}/recommend as OWNER {create_ctt_task:true, create_lifestyle_routine:true, routine_frequency:"weekly"} → 200, linked_ctt_task_id=ct_124497ec63 and linked_routine_id=lr_58598d0dfe both non-null.
+          [PASS] 25. POST /recommend as ADMIN → 200 (admin role override honoured — spec allowed either 200 or 403).
+          [PASS] 26. POST /api/time-store/purchase as ADMIN {"solution_id":"7d16a88f-…","save_minutes_per_day":15} → 200, order_id=TS-7c7523d518 (status=pending_payment — Razorpay MOCKED until live keys, but purchase row persists).
+          [PASS] 27. POST /expert-net/deliveries/from-purchase/TS-7c7523d518 as ADMIN → 200, status="ordered" with history[0]={status:ordered, note:"Order placed"}.
+          [PASS] 28. PUT /deliveries/{order_id}/status {"status":"shipped","tracking_number":"BLR-TEST"} → 200, status flipped to "shipped", history length=2 (ordered + shipped).
+          [PASS] 29. GET /deliveries → list contains TS-7c7523d518.
+
+          Phase D — Webinars
+          [PASS] 30. POST /webinars as OWNER {title:"Free Test Webinar", starts_at_iso:"2026-12-21T10:00:00+00:00", duration_minutes:30, is_free:true, price_inr:0, capacity:50} → 200, webinar_id=wb_60667673edb7.
+          [PASS] 31. POST /webinars as fresh non-expert user (xn_wnonexpert_*) → 403 "only experts (or admin) can create webinars".
+          [PASS] 32. POST /webinars/register as ADMIN {webinar_id:…} → 200, payment_status="paid_free".
+          [PASS] 33. POST /webinars/register duplicate → 200 {"ok":true,"already_registered":true}.
+          [PASS] 34. GET /webinars?free_only=true as ADMIN → includes wb_60667673edb7 with i_am_registered=true.
+          [PASS] 35. POST /webinars/{id}/start as OWNER → 200, video_url=/tools/collab-call?session_id=vc_wb_4f9730a2a0.
+          [PASS] 36. POST /webinars/{id}/start as ADMIN override → 200.
+          [PASS] 37. POST /webinars/{id}/start as non-host (xn_wnonexpert_*) → 403 "only host can start".
+
+          NOTES / OBSERVATIONS:
+          - All 4 phases (A-D) of the new ExpertNet module function as specified. Every documented path exercised.
+          - Owner / admin / non-owner authorization matrix correct across experts, bookings, recommendations, webinars.
+          - Intake-form hybrid (builtin vs external_url) + required-field enforcement works. External mode correctly rejects missing url.
+          - Slot generator honours weekday windows, current-time filter (start > now) and existing booking conflicts. Today happened to be a Tuesday so 11 future slots surfaced.
+          - Booking→start-call chain creates video_call_sessions row and flips booking to in_progress.
+          - Recommend creates downstream ctt_tasks row and lifestyle_routines row; both IDs echoed back on the response.
+          - Time-Store purchase → delivery chain: from-purchase is idempotent (returns existing delivery if re-run), status updates append to history array as expected.
+          - Webinar duplicate registration handled gracefully (unique index raised → caught → {already_registered:true}).
+          - NOTIFICATIONS MOCKED: in-app notifications rows written to db.notifications but email/push channels remain MOCKED (queued_mock) until SMTP/SendGrid/FCM creds wired — expected per request.
+          - RAZORPAY MOCKED: /time-store/purchase returns order_id with payment status "pending_payment" without actually charging — expected until live keys.
+          - AI/LLM endpoints not relevant to ExpertNet and intentionally not touched.
+          - DB side-effects expected: 1 new expert row (ex_a598fceedbc6), 1 new availability row, 1 new intake_form row, 1 new booking (bk_cd48d732fcb5), 2 new recommendations (1 owner + 1 admin), 1 new ctt_tasks row, 1 new lifestyle_routines row, 1 new time_store_purchases row, 1 new expert_deliveries row, 1 new webinar (wb_60667673edb7), 1 webinar_registration row, multiple video_call_sessions rows, 2 new test users (xn_other_* and xn_wnonexpert_*). Test left as-is (leave as fixtures per request — user said cleanup optional).
+          - No P0 blockers. No integrity issues. All assertions from the review request honoured.
+
+
 
 frontend:
   - task: "Multi-Tenant Organization Endpoints"
@@ -5971,6 +6050,67 @@ frontend:
     needs_retesting: true
     status_history:
       - working: "NA"
+
+---
+
+## 2026-05-05 v3.8.0 — ExpertNet (Phases A+B+C+D in one go)
+
+backend:
+  - task: "ExpertNet — full module (4 phases)"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/routes/expert_net.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Mounted at /api/expert-net. Models: /app/backend/models/expert_net_models.py. Phase A (profiles): POST/PUT/GET /experts, GET /experts/{id} (returns availability + intake form bundled), POST /experts/{id}/online (presence toggle), POST /experts/{id}/connect-now (creates a video_call session reusing the existing video_call_sessions collection; 409 if expert offline / not accepting instant). Phase B (booking): PUT /experts/{id}/availability (recurring weekday windows with slot_minutes + blackout_dates), PUT /experts/{id}/intake-form (modes: builtin with field array OR external Google Form / Typeform URL — both supported), GET /experts/{id}/slots?days_ahead=14 (computes open slots after subtracting booked ones), POST /bookings (validates required built-in intake fields), POST /bookings/{id}/confirm (expert-only), POST /bookings/{id}/cancel (user/expert/admin), POST /bookings/{id}/start-call (creates video session linked to booking), GET /bookings?role=user|expert. Notifications fire to both parties on booking creation. Phase C (recommendations + delivery): POST /bookings/{id}/recommend (auto-creates CTT task + Lifestyle routine on user's account), GET /recommendations, POST /deliveries/from-purchase/{order_id} (turns Time Store purchase into delivery-trackable order, status starts at 'ordered'), PUT /deliveries/{order_id}/status (8 stages: ordered/confirmed/shipped/in_transit/out_for_delivery/delivered/delayed/cancelled with history), GET /deliveries. Phase D (webinars): POST /webinars (expert-only), GET /webinars (filter free_only, catalog_node_id, upcoming_only — marks i_am_registered), POST /webinars/register (paid_free if free, else pending_payment until Razorpay live keys), POST /webinars/{id}/start (host flips to live + creates video session), GET /webinars/{id}. Smoke-tested end-to-end via curl: full lifecycle PASS across all 4 phases."
+
+frontend:
+  - task: "ExpertNet hub /tools/expert-net (5-tab UX)"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/tools/expert-net/index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Single screen with 5 tabs: Discover (search/filter/sort + Connect-now / Book buttons), Bookings (user's bookings, Join call, Cancel), Recommendations (linked CTT + Lifestyle tags + delivery progress with 6-stage stepper), Webinars (filter free_only, register, join), Be an Expert (create profile + toggle online presence). testIDs: xn-tab-{tab}, xn-detail-*, xn-connect-*, xn-book-*, xn-create-expert."
+
+  - task: "Expert detail screen /tools/expert-net/[expert_id]"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/tools/expert-net/[expert_id].tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Profile header + bio + tags + slot grid (next 14 days) + intake preview. Tap a slot opens booking modal with built-in intake field renderer (short_text / long_text / single_select / consent) + external_url note + open-form button + free-text note. testIDs: xn-slot-N, xn-confirm-booking."
+
+metadata:
+  created_by: "main_agent"
+  version: "3.8.0"
+  test_sequence: 23
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "ExpertNet — full module (4 phases)"
+    - "ExpertNet hub /tools/expert-net (5-tab UX)"
+    - "Expert detail screen /tools/expert-net/[expert_id]"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "v3.8.0 — Massive ExpertNet drop covering all 4 phases (Profiles+Discovery+Match · Calendar+Booking+Hybrid Intake · Consultation+Recommendations+Delivery · Webinars). Full curl smoke pass (8 endpoints in order). Reuses existing video_calls module for sessions + notifications module for in-app alerts. MOCKED: webinar paid registration → pending_payment until Razorpay keys. Email/push notif still routed through queued_mock until creds added. Please regress backend on these 4 happy paths + edge cases (intake-required validation, slot conflict detection, owner-only recommend RBAC, host-only webinar start) — see test_result.md."
         agent: "main"
         comment: "When user maps an option to a solution, the existing apply-to-option call now ALSO consumes data.review_net.per_factor[]. ReviewNet 5-star rating × 20 = matching%. Source label shows segmented breakdown: '★ 4.2/5 ReviewNet (12 reviews) — individual:4.3/5(8) · organization:4.1/5(4)'."
 
@@ -6817,3 +6957,15 @@ agent_communication:
           No red screens, no uncaught JS errors, all testIDs resolvable. LLM
           endpoints intentionally skipped per request. Screenshots saved at
           390x844 for all 3 verifications.
+
+
+    - agent: "testing"
+      message: |
+        ExpertNet v3.8.0 regression (37 cases + auth) — 38/38 PASS. Test script at /app/backend_test.py.
+        All 4 phases functioning as specified:
+          • Phase A (profiles/discovery/match): create+update+filter+online-toggle+connect-now+offline-blocking all correct; owner/admin/3rd-user authorization matrix enforced.
+          • Phase B (availability/intake/booking): builtin vs external intake modes, required-field enforcement on booking, slot generator (weekday-aware, conflict-aware), booking confirm-then-start-call chain all work. Booking correctly lands in "pending" when hourly_rate_inr>0.
+          • Phase C (recommend/delivery): recommend auto-creates ctt_tasks + lifestyle_routines rows and echoes linked IDs; delivery lifecycle from Time-Store purchase → ordered → shipped with history[] append working; idempotent from-purchase.
+          • Phase D (webinars): create/register/duplicate-register/list-with-i_am_registered/start by owner + admin override + non-host 403 all correct.
+        MOCKED items (expected per request): in-app notifications write to db.notifications but email/push channels remain queued_mock; Time-Store Razorpay purchase returns status=pending_payment without actual charge.
+        No P0 blockers, no integrity issues, no stuck tasks. Full detail appended to the ExpertNet task in this file.

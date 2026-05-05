@@ -171,6 +171,7 @@ from routes.time_dezider_guide import router as time_dezider_guide_router
 from routes.time_store_engine import router as time_store_engine_router
 from routes.catalog import router as catalog_router
 from routes.review_net import router as review_net_router
+from routes.expert_net import router as expert_net_router
 
 
 # ========================
@@ -234,6 +235,7 @@ api_router.include_router(time_dezider_guide_router)
 api_router.include_router(time_store_engine_router)
 api_router.include_router(catalog_router)
 api_router.include_router(review_net_router)
+api_router.include_router(expert_net_router)
 
 
 # ========================
