@@ -5754,3 +5754,124 @@ agent_communication_v3_5_1:
       No P0 blockers found. No frontend testing performed (per instructions).
 
     message: "v3.5.1: Added DPDP user-facing screen /tools/privacy-data (the 1 UI gap found during this session's full audit). Fixed /time-store/services query + fixed collection-name bug on /time-store/purchase + seeded 8 genuine time-saver SKUs + patched 7 existing items with time_save metadata. Docs (PRD, API_REFERENCE, WOWO, POSTMAN, INDEX, CLD, ACM, Postman_Collection.json) bumped to v3.5.1. Request backend agent to (a) regression the 3 time-store endpoints (time-audit, services, purchase, purchases, delegate, delegations), (b) verify DPDP 4 user endpoints are reachable with test user, (c) confirm seed script is idempotent. Frontend UAT will follow with explicit user approval."
+#====================================================================================================
+# UAT 2026-05-05 — 4 screens at 390×844 (Daily Time Log / Time Dezider / Time Store / Privacy-Data)
+#====================================================================================================
+
+uat_dezider_4screens_20260505:
+  - task: "UAT — Daily Time Log / Time Dezider / Time Store / Privacy-Data at 390x844"
+    implemented: true
+    working: "NA"
+    file: "app/tools/{daily-time-log,time-dezider,time-store,privacy-data}.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "testing"
+        comment: |
+          UAT executed at mobile viewport 390x844. AUTH BLOCKER — login with
+          harden_1777921741@example.com / HardenPass2026! did NOT succeed (the
+          Sign In tap did not redirect off /auth/login; all subsequent /api/*
+          calls returned 401). Likely causes: (a) RN-Web role="button" vs
+          button-tag selector mismatch on click, or (b) stale password hash.
+          Main agent should verify credentials with curl and/or add stable
+          data-testid="login-submit" on the Sign In button.
+
+          Despite the auth block, all four screens RENDERED correctly (shell,
+          header, tabs, empty-state copy). No red-screen overlay, no hydration
+          warnings, no JS errors — the only console errors were the expected
+          401s. Route-conflict blocker from the previous cycle is GONE.
+
+          ## Screen 1 — /tools/daily-time-log  → PASS (UI shell)
+          ✅ Header "Daily Time Log" + back button
+          ✅ Subtitle "Track actual time · streak 0🔥 (best 0)" (current + best streak indicator visible)
+          ✅ 7-day week strip Wed 29 → Tue 5, today (Tue 5) highlighted purple
+          ✅ Category totals row: Total logged / Lifestyle / CTT / Meditate / Journal
+          ✅ "Timeline blocks" section with empty-state copy
+          ✅ "+ Add block" button + "Re-scan CTT / Lifestyle / Meditation" link
+          ⚠️ Block creation NOT verified — Add-block modal did not open a form
+             (input count = 0 after tap). Could be because user is unauthenticated
+             and the modal is gated, OR the Add block control is not opening the
+             expected time-picker/category modal. Needs auth-good retest.
+          API calls observed: GET /api/daily-time-log/2026-05-05 → 401,
+                              GET /api/daily-time-log/streaks → 401
+
+          ## Screen 2 — /tools/time-dezider  → PASS (UI + all 4 tabs tappable)
+          ✅ Header "Time Dezider — Raja Guru for a Raja" + back + gear icon
+          ✅ All 4 tabs visible: Morning (default, purple-selected) / Midday /
+             Evening / Now
+          ✅ Each tab tap fires the correct endpoint:
+             • Morning → GET /api/raja-guru/day-plan
+             • Midday  → GET /api/raja-guru/midday-check
+             • Evening → GET /api/raja-guru/evening-retro
+             • Now     → GET /api/raja-guru/next-action
+             (all 401 due to auth, but plumbing confirmed)
+          ✅ Preferences call fires on every tab switch: GET /api/raja-guru/preferences
+          ⚠️ Picks / raja_note / preferences-toggle / feedback buttons NOT
+             verified — body is empty because every API returned 401.
+
+          ## Screen 3 — /tools/time-store  → PASS (UI shell, CRITICAL screen)
+          ✅ Header "Time Store — Buy back time · delegate · outsource"
+          ✅ 4 tabs present: Audit / Services / Purchases / Delegations
+          ✅ Audit tab (default) shows "TOTAL SAVEABLE PER WEEK  0h" +
+             "No opportunities yet. Add CTT tasks…" empty state — NO CRASH ✅
+          ⚠️ Services tab — ≥5 service cards NOT verified (only 1 Buy /
+             1 Purchase occurrence detected in DOM, likely button-group header
+             rather than full card list). Needs auth-good retest to confirm
+             service cards (BigBasket / Urban Company / UClean / ClearTax /
+             GetFriday etc.) actually render with time-save badges + price_inr.
+          ⚠️ Filter chips (≥30 min/day, ≥60 min/day) NOT verified.
+          ⚠️ Purchase flow → mock-payment / TS-* order_id NOT verified.
+          ⚠️ My Purchases tab pending_payment row NOT verified.
+          API: GET /api/time-store/time-audit → 401
+
+          ## Screen 4 — /tools/privacy-data  → PASS (full UI shell)
+          ✅ Header "Privacy & Data" + back arrow
+          ✅ Green DPDP Act 2023 rights intro card with correct copy
+          ✅ Deletion-status card: "No pending deletion. Your account is active."
+          ✅ "Export my data" section + purple "Export JSON" button
+          ✅ "Delete my account" section (red) + "Request deletion" button
+          ✅ Footer: "Contact the Data Protection Officer at privacy@viewdezider.app"
+          ⚠️ Export-JSON / Request-deletion happy-path NOT verified — both need
+             authenticated session (GET /api/dpdp/status returned 401).
+
+          ## Profile entry-point  /(tabs)/profile  → PASS (link present)
+          ✅ Profile screen loaded. Body text contains "Privacy & Data" string,
+             confirming the row is rendered above Logout. Navigation target
+             /tools/privacy-data verified independently as working.
+
+          ## Cross-cutting
+          ✅ No red-screen, no Expo Router conflict, no hydration warnings
+          ✅ No JS runtime errors — only 401-resource warnings
+          ✅ Viewport 390x844 layouts clean on all 4 screens
+          ❌ Authentication flow blocks all data-dependent UAT items
+
+          ## Action items for main agent (priority order)
+          1. (P0) Debug Sign-In button in app/auth/login.tsx — either add
+             data-testid="login-submit" so tests can target it reliably, OR
+             verify harden_1777921741@example.com password hash via
+             `curl -X POST $BASE/api/auth/login -d '{"email":"…","password":"HardenPass2026!"}'`.
+             If hash is stale, reseed via /app/memory/test_credentials.md flow.
+          2. (P1) Once auth is restored, re-run full UAT to cover the ⚠️ items
+             above: block-add modal on Screen 1, picks+preferences+feedback on
+             Screen 2, service cards + filter chips + purchase flow + My
+             Purchases on Screen 3, export-JSON + delete-flow + cancel on
+             Screen 4.
+          3. (Nice-to-have) The Add-block control on /tools/daily-time-log
+             didn't visibly open a modal on tap (input count stayed 0) — worth
+             a manual check even under auth.
+
+agent_communication:
+    - agent: "testing"
+      message: |
+        UAT for 4 tools screens run at 390x844. Route-conflict blocker from the
+        previous cycle is RESOLVED (no red screen anywhere). All 4 screens render
+        their UI shell correctly — headers, tabs, empty states, buttons per spec.
+        HOWEVER: login flow did not authenticate (Sign-In click did not
+        redirect away from /auth/login; every /api/* call returned 401), so
+        all data-dependent UAT items (block creation, picks/feedback, service
+        purchase, export-JSON, request-deletion happy paths) remain
+        UNVERIFIED. Primary remediation is to fix the login click target
+        (add data-testid="login-submit") or refresh the test password hash,
+        then re-run. Screens themselves look healthy.
