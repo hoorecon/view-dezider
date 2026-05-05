@@ -35,7 +35,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -360,15 +360,30 @@ def _evaluate_condition(c: dict, ctx: dict) -> bool:
     return False
 
 
-async def _evaluate_rules(ctx: dict) -> str:
+async def _evaluate_rules(ctx: dict) -> tuple[str, Optional[dict]]:
+    """Returns (action, matched_rule_dict_or_None)."""
     rules = await db.review_rules.find({"is_active": True}, {"_id": 0}).sort("priority", 1).to_list(200)
     for r in rules:
         try:
             if all(_evaluate_condition(c, ctx) for c in (r.get("conditions") or [])):
-                return r["action"]
+                # Increment match counter (best-effort, fire-and-forget pattern)
+                try:
+                    await db.review_rules.update_one(
+                        {"rule_id": r["rule_id"]},
+                        {
+                            "$inc": {
+                                "match_count": 1,
+                                f"action_counts.{r['action']}": 1,
+                            },
+                            "$set": {"last_matched_at": _now()},
+                        },
+                    )
+                except Exception:
+                    pass
+                return r["action"], r
         except Exception as e:
             logger.warning("rule %s eval error: %s", r.get("rule_id"), e)
-    return "HOLD_FOR_ADMIN"     # default
+    return "HOLD_FOR_ADMIN", None     # default
 
 
 # ---------------------------------------------------------------------------
@@ -411,7 +426,7 @@ async def submit_review(body: ReviewSubmit, user: dict = Depends(get_current_use
         "is_verified_buyer": is_verified,
         "prior_approved": prior_approved,
     }
-    action = await _evaluate_rules(ctx)
+    action, matched_rule = await _evaluate_rules(ctx)
     if action == "AUTO_APPROVE":
         status = "auto_approved"
     elif action == "AUTO_REJECT":
@@ -437,6 +452,8 @@ async def submit_review(body: ReviewSubmit, user: dict = Depends(get_current_use
         "status": status,
         "moderation_action": action,
         "moderation_note": None,
+        "matched_rule_id": matched_rule.get("rule_id") if matched_rule else None,
+        "matched_rule_name": matched_rule.get("name") if matched_rule else None,
         "helpful_yes_count": 0,
         "helpful_no_count": 0,
         "owner_reply": None,
@@ -666,3 +683,97 @@ async def delete_rule(rule_id: str, user: dict = Depends(require_admin)):
     if res.deleted_count == 0:
         raise HTTPException(404, "rule not found")
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Rule analytics
+# ---------------------------------------------------------------------------
+@router.get("/admin/rules/analytics")
+async def rule_analytics(user: dict = Depends(require_admin)):
+    """Per-rule + global analytics: how many reviews each rule auto-handled,
+    pending queue size, total reviews, action distribution, last 7-day trend."""
+
+    # Per-rule rollup straight from the rules collection
+    rules = await db.review_rules.find({}, {"_id": 0}).sort("priority", 1).to_list(200)
+    rules_out: List[dict] = []
+    for r in rules:
+        action_counts = r.get("action_counts") or {}
+        rules_out.append({
+            "rule_id": r["rule_id"],
+            "name": r["name"],
+            "action": r["action"],
+            "priority": r.get("priority", 100),
+            "is_active": bool(r.get("is_active", True)),
+            "match_count": int(r.get("match_count") or 0),
+            "auto_approved": int(action_counts.get("AUTO_APPROVE") or 0),
+            "auto_rejected": int(action_counts.get("AUTO_REJECT") or 0),
+            "held": int(action_counts.get("HOLD_FOR_ADMIN") or 0),
+            "last_matched_at": r.get("last_matched_at"),
+            "conditions_count": len(r.get("conditions") or []),
+        })
+
+    # Global review-status distribution (cheap aggregate on indexed status)
+    pipeline = [{"$group": {"_id": "$status", "n": {"$sum": 1}}}]
+    cursor = db.review_net.aggregate(pipeline)
+    status_dist: Dict[str, int] = {}
+    async for row in cursor:
+        status_dist[row["_id"] or "unknown"] = int(row["n"])
+
+    total_reviews = sum(status_dist.values())
+    pending = status_dist.get("pending", 0)
+    auto_approved = status_dist.get("auto_approved", 0)
+    approved = status_dist.get("approved", 0)
+    rejected = status_dist.get("rejected", 0)
+
+    # Reviews per matched_rule (for reviews where rule_id was stamped)
+    pipe2 = [
+        {"$match": {"matched_rule_id": {"$ne": None}}},
+        {"$group": {
+            "_id": {"rule_id": "$matched_rule_id", "rule_name": "$matched_rule_name"},
+            "n": {"$sum": 1},
+        }},
+        {"$sort": {"n": -1}},
+    ]
+    by_rule: List[dict] = []
+    async for row in db.review_net.aggregate(pipe2):
+        by_rule.append({
+            "rule_id": row["_id"]["rule_id"],
+            "rule_name": row["_id"]["rule_name"],
+            "review_count": int(row["n"]),
+        })
+
+    # 7-day trend (UTC midnights)
+    trend: Dict[str, Dict[str, int]] = {}
+    seven_days_ago = _now() - timedelta(days=7)
+    cur = db.review_net.find(
+        {"created_at": {"$gte": seven_days_ago}},
+        {"_id": 0, "status": 1, "created_at": 1},
+    )
+    async for r in cur:
+        d = r["created_at"]
+        if isinstance(d, datetime):
+            day = d.strftime("%Y-%m-%d")
+        else:
+            day = str(d)[:10]
+        trend.setdefault(day, {"pending": 0, "auto_approved": 0, "approved": 0, "rejected": 0})
+        s = r.get("status") or "pending"
+        if s in trend[day]:
+            trend[day][s] += 1
+
+    return {
+        "rules": rules_out,
+        "global": {
+            "total_reviews": total_reviews,
+            "pending": pending,
+            "auto_approved": auto_approved,
+            "approved": approved,
+            "rejected": rejected,
+            "auto_rate_pct": round((auto_approved / total_reviews) * 100, 1) if total_reviews else 0,
+            "manual_queue_pct": round((pending / total_reviews) * 100, 1) if total_reviews else 0,
+        },
+        "reviews_by_matched_rule": by_rule,
+        "last_7_days": [
+            {"day": day, **counts}
+            for day, counts in sorted(trend.items())
+        ],
+    }

@@ -25,7 +25,7 @@ import api from '../../../src/utils/api';
 import { COLORS } from '../../../src/constants/colors';
 import { showAlert } from '../../../src/utils/alert';
 
-type Tab = 'queue' | 'rules';
+type Tab = 'queue' | 'rules' | 'analytics';
 
 interface ReviewDoc {
   review_id: string;
@@ -116,8 +116,25 @@ export default function AdminReviewNetScreen() {
     }
   }, []);
 
+  // ---- Analytics ----
+  const [analytics, setAnalytics] = useState<any>(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+
+  const loadAnalytics = useCallback(async () => {
+    try {
+      setLoadingAnalytics(true);
+      const res = await api.get('/review-net/admin/rules/analytics');
+      setAnalytics(res.data || null);
+    } catch (e: any) {
+      showAlert('Analytics error', e?.response?.data?.detail || e.message);
+    } finally {
+      setLoadingAnalytics(false);
+    }
+  }, []);
+
   useEffect(() => { loadQueue(); }, [loadQueue]);
   useEffect(() => { if (tab === 'rules') loadRules(); }, [tab, loadRules]);
+  useEffect(() => { if (tab === 'analytics') loadAnalytics(); }, [tab, loadAnalytics]);
 
   const addCondition = () => {
     setDraftConditions(prev => [...prev, { field: 'overall_min', op: 'gte', value: 3 }]);
@@ -211,6 +228,9 @@ export default function AdminReviewNetScreen() {
         <TouchableOpacity onPress={() => setTab('rules')} style={[styles.tab, tab === 'rules' && styles.tabActive]}>
           <Text style={[styles.tabText, tab === 'rules' && styles.tabTextActive]}>Rules ({rules.length})</Text>
         </TouchableOpacity>
+        <TouchableOpacity testID="rn-analytics-tab" onPress={() => setTab('analytics')} style={[styles.tab, tab === 'analytics' && styles.tabActive]}>
+          <Text style={[styles.tabText, tab === 'analytics' && styles.tabTextActive]}>Analytics</Text>
+        </TouchableOpacity>
       </View>
 
       {/* QUEUE TAB */}
@@ -297,6 +317,136 @@ export default function AdminReviewNetScreen() {
               </View>
             </View>
           ))}
+        </ScrollView>
+      )}
+
+      {/* ANALYTICS TAB */}
+      {tab === 'analytics' && (
+        <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 60 }}>
+          {loadingAnalytics ? <ActivityIndicator color={COLORS.primary} /> : !analytics ? (
+            <View style={styles.empty}><Text style={{ color: COLORS.textMuted }}>No data</Text></View>
+          ) : (
+            <>
+              {/* Top KPIs */}
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+                <View style={[styles.kpiCard, { backgroundColor: '#1E3A8A22' }]}>
+                  <Text style={[styles.kpiNum, { color: '#1E3A8A' }]}>{analytics.global.total_reviews}</Text>
+                  <Text style={styles.kpiLabel}>Total reviews</Text>
+                </View>
+                <View style={[styles.kpiCard, { backgroundColor: '#10B98122' }]}>
+                  <Text style={[styles.kpiNum, { color: '#059669' }]}>{analytics.global.auto_rate_pct}%</Text>
+                  <Text style={styles.kpiLabel}>Auto-handled</Text>
+                </View>
+                <View style={[styles.kpiCard, { backgroundColor: '#F59E0B22' }]}>
+                  <Text style={[styles.kpiNum, { color: '#D97706' }]}>{analytics.global.pending}</Text>
+                  <Text style={styles.kpiLabel}>Pending</Text>
+                </View>
+                <View style={[styles.kpiCard, { backgroundColor: '#EF444422' }]}>
+                  <Text style={[styles.kpiNum, { color: '#DC2626' }]}>{analytics.global.rejected}</Text>
+                  <Text style={styles.kpiLabel}>Rejected</Text>
+                </View>
+              </View>
+
+              {/* Status distribution bar */}
+              <Text style={styles.sectionH}>Status mix</Text>
+              {(() => {
+                const t = analytics.global.total_reviews || 1;
+                const seg = (label: string, n: number, color: string) => (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                    <Text style={{ width: 110, fontSize: 12, color: COLORS.textSecondary }}>{label}</Text>
+                    <View style={{ flex: 1, height: 8, backgroundColor: '#F1F5F9', borderRadius: 4, overflow: 'hidden' }}>
+                      <View style={{ width: `${(n / t) * 100}%`, height: 8, backgroundColor: color }} />
+                    </View>
+                    <Text style={{ width: 32, textAlign: 'right', fontSize: 12, color: COLORS.textPrimary, fontWeight: '600' }}>{n}</Text>
+                  </View>
+                );
+                return (
+                  <View style={styles.cardBlock}>
+                    {seg('auto_approved', analytics.global.auto_approved, '#10B981')}
+                    {seg('approved (manual)', analytics.global.approved, '#3B82F6')}
+                    {seg('pending', analytics.global.pending, '#F59E0B')}
+                    {seg('rejected', analytics.global.rejected, '#EF4444')}
+                  </View>
+                );
+              })()}
+
+              {/* Per-rule rollup */}
+              <Text style={styles.sectionH}>Per-rule performance</Text>
+              {analytics.rules.length === 0 ? (
+                <View style={styles.cardBlock}>
+                  <Text style={{ color: COLORS.textMuted, fontSize: 12 }}>No rules configured yet — every review is held for admin.</Text>
+                </View>
+              ) : analytics.rules.map((r: any) => (
+                <View key={r.rule_id} style={styles.cardBlock}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={{ fontWeight: '700', color: COLORS.textPrimary, flex: 1 }} numberOfLines={1}>{r.name}</Text>
+                    <View style={[styles.actionPill, {
+                      backgroundColor: r.action === 'AUTO_APPROVE' ? '#10B98122' : r.action === 'AUTO_REJECT' ? '#EF444422' : '#F59E0B22',
+                    }]}>
+                      <Text style={[styles.actionPillText, {
+                        color: r.action === 'AUTO_APPROVE' ? '#059669' : r.action === 'AUTO_REJECT' ? '#DC2626' : '#D97706',
+                      }]}>{r.action.replace('_', ' ').toLowerCase()}</Text>
+                    </View>
+                  </View>
+                  <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 2 }}>
+                    priority {r.priority} · {r.is_active ? 'active' : 'paused'} · {r.conditions_count} condition(s)
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 14, marginTop: 8 }}>
+                    <View><Text style={styles.statN}>{r.match_count}</Text><Text style={styles.statL}>total matches</Text></View>
+                    <View><Text style={[styles.statN, { color: '#059669' }]}>{r.auto_approved}</Text><Text style={styles.statL}>approved</Text></View>
+                    <View><Text style={[styles.statN, { color: '#DC2626' }]}>{r.auto_rejected}</Text><Text style={styles.statL}>rejected</Text></View>
+                    <View><Text style={[styles.statN, { color: '#D97706' }]}>{r.held}</Text><Text style={styles.statL}>held</Text></View>
+                  </View>
+                  {r.last_matched_at && (
+                    <Text style={{ color: COLORS.textMuted, fontSize: 10, marginTop: 6 }}>
+                      Last matched: {new Date(r.last_matched_at).toLocaleString()}
+                    </Text>
+                  )}
+                </View>
+              ))}
+
+              {/* Reviews flagged with rule (deeper attribution) */}
+              {analytics.reviews_by_matched_rule?.length > 0 && (
+                <>
+                  <Text style={styles.sectionH}>Reviews attributed to rule</Text>
+                  <View style={styles.cardBlock}>
+                    {analytics.reviews_by_matched_rule.map((r: any, i: number) => (
+                      <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: i < analytics.reviews_by_matched_rule.length - 1 ? 1 : 0, borderBottomColor: '#F1F5F9' }}>
+                        <Text style={{ flex: 1, color: COLORS.textPrimary, fontSize: 13 }} numberOfLines={1}>{r.rule_name}</Text>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.primary }}>{r.review_count}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </>
+              )}
+
+              {/* Last 7 days trend */}
+              {analytics.last_7_days?.length > 0 && (
+                <>
+                  <Text style={styles.sectionH}>Last 7 days</Text>
+                  <View style={styles.cardBlock}>
+                    {analytics.last_7_days.map((d: any) => {
+                      const total = d.pending + d.auto_approved + d.approved + d.rejected;
+                      return (
+                        <View key={d.day} style={{ marginBottom: 6 }}>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 }}>
+                            <Text style={{ fontSize: 11, color: COLORS.textSecondary }}>{d.day}</Text>
+                            <Text style={{ fontSize: 11, color: COLORS.textPrimary, fontWeight: '600' }}>{total}</Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden', backgroundColor: '#F1F5F9' }}>
+                            {d.auto_approved > 0 && <View style={{ flex: d.auto_approved, backgroundColor: '#10B981' }} />}
+                            {d.approved > 0 && <View style={{ flex: d.approved, backgroundColor: '#3B82F6' }} />}
+                            {d.pending > 0 && <View style={{ flex: d.pending, backgroundColor: '#F59E0B' }} />}
+                            {d.rejected > 0 && <View style={{ flex: d.rejected, backgroundColor: '#EF4444' }} />}
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </>
+              )}
+            </>
+          )}
         </ScrollView>
       )}
 
@@ -412,4 +562,13 @@ const styles = StyleSheet.create({
   sheetTitle: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 8 },
   fieldLabel: { fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, marginTop: 8 },
   input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: COLORS.textPrimary, backgroundColor: COLORS.white, marginTop: 4 },
+
+  // analytics
+  kpiCard: { width: '48%', padding: 14, borderRadius: 12 },
+  kpiNum: { fontSize: 24, fontWeight: '800' },
+  kpiLabel: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
+  cardBlock: { backgroundColor: COLORS.white, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 10 },
+  sectionH: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary, marginTop: 8, marginBottom: 6 },
+  statN: { fontSize: 16, fontWeight: '800', color: COLORS.textPrimary },
+  statL: { fontSize: 9, color: COLORS.textMuted, marginTop: 1 },
 });
