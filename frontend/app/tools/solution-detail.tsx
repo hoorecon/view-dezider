@@ -46,6 +46,8 @@ export default function SolutionDetailScreen() {
   const [factorRatings, setFactorRatings] = useState<Record<string, number>>({});
   const [aggregates, setAggregates] = useState<any>(null);
   const [reviewsList, setReviewsList] = useState<any[]>([]);
+  const [myPending, setMyPending] = useState<any[]>([]);   // user's own pending reviews
+  const [myPending, setMyPending] = useState<any[]>([]);
   const [segment, setSegment] = useState<'individual' | 'organization' | 'government'>('individual');
   const [subsegment, setSubsegment] = useState<string>('customer');
   const [reviewText, setReviewText] = useState('');
@@ -75,14 +77,16 @@ export default function SolutionDetailScreen() {
 
   const loadReviewNet = async () => {
     try {
-      const [fRes, aRes, rRes] = await Promise.all([
+      const [fRes, aRes, rRes, mpRes] = await Promise.all([
         api.get(`/review-net/factors?solution_id=${solution_id}`),
         api.get(`/review-net/aggregates?solution_id=${solution_id}`),
         api.get(`/review-net/reviews?solution_id=${solution_id}`),
+        api.get(`/review-net/my-pending?solution_id=${solution_id}`),
       ]);
       setFactors(fRes.data?.factors || []);
       setAggregates(aRes.data || null);
       setReviewsList(rRes.data?.items || []);
+      setMyPending(mpRes.data?.items || []);
     } catch (e: any) {
       console.warn('ReviewNet load error:', e?.response?.data || e.message);
     }
@@ -322,6 +326,21 @@ export default function SolutionDetailScreen() {
         {/* Reviews Tab (ReviewNet v2) */}
         {activeTab === 'reviews' && (
           <>
+            {/* My pending review banner */}
+            {myPending.length > 0 && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, backgroundColor: '#FEF3C7', borderRadius: 10, borderWidth: 1, borderColor: '#FCD34D', marginBottom: 12 }}>
+                <Ionicons name="time" size={20} color="#B45309" />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#92400E' }}>
+                    You have {myPending.length} review{myPending.length > 1 ? 's' : ''} pending moderation
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#92400E', marginTop: 2 }} numberOfLines={2}>
+                    {myPending[0].title || myPending[0].comment?.slice(0, 80) || 'Submitted just now'} · It will appear here once approved.
+                  </Text>
+                </View>
+              </View>
+            )}
+
             <View style={styles.reviewHeader}>
               <View>
                 <Text style={styles.sectionTitle}>ReviewNet</Text>

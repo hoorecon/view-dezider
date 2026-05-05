@@ -5,7 +5,7 @@ with quantitative factors (Store) and qualitative reviews (ReviewNet).
 """
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from core.auth import get_current_user
@@ -160,13 +160,19 @@ async def list_solutions(
     life_area_id: Optional[str] = None,
     sub_area_id: Optional[str] = None,
     category_id: Optional[str] = None,
+    catalog_node_id: Optional[str] = None,
     country: Optional[str] = None,
     city: Optional[str] = None,
     language: Optional[str] = None,
     visibility: Optional[str] = None,
+    sort: Optional[str] = None,    # "top_rated" | "newest" | "name"
     user: dict = Depends(get_current_user),
 ):
-    """List solutions visible to the user (own + org + authorized/public approved)."""
+    """List solutions visible to the user (own + org + authorized/public approved).
+
+    `sort=top_rated` ranks by the new ReviewNet `overall_rating × log(1+review_count)`
+    score so freshly-popular items rise to the top.
+    """
     query = {"status": "active"}
 
     # Visibility filter: user sees own PRIVATE + own ORG + all PUBLIC (approved only)
@@ -187,6 +193,8 @@ async def list_solutions(
         query["sub_area_id"] = sub_area_id
     if category_id:
         query["category_id"] = category_id
+    if catalog_node_id:
+        query["catalog_node_id"] = catalog_node_id
     if country:
         query["country"] = country
     if language:
@@ -194,10 +202,22 @@ async def list_solutions(
     if city:
         query["city"] = {"$regex": city, "$options": "i"}
 
-    solutions = await db.solutions_store.find(query, {"_id": 0}).sort("name", 1).to_list(500)
+    sort_spec = "name"
+    if sort == "newest":
+        sort_spec = ("created_at", -1)
+    elif sort == "name":
+        sort_spec = "name"
+    cursor = db.solutions_store.find(query, {"_id": 0})
+    if isinstance(sort_spec, tuple):
+        cursor = cursor.sort([sort_spec])
+    else:
+        cursor = cursor.sort(sort_spec, 1)
+    solutions = await cursor.to_list(500)
 
-    # Attach review summary for each solution
+    import math
+    # Attach review summary for each solution (legacy + ReviewNet) and a boost score
     for sol in solutions:
+        # Legacy db.solution_reviews aggregate (kept for backward compat)
         review_agg = await db.solution_reviews.aggregate([
             {"$match": {"solution_id": sol["solution_id"]}},
             {"$group": {
@@ -212,6 +232,48 @@ async def list_solutions(
         else:
             sol["avg_rating"] = None
             sol["review_count"] = 0
+
+        # NEW: ReviewNet aggregate (5-star scale, segmented)
+        rn_agg = await db.review_net.aggregate([
+            {"$match": {"solution_id": sol["solution_id"], "status": {"$in": ["approved", "auto_approved"]}}},
+            {"$group": {
+                "_id": "$reviewer_segment",
+                "avg": {"$avg": "$overall_rating"},
+                "count": {"$sum": 1},
+            }},
+        ]).to_list(10)
+
+        if rn_agg:
+            seg_summary: Dict[str, Any] = {}
+            total_count = 0
+            weighted_sum = 0.0
+            for seg in rn_agg:
+                seg_id = seg["_id"] or "unknown"
+                seg_summary[seg_id] = {
+                    "avg": round(float(seg["avg"]), 2),
+                    "count": int(seg["count"]),
+                }
+                total_count += int(seg["count"])
+                weighted_sum += float(seg["avg"]) * int(seg["count"])
+            overall_avg = round(weighted_sum / total_count, 2) if total_count else 0
+            sol["review_net"] = {
+                "overall_avg": overall_avg,
+                "total_reviews": total_count,
+                "by_segment": seg_summary,
+            }
+            # Boost score = avg * log(1 + count) — popular AND well-rated wins
+            sol["_rn_score"] = overall_avg * math.log1p(total_count)
+        else:
+            sol["review_net"] = {"overall_avg": 0, "total_reviews": 0, "by_segment": {}}
+            sol["_rn_score"] = 0.0
+
+    # Apply ReviewNet ranking if requested
+    if sort == "top_rated":
+        solutions.sort(key=lambda s: s.get("_rn_score", 0), reverse=True)
+
+    # Strip internal fields before returning
+    for sol in solutions:
+        sol.pop("_rn_score", None)
 
     return solutions
 
@@ -463,6 +525,61 @@ async def apply_solution_to_option(request: Request, user: dict = Depends(get_cu
         for k, v in qual_scores.items()
     ]
 
+    # NEW: ReviewNet enrichment — segmented per-factor ratings (5-star) + factor names
+    rn_factors_by_id: Dict[str, dict] = {}
+    factors_lookup: Dict[str, str] = {}
+    rn_per_factor: Dict[str, Dict[str, Any]] = {}
+    rn_total = 0
+    rn_overall_avg = None
+    try:
+        # 1) Resolve qualitative factor templates for context (id → name)
+        factors_q = {"is_active": True, "$or": [{"scope_type": "global"}]}
+        if sol.get("life_area_id"):
+            factors_q["$or"].append({"scope_type": "life_area", "scope_id": sol["life_area_id"]})
+        if sol.get("sub_area_id"):
+            factors_q["$or"].append({"scope_type": "sub_area", "scope_id": sol["sub_area_id"]})
+        async for f in db.review_factors.find(factors_q, {"_id": 0}):
+            factors_lookup[f["factor_id"]] = f["name"]
+
+        # 2) Aggregate ReviewNet ratings (only published)
+        rn_cursor = db.review_net.find(
+            {"solution_id": solution_id, "status": {"$in": ["approved", "auto_approved"]}},
+            {"_id": 0},
+        )
+        rn_segment_buckets: Dict[str, list[float]] = {}
+        rn_factor_buckets: Dict[str, Dict[str, list[int]]] = {}    # factor_id -> seg -> ratings
+        async for rv in rn_cursor:
+            seg = rv.get("reviewer_segment") or "individual"
+            rn_total += 1
+            if rv.get("overall_rating") is not None:
+                rn_segment_buckets.setdefault(seg, []).append(float(rv["overall_rating"]))
+            for fid, rating in (rv.get("factor_ratings") or {}).items():
+                rn_factor_buckets.setdefault(fid, {}).setdefault(seg, []).append(int(rating))
+
+        if rn_total:
+            for fid, by_seg in rn_factor_buckets.items():
+                all_vals = [v for vs in by_seg.values() for v in vs]
+                rn_per_factor[fid] = {
+                    "factor_id": fid,
+                    "factor_name": factors_lookup.get(fid, fid.replace("qf_", "").replace("_", " ")),
+                    "overall_avg": round(sum(all_vals) / len(all_vals), 2),
+                    "review_count": len(all_vals),
+                    "by_segment": {
+                        seg: {
+                            "avg": round(sum(vs) / len(vs), 2),
+                            "count": len(vs),
+                        } for seg, vs in by_seg.items()
+                    },
+                }
+            # rn_overall_avg is weighted across segments
+            total_n = sum(len(vs) for vs in rn_segment_buckets.values())
+            if total_n:
+                weighted = sum(sum(vs) for vs in rn_segment_buckets.values())
+                rn_overall_avg = round(weighted / total_n, 2)
+    except Exception as _e:
+        # Don't break the existing endpoint if ReviewNet hits an error
+        rn_per_factor = {}
+
     return {
         "solution_id": solution_id,
         "solution_name": sol.get("name"),
@@ -472,6 +589,12 @@ async def apply_solution_to_option(request: Request, user: dict = Depends(get_cu
         "overall_avg_rating": round(sum(r.get("overall_rating", 0) for r in reviews) / len(reviews), 1) if reviews else None,
         "price_range": sol.get("price_range"),
         "provider": sol.get("provider"),
+        # NEW: 5-star ReviewNet data, segmented
+        "review_net": {
+            "total_reviews": rn_total,
+            "overall_avg": rn_overall_avg,
+            "per_factor": list(rn_per_factor.values()),
+        },
     }
 
 

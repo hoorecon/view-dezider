@@ -437,3 +437,101 @@ async def admin_update_portal_config(
         upsert=True,
     )
     return {"ok": True, "config": doc}
+
+
+
+# ------------------------------------------------------------------
+# White-labelled per-org Review showcase  (PUBLIC, no auth)
+# ------------------------------------------------------------------
+@router.get("/p/{slug}/reviews")
+async def public_org_reviews(
+    slug: str,
+    limit: int = 24,
+    segment: Optional[str] = None,
+    request: Request = None,
+):
+    """Public read-only feed of approved ReviewNet reviews for all solutions
+    posted by this org. Returns: org meta, segmented + per-factor aggregates,
+    and the latest reviews (capped)."""
+    org = await _resolve_org_by_slug(slug)
+    if not org:
+        raise HTTPException(404, "Org sub-portal not found")
+    org_id = org["org_id"]
+
+    # Solutions belonging to the org
+    sol_ids: List[str] = []
+    sol_meta: Dict[str, str] = {}
+    async for s in db.solutions_store.find(
+        {"$or": [{"org_id": org_id}, {"posted_by_org_id": org_id}]},
+        {"_id": 0, "solution_id": 1, "name": 1, "title": 1, "type": 1},
+    ):
+        sol_ids.append(s["solution_id"])
+        sol_meta[s["solution_id"]] = s.get("name") or s.get("title") or "Solution"
+
+    if not sol_ids:
+        return {
+            "org": _branding_payload(org),
+            "summary": {"total_reviews": 0, "overall_avg": 0, "by_segment": {}, "per_factor": []},
+            "items": [],
+        }
+
+    q: Dict[str, Any] = {
+        "solution_id": {"$in": sol_ids},
+        "status": {"$in": ["approved", "auto_approved"]},
+    }
+    if segment in ("individual", "organization", "government"):
+        q["reviewer_segment"] = segment
+
+    # 1) Reviews list (capped)
+    items: List[dict] = []
+    cur = db.review_net.find(q, {"_id": 0}).sort("created_at", -1)
+    fetched = await cur.to_list(min(max(limit, 1), 100))
+    for r in fetched:
+        r.pop("reviewer_id", None)   # privacy: don't expose internal user_id
+        r["solution_name"] = r.get("solution_name") or sol_meta.get(r.get("solution_id"))
+        items.append(r)
+
+    # 2) Aggregates across all org solutions
+    seg_counts: Dict[str, list[float]] = {}
+    factor_counts: Dict[str, list[int]] = {}
+    factors_lookup: Dict[str, str] = {}
+    total = 0
+    overall_sum = 0.0
+
+    async for r in db.review_net.find(q, {"_id": 0}):
+        total += 1
+        seg = r.get("reviewer_segment") or "individual"
+        ov = float(r.get("overall_rating") or 0)
+        seg_counts.setdefault(seg, []).append(ov)
+        overall_sum += ov
+        for fid, rating in (r.get("factor_ratings") or {}).items():
+            factor_counts.setdefault(fid, []).append(int(rating))
+
+    if factor_counts:
+        async for f in db.review_factors.find({"factor_id": {"$in": list(factor_counts.keys())}}, {"_id": 0}):
+            factors_lookup[f["factor_id"]] = f["name"]
+
+    by_segment = {
+        seg: {"avg": round(sum(rs) / len(rs), 2), "count": len(rs)}
+        for seg, rs in seg_counts.items() if rs
+    }
+    per_factor = [
+        {
+            "factor_id": fid,
+            "factor_name": factors_lookup.get(fid, fid.replace("qf_", "").replace("_", " ")),
+            "avg": round(sum(rs) / len(rs), 2),
+            "count": len(rs),
+        }
+        for fid, rs in sorted(factor_counts.items(), key=lambda kv: -len(kv[1]))[:12]
+    ]
+
+    return {
+        "org": _branding_payload(org),
+        "summary": {
+            "total_reviews": total,
+            "overall_avg": round(overall_sum / total, 2) if total else 0,
+            "by_segment": by_segment,
+            "per_factor": per_factor,
+        },
+        "items": items,
+    }

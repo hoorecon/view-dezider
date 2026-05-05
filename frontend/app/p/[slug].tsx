@@ -68,6 +68,7 @@ export default function PublicOrgPortal() {
   const [org, setOrg] = useState<OrgPortal | null>(null);
   const [config, setConfig] = useState<PortalConfig | null>(null);
   const [feedback, setFeedback] = useState<FeedbackItem[]>([]);
+  const [reviews, setReviews] = useState<any | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState<string | null>(null);
 
@@ -96,6 +97,11 @@ export default function PublicOrgPortal() {
         const fb = await api.get(`/p/${slug}/feedback/public`, { skipAuth: true } as any);
         setFeedback(fb.data?.items || []);
       } catch { /* swallow — feedback list is optional */ }
+      // ReviewNet showcase
+      try {
+        const rv = await api.get(`/p/${slug}/reviews?limit=12`, { skipAuth: true } as any);
+        setReviews(rv.data || null);
+      } catch { /* swallow — reviews are optional */ }
     } catch (e: any) {
       setError(e?.response?.status === 404 ? 'This sub-portal does not exist or is not yet published.' : 'Could not load this page.');
     } finally {
@@ -242,6 +248,59 @@ export default function PublicOrgPortal() {
                 {!!error && (
                   <Text style={styles.errInline}>{error}</Text>
                 )}
+              </View>
+            )}
+
+            {/* Customer reviews — ReviewNet showcase */}
+            {reviews && reviews.summary?.total_reviews > 0 && (
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>Customer Reviews</Text>
+                <Text style={{ fontSize: 13, color: COLORS.textSecondary, marginBottom: 10 }}>
+                  {reviews.summary.total_reviews} review{reviews.summary.total_reviews === 1 ? '' : 's'} · avg {reviews.summary.overall_avg}/5 across all our solutions
+                </Text>
+
+                {/* Per-segment chips */}
+                {Object.keys(reviews.summary.by_segment || {}).length > 0 && (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                    {Object.entries(reviews.summary.by_segment as Record<string, any>).map(([seg, agg]: any) => (
+                      <View key={seg} style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, backgroundColor: color + '22', borderWidth: 1, borderColor: color }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color }}>
+                          {seg} · ★ {agg.avg}/5 ({agg.count})
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Top factors */}
+                {reviews.summary.per_factor?.length > 0 && (
+                  <View style={{ marginBottom: 12 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 6 }}>Top factors</Text>
+                    {reviews.summary.per_factor.slice(0, 5).map((f: any) => (
+                      <View key={f.factor_id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                        <Text style={{ flex: 1, fontSize: 12, color: COLORS.textPrimary }} numberOfLines={1}>{f.factor_name}</Text>
+                        <View style={{ width: 80, height: 6, backgroundColor: '#F1F5F9', borderRadius: 3, overflow: 'hidden', marginHorizontal: 8 }}>
+                          <View style={{ width: `${(f.avg / 5) * 100}%`, height: 6, backgroundColor: color }} />
+                        </View>
+                        <Text style={{ fontSize: 11, color: COLORS.textPrimary, fontWeight: '600', width: 36, textAlign: 'right' }}>{f.avg}/5</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Latest reviews */}
+                {reviews.items?.slice(0, 5).map((rv: any) => (
+                  <View key={rv.review_id} style={[styles.fbItem, { borderLeftColor: color }]}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 }}>
+                      <Text style={styles.fbTitle}>{rv.title || rv.solution_name}</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color }}>★ {rv.overall_rating}/5</Text>
+                    </View>
+                    <Text style={styles.fbMeta}>
+                      {rv.reviewer_name} · {rv.reviewer_segment}{rv.reviewer_subsegment ? ` (${rv.reviewer_subsegment})` : ''}{rv.is_verified_buyer ? ' · ✓ verified' : ''}
+                    </Text>
+                    {!!rv.comment && <Text style={styles.fbDesc} numberOfLines={3}>{rv.comment}</Text>}
+                  </View>
+                ))}
               </View>
             )}
 

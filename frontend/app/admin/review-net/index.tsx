@@ -17,6 +17,7 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  Switch,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -25,7 +26,7 @@ import api from '../../../src/utils/api';
 import { COLORS } from '../../../src/constants/colors';
 import { showAlert } from '../../../src/utils/alert';
 
-type Tab = 'queue' | 'rules' | 'analytics';
+type Tab = 'queue' | 'rules' | 'analytics' | 'settings';
 
 interface ReviewDoc {
   review_id: string;
@@ -132,9 +133,102 @@ export default function AdminReviewNetScreen() {
     }
   }, []);
 
+  // ---- Settings (notifications config) ----
+  const [settings, setSettings] = useState<any>(null);
+  const [loadingSettings, setLoadingSettings] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  const loadSettings = useCallback(async () => {
+    try {
+      setLoadingSettings(true);
+      const res = await api.get('/review-net/admin/notifications-config');
+      setSettings(res.data);
+    } catch (e: any) {
+      showAlert('Settings error', e?.response?.data?.detail || e.message);
+    } finally {
+      setLoadingSettings(false);
+    }
+  }, []);
+
+  const saveSettings = async (patch: any) => {
+    try {
+      setSavingSettings(true);
+      const res = await api.put('/review-net/admin/notifications-config', { ...settings, ...patch });
+      setSettings(res.data);
+    } catch (e: any) {
+      showAlert('Save failed', e?.response?.data?.detail || e.message);
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  // ---- CSV import / export ----
+  const exportCsv = async () => {
+    try {
+      const backend = process.env.EXPO_PUBLIC_BACKEND_URL || '';
+      const url = `${backend}/api/review-net/admin/reviews/export.csv`;
+      // Re-issue with current bearer; fetch + Blob to keep auth header
+      const tokenRes = await api.get('/auth/me');
+      void tokenRes;
+      const res = await api.get('/review-net/admin/reviews/export.csv', { responseType: 'blob' as any });
+      if (Platform.OS === 'web') {
+        // browser download
+        const blob = new Blob([res.data], { type: 'text/csv' });
+        const dlUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = dlUrl; a.download = `reviewnet_export_${Date.now()}.csv`;
+        a.click(); URL.revokeObjectURL(dlUrl);
+        showAlert('Export ready', 'CSV download triggered.');
+      } else {
+        // native: dump first 500 chars
+        const text = typeof res.data === 'string' ? res.data : '(binary; download via web)';
+        showAlert('Export', text.slice(0, 500));
+      }
+      console.log('[csv-export] url:', url);
+    } catch (e: any) {
+      showAlert('Export failed', e?.response?.data?.detail || e.message);
+    }
+  };
+
+  const importCsv = async (dryRun: boolean) => {
+    if (Platform.OS !== 'web') {
+      return showAlert('Import', 'CSV import is currently web-only — open the admin in a browser to use it.');
+    }
+    // Web: trigger a hidden file input
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = '.csv,text/csv';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const fd = new FormData();
+      fd.append('file', file);
+      try {
+        const res = await api.post(
+          `/review-net/admin/reviews/import?dry_run=${dryRun}`,
+          fd,
+          { headers: { 'Content-Type': 'multipart/form-data' } },
+        );
+        const d = res.data;
+        const lines = [
+          dryRun ? 'DRY RUN' : 'IMPORT',
+          `rows total: ${d.rows_total}`,
+          `accepted: ${d.rows_accepted}`,
+          `skipped: ${d.rows_skipped}`,
+          d.errors?.length ? `\nFirst errors:\n${d.errors.slice(0, 3).map((e: any) => `· row ${e.row}: ${e.error}`).join('\n')}` : '',
+        ].filter(Boolean).join('\n');
+        showAlert(dryRun ? 'Dry run complete' : 'Import complete', lines);
+        if (!dryRun) loadQueue();
+      } catch (e: any) {
+        showAlert('Import failed', e?.response?.data?.detail || e.message);
+      }
+    };
+    input.click();
+  };
+
   useEffect(() => { loadQueue(); }, [loadQueue]);
   useEffect(() => { if (tab === 'rules') loadRules(); }, [tab, loadRules]);
   useEffect(() => { if (tab === 'analytics') loadAnalytics(); }, [tab, loadAnalytics]);
+  useEffect(() => { if (tab === 'settings') loadSettings(); }, [tab, loadSettings]);
 
   const addCondition = () => {
     setDraftConditions(prev => [...prev, { field: 'overall_min', op: 'gte', value: 3 }]);
@@ -231,6 +325,9 @@ export default function AdminReviewNetScreen() {
         <TouchableOpacity testID="rn-analytics-tab" onPress={() => setTab('analytics')} style={[styles.tab, tab === 'analytics' && styles.tabActive]}>
           <Text style={[styles.tabText, tab === 'analytics' && styles.tabTextActive]}>Analytics</Text>
         </TouchableOpacity>
+        <TouchableOpacity testID="rn-settings-tab" onPress={() => setTab('settings')} style={[styles.tab, tab === 'settings' && styles.tabActive]}>
+          <Text style={[styles.tabText, tab === 'settings' && styles.tabTextActive]}>Settings</Text>
+        </TouchableOpacity>
       </View>
 
       {/* QUEUE TAB */}
@@ -275,6 +372,17 @@ export default function AdminReviewNetScreen() {
       {/* RULES TAB */}
       {tab === 'rules' && (
         <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 60 }}>
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+            <TouchableOpacity testID="rn-export-csv" style={[styles.smallBtn, { backgroundColor: '#0F766E', flex: 1, paddingVertical: 10 }]} onPress={exportCsv}>
+              <Text style={styles.smallBtnText}>↓ Export CSV</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.smallBtn, { backgroundColor: '#7C3AED', flex: 1, paddingVertical: 10 }]} onPress={() => importCsv(true)}>
+              <Text style={styles.smallBtnText}>↑ Import (dry-run)</Text>
+            </TouchableOpacity>
+            <TouchableOpacity testID="rn-import-csv" style={[styles.smallBtn, { backgroundColor: COLORS.primary, flex: 1, paddingVertical: 10 }]} onPress={() => importCsv(false)}>
+              <Text style={styles.smallBtnText}>↑ Import</Text>
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity testID="rules-add" style={styles.bigPrimary} onPress={() => setShowCreate(true)}>
             <Ionicons name="add" size={18} color="#FFF" />
             <Text style={{ color: '#FFF', fontSize: 14, fontWeight: '700', marginLeft: 6 }}>New auto-publish rule</Text>
@@ -450,6 +558,149 @@ export default function AdminReviewNetScreen() {
         </ScrollView>
       )}
 
+      {/* SETTINGS TAB — Notifications config (in-app / email / push) */}
+      {tab === 'settings' && (
+        <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 60 }}>
+          {loadingSettings || !settings ? <ActivityIndicator color={COLORS.primary} /> : (
+            <>
+              {/* In-app */}
+              <View style={styles.settingCard}>
+                <View style={styles.settingRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.settingTitle}>In-app notifications</Text>
+                    <Text style={styles.settingHint}>Always recommended. No external API needed.</Text>
+                  </View>
+                  <Switch
+                    value={!!settings.in_app_enabled}
+                    onValueChange={v => saveSettings({ in_app_enabled: v })}
+                    disabled={savingSettings}
+                  />
+                </View>
+              </View>
+
+              {/* Email */}
+              <View style={styles.settingCard}>
+                <View style={styles.settingRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.settingTitle}>Email notifications</Text>
+                    <Text style={styles.settingHint}>
+                      Auto-disabled if creds missing. {settings.email_api_key_set ? '✓ creds set' : '✗ creds not set'}
+                    </Text>
+                  </View>
+                  <Switch
+                    value={!!settings.email_enabled}
+                    onValueChange={v => saveSettings({ email_enabled: v })}
+                    disabled={savingSettings}
+                  />
+                </View>
+                <Text style={styles.fieldLabel}>Provider</Text>
+                <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
+                  {(['sendgrid', 'smtp'] as const).map(p => (
+                    <TouchableOpacity key={p} style={[
+                      { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.white },
+                      settings.email_provider === p && { backgroundColor: COLORS.primary + '20', borderColor: COLORS.primary },
+                    ]} onPress={() => saveSettings({ email_provider: p })}>
+                      <Text style={[{ fontSize: 11, color: COLORS.textSecondary }, settings.email_provider === p && { color: COLORS.primary, fontWeight: '700' }]}>{p}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <Text style={styles.fieldLabel}>From address</Text>
+                <TextInput
+                  style={styles.input}
+                  value={settings.email_from_address || ''}
+                  onChangeText={v => setSettings({ ...settings, email_from_address: v })}
+                  onBlur={() => saveSettings({ email_from_address: settings.email_from_address })}
+                  placeholder="no-reply@viewdezider.app" placeholderTextColor={COLORS.textMuted}
+                  autoCapitalize="none" keyboardType="email-address"
+                />
+                {settings.email_provider === 'sendgrid' ? (
+                  <>
+                    <Text style={styles.fieldLabel}>SendGrid API key</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder={settings.email_api_key_set ? '•••configured•••' : 'SG.xxxxx…'}
+                      placeholderTextColor={COLORS.textMuted}
+                      onSubmitEditing={(e: any) => saveSettings({ email_api_key: e.nativeEvent.text })}
+                      secureTextEntry autoCapitalize="none"
+                    />
+                  </>
+                ) : settings.email_provider === 'smtp' ? (
+                  <>
+                    <Text style={styles.fieldLabel}>SMTP host</Text>
+                    <TextInput style={styles.input} value={settings.smtp_host || ''}
+                      onChangeText={v => setSettings({ ...settings, smtp_host: v })}
+                      onBlur={() => saveSettings({ smtp_host: settings.smtp_host })}
+                      placeholder="smtp.gmail.com" placeholderTextColor={COLORS.textMuted} autoCapitalize="none" />
+                    <Text style={styles.fieldLabel}>SMTP port</Text>
+                    <TextInput style={styles.input} value={String(settings.smtp_port || 587)}
+                      onChangeText={v => setSettings({ ...settings, smtp_port: v })}
+                      onBlur={() => saveSettings({ smtp_port: settings.smtp_port })}
+                      keyboardType="numeric" />
+                    <Text style={styles.fieldLabel}>SMTP user</Text>
+                    <TextInput style={styles.input} value={settings.smtp_user || ''}
+                      onChangeText={v => setSettings({ ...settings, smtp_user: v })}
+                      onBlur={() => saveSettings({ smtp_user: settings.smtp_user })}
+                      placeholder="bot@example.com" placeholderTextColor={COLORS.textMuted} autoCapitalize="none" />
+                    <Text style={styles.fieldLabel}>SMTP password</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder={settings.email_api_key_set ? '•••configured•••' : '••••••••'}
+                      placeholderTextColor={COLORS.textMuted}
+                      onSubmitEditing={(e: any) => saveSettings({ smtp_password: e.nativeEvent.text })}
+                      secureTextEntry autoCapitalize="none"
+                    />
+                  </>
+                ) : null}
+              </View>
+
+              {/* Push */}
+              <View style={styles.settingCard}>
+                <View style={styles.settingRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.settingTitle}>Push notifications</Text>
+                    <Text style={styles.settingHint}>
+                      {settings.push_credentials_set ? '✓ creds set' : settings.push_provider === 'expo' ? 'Expo Push needs no API key' : '✗ creds not set'}
+                    </Text>
+                  </View>
+                  <Switch
+                    value={!!settings.push_enabled}
+                    onValueChange={v => saveSettings({ push_enabled: v })}
+                    disabled={savingSettings}
+                  />
+                </View>
+                <Text style={styles.fieldLabel}>Provider</Text>
+                <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
+                  {(['expo', 'fcm'] as const).map(p => (
+                    <TouchableOpacity key={p} style={[
+                      { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.white },
+                      settings.push_provider === p && { backgroundColor: COLORS.primary + '20', borderColor: COLORS.primary },
+                    ]} onPress={() => saveSettings({ push_provider: p })}>
+                      <Text style={[{ fontSize: 11, color: COLORS.textSecondary }, settings.push_provider === p && { color: COLORS.primary, fontWeight: '700' }]}>{p === 'fcm' ? 'FCM (Android/iOS)' : 'Expo Push'}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                {settings.push_provider === 'fcm' && (
+                  <>
+                    <Text style={styles.fieldLabel}>FCM server key</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder={settings.push_credentials_set ? '•••configured•••' : 'AAA…'}
+                      placeholderTextColor={COLORS.textMuted}
+                      onSubmitEditing={(e: any) => saveSettings({ push_server_key: e.nativeEvent.text })}
+                      secureTextEntry autoCapitalize="none"
+                    />
+                  </>
+                )}
+              </View>
+
+              <Text style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 8, textAlign: 'center' }}>
+                Channels with missing credentials are auto-disabled on save. In-app channel is always free.
+              </Text>
+            </>
+          )}
+        </ScrollView>
+      )}
+
       {/* CREATE RULE MODAL */}
       <Modal visible={showCreate} transparent animationType="slide" onRequestClose={() => setShowCreate(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.overlay}>
@@ -571,4 +822,9 @@ const styles = StyleSheet.create({
   sectionH: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary, marginTop: 8, marginBottom: 6 },
   statN: { fontSize: 16, fontWeight: '800', color: COLORS.textPrimary },
   statL: { fontSize: 9, color: COLORS.textMuted, marginTop: 1 },
+  // settings tab
+  settingCard: { backgroundColor: COLORS.white, borderRadius: 10, padding: 14, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 },
+  settingRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  settingTitle: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
+  settingHint: { fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
 });

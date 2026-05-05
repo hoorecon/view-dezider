@@ -36,9 +36,12 @@ import logging
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
+from io import StringIO
+import csv
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi.responses import StreamingResponse
 
 from core.auth import get_current_user, require_admin
 from core.database import db
@@ -464,6 +467,9 @@ async def submit_review(body: ReviewSubmit, user: dict = Depends(get_current_use
     await db.review_net.create_index("solution_id")
     await db.review_net.create_index("reviewer_id")
     await db.review_net.create_index([("solution_id", 1), ("status", 1)])
+    # Notify owner / org of the new review (skip if review was auto-rejected)
+    if status != "rejected":
+        await _emit_review_notifications(doc, sol, kind="new_review")
     return _strip_id(doc)
 
 
@@ -550,6 +556,9 @@ async def owner_reply(review_id: str, body: OwnerReply, user: dict = Depends(get
     await db.review_net.update_one(
         {"review_id": review_id}, {"$set": {"owner_reply": reply, "updated_at": _now()}}
     )
+    # Notify the original reviewer that the owner replied
+    fresh_doc = await db.review_net.find_one({"review_id": review_id}, {"_id": 0}) or rv
+    await _emit_review_notifications(fresh_doc, sol, kind="owner_reply")
     return reply
 
 
@@ -777,3 +786,387 @@ async def rule_analytics(user: dict = Depends(require_admin)):
             for day, counts in sorted(trend.items())
         ],
     }
+
+
+
+# ---------------------------------------------------------------------------
+# My pending reviews (author-visible only)
+# ---------------------------------------------------------------------------
+@router.get("/my-pending")
+async def my_pending(
+    solution_id: Optional[str] = Query(None),
+    user: dict = Depends(get_current_user),
+):
+    q: Dict[str, Any] = {"reviewer_id": user["user_id"], "status": "pending"}
+    if solution_id:
+        q["solution_id"] = solution_id
+    cur = db.review_net.find(q, {"_id": 0}).sort("created_at", -1)
+    items = [_strip_id(d) for d in await cur.to_list(50)]
+    return {"items": items, "count": len(items)}
+
+
+# ---------------------------------------------------------------------------
+# CSV export / import (admin)
+# ---------------------------------------------------------------------------
+CSV_EXPORT_COLUMNS = [
+    "review_id", "solution_id", "solution_name", "reviewer_name",
+    "reviewer_segment", "reviewer_subsegment", "is_verified_buyer",
+    "overall_rating", "title", "comment", "factor_ratings_json",
+    "status", "moderation_action", "matched_rule_name",
+    "helpful_yes_count", "helpful_no_count",
+    "owner_reply_content", "created_at",
+]
+
+
+@router.get("/admin/reviews/export.csv")
+async def export_reviews_csv(
+    solution_id: Optional[str] = Query(None),
+    org_id: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    user: dict = Depends(require_admin),
+):
+    q: Dict[str, Any] = {}
+    if solution_id:
+        q["solution_id"] = solution_id
+    if status:
+        q["status"] = status
+
+    if org_id:
+        sol_ids = [
+            s["solution_id"]
+            async for s in db.solutions_store.find(
+                {"$or": [{"org_id": org_id}, {"posted_by_org_id": org_id}]},
+                {"_id": 0, "solution_id": 1},
+            )
+        ]
+        if not sol_ids:
+            return StreamingResponse(iter([",".join(CSV_EXPORT_COLUMNS) + "\n"]), media_type="text/csv")
+        q["solution_id"] = {"$in": sol_ids}
+
+    cursor = db.review_net.find(q, {"_id": 0}).sort("created_at", -1).limit(20000)
+
+    async def _iter():
+        buf = StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(CSV_EXPORT_COLUMNS)
+        yield buf.getvalue()
+        buf.seek(0); buf.truncate(0)
+
+        import json as _json
+        async for r in cursor:
+            row = [
+                r.get("review_id", ""),
+                r.get("solution_id", ""),
+                r.get("solution_name", ""),
+                r.get("reviewer_name", ""),
+                r.get("reviewer_segment", ""),
+                r.get("reviewer_subsegment", ""),
+                "1" if r.get("is_verified_buyer") else "0",
+                r.get("overall_rating", ""),
+                r.get("title", ""),
+                (r.get("comment") or "").replace("\r", " ").replace("\n", " "),
+                _json.dumps(r.get("factor_ratings") or {}),
+                r.get("status", ""),
+                r.get("moderation_action", ""),
+                r.get("matched_rule_name", ""),
+                r.get("helpful_yes_count") or 0,
+                r.get("helpful_no_count") or 0,
+                ((r.get("owner_reply") or {}).get("content") or "").replace("\r", " ").replace("\n", " "),
+                (r.get("created_at").isoformat() if isinstance(r.get("created_at"), datetime) else str(r.get("created_at") or "")),
+            ]
+            writer.writerow(row)
+            yield buf.getvalue()
+            buf.seek(0); buf.truncate(0)
+
+    headers = {
+        "Content-Disposition": f"attachment; filename=review_net_export_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+    }
+    return StreamingResponse(_iter(), media_type="text/csv", headers=headers)
+
+
+@router.post("/admin/reviews/import")
+async def import_reviews_csv(
+    file: UploadFile = File(...),
+    dry_run: bool = Query(True),
+    auto_status: str = Query("approved"),     # imported reviews land directly with this status
+    user: dict = Depends(require_admin),
+):
+    """Import historical / customer-feedback reviews via CSV.
+    Required columns: solution_id, reviewer_name, overall_rating
+    Optional: reviewer_segment, reviewer_subsegment, comment, title, factor_ratings_json,
+              is_verified_buyer (0/1), created_at (iso)
+    """
+    if auto_status not in ("approved", "auto_approved", "pending"):
+        raise HTTPException(400, "auto_status must be approved | auto_approved | pending")
+
+    raw = await file.read()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = raw.decode("latin-1")
+    reader = csv.DictReader(StringIO(text))
+    rows = list(reader)
+    if not rows:
+        raise HTTPException(400, "CSV has no data rows")
+
+    import json as _json
+    ok = 0
+    skipped: List[dict] = []
+    sample_inserted: List[dict] = []
+
+    # cache solutions to validate FK
+    sol_cache: Dict[str, dict] = {}
+
+    for idx, raw_row in enumerate(rows):
+        try:
+            sid = (raw_row.get("solution_id") or "").strip()
+            if not sid:
+                raise ValueError("missing solution_id")
+            if sid not in sol_cache:
+                sol_cache[sid] = await db.solutions_store.find_one({"solution_id": sid}, {"_id": 0}) or {}
+            sol = sol_cache[sid]
+            if not sol:
+                raise ValueError(f"solution_id {sid} not found")
+
+            seg = (raw_row.get("reviewer_segment") or "individual").strip()
+            if seg not in SUBSEGMENTS_BY_SEGMENT:
+                raise ValueError(f"invalid reviewer_segment '{seg}'")
+            sub = (raw_row.get("reviewer_subsegment") or "").strip() or None
+            if sub and sub not in SUBSEGMENTS_BY_SEGMENT[seg]:
+                raise ValueError(f"invalid sub-segment '{sub}' for {seg}")
+
+            try:
+                overall = float(raw_row.get("overall_rating") or 0)
+            except Exception:
+                raise ValueError("overall_rating must be a number")
+
+            factor_ratings: Dict[str, int] = {}
+            fr_raw = (raw_row.get("factor_ratings_json") or "").strip()
+            if fr_raw:
+                try:
+                    factor_ratings = {k: int(v) for k, v in _json.loads(fr_raw).items()}
+                except Exception:
+                    raise ValueError("factor_ratings_json is not valid JSON map of factor_id→1..5")
+
+            doc = {
+                "review_id": f"rv_imp_{uuid.uuid4().hex[:12]}",
+                "solution_id": sid,
+                "solution_name": sol.get("name") or sol.get("title"),
+                "catalog_node_id": sol.get("catalog_node_id"),
+                "reviewer_id": (raw_row.get("reviewer_id") or f"imported_{user['user_id']}").strip(),
+                "reviewer_name": (raw_row.get("reviewer_name") or "Imported reviewer").strip(),
+                "reviewer_segment": seg,
+                "reviewer_subsegment": sub,
+                "factor_ratings": factor_ratings,
+                "overall_rating": round(overall, 2),
+                "title": (raw_row.get("title") or "").strip() or None,
+                "comment": (raw_row.get("comment") or "").strip() or None,
+                "is_verified_buyer": (raw_row.get("is_verified_buyer") or "").strip() in ("1", "true", "True", "yes"),
+                "status": auto_status,
+                "moderation_action": "imported",
+                "moderation_note": f"CSV imported by {user['user_id']}",
+                "matched_rule_id": None,
+                "matched_rule_name": None,
+                "helpful_yes_count": 0,
+                "helpful_no_count": 0,
+                "owner_reply": None,
+                "imported": True,
+                "imported_at": _now(),
+                "created_at": _now(),
+                "updated_at": _now(),
+            }
+
+            ts = (raw_row.get("created_at") or "").strip()
+            if ts:
+                try:
+                    doc["created_at"] = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                except Exception:
+                    pass
+
+            if not dry_run:
+                await db.review_net.insert_one(doc)
+                if len(sample_inserted) < 5:
+                    sample_inserted.append({
+                        "review_id": doc["review_id"],
+                        "solution_id": doc["solution_id"],
+                        "overall_rating": doc["overall_rating"],
+                        "status": doc["status"],
+                    })
+            ok += 1
+
+        except Exception as e:
+            skipped.append({"row": idx + 2, "error": str(e), "raw": dict(list(raw_row.items())[:4])})
+
+    if not dry_run:
+        await db.review_net.create_index("imported")
+
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "rows_total": len(rows),
+        "rows_accepted": ok,
+        "rows_skipped": len(skipped),
+        "errors": skipped[:50],
+        "sample_inserted": sample_inserted,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Notifications hooks (in-app + optional email/push if admin configured)
+# ---------------------------------------------------------------------------
+async def _emit_review_notifications(review_doc: dict, sol: dict, kind: str = "new_review"):
+    """Push a notification when a new review is submitted, or when an owner
+    replies. Channels are gated by `notifications_config` in DB; missing
+    creds = silently disabled.
+    `kind` is "new_review" or "owner_reply".
+    """
+    try:
+        cfg = await db.notifications_config.find_one({"_id": "global"}, {"_id": 0}) or {}
+
+        if kind == "new_review":
+            # notify owner / org
+            recipient_id = sol.get("created_by") or sol.get("posted_by_user_id")
+            target_org = sol.get("org_id") or sol.get("posted_by_org_id")
+            title = "New review on your listing"
+            message = f"{review_doc.get('reviewer_name', 'Someone')} reviewed “{sol.get('name') or sol.get('title') or 'your solution'}” – {review_doc.get('overall_rating', '?')}/5"
+            url = f"/tools/solution-detail?solution_id={review_doc.get('solution_id')}"
+        elif kind == "owner_reply":
+            recipient_id = review_doc.get("reviewer_id")
+            target_org = None
+            title = "The provider replied to your review"
+            message = f"{(review_doc.get('owner_reply') or {}).get('by_user_name', 'Provider')} replied to your review of “{sol.get('name') or sol.get('title') or 'a solution'}”"
+            url = f"/tools/solution-detail?solution_id={review_doc.get('solution_id')}"
+        else:
+            return
+
+        # 1) in-app notification (always on)
+        if cfg.get("in_app_enabled", True) and recipient_id:
+            await db.notifications.insert_one({
+                "id": f"nt_rn_{uuid.uuid4().hex[:10]}",
+                "user_id": recipient_id,
+                "title": title,
+                "message": message,
+                "type": "review_net",
+                "read": False,
+                "url": url,
+                "created_at": _now(),
+            })
+
+        # 2) email (if configured + enabled)
+        if cfg.get("email_enabled") and cfg.get("email_provider") and recipient_id:
+            try:
+                # MOCK send — real send wired when SendGrid/SMTP creds land
+                await db.notifications_log.insert_one({
+                    "channel": "email",
+                    "kind": kind,
+                    "to_user_id": recipient_id,
+                    "to_org_id": target_org,
+                    "title": title,
+                    "message": message,
+                    "provider": cfg.get("email_provider"),
+                    "status": "queued_mock",
+                    "created_at": _now(),
+                })
+            except Exception as e:
+                logger.warning("email notification mock log error: %s", e)
+
+        # 3) push (if configured + enabled)
+        if cfg.get("push_enabled") and cfg.get("push_provider") and recipient_id:
+            try:
+                await db.notifications_log.insert_one({
+                    "channel": "push",
+                    "kind": kind,
+                    "to_user_id": recipient_id,
+                    "to_org_id": target_org,
+                    "title": title,
+                    "message": message,
+                    "provider": cfg.get("push_provider"),
+                    "status": "queued_mock",
+                    "created_at": _now(),
+                })
+            except Exception as e:
+                logger.warning("push notification mock log error: %s", e)
+    except Exception as e:
+        logger.warning("notification emit failed (non-fatal): %s", e)
+
+
+# ---------------------------------------------------------------------------
+# Notifications config (admin)
+# ---------------------------------------------------------------------------
+@router.get("/admin/notifications-config")
+async def get_notifications_config(user: dict = Depends(require_admin)):
+    cfg = await db.notifications_config.find_one({"_id": "global"}, {"_id": 0}) or {}
+    # mask credentials
+    out = dict(cfg)
+    for masked in ("email_api_key", "smtp_password", "push_server_key", "fcm_service_account"):
+        if out.get(masked):
+            out[masked] = "•••configured•••"
+    return {
+        "in_app_enabled": cfg.get("in_app_enabled", True),
+        "email_enabled": cfg.get("email_enabled", False),
+        "email_provider": cfg.get("email_provider") or "",        # sendgrid | smtp
+        "email_from_address": cfg.get("email_from_address") or "",
+        "email_api_key_set": bool(cfg.get("email_api_key")) or bool(cfg.get("smtp_password")),
+        "smtp_host": cfg.get("smtp_host") or "",
+        "smtp_port": cfg.get("smtp_port") or 587,
+        "smtp_user": cfg.get("smtp_user") or "",
+        "push_enabled": cfg.get("push_enabled", False),
+        "push_provider": cfg.get("push_provider") or "",          # fcm | expo
+        "push_credentials_set": bool(cfg.get("push_server_key")) or bool(cfg.get("fcm_service_account")),
+        "updated_at": cfg.get("updated_at"),
+    }
+
+
+@router.put("/admin/notifications-config")
+async def update_notifications_config(body: dict, user: dict = Depends(require_admin)):
+    set_doc: Dict[str, Any] = {"_id": "global", "updated_at": _now(), "updated_by": user["user_id"]}
+
+    bool_fields = ("in_app_enabled", "email_enabled", "push_enabled")
+    str_fields = (
+        "email_provider", "email_from_address",
+        "smtp_host", "smtp_user",
+        "push_provider",
+    )
+    secret_fields = ("email_api_key", "smtp_password", "push_server_key", "fcm_service_account")
+
+    for f in bool_fields:
+        if f in body:
+            set_doc[f] = bool(body[f])
+    for f in str_fields:
+        if f in body and body[f] is not None:
+            set_doc[f] = str(body[f]).strip()
+    if "smtp_port" in body and body["smtp_port"]:
+        try:
+            set_doc["smtp_port"] = int(body["smtp_port"])
+        except Exception:
+            raise HTTPException(400, "smtp_port must be an integer")
+    for f in secret_fields:
+        if f in body and body[f] and body[f] != "•••configured•••":
+            set_doc[f] = body[f]
+
+    # Auto-disable a channel if creds are missing for its provider
+    if set_doc.get("email_enabled"):
+        provider = set_doc.get("email_provider")
+        existing_cfg = await db.notifications_config.find_one({"_id": "global"}) or {}
+        merged = {**existing_cfg, **set_doc}
+        has_creds = (
+            (provider == "sendgrid" and merged.get("email_api_key")) or
+            (provider == "smtp" and merged.get("smtp_host") and merged.get("smtp_password"))
+        )
+        if not has_creds:
+            set_doc["email_enabled"] = False
+            set_doc["email_disabled_reason"] = "credentials missing"
+    if set_doc.get("push_enabled"):
+        provider = set_doc.get("push_provider")
+        existing_cfg = await db.notifications_config.find_one({"_id": "global"}) or {}
+        merged = {**existing_cfg, **set_doc}
+        has_creds = (
+            (provider == "fcm" and (merged.get("push_server_key") or merged.get("fcm_service_account"))) or
+            (provider == "expo")    # Expo Push needs no API key for outgoing
+        )
+        if not has_creds:
+            set_doc["push_enabled"] = False
+            set_doc["push_disabled_reason"] = "credentials missing"
+
+    await db.notifications_config.update_one({"_id": "global"}, {"$set": set_doc}, upsert=True)
+    return await get_notifications_config(user)

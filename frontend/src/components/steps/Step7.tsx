@@ -65,7 +65,7 @@ export default function Step7() {
         }
       }
 
-      // Auto-populate qualitative factors
+      // Auto-populate qualitative factors (LEGACY db.solution_reviews — 1-10 scale)
       if (data.qualitative_factors && data.qualitative_factors.length > 0) {
         for (const qf of data.qualitative_factors) {
           const matchingFactor = decision.factors.find(f =>
@@ -79,6 +79,36 @@ export default function Step7() {
             const key = getAssessmentKey(optionId, matchingFactor.id);
             setActualValues(prev => ({ ...prev, [key]: String(qf.avg_rating) }));
             updateAssessment(optionId, matchingFactor.id, percentage, 'auto' as any, `${qf.avg_rating}/10 (${qf.review_count} reviews)`, qf.avg_rating);
+          }
+        }
+      }
+
+      // NEW v3.7.2: ReviewNet (5-star scale, segmented) — overrides legacy if both present
+      if (data.review_net && data.review_net.per_factor && data.review_net.per_factor.length > 0) {
+        for (const rnf of data.review_net.per_factor) {
+          const matchingFactor = decision.factors.find(f =>
+            f.name.toLowerCase().includes(rnf.factor_name.toLowerCase()) ||
+            rnf.factor_name.toLowerCase().includes(f.name.toLowerCase())
+          );
+          if (matchingFactor) {
+            matchCount++;
+            // Convert 1-5 star to percentage (×20). 4.2/5 → 84%
+            const percentage = Math.min(100, Math.round(rnf.overall_avg * 20));
+            const key = getAssessmentKey(optionId, matchingFactor.id);
+            setActualValues(prev => ({ ...prev, [key]: String(rnf.overall_avg) }));
+            // Segmented detail in display string
+            const segDetails = Object.entries(rnf.by_segment || {})
+              .filter(([_, agg]: any) => agg.count > 0)
+              .map(([seg, agg]: any) => `${seg}:${agg.avg}/5(${agg.count})`)
+              .join(' · ');
+            updateAssessment(
+              optionId,
+              matchingFactor.id,
+              percentage,
+              'auto' as any,
+              `★ ${rnf.overall_avg}/5 ReviewNet (${rnf.review_count} reviews)${segDetails ? ' — ' + segDetails : ''}`,
+              rnf.overall_avg,
+            );
           }
         }
       }
