@@ -5,7 +5,10 @@ const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
 export const api = axios.create({
   baseURL: `${API_URL}/api`,
-  withCredentials: true,
+  // NOTE: withCredentials is NOT needed here — auth uses Bearer token via the
+  // request interceptor below (AsyncStorage → Authorization header). Setting
+  // withCredentials:true forces cross-origin browsers to require a non-wildcard
+  // ACAO header which breaks localhost test harnesses against the preview URL.
 });
 
 // Add auth token to all requests

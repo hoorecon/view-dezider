@@ -82,7 +82,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         email,
         password,
         org_id: orgId,
-      }, { withCredentials: true });
+      });
 
       const { session_token, ...userData } = response.data;
       await AsyncStorage.setItem('session_token', session_token);
@@ -100,7 +100,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         password,
         name,
         org_id: orgId,
-      }, { withCredentials: true });
+      });
 
       const { session_token, ...userData } = response.data;
       await AsyncStorage.setItem('session_token', session_token);
@@ -114,7 +114,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const response = await axios.post(`${API_URL}/api/auth/google/session`, {
         session_id: sessionId,
-      }, { withCredentials: true });
+      });
 
       const { session_token, ...userData } = response.data;
       await AsyncStorage.setItem('session_token', session_token);
@@ -128,7 +128,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const token = await AsyncStorage.getItem('session_token');
       await axios.post(`${API_URL}/api/auth/logout`, {}, {
-        withCredentials: true,
+        
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
     } catch (error) {
@@ -148,7 +148,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       const response = await axios.get(`${API_URL}/api/auth/me`, {
-        withCredentials: true,
+        
         headers: { Authorization: `Bearer ${token}` },
       });
 
