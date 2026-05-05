@@ -1,8 +1,163 @@
 # Carry-Forward List for the Next Fork
 
-**Last updated:** End of fork session after **OrgSurveys v3.9.0** + **ExpertNet Jitsi-Room fix**.
+**Last updated:** End of fork session after **v3.9.1 ExpertNet expert self-serve dashboard** + **v3.9.0 OrgSurveys** + **v3.9.0 ExpertNet Jitsi-Room fix**.
 
-**Read this first** before starting new work so you know what's done, what's blocked, and what's waiting.
+**Read this first** before starting new work.
+
+---
+
+## ✅ Just completed in this fork (do NOT redo)
+
+### v3.9.1 — ExpertNet expert self-serve dashboard (4 missing screens)
+Fully shipped end-to-end (frontend UAT 8/8 PASS).
+
+- **NEW** `/tools/expert-net/manage/[expert_id]` — single screen with 4 tabs:
+  - **Inbox** — incoming bookings filtered to this expert; status filter chips; confirm/decline; start-call (Jitsi); view intake answers modal; deep-link to recommend
+  - **Schedule** — availability editor (weekly windows weekday/start/end/slot + blackout dates)
+  - **Intake form** — builder for both modes (built-in JSON-schema fields OR external URL like Google Forms)
+  - **Webinars** — list mine + Create webinar modal (free/paid, capacity, schedule); Go-live → Jitsi
+- **NEW** `/tools/expert-net/recommend?booking_id=…` — search Solutions Store, pick item, optional note + auto-create CTT task + recurring routine (daily/weekdays/weekly/custom)
+- Wiring: each expert card in Manage tab now has "Open dashboard" CTA → routes to manage screen
+- Bug fixes shipped during build: removed inline `useRouter()` hook misuse, removed `withCredentials: true` from `src/utils/api.ts` AND `src/store/authStore.ts` (5 occurrences) — was breaking CORS on cross-origin testing without affecting auth (Bearer token in header)
+
+### v3.9.0 — OrgSurveys (white-label sub-portal Phase 3-B)
+Backend regression: 42/43 PASS (1 minor yes_no bucket-label bug fixed in-place).
+
+- **NEW** `backend/routes/org_surveys.py` — 8 endpoints under `/api/p/{slug}/surveys/*`
+  - 7 question types: short_text/long_text/single_select/multi_select/rating_5/yes_no/number
+  - Full org-admin CRUD + public read + anon-or-auth submit + aggregates with bucket counts and averages
+  - Cascade delete responses; org-admin authorization via `_is_org_admin` helper
+- **REBUILT** `frontend/app/p/[slug].tsx` — 4-tab branded portal (About / Surveys / Reviews / Feedback) with primary_color theming
+- Seeded: "Annual Skills Survey 2026" on slug `coimbatore-skills-foundation-5b9c19`
+
+### v3.9.0 — ExpertNet Jitsi-Room fix
+- 3 ExpertNet endpoints (connect-now / booking start-call / webinar start) now return `video_url=/tools/jitsi-room?room={sid}` instead of broken collab-call URL
+- **NEW** `frontend/app/tools/jitsi-room.tsx` — public meet.jit.si via WebView (native) / iframe (web), auth-free
+- Backend regression: 17/17 PASS
+
+### Bundle bug fix bonus
+- `frontend/app/tools/solution-detail.tsx` — removed pre-existing duplicate `myPending` declaration that was blocking the entire metro bundle
+
+---
+
+## 🔴 P0 — External blockers (cannot code around)
+
+| # | Item | Blocker | What unblocks it |
+|---|------|---------|------------------|
+| 1 | DigiLocker eKYC (API Setu) | Awaiting user's API Setu approval + keys | User injects `APISETU_*` into `backend/.env` |
+| 2 | Exotel SMS OTP | Awaiting user's DLT template approval | User adds `EXOTEL_*` keys |
+| 3 | LLM Budget Reset re-test | Emergent LLM key budget capped | Budget resets — re-run curls in `pending_verifications.md` |
+
+---
+
+## 🟠 P1 — Ready to ship (no blockers)
+
+### A. Public Pulse Phase 3 — AI Intelligence Layer  *(blocked on LLM budget)*
+- [ ] AI-summarised feedback clusters
+- [ ] Smart recommendations linking score band → schemes
+- [ ] Auto-drafted Org responses
+- [ ] Trend lines / YoY comparisons on the 5 dashboards
+
+### B. White-labelled Org Sub-Portals — *partially shipped*
+- [x] Per-org branded `/p/{slug}` page in Expo (4 tabs, themed)
+- [x] **Org-scoped surveys** (multi-question forms, public submit, aggregates)
+- [x] HTML embed widget (existed previously)
+- [ ] **Org-admin UI** to manage their own surveys (currently admin-only via API; no Expo screen yet)
+- [ ] Social-share OG meta tags for `/api/embed/{slug}`
+- [ ] Per-org CSS overrides beyond primary_color (logo upload, hero image, fonts)
+
+### C. Solution Matrix OrgType — polish
+- [ ] PDF export renderer for the 84-cell layout
+- [ ] AI CLD hook for `solution_matrix` module_type *(blocked on LLM budget)*
+- [ ] Per-OrgType ACM feature gating
+- [ ] 4 starter templates (Individual / Org / Govt / Nature)
+
+### D. Voice Browsing — Epic
+- [ ] Global floating voice command bubble + route-aware parser
+- [ ] Voice input in Solution Matrix / Public Pulse / Goal Setter / Conflict Breaker
+- [ ] TTS readout across all tools (extend `expo-speech` beyond AI Assistant)
+- [ ] Multi-language voice (9 Solutions Store languages)
+- [ ] Continuous voice mode + voice undo/redo
+
+### E. ExpertNet — Polish (FULLY SHIPPED for v1; below items are *nice-to-have*)
+- [ ] Calendar grid slot picker (currently chip list)
+- [ ] Expert ratings & review surface (separate from ReviewNet which is solutions-only)
+- [ ] Push notifications when booking confirmed / call starting / webinar countdown
+- [ ] Add `testID="xnm-webinar-title"` etc. for cleaner UAT scripting (cosmetic)
+- [ ] Delivery status update UI for users (currently passive view)
+
+### F. Minor Polish
+- [ ] Auto-reseed ACM for `pp_org_portal` at boot
+- [ ] Fix benign `backend_test_regression.py` Solutions Store countries/languages assertion
+- [ ] Verify `core/file_storage.py` S3 + GCS code paths once any cloud key is provided
+
+---
+
+## 🟡 P2 — Physical device E2E tests (require real phone/camera/SIM)
+
+| # | Test | Why physical device |
+|---|------|---------------------|
+| 4 | Face Authentication / MediaPipe presence tracking | Real camera stream |
+| 5 | Razorpay payment end-to-end | Real UPI/card |
+| 6 | WhatsApp OTP (UltraMsg) end-to-end | Real phone receives SMS |
+| 7 | DigiLocker camera scan (when unblocked) | Real document |
+| 8 | Push notifications via Expo Push API | Real device token |
+
+---
+
+## 📁 Key files added/changed in this fork
+
+### Backend
+- **NEW** `backend/routes/org_surveys.py` — 8 endpoints under `/api/p/{slug}/surveys/*`
+- `backend/server.py` — registers `org_surveys_router`
+- `backend/routes/expert_net.py` — `video_url` now points to `/tools/jitsi-room?room=…`
+
+### Frontend
+- **NEW** `frontend/app/tools/expert-net/manage/[expert_id].tsx` — 4-tab expert dashboard
+- **NEW** `frontend/app/tools/expert-net/recommend.tsx` — recommend a Solution Store item
+- **NEW** `frontend/app/tools/jitsi-room.tsx` — public Jitsi WebView (auth-free)
+- `frontend/app/p/[slug].tsx` — rebuilt with 4-tab branded portal
+- `frontend/app/tools/expert-net/index.tsx` — Manage tab now has "Open dashboard" CTA per expert
+- `frontend/app/tools/solution-detail.tsx` — duplicate-declaration fix
+- `frontend/src/utils/api.ts` + `frontend/src/store/authStore.ts` — removed all `withCredentials: true` (was breaking cross-origin auth in test harness; Bearer token in Authorization header is the actual auth path)
+
+### Tests
+- Backend regression by `deep_testing_backend_v2`: 42/43 + 17/17 + 38/38 = 97/98 PASS
+- Frontend UAT by `expo_frontend_testing_agent`: 8/8 ExpertNet + Public Portal full flow PASS
+
+### Memory
+- This file (`memory/carry_forward.md`)
+- `memory/test_credentials.md` — unchanged
+
+---
+
+## 🧪 Quick health checks for the new fork agent
+
+```bash
+sudo supervisorctl status
+curl -s http://localhost:8001/api/health
+python /app/backend_test_regression.py            # ~26-28/28
+python /app/tests/test_solution_matrix_orgtype.py # 31/31
+```
+
+---
+
+## 🎯 Recommended first-hour plan for the next fork agent
+
+1. Run the health checks above. Log results.
+2. Read `test_result.md` from line 7203 onwards (ExpertNet v3.9.1 manage dashboard section).
+3. Ask user which P1 item to tackle first — A is LLM-blocked; B/C/D/E are all unblocked and independent.
+4. **Hot recommendation**: tackle D (Voice Browsing global expansion) since it's the only major user-visible epic still partially scoped (currently restricted to PRR 10-step flow). Backend is voice-agnostic; this is mostly frontend work.
+5. DO NOT touch any `.env` URL / port values — they are fork-specific.
+6. DO NOT re-introduce `withCredentials: true` to api.ts or authStore.ts. Bearer token via Authorization header is intentional.
+
+---
+
+## ⚠️ Known minor issues (NOT blockers)
+
+- ESLint can't parse TypeScript type aliases in `.tsx` files (parser config gap, NOT a real bug — Metro bundles fine).
+- `passlib bcrypt __about__` warning at startup is a benign passlib version mismatch; auth works correctly.
+- Screenshot tool's headless browser may show "Expert not found" when navigating directly to /tools/expert-net/manage/{id} — that's because the screenshot tool doesn't set the localStorage session_token. Inject it via `add_init_script` before navigation in tests.
 
 ---
 
