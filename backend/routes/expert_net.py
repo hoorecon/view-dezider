@@ -231,7 +231,7 @@ async def connect_now(expert_id: str, user: dict = Depends(get_current_user)):
         "status": "ringing",
         "created_at": _now(),
     })
-    return {"ok": True, "session_id": session_id, "video_url": f"/tools/collab-call?session_id={session_id}"}
+    return {"ok": True, "session_id": session_id, "video_url": f"/tools/jitsi-room?room={session_id}&subject=ExpertNet+Instant"}
 
 
 # ===========================================================================
@@ -458,7 +458,7 @@ async def start_booking_call(booking_id: str, user: dict = Depends(get_current_u
     if not b or b.get("status") not in ("confirmed", "in_progress"):
         raise HTTPException(404, "booking not confirmed")
     if b.get("video_session_id"):
-        return {"session_id": b["video_session_id"], "video_url": f"/tools/collab-call?session_id={b['video_session_id']}"}
+        return {"session_id": b["video_session_id"], "video_url": f"/tools/jitsi-room?room={b['video_session_id']}&subject=ExpertNet+Booking"}
     sid = f"vc_{uuid.uuid4().hex[:12]}"
     await db.video_call_sessions.insert_one({
         "session_id": sid, "kind": "expert_booking",
@@ -471,7 +471,7 @@ async def start_booking_call(booking_id: str, user: dict = Depends(get_current_u
         {"booking_id": booking_id},
         {"$set": {"video_session_id": sid, "status": "in_progress", "updated_at": _now()}},
     )
-    return {"session_id": sid, "video_url": f"/tools/collab-call?session_id={sid}"}
+    return {"session_id": sid, "video_url": f"/tools/jitsi-room?room={sid}&subject=ExpertNet+Session"}
 
 
 # ===========================================================================
@@ -750,7 +750,7 @@ async def start_webinar(webinar_id: str, user: dict = Depends(get_current_user))
         {"webinar_id": webinar_id},
         {"$set": {"status": "live", "video_session_id": sid, "updated_at": _now()}},
     )
-    return {"ok": True, "session_id": sid, "video_url": f"/tools/collab-call?session_id={sid}"}
+    return {"ok": True, "session_id": sid, "video_url": f"/tools/jitsi-room?room={sid}&subject=Webinar"}
 
 
 @router.get("/webinars/{webinar_id}")

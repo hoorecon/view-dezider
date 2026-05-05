@@ -47,7 +47,6 @@ export default function SolutionDetailScreen() {
   const [aggregates, setAggregates] = useState<any>(null);
   const [reviewsList, setReviewsList] = useState<any[]>([]);
   const [myPending, setMyPending] = useState<any[]>([]);   // user's own pending reviews
-  const [myPending, setMyPending] = useState<any[]>([]);
   const [segment, setSegment] = useState<'individual' | 'organization' | 'government'>('individual');
   const [subsegment, setSubsegment] = useState<string>('customer');
   const [reviewText, setReviewText] = useState('');

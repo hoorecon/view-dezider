@@ -1,437 +1,417 @@
-"""ExpertNet v3.8.0 backend regression — 37 cases across Phases A-D.
-
-Usage: python /app/backend_test.py
 """
-import time
-import requests
+Backend regression tests for v3.9.0:
+  1) OrgSurveys (NEW module) — backend/routes/org_surveys.py
+  2) ExpertNet v3.9.0 video_url change — backend/routes/expert_net.py
 
-BASE = "http://localhost:8001/api"
+Auth credentials sourced from /app/memory/test_credentials.md.
+"""
+import os
+import sys
+import time
+import uuid
+import requests
+from datetime import datetime, timezone, timedelta
+
+BASE = os.environ.get(
+    "BACKEND_BASE_URL",
+    "https://voice-browse-epic.preview.emergentagent.com",
+).rstrip("/")
+API = f"{BASE}/api"
 
 ADMIN_EMAIL = "admin@test.com"
 ADMIN_PASS = "AdminPass2026!"
 USER_EMAIL = "harden_1777921741@example.com"
 USER_PASS = "HardenPass2026!"
+ORG_SLUG = "coimbatore-skills-foundation-5b9c19"
+
+results = []
 
 
-def _login(email, password):
-    r = requests.post(f"{BASE}/auth/login", json={"email": email, "password": password}, timeout=30)
-    assert r.status_code == 200, f"login failed {email}: {r.status_code} {r.text}"
+def record(name: str, ok: bool, detail: str = ""):
+    icon = "PASS" if ok else "FAIL"
+    print(f"[{icon}] {name}  {detail if not ok else ''}")
+    results.append({"name": name, "ok": ok, "detail": detail})
+
+
+def login(email: str, pwd: str) -> str:
+    r = requests.post(f"{API}/auth/login", json={"email": email, "password": pwd}, timeout=20)
+    if r.status_code != 200:
+        raise RuntimeError(f"login failed for {email}: {r.status_code} {r.text}")
     return r.json()["session_token"]
 
 
-def _hdr(t):
-    return {"Authorization": f"Bearer {t}", "Content-Type": "application/json"}
+def H(tok):
+    return {"Authorization": f"Bearer {tok}"} if tok else {}
 
 
-RESULTS = []
+print(f"\n=== Backend base URL: {BASE} ===\n")
+
+try:
+    admin_tok = login(ADMIN_EMAIL, ADMIN_PASS)
+    user_tok = login(USER_EMAIL, USER_PASS)
+    record("auth.login.admin+user", True)
+except Exception as ex:
+    record("auth.login", False, str(ex))
+    sys.exit(1)
 
 
-def rec(case, ok, detail=""):
-    tag = "PASS" if ok else "FAIL"
-    print(f"[{tag}] {case} :: {detail}")
-    RESULTS.append((case, ok, detail))
+# ======================================================================
+# SECTION 1 — OrgSurveys
+# ======================================================================
+print("\n────── OrgSurveys ──────")
 
+# 1.1 — non-existent slug → 404 on every endpoint
+bad_slug_paths = [
+    ("GET", "/p/non-existent-slug/surveys", None, None),
+    ("GET", "/p/non-existent-slug/surveys/sv_x", None, None),
+    ("GET", "/p/non-existent-slug/surveys/sv_x/aggregate", None, None),
+    ("POST", "/p/non-existent-slug/surveys/sv_x/submit", {"answers": {}}, None),
+    ("POST", "/p/non-existent-slug/surveys",
+     {"title": "x", "questions": [{"qid": "q1", "text": "?", "qtype": "short_text"}]},
+     admin_tok),
+    ("PUT", "/p/non-existent-slug/surveys/sv_x",
+     {"title": "x", "questions": [{"qid": "q1", "text": "?", "qtype": "short_text"}]},
+     admin_tok),
+    ("DELETE", "/p/non-existent-slug/surveys/sv_x", None, admin_tok),
+    ("GET", "/p/non-existent-slug/surveys/sv_x/responses", None, admin_tok),
+]
+for m, path, body, tok in bad_slug_paths:
+    r = requests.request(m, f"{API}{path}", json=body, headers=H(tok), timeout=20)
+    record(f"badslug.{m} {path}", r.status_code == 404,
+           f"got {r.status_code}: {r.text[:120]}")
 
-def main():
-    try:
-        admin_tok = _login(ADMIN_EMAIL, ADMIN_PASS)
-        user_tok = _login(USER_EMAIL, USER_PASS)
-        rec("Auth.admin+user", True, "both logged in")
-    except AssertionError as e:
-        rec("Auth.admin+user", False, str(e))
-        return
+# 1.2 — USER cannot create
+r = requests.post(
+    f"{API}/p/{ORG_SLUG}/surveys",
+    json={"title": "Should not be allowed",
+          "questions": [{"qid": "q1", "text": "?", "qtype": "short_text"}]},
+    headers=H(user_tok),
+    timeout=20,
+)
+record("create.user_forbidden", r.status_code == 403,
+       f"got {r.status_code}: {r.text[:200]}")
 
-    ts = int(time.time())
+# 1.3 — ADMIN creates survey with all 7 question types
+survey_payload = {
+    "title": f"Regression Survey {int(time.time())}",
+    "description": "Covers all 7 qtypes",
+    "is_active": True,
+    "accepts_anon": True,
+    "questions": [
+        {"qid": "name", "text": "Your name?", "qtype": "short_text", "required": True},
+        {"qid": "feedback", "text": "Long feedback", "qtype": "long_text"},
+        {"qid": "city", "text": "Pick city", "qtype": "single_select",
+         "options": ["Coimbatore", "Chennai", "Madurai"], "required": True},
+        {"qid": "skills", "text": "Pick skills", "qtype": "multi_select",
+         "options": ["python", "react", "design", "writing"]},
+        {"qid": "rating", "text": "Rate us", "qtype": "rating_5", "required": True},
+        {"qid": "would_recommend", "text": "Recommend?", "qtype": "yes_no"},
+        {"qid": "age", "text": "Age", "qtype": "number"},
+    ],
+}
+r = requests.post(f"{API}/p/{ORG_SLUG}/surveys", json=survey_payload, headers=H(admin_tok), timeout=20)
+ok_create = r.status_code == 200 and r.json().get("ok") is True
+survey_id = r.json().get("survey_id") if ok_create else None
+record("create.admin", ok_create and bool(survey_id),
+       f"status={r.status_code}, sid={survey_id}, body={r.text[:200]}")
 
-    # Phase A
-    body = {
-        "name": "Dr. Test Mentor",
-        "headline": "Career coach",
-        "specializations": ["career", "leadership"],
-        "languages": ["en", "ta"],
-        "hourly_rate_inr": 1500,
-        "accepts_instant_calls": True,
+if survey_id:
+    # 1.4 — list anon
+    r = requests.get(f"{API}/p/{ORG_SLUG}/surveys", timeout=20)
+    items = r.json().get("items", []) if r.status_code == 200 else []
+    found = any(s.get("survey_id") == survey_id for s in items)
+    record("list.anon", r.status_code == 200 and found,
+           f"status={r.status_code} count={len(items)} found={found}")
+
+    # 1.5 — get single anon
+    r = requests.get(f"{API}/p/{ORG_SLUG}/surveys/{survey_id}", timeout=20)
+    sv = r.json().get("survey", {}) if r.status_code == 200 else {}
+    qcount = len(sv.get("questions", []))
+    record("get.single.anon",
+           r.status_code == 200 and sv.get("survey_id") == survey_id and qcount == 7,
+           f"status={r.status_code} qcount={qcount}")
+
+    # 1.6 — submit MISSING required → 400
+    r = requests.post(
+        f"{API}/p/{ORG_SLUG}/surveys/{survey_id}/submit",
+        json={"answers": {"feedback": "no name no city no rating"}},
+        timeout=20,
+    )
+    has_phrase = "missing required answers for:" in r.text
+    record("submit.anon.missing_required",
+           r.status_code == 400 and has_phrase,
+           f"status={r.status_code}, body={r.text[:200]}")
+
+    # 1.7 — submit anon valid #1
+    valid1 = {
+        "name": "Lakshmi Iyer",
+        "feedback": "Good initiative",
+        "city": "Coimbatore",
+        "skills": ["python", "react"],
+        "rating": 5,
+        "would_recommend": True,
+        "age": 28,
     }
-    r = requests.post(f"{BASE}/expert-net/experts", headers=_hdr(user_tok), json=body, timeout=30)
-    ok = r.status_code == 200 and "expert_id" in r.json()
-    expert_id = r.json().get("expert_id") if ok else None
-    rec("1. POST /experts as USER", ok, f"status={r.status_code} expert_id={expert_id}")
-    if not expert_id:
-        return
-
-    r = requests.get(f"{BASE}/expert-net/experts", headers=_hdr(user_tok), timeout=30)
-    items = r.json().get("items", [])
-    ok = r.status_code == 200 and any(e["expert_id"] == expert_id for e in items)
-    rec("2. GET /experts contains new expert", ok, f"status={r.status_code} count={len(items)}")
-
-    r = requests.get(
-        f"{BASE}/expert-net/experts?language=ta&min_rate=1000&max_rate=2000",
-        headers=_hdr(user_tok), timeout=30,
-    )
-    items = r.json().get("items", [])
-    ok = r.status_code == 200 and any(e["expert_id"] == expert_id for e in items)
-    rec("3. GET /experts?language=ta&min_rate=1000&max_rate=2000", ok, f"count={len(items)}")
-
-    r = requests.get(f"{BASE}/expert-net/experts?language=fr", headers=_hdr(user_tok), timeout=30)
-    items = r.json().get("items", [])
-    ok = r.status_code == 200 and not any(e["expert_id"] == expert_id for e in items)
-    rec("4. GET /experts?language=fr excludes", ok, f"count={len(items)}")
-
-    r = requests.get(f"{BASE}/expert-net/experts/{expert_id}", headers=_hdr(user_tok), timeout=30)
-    j = r.json() if r.status_code == 200 else {}
-    ok = (
-        r.status_code == 200
-        and j.get("expert", {}).get("expert_id") == expert_id
-        and j.get("availability") is None
-        and j.get("intake_form") is None
-    )
-    rec("5. GET /experts/{id} fresh", ok, f"status={r.status_code} avail={j.get('availability')} intake={j.get('intake_form')}")
-
-    r = requests.put(
-        f"{BASE}/expert-net/experts/{expert_id}",
-        headers=_hdr(admin_tok),
-        json={"headline": "Updated by admin"},
-        timeout=30,
-    )
-    ok = r.status_code == 200 and r.json().get("headline") == "Updated by admin"
-    rec("6. PUT /experts/{id} as ADMIN override", ok, f"status={r.status_code}")
-
-    other_email = f"xn_other_{ts}@example.com"
-    reg = requests.post(
-        f"{BASE}/auth/register",
-        json={"email": other_email, "password": "UatPass2026!", "name": "Other Tester"},
-        timeout=30,
-    )
-    other_tok = reg.json().get("session_token") if reg.status_code == 200 else None
-    if other_tok:
-        r = requests.put(
-            f"{BASE}/expert-net/experts/{expert_id}",
-            headers=_hdr(other_tok),
-            json={"headline": "Hijack attempt"},
-            timeout=30,
-        )
-        rec("7. PUT /experts/{id} as different user → 403", r.status_code == 403, f"status={r.status_code}")
-    else:
-        rec("7. PUT /experts/{id} as different user → 403", False, f"register failed: {reg.status_code} {reg.text}")
-
     r = requests.post(
-        f"{BASE}/expert-net/experts/{expert_id}/online",
-        headers=_hdr(user_tok),
-        json={"is_online": True},
-        timeout=30,
+        f"{API}/p/{ORG_SLUG}/surveys/{survey_id}/submit",
+        json={"answers": valid1, "contact_name": "Lakshmi Iyer", "contact_email": "lak@example.com"},
+        timeout=20,
     )
-    ok = r.status_code == 200 and r.json().get("is_online") is True
-    rec("8. POST /online is_online=true owner", ok, f"status={r.status_code}")
+    rid1 = r.json().get("response_id") if r.status_code == 200 else None
+    record("submit.anon.1", r.status_code == 200 and bool(rid1),
+           f"status={r.status_code}, rid={rid1}, body={r.text[:200]}")
 
-    r = requests.post(f"{BASE}/expert-net/experts/{expert_id}/connect-now", headers=_hdr(admin_tok), timeout=30)
-    j = r.json() if r.status_code == 200 else {}
-    ok = r.status_code == 200 and str(j.get("session_id", "")).startswith("vc_") and "video_url" in j
-    rec("9. POST /connect-now as ADMIN", ok, f"status={r.status_code} session_id={j.get('session_id')}")
-
-    requests.post(
-        f"{BASE}/expert-net/experts/{expert_id}/online",
-        headers=_hdr(user_tok),
-        json={"is_online": False},
-        timeout=30,
-    )
-    r2 = requests.post(f"{BASE}/expert-net/experts/{expert_id}/connect-now", headers=_hdr(admin_tok), timeout=30)
-    rec("10. Connect-now when offline → 409", r2.status_code == 409, f"status={r2.status_code}")
-
+    # 1.8 — submit anon valid #2
+    valid2 = {
+        "name": "Arjun Subramanian",
+        "feedback": "Loved the workshops",
+        "city": "Chennai",
+        "skills": ["python", "design"],
+        "rating": 3,
+        "would_recommend": False,
+        "age": 35,
+    }
     r = requests.post(
-        f"{BASE}/expert-net/experts/{expert_id}/online",
-        headers=_hdr(user_tok),
-        json={"is_online": True},
-        timeout=30,
+        f"{API}/p/{ORG_SLUG}/surveys/{survey_id}/submit",
+        json={"answers": valid2},
+        timeout=20,
     )
-    rec("11. Toggle back online", r.status_code == 200, f"status={r.status_code}")
+    rid2 = r.json().get("response_id") if r.status_code == 200 else None
+    record("submit.anon.2", r.status_code == 200 and bool(rid2),
+           f"status={r.status_code}, rid={rid2}")
 
-    # Phase B
-    r = requests.put(
-        f"{BASE}/expert-net/experts/{expert_id}/availability",
-        headers=_hdr(user_tok),
-        json={
-            "windows": [{"weekday": 1, "start_minutes": 540, "end_minutes": 780, "slot_minutes": 30}],
-            "blackout_dates": [],
-        },
-        timeout=30,
+    # 1.9 — list shows response_count=2
+    r = requests.get(f"{API}/p/{ORG_SLUG}/surveys", timeout=20)
+    items = r.json().get("items", []) if r.status_code == 200 else []
+    sv = next((s for s in items if s.get("survey_id") == survey_id), None)
+    rc = sv.get("response_count") if sv else None
+    record("list.response_count==2", rc == 2, f"actual={rc}")
+
+    # 1.10 — aggregate
+    r = requests.get(f"{API}/p/{ORG_SLUG}/surveys/{survey_id}/aggregate", timeout=20)
+    agg = r.json() if r.status_code == 200 else {}
+    total = agg.get("total_responses")
+    counts = agg.get("counts", {}) or {}
+    avg = agg.get("avg_per_q", {}) or {}
+    city_buckets = counts.get("city", {}).get("buckets", {})
+    skills_buckets = counts.get("skills", {}).get("buckets", {})
+    yn_buckets = counts.get("would_recommend", {}).get("buckets", {})
+    record("agg.total==2", total == 2, f"actual={total}")
+    record("agg.counts.city",
+           city_buckets.get("Coimbatore") == 1 and city_buckets.get("Chennai") == 1,
+           f"actual={city_buckets}")
+    record("agg.counts.skills",
+           skills_buckets.get("python") == 2 and skills_buckets.get("react") == 1
+           and skills_buckets.get("design") == 1,
+           f"actual={skills_buckets}")
+    record("agg.counts.would_recommend",
+           yn_buckets.get("yes") == 1 and yn_buckets.get("no") == 1,
+           f"actual={yn_buckets}")
+    record("agg.avg.rating==4.0", avg.get("rating") == 4.0, f"actual={avg.get('rating')}")
+    record("agg.avg.age==31.5", avg.get("age") == 31.5, f"actual={avg.get('age')}")
+
+    # 1.11 — list responses USER 403
+    r = requests.get(f"{API}/p/{ORG_SLUG}/surveys/{survey_id}/responses",
+                     headers=H(user_tok), timeout=20)
+    record("responses.user_forbidden", r.status_code == 403, f"got {r.status_code}")
+
+    # 1.12 — list responses ADMIN 200
+    r = requests.get(f"{API}/p/{ORG_SLUG}/surveys/{survey_id}/responses",
+                     headers=H(admin_tok), timeout=20)
+    body = r.json() if r.status_code == 200 else {}
+    rows = body.get("items", [])
+    has_answers = bool(rows) and all("answers" in row for row in rows)
+    record("responses.admin",
+           r.status_code == 200 and len(rows) == 2 and has_answers,
+           f"status={r.status_code} count={len(rows)} has_answers={has_answers}")
+
+    # 1.13 — Update as ADMIN
+    new_title = f"Regression Survey UPDATED {int(time.time())}"
+    update_payload = dict(survey_payload)
+    update_payload["title"] = new_title
+    r = requests.put(f"{API}/p/{ORG_SLUG}/surveys/{survey_id}",
+                     json=update_payload, headers=H(admin_tok), timeout=20)
+    record("update.admin", r.status_code == 200, f"status={r.status_code}")
+    r = requests.get(f"{API}/p/{ORG_SLUG}/surveys/{survey_id}", timeout=20)
+    title = r.json().get("survey", {}).get("title") if r.status_code == 200 else None
+    record("update.title_persisted", title == new_title, f"actual={title}")
+
+    # 1.14 — deactivate → submit 409
+    closed_payload = dict(update_payload)
+    closed_payload["is_active"] = False
+    r = requests.put(f"{API}/p/{ORG_SLUG}/surveys/{survey_id}",
+                     json=closed_payload, headers=H(admin_tok), timeout=20)
+    record("update.deactivate", r.status_code == 200, f"status={r.status_code}")
+    r = requests.post(f"{API}/p/{ORG_SLUG}/surveys/{survey_id}/submit",
+                      json={"answers": valid1}, timeout=20)
+    record("submit.after_close.409",
+           r.status_code == 409 and "survey is closed" in r.text,
+           f"status={r.status_code}, body={r.text[:200]}")
+
+    # 1.15 — DELETE as ADMIN
+    r = requests.delete(f"{API}/p/{ORG_SLUG}/surveys/{survey_id}",
+                        headers=H(admin_tok), timeout=20)
+    record("delete.admin", r.status_code == 200, f"status={r.status_code}")
+
+    # 1.16 — GET single → 404
+    r = requests.get(f"{API}/p/{ORG_SLUG}/surveys/{survey_id}", timeout=20)
+    record("get.after_delete.404", r.status_code == 404, f"status={r.status_code}")
+
+    # 1.17 — aggregate after delete → 404
+    r = requests.get(f"{API}/p/{ORG_SLUG}/surveys/{survey_id}/aggregate", timeout=20)
+    record("agg.after_delete.404", r.status_code == 404, f"status={r.status_code}")
+
+
+# ======================================================================
+# SECTION 2 — ExpertNet v3.9.0 video_url
+# ======================================================================
+print("\n────── ExpertNet v3.9.0 video_url ──────")
+
+EXPECTED_PREFIX = "/tools/jitsi-room?room="
+
+expert_payload = {
+    "name": f"Test Mentor {uuid.uuid4().hex[:6]}",
+    "headline": "Career & Skills Mentor",
+    "bio": "v3.9.0 jitsi regression",
+    "specializations": ["career", "skills"],
+    "languages": ["en", "ta"],
+    "hourly_rate_inr": 1500,
+    "time_zone": "Asia/Kolkata",
+    "is_active": True,
+    "accepts_instant_calls": True,
+}
+r = requests.post(f"{API}/expert-net/experts", json=expert_payload, headers=H(user_tok), timeout=20)
+expert_id = r.json().get("expert_id") if r.status_code == 200 else None
+record("expertnet.expert.create", bool(expert_id),
+       f"status={r.status_code}, body={r.text[:200]}")
+
+if expert_id:
+    r = requests.post(f"{API}/expert-net/experts/{expert_id}/online",
+                      json={"is_online": True}, headers=H(user_tok), timeout=20)
+    record("expertnet.expert.online", r.status_code == 200, f"status={r.status_code}")
+
+    # 2.A — connect-now
+    r = requests.post(f"{API}/expert-net/experts/{expert_id}/connect-now",
+                      headers=H(admin_tok), timeout=20)
+    body = r.json() if r.status_code == 200 else {}
+    vurl = body.get("video_url", "")
+    record(
+        "expertnet.connect-now.video_url",
+        r.status_code == 200 and isinstance(vurl, str) and vurl.startswith(EXPECTED_PREFIX),
+        f"status={r.status_code} session_id={body.get('session_id')} video_url={vurl}",
     )
-    rec("12. PUT /availability owner", r.status_code == 200, f"status={r.status_code}")
 
-    r = requests.put(
-        f"{BASE}/expert-net/experts/{expert_id}/intake-form",
-        headers=_hdr(user_tok),
-        json={
-            "title": "Pre-call form",
-            "mode": "builtin",
-            "is_required_before_booking": True,
-            "fields": [{"field_id": "goal", "label": "Your goal", "field_type": "short_text", "required": True}],
-        },
-        timeout=30,
-    )
-    rec("13. PUT /intake-form builtin", r.status_code == 200, f"status={r.status_code}")
+    # 2.B — booking → start-call
+    today = datetime.now(timezone.utc)
+    weekday = today.weekday()
+    avail_payload = {
+        "windows": [
+            {"weekday": weekday, "start_minutes": 0, "end_minutes": 24 * 60,
+             "slot_minutes": 30}
+        ],
+        "blackout_dates": [],
+    }
+    r = requests.put(f"{API}/expert-net/experts/{expert_id}/availability",
+                     json=avail_payload, headers=H(user_tok), timeout=20)
+    record("expertnet.availability.set", r.status_code == 200,
+           f"status={r.status_code}, body={r.text[:200]}")
 
-    r = requests.put(
-        f"{BASE}/expert-net/experts/{expert_id}/intake-form",
-        headers=_hdr(user_tok),
-        json={"mode": "external", "external_url": "https://forms.gle/abc", "title": "Form", "fields": []},
-        timeout=30,
-    )
-    rec("14. PUT /intake-form external with url", r.status_code == 200, f"status={r.status_code}")
+    r = requests.put(f"{API}/expert-net/experts/{expert_id}/intake-form",
+                     json={
+                         "title": "Booking intake",
+                         "mode": "builtin",
+                         "fields": [
+                             {"field_id": "goal", "label": "Goal",
+                              "field_type": "short_text", "required": False}
+                         ],
+                         "is_required_before_booking": False,
+                     },
+                     headers=H(user_tok), timeout=20)
+    record("expertnet.intake.set", r.status_code == 200,
+           f"status={r.status_code} body={r.text[:200]}")
 
-    r = requests.put(
-        f"{BASE}/expert-net/experts/{expert_id}/intake-form",
-        headers=_hdr(user_tok),
-        json={"mode": "external", "title": "Form", "fields": []},
-        timeout=30,
-    )
-    rec("15. PUT /intake-form external no url → 400", r.status_code == 400, f"status={r.status_code} body={r.text[:160]}")
+    # Slots endpoint requires auth
+    r = requests.get(f"{API}/expert-net/experts/{expert_id}/slots?days_ahead=14",
+                     headers=H(admin_tok), timeout=20)
+    body = r.json() if r.status_code == 200 else {}
+    slots = body.get("slots") or []
+    record("expertnet.slots.list",
+           r.status_code == 200 and len(slots) > 0,
+           f"status={r.status_code} count={len(slots)} sample={slots[:1]}")
 
-    r = requests.put(
-        f"{BASE}/expert-net/experts/{expert_id}/intake-form",
-        headers=_hdr(user_tok),
-        json={
-            "title": "Pre-call form",
-            "mode": "builtin",
-            "is_required_before_booking": True,
-            "fields": [{"field_id": "goal", "label": "Your goal", "field_type": "short_text", "required": True}],
-        },
-        timeout=30,
-    )
-    rec("16. PUT /intake-form back to builtin", r.status_code == 200, f"status={r.status_code}")
-
-    r = requests.get(f"{BASE}/expert-net/experts/{expert_id}/slots?days_ahead=14", headers=_hdr(user_tok), timeout=30)
-    slots = r.json().get("slots", []) if r.status_code == 200 else []
-    ok = r.status_code == 200 and len(slots) >= 1
-    first_slot = slots[0]["start"] if slots else None
-    rec("17. GET /slots?days_ahead=14", ok, f"status={r.status_code} slots={len(slots)} first={first_slot}")
-
-    if not first_slot:
-        rec("ABORT", False, "no slots")
-        return
-
-    r = requests.post(
-        f"{BASE}/expert-net/bookings",
-        headers=_hdr(admin_tok),
-        json={"expert_id": expert_id, "slot_start_iso": first_slot, "duration_minutes": 30},
-        timeout=30,
-    )
-    ok = r.status_code == 400 and ("intake" in r.text.lower() or "goal" in r.text.lower())
-    rec("18. POST /bookings missing intake → 400", ok, f"status={r.status_code} body={r.text[:160]}")
-
-    r = requests.post(
-        f"{BASE}/expert-net/bookings",
-        headers=_hdr(admin_tok),
-        json={
+    booking_id = None
+    if slots:
+        first = slots[0]
+        start_iso = first.get("start") if isinstance(first, dict) else first
+        duration = first.get("duration_minutes", 30) if isinstance(first, dict) else 30
+        bp = {
             "expert_id": expert_id,
-            "slot_start_iso": first_slot,
-            "duration_minutes": 30,
-            "intake_response": {"goal": "Get promoted"},
-        },
-        timeout=30,
-    )
-    j = r.json() if r.status_code == 200 else {}
-    booking_id = j.get("booking_id")
-    ok = r.status_code == 200 and booking_id and j.get("status") in ("pending", "confirmed")
-    rec("19. POST /bookings with intake", ok, f"status={r.status_code} booking_id={booking_id} bk_status={j.get('status')}")
+            "slot_start_iso": start_iso,
+            "duration_minutes": duration,
+            "intake_response": {},
+        }
+        r = requests.post(f"{API}/expert-net/bookings", json=bp, headers=H(admin_tok), timeout=20)
+        booking_id = r.json().get("booking_id") if r.status_code == 200 else None
+        record("expertnet.booking.create", bool(booking_id),
+               f"status={r.status_code}, body={r.text[:200]}")
 
-    if not booking_id:
-        return
+    if booking_id:
+        r = requests.post(f"{API}/expert-net/bookings/{booking_id}/confirm",
+                          headers=H(user_tok), timeout=20)
+        record("expertnet.booking.confirm", r.status_code == 200,
+               f"status={r.status_code}, body={r.text[:200]}")
 
-    r = requests.post(
-        f"{BASE}/expert-net/bookings",
-        headers=_hdr(admin_tok),
-        json={
-            "expert_id": expert_id,
-            "slot_start_iso": first_slot,
-            "duration_minutes": 30,
-            "intake_response": {"goal": "Second"},
-        },
-        timeout=30,
-    )
-    rec("20. POST /bookings conflict → 409", r.status_code == 409, f"status={r.status_code}")
-
-    r = requests.post(f"{BASE}/expert-net/bookings/{booking_id}/confirm", headers=_hdr(user_tok), timeout=30)
-    ok = r.status_code == 200 and r.json().get("status") == "confirmed"
-    rec("21. POST /confirm as OWNER", ok, f"status={r.status_code}")
-
-    r = requests.post(f"{BASE}/expert-net/bookings/{booking_id}/start-call", headers=_hdr(admin_tok), timeout=30)
-    j = r.json() if r.status_code == 200 else {}
-    ok = r.status_code == 200 and "session_id" in j
-    rec("22. POST /start-call as ADMIN", ok, f"status={r.status_code} session_id={j.get('session_id')}")
-
-    # Phase C
-    from pymongo import MongoClient
-    mongo = MongoClient("mongodb://localhost:27017")
-    sol = mongo.test_database.solutions_store.find_one({"is_authorized": True}, {"_id": 0, "solution_id": 1, "name": 1})
-    sid = sol["solution_id"] if sol else None
-    rec("23. Pick solution_id from db.solutions_store", bool(sid), f"solution_id={sid} name={sol.get('name') if sol else None}")
-    if not sid:
-        return
-
-    r = requests.post(
-        f"{BASE}/expert-net/bookings/{booking_id}/recommend",
-        headers=_hdr(user_tok),
-        json={
-            "booking_id": booking_id,
-            "solution_id": sid,
-            "note": "Try this",
-            "create_ctt_task": True,
-            "create_lifestyle_routine": True,
-            "routine_frequency": "weekly",
-        },
-        timeout=30,
-    )
-    j = r.json() if r.status_code == 200 else {}
-    ok = r.status_code == 200 and j.get("linked_ctt_task_id") and j.get("linked_routine_id")
-    rec("24. POST /recommend as OWNER", ok,
-        f"status={r.status_code} ctt={j.get('linked_ctt_task_id')} routine={j.get('linked_routine_id')}")
-
-    r = requests.post(
-        f"{BASE}/expert-net/bookings/{booking_id}/recommend",
-        headers=_hdr(admin_tok),
-        json={
-            "booking_id": booking_id,
-            "solution_id": sid,
-            "note": "Admin rec",
-            "create_ctt_task": False,
-            "create_lifestyle_routine": False,
-            "routine_frequency": "weekly",
-        },
-        timeout=30,
-    )
-    ok = r.status_code in (200, 403)
-    rec("25. POST /recommend as ADMIN (200 or 403 accepted)", ok, f"status={r.status_code}")
-
-    r = requests.post(
-        f"{BASE}/time-store/purchase",
-        headers=_hdr(admin_tok),
-        json={"solution_id": sid, "save_minutes_per_day": 15},
-        timeout=30,
-    )
-    j = r.json() if r.status_code == 200 else {}
-    order_id = j.get("order_id")
-    ok = r.status_code == 200 and order_id
-    rec("26. POST /time-store/purchase as ADMIN", ok, f"status={r.status_code} order_id={order_id}")
-
-    if order_id:
-        r = requests.post(
-            f"{BASE}/expert-net/deliveries/from-purchase/{order_id}",
-            headers=_hdr(admin_tok),
-            timeout=30,
+        r = requests.post(f"{API}/expert-net/bookings/{booking_id}/start-call",
+                          headers=H(admin_tok), timeout=20)
+        body = r.json() if r.status_code == 200 else {}
+        vurl = body.get("video_url", "")
+        record(
+            "expertnet.start-call.video_url",
+            r.status_code == 200 and isinstance(vurl, str) and vurl.startswith(EXPECTED_PREFIX),
+            f"status={r.status_code} video_url={vurl}",
         )
-        j = r.json() if r.status_code == 200 else {}
-        ok = r.status_code == 200 and j.get("status") == "ordered"
-        rec("27. POST /deliveries/from-purchase", ok, f"status={r.status_code} dstatus={j.get('status')}")
 
-        r = requests.put(
-            f"{BASE}/expert-net/deliveries/{order_id}/status",
-            headers=_hdr(admin_tok),
-            json={"status": "shipped", "tracking_number": "BLR-TEST"},
-            timeout=30,
-        )
-        j = r.json() if r.status_code == 200 else {}
-        history_len = len(j.get("history", [])) if isinstance(j, dict) else 0
-        ok = r.status_code == 200 and j.get("status") == "shipped" and history_len >= 2
-        rec("28. PUT /deliveries/{id}/status shipped", ok,
-            f"status={r.status_code} dstatus={j.get('status')} history_len={history_len}")
+# 2.C — Webinar create + start
+webinar_payload = {
+    "title": f"Regression Webinar {int(time.time())}",
+    "description": "v3.9.0 jitsi-room regression",
+    "starts_at_iso": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
+    "duration_minutes": 60,
+    "is_free": True,
+    "price_inr": 0,
+    "capacity": 100,
+    "language": "en",
+}
+r = requests.post(f"{API}/expert-net/webinars", json=webinar_payload, headers=H(user_tok), timeout=20)
+webinar_id = r.json().get("webinar_id") if r.status_code == 200 else None
+record("expertnet.webinar.create", bool(webinar_id),
+       f"status={r.status_code}, body={r.text[:300]}")
 
-        r = requests.get(f"{BASE}/expert-net/deliveries", headers=_hdr(admin_tok), timeout=30)
-        items = r.json().get("items", []) if r.status_code == 200 else []
-        ok = r.status_code == 200 and any(d.get("order_id") == order_id for d in items)
-        rec("29. GET /deliveries contains order", ok, f"status={r.status_code} count={len(items)}")
-
-    # Phase D
-    r = requests.post(
-        f"{BASE}/expert-net/webinars",
-        headers=_hdr(user_tok),
-        json={
-            "title": "Free Test Webinar",
-            "starts_at_iso": "2026-12-21T10:00:00+00:00",
-            "duration_minutes": 30,
-            "is_free": True,
-            "price_inr": 0,
-            "capacity": 50,
-        },
-        timeout=30,
+if webinar_id:
+    r = requests.post(f"{API}/expert-net/webinars/{webinar_id}/start",
+                      headers=H(user_tok), timeout=20)
+    body = r.json() if r.status_code == 200 else {}
+    vurl = body.get("video_url", "")
+    record(
+        "expertnet.webinar.start.video_url",
+        r.status_code == 200 and isinstance(vurl, str) and vurl.startswith(EXPECTED_PREFIX),
+        f"status={r.status_code} video_url={vurl}",
     )
-    j = r.json() if r.status_code == 200 else {}
-    webinar_id = j.get("webinar_id")
-    ok = r.status_code == 200 and webinar_id
-    rec("30. POST /webinars as OWNER", ok, f"status={r.status_code} webinar_id={webinar_id}")
-
-    nx_email = f"xn_wnonexpert_{ts}@example.com"
-    reg2 = requests.post(
-        f"{BASE}/auth/register",
-        json={"email": nx_email, "password": "UatPass2026!", "name": "Not Expert"},
-        timeout=30,
-    )
-    nx_tok = reg2.json().get("session_token") if reg2.status_code == 200 else None
-    if nx_tok:
-        r = requests.post(
-            f"{BASE}/expert-net/webinars",
-            headers=_hdr(nx_tok),
-            json={
-                "title": "Unauth webinar",
-                "starts_at_iso": "2026-12-22T10:00:00+00:00",
-                "duration_minutes": 30,
-                "is_free": True,
-                "price_inr": 0,
-            },
-            timeout=30,
-        )
-        rec("31. POST /webinars as non-expert → 403", r.status_code == 403, f"status={r.status_code}")
-    else:
-        rec("31. POST /webinars as non-expert → 403", False, f"register failed: {reg2.status_code}")
-
-    if webinar_id:
-        r = requests.post(
-            f"{BASE}/expert-net/webinars/register",
-            headers=_hdr(admin_tok),
-            json={"webinar_id": webinar_id},
-            timeout=30,
-        )
-        j = r.json() if r.status_code == 200 else {}
-        ok = r.status_code == 200 and j.get("payment_status") == "paid_free"
-        rec("32. POST /webinars/register ADMIN free", ok, f"status={r.status_code} pmt={j.get('payment_status')}")
-
-        r = requests.post(
-            f"{BASE}/expert-net/webinars/register",
-            headers=_hdr(admin_tok),
-            json={"webinar_id": webinar_id},
-            timeout=30,
-        )
-        j = r.json() if r.status_code == 200 else {}
-        ok = r.status_code == 200 and j.get("already_registered") is True
-        rec("33. POST /webinars/register duplicate", ok, f"status={r.status_code} j={j}")
-
-        r = requests.get(f"{BASE}/expert-net/webinars?free_only=true", headers=_hdr(admin_tok), timeout=30)
-        items = r.json().get("items", []) if r.status_code == 200 else []
-        w = next((x for x in items if x.get("webinar_id") == webinar_id), None)
-        ok = r.status_code == 200 and w is not None and w.get("i_am_registered") is True
-        rec("34. GET /webinars?free_only=true i_am_registered", ok, f"status={r.status_code} found={bool(w)}")
-
-        r = requests.post(f"{BASE}/expert-net/webinars/{webinar_id}/start", headers=_hdr(user_tok), timeout=30)
-        j = r.json() if r.status_code == 200 else {}
-        ok = r.status_code == 200 and "video_url" in j
-        rec("35. POST /webinars/{id}/start as OWNER", ok, f"status={r.status_code} video_url={j.get('video_url')}")
-
-        r = requests.post(f"{BASE}/expert-net/webinars/{webinar_id}/start", headers=_hdr(admin_tok), timeout=30)
-        rec("36. POST /webinars/{id}/start as ADMIN override", r.status_code == 200, f"status={r.status_code}")
-
-        alt_tok = nx_tok or other_tok
-        if alt_tok:
-            r = requests.post(f"{BASE}/expert-net/webinars/{webinar_id}/start", headers=_hdr(alt_tok), timeout=30)
-            rec("37. POST /webinars/{id}/start as non-host → 403", r.status_code == 403, f"status={r.status_code}")
-        else:
-            rec("37. POST /webinars/{id}/start as non-host → 403", False, "no alt token")
-
-    passed = sum(1 for _, ok, _ in RESULTS if ok)
-    total = len(RESULTS)
-    print(f"\n===== ExpertNet regression: {passed}/{total} passed =====")
-    for c, ok, d in RESULTS:
-        if not ok:
-            print(f"  FAIL {c} :: {d}")
 
 
-if __name__ == "__main__":
-    main()
+# ======================================================================
+# Summary
+# ======================================================================
+print("\n========== SUMMARY ==========")
+total = len(results)
+passed = sum(1 for x in results if x["ok"])
+failed = total - passed
+print(f"Total: {total}, Passed: {passed}, Failed: {failed}")
+
+if failed:
+    print("\nFailed cases:")
+    for x in results:
+        if not x["ok"]:
+            print(f"  - {x['name']}: {x['detail']}")
+
+sys.exit(0 if failed == 0 else 1)

@@ -364,7 +364,7 @@ function WebinarsTab() {
     try { const r = await api.post(`/expert-net/webinars/${w.webinar_id}/start`, {}); router.push(r.data.video_url as any); }
     catch (e: any) {
       // Non-host attempting → for now we open the video session if it exists
-      if (w.video_session_id) router.push(`/tools/collab-call?session_id=${w.video_session_id}` as any);
+      if (w.video_session_id) router.push(`/tools/jitsi-room?room=${w.video_session_id}&subject=Webinar` as any);
       else showAlert('Webinar', e?.response?.data?.detail || 'Webinar not started yet — please wait for the host.');
     }
   };

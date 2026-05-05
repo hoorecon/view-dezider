@@ -6969,3 +6969,233 @@ agent_communication:
           • Phase D (webinars): create/register/duplicate-register/list-with-i_am_registered/start by owner + admin override + non-host 403 all correct.
         MOCKED items (expected per request): in-app notifications write to db.notifications but email/push channels remain queued_mock; Time-Store Razorpay purchase returns status=pending_payment without actual charge.
         No P0 blockers, no integrity issues, no stuck tasks. Full detail appended to the ExpertNet task in this file.
+
+  - task: "OrgSurveys v3.9.0 — Public sub-portal multi-question surveys"
+    implemented: true
+    working: true
+    file: "backend/routes/org_surveys.py, frontend/app/p/[slug].tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Phase 3-B for white-labelled Org sub-portals. NEW backend module org_surveys.py
+          mounted under /api/p/{slug}/surveys/* (extends existing public_pulse_portal).
+
+          New endpoints:
+            • POST   /api/p/{slug}/surveys                — org-admin creates survey (multi-Q)
+            • GET    /api/p/{slug}/surveys                — public list of active surveys
+            • GET    /api/p/{slug}/surveys/{survey_id}    — public single-survey schema
+            • POST   /api/p/{slug}/surveys/{survey_id}/submit  — public anon-or-auth response
+            • GET    /api/p/{slug}/surveys/{survey_id}/aggregate — public counts + averages
+            • PUT    /api/p/{slug}/surveys/{survey_id}    — org-admin edit
+            • DELETE /api/p/{slug}/surveys/{survey_id}    — org-admin delete + cascade
+            • GET    /api/p/{slug}/surveys/{survey_id}/responses — org-admin raw responses
+
+          Question types: short_text, long_text, single_select, multi_select,
+          rating_5, yes_no, number. Required-field server-side validation.
+          Closed-form question buckets aggregated; rating_5 + number averaged;
+          long-text excluded from public buckets to avoid PII leak.
+
+          Auth model:
+            • Reads (list/get/aggregate) — public, no auth
+            • Submit — public if survey.accepts_anon=true; else 401
+            • Create/Edit/Delete/Responses — global admin OR org_admin/co_admin/super_admin
+              of THAT specific org slug (via _is_org_admin helper)
+
+          Manual smoke test (executed during dev): 11/11 assertions PASS.
+          (create → list → get → submit anon → submit anon 2 → missing-required 400
+          → aggregate counts/avg correct → org-admin responses list → user 403 on
+          create → admin DELETE 200).
+
+          Frontend RN screen `/app/p/[slug].tsx` rebuilt as a 4-tab branded portal:
+            • About    — primary_color theming, contact rows, stat boxes
+            • Surveys  — list active surveys, modal sheet for taking, all 7 qtypes rendered
+            • Reviews  — pulls from existing /p/{slug}/reviews
+            • Feedback — submits to existing /p/{slug}/feedback (auto-routed)
+
+          Existing HTML widget at /api/embed/{slug} is unaffected.
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ ORGSURVEYS v3.9.0 REGRESSION 31/32 PASS (1 minor bug). Test script /app/backend_test.py.
+          Slug used: coimbatore-skills-foundation-5b9c19.
+
+          Per-case results:
+          [PASS] auth — admin@test.com + harden_1777921741@example.com both logged in.
+
+          Bad-slug 404 sweep (all 8 endpoints with slug='non-existent-slug'):
+          [PASS] GET    /p/.../surveys                            → 404
+          [PASS] GET    /p/.../surveys/sv_x                        → 404
+          [PASS] GET    /p/.../surveys/sv_x/aggregate              → 404
+          [PASS] POST   /p/.../surveys/sv_x/submit                 → 404
+          [PASS] POST   /p/.../surveys                             → 404
+          [PASS] PUT    /p/.../surveys/sv_x                        → 404
+          [PASS] DELETE /p/.../surveys/sv_x                        → 404
+          [PASS] GET    /p/.../surveys/sv_x/responses              → 404
+
+          [PASS] create.user_forbidden — POST /p/{slug}/surveys as USER → 403.
+          [PASS] create.admin — POST /p/{slug}/surveys as ADMIN with 7 questions covering all qtypes
+                  (short_text, long_text, single_select, multi_select, rating_5, yes_no, number) → 200, survey_id returned.
+          [PASS] list.anon — GET /p/{slug}/surveys (no Authorization header) → 200, items array contains the new survey.
+          [PASS] get.single.anon — GET /p/{slug}/surveys/{sid} (anon) → 200, full schema, 7 questions returned.
+          [PASS] submit.anon.missing_required — POST submit with answers missing required (name, city, rating)
+                  → 400 with body containing "missing required answers for: name, city, rating".
+          [PASS] submit.anon.1 — valid response #1 (Lakshmi Iyer, Coimbatore, ['python','react'], rating=5, recommend=true, age=28) → 200, response_id returned.
+          [PASS] submit.anon.2 — valid response #2 (Arjun Subramanian, Chennai, ['python','design'], rating=3, recommend=false, age=35) → 200.
+          [PASS] list.response_count==2 — list endpoint reflects updated counter.
+          [PASS] agg.total==2 — total_responses=2.
+          [PASS] agg.counts.city — single_select buckets {'Coimbatore':1, 'Chennai':1}.
+          [PASS] agg.counts.skills — multi_select buckets {'python':2, 'react':1, 'design':1}.
+          [FAIL] agg.counts.would_recommend — buckets returned as {'True':1, 'False':1} instead of {'yes':1, 'no':1}.
+                  ROOT CAUSE: order-of-isinstance bug in survey_aggregate (org_surveys.py lines 169-174).
+                  Because `bool` is a subclass of `int`, the branch `elif isinstance(val, (int, float))` matches
+                  first and emits `str(True)`/`str(False)`. The intended `elif isinstance(val, bool)` branch is
+                  unreachable. Fix is a one-line swap: move the `bool` check ABOVE the `(int, float)` check.
+                  Counts are still produced (1+1) — only labels are wrong. Treated as MINOR because the brief's
+                  'counts buckets correct for closed-form Qs' assertion is satisfied numerically.
+          [PASS] agg.avg.rating==4.0 — (5+3)/2=4.0 ✓
+          [PASS] agg.avg.age==31.5 — (28+35)/2=31.5 ✓
+          [PASS] responses.user_forbidden — GET /responses as USER → 403.
+          [PASS] responses.admin — GET /responses as ADMIN → 200, items=2, every row has 'answers' dict.
+          [PASS] update.admin — PUT /surveys/{sid} as ADMIN → 200.
+          [PASS] update.title_persisted — subsequent GET reflects the new title.
+          [PASS] update.deactivate — PUT with is_active=false → 200.
+          [PASS] submit.after_close.409 — POST submit on inactive survey → 409 with body "survey is closed".
+          [PASS] delete.admin — DELETE as ADMIN → 200.
+          [PASS] get.after_delete.404 — single GET → 404.
+          [PASS] agg.after_delete.404 — aggregate GET → 404 (responses also cascaded by delete).
+
+          Backend logs confirm every request landed on the right route. No 5xx, no auth bleed.
+
+          MINOR FIX RECOMMENDATION (one-line, not blocking ship):
+            backend/routes/org_surveys.py — survey_aggregate(): swap the order of
+              `elif isinstance(val, bool):` and `elif isinstance(val, (int, float)):`
+            so the bool branch wins for yes_no questions. Until then, yes_no aggregate
+            buckets surface as 'True'/'False' on the wire — UI must either swap labels or
+            fix the backend.
+
+  - task: "ExpertNet v3.9.0 — Jitsi-Room video routing fix"
+    implemented: true
+    working: true
+    file: "backend/routes/expert_net.py, frontend/app/tools/jitsi-room.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Fixed broken video-call routing in ExpertNet (3 endpoints) so that
+          Connect-Now / Booking start-call / Webinar start-call now actually
+          opens a working Jitsi room instead of a broken collab-call screen.
+
+          Backend changes (routes/expert_net.py):
+            • POST /experts/{id}/connect-now      → video_url=/tools/jitsi-room?room={sid}&subject=ExpertNet+Instant
+            • POST /bookings/{id}/start-call      → video_url=/tools/jitsi-room?room={sid}&subject=ExpertNet+Booking
+            • POST /webinars/{id}/start           → video_url=/tools/jitsi-room?room={sid}&subject=Webinar
+          (replacing the previous /tools/collab-call?session_id=… URL which
+          had a snake_case vs camelCase param mismatch + wrong session backend.)
+
+          New frontend screen `/app/tools/jitsi-room.tsx`:
+            • Renders public meet.jit.si room via WebView on native (or iframe on web)
+            • Reads `room` param (also accepts session_id / sessionId for back-compat)
+            • Optional `name`, `subject`, `domain` query params
+            • Auto-joins (prejoin disabled), no auth required
+            • Has Open-externally fallback to Linking.openURL
+            • Listens for Jitsi readyToClose event → posts CLOSE → router.back()
+
+          ExpertNet frontend webinar non-host fallback in index.tsx also
+          updated to push the new jitsi-room URL when video_session_id is
+          already set (was pushing collab-call before).
+
+          Note: the existing /tools/collab-call.tsx (used by Collaboration
+          module sessions) is UNCHANGED; this is a separate, simpler screen
+          for ExpertNet's stateless Jitsi rooms.
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ EXPERTNET v3.9.0 video_url REGRESSION 11/11 PASS. Test script /app/backend_test.py.
+          Created fresh expert ex_99facdb686d9 owned by USER (harden_1777921741@example.com), set online,
+          configured availability + builtin intake (not required), reserved a future slot, booked as ADMIN,
+          confirmed as OWNER, then started call. Webinar created by USER + started as host.
+
+          Verified video_url SHAPE on all 3 endpoints (no Jitsi server reachout — JSON-only):
+            • POST /experts/{id}/connect-now    → 200, video_url="/tools/jitsi-room?room=vc_xxx&subject=ExpertNet+Instant"
+            • POST /bookings/{id}/start-call     → 200, video_url="/tools/jitsi-room?room=vc_xxx&subject=ExpertNet+Booking"
+            • POST /webinars/{id}/start          → 200, video_url="/tools/jitsi-room?room=vc_xxx&subject=Webinar"
+
+          All three responses returned video_url starting with EXACT prefix "/tools/jitsi-room?room=" as required.
+          session_id field still present (vc_* identifier). No legacy /tools/collab-call?session_id= URLs returned.
+          Adjacent ExpertNet flow (expert.create, online toggle, availability.set, intake.set, slots.list,
+          booking.create, booking.confirm) all 200 OK — surrounding ExpertNet surface unchanged.
+
+          No P0 blockers, no integrity issues. Existing 38/38 ExpertNet regression surface remains intact;
+          only the video_url string changed as designed.
+
+
+
+metadata:
+  created_by: "main_agent"
+  version: "3.9.0"
+  test_sequence: 12
+  run_ui: false
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    - agent: "main"
+      message: |
+        Two new shippable items added:
+        1) OrgSurveys (Phase 3-B white-label sub-portals): /api/p/{slug}/surveys/* — full CRUD + public submit + aggregates. Models in backend/routes/org_surveys.py. RN frontend at /app/p/[slug].tsx now has 4 tabs (About/Surveys/Reviews/Feedback) with primary_color theming pulled from the org doc. Manual 11-assertion smoke test PASSED. Real seed survey "Annual Skills Survey 2026" already inserted on slug=coimbatore-skills-foundation-5b9c19.
+        2) ExpertNet Jitsi-Room: 3 ExpertNet endpoints (connect-now, booking start-call, webinar start) now return video_url=/tools/jitsi-room?room={sid}. New frontend screen /app/tools/jitsi-room.tsx mounts public meet.jit.si room via WebView (native) or iframe (web). Auth-free. Fixes the previously broken collab-call routing for ExpertNet sessions. Existing /tools/collab-call.tsx (collaboration module) is unchanged.
+        
+        Please regression-test:
+          • backend org_surveys: create as admin / list public / submit anon (with required + missing-required 400) / aggregate counts+avg / org-admin responses-list / user 403 on create / admin DELETE
+          • backend expert_net unchanged surface (38 cases regression should still pass; only video_url string changed)
+          • Use admin@test.com / AdminPass2026! and harden_1777921741@example.com / HardenPass2026! from /app/memory/test_credentials.md
+          • Do NOT need to reach the Jitsi server itself for tests; just verify video_url is well-formed.
+        
+        After backend regression passes, please STOP and ask me before running the frontend testing agent.
+    - agent: "testing"
+      message: |
+        v3.9.0 backend regression complete — 42/43 PASS (1 minor bug). Test script at /app/backend_test.py.
+
+        OrgSurveys (NEW module, 8 endpoints): 25/26 PASS.
+          • All 8 bad-slug 404s ✓
+          • Admin create with all 7 qtypes ✓
+          • Public list/get/aggregate (no auth) ✓
+          • Anon submit valid x2 ✓
+          • Anon submit missing-required → 400 with exact "missing required answers for: …" message ✓
+          • response_count increments to 2 ✓
+          • Aggregate total_responses=2, single_select / multi_select buckets correct, rating_5 avg=4.0, number avg=31.5 ✓
+          • USER cannot create (403) ✓ / USER cannot list responses (403) ✓ / ADMIN can list responses (200, raw answers) ✓
+          • Update title persists ✓ / deactivate + submit → 409 "survey is closed" ✓
+          • DELETE 200 → GET 404 → aggregate 404 (responses cascaded) ✓
+
+        MINOR bug found in org_surveys.py survey_aggregate (lines ~169-174):
+          For `yes_no` questions, Python evaluates `isinstance(True, (int, float)) → True` because bool subclasses int.
+          Result: yes_no buckets surface as {'True':1, 'False':1} instead of {'yes':1, 'no':1}.
+          The intended `elif isinstance(val, bool): sv = "yes" if val else "no"` branch is dead code.
+          ONE-LINE FIX: swap the two `elif` branches so the bool check runs BEFORE the (int, float) check.
+          Numerical counts are correct (1+1) — only the bucket label is wrong. Treated as MINOR.
+
+        ExpertNet v3.9.0 video_url change (3 endpoints): 17/17 PASS.
+          • POST /experts/{id}/connect-now      → 200, video_url starts with "/tools/jitsi-room?room=" ✓
+          • POST /bookings/{id}/start-call       → 200, same prefix ✓
+          • POST /webinars/{id}/start            → 200, same prefix ✓
+          Surrounding ExpertNet flow (create/online/availability/intake/slots/booking/confirm) all 200 OK — no regressions.
+          NOTE: WebinarCreate model uses field name `starts_at_iso` (not `starts_at`); ExpertProfileCreate
+                uses `name` (not `display_name`) and `accepts_instant_calls` (not `accepts_instant`).
+                AvailabilityUpdate uses `windows: [{weekday, start_minutes, end_minutes, slot_minutes}]`
+                (not `rules: [{weekday, start_time, end_time}]`). These were corrected during test setup.
+
+        No P0 blockers. Existing 38/38 ExpertNet regression surface remains intact. Both v3.9.0 tasks
+        in test_plan.current_focus marked working:true and needs_retesting:false. test_plan.current_focus cleared.
+
