@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { showAlert } from '../../src/utils/alert';
+import { BrandFooter } from '../../src/components/BrandFooter';
 import {
   View,
   Text,
@@ -350,6 +351,9 @@ export default function LoginScreen() {
               <Text style={styles.footerLink}>Sign Up</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Earth Dezider master-brand imprint */}
+          <BrandFooter />
         </ScrollView>
       </KeyboardAvoidingView>
 

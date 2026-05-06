@@ -1,12 +1,38 @@
 # Carry-Forward List for the Next Fork
 
-**Last updated:** End of fork session after **v3.9.1 ExpertNet expert self-serve dashboard** + **v3.9.0 OrgSurveys** + **v3.9.0 ExpertNet Jitsi-Room fix**.
+**Last updated:** End of fork session after **v3.10.0 multi-edition brand architecture** + v3.9.1 ExpertNet expert self-serve dashboard + v3.9.0 OrgSurveys + v3.9.0 ExpertNet Jitsi-Room fix.
 
 **Read this first** before starting new work.
+
+**🚨 CRITICAL FOR ALL FUTURE SESSIONS:** Read `/app/memory/brand_architecture.md` for the locked brand decisions (legal entity, master/roof brand, product editions, role hierarchy).
 
 ---
 
 ## ✅ Just completed in this fork (do NOT redo)
+
+### v3.10.0 — Multi-edition brand architecture (NEW)
+Locked the platform to support **JELCOS AI** (now), **GeoDezider AI** (next), **Earth Dezider Consumer** (year 3) on a single codebase.
+
+- **Brand decisions locked** in `/app/memory/brand_architecture.md`:
+  - **Legal entity:** VEALES Vedic Decisions Private Limited
+  - **Internal codename:** View Dezider
+  - **Master / roof brand:** Earth Dezider — *"The Decision OS for People"*
+  - **Product line 1:** JELCOS AI = *"Joyful Executive's Life Choices Operating System powered by Artificial Intelligence"* — domain `jelcos.ai`
+  - **Product line 2:** GeoDezider AI — domain `geodezider.ai`
+  - **Future consumer:** Earth Dezider — domain `earthdezider.com`
+  - Whitelabels sit *under* JELCOS / GeoDezider (not a separate edition)
+  - Imprint rule: **"by Earth Dezider"** on every product surface; "VEALES" only on legal/billing
+- **NEW backend** `core/branding.py` — edition registry (`jelcos` / `geodezider` / `consumer`) with display name, full expansion, primary_color, audience_segments, enabled_features
+- **NEW backend** `routes/branding.py` — 3 endpoints:
+  - `GET /api/branding/current` (public; for splash/login hydration)
+  - `GET /api/branding/editions` (super-admin; lists all)
+  - `POST /api/branding/me/edition` (auth; user picks home edition)
+- **NEW env var** `PRODUCT_EDITION=jelcos` (default) in `backend/.env` — single switch to deploy as any edition
+- **NEW frontend** `src/store/brandingStore.ts` — Zustand store, hydrates on app boot, AsyncStorage cached, fallback constants for offline/cold-boot
+- **NEW frontend** `src/components/BrandFooter.tsx` — small "An Earth Dezider product" / hero variant with edition wordmark
+- **Wired in** `app/_layout.tsx` (boot-time hydration) + `app/auth/login.tsx` (footer rendered live ✅)
+- **Smoke-tested** 6/6 backend assertions PASS (anon read, user 403, admin list, set my edition, invalid 400, reset)
+- **Visually verified** "An Earth Dezider product" footer renders on login page
 
 ### v3.9.1 — ExpertNet expert self-serve dashboard (4 missing screens)
 Fully shipped end-to-end (frontend UAT 8/8 PASS).

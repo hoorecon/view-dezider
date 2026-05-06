@@ -3,16 +3,19 @@ import { View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from '../src/store/authStore';
+import { useBrandingStore } from '../src/store/brandingStore';
 import { COLORS } from '../src/constants/colors';
 import { registerForPushNotifications, addNotificationResponseListener } from '../src/utils/pushNotifications';
 import GlobalVoiceNav from '../src/components/GlobalVoiceNav';
 
 export default function RootLayout() {
   const checkAuth = useAuthStore((state) => state.checkAuth);
+  const hydrateBranding = useBrandingStore((s) => s.hydrate);
   const router = useRouter();
 
   useEffect(() => {
     checkAuth();
+    hydrateBranding();
 
     // Register push notifications
     registerForPushNotifications().catch(() => {});
