@@ -1,16 +1,48 @@
 # Carry-Forward List for the Next Fork
 
-**Last updated:** End of fork session after **v3.10.0 multi-edition brand architecture** + v3.9.1 ExpertNet expert self-serve dashboard + v3.9.0 OrgSurveys + v3.9.0 ExpertNet Jitsi-Room fix.
+**Last updated:** End of fork session after **v3.11.0 LDC + AALA + Daily Tracker + Time Allocation + Drift Report** + v3.10.0 multi-edition brand architecture + v3.9.1 ExpertNet expert self-serve + v3.9.0 OrgSurveys + ExpertNet Jitsi-Room.
 
 **Read this first** before starting new work.
 
-**🚨 CRITICAL FOR ALL FUTURE SESSIONS:** Read `/app/memory/brand_architecture.md` for the locked brand decisions (legal entity, master/roof brand, product editions, role hierarchy).
+**🚨 CRITICAL FOR ALL FUTURE SESSIONS:** Read `/app/memory/brand_architecture.md` for locked brand decisions.
 
 ---
 
 ## ✅ Just completed in this fork (do NOT redo)
 
-### v3.10.0 — Multi-edition brand architecture (NEW)
+### v3.11.0 — Life Directions Compass + AALA + Daily Tracker (NEW)
+The personal-decision-OS layer the user asked for: **direction → inventory → plan → reality → allocation → drift**.
+
+**Backend (4 new modules):**
+- `routes/life_directions.py` — LDC: 7 default freedoms (Business · Financial · Time · Health · Emotional · Social · Mission), 3 reserved suggestions (Sexual · Spiritual · Eternal), custom freedoms allowed. Rank-based weight (1→10, 10→1). **This-week pin = 1.5× multiplier** (Q2c hybrid). Auto-clears Sunday 23:59 UTC. `models/life_directions_models.py`.
+- `routes/aala.py` — AALA = **Accrued Assets & Liabilities Analysis**: TEPFI × {Self, Micro, Macro} = 15-cell ledger. Each cell: assets[] + liabilities[] + balance_score(-10..+10) + summaries. Append-only delta journal. `models/aala_models.py`.
+- `routes/daily_tracker.py` — multi-modal entry log (text now; voice/AI hybrid endpoint already wired). LLM classify endpoint with **graceful keyword fallback** when LLM budget capped. Each entry can attach AALA deltas + LDC freedom tags + minutes; AALA cell auto-updates on submit.
+- `routes/time_allocation.py` — LDC + AALA-aware allocator: `/suggestions` ranks CTT tasks + routines + PNA goals; `/drift` produces the Drift Report (LDC ideal % vs daily-tracker actual %).
+
+**TEPFI canonicalisation:**
+- ⚠️ Founder lock 2026-05-06: **TEPFI-I = "Infrastructure"** (NOT "Intellectual"). All new modules use this. Solution Matrix already used Infrastructure; consistency preserved.
+
+**Frontend (4 new screens + entry points):**
+- `app/tools/life-directions-compass.tsx` — drag-to-reorder via chevrons, add custom + reserved suggestions, this-week pin with star-flag, influence slider 0-100%
+- `app/tools/aala.tsx` — 5×3 grid colored by balance, tap any cell → modal with summaries + asset/liability lists + score editor
+- `app/tools/daily-tracker.tsx` — text entry + AI classify (engine-aware UX), activity/minutes, freedom multi-select chips, AALA delta picker
+- `app/tools/drift-report.tsx` — LDC-ideal vs actual %, color-coded over/under/aligned, suggested-correction-minutes per freedom, 7d/14d/30d window
+- 4 new entry points added to Profile tab → routes to all 4 screens
+
+**Smoke tests passed (manual python script):**
+- LDC: seed/reorder/pin/weight (with 1.5× multiplier verified)
+- AALA: 15-cell auto-seed, summary edit, asset/liability add+remove, feasibility score
+- Daily Tracker: classify (LLM + keyword fallback), create entry, AALA delta cascading, today roll-up
+- Time Allocation: suggestions ranked correctly, drift report produced — `over` / `under` / `aligned` statuses + suggested-correction minutes
+- Cross-module: a daily-tracker entry with AALA delta correctly bumped `finance/self` balance from 6.5 → 8.0
+
+**Visual UAT:** all 4 screens screenshot-verified rendering live with real data (rank weights, color-coded cells, drift bars).
+
+### v3.10.0 — Multi-edition brand architecture
+[unchanged from earlier in this file]
+
+### v3.9.1 — ExpertNet expert self-serve dashboard (4 missing screens)
+Fully shipped end-to-end (frontend UAT 8/8 PASS).
 Locked the platform to support **JELCOS AI** (now), **GeoDezider AI** (next), **Earth Dezider Consumer** (year 3) on a single codebase.
 
 - **Brand decisions locked** in `/app/memory/brand_architecture.md`:

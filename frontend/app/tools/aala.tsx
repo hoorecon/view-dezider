@@ -1,231 +1,213 @@
-import React, { useState, useCallback } from 'react';
-import { showAlert } from '../../src/utils/alert';
+/**
+ * /tools/aala  — Accrued Assets & Liabilities Analysis grid (5×3).
+ */
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  RefreshControl, ActivityIndicator, Dimensions,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
+  TextInput, Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import { COLORS } from '../../src/constants/colors';
+import { showAlert } from '../../src/utils/alert';
 
-const AREA_ICONS: Record<string, string> = {
-  holistic_health: 'fitness', knowledge_skills: 'school', relationships: 'heart',
-  finance: 'cash', assets: 'home', career: 'briefcase', personal_dreams: 'star',
-  social_image: 'people', social_contributions: 'hand-left', spirituality: 'leaf',
-};
-
-function netColor(n: number) {
-  if (n > 0) return '#10B981';
-  if (n < 0) return '#EF4444';
-  return '#6B7280';
-}
+const TEPFI = ['time', 'energy', 'people', 'finance', 'infrastructure'];
+const LEVELS = ['self', 'micro', 'macro'];
+const FACTOR_ICONS: any = { time: 'time', energy: 'flash', people: 'people', finance: 'cash', infrastructure: 'business' };
 
 export default function AALAScreen() {
   const router = useRouter();
+  const [cells, setCells] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [dashboard, setDashboard] = useState<any>(null);
-  const [assessments, setAssessments] = useState<any[]>([]);
+  const [picked, setPicked] = useState<any | null>(null);
 
-  const fetchData = async () => {
-    try {
-      const [dashRes, listRes] = await Promise.all([
-        api.get('/aala/dashboard'),
-        api.get('/aala/assessments'),
-      ]);
-      setDashboard(dashRes.data);
-      setAssessments(listRes.data || []);
-    } catch (e) { console.error('AALA fetch error:', e); }
+  const load = useCallback(async () => {
+    try { setLoading(true);
+      const r = await api.get('/aala/me');
+      setCells(r.data.aala.cells);
+    } catch (e: any) { showAlert('Load failed', e?.response?.data?.detail || e.message); }
     finally { setLoading(false); }
-  };
+  }, []);
+  useEffect(() => { load(); }, [load]);
 
-  useFocusEffect(useCallback(() => { setLoading(true); fetchData(); }, []));
-  const onRefresh = async () => { setRefreshing(true); await fetchData(); setRefreshing(false); };
+  const cellAt = (factor: string, level: string) => cells.find(c => c.factor === factor && c.level === level) || { factor, level, balance_score: 0, assets: [], liabilities: [], assets_summary: '', liabilities_summary: '' };
 
-  const handleDelete = (id: string) => {
-    showAlert('Delete', 'Delete this assessment?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
-        try { await api.delete(`/aala/assessments/${id}`); fetchData(); }
-        catch (e) { showAlert('Error', 'Failed to delete'); }
-      }},
-    ]);
-  };
+  const colorForBalance = (s: number) => s >= 5 ? '#10B981' : s >= 0 ? '#F59E0B' : '#DC2626';
 
-  const renderNetPosition = () => {
-    if (!dashboard?.net_position_by_area || Object.keys(dashboard.net_position_by_area).length === 0) return null;
-    const net = dashboard.net_position_by_area;
-    return (
-      <View style={s.netCard}>
-        <Text style={s.netTitle}>Net Position by Life Area</Text>
-        {Object.entries(net).map(([area, data]: [string, any]) => (
-          <View key={area} style={s.netRow}>
-            <Ionicons name={(AREA_ICONS[area] || 'ellipse') as any} size={14} color={COLORS.textSecondary} />
-            <Text style={s.netArea} numberOfLines={1}>{area.replace(/_/g, ' ')}</Text>
-            <View style={s.netValues}>
-              <Text style={[s.netVal, { color: '#10B981' }]}>A: {data.total_assets}</Text>
-              <Text style={[s.netVal, { color: '#EF4444' }]}>L: {data.total_liabilities}</Text>
-              <Text style={[s.netVal, { color: netColor(data.net), fontWeight: '700' }]}>
-                Net: {data.net > 0 ? '+' : ''}{data.net}
-              </Text>
-            </View>
-          </View>
-        ))}
-      </View>
-    );
-  };
-
-  const renderEntry = (item: any) => {
-    const entryCount = (item.entries || []).length;
-    return (
-      <TouchableOpacity
-        key={item.assessment_id}
-        style={s.entryCard}
-        onPress={() => router.push({ pathname: '/tools/aala-entry', params: { id: item.assessment_id } })}
-      >
-        <View style={s.entryRow}>
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              {item.is_baseline && (
-                <View style={s.baselineBadge}>
-                  <Text style={s.baselineText}>BASELINE</Text>
-                </View>
-              )}
-              <Text style={s.entryTitle} numberOfLines={1}>{item.title}</Text>
-            </View>
-            <Text style={s.entrySub}>
-              {item.snapshot_date} · {entryCount} entries · {item.tracking_frequency}
-            </Text>
-          </View>
-          <TouchableOpacity onPress={() => handleDelete(item.assessment_id)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Ionicons name="trash-outline" size={16} color={COLORS.textMuted} />
-          </TouchableOpacity>
-        </View>
-      </TouchableOpacity>
-    );
-  };
+  if (loading) return <SafeAreaView style={s.container}><View style={s.center}><ActivityIndicator color={COLORS.primary} /></View></SafeAreaView>;
 
   return (
     <SafeAreaView style={s.container} edges={['top']}>
-      <LinearGradient colors={['#0EA5E9', '#2563EB']} style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
-          <Ionicons name="arrow-back" size={22} color="#FFF" />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={s.headerTitle}>AALA — Assets & Liabilities</Text>
-          <Text style={s.headerSub}>
-            {dashboard?.total_assessments || 0} assessments · Circle of Influence
-          </Text>
+      <View style={s.header}>
+        <TouchableOpacity onPress={() => router.back()}><Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} /></TouchableOpacity>
+        <View style={{ flex: 1, marginHorizontal: 12 }}>
+          <Text style={s.title}>AALA · Resource Ledger</Text>
+          <Text style={s.subtitle}>TEPFI × Self/Micro/Macro — Accrued Assets & Liabilities</Text>
         </View>
-        <TouchableOpacity onPress={() => router.push('/tools/aala-entry')} style={s.addBtn}>
-          <Ionicons name="add" size={22} color="#FFF" />
-        </TouchableOpacity>
-      </LinearGradient>
+      </View>
 
-      {loading ? (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <ActivityIndicator size="large" color="#2563EB" />
+      <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 80 }}>
+        <Text style={s.helper}>Tap any cell to log assets, liabilities, and current balance score (-10 … +10). Time Dezider uses these to know which TEPFI/level resources have spare capacity.</Text>
+
+        {/* Header row */}
+        <View style={s.gridHeader}>
+          <Text style={[s.colHead, { flex: 1.4 }]}>Factor</Text>
+          {LEVELS.map(l => <Text key={l} style={[s.colHead, { flex: 1 }]}>{l}</Text>)}
         </View>
-      ) : (
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        >
-          {/* Quick stats */}
-          {dashboard && dashboard.total_assessments > 0 && (
-            <View style={s.statsRow}>
-              <View style={s.statBox}>
-                <Text style={s.statNum}>{dashboard.total_assessments}</Text>
-                <Text style={s.statLabel}>Assessments</Text>
-              </View>
-              <View style={s.statBox}>
-                <Text style={s.statNum}>{dashboard.baseline ? '✓' : '—'}</Text>
-                <Text style={s.statLabel}>Baseline</Text>
-              </View>
-              <View style={s.statBox}>
-                <Text style={s.statNum}>{dashboard.tracking_frequency}</Text>
-                <Text style={s.statLabel}>Frequency</Text>
-              </View>
-            </View>
-          )}
 
-          {renderNetPosition()}
-
-          {assessments.length === 0 ? (
-            <View style={s.empty}>
-              <View style={s.emptyIcon}>
-                <Ionicons name="wallet-outline" size={48} color={COLORS.textMuted} />
-              </View>
-              <Text style={s.emptyTitle}>No AALA Assessments Yet</Text>
-              <Text style={s.emptySub}>
-                Assess your Assets & Liabilities across 10 life areas to understand your Circle of Influence
-              </Text>
-              <TouchableOpacity
-                style={s.emptyBtn}
-                onPress={() => router.push({ pathname: '/tools/aala-entry', params: { baseline: 'true' } })}
-              >
-                <Ionicons name="add-circle" size={18} color="#FFF" />
-                <Text style={s.emptyBtnText}>Create Baseline Assessment</Text>
-              </TouchableOpacity>
+        {/* 5 rows of TEPFI × 3 cells */}
+        {TEPFI.map(factor => (
+          <View key={factor} style={s.gridRow}>
+            <View style={[s.factorCell, { flex: 1.4 }]}>
+              <Ionicons name={FACTOR_ICONS[factor] as any} size={16} color={COLORS.primary} />
+              <Text style={s.factorText}>{factor.charAt(0).toUpperCase() + factor.slice(1)}</Text>
             </View>
-          ) : (
-            <>
-              <Text style={s.sectionTitle}>All Assessments</Text>
-              {assessments.map(renderEntry)}
-              <TouchableOpacity
-                style={s.newSnapshotBtn}
-                onPress={() => router.push('/tools/aala-entry')}
-              >
-                <Ionicons name="camera" size={16} color="#2563EB" />
-                <Text style={s.newSnapshotText}>Take New Snapshot</Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </ScrollView>
-      )}
+            {LEVELS.map(level => {
+              const cell = cellAt(factor, level);
+              return (
+                <TouchableOpacity
+                  key={level}
+                  testID={`aala-cell-${factor}-${level}`}
+                  style={[s.cell, { flex: 1, backgroundColor: colorForBalance(cell.balance_score) + '15', borderColor: colorForBalance(cell.balance_score) }]}
+                  onPress={() => setPicked(cell)}
+                >
+                  <Text style={[s.cellScore, { color: colorForBalance(cell.balance_score) }]}>{cell.balance_score >= 0 ? '+' : ''}{cell.balance_score.toFixed(1)}</Text>
+                  <Text style={s.cellMeta}>{cell.assets?.length || 0}▲ / {cell.liabilities?.length || 0}▼</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ))}
+      </ScrollView>
+
+      {picked && <CellSheet cell={picked} onClose={() => { setPicked(null); load(); }} />}
     </SafeAreaView>
+  );
+}
+
+function CellSheet({ cell, onClose }: { cell: any; onClose: () => void }) {
+  const [score, setScore] = useState(String(cell.balance_score ?? 0));
+  const [aSum, setASum] = useState(cell.assets_summary || '');
+  const [lSum, setLSum] = useState(cell.liabilities_summary || '');
+  const [newAsset, setNewAsset] = useState('');
+  const [newLiab, setNewLiab] = useState('');
+  const [items, setItems] = useState({ assets: cell.assets || [], liabilities: cell.liabilities || [] });
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    try { setBusy(true);
+      await api.put(`/aala/me/cell/${cell.factor}/${cell.level}`, {
+        assets_summary: aSum, liabilities_summary: lSum,
+        balance_score: Math.max(-10, Math.min(10, parseFloat(score) || 0)),
+      });
+      onClose();
+    } catch (e: any) { showAlert('Save failed', e?.response?.data?.detail || e.message); }
+    finally { setBusy(false); }
+  };
+
+  const addA = async () => {
+    if (!newAsset.trim()) return;
+    try {
+      const r = await api.post(`/aala/me/cell/${cell.factor}/${cell.level}/asset`, { label: newAsset });
+      setItems(p => ({ ...p, assets: [...p.assets, r.data.asset] }));
+      setNewAsset('');
+    } catch (e: any) { showAlert('Add failed', e?.response?.data?.detail || e.message); }
+  };
+  const addL = async () => {
+    if (!newLiab.trim()) return;
+    try {
+      const r = await api.post(`/aala/me/cell/${cell.factor}/${cell.level}/liability`, { label: newLiab });
+      setItems(p => ({ ...p, liabilities: [...p.liabilities, r.data.liability] }));
+      setNewLiab('');
+    } catch (e: any) { showAlert('Add failed', e?.response?.data?.detail || e.message); }
+  };
+  const delA = async (id: string) => {
+    await api.delete(`/aala/me/cell/${cell.factor}/${cell.level}/asset/${id}`);
+    setItems(p => ({ ...p, assets: p.assets.filter((a: any) => a.item_id !== id) }));
+  };
+  const delL = async (id: string) => {
+    await api.delete(`/aala/me/cell/${cell.factor}/${cell.level}/liability/${id}`);
+    setItems(p => ({ ...p, liabilities: p.liabilities.filter((l: any) => l.item_id !== id) }));
+  };
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.overlay}>
+        <View style={s.sheet}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={s.sheetTitle}>{cell.factor.toUpperCase()} × {cell.level.toUpperCase()}</Text>
+            <TouchableOpacity onPress={onClose}><Ionicons name="close" size={24} color={COLORS.textPrimary} /></TouchableOpacity>
+          </View>
+
+          <ScrollView style={{ maxHeight: 460 }}>
+            <Text style={s.fieldLabel}>Net balance score (-10 … +10)</Text>
+            <TextInput style={s.input} keyboardType="numeric" value={score} onChangeText={setScore} />
+
+            <Text style={s.fieldLabel}>Assets summary</Text>
+            <TextInput style={[s.input, { minHeight: 50 }]} multiline value={aSum} onChangeText={setASum} placeholder="Short note about your accrued assets…" placeholderTextColor={COLORS.textMuted} />
+
+            <Text style={s.fieldLabel}>Liabilities summary</Text>
+            <TextInput style={[s.input, { minHeight: 50 }]} multiline value={lSum} onChangeText={setLSum} placeholder="Short note about your accrued liabilities…" placeholderTextColor={COLORS.textMuted} />
+
+            <Text style={s.fieldLabel}>Asset items ▲</Text>
+            {items.assets.map((a: any) => (
+              <View key={a.item_id} style={s.itemRow}>
+                <Text style={{ flex: 1, fontSize: 13, color: COLORS.textPrimary }}>{a.label} {a.value ? `(${a.value} ${a.units || ''})` : ''}</Text>
+                <TouchableOpacity onPress={() => delA(a.item_id)}><Ionicons name="close-circle" size={18} color="#DC2626" /></TouchableOpacity>
+              </View>
+            ))}
+            <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+              <TextInput style={[s.input, { flex: 1 }]} value={newAsset} onChangeText={setNewAsset} placeholder="Add asset…" placeholderTextColor={COLORS.textMuted} />
+              <TouchableOpacity onPress={addA} style={s.smallBtn}><Text style={s.smallBtnText}>+</Text></TouchableOpacity>
+            </View>
+
+            <Text style={s.fieldLabel}>Liability items ▼</Text>
+            {items.liabilities.map((l: any) => (
+              <View key={l.item_id} style={s.itemRow}>
+                <Text style={{ flex: 1, fontSize: 13, color: COLORS.textPrimary }}>{l.label} {l.value ? `(${l.value} ${l.units || ''})` : ''}</Text>
+                <TouchableOpacity onPress={() => delL(l.item_id)}><Ionicons name="close-circle" size={18} color="#DC2626" /></TouchableOpacity>
+              </View>
+            ))}
+            <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+              <TextInput style={[s.input, { flex: 1 }]} value={newLiab} onChangeText={setNewLiab} placeholder="Add liability…" placeholderTextColor={COLORS.textMuted} />
+              <TouchableOpacity onPress={addL} style={s.smallBtn}><Text style={s.smallBtnText}>+</Text></TouchableOpacity>
+            </View>
+          </ScrollView>
+
+          <TouchableOpacity testID="aala-save-cell" onPress={save} disabled={busy} style={[s.primary, { marginTop: 12, opacity: busy ? 0.6 : 1 }]}>
+            {busy ? <ActivityIndicator color="#FFF" /> : <Text style={s.primaryText}>Save cell</Text>}
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 }
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, paddingBottom: 18 },
-  backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: '#FFF' },
-  headerSub: { fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
-  addBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
-
-  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
-  statBox: { flex: 1, backgroundColor: COLORS.white, borderRadius: 12, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border },
-  statNum: { fontSize: 18, fontWeight: '700', color: '#2563EB' },
-  statLabel: { fontSize: 10, color: COLORS.textMuted, marginTop: 2, textTransform: 'uppercase' },
-
-  netCard: { backgroundColor: COLORS.white, borderRadius: 14, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: COLORS.border },
-  netTitle: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 10 },
-  netRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: COLORS.divider },
-  netArea: { flex: 1, fontSize: 12, fontWeight: '500', color: COLORS.textPrimary, textTransform: 'capitalize' },
-  netValues: { flexDirection: 'row', gap: 8 },
-  netVal: { fontSize: 11, fontWeight: '500' },
-
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 10 },
-  entryCard: { backgroundColor: COLORS.white, borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: COLORS.border },
-  entryRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  entryTitle: { fontSize: 15, fontWeight: '600', color: COLORS.textPrimary },
-  entrySub: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
-  baselineBadge: { backgroundColor: '#0EA5E915', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-  baselineText: { fontSize: 9, fontWeight: '700', color: '#0EA5E9' },
-
-  newSnapshotBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14, borderRadius: 12, borderWidth: 1.5, borderColor: '#2563EB', borderStyle: 'dashed', marginTop: 8 },
-  newSnapshotText: { fontSize: 14, fontWeight: '600', color: '#2563EB' },
-
-  empty: { alignItems: 'center', paddingTop: 40 },
-  emptyIcon: { width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.divider, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: COLORS.textPrimary },
-  emptySub: { fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', marginTop: 8, paddingHorizontal: 32, lineHeight: 20 },
-  emptyBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 20, paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#2563EB', borderRadius: 12 },
-  emptyBtnText: { fontSize: 14, fontWeight: '600', color: '#FFF' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, backgroundColor: COLORS.white, borderBottomWidth: 1, borderBottomColor: COLORS.divider },
+  title: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
+  subtitle: { fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
+  helper: { fontSize: 11, color: COLORS.textMuted, marginBottom: 10, lineHeight: 16 },
+  gridHeader: { flexDirection: 'row', paddingHorizontal: 4, paddingBottom: 4 },
+  colHead: { fontSize: 10, fontWeight: '700', color: COLORS.textMuted, textTransform: 'uppercase', textAlign: 'center', letterSpacing: 0.5 },
+  gridRow: { flexDirection: 'row', gap: 4, marginBottom: 6 },
+  factorCell: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8, backgroundColor: COLORS.white, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border },
+  factorText: { fontSize: 11, fontWeight: '700', color: COLORS.textPrimary, textTransform: 'capitalize' },
+  cell: { padding: 10, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center', minHeight: 56 },
+  cellScore: { fontSize: 16, fontWeight: '800' },
+  cellMeta: { fontSize: 9, color: COLORS.textSecondary, marginTop: 2 },
+  fieldLabel: { fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, marginTop: 10 },
+  input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: COLORS.textPrimary, backgroundColor: COLORS.white, marginTop: 4 },
+  itemRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: COLORS.divider },
+  smallBtn: { backgroundColor: COLORS.primary, width: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 8, marginTop: 4 },
+  smallBtnText: { color: '#FFF', fontSize: 18, fontWeight: '700' },
+  primary: { backgroundColor: COLORS.primary, paddingVertical: 12, borderRadius: 8, alignItems: 'center' },
+  primaryText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: COLORS.white, borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 18, maxHeight: '92%' },
+  sheetTitle: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
 });

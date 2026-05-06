@@ -174,6 +174,10 @@ from routes.review_net import router as review_net_router
 from routes.expert_net import router as expert_net_router
 from routes.org_surveys import router as org_surveys_router
 from routes.branding import router as branding_router
+from routes.life_directions import router as life_directions_router
+from routes.aala import router as aala_router
+from routes.daily_tracker import router as daily_tracker_router
+from routes.time_allocation import router as time_allocation_router
 
 
 # ========================
@@ -240,6 +244,10 @@ api_router.include_router(review_net_router)
 api_router.include_router(expert_net_router)
 api_router.include_router(org_surveys_router)
 api_router.include_router(branding_router)
+api_router.include_router(life_directions_router)
+api_router.include_router(aala_router)
+api_router.include_router(daily_tracker_router)
+api_router.include_router(time_allocation_router)
 
 
 # ========================
