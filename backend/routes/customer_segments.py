@@ -16,6 +16,7 @@ Endpoints:
   GET    /api/pricing                              — combined: tiers + segments + matrix
 """
 import os
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
@@ -35,6 +36,16 @@ from models.customer_segment_models import (
 from models.tier_models import CHAKRA_TIERS, TIER_KEYS
 
 router = APIRouter(tags=["Customer Segments — Target Group Master"])
+
+# In-process TTL cache for the public /pricing payload (hot path).
+# Invalidated on any admin write (segment / pricing / factor / matrix).
+_PRICING_CACHE: Dict[str, Any] = {"data": None, "expires_at": 0.0}
+_PRICING_TTL_SECONDS = 60.0
+
+
+def _invalidate_pricing_cache() -> None:
+    _PRICING_CACHE["data"] = None
+    _PRICING_CACHE["expires_at"] = 0.0
 
 
 def _now() -> datetime:
@@ -72,7 +83,12 @@ async def public_pricing_payload():
     """One-shot pricing payload for the public /pricing page.
 
     Returns: tiers[], segments[], matrix_rows[] (modules x tiers feature gating).
+    Cached in-process for 60s; invalidated on any admin write.
     """
+    now = time.time()
+    if _PRICING_CACHE["data"] is not None and _PRICING_CACHE["expires_at"] > now:
+        return _PRICING_CACHE["data"]
+
     segments = []
     async for d in db.customer_segments.find({}, {"_id": 0}).sort("created_at", -1):
         segments.append(d)
@@ -80,9 +96,9 @@ async def public_pricing_payload():
     # Pull matrix rows the same way tier_matrix.get_public_matrix does (cheap)
     modules = await db.acm_modules.find({}, {"_id": 0}).sort("order", 1).to_list(50)
     cells: List[Dict[str, Any]] = []
-    async for c in db.tier_matrix.find({}, {"_id": 0}):
+    async for c in db.tier_matrix.find({"feature_id": None}, {"_id": 0}):
         cells.append(c)
-    by_key = {(c["module_id"], c.get("feature_id"), c["tier_key"]): c for c in cells}
+    by_key = {(c["module_id"], c["tier_key"]): c for c in cells}
     rows = []
     for mod in modules:
         mid = mod.get("module_id")
@@ -92,14 +108,17 @@ async def public_pricing_payload():
             "module_id": mid,
             "module_name": mod.get("module_name"),
             "module_icon": mod.get("module_icon"),
-            "tiers": {t["key"]: bool(by_key.get((mid, None, t["key"]), {}).get("allowed", False)) for t in CHAKRA_TIERS},
+            "tiers": {t["key"]: bool(by_key.get((mid, t["key"]), {}).get("allowed", False)) for t in CHAKRA_TIERS},
         })
 
-    return {
+    payload = {
         "tiers": CHAKRA_TIERS,
         "segments": segments,
         "matrix_rows": rows,
     }
+    _PRICING_CACHE["data"] = payload
+    _PRICING_CACHE["expires_at"] = now + _PRICING_TTL_SECONDS
+    return payload
 
 
 # ----------------------------------------------------------------------
@@ -145,6 +164,7 @@ async def admin_create(body: CustomerSegmentCreate, user: dict = Depends(require
         "created_by": user.get("user_id"),
     }
     await db.customer_segments.insert_one(doc)
+    _invalidate_pricing_cache()
     return {"ok": True, "segment": _segment_to_dict(doc)}
 
 
@@ -169,6 +189,7 @@ async def admin_update(sid: str, body: CustomerSegmentUpdate, user: dict = Depen
     if res.matched_count == 0:
         raise HTTPException(404, "segment not found")
     d = await db.customer_segments.find_one({"segment_id": sid}, {"_id": 0})
+    _invalidate_pricing_cache()
     return {"ok": True, "segment": d}
 
 
@@ -177,6 +198,7 @@ async def admin_delete(sid: str, user: dict = Depends(require_admin)):
     res = await db.customer_segments.delete_one({"segment_id": sid})
     if res.deleted_count == 0:
         raise HTTPException(404, "segment not found")
+    _invalidate_pricing_cache()
     return {"ok": True}
 
 
@@ -203,6 +225,7 @@ async def admin_add_factor(sid: str, body: FactorAddRequest, user: dict = Depend
     await db.customer_segments.update_one(
         {"segment_id": sid}, {"$set": {"factors": factors, "updated_at": _now()}}
     )
+    _invalidate_pricing_cache()
     return {"ok": True, "factor": factor}
 
 
@@ -215,6 +238,7 @@ async def admin_remove_factor(sid: str, key: str, user: dict = Depends(require_a
     await db.customer_segments.update_one(
         {"segment_id": sid}, {"$set": {"factors": factors, "updated_at": _now()}}
     )
+    _invalidate_pricing_cache()
     return {"ok": True}
 
 
@@ -318,4 +342,5 @@ async def admin_upsert_pricing(sid: str, body: TierPricingUpsert, user: dict = D
     )
     if res.matched_count == 0:
         raise HTTPException(404, "segment not found")
+    _invalidate_pricing_cache()
     return {"ok": True, "count": len(body.tier_pricings)}

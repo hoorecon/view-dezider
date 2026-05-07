@@ -273,6 +273,20 @@ INDEX_SPECS: dict[str, list] = {
         ("category", 1),
         ("created_at", -1),
     ],
+
+    # ─── Tier Matrix (7-chakra subscription gating) ────────────
+    "tier_matrix": [
+        {"keys": [("module_id", 1), ("feature_id", 1), ("tier_key", 1)], "unique": True},
+        ("tier_key", 1),
+        [("tier_key", 1), ("allowed", 1)],
+    ],
+
+    # ─── Customer Segments (TG master) ─────────────────────────
+    "customer_segments": [
+        {"keys": [("segment_id", 1)], "unique": True},
+        ("created_at", -1),
+        ("chakra_tier_link", 1),
+    ],
 }
 
 

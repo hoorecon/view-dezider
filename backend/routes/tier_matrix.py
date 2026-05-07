@@ -28,6 +28,12 @@ from models.tier_models import (
     TierMatrixCellSet, TierMatrixBulkSet, UserTierAssign,
 )
 
+try:
+    from routes.customer_segments import _invalidate_pricing_cache
+except Exception:  # circular import safety
+    def _invalidate_pricing_cache() -> None:
+        pass
+
 router = APIRouter(tags=["Tier Matrix — 7 Chakras"])
 
 
@@ -193,6 +199,7 @@ async def admin_reset_matrix(user: dict = Depends(require_admin)):
     """Wipe + smart-reseed (admin escape hatch when matrix gets messy)."""
     await db.tier_matrix.delete_many({})
     res = await _smart_seed()
+    _invalidate_pricing_cache()
     return {"ok": True, "wiped": True, **res}
 
 
