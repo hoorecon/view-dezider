@@ -440,6 +440,37 @@ export default function AdminDocsScreen() {
   );
 
   // ========== RENDER DOC CONTENT ==========
+  const handleDownloadDoc = async (docType: DocType) => {
+    const doc = docs[docType];
+    if (!doc?.content) {
+      showAlert('Nothing to download', 'This document is not yet generated. Click Regenerate first.');
+      return;
+    }
+    const tabMeta = TABS.find(t => t.key === docType);
+    const filename = `ViewDezider_${tabMeta?.label || docType}_${new Date().toISOString().slice(0, 10)}.md`;
+    try {
+      if (Platform.OS === 'web') {
+        const blob = new Blob([doc.content], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename;
+        a.click(); URL.revokeObjectURL(url);
+        showAlert('Downloaded', `${filename} saved.`);
+      } else {
+        const fileUri = FileSystem.documentDirectory + filename;
+        await FileSystem.writeAsStringAsync(fileUri, doc.content);
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(fileUri, { mimeType: 'text/markdown', dialogTitle: `Download ${tabMeta?.label}`, UTI: 'public.text' });
+        } else {
+          showAlert('Saved', `Saved to ${fileUri}`);
+        }
+      }
+    } catch (err: any) {
+      showAlert('Download failed', err?.message || 'Unable to download.');
+    }
+  };
+
   const renderDocContent = (docType: DocType) => {
     const doc = docs[docType];
     const isRefreshing = refreshingDoc === docType;
@@ -456,6 +487,15 @@ export default function AdminDocsScreen() {
               <Text style={styles.docAuthor}>By: {doc.generated_by}</Text>
             )}
           </View>
+          <TouchableOpacity
+            style={[styles.refreshBtn, { marginRight: 6 }, !doc?.content && { opacity: 0.5 }]}
+            onPress={() => handleDownloadDoc(docType)}
+            disabled={!doc?.content}
+            testID={`docs-download-${docType}`}
+          >
+            <Ionicons name="download-outline" size={16} color="#6366F1" />
+            <Text style={styles.refreshBtnText}>Download</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.refreshBtn, isRefreshing && { opacity: 0.5 }]}
             onPress={() => handleRefreshDoc(docType)}
