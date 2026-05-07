@@ -55,6 +55,13 @@ CHANNEL_RULES = {
     "/pna": ["internal", "chatbot"],
     "/lifestyle-designer": ["internal", "chatbot"],
     "/ai-assistant": ["internal", "chatbot"],
+    "/admin/customer-segments": ["internal"],
+    "/admin/tier-matrix": ["internal"],
+    "/customer-segments": ["internal", "chatbot", "partner"],
+    "/pricing": ["internal", "chatbot", "partner"],
+    "/tiers": ["internal", "chatbot", "partner"],
+    "/tier-matrix": ["internal", "chatbot", "partner"],
+    "/me/tier-access": ["internal", "chatbot"],
 }
 
 CATEGORY_MAP = {
@@ -108,22 +115,31 @@ CATEGORY_MAP = {
     "/pna": "PNA (Problems / Needs / Aspirations)",
     "/lifestyle-designer": "Lifestyle Designer",
     "/ai-assistant": "AI Solution Assistant",
+    "/admin/customer-segments": "Customer Segments — TG Master",
+    "/admin/tier-matrix": "Tier Matrix — 7 Chakras (Admin)",
+    "/customer-segments": "Customer Segments (Public)",
+    "/pricing": "Pricing — 7 Chakras",
+    "/tiers": "Subscription Tiers (Public)",
+    "/tier-matrix": "Tier Matrix (Public)",
+    "/me/tier-access": "My Tier Access",
 }
 
 
-def get_channels(path: str) -> list:
-    """Auto-tag an endpoint path with consumer channels."""
+def _longest_prefix_match(path: str, table: dict):
+    """Pick the entry whose key is the longest prefix match for `path`."""
     clean = path.replace("/api", "", 1) if path.startswith("/api") else path
-    for prefix, channels in CHANNEL_RULES.items():
-        if clean.startswith(prefix):
-            return channels
-    return ["internal"]
+    best_key = None
+    for prefix in table:
+        if clean.startswith(prefix) and (best_key is None or len(prefix) > len(best_key)):
+            best_key = prefix
+    return table[best_key] if best_key else None
+
+
+def get_channels(path: str) -> list:
+    """Auto-tag an endpoint path with consumer channels (longest-prefix wins)."""
+    return _longest_prefix_match(path, CHANNEL_RULES) or ["internal"]
 
 
 def get_category(path: str) -> str:
-    """Get category name for a path."""
-    clean = path.replace("/api", "", 1) if path.startswith("/api") else path
-    for prefix, cat in CATEGORY_MAP.items():
-        if clean.startswith(prefix):
-            return cat
-    return "Other"
+    """Get category name for a path (longest-prefix wins)."""
+    return _longest_prefix_match(path, CATEGORY_MAP) or "Other"

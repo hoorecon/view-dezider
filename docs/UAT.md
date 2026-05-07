@@ -81,3 +81,26 @@ DPDP-01..04 (export, delete-request, cancel-within-grace, admin purge).
 | PERF-02 | Raja Guru day-plan with 50 CTT tasks | < 1.5 s |
 | PERF-03 | Time Audit with 100 CTT tasks + full Matrix | < 2.5 s |
 | PERF-04 | Time Store services list (25 results) | < 1 s |
+
+---
+## v3.14.0 — UAT scenarios (2026-05-07)
+
+### UC-TM — Tier Matrix admin
+1. Admin opens `/admin/tier-matrix` → 32 module rows × 7 chakra columns load
+2. Admin taps "Heart" cell on `expert_net` module → cell turns green; verify Throat/Third Eye/Crown also turn green (cascade)
+3. Admin expands a module → feature rows appear; toggle a feature; verify lock icon when parent is OFF
+4. Admin taps Reset → confirmation; matrix returns to smart-seed defaults
+
+### UC-CS — Customer Segment master
+1. Admin opens `/admin/customer-segments` → "New" button → enter name + description + recommended tier → Create
+2. Expand new segment → 23 factors visible across 4 category sections
+3. Tap ✨ AI button on Income Range → spinner → value populates within 5s
+4. Tap "Custom factor" → add `caffeine_intake` under Behavioural → factor appears with delete button
+5. Tap "Tier pricing" → modal opens with 7 tier blocks; add USD row to Sacral; toggle disabled on Crown for IN; Save
+
+### UC-PR — Public pricing
+1. Visitor opens `/pricing` (auth not required) → 7 chakra tier cards visible
+2. Toggle Monthly → Annual → prices update; "save 16%" badge visible on Annual
+3. Switch country IN → US → prices flip currency (or show "Contact us" if not configured)
+4. Tap "All" segment → defaults shown; tap a specific segment chip → segment-specific pricing applied
+5. Expand "Show feature comparison" → 32-row × 7-col grid renders with check/cross icons

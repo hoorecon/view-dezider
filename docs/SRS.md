@@ -72,3 +72,27 @@ Mongo failover 5–15 s of 503s; LLM budget exhausted → 503s on AI endpoints o
 - Auto-rollup can pull large result sets if user has 1000+ CTT tasks completed on a single day. Mitigation: limit on each source collection (200 CTT, 20 meditation, 20 journal).
 - Time Store audit scans user's full Matrix. Matrix rows capped at 84 cells, so bounded.
 - Raja Guru scoring is CPU-bounded; p99 observed ≈ 60 ms for 50-task workload.
+
+---
+## v3.14.0 — Tier Matrix · Customer Segments · Pricing (2026-05-07)
+
+### Functional requirements
+- F-TM-1: Admin can toggle module × tier cells with server-side cascade rules
+- F-TM-2: Module-dominates rule forces all features=N when parent module=N
+- F-CS-1: Admin can create / read / update / delete customer segments
+- F-CS-2: Each segment auto-seeds 23 predefined factors across 4 categories
+- F-CS-3: Admin can add unlimited custom factors with arbitrary keys
+- F-CS-4: Per-factor AI-Research endpoint returns one-line value (LLM with static fallback dict)
+- F-CS-5: Each segment supports multi-currency multi-country tier pricing
+- F-PR-1: Public `/api/pricing` returns combined payload (tiers + segments + matrix_rows)
+
+### Non-functional requirements
+- NFR-TM-1: Indexed `(module_id, feature_id, tier_key)` composite unique
+- NFR-CS-1: Indexed `segment_id` unique + `created_at` desc + `chakra_tier_link`
+- NFR-PR-1: 60s in-process TTL cache on `/api/pricing`; invalidated on admin writes
+- NFR-PR-2: Cache hit latency ≤ 10ms; cold latency ≤ 50ms (verified)
+- NFR-AI-1: AI-research falls back to static dict if LLM budget capped (no user-facing error)
+
+### Data model
+- `db.tier_matrix`: `{module_id, feature_id, tier_key, allowed, updated_at, updated_by}`
+- `db.customer_segments`: `{segment_id, name, description, chakra_tier_link, factors[], market_research_module_ids[], tier_pricings[], created_at, updated_at}`

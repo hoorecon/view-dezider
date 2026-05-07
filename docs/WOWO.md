@@ -103,3 +103,22 @@ sudo supervisorctl restart expo
 tail -f /var/log/supervisor/backend.err.log
 cd /app && python tests/test_<area>.py
 ```
+
+---
+## v3.14.0 — Subscription tiering & TG segmentation workflow (2026-05-07)
+
+### Roles for the new modules
+- **Super-admin only**: edit Tier Matrix, manage Customer Segments
+- **Admin**: assign individual users to a tier (`PUT /api/admin/users/{id}/tier`)
+- **All users**: read public `/api/pricing`, see their own `/api/me/tier-access`
+
+### Standard workflow
+1. **Define TG** → Admin creates Customer Segment in `/admin/customer-segments` with demography/psychography filled (manually or via ✨ AI-Research per factor)
+2. **Set pricing** → Admin opens segment's Tier Pricing modal, defines monthly/annual prices for each chakra tier × country (8 supported: IN/US/GB/EU/AE/SG/AU/CA)
+3. **Map features** → Admin opens `/admin/tier-matrix`, toggles which modules/features are available at each tier (cascade rules apply)
+4. **Public pricing page** → `/pricing` consumes both: shows tier cards with pricing pulled from the segment, perks pulled from the matrix
+5. **User upgrade** → User clicks tier card CTA → payment flow → tier assigned → `/api/me/tier-access` returns new unlocked modules
+
+### Cache & invalidation
+- `/api/pricing` is cached in-process (60s TTL)
+- Any admin write to segment, pricing, factor, or matrix cell auto-invalidates the cache

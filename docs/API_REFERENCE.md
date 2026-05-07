@@ -141,3 +141,41 @@ Slugs: `INDEX, PRD, SRS, API_REFERENCE, POSTMAN, REGRESSION, UAT, ACM, WOWO, CLD
 - Pagination: `?limit=NN&skip=NN`.
 - Errors: `{ "detail": "message", "request_id": "..." }`.
 - UIDs: server-issued UUIDs — don't assume format.
+
+---
+## v3.14.0 — Tier Matrix · Customer Segments · Pricing  (added 2026-05-07)
+
+### Public
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/tiers` | 7-chakra tier metadata (Root → Crown, INR pricing) |
+| GET | `/api/tier-matrix` | Public read of module/feature × tier grid |
+| GET | `/api/customer-segments` | Public list of TG customer segments |
+| GET | `/api/customer-segments/factors` | Predefined factor catalog (23 factors × 4 categories) |
+| GET | `/api/pricing` | One-shot pricing payload (tiers + segments + matrix). 60s TTL cache. |
+
+### Authenticated user
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/me/tier-access` | Current user's tier + unlocked modules/features |
+
+### Admin (require_admin)
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/admin/tier-matrix` | Read full matrix (auto-seeds if empty) |
+| POST | `/api/admin/tier-matrix/seed` | Idempotent smart-seed |
+| POST | `/api/admin/tier-matrix/reset` | Wipe + reseed defaults |
+| PUT | `/api/admin/tier-matrix/cell` | Toggle one cell (cascade-up + module-dominates) |
+| POST | `/api/admin/tier-matrix/bulk` | Bulk save many cells |
+| PUT | `/api/admin/users/{user_id}/tier` | Assign user a chakra tier |
+| GET | `/api/admin/customer-segments` | List all TG segments |
+| POST | `/api/admin/customer-segments` | Create segment (auto-seeds 23 factors + 7 INR pricings) |
+| GET | `/api/admin/customer-segments/{sid}` | Read one |
+| PUT | `/api/admin/customer-segments/{sid}` | Update |
+| DELETE | `/api/admin/customer-segments/{sid}` | Delete |
+| POST | `/api/admin/customer-segments/{sid}/factor` | Add custom factor (any category) |
+| DELETE | `/api/admin/customer-segments/{sid}/factor/{key}` | Remove custom factor |
+| POST | `/api/admin/customer-segments/{sid}/ai-research` | LLM-fill one factor's value (graceful fallback dict if budget capped) |
+| PUT | `/api/admin/customer-segments/{sid}/pricing` | Upsert multi-currency multi-country tier pricings |
+
+**Cascade rules (server-side):** Toggle ON cascades to higher tiers; toggle OFF stays local. Module=N forces all features=N at that tier. Feature toggle ON auto-enables parent module at same tier.

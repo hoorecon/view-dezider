@@ -62,3 +62,28 @@ if (pdf.access_level === 'locked') { ... }
 
 ## Quota helpers
 `_full(N)` → `{access:'full', quota:N}`. Usage tracked in `acm_quota_counters` keyed by (user, feature, month).
+
+---
+## v3.14.0 — Tier Matrix integration  (2026-05-07)
+
+The ACM remains the **fine-grained access control** layer (user_type × subscription_plan → quotas + allowed actions per feature). Layered above ACM is now the **7-Chakra Subscription Tier Matrix** which performs the **marketing-tier feature gate**:
+
+| Layer | Purpose | Source |
+|---|---|---|
+| **Tier Matrix** (NEW) | Maps each ACM module + feature to a chakra tier (Root → Crown). Marketing/pricing layer. | `db.tier_matrix` |
+| **ACM** | Per-tier-allowed module's quota + role gating + action-level allowed_actions | `db.acm_modules`, `db.acm_features` |
+
+**Resolution order at runtime**: tier-matrix(allowed?) → ACM(quota + role check). Both must pass.
+
+**Cascade rules**: Toggle ON at tier T → all higher tiers ON automatically. Module=N at tier T → all features under it forced N at tier T (lock icon shown).
+
+**Admin UI**: `/admin/tier-matrix` (32 modules × 7 chakras grid).
+
+## v3.14.0 — Customer Segments TG Master
+
+Companion to ACM/tier-matrix: defines **non-technical** target-group profiles (demography, psychography, behavioural, firmographic) per segment. Each segment maps to:
+- Chakra tier (recommended)
+- Multi-currency multi-country pricing per tier
+- Optional market-research module association
+
+**Admin UI**: `/admin/customer-segments`.

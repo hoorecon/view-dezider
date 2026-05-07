@@ -47,3 +47,14 @@ GET  /time-store/time-audit
 GET  /time-store/services?save_minutes_per_day=30
 POST /auth/logout
 ```
+
+---
+## v3.14.0 — New folders (auto-generated 2026-05-07)
+- **Tier Matrix — 7 Chakras (Admin)** · 6 endpoints
+- **Customer Segments — TG Master** · 11 endpoints
+- **Subscription Tiers (Public)** · `/api/tiers`
+- **Pricing — 7 Chakras** · `/api/pricing` (cached 60s)
+- **Tier Matrix (Public)** · `/api/tier-matrix`
+- **My Tier Access** · `/api/me/tier-access`
+
+Run `GET /api/admin-docs/postman-collection` (admin-only) to download the latest auto-generated collection.

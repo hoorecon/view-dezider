@@ -105,3 +105,23 @@ New hot paths:
 - **3.2 (2026-03-30)**: PP Phase 2 dashboards.
 - **3.1 (2026-03-10)**: PP Phase 1 + 4 research tools.
 - **3.0 (2026-02-20)**: ACM v2 (89-feature matrix).
+
+---
+## v3.14.0 — Subscription Tier Matrix · Customer Segment Master · Public Pricing (2026-05-07)
+
+### Problem
+Sales team had no way to map our 32 ACM modules + 89 features to the 7 aspirational customer tiers (Freelancer → Fortune Venture). Pricing was hardcoded INR-only. No formal target-group profiles existed for go-to-market.
+
+### Solution
+Three integrated modules:
+1. **Tier Matrix** (already existed) — admin-grid mapping modules/features × 7 chakra tiers with cascade-up + module-dominates rules
+2. **Customer Segment Master** (NEW) — admin-managed TG profiles capturing demography, psychography, behavioural, firmographic factors with AI-research per factor
+3. **Public Pricing Page** (NEW) — `/pricing` route consuming both, with Monthly/Annual toggle, 8-country currency picker, expandable feature comparison
+
+### Acceptance criteria — all met ✅
+- Admin can create segments with predefined + custom factors
+- Per-factor AI-research fills value via Emergent LLM key with graceful fallback
+- Each segment supports tier pricing in 8 currencies (INR/USD/GBP/EUR/AED/SGD/AUD/CAD)
+- Public pricing page renders 7 tier cards + comparison table
+- 60s TTL cache on hot path; auto-invalidated on admin writes
+- Indexed for production scale (`segment_id` unique, `created_at` sort)

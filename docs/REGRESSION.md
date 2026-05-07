@@ -86,3 +86,25 @@ jobs:
 2. Add a row to the table above.
 3. Append the run command to CI.
 4. Bump version in this doc's `_metadata`.
+
+---
+## v3.14.0 — New regression scenarios (2026-05-07)
+
+### Tier Matrix
+- TM-R-1: GET `/api/tiers` returns 7 chakras in order (root → crown)
+- TM-R-2: PUT cell ON cascades to higher tiers (verify with subsequent GET)
+- TM-R-3: PUT module=N forces all child features N at same tier
+- TM-R-4: PUT feature=Y when parent module=N auto-enables parent
+- TM-R-5: POST reset wipes + reseeds → matrix returns to smart-seed defaults
+
+### Customer Segments
+- CS-R-1: POST creates segment with 23 default factors + 7 INR tier pricings
+- CS-R-2: POST `/factor` adds custom factor; DELETE removes it
+- CS-R-3: POST `/ai-research` fills factor value (200 even when LLM capped → fallback)
+- CS-R-4: PUT `/pricing` upserts multi-currency rows; rejects unknown tier_key (400)
+- CS-R-5: DELETE segment is hard-delete; subsequent GET returns 404
+
+### Pricing
+- PR-R-1: GET `/api/pricing` returns `{tiers, segments, matrix_rows}`
+- PR-R-2: 2nd identical GET within 60s served from cache (≤10ms)
+- PR-R-3: Admin write to segment invalidates cache → next GET returns fresh data
