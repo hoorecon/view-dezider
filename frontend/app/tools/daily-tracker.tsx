@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import api from '../../src/utils/api';
 import { COLORS } from '../../src/constants/colors';
 import { showAlert } from '../../src/utils/alert';
+import { VoiceDictate } from '../../src/components/VoiceDictate';
 
 const FREEDOM_KEYS = ['business', 'financial', 'time', 'health', 'emotional', 'social', 'mission'];
 const TEPFI = ['time', 'energy', 'people', 'finance', 'infrastructure'];
@@ -67,6 +68,27 @@ export default function DailyTrackerScreen() {
     finally { setSubmitting(false); }
   };
 
+  const aiClassifyAndSubmit = async () => {
+    if (!text.trim()) return showAlert('Empty', 'Type or speak first.');
+    try { setSubmitting(true);
+      const r = await api.post('/daily-tracker/classify', { text });
+      const c = r.data.classification;
+      const body: any = {
+        text, source: 'ai_hybrid',
+        minutes: c?.minutes ?? undefined,
+        linked_freedoms: c?.freedoms || [],
+        aala_deltas: (c?.factors?.length && c?.sign)
+          ? [{ factor: c.factors[0], level: 'self', kind: 'balance_set', delta_value: c.sign * 1.0 }]
+          : [],
+      };
+      await api.post('/daily-tracker/entries', body);
+      setText(''); setActivity(''); setMinutes(''); setLinkedFreedoms([]); setClassification(null); setAalaDelta(null);
+      loadToday();
+      showAlert('Auto-logged', `via ${c?.engine || 'engine'} \u00b7 ${c?.freedoms?.length || 0} freedom(s) tagged \u00b7 AALA ${c?.factors?.[0] || '\u2014'}/self updated`);
+    } catch (e: any) { showAlert('Auto-AI failed', e?.response?.data?.detail || e.message); }
+    finally { setSubmitting(false); }
+  };
+
   const toggleFr = (k: string) => setLinkedFreedoms(p => p.includes(k) ? p.filter(x => x !== k) : [...p, k]);
 
   return (
@@ -89,12 +111,28 @@ export default function DailyTrackerScreen() {
               placeholder="e.g. Closed deal with Bharat ₹50k revenue, 2 hours invested"
               placeholderTextColor={COLORS.textMuted}
             />
-            <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 6, marginTop: 8, alignItems: 'center' }}>
+              <VoiceDictate
+                size="md"
+                lang="en-IN"
+                oneShot={true}
+                onTranscript={(t, isFinal) => {
+                  if (isFinal) setText(prev => (prev ? `${prev} ${t}` : t));
+                }}
+              />
               <TouchableOpacity onPress={aiClassify} disabled={classifying} style={[s.btnGhost, { flex: 1 }]}>
                 {classifying ? <ActivityIndicator color={COLORS.primary} /> : (
                   <>
                     <Ionicons name="sparkles" size={14} color={COLORS.primary} />
                     <Text style={s.btnGhostText}>AI classify</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity testID="dt-auto-ai" onPress={aiClassifyAndSubmit} disabled={submitting} style={[s.btnAuto, { flex: 1 }]}>
+                {submitting ? <ActivityIndicator color="#FFF" /> : (
+                  <>
+                    <Ionicons name="flash" size={14} color="#FFF" />
+                    <Text style={s.btnAutoText}>Auto-AI log</Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -201,6 +239,8 @@ const s = StyleSheet.create({
   miniChipText: { fontSize: 10, color: COLORS.textSecondary, fontWeight: '600', textTransform: 'capitalize' },
   btnGhost: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: COLORS.primary, backgroundColor: '#FFF' },
   btnGhostText: { color: COLORS.primary, fontSize: 13, fontWeight: '700' },
+  btnAuto: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 10, borderRadius: 8, backgroundColor: '#10B981' },
+  btnAutoText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
   aiBox: { marginTop: 8, padding: 10, borderRadius: 8, backgroundColor: '#F5F3FF', borderWidth: 1, borderColor: '#DDD6FE' },
   aiTag: { fontSize: 10, color: COLORS.textMuted, fontWeight: '600', marginBottom: 4 },
   aiText: { fontSize: 12, color: COLORS.textPrimary, marginTop: 2 },

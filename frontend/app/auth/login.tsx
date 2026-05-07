@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { showAlert } from '../../src/utils/alert';
 import { BrandFooter } from '../../src/components/BrandFooter';
+import { useBrandingStore } from '../../src/store/brandingStore';
 import {
   View,
   Text,
@@ -214,8 +215,8 @@ export default function LoginScreen() {
               style={styles.logo}
               resizeMode="contain"
             />
-            <Text style={styles.title}>Welcome Back</Text>
-            <Text style={styles.subtitle}>Sign in to continue your decision journey</Text>
+            <Text style={styles.title}>{useBrandingStore.getState().brand.display_name}</Text>
+            <Text style={styles.subtitle} numberOfLines={3}>{useBrandingStore.getState().brand.full_expansion}</Text>
           </View>
 
           {error ? (

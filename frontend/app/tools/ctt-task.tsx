@@ -12,6 +12,7 @@ import * as Linking from 'expo-linking';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import { useAuthStore } from '../../src/store/authStore';
+import { LinkedFreedomsPicker } from '../../src/components/LinkedFreedomsPicker';
 
 const LIFE_AREAS = [
   { id: 'career', name: 'Career', icon: 'briefcase' },
@@ -89,6 +90,7 @@ export default function CTTTaskScreen() {
   const [frequency, setFrequency] = useState('');
   const [sourceType, setSourceType] = useState('manual');
   const [sourceId, setSourceId] = useState('');
+  const [linkedFreedoms, setLinkedFreedoms] = useState<string[]>([]);
 
   useEffect(() => {
     if (editId) loadTask();
@@ -123,6 +125,7 @@ export default function CTTTaskScreen() {
       setFrequency(d.frequency || '');
       setSourceType(d.source_type || 'manual');
       setSourceId(d.source_id || '');
+      setLinkedFreedoms(d.linked_freedoms || []);
     } catch (e) {
       showAlert('Error', 'Failed to load task');
       router.back();
@@ -161,6 +164,7 @@ export default function CTTTaskScreen() {
         to_time: toTime || null,
         is_routine: isRoutine,
         frequency: isRoutine ? frequency : null,
+        linked_freedoms: linkedFreedoms,
       };
       if (editId) {
         await api.put(`/ctt/tasks/${editId}`, payload);
@@ -477,6 +481,8 @@ export default function CTTTaskScreen() {
                 multiline
                 numberOfLines={4}
               />
+
+              <LinkedFreedomsPicker value={linkedFreedoms} onChange={setLinkedFreedoms} />
             </View>
           )}
         </ScrollView>

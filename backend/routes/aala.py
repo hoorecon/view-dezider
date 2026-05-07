@@ -222,3 +222,88 @@ async def feasibility(factor: str, level: str, user: dict = Depends(get_current_
         "asset_count": len(cell.get("assets", [])),
         "liability_count": len(cell.get("liabilities", [])),
     }
+
+
+# ----------------------------------------------------------------------
+# Spawn Solution Matrix from current AALA snapshot
+# ----------------------------------------------------------------------
+class SpawnSolutionBody(BaseModel):
+    problem_title: str
+    problem_description: Optional[str] = None
+    area_of_life: Optional[str] = "general"
+
+
+@router.post("/me/spawn-solution-matrix")
+async def spawn_solution_matrix(body: SpawnSolutionBody, user: dict = Depends(get_current_user)):
+    """Spawn a new Solution Matrix pre-populated from the user's current AALA.
+    Same TEPFI×Level shape — AALA is the live ledger, Solution Matrix is the
+    problem-scoped snapshot.
+    """
+    if not body.problem_title.strip():
+        raise HTTPException(400, "problem_title is required")
+
+    aala = await _get_or_seed(user["user_id"])
+
+    def cell_text(factor: str, level: str) -> str:
+        for c in aala.get("cells", []):
+            if c["factor"] == factor and c["level"] == level:
+                a = (c.get("assets_summary") or "").strip()
+                l = (c.get("liabilities_summary") or "").strip()
+                bal = float(c.get("balance_score", 0.0))
+                bits = []
+                if a: bits.append(f"Assets: {a}")
+                if l: bits.append(f"Liabilities: {l}")
+                bits.append(f"Net: {bal:+.1f}/10")
+                return " | ".join(bits)
+        return ""
+
+    def build_layer_set(level: str) -> dict:
+        return {
+            "individual": {
+                "self": "",
+                "time": cell_text("time", level),
+                "energy": cell_text("energy", level),
+                "people": cell_text("people", level),
+                "finance": cell_text("finance", level),
+                "infrastructure": cell_text("infrastructure", level),
+                "intent": "",
+            },
+        }
+
+    matrix_id = f"sm_{uuid.uuid4().hex[:12]}"
+    doc = {
+        "entry_id": matrix_id,
+        "user_id": user["user_id"],
+        "org_id": user.get("org_id"),
+        "area_of_life": body.area_of_life or "general",
+        "smart_goal": body.problem_title.strip()[:300],
+        "q1_all_concerns": (body.problem_description or "").strip()[:2000],
+        "q2_priority_concerns": "",
+        "simpler_solutions": "", "simpler_capabilities": "", "simpler_resources": "",
+        "simpler_help_aspect": "", "simpler_help_level": "", "simpler_help_from": "",
+        "matrix_mode": "individual",
+        "matrix_self": build_layer_set("self"),
+        "matrix_micro": build_layer_set("micro"),
+        "matrix_macro": build_layer_set("macro"),
+        "solution_category": {
+            "completely_solvable": False, "partially_solvable": False, "not_solvable": False,
+            "patience_period": False, "accept_let_go": False,
+            "surrender_trust": False, "surrender_ignore": False, "surrender_involve": False,
+        },
+        "solution_sources": {
+            "from_self": "", "from_wellwisher": "",
+            "from_experienced": "", "from_expert": "", "from_coach": "",
+        },
+        "q4_negative_consequences": "",
+        "q4_mitigation_plans": "",
+        "q4_contingency_plans": "",
+        "action_items": [],
+        "spawned_from_aala": True,
+        "spawned_at": _now().isoformat(),
+        "status": "in_progress",
+        "milestones": [],
+        "created_at": _now().isoformat(),
+        "updated_at": _now().isoformat(),
+    }
+    await db.solution_matrices.insert_one(doc.copy())
+    return {"ok": True, "entry_id": matrix_id}

@@ -1,16 +1,47 @@
 # Carry-Forward List for the Next Fork
 
-**Last updated:** End of fork session after **v3.11.0 LDC + AALA + Daily Tracker + Time Allocation + Drift Report** + v3.10.0 multi-edition brand architecture + v3.9.1 ExpertNet expert self-serve + v3.9.0 OrgSurveys + ExpertNet Jitsi-Room.
+**Last updated:** End of fork session after **v3.12.0 Voice + Auto-AI in Daily Tracker · Inline LDC tagger · AALA→Solution Matrix spawn · JELCOS AI canonical splash** + v3.11.0 LDC/AALA core + v3.10.0 multi-edition brand + v3.9.x ExpertNet + OrgSurveys.
 
-**Read this first** before starting new work.
-
-**🚨 CRITICAL FOR ALL FUTURE SESSIONS:** Read `/app/memory/brand_architecture.md` for locked brand decisions.
+**🚨 CRITICAL FOR ALL FUTURE SESSIONS:** Read `/app/memory/brand_architecture.md` for the locked brand decisions.
 
 ---
 
 ## ✅ Just completed in this fork (do NOT redo)
 
-### v3.11.0 — Life Directions Compass + AALA + Daily Tracker (NEW)
+### v3.12.0 — LDC + AALA polish & glue (NEW)
+
+**1. Voice + Auto-AI in Daily Tracker**
+- New reusable `<VoiceDictate>` (`src/components/VoiceDictate.tsx`) — wraps `expo-speech-recognition` (native) + Web Speech API (web), graceful fallback, lang `en-IN`. testID `voice-dictate`.
+- New green **"Auto-AI log"** button in `/tools/daily-tracker` — single-tap path: classify → submit → cascade AALA delta + LDC tags. testID `dt-auto-ai`.
+- All three input modes now visible side-by-side: 🎙 mic · ✨ AI classify · ⚡ Auto-AI log.
+
+**2. Inline LDC tagger in PNA / CTT / Routine forms**
+- New reusable `<LinkedFreedomsPicker>` (`src/components/LinkedFreedomsPicker.tsx`) — auto-fetches user's LDC; horizontal-scroll chips with rank badges + pin indicators; max 5 selections; testID prefix `lfp-`.
+- Wired into:
+  - `app/tools/ctt-task.tsx` (Classification expandable section)
+  - `app/tools/lifestyle-routine.tsx` (after active-toggle row)
+- Backend extended:
+  - `routes/ctt_gem.py` POST + PUT now accept + persist `linked_freedoms[]` and `linked_aala_cells[]`
+  - `routes/lifestyle.py` POST + PUT same
+- Smoke test: round-trip verified — created CTT task with `['business','time']`, GET back returned same.
+
+**3. AALA → Solution Matrix spawn**
+- New backend endpoint `POST /api/aala/me/spawn-solution-matrix` — copies user's current AALA cells into a new Solution Matrix entry; sets `spawned_from_aala: true`; supports problem_title + problem_description + area_of_life.
+- Frontend: big purple **"Spawn Solution Matrix from this AALA snapshot"** CTA at top of `/tools/aala`, opens modal with title/description, on submit navigates to `/tools/solution-matrix?entry_id=…`. testIDs `aala-spawn-sm` + `aala-spawn-submit`.
+- Verified end-to-end: AALA finance/self balance +8.0 (with assets ₹2L runway / liabilities ₹50k card) correctly transposed into matrix_self.individual.finance as `"Assets: ₹2L runway | Liabilities: ₹50k card | Net: +8.0/10"`.
+
+**4. JELCOS AI canonical expansion in splash + login**
+- Splash screen (`app/index.tsx`) now reads from `useBrandingStore` and renders:
+  - `brand.display_name` (e.g. "JELCOS AI")
+  - `brand.full_expansion` ("Joyful Executive's Life Choices Operating System powered by Artificial Intelligence")
+  - `by {brand.master_brand}` (Earth Dezider) imprint
+- Login screen (`app/auth/login.tsx`) replaced "Welcome Back / Sign in to continue" with the canonical edition expansion.
+
+### v3.11.0 — LDC + AALA + Daily Tracker + Time Allocation + Drift Report
+[unchanged — see earlier section]
+
+### v3.10.0 — Multi-edition brand architecture
+[unchanged]
 The personal-decision-OS layer the user asked for: **direction → inventory → plan → reality → allocation → drift**.
 
 **Backend (4 new modules):**

@@ -41,6 +41,8 @@ async def create_routine(request: Request, user: dict = Depends(get_current_user
         "unit": body.get("unit", ""),
         "is_active": body.get("is_active", True),
         "source_ctt_task_id": body.get("source_ctt_task_id"),
+        "linked_freedoms": body.get("linked_freedoms", []),
+        "linked_aala_cells": body.get("linked_aala_cells", []),
         "created_at": now,
         "updated_at": now,
     }
@@ -88,6 +90,7 @@ async def update_routine(routine_id: str, request: Request, user: dict = Depends
     allowed = [
         "name", "description", "life_area", "frequency", "time_slot",
         "priority", "category", "expected_value", "unit", "is_active",
+        "linked_freedoms", "linked_aala_cells",
     ]
     update = {k: body[k] for k in allowed if k in body}
     update["updated_at"] = datetime.now(timezone.utc).isoformat()

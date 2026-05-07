@@ -72,6 +72,9 @@ async def create_ctt_task(request: Request, user: dict = Depends(get_current_use
         "frequency": body.get("frequency"),
         # Day-wise status {"2025-12-19": "done", "2025-12-20": "in_progress"}
         "day_status": body.get("day_status", {}),
+        # LDC + AALA tagging (used by Time Dezider's allocator)
+        "linked_freedoms": body.get("linked_freedoms", []),
+        "linked_aala_cells": body.get("linked_aala_cells", []),
         "created_at": now,
         "updated_at": now,
     }
@@ -127,6 +130,7 @@ async def update_ctt_task(task_id: str, request: Request, user: dict = Depends(g
         "internal_help", "external_help", "task_duration", "from_time", "to_time",
         "life_area", "decision_type", "goal_id", "is_routine", "frequency",
         "day_status", "source_type", "source_id",
+        "linked_freedoms", "linked_aala_cells",
     ]
     update = {k: body[k] for k in allowed if k in body}
     update["updated_at"] = datetime.now(timezone.utc).isoformat()

@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import { LinkedFreedomsPicker } from '../../src/components/LinkedFreedomsPicker';
 
 const LIFE_AREAS = [
   { id: 'career', name: 'Career', icon: 'briefcase' },
@@ -61,6 +62,7 @@ export default function LifestyleRoutineScreen() {
   const [expectedValue, setExpectedValue] = useState('');
   const [unit, setUnit] = useState('');
   const [isActive, setIsActive] = useState(true);
+  const [linkedFreedoms, setLinkedFreedoms] = useState<string[]>([]);
 
   useEffect(() => { if (editId) loadRoutine(); }, [editId]);
 
@@ -79,6 +81,7 @@ export default function LifestyleRoutineScreen() {
       setExpectedValue(d.expected_value || '');
       setUnit(d.unit || '');
       setIsActive(d.is_active !== false);
+      setLinkedFreedoms(d.linked_freedoms || []);
     } catch (e) {
       showAlert('Error', 'Failed to load routine');
       router.back();
@@ -100,6 +103,7 @@ export default function LifestyleRoutineScreen() {
         expected_value: expectedValue.trim(),
         unit: unit.trim(),
         is_active: isActive,
+        linked_freedoms: linkedFreedoms,
       };
       if (editId) {
         await api.put(`/lifestyle/routines/${editId}`, payload);
@@ -252,6 +256,8 @@ export default function LifestyleRoutineScreen() {
               thumbColor={isActive ? '#059669' : '#9CA3AF'}
             />
           </View>
+
+          <LinkedFreedomsPicker value={linkedFreedoms} onChange={setLinkedFreedoms} />
         </ScrollView>
 
         <View style={st.bottom}>

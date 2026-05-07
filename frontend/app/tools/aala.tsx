@@ -51,6 +51,8 @@ export default function AALAScreen() {
       <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 80 }}>
         <Text style={s.helper}>Tap any cell to log assets, liabilities, and current balance score (-10 … +10). Time Dezider uses these to know which TEPFI/level resources have spare capacity.</Text>
 
+        <SpawnSolutionRow />
+
         {/* Header row */}
         <View style={s.gridHeader}>
           <Text style={[s.colHead, { flex: 1.4 }]}>Factor</Text>
@@ -87,9 +89,61 @@ export default function AALAScreen() {
   );
 }
 
+function SpawnSolutionRow() {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState('');
+  const [desc, setDesc] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!title.trim()) return showAlert('Required', 'Problem title is required');
+    try { setBusy(true);
+      const r = await api.post('/aala/me/spawn-solution-matrix', {
+        problem_title: title, problem_description: desc, area_of_life: 'general',
+      });
+      setOpen(false); setTitle(''); setDesc('');
+      showAlert('Created', 'Solution Matrix spawned from your AALA snapshot.');
+      router.push(`/tools/solution-matrix?entry_id=${r.data.entry_id}` as any);
+    } catch (e: any) { showAlert('Spawn failed', e?.response?.data?.detail || e.message); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <>
+      <TouchableOpacity testID="aala-spawn-sm" onPress={() => setOpen(true)} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 12, borderRadius: 10, backgroundColor: '#7C3AED', marginBottom: 12 }}>
+        <Ionicons name="construct" size={16} color="#FFF" />
+        <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '700' }}>Spawn Solution Matrix from this AALA snapshot</Text>
+      </TouchableOpacity>
+      {open && (
+        <Modal visible transparent animationType="slide" onRequestClose={() => setOpen(false)}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' }}>
+            <View style={{ backgroundColor: '#FFF', borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 18 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.textPrimary }}>Spawn Solution Matrix</Text>
+                <TouchableOpacity onPress={() => setOpen(false)}><Ionicons name="close" size={24} color={COLORS.textPrimary} /></TouchableOpacity>
+              </View>
+              <Text style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 8 }}>
+                Your current AALA cells (TEPFI × Self/Micro/Macro) will be copied into a new Solution Matrix as a problem-scoped snapshot. Edit the matrix afterwards to refine for the specific problem.
+              </Text>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, marginTop: 6 }}>Problem title *</Text>
+              <TextInput style={{ borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: COLORS.textPrimary, marginTop: 4 }} value={title} onChangeText={setTitle} placeholder="e.g. How to triple revenue while keeping health" placeholderTextColor={COLORS.textMuted} />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, marginTop: 10 }}>Description</Text>
+              <TextInput style={{ borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: COLORS.textPrimary, marginTop: 4, minHeight: 70 }} multiline value={desc} onChangeText={setDesc} placeholder="Context, constraints, what 'solved' looks like…" placeholderTextColor={COLORS.textMuted} />
+              <TouchableOpacity testID="aala-spawn-submit" onPress={submit} disabled={busy} style={{ backgroundColor: '#7C3AED', paddingVertical: 12, borderRadius: 8, alignItems: 'center', marginTop: 14, opacity: busy ? 0.6 : 1 }}>
+                {busy ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontSize: 14, fontWeight: '700' }}>Spawn & open</Text>}
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+      )}
+    </>
+  );
+}
+
+
 function CellSheet({ cell, onClose }: { cell: any; onClose: () => void }) {
-  const [score, setScore] = useState(String(cell.balance_score ?? 0));
-  const [aSum, setASum] = useState(cell.assets_summary || '');
+  const [score, setScore] = useState(String(cell.balance_score ?? 0));  const [aSum, setASum] = useState(cell.assets_summary || '');
   const [lSum, setLSum] = useState(cell.liabilities_summary || '');
   const [newAsset, setNewAsset] = useState('');
   const [newLiab, setNewLiab] = useState('');

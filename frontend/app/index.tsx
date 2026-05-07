@@ -3,12 +3,14 @@ import { View, Text, StyleSheet, ActivityIndicator, Image, Platform } from 'reac
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuthStore } from '../src/store/authStore';
+import { useBrandingStore } from '../src/store/brandingStore';
 import { COLORS, GRADIENTS } from '../src/constants/colors';
 import * as Linking from 'expo-linking';
 
 export default function Index() {
   const router = useRouter();
   const { isLoading, isAuthenticated, checkAuth, loginWithGoogle } = useAuthStore();
+  const brand = useBrandingStore(s => s.brand);
 
   useEffect(() => {
     const handleDeepLink = async (event: { url: string }) => {
@@ -88,8 +90,9 @@ export default function Index() {
             resizeMode="contain"
           />
         </View>
-        <Text style={styles.title}>View Dezider</Text>
-        <Text style={styles.subtitle}>Decision Intelligence</Text>
+        <Text style={styles.title}>{brand.display_name}</Text>
+        <Text style={styles.subtitle} numberOfLines={2}>{brand.full_expansion}</Text>
+        <Text style={[styles.subtitle, { fontSize: 11, opacity: 0.7, marginTop: 4 }]}>by {brand.master_brand}</Text>
         <ActivityIndicator color={COLORS.white} size="large" style={styles.loader} />
       </View>
     </LinearGradient>
