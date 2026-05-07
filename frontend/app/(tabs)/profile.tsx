@@ -811,6 +811,38 @@ export default function ProfileScreen() {
         <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
       </TouchableOpacity>
 
+      {/* Customer Segments — TG master (admin) */}
+      <TouchableOpacity
+        testID="profile-customer-segments"
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}
+        onPress={() => router.push('/admin/customer-segments' as any)}
+      >
+        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#0EA5E9', alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="people" size={18} color="#FFF" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>Customer Segments · TG master</Text>
+          <Text style={{ fontSize: 12, color: COLORS.textMuted }}>Demography · psychography · multi-currency pricing · AI research</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+      </TouchableOpacity>
+
+      {/* Public Pricing page */}
+      <TouchableOpacity
+        testID="profile-pricing"
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}
+        onPress={() => router.push('/pricing' as any)}
+      >
+        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#10B981', alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="pricetag" size={18} color="#FFF" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>Pricing · 7 Chakras</Text>
+          <Text style={{ fontSize: 12, color: COLORS.textMuted }}>Public pricing page (Root → Crown · multi-country)</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+      </TouchableOpacity>
+
       {/* Life Directions Compass — personal north star (LDC + AALA + Daily Tracker + Drift) */}
       <TouchableOpacity
         testID="profile-ldc"
