@@ -795,6 +795,22 @@ export default function ProfileScreen() {
         <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
       </TouchableOpacity>
 
+      {/* Tier Matrix — 7-chakra subscription gating (admin) */}
+      <TouchableOpacity
+        testID="profile-tier-matrix"
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}
+        onPress={() => router.push('/admin/tier-matrix' as any)}
+      >
+        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#A855F7', alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="diamond" size={18} color="#FFF" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>Tier Matrix · 7 Chakras</Text>
+          <Text style={{ fontSize: 12, color: COLORS.textMuted }}>Map modules → subscription tiers (Root → Crown)</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+      </TouchableOpacity>
+
       {/* Life Directions Compass — personal north star (LDC + AALA + Daily Tracker + Drift) */}
       <TouchableOpacity
         testID="profile-ldc"

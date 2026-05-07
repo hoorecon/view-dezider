@@ -178,6 +178,7 @@ from routes.life_directions import router as life_directions_router
 from routes.aala import router as aala_router
 from routes.daily_tracker import router as daily_tracker_router
 from routes.time_allocation import router as time_allocation_router
+from routes.tier_matrix import router as tier_matrix_router
 
 
 # ========================
@@ -248,6 +249,7 @@ api_router.include_router(life_directions_router)
 api_router.include_router(aala_router)
 api_router.include_router(daily_tracker_router)
 api_router.include_router(time_allocation_router)
+api_router.include_router(tier_matrix_router)
 
 
 # ========================

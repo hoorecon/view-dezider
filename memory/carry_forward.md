@@ -1,6 +1,6 @@
 # Carry-Forward List for the Next Fork
 
-**Last updated:** End of fork session after **v3.12.0 Voice + Auto-AI in Daily Tracker · Inline LDC tagger · AALA→Solution Matrix spawn · JELCOS AI canonical splash** + v3.11.0 LDC/AALA core + v3.10.0 multi-edition brand + v3.9.x ExpertNet + OrgSurveys.
+**Last updated:** End of fork session after **v3.13.0 7-Chakra Subscription Tier Matrix** + v3.12.0 LDC/AALA polish + v3.11.0 LDC/AALA core + v3.10.0 multi-edition brand + v3.9.x ExpertNet + OrgSurveys.
 
 **🚨 CRITICAL FOR ALL FUTURE SESSIONS:** Read `/app/memory/brand_architecture.md` for the locked brand decisions.
 
@@ -8,7 +8,57 @@
 
 ## ✅ Just completed in this fork (do NOT redo)
 
-### v3.12.0 — LDC + AALA polish & glue (NEW)
+### v3.13.0 — 7-Chakra Subscription Tier Matrix (NEW)
+Module-level + feature-level Y/N matrix mapped to 7 aspirational chakra-named tiers.
+
+**7 tiers locked** (chakra-Sanskrit · aspiration · monthly INR price):
+| # | Tier | Chakra | Aspiration | Price |
+|---|------|--------|------------|-------|
+| 1 | Root | Muladhara | Freelancer | Free |
+| 2 | Sacral | Svadhisthana | Solopreneur | ₹499 |
+| 3 | Solar Plexus | Manipura | Early Stage Startup Founder | ₹1,499 |
+| 4 | Heart | Anahata | Growth Stage Startup Founder | ₹2,999 |
+| 5 | Throat | Vishuddha | Successful Startup Founder | ₹5,999 |
+| 6 | Third Eye | Ajna | Unicorn Venture | ₹14,999 |
+| 7 | Crown | Sahasrara | Fortune Venture | ₹49,999 |
+
+**Toggle rules locked** (Q1c+Q2a+Q3c per founder lock 2026-05-07):
+- **Cascade-up smart-default** — toggle ON cascades to all higher tiers; toggle OFF stays local (preserves admin overrides)
+- **Module dominates** — module=N forces all features=N at that tier (lock icon shown); feature toggle ON when module=N auto-enables parent
+- **Smart-seed defaults** — modules pre-tagged with `min_tier` based on aspirational fit (in `models/tier_models.py::SMART_SEED_MIN_TIER`)
+
+**Backend (NEW):**
+- `models/tier_models.py` — 7 tiers metadata + smart-seed mapping per-module
+- `routes/tier_matrix.py` — 8 endpoints:
+  - `GET /api/tiers` — public 7-tier metadata
+  - `GET /api/tier-matrix` — public matrix grid
+  - `GET /api/admin/tier-matrix` — admin read (auto-seeds if empty)
+  - `POST /api/admin/tier-matrix/seed` — idempotent seed
+  - `POST /api/admin/tier-matrix/reset` — wipe + reseed
+  - `PUT /api/admin/tier-matrix/cell` — toggle one cell with cascade
+  - `POST /api/admin/tier-matrix/bulk` — bulk save many cells
+  - `GET /api/me/tier-access` — user's current tier + unlocked modules/features
+  - `PUT /api/admin/users/{user_id}/tier` — assign user a tier
+- New field `users.subscription_tier` (default null = root)
+
+**Frontend (NEW):**
+- `app/admin/tier-matrix.tsx` — 32 modules × 7 tiers grid; tap cell to toggle (server applies cascade); expandable feature children; module-dominates lock-icon; reset CTA; legend modal explaining all 3 rules; filter input; horizontal scroll for narrow phones
+- New entry-point in Profile tab → "Tier Matrix · 7 Chakras" (purple diamond icon)
+
+**Smoke tests passed (manual):**
+- Public `/tiers` lists 7 chakras correctly with prices ✅
+- Toggle ON cascade: setting expert_net Y at sacral → 6 affected cells (sacral + cascade up) ✅
+- Toggle OFF dominance: public_pulse N at crown → all features force N at crown ✅
+- Feature toggle auto-enables parent module ✅
+- User tier assignment + tier-access GET working (user upgrade root → heart bumped allowed_modules from 2 → 33) ✅
+
+**Visual UAT:** screen rendered at 390×844 mobile dimensions — 32 module rows × 7 color-coded tier columns, smart-seed clearly visible (My Dezider all-7-Y; Solutions Store starts at Solar Plexus; majority modules unlock at Heart).
+
+### v3.12.0 — LDC + AALA polish & glue
+[unchanged]
+
+### v3.11.0 — Life Directions Compass + AALA + Daily Tracker (core)
+[unchanged]
 
 **1. Voice + Auto-AI in Daily Tracker**
 - New reusable `<VoiceDictate>` (`src/components/VoiceDictate.tsx`) — wraps `expo-speech-recognition` (native) + Web Speech API (web), graceful fallback, lang `en-IN`. testID `voice-dictate`.
