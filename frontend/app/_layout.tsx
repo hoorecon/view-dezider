@@ -7,6 +7,7 @@ import { useBrandingStore } from '../src/store/brandingStore';
 import { COLORS } from '../src/constants/colors';
 import { registerForPushNotifications, addNotificationResponseListener } from '../src/utils/pushNotifications';
 import GlobalVoiceNav from '../src/components/GlobalVoiceNav';
+import WebFrame from '../src/components/WebFrame';
 
 export default function RootLayout() {
   const checkAuth = useAuthStore((state) => state.checkAuth);
@@ -34,12 +35,13 @@ export default function RootLayout() {
   return (
     <>
       <StatusBar style="dark" />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: COLORS.background },
-        }}
-      >
+      <WebFrame>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: COLORS.background },
+          }}
+        >
         <Stack.Screen name="index" />
         <Stack.Screen name="auth/login" />
         <Stack.Screen name="auth/register" />
@@ -186,6 +188,7 @@ export default function RootLayout() {
           }} 
         />
       </Stack>
+      </WebFrame>
       <GlobalVoiceNav />
     </>
   );
