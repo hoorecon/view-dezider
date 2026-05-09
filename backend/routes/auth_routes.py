@@ -133,7 +133,11 @@ async def login(request: Request, user_data: UserLogin, response: Response):
     return {
         "user_id": user_doc["user_id"], "email": user_doc["email"], "name": user_doc["name"],
         "picture": user_doc.get("picture"), "auth_method": user_doc["auth_method"],
-        "org_id": user_doc.get("org_id"), "session_token": session_token
+        "org_id": user_doc.get("org_id"),
+        "role": user_doc.get("role", "user"),
+        "user_type": user_doc.get("user_type"),
+        "is_admin": user_doc.get("role", "user") in ("admin", "super_admin", "co_admin"),
+        "session_token": session_token
     }
 
 

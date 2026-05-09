@@ -14,6 +14,8 @@ interface User {
   org_id?: string;
   org_role?: string;
   role?: string;
+  user_type?: string;
+  is_admin?: boolean;
 }
 
 interface OrgBranding {

@@ -33,7 +33,7 @@ const ORG_TYPES = [
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { login, loginWithGoogle, isAuthenticated, fetchOrgBranding, orgBranding } = useAuthStore();
+  const { login, loginWithGoogle, isAuthenticated, fetchOrgBranding, orgBranding, user } = useAuthStore();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -55,9 +55,15 @@ export default function LoginScreen() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      router.replace('/(tabs)');
+      const role = (user?.role || '').toLowerCase();
+      const adminLike = user?.is_admin || role === 'admin' || role === 'super_admin' || role === 'co_admin';
+      if (adminLike) {
+        router.replace('/admin' as any);
+      } else {
+        router.replace('/(tabs)');
+      }
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user]);
 
   const handleOrgLookup = async () => {
     if (!orgSlug.trim()) return;
