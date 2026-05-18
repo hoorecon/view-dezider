@@ -20,6 +20,7 @@ import { Card } from '../../src/components/Card';
 import CloneTemplateModal from '../../src/components/CloneTemplateModal';
 import TemplateBrowserModal from '../../src/components/TemplateBrowserModal';
 import api from '../../src/utils/api';
+import { deadlineCountdown, formatHorizon } from '../../src/utils/dateLocalize';
 
 interface Decision {
   id: string;
@@ -30,6 +31,11 @@ interface Decision {
   folder: string;
   created_at: string;
   chosen_option_id?: string;
+  deadline_date?: string | null;
+  impact_horizon_value?: number | null;
+  impact_horizon_unit?: string | null;
+  linked_from_decision_id?: string | null;
+  linked_from_module?: string | null;
 }
 
 interface Folder {
@@ -218,6 +224,34 @@ export default function PRRScreen() {
             </View>
           </View>
           <Text style={styles.cardContext} numberOfLines={2}>{item.context}</Text>
+          {(item.deadline_date || item.impact_horizon_value || item.linked_from_decision_id) && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+              {(() => {
+                const cd = deadlineCountdown(item.deadline_date);
+                if (!cd) return null;
+                const bg = cd.severity === 'overdue' ? '#FEE2E2' : cd.severity === 'danger' ? '#FED7AA' : cd.severity === 'warn' ? '#FEF3C7' : '#E0F2FE';
+                const fg = cd.severity === 'overdue' ? '#B91C1C' : cd.severity === 'danger' ? '#9A3412' : cd.severity === 'warn' ? '#92400E' : '#075985';
+                return (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: bg }}>
+                    <Ionicons name="time-outline" size={10} color={fg} />
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: fg }}>{cd.text}</Text>
+                  </View>
+                );
+              })()}
+              {item.impact_horizon_value ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: '#F3E8FF' }}>
+                  <Ionicons name="hourglass-outline" size={10} color="#7C3AED" />
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#7C3AED' }}>impact {formatHorizon(item.impact_horizon_value, item.impact_horizon_unit)}</Text>
+                </View>
+              ) : null}
+              {item.linked_from_decision_id ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: '#EEF2FF' }}>
+                  <Ionicons name="link" size={10} color="#4F46E5" />
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#4F46E5' }}>linked</Text>
+                </View>
+              ) : null}
+            </View>
+          )}
           <View style={styles.cardFooter}>
             <View style={styles.cardFooterLeft}>
               {folderData && (

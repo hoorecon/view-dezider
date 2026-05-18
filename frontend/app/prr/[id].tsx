@@ -15,6 +15,8 @@ import VoiceStepInput from '../../src/components/VoiceStepInput';
 import ShareStepModal from '../../src/components/ShareStepModal';
 import CLDViewer from '../../src/components/CLDViewer';
 import ExpertCallModal from '../../src/components/ExpertCallModal';
+import LinkedSourcePill from '../../src/components/decisions/LinkedSourcePill';
+import { deadlineCountdown, formatHorizon } from '../../src/utils/dateLocalize';
 import { DecisionProvider, useDecision } from '../../src/context/DecisionContext';
 import { styles } from '../../src/styles/decisionStyles';
 import { calculateRatingsFromOrder } from '../../src/utils/decisionHelpers';
@@ -166,6 +168,35 @@ function PRRDecisionDetailInner() {
             </Text>
           </View>
         </View>
+        {/* Timing context banner (Enhancement #4) */}
+        {(decision.deadline_date || decision.impact_horizon_value || decision.linked_from_decision_id) && (() => {
+          const cd = deadlineCountdown(decision.deadline_date);
+          return (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 16, paddingVertical: 6, backgroundColor: '#F8FAFC', borderBottomWidth: 1, borderBottomColor: COLORS.divider }}>
+              {cd ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4, backgroundColor: cd.severity === 'overdue' ? '#FEE2E2' : cd.severity === 'danger' ? '#FED7AA' : cd.severity === 'warn' ? '#FEF3C7' : '#E0F2FE' }}>
+                  <Ionicons name="time-outline" size={11} color={cd.severity === 'overdue' ? '#B91C1C' : cd.severity === 'danger' ? '#9A3412' : cd.severity === 'warn' ? '#92400E' : '#075985'} />
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: cd.severity === 'overdue' ? '#B91C1C' : cd.severity === 'danger' ? '#9A3412' : cd.severity === 'warn' ? '#92400E' : '#075985' }}>deadline {cd.text}</Text>
+                </View>
+              ) : null}
+              {decision.impact_horizon_value ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4, backgroundColor: '#F3E8FF' }}>
+                  <Ionicons name="hourglass-outline" size={11} color="#7C3AED" />
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#7C3AED' }}>impact {formatHorizon(decision.impact_horizon_value, decision.impact_horizon_unit)}</Text>
+                </View>
+              ) : null}
+              {decision.linked_from_decision_id ? (
+                <LinkedSourcePill
+                  decision_id={decision.linked_from_decision_id}
+                  module={decision.linked_from_module}
+                  option_label={decision.linked_from_option_label}
+                  score_pct={decision.linked_from_score_pct ?? undefined}
+                  compact
+                />
+              ) : null}
+            </View>
+          );
+        })()}
         {renderStepIndicator()}
         <ScrollView
           contentContainerStyle={styles.scrollContent}

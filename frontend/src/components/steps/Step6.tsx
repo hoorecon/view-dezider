@@ -168,8 +168,18 @@ export default function Step6() {
         </TouchableOpacity>
         <GradientButton
           title="Assess Options"
-          onPress={() => setCurrentStep(7)}
-          disabled={decision.options.length < 2}
+          onPress={() => {
+            if (decision.options.length === 1) {
+              // Enhancement #5b — single-option assessment confirmation
+              const proceed = (typeof window !== 'undefined' && window.confirm)
+                ? window.confirm('Only ONE option added. Proceed with single-option (standalone) assessment? (Like assessing a single matrimonial alliance enquiry without comparing with another.)')
+                : true;
+              if (!proceed) return;
+              saveDecision({ allow_single_option: true } as any);
+            }
+            setCurrentStep(7);
+          }}
+          disabled={decision.options.length < 1}
           style={styles.nextButton}
         />
       </View>
