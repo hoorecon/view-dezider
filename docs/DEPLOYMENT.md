@@ -1,6 +1,6 @@
 # Deployment runbook — Dezider
 
-_metadata: { "version": "3.4", "updated": "2026-05-04" }
+_metadata: { "version": "3.15.0", "updated": "2026-05-18" }
 
 Three supported deploy targets:
 
@@ -115,3 +115,100 @@ curl https://api.dezider.app/api/metrics -H "Authorization: Bearer $METRICS_TOKE
 1. Health/ready returns 503: page on-call, check Mongo Atlas dashboard.
 2. p95 > 1.5 s: scale up + grep slow_request lines.
 3. /api/metrics shows http_5xx_total spike > 1%: roll back deploy.
+
+---
+
+## Self-host (your own domain) — Quick checklist (v3.15.0)
+
+The same Docker + K8s pipeline above applies — these are the **action items**
+distilled for a custom-domain deployment (e.g. `app.viewdezider.com`,
+`api.viewdezider.com`).
+
+### A. Prerequisites you provide
+- [ ] A Linux host (VPS/EC2/GCE) **or** a managed K8s cluster (EKS / GKE / AKS)
+- [ ] A MongoDB instance — **MongoDB Atlas M30+ recommended** (auto-backup, point-in-time restore); self-hosted only for staging
+- [ ] A registered domain + DNS access (Cloudflare / Route53 / etc.)
+- [ ] A container registry (Docker Hub / ECR / GAR / GHCR)
+- [ ] TLS certificates — easiest via Let's Encrypt + certbot, or load-balancer-managed (ALB / GLB / Cloudflare)
+- [ ] Required 3rd-party API keys (only the ones you actually use):
+      `EMERGENT_LLM_KEY`, `GOOGLE_CLIENT_ID/SECRET`, `RAZORPAY_KEY_ID/SECRET`,
+      `ULTRAMSG_TOKEN`, `EXOTEL_API_KEY`, `DIGILOCKER_CLIENT_ID/SECRET`,
+      `SMTP_HOST/PORT/USER/PASS`
+
+### B. DNS layout (recommended split)
+| Sub-domain | Points to | Purpose |
+|---|---|---|
+| `api.yourdomain.com` | Backend load balancer / NGINX | FastAPI on port 8001 (TLS terminates at LB) |
+| `app.yourdomain.com` | Static host / CDN | Expo web build (`npx expo export -p web`) |
+| `admin.yourdomain.com` (optional) | Same as `app` | Same SPA, just nicer bookmark |
+| `pulse.yourdomain.com` (optional) | Same as `app` | Public Pulse landing |
+
+### C. Backend deploy (3 options)
+1. **Docker Compose (single VPS)** — fastest path:
+   ```bash
+   git clone <your-fork> && cd app
+   cp deploy/.env.example backend/.env       # paste in your keys
+   docker compose -f deploy/docker-compose.yml up -d --build
+   ```
+   Put NGINX in front, terminate TLS, proxy `api.yourdomain.com → 127.0.0.1:8001`.
+
+2. **Kubernetes (production)** — see Section 3 above. Edit
+   `deploy/k8s/dezider-api.yaml`:  set `image`, `MONGO_URL`, secrets,
+   ingress host, then `kubectl apply -f`.
+
+3. **PaaS (Render / Railway / Fly.io)** — point at `backend/Dockerfile`, set
+   the env vars from `.env.example`, expose port 8001. Add MongoDB as an
+   addon / external Atlas URL.
+
+### D. Frontend deploy (Expo web → static)
+The frontend is an Expo Router app — for production web you ship static files:
+```bash
+cd frontend
+# Point at your live API
+echo "EXPO_PUBLIC_BACKEND_URL=https://api.yourdomain.com" > .env.production
+npx expo export -p web                          # outputs to ./dist
+```
+Host `frontend/dist` on **any static host**:
+- **Cloudflare Pages / Vercel / Netlify** — just upload (`dist`) or connect repo
+- **S3 + CloudFront** — `aws s3 sync dist/ s3://your-bucket --delete`
+- **NGINX on the same VPS** — copy `dist/` to `/var/www/app` and add a server block
+
+### E. Post-deploy smoke (5 commands)
+```bash
+curl https://api.yourdomain.com/api/health/live              # → {"status":"ok"}
+curl https://api.yourdomain.com/api/health/ready             # → mongo reachability
+curl https://api.yourdomain.com/api/health/version           # → build + commit
+curl -X POST https://api.yourdomain.com/api/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"email":"admin@test.com","password":"AdminPass2026!"}'
+open https://app.yourdomain.com                              # SPA loads
+```
+
+### F. Seed ACM (one-time, idempotent)
+```bash
+TOKEN=$(curl -s -X POST https://api.yourdomain.com/api/auth/login \
+        -H "Content-Type: application/json" \
+        -d '{"email":"admin@test.com","password":"AdminPass2026!"}' | jq -r .session_token)
+curl -X POST "https://api.yourdomain.com/api/acm/seed?force=true" \
+     -H "Authorization: Bearer $TOKEN"
+```
+
+### G. Custom-domain CORS (one env var)
+Add to `backend/.env`:
+```
+ALLOWED_ORIGINS=https://app.yourdomain.com,https://admin.yourdomain.com,https://pulse.yourdomain.com
+```
+(Wildcards are allowed during early testing — tighten before launch.)
+
+### H. Mobile build (separate from web hosting)
+APK / IPA must use the Emergent **Publish** button or your own EAS account.
+Self-hosting only covers the web app + API + DB.
+
+### I. What's *not* in this delta but you may need at launch
+- [ ] Razorpay live keys (sandbox keys included in `.env.example` placeholders)
+- [ ] DigiLocker production approval from API Setu
+- [ ] Exotel DLT template approval
+- [ ] LLM budget (Emergent LLM Key currently capped — AI flows degrade gracefully via 503)
+- [ ] CDN cache rules for `/api/pricing` (60 s TTL already in app)
+- [ ] Backup cron for self-hosted Mongo (or rely on Atlas continuous backup)
+- [ ] Uptime monitoring on `/api/health/ready` (UptimeRobot / Better Stack / Datadog)
