@@ -189,8 +189,8 @@ INDEX_SPECS: dict[str, list] = {
 
     # ─── ACM ────────────────────────────────────────────────────
     "acm_modules": [{"keys": [("module_id", 1)], "unique": True}],
-    "acm_user_types": [{"keys": [("user_type", 1)], "unique": True}],
-    "acm_subscription_plans": [{"keys": [("plan_id", 1)], "unique": True}],
+    "acm_user_types": [{"keys": [("id", 1)], "unique": True}],
+    "acm_subscription_plans": [{"keys": [("id", 1)], "unique": True}],
     "acm_usage": [
         [("user_id", 1), ("feature_id", 1)],
         [("user_id", 1), ("date", -1)],
