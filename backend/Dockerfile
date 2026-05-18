@@ -14,7 +14,11 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
-RUN pip install --user --no-cache-dir -r requirements.txt
+# Emergent-hosted private package (emergentintegrations) lives on a custom index.
+# We add it as an --extra-index-url so pip can resolve it alongside public PyPI.
+RUN pip install --user --no-cache-dir \
+        --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/ \
+        -r requirements.txt
 
 FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
