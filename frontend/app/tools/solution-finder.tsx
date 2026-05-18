@@ -20,6 +20,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, GRADIENTS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import TimingFieldset, { TimingValue } from '../../src/components/decisions/TimingFieldset';
+import DecisionLinkPicker, { LinkSelection } from '../../src/components/decisions/DecisionLinkPicker';
+import LinkedSourcePill from '../../src/components/decisions/LinkedSourcePill';
+import { addDaysISO } from '../../src/utils/dateLocalize';
 
 const LIFE_AREAS = [
   { id: 'career', name: 'Career', icon: 'briefcase' },
@@ -75,6 +79,17 @@ export default function SolutionFinderScreen() {
   // Form state
   const [areaOfLife, setAreaOfLife] = useState('');
   const [smartGoal, setSmartGoal] = useState('');
+
+  // Enhancement #4 — Timing default 1 week
+  const [timing, setTiming] = useState<TimingValue>({
+    deadline_date: addDaysISO(7),
+    impact_horizon_value: 7,
+    impact_horizon_unit: 'days',
+  });
+
+  // Enhancement #5a — Linked source decision
+  const [linkedSource, setLinkedSource] = useState<LinkSelection | null>(null);
+  const [showLinkPicker, setShowLinkPicker] = useState(false);
   const [milestones, setMilestones] = useState<Milestone[]>([{ description: '', timeline: '' }]);
   const [q1AllConcerns, setQ1AllConcerns] = useState('');
   const [q2PrimaryConcerns, setQ2PrimaryConcerns] = useState('');
@@ -209,6 +224,15 @@ export default function SolutionFinderScreen() {
         q4_contingency_plans: q4Contingency,
         action_items: actionItems.filter(a => a.action.trim()),
         status: currentStep >= 4 ? 'completed' : 'in_progress',
+        // Timing (Enhancement #4)
+        deadline_date: timing.deadline_date,
+        impact_horizon_value: timing.impact_horizon_value,
+        impact_horizon_unit: timing.impact_horizon_unit,
+        // Linking (Enhancement #5a)
+        linked_from_decision_id: linkedSource?.linked_from_decision_id || null,
+        linked_from_module: linkedSource?.linked_from_module || null,
+        linked_from_option_label: linkedSource?.linked_from_option_label || null,
+        linked_from_score_pct: linkedSource?.linked_from_score_pct ?? null,
       };
 
       if (editId) {
@@ -667,7 +691,28 @@ export default function SolutionFinderScreen() {
           showsVerticalScrollIndicator={false}
         >
           <Text style={styles.currentStepTitle}>{steps[currentStep].title}</Text>
+          {currentStep === 0 && (
+            <>
+              <TimingFieldset value={timing} onChange={setTiming} />
+              {linkedSource ? (
+                <LinkedSourcePill
+                  decision_id={linkedSource.linked_from_decision_id}
+                  module={linkedSource.linked_from_module}
+                  option_label={linkedSource.linked_from_option_label}
+                  score_pct={linkedSource.linked_from_score_pct ?? undefined}
+                  title={linkedSource.title}
+                  onRemove={() => setLinkedSource(null)}
+                />
+              ) : (
+                <TouchableOpacity onPress={() => setShowLinkPicker(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: COLORS.primary, borderStyle: 'dashed', justifyContent: 'center', marginVertical: 6 }} testID="sf-link-from-prev">
+                  <Ionicons name="link-outline" size={13} color={COLORS.primary} />
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.primary }}>Link from previous decision (optional)</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          )}
           {renderStepContent()}
+          <DecisionLinkPicker visible={showLinkPicker} onClose={() => setShowLinkPicker(false)} onSelect={setLinkedSource} />
         </ScrollView>
 
         {/* Bottom Nav */}

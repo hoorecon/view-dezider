@@ -11,6 +11,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import TimingFieldset, { TimingValue } from '../../src/components/decisions/TimingFieldset';
+import DecisionLinkPicker, { LinkSelection } from '../../src/components/decisions/DecisionLinkPicker';
+import LinkedSourcePill from '../../src/components/decisions/LinkedSourcePill';
+import { addDaysISO } from '../../src/utils/dateLocalize';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -121,6 +125,10 @@ export default function ConflictBreakerScreen() {
   // Create session modal
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState({ title: '', conversation_type: 'prepare', other_party_role: '' });
+  // Enhancement #4/#5
+  const [timing, setTiming] = useState<TimingValue>({ deadline_date: addDaysISO(7), impact_horizon_value: 7, impact_horizon_unit: 'days' });
+  const [linkedSource, setLinkedSource] = useState<LinkSelection | null>(null);
+  const [showLinkPicker, setShowLinkPicker] = useState(false);
 
   // Stage field data holders
   const [s1, setS1] = useState<any>({});
@@ -168,7 +176,16 @@ export default function ConflictBreakerScreen() {
   const createSession = async () => {
     if (!createForm.title.trim()) return showAlert('Error', 'Title required');
     try {
-      const res = await api.post('/conflict-breaker/sessions', createForm);
+      const res = await api.post('/conflict-breaker/sessions', {
+        ...createForm,
+        deadline_date: timing.deadline_date,
+        impact_horizon_value: timing.impact_horizon_value,
+        impact_horizon_unit: timing.impact_horizon_unit,
+        linked_from_decision_id: linkedSource?.linked_from_decision_id || null,
+        linked_from_module: linkedSource?.linked_from_module || null,
+        linked_from_option_label: linkedSource?.linked_from_option_label || null,
+        linked_from_score_pct: linkedSource?.linked_from_score_pct ?? null,
+      });
       setShowCreate(false);
       openSession(res.data);
     } catch (e) { showAlert('Error', 'Failed to create'); }
@@ -763,12 +780,29 @@ export default function ConflictBreakerScreen() {
               value={createForm.title} onChangeText={t => setCreateForm({ ...createForm, title: t })} />
             <QField label="Other party" helper='"Co-founder, spouse, manager, client"'
               value={createForm.other_party_role} onChangeText={t => setCreateForm({ ...createForm, other_party_role: t })} />
+            <TimingFieldset value={timing} onChange={setTiming} />
+            {linkedSource ? (
+              <LinkedSourcePill
+                decision_id={linkedSource.linked_from_decision_id}
+                module={linkedSource.linked_from_module}
+                option_label={linkedSource.linked_from_option_label}
+                score_pct={linkedSource.linked_from_score_pct ?? undefined}
+                title={linkedSource.title}
+                onRemove={() => setLinkedSource(null)}
+              />
+            ) : (
+              <TouchableOpacity onPress={() => setShowLinkPicker(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: '#7C3AED', borderStyle: 'dashed', justifyContent: 'center', marginVertical: 6 }} testID="cb-link-from-prev">
+                <Ionicons name="link-outline" size={12} color="#A78BFA" />
+                <Text style={{ fontSize: 11, fontWeight: '600', color: '#A78BFA' }}>Link from previous decision</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity style={s.saveBtn} onPress={createSession}>
               <Text style={s.saveBtnText}>Start Preparation</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
+      <DecisionLinkPicker visible={showLinkPicker} onClose={() => setShowLinkPicker(false)} onSelect={setLinkedSource} />
     </SafeAreaView>
   );
 }
