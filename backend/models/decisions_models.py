@@ -86,6 +86,17 @@ class PRRDecision(BaseModel):
     mpps_projected_worth: Optional[float] = None
     mpps_timeframe: Optional[str] = None
     implementation_review_date: Optional[datetime] = None
+    # ── Timing (Enhancement #4) ──
+    deadline_date: Optional[str] = None              # ISO-8601 yyyy-mm-dd
+    impact_horizon_value: int = 7                    # numeric magnitude
+    impact_horizon_unit: str = "days"                # days | weeks | months | years
+    # ── Decision linking (Enhancement #5a) ──
+    linked_from_decision_id: Optional[str] = None
+    linked_from_module: Optional[str] = None         # prr | solution_finder | conflict_breaker | solution_matrix
+    linked_from_option_label: Optional[str] = None
+    linked_from_score_pct: Optional[float] = None
+    # ── Single-option assessment mode (Enhancement #5b) ──
+    allow_single_option: bool = False
     status: str = "draft"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -98,6 +109,16 @@ class PRRDecisionCreate(BaseModel):
     life_area: Optional[str] = None
     decision_type: Optional[str] = None
     implementation_review_date: Optional[datetime] = None
+    # Timing (default 7 days unless user overrides)
+    deadline_date: Optional[str] = None
+    impact_horizon_value: int = 7
+    impact_horizon_unit: str = "days"
+    # Linking
+    linked_from_decision_id: Optional[str] = None
+    linked_from_module: Optional[str] = None
+    linked_from_option_label: Optional[str] = None
+    linked_from_score_pct: Optional[float] = None
+    allow_single_option: bool = False
 
 
 class PRRDecisionUpdate(BaseModel):
@@ -119,6 +140,14 @@ class PRRDecisionUpdate(BaseModel):
     life_area: Optional[str] = None
     decision_type: Optional[str] = None
     implementation_review_date: Optional[datetime] = None
+    deadline_date: Optional[str] = None
+    impact_horizon_value: Optional[int] = None
+    impact_horizon_unit: Optional[str] = None
+    linked_from_decision_id: Optional[str] = None
+    linked_from_module: Optional[str] = None
+    linked_from_option_label: Optional[str] = None
+    linked_from_score_pct: Optional[float] = None
+    allow_single_option: Optional[bool] = None
     status: Optional[str] = None
 
 

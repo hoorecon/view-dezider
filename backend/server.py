@@ -180,6 +180,7 @@ from routes.daily_tracker import router as daily_tracker_router
 from routes.time_allocation import router as time_allocation_router
 from routes.tier_matrix import router as tier_matrix_router
 from routes.customer_segments import router as customer_segments_router
+from routes.decision_linking import router as decision_linking_router
 
 
 # ========================
@@ -252,6 +253,7 @@ api_router.include_router(daily_tracker_router)
 api_router.include_router(time_allocation_router)
 api_router.include_router(tier_matrix_router)
 api_router.include_router(customer_segments_router)
+api_router.include_router(decision_linking_router)
 
 
 # ========================

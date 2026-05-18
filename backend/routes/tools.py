@@ -56,6 +56,30 @@ async def create_solution_finder(request: Request, user: dict = Depends(get_curr
 
     await db.solution_finders.insert_one(doc)
     doc.pop("_id", None)
+    # Apply timing + linking + single-option defaults (Enhancements #4 & #5)
+    await db.solution_finders.update_one(
+        {"entry_id": entry_id},
+        {"$set": {
+            "deadline_date": body.get("deadline_date"),
+            "impact_horizon_value": body.get("impact_horizon_value", 7),
+            "impact_horizon_unit": body.get("impact_horizon_unit", "days"),
+            "linked_from_decision_id": body.get("linked_from_decision_id"),
+            "linked_from_module": body.get("linked_from_module"),
+            "linked_from_option_label": body.get("linked_from_option_label"),
+            "linked_from_score_pct": body.get("linked_from_score_pct"),
+            "allow_single_option": body.get("allow_single_option", False),
+        }},
+    )
+    doc.update({
+        "deadline_date": body.get("deadline_date"),
+        "impact_horizon_value": body.get("impact_horizon_value", 7),
+        "impact_horizon_unit": body.get("impact_horizon_unit", "days"),
+        "linked_from_decision_id": body.get("linked_from_decision_id"),
+        "linked_from_module": body.get("linked_from_module"),
+        "linked_from_option_label": body.get("linked_from_option_label"),
+        "linked_from_score_pct": body.get("linked_from_score_pct"),
+        "allow_single_option": body.get("allow_single_option", False),
+    })
     return doc
 
 

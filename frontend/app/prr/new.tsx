@@ -18,6 +18,10 @@ import { COLORS } from '../../src/constants/colors';
 import { Input } from '../../src/components/Input';
 import { GradientButton } from '../../src/components/GradientButton';
 import api from '../../src/utils/api';
+import TimingFieldset, { TimingValue } from '../../src/components/decisions/TimingFieldset';
+import DecisionLinkPicker, { LinkSelection } from '../../src/components/decisions/DecisionLinkPicker';
+import LinkedSourcePill from '../../src/components/decisions/LinkedSourcePill';
+import { addDaysISO } from '../../src/utils/dateLocalize';
 
 const FOLDERS = [
   { id: 'holistic_health', name: 'Holistic Health', icon: 'fitness', color: '#10B981' },
@@ -60,6 +64,17 @@ export default function NewPRRDecision() {
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [showTemplates, setShowTemplates] = useState(false);
+
+  // Enhancement #4 — Timing (default 1 week)
+  const [timing, setTiming] = useState<TimingValue>({
+    deadline_date: addDaysISO(7),
+    impact_horizon_value: 7,
+    impact_horizon_unit: 'days',
+  });
+
+  // Enhancement #5a — Linked source decision
+  const [linkedSource, setLinkedSource] = useState<LinkSelection | null>(null);
+  const [showLinkPicker, setShowLinkPicker] = useState(false);
 
   // Fetch templates when life area or decision type changes
   useEffect(() => {
@@ -116,6 +131,15 @@ export default function NewPRRDecision() {
         folder: selectedFolder,
         life_area: selectedFolder,
         decision_type: selectedType,
+        // Timing
+        deadline_date: timing.deadline_date,
+        impact_horizon_value: timing.impact_horizon_value,
+        impact_horizon_unit: timing.impact_horizon_unit,
+        // Linking
+        linked_from_decision_id: linkedSource?.linked_from_decision_id || null,
+        linked_from_module: linkedSource?.linked_from_module || null,
+        linked_from_option_label: linkedSource?.linked_from_option_label || null,
+        linked_from_score_pct: linkedSource?.linked_from_score_pct ?? null,
       };
 
       const response = await api.post('/decisions', payload);
@@ -296,11 +320,41 @@ export default function NewPRRDecision() {
             </View>
           </View>
 
+          {/* Enhancement #4 — Timing fieldset (default 1 week) */}
+          <TimingFieldset value={timing} onChange={setTiming} />
+
+          {/* Enhancement #5a — Link from previous decision */}
+          {linkedSource ? (
+            <LinkedSourcePill
+              decision_id={linkedSource.linked_from_decision_id}
+              module={linkedSource.linked_from_module}
+              option_label={linkedSource.linked_from_option_label}
+              score_pct={linkedSource.linked_from_score_pct ?? undefined}
+              title={linkedSource.title}
+              onRemove={() => setLinkedSource(null)}
+            />
+          ) : (
+            <TouchableOpacity
+              style={styles.linkBtn}
+              onPress={() => setShowLinkPicker(true)}
+              testID="prr-link-from-prev"
+            >
+              <Ionicons name="link-outline" size={14} color={COLORS.primary} />
+              <Text style={styles.linkBtnText}>Link from previous decision (optional)</Text>
+            </TouchableOpacity>
+          )}
+
           <GradientButton
             title={selectedTemplate ? 'Create with Template' : 'Create & Continue'}
             onPress={handleCreate}
             loading={loading}
             style={styles.button}
+          />
+
+          <DecisionLinkPicker
+            visible={showLinkPicker}
+            onClose={() => setShowLinkPicker(false)}
+            onSelect={(sel) => setLinkedSource(sel)}
           />
 
           {/* Save as Template button for returning users */}
@@ -314,6 +368,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   keyboardView: { flex: 1 },
   scrollContent: { padding: 16 },
+  linkBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: COLORS.primary, borderStyle: 'dashed', justifyContent: 'center', marginBottom: 8 },
+  linkBtnText: { fontSize: 12, fontWeight: '600', color: COLORS.primary },
   header: { marginBottom: 24 },
   stepLabel: { fontSize: 14, fontWeight: '600', color: COLORS.primary, marginBottom: 8 },
   title: { fontSize: 24, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 8 },

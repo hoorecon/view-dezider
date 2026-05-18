@@ -85,6 +85,17 @@ async def create_session(request: Request, user: dict = Depends(get_current_user
         "other_party_role": body.get("other_party_role", ""),
         "current_stage": body.get("current_stage", 1),
         "status": body.get("status", "draft"),
+        # ── Timing (Enhancement #4) ──
+        "deadline_date": body.get("deadline_date"),
+        "impact_horizon_value": body.get("impact_horizon_value", 7),
+        "impact_horizon_unit": body.get("impact_horizon_unit", "days"),
+        # ── Linking (Enhancement #5a) ──
+        "linked_from_decision_id": body.get("linked_from_decision_id"),
+        "linked_from_module": body.get("linked_from_module"),
+        "linked_from_option_label": body.get("linked_from_option_label"),
+        "linked_from_score_pct": body.get("linked_from_score_pct"),
+        # ── Single-option assessment (Enhancement #5b) ──
+        "allow_single_option": body.get("allow_single_option", False),
         "created_at": now, "updated_at": now,
     }
     await db.conflict_breaker_sessions.insert_one(doc)
@@ -116,7 +127,10 @@ async def update_session(session_id: str, request: Request, user: dict = Depends
     body = await request.json()
     now = datetime.now(timezone.utc).isoformat()
     upd = {"updated_at": now}
-    for f in ["title", "conversation_type", "other_party_role", "current_stage", "status"]:
+    for f in ["title", "conversation_type", "other_party_role", "current_stage", "status",
+              "deadline_date", "impact_horizon_value", "impact_horizon_unit",
+              "linked_from_decision_id", "linked_from_module",
+              "linked_from_option_label", "linked_from_score_pct", "allow_single_option"]:
         if f in body:
             upd[f] = body[f]
     r = await db.conflict_breaker_sessions.update_one(
