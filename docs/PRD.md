@@ -1,6 +1,6 @@
 # Product Requirements Document — Dezider
 
-_metadata: { "version": "3.5.1", "updated": "2026-05-04", "author": "engineering" }
+_metadata: { "version": "3.15.0", "updated": "2026-05-18", "author": "engineering" }
 
 ## 1. Vision
 
@@ -125,3 +125,41 @@ Three integrated modules:
 - Public pricing page renders 7 tier cards + comparison table
 - 60s TTL cache on hot path; auto-invalidated on admin writes
 - Indexed for production scale (`segment_id` unique, `created_at` sort)
+
+---
+## v3.15.0 — 8-Step Pros & Cons / SWOT Decision Framework (2026-05-18)
+
+### Problem
+The standalone Pros & Cons module captured a single flat list of pros and cons per analysis with no concept of multiple options, no factor consolidation, no per-option assessment, and no overall satisfaction scoring. Same gap existed on the SWOT module (4-quadrant flat list only). The user's reference workbook (`REFERENCE Career Consultation to Dr Raj.xlsx`) formalised an 8-step framework that elevates Pros & Cons / SWOT from "brainstorm list" into a structured multi-option consulting tool with knock-out rules, prioritisation and weighted satisfaction scoring.
+
+### Solution
+A new 8-step framework available on **both** Pros & Cons and SWOT modules. PRR / MyDezider core flow is **untouched** — this is a parallel consulting layer for the simpler P&C and SWOT screens.
+
+The eight steps are:
+1. **List Direct Factors** — name + optional expected value & unit
+2. **List Options + per-option Pros & Cons** — capture P&C scoped to each option
+3. **Promote P&C → Factors** — one-tap auto-promotion; Cons are prefixed with `"SHOULD NOT - "`; source provenance retained
+4. **De-duplicate / Group as sub-factors** — manual parent picker (AI suggestion reserved for WOWO tier)
+5. **Review factor tree** — collapsible parent/child view (sub-factor-level ratings reserved)
+6. **Notation (Mandatory/Optional) + knock-out threshold** — admin-set or per-decision threshold % below which mandatory mismatch disqualifies the option
+7. **Prioritisation + Std Rating + Assessment %** — drag-reorder; `Cell Value = Assessment% × Std Rating`
+8. **Detailed Assessment** — Subjective/Objective × Improvable (n/y/y_bf) × My-expectation / Others' / Market-standard × Realistic gap% & value → Realistic Rating, then per option: Actual value, Satisfaction %, Improvement %, **Satisfaction Value** + per-option **Overall Satisfaction %** + auto rank #
+
+### Final Decision Guidelines
+12 reference tie-breaker rules surfaced as a modal at the end of Step #8 (timing, effective time, worth-considering, expected value, primary/secondary classification, prioritisation, realistic gap, actual value, assessment %, primary-vs-secondary matching, positive sequencing scenarios 2A/2B).
+
+### Acceptance criteria — all met ✅
+- Existing legacy Pros & Cons + SWOT flat lists preserved (zero-regression)
+- Backend persists factors, options, P&C-per-option, assessments, config in same document
+- Promote step is idempotent + prefixes Cons with `"SHOULD NOT - "`
+- Server-side knock-out detection on Mandatory factors when threshold set
+- Per-option Joint Score, Overall Satisfaction %, Rank, Disqualified flag computed
+- Final Decision Guidelines available via dedicated modal & Step 8 CTA
+- Single wizard UI (`/tools/pros-cons-wizard`) drives both modules via `?module=swot|pros-cons`
+- "Open 8-step framework" CTA added to both module detail screens
+
+### Out of scope (deferred)
+- AI suggestion for Step #4 de-dup / group → WOWO tier (LLM credits)
+- Sub-factor level rating + roll-up — Step #5 enhancement
+- Step #7 dual rankings (low-to-high column)
+- Step #4 fuzzy-match similarity helper

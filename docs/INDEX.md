@@ -1,6 +1,6 @@
 # Dezider — Admin Documentation
 
-Maintained by the engineering team. Last refreshed: **2026-05-04 · v3.5.1**.
+Maintained by the engineering team. Last refreshed: **2026-05-18 · v3.15.0** (8-Step Pros & Cons / SWOT framework — 736 endpoints).
 
 The documents below are the source of truth for product scope, system
 behaviour, and operational posture. They are authored as plain markdown

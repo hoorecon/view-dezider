@@ -1,6 +1,6 @@
 # UAT Test Cases — Dezider
 
-_metadata: { "version": "3.5", "updated": "2026-05-04" }
+_metadata: { "version": "3.15.0", "updated": "2026-05-18" }
 
 ## How to UAT
 1. Login with a test account (see `/app/memory/test_credentials.md`). Free tier is fine for most tests.
@@ -104,3 +104,30 @@ DPDP-01..04 (export, delete-request, cancel-within-grace, admin purge).
 3. Switch country IN → US → prices flip currency (or show "Contact us" if not configured)
 4. Tap "All" segment → defaults shown; tap a specific segment chip → segment-specific pricing applied
 5. Expand "Show feature comparison" → 32-row × 7-col grid renders with check/cross icons
+
+---
+## v3.15.0 — 8-Step Pros & Cons / SWOT Framework UAT (2026-05-18)
+
+### UC-PCFW — Pros & Cons 8-step wizard
+1. From Pros & Cons list → open any record → tap purple **"Open 8-Step Framework"** banner → wizard loads on Step 1 with horizontal step strip
+2. **Step 1**: enter factor `Mileage`, expected `15`, unit `kmpl` → tap "Add Direct Factor" → factor appears with **D** tag
+3. **Step 2**: add option `Car X` → add Pro `Lower price` → add Con `Less boot space` → repeat for `Car Y` with Pro `More features` → all P&C visible per option
+4. **Step 3**: tap **"Auto-Promote all Pros & Cons"** → toast `3 pros/cons converted to factors`; verify Cons row in list shows `SHOULD NOT - Less boot space`
+5. **Step 4**: tap "Group ↳" on a Pro-derived factor → pick `Mileage` as parent → row updates with "↳ sub-factor of: Mileage"
+6. **Step 5**: factor tree shows Mileage with 1 sub indicator, tappable to collapse/expand
+7. **Step 6**: tap **A** chip on Mileage → notation = mandatory; enter `60` in threshold field → Save
+8. **Step 7**: rank #1 visible; std rating 80 default; for Car X enter Assessment % `80` → cell value auto = `64.0`; for Car Y enter `50` → cell `40.0`
+9. **Step 8**: each factor row exposes Subjective/Objective + Improvable chips, expectations row, gap input; per-option row asks Actual + Satisfaction → enter `0.85` for Car X and `0.50` for Car Y → satisfaction values compute
+10. Overall card at top of Step 8 shows: **Car X 23.4% Rank #1**, **Car Y Disqualified** (mandatory below threshold)
+11. Bulb icon in header → "Final Decision Guidelines" modal with 12 ranked rules
+
+### UC-SWFW — SWOT 8-step wizard
+12. From SWOT list → open any record → tap purple **"Open 8-Step Framework"** banner → same wizard loads
+13. Repeat the Steps 1–11 flow above; verify all endpoints fire against `/api/swot/*` and math is identical
+
+### UC-LEG — Legacy compatibility
+14. From Pros & Cons / SWOT list → open an old record created **before** v3.15.0 → legacy flat list view still works; banner appears at top to "Open 8-Step Framework"; opening the wizard shows empty 8-step containers (no migration of legacy pros/cons into the new shape — by design)
+
+### Performance
+- PCFW-PERF-01: full wizard load on a fresh analysis < 1.5 s
+- PCFW-PERF-02: aggregate computation < 250 ms for 20 factors × 5 options

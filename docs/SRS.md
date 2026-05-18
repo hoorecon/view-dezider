@@ -1,6 +1,6 @@
 # System Requirements Specification — Dezider
 
-_metadata: { "version": "3.5", "updated": "2026-05-04" }
+_metadata: { "version": "3.15.0", "updated": "2026-05-18" }
 
 ## 1. Architecture
 Expo frontend → NGINX ingress → FastAPI pods → MongoDB replica-set.
@@ -96,3 +96,40 @@ Mongo failover 5–15 s of 503s; LLM budget exhausted → 503s on AI endpoints o
 ### Data model
 - `db.tier_matrix`: `{module_id, feature_id, tier_key, allowed, updated_at, updated_by}`
 - `db.customer_segments`: `{segment_id, name, description, chakra_tier_link, factors[], market_research_module_ids[], tier_pricings[], created_at, updated_at}`
+
+---
+## v3.15.0 — 8-Step Pros & Cons / SWOT Framework (2026-05-18)
+
+### Functional requirements
+- F-FW-1: Both Pros & Cons and SWOT analyses persist `factors[]`, `options[]`, `assessments{option_id:{factor_id:cell}}`, `config`, `current_step` alongside legacy quadrants/lists
+- F-FW-2: `POST /{base}/{id}/factors` creates a Direct factor with optional `expected_value` + `unit` (Step #1.1)
+- F-FW-3: `POST /{base}/{id}/options` and `POST .../options/{oid}/(pros|cons)` capture P&C per option (Step #2)
+- F-FW-4: `POST .../promote-pros-cons` is idempotent; Cons text gets `"SHOULD NOT - "` prefix when promoted to a factor (Step #3.1); `source` + `source_option_id` + `source_item_id` preserved (Step #3.2)
+- F-FW-5: `PUT .../factors/{fid}` accepts `parent_id` for sub-factor grouping (Step #4) and Mandatory/Optional notation (Step #6.1)
+- F-FW-6: `PUT .../config` accepts `mandatory_threshold_pct` (Step #6.2)
+- F-FW-7: `POST .../factors/reorder` accepts an ordered list of IDs → renumbers `priority_rank` (Step #7.1)
+- F-FW-8: `PUT .../assessments/{oid}/{fid}` derives `cell_value = assessment_pct × std_rating / 100` and `satisfaction_value = realistic_rating × satisfaction_pct` (Step #7.2, #8.8)
+- F-FW-9: `GET .../aggregate` returns per-option `joint_score`, `overall_satisfaction_pct`, `disqualified`, `rank_high_to_low`, plus 12 Final Decision Guidelines
+
+### Non-functional requirements
+- NFR-FW-1: Backward compatible — legacy `pros[]/cons[]` on Pros & Cons and `strengths/weaknesses/opportunities/threats` on SWOT remain readable
+- NFR-FW-2: Cell-level mutations atomic on a single document (no two-phase commit needed)
+- NFR-FW-3: Aggregate is computed on read and cached into `rollups[]` for cheap subsequent reads
+- NFR-FW-4: Knock-out detection runs in O(factors × options) per aggregate — bounded by user input
+- NFR-FW-5: New endpoints respect the same auth (Bearer) and rate-limit class as legacy Pros & Cons / SWOT
+- NFR-FW-6: Shared model file `models/decision_framework_models.py` keeps math helpers pure (testable without DB)
+
+### Data model additions
+- `pros_cons`: + `options[]`, `factors[]`, `assessments{}`, `config{}`, `rollups[]`, `current_step`
+- `swot_analyses`: same six fields appended
+- `FrameworkFactor` schema: `id, name, expected_value, unit, source(direct|pro|con), source_option_id, source_item_id, parent_id, notation(mandatory|optional), priority_rank, std_rating, factor_type(subjective|objective), improvable(y|y_bf|n), my_expectation, others_expectations, market_standard, realistic_gap_pct, realistic_gap_value, realistic_rating, notes`
+- `AssessmentCell` schema: `assessment_pct, cell_value, actual_value, satisfaction_pct, improvement_pct, satisfaction_value, notes`
+- `FrameworkConfig` schema: `mandatory_threshold_pct, max_improvement_period_months, std_gap, gap_bands{low|standard|high|double}`
+
+### API surface
++ 18 new endpoints on `/api/pros-cons/*`
++ 18 new endpoints on `/api/swot/*`
+= 36 new endpoints (total app endpoints now 736)
+
+### Performance target
+- p95 < 250 ms on all new endpoints (single-document upserts on user-bounded data)

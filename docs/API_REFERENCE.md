@@ -1,6 +1,6 @@
 # REST API Reference — Dezider
 
-_metadata: { "version": "3.5.1", "updated": "2026-05-04" }
+_metadata: { "version": "3.15.0", "updated": "2026-05-18" }
 
 Base URL: `/api`. Auth: `Authorization: Bearer <session_token>` from `/auth/login`.
 Every response carries `X-Request-ID`, `X-Response-Time-MS`, security headers.
@@ -179,3 +179,56 @@ Slugs: `INDEX, PRD, SRS, API_REFERENCE, POSTMAN, REGRESSION, UAT, ACM, WOWO, CLD
 | PUT | `/api/admin/customer-segments/{sid}/pricing` | Upsert multi-currency multi-country tier pricings |
 
 **Cascade rules (server-side):** Toggle ON cascades to higher tiers; toggle OFF stays local. Module=N forces all features=N at that tier. Feature toggle ON auto-enables parent module at same tier.
+
+---
+
+## v3.15.0 — 8-Step Pros & Cons / SWOT Decision Framework (2026-05-18)
+
+The same 18-route set is exposed under `/api/pros-cons/{id}/*` **and** `/api/swot/{id}/*`.
+Auth: Bearer. Per-user scoped data. All payloads JSON.
+
+### Factors  (Step #1, #4, #5, #6)
+| Method | Path | Body |
+|---|---|---|
+| POST | `/pros-cons/{id}/factors` | `{ name, expected_value?, unit?, parent_id? }` |
+| PUT  | `/pros-cons/{id}/factors/{fid}` | any of: `name, expected_value, unit, parent_id, notation, priority_rank, std_rating, factor_type, improvable, my_expectation, others_expectations, market_standard, realistic_gap_pct, realistic_gap_value, notes` |
+| DELETE | `/pros-cons/{id}/factors/{fid}` | — |
+| POST | `/pros-cons/{id}/factors/reorder` | `{ ordered_ids: [fid, ...] }` |
+
+### Options + Pros/Cons per option  (Step #2)
+| Method | Path | Body |
+|---|---|---|
+| POST | `/pros-cons/{id}/options` | `{ name, description? }` |
+| PUT  | `/pros-cons/{id}/options/{oid}` | `{ name?, description?, pros?, cons? }` |
+| DELETE | `/pros-cons/{id}/options/{oid}` | — |
+| POST | `/pros-cons/{id}/options/{oid}/pros` | `{ text, description?, importance? }` |
+| POST | `/pros-cons/{id}/options/{oid}/cons` | `{ text, description?, importance? }` |
+| DELETE | `/pros-cons/{id}/options/{oid}/pros/{item_id}` | — |
+| DELETE | `/pros-cons/{id}/options/{oid}/cons/{item_id}` | — |
+
+### Promote → Factors  (Step #3.1)
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/pros-cons/{id}/promote-pros-cons` | Idempotent. Cons get `"SHOULD NOT - "` prefix. |
+
+### Config  (Step #6.2 + #8.9)
+| Method | Path | Body |
+|---|---|---|
+| PUT | `/pros-cons/{id}/config` | `{ mandatory_threshold_pct?, max_improvement_period_months?, std_gap? }` |
+
+### Assessment cells  (Step #7 + #8)
+| Method | Path | Body |
+|---|---|---|
+| PUT | `/pros-cons/{id}/assessments/{oid}/{fid}` | `{ assessment_pct?, actual_value?, satisfaction_pct?, improvement_pct?, notes? }` (server derives `cell_value`, `satisfaction_value`) |
+
+### Aggregate / rollup  (Step #7.4 + #8.10 + Final Guidelines)
+| Method | Path | Returns |
+|---|---|---|
+| GET | `/pros-cons/{id}/aggregate` | `{ rollups[], factors[], options[], config, final_decision_guidelines[] }` |
+
+### Wizard step bookmark
+| Method | Path | Body |
+|---|---|---|
+| POST | `/pros-cons/{id}/step` | `{ step: 1..8 }` |
+
+> Replace `/pros-cons/` with `/swot/` for the same 18 routes on the SWOT module.

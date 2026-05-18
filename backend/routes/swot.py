@@ -1,18 +1,56 @@
-"""SWOT Analysis Module — Create, manage, and convert to PRR Decision factors"""
+"""SWOT Analysis Module — 8-step decision framework (mirrors Pros & Cons).
+
+Legacy quadrants (strengths/weaknesses/opportunities/threats) and convert-to-decision
+are preserved.  8-step flow uses the same shape as Pros & Cons (options with
+pros & cons per option), letting both modules share the same wizard UI.
+"""
 
 import uuid
 import os
 import json as json_module
 import logging
 from datetime import datetime, timezone
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException, Depends
 from core.database import db
 from core.auth import get_current_user
 
+from models.decision_framework_models import (
+    DecisionOption,
+    FrameworkFactor,
+    FrameworkConfig,
+    AssessmentCell,
+    FINAL_DECISION_GUIDELINES,
+    compute_cell_value,
+    compute_realistic_rating,
+    compute_satisfaction_value,
+    compute_option_rollups,
+)
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/swot", tags=["SWOT Analysis"])
+
+
+def _now():
+    return datetime.now(timezone.utc)
+
+
+async def _load_swot(analysis_id: str, user_id: str) -> Dict[str, Any]:
+    doc = await db.swot_analyses.find_one({"id": analysis_id, "user_id": user_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="SWOT analysis not found")
+    doc.setdefault("options", [])
+    doc.setdefault("factors", [])
+    doc.setdefault("assessments", {})
+    doc.setdefault("config", FrameworkConfig().dict())
+    doc.setdefault("current_step", 1)
+    return doc
+
+
+async def _persist_swot(analysis_id: str, user_id: str, patch: Dict[str, Any]):
+    patch["updated_at"] = _now()
+    await db.swot_analyses.update_one({"id": analysis_id, "user_id": user_id}, {"$set": patch})
 
 
 # ========================
@@ -50,7 +88,7 @@ class SwotUpdate(BaseModel):
 
 @router.post("")
 async def create_swot(data: SwotCreate, user: dict = Depends(get_current_user)):
-    """Create a new SWOT analysis"""
+    """Create a new SWOT analysis (also seeds the 8-step framework containers)."""
     doc = {
         "id": str(uuid.uuid4()),
         "user_id": user["user_id"],
@@ -58,13 +96,21 @@ async def create_swot(data: SwotCreate, user: dict = Depends(get_current_user)):
         "context": data.context,
         "life_area": data.life_area,
         "decision_type": data.decision_type,
+        # Legacy quadrants
         "strengths": [],
         "weaknesses": [],
         "opportunities": [],
         "threats": [],
+        # 8-step framework containers (same shape as Pros & Cons)
+        "options": [],
+        "factors": [],
+        "assessments": {},
+        "config": FrameworkConfig().dict(),
+        "current_step": 1,
+        "rollups": [],
         "converted_decision_id": None,
-        "created_at": datetime.now(timezone.utc),
-        "updated_at": datetime.now(timezone.utc),
+        "created_at": _now(),
+        "updated_at": _now(),
     }
     await db.swot_analyses.insert_one(doc)
     return {"id": doc["id"], "message": "SWOT analysis created"}
@@ -175,7 +221,7 @@ async def convert_to_decision(analysis_id: str, user: dict = Depends(get_current
 
     for w in weaknesses:
         raw_factors.append({
-            "name": f"NOT {w['text']}",
+            "name": f"SHOULD NOT - {w['text']}",
             "source": "weakness",
             "nature": "internal",
             "polarity": "negative",
@@ -187,7 +233,7 @@ async def convert_to_decision(analysis_id: str, user: dict = Depends(get_current
 
     for t in threats:
         raw_factors.append({
-            "name": f"NOT {t['text']}",
+            "name": f"SHOULD NOT - {t['text']}",
             "source": "threat",
             "nature": "external",
             "polarity": "negative",
@@ -334,3 +380,243 @@ Return ONLY valid JSON, no markdown fences."""
     except Exception as e:
         logger.error(f"AI expected value generation failed for SWOT: {e}")
         return raw_factors
+
+
+# ════════════════════════════════════════════════════════════════════
+#         8-STEP FRAMEWORK ENDPOINTS  (mirrors pros_cons.py)
+# ════════════════════════════════════════════════════════════════════
+
+@router.post("/{analysis_id}/factors")
+async def swot_add_factor(analysis_id: str, body: Dict[str, Any], user: dict = Depends(get_current_user)):
+    doc = await _load_swot(analysis_id, user["user_id"])
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Factor name is required")
+    factor = FrameworkFactor(name=name, expected_value=body.get("expected_value"),
+                             unit=body.get("unit"), parent_id=body.get("parent_id"),
+                             source="direct").dict()
+    factor["priority_rank"] = len(doc["factors"]) + 1
+    doc["factors"].append(factor)
+    await _persist_swot(analysis_id, user["user_id"], {"factors": doc["factors"]})
+    return {"id": factor["id"], "factor": factor}
+
+
+@router.put("/{analysis_id}/factors/{factor_id}")
+async def swot_update_factor(analysis_id: str, factor_id: str, body: Dict[str, Any], user: dict = Depends(get_current_user)):
+    doc = await _load_swot(analysis_id, user["user_id"])
+    factors = doc["factors"]
+    idx = next((i for i, f in enumerate(factors) if f["id"] == factor_id), -1)
+    if idx < 0:
+        raise HTTPException(status_code=404, detail="Factor not found")
+    allowed = {"name", "expected_value", "unit", "parent_id", "notation", "priority_rank",
+               "std_rating", "factor_type", "improvable", "my_expectation",
+               "others_expectations", "market_standard", "realistic_gap_pct",
+               "realistic_gap_value", "notes"}
+    for k, v in body.items():
+        if k in allowed:
+            factors[idx][k] = v
+    factors[idx]["realistic_rating"] = compute_realistic_rating(
+        int(factors[idx].get("std_rating") or 0),
+        float(factors[idx].get("realistic_gap_pct") or 0.0),
+    )
+    await _persist_swot(analysis_id, user["user_id"], {"factors": factors})
+    return {"factor": factors[idx]}
+
+
+@router.delete("/{analysis_id}/factors/{factor_id}")
+async def swot_delete_factor(analysis_id: str, factor_id: str, user: dict = Depends(get_current_user)):
+    doc = await _load_swot(analysis_id, user["user_id"])
+    factors = [f for f in doc["factors"] if f["id"] != factor_id and f.get("parent_id") != factor_id]
+    assessments = doc.get("assessments", {}) or {}
+    for cells in assessments.values():
+        cells.pop(factor_id, None)
+    await _persist_swot(analysis_id, user["user_id"], {"factors": factors, "assessments": assessments})
+    return {"deleted": True}
+
+
+@router.post("/{analysis_id}/factors/reorder")
+async def swot_reorder_factors(analysis_id: str, body: Dict[str, Any], user: dict = Depends(get_current_user)):
+    doc = await _load_swot(analysis_id, user["user_id"])
+    ordered = body.get("ordered_ids") or []
+    rank_map = {fid: i + 1 for i, fid in enumerate(ordered)}
+    for f in doc["factors"]:
+        if f["id"] in rank_map:
+            f["priority_rank"] = rank_map[f["id"]]
+    doc["factors"].sort(key=lambda f: f.get("priority_rank", 999))
+    await _persist_swot(analysis_id, user["user_id"], {"factors": doc["factors"]})
+    return {"factors": doc["factors"]}
+
+
+@router.post("/{analysis_id}/options")
+async def swot_add_option(analysis_id: str, body: Dict[str, Any], user: dict = Depends(get_current_user)):
+    doc = await _load_swot(analysis_id, user["user_id"])
+    opt = DecisionOption(
+        name=(body.get("name") or "").strip() or f"Option {len(doc['options']) + 1}",
+        description=body.get("description") or "",
+        order=len(doc["options"]),
+    ).dict()
+    doc["options"].append(opt)
+    await _persist_swot(analysis_id, user["user_id"], {"options": doc["options"]})
+    return {"id": opt["id"], "option": opt}
+
+
+@router.delete("/{analysis_id}/options/{option_id}")
+async def swot_delete_option(analysis_id: str, option_id: str, user: dict = Depends(get_current_user)):
+    doc = await _load_swot(analysis_id, user["user_id"])
+    opts = [o for o in doc["options"] if o["id"] != option_id]
+    assessments = doc.get("assessments", {}) or {}
+    assessments.pop(option_id, None)
+    await _persist_swot(analysis_id, user["user_id"], {"options": opts, "assessments": assessments})
+    return {"deleted": True}
+
+
+def _swot_add_pc_helper(doc, option_id, body, kind):
+    opts = doc["options"]
+    idx = next((i for i, o in enumerate(opts) if o["id"] == option_id), -1)
+    if idx < 0:
+        raise HTTPException(status_code=404, detail="Option not found")
+    text = (body.get("text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail=f"{kind} text required")
+    item = {"id": str(uuid.uuid4()), "text": text, "description": body.get("description", ""),
+            "importance": int(body.get("importance", 5)), "promoted_factor_id": None}
+    opts[idx].setdefault(kind, []).append(item)
+    return item
+
+
+@router.post("/{analysis_id}/options/{option_id}/pros")
+async def swot_add_pro(analysis_id: str, option_id: str, body: Dict[str, Any], user: dict = Depends(get_current_user)):
+    doc = await _load_swot(analysis_id, user["user_id"])
+    item = _swot_add_pc_helper(doc, option_id, body, "pros")
+    await _persist_swot(analysis_id, user["user_id"], {"options": doc["options"]})
+    return item
+
+
+@router.post("/{analysis_id}/options/{option_id}/cons")
+async def swot_add_con(analysis_id: str, option_id: str, body: Dict[str, Any], user: dict = Depends(get_current_user)):
+    doc = await _load_swot(analysis_id, user["user_id"])
+    item = _swot_add_pc_helper(doc, option_id, body, "cons")
+    await _persist_swot(analysis_id, user["user_id"], {"options": doc["options"]})
+    return item
+
+
+@router.delete("/{analysis_id}/options/{option_id}/pros/{item_id}")
+async def swot_del_pro(analysis_id: str, option_id: str, item_id: str, user: dict = Depends(get_current_user)):
+    doc = await _load_swot(analysis_id, user["user_id"])
+    for o in doc["options"]:
+        if o["id"] == option_id:
+            o["pros"] = [p for p in o.get("pros", []) if p["id"] != item_id]
+    await _persist_swot(analysis_id, user["user_id"], {"options": doc["options"]})
+    return {"deleted": True}
+
+
+@router.delete("/{analysis_id}/options/{option_id}/cons/{item_id}")
+async def swot_del_con(analysis_id: str, option_id: str, item_id: str, user: dict = Depends(get_current_user)):
+    doc = await _load_swot(analysis_id, user["user_id"])
+    for o in doc["options"]:
+        if o["id"] == option_id:
+            o["cons"] = [c for c in o.get("cons", []) if c["id"] != item_id]
+    await _persist_swot(analysis_id, user["user_id"], {"options": doc["options"]})
+    return {"deleted": True}
+
+
+@router.put("/{analysis_id}/options/{option_id}")
+async def swot_update_option(analysis_id: str, option_id: str, body: Dict[str, Any], user: dict = Depends(get_current_user)):
+    doc = await _load_swot(analysis_id, user["user_id"])
+    opts = doc["options"]
+    idx = next((i for i, o in enumerate(opts) if o["id"] == option_id), -1)
+    if idx < 0:
+        raise HTTPException(status_code=404, detail="Option not found")
+    for k in ("name", "description"):
+        if k in body:
+            opts[idx][k] = body[k]
+    await _persist_swot(analysis_id, user["user_id"], {"options": opts})
+    return {"option": opts[idx]}
+
+
+@router.post("/{analysis_id}/promote-pros-cons")
+async def swot_promote(analysis_id: str, user: dict = Depends(get_current_user)):
+    doc = await _load_swot(analysis_id, user["user_id"])
+    factors = doc["factors"]
+    promoted = 0
+    next_rank = (max((f.get("priority_rank") or 0) for f in factors) + 1) if factors else 1
+    for opt in doc["options"]:
+        for p in opt.get("pros", []):
+            if p.get("promoted_factor_id"):
+                continue
+            fid = str(uuid.uuid4())
+            factors.append(FrameworkFactor(
+                id=fid, name=p["text"], source="pro", source_option_id=opt["id"],
+                source_item_id=p["id"], std_rating=int((p.get("importance") or 5) * 10),
+                priority_rank=next_rank).dict())
+            p["promoted_factor_id"] = fid
+            next_rank += 1
+            promoted += 1
+        for c in opt.get("cons", []):
+            if c.get("promoted_factor_id"):
+                continue
+            fid = str(uuid.uuid4())
+            factors.append(FrameworkFactor(
+                id=fid, name=f"SHOULD NOT - {c['text']}", source="con",
+                source_option_id=opt["id"], source_item_id=c["id"],
+                std_rating=int((c.get("importance") or 5) * 10),
+                priority_rank=next_rank).dict())
+            c["promoted_factor_id"] = fid
+            next_rank += 1
+            promoted += 1
+    await _persist_swot(analysis_id, user["user_id"], {"factors": factors, "options": doc["options"]})
+    return {"promoted_count": promoted, "total_factors": len(factors)}
+
+
+@router.put("/{analysis_id}/config")
+async def swot_update_config(analysis_id: str, body: Dict[str, Any], user: dict = Depends(get_current_user)):
+    doc = await _load_swot(analysis_id, user["user_id"])
+    cfg = doc.get("config") or FrameworkConfig().dict()
+    for k in ("mandatory_threshold_pct", "max_improvement_period_months", "std_gap"):
+        if k in body:
+            cfg[k] = body[k]
+    await _persist_swot(analysis_id, user["user_id"], {"config": cfg})
+    return {"config": cfg}
+
+
+@router.put("/{analysis_id}/assessments/{option_id}/{factor_id}")
+async def swot_upsert_assessment(analysis_id: str, option_id: str, factor_id: str,
+                                  body: Dict[str, Any], user: dict = Depends(get_current_user)):
+    doc = await _load_swot(analysis_id, user["user_id"])
+    factor = next((f for f in doc["factors"] if f["id"] == factor_id), None)
+    if not factor:
+        raise HTTPException(status_code=404, detail="Factor not found")
+    if not any(o["id"] == option_id for o in doc["options"]):
+        raise HTTPException(status_code=404, detail="Option not found")
+    assessments = doc.get("assessments", {}) or {}
+    cell = (assessments.get(option_id) or {}).get(factor_id) or AssessmentCell().dict()
+    for k in ("assessment_pct", "actual_value", "satisfaction_pct", "improvement_pct", "notes"):
+        if k in body:
+            cell[k] = body[k]
+    cell["cell_value"] = compute_cell_value(int(cell.get("assessment_pct", 0) or 0),
+                                             int(factor.get("std_rating", 0) or 0))
+    cell["satisfaction_value"] = compute_satisfaction_value(
+        factor.get("realistic_rating") or factor.get("std_rating"),
+        float(cell.get("satisfaction_pct", 0.0) or 0.0))
+    assessments.setdefault(option_id, {})[factor_id] = cell
+    await _persist_swot(analysis_id, user["user_id"], {"assessments": assessments})
+    return {"cell": cell}
+
+
+@router.get("/{analysis_id}/aggregate")
+async def swot_aggregate(analysis_id: str, user: dict = Depends(get_current_user)):
+    doc = await _load_swot(analysis_id, user["user_id"])
+    rollups = compute_option_rollups(doc["factors"], doc.get("assessments", {}) or {},
+                                      doc["options"], doc.get("config"))
+    await _persist_swot(analysis_id, user["user_id"], {"rollups": rollups})
+    return {"rollups": rollups, "factors": doc["factors"], "options": doc["options"],
+            "config": doc.get("config", FrameworkConfig().dict()),
+            "final_decision_guidelines": FINAL_DECISION_GUIDELINES}
+
+
+@router.post("/{analysis_id}/step")
+async def swot_set_step(analysis_id: str, body: Dict[str, Any], user: dict = Depends(get_current_user)):
+    step = max(1, min(8, int(body.get("step") or 1)))
+    await _persist_swot(analysis_id, user["user_id"], {"current_step": step})
+    return {"current_step": step}
+

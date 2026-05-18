@@ -1,6 +1,6 @@
 # Regression Test Catalogue — Dezider
 
-_metadata: { "version": "3.5", "updated": "2026-05-04" }
+_metadata: { "version": "3.15.0", "updated": "2026-05-18" }
 
 All suites live in `/app/tests/` plus the legacy `/app/backend_test_regression.py`.
 
@@ -108,3 +108,26 @@ jobs:
 - PR-R-1: GET `/api/pricing` returns `{tiers, segments, matrix_rows}`
 - PR-R-2: 2nd identical GET within 60s served from cache (≤10ms)
 - PR-R-3: Admin write to segment invalidates cache → next GET returns fresh data
+
+---
+## v3.15.0 — 8-Step Pros & Cons / SWOT Framework regression scenarios (2026-05-18)
+
+### Pros & Cons 8-step (PCFW-)
+- PCFW-R-1: POST `/api/pros-cons/{id}/factors` creates direct factor with expected_value+unit
+- PCFW-R-2: POST `/api/pros-cons/{id}/options` and POST `.../options/{oid}/pros`/`.../cons` creates per-option items
+- PCFW-R-3: POST `.../promote-pros-cons` promotes all P&C, Cons prefixed `SHOULD NOT - `, idempotent on second call (skips already-promoted)
+- PCFW-R-4: PUT `.../factors/{fid}` with `parent_id` makes a factor a sub-factor
+- PCFW-R-5: PUT `.../factors/{fid}` with `notation:mandatory` and PUT `.../config` `mandatory_threshold_pct:60` activates knock-out rule
+- PCFW-R-6: PUT `.../assessments/{oid}/{fid}` with `assessment_pct:80` and `std_rating:80` → `cell_value:64.0` (computed server-side)
+- PCFW-R-7: PUT cell with `satisfaction_pct:0.85` × `realistic_rating:80` → `satisfaction_value:68.0`
+- PCFW-R-8: GET `.../aggregate` returns rollups with `joint_score`, `overall_satisfaction_pct`, `disqualified=true` when mandatory factor below threshold, surviving options ranked high-to-low
+- PCFW-R-9: GET `.../aggregate` returns 12 `final_decision_guidelines` items
+- PCFW-R-10: POST `.../factors/reorder` with `ordered_ids` renumbers `priority_rank` 1..N
+
+### SWOT 8-step (SWFW-)
+Same 10 scenarios mirrored on `/api/swot/{id}/*` — verified manually (this fork).
+
+### Smoke result
+- Pros & Cons: 10/10 manual PASS (curl)
+- SWOT: 10/10 manual PASS (curl)
+- No automated suite added yet — to be wrapped into `tests/test_decision_framework.py` next session.
