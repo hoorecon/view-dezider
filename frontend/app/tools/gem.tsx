@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import ProjectStatusPicker from '../../src/components/decisions/ProjectStatusPicker';
 
 const LIFE_AREAS = [
   {id:'career',name:'Career',icon:'briefcase',c:'#3B82F6'},
@@ -151,6 +152,14 @@ export default function GEMScreen() {
               </View>
               <Text style={s.goalTitle} numberOfLines={2}>{g.title||'Untitled'}</Text>
               {g.smart_goal ? <Text style={s.goalSmart} numberOfLines={1}>{g.smart_goal}</Text> : null}
+              {/* Project Status (Enhancement #6/#7 - cascades to CTT tasks + routines) */}
+              <View style={{ marginTop: 6 }}>
+                <ProjectStatusPicker
+                  goalId={g.goal_id}
+                  currentStatus={g.project_status || 'open'}
+                  onChange={() => fetchData()}
+                />
+              </View>
               {/* Progress */}
               <View style={s.progressRow}>
                 <View style={s.progressBar}>
