@@ -406,6 +406,8 @@ async def create_gem_goal(request: Request, user: dict = Depends(get_current_use
         "smart_goal": body.get("smart_goal", ""),
         "priority": body.get("priority", "medium"),
         "status": body.get("status", "active"),
+        # ── Enhancement #6: Project status / mode ──
+        "project_status": body.get("project_status", "open"),
         "target_date": body.get("target_date"),
         "linked_decisions": body.get("linked_decisions", []),
         "linked_solution_finders": body.get("linked_solution_finders", []),
@@ -455,7 +457,7 @@ async def update_gem_goal(goal_id: str, request: Request, user: dict = Depends(g
 
     allowed = [
         "life_area", "goal_type", "title", "description", "smart_goal",
-        "priority", "status", "target_date",
+        "priority", "status", "project_status", "target_date",
         "linked_decisions", "linked_solution_finders", "linked_solution_matrices",
         "progress_percent",
     ]
@@ -473,6 +475,101 @@ async def delete_gem_goal(goal_id: str, user: dict = Depends(get_current_user)):
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Goal not found")
     return {"message": "Goal deleted"}
+
+
+# ────────────────────────────────────────────────────────────────────
+# Enhancement #6 & #7 — Project Status with cascading propagation
+# ────────────────────────────────────────────────────────────────────
+PROJECT_STATUSES = [
+    {"key": "open",                   "label": "Open",                     "color": "#64748B", "icon": "ellipse-outline"},
+    {"key": "pre_kickoff_planning",   "label": "Pre-Kickoff Planning",     "color": "#0EA5E9", "icon": "calendar-outline"},
+    {"key": "progressing_normally",   "label": "Progressing Normally",     "color": "#10B981", "icon": "trending-up"},
+    {"key": "progressing_quickly",    "label": "Progressing Quickly",      "color": "#059669", "icon": "rocket"},
+    {"key": "progressing_slowly",     "label": "Progressing Slowly",       "color": "#F59E0B", "icon": "hourglass-outline"},
+    {"key": "on_hold",                "label": "On Hold",                  "color": "#D97706", "icon": "pause-circle"},
+    {"key": "cancelled",              "label": "Cancelled",                "color": "#DC2626", "icon": "close-circle"},
+    {"key": "going_deeper",           "label": "Going Deeper",             "color": "#7C3AED", "icon": "git-branch"},
+    {"key": "going_broader",          "label": "Going Broader",            "color": "#6366F1", "icon": "expand"},
+    {"key": "completed",              "label": "Completed",                "color": "#059669", "icon": "checkmark-circle"},
+    {"key": "post_completion_learning","label": "Post-Completion Learning","color": "#0891B2", "icon": "library"},
+]
+PROJECT_STATUS_KEYS = [s["key"] for s in PROJECT_STATUSES]
+
+# When project goes to these states, cascade to dependents:
+CASCADE_TO_TASK_STATUS = {
+    "on_hold":   "on_hold",
+    "cancelled": "cancelled",
+    "completed": "done",
+}
+CASCADE_DEACTIVATES_ROUTINES = {"on_hold", "cancelled"}
+CASCADE_REACTIVATES_ROUTINES = {"progressing_normally", "progressing_quickly", "progressing_slowly", "going_deeper", "going_broader", "open"}
+
+
+@router.get("/gem/project-statuses")
+async def list_project_statuses(_: dict = Depends(get_current_user)):
+    """Returns the 11 project-status enum entries + cascade rules for the UI."""
+    return {
+        "statuses": PROJECT_STATUSES,
+        "cascade_to_task_status": CASCADE_TO_TASK_STATUS,
+        "cascade_deactivates_routines": list(CASCADE_DEACTIVATES_ROUTINES),
+        "cascade_reactivates_routines": list(CASCADE_REACTIVATES_ROUTINES),
+    }
+
+
+@router.put("/gem/goals/{goal_id}/project-status")
+async def update_project_status(goal_id: str, request: Request, user: dict = Depends(get_current_user)):
+    """Set project_status and cascade to linked CTT tasks and LifeDezider routines."""
+    body = await request.json()
+    new_status = (body.get("project_status") or "").strip()
+    if new_status not in PROJECT_STATUS_KEYS:
+        raise HTTPException(status_code=400, detail=f"Unknown project_status. Allowed: {PROJECT_STATUS_KEYS}")
+
+    goal = await db.gem_goals.find_one({"goal_id": goal_id, "user_id": user["user_id"]})
+    if not goal:
+        raise HTTPException(status_code=404, detail="Goal not found")
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.gem_goals.update_one(
+        {"goal_id": goal_id},
+        {"$set": {"project_status": new_status, "updated_at": now}},
+    )
+
+    # Cascade #1 — CTT tasks linked via goal_id
+    tasks_changed = 0
+    routines_changed = 0
+    cascade_log: list[dict] = []
+    task_status = CASCADE_TO_TASK_STATUS.get(new_status)
+    if task_status:
+        r = await db.ctt_tasks.update_many(
+            {"goal_id": goal_id, "user_id": user["user_id"]},
+            {"$set": {"current_status": task_status, "updated_at": now}},
+        )
+        tasks_changed = r.modified_count
+        cascade_log.append({"target": "ctt_tasks", "modified": tasks_changed, "new_status": task_status})
+
+    # Cascade #2 — LifeDezider routines linked via source_ctt_task_id
+    if new_status in CASCADE_DEACTIVATES_ROUTINES or new_status in CASCADE_REACTIVATES_ROUTINES:
+        # Find the task_ids first
+        task_ids = []
+        async for t in db.ctt_tasks.find(
+            {"goal_id": goal_id, "user_id": user["user_id"]}, {"_id": 0, "task_id": 1}
+        ):
+            if t.get("task_id"):
+                task_ids.append(t["task_id"])
+        if task_ids:
+            new_active = new_status in CASCADE_REACTIVATES_ROUTINES
+            r2 = await db.lifestyle_routines.update_many(
+                {"source_ctt_task_id": {"$in": task_ids}, "user_id": user["user_id"]},
+                {"$set": {"is_active": new_active, "updated_at": now}},
+            )
+            routines_changed = r2.modified_count
+            cascade_log.append({"target": "lifestyle_routines", "modified": routines_changed, "is_active": new_active})
+
+    updated = await db.gem_goals.find_one({"goal_id": goal_id}, {"_id": 0})
+    return {
+        "goal": updated,
+        "cascade": {"tasks_changed": tasks_changed, "routines_changed": routines_changed, "log": cascade_log},
+    }
 
 
 @router.post("/gem/goals/{goal_id}/link")
