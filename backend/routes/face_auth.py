@@ -45,7 +45,16 @@ _face_detection = None
 def get_face_mesh():
     global _face_mesh
     if _face_mesh is None:
-        import mediapipe as mp
+        try:
+            import mediapipe as mp
+        except ImportError as e:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=503,
+                detail="Face authentication unavailable: mediapipe is not installed on this server. "
+                       "Install with: pip install mediapipe==0.10.18 (requires protobuf<5 — incompatible "
+                       "with main requirements.txt; use a dedicated face-auth container in production).",
+            ) from e
         _face_mesh = mp.solutions.face_mesh.FaceMesh(
             static_image_mode=True,
             max_num_faces=1,
@@ -58,7 +67,14 @@ def get_face_mesh():
 def get_face_detection():
     global _face_detection
     if _face_detection is None:
-        import mediapipe as mp
+        try:
+            import mediapipe as mp
+        except ImportError as e:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=503,
+                detail="Face authentication unavailable: mediapipe is not installed on this server.",
+            ) from e
         _face_detection = mp.solutions.face_detection.FaceDetection(
             model_selection=1,
             min_detection_confidence=MIN_FACE_CONFIDENCE,
