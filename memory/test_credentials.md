@@ -3,6 +3,18 @@
 These are test credentials maintained by the main agent for use by the
 testing agent and any fork agents. They are refreshed when stale.
 
+## 🌐 PRODUCTION (AWS EC2 + MongoDB Atlas) — `https://api.jelcos.ai`
+- **Email**: `veales.vedic.decisions@gmail.com`
+- **Password**: `Jelcos@Admin2026`
+- **Role**: `admin`
+- **user_id**: `user_920f13fca2ca`
+- **Reset path**: No SMTP gateway — `/api/auth/forgot-password` returns OTP directly in JSON.
+- ⚠️ NEVER reuse these on dev — they only work against the prod EC2.
+
+---
+
+## 🧪 DEV / Emergent workspace (local backend at port 8001)
+
 ## Admin user (role=admin) — ACTIVE
 - **Email**: `admin@test.com`
 - **Password**: `AdminPass2026!`
