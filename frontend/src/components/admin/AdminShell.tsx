@@ -123,7 +123,14 @@ export default function AdminShell({ children, title, rightSlot }: AdminShellPro
           </View>
         </View>
         <TouchableOpacity
-          onPress={() => { setDrawerOpen(false); router.replace('/' as any); }}
+          onPress={() => {
+            setDrawerOpen(false);
+            if (Platform.OS === 'web' && typeof window !== 'undefined') {
+              window.location.href = '/';
+            } else {
+              router.replace('/' as any);
+            }
+          }}
           hitSlop={8}
           style={s.userActionBtn}
           accessibilityLabel="Switch to user view"
@@ -134,9 +141,12 @@ export default function AdminShell({ children, title, rightSlot }: AdminShellPro
           onPress={async () => {
             await logout();
             setDrawerOpen(false);
-            // Hard navigate to admin login so the post-logout state isn't stuck
-            // on an admin page that's now guarded.
-            router.replace('/admin/login' as any);
+            // Hard navigate to admin login so post-logout state is clean.
+            if (Platform.OS === 'web' && typeof window !== 'undefined') {
+              window.location.href = '/admin/login';
+            } else {
+              router.replace('/admin/login' as any);
+            }
           }}
           hitSlop={8}
           style={s.userActionBtn}
@@ -165,7 +175,13 @@ export default function AdminShell({ children, title, rightSlot }: AdminShellPro
       </View>
       {rightSlot}
       <View style={s.topbarRight}>
-        <TouchableOpacity style={s.topbarIconBtn} onPress={() => router.replace('/' as any)}>
+        <TouchableOpacity style={s.topbarIconBtn} onPress={() => {
+          if (Platform.OS === 'web' && typeof window !== 'undefined') {
+            window.location.href = '/';
+          } else {
+            router.replace('/' as any);
+          }
+        }}>
           <Ionicons name="open-outline" size={16} color={ADMIN_THEME.topbar.text} />
           {isDesktop && <Text style={s.topbarBtnText}>User View</Text>}
         </TouchableOpacity>

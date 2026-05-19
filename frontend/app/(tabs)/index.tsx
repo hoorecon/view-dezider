@@ -175,7 +175,15 @@ export default function HomeScreen() {
               {(user?.is_admin || ['admin', 'super_admin', 'co_admin'].includes((user?.role || '').toLowerCase())) && (
                 <TouchableOpacity
                   style={styles.headerIconBtn}
-                  onPress={() => router.replace('/admin' as any)}
+                  onPress={() => {
+                    // Force a hard navigation on web so React Router state
+                    // doesn't get confused; on native fall back to router.replace.
+                    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                      window.location.href = '/admin';
+                    } else {
+                      router.replace('/admin' as any);
+                    }
+                  }}
                   accessibilityLabel="Switch to admin dashboard"
                 >
                   <Ionicons name="shield-checkmark" size={22} color="#FFF" />
