@@ -66,7 +66,11 @@ export default function AdminShell({ children, title, rightSlot }: AdminShellPro
       </View>
 
       {/* Nav sections */}
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={{ flex: 1 }}
+        showsVerticalScrollIndicator={Platform.OS === 'web'}
+        contentContainerStyle={{ paddingBottom: 12 }}
+      >
         {ADMIN_NAV.map(section => (
           <View key={section.label} style={s.navSection}>
             <Text style={s.navSectionLabel}>{section.label}</Text>

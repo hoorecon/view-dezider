@@ -61,18 +61,16 @@ export default function Index() {
       }
     }
 
-    // Normal auth check
-    const timer = setTimeout(() => {
-      if (!isLoading) {
-        if (isAuthenticated) {
-          router.replace('/(tabs)');
-        } else {
-          router.replace('/auth/login');
-        }
+  useEffect(() => {
+    // Redirect as soon as auth state is known — no artificial 1.5 s wait that
+    // causes "User View" from admin to flicker through the login screen.
+    if (!isLoading) {
+      if (isAuthenticated) {
+        router.replace('/(tabs)');
+      } else {
+        router.replace('/auth/login');
       }
-    }, 1500);
-
-    return () => clearTimeout(timer);
+    }
   }, [isLoading, isAuthenticated]);
 
   return (
