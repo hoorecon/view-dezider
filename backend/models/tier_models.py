@@ -39,58 +39,55 @@ TIER_KEYS = [t["key"] for t in CHAKRA_TIERS]
 
 
 # Smart-seed mapping per module_id → minimum tier (inclusive) where it unlocks.
-# Lower number = unlocks earlier (cheaper tier). Modules not listed default to
-# tier 4 (Heart) so admin can pull them earlier or later as needed.
+# Lower number = unlocks earlier (cheaper tier). Module ids MUST match the
+# canonical ACM module ids (db.acm_modules.module_id). Modules NOT listed below
+# default to DEFAULT_MIN_TIER. Last verified against ACM 2026-06-01.
 SMART_SEED_MIN_TIER: Dict[str, int] = {
     # === Tier 1 — Root (Freelancer): basic decision + life-direction core ===
     "my_dezider": 1,                  # 10-step HOS engine
-    "ldc": 1,                         # Life Directions Compass (north star)
-    "aala": 1,                        # Resource ledger (basics)
-    "daily_tracker": 1,               # Daily log (text only)
-    "lifestyle_routines": 1,          # Recurring habits
-    "accountability_trilogy": 1,      # Time Store / Time Dezider / Daily Time Log
-    "decision_journal": 1,            # Personal journal
+    "aala": 1,                        # Assets & Liabilities ledger
+    "journal": 1,                     # Decision Journal
+    "assessment": 1,                  # Decision-making self assessment
+    "pna": 1,                         # Problems / Needs / Aspirations
+    "security": 1,                    # Account security basics
+    "subscription": 1,                # Billing / plan management
 
     # === Tier 2 — Sacral (Solopreneur): + AI assist + goal setting ===
-    "ai_assistant": 2,                # Limited AI chat
-    "goal_setter": 2,                 # PNA goals
-    "conflict_breaker": 2,
-    "voice_browsing": 2,              # Voice input on PRR
+    "ai_assistant": 2,                # AI Solution Assistant (limited)
+    "goal_setter": 2,                 # SMART goals
+    "decision_kickstarters": 2,       # Kickstarter checklists
+    "conflict_breaker": 2,            # Conflict resolution
+    "consciousness_diary": 2,         # Consciousness diary
+    "emotional_gatekeeper": 2,        # Emotional gatekeeper
 
-    # === Tier 3 — Solar Plexus (Early Founder): + execution layer ===
-    "ctt_gem": 3,                     # CTT tasks / GEM project mgmt
-    "time_dezider": 3,                # Full Time Dezider features
-    "solutions_store": 3,             # Browse Solution catalog
-    "lee": 3,                         # Life Eval Engine
-    "calendar_sync": 3,               # Google Calendar integration
-    "review_net": 3,                  # Public reviews submit
+    # === Tier 3 — Solar Plexus (Early Founder): + execution + tools ===
+    "ctt": 3,                         # Centralised Task Tracker
+    "gem": 3,                         # Goal Execution Manager
+    "time_intelligence": 3,           # Time Store / Time Dezider / Daily Time Log
+    "solutions_store": 3,             # Solutions catalogue
+    "solution_tools": 3,              # Solution Matrix etc.
+    "google_calendar": 3,             # Calendar sync
+    "lifestyle": 3,                   # Lifestyle Dezider basics
+    "lifestyle_eval": 3,              # Lifestyle Effectiveness Eval
+    "goal_manifestation": 3,          # CAB-FAME manifestation
+    "unconditional_happiness": 3,     # Unconditional Happiness tools
 
-    # === Tier 4 — Heart (Growth Stage Founder): + customer/team feedback ===
-    "public_pulse": 4,                # Phase 1+2 (citizen + org portals)
-    "solution_matrix": 4,             # 84-cell problem matrix
-    "shared_steps": 4,                # Collaborative steps
+    # === Tier 4 — Heart (Growth Founder): + customer/team + advanced ===
+    "public_pulse": 4,                # Citizen + Org portals
     "collaboration": 4,               # Multi-user video/decision
-    "central_catalog_management": 4,  # CCM browse
+    "cld_engine": 4,                  # Causal Loop Diagrams
+    "lifestyle_designer": 4,          # Full Lifestyle Designer
+    "tepfi": 4,                       # TEPFI Matrix
+    "deo": 4,                         # DEO outbound engine
 
-    # === Tier 5 — Throat (Successful Founder): + expert + advanced AI ===
-    "expert_net": 5,                  # Discover/book experts + recommendations
-    "cld": 5,                         # Causal Loop Diagrams
-    "ai_chat_advanced": 5,            # Unlimited AI chat
-    "admin_docs": 5,                  # Doc library
-    "voice_global": 5,                # Voice across all modules
+    # === Tier 5 — Throat (Successful Founder): + social + community ===
+    "social_learning": 5,             # Social Learning Pipeline
 
-    # === Tier 6 — Third Eye (Unicorn): + host/broadcast + multi-org ===
-    "expert_net_host": 6,             # Host webinars
-    "public_pulse_admin": 6,          # Phase 3 admin features
-    "org_surveys": 6,                 # Host org-scoped surveys
-    "multi_org": 6,                   # Manage multiple orgs
-    "api_access": 6,                  # DEO outbound API
+    # === Tier 6 — Third Eye (Unicorn): + admin / multi-tenant ===
+    "admin": 6,                       # Admin Panel — orgs unlock multi-admin here
 
-    # === Tier 7 — Crown (Fortune Venture): + whitelabel + govt + unlimited ===
-    "whitelabel": 7,                  # Per-org branded sub-portals
-    "govt_portal": 7,                 # GeoDezider govt access
-    "priority_support": 7,            # Dedicated CSM
-    "tier_matrix_admin": 7,           # Manage own org's tier matrix
+    # === Tier 7 — Crown (Fortune Venture): + internal/test ===
+    "test123": 7,                     # Test module — only visible to top tier
 }
 
 # Default tier for any module NOT in SMART_SEED_MIN_TIER (4 = Heart).

@@ -204,14 +204,14 @@ export default function AdminShell({ children, title, rightSlot }: AdminShellPro
       {isDesktop && Sidebar}
       <View style={[s.main, isDesktop && { marginLeft: ADMIN_THEME.sidebar.width }]}>
         {Topbar}
-        <ScrollView
-          style={s.scroll}
-          contentContainerStyle={[s.scrollContent, isDesktop && { paddingHorizontal: ADMIN_THEME.content.padding }]}
-        >
-          <View style={[s.contentInner, isDesktop && { maxWidth: ADMIN_THEME.content.maxWidth }]}>
-            {children}
-          </View>
-        </ScrollView>
+        {/*
+          IMPORTANT: We deliberately do NOT wrap `children` in a ScrollView here.
+          Every admin page provides its own SafeAreaView + ScrollView with flex:1.
+          A double ScrollView nesting causes the inner page's flex:1 to collapse
+          to 0 (no bounded parent height), which made Tier Matrix and Customer
+          Segments appear blank below the page header.
+        */}
+        <View style={s.contentWrap}>{children}</View>
       </View>
       {MobileDrawer}
     </View>
@@ -221,9 +221,10 @@ export default function AdminShell({ children, title, rightSlot }: AdminShellPro
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: ADMIN_THEME.content.bg, flexDirection: 'row' },
   main: { flex: 1, minWidth: 0 },
-  scroll: { flex: 1 },
-  scrollContent: { paddingVertical: ADMIN_THEME.content.padding, paddingHorizontal: 12 },
-  contentInner: { width: '100%', alignSelf: 'center' },
+  // Pages inside AdminShell own their own ScrollView. We just give them a
+  // bounded flex:1 wrapper so their inner flex:1/SafeAreaView can actually
+  // resolve to a height (avoids the "blank page below header" bug).
+  contentWrap: { flex: 1, minHeight: 0 },
 
   // Sidebar
   sidebar: {

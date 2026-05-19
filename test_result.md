@@ -48,7 +48,55 @@
 ##   run_ui: false
 ##
 backend:
-  - task: "Admin Data Seed — production starter content across all admin sections"
+  - task: "Tier Matrix smart-seed mapping fix + AdminShell layout fix"
+    implemented: true
+    working: true
+    file: "backend/models/tier_models.py, backend/server.py, frontend/src/components/admin/AdminShell.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          User reported Tier Matrix and Customer Segments admin pages were
+          rendering BLANK below the header. Two distinct bugs were found and fixed:
+
+          BUG 1 — Stale tier_matrix smart-seed mapping (backend):
+            SMART_SEED_MIN_TIER in models/tier_models.py referenced module ids that
+            no longer matched ACM (e.g. "ldc", "cld", "expert_net" — none exist;
+            actual ids are "lifestyle_designer", "cld_engine", etc.). Net result:
+            only 2 of 32 modules unlocked at Root tier (should be 7+); 28 modules
+            fell through to DEFAULT_MIN_TIER=4, making lower tiers look empty.
+            FIX: rewrote SMART_SEED_MIN_TIER to map all 32 real ACM module ids
+            to tiers 1..7 with a meaningful cumulative chakra spread:
+              root=7, sacral=13, solar_plexus=23, heart=29, throat=30,
+              third_eye=31, crown=32 modules cumulatively unlocked.
+            Also added a one-shot boot-time auto-reset that wipes + re-seeds
+            tier_matrix if root tier has < expected_root - 1 modules enabled
+            (idempotent; runs once on EC2 after deploy then becomes a no-op).
+
+          BUG 2 — AdminShell double-ScrollView layout collapse (frontend):
+            AdminShell wrapped children in its own ScrollView. Each admin page
+            (customer-segments.tsx, tier-matrix.tsx, etc.) also has its own
+            SafeAreaView+ScrollView with flex:1 at root. Nesting a flex:1
+            SafeAreaView inside an unbounded outer ScrollView collapses its
+            height to 0 — body content rendered but never visible below the
+            page header.
+            FIX: removed the outer ScrollView in AdminShell. Now AdminShell
+            provides only a flex:1 contentWrap with minHeight:0, and each
+            page owns its scroll. Verified visually: both Customer Segments
+            and Tier Matrix pages render the full body with all seeded rows.
+
+          Verified via screenshot of preview deployment:
+            • Customer Segments page now shows all 6 seeded segments with
+              descriptions, chakra-tier chips, factor counts (23 each), and
+              pricing row counts (7 each).
+            • Tier Matrix shows the full 32-module × 7-tier grid with proper
+              cumulative chakra Y/N pattern (Root has 7 modules enabled,
+              Sacral 13, … Crown 32).
+
+
     implemented: true
     working: true
     file: "backend/core/admin_data_seed.py, backend/server.py, backend/routes/admin.py"

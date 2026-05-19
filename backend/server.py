@@ -329,6 +329,27 @@ async def startup_db_client():
         await ensure_admin_data_seeded_on_boot()
     except Exception as e:
         logger.error(f"Admin data seed at boot failed: {e}")
+    try:
+        # If tier_matrix smart-seed was previously applied with stale module ids
+        # (where root tier ended up with < 5 modules), auto-reset to apply the
+        # corrected SMART_SEED_MIN_TIER mapping. One-shot, idempotent.
+        from core.database import db as _db
+        from routes.tier_matrix import _smart_seed as _tm_smart_seed
+        from models.tier_models import SMART_SEED_MIN_TIER as _SS
+        root_y = await _db.tier_matrix.count_documents(
+            {"tier_key": "root", "allowed": True, "feature_id": None}
+        )
+        expected_root = sum(1 for v in _SS.values() if v == 1)
+        if root_y < max(3, expected_root - 1):
+            logger.warning(
+                f"Tier-matrix root tier has only {root_y} modules enabled "
+                f"(expected ~{expected_root}). Auto-resetting smart-seed."
+            )
+            await _db.tier_matrix.delete_many({})
+            res = await _tm_smart_seed()
+            logger.info(f"Tier-matrix reseeded: {res}")
+    except Exception as e:
+        logger.error(f"Tier-matrix auto-reset at boot failed: {e}")
 
 
 @app.on_event("shutdown")
