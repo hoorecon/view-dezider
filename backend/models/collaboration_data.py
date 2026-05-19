@@ -1,11 +1,19 @@
 """Static seed data for /routes/collaboration.py.
 
-DEFAULT_MODES describes the 6 supported decision-making modes.
-Extracted out of the route file so PMs / config can edit without
-touching FastAPI handlers.
+DEFAULT_MODES describes all supported decision-making modes for multi-user
+collaboration. Includes the canonical six (equal / voting / command / sme /
+custom / consensus) plus nine additional standard group-decision methods used
+in real-world boards, councils, and product orgs (supermajority, unanimous,
+delegation, ranked-choice, approval, MCDA, Borda count, dot-voting,
+disagree-and-commit).
+
+Extracted out of the route file so PMs / config can edit without touching
+FastAPI handlers. The route loops over this list and seeds db.decision_modes
+on first GET (and re-syncs via the admin data seed boot hook).
 """
 
 DEFAULT_MODES = [
+    # ── Canonical Six ────────────────────────────────────────────────────────
     {
         "id": "equal",
         "name": "Equal Weightage",
@@ -64,12 +72,113 @@ DEFAULT_MODES = [
     {
         "id": "consensus",
         "name": "Consensus",
-        "description": "100% acceptance from all participants required. No partial outcomes.",
+        "description": "Full alignment required — 100% acceptance from all participants. No partial outcomes.",
         "icon": "checkmark-done-circle",
         "color": "#059669",
         "weight_logic": "consensus",
         "config": {"require_unanimous": True},
         "active": True,
         "order": 6,
+    },
+
+    # ── Extended standard methods (boards, councils, product orgs) ───────────
+    {
+        "id": "supermajority",
+        "name": "Supermajority",
+        "description": "Decision passes only when at least a 2/3 or 3/4 majority approves. Used by boards for high-stakes votes.",
+        "icon": "ribbon",
+        "color": "#0EA5E9",
+        "weight_logic": "supermajority",
+        "config": {"threshold_pct": 67, "preset": "two_thirds"},
+        "active": True,
+        "order": 7,
+    },
+    {
+        "id": "unanimous_no_veto",
+        "name": "Unanimous (No Veto)",
+        "description": "Every participant must vote yes; any single veto blocks the decision. Stricter than Consensus — used for irreversible actions.",
+        "icon": "lock-closed",
+        "color": "#DC2626",
+        "weight_logic": "unanimous",
+        "config": {"any_no_blocks": True},
+        "active": True,
+        "order": 8,
+    },
+    {
+        "id": "delegation",
+        "name": "Delegation / Liquid Democracy",
+        "description": "Each participant can delegate their vote to another trusted member. Votes cascade via the delegation graph. Default for representative councils.",
+        "icon": "git-network",
+        "color": "#7C3AED",
+        "weight_logic": "delegation",
+        "config": {"allow_chain_delegation": True, "max_chain_depth": 5},
+        "active": True,
+        "order": 9,
+    },
+    {
+        "id": "ranked_choice",
+        "name": "Ranked-Choice / IRV",
+        "description": "Participants rank options in order of preference. Lowest-ranked option eliminated each round until one option crosses majority. Used for elections with > 2 options.",
+        "icon": "swap-vertical",
+        "color": "#F97316",
+        "weight_logic": "ranked_choice",
+        "config": {"min_options": 3, "majority_pct": 50},
+        "active": True,
+        "order": 10,
+    },
+    {
+        "id": "approval_voting",
+        "name": "Approval Voting",
+        "description": "Each participant can approve as many options as they like. The option with the most approvals wins. Simple and excellent for shortlist-style decisions.",
+        "icon": "thumbs-up",
+        "color": "#22C55E",
+        "weight_logic": "approval",
+        "config": {"min_approvals_per_participant": 1},
+        "active": True,
+        "order": 11,
+    },
+    {
+        "id": "mcda",
+        "name": "Multi-Criteria Decision Analysis",
+        "description": "Each option is scored against a set of weighted criteria (e.g., cost, impact, risk). The highest-weighted-score option wins. Standard for procurement and product trade-offs.",
+        "icon": "analytics",
+        "color": "#0D9488",
+        "weight_logic": "mcda",
+        "config": {"default_criteria": ["impact", "effort", "risk", "cost"], "normalisation": "z_score"},
+        "active": True,
+        "order": 12,
+    },
+    {
+        "id": "borda_count",
+        "name": "Borda Count",
+        "description": "Each participant ranks options; points are awarded by rank (1st = N points, 2nd = N-1, etc.). Option with highest total wins. Reduces strategic voting.",
+        "icon": "trophy",
+        "color": "#CA8A04",
+        "weight_logic": "borda",
+        "config": {"min_options": 3, "include_ties": True},
+        "active": True,
+        "order": 13,
+    },
+    {
+        "id": "dot_voting",
+        "name": "Dot Voting",
+        "description": "Each participant is given a fixed budget of N votes/dots to distribute across options however they like (including stacking on one). Great for prioritisation workshops.",
+        "icon": "ellipsis-horizontal-circle",
+        "color": "#D946EF",
+        "weight_logic": "dot_voting",
+        "config": {"dots_per_participant": 5, "max_stack_per_option": 5},
+        "active": True,
+        "order": 14,
+    },
+    {
+        "id": "disagree_and_commit",
+        "name": "Disagree & Commit",
+        "description": "Amazon-style: anyone may voice disagreement once on record. After that, the group commits to the leader's call and executes without re-litigation.",
+        "icon": "rocket",
+        "color": "#475569",
+        "weight_logic": "disagree_and_commit",
+        "config": {"objections_logged": True, "leader_decides_after_round": 1},
+        "active": True,
+        "order": 15,
     },
 ]

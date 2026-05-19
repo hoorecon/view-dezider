@@ -32,7 +32,7 @@ from models.tier_models import CHAKRA_TIERS
 
 logger = logging.getLogger(__name__)
 
-SEED_VERSION = "2026-06-01-03"
+SEED_VERSION = "2026-06-01-04"
 SYSTEM_USER_ID = "system_seed"
 
 
