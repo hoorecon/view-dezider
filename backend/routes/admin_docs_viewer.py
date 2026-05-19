@@ -35,6 +35,7 @@ DOC_FILES: Dict[str, Dict[str, str]] = {
     "CLD":           {"file": "CLD.md",                    "title": "CLD Engine Spec"},
     "SECURITY":      {"file": "SECURITY.md",               "title": "Security & Threat Model"},
     "DEPLOYMENT":    {"file": "DEPLOYMENT.md",             "title": "Deployment Runbook"},
+    "PRODUCTION_DEPLOYMENT": {"file": "PRODUCTION_DEPLOYMENT.md", "title": "Production Deployment Runbook (Live)"},
 }
 
 _META_RE = re.compile(r"_metadata:\s*\{([^}]*)\}")
