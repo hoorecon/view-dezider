@@ -42,14 +42,13 @@ export default function Index() {
   }, []);
 
   useEffect(() => {
-    // Check for session_id in URL hash (web)
+    // Check for session_id in URL hash (web OAuth callback)
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       const hash = window.location.hash;
       if (hash.includes('session_id=')) {
         const sessionId = hash.split('session_id=')[1]?.split('&')[0];
         if (sessionId) {
           loginWithGoogle(sessionId).then(() => {
-            // Clear hash and redirect
             window.history.replaceState(null, '', window.location.pathname);
             router.replace('/(tabs)');
           }).catch((error) => {
@@ -61,9 +60,9 @@ export default function Index() {
       }
     }
 
-  useEffect(() => {
-    // Redirect as soon as auth state is known — no artificial 1.5 s wait that
-    // causes "User View" from admin to flicker through the login screen.
+    // Normal auth redirect — react to auth state changes immediately, no
+    // artificial timer that would flicker through /auth/login when the
+    // "User View" button is clicked from inside an authenticated admin shell.
     if (!isLoading) {
       if (isAuthenticated) {
         router.replace('/(tabs)');
