@@ -78,7 +78,7 @@ export default function AdminHomeScreen() {
   const cardWidth = `${100 / cols}%` as any;
 
   return (
-    <View>
+    <View style={{ flex: 1, minHeight: 600 }}>
       {/* Greeting */}
       <View style={s.greetingBlock}>
         <Text style={s.greeting}>Welcome back, {user?.name?.split(' ')[0] || 'Admin'} 👋</Text>
