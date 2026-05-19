@@ -103,3 +103,38 @@ async def update_admin_call_config(request: Request, user: dict = Depends(get_cu
         {"key": "call_config"}, {"$set": update}, upsert=True
     )
     return {"message": "Call config updated", **update}
+
+
+
+# ========================
+# ADMIN DATA SEEDING (production starter content for every admin section)
+# ========================
+
+@router.post("/admin/seed/run")
+async def trigger_admin_data_seed(user: dict = Depends(get_current_user)):
+    """Idempotently seed production-ready starter content across all admin
+    sections (Experts, Templates, Customer Segments, Pending Approvals,
+    Social Learning, Incidents, Audit Trail, ReviewNet Factors, Decision Modes).
+
+    Safe to re-run any number of times — every record is upserted by stable id.
+    Admin-only.
+    """
+    role = get_user_role(user)
+    if role not in ADMIN_ROLES:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    from core.admin_data_seed import seed_admin_data
+    return await seed_admin_data(force=True)
+
+
+@router.get("/admin/seed/status")
+async def admin_seed_status(user: dict = Depends(get_current_user)):
+    """Return the last seed run marker (version, timestamp, per-collection counts)."""
+    role = get_user_role(user)
+    if role not in ADMIN_ROLES:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    marker = await db.app_config.find_one({"key": "admin_data_seed"}, {"_id": 0})
+    if not marker:
+        return {"seeded": False}
+    return {"seeded": True, **marker.get("value", {})}

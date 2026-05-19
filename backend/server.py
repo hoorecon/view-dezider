@@ -324,6 +324,11 @@ async def startup_db_client():
         await ensure_acm_seeded_on_boot()
     except Exception as e:
         logger.error(f"ACM boot seed failed: {e}")
+    try:
+        from core.admin_data_seed import ensure_admin_data_seeded_on_boot
+        await ensure_admin_data_seeded_on_boot()
+    except Exception as e:
+        logger.error(f"Admin data seed at boot failed: {e}")
 
 
 @app.on_event("shutdown")
