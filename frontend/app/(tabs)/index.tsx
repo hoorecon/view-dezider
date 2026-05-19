@@ -170,6 +170,17 @@ export default function HomeScreen() {
               <Text style={styles.userName}>{user?.name || 'Decision Maker'}</Text>
             </View>
             <View style={styles.headerRight}>
+              {/* Switch-to-admin button — only visible for admins so they can
+                  jump back without using the browser back button. */}
+              {(user?.is_admin || ['admin', 'super_admin', 'co_admin'].includes((user?.role || '').toLowerCase())) && (
+                <TouchableOpacity
+                  style={styles.headerIconBtn}
+                  onPress={() => router.replace('/admin' as any)}
+                  accessibilityLabel="Switch to admin dashboard"
+                >
+                  <Ionicons name="shield-checkmark" size={22} color="#FFF" />
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={styles.headerIconBtn}
                 onPress={() => router.push('/notifications')}

@@ -13,27 +13,27 @@ import WebFrame from '../src/components/WebFrame';
 
 // ----------------------------------------------------------------------
 // Web-only: inject @font-face for Ionicons so static Cloudflare/Pages
-// builds render glyphs instead of empty boxes. The expo-font useFonts
-// hook below also loads it for native; on web we additionally write a
-// <style> tag so the icon font is resolvable from CSS even before the
-// JS font loader resolves.
+// builds render glyphs instead of empty boxes.
+//
+// We bundle the Ionicons.ttf file directly in /public/fonts/ so it has
+// a stable URL (/fonts/Ionicons.ttf) at runtime regardless of how Metro
+// hashes assets. This is the most reliable approach for static exports.
 // ----------------------------------------------------------------------
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
   const IONICONS_FONT_ID = '__ionicons_font_face__';
   if (!document.getElementById(IONICONS_FONT_ID)) {
-    try {
-      // Resolve the bundled Ionicons.ttf URL via Metro's require pipeline
-      const fontModule = require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf');
-      const fontUrl = (fontModule && (fontModule.default || fontModule)) as string;
-      if (fontUrl) {
-        const style = document.createElement('style');
-        style.id = IONICONS_FONT_ID;
-        style.textContent = `@font-face { font-family: 'Ionicons'; src: url('${fontUrl}') format('truetype'); font-weight: normal; font-style: normal; }`;
-        document.head.appendChild(style);
+    const style = document.createElement('style');
+    style.id = IONICONS_FONT_ID;
+    style.textContent = `
+      @font-face {
+        font-family: 'Ionicons';
+        src: url('/fonts/Ionicons.ttf') format('truetype');
+        font-weight: normal;
+        font-style: normal;
+        font-display: swap;
       }
-    } catch (e) {
-      // Non-fatal — useFonts() below is the fallback path.
-    }
+    `;
+    document.head.appendChild(style);
   }
 }
 
