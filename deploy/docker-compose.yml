@@ -1,53 +1,33 @@
-# Local-dev / single-node compose stack.
-# Used as a self-contained testbed before AWS/GCP deploy.
-#
+# Production compose stack (Atlas-backed).
 # Up:    docker compose -f deploy/docker-compose.yml up -d
 # Logs:  docker compose -f deploy/docker-compose.yml logs -f api
-# Down:  docker compose -f deploy/docker-compose.yml down -v
-
-version: "3.9"
 
 services:
-  mongo:
-    image: mongo:7
-    restart: unless-stopped
-    volumes:
-      - mongo_data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      retries: 5
-    ports:
-      - "127.0.0.1:27017:27017"
-
   api:
     build:
       context: ../backend
       dockerfile: Dockerfile
     restart: unless-stopped
-    depends_on:
-      mongo:
-        condition: service_healthy
+    env_file:
+      - ../backend/.env
     environment:
-      MONGO_URL: "mongodb://mongo:27017/dezider"
-      DB_NAME: "dezider"
-      DEZIDER_ENV: "stage"
-      DEZIDER_VERSION: "docker-stage"
+      DEZIDER_ENV: "prod"
+      DEZIDER_VERSION: "v3.15.0"
       SECURITY_HEADERS_ENABLED: "true"
-      HSTS_ENABLED: "false"
-      MAX_BODY_BYTES: "10485760"        # 10MB
+      HSTS_ENABLED: "true"
+      MAX_BODY_BYTES: "10485760"
       RATE_LIMIT_DEFAULT: "120/minute"
       RATE_LIMIT_AUTH: "10/minute"
       RATE_LIMIT_AI: "10/minute"
       METRICS_ENABLED: "true"
-      # METRICS_TOKEN: "set-me-in-prod"
-      # EMERGENT_LLM_KEY: "<set-from-secret>"
+    volumes:
+      # Mount the docs/ directory from host into the container so the
+      # admin_docs_viewer endpoint can read PRD.md / SRS.md / etc.
+      # Without this mount the markdown viewer returns 404 for every doc.
+      - ../docs:/app/docs:ro
     ports:
       - "8001:8001"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/api/health/live', timeout=3)"]
       interval: 30s
       retries: 3
-
-volumes:
-  mongo_data:

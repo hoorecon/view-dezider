@@ -131,8 +131,9 @@ export const ADMIN_NAV: AdminNavSection[] = [
   {
     label: 'System',
     items: [
-      { key: 'docs',     label: 'Admin Docs',        icon: 'library',              href: '/admin/docs' },
-      { key: 'settings', label: 'Settings',          icon: 'settings',             href: '/admin/settings' },
+      { key: 'docs',      label: 'Admin Docs',        icon: 'library',              href: '/admin/docs' },
+      { key: 'handbook',  label: 'Handbook',          icon: 'book',                 href: '/admin/handbook' },
+      { key: 'settings',  label: 'Settings',          icon: 'settings',             href: '/admin/settings' },
     ],
   },
 ];
