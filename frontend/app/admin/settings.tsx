@@ -1,409 +1,410 @@
-import React, { useState, useEffect } from 'react';
-import { showAlert } from '../../src/utils/alert';
+/**
+ * /admin/settings — Admin Settings hub.
+ *
+ * Currently focused on 3rd-party integration credentials (Razorpay,
+ * Exotel, DigiLocker, UltraMsg WhatsApp, Google Calendar, Emergent LLM).
+ *
+ * Architecture:
+ *   • Credentials stored in MongoDB `integrations` collection (NOT in .env)
+ *     so updates take effect immediately without container restart.
+ *   • Secret fields are masked on the wire — server never returns the raw
+ *     value once stored.
+ *   • Each provider has a "Test" button (currently checks required fields;
+ *     real provider pings ship in Phase 2).
+ */
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
-  Alert,
-  ActivityIndicator,
+  ScrollView,
   TextInput,
+  ActivityIndicator,
+  Modal,
+  Alert,
+  Platform,
   Switch,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, GRADIENTS } from '../../src/constants/colors';
+import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
-import { useAuthStore } from '../../src/store/authStore';
 
-export default function AdminSettingsScreen() {
-  const router = useRouter();
-  const { user } = useAuthStore();
+type FieldSpec = {
+  key: string;
+  label: string;
+  type: 'text' | 'password';
+  required: boolean;
+  secret: boolean;
+  placeholder?: string;
+};
+
+type IntegrationItem = {
+  provider: string;
+  title: string;
+  category: string;
+  icon: string;
+  description: string;
+  docs_url: string;
+  fields: FieldSpec[];
+  enabled: boolean;
+  configured: boolean;
+  config_masked: Record<string, any>;
+  updated_at?: string;
+  updated_by?: string;
+  last_tested_at?: string;
+  last_test_result?: any;
+};
+
+export default function AdminSettings() {
+  const [items, setItems] = useState<IntegrationItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<IntegrationItem | null>(null);
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [enabled, setEnabled] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState<string | null>(null);
 
-  // Call Config
-  const [defaultDuration, setDefaultDuration] = useState('30');
-  const [minDuration, setMinDuration] = useState('5');
-  const [maxDuration, setMaxDuration] = useState('120');
-
-  // Feature Flags
-  const [flags, setFlags] = useState({
-    solution_finder: false,
-    solution_matrix: false,
-  });
-
-  // Org Branding
-  const [orgName, setOrgName] = useState('');
-  const [orgLogoUrl, setOrgLogoUrl] = useState('');
-  const [orgPrimaryColor, setOrgPrimaryColor] = useState('#6C63FF');
-  const [orgAccentColor, setOrgAccentColor] = useState('#FF6584');
-  const [orgTagline, setOrgTagline] = useState('');
-  const [orgId, setOrgId] = useState('');
-
-  useEffect(() => {
-    fetchSettings();
-  }, []);
-
-  const fetchSettings = async () => {
+  const load = useCallback(async () => {
+    setLoading(true);
     try {
-      const [callRes, flagRes] = await Promise.all([
-        api.get('/admin/call-config'),
-        api.get('/feature-flags'),
-      ]);
-      setDefaultDuration(String(callRes.data.default_duration || 30));
-      setMinDuration(String(callRes.data.min_duration || 5));
-      setMaxDuration(String(callRes.data.max_duration || 120));
-      setFlags(flagRes.data || { solution_finder: false, solution_matrix: false });
-
-      // Load org branding if user has org_id
-      if (user?.org_id) {
-        try {
-          const meRes = await api.get('/auth/me');
-          const userOrgId = meRes.data?.org_id;
-          if (userOrgId) {
-            setOrgId(userOrgId);
-            // Try to find org by its id - we need to get slug first
-            const membersRes = await api.get(`/organizations/${userOrgId}/members`);
-            // Use the org info from any endpoint that returns it
-          }
-        } catch (e) {
-          console.log('Org branding load optional:', e);
-        }
-      }
-    } catch (e) {
-      console.error('Error fetching settings:', e);
+      const res = await api.get('/admin/integrations');
+      setItems(res.data || []);
+    } catch (e: any) {
+      console.error('Load integrations failed:', e);
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const openEdit = (item: IntegrationItem) => {
+    setEditing(item);
+    setEnabled(item.enabled);
+    // pre-fill with masked values; user only types over fields they want to change
+    const initial: Record<string, string> = {};
+    item.fields.forEach(f => {
+      initial[f.key] = (item.config_masked?.[f.key] ?? '') as string;
+    });
+    setForm(initial);
   };
 
-  const handleSaveCallConfig = async () => {
-    setSaving(true);
-    try {
-      await api.put('/admin/call-config', {
-        default_duration: parseInt(defaultDuration) || 30,
-        min_duration: parseInt(minDuration) || 5,
-        max_duration: parseInt(maxDuration) || 120,
-      });
-      showAlert('Saved', 'Call configuration updated');
-    } catch (e) {
-      showAlert('Error', 'Failed to save call config');
-    } finally {
-      setSaving(false);
-    }
+  const closeEdit = () => {
+    setEditing(null);
+    setForm({});
   };
 
-  const handleSaveOrgBranding = async () => {
-    if (!orgId) {
-      showAlert('Info', 'No organization linked to your account');
+  const save = async () => {
+    if (!editing) return;
+    // Validate required fields
+    const missing = editing.fields
+      .filter(f => f.required && !form[f.key])
+      .map(f => f.label);
+    if (missing.length) {
+      const msg = `Required: ${missing.join(', ')}`;
+      if (Platform.OS === 'web') window.alert(msg); else Alert.alert('Missing fields', msg);
       return;
     }
     setSaving(true);
     try {
-      await api.put(`/organizations/${orgId}`, {
-        name: orgName,
-        logo_url: orgLogoUrl,
-        primary_color: orgPrimaryColor,
-        accent_color: orgAccentColor,
-        tagline: orgTagline,
+      // Only send fields user actually edited (skip those equal to mask)
+      const config: Record<string, string> = {};
+      Object.entries(form).forEach(([k, v]) => {
+        if (v !== '••••••••') config[k] = v;
       });
-      showAlert('Saved', 'Organization branding updated');
-    } catch (e) {
-      showAlert('Error', 'Failed to update branding. Ensure you have admin rights.');
+      await api.put(`/admin/integrations/${editing.provider}`, { enabled, config });
+      await load();
+      closeEdit();
+      const msg = `${editing.title} updated.`;
+      if (Platform.OS === 'web') window.alert(msg); else Alert.alert('Saved', msg);
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || 'Save failed';
+      if (Platform.OS === 'web') window.alert(msg); else Alert.alert('Error', msg);
     } finally {
       setSaving(false);
     }
   };
 
-  const toggleFlag = async (key: string, value: boolean) => {
-    const newFlags = { ...flags, [key]: value };
-    setFlags(newFlags);
+  const runTest = async (provider: string) => {
+    setTesting(provider);
     try {
-      await api.put('/admin/feature-flags', newFlags);
-    } catch (e) {
-      showAlert('Error', 'Failed to update feature flag');
-      setFlags(prev => ({ ...prev, [key]: !value }));
+      const res = await api.post(`/admin/integrations/${provider}/test`);
+      const r = res.data;
+      const msg = r.ok
+        ? '✅ All required fields are configured.'
+        : `❌ Missing: ${(r.missing_fields || []).join(', ')}`;
+      if (Platform.OS === 'web') window.alert(msg); else Alert.alert('Test result', msg);
+      await load();
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || 'Test failed';
+      if (Platform.OS === 'web') window.alert(msg); else Alert.alert('Error', msg);
+    } finally {
+      setTesting(null);
     }
   };
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 40 }} />
-      </SafeAreaView>
-    );
-  }
+  // Group items by category for nicer display
+  const grouped: Record<string, IntegrationItem[]> = {};
+  items.forEach(it => {
+    if (!grouped[it.category]) grouped[it.category] = [];
+    grouped[it.category].push(it);
+  });
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <LinearGradient colors={GRADIENTS.header} style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={24} color="#FFF" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Admin Settings</Text>
-      </LinearGradient>
-
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {/* WOWO Feature Flags */}
-        <Text style={styles.sectionTitle}>WOWO Feature Flags</Text>
-        <View style={styles.card}>
-          <Text style={styles.cardDescription}>
-            Wire On / Wire Off — Control which solution tools are visible to all users
+    <View style={styles.container}>
+      <ScrollView
+        contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
+        showsVerticalScrollIndicator={true}
+      >
+        {/* Page header */}
+        <View style={styles.pageHeader}>
+          <Text style={styles.pageTitle}>Admin Settings</Text>
+          <Text style={styles.pageSubtitle}>
+            Manage 3rd-party integration credentials. Changes take effect immediately — no restart required.
           </Text>
-
-          <View style={styles.flagRow}>
-            <View style={styles.flagInfo}>
-              <Ionicons name="search" size={20} color={COLORS.teal} />
-              <View>
-                <Text style={styles.flagLabel}>Simple Solution Finder</Text>
-                <Text style={styles.flagStatus}>
-                  {flags.solution_finder ? 'Active — Visible to all' : 'Disabled — Hidden from users'}
-                </Text>
-              </View>
-            </View>
-            <Switch
-              value={flags.solution_finder}
-              onValueChange={v => toggleFlag('solution_finder', v)}
-              trackColor={{ false: '#D1D5DB', true: COLORS.success + '80' }}
-              thumbColor={flags.solution_finder ? COLORS.success : '#9CA3AF'}
-            />
-          </View>
-
-          <View style={styles.flagRow}>
-            <View style={styles.flagInfo}>
-              <Ionicons name="grid" size={20} color={COLORS.accent} />
-              <View>
-                <Text style={styles.flagLabel}>Advanced Solution Matrix</Text>
-                <Text style={styles.flagStatus}>
-                  {flags.solution_matrix ? 'Active — Visible to all' : 'Disabled — Hidden from users'}
-                </Text>
-              </View>
-            </View>
-            <Switch
-              value={flags.solution_matrix}
-              onValueChange={v => toggleFlag('solution_matrix', v)}
-              trackColor={{ false: '#D1D5DB', true: COLORS.success + '80' }}
-              thumbColor={flags.solution_matrix ? COLORS.success : '#9CA3AF'}
-            />
-          </View>
         </View>
 
-        {/* Call Configuration */}
-        <Text style={styles.sectionTitle}>Video Call Configuration</Text>
-        <View style={styles.card}>
-          <Text style={styles.cardDescription}>
-            Configure default and limits for expert video call durations (in minutes)
+        {/* Security notice */}
+        <View style={styles.noticeBox}>
+          <Ionicons name="lock-closed" size={16} color={COLORS.primary} />
+          <Text style={styles.noticeText}>
+            Secrets are masked on display (•••). Submit a new value only when rotating credentials.
           </Text>
-
-          <Text style={styles.inputLabel}>Default Duration (minutes)</Text>
-          <TextInput
-            style={styles.input}
-            value={defaultDuration}
-            onChangeText={setDefaultDuration}
-            keyboardType="numeric"
-            placeholder="30"
-            placeholderTextColor={COLORS.textMuted}
-          />
-
-          <View style={styles.twoCol}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.inputLabel}>Min Duration</Text>
-              <TextInput
-                style={styles.input}
-                value={minDuration}
-                onChangeText={setMinDuration}
-                keyboardType="numeric"
-                placeholder="5"
-                placeholderTextColor={COLORS.textMuted}
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.inputLabel}>Max Duration</Text>
-              <TextInput
-                style={styles.input}
-                value={maxDuration}
-                onChangeText={setMaxDuration}
-                keyboardType="numeric"
-                placeholder="120"
-                placeholderTextColor={COLORS.textMuted}
-              />
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={[styles.saveBtn, saving && { opacity: 0.7 }]}
-            onPress={handleSaveCallConfig}
-            disabled={saving}
-          >
-            {saving ? (
-              <ActivityIndicator size="small" color="#FFF" />
-            ) : (
-              <>
-                <Ionicons name="save" size={18} color="#FFF" />
-                <Text style={styles.saveBtnText}>Save Call Config</Text>
-              </>
-            )}
-          </TouchableOpacity>
         </View>
 
-        {/* Organization Branding (P2) */}
-        <Text style={styles.sectionTitle}>Organization Branding</Text>
-        <View style={styles.card}>
-          <Text style={styles.cardDescription}>
-            Customize your organization's look and feel (requires org membership)
-          </Text>
+        {loading ? (
+          <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 40 }} />
+        ) : items.length === 0 ? (
+          <Text style={styles.empty}>No integrations available.</Text>
+        ) : (
+          Object.entries(grouped).map(([category, list]) => (
+            <View key={category} style={styles.categorySection}>
+              <Text style={styles.categoryHeader}>{category.toUpperCase()}</Text>
+              {list.map(item => (
+                <View key={item.provider} style={styles.card}>
+                  <View style={styles.cardHeader}>
+                    <View style={[styles.iconBubble, { backgroundColor: COLORS.primary + '15' }]}>
+                      <Ionicons name={item.icon as any} size={22} color={COLORS.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.titleRow}>
+                        <Text style={styles.cardTitle}>{item.title}</Text>
+                        <View style={[styles.statusPill, item.configured ? styles.pillOk : styles.pillWarn]}>
+                          <Ionicons
+                            name={item.configured ? 'checkmark-circle' : 'alert-circle'}
+                            size={11}
+                            color="#fff"
+                          />
+                          <Text style={styles.pillText}>
+                            {item.configured ? (item.enabled ? 'Active' : 'Configured') : 'Not configured'}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.cardDesc}>{item.description}</Text>
+                      {item.updated_at && (
+                        <Text style={styles.metaText}>
+                          Updated {new Date(item.updated_at).toLocaleString()}
+                          {item.updated_by ? ` by ${item.updated_by}` : ''}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
 
-          <Text style={styles.inputLabel}>Organization Name</Text>
-          <TextInput
-            style={styles.input}
-            value={orgName}
-            onChangeText={setOrgName}
-            placeholder="My Organization"
-            placeholderTextColor={COLORS.textMuted}
-          />
-
-          <Text style={styles.inputLabel}>Logo URL</Text>
-          <TextInput
-            style={styles.input}
-            value={orgLogoUrl}
-            onChangeText={setOrgLogoUrl}
-            placeholder="https://example.com/logo.png"
-            placeholderTextColor={COLORS.textMuted}
-            autoCapitalize="none"
-          />
-
-          <Text style={styles.inputLabel}>Tagline</Text>
-          <TextInput
-            style={styles.input}
-            value={orgTagline}
-            onChangeText={setOrgTagline}
-            placeholder="Making better decisions together"
-            placeholderTextColor={COLORS.textMuted}
-          />
-
-          <View style={styles.twoCol}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.inputLabel}>Primary Color</Text>
-              <View style={styles.colorInputRow}>
-                <View style={[styles.colorSwatch, { backgroundColor: orgPrimaryColor }]} />
-                <TextInput
-                  style={[styles.input, { flex: 1 }]}
-                  value={orgPrimaryColor}
-                  onChangeText={setOrgPrimaryColor}
-                  placeholder="#6C63FF"
-                  placeholderTextColor={COLORS.textMuted}
-                  autoCapitalize="none"
-                />
-              </View>
+                  <View style={styles.actionRow}>
+                    <TouchableOpacity
+                      style={[styles.btn, styles.btnPrimary]}
+                      onPress={() => openEdit(item)}
+                    >
+                      <Ionicons name="create-outline" size={14} color="#fff" />
+                      <Text style={styles.btnPrimaryText}>Configure</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.btn, styles.btnGhost]}
+                      onPress={() => runTest(item.provider)}
+                      disabled={testing === item.provider}
+                    >
+                      {testing === item.provider ? (
+                        <ActivityIndicator size="small" color={COLORS.primary} />
+                      ) : (
+                        <>
+                          <Ionicons name="pulse-outline" size={14} color={COLORS.primary} />
+                          <Text style={styles.btnGhostText}>Test</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                    {item.docs_url && (
+                      <TouchableOpacity
+                        style={[styles.btn, styles.btnGhost]}
+                        onPress={() => {
+                          if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                            window.open(item.docs_url, '_blank');
+                          }
+                        }}
+                      >
+                        <Ionicons name="document-text-outline" size={14} color={COLORS.primary} />
+                        <Text style={styles.btnGhostText}>Docs</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              ))}
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.inputLabel}>Accent Color</Text>
-              <View style={styles.colorInputRow}>
-                <View style={[styles.colorSwatch, { backgroundColor: orgAccentColor }]} />
-                <TextInput
-                  style={[styles.input, { flex: 1 }]}
-                  value={orgAccentColor}
-                  onChangeText={setOrgAccentColor}
-                  placeholder="#FF6584"
-                  placeholderTextColor={COLORS.textMuted}
-                  autoCapitalize="none"
-                />
-              </View>
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={[styles.saveBtn, { backgroundColor: COLORS.accent }, saving && { opacity: 0.7 }]}
-            onPress={handleSaveOrgBranding}
-            disabled={saving || !orgId}
-          >
-            {saving ? (
-              <ActivityIndicator size="small" color="#FFF" />
-            ) : (
-              <>
-                <Ionicons name="color-palette" size={18} color="#FFF" />
-                <Text style={styles.saveBtnText}>{orgId ? 'Save Branding' : 'No Org Linked'}</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
+          ))
+        )}
       </ScrollView>
-    </SafeAreaView>
+
+      {/* Edit modal */}
+      <Modal visible={!!editing} animationType="slide" transparent onRequestClose={closeEdit}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <ScrollView>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>{editing?.title}</Text>
+                <TouchableOpacity onPress={closeEdit} hitSlop={10}>
+                  <Ionicons name="close" size={22} color={COLORS.textPrimary} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.modalDesc}>{editing?.description}</Text>
+
+              {/* Enable toggle */}
+              <View style={styles.toggleRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.toggleLabel}>Enable this integration</Text>
+                  <Text style={styles.toggleHint}>
+                    When OFF, calls to this provider return graceful 503.
+                  </Text>
+                </View>
+                <Switch value={enabled} onValueChange={setEnabled} />
+              </View>
+
+              {/* Dynamic fields */}
+              {editing?.fields.map(f => (
+                <View key={f.key} style={styles.fieldGroup}>
+                  <Text style={styles.fieldLabel}>
+                    {f.label}
+                    {f.required && <Text style={{ color: '#EF4444' }}> *</Text>}
+                  </Text>
+                  <TextInput
+                    value={form[f.key] || ''}
+                    onChangeText={(v) => setForm(prev => ({ ...prev, [f.key]: v }))}
+                    secureTextEntry={f.type === 'password'}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    placeholder={f.placeholder || `Enter ${f.label.toLowerCase()}`}
+                    placeholderTextColor={COLORS.textMuted}
+                    style={styles.input}
+                  />
+                  {f.secret && form[f.key] === '••••••••' && (
+                    <Text style={styles.fieldHint}>
+                      Tap to replace. Leave as-is to keep the existing secret.
+                    </Text>
+                  )}
+                </View>
+              ))}
+
+              <View style={styles.modalFooter}>
+                <TouchableOpacity onPress={closeEdit} style={[styles.btn, styles.btnGhost]}>
+                  <Text style={styles.btnGhostText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={save}
+                  disabled={saving}
+                  style={[styles.btn, styles.btnPrimary, { flex: 1 }]}
+                >
+                  {saving ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <>
+                      <Ionicons name="save" size={14} color="#fff" />
+                      <Text style={styles.btnPrimaryText}>Save credentials</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  header: {
-    flexDirection: 'row', alignItems: 'center', padding: 16, paddingBottom: 20,
+  container: { flex: 1, minHeight: 600, backgroundColor: COLORS.background },
+  pageHeader: { marginBottom: 16 },
+  pageTitle: { fontSize: 24, fontWeight: '800', color: COLORS.textPrimary },
+  pageSubtitle: { fontSize: 13, color: COLORS.textMuted, marginTop: 4 },
+  noticeBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: COLORS.primary + '10', padding: 12, borderRadius: 8,
+    marginBottom: 16,
   },
-  backBtn: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    justifyContent: 'center', alignItems: 'center', marginRight: 12,
-  },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: '#FFF' },
-  scrollView: { flex: 1 },
-  scrollContent: { padding: 16, paddingBottom: 40 },
-  sectionTitle: {
-    fontSize: 18, fontWeight: '700', color: COLORS.textPrimary,
-    marginBottom: 10, marginTop: 8,
+  noticeText: { flex: 1, fontSize: 12, color: COLORS.textPrimary },
+  empty: { textAlign: 'center', color: COLORS.textMuted, marginTop: 60 },
+  categorySection: { marginTop: 20 },
+  categoryHeader: {
+    fontSize: 11, fontWeight: '700', color: COLORS.textMuted, letterSpacing: 0.8,
+    marginBottom: 10,
   },
   card: {
-    backgroundColor: COLORS.white, borderRadius: 14,
-    padding: 16, marginBottom: 16,
-    borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: COLORS.cardBg, borderRadius: 12, padding: 16,
+    marginBottom: 10, borderWidth: 1, borderColor: COLORS.border,
   },
-  cardDescription: {
-    fontSize: 13, color: COLORS.textSecondary, marginBottom: 16,
-    lineHeight: 18,
+  cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  iconBubble: {
+    width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center',
   },
-  flagRow: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: COLORS.divider,
+  titleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  cardTitle: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
+  cardDesc: { fontSize: 12, color: COLORS.textSecondary, marginTop: 4, lineHeight: 17 },
+  metaText: { fontSize: 11, color: COLORS.textMuted, marginTop: 4 },
+  statusPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12,
   },
-  flagInfo: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1,
+  pillOk: { backgroundColor: '#10B981' },
+  pillWarn: { backgroundColor: '#F59E0B' },
+  pillText: { fontSize: 10, color: '#fff', fontWeight: '700' },
+  actionRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  btn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8,
   },
-  flagLabel: {
-    fontSize: 14, fontWeight: '600', color: COLORS.textPrimary,
+  btnPrimary: { backgroundColor: COLORS.primary },
+  btnPrimaryText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  btnGhost: { backgroundColor: COLORS.primary + '12' },
+  btnGhostText: { color: COLORS.primary, fontSize: 13, fontWeight: '600' },
+  // Modal
+  modalBackdrop: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center', alignItems: 'center', padding: 20,
   },
-  flagStatus: {
-    fontSize: 11, color: COLORS.textMuted, marginTop: 2,
+  modalCard: {
+    width: '100%', maxWidth: 560, maxHeight: '85%',
+    backgroundColor: COLORS.cardBg, borderRadius: 14, padding: 20,
   },
-  inputLabel: {
-    fontSize: 13, fontWeight: '600', color: COLORS.textPrimary,
-    marginTop: 12, marginBottom: 4,
+  modalHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: 8,
   },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: COLORS.textPrimary },
+  modalDesc: { fontSize: 12, color: COLORS.textMuted, marginBottom: 14 },
+  toggleRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 10, borderTopWidth: 1, borderBottomWidth: 1,
+    borderColor: COLORS.border, marginBottom: 14,
+  },
+  toggleLabel: { fontSize: 14, fontWeight: '600', color: COLORS.textPrimary },
+  toggleHint: { fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
+  fieldGroup: { marginBottom: 14 },
+  fieldLabel: { fontSize: 12, fontWeight: '600', color: COLORS.textPrimary, marginBottom: 4 },
+  fieldHint: { fontSize: 10, color: COLORS.textMuted, marginTop: 4, fontStyle: 'italic' },
   input: {
-    backgroundColor: COLORS.background, borderRadius: 10,
-    borderWidth: 1, borderColor: COLORS.border,
-    paddingHorizontal: 14, paddingVertical: 10,
-    fontSize: 14, color: COLORS.textPrimary,
+    borderWidth: 1, borderColor: COLORS.border, borderRadius: 8,
+    paddingHorizontal: 12, paddingVertical: 10, fontSize: 14,
+    color: COLORS.textPrimary, backgroundColor: COLORS.background,
   },
-  twoCol: {
-    flexDirection: 'row', gap: 12,
-  },
-  colorInputRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-  },
-  colorSwatch: {
-    width: 28, height: 28, borderRadius: 14,
-    borderWidth: 2, borderColor: COLORS.border,
-  },
-  saveBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, marginTop: 16,
-    backgroundColor: COLORS.primary, borderRadius: 12,
-    paddingVertical: 12,
-  },
-  saveBtnText: {
-    fontSize: 14, fontWeight: '600', color: '#FFF',
-  },
+  modalFooter: { flexDirection: 'row', gap: 10, marginTop: 8 },
 });
