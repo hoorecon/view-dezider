@@ -32,7 +32,7 @@ from models.tier_models import CHAKRA_TIERS
 
 logger = logging.getLogger(__name__)
 
-SEED_VERSION = "2026-06-01-01"
+SEED_VERSION = "2026-06-01-03"
 SYSTEM_USER_ID = "system_seed"
 
 
@@ -914,6 +914,95 @@ def _build_audit_trail() -> List[Dict[str, Any]]:
 # ─────────────────────────────────────────────────────────────────────────────
 # 8. REVIEW-NET FACTORS  (6 reusable rating factors)
 # ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. REVIEW-NET PENDING REVIEWS (for ReviewNet → Admin → Moderation Queue)
+# ─────────────────────────────────────────────────────────────────────────────
+def _build_review_net_pending() -> List[Dict[str, Any]]:
+    now = _now()
+    samples = [
+        {
+            "review_id": "rv_seed_001",
+            "solution_name": "Notion Productivity Coaching (4-week)",
+            "reviewer_name": "Asha Krishnan",
+            "title": "Genuinely transformed my weekly review habit",
+            "comment": "4 weeks of structured 1:1 sessions plus 6 Notion templates. My second-brain finally feels like an actual system instead of a graveyard of notes.",
+            "overall_rating": 5.0,
+            "is_verified_buyer": True,
+        },
+        {
+            "review_id": "rv_seed_002",
+            "solution_name": "Cure.fit ELEVATE Membership (Annual)",
+            "reviewer_name": "Rohit Banerjee",
+            "title": "Worth it if you actually use 2+ centres",
+            "comment": "Group classes are excellent. App is buggy. Sleep + meditation content is shallow vs Headspace. ROI breaks even at 8 classes/month.",
+            "overall_rating": 3.5,
+            "is_verified_buyer": True,
+        },
+        {
+            "review_id": "rv_seed_003",
+            "solution_name": "Zerodha Varsity Premium Mentorship",
+            "reviewer_name": "Sneha Pillai",
+            "title": "Good fundamentals, light on real portfolios",
+            "comment": "Mentors know their stuff but the 60-person cohort is too large for personalised feedback. Best for absolute beginners moving past basics.",
+            "overall_rating": 4.0,
+            "is_verified_buyer": True,
+        },
+        {
+            "review_id": "rv_seed_004",
+            "solution_name": "TiE Global Summit 2026 — Bengaluru",
+            "reviewer_name": "Karan Mehta",
+            "title": "Networking gold for Series-A founders",
+            "comment": "Three solid investor intros + two co-founder candidates. Talks were mid; networking was the real value. ROI obvious within 2 weeks.",
+            "overall_rating": 4.5,
+            "is_verified_buyer": True,
+        },
+        {
+            "review_id": "rv_seed_005",
+            "solution_name": "Dr. Karthik Iyer — Sports Physiotherapist",
+            "reviewer_name": "Aman Verma",
+            "title": "ACL recovery in 5 months — credit to him",
+            "comment": "Followed his programme religiously, ran 10K again at month 5. Honest about timelines, never oversold. Charges fairly.",
+            "overall_rating": 5.0,
+            "is_verified_buyer": True,
+        },
+        {
+            "review_id": "rv_seed_006",
+            "solution_name": "Open-Source Personal Finance Tracker",
+            "reviewer_name": "Devika Suresh",
+            "title": "Setup took longer than 4 hrs — but worth it",
+            "comment": "Took me a Saturday + Sunday morning. Once running, it beats any SaaS for India tax categories. CLI-first; not for non-techies.",
+            "overall_rating": 4.0,
+            "is_verified_buyer": False,
+        },
+    ]
+    out = []
+    for i, s in enumerate(samples):
+        ts = now - timedelta(hours=(i + 1) * 3)
+        out.append({
+            **s,
+            "solution_id": f"sol_seed_pending_{(i % 6) + 1:02d}",
+            "catalog_node_id": "cn_seed_demo",
+            "reviewer_id": f"user_seed_reviewer_{i+1:02d}",
+            "reviewer_segment": "individual",
+            "reviewer_subsegment": "customer",
+            "factor_ratings": {
+                "rnf_seed_value_for_money": int(s["overall_rating"]),
+                "rnf_seed_quality": int(s["overall_rating"]),
+                "rnf_seed_outcome": int(s["overall_rating"]),
+                "rnf_seed_recommend": s["overall_rating"] >= 4.0,
+            },
+            "status": "pending",
+            "moderation_action": None,
+            "moderation_note": None,
+            "helpful_yes_count": 0,
+            "helpful_no_count": 0,
+            "owner_reply": None,
+            "created_at": ts,
+            "updated_at": ts,
+        })
+    return out
+
+
 REVIEW_NET_FACTORS_SEED: List[Dict[str, Any]] = [
     {
         "id": "rnf_seed_value_for_money",
@@ -1126,6 +1215,16 @@ async def seed_admin_data(force: bool = False) -> Dict[str, Any]:
         if res.upserted_id or res.modified_count:
             n += 1
     summary["review_net_factors"] = n
+
+    # ── 10) ReviewNet pending moderation queue ───────────────────────────────
+    n = 0
+    for rv in _build_review_net_pending():
+        res = await db.review_net.update_one(
+            {"review_id": rv["review_id"]}, {"$setOnInsert": rv}, upsert=True,
+        )
+        if res.upserted_id or res.modified_count:
+            n += 1
+    summary["review_net_pending"] = n
 
     # ── Persist seed marker ──────────────────────────────────────────────────
     await db.app_config.update_one(
