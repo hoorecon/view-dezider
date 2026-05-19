@@ -118,11 +118,22 @@ export default function AdminShell({ children, title, rightSlot }: AdminShellPro
             </View>
           </View>
         </View>
-        <TouchableOpacity onPress={() => router.push('/(tabs)' as any)} hitSlop={8} style={s.userActionBtn}>
+        <TouchableOpacity
+          onPress={() => { setDrawerOpen(false); router.replace('/' as any); }}
+          hitSlop={8}
+          style={s.userActionBtn}
+          accessibilityLabel="Switch to user view"
+        >
           <Ionicons name="swap-horizontal" size={14} color={ADMIN_THEME.sidebar.text} />
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => logout()} hitSlop={8} style={s.userActionBtn}>
+        <TouchableOpacity
+          onPress={() => logout()}
+          hitSlop={8}
+          style={s.userActionBtn}
+          accessibilityLabel="Logout"
+        >
           <Ionicons name="log-out-outline" size={14} color={ADMIN_THEME.sidebar.text} />
+          {isDesktop && <Text style={s.userActionLabel}>Logout</Text>}
         </TouchableOpacity>
       </View>
     </View>
@@ -144,7 +155,7 @@ export default function AdminShell({ children, title, rightSlot }: AdminShellPro
       </View>
       {rightSlot}
       <View style={s.topbarRight}>
-        <TouchableOpacity style={s.topbarIconBtn} onPress={() => router.push('/(tabs)' as any)}>
+        <TouchableOpacity style={s.topbarIconBtn} onPress={() => router.replace('/' as any)}>
           <Ionicons name="open-outline" size={16} color={ADMIN_THEME.topbar.text} />
           {isDesktop && <Text style={s.topbarBtnText}>User View</Text>}
         </TouchableOpacity>
@@ -225,7 +236,19 @@ const s = StyleSheet.create({
   userMeta: { flexDirection: 'row', marginTop: 3 },
   roleBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(124,58,237,0.16)', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 },
   roleBadgeText: { color: '#C4B5FD', fontSize: 8, fontWeight: '700', letterSpacing: 0.4 },
-  userActionBtn: { padding: 6, borderRadius: 6 },
+  userActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    padding: 6,
+    borderRadius: 6,
+  },
+  userActionLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#CBD5E1',
+    marginLeft: 2,
+  },
 
   // Topbar
   topbar: {

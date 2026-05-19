@@ -2,6 +2,8 @@ import React, { useEffect } from 'react';
 import { View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useFonts } from 'expo-font';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../src/store/authStore';
 import { useBrandingStore } from '../src/store/brandingStore';
 import { COLORS } from '../src/constants/colors';
@@ -13,6 +15,13 @@ export default function RootLayout() {
   const checkAuth = useAuthStore((state) => state.checkAuth);
   const hydrateBranding = useBrandingStore((s) => s.hydrate);
   const router = useRouter();
+
+  // Preload icon fonts so sidebar/buttons render glyphs instead of squares
+  // on Cloudflare Pages static web export. Loads transparently — we don't
+  // block initial paint; once fonts arrive the icons swap in.
+  const [fontsLoaded] = useFonts({
+    ...Ionicons.font,
+  });
 
   useEffect(() => {
     checkAuth();
