@@ -1,0 +1,3 @@
+# Cloudflare Pages SPA fallback for client-side routes (Expo Router dynamic segments).
+# Anything not matching a static asset gets index.html, then React Router takes over.
+/*    /index.html   200
