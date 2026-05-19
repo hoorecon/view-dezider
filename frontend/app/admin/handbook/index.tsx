@@ -61,7 +61,7 @@ export default function AdminDocsListScreen() {
   }, []);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={26} color={COLORS.textPrimary} />
@@ -80,8 +80,19 @@ export default function AdminDocsListScreen() {
           <Text style={styles.errTitle}>Cannot load docs</Text>
           <Text style={styles.errBody}>{error}</Text>
         </View>
+      ) : items.length === 0 ? (
+        <View style={styles.errCard}>
+          <Ionicons name="document-outline" size={28} color="#9CA3AF" />
+          <Text style={styles.errTitle}>No documents found</Text>
+          <Text style={styles.errBody}>The /app/docs directory appears empty in the backend container.</Text>
+        </View>
       ) : (
-        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.countLabel}>{items.length} documents available</Text>
           {items.map(it => (
             <TouchableOpacity
               key={it.slug}
@@ -104,16 +115,17 @@ export default function AdminDocsListScreen() {
           ))}
         </ScrollView>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
+  container: { flex: 1, minHeight: 600, backgroundColor: COLORS.background },
   header: { flexDirection: 'row', alignItems: 'center', padding: 16, paddingBottom: 12 },
   backBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
   headerTitle: { fontSize: 18, fontWeight: '700', color: COLORS.textPrimary },
   headerSub: { fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
+  countLabel: { fontSize: 12, color: COLORS.textMuted, marginBottom: 12, fontWeight: '600' },
   card: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: COLORS.white, padding: 14, borderRadius: 12,
