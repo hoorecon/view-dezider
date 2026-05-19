@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View } from 'react-native';
+import { View, Platform } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
@@ -11,14 +11,38 @@ import { registerForPushNotifications, addNotificationResponseListener } from '.
 import GlobalVoiceNav from '../src/components/GlobalVoiceNav';
 import WebFrame from '../src/components/WebFrame';
 
+// ----------------------------------------------------------------------
+// Web-only: inject @font-face for Ionicons so static Cloudflare/Pages
+// builds render glyphs instead of empty boxes. The expo-font useFonts
+// hook below also loads it for native; on web we additionally write a
+// <style> tag so the icon font is resolvable from CSS even before the
+// JS font loader resolves.
+// ----------------------------------------------------------------------
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  const IONICONS_FONT_ID = '__ionicons_font_face__';
+  if (!document.getElementById(IONICONS_FONT_ID)) {
+    try {
+      // Resolve the bundled Ionicons.ttf URL via Metro's require pipeline
+      const fontModule = require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf');
+      const fontUrl = (fontModule && (fontModule.default || fontModule)) as string;
+      if (fontUrl) {
+        const style = document.createElement('style');
+        style.id = IONICONS_FONT_ID;
+        style.textContent = `@font-face { font-family: 'Ionicons'; src: url('${fontUrl}') format('truetype'); font-weight: normal; font-style: normal; }`;
+        document.head.appendChild(style);
+      }
+    } catch (e) {
+      // Non-fatal — useFonts() below is the fallback path.
+    }
+  }
+}
+
 export default function RootLayout() {
   const checkAuth = useAuthStore((state) => state.checkAuth);
   const hydrateBranding = useBrandingStore((s) => s.hydrate);
   const router = useRouter();
 
-  // Preload icon fonts so sidebar/buttons render glyphs instead of squares
-  // on Cloudflare Pages static web export. Loads transparently — we don't
-  // block initial paint; once fonts arrive the icons swap in.
+  // Native + secondary web path for icon font
   const [fontsLoaded] = useFonts({
     ...Ionicons.font,
   });

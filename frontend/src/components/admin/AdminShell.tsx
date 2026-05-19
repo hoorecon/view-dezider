@@ -131,7 +131,13 @@ export default function AdminShell({ children, title, rightSlot }: AdminShellPro
           <Ionicons name="swap-horizontal" size={14} color={ADMIN_THEME.sidebar.text} />
         </TouchableOpacity>
         <TouchableOpacity
-          onPress={() => logout()}
+          onPress={async () => {
+            await logout();
+            setDrawerOpen(false);
+            // Hard navigate to admin login so the post-logout state isn't stuck
+            // on an admin page that's now guarded.
+            router.replace('/admin/login' as any);
+          }}
           hitSlop={8}
           style={s.userActionBtn}
           accessibilityLabel="Logout"

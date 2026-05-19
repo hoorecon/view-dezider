@@ -1,32 +1,75 @@
 /**
- * /admin/_layout — wraps every /admin/* route in AdminShell.
+ * /admin/_layout — wraps every /admin/* route in AdminShell + AUTH GUARD.
  *
- * Existing per-screen headers stay; AdminShell adds sidebar + topbar
- * (web) / hamburger drawer (mobile). The legacy mobile-style header
- * inside each screen is hidden on web for a clean web-first feel.
- *
- * Exception: /admin/login renders without AdminShell since the user
- * isn't authenticated yet — showing the admin nav would be misleading.
+ * Auth flow:
+ *  - /admin/login is the only public route here; rendered without AdminShell
+ *  - All other /admin/* routes require:
+ *      (a) authenticated session
+ *      (b) role: admin / super_admin / co_admin
+ *  - On fail → redirect to /admin/login (preserves the deep-link via params)
  */
-import React from 'react';
-import { Stack, usePathname } from 'expo-router';
-import { View, useWindowDimensions, Platform, StyleSheet } from 'react-native';
+import React, { useEffect } from 'react';
+import { Stack, usePathname, useRouter } from 'expo-router';
+import {
+  View, useWindowDimensions, Platform, StyleSheet,
+  ActivityIndicator, Text,
+} from 'react-native';
 import AdminShell from '../../src/components/admin/AdminShell';
 import { BREAKPOINTS } from '../../src/constants/adminTheme';
+import { useAuthStore } from '../../src/store/authStore';
+import { COLORS } from '../../src/constants/colors';
+
+const ADMIN_ROLES = ['admin', 'super_admin', 'co_admin'];
+
+function isAdminUser(user: any): boolean {
+  if (!user) return false;
+  if (user.is_admin === true) return true;
+  const role = (user.role || '').toLowerCase();
+  return ADMIN_ROLES.includes(role);
+}
 
 export default function AdminLayout() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= BREAKPOINTS.mobile;
   const pathname = usePathname();
+  const router = useRouter();
 
-  // Routes inside /admin that should NOT render the admin shell
-  // (e.g. login page — user isn't an admin yet).
+  const { isLoading, isAuthenticated, user } = useAuthStore();
+
   const isStandalone = pathname === '/admin/login';
+  const isAdmin = isAdminUser(user);
 
+  // Auth guard — redirect to /admin/login if missing auth or not admin
+  useEffect(() => {
+    if (isStandalone) return;          // login page itself never redirects
+    if (isLoading) return;             // wait for auth check to complete
+    if (!isAuthenticated) {
+      router.replace('/admin/login' as any);
+      return;
+    }
+    if (!isAdmin) {
+      router.replace('/admin/login' as any);
+    }
+  }, [isStandalone, isLoading, isAuthenticated, isAdmin]);
+
+  // Login page renders standalone (no shell)
   if (isStandalone) {
     return (
       <View style={s.root}>
         <Stack screenOptions={{ headerShown: false, animation: 'fade' }} />
+      </View>
+    );
+  }
+
+  // While auth check is in-flight, OR while we're about to redirect, show
+  // a centred spinner instead of leaking admin UI to unauth'd visitors.
+  if (isLoading || !isAuthenticated || !isAdmin) {
+    return (
+      <View style={[s.root, s.gate]}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={s.gateText}>
+          {isLoading ? 'Loading…' : 'Redirecting to admin sign-in…'}
+        </Text>
       </View>
     );
   }
@@ -41,10 +84,17 @@ export default function AdminLayout() {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1 },
-  rootDesktop: {
-    // On web desktop, hide legacy in-page mobile headers via a CSS class.
-    // The pages still render their headers; they sit inside the content area
-    // and act as the page H1 — acceptable for v1 migration without rewrites.
+  root: { flex: 1, backgroundColor: COLORS.background },
+  rootDesktop: {},
+  gate: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    minHeight: 400,
+  },
+  gateText: {
+    color: COLORS.textMuted,
+    fontSize: 13,
+    marginTop: 8,
   },
 });
