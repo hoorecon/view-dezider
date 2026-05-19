@@ -116,7 +116,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
     items: [
       { key: 'tier',     label: 'Tier Matrix',       icon: 'apps',                 href: '/admin/tier-matrix' },
       { key: 'segments', label: 'Customer Segments', icon: 'people-circle',        href: '/admin/customer-segments' },
-      { key: 'pricing',  label: 'Pricing Page',      icon: 'pricetag',             href: '/pricing' },
+      { key: 'pricing',  label: 'Pricing Page',      icon: 'pricetag',             href: '/admin/pricing' },
     ],
   },
   {
@@ -131,9 +131,10 @@ export const ADMIN_NAV: AdminNavSection[] = [
   {
     label: 'System',
     items: [
-      { key: 'docs',      label: 'Admin Docs',        icon: 'library',              href: '/admin/docs' },
-      { key: 'handbook',  label: 'Handbook',          icon: 'book',                 href: '/admin/handbook' },
-      { key: 'settings',  label: 'Settings',          icon: 'settings',             href: '/admin/settings' },
+      { key: 'docs',       label: 'Admin Docs',        icon: 'library',              href: '/admin/docs' },
+      { key: 'handbook',   label: 'Handbook',          icon: 'book',                 href: '/admin/handbook' },
+      { key: 'user-guide', label: 'Admin User Guide',  icon: 'help-buoy',            href: '/admin/handbook/ADMIN_USER_GUIDE' },
+      { key: 'settings',   label: 'Settings',          icon: 'settings',             href: '/admin/settings' },
     ],
   },
 ];
