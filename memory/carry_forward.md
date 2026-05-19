@@ -38,24 +38,20 @@ curl -s https://api.jelcos.ai/api/auth/me -H "Authorization: Bearer $TOKEN" | py
 
 ## 🛠️ What was fixed in this session (2026-05-19)
 
+### Production Deployment Wins
 1. **DNS propagation for `api.jelcos.ai`** — GoDaddy A record points to EC2 IP; Cloudflare resolver picked it up first (used `dig +short @1.1.1.1`).
-2. **Let's Encrypt Certbot** — succeeded once DNS resolved publicly; NGINX reverse proxy now serves HTTPS.
+2. **Let's Encrypt Certbot** — succeeded once DNS resolved publicly; NGINX reverse proxy now serves HTTPS at `api.jelcos.ai`.
 3. **`MONGO_URL` typo** — user had `NGO_URL=...` instead of `MONGO_URL=...` in `backend/.env`. Fixed.
-4. **Docker-compose pointing to local mongo, not Atlas** — `/opt/dezider/deploy/docker-compose.yml` had hardcoded `MONGO_URL: "mongodb://mongo:27017/dezider"` in the `api.environment` block which **overrode** the `.env`. Rewrote the file:
-   - Removed `mongo:` service (Atlas-only)
-   - Removed hardcoded `MONGO_URL` / `DB_NAME` from `environment:` block
-   - Added `env_file: ../backend/.env`
-   - Changed `HSTS_ENABLED: "true"` and `DEZIDER_ENV: "prod"`
-5. **Bootstrapped Atlas admin** — registered via `/api/auth/register`, then promoted role=admin directly via Mongo update (no admin-promotion endpoint exists).
-6. **🐛 ACM seed bug (codebase-wide, pre-existing)** — `backend/core/db_indices.py` declared a UNIQUE index on `("user_type", 1)` for `acm_user_types` and `("plan_id", 1)` for `acm_subscription_plans`. But the seed data in `backend/data/acm_seed_data.py` only populates an `id` field. Result: every seed insert had `user_type: null` → 2nd insert hit duplicate-key on null. **Fix applied locally in `/app/backend/core/db_indices.py`** (changed both indices to `("id", 1)`). **NOT YET PUSHED to GitHub `emergent-v3`** — push from Emergent UI when convenient. The fix was verified end-to-end on prod (after dropping stale `acm_*` collections so the old indices got wiped).
-
-### Files modified locally this session (push pending)
-- `/app/backend/core/db_indices.py` — index keys for `acm_user_types` & `acm_subscription_plans` changed from `user_type`/`plan_id` to `id`
-
-### Files modified directly on EC2 this session
-- `/opt/dezider/backend/.env` — fixed `NGO_URL` → `MONGO_URL` typo
-- `/opt/dezider/deploy/docker-compose.yml` — full rewrite (see §🛠️ above)
-- Atlas: `dezider.users` collection — `role` of admin user manually set to `"admin"`
+4. **Docker-compose pointing to local mongo, not Atlas** — Rewrote `/opt/dezider/deploy/docker-compose.yml` to use `env_file: ../backend/.env` and removed hardcoded `MONGO_URL` override.
+5. **Bootstrapped Atlas admin** — registered `veales.vedic.decisions@gmail.com`, promoted role=admin directly via Mongo update.
+6. **🐛 ACM seed bug** — `db_indices.py` indices now use `id` field (matches `acm_seed_data.py`). Fix applied locally & on EC2.
+7. **Frontend deployed to Cloudflare Pages** — `https://www.jelcos.ai` + `https://app.jelcos.ai` + `https://jelcos-app.pages.dev` all serve the SPA.
+8. **`/admin/login` branded admin portal** — created at `/app/frontend/app/admin/login.tsx` with role gating.
+9. **Cloudflare Pages build config** — Build command: `cd frontend && npm install --legacy-peer-deps && npx expo export -p web`. Output: `frontend/dist`. Env vars: `EXPO_PUBLIC_BACKEND_URL=https://api.jelcos.ai`, `NODE_VERSION=20`.
+10. **🐛 Docker image missing /docs folder** — Dockerfile only copied `backend/`, not `docs/`. Added volume mount `../docs:/app/docs:ro` in `/opt/dezider/deploy/docker-compose.yml`.
+11. **🐛 Admin Handbook pages rendered blank on web** — `SafeAreaView` collapses to 0 height inside `AdminShell` on web. Replaced with `View` + `minHeight: 600` in both `frontend/app/admin/handbook/index.tsx` and `frontend/app/admin/handbook/[slug].tsx`. **PENDING PUSH from Emergent UI to GitHub `emergent-v3`** for Cloudflare auto-deploy.
+12. **Sidebar Handbook item** — Added to `frontend/src/constants/adminTheme.ts` under System section.
+13. **Production Deployment Runbook** — Created `/app/docs/PRODUCTION_DEPLOYMENT.md` (~21 KB) with architecture, all URLs, credentials, day-2 ops, pitfalls. Registered in `backend/routes/admin_docs_viewer.py`.
 
 ---
 
