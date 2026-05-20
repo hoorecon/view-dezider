@@ -1,0 +1,20 @@
+# Dev / CI-only tools — install with: pip install -r requirements-dev.txt
+# Keep these OUT of the production Docker image.
+
+# Linting / formatting
+black==26.1.0
+flake8==7.3.0
+isort==8.0.0
+mypy==1.19.1
+mypy_extensions==1.1.0
+pyflakes==3.4.0
+mccabe==0.7.0
+pycodestyle==2.14.0
+
+# Testing
+pytest==9.0.2
+iniconfig==2.3.0
+pluggy==1.6.0
+
+# Internal Git tooling
+git-filter-repo==2.47.0

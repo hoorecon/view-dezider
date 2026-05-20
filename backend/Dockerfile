@@ -9,14 +9,17 @@
 #            dezider/backend:latest
 
 FROM python:3.11-slim AS builder
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gcc libpq-dev \
+        libgl1 libglib2.0-0 libgomp1 libsm6 libxext6 \
     && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
 # Emergent-hosted private package (emergentintegrations) lives on a custom index.
 # We add it as an --extra-index-url so pip can resolve it alongside public PyPI.
-RUN pip install --user --no-cache-dir \
+RUN pip install --upgrade pip && \
+    pip install --user --no-cache-dir \
         --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/ \
         -r requirements.txt
 
