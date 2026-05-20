@@ -134,6 +134,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
       { key: 'docs',       label: 'Admin Docs',        icon: 'library',              href: '/admin/docs' },
       { key: 'handbook',   label: 'Handbook',          icon: 'book',                 href: '/admin/handbook' },
       { key: 'user-guide', label: 'Admin User Guide',  icon: 'help-buoy',            href: '/admin/handbook/ADMIN_USER_GUIDE' },
+      { key: 'regression', label: 'Regression Tests',  icon: 'checkmark-done-circle', href: '/admin/regression-tests' },
       { key: 'settings',   label: 'Settings',          icon: 'settings',             href: '/admin/settings' },
     ],
   },

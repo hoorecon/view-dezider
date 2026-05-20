@@ -256,6 +256,8 @@ api_router.include_router(tier_matrix_router)
 api_router.include_router(customer_segments_router)
 api_router.include_router(decision_linking_router)
 api_router.include_router(integrations_router)
+from routes.regression import router as regression_router  # noqa: E402
+api_router.include_router(regression_router)
 
 
 # ========================
@@ -350,6 +352,20 @@ async def startup_db_client():
             logger.info(f"Tier-matrix reseeded: {res}")
     except Exception as e:
         logger.error(f"Tier-matrix auto-reset at boot failed: {e}")
+
+    # Register regression suites + start weekly scheduler. Importing the
+    # seed_suites modules triggers @register_suite side-effects. The ACM
+    # auto-coverage registration is async (queries db.acm_modules), so we
+    # await it after the static imports.
+    try:
+        from core.regression import seed_suites as _rs  # noqa: F401
+        from core.regression import seed_suites_user_app as _rs_ua  # noqa: F401
+        from core.regression.seed_suites_acm_coverage import register_acm_coverage
+        await register_acm_coverage()
+        from core.regression.scheduler import start_scheduler as _start_reg
+        _start_reg()
+    except Exception as e:
+        logger.error(f"Regression suite/scheduler boot failed: {e}", exc_info=True)
 
 
 @app.on_event("shutdown")
