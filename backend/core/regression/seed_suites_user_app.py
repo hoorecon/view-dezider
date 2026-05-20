@@ -129,14 +129,28 @@ USER_APP_SUITES = [
     ("deo_api", "DEO Engine", "deo", "DEO Outbound Engine",
      [("deo_get", "GET /tools/deo", "smoke", "/api/tools/deo")]),
 
-    ("solutions_store_api", "Solutions Store", "solutions_store", "Solutions Catalog",
-     [("ss_browse", "GET /solutions-store/", "smoke", "/api/solutions-store/")]),
+    ("solution_finder_api", "Solution Finder", "solution_finder",
+     "AI Solution Finder + Recommendations",
+     [("sf_assistant", "GET /ai-assistant/meta", "smoke", "/api/ai-assistant/meta"),
+      ("sf_browse", "GET /solutions-store/browse", "smoke", "/api/solutions-store/browse"),
+      ("sf_recs", "GET /ai-assistant/recommendations", "smoke", "/api/ai-assistant/recommendations")]),
 
-    ("solution_tools_api", "Solution Tools", "solution_tools",
-     "Solution Matrix + SWOT + Pros-Cons",
+    ("pros_cons_8step_api", "8-Step Pros & Cons", "pros_cons", "8-Step Pros & Cons Wizard",
+     [("pc_wizard", "GET /pros-cons (8-step)", "smoke", "/api/pros-cons"),
+      ("pc_meta", "GET /pros-cons/meta", "smoke", "/api/pros-cons/meta")]),
+
+    ("swot_api", "SWOT Analysis", "swot", "SWOT Strategic Framework",
+     [("swot_get", "GET /swot", "smoke", "/api/swot"),
+      ("swot_meta", "GET /swot/meta", "smoke", "/api/swot/meta")]),
+
+    ("solutions_store_api", "Solutions Store", "solutions_store", "Solutions Catalog",
+     [("ss_browse", "GET /solutions-store/browse", "smoke", "/api/solutions-store/browse"),
+      ("ss_my", "GET /solutions-store/my-solutions", "smoke", "/api/solutions-store/my-solutions")]),
+
+    ("solution_tools_api", "Solution Matrix", "solution_tools",
+     "84-cell Solution Matrix (4 OrgTypes × 3 levels × 7 layers)",
      [("st_sm", "GET /solution-matrices", "smoke", "/api/solution-matrices"),
-      ("st_swot", "GET /swot/", "smoke", "/api/swot/"),
-      ("st_pc", "GET /pros-cons/", "smoke", "/api/pros-cons/")]),
+      ("st_sm_default", "GET /solution-matrices (default schema)", "smoke", "/api/solution-matrices")]),
 
     ("public_pulse_org_api", "Public Pulse · Org Portal", "pp_org_portal",
      "Public Pulse — Org Admin Side",

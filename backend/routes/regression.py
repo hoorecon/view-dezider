@@ -26,9 +26,15 @@ async def list_suites(user: dict = Depends(get_current_user)):
     features: dict = {}
     for s in suites:
         features.setdefault(s["feature"], []).append(s)
+    # Sort: user-app + admin features first (alphabetical), then "ACM Coverage" suites last.
+    def _sort_key(feature_name: str) -> tuple:
+        # 0 = top priority, 1 = ACM coverage at bottom
+        is_acm = feature_name.startswith("ACM Coverage")
+        return (1 if is_acm else 0, feature_name)
+    ordered = sorted(features.items(), key=lambda kv: _sort_key(kv[0]))
     latest = await runner.latest_per_suite()
     return {
-        "features": [{"feature": f, "suites": items} for f, items in features.items()],
+        "features": [{"feature": f, "suites": items} for f, items in ordered],
         "total_suites": len(suites),
         "total_cases": sum(s["case_count"] for s in suites),
         "latest_per_suite": latest,
@@ -39,6 +45,14 @@ class RunRequest(BaseModel):
     level: str = "smoke"        # smoke | functional | both
     kind: str = "api"           # api | ui | both
     suite_ids: Optional[List[str]] = None  # None or [] = all matching
+
+
+class RerunRequest(BaseModel):
+    """Re-run only the failed cases from a previous run, optionally applying
+    auto-remediation steps first."""
+    source_run_id: str
+    fix: bool = False             # if True, apply auto-fix steps before re-running
+    case_ids: Optional[List[str]] = None   # subset of failed cases (None = all failed)
 
 
 @router.post("/admin/regression/run")
@@ -59,7 +73,81 @@ async def trigger_run(payload: RunRequest, user: dict = Depends(get_current_user
     return result.to_dict()
 
 
-@router.get("/admin/regression/runs")
+@router.post("/admin/regression/rerun-failed")
+async def rerun_failed(payload: RerunRequest, user: dict = Depends(get_current_user)):
+    """Re-run only the failed cases from a prior run. If `fix=true`, apply
+    safe auto-remediation steps before re-running (refresh ACM cache, re-seed
+    admin data with the existing seed marker, drop stale unique indexes that
+    fail the seed). Returns a new RunResult covering only those cases.
+    """
+    if get_user_role(user) not in ADMIN_ROLES:
+        raise HTTPException(403, "Admin access required")
+
+    source = await db.regression_runs.find_one({"run_id": payload.source_run_id}, {"_id": 0})
+    if not source:
+        raise HTTPException(404, "Source run not found")
+
+    # Collect failed (suite_id, case_id) pairs from the source run
+    failed_pairs: list[tuple[str, str]] = []
+    for sr in source.get("suites", []):
+        for cr in sr.get("cases", []):
+            if cr.get("status") == "failed":
+                if payload.case_ids and cr.get("case_id") not in payload.case_ids:
+                    continue
+                failed_pairs.append((sr.get("suite_id"), cr.get("case_id")))
+
+    if not failed_pairs:
+        raise HTTPException(400, "No failed cases to re-run in the source run")
+
+    fix_actions: list[str] = []
+    if payload.fix:
+        # ── Auto-fix step 1: refresh ACM cache (resolves stale role/quota maps)
+        try:
+            from core.acm_engine import refresh_acm_cache
+            await refresh_acm_cache()
+            fix_actions.append("acm_cache_refreshed")
+        except Exception as e:
+            fix_actions.append(f"acm_refresh_failed:{type(e).__name__}")
+        # ── Auto-fix step 2: ensure admin seed marker exists (drops stale
+        # unique indexes that crashed the seed previously)
+        try:
+            from core.admin_data_seed import seed_admin_data
+            res = await seed_admin_data(force=False)
+            fix_actions.append(f"seed_status:{res.get('seed_version','?')}")
+        except Exception as e:
+            fix_actions.append(f"seed_failed:{type(e).__name__}")
+        # ── Auto-fix step 3: ensure tier_matrix is properly seeded
+        try:
+            from core.database import db as _db
+            cnt = await _db.tier_matrix.count_documents({})
+            if cnt < 100:
+                from routes.tier_matrix import _smart_seed as _tm_smart_seed
+                await _db.tier_matrix.delete_many({})
+                await _tm_smart_seed()
+                fix_actions.append("tier_matrix_reseeded")
+        except Exception as e:
+            fix_actions.append(f"tm_reseed_failed:{type(e).__name__}")
+
+    # Run only the suites that have failed cases. The runner re-runs *all*
+    # cases in a suite (it doesn't filter by case_id), so we may include
+    # passing cases — that's intentional, it verifies they still pass.
+    failed_suite_ids = sorted({sid for sid, _ in failed_pairs})
+    result = await runner.run(
+        level=source.get("level_filter", "smoke"),
+        kind=source.get("kind_filter", "api"),
+        suite_ids=failed_suite_ids,
+        triggered_by=f"rerun_failed{'_fix' if payload.fix else ''}",
+        triggered_by_user=user.get("email") or user.get("id"),
+    )
+    out = result.to_dict()
+    out["source_run_id"] = payload.source_run_id
+    out["fix_applied"] = payload.fix
+    out["fix_actions"] = fix_actions
+    out["rerun_case_count"] = len(failed_pairs)
+    return out
+
+
+
 async def list_runs(limit: int = Query(20, le=100),
                     user: dict = Depends(get_current_user)):
     if get_user_role(user) not in ADMIN_ROLES:

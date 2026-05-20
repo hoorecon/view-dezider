@@ -99,6 +99,23 @@ export default function RegressionTestsScreen() {
     }
   }, [levelFilter, kindFilter, selectedSuites, load]);
 
+  const rerunFailed = useCallback(async (fix: boolean) => {
+    if (!lastResult?.run_id) return;
+    setRunning(fix ? 'fix_rerun' : 'rerun_failed');
+    try {
+      const r = await api.post('/admin/regression/rerun-failed', {
+        source_run_id: lastResult.run_id,
+        fix,
+      });
+      setLastResult(r.data);
+      await load();
+    } catch (e: any) {
+      setLastResult({ error: e?.response?.data?.detail || e?.message });
+    } finally {
+      setRunning(null);
+    }
+  }, [lastResult, load]);
+
   const openDetail = async (suite: Suite) => {
     const lr = latest[suite.id];
     let runDoc;
@@ -320,9 +337,22 @@ export default function RegressionTestsScreen() {
                 {lastResult.totals?.passed || 0} passed · {lastResult.totals?.failed || 0} failed ·
                 {' '}{lastResult.totals?.skipped || 0} skipped · {lastResult.totals?.manual_pending || 0} manual ·
                 {' '}{Math.round((lastResult.duration_ms || 0) / 1000)}s
+                {lastResult.fix_applied ? '  ·  fix: ' + (lastResult.fix_actions || []).join(', ') : ''}
               </Text>
             )}
             {lastResult.error && <Text style={s.bannerBody}>{lastResult.error}</Text>}
+            {!lastResult.error && (lastResult.totals?.failed || 0) > 0 && (
+              <View style={s.bannerActions}>
+                <ActionBtn
+                  label={running === 'rerun_failed' ? 'Re-running…' : `Re-run failed (${lastResult.totals.failed})`}
+                  icon="reload" onPress={() => rerunFailed(false)} disabled={!!running}
+                />
+                <ActionBtn
+                  label={running === 'fix_rerun' ? 'Fixing…' : `Fix & Re-run failed`}
+                  icon="construct" primary onPress={() => rerunFailed(true)} disabled={!!running}
+                />
+              </View>
+            )}
           </View>
         )}
 
@@ -477,6 +507,7 @@ const s = StyleSheet.create({
   banner: { backgroundColor: '#FFF', borderLeftWidth: 4, padding: 12, borderRadius: 6, marginBottom: 12 },
   bannerTitle: { fontSize: 13, fontWeight: '800', color: '#111' },
   bannerBody: { fontSize: 12, color: '#374151', marginTop: 2 },
+  bannerActions: { flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' },
 
   featureCard: { backgroundColor: '#FFF', borderRadius: 10, marginBottom: 12, borderWidth: 1, borderColor: '#E5E7EB', overflow: 'hidden' },
   featureHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#F9FAFB', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
