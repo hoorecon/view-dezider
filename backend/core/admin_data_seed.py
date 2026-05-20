@@ -1078,6 +1078,29 @@ async def seed_admin_data(force: bool = False) -> Dict[str, Any]:
     summary: Dict[str, int] = {}
     now = _now()
 
+    # ── 0) Drop stale per-user unique indexes that don't fit current schema.
+    # Some Atlas instances inherited a unique index on `user_id` from earlier
+    # multi-tenant designs. The current schema is global/platform-wide and
+    # these collections have user_id=null for all records — leading to
+    # DuplicateKeyError E11000 on the second upsert. Safe to drop; reindex
+    # is rebuilt from scratch by the seed itself.
+    _stale_indexes = [
+        ("decision_modes", "user_id_1"),
+        ("social_learning_templates", "user_id_1"),
+        ("review_net", "user_id_1"),
+        ("incidents", "user_id_1"),
+        ("review_net_factors", "user_id_1"),
+        ("audit_trail", "user_id_1"),
+        ("solutions_store", "user_id_1"),
+    ]
+    for coll, idx in _stale_indexes:
+        try:
+            await db[coll].drop_index(idx)
+            logger.info(f"Dropped stale unique index {coll}.{idx}")
+        except Exception:
+            # OperationFailure when the index doesn't exist — fine, ignore.
+            pass
+
     # ── 1) Experts (collection used by notif route uses field `id`) ──────────
     # Note: collection also has a unique index on `expert_id` from expert_net.py;
     # set expert_id = id to avoid null-collision under that unique index.
