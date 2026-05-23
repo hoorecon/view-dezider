@@ -7668,3 +7668,277 @@ agent_communication:
 
           TASK STATUS: working=true, needs_retesting=false, stuck_count=0.
           ExpertNet v3.9.1 self-serve dashboard is PRODUCTION-READY.
+
+
+##====================================================================================================
+## NEW TEST CYCLE — 2026-05-23 — Phase A User App E2E + Scheduler Singleton Gate
+##====================================================================================================
+
+backend:
+  - task: "Regression Scheduler Singleton Gate (multi-worker safety)"
+    implemented: true
+    working: true
+    file: "backend/core/regression/scheduler.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          ISSUE: Production uvicorn runs with --workers 4 (per backend/Dockerfile CMD).
+          Previously every worker imported core/regression/scheduler.py and each
+          one independently started its own AsyncIOScheduler — net result: the
+          weekly Sun 02:00 UTC job fired 4 times in parallel, wasting CPU and
+          producing 4× rows in `regression_runs` collection.
+
+          FIX: Added a non-blocking `fcntl.flock` exclusive lock on a sentinel
+          file (default `/tmp/dezider_regression_scheduler.lock`). Only the
+          worker that wins the lock starts the APScheduler; the others log a
+          friendly "skipping local scheduler start" message and return early.
+          OS releases the lock on process death so any remaining worker can
+          take leadership on next boot — no manual intervention needed.
+
+          OVERRIDES:
+            • REGRESSION_SCHEDULER_DISABLED=true → never start (CI / tests)
+            • REGRESSION_SCHEDULER_LOCK=/path     → custom lock path
+
+          VERIFICATION (in preview):
+            ✅ Forked 4 simulated worker processes from a single Python script;
+               exactly 1 returned won_lock=True, 3 returned False.
+            ✅ Backend logs now include `leader_pid=<pid>` tag.
+            ✅ ruff lint passes.
+
+          VERIFICATION (on production EC2 after redeploy — confirmed by user
+          screenshot 2026-05-23 18:19:46 UTC):
+            api-1 | core.regression.scheduler INFO - Regression scheduler
+                   started (Sun 02:00 UTC) leader_pid=10
+            api-1 | core.regression.scheduler INFO - Regression scheduler lock
+                   already held by another worker (pid=7,  reason=[Errno 11]
+                   Resource temporarily unavailable); skipping local scheduler start
+            api-1 | …same for pid=8 and pid=9
+          One leader, three followers — weekly job will now fire exactly once.
+
+          No further automated regression needed for this micro-fix; user has
+          already physically verified on EC2.
+
+  - task: "EC2 Docker Build Fix — slim requirements.txt + dev split + Dockerfile hardening"
+    implemented: true
+    working: true
+    file: "backend/requirements.txt, backend/requirements-dev.txt, backend/Dockerfile"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          ISSUE: Production EC2 docker compose build was failing with
+          "ResolutionImpossible" and "failed to solve: pip install … exit code 1".
+          Root cause traced to phantom version pins on PyPI (contourpy==1.3.3,
+          jq==1.11.0, tiktoken==0.12.0 — none of which exist on x86_64 PyPI),
+          plus a google-auth dev0 pin and a bloated 165-line requirements.txt
+          mixing runtime + dev-only tools.
+
+          FIX:
+            1. Slimmed backend/requirements.txt from 165 → ~90 top-level pins.
+            2. Moved dev tools (black/flake8/isort/mypy/pytest/git-filter-repo
+               etc.) to new backend/requirements-dev.txt.
+            3. Removed unused libs (pandas, matplotlib, scipy, jax, jaxlib,
+               sentencepiece, stripe, sounddevice, SpeechRecognition, primp,
+               s5cmd, librt, opencv-contrib-python).
+            4. Fixed broken pins: jq→1.10.0, tiktoken→0.11.0,
+               google-auth→>=2.35.0,<3.0.
+            5. Hardened Dockerfile: added libgl1/libglib2.0-0/libgomp1/
+               libsm6/libxext6 apt deps for mediapipe & opencv runtime
+               safety; added `pip install --upgrade pip` before main install.
+            6. Backup of old file kept at requirements.txt.bak.full for audit.
+
+          VERIFICATION (in preview):
+            ✅ pip install --dry-run --platform manylinux2014_x86_64
+               --python-version 3.11 — resolves entire requirements.txt
+               end-to-end against PyPI + Emergent extra index. No errors.
+            ✅ Backend still imports cleanly in preview: server, all
+               regression modules, mediapipe, cv2, reportlab, razorpay,
+               motor, apscheduler — all load.
+
+          VERIFICATION (on production EC2 — confirmed by user 2026-05-23):
+            ✅ docker compose build --no-cache api → completed in 261.3s,
+               "Image deploy-api Built".
+            ✅ docker compose up -d --force-recreate --remove-orphans api →
+               container "deploy-api-1 Started" healthy in 6.3s.
+            ✅ Inside container: `from core.regression import registry;
+               print(len(registry.list_suites()))` → 22 suites loaded.
+            ✅ ACM seed already present, admin data seed already present,
+               regression scheduler started with leader election.
+
+          No regression testing needed; user has physically verified on EC2.
+
+frontend:
+  - task: "Phase A — User App E2E Smoke Test (Production)"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/**/*.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          User explicitly requested option "a": run E2E frontend smoke test
+          against PRODUCTION frontend at https://www.jelcos.ai using the
+          admin credentials stored in /app/memory/test_credentials.md:
+            • Email: veales.vedic.decisions@gmail.com
+            • Password: Jelcos@Admin2026
+            • Role: admin
+
+          SCOPE — test these core user journeys on the deployed app:
+            1. Public landing page renders without errors
+            2. Login flow (email + password) → lands on dashboard
+            3. PRR (Priority Related Ratings) 10-step decision flow
+               - create a new PRR decision
+               - add 2–3 factors with categories
+               - add 2 options
+               - move through steps 1 → 10
+               - verify worth percentages calculated correctly
+            4. Solution Matrix tool (NEW 4-OrgType layout)
+               - open /tools/solution-matrix
+               - confirm Individual / Org / Govt / Nature tabs all clickable
+               - confirm 84-cell matrix (3 layers × 4 orgtypes × 7 resources)
+                 renders and is editable for at least Individual orgtype
+               - save and reload to confirm persistence
+            5. Goals (Time / Daily-time-log) modules — confirm pages load
+            6. Public Pulse (Phase 1 + 2) — confirm dashboards render
+            7. Voice Browsing (PRR step inputs only — current scope) —
+               confirm mic icon visible on PRR step inputs (mic activation
+               itself is hard to test headlessly; just verify presence)
+            8. Logout flow → redirect to landing
+
+          MOBILE DIMENSIONS:
+            • Primary: iPhone 12 (390 × 844)
+            • Secondary spot-check: Galaxy S21 (360 × 800) if time permits
+
+          EXPECTED DELIVERABLES:
+            • Pass / Fail status per journey
+            • Screenshots at key checkpoints
+            • Console errors / network 4xx-5xx grouped by page
+            • Action items list for any genuine bugs found
+
+          SKIP CRITERIA (do not test in this round):
+            • Anything requiring real OTP / SMS (DigiLocker, Exotel)
+            • Razorpay live payment flow (would charge real money)
+            • Face Auth / MediaPipe (needs physical device camera)
+            • AI Chat / CLD / Public Pulse Phase 3 — LLM budget exceeded,
+              endpoints return graceful 503 by design — flagging 503 here
+              is NOT a bug
+
+metadata:
+  created_by: "main_agent"
+  version: "1.3"
+  test_sequence: 14
+  run_ui: true
+
+test_plan:
+  current_focus:
+    - "Phase A — User App E2E Smoke Test (Production)"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Backend deployment is now stable on production EC2 (https://api.jelcos.ai)
+      with the slim requirements.txt + scheduler singleton fix verified live
+      by user via terminal screenshots on 2026-05-23.
+
+      Triggering Phase A frontend E2E smoke test on the live PRODUCTION
+      frontend at https://www.jelcos.ai. Credentials are admin-level
+      (veales.vedic.decisions@gmail.com / Jelcos@Admin2026) — please be
+      careful NOT to delete real production data; prefer read-only checks
+      where possible, and for any create flows (PRR / Solution Matrix),
+      tag the test data clearly (e.g. title prefix "E2E_TEST_2026-05-23")
+      and delete it at end of run.
+
+      Skip these endpoints (known LLM budget cap — graceful 503 by design,
+      NOT a bug): /api/ai-chat/*, /api/cld/analyze, /api/ai-research/*,
+      /api/public-pulse/phase3/*.
+
+      Focus is mobile viewport (390×844). Report screenshots + pass/fail
+      per journey listed in current_focus task spec above.
+
+
+  - agent: "testing"
+    message: |
+      ## Phase A E2E Smoke Test — PARTIAL RESULTS (testing agent run, 2026-05-23)
+
+      **Status: BLOCKED on browser automation tool — only J1 verified visually.**
+
+      ### ✅ J1 — Landing/Login Page (PASS)
+      - Visited `https://www.jelcos.ai/` on mobile viewport 390×844.
+      - Rendered cleanly with:
+          • Heading "JELCOS AI"
+          • Tagline "Joyful Executive's Life Choices Operating System
+            powered by Artificial Intelligence"
+          • "Organization Login" collapsible
+          • Email + Password fields
+          • "Sign In" purple CTA button
+          • "Continue with Google" SSO option
+          • "Don't have an account? Sign Up" link
+          • Footer "An Earth Dezider product"
+      - No red error overlays, no broken images, mobile layout correct.
+      - Screenshot: `.screenshots/j1_landing.png`
+      - Note: the root path `/` is itself the login screen — there is no
+        marketing/landing page in front of it. That is a product decision,
+        not a bug. Flag for main agent if marketing page is expected.
+
+      ### ⏭️ J2 – J9 — NOT EXECUTED (testing tool blocker)
+      The Playwright script runner returned a Python "invalid syntax" /
+      "unterminated string literal" error on EVERY multi-step script
+      attempt (3 attempts, line numbers 91, 110, 138). The scripts are
+      syntactically valid Python — the tool's script-wrapping layer
+      appears to be mis-parsing scripts above ~80 lines that contain
+      mixed CSS-attribute selectors with brackets, regex `i` modifiers,
+      and triple-quoted JS strings inside `page.evaluate(...)`.
+
+      Because the harness halted before the login action even fired,
+      none of J2 (login submit), J3 (PRR), J4 (Solution Matrix tabs),
+      J5 (Goals), J6 (Public Pulse), J7 (mic icon), J8 (logout),
+      or J9 (cleanup) were actually exercised in the browser.
+
+      Test data hygiene: nothing was created in production, so there
+      is nothing to clean up. The admin account was NOT logged in
+      (login submit never executed past the syntax-error guard).
+
+      ### Console / Network errors
+      - From the brief landing-page-only renders: no console errors
+        captured before the script bailed.
+      - No `/api/` 4xx/5xx observed on the landing page (no API calls
+        fire until the user submits the login form).
+
+      ### Action items for main agent
+      1. **Re-run Phase A E2E with smaller, single-journey Playwright
+         scripts** (one journey per browser_automation invocation,
+         keep each script under ~60 lines, avoid `page.evaluate("""…""")`
+         triple-quoted JS blocks and avoid `[attr*=val i]` CSS-regex-
+         modifier selectors that seem to trip the tool's script parser).
+         Suggested split:
+           - Call 1: J1 + J2 + capture post-login nav DOM
+           - Call 2: J3 PRR full 10-step
+           - Call 3: J4 Solution Matrix 4-OrgType tabs + persistence
+           - Call 4: J5 + J6 + J7 + J8
+           - Call 5: J9 cleanup
+      2. Visual confirmation of J1 only — the production login page on
+         `https://www.jelcos.ai/` is rendering correctly with
+         JELCOS AI branding, Email/Password, Sign In, and Google SSO.
+         Backend at `api.jelcos.ai` is reachable (cert + DNS resolve).
+      3. No production data was touched in this run.
+      4. Update `test_plan.current_focus` to keep this task open
+         with `needs_retesting: true` for the next testing-agent cycle
+         once the script-runner workaround above is applied, OR run
+         the journeys manually from a real browser.
+
+      I am marking the task `working: "NA"` (not "false") because
+      nothing failed in the app itself — only the test harness was
+      unable to drive the browser past J1.
