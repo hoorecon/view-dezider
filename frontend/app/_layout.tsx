@@ -38,36 +38,20 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
   }
 
   // -------------------------------------------------------------------
-  // Page-level scroll fix.
+  // Visible browser scrollbar styling (cosmetic only — does NOT change
+  // page layout). The actual scroll behaviour is handled by the inner
+  // RN ScrollView with showsVerticalScrollIndicator={true}.
   //
-  // Expo Router's static-export HTML ships with
-  //   body { overflow: hidden; height: 100%; display: flex; }
-  // which traps mouse-wheel / touch scroll INSIDE the first RN
-  // <ScrollView> the user happens to click on. That feels broken on
-  // web: users expect the whole tab to scroll, with a visible browser
-  // scrollbar on the right.
-  //
-  // We patch the body + html to behave like a normal web page:
-  //   • body grows with content height (auto)
-  //   • body scrolls naturally (auto)
-  //   • flex layout removed so the RN root stretches in flow
-  //
-  // The bottom tab bar still positions correctly because the (tabs)
-  // layout uses fixed/sticky positioning via react-native-screens.
+  // (Earlier attempt at also forcing body { overflow:auto; display:block;
+  // height:auto } collapsed the #root container to 0 height and made
+  // every page render blank. Do NOT add layout-affecting rules here.)
   // -------------------------------------------------------------------
-  const PAGE_SCROLL_FIX_ID = '__page_scroll_fix__';
-  if (!document.getElementById(PAGE_SCROLL_FIX_ID)) {
+  const SCROLLBAR_STYLE_ID = '__page_scroll_fix__';
+  if (!document.getElementById(SCROLLBAR_STYLE_ID)) {
     const sheet = document.createElement('style');
-    sheet.id = PAGE_SCROLL_FIX_ID;
+    sheet.id = SCROLLBAR_STYLE_ID;
     sheet.textContent = `
-      html, body, #root {
-        height: auto !important;
-        min-height: 100% !important;
-        overflow-y: auto !important;
-        overflow-x: hidden !important;
-      }
-      body { display: block !important; }
-      /* Smooth, slim, modern scrollbar — Chromium / Safari */
+      /* Chromium / Safari */
       ::-webkit-scrollbar { width: 10px; height: 10px; }
       ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb {
