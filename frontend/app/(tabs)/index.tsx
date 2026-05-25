@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   Image,
+  Platform,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -58,6 +59,27 @@ export default function HomeScreen() {
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags>({ solution_finder: false, solution_matrix: false });
   const [cttStats, setCttStats] = useState<CTTStats | null>(null);
   const [journalReminders, setJournalReminders] = useState<JournalReminder[]>([]);
+
+  // ---------------------------------------------------------------------------
+  // Hydration-safe client mount gate
+  // ---------------------------------------------------------------------------
+  // Expo Router pre-renders this page server-side. Many sections below depend
+  // on client-only state (auth/user, AsyncStorage-derived flags, async-loaded
+  // featureFlags / cttStats / journalReminders, time-of-day greeting, etc.).
+  // When the client React tree diverges from the SSR markup, React throws
+  // Minified Error #418 (hydration mismatch) and SILENTLY UNMOUNTS the rest
+  // of the page — which is why users only see ~5 modules even though the
+  // bundle contains 20+.
+  //
+  // The fix: render the static gradient header during SSR + initial paint,
+  // then flip `isClient` to true in useEffect (which only runs on the client)
+  // and lazily render the dynamic dashboard. This guarantees the server-vs-
+  // client tree match because the dynamic content simply isn't in the SSR
+  // output at all — eliminating any chance of mismatch.
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const fetchStats = async () => {
     try {
@@ -143,6 +165,10 @@ export default function HomeScreen() {
   };
 
   const getGreeting = () => {
+    // Defer time-of-day greeting until after hydration; otherwise the SSR
+    // build (UTC at build time) produces a different string than the
+    // client (local hour), which contributes to React #418 hydration mismatch.
+    if (!isClient) return 'Hello';
     const hour = new Date().getHours();
     if (hour < 12) return 'Good Morning';
     if (hour < 17) return 'Good Afternoon';
@@ -174,8 +200,9 @@ export default function HomeScreen() {
               {/* Font-size A / A+ / A++ pill group (web-wide accessibility) */}
               <FontScaleButton variant="dark" style={{ marginRight: 8 }} />
               {/* Switch-to-admin button — only visible for admins so they can
-                  jump back without using the browser back button. */}
-              {(user?.is_admin || ['admin', 'super_admin', 'co_admin'].includes((user?.role || '').toLowerCase())) && (
+                  jump back without using the browser back button. Gated by
+                  isClient to avoid SSR/client hydration mismatch on user state. */}
+              {isClient && (user?.is_admin || ['admin', 'super_admin', 'co_admin'].includes((user?.role || '').toLowerCase())) && (
                 <TouchableOpacity
                   style={styles.headerIconBtn}
                   onPress={() => {
@@ -213,6 +240,20 @@ export default function HomeScreen() {
         </LinearGradient>
 
         <View style={styles.content}>
+          {/*
+            HYDRATION-SAFE GATE — render dynamic content only after client mount.
+            See big comment block at top of component for why this exists.
+            If we render this subtree during SSR with stale defaults
+            (no user, no featureFlags, empty cttStats, empty journalReminders)
+            and then the client re-renders with real values, React #418 fires
+            and the rest of the page silently unmounts.
+          */}
+          {!isClient ? (
+            <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+              <Text style={{ color: COLORS.textMuted, fontSize: 13 }}>Loading your dashboard…</Text>
+            </View>
+          ) : (
+          <>
           {/* Journal Review Reminders Banner */}
           {journalReminders.length > 0 && (
             <TouchableOpacity
@@ -1093,6 +1134,8 @@ export default function HomeScreen() {
               </View>
             </TouchableOpacity>
           </View>
+          </>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
