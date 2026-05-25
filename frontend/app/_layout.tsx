@@ -38,6 +38,57 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
   }
 
   // -------------------------------------------------------------------
+  // Build-version cache buster.
+  //
+  // Big deploys (e.g. output:static → output:single, Stack route tree
+  // changes, Zustand store shape changes) can leave the browser with
+  // localStorage that's incompatible with the new bundle. The most
+  // visible symptom is React Navigation's useNavigationBuilder crashing
+  // with  "Cannot read properties of undefined (reading 'stale')"
+  // because the persisted state is from an older route hierarchy.
+  //
+  // We stamp the build version. If the stored stamp doesn't match the
+  // current one, we wipe just the keys most likely to be poisoned —
+  // React Navigation cache, Zustand persists, AsyncStorage emulation —
+  // and reload once. This is idempotent: second boot sees matching
+  // stamp and is a no-op.
+  // -------------------------------------------------------------------
+  const BUILD_VERSION = '2026-05-25-spa-v1';
+  const STAMP_KEY = '__jelcos_build_version__';
+  try {
+    const storedStamp = localStorage.getItem(STAMP_KEY);
+    if (storedStamp && storedStamp !== BUILD_VERSION) {
+      // Wipe known-fragile keys from old build
+      const wipePrefixes = [
+        '@react-navigation/',
+        'RNL_STATE',
+        'navigation_state',
+        'persist:',
+        'zustand:',
+      ];
+      Object.keys(localStorage).forEach((k) => {
+        if (wipePrefixes.some((p) => k.startsWith(p))) {
+          try { localStorage.removeItem(k); } catch { /* ignore */ }
+        }
+      });
+      localStorage.setItem(STAMP_KEY, BUILD_VERSION);
+      // Reload once so React Navigation rebuilds state from scratch.
+      // window.location.reload() unloads the document, so any code after
+      // it on this tick is moot — no early `return` needed (and `return`
+      // at module scope would actually abort module evaluation, leaving
+      // RootLayout unregistered and rendering a blank page).
+      if (typeof window !== 'undefined') {
+        window.location.reload();
+      }
+    } else if (!storedStamp) {
+      // First-time visitor — just record the stamp
+      localStorage.setItem(STAMP_KEY, BUILD_VERSION);
+    }
+  } catch {
+    /* localStorage unavailable (e.g. private mode + Safari restrictions) — skip */
+  }
+
+  // -------------------------------------------------------------------
   // Visible browser scrollbar styling (cosmetic only — does NOT change
   // page layout). The actual scroll behaviour is handled by the inner
   // RN ScrollView with showsVerticalScrollIndicator={true}.
