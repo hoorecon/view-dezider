@@ -126,12 +126,50 @@ class LlmChat:
         self._model = model
         return self
 
-    # Public coroutine — preserves return-shape (string) of the original
+    # Public coroutine — preserves return-shape (string) of the original.
+    # Adds an automatic fallback chain: try the primary backend first; on
+    # auth/quota/network failure, transparently retry against Emergent (or
+    # whatever LLM_FALLBACK_PROVIDER is set to). This keeps your app alive
+    # when one provider has an outage / your key expired / your quota ran
+    # out — at the cost of one extra retry.
+    #
+    # Disable by setting LLM_FALLBACK_DISABLED=true.
     async def send_message(self, msg: UserMessage) -> str:
         active_mode = (self._mode_override or _detect_mode()).lower()
-        if active_mode == "emergent":
-            return await self._send_via_emergent(msg)
-        return await self._send_via_litellm(msg)
+        fallback_disabled = (os.getenv("LLM_FALLBACK_DISABLED") or "").lower() in ("1", "true", "yes")
+        fallback_provider = (os.getenv("LLM_FALLBACK_PROVIDER") or "emergent").lower()
+
+        # Don't fallback to the same provider we're already trying
+        if fallback_provider == active_mode:
+            fallback_disabled = True
+
+        try:
+            if active_mode == "emergent":
+                return await self._send_via_emergent(msg)
+            return await self._send_via_litellm(msg)
+        except Exception as primary_err:
+            if fallback_disabled:
+                raise
+            # Only auto-fallback for transient / vendor / key issues — NOT for
+            # programmer errors like malformed prompts. The shim treats any
+            # exception conservatively as "primary failed, try fallback".
+            log.warning(
+                f"LLM primary '{active_mode}' failed ({type(primary_err).__name__}: "
+                f"{str(primary_err)[:120]}). Falling back to '{fallback_provider}'."
+            )
+            try:
+                if fallback_provider == "emergent":
+                    return await self._send_via_emergent(msg)
+                # else fallback to direct via litellm; re-detect with override
+                self._mode_override = "direct"
+                return await self._send_via_litellm(msg)
+            except Exception as fallback_err:
+                log.error(
+                    f"LLM fallback '{fallback_provider}' ALSO failed "
+                    f"({type(fallback_err).__name__}: {str(fallback_err)[:120]}). "
+                    "Re-raising original primary error."
+                )
+                raise primary_err
 
     # -----------------------------------------------------------------
     # Backend 1 — Emergent's existing wrapper (unchanged behaviour)
