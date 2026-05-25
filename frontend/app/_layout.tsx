@@ -36,6 +36,50 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
     `;
     document.head.appendChild(style);
   }
+
+  // -------------------------------------------------------------------
+  // Page-level scroll fix.
+  //
+  // Expo Router's static-export HTML ships with
+  //   body { overflow: hidden; height: 100%; display: flex; }
+  // which traps mouse-wheel / touch scroll INSIDE the first RN
+  // <ScrollView> the user happens to click on. That feels broken on
+  // web: users expect the whole tab to scroll, with a visible browser
+  // scrollbar on the right.
+  //
+  // We patch the body + html to behave like a normal web page:
+  //   • body grows with content height (auto)
+  //   • body scrolls naturally (auto)
+  //   • flex layout removed so the RN root stretches in flow
+  //
+  // The bottom tab bar still positions correctly because the (tabs)
+  // layout uses fixed/sticky positioning via react-native-screens.
+  // -------------------------------------------------------------------
+  const PAGE_SCROLL_FIX_ID = '__page_scroll_fix__';
+  if (!document.getElementById(PAGE_SCROLL_FIX_ID)) {
+    const sheet = document.createElement('style');
+    sheet.id = PAGE_SCROLL_FIX_ID;
+    sheet.textContent = `
+      html, body, #root {
+        height: auto !important;
+        min-height: 100% !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+      }
+      body { display: block !important; }
+      /* Smooth, slim, modern scrollbar — Chromium / Safari */
+      ::-webkit-scrollbar { width: 10px; height: 10px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb {
+        background: rgba(120, 120, 120, 0.45);
+        border-radius: 8px;
+      }
+      ::-webkit-scrollbar-thumb:hover { background: rgba(120, 120, 120, 0.7); }
+      /* Firefox */
+      html { scrollbar-width: thin; scrollbar-color: rgba(120,120,120,0.45) transparent; }
+    `;
+    document.head.appendChild(sheet);
+  }
 }
 
 export default function RootLayout() {
