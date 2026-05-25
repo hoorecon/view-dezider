@@ -124,7 +124,32 @@ class LlmChat:
     def with_model(self, provider: str, model: str) -> "LlmChat":
         self._provider = (provider or "openai").lower()
         self._model = model
+        # Honour LLM_MODEL_REMAP env var so you can flip providers/models
+        # globally without touching any of the 13 caller files. Format:
+        #   LLM_MODEL_REMAP=openai/gpt-4o-mini=google/gemini-2.5-flash,openai/gpt-4.1-mini=google/gemini-2.5-flash
+        # Multiple entries comma-separated. Each entry: <fromProvider>/<fromModel>=<toProvider>/<toModel>
+        self._apply_model_remap()
         return self
+
+    def _apply_model_remap(self) -> None:
+        raw = os.getenv("LLM_MODEL_REMAP", "").strip()
+        if not raw:
+            return
+        for entry in raw.split(","):
+            entry = entry.strip()
+            if "=" not in entry:
+                continue
+            src, dst = entry.split("=", 1)
+            sp, sm = (src.strip().split("/", 1) + [""])[:2]
+            dp, dm = (dst.strip().split("/", 1) + [""])[:2]
+            if (sp.lower(), sm) == (self._provider, self._model):
+                log.info(
+                    f"LLM_MODEL_REMAP: routing {self._provider}/{self._model} "
+                    f"→ {dp}/{dm}"
+                )
+                self._provider = dp.lower()
+                self._model = dm
+                return
 
     # Public coroutine — preserves return-shape (string) of the original.
     # Adds an automatic fallback chain: try the primary backend first; on
