@@ -8,8 +8,16 @@ services:
       context: ../backend
       dockerfile: Dockerfile
     restart: unless-stopped
+    # Env loading priority (later entries override earlier ones):
+    #   1. ../backend/.env   → required, the source-controlled sample/dev config
+    #   2. ./.env            → optional, ops-managed prod secrets (placed
+    #                          next to docker-compose.yml on the EC2 host).
+    #                          Use this for LLM keys, Razorpay, SMTP, etc.
     env_file:
-      - ../backend/.env
+      - path: ../backend/.env
+        required: true
+      - path: ./.env
+        required: false
     environment:
       DEZIDER_ENV: "prod"
       DEZIDER_VERSION: "v3.15.0"

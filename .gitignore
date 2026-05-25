@@ -370,3 +370,14 @@ credentials.json
 *.pem
 *.key
 .credentials
+
+# ── Allow committed env example / template files (never contain real secrets) ──
+!*.env.example
+!*.env.*.example
+!.env.example
+!.env.llm.example
+!deploy/.env.example
+!deploy/.env.llm.example
+!backend/.env.example
+!backend/.env.llm.example
+

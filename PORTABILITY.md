@@ -202,12 +202,36 @@ docker compose build --no-cache api
 docker compose up -d --force-recreate api
 ```
 
-You also need to update the EC2 `.env`:
+You also need to update the EC2 `.env`. **Important:** the compose stack
+now reads from TWO env files (in priority order):
+
+| Order | File on EC2 | Purpose | Committed to git? |
+|---|---|---|---|
+| 1 (base)    | `/opt/dezider/backend/.env`   | Source-controlled defaults (MongoDB, ports, etc.) | ✅ yes (template) |
+| 2 (override) | `/opt/dezider/deploy/.env`    | Ops-managed prod secrets (LLM keys, Razorpay, SMTP) | ❌ no — gitignored |
+
+Values in `deploy/.env` win when the same key exists in both. This is the
+recommended place for the new LLM routing vars:
+
 ```bash
-# /opt/dezider/deploy/.env
+# Create deploy/.env from the template the first time
+cp /opt/dezider/deploy/.env.llm.example /opt/dezider/deploy/.env
+chmod 600 /opt/dezider/deploy/.env
+nano /opt/dezider/deploy/.env
+
+# Inside the file:
 LLM_PROVIDER_MODE=direct
 OPENAI_API_KEY=sk-...
-# Remove or comment out: EMERGENT_LLM_KEY=...
+# (optional) cost-saving remap:
+LLM_MODEL_REMAP=gpt-4o-mini:gemini-2.5-flash,gpt-4o:gemini-2.5-flash
+GOOGLE_API_KEY=AIza...
+# Keep as fallback for safety:
+EMERGENT_LLM_KEY=sk-emergent-...
+```
+
+Verify the container actually picked them up:
+```bash
+docker compose -f deploy/docker-compose.yml exec api env | grep -E "LLM_|OPENAI_|GOOGLE_|EMERGENT_"
 ```
 
 The first AI feature you hit after this change should now bill against
