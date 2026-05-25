@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
 import { ADMIN_THEME, ADMIN_NAV, BREAKPOINTS, AdminNavItem, AdminNavSection } from '../../constants/adminTheme';
 import { useAuthStore } from '../../store/authStore';
+import { FontScaleButton } from '../FontScaleButton';
 
 interface AdminShellProps {
   children: React.ReactNode;
@@ -175,6 +176,7 @@ export default function AdminShell({ children, title, rightSlot }: AdminShellPro
       </View>
       {rightSlot}
       <View style={s.topbarRight}>
+        <FontScaleButton variant="light" style={{ marginRight: 8 }} />
         <TouchableOpacity style={s.topbarIconBtn} onPress={() => {
           if (Platform.OS === 'web' && typeof window !== 'undefined') {
             window.location.href = '/';

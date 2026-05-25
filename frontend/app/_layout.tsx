@@ -10,6 +10,7 @@ import { COLORS } from '../src/constants/colors';
 import { registerForPushNotifications, addNotificationResponseListener } from '../src/utils/pushNotifications';
 import GlobalVoiceNav from '../src/components/GlobalVoiceNav';
 import WebFrame from '../src/components/WebFrame';
+import { FontScaleProvider } from '../src/contexts/FontScaleContext';
 
 // ----------------------------------------------------------------------
 // Web-only: inject @font-face for Ionicons so static Cloudflare/Pages
@@ -68,7 +69,8 @@ export default function RootLayout() {
   return (
     <>
       <StatusBar style="dark" />
-      <WebFrame>
+      <FontScaleProvider>
+        <WebFrame>
         <Stack
           screenOptions={{
             headerShown: false,
@@ -222,6 +224,7 @@ export default function RootLayout() {
         />
       </Stack>
       </WebFrame>
+      </FontScaleProvider>
       <GlobalVoiceNav />
     </>
   );

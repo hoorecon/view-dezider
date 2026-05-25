@@ -16,6 +16,7 @@ import { useAuthStore } from '../../src/store/authStore';
 import { COLORS, GRADIENTS } from '../../src/constants/colors';
 import { Card } from '../../src/components/Card';
 import api from '../../src/utils/api';
+import { FontScaleButton } from '../../src/components/FontScaleButton';
 
 interface Stats {
   decisions: { total: number; completed: number };
@@ -170,6 +171,8 @@ export default function HomeScreen() {
               <Text style={styles.userName}>{user?.name || 'Decision Maker'}</Text>
             </View>
             <View style={styles.headerRight}>
+              {/* Font-size A / A+ / A++ pill group (web-wide accessibility) */}
+              <FontScaleButton variant="dark" style={{ marginRight: 8 }} />
               {/* Switch-to-admin button — only visible for admins so they can
                   jump back without using the browser back button. */}
               {(user?.is_admin || ['admin', 'super_admin', 'co_admin'].includes((user?.role || '').toLowerCase())) && (
