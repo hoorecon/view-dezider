@@ -80,7 +80,35 @@ export default function ProsConsWizard() {
   const [guidelines, setGuidelines] = useState<Guideline[]>([]);
 
   const load = useCallback(async () => {
-    if (!id) return;
+    // -------------------------------------------------------------
+    // No `id` in URL  ⇒  user landed here from "Pros & Cons (8-Step)"
+    // / "SWOT (8-Step)" Quick-Action card on the home screen.
+    // Auto-create a draft analysis, then bounce to the same wizard
+    // URL with the new id so the rest of the flow works unchanged.
+    // -------------------------------------------------------------
+    if (!id) {
+      try {
+        const titlePrefix = module === 'swot' ? 'SWOT' : 'Pros & Cons';
+        const now = new Date();
+        const stamp = `${now.toLocaleDateString()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+        const r = await api.post(base, {
+          title: `${titlePrefix} draft — ${stamp}`,
+          context: '',
+          life_area: null,
+        });
+        const newId = r.data?.id;
+        if (newId) {
+          router.replace(`/tools/pros-cons-wizard?id=${newId}&module=${module}` as any);
+          return; // useEffect will re-fire with the new id once URL changes
+        }
+        showAlert('Error', 'Could not create a new analysis. Please try again.');
+        setLoading(false);
+      } catch (e: any) {
+        showAlert('Error', e?.response?.data?.detail || 'Failed to start new analysis');
+        setLoading(false);
+      }
+      return;
+    }
     try {
       const r = await api.get(`${base}/${id}`);
       setAnalysis(r.data);
@@ -88,7 +116,7 @@ export default function ProsConsWizard() {
     } catch (e: any) {
       showAlert('Error', e?.response?.data?.detail || 'Failed to load analysis');
     } finally { setLoading(false); }
-  }, [id, base]);
+  }, [id, base, module, router]);
 
   useEffect(() => { load(); }, [load]);
 
