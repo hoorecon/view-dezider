@@ -276,7 +276,7 @@ async def _llm_research(segment_name: str, segment_desc: str, factor_label: str,
     fallback = fallback_map.get(factor_label, "—")
 
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        from core.llm_compat import LlmChat, UserMessage  # provider-agnostic shim (Emergent | direct via litellm)
         api_key = os.environ.get("EMERGENT_LLM_KEY")
         if not api_key:
             return fallback

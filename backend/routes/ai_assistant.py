@@ -196,7 +196,7 @@ async def send_message(conv_id: str, request: Request, user: dict = Depends(get_
     if not api_key:
         raise HTTPException(500, "LLM key not configured")
 
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from core.llm_compat import LlmChat, UserMessage  # provider-agnostic shim (Emergent | direct via litellm)
 
     system_msg = f"""You are a personal advisor and life coach in the "View Dezider" app. You help users make better decisions, manage conflicts, achieve goals, and optimize their lifestyle.
 
@@ -283,7 +283,7 @@ async def quick_ask(request: Request, user: dict = Depends(get_current_user)):
     if not api_key:
         raise HTTPException(500, "LLM key not configured")
 
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from core.llm_compat import LlmChat, UserMessage  # provider-agnostic shim (Emergent | direct via litellm)
 
     chat = LlmChat(
         api_key=api_key,

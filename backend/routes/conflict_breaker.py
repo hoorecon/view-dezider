@@ -647,7 +647,7 @@ async def get_full_session(session_id: str, user: dict = Depends(get_current_use
 async def _ai_generate(prompt: str, session_id: str = "") -> str:
     """Helper to call LLM for Conflict Breaker AI features."""
     import os
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from core.llm_compat import LlmChat, UserMessage  # provider-agnostic shim (Emergent | direct via litellm)
     api_key = os.getenv("EMERGENT_LLM_KEY")
     if not api_key:
         raise HTTPException(500, "LLM key not configured")

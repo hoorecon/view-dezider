@@ -370,7 +370,7 @@ async def ai_reschedule(request: Request, user: dict = Depends(get_current_user)
     AI-driven rescheduling when an unplanned task creates conflicts.
     Uses CLD relationships, TEPFI resources (all 5 dimensions), and priority analysis.
     """
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from core.llm_compat import LlmChat, UserMessage  # provider-agnostic shim (Emergent | direct via litellm)
 
     body = await request.json()
 
@@ -721,7 +721,7 @@ async def analyze_time_store(request: Request, user: dict = Depends(get_current_
     Uses ALL 5 TEPFI dimensions × 3 layers + CLD analysis.
     Body: { desired_free_hours: float, period: 'daily'|'weekly' }
     """
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from core.llm_compat import LlmChat, UserMessage  # provider-agnostic shim (Emergent | direct via litellm)
 
     body = await request.json()
 

@@ -113,7 +113,7 @@ def _keyword_classify(text: str) -> Dict[str, Any]:
 async def _llm_classify(text: str) -> Dict[str, Any]:
     """Try the LLM; fall back to keywords on any failure (budget cap, network, etc.)."""
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage  # type: ignore
+        from core.llm_compat import LlmChat, UserMessage  # provider-agnostic shim (Emergent | direct via litellm)  # type: ignore
         api_key = os.getenv("EMERGENT_LLM_KEY")
         if not api_key:
             return _keyword_classify(text)

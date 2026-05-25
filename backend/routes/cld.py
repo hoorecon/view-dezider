@@ -287,7 +287,7 @@ async def generate_module_cld(module_type: str, request: Request, user: dict = D
     if not api_key:
         raise HTTPException(500, "LLM key not configured")
 
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from core.llm_compat import LlmChat, UserMessage  # provider-agnostic shim (Emergent | direct via litellm)
     chat = LlmChat(
         api_key=api_key,
         session_id=f"cld_module_{uid}_{uuid.uuid4().hex[:8]}",
@@ -665,7 +665,7 @@ async def generate_cld(decision_id: str, request: Request, user: dict = Depends(
     
     Body: { factors: [{id, name}], decision_title, decision_context, life_area, decision_type, auto_save: bool }
     """
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from core.llm_compat import LlmChat, UserMessage  # provider-agnostic shim (Emergent | direct via litellm)
 
     body = await request.json()
 

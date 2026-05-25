@@ -42,7 +42,7 @@ router = APIRouter()
 
 async def ai_extract_product_data(html_text: str, url: str, context: str = "") -> dict:
     """Use LLM to intelligently extract product/service data from HTML."""
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from core.llm_compat import LlmChat, UserMessage  # provider-agnostic shim (Emergent | direct via litellm)
 
     api_key = os.getenv("EMERGENT_LLM_KEY")
     if not api_key:

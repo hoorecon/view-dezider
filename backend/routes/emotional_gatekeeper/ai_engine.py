@@ -15,7 +15,7 @@ EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
 
 async def _call_llm(prompt: str, system_msg: str = "") -> str:
     """Call GPT-4.1-mini via Emergent LLM."""
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from core.llm_compat import LlmChat, UserMessage  # provider-agnostic shim (Emergent | direct via litellm)
     chat = LlmChat(
         api_key=EMERGENT_LLM_KEY,
         session_id=f"eg_{uuid.uuid4().hex[:8]}",

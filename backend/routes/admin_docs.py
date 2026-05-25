@@ -359,7 +359,7 @@ async def _generate_doc_with_ai(doc_type: str, api_summary: str, user_id: str) -
         return _fallback_doc(doc_type, api_summary)
 
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        from core.llm_compat import LlmChat, UserMessage  # provider-agnostic shim (Emergent | direct via litellm)
 
         prompt = build_prompt(doc_type, api_summary)
         chat = LlmChat(

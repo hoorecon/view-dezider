@@ -285,7 +285,7 @@ async def _ai_generate_expected_values(title: str, context: str, raw_factors: li
         return raw_factors
 
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        from core.llm_compat import LlmChat, UserMessage  # provider-agnostic shim (Emergent | direct via litellm)
 
         factor_lines = []
         for f in raw_factors:

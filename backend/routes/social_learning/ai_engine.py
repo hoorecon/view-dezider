@@ -40,7 +40,7 @@ async def get_hos_hierarchy_for_prompt() -> str:
 
 async def classify_news(content: str) -> dict:
     """Use GPT to classify news with full HOS hierarchy, enhanced factors, risks."""
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from core.llm_compat import LlmChat, UserMessage  # provider-agnostic shim (Emergent | direct via litellm)
 
     supported_langs = ", ".join(SUPPORTED_LANGUAGES)
 
@@ -169,7 +169,7 @@ Respond ONLY with valid JSON (no markdown, no explanation):
 
 async def synthesize_templates(templates: list, target_context: dict) -> dict:
     """AI synthesis of multiple Authorized templates into a Social Solution Template."""
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from core.llm_compat import LlmChat, UserMessage  # provider-agnostic shim (Emergent | direct via litellm)
 
     templates_text = ""
     for i, t in enumerate(templates, 1):

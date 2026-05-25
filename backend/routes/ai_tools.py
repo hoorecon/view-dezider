@@ -18,7 +18,7 @@ router = APIRouter(tags=["AI Tools"])
 @limiter.limit(AI_LIMIT)
 async def tepfi_auto_map(request: Request, user: dict = Depends(get_current_user)):
     """AI auto-map factors to TEPFI elements and solution layers"""
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from core.llm_compat import LlmChat, UserMessage  # provider-agnostic shim (Emergent | direct via litellm)
     import json as json_module
 
     body = await request.json()
@@ -76,7 +76,7 @@ Return ONLY valid JSON array, no markdown, no explanation:
 @limiter.limit(AI_LIMIT)
 async def fetch_factor_data(request: Request, user: dict = Depends(get_current_user)):
     """Fetch actual values for factors from configured data sources (webhook, web_surf, ai_llm)."""
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from core.llm_compat import LlmChat, UserMessage  # provider-agnostic shim (Emergent | direct via litellm)
     import json as json_module
 
     body = await request.json()
@@ -244,7 +244,7 @@ Return ONLY valid JSON, no markdown."""
 @limiter.limit(AI_LIMIT)
 async def cld_analyze(request: Request, user: dict = Depends(get_current_user)):
     """Generate a Causal Loop Diagram from factors and auto-derive Steps 3-5 values."""
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from core.llm_compat import LlmChat, UserMessage  # provider-agnostic shim (Emergent | direct via litellm)
     import json as json_module
 
     body = await request.json()
