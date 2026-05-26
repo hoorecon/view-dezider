@@ -1099,18 +1099,29 @@ function FactorGroupRow({ factor, parentChoices, onUpdate, onToggleDuplicate }: 
         </TouchableOpacity>
       )}
 
-      {/* Toggle Duplicate — non-destructive replacement for the old delete */}
+      {/* Toggle Duplicate — labeled pill replacing the old destructive delete.
+          Style mirrors the Group/Move buttons so users notice it immediately,
+          with a warm amber tint when not yet marked, and a green tint when
+          already marked (= "Restore"). */}
       <TouchableOpacity
         onPress={onToggleDuplicate}
-        hitSlop={6}
-        style={{ marginLeft: 8 }}
+        style={[
+          styles.dupBtn,
+          isDuplicate ? styles.dupBtnRestore : styles.dupBtnMark,
+        ]}
         accessibilityLabel={isDuplicate ? 'Restore — un-mark as duplicate' : 'Mark as duplicate (soft remove)'}
       >
         <Ionicons
-          name={isDuplicate ? 'arrow-undo-outline' : 'copy-outline'}
-          size={18}
-          color={isDuplicate ? COLORS.ok : COLORS.warn}
+          name={isDuplicate ? 'arrow-undo-outline' : 'remove-circle-outline'}
+          size={13}
+          color={isDuplicate ? COLORS.ok : '#B45309'}
         />
+        <Text style={[
+          styles.dupBtnText,
+          { color: isDuplicate ? COLORS.ok : '#B45309' },
+        ]}>
+          {isDuplicate ? 'Restore' : 'Duplicate'}
+        </Text>
       </TouchableOpacity>
 
       {open && !isDuplicate && (
@@ -1380,6 +1391,32 @@ const styles = StyleSheet.create({
   },
   linkBtnMuted: {
     backgroundColor: '#E5E7EB',
+  },
+
+  // Step 4 — Mark-Duplicate / Restore labeled pill button
+  // Mirrors the Group/Move pill but with an action-specific tint so users
+  // immediately see this is a different (destructive-but-reversible) action.
+  dupBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 12,
+    marginLeft: 8,
+    borderWidth: 1,
+  },
+  dupBtnMark: {
+    backgroundColor: '#FEF3C7',  // warm amber
+    borderColor: '#FCD34D',
+  },
+  dupBtnRestore: {
+    backgroundColor: '#DCFCE7',  // light green
+    borderColor: '#86EFAC',
+  },
+  dupBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
   },
   dedupLegend: {
     flexDirection: 'row',
