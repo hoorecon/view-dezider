@@ -243,6 +243,28 @@ export default function ProsConsWizard() {
   const [pcText, setPcText] = useState('');
   const [pcKind, setPcKind] = useState<'pro' | 'con'>('pro');
 
+  // Inline-edit for individual Pros / Cons text (parity with Option rename)
+  const [editingPcKey, setEditingPcKey] = useState<string | null>(null);  // `${oid}:${kind}:${pcid}`
+  const [editPcDraft, setEditPcDraft] = useState('');
+  const beginEditPc = (oid: string, kind: 'pros' | 'cons', pc: { id: string; text: string }) => {
+    setEditingPcKey(`${oid}:${kind}:${pc.id}`);
+    setEditPcDraft(pc.text || '');
+  };
+  const cancelEditPc = () => { setEditingPcKey(null); };
+  const saveEditPc = async () => {
+    if (!editingPcKey) return;
+    const [oid, kind, pcid] = editingPcKey.split(':');
+    const text = editPcDraft.trim();
+    if (!text) { showAlert('Required', 'Text cannot be empty.'); return; }
+    try {
+      await api.put(`${base}/${id}/options/${oid}/${kind}/${pcid}`, { text });
+      setEditingPcKey(null);
+      await reload();
+    } catch (e: any) {
+      showAlert('Error', e?.response?.data?.detail || 'Failed to update');
+    }
+  };
+
   // Per-option collapsible state — by default everything is OPEN.
   // Tracking which IDs are EXPLICITLY collapsed (not a "open set") so
   // newly-added options auto-open.
@@ -727,14 +749,42 @@ export default function ProsConsWizard() {
                             Pros ({o.pros.length})
                           </Text>
                         </TouchableOpacity>
-                        {!prosCollapsed && o.pros.map(p => (
-                          <View key={p.id} style={[styles.pcRow, { borderLeftColor: COLORS.pro }]}>
-                            <Text style={styles.pcText}>{p.text}</Text>
-                            <TouchableOpacity onPress={() => delPC(o.id, 'pros', p.id)} hitSlop={6}>
-                              <Ionicons name="close-circle" size={18} color={COLORS.textDim} />
-                            </TouchableOpacity>
-                          </View>
-                        ))}
+                        {!prosCollapsed && o.pros.map(p => {
+                          const editing = editingPcKey === `${o.id}:pros:${p.id}`;
+                          return (
+                            <View key={p.id} style={[styles.pcRow, { borderLeftColor: COLORS.pro }]}>
+                              {editing ? (
+                                <>
+                                  <TextInput
+                                    style={[styles.input, { flex: 1, marginBottom: 0, paddingVertical: 6 }]}
+                                    value={editPcDraft}
+                                    onChangeText={setEditPcDraft}
+                                    autoFocus
+                                    onSubmitEditing={saveEditPc}
+                                  />
+                                  <TouchableOpacity onPress={saveEditPc} style={styles.editSaveBtn}>
+                                    <Ionicons name="checkmark" size={14} color="#fff" />
+                                  </TouchableOpacity>
+                                  <TouchableOpacity onPress={cancelEditPc} style={[styles.editGhostBtn, { marginLeft: 6 }]}>
+                                    <Ionicons name="close" size={14} color={COLORS.textDim} />
+                                  </TouchableOpacity>
+                                </>
+                              ) : (
+                                <>
+                                  <TouchableOpacity onPress={() => beginEditPc(o.id, 'pros', p)} style={{ flex: 1 }} activeOpacity={0.7}>
+                                    <Text style={styles.pcText}>{p.text}</Text>
+                                  </TouchableOpacity>
+                                  <TouchableOpacity onPress={() => beginEditPc(o.id, 'pros', p)} hitSlop={6} style={{ marginRight: 8 }} accessibilityLabel="Edit Pro">
+                                    <Ionicons name="pencil" size={14} color={COLORS.textDim} />
+                                  </TouchableOpacity>
+                                  <TouchableOpacity onPress={() => delPC(o.id, 'pros', p.id)} hitSlop={6}>
+                                    <Ionicons name="close-circle" size={18} color={COLORS.textDim} />
+                                  </TouchableOpacity>
+                                </>
+                              )}
+                            </View>
+                          );
+                        })}
 
                         {/* cons section header (collapsible) */}
                         <TouchableOpacity
@@ -751,14 +801,42 @@ export default function ProsConsWizard() {
                             Cons ({o.cons.length})
                           </Text>
                         </TouchableOpacity>
-                        {!consCollapsed && o.cons.map(c => (
-                          <View key={c.id} style={[styles.pcRow, { borderLeftColor: COLORS.con }]}>
-                            <Text style={styles.pcText}>{c.text}</Text>
-                            <TouchableOpacity onPress={() => delPC(o.id, 'cons', c.id)} hitSlop={6}>
-                              <Ionicons name="close-circle" size={18} color={COLORS.textDim} />
-                            </TouchableOpacity>
-                          </View>
-                        ))}
+                        {!consCollapsed && o.cons.map(c => {
+                          const editing = editingPcKey === `${o.id}:cons:${c.id}`;
+                          return (
+                            <View key={c.id} style={[styles.pcRow, { borderLeftColor: COLORS.con }]}>
+                              {editing ? (
+                                <>
+                                  <TextInput
+                                    style={[styles.input, { flex: 1, marginBottom: 0, paddingVertical: 6 }]}
+                                    value={editPcDraft}
+                                    onChangeText={setEditPcDraft}
+                                    autoFocus
+                                    onSubmitEditing={saveEditPc}
+                                  />
+                                  <TouchableOpacity onPress={saveEditPc} style={styles.editSaveBtn}>
+                                    <Ionicons name="checkmark" size={14} color="#fff" />
+                                  </TouchableOpacity>
+                                  <TouchableOpacity onPress={cancelEditPc} style={[styles.editGhostBtn, { marginLeft: 6 }]}>
+                                    <Ionicons name="close" size={14} color={COLORS.textDim} />
+                                  </TouchableOpacity>
+                                </>
+                              ) : (
+                                <>
+                                  <TouchableOpacity onPress={() => beginEditPc(o.id, 'cons', c)} style={{ flex: 1 }} activeOpacity={0.7}>
+                                    <Text style={styles.pcText}>{c.text}</Text>
+                                  </TouchableOpacity>
+                                  <TouchableOpacity onPress={() => beginEditPc(o.id, 'cons', c)} hitSlop={6} style={{ marginRight: 8 }} accessibilityLabel="Edit Con">
+                                    <Ionicons name="pencil" size={14} color={COLORS.textDim} />
+                                  </TouchableOpacity>
+                                  <TouchableOpacity onPress={() => delPC(o.id, 'cons', c.id)} hitSlop={6}>
+                                    <Ionicons name="close-circle" size={18} color={COLORS.textDim} />
+                                  </TouchableOpacity>
+                                </>
+                              )}
+                            </View>
+                          );
+                        })}
 
                         <View style={styles.addPcBar}>
                           <TouchableOpacity style={[styles.pcKindBtn, pcKind === 'pro' && activeOptId === o.id && { backgroundColor: COLORS.pro }]}
@@ -1088,14 +1166,16 @@ function FactorGroupRow({ factor, parentChoices, onUpdate, onToggleDuplicate }: 
         )}
       </View>
 
-      {/* Group / Move button — disabled for duplicates */}
+      {/* Nest / Move button — disabled for duplicates.
+          Renamed from "Group ↳" → "Nest under…" so the action direction
+          is unambiguous: THIS factor becomes a child of the selected parent. */}
       {!isDuplicate && (
         <TouchableOpacity
           onPress={() => setOpen(o => !o)}
           style={[styles.linkBtn, isSubFactor && styles.linkBtnMuted]}
-          accessibilityLabel={factor.parent_id ? 'Move under another factor' : 'Group under a parent factor'}
+          accessibilityLabel={factor.parent_id ? 'Move under another factor' : 'Nest this factor under a parent factor'}
         >
-          <Text style={styles.linkBtnText}>{factor.parent_id ? 'Move' : 'Group ↳'}</Text>
+          <Text style={styles.linkBtnText}>{factor.parent_id ? 'Move' : 'Nest under…'}</Text>
         </TouchableOpacity>
       )}
 
@@ -1125,16 +1205,23 @@ function FactorGroupRow({ factor, parentChoices, onUpdate, onToggleDuplicate }: 
       </TouchableOpacity>
 
       {open && !isDuplicate && (
-        <View style={{ width: '100%', marginTop: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-          <TouchableOpacity style={[styles.parentChip, !factor.parent_id && styles.parentChipActive]} onPress={() => { onUpdate({ parent_id: null }); setOpen(false); }}>
-            <Text style={[styles.parentChipText, !factor.parent_id && { color: '#fff' }]}>None</Text>
-          </TouchableOpacity>
-          {parentChoices.map(p => (
-            <TouchableOpacity key={p.id} style={[styles.parentChip, factor.parent_id === p.id && styles.parentChipActive]}
-              onPress={() => { onUpdate({ parent_id: p.id }); setOpen(false); }}>
-              <Text style={[styles.parentChipText, factor.parent_id === p.id && { color: '#fff' }]} numberOfLines={1}>{p.name}</Text>
+        <View style={{ width: '100%', marginTop: 8 }}>
+          {/* Explicit direction label — leaves no ambiguity about what */}
+          {/* will happen: THIS factor becomes a sub-factor of the choice. */}
+          <Text style={styles.parentPickerLabel}>
+            Make <Text style={{ fontWeight: '800', color: COLORS.text }}>“{factor.name}”</Text> a sub-factor of:
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            <TouchableOpacity style={[styles.parentChip, !factor.parent_id && styles.parentChipActive]} onPress={() => { onUpdate({ parent_id: null }); setOpen(false); }}>
+              <Text style={[styles.parentChipText, !factor.parent_id && { color: '#fff' }]}>None (keep top-level)</Text>
             </TouchableOpacity>
-          ))}
+            {parentChoices.map(p => (
+              <TouchableOpacity key={p.id} style={[styles.parentChip, factor.parent_id === p.id && styles.parentChipActive]}
+                onPress={() => { onUpdate({ parent_id: p.id }); setOpen(false); }}>
+                <Text style={[styles.parentChipText, factor.parent_id === p.id && { color: '#fff' }]} numberOfLines={1}>{p.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
       )}
     </View>
@@ -1417,6 +1504,12 @@ const styles = StyleSheet.create({
   dupBtnText: {
     fontSize: 11,
     fontWeight: '700',
+  },
+  parentPickerLabel: {
+    fontSize: 12,
+    color: COLORS.textDim,
+    marginBottom: 6,
+    lineHeight: 16,
   },
   dedupLegend: {
     flexDirection: 'row',

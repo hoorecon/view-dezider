@@ -521,6 +521,49 @@ async def swot_del_con(analysis_id: str, option_id: str, item_id: str, user: dic
     return {"deleted": True}
 
 
+# ── Step #2 — Edit existing Pro / Con text (inline rename) — SWOT parity ──
+@router.put("/{analysis_id}/options/{option_id}/pros/{item_id}")
+async def swot_update_pro(analysis_id: str, option_id: str, item_id: str,
+                          body: Dict[str, Any], user: dict = Depends(get_current_user)):
+    text = (body.get("text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Pro text cannot be empty")
+    doc = await _load_swot(analysis_id, user["user_id"])
+    found = False
+    for o in doc["options"]:
+        if o["id"] == option_id:
+            for p in o.get("pros", []):
+                if p["id"] == item_id:
+                    p["text"] = text
+                    found = True
+                    break
+    if not found:
+        raise HTTPException(status_code=404, detail="Pro not found")
+    await _persist_swot(analysis_id, user["user_id"], {"options": doc["options"]})
+    return {"updated": True}
+
+
+@router.put("/{analysis_id}/options/{option_id}/cons/{item_id}")
+async def swot_update_con(analysis_id: str, option_id: str, item_id: str,
+                          body: Dict[str, Any], user: dict = Depends(get_current_user)):
+    text = (body.get("text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Con text cannot be empty")
+    doc = await _load_swot(analysis_id, user["user_id"])
+    found = False
+    for o in doc["options"]:
+        if o["id"] == option_id:
+            for c in o.get("cons", []):
+                if c["id"] == item_id:
+                    c["text"] = text
+                    found = True
+                    break
+    if not found:
+        raise HTTPException(status_code=404, detail="Con not found")
+    await _persist_swot(analysis_id, user["user_id"], {"options": doc["options"]})
+    return {"updated": True}
+
+
 @router.put("/{analysis_id}/options/{option_id}")
 async def swot_update_option(analysis_id: str, option_id: str, body: Dict[str, Any], user: dict = Depends(get_current_user)):
     doc = await _load_swot(analysis_id, user["user_id"])

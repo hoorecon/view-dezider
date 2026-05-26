@@ -523,6 +523,51 @@ async def delete_con(analysis_id: str, option_id: str, item_id: str, user: dict 
     return {"deleted": True}
 
 
+# ── Step #2 — Edit existing Pro / Con text (inline rename) ──
+@router.put("/{analysis_id}/options/{option_id}/pros/{item_id}")
+async def update_pro(analysis_id: str, option_id: str, item_id: str,
+                     body: Dict[str, Any], user: dict = Depends(get_current_user)):
+    """Inline-edit a Pro's text. Body: { text }"""
+    text = (body.get("text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Pro text cannot be empty")
+    doc = await _load_analysis(analysis_id, user["user_id"])
+    found = False
+    for o in doc["options"]:
+        if o["id"] == option_id:
+            for p in o.get("pros", []):
+                if p["id"] == item_id:
+                    p["text"] = text
+                    found = True
+                    break
+    if not found:
+        raise HTTPException(status_code=404, detail="Pro not found")
+    await _persist(analysis_id, user["user_id"], {"options": doc["options"]})
+    return {"updated": True}
+
+
+@router.put("/{analysis_id}/options/{option_id}/cons/{item_id}")
+async def update_con(analysis_id: str, option_id: str, item_id: str,
+                     body: Dict[str, Any], user: dict = Depends(get_current_user)):
+    """Inline-edit a Con's text. Body: { text }"""
+    text = (body.get("text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Con text cannot be empty")
+    doc = await _load_analysis(analysis_id, user["user_id"])
+    found = False
+    for o in doc["options"]:
+        if o["id"] == option_id:
+            for c in o.get("cons", []):
+                if c["id"] == item_id:
+                    c["text"] = text
+                    found = True
+                    break
+    if not found:
+        raise HTTPException(status_code=404, detail="Con not found")
+    await _persist(analysis_id, user["user_id"], {"options": doc["options"]})
+    return {"updated": True}
+
+
 # ─── Step #3 — Auto-convert Pros & Cons → factors (with "SHOULD NOT - " prefix for cons) ───
 @router.post("/{analysis_id}/promote-pros-cons")
 async def promote_pros_cons_to_factors(analysis_id: str, user: dict = Depends(get_current_user)):
