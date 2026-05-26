@@ -668,66 +668,76 @@ export default function SwotScreen() {
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>New SWOT Analysis</Text>
-                <TouchableOpacity onPress={() => setShowCreateModal(false)}>
+                <TouchableOpacity onPress={() => setShowCreateModal(false)} hitSlop={10}>
                   <Ionicons name="close" size={24} color={COLORS.textSecondary} />
                 </TouchableOpacity>
               </View>
 
-              <Text style={styles.inputLabel}>Decision / Topic *</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="e.g., Launch new product line"
-                value={newTitle}
-                onChangeText={setNewTitle}
-                autoFocus
-              />
+              <ScrollView
+                style={styles.modalScroll}
+                contentContainerStyle={styles.modalScrollContent}
+                showsVerticalScrollIndicator
+                keyboardShouldPersistTaps="handled"
+              >
+                <Text style={styles.inputLabel}>Decision / Topic *</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="e.g., Launch new product line"
+                  value={newTitle}
+                  onChangeText={setNewTitle}
+                  autoFocus
+                />
 
-              <Text style={styles.inputLabel}>Context (optional)</Text>
-              <TextInput
-                style={[styles.textInput, { height: 70 }]}
-                placeholder="Add any relevant background..."
-                value={newContext}
-                onChangeText={setNewContext}
-                multiline
-              />
+                <Text style={styles.inputLabel}>Context (optional)</Text>
+                <TextInput
+                  style={[styles.textInput, { height: 70 }]}
+                  placeholder="Add any relevant background..."
+                  value={newContext}
+                  onChangeText={setNewContext}
+                  multiline
+                />
 
-              <Text style={styles.inputLabel}>Life Area (optional)</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  {LIFE_AREAS.map(area => (
-                    <TouchableOpacity
-                      key={area.key}
-                      style={[
-                        styles.lifeAreaChip,
-                        newLifeArea === area.key && styles.lifeAreaChipActive
-                      ]}
-                      onPress={() => setNewLifeArea(newLifeArea === area.key ? '' : area.key)}
-                    >
-                      <Ionicons
-                        name={area.icon as any}
-                        size={14}
-                        color={newLifeArea === area.key ? '#FFF' : COLORS.textSecondary}
-                      />
-                      <Text style={[
-                        styles.lifeAreaChipText,
-                        newLifeArea === area.key && { color: '#FFF' }
-                      ]}>{area.label}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                <Text style={styles.inputLabel}>Life Area (optional)</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    {LIFE_AREAS.map(area => (
+                      <TouchableOpacity
+                        key={area.key}
+                        style={[
+                          styles.lifeAreaChip,
+                          newLifeArea === area.key && styles.lifeAreaChipActive
+                        ]}
+                        onPress={() => setNewLifeArea(newLifeArea === area.key ? '' : area.key)}
+                      >
+                        <Ionicons
+                          name={area.icon as any}
+                          size={14}
+                          color={newLifeArea === area.key ? '#FFF' : COLORS.textSecondary}
+                        />
+                        <Text style={[
+                          styles.lifeAreaChipText,
+                          newLifeArea === area.key && { color: '#FFF' }
+                        ]}>{area.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
               </ScrollView>
 
-              <TouchableOpacity
-                style={[styles.createConfirmBtn, (!newTitle.trim() || creating) && { opacity: 0.5 }]}
-                onPress={handleCreate}
-                disabled={!newTitle.trim() || creating}
-              >
-                {creating ? (
-                  <ActivityIndicator color="#FFF" size="small" />
-                ) : (
-                  <Text style={styles.createConfirmText}>Create SWOT Analysis</Text>
-                )}
-              </TouchableOpacity>
+              {/* Sticky footer — Create button is never hidden behind scrolled content */}
+              <View style={styles.modalFooter}>
+                <TouchableOpacity
+                  style={[styles.createConfirmBtn, (!newTitle.trim() || creating) && { opacity: 0.5 }]}
+                  onPress={handleCreate}
+                  disabled={!newTitle.trim() || creating}
+                >
+                  {creating ? (
+                    <ActivityIndicator color="#FFF" size="small" />
+                  ) : (
+                    <Text style={styles.createConfirmText}>Create SWOT Analysis</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
           </KeyboardAvoidingView>
         </View>
@@ -897,7 +907,18 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '100%', maxWidth: 500,
     backgroundColor: '#FFF', borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: 24, maxHeight: '85%',
+    paddingHorizontal: 24, paddingTop: 24, paddingBottom: 0,
+    maxHeight: '85%',
+    overflow: 'hidden',
+  },
+  // Internal scroll body so all fields are reachable on small screens
+  modalScroll: { flexGrow: 0, flexShrink: 1 },
+  modalScrollContent: { paddingBottom: 8 },
+  // Sticky footer keeps the primary CTA visible at all times
+  modalFooter: {
+    paddingTop: 12, paddingBottom: 20,
+    borderTopWidth: 1, borderTopColor: '#F1F5F9',
+    backgroundColor: '#FFF',
   },
   modalHeader: {
     flexDirection: 'row', justifyContent: 'space-between',
