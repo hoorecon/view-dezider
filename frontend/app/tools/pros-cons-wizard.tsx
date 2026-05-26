@@ -926,8 +926,15 @@ export default function ProsConsWizard() {
                 <FactorGroupRow
                   key={f.id}
                   factor={f}
-                  parentChoices={groupingParents.filter(d => d.id !== f.id)}
-                  onUpdate={(patch) => updateFactor(f.id, patch)}
+                  // INVERTED semantic — when user clicks "Add sub-factor"
+                  // on F, the picker shows OTHER top-level factors that
+                  // can be MOVED UNDER F. F stays as the main/parent;
+                  // the picked factor becomes the child (gray).
+                  candidateChildren={analysis.factors.filter(d =>
+                    !d.parent_id && !d.is_duplicate && d.id !== f.id
+                  )}
+                  onAddChild={(childId) => updateFactor(childId, { parent_id: f.id })}
+                  onPromote={() => updateFactor(f.id, { parent_id: null })}
                   onToggleDuplicate={() => updateFactor(f.id, { is_duplicate: !f.is_duplicate })}
                 />
               ))}
@@ -1116,27 +1123,25 @@ function NextBack({ onBack, onNext }: { onBack: (() => void) | null; onNext: (()
   );
 }
 
-function FactorGroupRow({ factor, parentChoices, onUpdate, onToggleDuplicate }: {
-  factor: Factor; parentChoices: Factor[]; onUpdate: (p: any) => void; onToggleDuplicate: () => void;
+function FactorGroupRow({ factor, candidateChildren, onAddChild, onPromote, onToggleDuplicate }: {
+  factor: Factor;
+  candidateChildren: Factor[];
+  onAddChild: (childId: string) => void;
+  onPromote: () => void;
+  onToggleDuplicate: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const parent = parentChoices.find(p => p.id === factor.parent_id)
-    // parentChoices is filtered to exclude sub-factors & duplicates, but the
-    // factor's current parent could in theory be missing; show no banner then.
-    || null;
 
   const isSubFactor = !!factor.parent_id;
   const isDuplicate = !!factor.is_duplicate;
   // Visual treatment ladder:
-  //   duplicate  → strongest mute (lightest gray + strikethrough)
-  //   sub-factor → medium mute (mid gray, no color tag)
+  //   duplicate  → strongest mute (light gray + strikethrough)
+  //   sub-factor → medium mute (gray tag, no original P/C color)
   //   active     → normal (P/C/D coloured tag)
   const muted = isDuplicate || isSubFactor;
-  const tagBg = isDuplicate
+  const tagBg = isDuplicate || isSubFactor
     ? '#94A3B8'
-    : isSubFactor
-      ? '#94A3B8'
-      : (factor.source === 'direct' ? COLORS.direct : factor.source === 'pro' ? COLORS.pro : COLORS.con);
+    : (factor.source === 'direct' ? COLORS.direct : factor.source === 'pro' ? COLORS.pro : COLORS.con);
   const tagLetter = isDuplicate ? '–' : (factor.source === 'direct' ? 'D' : factor.source === 'pro' ? 'P' : 'C');
 
   return (
@@ -1154,9 +1159,9 @@ function FactorGroupRow({ factor, parentChoices, onUpdate, onToggleDuplicate }: 
           muted && { color: COLORS.textDim },
           isDuplicate && { textDecorationLine: 'line-through' as any },
         ]}>{factor.name}</Text>
-        {parent && (
+        {isSubFactor && (
           <Text style={[styles.factorMeta, { color: COLORS.textDim }]}>
-            ↳ sub-factor of: {parent.name}
+            ↳ sub-factor (grouped under a main factor above)
           </Text>
         )}
         {isDuplicate && (
@@ -1166,23 +1171,30 @@ function FactorGroupRow({ factor, parentChoices, onUpdate, onToggleDuplicate }: 
         )}
       </View>
 
-      {/* Nest / Move button — disabled for duplicates.
-          Renamed from "Group ↳" → "Nest under…" so the action direction
-          is unambiguous: THIS factor becomes a child of the selected parent. */}
-      {!isDuplicate && (
+      {/* Action button depends on what type of row this is:
+          • top-level active factor → "Add sub-factor…" (this factor becomes the PARENT)
+          • already-a-sub-factor    → "Promote out"     (clear its parent_id, back to top-level)
+          • duplicate              → no group action at all */}
+      {!isDuplicate && !isSubFactor && (
         <TouchableOpacity
           onPress={() => setOpen(o => !o)}
-          style={[styles.linkBtn, isSubFactor && styles.linkBtnMuted]}
-          accessibilityLabel={factor.parent_id ? 'Move under another factor' : 'Nest this factor under a parent factor'}
+          style={styles.linkBtn}
+          accessibilityLabel="Add another factor as a sub-factor under this one"
         >
-          <Text style={styles.linkBtnText}>{factor.parent_id ? 'Move' : 'Nest under…'}</Text>
+          <Text style={styles.linkBtnText}>+ Sub-factor</Text>
+        </TouchableOpacity>
+      )}
+      {!isDuplicate && isSubFactor && (
+        <TouchableOpacity
+          onPress={onPromote}
+          style={[styles.linkBtn, styles.linkBtnMuted]}
+          accessibilityLabel="Promote out — make this a top-level factor again"
+        >
+          <Text style={styles.linkBtnText}>Promote out</Text>
         </TouchableOpacity>
       )}
 
-      {/* Toggle Duplicate — labeled pill replacing the old destructive delete.
-          Style mirrors the Group/Move buttons so users notice it immediately,
-          with a warm amber tint when not yet marked, and a green tint when
-          already marked (= "Restore"). */}
+      {/* Toggle Duplicate — labeled pill replacing the old destructive delete. */}
       <TouchableOpacity
         onPress={onToggleDuplicate}
         style={[
@@ -1204,24 +1216,28 @@ function FactorGroupRow({ factor, parentChoices, onUpdate, onToggleDuplicate }: 
         </Text>
       </TouchableOpacity>
 
-      {open && !isDuplicate && (
+      {open && !isDuplicate && !isSubFactor && (
         <View style={{ width: '100%', marginTop: 8 }}>
-          {/* Explicit direction label — leaves no ambiguity about what */}
-          {/* will happen: THIS factor becomes a sub-factor of the choice. */}
           <Text style={styles.parentPickerLabel}>
-            Make <Text style={{ fontWeight: '800', color: COLORS.text }}>“{factor.name}”</Text> a sub-factor of:
+            Pick a factor to nest <Text style={{ fontWeight: '800', color: COLORS.text }}>UNDER “{factor.name}”</Text>:
           </Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            <TouchableOpacity style={[styles.parentChip, !factor.parent_id && styles.parentChipActive]} onPress={() => { onUpdate({ parent_id: null }); setOpen(false); }}>
-              <Text style={[styles.parentChipText, !factor.parent_id && { color: '#fff' }]}>None (keep top-level)</Text>
-            </TouchableOpacity>
-            {parentChoices.map(p => (
-              <TouchableOpacity key={p.id} style={[styles.parentChip, factor.parent_id === p.id && styles.parentChipActive]}
-                onPress={() => { onUpdate({ parent_id: p.id }); setOpen(false); }}>
-                <Text style={[styles.parentChipText, factor.parent_id === p.id && { color: '#fff' }]} numberOfLines={1}>{p.name}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          {candidateChildren.length === 0 ? (
+            <Text style={[styles.factorMeta, { color: COLORS.textDim, fontStyle: 'italic' }]}>
+              No eligible factors to nest. Other top-level factors will appear here.
+            </Text>
+          ) : (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {candidateChildren.map(c => (
+                <TouchableOpacity
+                  key={c.id}
+                  style={styles.parentChip}
+                  onPress={() => { onAddChild(c.id); setOpen(false); }}
+                >
+                  <Text style={styles.parentChipText} numberOfLines={1}>{c.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
       )}
     </View>
