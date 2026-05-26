@@ -79,14 +79,23 @@ sleep 4
 
 # ── 4. Verify ────────────────────────────────────────────────────────────────
 log "Step 4/4 — Verifying backend is healthy"
-# Hit /api/health/live from INSIDE the container. Port 8001 on the host
-# is typically not published (nginx / Cloudflare fronts it), so a host-side
-# `curl localhost:8001` would fail even though the API is perfectly healthy.
-# Running curl inside the container guarantees the right network namespace.
+# Hit /api/health/live from INSIDE the container using PYTHON (always present
+# in our Python-slim image). curl is NOT in the slim image, so we deliberately
+# avoid it. Running inside the container also bypasses the fact that port 8001
+# is not published to the host (nginx/Cloudflare fronts it on prod).
 HEALTH_OK=0
+PY_PROBE='import sys, urllib.request
+try:
+    body = urllib.request.urlopen("http://localhost:8001/api/health/live", timeout=2).read().decode()
+    sys.stdout.write(body)
+    sys.exit(0 if "alive" in body else 1)
+except Exception as e:
+    sys.stderr.write(str(e))
+    sys.exit(1)
+'
 for i in 1 2 3 4 5; do
-  if $COMPOSE exec -T api curl -fsS http://localhost:8001/api/health/live >/dev/null 2>&1; then
-    ok "Backend responding (inside container)"
+  if $COMPOSE exec -T api python -c "$PY_PROBE" >/dev/null 2>&1; then
+    ok "Backend responding (inside-container Python probe)"
     HEALTH_OK=1
     break
   fi
@@ -94,11 +103,10 @@ for i in 1 2 3 4 5; do
   sleep 3
 done
 
-# Fallback: if curl isn't installed inside the slim image, accept the
-# "Application startup complete" log marker as a healthy signal instead.
+# Fallback signal: many app frameworks print this exact line on successful boot
 if [ "$HEALTH_OK" = "0" ]; then
-  if $COMPOSE logs api --tail=80 2>/dev/null | grep -q "Application startup complete"; then
-    ok "Backend reports 'Application startup complete' in logs (curl unavailable inside image)"
+  if $COMPOSE logs api --tail=120 2>/dev/null | grep -q "Application startup complete"; then
+    ok "Backend reports 'Application startup complete' in logs (Python probe unavailable)"
     HEALTH_OK=1
   fi
 fi
@@ -109,12 +117,14 @@ if [ "$HEALTH_OK" = "0" ]; then
   fail "Backend did not become healthy. Check logs above."
 fi
 
-# Optional smoke-test the Step 4 endpoints that have caused trouble
-log "Smoke test — verifying is_duplicate is in the allowed PUT field set"
+# Smoke-test the *content* of the running container — proves the rebuild
+# actually picked up the latest Python code (this is the test that would
+# have caught the previous 3 stale-image bugs at deploy time).
+log "Smoke test — verifying is_duplicate is in the *running* container code"
 if $COMPOSE exec -T api grep -q "is_duplicate" routes/pros_cons.py 2>/dev/null; then
-  ok "is_duplicate is in container's pros_cons.py — Step 4 Duplicate button will work"
+  ok "is_duplicate present in container's routes/pros_cons.py — Step 4 Duplicate button will work"
 else
-  warn "is_duplicate not found in container — image may not have rebuilt. Try: $COMPOSE build --no-cache api"
+  warn "is_duplicate NOT in container — image is stale. Re-run with:  $COMPOSE build --no-cache api && $COMPOSE up -d --force-recreate api"
 fi
 
 echo
