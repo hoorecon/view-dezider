@@ -202,11 +202,104 @@ export default function ProsConsWizard() {
     catch (e: any) { showAlert('Error', e?.response?.data?.detail || 'Failed'); }
   };
 
+  // ─── Inline-edit state for factors and options ─────────────
+  // Track which factor / option is currently in "edit" mode and the
+  // working copy of its fields so the user can cancel without saving.
+  const [editingFactorId, setEditingFactorId] = useState<string | null>(null);
+  const [editFactorName, setEditFactorName] = useState('');
+  const [editFactorExpected, setEditFactorExpected] = useState('');
+  const [editFactorUnit, setEditFactorUnit] = useState('');
+
+  const beginEditFactor = (f: Factor) => {
+    setEditingFactorId(f.id);
+    setEditFactorName(f.name || '');
+    setEditFactorExpected(f.expected_value != null ? String(f.expected_value) : '');
+    setEditFactorUnit(f.unit || '');
+  };
+  const cancelEditFactor = () => { setEditingFactorId(null); };
+  const saveEditFactor = async () => {
+    if (!editingFactorId) return;
+    const name = editFactorName.trim();
+    if (!name) { showAlert('Required', 'Factor name cannot be empty.'); return; }
+    await updateFactor(editingFactorId, {
+      name,
+      expected_value: editFactorExpected.trim() || null,
+      unit: editFactorUnit.trim() || null,
+    });
+    setEditingFactorId(null);
+  };
+
+  const confirmDeleteFactor = (f: Factor) => {
+    showAlert('Delete factor?', `“${f.name}” will be permanently removed from this analysis.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteFactor(f.id) },
+    ]);
+  };
+
   // ─── Step 2: Options + Pros/Cons ──────────────────────────
   const [optName, setOptName] = useState('');
   const [activeOptId, setActiveOptId] = useState<string | null>(null);
   const [pcText, setPcText] = useState('');
   const [pcKind, setPcKind] = useState<'pro' | 'con'>('pro');
+
+  // Per-option collapsible state — by default everything is OPEN.
+  // Tracking which IDs are EXPLICITLY collapsed (not a "open set") so
+  // newly-added options auto-open.
+  const [collapsedOptIds, setCollapsedOptIds] = useState<Set<string>>(new Set());
+  const [collapsedProsIds, setCollapsedProsIds] = useState<Set<string>>(new Set());
+  const [collapsedConsIds, setCollapsedConsIds] = useState<Set<string>>(new Set());
+  const toggleOptCollapsed = (oid: string) => {
+    setCollapsedOptIds((s) => {
+      const n = new Set(s);
+      if (n.has(oid)) n.delete(oid); else n.add(oid);
+      return n;
+    });
+  };
+  const toggleProsCollapsed = (oid: string) => {
+    setCollapsedProsIds((s) => {
+      const n = new Set(s);
+      if (n.has(oid)) n.delete(oid); else n.add(oid);
+      return n;
+    });
+  };
+  const toggleConsCollapsed = (oid: string) => {
+    setCollapsedConsIds((s) => {
+      const n = new Set(s);
+      if (n.has(oid)) n.delete(oid); else n.add(oid);
+      return n;
+    });
+  };
+
+  // Inline rename for options
+  const [editingOptId, setEditingOptId] = useState<string | null>(null);
+  const [editOptName, setEditOptName] = useState('');
+  const beginEditOption = (o: OptionT) => {
+    setEditingOptId(o.id);
+    setEditOptName(o.name || '');
+  };
+  const cancelEditOption = () => setEditingOptId(null);
+  const saveEditOption = async () => {
+    if (!editingOptId) return;
+    const name = editOptName.trim();
+    if (!name) { showAlert('Required', 'Option name cannot be empty.'); return; }
+    try {
+      await api.put(`${base}/${id}/options/${editingOptId}`, { name });
+      setEditingOptId(null);
+      await reload();
+    } catch (e: any) {
+      showAlert('Error', e?.response?.data?.detail || 'Failed to rename option');
+    }
+  };
+  const confirmDeleteOption = (o: OptionT) => {
+    const total = (o.pros?.length || 0) + (o.cons?.length || 0);
+    const msg = total > 0
+      ? `“${o.name}” and its ${o.pros.length} Pros + ${o.cons.length} Cons will be removed.`
+      : `“${o.name}” will be removed.`;
+    showAlert('Delete option?', msg, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteOption(o.id) },
+    ]);
+  };
 
   const addOption = async () => {
     if (!optName.trim()) return;
@@ -446,18 +539,75 @@ export default function ProsConsWizard() {
               </View>
 
               <Text style={styles.sectionTitle}>Direct factors ({directFactors.filter(f => f.source === 'direct').length})</Text>
-              {analysis.factors.filter(f => f.source === 'direct').map((f, i) => (
-                <View key={f.id} style={styles.factorRow}>
-                  <View style={[styles.sourceTag, { backgroundColor: COLORS.direct }]}><Text style={styles.sourceTagText}>D</Text></View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.factorName}>{f.name}</Text>
-                    {!!(f.expected_value || f.unit) && (
-                      <Text style={styles.factorMeta}>Expected: {f.expected_value || '—'} {f.unit || ''}</Text>
+              {analysis.factors.filter(f => f.source === 'direct').map((f, i) => {
+                const isEditing = editingFactorId === f.id;
+                return (
+                  <View key={f.id} style={[styles.factorRow, isEditing && styles.factorRowEditing]}>
+                    <View style={[styles.sourceTag, { backgroundColor: COLORS.direct }]}>
+                      <Text style={styles.sourceTagText}>D</Text>
+                    </View>
+                    {isEditing ? (
+                      <View style={{ flex: 1 }}>
+                        <TextInput
+                          style={[styles.input, { marginBottom: 6 }]}
+                          placeholder="Factor name"
+                          value={editFactorName}
+                          onChangeText={setEditFactorName}
+                          autoFocus
+                        />
+                        <View style={{ flexDirection: 'row', gap: 6 }}>
+                          <TextInput
+                            style={[styles.input, { flex: 1.4, marginBottom: 0 }]}
+                            placeholder="Expected value (optional)"
+                            value={editFactorExpected}
+                            onChangeText={setEditFactorExpected}
+                          />
+                          <TextInput
+                            style={[styles.input, { flex: 1, marginBottom: 0 }]}
+                            placeholder="Unit"
+                            value={editFactorUnit}
+                            onChangeText={setEditFactorUnit}
+                          />
+                        </View>
+                        <View style={{ flexDirection: 'row', gap: 6, marginTop: 8, justifyContent: 'flex-end' }}>
+                          <TouchableOpacity onPress={cancelEditFactor} style={styles.editGhostBtn}>
+                            <Text style={styles.editGhostBtnText}>Cancel</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={saveEditFactor} style={styles.editSaveBtn}>
+                            <Ionicons name="checkmark" size={14} color="#fff" />
+                            <Text style={styles.editSaveBtnText}>Save</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ) : (
+                      <>
+                        <TouchableOpacity
+                          onPress={() => beginEditFactor(f)}
+                          style={{ flex: 1 }}
+                          activeOpacity={0.7}
+                          accessibilityLabel={`Edit factor ${f.name}`}
+                        >
+                          <Text style={styles.factorName}>{f.name}</Text>
+                          {!!(f.expected_value || f.unit) && (
+                            <Text style={styles.factorMeta}>Expected: {f.expected_value || '—'} {f.unit || ''}</Text>
+                          )}
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => beginEditFactor(f)}
+                          hitSlop={6}
+                          style={{ marginRight: 10 }}
+                          accessibilityLabel="Edit"
+                        >
+                          <Ionicons name="pencil" size={16} color={COLORS.textDim} />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => confirmDeleteFactor(f)} hitSlop={6} accessibilityLabel="Delete">
+                          <Ionicons name="trash-outline" size={18} color={COLORS.con} />
+                        </TouchableOpacity>
+                      </>
                     )}
                   </View>
-                  <TouchableOpacity onPress={() => deleteFactor(f.id)}><Ionicons name="trash-outline" size={18} color={COLORS.con} /></TouchableOpacity>
-                </View>
-              ))}
+                );
+              })}
               <NextBack onBack={null} onNext={() => persistStep(2)} />
             </View>
           )}
@@ -469,57 +619,167 @@ export default function ProsConsWizard() {
               <Text style={styles.stepHint}>Add each option (e.g., Car X, Car Y). Then tap an option to add Pros &amp; Cons specific to that option.</Text>
               <View style={styles.card}>
                 <Text style={styles.inputLabel}>Option name</Text>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <TextInput style={[styles.input, { flex: 1 }]} placeholder="e.g., Car X" value={optName} onChangeText={setOptName} />
-                  <TouchableOpacity style={[styles.primaryBtn, { flex: 0, paddingHorizontal: 16 }]} onPress={addOption} disabled={!optName.trim() || busy}>
-                    <Ionicons name="add" size={18} color="#fff" />
+                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                  <TextInput
+                    style={[styles.input, { flex: 1, marginBottom: 0 }]}
+                    placeholder="e.g., Car X"
+                    value={optName}
+                    onChangeText={setOptName}
+                    onSubmitEditing={addOption}
+                  />
+                  <TouchableOpacity
+                    style={[styles.addOptBtn, (!optName.trim() || busy) && { opacity: 0.5 }]}
+                    onPress={addOption}
+                    disabled={!optName.trim() || busy}
+                    accessibilityLabel="Add option"
+                  >
+                    <Ionicons name="add" size={20} color="#fff" />
                   </TouchableOpacity>
                 </View>
               </View>
 
-              {analysis.options.map((o) => (
-                <View key={o.id} style={styles.optionCard}>
-                  <View style={styles.optionHeader}>
-                    <Text style={styles.optionName}>{o.name}</Text>
-                    <TouchableOpacity onPress={() => deleteOption(o.id)}><Ionicons name="trash-outline" size={18} color={COLORS.con} /></TouchableOpacity>
-                  </View>
-                  {/* pros */}
-                  <Text style={styles.pcSection}>Pros ({o.pros.length})</Text>
-                  {o.pros.map(p => (
-                    <View key={p.id} style={[styles.pcRow, { borderLeftColor: COLORS.pro }]}>
-                      <Text style={styles.pcText}>{p.text}</Text>
-                      <TouchableOpacity onPress={() => delPC(o.id, 'pros', p.id)}><Ionicons name="close-circle" size={18} color={COLORS.textDim} /></TouchableOpacity>
+              {analysis.options.map((o) => {
+                const isCollapsed = collapsedOptIds.has(o.id);
+                const prosCollapsed = collapsedProsIds.has(o.id);
+                const consCollapsed = collapsedConsIds.has(o.id);
+                const isEditingThisOpt = editingOptId === o.id;
+                return (
+                  <View key={o.id} style={styles.optionCard}>
+                    <View style={styles.optionHeader}>
+                      <TouchableOpacity
+                        onPress={() => toggleOptCollapsed(o.id)}
+                        hitSlop={6}
+                        style={{ marginRight: 6 }}
+                        accessibilityLabel={isCollapsed ? 'Expand option' : 'Collapse option'}
+                      >
+                        <Ionicons
+                          name={isCollapsed ? 'chevron-forward' : 'chevron-down'}
+                          size={18}
+                          color={COLORS.textDim}
+                        />
+                      </TouchableOpacity>
+
+                      {isEditingThisOpt ? (
+                        <>
+                          <TextInput
+                            style={[styles.input, { flex: 1, marginBottom: 0, paddingVertical: 6 }]}
+                            value={editOptName}
+                            onChangeText={setEditOptName}
+                            autoFocus
+                            onSubmitEditing={saveEditOption}
+                          />
+                          <TouchableOpacity onPress={saveEditOption} style={styles.editSaveBtn}>
+                            <Ionicons name="checkmark" size={14} color="#fff" />
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={cancelEditOption} style={[styles.editGhostBtn, { marginLeft: 6 }]}>
+                            <Ionicons name="close" size={14} color={COLORS.textDim} />
+                          </TouchableOpacity>
+                        </>
+                      ) : (
+                        <>
+                          <TouchableOpacity
+                            onPress={() => toggleOptCollapsed(o.id)}
+                            style={{ flex: 1 }}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.optionName}>{o.name}</Text>
+                            {isCollapsed && (
+                              <Text style={styles.optionSummary}>
+                                Pros: {o.pros.length} · Cons: {o.cons.length}
+                              </Text>
+                            )}
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => beginEditOption(o)}
+                            hitSlop={6}
+                            style={{ marginRight: 10 }}
+                            accessibilityLabel="Rename option"
+                          >
+                            <Ionicons name="pencil" size={16} color={COLORS.textDim} />
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => confirmDeleteOption(o)} hitSlop={6} accessibilityLabel="Delete option">
+                            <Ionicons name="trash-outline" size={18} color={COLORS.con} />
+                          </TouchableOpacity>
+                        </>
+                      )}
                     </View>
-                  ))}
-                  <Text style={styles.pcSection}>Cons ({o.cons.length})</Text>
-                  {o.cons.map(c => (
-                    <View key={c.id} style={[styles.pcRow, { borderLeftColor: COLORS.con }]}>
-                      <Text style={styles.pcText}>{c.text}</Text>
-                      <TouchableOpacity onPress={() => delPC(o.id, 'cons', c.id)}><Ionicons name="close-circle" size={18} color={COLORS.textDim} /></TouchableOpacity>
-                    </View>
-                  ))}
-                  <View style={styles.addPcBar}>
-                    <TouchableOpacity style={[styles.pcKindBtn, pcKind === 'pro' && activeOptId === o.id && { backgroundColor: COLORS.pro }]}
-                      onPress={() => { setActiveOptId(o.id); setPcKind('pro'); }}>
-                      <Text style={[styles.pcKindBtnText, pcKind === 'pro' && activeOptId === o.id && { color: '#fff' }]}>+ Pro</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.pcKindBtn, pcKind === 'con' && activeOptId === o.id && { backgroundColor: COLORS.con }]}
-                      onPress={() => { setActiveOptId(o.id); setPcKind('con'); }}>
-                      <Text style={[styles.pcKindBtnText, pcKind === 'con' && activeOptId === o.id && { color: '#fff' }]}>+ Con</Text>
-                    </TouchableOpacity>
-                    {activeOptId === o.id && (
+
+                    {!isCollapsed && (
                       <>
-                        <TextInput style={[styles.input, { flex: 1, marginBottom: 0 }]}
-                          placeholder={`Add ${pcKind === 'pro' ? 'Pro' : 'Con'} for ${o.name}`}
-                          value={pcText} onChangeText={setPcText} />
-                        <TouchableOpacity style={styles.miniBtn} onPress={addPC} disabled={!pcText.trim() || busy}>
-                          <Ionicons name="checkmark" size={16} color="#fff" />
+                        {/* pros section header (collapsible) */}
+                        <TouchableOpacity
+                          onPress={() => toggleProsCollapsed(o.id)}
+                          activeOpacity={0.7}
+                          style={styles.pcSectionRow}
+                        >
+                          <Ionicons
+                            name={prosCollapsed ? 'chevron-forward' : 'chevron-down'}
+                            size={14}
+                            color={COLORS.pro}
+                          />
+                          <Text style={[styles.pcSection, { color: COLORS.pro, marginTop: 0 }]}>
+                            Pros ({o.pros.length})
+                          </Text>
                         </TouchableOpacity>
+                        {!prosCollapsed && o.pros.map(p => (
+                          <View key={p.id} style={[styles.pcRow, { borderLeftColor: COLORS.pro }]}>
+                            <Text style={styles.pcText}>{p.text}</Text>
+                            <TouchableOpacity onPress={() => delPC(o.id, 'pros', p.id)} hitSlop={6}>
+                              <Ionicons name="close-circle" size={18} color={COLORS.textDim} />
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+
+                        {/* cons section header (collapsible) */}
+                        <TouchableOpacity
+                          onPress={() => toggleConsCollapsed(o.id)}
+                          activeOpacity={0.7}
+                          style={styles.pcSectionRow}
+                        >
+                          <Ionicons
+                            name={consCollapsed ? 'chevron-forward' : 'chevron-down'}
+                            size={14}
+                            color={COLORS.con}
+                          />
+                          <Text style={[styles.pcSection, { color: COLORS.con, marginTop: 0 }]}>
+                            Cons ({o.cons.length})
+                          </Text>
+                        </TouchableOpacity>
+                        {!consCollapsed && o.cons.map(c => (
+                          <View key={c.id} style={[styles.pcRow, { borderLeftColor: COLORS.con }]}>
+                            <Text style={styles.pcText}>{c.text}</Text>
+                            <TouchableOpacity onPress={() => delPC(o.id, 'cons', c.id)} hitSlop={6}>
+                              <Ionicons name="close-circle" size={18} color={COLORS.textDim} />
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+
+                        <View style={styles.addPcBar}>
+                          <TouchableOpacity style={[styles.pcKindBtn, pcKind === 'pro' && activeOptId === o.id && { backgroundColor: COLORS.pro }]}
+                            onPress={() => { setActiveOptId(o.id); setPcKind('pro'); }}>
+                            <Text style={[styles.pcKindBtnText, pcKind === 'pro' && activeOptId === o.id && { color: '#fff' }]}>+ Pro</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={[styles.pcKindBtn, pcKind === 'con' && activeOptId === o.id && { backgroundColor: COLORS.con }]}
+                            onPress={() => { setActiveOptId(o.id); setPcKind('con'); }}>
+                            <Text style={[styles.pcKindBtnText, pcKind === 'con' && activeOptId === o.id && { color: '#fff' }]}>+ Con</Text>
+                          </TouchableOpacity>
+                          {activeOptId === o.id && (
+                            <>
+                              <TextInput style={[styles.input, { flex: 1, marginBottom: 0 }]}
+                                placeholder={`Add ${pcKind === 'pro' ? 'Pro' : 'Con'} for ${o.name}`}
+                                value={pcText} onChangeText={setPcText}
+                                onSubmitEditing={addPC} />
+                              <TouchableOpacity style={styles.miniBtn} onPress={addPC} disabled={!pcText.trim() || busy}>
+                                <Ionicons name="checkmark" size={16} color="#fff" />
+                              </TouchableOpacity>
+                            </>
+                          )}
+                        </View>
                       </>
                     )}
                   </View>
-                </View>
-              ))}
+                );
+              })}
               <NextBack onBack={() => persistStep(1)} onNext={() => persistStep(3)} />
             </View>
           )}
@@ -911,8 +1171,7 @@ const styles = StyleSheet.create({
   sourceTagText: { color: '#fff', fontSize: 11, fontWeight: '800' },
   factorName: { fontSize: 14, fontWeight: '600', color: COLORS.text },
   factorMeta: { fontSize: 11, color: COLORS.textDim, marginTop: 2 },
-  optionCard: { backgroundColor: '#fff', borderRadius: 12, padding: 10, marginBottom: 10, borderWidth: 1, borderColor: COLORS.border },
-  optionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  optionCard: { backgroundColor: '#fff', borderRadius: 12, padding: 10, marginBottom: 10, borderWidth: 1, borderColor: COLORS.border },  optionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
   optionName: { fontSize: 15, fontWeight: '700', color: COLORS.text },
   pcSection: { fontSize: 12, fontWeight: '600', color: COLORS.textDim, marginTop: 6 },
   pcRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 8, marginVertical: 2, backgroundColor: COLORS.bg, borderLeftWidth: 3, borderRadius: 4 },
@@ -981,4 +1240,46 @@ const styles = StyleSheet.create({
   },
   lifeChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   lifeChipText: { fontSize: 11, fontWeight: '600', color: COLORS.textDim },
+
+  // Inline-edit affordances for factors + options
+  factorRowEditing: {
+    backgroundColor: '#F0F4FF',
+    borderColor: COLORS.primary,
+  },
+  editGhostBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editGhostBtnText: { fontSize: 12, fontWeight: '600', color: COLORS.textDim },
+  editSaveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: COLORS.primary,
+  },
+  editSaveBtnText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+
+  // Step 2 — "Add Option" affordance (now perfectly centre-aligned with input)
+  addOptBtn: {
+    width: 44, height: 44, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+  },
+  optionSummary: { fontSize: 11, color: COLORS.textDim, marginTop: 2 },
+  pcSectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    marginBottom: 4,
+  },
 });

@@ -10,6 +10,8 @@ import { COLORS } from '../src/constants/colors';
 import { registerForPushNotifications, addNotificationResponseListener } from '../src/utils/pushNotifications';
 import GlobalVoiceNav from '../src/components/GlobalVoiceNav';
 import WebFrame from '../src/components/WebFrame';
+import AlertHost from '../src/components/AlertHost';
+import GlobalFontScale from '../src/components/GlobalFontScale';
 import { FontScaleProvider } from '../src/contexts/FontScaleContext';
 
 // ----------------------------------------------------------------------
@@ -303,6 +305,10 @@ export default function RootLayout() {
         />
       </Stack>
       </WebFrame>
+      {/* Overlay layer — inside FontScaleProvider so text honours font scaling, */}
+      {/* but OUTSIDE WebFrame so it can position itself anywhere on the viewport */}
+      <AlertHost />
+      <GlobalFontScale />
       </FontScaleProvider>
       <GlobalVoiceNav />
     </>
