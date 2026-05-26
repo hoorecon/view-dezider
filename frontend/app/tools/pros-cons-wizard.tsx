@@ -43,6 +43,7 @@ interface Config { mandatory_threshold_pct: number | null; max_improvement_perio
 interface Guideline { rank: number; rule: string; type: string; }
 interface Analysis {
   id: string; title: string; context: string;
+  life_area?: string | null;
   options: OptionT[]; factors: Factor[];
   assessments: Record<string, Record<string, Cell>>;
   config: Config; current_step: number;
@@ -58,6 +59,18 @@ const STEPS = [
   { n: 6, label: 'Mandatory' },
   { n: 7, label: 'Prioritise' },
   { n: 8, label: 'Assess' },
+];
+
+const LIFE_AREAS = [
+  { key: 'career', label: 'Career', icon: 'briefcase' },
+  { key: 'finance', label: 'Finance', icon: 'cash' },
+  { key: 'relationships', label: 'Relationships', icon: 'heart' },
+  { key: 'holistic_health', label: 'Health', icon: 'fitness' },
+  { key: 'assets', label: 'Assets', icon: 'home' },
+  { key: 'knowledge_skills', label: 'Knowledge', icon: 'school' },
+  { key: 'social_image', label: 'Social', icon: 'people' },
+  { key: 'hobbies_entertainment', label: 'Hobbies', icon: 'game-controller' },
+  { key: 'spirituality_religion', label: 'Spirituality', icon: 'leaf' },
 ];
 
 const COLORS = {
@@ -131,6 +144,36 @@ export default function ProsConsWizard() {
   const [fName, setFName] = useState('');
   const [fExpected, setFExpected] = useState('');
   const [fUnit, setFUnit] = useState('');
+
+  // ─── Basics (Decision/Topic, Description, Life Area) ─────
+  // These appear in a collapsible card at the top of Step 1 so the user
+  // can review/edit the same info they would have entered in the "new"
+  // modal on the Pros & Cons list. Auto-saved on blur via PUT.
+  const [basicsOpen, setBasicsOpen] = useState(true);
+  const [bTitle, setBTitle] = useState('');
+  const [bContext, setBContext] = useState('');
+  const [bLifeArea, setBLifeArea] = useState<string>('');
+
+  // Sync local basics when analysis loads / changes id
+  useEffect(() => {
+    if (analysis) {
+      setBTitle(analysis.title || '');
+      setBContext(analysis.context || '');
+      setBLifeArea(analysis.life_area || '');
+    }
+  }, [analysis?.id]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const saveBasics = async (patch: { title?: string; context?: string; life_area?: string | null }) => {
+    if (!id) return;
+    try {
+      await api.put(`${base}/${id}`, patch);
+      // Update local state without a full reload (avoids losing input focus mid-typing)
+      setAnalysis((prev) => prev ? { ...prev, ...patch } as Analysis : prev);
+    } catch (e: any) {
+      // Non-fatal; log only
+      console.warn('Failed to save basics', e?.response?.data?.detail || e?.message);
+    }
+  };
 
   const addFactor = async () => {
     if (!fName.trim()) return;
@@ -299,6 +342,87 @@ export default function ProsConsWizard() {
           {/* ────── STEP 1 ────── */}
           {step === 1 && (
             <View>
+              {/* ── Basics: Decision / Description / Life Area ── */}
+              <View style={styles.basicsCard}>
+                <TouchableOpacity
+                  style={styles.basicsHeader}
+                  onPress={() => setBasicsOpen(o => !o)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="information-circle" size={18} color={COLORS.primary} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.basicsTitle}>About this decision</Text>
+                    {!basicsOpen && (
+                      <Text style={styles.basicsSummary} numberOfLines={1}>
+                        {bTitle || 'Untitled'}{bLifeArea ? ` · ${LIFE_AREAS.find(la => la.key === bLifeArea)?.label || bLifeArea}` : ''}
+                      </Text>
+                    )}
+                  </View>
+                  <Ionicons
+                    name={basicsOpen ? 'chevron-up' : 'chevron-down'}
+                    size={20}
+                    color={COLORS.textDim}
+                  />
+                </TouchableOpacity>
+
+                {basicsOpen && (
+                  <View style={styles.basicsBody}>
+                    <Text style={styles.inputLabel}>Decision / Topic *</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="e.g., Which car should I buy?"
+                      value={bTitle}
+                      onChangeText={setBTitle}
+                      onBlur={() => {
+                        const t = bTitle.trim();
+                        if (t && t !== analysis?.title) saveBasics({ title: t });
+                      }}
+                    />
+
+                    <Text style={styles.inputLabel}>Description (optional)</Text>
+                    <TextInput
+                      style={[styles.input, { minHeight: 64, textAlignVertical: 'top' }]}
+                      placeholder="Add any relevant background or constraints..."
+                      value={bContext}
+                      onChangeText={setBContext}
+                      multiline
+                      onBlur={() => {
+                        if (bContext !== (analysis?.context || '')) saveBasics({ context: bContext });
+                      }}
+                    />
+
+                    <Text style={styles.inputLabel}>Life Area (optional)</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
+                      <View style={{ flexDirection: 'row', gap: 6 }}>
+                        {LIFE_AREAS.map(area => {
+                          const active = bLifeArea === area.key;
+                          return (
+                            <TouchableOpacity
+                              key={area.key}
+                              style={[styles.lifeChip, active && styles.lifeChipActive]}
+                              onPress={() => {
+                                const next = active ? '' : area.key;
+                                setBLifeArea(next);
+                                saveBasics({ life_area: next || null });
+                              }}
+                            >
+                              <Ionicons
+                                name={area.icon as any}
+                                size={13}
+                                color={active ? '#fff' : COLORS.textDim}
+                              />
+                              <Text style={[styles.lifeChipText, active && { color: '#fff' }]}>
+                                {area.label}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
+
               <Text style={styles.stepTitle}>Step 1 — List initial Direct Factors</Text>
               <Text style={styles.stepHint}>Add factors that matter for this decision. Expected value &amp; unit are optional now — you can fill them once factors are finalised (Step 3 onwards).</Text>
               <View style={styles.card}>
@@ -835,4 +959,26 @@ const styles = StyleSheet.create({
   gRow: { flexDirection: 'row', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   gRank: { fontSize: 13, fontWeight: '800', color: COLORS.primary, width: 24 },
   gRule: { flex: 1, fontSize: 13, color: COLORS.text, lineHeight: 18 },
+
+  // Basics card (Step 1 prefix — Decision / Description / Life Area)
+  basicsCard: {
+    backgroundColor: COLORS.card, borderRadius: 12,
+    borderWidth: 1, borderColor: COLORS.border,
+    marginBottom: 12, overflow: 'hidden',
+  },
+  basicsHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 12, paddingVertical: 10,
+    backgroundColor: '#EEF2FF',
+  },
+  basicsTitle: { fontSize: 14, fontWeight: '700', color: COLORS.text },
+  basicsSummary: { fontSize: 11, color: COLORS.textDim, marginTop: 2 },
+  basicsBody: { padding: 12, gap: 2 },
+  lifeChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14,
+    backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border,
+  },
+  lifeChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  lifeChipText: { fontSize: 11, fontWeight: '600', color: COLORS.textDim },
 });
