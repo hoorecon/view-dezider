@@ -30,6 +30,7 @@ type Source = 'direct' | 'pro' | 'con';
 interface Factor {
   id: string; name: string; expected_value?: string | null; unit?: string | null;
   source: Source; source_option_id?: string | null; parent_id?: string | null;
+  is_duplicate?: boolean;   // Step 4 — soft de-dup flag (audit history)
   notation: 'mandatory' | 'optional'; priority_rank: number; std_rating: number;
   factor_type: 'subjective' | 'objective'; improvable: 'y' | 'y_bf' | 'n';
   my_expectation?: string | null; others_expectations?: string | null; market_standard?: string | null;
@@ -397,8 +398,13 @@ export default function ProsConsWizard() {
     );
   }
 
-  const directFactors = analysis.factors.filter(f => !f.parent_id);
-  const childrenOf = (pid: string) => analysis.factors.filter(f => f.parent_id === pid);
+  const directFactors = analysis.factors.filter(f => !f.parent_id && !f.is_duplicate);
+  const childrenOf = (pid: string) => analysis.factors.filter(f => f.parent_id === pid && !f.is_duplicate);
+
+  // Step 4 — Direct factors that are valid "Group under…" targets:
+  // exclude sub-factors and exclude duplicates (you shouldn't be able to
+  // nest a factor under a removed/duplicate one)
+  const groupingParents = analysis.factors.filter(f => !f.parent_id && !f.is_duplicate);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -820,11 +826,32 @@ export default function ProsConsWizard() {
           {step === 4 && (
             <View>
               <Text style={styles.stepTitle}>Step 4 — De-dup &amp; Group (sub-factors)</Text>
-              <Text style={styles.stepHint}>Remove duplicate factors or tap “Group under…” to make a factor a sub-factor of an existing Direct factor.</Text>
-              {analysis.factors.map((f, i) => (
-                <FactorGroupRow key={f.id} factor={f} parentChoices={directFactors.filter(d => d.id !== f.id)}
+              <Text style={styles.stepHint}>Tap “Group under…” to nest a factor as a sub-factor, or “Mark duplicate” to soft-remove a factor (kept here as audit history; hidden from Steps 5 onward). Both actions are reversible.</Text>
+
+              {/* Step 4 mini-legend — shows running counts */}
+              <View style={styles.dedupLegend}>
+                <View style={styles.dedupLegendItem}>
+                  <Text style={styles.dedupLegendNum}>{analysis.factors.filter(f => !f.parent_id && !f.is_duplicate).length}</Text>
+                  <Text style={styles.dedupLegendLabel}>Active</Text>
+                </View>
+                <View style={[styles.dedupLegendItem, { borderLeftWidth: 1, borderLeftColor: COLORS.border }]}>
+                  <Text style={[styles.dedupLegendNum, { color: COLORS.textDim }]}>{analysis.factors.filter(f => f.parent_id && !f.is_duplicate).length}</Text>
+                  <Text style={styles.dedupLegendLabel}>Grouped</Text>
+                </View>
+                <View style={[styles.dedupLegendItem, { borderLeftWidth: 1, borderLeftColor: COLORS.border }]}>
+                  <Text style={[styles.dedupLegendNum, { color: COLORS.warn }]}>{analysis.factors.filter(f => f.is_duplicate).length}</Text>
+                  <Text style={styles.dedupLegendLabel}>Duplicate</Text>
+                </View>
+              </View>
+
+              {analysis.factors.map((f) => (
+                <FactorGroupRow
+                  key={f.id}
+                  factor={f}
+                  parentChoices={groupingParents.filter(d => d.id !== f.id)}
                   onUpdate={(patch) => updateFactor(f.id, patch)}
-                  onDelete={() => deleteFactor(f.id)} />
+                  onToggleDuplicate={() => updateFactor(f.id, { is_duplicate: !f.is_duplicate })}
+                />
               ))}
               <NextBack onBack={() => persistStep(3)} onNext={() => persistStep(5)} />
             </View>
@@ -1011,25 +1038,82 @@ function NextBack({ onBack, onNext }: { onBack: (() => void) | null; onNext: (()
   );
 }
 
-function FactorGroupRow({ factor, parentChoices, onUpdate, onDelete }: {
-  factor: Factor; parentChoices: Factor[]; onUpdate: (p: any) => void; onDelete: () => void;
+function FactorGroupRow({ factor, parentChoices, onUpdate, onToggleDuplicate }: {
+  factor: Factor; parentChoices: Factor[]; onUpdate: (p: any) => void; onToggleDuplicate: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const parent = parentChoices.find(p => p.id === factor.parent_id);
+  const parent = parentChoices.find(p => p.id === factor.parent_id)
+    // parentChoices is filtered to exclude sub-factors & duplicates, but the
+    // factor's current parent could in theory be missing; show no banner then.
+    || null;
+
+  const isSubFactor = !!factor.parent_id;
+  const isDuplicate = !!factor.is_duplicate;
+  // Visual treatment ladder:
+  //   duplicate  → strongest mute (lightest gray + strikethrough)
+  //   sub-factor → medium mute (mid gray, no color tag)
+  //   active     → normal (P/C/D coloured tag)
+  const muted = isDuplicate || isSubFactor;
+  const tagBg = isDuplicate
+    ? '#94A3B8'
+    : isSubFactor
+      ? '#94A3B8'
+      : (factor.source === 'direct' ? COLORS.direct : factor.source === 'pro' ? COLORS.pro : COLORS.con);
+  const tagLetter = isDuplicate ? '–' : (factor.source === 'direct' ? 'D' : factor.source === 'pro' ? 'P' : 'C');
+
   return (
-    <View style={styles.factorRow}>
-      <View style={[styles.sourceTag, { backgroundColor: factor.source === 'direct' ? COLORS.direct : factor.source === 'pro' ? COLORS.pro : COLORS.con }]}>
-        <Text style={styles.sourceTagText}>{factor.source === 'direct' ? 'D' : factor.source === 'pro' ? 'P' : 'C'}</Text>
+    <View style={[
+      styles.factorRow,
+      isSubFactor && styles.factorRowSub,
+      isDuplicate && styles.factorRowDuplicate,
+    ]}>
+      <View style={[styles.sourceTag, { backgroundColor: tagBg }]}>
+        <Text style={styles.sourceTagText}>{tagLetter}</Text>
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={styles.factorName}>{factor.name}</Text>
-        {parent && <Text style={styles.factorMeta}>↳ sub-factor of: {parent.name}</Text>}
+        <Text style={[
+          styles.factorName,
+          muted && { color: COLORS.textDim },
+          isDuplicate && { textDecorationLine: 'line-through' as any },
+        ]}>{factor.name}</Text>
+        {parent && (
+          <Text style={[styles.factorMeta, { color: COLORS.textDim }]}>
+            ↳ sub-factor of: {parent.name}
+          </Text>
+        )}
+        {isDuplicate && (
+          <Text style={[styles.factorMeta, { color: COLORS.warn }]}>
+            Marked as duplicate · hidden from Step 5 onward
+          </Text>
+        )}
       </View>
-      <TouchableOpacity onPress={() => setOpen(o => !o)} style={styles.linkBtn}>
-        <Text style={styles.linkBtnText}>{factor.parent_id ? 'Move' : 'Group ↳'}</Text>
+
+      {/* Group / Move button — disabled for duplicates */}
+      {!isDuplicate && (
+        <TouchableOpacity
+          onPress={() => setOpen(o => !o)}
+          style={[styles.linkBtn, isSubFactor && styles.linkBtnMuted]}
+          accessibilityLabel={factor.parent_id ? 'Move under another factor' : 'Group under a parent factor'}
+        >
+          <Text style={styles.linkBtnText}>{factor.parent_id ? 'Move' : 'Group ↳'}</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Toggle Duplicate — non-destructive replacement for the old delete */}
+      <TouchableOpacity
+        onPress={onToggleDuplicate}
+        hitSlop={6}
+        style={{ marginLeft: 8 }}
+        accessibilityLabel={isDuplicate ? 'Restore — un-mark as duplicate' : 'Mark as duplicate (soft remove)'}
+      >
+        <Ionicons
+          name={isDuplicate ? 'arrow-undo-outline' : 'copy-outline'}
+          size={18}
+          color={isDuplicate ? COLORS.ok : COLORS.warn}
+        />
       </TouchableOpacity>
-      <TouchableOpacity onPress={onDelete}><Ionicons name="trash-outline" size={18} color={COLORS.con} /></TouchableOpacity>
-      {open && (
+
+      {open && !isDuplicate && (
         <View style={{ width: '100%', marginTop: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
           <TouchableOpacity style={[styles.parentChip, !factor.parent_id && styles.parentChipActive]} onPress={() => { onUpdate({ parent_id: null }); setOpen(false); }}>
             <Text style={[styles.parentChipText, !factor.parent_id && { color: '#fff' }]}>None</Text>
@@ -1281,5 +1365,47 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: 10,
     marginBottom: 4,
+  },
+
+  // Step 4 — de-dup / group visual states
+  factorRowSub: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+    borderStyle: 'dashed' as any,
+  },
+  factorRowDuplicate: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FCD34D',
+    opacity: 0.85,
+  },
+  linkBtnMuted: {
+    backgroundColor: '#E5E7EB',
+  },
+  dedupLegend: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  dedupLegendItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  dedupLegendNum: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: COLORS.primary,
+  },
+  dedupLegendLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textDim,
+    marginTop: 2,
+    textTransform: 'uppercase' as any,
+    letterSpacing: 0.5,
   },
 });
