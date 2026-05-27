@@ -1603,16 +1603,33 @@ export default function ProsConsWizard() {
           })()}
 
           {/* ────── STEP 8 ────── */}
-          {step === 8 && (
+          {step === 8 && (() => {
+            // Max possible score = sum of std_ratings of ALL main factors.
+            // This is the denominator for "Overall %" — i.e., if every cell
+            // scored 100% assessment, joint_score would equal this number.
+            // Using std_rating here (not realistic_rating) so the % reflects
+            // the priority ladder set in Step 7 directly.
+            const maxScore = directFactors.reduce(
+              (sum, f) => sum + (Number(f.std_rating) || 0),
+              0,
+            );
+
+            return (
             <View>
               <Text style={styles.stepTitle}>Step 8 — Detailed Assessment &amp; Final Score</Text>
-              <Text style={styles.stepHint}>Capture Subjective/Objective, Improvable, expectations, gap, actual value, satisfaction %. Overall satisfaction % per option is computed below.</Text>
+              <Text style={styles.stepHint}>
+                Overall % = each option's Score ÷ max possible ({maxScore || '—'}) × 100.
+                Score per option is the sum of its per-factor Cell Values from Step 7
+                (Assess % × Std Rating ÷ 100).
+              </Text>
 
               {/* Per-option overall card */}
               <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Overall satisfaction per option</Text>
+                <Text style={styles.sectionTitle}>Overall score per option</Text>
                 {analysis.options.map(o => {
                   const r = rollupByOpt[o.id];
+                  const score = r ? Number(r.joint_score) || 0 : 0;
+                  const overallPct = maxScore > 0 ? (score / maxScore) * 100 : 0;
                   return (
                     <View key={o.id} style={styles.overallRow}>
                       <View style={{ flex: 1 }}>
@@ -1624,8 +1641,10 @@ export default function ProsConsWizard() {
                         ) : null}
                       </View>
                       <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={styles.overallPct}>{r ? r.overall_satisfaction_pct.toFixed(1) : '0'}%</Text>
-                        <Text style={styles.cellLabel}>Joint: {r ? r.joint_score.toFixed(0) : '0'}</Text>
+                        <Text style={styles.overallPct}>{overallPct.toFixed(1)}%</Text>
+                        <Text style={styles.cellLabel}>
+                          Score: {score.toFixed(0)}{maxScore > 0 ? ` / ${maxScore}` : ''}
+                        </Text>
                       </View>
                     </View>
                   );
@@ -1657,7 +1676,8 @@ export default function ProsConsWizard() {
               </TouchableOpacity>
               <NextBack onBack={() => persistStep(7)} onNext={null} />
             </View>
-          )}
+            );
+          })()}
 
         </ScrollView>
       </KeyboardAvoidingView>
