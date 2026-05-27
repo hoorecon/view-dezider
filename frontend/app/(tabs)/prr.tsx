@@ -7,7 +7,6 @@ import {
   FlatList,
   TouchableOpacity,
   RefreshControl,
-  Alert,
   Platform,
   Modal,
   ScrollView,
@@ -20,75 +19,97 @@ import { Card } from '../../src/components/Card';
 import CloneTemplateModal from '../../src/components/CloneTemplateModal';
 import TemplateBrowserModal from '../../src/components/TemplateBrowserModal';
 import api from '../../src/utils/api';
-import { deadlineCountdown, formatHorizon } from '../../src/utils/dateLocalize';
+import { LIFE_AREAS, getLifeArea } from '../../src/constants/lifeAreas';
 
-interface Decision {
+/**
+ * Solution Box — unified home for ALL solution flows owned by the user:
+ *   - Decider              (db.decisions)
+ *   - Pros & Cons (normal) (db.pros_cons, current_step=1, no options/factors)
+ *   - Pros & Cons (8-Step) (db.pros_cons, current_step>1 or has options/factors)
+ *   - SWOT                 (db.swot)
+ *
+ * Backed by GET /api/solution-box (aggregator endpoint).
+ * Each card deep-links to the correct wizard/detail page.
+ */
+
+type SolutionType = 'decider' | 'pros_cons' | 'pros_cons_8step' | 'swot';
+type SolutionStatus = 'draft' | 'in_progress' | 'completed';
+
+interface SolutionItem {
   id: string;
+  type: SolutionType;
   title: string;
   context: string;
-  status: string;
-  options: any[];
-  folder: string;
-  created_at: string;
-  chosen_option_id?: string;
-  deadline_date?: string | null;
-  impact_horizon_value?: number | null;
-  impact_horizon_unit?: string | null;
+  life_area?: string | null;
+  status: SolutionStatus;
+  current_step?: number | null;
+  created_at: string | null;
+  updated_at: string | null;
+  route: string;
   linked_from_decision_id?: string | null;
-  linked_from_module?: string | null;
+  options_count?: number;
 }
 
-interface Folder {
-  id: string;
-  name: string;
-  icon: string;
-  color: string;
-}
-
-const FOLDER_DATA: Folder[] = [
-  { id: 'holistic_health', name: 'Holistic Health', icon: 'fitness', color: '#10B981' },
-  { id: 'knowledge_skills', name: 'Knowledge & Skills', icon: 'book', color: '#3B82F6' },
-  { id: 'relationships', name: 'Relationships', icon: 'heart', color: '#EC4899' },
-  { id: 'finance', name: 'Finance', icon: 'cash', color: '#F59E0B' },
-  { id: 'assets', name: 'Assets', icon: 'home', color: '#8B5CF6' },
-  { id: 'career', name: 'Career', icon: 'briefcase', color: '#6366F1' },
-  { id: 'hobbies_entertainment', name: 'Hobbies & Entertainment', icon: 'game-controller', color: '#14B8A6' },
-  { id: 'social_image', name: 'Social Image & Influence', icon: 'star', color: '#F97316' },
-  { id: 'social_contributions', name: 'Social Contributions', icon: 'people', color: '#06B6D4' },
-  { id: 'spirituality_religion', name: 'Spirituality & Religion', icon: 'leaf', color: '#A855F7' },
+const TYPE_CHIPS: { key: 'all' | SolutionType; label: string; icon: string; color: string }[] = [
+  { key: 'all',              label: 'All',         icon: 'apps',           color: COLORS.primary },
+  { key: 'decider',          label: 'Decider',     icon: 'analytics',      color: '#6366F1' },
+  { key: 'pros_cons',        label: 'Pros & Cons', icon: 'swap-horizontal',color: '#10B981' },
+  { key: 'pros_cons_8step',  label: '8-Step',      icon: 'layers',         color: '#7C3AED' },
+  { key: 'swot',             label: 'SWOT',        icon: 'grid',           color: '#F59E0B' },
 ];
 
-export default function PRRScreen() {
+const TYPE_META: Record<SolutionType, { label: string; short: string; icon: string; color: string; bg: string }> = {
+  decider:         { label: 'Decider',           short: 'Decider',  icon: 'analytics',       color: '#6366F1', bg: '#EEF2FF' },
+  pros_cons:       { label: 'Pros & Cons',       short: 'P&C',      icon: 'swap-horizontal', color: '#10B981', bg: '#ECFDF5' },
+  pros_cons_8step: { label: 'Pros & Cons 8-Step',short: '8-Step',   icon: 'layers',          color: '#7C3AED', bg: '#F5F3FF' },
+  swot:            { label: 'SWOT',              short: 'SWOT',     icon: 'grid',            color: '#F59E0B', bg: '#FFFBEB' },
+};
+
+const STATUS_META: Record<SolutionStatus, { label: string; color: string; bg: string }> = {
+  draft:       { label: 'Draft',       color: '#6B7280', bg: '#F3F4F6' },
+  in_progress: { label: 'In Progress', color: '#B45309', bg: '#FEF3C7' },
+  completed:   { label: 'Completed',   color: '#047857', bg: '#D1FAE5' },
+};
+
+export default function SolutionBoxScreen() {
   const router = useRouter();
-  const [decisions, setDecisions] = useState<Decision[]>([]);
+  const [items, setItems] = useState<SolutionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [selectedLifeArea, setSelectedLifeArea] = useState<string | null>(null);
+  const [selectedType, setSelectedType] = useState<'all' | SolutionType>('all');
   const [showFolders, setShowFolders] = useState(true);
+  const [showNewMenu, setShowNewMenu] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
-  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SolutionItem | null>(null);
   const [cloneModalVisible, setCloneModalVisible] = useState(false);
-  const [cloneTarget, setCloneTarget] = useState<Decision | null>(null);
+  const [cloneTarget, setCloneTarget] = useState<any>(null);
   const [templateBrowserVisible, setTemplateBrowserVisible] = useState(false);
   const [userRole, setUserRole] = useState('user');
   const [folderCounts, setFolderCounts] = useState<Record<string, number>>({});
 
-  const fetchDecisions = async (folder?: string | null) => {
+  const fetchItems = async (
+    lifeAreaFilter?: string | null,
+    typeFilter?: 'all' | SolutionType,
+  ) => {
     try {
-      const url = folder ? `/decisions?folder=${folder}` : '/decisions';
-      const response = await api.get(url);
-      setDecisions(response.data);
-      // Calculate folder counts if fetching all
-      if (!folder) {
+      const params: string[] = [];
+      if (lifeAreaFilter) params.push(`life_area=${encodeURIComponent(lifeAreaFilter)}`);
+      if (typeFilter && typeFilter !== 'all') params.push(`type=${typeFilter}`);
+      const qs = params.length ? `?${params.join('&')}` : '';
+      const response = await api.get(`/solution-box${qs}`);
+      setItems(response.data || []);
+      // recompute life-area counts from the unfiltered fetch only
+      if (!lifeAreaFilter && (!typeFilter || typeFilter === 'all')) {
         const counts: Record<string, number> = {};
-        response.data.forEach((d: Decision) => {
-          const f = d.folder || 'uncategorized';
-          counts[f] = (counts[f] || 0) + 1;
+        (response.data || []).forEach((it: SolutionItem) => {
+          if (it.life_area) counts[it.life_area] = (counts[it.life_area] || 0) + 1;
         });
         setFolderCounts(counts);
       }
-    } catch (error) {
-      console.error('Error fetching decisions:', error);
+    } catch (err) {
+      console.error('Solution Box fetch error:', err);
+      setItems([]);
     } finally {
       setLoading(false);
     }
@@ -98,87 +119,83 @@ export default function PRRScreen() {
     try {
       const response = await api.get('/auth/me');
       setUserRole(response.data.role || 'user');
-    } catch (error) {
-      console.error('Error fetching user role:', error);
+    } catch {
+      // silent
     }
   };
 
   useFocusEffect(
     useCallback(() => {
-      fetchDecisions(selectedFolder);
+      fetchItems(selectedLifeArea, selectedType);
       fetchUserRole();
-    }, [selectedFolder])
+    }, [selectedLifeArea, selectedType])
   );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchDecisions(selectedFolder);
+    await fetchItems(selectedLifeArea, selectedType);
     setRefreshing(false);
   };
 
   const handleFolderSelect = (folderId: string) => {
-    if (selectedFolder === folderId) {
-      setSelectedFolder(null);
+    if (selectedLifeArea === folderId) {
+      setSelectedLifeArea(null);
       setShowFolders(true);
-      fetchDecisions(null);
     } else {
-      setSelectedFolder(folderId);
+      setSelectedLifeArea(folderId);
       setShowFolders(false);
-      fetchDecisions(folderId);
     }
   };
 
-  const handleDeletePress = (id: string) => {
-    setDeleteTargetId(id);
+  const handleTypeSelect = (typeKey: 'all' | SolutionType) => {
+    setSelectedType(typeKey);
+  };
+
+  const handleItemPress = (it: SolutionItem) => {
+    router.push(it.route as any);
+  };
+
+  const handleDeletePress = (it: SolutionItem) => {
+    setDeleteTarget(it);
     setDeleteModalVisible(true);
   };
 
   const handleDeleteConfirm = async () => {
-    if (!deleteTargetId) return;
+    if (!deleteTarget) return;
     try {
-      await api.delete(`/decisions/${deleteTargetId}`);
-      setDecisions((prev) => prev.filter((d) => d.id !== deleteTargetId));
-    } catch (error) {
-      console.error('Delete error:', error);
+      let endpoint = '';
+      switch (deleteTarget.type) {
+        case 'decider':         endpoint = `/decisions/${deleteTarget.id}`; break;
+        case 'pros_cons':
+        case 'pros_cons_8step': endpoint = `/pros-cons/${deleteTarget.id}`; break;
+        case 'swot':            endpoint = `/swot/${deleteTarget.id}`; break;
+      }
+      await api.delete(endpoint);
+      setItems((prev) => prev.filter((d) => d.id !== deleteTarget.id));
+    } catch (err) {
+      console.error('Delete error:', err);
+      showAlert('Delete Failed', 'Could not delete this item. Please try again.');
     } finally {
       setDeleteModalVisible(false);
-      setDeleteTargetId(null);
+      setDeleteTarget(null);
     }
   };
 
-  const handleDeleteCancel = () => {
-    setDeleteModalVisible(false);
-    setDeleteTargetId(null);
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed': return COLORS.success;
-      case 'in_progress': return COLORS.warning;
-      default: return COLORS.textMuted;
-    }
-  };
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'completed': return 'Completed';
-      case 'in_progress': return 'In Progress';
-      default: return 'Draft';
-    }
-  };
-
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString?: string | null) => {
+    if (!dateString) return '';
     const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  const selectedFolderData = FOLDER_DATA.find(f => f.id === selectedFolder);
+  const selectedFolderData = getLifeArea(selectedLifeArea);
 
+  // ---------- Render: Life-area folder grid ----------
   const renderFolderGrid = () => (
     <View style={styles.foldersSection}>
       <Text style={styles.foldersTitle}>Life Area Folders</Text>
       <View style={styles.foldersGrid}>
-        {FOLDER_DATA.map((folder) => {
+        {LIFE_AREAS.map((folder) => {
           const count = folderCounts[folder.id] || 0;
           return (
             <TouchableOpacity
@@ -186,7 +203,7 @@ export default function PRRScreen() {
               style={[
                 styles.folderCard,
                 { borderColor: folder.color + '40' },
-                selectedFolder === folder.id && { borderColor: folder.color, backgroundColor: folder.color + '12' },
+                selectedLifeArea === folder.id && { borderColor: folder.color, backgroundColor: folder.color + '12' },
               ]}
               onPress={() => handleFolderSelect(folder.id)}
               activeOpacity={0.7}
@@ -207,75 +224,99 @@ export default function PRRScreen() {
     </View>
   );
 
-  const renderDecision = ({ item }: { item: Decision }) => {
-    const folderData = FOLDER_DATA.find(f => f.id === item.folder);
+  // ---------- Render: Type filter chip bar ----------
+  const renderTypeChips = () => (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.chipBar}
+    >
+      {TYPE_CHIPS.map((chip) => {
+        const active = selectedType === chip.key;
+        return (
+          <TouchableOpacity
+            key={chip.key}
+            style={[
+              styles.chip,
+              active && { backgroundColor: chip.color, borderColor: chip.color },
+            ]}
+            onPress={() => handleTypeSelect(chip.key)}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={chip.icon as any}
+              size={13}
+              color={active ? '#FFF' : chip.color}
+            />
+            <Text style={[styles.chipText, active ? { color: '#FFF' } : { color: chip.color }]}>
+              {chip.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  );
+
+  // ---------- Render: Single solution card ----------
+  const renderItem = ({ item }: { item: SolutionItem }) => {
+    const typeMeta = TYPE_META[item.type];
+    const statusMeta = STATUS_META[item.status] || STATUS_META.draft;
+    const laMeta = getLifeArea(item.life_area);
     return (
-      <Card style={styles.decisionCard}>
+      <Card style={styles.itemCard}>
         <TouchableOpacity
-          onPress={() => router.push(`/prr/${item.id}`)}
+          onPress={() => handleItemPress(item)}
           activeOpacity={0.7}
           style={styles.cardContent}
         >
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
-            <View style={styles.statusContainer}>
-              <View style={[styles.statusDot, { backgroundColor: getStatusColor(item.status) }]} />
-              <Text style={styles.statusText}>{getStatusLabel(item.status)}</Text>
+          {/* Top row: type chip + status pill */}
+          <View style={styles.cardTopRow}>
+            <View style={[styles.typeChip, { backgroundColor: typeMeta.bg }]}>
+              <Ionicons name={typeMeta.icon as any} size={11} color={typeMeta.color} />
+              <Text style={[styles.typeChipText, { color: typeMeta.color }]}>{typeMeta.label}</Text>
+            </View>
+            <View style={[styles.statusPill, { backgroundColor: statusMeta.bg }]}>
+              <View style={[styles.statusDot, { backgroundColor: statusMeta.color }]} />
+              <Text style={[styles.statusPillText, { color: statusMeta.color }]}>
+                {statusMeta.label}
+                {item.type !== 'decider' && item.current_step ? ` · Step ${item.current_step}/8` : ''}
+              </Text>
             </View>
           </View>
-          <Text style={styles.cardContext} numberOfLines={2}>{item.context}</Text>
-          {(item.deadline_date || item.impact_horizon_value || item.linked_from_decision_id) && (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
-              {(() => {
-                const cd = deadlineCountdown(item.deadline_date);
-                if (!cd) return null;
-                const bg = cd.severity === 'overdue' ? '#FEE2E2' : cd.severity === 'danger' ? '#FED7AA' : cd.severity === 'warn' ? '#FEF3C7' : '#E0F2FE';
-                const fg = cd.severity === 'overdue' ? '#B91C1C' : cd.severity === 'danger' ? '#9A3412' : cd.severity === 'warn' ? '#92400E' : '#075985';
-                return (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: bg }}>
-                    <Ionicons name="time-outline" size={10} color={fg} />
-                    <Text style={{ fontSize: 10, fontWeight: '700', color: fg }}>{cd.text}</Text>
-                  </View>
-                );
-              })()}
-              {item.impact_horizon_value ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: '#F3E8FF' }}>
-                  <Ionicons name="hourglass-outline" size={10} color="#7C3AED" />
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#7C3AED' }}>impact {formatHorizon(item.impact_horizon_value, item.impact_horizon_unit)}</Text>
-                </View>
-              ) : null}
-              {item.linked_from_decision_id ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: '#EEF2FF' }}>
-                  <Ionicons name="link" size={10} color="#4F46E5" />
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#4F46E5' }}>linked</Text>
-                </View>
-              ) : null}
-            </View>
+
+          <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
+          {!!item.context && (
+            <Text style={styles.cardContext} numberOfLines={2}>{item.context}</Text>
           )}
+
           <View style={styles.cardFooter}>
             <View style={styles.cardFooterLeft}>
-              {folderData && (
-                <View style={[styles.folderTag, { backgroundColor: folderData.color + '15' }]}>
-                  <Ionicons name={folderData.icon as any} size={11} color={folderData.color} />
-                  <Text style={[styles.folderTagText, { color: folderData.color }]}>{folderData.name}</Text>
+              {laMeta && (
+                <View style={[styles.folderTag, { backgroundColor: laMeta.color + '15' }]}>
+                  <Ionicons name={laMeta.icon as any} size={11} color={laMeta.color} />
+                  <Text style={[styles.folderTagText, { color: laMeta.color }]}>{laMeta.name}</Text>
                 </View>
               )}
-              <Text style={styles.cardDate}>{formatDate(item.created_at)}</Text>
+              <Text style={styles.cardDate}>{formatDate(item.updated_at || item.created_at)}</Text>
             </View>
-            <View style={styles.optionsCount}>
-              <Ionicons name="list" size={14} color={COLORS.textSecondary} />
-              <Text style={styles.optionsText}>{item.options?.length || 0}</Text>
-            </View>
+            {!!item.options_count && (
+              <View style={styles.optionsCount}>
+                <Ionicons name="list" size={13} color={COLORS.textSecondary} />
+                <Text style={styles.optionsText}>{item.options_count}</Text>
+              </View>
+            )}
           </View>
         </TouchableOpacity>
         <View style={styles.cardActions}>
-          <TouchableOpacity
-            onPress={() => { setCloneTarget(item); setCloneModalVisible(true); }}
-            style={styles.actionButton}
-          >
-            <Ionicons name="copy-outline" size={18} color={COLORS.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => handleDeletePress(item.id)} style={styles.actionButton}>
+          {item.type === 'decider' && (
+            <TouchableOpacity
+              onPress={() => { setCloneTarget(item); setCloneModalVisible(true); }}
+              style={styles.actionButton}
+            >
+              <Ionicons name="copy-outline" size={18} color={COLORS.primary} />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={() => handleDeletePress(item)} style={styles.actionButton}>
             <Ionicons name="trash-outline" size={18} color={COLORS.error} />
           </TouchableOpacity>
         </View>
@@ -283,21 +324,26 @@ export default function PRRScreen() {
     );
   };
 
+  // ---------- Render: Empty state ----------
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
-      <Ionicons name="analytics-outline" size={56} color={COLORS.textMuted} />
+      <Ionicons name="albums-outline" size={56} color={COLORS.textMuted} />
       <Text style={styles.emptyTitle}>
-        {selectedFolder ? `No decisions in ${selectedFolderData?.name || 'this folder'}` : 'No Decisions Yet'}
+        {selectedLifeArea
+          ? `No items in ${selectedFolderData?.name || 'this folder'}`
+          : selectedType !== 'all'
+            ? `No ${TYPE_META[selectedType as SolutionType]?.label || ''} items yet`
+            : 'Your Solution Box is empty'}
       </Text>
       <Text style={styles.emptyText}>
-        {selectedFolder ? 'Create a new decision in this life area' : 'Start making better decisions with My Dezider'}
+        Start a new Decider, Pros &amp; Cons, 8-Step or SWOT analysis below.
       </Text>
       <TouchableOpacity
         style={styles.emptyButton}
-        onPress={() => router.push('/prr/new')}
+        onPress={() => setShowNewMenu(true)}
       >
         <Ionicons name="add" size={18} color={COLORS.white} />
-        <Text style={styles.emptyButtonText}>Create Decision</Text>
+        <Text style={styles.emptyButtonText}>Start New</Text>
       </TouchableOpacity>
     </View>
   );
@@ -305,28 +351,38 @@ export default function PRRScreen() {
   const renderHeader = () => (
     <>
       {showFolders && renderFolderGrid()}
-      {selectedFolder && (
+      {selectedLifeArea && (
         <View style={styles.filterBar}>
           <TouchableOpacity
             style={styles.filterBackBtn}
-            onPress={() => { setSelectedFolder(null); setShowFolders(true); fetchDecisions(null); }}
+            onPress={() => { setSelectedLifeArea(null); setShowFolders(true); }}
           >
             <Ionicons name="arrow-back" size={18} color={COLORS.primary} />
           </TouchableOpacity>
-          <View style={[styles.filterBadge, { backgroundColor: selectedFolderData?.color + '15' }]}>
-            <Ionicons name={selectedFolderData?.icon as any} size={14} color={selectedFolderData?.color || COLORS.primary} />
-            <Text style={[styles.filterBadgeText, { color: selectedFolderData?.color }]}>{selectedFolderData?.name}</Text>
-          </View>
-          <Text style={styles.filterCount}>{decisions.length} decision{decisions.length !== 1 ? 's' : ''}</Text>
+          {selectedFolderData && (
+            <View style={[styles.filterBadge, { backgroundColor: selectedFolderData.color + '15' }]}>
+              <Ionicons name={selectedFolderData.icon as any} size={14} color={selectedFolderData.color} />
+              <Text style={[styles.filterBadgeText, { color: selectedFolderData.color }]}>
+                {selectedFolderData.name}
+              </Text>
+            </View>
+          )}
+          <Text style={styles.filterCount}>
+            {items.length} item{items.length !== 1 ? 's' : ''}
+          </Text>
         </View>
       )}
+      {renderTypeChips()}
     </>
   );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>Decision Box</Text>
+        <View>
+          <Text style={styles.title}>Solution Box</Text>
+          <Text style={styles.subtitle}>All your decisions, analyses & frameworks</Text>
+        </View>
         <View style={styles.headerActions}>
           <TouchableOpacity
             style={styles.templateButton}
@@ -336,7 +392,7 @@ export default function PRRScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.addButton}
-            onPress={() => router.push('/prr/new')}
+            onPress={() => setShowNewMenu(true)}
           >
             <Ionicons name="add" size={24} color={COLORS.white} />
           </TouchableOpacity>
@@ -344,9 +400,9 @@ export default function PRRScreen() {
       </View>
 
       <FlatList
-        data={decisions}
-        renderItem={renderDecision}
-        keyExtractor={(item) => item.id}
+        data={items}
+        renderItem={renderItem}
+        keyExtractor={(item) => `${item.type}-${item.id}`}
         contentContainerStyle={[styles.list, { paddingBottom: 100 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
@@ -354,15 +410,104 @@ export default function PRRScreen() {
         ListEmptyComponent={loading ? null : renderEmpty}
       />
 
+      {/* New flow chooser modal */}
+      <Modal
+        visible={showNewMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowNewMenu(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowNewMenu(false)}
+        >
+          <View style={styles.newMenuCard}>
+            <Text style={styles.newMenuTitle}>Start a new…</Text>
+            <Text style={styles.newMenuSubtitle}>Pick the framework that fits your problem</Text>
+
+            <TouchableOpacity
+              style={[styles.newMenuItem, { borderColor: TYPE_META.decider.color + '40' }]}
+              onPress={() => { setShowNewMenu(false); router.push('/prr/new'); }}
+            >
+              <View style={[styles.newMenuIcon, { backgroundColor: TYPE_META.decider.bg }]}>
+                <Ionicons name={TYPE_META.decider.icon as any} size={20} color={TYPE_META.decider.color} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.newMenuItemTitle}>Decider</Text>
+                <Text style={styles.newMenuItemDesc}>Quick option-based decision with weighted factors</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.newMenuItem, { borderColor: TYPE_META.pros_cons.color + '40' }]}
+              onPress={() => { setShowNewMenu(false); router.push('/tools/pros-cons'); }}
+            >
+              <View style={[styles.newMenuIcon, { backgroundColor: TYPE_META.pros_cons.bg }]}>
+                <Ionicons name={TYPE_META.pros_cons.icon as any} size={20} color={TYPE_META.pros_cons.color} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.newMenuItemTitle}>Pros &amp; Cons</Text>
+                <Text style={styles.newMenuItemDesc}>Simple two-column comparison</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.newMenuItem, { borderColor: TYPE_META.pros_cons_8step.color + '40' }]}
+              onPress={() => { setShowNewMenu(false); router.push('/tools/pros-cons'); }}
+            >
+              <View style={[styles.newMenuIcon, { backgroundColor: TYPE_META.pros_cons_8step.bg }]}>
+                <Ionicons name={TYPE_META.pros_cons_8step.icon as any} size={20} color={TYPE_META.pros_cons_8step.color} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.newMenuItemTitle}>Pros &amp; Cons (8-Step)</Text>
+                <Text style={styles.newMenuItemDesc}>Deep guided framework with factors &amp; options</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.newMenuItem, { borderColor: TYPE_META.swot.color + '40' }]}
+              onPress={() => { setShowNewMenu(false); router.push('/tools/swot'); }}
+            >
+              <View style={[styles.newMenuIcon, { backgroundColor: TYPE_META.swot.bg }]}>
+                <Ionicons name={TYPE_META.swot.icon as any} size={20} color={TYPE_META.swot.color} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.newMenuItemTitle}>SWOT</Text>
+                <Text style={styles.newMenuItemDesc}>Strengths · Weaknesses · Opportunities · Threats</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.newMenuCancel}
+              onPress={() => setShowNewMenu(false)}
+            >
+              <Text style={styles.newMenuCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       {/* Delete Confirmation Modal */}
-      <Modal visible={deleteModalVisible} transparent animationType="fade" onRequestClose={handleDeleteCancel}>
+      <Modal
+        visible={deleteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDeleteModalVisible(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Ionicons name="warning" size={48} color={COLORS.error} />
-            <Text style={styles.modalTitle}>Delete Decision?</Text>
-            <Text style={styles.modalText}>This action cannot be undone.</Text>
+            <Text style={styles.modalTitle}>Delete this item?</Text>
+            <Text style={styles.modalText}>
+              {deleteTarget ? `"${deleteTarget.title}" will be permanently removed.` : 'This action cannot be undone.'}
+            </Text>
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.cancelButton} onPress={handleDeleteCancel}>
+              <TouchableOpacity style={styles.cancelButton} onPress={() => setDeleteModalVisible(false)}>
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.confirmDeleteButton} onPress={handleDeleteConfirm}>
@@ -378,7 +523,7 @@ export default function PRRScreen() {
           visible={cloneModalVisible}
           onClose={() => { setCloneModalVisible(false); setCloneTarget(null); }}
           decision={cloneTarget}
-          onCloneSuccess={(newId) => { fetchDecisions(selectedFolder); router.push(`/prr/${newId}`); }}
+          onCloneSuccess={(newId) => { fetchItems(selectedLifeArea, selectedType); router.push(`/prr/${newId}`); }}
           onTemplateSuccess={() => showAlert('Template Saved', 'Decision saved as template.')}
         />
       )}
@@ -386,7 +531,7 @@ export default function PRRScreen() {
       <TemplateBrowserModal
         visible={templateBrowserVisible}
         onClose={() => setTemplateBrowserVisible(false)}
-        onUseTemplate={(newId) => { fetchDecisions(selectedFolder); router.push(`/prr/${newId}`); }}
+        onUseTemplate={(newId) => { fetchItems(selectedLifeArea, selectedType); router.push(`/prr/${newId}`); }}
         userRole={userRole}
       />
     </SafeAreaView>
@@ -396,7 +541,7 @@ export default function PRRScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
     padding: 16, paddingTop: 8,
   },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -404,7 +549,8 @@ const styles = StyleSheet.create({
     width: 44, height: 44, borderRadius: 22,
     backgroundColor: 'rgba(142,36,170,0.1)', justifyContent: 'center', alignItems: 'center',
   },
-  title: { fontSize: 28, fontWeight: '700', color: COLORS.textPrimary },
+  title: { fontSize: 26, fontWeight: '700', color: COLORS.textPrimary },
+  subtitle: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
   addButton: {
     width: 44, height: 44, borderRadius: 22,
     backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center',
@@ -433,10 +579,10 @@ const styles = StyleSheet.create({
   },
   folderBadgeText: { fontSize: 9, fontWeight: '700', color: '#FFF' },
 
-  // Filter bar (when folder is selected)
+  // Filter bar
   filterBar: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingVertical: 8, marginBottom: 8,
+    paddingVertical: 8, marginBottom: 4,
   },
   filterBackBtn: {
     width: 32, height: 32, borderRadius: 16,
@@ -449,17 +595,36 @@ const styles = StyleSheet.create({
   filterBadgeText: { fontSize: 12, fontWeight: '600' },
   filterCount: { fontSize: 12, color: COLORS.textMuted, marginLeft: 'auto' },
 
-  // Decision Cards
-  decisionCard: { marginBottom: 10, flexDirection: 'row', alignItems: 'flex-start' },
+  // Type filter chips
+  chipBar: { flexDirection: 'row', gap: 8, paddingBottom: 10, paddingTop: 2 },
+  chip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 16, borderWidth: 1.5,
+    backgroundColor: COLORS.white,
+    borderColor: COLORS.border,
+  },
+  chipText: { fontSize: 12, fontWeight: '600' },
+
+  // Item Cards
+  itemCard: { marginBottom: 10, flexDirection: 'row', alignItems: 'flex-start' },
   cardContent: { flex: 1 },
-  cardHeader: { marginBottom: 6 },
+  cardTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, gap: 6 },
+  typeChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10,
+  },
+  typeChipText: { fontSize: 10, fontWeight: '700' },
+  statusPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10,
+  },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusPillText: { fontSize: 10, fontWeight: '700' },
   cardTitle: { fontSize: 16, fontWeight: '600', color: COLORS.textPrimary, marginBottom: 3 },
-  statusContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
-  statusDot: { width: 7, height: 7, borderRadius: 4, marginRight: 5 },
-  statusText: { fontSize: 11, color: COLORS.textSecondary },
   cardContext: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 18, marginBottom: 8 },
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  cardFooterLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  cardFooterLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, flexWrap: 'wrap' },
   folderTag: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
     paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8,
@@ -473,8 +638,8 @@ const styles = StyleSheet.create({
 
   // Empty
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 48 },
-  emptyTitle: { fontSize: 18, fontWeight: '600', color: COLORS.textPrimary, marginTop: 12 },
-  emptyText: { fontSize: 13, color: COLORS.textSecondary, textAlign: 'center', marginTop: 6, marginBottom: 20 },
+  emptyTitle: { fontSize: 18, fontWeight: '600', color: COLORS.textPrimary, marginTop: 12, textAlign: 'center', paddingHorizontal: 16 },
+  emptyText: { fontSize: 13, color: COLORS.textSecondary, textAlign: 'center', marginTop: 6, marginBottom: 20, paddingHorizontal: 24 },
   emptyButton: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: COLORS.primary, paddingVertical: 10, paddingHorizontal: 18, borderRadius: 12,
@@ -491,4 +656,27 @@ const styles = StyleSheet.create({
   cancelButtonText: { fontSize: 16, fontWeight: '600', color: COLORS.textSecondary },
   confirmDeleteButton: { flex: 1, paddingVertical: 12, borderRadius: 8, backgroundColor: COLORS.error, alignItems: 'center' },
   confirmDeleteButtonText: { fontSize: 16, fontWeight: '600', color: COLORS.white },
+
+  // New menu modal
+  newMenuCard: {
+    backgroundColor: COLORS.white, borderRadius: 16,
+    padding: 20, width: '100%', maxWidth: 400,
+  },
+  newMenuTitle: { fontSize: 18, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 2 },
+  newMenuSubtitle: { fontSize: 12, color: COLORS.textSecondary, marginBottom: 14 },
+  newMenuItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    padding: 12, borderRadius: 12, borderWidth: 1.5,
+    marginBottom: 10, backgroundColor: COLORS.white,
+  },
+  newMenuIcon: {
+    width: 40, height: 40, borderRadius: 20,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  newMenuItemTitle: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary },
+  newMenuItemDesc: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
+  newMenuCancel: {
+    paddingVertical: 12, alignItems: 'center', marginTop: 4,
+  },
+  newMenuCancelText: { fontSize: 14, fontWeight: '600', color: COLORS.textSecondary },
 });

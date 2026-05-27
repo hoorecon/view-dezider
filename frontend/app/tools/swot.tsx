@@ -10,6 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
+import { LIFE_AREAS as LIFE_AREAS_CANONICAL } from '../../src/constants/lifeAreas';
 import api from '../../src/utils/api';
 
 interface SwotItem {
@@ -42,17 +43,7 @@ const QUADRANTS: { key: QuadrantKey; label: string; icon: string; color: string;
   { key: 'threats', label: 'Threats', icon: 'thunderstorm', color: '#D97706', bgColor: '#FFFBEB', borderColor: '#FDE68A', nature: 'External −' },
 ];
 
-const LIFE_AREAS = [
-  { key: 'career', label: 'Career', icon: 'briefcase' },
-  { key: 'finance', label: 'Finance', icon: 'cash' },
-  { key: 'relationships', label: 'Relationships', icon: 'heart' },
-  { key: 'holistic_health', label: 'Health', icon: 'fitness' },
-  { key: 'assets', label: 'Assets', icon: 'home' },
-  { key: 'knowledge_skills', label: 'Knowledge', icon: 'school' },
-  { key: 'social_image', label: 'Social', icon: 'people' },
-  { key: 'hobbies_entertainment', label: 'Hobbies', icon: 'game-controller' },
-  { key: 'spirituality_religion', label: 'Spirituality', icon: 'leaf' },
-];
+const LIFE_AREAS = LIFE_AREAS_CANONICAL.map(a => ({ key: a.id, label: a.short, icon: a.icon }));
 
 export default function SwotScreen() {
   const router = useRouter();

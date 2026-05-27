@@ -25,6 +25,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
+import { LIFE_AREAS as LIFE_AREAS_CANONICAL } from '../../src/constants/lifeAreas';
 
 type Source = 'direct' | 'pro' | 'con';
 interface Factor {
@@ -62,17 +63,7 @@ const STEPS = [
   { n: 8, label: 'Assess' },
 ];
 
-const LIFE_AREAS = [
-  { key: 'career', label: 'Career', icon: 'briefcase' },
-  { key: 'finance', label: 'Finance', icon: 'cash' },
-  { key: 'relationships', label: 'Relationships', icon: 'heart' },
-  { key: 'holistic_health', label: 'Health', icon: 'fitness' },
-  { key: 'assets', label: 'Assets', icon: 'home' },
-  { key: 'knowledge_skills', label: 'Knowledge', icon: 'school' },
-  { key: 'social_image', label: 'Social', icon: 'people' },
-  { key: 'hobbies_entertainment', label: 'Hobbies', icon: 'game-controller' },
-  { key: 'spirituality_religion', label: 'Spirituality', icon: 'leaf' },
-];
+const LIFE_AREAS = LIFE_AREAS_CANONICAL.map(a => ({ key: a.id, label: a.short, icon: a.icon }));
 
 const COLORS = {
   primary: '#6366F1', primaryDark: '#4F46E5',
