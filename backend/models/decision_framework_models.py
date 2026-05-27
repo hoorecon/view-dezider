@@ -186,6 +186,15 @@ def compute_option_rollups(
     mt = cfg.get("mandatory_threshold_pct")
     rollups: List[Dict[str, Any]] = []
 
+    # Only score MAIN factors:
+    #   - exclude sub-factors (parent_id is set)  → they are rated implicitly
+    #     by their parent in Steps 6/7/8 per the wizard UI contract
+    #   - exclude duplicates (is_duplicate=True)  → audit history, not active
+    scoring_factors = [
+        f for f in factors
+        if not f.get("parent_id") and not f.get("is_duplicate")
+    ]
+
     for opt in options:
         opt_id = opt.get("id")
         opt_asmts = (assessments or {}).get(opt_id, {})
@@ -196,7 +205,7 @@ def compute_option_rollups(
         dq = False
         dq_factor_ids: List[str] = []
 
-        for f in factors:
+        for f in scoring_factors:
             cell = opt_asmts.get(f["id"], {}) or {}
             joint_score += float(cell.get("cell_value", 0) or 0)
             sat_val_sum += float(cell.get("satisfaction_value", 0) or 0)

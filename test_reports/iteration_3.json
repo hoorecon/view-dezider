@@ -1,0 +1,33 @@
+{
+  "summary": "PASS — Steps 6/7/8 of the Pros & Cons 8-step wizard now render only MAIN factors with collapsible read-only sub-factor lists, and backend aggregate correctly excludes sub-factors and duplicates from joint_score. Seeded a deterministic analysis (MainA←MainB, MainC←MainC-sub, option OptX) and verified end-to-end in Playwright (mobile 390x844) plus backend assertions. Deprecated packages detected: expo-av (declared but unused).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "expo-av", "issue": "Deprecated package declared in /app/frontend/package.json (\"expo-av\": \"^16.0.8\") although no source file imports it. Replace with expo-audio (audio) / expo-video (video) or remove entirely. Reference: /app/frontend/package.json"}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/seed_step6_8_test.py"
+  ],
+  "action_items": [
+    "Remove the deprecated `expo-av` dependency from /app/frontend/package.json (unused — already migrated away)",
+    "Optional polish: add testID props on the chevron-up / chevron-down reorder buttons (Step 7) and on the Sub-factors collapsible toggles so automated tests can target them deterministically without coordinate math"
+  ],
+  "critical_code_review_comments": [
+    "/app/frontend/app/tools/pros-cons-wizard.tsx is 2114 lines — well above the 700-line threshold. Recommend splitting per-step screens into separate files (Step1.tsx … Step8.tsx) and extracting MainFactorWithSubs / SubFactorReadOnlyList / FactorAssessmentCard into /app/frontend/components/wizard/.",
+    "Reorder logic in moveMainFactor (line 406) preserves parent_id when sending ordered_ids but the backend reorder endpoint reassigns priority_rank to ALL factors sequentially (mains first then subs). That means MainC-sub's priority_rank shifts from 4→4 after MainC moves up but MainB's shifts 2→3. The mains-only order is correct (this is what the user asked for), but if rank gaps were intended to be preserved for sub-factors, the backend or moveMainFactor must be revised. Currently behaviour matches the FIX_APPLIED description."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Created via /app/backend/tests/seed_step6_8_test.py — analysis_id=1c3ff5dd-680d-4d91-a5b7-48692c25df9b. Factors: MainA(#1, rating 80), MainB(sub of MainA), MainC(rating 60), MainC-sub(sub of MainC). Option: OptX with Assess% 70 on MainA, 50 on MainC, 100 on subs.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Seed script /app/backend/tests/seed_step6_8_test.py re-creates a deterministic hierarchy with one POST + login. Wizard URL: /tools/pros-cons-wizard?id={analysis_id}&module=pros-cons. The wizard restores the highest reached step from the server on each load; use the Back button (testID-less, locate via text=\"Back\") to step back. Chevron reorder buttons render as raw SVGs without aria-label/testID — easiest to validate by hitting POST /api/pros-cons/{id}/factors/reorder directly. Aggregate endpoint: GET /api/pros-cons/{id}/aggregate returns rollups[].joint_score; with the seeded data the value MUST equal 86 (MainA 70%×80=56 plus MainC 50%×60=30) — sub-factors with 100% assess must NOT contribute.",
+  "rca_of_issue": "Validations performed and outcomes: (1) Step 5 tree shows MainA→MainB and MainC→MainC-sub with '1 sub' indicators. (2) Step 6: only 2 cards (MainA, MainC) with chevron-forward + A/B buttons + caption '1 sub-factor · inherits this factor's classification'. Expanding chevron on MainA reveals MainB indented read-only with D tag and no controls; collapsing hides it. A on MainA and B on MainC activate (mandatory/optional styling). (3) Step 7: 2 cards #1 MainA + #3 MainC (sub-factor priority_rank slots preserved in DB), each with up/down chevrons, Std Rating inputs (80/60), Assess % rows (70→56.0, 50→30.0), and 'Sub-factors (1)' collapsibles that reveal read-only sub items when expanded. Direct API reorder (simulating ▲ on MainC) confirmed mains-only reorder: post-reorder priority_rank → MainC=1, MainA=2, MainB=3, MainC-sub=4. (4) Step 8: 'Overall satisfaction per option' card shows OptX with Joint: 86 — matches backend filter (compute_option_rollups uses scoring_factors = main+non-duplicate). Below, only 2 detail cards (MainA, MainC), each with 'Sub-factors (rated together with parent)' collapsible. MainB and MainC-sub appear 0 times at top level. End-to-end behaviour is fully consistent with FIX_APPLIED."
+}

@@ -395,6 +395,27 @@ export default function ProsConsWizard() {
     catch (e: any) { showAlert('Error', e?.response?.data?.detail || 'Reorder failed'); }
   };
 
+  /**
+   * Step 7 — reorder MAIN factors only (the user prioritises at the parent
+   * level). Sub-factors are kept in their existing slots in the underlying
+   * factors array; we only permute the positions of the main factors among
+   * themselves. The final order sent to the reorder endpoint is:
+   *   [main1, main2, ...] in the new sequence, followed by ALL other
+   *   factors (sub-factors + duplicates) in their existing array order.
+   */
+  const moveMainFactor = async (mainIdx: number, dir: -1 | 1) => {
+    if (!analysis) return;
+    const mains = analysis.factors.filter(f => !f.parent_id && !f.is_duplicate);
+    const j = mainIdx + dir;
+    if (j < 0 || j >= mains.length) return;
+    const reordered = [...mains];
+    [reordered[mainIdx], reordered[j]] = [reordered[j], reordered[mainIdx]];
+    const others = analysis.factors.filter(f => f.parent_id || f.is_duplicate);
+    const finalIds = [...reordered, ...others].map(f => f.id);
+    try { await api.post(`${base}/${id}/factors/reorder`, { ordered_ids: finalIds }); await reload(); }
+    catch (e: any) { showAlert('Error', e?.response?.data?.detail || 'Reorder failed'); }
+  };
+
   // ─── Step 7+8: assessment cell update ────────────────────
   const upsertCell = async (oid: string, fid: string, patch: any) => {
     try { await api.put(`${base}/${id}/assessments/${oid}/${fid}`, patch); await reload(); }
@@ -1097,18 +1118,26 @@ export default function ProsConsWizard() {
                 </View>
               </View>
 
-              {analysis.factors.map(f => (
-                <View key={f.id} style={styles.factorRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.factorName}>{displayName(f)}</Text>
-                  </View>
+              {/* Step 6 — Only main factors get classified A/B. Sub-factors */}
+              {/* are shown read-only inside an expand/collapse panel so the  */}
+              {/* user can reference them while deciding A/B at parent level. */}
+              {/* (Sub-factors inherit their parent's Mandatory/Optional.)    */}
+              {directFactors.map(f => (
+                <MainFactorWithSubs
+                  key={f.id}
+                  factor={f}
+                  subs={childrenOf(f.id)}
+                  displayNameOf={displayName}
+                  hasRenameOf={hasRename}
+                  originalNameOf={originalName}
+                >
                   {(['mandatory', 'optional'] as const).map(n => (
                     <TouchableOpacity key={n} style={[styles.notationBtn, f.notation === n && (n === 'mandatory' ? styles.notationMandActive : styles.notationOptActive)]}
                       onPress={() => updateFactor(f.id, { notation: n })}>
                       <Text style={[styles.notationBtnText, f.notation === n && { color: '#fff' }]}>{n === 'mandatory' ? 'A' : 'B'}</Text>
                     </TouchableOpacity>
                   ))}
-                </View>
+                </MainFactorWithSubs>
               ))}
               <NextBack onBack={() => persistStep(5)} onNext={() => persistStep(7)} />
             </View>
@@ -1119,14 +1148,15 @@ export default function ProsConsWizard() {
             <View>
               <Text style={styles.stepTitle}>Step 7 — Prioritise &amp; Assess %</Text>
               <Text style={styles.stepHint}>Reorder by importance (▲▼). Set Standard Rating per factor. For each option, set Assessment %. Cell value = Assessment % × Std Rating.</Text>
-              {analysis.factors.map((f, i) => (
+              {/* Step 7 — iterate main factors only; sub-factors shown as read-only inside each card */}
+              {directFactors.map((f, i) => (
                 <View key={f.id} style={styles.factorCard}>
                   <View style={styles.factorCardHeader}>
                     <Text style={styles.rankBadge}>#{f.priority_rank}</Text>
                     <Text style={styles.factorName}>{displayName(f)}</Text>
                     <View style={{ flexDirection: 'row', gap: 4 }}>
-                      <TouchableOpacity onPress={() => moveFactor(i, -1)}><Ionicons name="chevron-up" size={20} color={COLORS.textDim} /></TouchableOpacity>
-                      <TouchableOpacity onPress={() => moveFactor(i, 1)}><Ionicons name="chevron-down" size={20} color={COLORS.textDim} /></TouchableOpacity>
+                      <TouchableOpacity onPress={() => moveMainFactor(i, -1)}><Ionicons name="chevron-up" size={20} color={COLORS.textDim} /></TouchableOpacity>
+                      <TouchableOpacity onPress={() => moveMainFactor(i, 1)}><Ionicons name="chevron-down" size={20} color={COLORS.textDim} /></TouchableOpacity>
                     </View>
                   </View>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
@@ -1148,6 +1178,12 @@ export default function ProsConsWizard() {
                       </View>
                     );
                   })}
+                  <SubFactorReadOnlyList
+                    subs={childrenOf(f.id)}
+                    displayNameOf={displayName}
+                    hasRenameOf={hasRename}
+                    originalNameOf={originalName}
+                  />
                 </View>
               ))}
               <NextBack onBack={() => persistStep(6)} onNext={() => persistStep(8)} />
@@ -1188,11 +1224,15 @@ export default function ProsConsWizard() {
                 </TouchableOpacity>
               </View>
 
-              {/* Per-factor detail */}
-              {analysis.factors.map(f => (
+              {/* Per-factor detail — main factors only. Sub-factors shown read-only inside each card. */}
+              {directFactors.map(f => (
                 <FactorAssessmentCard key={f.id} factor={f} options={analysis.options}
                   cells={(analysis.assessments || {})}
                   displayName={displayName(f)}
+                  subs={childrenOf(f.id)}
+                  subDisplayNameOf={displayName}
+                  subHasRenameOf={hasRename}
+                  subOriginalNameOf={originalName}
                   onFactorUpdate={(patch) => updateFactor(f.id, patch)}
                   onCellUpdate={(oid, patch) => upsertCell(oid, f.id, patch)} />
               ))}
@@ -1615,11 +1655,15 @@ function RenamableFactorRow({
   );
 }
 
-function FactorAssessmentCard({ factor, options, cells, displayName, onFactorUpdate, onCellUpdate }: {
+function FactorAssessmentCard({ factor, options, cells, displayName, subs, subDisplayNameOf, subHasRenameOf, subOriginalNameOf, onFactorUpdate, onCellUpdate }: {
   factor: Factor; options: OptionT[]; cells: Record<string, Record<string, Cell>>;
-  /** Pre-computed display label (display_name || name). Computed by parent
-   *  so the rename-aware logic isn't duplicated here. */
+  /** Pre-computed display label (display_name || name). */
   displayName?: string;
+  /** Read-only sub-factor display props (Step 8 — sub-factors visible context, not rated). */
+  subs?: Factor[];
+  subDisplayNameOf?: (f: Factor) => string;
+  subHasRenameOf?: (f: Factor) => boolean;
+  subOriginalNameOf?: (f: Factor) => string;
   onFactorUpdate: (p: any) => void; onCellUpdate: (oid: string, p: any) => void;
 }) {
   return (
@@ -1691,6 +1735,164 @@ function FactorAssessmentCard({ factor, options, cells, displayName, onFactorUpd
           </View>
         );
       })}
+
+      {/* Step 8 — sub-factors shown read-only inside the parent card,
+          serving as context for the user while they rate the parent. */}
+      {subs && subs.length > 0 && (
+        <SubFactorReadOnlyList
+          subs={subs}
+          displayNameOf={subDisplayNameOf || ((f) => f.name)}
+          hasRenameOf={subHasRenameOf || (() => false)}
+          originalNameOf={subOriginalNameOf || ((f) => f.name)}
+          defaultOpen={false}
+          label="Sub-factors (rated together with parent)"
+        />
+      )}
+    </View>
+  );
+}
+
+/**
+ * Reusable accordion for Step 6 (Mandatory/Optional) — and any other place
+ * where only MAIN factors should expose controls but the user still wants
+ * the ability to peek at their sub-factors for context.
+ *
+ * Layout:
+ *   ┌──────────────────────────────────────────────────────────────┐
+ *   │ ▸  Factor name (from displayNameOf)             [A] [B] etc. │
+ *   └──────────────────────────────────────────────────────────────┘
+ *   (expanded)
+ *   ↳ Sub-factor 1
+ *   ↳ Sub-factor 2
+ *
+ * Children passed in via `children` slot are the action controls
+ * (e.g. the A/B buttons in Step 6). They sit on the right of the row.
+ */
+function MainFactorWithSubs({
+  factor,
+  subs,
+  displayNameOf,
+  hasRenameOf,
+  originalNameOf,
+  children,
+}: {
+  factor: Factor;
+  subs: Factor[];
+  displayNameOf: (f: Factor) => string;
+  hasRenameOf: (f: Factor) => boolean;
+  originalNameOf: (f: Factor) => string;
+  children?: React.ReactNode;
+}) {
+  // Default to COLLAPSED so the page looks tidy at first glance —
+  // exactly what the user asked for ("hidden by default, expandable").
+  const [open, setOpen] = useState(false);
+  const hasSubs = subs.length > 0;
+  return (
+    <View style={styles.factorCard}>
+      <View style={styles.factorRow}>
+        {hasSubs ? (
+          <TouchableOpacity
+            onPress={() => setOpen(o => !o)}
+            style={{ marginRight: 4, padding: 4 }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel={open ? 'Collapse sub-factors' : 'Expand sub-factors'}
+          >
+            <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={18} color={COLORS.textDim} />
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 26 }} />
+        )}
+        <View style={{ flex: 1 }}>
+          <Text style={styles.factorName} numberOfLines={2}>{displayNameOf(factor)}</Text>
+          {hasRenameOf(factor) && (
+            <Text style={[styles.factorMeta, { color: COLORS.textDim, fontStyle: 'italic' }]}>
+              Originally: “{originalNameOf(factor)}”
+            </Text>
+          )}
+          {hasSubs && (
+            <Text style={[styles.factorMeta, { color: COLORS.textDim }]}>
+              {subs.length} sub-factor{subs.length === 1 ? '' : 's'} · inherits this factor's classification
+            </Text>
+          )}
+        </View>
+        {children}
+      </View>
+      {open && hasSubs && (
+        <View style={{ paddingLeft: 32, paddingTop: 6 }}>
+          {subs.map(s => (
+            <View key={s.id} style={[styles.subFactorReadRow]}>
+              <View style={[styles.sourceTag, { backgroundColor: s.source === 'pro' ? COLORS.pro : s.source === 'con' ? COLORS.con : COLORS.direct }]}>
+                <Text style={styles.sourceTagText}>{s.source === 'direct' ? 'D' : s.source === 'pro' ? 'P' : 'C'}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.factorName} numberOfLines={2}>{displayNameOf(s)}</Text>
+                {hasRenameOf(s) && (
+                  <Text style={[styles.factorMeta, { color: COLORS.textDim, fontStyle: 'italic' }]}>
+                    Originally: “{originalNameOf(s)}”
+                  </Text>
+                )}
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+/**
+ * Compact, COLLAPSED-by-default list of sub-factors for embedding inside
+ * a parent's card (Steps 7 & 8). Sub-factors are read-only — the user
+ * rates / prioritises at the parent level for now.
+ */
+function SubFactorReadOnlyList({
+  subs,
+  displayNameOf,
+  hasRenameOf,
+  originalNameOf,
+  defaultOpen = false,
+  label,
+}: {
+  subs: Factor[];
+  displayNameOf: (f: Factor) => string;
+  hasRenameOf: (f: Factor) => boolean;
+  originalNameOf: (f: Factor) => string;
+  defaultOpen?: boolean;
+  label?: string;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  if (!subs || subs.length === 0) return null;
+  return (
+    <View style={{ marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: COLORS.border }}>
+      <TouchableOpacity
+        onPress={() => setOpen(o => !o)}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+        accessibilityLabel={open ? 'Collapse sub-factors' : 'Expand sub-factors'}
+      >
+        <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={16} color={COLORS.textDim} />
+        <Text style={[styles.factorMeta, { color: COLORS.textDim, fontWeight: '600' }]}>
+          {label || `Sub-factors (${subs.length})`}
+        </Text>
+      </TouchableOpacity>
+      {open && (
+        <View style={{ paddingLeft: 22, paddingTop: 6 }}>
+          {subs.map(s => (
+            <View key={s.id} style={[styles.subFactorReadRow]}>
+              <View style={[styles.sourceTag, { backgroundColor: s.source === 'pro' ? COLORS.pro : s.source === 'con' ? COLORS.con : COLORS.direct }]}>
+                <Text style={styles.sourceTagText}>{s.source === 'direct' ? 'D' : s.source === 'pro' ? 'P' : 'C'}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.factorName} numberOfLines={2}>{displayNameOf(s)}</Text>
+                {hasRenameOf(s) && (
+                  <Text style={[styles.factorMeta, { color: COLORS.textDim, fontStyle: 'italic' }]}>
+                    Originally: “{originalNameOf(s)}”
+                  </Text>
+                )}
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -1742,6 +1944,7 @@ const styles = StyleSheet.create({
   treeNode: { backgroundColor: '#fff', borderRadius: 8, marginBottom: 6, padding: 8, borderWidth: 1, borderColor: COLORS.border },
   treeHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   treeChild: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 24, paddingTop: 4 },
+  subFactorReadRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
   notationBtn: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border, marginLeft: 4 },
   notationMandActive: { backgroundColor: COLORS.warn, borderColor: COLORS.warn },
   notationOptActive: { backgroundColor: COLORS.textDim, borderColor: COLORS.textDim },
