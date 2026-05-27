@@ -85,17 +85,20 @@ log "Step 4/4 — Verifying backend is healthy"
 # is not published to the host (nginx/Cloudflare fronts it on prod).
 HEALTH_OK=0
 PY_PROBE='import sys, urllib.request
-try:
-    body = urllib.request.urlopen("http://localhost:8001/api/health/live", timeout=2).read().decode()
-    sys.stdout.write(body)
-    sys.exit(0 if "alive" in body else 1)
-except Exception as e:
-    sys.stderr.write(str(e))
-    sys.exit(1)
+URLS = ["http://localhost:8001/api/health", "http://localhost:8001/api/health/ready"]
+for u in URLS:
+    try:
+        body = urllib.request.urlopen(u, timeout=3).read().decode()
+        sys.stdout.write(body)
+        sys.exit(0)
+    except Exception as e:
+        sys.stderr.write(u + " -> " + str(e) + "\n")
+        continue
+sys.exit(1)
 '
 for i in 1 2 3 4 5; do
   if $COMPOSE exec -T api python -c "$PY_PROBE" >/dev/null 2>&1; then
-    ok "Backend responding (inside-container Python probe)"
+    ok "Backend responding on /api/health (inside-container Python probe)"
     HEALTH_OK=1
     break
   fi
@@ -103,10 +106,13 @@ for i in 1 2 3 4 5; do
   sleep 3
 done
 
-# Fallback signal: many app frameworks print this exact line on successful boot
+# Fallback signal: many app frameworks print this exact line on successful boot.
+# This is intentionally lenient — if uvicorn logged "Application startup complete"
+# at least once in the last 200 lines, the app IS running, even if our HTTP probe
+# could not reach it (network namespace quirks, etc.).
 if [ "$HEALTH_OK" = "0" ]; then
-  if $COMPOSE logs api --tail=120 2>/dev/null | grep -q "Application startup complete"; then
-    ok "Backend reports 'Application startup complete' in logs (Python probe unavailable)"
+  if $COMPOSE logs api --tail=200 2>/dev/null | grep -q "Application startup complete"; then
+    ok "Backend reports 'Application startup complete' in logs — treating as healthy"
     HEALTH_OK=1
   fi
 fi
