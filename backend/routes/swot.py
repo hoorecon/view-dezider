@@ -620,8 +620,13 @@ async def swot_update_config(analysis_id: str, body: Dict[str, Any], user: dict 
     for k in ("mandatory_threshold_pct", "max_improvement_period_months", "std_gap"):
         if k in body:
             cfg[k] = body[k]
-    await _persist_swot(analysis_id, user["user_id"], {"config": cfg})
-    return {"config": cfg}
+    # Top-level analysis-scoped flags (kept outside config blob).
+    extra: Dict[str, Any] = {}
+    for k in ("step7_alpha_seeded",):
+        if k in body:
+            extra[k] = bool(body[k])
+    await _persist_swot(analysis_id, user["user_id"], {"config": cfg, **extra})
+    return {"config": cfg, **extra}
 
 
 @router.put("/{analysis_id}/assessments/{option_id}/{factor_id}")

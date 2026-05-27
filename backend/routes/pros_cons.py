@@ -630,8 +630,14 @@ async def update_config(analysis_id: str, body: Dict[str, Any], user: dict = Dep
     for k in ("mandatory_threshold_pct", "max_improvement_period_months", "std_gap"):
         if k in body:
             cfg[k] = body[k]
-    await _persist(analysis_id, user["user_id"], {"config": cfg})
-    return {"config": cfg}
+    # Top-level analysis-scoped flags (kept outside config blob so the
+    # wizard can read them as plain booleans from the analysis doc).
+    extra: Dict[str, Any] = {}
+    for k in ("step7_alpha_seeded",):
+        if k in body:
+            extra[k] = bool(body[k])
+    await _persist(analysis_id, user["user_id"], {"config": cfg, **extra})
+    return {"config": cfg, **extra}
 
 
 # ─── Steps #7 + #8 — Assessment cell (per option per factor) ───

@@ -485,15 +485,14 @@ export default function ProsConsWizard() {
    * Since factors keep their creation-order priority_rank, we have to
    * persist alphabetical ranks once, then let user reorders take over.
    *
-   * Detection: localStorage flag scoped to this analysis id. After the
-   * initial POST, the flag is set so we never re-alphabetize and clobber
-   * the user's manual ordering.
+   * Persistence is SERVER-SIDE via the `step7_alpha_seeded` flag on the
+   * analysis doc (PUT /config). This way the flag survives across
+   * devices and across browser-data clears — fixing the localStorage
+   * caveat that allowed re-alphabetization on a different browser.
    */
   useEffect(() => {
     if (step !== 7 || !analysis || !id) return;
-    if (typeof window === 'undefined' || !window.localStorage) return;
-    const key = `pcw:step7-alpha-init:${id}`;
-    if (window.localStorage.getItem(key) === '1') return;
+    if ((analysis as any).step7_alpha_seeded === true) return;
 
     const mains = analysis.factors.filter(f => !f.parent_id && !f.is_duplicate);
     if (mains.length === 0) {
@@ -512,31 +511,32 @@ export default function ProsConsWizard() {
 
     // Check whether the existing priority_rank order ALREADY matches the
     // alphabetical-by-section order. If yes, just set the flag and skip
-    // the POST (saves a round-trip on revisits).
+    // the reorder POST (saves a round-trip on revisits).
     const desired = [...mandatorySorted, ...optionalSorted].map(f => f.id);
     const currentMainsOrder = mains.map(f => f.id);
     const sameOrder =
       desired.length === currentMainsOrder.length &&
       desired.every((d, i) => d === currentMainsOrder[i]);
+
+    const markSeeded = () =>
+      api.put(`${base}/${id}/config`, { step7_alpha_seeded: true })
+        .then(() => reload())
+        .catch(e => console.warn('Step 7 seed-flag persist failed (non-blocking):', e?.response?.data || e?.message || e));
+
     if (sameOrder) {
-      window.localStorage.setItem(key, '1');
+      markSeeded();
       return;
     }
 
     const others = analysis.factors.filter(f => f.parent_id || f.is_duplicate);
     const finalIds = [...mandatorySorted, ...optionalSorted, ...others].map(f => f.id);
     api.post(`${base}/${id}/factors/reorder`, { ordered_ids: finalIds })
-      .then(() => {
-        try { window.localStorage.setItem(key, '1'); } catch { /* ignore */ }
-        reload();
-      })
+      .then(markSeeded)
       .catch(e => {
         console.warn('Step 7 alphabetical init failed (continuing):', e?.response?.data || e?.message || e);
       });
-  // We intentionally key on step + analysis.id only — if analysis updates
-  // because of OUR own reorder POST, the flag will prevent re-running.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, analysis?.id]);
+  }, [step, analysis?.id, (analysis as any)?.step7_alpha_seeded]);
 
   const rollupByOpt = useMemo(() => {
     const m: Record<string, Rollup> = {};
