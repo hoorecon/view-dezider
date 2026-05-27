@@ -477,6 +477,67 @@ export default function ProsConsWizard() {
   };
   useEffect(() => { if (step === 8 && analysis) runAggregate(); /* refresh on entering step 8 */ }, [step]);
 
+  /**
+   * Step 7 — alphabetical seed on FIRST entry per analysis.
+   *
+   * The user expects each section (Mandatory / Optional) to be alphabetical
+   * BY DEFAULT, with priority_rank overriding only after they hit ▲ / ▼.
+   * Since factors keep their creation-order priority_rank, we have to
+   * persist alphabetical ranks once, then let user reorders take over.
+   *
+   * Detection: localStorage flag scoped to this analysis id. After the
+   * initial POST, the flag is set so we never re-alphabetize and clobber
+   * the user's manual ordering.
+   */
+  useEffect(() => {
+    if (step !== 7 || !analysis || !id) return;
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    const key = `pcw:step7-alpha-init:${id}`;
+    if (window.localStorage.getItem(key) === '1') return;
+
+    const mains = analysis.factors.filter(f => !f.parent_id && !f.is_duplicate);
+    if (mains.length === 0) {
+      // Nothing to alphabetize yet; do not mark done so we retry once
+      // factors exist.
+      return;
+    }
+    const labelOf = (f: Factor) => (f.display_name && f.display_name.trim() ? f.display_name : f.name) || '';
+
+    const mandatorySorted = mains
+      .filter(f => f.notation === 'mandatory')
+      .sort((a, b) => labelOf(a).localeCompare(labelOf(b), undefined, { sensitivity: 'base' }));
+    const optionalSorted = mains
+      .filter(f => f.notation !== 'mandatory')
+      .sort((a, b) => labelOf(a).localeCompare(labelOf(b), undefined, { sensitivity: 'base' }));
+
+    // Check whether the existing priority_rank order ALREADY matches the
+    // alphabetical-by-section order. If yes, just set the flag and skip
+    // the POST (saves a round-trip on revisits).
+    const desired = [...mandatorySorted, ...optionalSorted].map(f => f.id);
+    const currentMainsOrder = mains.map(f => f.id);
+    const sameOrder =
+      desired.length === currentMainsOrder.length &&
+      desired.every((d, i) => d === currentMainsOrder[i]);
+    if (sameOrder) {
+      window.localStorage.setItem(key, '1');
+      return;
+    }
+
+    const others = analysis.factors.filter(f => f.parent_id || f.is_duplicate);
+    const finalIds = [...mandatorySorted, ...optionalSorted, ...others].map(f => f.id);
+    api.post(`${base}/${id}/factors/reorder`, { ordered_ids: finalIds })
+      .then(() => {
+        try { window.localStorage.setItem(key, '1'); } catch { /* ignore */ }
+        reload();
+      })
+      .catch(e => {
+        console.warn('Step 7 alphabetical init failed (continuing):', e?.response?.data || e?.message || e);
+      });
+  // We intentionally key on step + analysis.id only — if analysis updates
+  // because of OUR own reorder POST, the flag will prevent re-running.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, analysis?.id]);
+
   const rollupByOpt = useMemo(() => {
     const m: Record<string, Rollup> = {};
     (analysis?.rollups || []).forEach(r => { m[r.option_id] = r; });

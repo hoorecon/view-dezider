@@ -1,0 +1,47 @@
+{
+  "summary": "RETEST PASSED for Step 7 alphabetical default seed in /app/frontend/app/tools/pros-cons-wizard.tsx. Verified end-to-end on mobile viewport 390x844 using the existing analysis id=517fae05-579f-4005-8f86-195edbfa21a8 (factors created in order Zeta, Alpha, Mango, Banana, Echo). After resetting Alpha→mandatory via API and clearing the localStorage flag pcw:step7-alpha-init:<id>, the Step 7 useEffect at line 492-539 POSTs alphabetical ordered_ids to /factors/reorder on first entry. Result: Mandatory section renders Alpha (A1), Mango (A2); Optional section renders Banana (B1), Echo (B2), Zeta (B3) — the previously failing case is now FIXED. Secondary regression assertions also pass: clicking ▼ on Banana within Optional makes the order Echo (B1), Banana (B2), Zeta (B3); the new order persists across page reload and across Back→Next navigation (the localStorage flag prevents re-seeding after first run). One non-blocking caveat noted: the alpha-seed gate is stored in localStorage and is therefore browser/device scoped — if a user clears site data or opens the analysis in a different browser, the seed effect can re-run and overwrite a previously persisted manual order. Consider migrating the flag to a server-side boolean on the analysis document for cross-device durability.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Step 7",
+        "issues": [
+          "Touch targets for the chevron up/down icons remain ~24-28px (Ionicons size=22 wrapped in TouchableOpacity without explicit hitSlop). Recommendation: add hitSlop={{ top: 10, left: 10, right: 10, bottom: 10 }} to meet mobile minimum 44x44 (pre-existing — flagged in iteration_4)."
+        ]
+      }
+    ],
+    "react_native_issues": [
+      {
+        "component": "expo-av",
+        "issue": "Deprecation warning still present in console: 'Expo AV has been deprecated and will be removed in SDK 54. Use the expo-audio and expo-video packages.' (Pre-existing, not related to this wizard fix.) Reference: console warning on page load."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/seed_step7_sections.py"
+  ],
+  "action_items": [
+    "(Optional, durability) Consider replacing localStorage flag 'pcw:step7-alpha-init:<analysisId>' with a server-side boolean on the analysis document (e.g., step7_alpha_seeded), so the first-entry seed effect is not re-triggered when a user opens the analysis on a different browser/device or after clearing site data — which currently can overwrite manual reorders made earlier from another browser. Reference: /app/frontend/app/tools/pros-cons-wizard.tsx lines 492-539.",
+    "(Optional, a11y) Add hitSlop to chevron-up / chevron-down TouchableOpacity wrappers in renderCard (pros-cons-wizard.tsx ~line 1276 and 1283) so the touch area reaches 44x44 on mobile."
+  ],
+  "critical_code_review_comments": [
+    "New Step 7 useEffect at lines 492-539 correctly partitions mains by notation, sorts each side via localeCompare (case-insensitive base sensitivity), short-circuits the POST when the current order already matches alphabetical (idempotent revisit), sets the localStorage flag only after the POST resolves, and includes a guard for mains.length===0 (does not set the flag so it retries once factors exist). Dependency array [step, analysis?.id] correctly avoids re-triggering on every analysis mutation while still re-running when switching analyses.",
+    "moveWithinSection (lines 432-461) and renderCard (lines 1268-1290) remain consistent with the alphabetical baseline — after the seed POST persists ranks in alphabetical order, ▲/▼ operate on top of that baseline.",
+    "Minor: console.warn fallback inside the catch is correct but the failed-seed path leaves the flag unset, which means the seed effect will retry on next render — acceptable for transient network errors, but if /factors/reorder returns a permanent error (e.g., ownership), it will retry every time the user lands on Step 7. Consider setting the flag in finally or on a specific 4xx response to break the retry loop."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "100% (within scope of this retest — primary alphabetical-default + secondary persistence assertions)"
+  },
+  "seed_data_creation": "Reused existing analysis id=517fae05-579f-4005-8f86-195edbfa21a8 (5 factors: Zeta, Alpha, Mango, Banana, Echo, 1 option OptX). Reset state via API: Alpha→notation=mandatory; reordered priority_ranks back to creation order (Zeta=1, Alpha=2, Mango=3, Banana=4, Echo=5) so the alphabetical seed had work to do; set current_step=6 so wizard lands at Step 7 after a Next click (or via direct /step POST in the script).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Step 7 alphabetical-default fix is verified working within a single browser session for both Mandatory and Optional sections. Analysis id=517fae05-579f-4005-8f86-195edbfa21a8 is left in state: Mandatory=Alpha,Mango (alphabetical), Optional=Banana,Echo,Zeta or Echo,Banana,Zeta depending on which test ran last (latest run with the flag-check left it at alphabetical Banana,Echo,Zeta after a fresh browser session re-seeded). To re-validate from scratch: clear localStorage key 'pcw:step7-alpha-init:517fae05-579f-4005-8f86-195edbfa21a8' AND reset priority_rank to non-alphabetical creation order via POST /factors/reorder with [Zeta,Alpha,Mango,Banana,Echo] ids, then load the wizard. Click chevrons via Playwright using locator '[aria-label=\"Move <name> down within Optional section\"]' — NOT by SVG search, because Ionicons render as font glyphs on web, not SVG.",
+  "rca_of_issue": "Previously-failing case RCA confirmed fixed: the Step 7 sort comparator still uses (priority_rank ASC, then localeCompare), but the new useEffect at line 492 issues a one-time POST /factors/reorder that overwrites the server-side priority_rank values with alphabetical order (per section) the first time a given analysis loads Step 7 in this browser. After that, the local sort comparator and the persisted ranks agree, so the alphabetical default renders. User reorders via ▲/▼ overwrite the persisted ranks; the localStorage flag (pcw:step7-alpha-init:<id>=1) prevents the seed from re-running and clobbering them on subsequent Step 7 entries within the same browser. Verified flag is set to '1' after first seed, and a Back→Next round-trip preserves Echo/Banana/Zeta order. The only residual nuance is that the flag is per-browser; if the seed effect re-fires in a different browser, it will re-alphabetize (observed in fresh Playwright contexts) — listed as an optional improvement, not a blocker."
+}
