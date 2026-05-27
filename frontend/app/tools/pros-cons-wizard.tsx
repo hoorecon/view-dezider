@@ -1614,6 +1614,28 @@ export default function ProsConsWizard() {
               0,
             );
 
+            // Compute ranking CLIENT-SIDE based on the new joint_score-based
+            // Score (backend's rank_high_to_low is based on the legacy
+            // satisfaction-% formula and gives meaningless ties when Step 8
+            // satisfaction inputs are blank).
+            //   • Qualified options first, sorted by Score DESC (ties broken
+            //     by original listing order).
+            //   • Disqualified options last, no rank shown.
+            const rankByOptId: Record<string, number | null> = {};
+            const qualified = analysis.options
+              .map((o, originalIdx) => ({
+                id: o.id,
+                score: Number(rollupByOpt[o.id]?.joint_score) || 0,
+                disqualified: !!rollupByOpt[o.id]?.disqualified,
+                originalIdx,
+              }))
+              .filter(x => !x.disqualified)
+              .sort((a, b) => b.score - a.score || a.originalIdx - b.originalIdx);
+            qualified.forEach((q, i) => { rankByOptId[q.id] = i + 1; });
+            analysis.options.forEach(o => {
+              if (rollupByOpt[o.id]?.disqualified) rankByOptId[o.id] = null;
+            });
+
             return (
             <View>
               <Text style={styles.stepTitle}>Step 8 — Detailed Assessment &amp; Final Score</Text>
@@ -1636,8 +1658,8 @@ export default function ProsConsWizard() {
                         <Text style={styles.factorName}>{o.name}</Text>
                         {r?.disqualified ? (
                           <Text style={{ color: COLORS.con, fontSize: 12 }}>Disqualified (Mandatory factor below threshold)</Text>
-                        ) : r?.rank_high_to_low ? (
-                          <Text style={{ color: COLORS.ok, fontSize: 12 }}>Rank #{r.rank_high_to_low}</Text>
+                        ) : rankByOptId[o.id] ? (
+                          <Text style={{ color: COLORS.ok, fontSize: 12 }}>Rank #{rankByOptId[o.id]}</Text>
                         ) : null}
                       </View>
                       <View style={{ alignItems: 'flex-end' }}>
