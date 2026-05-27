@@ -1,0 +1,56 @@
+{
+  "summary": "Step 7 split-section layout (Mandatory A / Optional B) tested end-to-end on mobile viewport 390x844. The TWO-section card layout, header colors (orange #EA580C for Mandatory, dark slate #0F172A for Optional), 'A'/'B' badges, section counts, A1/A2/B1/B2... rank badges, cross-section isolation of reorders, chevron-up disabled on first item, and cross-check (toggle Alpha A→B repartitions sections with correct counts) ALL WORK CORRECTLY. ONE FUNCTIONAL DISCREPANCY: the initial sort within each section is by priority_rank ASC (creation order) with alphabetical as tiebreaker — NOT pure alphabetical as the test requirement specified. With factors created in order Zeta, Alpha, Mango, Banana, Echo, the Optional section initially shows Zeta (B1), Banana (B2), Echo (B3) instead of the requested Banana (B1), Echo (B2), Zeta (B3). The Mandatory section happens to be alphabetical (Alpha A1, Mango A2) only by coincidence of creation order. All other reorder assertions pass.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Step 7 — Optional section initial sort",
+        "issue": "Section is sorted by priority_rank ASC (creation order), with alphabetical only as tiebreaker. The test requirement and DESIGN_IMPLEMENTED note both say 'Alphabetical default within each section.' Observed Optional order with factors created in order Zeta/Alpha/Mango/Banana/Echo: Zeta(B1) → Banana(B2) → Echo(B3). Expected alphabetical: Banana(B1) → Echo(B2) → Zeta(B3). Reference: /app/frontend/app/tools/pros-cons-wizard.tsx Step 7 IIFE (~line 1147), sort comparator `(ra ?? 9999) - rb` runs before localeCompare. Fix: either (a) sort by displayName.localeCompare first within each section, or (b) on initial entry to Step 7 re-rank each section alphabetically then persist new priority_rank values so subsequent up/down moves work from an alphabetical baseline.",
+        "testID": "n/a",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Step 7",
+        "issues": [
+          "Section header chips (A / B badges next to titles) and section count badges render correctly. Touch targets for chevron up/down buttons appear ~32-36px (slightly under the 44px minimum recommendation for mobile)."
+        ]
+      }
+    ],
+    "react_native_issues": [
+      {
+        "component": "expo-av",
+        "issue": "Deprecation warning in console: 'Expo AV has been deprecated and will be removed in SDK 54. Use the expo-audio and expo-video packages.' (Pre-existing, not introduced in this Step 7 change.) Reference: console warning during page load."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/seed_step7_sections.py"
+  ],
+  "action_items": [
+    "Fix Step 7 default sort order: each section (Mandatory and Optional) must be sorted alphabetically by displayName at first render, not by priority_rank (which encodes creation order). Suggested fix in /app/frontend/app/tools/pros-cons-wizard.tsx around the Step 7 IIFE at ~line 1147: swap the comparator so localeCompare runs first, or re-rank each section alphabetically when entering Step 7 and persist the new ordered_ids. After fix, the Optional section with Zeta/Banana/Echo should initially show Banana(B1), Echo(B2), Zeta(B3).",
+    "(Optional, low priority) Touch targets for the chevron up/down icons on Step 7 cards appear smaller than 44x44px; consider increasing hit area for mobile."
+  ],
+  "critical_code_review_comments": [
+    "Step 7 IIFE in pros-cons-wizard.tsx uses `sortFn = (a,b) => (ra ?? 9999) - rb || localeCompare(displayName)` — this means any factor with a server-assigned priority_rank (which all newly created factors have, equal to creation order) will sort by that rank, not alphabetically. The 'alphabetical default' requirement therefore only holds if priority_rank is missing/null, which never happens in practice.",
+    "moveWithinSection swap logic and ordered_ids POST payload look correct — verified via API: after each up/down click the priority_rank values reflect the new section order [mandatory..., optional..., subs..., duplicates...].",
+    "Section partition (notation === 'mandatory' vs not) verified correct — Alpha A→B toggle moves it from Mandatory(2) to Optional(4) with proper recount in the UI."
+  ],
+  "updated_files": [
+    "/app/backend/tests/seed_step7_sections.py (new seed script; uses correct {step:N} payload for /api/pros-cons/{id}/step)"
+  ],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "85%"
+  },
+  "seed_data_creation": "Created Pros & Cons analysis id=517fae05-579f-4005-8f86-195edbfa21a8 titled 'Step7 sectioned' with 5 factors (Zeta, Alpha, Mango, Banana, Echo), 1 option (OptX), notation Alpha+Mango=mandatory, others=optional, current_step=7. Seed script: /app/backend/tests/seed_step7_sections.py",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Use the existing analysis id 517fae05-579f-4005-8f86-195edbfa21a8 for retesting. To reset Alpha back to 'mandatory' before retesting, PUT {\"notation\":\"mandatory\"} to /api/pros-cons/517fae05-579f-4005-8f86-195edbfa21a8/factors/a0950374-64c1-4c37-a359-041cc14acfa7. The Step 6 UI 'A/B' toggle buttons could not be reliably triggered via DOM .click() in evaluate() — use Playwright's page.click() on the right coordinate or set notation via API for cross-check tests. Seed script /app/backend/tests/seed_step7_sections.py is reusable; it correctly uses {\"step\": N} payload (not {\"current_step\": N}) for the /step endpoint.",
+  "rca_of_issue": "Root cause of optional-section default ordering mismatch: backend assigns priority_rank to factors in creation order (Zeta=1, Alpha=2, Mango=3, Banana=4, Echo=5). The Step 7 sort comparator compares priority_rank BEFORE name, so optional section yields Zeta(rank3 originally rank1, became rank3 after reorders)/Banana/Echo by rank, not alphabetically. Reproduction: seed any analysis with non-alphabetical creation order, mark 2+ as optional, navigate to Step 7 — the order will follow creation order, not alphabet. Mitigation: invert the comparator to localeCompare first, OR alphabetize each section on first entry and persist ordered_ids so future up/down operate from an alphabetical baseline."
+}

@@ -71,6 +71,8 @@ const COLORS = {
   pro: '#059669', con: '#DC2626', direct: '#0369A1',
   bg: '#F8FAFC', card: '#FFFFFF', border: '#E2E8F0',
   text: '#0F172A', textDim: '#64748B', warn: '#EA580C', ok: '#16A34A',
+  mandatory: '#EA580C',  // orange — Step 6 "A" / Step 7 top section
+  optional: '#0F172A',   // dark slate — Step 6 "B" / Step 7 bottom section
 };
 
 export default function ProsConsWizard() {
@@ -414,6 +416,48 @@ export default function ProsConsWizard() {
     const finalIds = [...reordered, ...others].map(f => f.id);
     try { await api.post(`${base}/${id}/factors/reorder`, { ordered_ids: finalIds }); await reload(); }
     catch (e: any) { showAlert('Error', e?.response?.data?.detail || 'Reorder failed'); }
+  };
+
+  /**
+   * Step 7 — reorder WITHIN a section (Mandatory or Optional) only.
+   *
+   * `sectionList` is the visible, already-sorted slice for that section.
+   * `idx` is the position WITHIN that slice; `dir` is -1 (up) or +1 (down).
+   *
+   * Implementation: swap the two factors in `sectionList`, then concatenate
+   *   [new mandatory order, new optional order, sub-factors, duplicates]
+   * and POST the full id sequence to /factors/reorder. The backend rewrites
+   * priority_rank in this order so re-loading the page preserves it.
+   */
+  const moveWithinSection = async (sectionList: Factor[], idx: number, dir: -1 | 1) => {
+    if (!analysis) return;
+    const j = idx + dir;
+    if (j < 0 || j >= sectionList.length) return;
+
+    const swapped = [...sectionList];
+    [swapped[idx], swapped[j]] = [swapped[j], swapped[idx]];
+
+    // Build the other section list (the half NOT being reordered)
+    const isThisMandatory = sectionList[0]?.notation === 'mandatory';
+    const otherSection = (analysis.factors as Factor[])
+      .filter(f => !f.parent_id && !f.is_duplicate)
+      .filter(f => (f.notation === 'mandatory') !== isThisMandatory)
+      .sort((a, b) => {
+        const ra = a.priority_rank ?? 9999, rb = b.priority_rank ?? 9999;
+        if (ra !== rb) return ra - rb;
+        return (a.display_name || a.name || '').localeCompare(b.display_name || b.name || '');
+      });
+
+    const mandatoryOrdered = isThisMandatory ? swapped : otherSection;
+    const optionalOrdered  = isThisMandatory ? otherSection : swapped;
+    const otherFactors = analysis.factors.filter(f => f.parent_id || f.is_duplicate);
+    const finalIds = [...mandatoryOrdered, ...optionalOrdered, ...otherFactors].map(f => f.id);
+    try {
+      await api.post(`${base}/${id}/factors/reorder`, { ordered_ids: finalIds });
+      await reload();
+    } catch (e: any) {
+      showAlert('Error', e?.response?.data?.detail || 'Reorder failed');
+    }
   };
 
   // ─── Step 7+8: assessment cell update ────────────────────
@@ -1144,51 +1188,129 @@ export default function ProsConsWizard() {
           )}
 
           {/* ────── STEP 7 ────── */}
-          {step === 7 && (
-            <View>
-              <Text style={styles.stepTitle}>Step 7 — Prioritise &amp; Assess %</Text>
-              <Text style={styles.stepHint}>Reorder by importance (▲▼). Set Standard Rating per factor. For each option, set Assessment %. Cell value = Assessment % × Std Rating.</Text>
-              {/* Step 7 — iterate main factors only; sub-factors shown as read-only inside each card */}
-              {directFactors.map((f, i) => (
-                <View key={f.id} style={styles.factorCard}>
-                  <View style={styles.factorCardHeader}>
-                    <Text style={styles.rankBadge}>#{f.priority_rank}</Text>
-                    <Text style={styles.factorName}>{displayName(f)}</Text>
-                    <View style={{ flexDirection: 'row', gap: 4 }}>
-                      <TouchableOpacity onPress={() => moveMainFactor(i, -1)}><Ionicons name="chevron-up" size={20} color={COLORS.textDim} /></TouchableOpacity>
-                      <TouchableOpacity onPress={() => moveMainFactor(i, 1)}><Ionicons name="chevron-down" size={20} color={COLORS.textDim} /></TouchableOpacity>
-                    </View>
+          {step === 7 && (() => {
+            // Partition main factors into Mandatory (A) and Optional (B) sections.
+            // Each section is sorted by priority_rank (preserves prior reorders);
+            // ties broken alphabetically by display name.
+            const sortFn = (a: Factor, b: Factor) => {
+              const ra = a.priority_rank ?? 9999;
+              const rb = b.priority_rank ?? 9999;
+              if (ra !== rb) return ra - rb;
+              return displayName(a).localeCompare(displayName(b));
+            };
+            const mandatoryFactors = directFactors
+              .filter(f => f.notation === 'mandatory').sort(sortFn);
+            const optionalFactors = directFactors
+              .filter(f => f.notation !== 'mandatory').sort(sortFn);
+
+            // Renders one card (extracted so we don't duplicate JSX for A & B).
+            const renderCard = (f: Factor, displayIdx: number, sectionList: Factor[], sectionLabel: 'A' | 'B') => (
+              <View key={f.id} style={styles.factorCard}>
+                <View style={styles.factorCardHeader}>
+                  <Text style={[styles.rankBadge, sectionLabel === 'A' ? { backgroundColor: COLORS.mandatory } : { backgroundColor: COLORS.optional }]}>
+                    {sectionLabel}{displayIdx + 1}
+                  </Text>
+                  <Text style={[styles.factorName, { flex: 1 }]}>{displayName(f)}</Text>
+                  <View style={{ flexDirection: 'row', gap: 4 }}>
+                    <TouchableOpacity
+                      onPress={() => moveWithinSection(sectionList, displayIdx, -1)}
+                      disabled={displayIdx === 0}
+                      accessibilityLabel={`Move ${displayName(f)} up within ${sectionLabel === 'A' ? 'Mandatory' : 'Optional'} section`}
+                    >
+                      <Ionicons name="chevron-up" size={22} color={displayIdx === 0 ? COLORS.border : COLORS.textDim} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => moveWithinSection(sectionList, displayIdx, 1)}
+                      disabled={displayIdx === sectionList.length - 1}
+                      accessibilityLabel={`Move ${displayName(f)} down within ${sectionLabel === 'A' ? 'Mandatory' : 'Optional'} section`}
+                    >
+                      <Ionicons name="chevron-down" size={22} color={displayIdx === sectionList.length - 1 ? COLORS.border : COLORS.textDim} />
+                    </TouchableOpacity>
                   </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
-                    <Text style={styles.cellLabel}>Std Rating</Text>
-                    <TextInput style={[styles.inputSm, { width: 64 }]} keyboardType="number-pad"
-                      defaultValue={String(f.std_rating)}
-                      onEndEditing={(e) => updateFactor(f.id, { std_rating: Math.max(0, Math.min(100, parseInt(e.nativeEvent.text, 10) || 0)) })} />
-                  </View>
-                  {analysis.options.map(o => {
-                    const cell = (analysis.assessments?.[o.id] || {})[f.id] || { assessment_pct: 0, cell_value: 0 };
-                    return (
-                      <View key={o.id} style={styles.assessRow}>
-                        <Text style={styles.assessOpt} numberOfLines={1}>{o.name}</Text>
-                        <Text style={styles.cellLabel}>Assess %</Text>
-                        <TextInput style={[styles.inputSm, { width: 64 }]} keyboardType="number-pad"
-                          defaultValue={String(cell.assessment_pct ?? 0)}
-                          onEndEditing={(e) => upsertCell(o.id, f.id, { assessment_pct: Math.max(0, Math.min(100, parseInt(e.nativeEvent.text, 10) || 0)) })} />
-                        <Text style={styles.cellValue}>= {cell.cell_value?.toFixed?.(1) ?? '0'}</Text>
-                      </View>
-                    );
-                  })}
-                  <SubFactorReadOnlyList
-                    subs={childrenOf(f.id)}
-                    displayNameOf={displayName}
-                    hasRenameOf={hasRename}
-                    originalNameOf={originalName}
-                  />
                 </View>
-              ))}
-              <NextBack onBack={() => persistStep(6)} onNext={() => persistStep(8)} />
-            </View>
-          )}
+                {hasRename(f) && (
+                  <Text style={[styles.factorMeta, { color: COLORS.textDim, fontStyle: 'italic', marginTop: 2 }]}>
+                    Originally: “{originalName(f)}”
+                  </Text>
+                )}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                  <Text style={styles.cellLabel}>Std Rating</Text>
+                  <TextInput style={[styles.inputSm, { width: 64 }]} keyboardType="number-pad"
+                    defaultValue={String(f.std_rating)}
+                    onEndEditing={(e) => updateFactor(f.id, { std_rating: Math.max(0, Math.min(100, parseInt(e.nativeEvent.text, 10) || 0)) })} />
+                </View>
+                {analysis.options.map(o => {
+                  const cell = (analysis.assessments?.[o.id] || {})[f.id] || { assessment_pct: 0, cell_value: 0 };
+                  return (
+                    <View key={o.id} style={styles.assessRow}>
+                      <Text style={styles.assessOpt} numberOfLines={1}>{o.name}</Text>
+                      <Text style={styles.cellLabel}>Assess %</Text>
+                      <TextInput style={[styles.inputSm, { width: 64 }]} keyboardType="number-pad"
+                        defaultValue={String(cell.assessment_pct ?? 0)}
+                        onEndEditing={(e) => upsertCell(o.id, f.id, { assessment_pct: Math.max(0, Math.min(100, parseInt(e.nativeEvent.text, 10) || 0)) })} />
+                      <Text style={styles.cellValue}>= {cell.cell_value?.toFixed?.(1) ?? '0'}</Text>
+                    </View>
+                  );
+                })}
+                <SubFactorReadOnlyList
+                  subs={childrenOf(f.id)}
+                  displayNameOf={displayName}
+                  hasRenameOf={hasRename}
+                  originalNameOf={originalName}
+                />
+              </View>
+            );
+
+            return (
+              <View>
+                <Text style={styles.stepTitle}>Step 7 — Prioritise &amp; Assess %</Text>
+                <Text style={styles.stepHint}>
+                  Factors are split into Mandatory (A) and Optional (B) sections.
+                  Use ▲▼ to reorder within each section. Set Standard Rating per
+                  main factor. For each option, set Assessment %. Cell value =
+                  Assessment % × Std Rating.
+                </Text>
+
+                {/* ─── Mandatory (A) section ─── */}
+                <View style={styles.sectionBox}>
+                  <View style={[styles.sectionHeader, { backgroundColor: COLORS.mandatory }]}>
+                    <View style={styles.sectionHeaderBadge}>
+                      <Text style={styles.sectionHeaderBadgeText}>A</Text>
+                    </View>
+                    <Text style={styles.sectionHeaderTitle}>Mandatory factors</Text>
+                    <Text style={styles.sectionHeaderCount}>{mandatoryFactors.length}</Text>
+                  </View>
+                  {mandatoryFactors.length === 0 ? (
+                    <Text style={styles.sectionEmpty}>
+                      No factors marked Mandatory in Step 6. Go back to Step 6 to mark must-haves.
+                    </Text>
+                  ) : (
+                    mandatoryFactors.map((f, i) => renderCard(f, i, mandatoryFactors, 'A'))
+                  )}
+                </View>
+
+                {/* ─── Optional (B) section ─── */}
+                <View style={styles.sectionBox}>
+                  <View style={[styles.sectionHeader, { backgroundColor: COLORS.optional }]}>
+                    <View style={styles.sectionHeaderBadge}>
+                      <Text style={styles.sectionHeaderBadgeText}>B</Text>
+                    </View>
+                    <Text style={styles.sectionHeaderTitle}>Optional factors</Text>
+                    <Text style={styles.sectionHeaderCount}>{optionalFactors.length}</Text>
+                  </View>
+                  {optionalFactors.length === 0 ? (
+                    <Text style={styles.sectionEmpty}>
+                      No Optional factors. Mandatory factors will dominate the score; that's fine.
+                    </Text>
+                  ) : (
+                    optionalFactors.map((f, i) => renderCard(f, i, optionalFactors, 'B'))
+                  )}
+                </View>
+
+                <NextBack onBack={() => persistStep(6)} onNext={() => persistStep(8)} />
+              </View>
+            );
+          })()}
 
           {/* ────── STEP 8 ────── */}
           {step === 8 && (
@@ -1945,6 +2067,50 @@ const styles = StyleSheet.create({
   treeHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   treeChild: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 24, paddingTop: 4 },
   subFactorReadRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
+
+  // ─── Step 7 — Mandatory (A) / Optional (B) section boxes ─────
+  sectionBox: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 12,
+    marginBottom: 16,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 10,
+    marginHorizontal: -4,
+    marginTop: -4,
+  },
+  sectionHeaderBadge: {
+    width: 24, height: 24, borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  sectionHeaderBadgeText: { color: '#FFFFFF', fontWeight: '900', fontSize: 13 },
+  sectionHeaderTitle: { color: '#FFFFFF', fontWeight: '700', fontSize: 15, flex: 1 },
+  sectionHeaderCount: {
+    color: '#FFFFFF',
+    backgroundColor: 'rgba(0,0,0,0.15)',
+    paddingHorizontal: 8, paddingVertical: 2,
+    borderRadius: 10,
+    fontSize: 12, fontWeight: '700',
+    minWidth: 24, textAlign: 'center',
+  },
+  sectionEmpty: {
+    color: COLORS.textDim,
+    fontStyle: 'italic',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    textAlign: 'center',
+    fontSize: 13,
+  },
   notationBtn: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: COLORS.border, marginLeft: 4 },
   notationMandActive: { backgroundColor: COLORS.warn, borderColor: COLORS.warn },
   notationOptActive: { backgroundColor: COLORS.textDim, borderColor: COLORS.textDim },
