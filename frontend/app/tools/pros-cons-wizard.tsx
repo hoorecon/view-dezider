@@ -194,6 +194,23 @@ export default function ProsConsWizard() {
     catch (e: any) { showAlert('Error', e?.response?.data?.detail || 'Failed'); }
   };
 
+  /**
+   * Step-4 helper: create a brand-new factor that is already nested under
+   * `parentId`. Used by the "+ Type new sub-factor name…" input inside the
+   * FactorGroupRow picker, so the user can grow the factor tree without
+   * having to first add the factor as a top-level row in Step 1.
+   */
+  const createSubFactor = async (parentId: string, name: string) => {
+    const n = (name || '').trim();
+    if (!n) { showAlert('Required', 'Sub-factor name cannot be empty.'); return; }
+    try {
+      await api.post(`${base}/${id}/factors`, { name: n, parent_id: parentId });
+      await reload();
+    } catch (e: any) {
+      showAlert('Error', e?.response?.data?.detail || 'Failed to add sub-factor');
+    }
+  };
+
   // ─── Inline-edit state for factors and options ─────────────
   // Track which factor / option is currently in "edit" mode and the
   // working copy of its fields so the user can cancel without saving.
@@ -925,6 +942,7 @@ export default function ProsConsWizard() {
                     !d.parent_id && !d.is_duplicate && d.id !== f.id
                   )}
                   onAddChild={(childId) => updateFactor(childId, { parent_id: f.id })}
+                  onCreateChild={(name) => createSubFactor(f.id, name)}
                   onPromote={() => updateFactor(f.id, { parent_id: null })}
                   onToggleDuplicate={() => updateFactor(f.id, { is_duplicate: !f.is_duplicate })}
                 />
@@ -1114,14 +1132,20 @@ function NextBack({ onBack, onNext }: { onBack: (() => void) | null; onNext: (()
   );
 }
 
-function FactorGroupRow({ factor, candidateChildren, onAddChild, onPromote, onToggleDuplicate }: {
+function FactorGroupRow({ factor, candidateChildren, onAddChild, onCreateChild, onPromote, onToggleDuplicate }: {
   factor: Factor;
   candidateChildren: Factor[];
   onAddChild: (childId: string) => void;
+  onCreateChild: (name: string) => Promise<void> | void;
   onPromote: () => void;
   onToggleDuplicate: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  // Local state for the inline "create new sub-factor" text input.
+  // We keep this local to the row so each parent has its own draft and
+  // typing into one row doesn't leak into another.
+  const [newSubName, setNewSubName] = useState('');
+  const [creating, setCreating] = useState(false);
 
   const isSubFactor = !!factor.parent_id;
   const isDuplicate = !!factor.is_duplicate;
@@ -1210,24 +1234,73 @@ function FactorGroupRow({ factor, candidateChildren, onAddChild, onPromote, onTo
       {open && !isDuplicate && !isSubFactor && (
         <View style={{ width: '100%', marginTop: 8 }}>
           <Text style={styles.parentPickerLabel}>
-            Pick a factor to nest <Text style={{ fontWeight: '800', color: COLORS.text }}>UNDER “{factor.name}”</Text>:
+            Add a sub-factor <Text style={{ fontWeight: '800', color: COLORS.text }}>UNDER “{factor.name}”</Text>
           </Text>
-          {candidateChildren.length === 0 ? (
-            <Text style={[styles.factorMeta, { color: COLORS.textDim, fontStyle: 'italic' }]}>
-              No eligible factors to nest. Other top-level factors will appear here.
-            </Text>
-          ) : (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-              {candidateChildren.map(c => (
-                <TouchableOpacity
-                  key={c.id}
-                  style={styles.parentChip}
-                  onPress={() => { onAddChild(c.id); setOpen(false); }}
-                >
-                  <Text style={styles.parentChipText} numberOfLines={1}>{c.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+
+          {/* ── Path A: Create a brand-new sub-factor by typing its name ── */}
+          <Text style={[styles.factorMeta, { color: COLORS.textDim, marginTop: 6, marginBottom: 4 }]}>
+            ✏️  Type a new sub-factor name
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+            <TextInput
+              style={[styles.input, { flex: 1, minWidth: 0, marginBottom: 0 }]}
+              placeholder={`e.g. a sub-aspect of “${factor.name}”`}
+              placeholderTextColor={COLORS.textDim}
+              value={newSubName}
+              onChangeText={setNewSubName}
+              editable={!creating}
+              returnKeyType="done"
+              onSubmitEditing={async () => {
+                if (!newSubName.trim() || creating) return;
+                setCreating(true);
+                try {
+                  await onCreateChild(newSubName);
+                  setNewSubName('');
+                  setOpen(false);
+                } finally { setCreating(false); }
+              }}
+            />
+            <TouchableOpacity
+              style={[
+                styles.linkBtn,
+                { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+                (!newSubName.trim() || creating) && { opacity: 0.5 },
+              ]}
+              disabled={!newSubName.trim() || creating}
+              onPress={async () => {
+                setCreating(true);
+                try {
+                  await onCreateChild(newSubName);
+                  setNewSubName('');
+                  setOpen(false);
+                } finally { setCreating(false); }
+              }}
+              accessibilityLabel="Create new sub-factor under this factor"
+            >
+              <Text style={[styles.linkBtnText, { color: '#fff' }]}>
+                {creating ? 'Adding…' : 'Add'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* ── Path B: Move an EXISTING top-level factor under this one ── */}
+          {candidateChildren.length > 0 && (
+            <>
+              <Text style={[styles.factorMeta, { color: COLORS.textDim, marginTop: 10, marginBottom: 4 }]}>
+                ↳ …or pick an existing top-level factor to nest under it
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                {candidateChildren.map(c => (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={styles.parentChip}
+                    onPress={() => { onAddChild(c.id); setOpen(false); }}
+                  >
+                    <Text style={styles.parentChipText} numberOfLines={1}>{c.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
           )}
         </View>
       )}
