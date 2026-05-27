@@ -682,31 +682,75 @@ async def upsert_assessment(
     """Update / create the cell that holds Step #7 + #8 values for one (option, factor).
     Body may include: assessment_pct, actual_value, satisfaction_pct, improvement_pct, notes.
     cell_value and satisfaction_value are derived server-side.
+
+    CONCURRENCY: Uses MongoDB $set on individual nested fields, so two
+    parallel PUTs from the frontend (e.g. DebouncedInput unmount-flushes for
+    `actual_value` and `assessment_pct` firing simultaneously when navigating
+    Step 7 → 8) do NOT clobber each other. Previously this route used a
+    read-modify-write pattern (load full doc, mutate, persist), which caused
+    the second writer to overwrite the first writer's field on race.
     """
     doc = await _load_analysis(analysis_id, user["user_id"])
-    # validate referenced ids
     factor = next((f for f in doc["factors"] if f["id"] == factor_id), None)
     if not factor:
         raise HTTPException(status_code=404, detail="Factor not found")
     if not any(o["id"] == option_id for o in doc["options"]):
         raise HTTPException(status_code=404, detail="Option not found")
 
-    assessments = doc.get("assessments", {}) or {}
-    cell = (assessments.get(option_id) or {}).get(factor_id) or AssessmentCell().dict()
-    for k in ("assessment_pct", "actual_value", "satisfaction_pct", "improvement_pct", "notes"):
+    # Build the field-level $set payload for ONLY the keys the client sent.
+    # This is the key change — we never overwrite the full cell.
+    allowed_keys = {"assessment_pct", "actual_value", "satisfaction_pct", "improvement_pct", "notes"}
+    field_updates: Dict[str, Any] = {}
+    for k in allowed_keys:
         if k in body:
-            cell[k] = body[k]
-    # derived
-    cell["cell_value"] = compute_cell_value(
+            field_updates[f"assessments.{option_id}.{factor_id}.{k}"] = body[k]
+
+    # If the cell doesn't exist yet, seed defaults so missing keys are
+    # initialised — but only with the user's values + zeros (not with
+    # values that could clobber a concurrent write).
+    assessments = doc.get("assessments") or {}
+    existing_cell = (assessments.get(option_id) or {}).get(factor_id)
+    if not existing_cell:
+        defaults = AssessmentCell().dict()
+        for k, v in defaults.items():
+            path = f"assessments.{option_id}.{factor_id}.{k}"
+            if path not in field_updates:
+                field_updates[path] = v
+
+    if field_updates:
+        await db.pros_cons.update_one(
+            {"id": analysis_id, "user_id": user["user_id"]},
+            {"$set": field_updates},
+        )
+
+    # Now re-read the cell post-$set to compute derived fields atomically.
+    # Worst case: a concurrent writer's $set lands between our $set and read
+    # → our derived values reflect the merged state (which is what we want).
+    reread = await db.pros_cons.find_one(
+        {"id": analysis_id, "user_id": user["user_id"]},
+        {f"assessments.{option_id}.{factor_id}": 1},
+    )
+    cell = ((reread or {}).get("assessments", {}).get(option_id) or {}).get(factor_id) or AssessmentCell().dict()
+
+    derived_cell_value = compute_cell_value(
         int(cell.get("assessment_pct", 0) or 0),
         int(factor.get("std_rating", 0) or 0),
     )
-    cell["satisfaction_value"] = compute_satisfaction_value(
+    derived_sat_value = compute_satisfaction_value(
         factor.get("realistic_rating") or factor.get("std_rating"),
         float(cell.get("satisfaction_pct", 0.0) or 0.0),
     )
-    assessments.setdefault(option_id, {})[factor_id] = cell
-    await _persist(analysis_id, user["user_id"], {"assessments": assessments})
+    cell["cell_value"] = derived_cell_value
+    cell["satisfaction_value"] = derived_sat_value
+
+    await db.pros_cons.update_one(
+        {"id": analysis_id, "user_id": user["user_id"]},
+        {"$set": {
+            f"assessments.{option_id}.{factor_id}.cell_value": derived_cell_value,
+            f"assessments.{option_id}.{factor_id}.satisfaction_value": derived_sat_value,
+            "updated_at": datetime.now(timezone.utc),
+        }},
+    )
     return {"cell": cell}
 
 

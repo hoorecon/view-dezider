@@ -653,24 +653,58 @@ async def swot_update_config(analysis_id: str, body: Dict[str, Any], user: dict 
 @router.put("/{analysis_id}/assessments/{option_id}/{factor_id}")
 async def swot_upsert_assessment(analysis_id: str, option_id: str, factor_id: str,
                                   body: Dict[str, Any], user: dict = Depends(get_current_user)):
+    """Field-level $set so concurrent partial updates (e.g. actual_value &
+    assessment_pct flushed in parallel by DebouncedInput on Step 7→8
+    transitions) don't clobber each other. See pros_cons.upsert_assessment
+    for the full rationale."""
     doc = await _load_swot(analysis_id, user["user_id"])
     factor = next((f for f in doc["factors"] if f["id"] == factor_id), None)
     if not factor:
         raise HTTPException(status_code=404, detail="Factor not found")
     if not any(o["id"] == option_id for o in doc["options"]):
         raise HTTPException(status_code=404, detail="Option not found")
-    assessments = doc.get("assessments", {}) or {}
-    cell = (assessments.get(option_id) or {}).get(factor_id) or AssessmentCell().dict()
-    for k in ("assessment_pct", "actual_value", "satisfaction_pct", "improvement_pct", "notes"):
+
+    allowed_keys = {"assessment_pct", "actual_value", "satisfaction_pct", "improvement_pct", "notes"}
+    field_updates: Dict[str, Any] = {}
+    for k in allowed_keys:
         if k in body:
-            cell[k] = body[k]
-    cell["cell_value"] = compute_cell_value(int(cell.get("assessment_pct", 0) or 0),
+            field_updates[f"assessments.{option_id}.{factor_id}.{k}"] = body[k]
+
+    assessments = doc.get("assessments") or {}
+    existing_cell = (assessments.get(option_id) or {}).get(factor_id)
+    if not existing_cell:
+        defaults = AssessmentCell().dict()
+        for k, v in defaults.items():
+            path = f"assessments.{option_id}.{factor_id}.{k}"
+            if path not in field_updates:
+                field_updates[path] = v
+
+    if field_updates:
+        await db.swot.update_one(
+            {"id": analysis_id, "user_id": user["user_id"]},
+            {"$set": field_updates},
+        )
+
+    reread = await db.swot.find_one(
+        {"id": analysis_id, "user_id": user["user_id"]},
+        {f"assessments.{option_id}.{factor_id}": 1},
+    )
+    cell = ((reread or {}).get("assessments", {}).get(option_id) or {}).get(factor_id) or AssessmentCell().dict()
+    derived_cell_value = compute_cell_value(int(cell.get("assessment_pct", 0) or 0),
                                              int(factor.get("std_rating", 0) or 0))
-    cell["satisfaction_value"] = compute_satisfaction_value(
+    derived_sat_value = compute_satisfaction_value(
         factor.get("realistic_rating") or factor.get("std_rating"),
         float(cell.get("satisfaction_pct", 0.0) or 0.0))
-    assessments.setdefault(option_id, {})[factor_id] = cell
-    await _persist_swot(analysis_id, user["user_id"], {"assessments": assessments})
+    cell["cell_value"] = derived_cell_value
+    cell["satisfaction_value"] = derived_sat_value
+    await db.swot.update_one(
+        {"id": analysis_id, "user_id": user["user_id"]},
+        {"$set": {
+            f"assessments.{option_id}.{factor_id}.cell_value": derived_cell_value,
+            f"assessments.{option_id}.{factor_id}.satisfaction_value": derived_sat_value,
+            "updated_at": datetime.now(timezone.utc),
+        }},
+    )
     return {"cell": cell}
 
 
