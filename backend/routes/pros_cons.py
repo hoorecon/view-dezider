@@ -380,6 +380,7 @@ async def update_factor(analysis_id: str, factor_id: str, body: Dict[str, Any], 
         "market_standard", "realistic_gap_pct", "realistic_gap_value", "notes",
         "is_duplicate",   # Step 4 — non-destructive de-dup flag (audit history)
         "display_name",   # Step 5+ rename override; original `name` preserved for Steps 1-4
+        "priority_gap_pct",  # Step 7 — per-pair gap above the next lower factor
     }
     for k, v in body.items():
         if k in allowed:
@@ -428,13 +429,36 @@ async def reorder_factors(analysis_id: str, body: Dict[str, Any], user: dict = D
             f["priority_rank"] = rank_map[f["id"]]
     doc["factors"].sort(key=lambda f: f.get("priority_rank", 999))
 
-    # Auto-ladder std_rating for MAIN factors (in their new priority order).
+    # Auto-ladder std_rating for MAIN factors using PER-PAIR priority_gap_pct.
+    #
+    #   bottom factor       std_rating = base_gap (anchor)
+    #   each step up        std_rating = std_rating_below + (gap_pct/100) * base_gap
+    #
+    # Where:
+    #   base_gap     = config.std_gap (default 10)
+    #   gap_pct      = factor.priority_gap_pct (default 100 → adds full base_gap)
+    #
+    # Example with base_gap=10:
+    #   B5 (bottom):                    10
+    #   B4 (gap_pct=200): 10 + 20 =     30
+    #   B3 (gap_pct=150): 30 + 15 =     45
+    #   B2 (gap_pct=100): 45 + 10 =     55
+    #   etc.
+    #
+    # The mains list is ordered TOP→BOTTOM (priority_rank 1..N). We iterate
+    # in REVERSE to compute cumulative ratings from the anchor up.
     cfg = doc.get("config") or {}
-    std_gap = int(cfg.get("std_gap") or 10)
+    base_gap = int(cfg.get("std_gap") or 10)
     mains = [f for f in doc["factors"] if not f.get("parent_id") and not f.get("is_duplicate")]
-    n_mains = len(mains)
-    for pos, f in enumerate(mains):                # pos=0 is the TOP (highest priority)
-        f["std_rating"] = (n_mains - pos) * std_gap  # top=N*gap ... bottom=1*gap
+    if mains:
+        # Reverse so index 0 is the bottom-most (lowest priority) factor
+        bottom_to_top = list(reversed(mains))
+        bottom_to_top[0]["std_rating"] = base_gap
+        running = float(base_gap)
+        for i in range(1, len(bottom_to_top)):
+            gap_pct = float(bottom_to_top[i].get("priority_gap_pct") or 100.0)
+            running += (gap_pct / 100.0) * base_gap
+            bottom_to_top[i]["std_rating"] = int(round(running))
     # Sub-factors + duplicates: keep std_rating at 0 (not scored)
     for f in doc["factors"]:
         if f.get("parent_id") or f.get("is_duplicate"):
@@ -448,6 +472,41 @@ async def reorder_factors(analysis_id: str, body: Dict[str, Any], user: dict = D
             float(f.get("realistic_gap_pct") or 0.0),
         )
 
+    await _persist(analysis_id, user["user_id"], {"factors": doc["factors"]})
+    return {"factors": doc["factors"]}
+
+
+@router.post("/{analysis_id}/factors/recalc-ladder")
+async def recalc_ladder(analysis_id: str, user: dict = Depends(get_current_user)):
+    """Re-apply the per-pair priority-gap auto-ladder to all main factors
+    WITHOUT changing their priority order. Called by the frontend on Step 7
+    entry to (a) fix legacy analyses created before the ladder existed and
+    (b) refresh std_rating after a user tweaks any factor's priority_gap_pct.
+
+    Idempotent — calling repeatedly with the same data yields the same ratings.
+    """
+    doc = await _load_analysis(analysis_id, user["user_id"])
+    cfg = doc.get("config") or {}
+    base_gap = int(cfg.get("std_gap") or 10)
+    mains = sorted(
+        [f for f in doc["factors"] if not f.get("parent_id") and not f.get("is_duplicate")],
+        key=lambda f: f.get("priority_rank", 999),
+    )
+    if mains:
+        bottom_to_top = list(reversed(mains))
+        bottom_to_top[0]["std_rating"] = base_gap
+        running = float(base_gap)
+        for i in range(1, len(bottom_to_top)):
+            gap_pct = float(bottom_to_top[i].get("priority_gap_pct") or 100.0)
+            running += (gap_pct / 100.0) * base_gap
+            bottom_to_top[i]["std_rating"] = int(round(running))
+    for f in doc["factors"]:
+        if f.get("parent_id") or f.get("is_duplicate"):
+            f["std_rating"] = 0
+        f["realistic_rating"] = compute_realistic_rating(
+            int(f.get("std_rating") or 0),
+            float(f.get("realistic_gap_pct") or 0.0),
+        )
     await _persist(analysis_id, user["user_id"], {"factors": doc["factors"]})
     return {"factors": doc["factors"]}
 

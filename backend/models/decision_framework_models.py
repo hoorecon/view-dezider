@@ -67,8 +67,15 @@ class FrameworkFactor(BaseModel):
     notation: Literal["mandatory", "optional"] = "optional"
     # Step #7.1 — priority rank (1 = highest)
     priority_rank: int = 0
-    # Step #7 / #8 — standard rating (0-100)  anchor
+    # Step #7 / #8 — standard rating (0-100)  auto-laddered from priority + gap
     std_rating: int = 50
+    # Step #7 — PER-PAIR priority gap (percentage of base std_gap, default 100%).
+    # Defines how much HIGHER this factor's std_rating is vs the next lower
+    # factor in priority. The lowest factor's priority_gap_pct is ignored
+    # (it's the anchor at base_gap). Example: base_gap=10, factor B4 with
+    # priority_gap_pct=200 sits 20 points above B5; B3 with 150 sits 15
+    # points above B4. Cumulative bottom-up.
+    priority_gap_pct: float = 100.0
     # Step #8 — assessment metadata
     factor_type: Literal["subjective", "objective"] = "subjective"
     improvable: Literal["y", "y_bf", "n"] = "n"
