@@ -1294,30 +1294,70 @@ export default function ProsConsWizard() {
                     Originally: “{originalName(f)}”
                   </Text>
                 )}
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
                   <Text style={styles.cellLabel}>Std Rating</Text>
                   <TextInput style={[styles.inputSm, { width: 64 }]} keyboardType="number-pad"
                     defaultValue={String(f.std_rating)}
                     onEndEditing={(e) => updateFactor(f.id, { std_rating: Math.max(0, Math.min(100, parseInt(e.nativeEvent.text, 10) || 0)) })} />
+                  {/* Optional target/expected value + unit for THIS factor.       */}
+                  {/* Lets user record what "good" looks like (e.g., 60000 INR/mo) */}
+                  {/* so they can judge each option's actual value below.          */}
+                  <Text style={[styles.cellLabel, { marginLeft: 8 }]}>Expected</Text>
+                  <TextInput
+                    style={[styles.inputSm, { width: 96 }]}
+                    placeholder="optional"
+                    placeholderTextColor={COLORS.textDim}
+                    defaultValue={f.expected_value || ''}
+                    onEndEditing={(e) => updateFactor(f.id, { expected_value: e.nativeEvent.text || null })}
+                  />
+                  <Text style={styles.cellLabel}>Unit</Text>
+                  <TextInput
+                    style={[styles.inputSm, { width: 72 }]}
+                    placeholder="e.g., INR"
+                    placeholderTextColor={COLORS.textDim}
+                    defaultValue={f.unit || ''}
+                    onEndEditing={(e) => updateFactor(f.id, { unit: e.nativeEvent.text || null })}
+                  />
                 </View>
                 {analysis.options.map(o => {
-                  const cell = (analysis.assessments?.[o.id] || {})[f.id] || { assessment_pct: 0, cell_value: 0 };
+                  const cell = (analysis.assessments?.[o.id] || {})[f.id] || { assessment_pct: 0, cell_value: 0, actual_value: '' };
                   return (
-                    <View key={o.id} style={styles.assessRow}>
+                    <View key={o.id} style={[styles.assessRow, { flexWrap: 'wrap' }]}>
                       <Text style={styles.assessOpt} numberOfLines={1}>{o.name}</Text>
+                      {/* Per-option ACTUAL value capture — prefixes the Assess %  */}
+                      {/* input. The unit suffix comes from the parent factor's   */}
+                      {/* unit field so the user always sees the right scale.     */}
+                      <Text style={styles.cellLabel}>Actual</Text>
+                      <TextInput
+                        style={[styles.inputSm, { width: 84 }]}
+                        placeholder="value"
+                        placeholderTextColor={COLORS.textDim}
+                        defaultValue={cell.actual_value || ''}
+                        onEndEditing={(e) => upsertCell(o.id, f.id, { actual_value: e.nativeEvent.text })}
+                      />
+                      {f.unit ? <Text style={[styles.cellLabel, { color: COLORS.textDim }]}>{f.unit}</Text> : null}
                       <Text style={styles.cellLabel}>Assess %</Text>
-                      <TextInput style={[styles.inputSm, { width: 64 }]} keyboardType="number-pad"
+                      <TextInput style={[styles.inputSm, { width: 56 }]} keyboardType="number-pad"
                         defaultValue={String(cell.assessment_pct ?? 0)}
                         onEndEditing={(e) => upsertCell(o.id, f.id, { assessment_pct: Math.max(0, Math.min(100, parseInt(e.nativeEvent.text, 10) || 0)) })} />
                       <Text style={styles.cellValue}>= {cell.cell_value?.toFixed?.(1) ?? '0'}</Text>
                     </View>
                   );
                 })}
-                <SubFactorReadOnlyList
+                {/* Editable sub-factor accordion. Each sub-factor expands into    */}
+                {/* its own data-collection mini-card with Expected/Unit + per-   */}
+                {/* option Actual & Assess %. These values are captured but DO    */}
+                {/* NOT contribute to scoring (parent's rating dominates per the  */}
+                {/* aggregator's main-factor-only filter).                        */}
+                <SubFactorEditableList
                   subs={childrenOf(f.id)}
+                  options={analysis.options}
+                  assessments={analysis.assessments || {}}
                   displayNameOf={displayName}
                   hasRenameOf={hasRename}
                   originalNameOf={originalName}
+                  onFactorPatch={(fid, patch) => updateFactor(fid, patch)}
+                  onCellPatch={(oid, fid, patch) => upsertCell(oid, fid, patch)}
                 />
               </View>
             );
@@ -2024,6 +2064,121 @@ function MainFactorWithSubs({
 }
 
 /**
+ * Step 7 — EDITABLE sub-factor accordion (collapsed by default).
+ *
+ * Each expanded sub-factor renders its own mini-card with:
+ *   - Expected value + Unit (saved to factor.expected_value / factor.unit)
+ *   - Per-option: Actual value (saved to cell.actual_value), Assess %
+ *     (saved to cell.assessment_pct).
+ *
+ * IMPORTANT: per the wizard contract, sub-factor cells are CAPTURED but DO
+ * NOT contribute to the option score — the backend aggregator filters them
+ * out (see compute_option_rollups → scoring_factors). They're collected
+ * purely as decision-support context for the user.
+ */
+function SubFactorEditableList({
+  subs,
+  options,
+  assessments,
+  displayNameOf,
+  hasRenameOf,
+  originalNameOf,
+  onFactorPatch,
+  onCellPatch,
+}: {
+  subs: Factor[];
+  options: OptionT[];
+  assessments: Record<string, Record<string, Cell>>;
+  displayNameOf: (f: Factor) => string;
+  hasRenameOf: (f: Factor) => boolean;
+  originalNameOf: (f: Factor) => string;
+  onFactorPatch: (factorId: string, patch: any) => void;
+  onCellPatch: (optionId: string, factorId: string, patch: any) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!subs || subs.length === 0) return null;
+  return (
+    <View style={{ marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: COLORS.border }}>
+      <TouchableOpacity
+        onPress={() => setOpen(o => !o)}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+        accessibilityLabel={open ? 'Collapse sub-factors' : 'Expand sub-factors'}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={16} color={COLORS.textDim} />
+        <Text style={[styles.factorMeta, { color: COLORS.textDim, fontWeight: '600' }]}>
+          Sub-factors ({subs.length}) — data collection (optional, not scored)
+        </Text>
+      </TouchableOpacity>
+      {open && (
+        <View style={{ paddingLeft: 14, paddingTop: 6, gap: 12 }}>
+          {subs.map(s => (
+            <View key={s.id} style={styles.subFactorEditCard}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={[styles.sourceTag, { backgroundColor: s.source === 'pro' ? COLORS.pro : s.source === 'con' ? COLORS.con : COLORS.direct }]}>
+                  <Text style={styles.sourceTagText}>{s.source === 'direct' ? 'D' : s.source === 'pro' ? 'P' : 'C'}</Text>
+                </View>
+                <Text style={[styles.factorName, { flex: 1 }]} numberOfLines={2}>{displayNameOf(s)}</Text>
+              </View>
+              {hasRenameOf(s) && (
+                <Text style={[styles.factorMeta, { color: COLORS.textDim, fontStyle: 'italic' }]}>
+                  Originally: “{originalNameOf(s)}”
+                </Text>
+              )}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                <Text style={styles.cellLabel}>Expected</Text>
+                <TextInput
+                  style={[styles.inputSm, { width: 88 }]}
+                  placeholder="optional"
+                  placeholderTextColor={COLORS.textDim}
+                  defaultValue={s.expected_value || ''}
+                  onEndEditing={(e) => onFactorPatch(s.id, { expected_value: e.nativeEvent.text || null })}
+                />
+                <Text style={styles.cellLabel}>Unit</Text>
+                <TextInput
+                  style={[styles.inputSm, { width: 64 }]}
+                  placeholder="e.g., hr"
+                  placeholderTextColor={COLORS.textDim}
+                  defaultValue={s.unit || ''}
+                  onEndEditing={(e) => onFactorPatch(s.id, { unit: e.nativeEvent.text || null })}
+                />
+              </View>
+              {options.map(o => {
+                const cell = (assessments[o.id] || {})[s.id] || { assessment_pct: 0, cell_value: 0, actual_value: '' };
+                return (
+                  <View key={o.id} style={[styles.assessRow, { flexWrap: 'wrap' }]}>
+                    <Text style={styles.assessOpt} numberOfLines={1}>{o.name}</Text>
+                    <Text style={styles.cellLabel}>Actual</Text>
+                    <TextInput
+                      style={[styles.inputSm, { width: 80 }]}
+                      placeholder="value"
+                      placeholderTextColor={COLORS.textDim}
+                      defaultValue={cell.actual_value || ''}
+                      onEndEditing={(e) => onCellPatch(o.id, s.id, { actual_value: e.nativeEvent.text })}
+                    />
+                    {s.unit ? <Text style={[styles.cellLabel, { color: COLORS.textDim }]}>{s.unit}</Text> : null}
+                    <Text style={styles.cellLabel}>Assess %</Text>
+                    <TextInput
+                      style={[styles.inputSm, { width: 56 }]}
+                      keyboardType="number-pad"
+                      defaultValue={String(cell.assessment_pct ?? 0)}
+                      onEndEditing={(e) => onCellPatch(o.id, s.id, { assessment_pct: Math.max(0, Math.min(100, parseInt(e.nativeEvent.text, 10) || 0)) })}
+                    />
+                    <Text style={[styles.cellValue, { color: COLORS.textDim }]}>
+                      (info only)
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+/**
  * Compact, COLLAPSED-by-default list of sub-factors for embedding inside
  * a parent's card (Steps 7 & 8). Sub-factors are read-only — the user
  * rates / prioritises at the parent level for now.
@@ -2128,6 +2283,14 @@ const styles = StyleSheet.create({
   treeHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   treeChild: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 24, paddingTop: 4 },
   subFactorReadRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
+  subFactorEditCard: {
+    backgroundColor: COLORS.bg,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 10,
+    gap: 4,
+  },
 
   // ─── Step 7 — Mandatory (A) / Optional (B) section boxes ─────
   sectionBox: {
