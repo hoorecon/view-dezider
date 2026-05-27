@@ -379,6 +379,7 @@ async def update_factor(analysis_id: str, factor_id: str, body: Dict[str, Any], 
         "std_rating", "factor_type", "improvable", "my_expectation", "others_expectations",
         "market_standard", "realistic_gap_pct", "realistic_gap_value", "notes",
         "is_duplicate",   # Step 4 — non-destructive de-dup flag (audit history)
+        "display_name",   # Step 5+ rename override; original `name` preserved for Steps 1-4
     }
     for k, v in body.items():
         if k in allowed:

@@ -32,6 +32,7 @@ interface Factor {
   id: string; name: string; expected_value?: string | null; unit?: string | null;
   source: Source; source_option_id?: string | null; parent_id?: string | null;
   is_duplicate?: boolean;   // Step 4 — soft de-dup flag (audit history)
+  display_name?: string | null;  // Step 5+ rename override; `name` stays as the original
   notation: 'mandatory' | 'optional'; priority_rank: number; std_rating: number;
   factor_type: 'subjective' | 'objective'; improvable: 'y' | 'y_bf' | 'n';
   my_expectation?: string | null; others_expectations?: string | null; market_standard?: string | null;
@@ -435,6 +436,28 @@ export default function ProsConsWizard() {
   // exclude sub-factors and exclude duplicates (you shouldn't be able to
   // nest a factor under a removed/duplicate one)
   const groupingParents = analysis.factors.filter(f => !f.parent_id && !f.is_duplicate);
+
+  /**
+   * Display-name helper.
+   *
+   * Step 1-4 ALWAYS show the original `name` (what the user typed in Step 1),
+   * which preserves the source-of-truth label and lets the user track their
+   * original thinking even after Step 5 renames.
+   *
+   * Step 5-8 show `display_name` if the user has renamed in Step 5, otherwise
+   * fall back to `name`. This way:
+   *   - Step 1-4 captions in Step 5+ ("↳ sub-factor of "<X>"") use display_name
+   *     so the user sees the names they chose in Step 5
+   *   - Re-visiting earlier steps still shows the original entries verbatim
+   */
+  const displayName = (f: Factor): string =>
+    (step >= 5 ? (f.display_name && f.display_name.trim() ? f.display_name : f.name) : f.name) || '';
+
+  // For tooltips / hints — original name to show under the rename input
+  // ("Original: <name>") so the user can see what they overrode.
+  const originalName = (f: Factor): string => f.name || '';
+  const hasRename = (f: Factor): boolean =>
+    Boolean(f.display_name && f.display_name.trim() && f.display_name.trim() !== f.name);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -1042,7 +1065,16 @@ export default function ProsConsWizard() {
               <Text style={styles.stepTitle}>Step 5 — Review Factor Tree</Text>
               <Text style={styles.stepHint}>Direct factors with their sub-factors (collapsible). Sub-factor-level rating is reserved for a future release — rate at the parent level for now.</Text>
               {directFactors.map(f => (
-                <FactorTreeNode key={f.id} factor={f} childrenList={childrenOf(f.id)} />
+                <FactorTreeNode
+                  key={f.id}
+                  factor={f}
+                  childrenList={childrenOf(f.id)}
+                  displayNameOf={displayName}
+                  hasRenameOf={hasRename}
+                  originalNameOf={originalName}
+                  onRename={(fid, newName) => updateFactor(fid, { display_name: newName })}
+                  onRevertName={(fid) => updateFactor(fid, { display_name: null })}
+                />
               ))}
               <NextBack onBack={() => persistStep(4)} onNext={() => persistStep(6)} />
             </View>
@@ -1068,7 +1100,7 @@ export default function ProsConsWizard() {
               {analysis.factors.map(f => (
                 <View key={f.id} style={styles.factorRow}>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.factorName}>{f.name}</Text>
+                    <Text style={styles.factorName}>{displayName(f)}</Text>
                   </View>
                   {(['mandatory', 'optional'] as const).map(n => (
                     <TouchableOpacity key={n} style={[styles.notationBtn, f.notation === n && (n === 'mandatory' ? styles.notationMandActive : styles.notationOptActive)]}
@@ -1091,7 +1123,7 @@ export default function ProsConsWizard() {
                 <View key={f.id} style={styles.factorCard}>
                   <View style={styles.factorCardHeader}>
                     <Text style={styles.rankBadge}>#{f.priority_rank}</Text>
-                    <Text style={styles.factorName}>{f.name}</Text>
+                    <Text style={styles.factorName}>{displayName(f)}</Text>
                     <View style={{ flexDirection: 'row', gap: 4 }}>
                       <TouchableOpacity onPress={() => moveFactor(i, -1)}><Ionicons name="chevron-up" size={20} color={COLORS.textDim} /></TouchableOpacity>
                       <TouchableOpacity onPress={() => moveFactor(i, 1)}><Ionicons name="chevron-down" size={20} color={COLORS.textDim} /></TouchableOpacity>
@@ -1160,6 +1192,7 @@ export default function ProsConsWizard() {
               {analysis.factors.map(f => (
                 <FactorAssessmentCard key={f.id} factor={f} options={analysis.options}
                   cells={(analysis.assessments || {})}
+                  displayName={displayName(f)}
                   onFactorUpdate={(patch) => updateFactor(f.id, patch)}
                   onCellUpdate={(oid, patch) => upsertCell(oid, f.id, patch)} />
               ))}
@@ -1398,36 +1431,202 @@ function FactorGroupRow({ factor, parentName, candidateChildren, onAddChild, onC
   );
 }
 
-function FactorTreeNode({ factor, childrenList }: { factor: Factor; childrenList: Factor[] }) {
+function FactorTreeNode({
+  factor,
+  childrenList,
+  displayNameOf,
+  hasRenameOf,
+  originalNameOf,
+  onRename,
+  onRevertName,
+}: {
+  factor: Factor;
+  childrenList: Factor[];
+  /** Returns the name to display (display_name || name when step >= 5) */
+  displayNameOf: (f: Factor) => string;
+  /** True when display_name differs from name (i.e., this row is renamed) */
+  hasRenameOf: (f: Factor) => boolean;
+  /** Returns the original (Step-1) name to show as "Originally: …" hint */
+  originalNameOf: (f: Factor) => string;
+  /** Persist a rename via PUT display_name */
+  onRename: (factorId: string, newDisplayName: string) => void | Promise<void>;
+  /** Clear the rename — PUT display_name=null. Reverts to original `name`. */
+  onRevertName: (factorId: string) => void | Promise<void>;
+}) {
   const [open, setOpen] = useState(true);
   return (
     <View style={styles.treeNode}>
-      <TouchableOpacity style={styles.treeHead} onPress={() => setOpen(o => !o)}>
-        <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={18} color={COLORS.textDim} />
-        <Text style={[styles.factorName, { flex: 1 }]}>{factor.name}</Text>
+      <View style={styles.treeHead}>
+        <TouchableOpacity onPress={() => setOpen(o => !o)} style={{ marginRight: 4 }}>
+          <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={18} color={COLORS.textDim} />
+        </TouchableOpacity>
+        <RenamableFactorRow
+          factor={factor}
+          displayNameOf={displayNameOf}
+          hasRenameOf={hasRenameOf}
+          originalNameOf={originalNameOf}
+          onRename={onRename}
+          onRevertName={onRevertName}
+        />
         <Text style={styles.factorMeta}>{childrenList.length} sub</Text>
-      </TouchableOpacity>
+      </View>
       {open && childrenList.map(c => (
         <View key={c.id} style={styles.treeChild}>
           <View style={[styles.sourceTag, { backgroundColor: c.source === 'pro' ? COLORS.pro : c.source === 'con' ? COLORS.con : COLORS.direct }]}>
             <Text style={styles.sourceTagText}>{c.source === 'direct' ? 'D' : c.source === 'pro' ? 'P' : 'C'}</Text>
           </View>
-          <Text style={[styles.factorName, { flex: 1 }]}>{c.name}</Text>
+          <RenamableFactorRow
+            factor={c}
+            displayNameOf={displayNameOf}
+            hasRenameOf={hasRenameOf}
+            originalNameOf={originalNameOf}
+            onRename={onRename}
+            onRevertName={onRevertName}
+          />
         </View>
       ))}
     </View>
   );
 }
 
-function FactorAssessmentCard({ factor, options, cells, onFactorUpdate, onCellUpdate }: {
+/**
+ * Inline-editable single-row factor name with pencil icon.
+ *
+ * Click pencil → row becomes a TextInput + Save / Cancel / Revert buttons.
+ *   - "Save" PUTs display_name (only takes effect Step 5+)
+ *   - "Revert" PUTs display_name=null and falls back to original `name`
+ *   - The original (Step-1) name is shown as a subtle hint under the row
+ *     ONLY when a rename is active, so the user remembers what it used
+ *     to be called.
+ */
+function RenamableFactorRow({
+  factor,
+  displayNameOf,
+  hasRenameOf,
+  originalNameOf,
+  onRename,
+  onRevertName,
+}: {
+  factor: Factor;
+  displayNameOf: (f: Factor) => string;
+  hasRenameOf: (f: Factor) => boolean;
+  originalNameOf: (f: Factor) => string;
+  onRename: (factorId: string, newDisplayName: string) => void | Promise<void>;
+  onRevertName: (factorId: string) => void | Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(displayNameOf(factor));
+  const [busy, setBusy] = useState(false);
+
+  const startEdit = () => {
+    setDraft(displayNameOf(factor));
+    setEditing(true);
+  };
+
+  const save = async () => {
+    const trimmed = draft.trim();
+    if (!trimmed) return;
+    if (trimmed === displayNameOf(factor)) { setEditing(false); return; }
+    setBusy(true);
+    try {
+      await onRename(factor.id, trimmed);
+      setEditing(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revert = async () => {
+    setBusy(true);
+    try {
+      await onRevertName(factor.id);
+      setEditing(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <View style={{ flex: 1 }}>
+        <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+          <TextInput
+            style={[styles.input, { flex: 1, marginBottom: 0 }]}
+            value={draft}
+            onChangeText={setDraft}
+            placeholder="Rename factor"
+            placeholderTextColor={COLORS.textDim}
+            autoFocus
+            editable={!busy}
+            returnKeyType="done"
+            onSubmitEditing={save}
+          />
+          <TouchableOpacity
+            style={[styles.miniBtn, (!draft.trim() || busy) && { opacity: 0.5 }]}
+            disabled={!draft.trim() || busy}
+            onPress={save}
+            accessibilityLabel="Save factor rename"
+          >
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
+              {busy ? '…' : 'Save'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.miniBtn, { backgroundColor: '#EEE' }]}
+            onPress={() => setEditing(false)}
+            disabled={busy}
+            accessibilityLabel="Cancel rename"
+          >
+            <Text style={{ color: COLORS.text, fontWeight: '700', fontSize: 12 }}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+        {hasRenameOf(factor) && (
+          <TouchableOpacity onPress={revert} disabled={busy} style={{ marginTop: 6, alignSelf: 'flex-start' }}>
+            <Text style={[styles.factorMeta, { color: COLORS.primary, textDecorationLine: 'underline' }]}>
+              ↺ Revert to original: “{originalNameOf(factor)}”
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.factorName, { flex: 1 }]} numberOfLines={2}>
+          {displayNameOf(factor)}
+        </Text>
+        {hasRenameOf(factor) && (
+          <Text style={[styles.factorMeta, { color: COLORS.textDim, fontStyle: 'italic' }]}>
+            Originally: “{originalNameOf(factor)}”
+          </Text>
+        )}
+      </View>
+      <TouchableOpacity
+        onPress={startEdit}
+        style={{ padding: 6 }}
+        accessibilityLabel="Rename this factor"
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Ionicons name="pencil-outline" size={16} color={COLORS.primary} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function FactorAssessmentCard({ factor, options, cells, displayName, onFactorUpdate, onCellUpdate }: {
   factor: Factor; options: OptionT[]; cells: Record<string, Record<string, Cell>>;
+  /** Pre-computed display label (display_name || name). Computed by parent
+   *  so the rename-aware logic isn't duplicated here. */
+  displayName?: string;
   onFactorUpdate: (p: any) => void; onCellUpdate: (oid: string, p: any) => void;
 }) {
   return (
     <View style={styles.factorCard}>
       <View style={styles.factorCardHeader}>
         <Text style={styles.rankBadge}>#{factor.priority_rank}</Text>
-        <Text style={[styles.factorName, { flex: 1 }]}>{factor.name}</Text>
+        <Text style={[styles.factorName, { flex: 1 }]}>{displayName || factor.name}</Text>
       </View>
 
       {/* Type & Improvable */}

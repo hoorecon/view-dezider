@@ -412,7 +412,8 @@ async def swot_update_factor(analysis_id: str, factor_id: str, body: Dict[str, A
                "std_rating", "factor_type", "improvable", "my_expectation",
                "others_expectations", "market_standard", "realistic_gap_pct",
                "realistic_gap_value", "notes",
-               "is_duplicate"}  # Step 4 — soft de-dup flag (audit history)
+               "is_duplicate",   # Step 4 — soft de-dup flag (audit history)
+               "display_name"}   # Step 5+ rename override; original `name` preserved
     for k, v in body.items():
         if k in allowed:
             factors[idx][k] = v
