@@ -1639,7 +1639,36 @@ export default function ProsConsWizard() {
               case2ScoreByOpt[o.id] = c2;
             });
 
-            // Rank by Case-2 score DESC (qualified options first, ties → original
+            // ── Case-2 split %: per option, split into Mandatory (A) and
+            //    Optional (B) sub-sections — matches the manual spreadsheet's
+            //    row-9 (A subtotal) and row-20 (B subtotal) percentages.
+            //
+            //    A% = sum(effective_assess% × std / 100 for mandatory factors)
+            //         ÷ sum(std for mandatory factors) × 100
+            //    B% = same with optional factors
+            //
+            //    Section-empty (no mandatory factors at all, or no optional)
+            //    returns null so we render "—" instead of NaN.
+            const mandFactors = directFactors.filter(f => f.notation === 'mandatory');
+            const optFactors  = directFactors.filter(f => f.notation !== 'mandatory');
+            const sectionPctByOpt: Record<string, { a: number | null; b: number | null }> = {};
+            analysis.options.forEach(o => {
+              const calcPct = (subset: Factor[]): number | null => {
+                if (!subset.length) return null;
+                let num = 0, den = 0;
+                subset.forEach(f => {
+                  const cell = (analysis.assessments?.[o.id] || {})[f.id] || {};
+                  const a7 = Number(cell.assessment_pct) || 0;
+                  const d  = Number(cell.improvement_pct) || 0;
+                  const std = Number(f.std_rating) || 0;
+                  const eff = Math.max(0, Math.min(100, a7 + d));
+                  num += (eff * std) / 100;
+                  den += std;
+                });
+                return den > 0 ? (num / den) * 100 : null;
+              };
+              sectionPctByOpt[o.id] = { a: calcPct(mandFactors), b: calcPct(optFactors) };
+            });
             // listing order; disqualified options pushed to bottom with no rank).
             const rankByOptId: Record<string, number | null> = {};
             const qualified = analysis.options
@@ -1696,6 +1725,25 @@ export default function ProsConsWizard() {
                       <View style={{ alignItems: 'flex-end' }}>
                         <Text style={styles.overallPct}>{overallPct.toFixed(1)}%</Text>
                         <Text style={styles.cellLabel}>Score: {score.toFixed(0)}</Text>
+                        {/* A / B section split — matches spreadsheet's
+                            yellow-row (A subtotal) and grey-row (B subtotal) */}
+                        {(() => {
+                          const sp = sectionPctByOpt[o.id] || { a: null, b: null };
+                          if (sp.a === null && sp.b === null) return null;
+                          return (
+                            <View style={{ flexDirection: 'row', gap: 6, marginTop: 2 }}>
+                              {sp.a !== null && (
+                                <Text style={styles.sectionPctA}>A {sp.a.toFixed(1)}%</Text>
+                              )}
+                              {sp.a !== null && sp.b !== null && (
+                                <Text style={styles.sectionPctSep}>·</Text>
+                              )}
+                              {sp.b !== null && (
+                                <Text style={styles.sectionPctB}>B {sp.b.toFixed(1)}%</Text>
+                              )}
+                            </View>
+                          );
+                        })()}
                         {Math.abs(delta) >= 0.5 && (
                           <Text style={{ fontSize: 11, fontWeight: '700', color: delta > 0 ? COLORS.ok : COLORS.con }}>
                             {delta > 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(0)} vs Case-1
@@ -2756,6 +2804,13 @@ const styles = StyleSheet.create({
   },
   mppsUnitBtnOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   mppsUnitText: { fontSize: 11, fontWeight: '700', color: COLORS.text },
+
+  // ─── Step 8 — A / B section split percentages (subtotals under each option's Score)
+  // Color cue: A (mandatory) in amber-orange, B (optional) in steel-blue — matches
+  // the colour language used in Step 7 section headers (mandatory/optional).
+  sectionPctA: { fontSize: 11, fontWeight: '800', color: '#B45309' /* amber-700 */ },
+  sectionPctB: { fontSize: 11, fontWeight: '800', color: '#1D4ED8' /* blue-700  */ },
+  sectionPctSep: { fontSize: 11, color: COLORS.textDim },
 
   // ─── Step 7 — Mandatory (A) / Optional (B) section boxes ─────
   sectionBox: {
