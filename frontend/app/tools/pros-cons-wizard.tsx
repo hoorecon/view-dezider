@@ -930,23 +930,108 @@ export default function ProsConsWizard() {
                 </View>
               </View>
 
-              {analysis.factors.map((f) => (
-                <FactorGroupRow
-                  key={f.id}
-                  factor={f}
-                  // INVERTED semantic — when user clicks "Add sub-factor"
-                  // on F, the picker shows OTHER top-level factors that
-                  // can be MOVED UNDER F. F stays as the main/parent;
-                  // the picked factor becomes the child (gray).
-                  candidateChildren={analysis.factors.filter(d =>
-                    !d.parent_id && !d.is_duplicate && d.id !== f.id
-                  )}
-                  onAddChild={(childId) => updateFactor(childId, { parent_id: f.id })}
-                  onCreateChild={(name) => createSubFactor(f.id, name)}
-                  onPromote={() => updateFactor(f.id, { parent_id: null })}
-                  onToggleDuplicate={() => updateFactor(f.id, { is_duplicate: !f.is_duplicate })}
-                />
-              ))}
+              {(() => {
+                // ── Hierarchical render for Step 4 ────────────────────────
+                // Render order:
+                //   1. Each top-level non-duplicate factor IN its natural order
+                //   2. Immediately followed by its sub-factors (indented)
+                //   3. Then any duplicates at the very end (keeps audit
+                //      visibility without polluting the active list)
+                // This is what fixes the bug where "Saving of Fuel Cost"
+                // (nested under "Expected salary") was visually rendered
+                // right after "Will get more free time" — making it look
+                // like the wrong parent. We now physically reorder rows so
+                // a child ALWAYS appears directly under its true parent.
+                const allFactors = analysis.factors;
+                const byParent: Record<string, Factor[]> = {};
+                for (const f of allFactors) {
+                  const pid = f.parent_id || '';
+                  if (!pid) continue;
+                  if (!byParent[pid]) byParent[pid] = [];
+                  byParent[pid].push(f);
+                }
+                const topLevel = allFactors.filter(f => !f.parent_id && !f.is_duplicate);
+                const duplicates = allFactors.filter(f => f.is_duplicate);
+                // Orphaned sub-factors: parent_id points to a non-existent
+                // or duplicate-marked factor. Should be rare but render
+                // them at the bottom under a small note so user can fix.
+                const validParentIds = new Set(topLevel.map(f => f.id));
+                const orphans = allFactors.filter(f =>
+                  f.parent_id && !f.is_duplicate && !validParentIds.has(f.parent_id)
+                );
+                const rendered: React.ReactNode[] = [];
+                for (const parent of topLevel) {
+                  rendered.push(
+                    <FactorGroupRow
+                      key={parent.id}
+                      factor={parent}
+                      parentName={null}
+                      candidateChildren={topLevel.filter(d => d.id !== parent.id)}
+                      onAddChild={(childId) => updateFactor(childId, { parent_id: parent.id })}
+                      onCreateChild={(name) => createSubFactor(parent.id, name)}
+                      onPromote={() => updateFactor(parent.id, { parent_id: null })}
+                      onToggleDuplicate={() => updateFactor(parent.id, { is_duplicate: !parent.is_duplicate })}
+                    />
+                  );
+                  for (const child of (byParent[parent.id] || [])) {
+                    rendered.push(
+                      <FactorGroupRow
+                        key={child.id}
+                        factor={child}
+                        parentName={parent.name}
+                        candidateChildren={[]}
+                        onAddChild={() => {}}
+                        onCreateChild={async () => {}}
+                        onPromote={() => updateFactor(child.id, { parent_id: null })}
+                        onToggleDuplicate={() => updateFactor(child.id, { is_duplicate: !child.is_duplicate })}
+                      />
+                    );
+                  }
+                }
+                if (orphans.length > 0) {
+                  rendered.push(
+                    <Text key="orphan-note" style={[styles.factorMeta, { color: COLORS.warn, marginTop: 12, marginBottom: 4 }]}>
+                      ⚠️ {orphans.length} sub-factor(s) reference a missing/duplicate parent. Promote them out or re-group:
+                    </Text>
+                  );
+                  for (const o of orphans) {
+                    rendered.push(
+                      <FactorGroupRow
+                        key={o.id}
+                        factor={o}
+                        parentName="(missing parent)"
+                        candidateChildren={[]}
+                        onAddChild={() => {}}
+                        onCreateChild={async () => {}}
+                        onPromote={() => updateFactor(o.id, { parent_id: null })}
+                        onToggleDuplicate={() => updateFactor(o.id, { is_duplicate: !o.is_duplicate })}
+                      />
+                    );
+                  }
+                }
+                if (duplicates.length > 0) {
+                  rendered.push(
+                    <Text key="dup-note" style={[styles.factorMeta, { color: COLORS.textDim, marginTop: 12, marginBottom: 4 }]}>
+                      — Duplicates (audit history, hidden from Step 5 onward) —
+                    </Text>
+                  );
+                  for (const d of duplicates) {
+                    rendered.push(
+                      <FactorGroupRow
+                        key={d.id}
+                        factor={d}
+                        parentName={null}
+                        candidateChildren={[]}
+                        onAddChild={() => {}}
+                        onCreateChild={async () => {}}
+                        onPromote={() => updateFactor(d.id, { parent_id: null })}
+                        onToggleDuplicate={() => updateFactor(d.id, { is_duplicate: !d.is_duplicate })}
+                      />
+                    );
+                  }
+                }
+                return rendered;
+              })()}
               <NextBack onBack={() => persistStep(3)} onNext={() => persistStep(5)} />
             </View>
           )}
@@ -1132,8 +1217,12 @@ function NextBack({ onBack, onNext }: { onBack: (() => void) | null; onNext: (()
   );
 }
 
-function FactorGroupRow({ factor, candidateChildren, onAddChild, onCreateChild, onPromote, onToggleDuplicate }: {
+function FactorGroupRow({ factor, parentName, candidateChildren, onAddChild, onCreateChild, onPromote, onToggleDuplicate }: {
   factor: Factor;
+  /** Concrete parent name to render in the "↳ under X" caption. Null when
+   *  this row is itself a top-level factor. Used to remove the previous
+   *  "grouped under a main factor above" ambiguity. */
+  parentName: string | null;
   candidateChildren: Factor[];
   onAddChild: (childId: string) => void;
   onCreateChild: (name: string) => Promise<void> | void;
@@ -1163,6 +1252,7 @@ function FactorGroupRow({ factor, candidateChildren, onAddChild, onCreateChild, 
     <View style={[
       styles.factorRow,
       isSubFactor && styles.factorRowSub,
+      isSubFactor && { marginLeft: 24 },              // visible indent for child rows
       isDuplicate && styles.factorRowDuplicate,
     ]}>
       <View style={[styles.sourceTag, { backgroundColor: tagBg }]}>
@@ -1176,7 +1266,7 @@ function FactorGroupRow({ factor, candidateChildren, onAddChild, onCreateChild, 
         ]}>{factor.name}</Text>
         {isSubFactor && (
           <Text style={[styles.factorMeta, { color: COLORS.textDim }]}>
-            ↳ sub-factor (grouped under a main factor above)
+            ↳ sub-factor of <Text style={{ fontWeight: '700', color: COLORS.text }}>“{parentName || 'unknown'}”</Text>
           </Text>
         )}
         {isDuplicate && (

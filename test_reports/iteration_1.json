@@ -1,0 +1,31 @@
+{
+  "summary": "Step 4 (Group / De-dup) sub-factor visual placement bug fix VERIFIED end-to-end via Playwright on the Expo web preview. The hierarchical IIFE renderer in /app/frontend/app/tools/pros-cons-wizard.tsx now correctly places child rows directly under their parent regardless of DB array position. PRIMARY: nesting Charlie under Alpha re-orders rows so Charlie appears immediately below Alpha (indented marginLeft:24, caption '↳ sub-factor of \"Alpha\"') and Bravo moves AFTER Charlie. SECONDARY: 'Promote out' restores Charlie to top-level (Alpha, Bravo, Charlie). TERTIARY: '+ Sub-factor' → text-input flow creates 'Charlie-child-new' as an indented child immediately below Bravo with caption '↳ sub-factor of \"Bravo\"'. Stat counters (ACTIVE/GROUPED) update correctly. Note: deprecated package warnings present (expo-av) — flagged below.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "expo-av", "issue": "Deprecated package still in use. Should migrate to expo-audio (and expo-video if any video). Reference: /app/frontend/package.json:26 + /app/frontend/src/components/AudioGuidePlayer.tsx:5 + /app/frontend/src/components/VoiceInput.tsx:11. Console warning: '[expo-av]: Expo AV has been deprecated and will be removed in SDK 54.'"},
+      {"component": "shadow* style props", "issue": "Console deprecation: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' — widespread across stylesheets."},
+      {"component": "props.pointerEvents", "issue": "Console deprecation: 'props.pointerEvents is deprecated. Use style.pointerEvents'."}
+    ]
+  },
+  "test_report_links": ["/tmp/T1_after_charlie_nested.png", "/tmp/T2_after_promote.png", "/tmp/T3_after_create_new_sub.png"],
+  "action_items": [
+    "(Optional, not blocking this bug) Migrate expo-av → expo-audio (and expo-video if needed). Update AudioGuidePlayer.tsx + VoiceInput.tsx imports and APIs.",
+    "(Optional) Replace shadow* style props with boxShadow and migrate props.pointerEvents to style.pointerEvents to silence deprecation warnings."
+  ],
+  "critical_code_review_comments": [
+    "Step 4 IIFE renderer (lines 933-1034) is correct: groups children directly under their parent, separates orphans and duplicates into their own sections, passes parentName explicitly to FactorGroupRow so the caption always shows the true parent.",
+    "FactorGroupRow correctly disables '+ Sub-factor' on sub-factor rows (only shows 'Promote out'), preventing accidental two-level nesting in the UI.",
+    "File pros-cons-wizard.tsx is 1712 lines — exceeds the 700-line guideline. Consider splitting Step components into separate files (StepFactors, StepOptions, StepGroup, StepReview, etc.) for maintainability."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "n/a (frontend-only test)", "frontend": "100% (3/3 scenarios pass: nest-existing, promote-out, create-new-child)" },
+  "seed_data_creation": "Created one Pros & Cons analysis titled 'Step4 hierarchy E2E' (id 76c555d4-bfdc-49f7-a6fb-2e71d906afcb) under admin@test.com with 3 direct factors (Alpha, Bravo, Charlie), 1 option (Option1), and 1 sub-factor (Charlie-child-new under Bravo, remaining after T3).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The Step 4 hierarchy fix is verified and working. The analysis 76c555d4-bfdc-49f7-a6fb-2e71d906afcb under admin@test.com still exists in DB; it can be deleted from the Pros & Cons list if cleanup is desired. Login flow: USER LOGIN tab (default) with admin@test.com / AdminPass2026! works; token persists in localStorage('session_token'). Note: do NOT call page.goto on protected routes before logging in — direct API calls will 401 until login completes.",
+  "rca_of_issue": "Original bug: Step 4 rendered factors in DB array order; when a child's parent_id was changed (move) it visually appeared adjacent to whichever sibling happened to be next in the array, not under the new parent. Fix: an IIFE renderer in Step 4 now builds a hierarchical render list — iterate top-level non-duplicates in order, immediately render each parent's children (with marginLeft:24 and parentName caption), then orphans, then duplicates. parentName is passed explicitly so the caption never says 'a main factor above' or similar ambiguous text. Verified via Playwright: row y-coordinates and computed marginLeft confirm child rows now sit directly below their true parent regardless of underlying array position."
+}
