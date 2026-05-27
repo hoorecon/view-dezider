@@ -558,34 +558,26 @@ export default function ProsConsWizard() {
   };
 
   /**
-   * Step 7 — change the Realistic Gap (PRR-style toggle).
+   * Step 7 — set a SINGLE factor's per-pair gap percentage and re-ladder.
    *
-   * 1. PUT /config { std_gap: <new gap> } — backend stores the gap.
-   * 2. POST /factors/reorder with the CURRENT order — backend re-ladders
-   *    std_rating for all main factors using the new gap.
-   * Net effect: A1=N*gap … bottom=1*gap, instantly visible in the read-only
-   * Std Rating chips on each factor card.
+   * `factorId`   = the UPPER factor in the pair (its rating depends on the
+   *                factor immediately below it in the bottom-up order).
+   * `newPct`     = the new gap percentage (50 / 100 / 150 / 200).
+   *
+   * Semantics — the backend formula is:
+   *   thisFactor.std_rating = factorBelow.std_rating + (newPct / 100) * 10
+   *
+   * So 100% (default) means "10 units higher than the one below", 200% means
+   * "20 units higher", etc. The anchor (lowest factor) is always 10.
    */
-  const setGapAndRelaadder = async (newGap: number) => {
+  const setPairGap = async (factorId: string, newPct: number) => {
     if (!id || !analysis) return;
     try {
-      await api.put(`${base}/${id}/config`, { std_gap: newGap });
-      // Build the canonical order (mandatory section then optional section)
-      const mains = analysis.factors.filter(f => !f.parent_id && !f.is_duplicate);
-      const labelOf = (f: Factor) => (f.display_name && f.display_name.trim() ? f.display_name : f.name) || '';
-      const sortFn = (a: Factor, b: Factor) => {
-        const ra = a.priority_rank ?? 9999, rb = b.priority_rank ?? 9999;
-        if (ra !== rb) return ra - rb;
-        return labelOf(a).localeCompare(labelOf(b));
-      };
-      const mandatory = mains.filter(f => f.notation === 'mandatory').sort(sortFn);
-      const optional = mains.filter(f => f.notation !== 'mandatory').sort(sortFn);
-      const others = analysis.factors.filter(f => f.parent_id || f.is_duplicate);
-      const finalIds = [...mandatory, ...optional, ...others].map(f => f.id);
-      await api.post(`${base}/${id}/factors/reorder`, { ordered_ids: finalIds });
+      await api.put(`${base}/${id}/factors/${factorId}`, { priority_gap_pct: newPct });
+      await api.post(`${base}/${id}/factors/recalc-ladder`);
       await reload();
     } catch (e: any) {
-      showAlert('Error', e?.response?.data?.detail || 'Failed to update Realistic Gap');
+      showAlert('Error', e?.response?.data?.detail || 'Failed to update gap');
     }
   };
 
@@ -1497,50 +1489,67 @@ export default function ProsConsWizard() {
               </View>
             );
 
+            // ── Bottom-most factor in the combined visual order ────────
+            // Visual top→bottom : [A1…An, B1…Bn]. Bottom-most = last B (or
+            // last A if there are no B-factors). This factor is the ANCHOR
+            // (std_rating = 10) — it has NO gap selector below it.
+            const bottomMostId =
+              optionalFactors.length > 0
+                ? optionalFactors[optionalFactors.length - 1].id
+                : mandatoryFactors.length > 0
+                  ? mandatoryFactors[mandatoryFactors.length - 1].id
+                  : null;
+
+            // ── Per-pair gap connector ────────────────────────────────
+            // Sits BELOW a card. Controls THIS card's priority_gap_pct
+            // (i.e. how much higher THIS card is than the card immediately
+            // below it in the visual flow). Buttons: 50/100/150/200%.
+            const renderGapConnector = (f: Factor) => {
+              const pct = Math.round(Number(f.priority_gap_pct ?? 100));
+              const opts = [
+                { pct: 50,  add: 5,  label: 'Tight'   },
+                { pct: 100, add: 10, label: 'Default' },
+                { pct: 150, add: 15, label: 'Wide'    },
+                { pct: 200, add: 20, label: 'Steep'   },
+              ];
+              return (
+                <View key={`gap-${f.id}`} style={styles.gapConnector}>
+                  <View style={styles.gapConnectorRail} />
+                  <View style={styles.gapConnectorInner}>
+                    <Text style={styles.gapConnectorLabel}>
+                      Gap above ↑ — adds <Text style={{ fontWeight: '900', color: COLORS.text }}>+{Math.round((pct / 100) * 10)}</Text> to the factor below
+                    </Text>
+                    <View style={styles.gapConnectorRow}>
+                      {opts.map(opt => {
+                        const active = pct === opt.pct;
+                        return (
+                          <TouchableOpacity
+                            key={opt.pct}
+                            style={[styles.gapConnectorBtn, active && styles.gapConnectorBtnActive]}
+                            onPress={() => setPairGap(f.id, opt.pct)}
+                            accessibilityLabel={`Set gap above ${displayName(f)} to ${opt.pct}% (+${opt.add})`}
+                          >
+                            <Text style={[styles.gapConnectorPct, active && { color: '#fff' }]}>{opt.pct}%</Text>
+                            <Text style={[styles.gapConnectorAdd, active && { color: '#fff' }]}>+{opt.add}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                  <View style={styles.gapConnectorRail} />
+                </View>
+              );
+            };
+
             return (
               <View>
                 <Text style={styles.stepTitle}>Step 7 — Prioritise &amp; Assess %</Text>
                 <Text style={styles.stepHint}>
-                  Std Rating is auto-set by priority: bottom main factor =
-                  one gap, each step up adds another gap. Adjust the gap
-                  below if 10 isn't realistic for your decision.
+                  Bottom factor (lowest priority) = <Text style={{ fontWeight: '800' }}>10</Text>. Each step
+                  up adds a per-pair gap that <Text style={{ fontWeight: '800' }}>you control individually</Text>{' '}
+                  between every two factors via the toggle that appears below each card.
+                  Default gap is 100% (+10); change any one to tighten (50%) or widen (200%) just that pair.
                 </Text>
-
-                {/* ─── Realistic Gap selector (5 / 10 / 15 / 20) ────────── */}
-                {/* PRR-style toggle: 50% = 5, 100% = 10 (default),         */}
-                {/* 150% = 15, 200% = 20. Changing this calls the existing  */}
-                {/* /factors/reorder endpoint with the CURRENT order, which */}
-                {/* re-ladders std_rating using the new gap.                */}
-                <View style={styles.gapSelectorCard}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <Text style={styles.gapSelectorTitle}>Realistic Gap between factors</Text>
-                    <Text style={styles.gapSelectorCurrent}>
-                      Current: {analysis.config?.std_gap || 10}
-                    </Text>
-                  </View>
-                  <View style={styles.gapSelectorRow}>
-                    {[
-                      { gap: 5,  pct: '50%',  label: 'Tight'   },
-                      { gap: 10, pct: '100%', label: 'Default' },
-                      { gap: 15, pct: '150%', label: 'Wide'    },
-                      { gap: 20, pct: '200%', label: 'Steep'   },
-                    ].map(opt => {
-                      const active = (analysis.config?.std_gap || 10) === opt.gap;
-                      return (
-                        <TouchableOpacity
-                          key={opt.gap}
-                          style={[styles.gapSelectorBtn, active && styles.gapSelectorBtnActive]}
-                          onPress={() => setGapAndRelaadder(opt.gap)}
-                          accessibilityLabel={`Set realistic gap to ${opt.gap} (${opt.pct} of default)`}
-                        >
-                          <Text style={[styles.gapSelectorPct, active && { color: '#fff' }]}>{opt.pct}</Text>
-                          <Text style={[styles.gapSelectorGap, active && { color: '#fff' }]}>{opt.gap}</Text>
-                          <Text style={[styles.gapSelectorLabel, active && { color: '#fff' }]}>{opt.label}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
 
                 {/* ─── Mandatory (A) section ─── */}
                 <View style={styles.sectionBox}>
@@ -1556,7 +1565,12 @@ export default function ProsConsWizard() {
                       No factors marked Mandatory in Step 6. Go back to Step 6 to mark must-haves.
                     </Text>
                   ) : (
-                    mandatoryFactors.map((f, i) => renderCard(f, i, mandatoryFactors, 'A'))
+                    mandatoryFactors.map((f, i) => (
+                      <React.Fragment key={`mand-${f.id}`}>
+                        {renderCard(f, i, mandatoryFactors, 'A')}
+                        {f.id !== bottomMostId && renderGapConnector(f)}
+                      </React.Fragment>
+                    ))
                   )}
                 </View>
 
@@ -1574,7 +1588,12 @@ export default function ProsConsWizard() {
                       No Optional factors. Mandatory factors will dominate the score; that's fine.
                     </Text>
                   ) : (
-                    optionalFactors.map((f, i) => renderCard(f, i, optionalFactors, 'B'))
+                    optionalFactors.map((f, i) => (
+                      <React.Fragment key={`opt-${f.id}`}>
+                        {renderCard(f, i, optionalFactors, 'B')}
+                        {f.id !== bottomMostId && renderGapConnector(f)}
+                      </React.Fragment>
+                    ))
                   )}
                 </View>
 
@@ -2503,6 +2522,53 @@ const styles = StyleSheet.create({
   gapSelectorPct: { fontSize: 12, fontWeight: '800', color: COLORS.primary },
   gapSelectorGap: { fontSize: 14, fontWeight: '900', color: COLORS.text, marginTop: 2 },
   gapSelectorLabel: { fontSize: 10, color: COLORS.textDim, marginTop: 2 },
+
+  // ─── Step 7 — Per-pair Gap Connector (between adjacent factor cards) ───
+  gapConnector: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    marginVertical: 4,
+    marginHorizontal: 6,
+  },
+  gapConnectorRail: {
+    width: 2,
+    backgroundColor: COLORS.border,
+    marginHorizontal: 8,
+    borderRadius: 1,
+  },
+  gapConnectorInner: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderStyle: Platform.OS === 'web' ? ('dashed' as any) : 'solid',
+    borderColor: COLORS.border,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  gapConnectorLabel: {
+    fontSize: 11,
+    color: COLORS.textDim,
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  gapConnectorRow: { flexDirection: 'row', gap: 6 },
+  gapConnectorBtn: {
+    flex: 1,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  gapConnectorBtnActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  gapConnectorPct: { fontSize: 12, fontWeight: '800', color: COLORS.primary },
+  gapConnectorAdd: { fontSize: 11, fontWeight: '700', color: COLORS.text, marginTop: 1 },
 
   // ─── Step 7 — Mandatory (A) / Optional (B) section boxes ─────
   sectionBox: {

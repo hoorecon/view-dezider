@@ -447,17 +447,23 @@ async def reorder_factors(analysis_id: str, body: Dict[str, Any], user: dict = D
     #
     # The mains list is ordered TOP→BOTTOM (priority_rank 1..N). We iterate
     # in REVERSE to compute cumulative ratings from the anchor up.
-    cfg = doc.get("config") or {}
-    base_gap = int(cfg.get("std_gap") or 10)
+    #
+    # ANCHOR is hardcoded at 10 (the bottom-most main factor's std_rating).
+    # Per-pair laddering uses each factor's own `priority_gap_pct`:
+    #   100% (default) → adds 10 to the running total
+    #    50%           → adds  5
+    #   150%           → adds 15
+    #   200%           → adds 20
+    BASE_UNIT = 10
     mains = [f for f in doc["factors"] if not f.get("parent_id") and not f.get("is_duplicate")]
     if mains:
         # Reverse so index 0 is the bottom-most (lowest priority) factor
         bottom_to_top = list(reversed(mains))
-        bottom_to_top[0]["std_rating"] = base_gap
-        running = float(base_gap)
+        bottom_to_top[0]["std_rating"] = BASE_UNIT
+        running = float(BASE_UNIT)
         for i in range(1, len(bottom_to_top)):
             gap_pct = float(bottom_to_top[i].get("priority_gap_pct") or 100.0)
-            running += (gap_pct / 100.0) * base_gap
+            running += (gap_pct / 100.0) * BASE_UNIT
             bottom_to_top[i]["std_rating"] = int(round(running))
     # Sub-factors + duplicates: keep std_rating at 0 (not scored)
     for f in doc["factors"]:
@@ -480,25 +486,24 @@ async def reorder_factors(analysis_id: str, body: Dict[str, Any], user: dict = D
 async def recalc_ladder(analysis_id: str, user: dict = Depends(get_current_user)):
     """Re-apply the per-pair priority-gap auto-ladder to all main factors
     WITHOUT changing their priority order. Called by the frontend on Step 7
-    entry to (a) fix legacy analyses created before the ladder existed and
-    (b) refresh std_rating after a user tweaks any factor's priority_gap_pct.
+    entry (to fix legacy analyses) AND whenever the user tweaks any single
+    factor's `priority_gap_pct` via the inline between-cards gap selector.
 
     Idempotent — calling repeatedly with the same data yields the same ratings.
     """
     doc = await _load_analysis(analysis_id, user["user_id"])
-    cfg = doc.get("config") or {}
-    base_gap = int(cfg.get("std_gap") or 10)
+    BASE_UNIT = 10
     mains = sorted(
         [f for f in doc["factors"] if not f.get("parent_id") and not f.get("is_duplicate")],
         key=lambda f: f.get("priority_rank", 999),
     )
     if mains:
         bottom_to_top = list(reversed(mains))
-        bottom_to_top[0]["std_rating"] = base_gap
-        running = float(base_gap)
+        bottom_to_top[0]["std_rating"] = BASE_UNIT
+        running = float(BASE_UNIT)
         for i in range(1, len(bottom_to_top)):
             gap_pct = float(bottom_to_top[i].get("priority_gap_pct") or 100.0)
-            running += (gap_pct / 100.0) * base_gap
+            running += (gap_pct / 100.0) * BASE_UNIT
             bottom_to_top[i]["std_rating"] = int(round(running))
     for f in doc["factors"]:
         if f.get("parent_id") or f.get("is_duplicate"):
