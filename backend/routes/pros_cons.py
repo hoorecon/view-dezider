@@ -407,7 +407,19 @@ async def delete_factor(analysis_id: str, factor_id: str, user: dict = Depends(g
 
 @router.post("/{analysis_id}/factors/reorder")
 async def reorder_factors(analysis_id: str, body: Dict[str, Any], user: dict = Depends(get_current_user)):
-    """Body: { ordered_ids: [factor_id, ...] }.  Sets priority_rank 1..N."""
+    """Body: { ordered_ids: [factor_id, ...] }.
+
+    Sets priority_rank 1..N for every factor in the order received AND
+    auto-ladders std_rating for MAIN factors only:
+
+        bottom main factor gets `std_gap` (default 10),
+        each step up adds `std_gap`,
+        top main factor ends at  N_mains * std_gap.
+
+    So if std_gap=10 and there are 8 mains: top=80, 70, 60, 50, 40, 30, 20, bottom=10.
+    Sub-factors and duplicates keep std_rating=0 — the aggregator excludes
+    them from scoring anyway (compute_option_rollups → scoring_factors).
+    """
     doc = await _load_analysis(analysis_id, user["user_id"])
     ordered = body.get("ordered_ids") or []
     rank_map = {fid: i + 1 for i, fid in enumerate(ordered)}
@@ -415,6 +427,27 @@ async def reorder_factors(analysis_id: str, body: Dict[str, Any], user: dict = D
         if f["id"] in rank_map:
             f["priority_rank"] = rank_map[f["id"]]
     doc["factors"].sort(key=lambda f: f.get("priority_rank", 999))
+
+    # Auto-ladder std_rating for MAIN factors (in their new priority order).
+    cfg = doc.get("config") or {}
+    std_gap = int(cfg.get("std_gap") or 10)
+    mains = [f for f in doc["factors"] if not f.get("parent_id") and not f.get("is_duplicate")]
+    n_mains = len(mains)
+    for pos, f in enumerate(mains):                # pos=0 is the TOP (highest priority)
+        f["std_rating"] = (n_mains - pos) * std_gap  # top=N*gap ... bottom=1*gap
+    # Sub-factors + duplicates: keep std_rating at 0 (not scored)
+    for f in doc["factors"]:
+        if f.get("parent_id") or f.get("is_duplicate"):
+            f["std_rating"] = 0
+
+    # Re-compute realistic_rating for any factor that has a non-zero
+    # realistic_gap_pct, so the derived field stays consistent.
+    for f in doc["factors"]:
+        f["realistic_rating"] = compute_realistic_rating(
+            int(f.get("std_rating") or 0),
+            float(f.get("realistic_gap_pct") or 0.0),
+        )
+
     await _persist(analysis_id, user["user_id"], {"factors": doc["factors"]})
     return {"factors": doc["factors"]}
 

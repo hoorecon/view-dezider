@@ -1,0 +1,48 @@
+{
+  "summary": "Step 7 Pros & Cons Wizard — three fixes verified. Issue #1 (Auto-ladder Std Rating chips) PASS. Issue #2 (Realistic Gap selector) PASS. Issue #3 (Persistence on Next→Back) PARTIAL — factor-level Expected/Unit persist correctly, but cell-level Actual + Assess% race condition still loses Actual when both unmount-flush PUTs fire in parallel. Also fixed a CRITICAL bundle-blocking import bug (useRef missing from React import) that made Step 7 throw ReferenceError and render nothing.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "PUT /api/pros-cons/{id}/assessments/{oid}/{fid}",
+        "issue": "Read-modify-write race condition. When two parallel PUTs hit the same cell (e.g. one for actual_value and one for assessment_pct, fired simultaneously from DebouncedInput unmount-flush on Next), the second handler reads stale doc, applies its partial patch on top of the stale cell, and _persist() overwrites the first handler's write. Net effect: only the last PUT's fields survive — the other field is reset to its prior value. Repro: clear cell → fill Actual=55000 + Assess%=75 → click Next within 100ms → backend ends up with assessment_pct=75 but actual_value=''. Fix options: (a) MongoDB atomic $set on nested keys assessments.{oid}.{fid}.{field} in _persist, OR (b) frontend coalesces all pending cell-level saves for the same (oid,fid) into a single merged PUT body during unmount/flush.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "pros-cons-wizard.tsx (DebouncedInput)",
+        "issue": "useRef was used (lines 116-119) but missing from React import — entire Step 7 crashed with ReferenceError: useRef is not defined, blocking ALL rendering on Step 7. Fixed during testing by adding useRef to the import list on line 1.",
+        "testID": "n/a",
+        "priority": "CRITICAL_FIXED"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Step 7 cell persistence on Next→Back",
+        "issue": "Cell Actual value not persisted when typed alongside Assess % then Next clicked before debounce (race with concurrent PUTs — see backend critical bug). UI keeps the local-state value visually because the parent's assessments dict still has the post-reload snapshot, but a hard reload/Back shows backend-truth = '' for actual_value while assessment_pct survives.",
+        "affected_testIDs": []
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_8.json"],
+  "action_items": [
+    "Fix race condition in PUT /assessments/{oid}/{fid}: switch _persist's assessments write to MongoDB atomic $set on nested paths (assessments.{oid}.{fid}.actual_value, assessment_pct, etc.) so concurrent partial updates do not clobber each other. OR coalesce all pending DebouncedInput saves per (oid,fid) in the frontend before sending.",
+    "Add a regression test that fires two parallel PUTs to the same cell (one with actual_value, one with assessment_pct) and asserts both fields survive."
+  ],
+  "critical_code_review_comments": [
+    "DebouncedInput's unmount-flush fires onSave synchronously per input, with no coalescing per (oid,fid). This guarantees parallel PUTs to the same backend cell when user edits Actual + Assess% together. Either coalesce per cell key or make backend safe for concurrent partial updates.",
+    "Imports at line 1 of pros-cons-wizard.tsx must include every React hook used in the file (useRef was missing despite being used in the new DebouncedInput component — found and fixed)."
+  ],
+  "updated_files": ["/app/frontend/app/tools/pros-cons-wizard.tsx (line 1: added useRef to React named imports)"],
+  "success_rate": {"backend": "100% for ladder/gap APIs; race condition is a latent concurrency bug", "frontend": "Issue #1 PASS, Issue #2 PASS, Issue #3 PARTIAL (factor-level OK, cell-level fails under parallel unmount-flush)"},
+  "seed_data_creation": "Reset existing analysis 517fae05-579f-4005-8f86-195edbfa21a8: deleted AlphaSubB sub-factor, set std_gap=10, reordered 5 mains to trigger auto-ladder (Alpha=50, Mango=40, Banana=30, Echo=20, Zeta=10). Kept AlphaSubA for sub-factor tests. Cleared Alpha cell between race-condition repro runs.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "After main agent fixes the cell race condition, re-run Step 7 → Step 8 → Back flow. The repro is: clear cell, type into Actual (e.g. 55000) + Assess % (e.g. 75) on Alpha card, click Next within <100ms (before 600ms debounce). Then verify GET /api/pros-cons/{id} returns BOTH actual_value='55000' AND assessment_pct=75 in the cell. Currently only assessment_pct survives, actual_value is overwritten back to ''. Test credentials: admin@test.com / AdminPass2026! (USER LOGIN — leave 'Organization Login' header collapsed; do NOT click it). Analysis id 517fae05-579f-4005-8f86-195edbfa21a8. Alpha factor id a0950374-64c1-4c37-a359-041cc14acfa7. OptX id fa25dab4-75d6-4377-adaf-a88288a8e109.",
+  "rca_of_issue": "Race condition: DebouncedInput.flush() is called per-input on unmount. With 2 inputs on the same backend cell (Actual + Assess%), 2 parallel PUTs hit upsert_assessment. Both handlers call _load_analysis (reads doc snapshot), mutate their field on the cell, then _persist({assessments: assessments}) which overwrites the WHOLE assessments dict. The later writer wins, losing the earlier writer's field. Sequential typing (with debounce gap >600ms between fields) does NOT exhibit this — backend test confirmed actual_value='55000' + assessment_pct=75 both survive when saves serialize. Reproduced reliably on 2 consecutive runs with the same outcome (assessment_pct=75 wins, actual_value='' loses)."
+}

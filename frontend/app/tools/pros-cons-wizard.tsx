@@ -14,7 +14,7 @@
  *
  *  Re-used by both Pros & Cons and SWOT through the `module` query param.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
   ActivityIndicator, KeyboardAvoidingView, Platform, Modal,
@@ -74,6 +74,103 @@ const COLORS = {
   mandatory: '#EA580C',  // orange — Step 6 "A" / Step 7 top section
   optional: '#0F172A',   // dark slate — Step 6 "B" / Step 7 bottom section
 };
+
+/**
+ * <DebouncedInput /> — robust replacement for `defaultValue + onEndEditing`.
+ *
+ * Why this exists: in React Native Web, TextInput's `onEndEditing` is NOT
+ * reliably fired when the user clicks a button (e.g., the "Next" button)
+ * without explicitly blurring the input. That caused the bug where users
+ * entered Actual / Assess % / Std Rating values in Step 7, clicked Next to
+ * go to Step 8, came back, and saw empty inputs — the values were never
+ * sent to the server.
+ *
+ * This component fixes that by:
+ *  1. Holding a LOCAL state so the user sees their typing immediately.
+ *  2. Persisting on EVERY of these events (whichever fires first):
+ *       a. Debounced (~600ms after the last keystroke) — covers normal typing
+ *       b. onBlur — covers tab/click-away
+ *       c. unmount — covers step-transition (Step 7 → 8) before blur fires
+ *  3. Re-syncing local state when the `value` prop changes from outside
+ *     (so reloads from server overwrite stale local state).
+ *
+ * onSave is called with the latest STRING value. The parent is responsible
+ * for parsing / clamping (e.g., `Math.max(0, Math.min(100, parseInt(s, 10)))`)
+ * inside onSave.
+ */
+const DebouncedInput = React.forwardRef<any, {
+  value: string;
+  onSave: (val: string) => void;
+  placeholder?: string;
+  placeholderTextColor?: string;
+  keyboardType?: any;
+  style?: any;
+  editable?: boolean;
+  multiline?: boolean;
+  debounceMs?: number;
+}>(function DebouncedInput(
+  { value, onSave, placeholder, placeholderTextColor, keyboardType, style, editable, multiline, debounceMs = 600 },
+  ref,
+) {
+  const [local, setLocal] = useState<string>(value ?? '');
+  const lastSavedRef = useRef<string>(value ?? '');
+  const localRef = useRef<string>(value ?? '');
+  const timerRef = useRef<any>(null);
+  const onSaveRef = useRef(onSave);
+  React.useEffect(() => { onSaveRef.current = onSave; }, [onSave]);
+
+  // Sync from outside (e.g., reload from server) — only when value really
+  // changes and the user isn't mid-typing into something else for THIS prop.
+  React.useEffect(() => {
+    const incoming = value ?? '';
+    if (incoming !== lastSavedRef.current && incoming !== localRef.current) {
+      setLocal(incoming);
+      localRef.current = incoming;
+      lastSavedRef.current = incoming;
+    }
+  }, [value]);
+
+  // Debounced save while typing
+  const onChange = (text: string) => {
+    setLocal(text);
+    localRef.current = text;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      if (localRef.current !== lastSavedRef.current) {
+        lastSavedRef.current = localRef.current;
+        try { onSaveRef.current(localRef.current); } catch { /* swallow */ }
+      }
+    }, debounceMs);
+  };
+
+  // Flush helper — used by onBlur and unmount cleanup
+  const flush = () => {
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+    if (localRef.current !== lastSavedRef.current) {
+      lastSavedRef.current = localRef.current;
+      try { onSaveRef.current(localRef.current); } catch { /* swallow */ }
+    }
+  };
+
+  // Flush on unmount (covers Step 7 → Step 8 transition before blur fires)
+  React.useEffect(() => () => flush(), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <TextInput
+      ref={ref as any}
+      style={style}
+      value={local}
+      onChangeText={onChange}
+      onBlur={flush}
+      placeholder={placeholder}
+      placeholderTextColor={placeholderTextColor}
+      keyboardType={keyboardType}
+      editable={editable !== false}
+      multiline={multiline}
+    />
+  );
+});
 
 export default function ProsConsWizard() {
   const router = useRouter();
@@ -457,6 +554,38 @@ export default function ProsConsWizard() {
       await reload();
     } catch (e: any) {
       showAlert('Error', e?.response?.data?.detail || 'Reorder failed');
+    }
+  };
+
+  /**
+   * Step 7 — change the Realistic Gap (PRR-style toggle).
+   *
+   * 1. PUT /config { std_gap: <new gap> } — backend stores the gap.
+   * 2. POST /factors/reorder with the CURRENT order — backend re-ladders
+   *    std_rating for all main factors using the new gap.
+   * Net effect: A1=N*gap … bottom=1*gap, instantly visible in the read-only
+   * Std Rating chips on each factor card.
+   */
+  const setGapAndRelaadder = async (newGap: number) => {
+    if (!id || !analysis) return;
+    try {
+      await api.put(`${base}/${id}/config`, { std_gap: newGap });
+      // Build the canonical order (mandatory section then optional section)
+      const mains = analysis.factors.filter(f => !f.parent_id && !f.is_duplicate);
+      const labelOf = (f: Factor) => (f.display_name && f.display_name.trim() ? f.display_name : f.name) || '';
+      const sortFn = (a: Factor, b: Factor) => {
+        const ra = a.priority_rank ?? 9999, rb = b.priority_rank ?? 9999;
+        if (ra !== rb) return ra - rb;
+        return labelOf(a).localeCompare(labelOf(b));
+      };
+      const mandatory = mains.filter(f => f.notation === 'mandatory').sort(sortFn);
+      const optional = mains.filter(f => f.notation !== 'mandatory').sort(sortFn);
+      const others = analysis.factors.filter(f => f.parent_id || f.is_duplicate);
+      const finalIds = [...mandatory, ...optional, ...others].map(f => f.id);
+      await api.post(`${base}/${id}/factors/reorder`, { ordered_ids: finalIds });
+      await reload();
+    } catch (e: any) {
+      showAlert('Error', e?.response?.data?.detail || 'Failed to update Realistic Gap');
     }
   };
 
@@ -1295,28 +1424,34 @@ export default function ProsConsWizard() {
                   </Text>
                 )}
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                  {/* Std Rating is now AUTO-COMPUTED from priority position via */}
+                  {/* the backend's reorder endpoint (top = N*gap, bottom = gap).*/}
+                  {/* It's read-only here. To change it, reorder via ▲/▼ or     */}
+                  {/* change the Realistic Gap slider at the top of Step 7.     */}
                   <Text style={styles.cellLabel}>Std Rating</Text>
-                  <TextInput style={[styles.inputSm, { width: 64 }]} keyboardType="number-pad"
-                    defaultValue={String(f.std_rating)}
-                    onEndEditing={(e) => updateFactor(f.id, { std_rating: Math.max(0, Math.min(100, parseInt(e.nativeEvent.text, 10) || 0)) })} />
+                  <View style={[styles.readOnlyChip, { borderColor: sectionLabel === 'A' ? COLORS.mandatory : COLORS.optional }]}>
+                    <Text style={[styles.readOnlyChipText, { color: sectionLabel === 'A' ? COLORS.mandatory : COLORS.optional }]}>
+                      {f.std_rating || 0}
+                    </Text>
+                  </View>
                   {/* Optional target/expected value + unit for THIS factor.       */}
                   {/* Lets user record what "good" looks like (e.g., 60000 INR/mo) */}
                   {/* so they can judge each option's actual value below.          */}
                   <Text style={[styles.cellLabel, { marginLeft: 8 }]}>Expected</Text>
-                  <TextInput
+                  <DebouncedInput
                     style={[styles.inputSm, { width: 96 }]}
                     placeholder="optional"
                     placeholderTextColor={COLORS.textDim}
-                    defaultValue={f.expected_value || ''}
-                    onEndEditing={(e) => updateFactor(f.id, { expected_value: e.nativeEvent.text || null })}
+                    value={f.expected_value || ''}
+                    onSave={(text) => updateFactor(f.id, { expected_value: text || null })}
                   />
                   <Text style={styles.cellLabel}>Unit</Text>
-                  <TextInput
+                  <DebouncedInput
                     style={[styles.inputSm, { width: 72 }]}
                     placeholder="e.g., INR"
                     placeholderTextColor={COLORS.textDim}
-                    defaultValue={f.unit || ''}
-                    onEndEditing={(e) => updateFactor(f.id, { unit: e.nativeEvent.text || null })}
+                    value={f.unit || ''}
+                    onSave={(text) => updateFactor(f.id, { unit: text || null })}
                   />
                 </View>
                 {analysis.options.map(o => {
@@ -1324,22 +1459,22 @@ export default function ProsConsWizard() {
                   return (
                     <View key={o.id} style={[styles.assessRow, { flexWrap: 'wrap' }]}>
                       <Text style={styles.assessOpt} numberOfLines={1}>{o.name}</Text>
-                      {/* Per-option ACTUAL value capture — prefixes the Assess %  */}
-                      {/* input. The unit suffix comes from the parent factor's   */}
-                      {/* unit field so the user always sees the right scale.     */}
                       <Text style={styles.cellLabel}>Actual</Text>
-                      <TextInput
+                      <DebouncedInput
                         style={[styles.inputSm, { width: 84 }]}
                         placeholder="value"
                         placeholderTextColor={COLORS.textDim}
-                        defaultValue={cell.actual_value || ''}
-                        onEndEditing={(e) => upsertCell(o.id, f.id, { actual_value: e.nativeEvent.text })}
+                        value={cell.actual_value || ''}
+                        onSave={(text) => upsertCell(o.id, f.id, { actual_value: text })}
                       />
                       {f.unit ? <Text style={[styles.cellLabel, { color: COLORS.textDim }]}>{f.unit}</Text> : null}
                       <Text style={styles.cellLabel}>Assess %</Text>
-                      <TextInput style={[styles.inputSm, { width: 56 }]} keyboardType="number-pad"
-                        defaultValue={String(cell.assessment_pct ?? 0)}
-                        onEndEditing={(e) => upsertCell(o.id, f.id, { assessment_pct: Math.max(0, Math.min(100, parseInt(e.nativeEvent.text, 10) || 0)) })} />
+                      <DebouncedInput
+                        style={[styles.inputSm, { width: 56 }]}
+                        keyboardType="number-pad"
+                        value={String(cell.assessment_pct ?? 0)}
+                        onSave={(text) => upsertCell(o.id, f.id, { assessment_pct: Math.max(0, Math.min(100, parseInt(text, 10) || 0)) })}
+                      />
                       <Text style={styles.cellValue}>= {cell.cell_value?.toFixed?.(1) ?? '0'}</Text>
                     </View>
                   );
@@ -1366,11 +1501,46 @@ export default function ProsConsWizard() {
               <View>
                 <Text style={styles.stepTitle}>Step 7 — Prioritise &amp; Assess %</Text>
                 <Text style={styles.stepHint}>
-                  Factors are split into Mandatory (A) and Optional (B) sections.
-                  Use ▲▼ to reorder within each section. Set Standard Rating per
-                  main factor. For each option, set Assessment %. Cell value =
-                  Assessment % × Std Rating.
+                  Std Rating is auto-set by priority: bottom main factor =
+                  one gap, each step up adds another gap. Adjust the gap
+                  below if 10 isn't realistic for your decision.
                 </Text>
+
+                {/* ─── Realistic Gap selector (5 / 10 / 15 / 20) ────────── */}
+                {/* PRR-style toggle: 50% = 5, 100% = 10 (default),         */}
+                {/* 150% = 15, 200% = 20. Changing this calls the existing  */}
+                {/* /factors/reorder endpoint with the CURRENT order, which */}
+                {/* re-ladders std_rating using the new gap.                */}
+                <View style={styles.gapSelectorCard}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <Text style={styles.gapSelectorTitle}>Realistic Gap between factors</Text>
+                    <Text style={styles.gapSelectorCurrent}>
+                      Current: {analysis.config?.std_gap || 10}
+                    </Text>
+                  </View>
+                  <View style={styles.gapSelectorRow}>
+                    {[
+                      { gap: 5,  pct: '50%',  label: 'Tight'   },
+                      { gap: 10, pct: '100%', label: 'Default' },
+                      { gap: 15, pct: '150%', label: 'Wide'    },
+                      { gap: 20, pct: '200%', label: 'Steep'   },
+                    ].map(opt => {
+                      const active = (analysis.config?.std_gap || 10) === opt.gap;
+                      return (
+                        <TouchableOpacity
+                          key={opt.gap}
+                          style={[styles.gapSelectorBtn, active && styles.gapSelectorBtnActive]}
+                          onPress={() => setGapAndRelaadder(opt.gap)}
+                          accessibilityLabel={`Set realistic gap to ${opt.gap} (${opt.pct} of default)`}
+                        >
+                          <Text style={[styles.gapSelectorPct, active && { color: '#fff' }]}>{opt.pct}</Text>
+                          <Text style={[styles.gapSelectorGap, active && { color: '#fff' }]}>{opt.gap}</Text>
+                          <Text style={[styles.gapSelectorLabel, active && { color: '#fff' }]}>{opt.label}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
 
                 {/* ─── Mandatory (A) section ─── */}
                 <View style={styles.sectionBox}>
@@ -2127,20 +2297,20 @@ function SubFactorEditableList({
               )}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
                 <Text style={styles.cellLabel}>Expected</Text>
-                <TextInput
+                <DebouncedInput
                   style={[styles.inputSm, { width: 88 }]}
                   placeholder="optional"
                   placeholderTextColor={COLORS.textDim}
-                  defaultValue={s.expected_value || ''}
-                  onEndEditing={(e) => onFactorPatch(s.id, { expected_value: e.nativeEvent.text || null })}
+                  value={s.expected_value || ''}
+                  onSave={(text) => onFactorPatch(s.id, { expected_value: text || null })}
                 />
                 <Text style={styles.cellLabel}>Unit</Text>
-                <TextInput
+                <DebouncedInput
                   style={[styles.inputSm, { width: 64 }]}
                   placeholder="e.g., hr"
                   placeholderTextColor={COLORS.textDim}
-                  defaultValue={s.unit || ''}
-                  onEndEditing={(e) => onFactorPatch(s.id, { unit: e.nativeEvent.text || null })}
+                  value={s.unit || ''}
+                  onSave={(text) => onFactorPatch(s.id, { unit: text || null })}
                 />
               </View>
               {options.map(o => {
@@ -2149,20 +2319,20 @@ function SubFactorEditableList({
                   <View key={o.id} style={[styles.assessRow, { flexWrap: 'wrap' }]}>
                     <Text style={styles.assessOpt} numberOfLines={1}>{o.name}</Text>
                     <Text style={styles.cellLabel}>Actual</Text>
-                    <TextInput
+                    <DebouncedInput
                       style={[styles.inputSm, { width: 80 }]}
                       placeholder="value"
                       placeholderTextColor={COLORS.textDim}
-                      defaultValue={cell.actual_value || ''}
-                      onEndEditing={(e) => onCellPatch(o.id, s.id, { actual_value: e.nativeEvent.text })}
+                      value={cell.actual_value || ''}
+                      onSave={(text) => onCellPatch(o.id, s.id, { actual_value: text })}
                     />
                     {s.unit ? <Text style={[styles.cellLabel, { color: COLORS.textDim }]}>{s.unit}</Text> : null}
                     <Text style={styles.cellLabel}>Assess %</Text>
-                    <TextInput
+                    <DebouncedInput
                       style={[styles.inputSm, { width: 56 }]}
                       keyboardType="number-pad"
-                      defaultValue={String(cell.assessment_pct ?? 0)}
-                      onEndEditing={(e) => onCellPatch(o.id, s.id, { assessment_pct: Math.max(0, Math.min(100, parseInt(e.nativeEvent.text, 10) || 0)) })}
+                      value={String(cell.assessment_pct ?? 0)}
+                      onSave={(text) => onCellPatch(o.id, s.id, { assessment_pct: Math.max(0, Math.min(100, parseInt(text, 10) || 0)) })}
                     />
                     <Text style={[styles.cellValue, { color: COLORS.textDim }]}>
                       (info only)
@@ -2291,6 +2461,48 @@ const styles = StyleSheet.create({
     padding: 10,
     gap: 4,
   },
+
+  // ─── Std-rating read-only chip (Step 7) ────────────────────────
+  readOnlyChip: {
+    paddingHorizontal: 12, paddingVertical: 4,
+    borderRadius: 8, borderWidth: 2,
+    backgroundColor: '#FFFFFF',
+    minWidth: 48, alignItems: 'center',
+  },
+  readOnlyChipText: { fontSize: 16, fontWeight: '800' },
+
+  // ─── Realistic Gap selector (Step 7 top card) ──────────────────
+  gapSelectorCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 12,
+    marginBottom: 16,
+  },
+  gapSelectorTitle: { fontSize: 13, fontWeight: '700', color: COLORS.text },
+  gapSelectorCurrent: {
+    fontSize: 11, fontWeight: '700', color: COLORS.primary,
+    backgroundColor: 'rgba(99,102,241,0.1)',
+    paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8,
+  },
+  gapSelectorRow: { flexDirection: 'row', gap: 6 },
+  gapSelectorBtn: {
+    flex: 1,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    paddingVertical: 8, paddingHorizontal: 4,
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  gapSelectorBtnActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  gapSelectorPct: { fontSize: 12, fontWeight: '800', color: COLORS.primary },
+  gapSelectorGap: { fontSize: 14, fontWeight: '900', color: COLORS.text, marginTop: 2 },
+  gapSelectorLabel: { fontSize: 10, color: COLORS.textDim, marginTop: 2 },
 
   // ─── Step 7 — Mandatory (A) / Optional (B) section boxes ─────
   sectionBox: {

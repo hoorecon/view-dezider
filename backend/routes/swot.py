@@ -438,6 +438,10 @@ async def swot_delete_factor(analysis_id: str, factor_id: str, user: dict = Depe
 
 @router.post("/{analysis_id}/factors/reorder")
 async def swot_reorder_factors(analysis_id: str, body: Dict[str, Any], user: dict = Depends(get_current_user)):
+    """Same auto-ladder std_rating behaviour as pros_cons (kept in parity).
+
+    See /app/backend/routes/pros_cons.py reorder_factors() for the rationale.
+    """
     doc = await _load_swot(analysis_id, user["user_id"])
     ordered = body.get("ordered_ids") or []
     rank_map = {fid: i + 1 for i, fid in enumerate(ordered)}
@@ -445,6 +449,23 @@ async def swot_reorder_factors(analysis_id: str, body: Dict[str, Any], user: dic
         if f["id"] in rank_map:
             f["priority_rank"] = rank_map[f["id"]]
     doc["factors"].sort(key=lambda f: f.get("priority_rank", 999))
+
+    # Auto-ladder std_rating for MAIN factors in new priority order.
+    cfg = doc.get("config") or {}
+    std_gap = int(cfg.get("std_gap") or 10)
+    mains = [f for f in doc["factors"] if not f.get("parent_id") and not f.get("is_duplicate")]
+    n_mains = len(mains)
+    for pos, f in enumerate(mains):
+        f["std_rating"] = (n_mains - pos) * std_gap
+    for f in doc["factors"]:
+        if f.get("parent_id") or f.get("is_duplicate"):
+            f["std_rating"] = 0
+    for f in doc["factors"]:
+        f["realistic_rating"] = compute_realistic_rating(
+            int(f.get("std_rating") or 0),
+            float(f.get("realistic_gap_pct") or 0.0),
+        )
+
     await _persist_swot(analysis_id, user["user_id"], {"factors": doc["factors"]})
     return {"factors": doc["factors"]}
 
