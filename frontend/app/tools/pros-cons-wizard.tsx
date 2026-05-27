@@ -1768,14 +1768,22 @@ export default function ProsConsWizard() {
                 </Text>
                 <View style={styles.mppsRow}>
                   <Text style={styles.mppsLabel}>Max Time for Improvement</Text>
-                  <TextInput
-                    style={[styles.inputSm, { width: 80 }]}
-                    keyboardType="decimal-pad"
+                  {/* DebouncedInput here too — raw onEndEditing didn't fire
+                      on web when the user typed a value then immediately
+                      clicked a unit chip / Recompute, causing the value to
+                      be lost on refresh. */}
+                  <DebouncedInput
+                    value={mppsValue === null || mppsValue === undefined || mppsValue === '' ? '' : String(mppsValue)}
                     placeholder="0.0"
-                    defaultValue={mppsValue === null || mppsValue === undefined ? '' : String(mppsValue)}
-                    onEndEditing={e => {
-                      const t = e.nativeEvent.text.trim();
-                      const v = t === '' ? null : (parseFloat(t) || 0);
+                    keyboardType="decimal-pad"
+                    style={[styles.inputSm, { width: 90, textAlign: 'center', fontWeight: '700' }]}
+                    onSave={(text) => {
+                      const t = text.trim();
+                      if (t === '') { persistMpps({ mpps_max_time_value: null }); return; }
+                      let v = parseFloat(t);
+                      if (Number.isNaN(v) || v < 0) v = 0;
+                      // Clamp + round to 1 decimal
+                      v = Math.round(Math.min(9999, v) * 10) / 10;
                       persistMpps({ mpps_max_time_value: v });
                     }}
                   />
@@ -1815,6 +1823,133 @@ export default function ProsConsWizard() {
                   <Text style={styles.bigCtaText}>Show Final Decision Guidelines</Text>
                 </LinearGradient>
               </TouchableOpacity>
+
+              {/* ─── FINAL DECISION CAPTURE ─────────────────────────────
+                  Persisted on analysis.config so it travels with the doc
+                  and shows up later in Solution Box for review.
+                  - final_choice_option_id : which option the user picked
+                  - final_choice_reason    : free-text justification (optional)
+                  - final_choice_decided_at: ISO timestamp set when option picked
+                  - review_timeline_value/unit: "by when can we judge whether
+                    the decision was right?" — independent of MPPS time. */}
+              {(() => {
+                const cfg: any = analysis.config || {};
+                const chosenOptId: string | null = cfg.final_choice_option_id || null;
+                const reasonText: string = cfg.final_choice_reason || '';
+                const rtValue = cfg.review_timeline_value;
+                const rtUnit: string = cfg.review_timeline_unit || 'Months';
+                const decidedAt: string | null = cfg.final_choice_decided_at || null;
+
+                const persistFinal = async (patch: Record<string, any>) => {
+                  if (!id) return;
+                  try { await api.put(`${base}/${id}/config`, patch); await reload(); }
+                  catch (e: any) { showAlert('Error', e?.response?.data?.detail || 'Failed to save'); }
+                };
+                const pickOption = (optId: string) => {
+                  persistFinal({
+                    final_choice_option_id: optId,
+                    final_choice_decided_at: new Date().toISOString(),
+                  });
+                };
+
+                return (
+                  <View style={styles.finalCard}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <Ionicons name="trophy" size={18} color="#92400E" />
+                      <Text style={styles.finalTitle}>Final Decision</Text>
+                    </View>
+                    <Text style={styles.finalSub}>
+                      Lock in the option you're going with, jot down why (optional),
+                      and set a date by which you'll review whether the call was right.
+                    </Text>
+
+                    {/* Option chooser — radio-style chips */}
+                    <Text style={styles.finalLabel}>I choose</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                      {analysis.options.map(o => {
+                        const on = chosenOptId === o.id;
+                        const r = rankByOptId[o.id];
+                        return (
+                          <TouchableOpacity
+                            key={o.id}
+                            style={[styles.finalOptChip, on && styles.finalOptChipOn]}
+                            onPress={() => pickOption(o.id)}
+                          >
+                            <Ionicons
+                              name={on ? 'radio-button-on' : 'radio-button-off'}
+                              size={14}
+                              color={on ? '#fff' : COLORS.textDim}
+                            />
+                            <Text style={[styles.finalOptChipText, on && { color: '#fff' }]} numberOfLines={1}>
+                              {o.name}{r ? ` · Rank #${r}` : ''}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                      {chosenOptId && (
+                        <TouchableOpacity
+                          style={[styles.finalOptChip, { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' }]}
+                          onPress={() => persistFinal({ final_choice_option_id: null, final_choice_decided_at: null })}
+                        >
+                          <Ionicons name="close-circle" size={14} color={COLORS.con} />
+                          <Text style={[styles.finalOptChipText, { color: COLORS.con }]}>Clear</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+
+                    {/* Reason (optional) */}
+                    <Text style={[styles.finalLabel, { marginTop: 12 }]}>
+                      Why I chose this <Text style={{ color: COLORS.textDim, fontWeight: '500' }}>(optional)</Text>
+                    </Text>
+                    <DebouncedInput
+                      value={reasonText}
+                      placeholder="e.g., Best balance of pay, growth, and proximity. Bharath has stronger long-term growth so I'll re-evaluate after 6 months."
+                      multiline
+                      style={[styles.finalReason]}
+                      onSave={(text) => persistFinal({ final_choice_reason: text })}
+                    />
+
+                    {/* Review timeline */}
+                    <Text style={[styles.finalLabel, { marginTop: 12 }]}>Review the decision in</Text>
+                    <View style={[styles.mppsRow, { marginTop: 6 }]}>
+                      <DebouncedInput
+                        value={rtValue === null || rtValue === undefined || rtValue === '' ? '' : String(rtValue)}
+                        placeholder="0.0"
+                        keyboardType="decimal-pad"
+                        style={[styles.inputSm, { width: 90, textAlign: 'center', fontWeight: '700' }]}
+                        onSave={(text) => {
+                          const t = text.trim();
+                          if (t === '') { persistFinal({ review_timeline_value: null }); return; }
+                          let v = parseFloat(t);
+                          if (Number.isNaN(v) || v < 0) v = 0;
+                          v = Math.round(Math.min(9999, v) * 10) / 10;
+                          persistFinal({ review_timeline_value: v });
+                        }}
+                      />
+                      <View style={styles.mppsUnitRow}>
+                        {(['Hours', 'Days', 'Weeks', 'Months', 'Years'] as const).map(u => {
+                          const on = rtUnit === u;
+                          return (
+                            <TouchableOpacity
+                              key={u}
+                              style={[styles.mppsUnitBtn, on && styles.mppsUnitBtnOn]}
+                              onPress={() => persistFinal({ review_timeline_unit: u })}
+                            >
+                              <Text style={[styles.mppsUnitText, on && { color: '#fff' }]}>{u}</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+
+                    {decidedAt && (
+                      <Text style={styles.finalStamp}>
+                        Decided on {new Date(decidedAt).toLocaleString()}
+                      </Text>
+                    )}
+                  </View>
+                );
+              })()}
               <NextBack onBack={() => persistStep(7)} onNext={null} />
             </View>
             );
@@ -2812,6 +2947,55 @@ const styles = StyleSheet.create({
   sectionPctB: { fontSize: 11, fontWeight: '800', color: '#1D4ED8' /* blue-700  */ },
   sectionPctSep: { fontSize: 11, color: COLORS.textDim },
 
+  // ─── Step 8 — Final Decision capture card ───
+  finalCard: {
+    marginTop: 16,
+    padding: 16,
+    borderRadius: 14,
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1.5,
+    borderColor: '#FCD34D',
+  },
+  finalTitle: { fontSize: 16, fontWeight: '900', color: '#92400E' },
+  finalSub: { fontSize: 12, color: '#78350F', marginTop: 2, lineHeight: 17 },
+  finalLabel: { fontSize: 12, fontWeight: '800', color: COLORS.text, marginTop: 8 },
+  finalOptChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: '#FCD34D',
+    backgroundColor: '#FFFFFF',
+    maxWidth: '100%',
+  },
+  finalOptChipOn: {
+    backgroundColor: '#92400E',
+    borderColor: '#92400E',
+  },
+  finalOptChipText: { fontSize: 13, fontWeight: '700', color: COLORS.text },
+  finalReason: {
+    minHeight: 72,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: '#FFFFFF',
+    fontSize: 13,
+    color: COLORS.text,
+    textAlignVertical: 'top',
+    marginTop: 4,
+  },
+  finalStamp: {
+    marginTop: 10,
+    fontSize: 11,
+    fontStyle: 'italic',
+    color: '#78350F',
+  },
+
   // ─── Step 7 — Mandatory (A) / Optional (B) section boxes ─────
   sectionBox: {
     backgroundColor: '#FFFFFF',
@@ -2875,8 +3059,8 @@ const styles = StyleSheet.create({
   navBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, gap: 4 },
   navBtnPrimary: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8, backgroundColor: COLORS.primary, gap: 4 },
   navBtnText: { fontSize: 13, fontWeight: '700', color: COLORS.text },
-  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalCard: { backgroundColor: '#fff', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, maxHeight: '85%' },
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 18 },
+  modalCard: { backgroundColor: '#fff', borderRadius: 16, padding: 18, maxHeight: '90%', width: '100%', maxWidth: 640, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   modalTitle: { fontSize: 17, fontWeight: '800', color: COLORS.text },
   gRow: { flexDirection: 'row', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border },

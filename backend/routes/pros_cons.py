@@ -731,6 +731,16 @@ async def update_config(analysis_id: str, body: Dict[str, Any], user: dict = Dep
         # Step 8 — Case-2 (MPPS) inputs
         "mpps_max_time_value",
         "mpps_max_time_unit",
+        # Step 8 — Final Decision capture (post-assessment commitment)
+        # Saved on config so it travels with the analysis doc and shows in
+        # Solution Box list. final_choice_reason is optional documentation.
+        # review_timeline_* is "by when can we judge whether the decision
+        # turned out right?" — separate from MPPS improvement window.
+        "final_choice_option_id",
+        "final_choice_reason",
+        "final_choice_decided_at",
+        "review_timeline_value",
+        "review_timeline_unit",
     ):
         if k in body:
             cfg[k] = body[k]
