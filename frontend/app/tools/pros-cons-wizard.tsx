@@ -1604,28 +1604,45 @@ export default function ProsConsWizard() {
 
           {/* ────── STEP 8 ────── */}
           {step === 8 && (() => {
-            // Max possible score = sum of std_ratings of ALL main factors.
-            // This is the denominator for "Overall %" — i.e., if every cell
-            // scored 100% assessment, joint_score would equal this number.
-            // Using std_rating here (not realistic_rating) so the % reflects
-            // the priority ladder set in Step 7 directly.
+            // ── Case-1 max possible score = sum of std_ratings of all main factors.
+            // Used internally as the denominator for % computation; not displayed
+            // (per UX feedback — keep the math implicit).
             const maxScore = directFactors.reduce(
               (sum, f) => sum + (Number(f.std_rating) || 0),
               0,
             );
 
-            // Compute ranking CLIENT-SIDE based on the new joint_score-based
-            // Score (backend's rank_high_to_low is based on the legacy
-            // satisfaction-% formula and gives meaningless ties when Step 8
-            // satisfaction inputs are blank).
-            //   • Qualified options first, sorted by Score DESC (ties broken
-            //     by original listing order).
-            //   • Disqualified options last, no rank shown.
+            // ── CASE-2 (MPPS) Score: per option, sum over main factors of
+            //    (improvement_pct OR fallback to assessment_pct) × std_rating / 100.
+            // This makes Step 8's "Improvement Assess %" input actually move the
+            // Score (fixes the bug where Recompute had no effect).
+            //
+            // Fallback rule: if user has NOT entered an improvement value
+            // (improvement_pct missing / 0), we use Step 7's assessment_pct.
+            // So with empty Step 8, Case-2 score === Case-1 (Step 7) score.
+            const case2ScoreByOpt: Record<string, number> = {};
+            const case1ScoreByOpt: Record<string, number> = {};
+            analysis.options.forEach(o => {
+              let c2 = 0, c1 = 0;
+              directFactors.forEach(f => {
+                const cell = (analysis.assessments?.[o.id] || {})[f.id] || {};
+                const a7 = Number(cell.assessment_pct) || 0;
+                const a8 = Number(cell.improvement_pct) || 0;
+                const std = Number(f.std_rating) || 0;
+                c1 += (a7 * std) / 100;
+                c2 += ((a8 > 0 ? a8 : a7) * std) / 100;
+              });
+              case1ScoreByOpt[o.id] = c1;
+              case2ScoreByOpt[o.id] = c2;
+            });
+
+            // Rank by Case-2 score DESC (qualified options first, ties → original
+            // listing order; disqualified options pushed to bottom with no rank).
             const rankByOptId: Record<string, number | null> = {};
             const qualified = analysis.options
               .map((o, originalIdx) => ({
                 id: o.id,
-                score: Number(rollupByOpt[o.id]?.joint_score) || 0,
+                score: case2ScoreByOpt[o.id] || 0,
                 disqualified: !!rollupByOpt[o.id]?.disqualified,
                 originalIdx,
               }))
@@ -1636,27 +1653,38 @@ export default function ProsConsWizard() {
               if (rollupByOpt[o.id]?.disqualified) rankByOptId[o.id] = null;
             });
 
+            // ── MPPS Max Time for Improvement (stored on analysis.config) ──
+            const mppsValue = analysis.config?.mpps_max_time_value ?? '';
+            const mppsUnit = analysis.config?.mpps_max_time_unit || 'Months';
+            const persistMpps = async (patch: { mpps_max_time_value?: number | null; mpps_max_time_unit?: string }) => {
+              if (!id) return;
+              try { await api.put(`${base}/${id}/config`, patch); await reload(); }
+              catch (e: any) { showAlert('Error', e?.response?.data?.detail || 'Failed to save'); }
+            };
+
             return (
             <View>
               <Text style={styles.stepTitle}>Step 8 — Detailed Assessment &amp; Final Score</Text>
               <Text style={styles.stepHint}>
-                Overall % = each option's Score ÷ max possible ({maxScore || '—'}) × 100.
-                Score per option is the sum of its per-factor Cell Values from Step 7
-                (Assess % × Std Rating ÷ 100).
+                Review &amp; capture improvement potential per factor &amp; option. Score reflects
+                the Max Possible Practical Solution (MPPS) — i.e., the projected score if the
+                stated improvements happen within your Max Time below.
               </Text>
 
               {/* Per-option overall card */}
               <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Overall score per option</Text>
+                <Text style={styles.sectionTitle}>Overall score per option (Case-2 / MPPS)</Text>
                 {analysis.options.map(o => {
-                  const r = rollupByOpt[o.id];
-                  const score = r ? Number(r.joint_score) || 0 : 0;
+                  const score = case2ScoreByOpt[o.id] || 0;
+                  const baseline = case1ScoreByOpt[o.id] || 0;
                   const overallPct = maxScore > 0 ? (score / maxScore) * 100 : 0;
+                  const delta = score - baseline;
+                  const dqd = !!rollupByOpt[o.id]?.disqualified;
                   return (
                     <View key={o.id} style={styles.overallRow}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.factorName}>{o.name}</Text>
-                        {r?.disqualified ? (
+                        {dqd ? (
                           <Text style={{ color: COLORS.con, fontSize: 12 }}>Disqualified (Mandatory factor below threshold)</Text>
                         ) : rankByOptId[o.id] ? (
                           <Text style={{ color: COLORS.ok, fontSize: 12 }}>Rank #{rankByOptId[o.id]}</Text>
@@ -1664,9 +1692,12 @@ export default function ProsConsWizard() {
                       </View>
                       <View style={{ alignItems: 'flex-end' }}>
                         <Text style={styles.overallPct}>{overallPct.toFixed(1)}%</Text>
-                        <Text style={styles.cellLabel}>
-                          Score: {score.toFixed(0)}{maxScore > 0 ? ` / ${maxScore}` : ''}
-                        </Text>
+                        <Text style={styles.cellLabel}>Score: {score.toFixed(0)}</Text>
+                        {Math.abs(delta) >= 0.5 && (
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: delta > 0 ? COLORS.ok : COLORS.con }}>
+                            {delta > 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(0)} vs Case-1
+                          </Text>
+                        )}
                       </View>
                     </View>
                   );
@@ -1677,9 +1708,46 @@ export default function ProsConsWizard() {
                 </TouchableOpacity>
               </View>
 
+              {/* ─── Case-2 (MPPS) section header + Max Time for Improvement input ─── */}
+              <View style={styles.case2Header}>
+                <Text style={styles.case2Title}>Case-2 Analysis for Max Possible Practical Solution (MPPS)</Text>
+                <Text style={styles.case2Sub}>
+                  Estimate the realistic improvement on each factor &amp; option, assuming you
+                  have the time below to act. Empty cells fall back to Step 7 values.
+                </Text>
+                <View style={styles.mppsRow}>
+                  <Text style={styles.mppsLabel}>Max Time for Improvement</Text>
+                  <TextInput
+                    style={[styles.inputSm, { width: 80 }]}
+                    keyboardType="decimal-pad"
+                    placeholder="0.0"
+                    defaultValue={mppsValue === null || mppsValue === undefined ? '' : String(mppsValue)}
+                    onEndEditing={e => {
+                      const t = e.nativeEvent.text.trim();
+                      const v = t === '' ? null : (parseFloat(t) || 0);
+                      persistMpps({ mpps_max_time_value: v });
+                    }}
+                  />
+                  <View style={styles.mppsUnitRow}>
+                    {(['Hours', 'Days', 'Weeks', 'Months', 'Years'] as const).map(u => {
+                      const on = mppsUnit === u;
+                      return (
+                        <TouchableOpacity
+                          key={u}
+                          style={[styles.mppsUnitBtn, on && styles.mppsUnitBtnOn]}
+                          onPress={() => persistMpps({ mpps_max_time_unit: u })}
+                        >
+                          <Text style={[styles.mppsUnitText, on && { color: '#fff' }]}>{u}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              </View>
+
               {/* Per-factor detail — main factors only. Sub-factors shown read-only inside each card. */}
-              {directFactors.map(f => (
-                <FactorAssessmentCard key={f.id} factor={f} options={analysis.options}
+              {directFactors.map((f, idx) => (
+                <FactorAssessmentCard key={f.id} factor={f} factorIndex={idx + 1} options={analysis.options}
                   cells={(analysis.assessments || {})}
                   displayName={displayName(f)}
                   subs={childrenOf(f.id)}
@@ -2109,8 +2177,8 @@ function RenamableFactorRow({
   );
 }
 
-function FactorAssessmentCard({ factor, options, cells, displayName, subs, subDisplayNameOf, subHasRenameOf, subOriginalNameOf, onFactorUpdate, onCellUpdate }: {
-  factor: Factor; options: OptionT[]; cells: Record<string, Record<string, Cell>>;
+function FactorAssessmentCard({ factor, factorIndex, options, cells, displayName, subs, subDisplayNameOf, subHasRenameOf, subOriginalNameOf, onFactorUpdate, onCellUpdate }: {
+  factor: Factor; factorIndex?: number; options: OptionT[]; cells: Record<string, Record<string, Cell>>;
   /** Pre-computed display label (display_name || name). */
   displayName?: string;
   /** Read-only sub-factor display props (Step 8 — sub-factors visible context, not rated). */
@@ -2123,7 +2191,7 @@ function FactorAssessmentCard({ factor, options, cells, displayName, subs, subDi
   return (
     <View style={styles.factorCard}>
       <View style={styles.factorCardHeader}>
-        <Text style={styles.rankBadge}>#{factor.priority_rank}</Text>
+        <Text style={styles.rankBadge}>Factor #{factorIndex ?? factor.priority_rank}</Text>
         <Text style={[styles.factorName, { flex: 1 }]}>{displayName || factor.name}</Text>
       </View>
 
@@ -2147,13 +2215,13 @@ function FactorAssessmentCard({ factor, options, cells, displayName, subs, subDi
 
       {/* Expectations / market */}
       <View style={{ flexDirection: 'row', gap: 6 }}>
-        <TextInput style={[styles.inputSm, { flex: 1 }]} placeholder="My expectation"
+        <TextInput style={[styles.inputSm, { flex: 1 }]} placeholder="My Expectation"
           defaultValue={factor.my_expectation || ''}
           onEndEditing={e => onFactorUpdate({ my_expectation: e.nativeEvent.text })} />
-        <TextInput style={[styles.inputSm, { flex: 1 }]} placeholder="Others'"
+        <TextInput style={[styles.inputSm, { flex: 1 }]} placeholder="Others' Expectation"
           defaultValue={factor.others_expectations || ''}
           onEndEditing={e => onFactorUpdate({ others_expectations: e.nativeEvent.text })} />
-        <TextInput style={[styles.inputSm, { flex: 1 }]} placeholder="Market std"
+        <TextInput style={[styles.inputSm, { flex: 1 }]} placeholder="Market Standard"
           defaultValue={factor.market_standard || ''}
           onEndEditing={e => onFactorUpdate({ market_standard: e.nativeEvent.text })} />
       </View>
@@ -2172,20 +2240,45 @@ function FactorAssessmentCard({ factor, options, cells, displayName, subs, subDi
         <Text style={[styles.cellValue, { width: 40 }]}>{factor.realistic_rating ?? factor.std_rating}</Text>
       </View>
 
-      {/* Per-option assessment */}
+      {/* Per-option Improvement Assess % (Case-2 input).
+          - User enters the REVISED assess % they expect AFTER acting on
+            improvements within the Max Time for Improvement.
+          - Green arrow ▲ if > Step 7 baseline (improved),
+            Red arrow ▼ if < baseline (worsened), gray dash if equal/empty.
+          - Empty/zero falls back to Step 7's assessment_pct in the score. */}
       {options.map(o => {
-        const c = (cells[o.id] || {})[factor.id] || { assessment_pct: 0, satisfaction_pct: 0, cell_value: 0, satisfaction_value: 0 };
+        const c = (cells[o.id] || {})[factor.id] || { assessment_pct: 0, improvement_pct: 0, satisfaction_pct: 0, cell_value: 0, satisfaction_value: 0 };
+        const baseline = Number(c.assessment_pct) || 0;
+        const improved = Number(c.improvement_pct) || 0;
+        const effective = improved > 0 ? improved : baseline;
+        const delta = improved > 0 ? improved - baseline : 0;
+        const trendColor = delta > 0.5 ? COLORS.ok : delta < -0.5 ? COLORS.con : COLORS.textDim;
+        const trendIcon = delta > 0.5 ? '▲' : delta < -0.5 ? '▼' : '–';
         return (
           <View key={o.id} style={styles.assessRow}>
             <Text style={styles.assessOpt} numberOfLines={1}>{o.name}</Text>
             <TextInput style={[styles.inputSm, { width: 80 }]} placeholder="Actual"
               defaultValue={c.actual_value || ''}
               onEndEditing={e => onCellUpdate(o.id, { actual_value: e.nativeEvent.text })} />
-            <Text style={styles.cellLabel}>Sat</Text>
-            <TextInput style={[styles.inputSm, { width: 56 }]} keyboardType="decimal-pad"
-              defaultValue={String(c.satisfaction_pct ?? 0)}
-              onEndEditing={e => onCellUpdate(o.id, { satisfaction_pct: parseFloat(e.nativeEvent.text) || 0 })} />
-            <Text style={styles.cellValue}>= {c.satisfaction_value?.toFixed?.(1) ?? '0'}</Text>
+            <Text style={styles.cellLabel}>Imp %</Text>
+            <TextInput
+              style={[
+                styles.inputSm,
+                { width: 56 },
+                improved > 0 && delta > 0.5 && { borderColor: COLORS.ok, borderWidth: 1.5 },
+                improved > 0 && delta < -0.5 && { borderColor: COLORS.con, borderWidth: 1.5 },
+              ]}
+              keyboardType="decimal-pad"
+              placeholder="0"
+              defaultValue={improved > 0 ? String(improved) : ''}
+              onEndEditing={e => {
+                const t = e.nativeEvent.text.trim();
+                const v = t === '' ? 0 : (parseFloat(t) || 0);
+                onCellUpdate(o.id, { improvement_pct: v });
+              }} />
+            <Text style={[styles.cellValue, { color: trendColor, fontWeight: '700' }]}>
+              {trendIcon} {effective.toFixed(0)}
+            </Text>
           </View>
         );
       })}
@@ -2611,6 +2704,38 @@ const styles = StyleSheet.create({
   },
   gapConnectorPct: { fontSize: 12, fontWeight: '800', color: COLORS.primary },
   gapConnectorAdd: { fontSize: 11, fontWeight: '700', color: COLORS.text, marginTop: 1 },
+
+  // ─── Step 8 — Case-2 (MPPS) section header + Max Time input ───
+  case2Header: {
+    backgroundColor: '#EEF2FF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+    padding: 14,
+    marginTop: 14,
+    marginBottom: 10,
+  },
+  case2Title: { fontSize: 15, fontWeight: '900', color: COLORS.text },
+  case2Sub: { fontSize: 12, color: COLORS.textDim, marginTop: 4, lineHeight: 17 },
+  mppsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
+  mppsLabel: { fontSize: 12, fontWeight: '700', color: COLORS.text },
+  mppsUnitRow: { flexDirection: 'row', gap: 4, flexWrap: 'wrap' },
+  mppsUnitBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: '#FFFFFF',
+  },
+  mppsUnitBtnOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  mppsUnitText: { fontSize: 11, fontWeight: '700', color: COLORS.text },
 
   // ─── Step 7 — Mandatory (A) / Optional (B) section boxes ─────
   sectionBox: {

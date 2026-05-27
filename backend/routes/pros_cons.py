@@ -724,7 +724,14 @@ async def promote_pros_cons_to_factors(analysis_id: str, user: dict = Depends(ge
 async def update_config(analysis_id: str, body: Dict[str, Any], user: dict = Depends(get_current_user)):
     doc = await _load_analysis(analysis_id, user["user_id"])
     cfg = doc.get("config") or FrameworkConfig().dict()
-    for k in ("mandatory_threshold_pct", "max_improvement_period_months", "std_gap"):
+    for k in (
+        "mandatory_threshold_pct",
+        "max_improvement_period_months",
+        "std_gap",
+        # Step 8 — Case-2 (MPPS) inputs
+        "mpps_max_time_value",
+        "mpps_max_time_unit",
+    ):
         if k in body:
             cfg[k] = body[k]
     # Top-level analysis-scoped flags (kept outside config blob so the
