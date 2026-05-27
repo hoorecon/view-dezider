@@ -1613,13 +1613,15 @@ export default function ProsConsWizard() {
             );
 
             // ── CASE-2 (MPPS) Score: per option, sum over main factors of
-            //    (improvement_pct OR fallback to assessment_pct) × std_rating / 100.
-            // This makes Step 8's "Improvement Assess %" input actually move the
-            // Score (fixes the bug where Recompute had no effect).
+            //    effective_assess% × std_rating / 100, where
+            //    effective_assess% = clamp(0..100, Step 7 assess% + Step 8 improvement_pct).
             //
-            // Fallback rule: if user has NOT entered an improvement value
-            // (improvement_pct missing / 0), we use Step 7's assessment_pct.
-            // So with empty Step 8, Case-2 score === Case-1 (Step 7) score.
+            // improvement_pct is a DELTA in percentage points:
+            //   +20 → this option will be 20pp BETTER post-improvement
+            //   −10 → this option will be 10pp WORSE post-improvement
+            //    0  → no change → Case-2 falls back to Case-1
+            //
+            // With empty Step 8, Case-2 score === Case-1 (Step 7) score.
             const case2ScoreByOpt: Record<string, number> = {};
             const case1ScoreByOpt: Record<string, number> = {};
             analysis.options.forEach(o => {
@@ -1627,10 +1629,11 @@ export default function ProsConsWizard() {
               directFactors.forEach(f => {
                 const cell = (analysis.assessments?.[o.id] || {})[f.id] || {};
                 const a7 = Number(cell.assessment_pct) || 0;
-                const a8 = Number(cell.improvement_pct) || 0;
+                const delta = Number(cell.improvement_pct) || 0;
                 const std = Number(f.std_rating) || 0;
+                const effective = Math.max(0, Math.min(100, a7 + delta));
                 c1 += (a7 * std) / 100;
-                c2 += ((a8 > 0 ? a8 : a7) * std) / 100;
+                c2 += (effective * std) / 100;
               });
               case1ScoreByOpt[o.id] = c1;
               case2ScoreByOpt[o.id] = c2;
@@ -2240,44 +2243,61 @@ function FactorAssessmentCard({ factor, factorIndex, options, cells, displayName
         <Text style={[styles.cellValue, { width: 40 }]}>{factor.realistic_rating ?? factor.std_rating}</Text>
       </View>
 
-      {/* Per-option Improvement Assess % (Case-2 input).
-          - User enters the REVISED assess % they expect AFTER acting on
-            improvements within the Max Time for Improvement.
-          - Green arrow ▲ if > Step 7 baseline (improved),
-            Red arrow ▼ if < baseline (worsened), gray dash if equal/empty.
-          - Empty/zero falls back to Step 7's assessment_pct in the score. */}
+      {/* Per-option Improvement % (Case-2 input — DELTA in percentage points).
+          - User enters a SIGNED delta on top of Step 7's Assess %.
+              +20  → option will be 20pp BETTER post-improvement
+              −10  → option will be 10pp WORSE post-improvement
+               0  → no change (falls back to Step 7 value).
+          - Green border + ▲ if positive, Red border + ▼ if negative, gray dash if zero/empty.
+          - Allowed range: −100 to +100 (with 1-decimal precision).
+          - Uses DebouncedInput so values persist on every keystroke (600ms
+            debounce + flush on blur/unmount). This fixes the bug where
+            clicking "Recompute" without first blurring the input caused
+            the typed value to be lost. */}
       {options.map(o => {
         const c = (cells[o.id] || {})[factor.id] || { assessment_pct: 0, improvement_pct: 0, satisfaction_pct: 0, cell_value: 0, satisfaction_value: 0 };
         const baseline = Number(c.assessment_pct) || 0;
-        const improved = Number(c.improvement_pct) || 0;
-        const effective = improved > 0 ? improved : baseline;
-        const delta = improved > 0 ? improved - baseline : 0;
-        const trendColor = delta > 0.5 ? COLORS.ok : delta < -0.5 ? COLORS.con : COLORS.textDim;
-        const trendIcon = delta > 0.5 ? '▲' : delta < -0.5 ? '▼' : '–';
+        const delta = Number(c.improvement_pct) || 0;
+        const effective = Math.max(0, Math.min(100, baseline + delta));
+        const isPos = delta > 0.05;
+        const isNeg = delta < -0.05;
+        const sign = isPos ? '+' : '';
+        const trendColor = isPos ? COLORS.ok : isNeg ? COLORS.con : COLORS.textDim;
+        const trendIcon = isPos ? '▲' : isNeg ? '▼' : '–';
+        const bgTint = isPos ? '#ECFDF5' : isNeg ? '#FEF2F2' : '#FFFFFF';
         return (
           <View key={o.id} style={styles.assessRow}>
             <Text style={styles.assessOpt} numberOfLines={1}>{o.name}</Text>
             <TextInput style={[styles.inputSm, { width: 80 }]} placeholder="Actual"
               defaultValue={c.actual_value || ''}
               onEndEditing={e => onCellUpdate(o.id, { actual_value: e.nativeEvent.text })} />
-            <Text style={styles.cellLabel}>Imp %</Text>
-            <TextInput
+            <Text style={styles.cellLabel}>Improvement %</Text>
+            <DebouncedInput
+              value={delta === 0 ? '' : String(delta)}
+              placeholder="0"
+              keyboardType="numbers-and-punctuation"
               style={[
                 styles.inputSm,
-                { width: 56 },
-                improved > 0 && delta > 0.5 && { borderColor: COLORS.ok, borderWidth: 1.5 },
-                improved > 0 && delta < -0.5 && { borderColor: COLORS.con, borderWidth: 1.5 },
+                { width: 64, backgroundColor: bgTint, color: trendColor, fontWeight: '700' },
+                isPos && { borderColor: COLORS.ok, borderWidth: 1.5 },
+                isNeg && { borderColor: COLORS.con, borderWidth: 1.5 },
               ]}
-              keyboardType="decimal-pad"
-              placeholder="0"
-              defaultValue={improved > 0 ? String(improved) : ''}
-              onEndEditing={e => {
-                const t = e.nativeEvent.text.trim();
-                const v = t === '' ? 0 : (parseFloat(t) || 0);
+              onSave={(text) => {
+                const t = text.trim();
+                if (t === '' || t === '-' || t === '+') {
+                  onCellUpdate(o.id, { improvement_pct: 0 });
+                  return;
+                }
+                let v = parseFloat(t);
+                if (Number.isNaN(v)) v = 0;
+                // Clamp to ±100 and round to 1 decimal
+                v = Math.max(-100, Math.min(100, v));
+                v = Math.round(v * 10) / 10;
                 onCellUpdate(o.id, { improvement_pct: v });
-              }} />
+              }}
+            />
             <Text style={[styles.cellValue, { color: trendColor, fontWeight: '700' }]}>
-              {trendIcon} {effective.toFixed(0)}
+              {trendIcon} {sign}{Math.abs(delta) < 0.05 ? '0' : delta.toFixed(1)} → {effective.toFixed(0)}
             </Text>
           </View>
         );
