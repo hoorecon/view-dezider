@@ -3,29 +3,42 @@
 # deploy/sync.sh — One-command EC2 deployment for jelcos.ai / dezider
 # =============================================================================
 #
+# USAGE (on EC2):
+#   cd /opt/dezider
+#
+#   # 1) Simple sync (default branch = emergent-v3, no commit amend)
+#   ./deploy/sync.sh
+#
+#   # 2) Specific branch
+#   ./deploy/sync.sh main
+#
+#   # 3) Sync AND amend the latest commit message from a file
+#   ./deploy/sync.sh emergent-v3 /tmp/msg.txt
+#
+#   # 4) Sync AND amend the latest commit message from STDIN (heredoc)
+#   ./deploy/sync.sh emergent-v3 - <<'COMMIT_MSG'
+#   feat(scope): one-line headline
+#
+#   - bullet 1
+#   - bullet 2
+#   COMMIT_MSG
+#
 # WHAT THIS DOES (in order):
-#   1. git fetch + hard-reset to origin/emergent-v3 (discards local commits)
-#   2. Rebuilds the backend Docker image so any Python changes from the pull
-#      actually make it into the running container.        ← critical step
-#      (`--force-recreate` alone does NOT rebuild the image.)
+#   1. git fetch + hard-reset to origin/<branch> (discards local commits)
+#   2. Rebuilds the backend Docker image (so Python changes from the pull
+#      actually make it into the running container).        ← critical
 #   3. Recreates the container with the new image.
-#   4. Tails the container logs to confirm the new code is live, and pings
-#      the /api/health/live endpoint to be sure the server is responsive.
+#   4. Health-checks /api/health (and /api/health/ready) using a Python urllib
+#      probe from INSIDE the container — slim images don't have curl.
+#   5. (Optional) git commit --amend -F <msg> && git push --force-with-lease
+#      ONLY runs if (a) a message was supplied and (b) backend is healthy.
 #
 # WHY THIS EXISTS:
 #   Three deployment cycles in a row had the symptom "frontend deployed but
-#   backend behaves like the old code". Root cause was always the same:
-#   `docker compose up -d --force-recreate api` was being used after a
-#   `git pull`, but that does NOT rebuild the image — it only recreates the
-#   container *instance* from the existing (stale) image. Since this repo's
-#   docker-compose uses build: directive (image is built from Dockerfile that
-#   COPYs the backend source in), the new Python code only reaches the
+#   backend behaves like the old code". Root cause: `up -d --force-recreate`
+#   does NOT rebuild the image. Since docker-compose builds the image with a
+#   COPY of the backend source, the new Python code only reaches the
 #   container after `docker compose build` or `up --build`.
-#
-# USAGE (on EC2):
-#   cd /opt/dezider
-#   ./deploy/sync.sh               # default: pulls origin/emergent-v3
-#   ./deploy/sync.sh main          # pulls a different branch
 #
 # SAFE TO RE-RUN: idempotent. Will not destroy DB volumes, .env files, or
 # anything under deploy/.env (which is gitignored).
@@ -34,6 +47,7 @@
 set -euo pipefail
 
 BRANCH="${1:-emergent-v3}"
+MSG_SRC="${2:-}"                    # optional: file path, "-" for stdin, or empty
 REPO_DIR="/opt/dezider"
 COMPOSE="docker compose -f deploy/docker-compose.yml"
 
@@ -50,6 +64,33 @@ cd "$REPO_DIR" || fail "Could not cd into $REPO_DIR. Edit REPO_DIR in this scrip
 
 log "Branch target: ${YELLOW}${BRANCH}${NC}"
 log "Repo dir:      ${YELLOW}$(pwd)${NC}"
+
+# ── If a commit message source was provided, capture it BEFORE git reset ─────
+# (because reset would not lose the temp file, but we want to fail fast if the
+#  file is missing / stdin is empty.)
+MSG_FILE=""
+if [ -n "$MSG_SRC" ]; then
+  if [ "$MSG_SRC" = "-" ]; then
+    MSG_FILE="$(mktemp -t sync-commit-msg.XXXXXX)"
+    # Save the heredoc / piped input to a temp file
+    cat > "$MSG_FILE"
+    if [ ! -s "$MSG_FILE" ]; then
+      rm -f "$MSG_FILE"; MSG_FILE=""
+      warn "STDIN was empty — skipping commit message amend"
+    else
+      ok  "Captured commit message from STDIN ($(wc -l < "$MSG_FILE") lines)"
+    fi
+  elif [ -f "$MSG_SRC" ]; then
+    MSG_FILE="$MSG_SRC"
+    ok  "Using commit message file: $MSG_FILE"
+  else
+    fail "Commit message source '$MSG_SRC' is not '-' and not a readable file"
+  fi
+fi
+
+# Cleanup temp file on exit
+trap '[ -n "${MSG_FILE_TMP:-}" ] && rm -f "$MSG_FILE_TMP"' EXIT
+[ "$MSG_SRC" = "-" ] && MSG_FILE_TMP="$MSG_FILE"
 
 # ── 1. Pull latest code ──────────────────────────────────────────────────────
 log "Step 1/4 — Fetching latest from origin/${BRANCH}"
@@ -79,10 +120,9 @@ sleep 4
 
 # ── 4. Verify ────────────────────────────────────────────────────────────────
 log "Step 4/4 — Verifying backend is healthy"
-# Hit /api/health/live from INSIDE the container using PYTHON (always present
-# in our Python-slim image). curl is NOT in the slim image, so we deliberately
-# avoid it. Running inside the container also bypasses the fact that port 8001
-# is not published to the host (nginx/Cloudflare fronts it on prod).
+# Hit /api/health (then /api/health/ready as fallback) from INSIDE the
+# container using Python urllib (always present in our Python-slim image).
+# curl is NOT in the slim image, so we deliberately avoid it.
 HEALTH_OK=0
 PY_PROBE='import sys, urllib.request
 URLS = ["http://localhost:8001/api/health", "http://localhost:8001/api/health/ready"]
@@ -106,10 +146,9 @@ for i in 1 2 3 4 5; do
   sleep 3
 done
 
-# Fallback signal: many app frameworks print this exact line on successful boot.
-# This is intentionally lenient — if uvicorn logged "Application startup complete"
-# at least once in the last 200 lines, the app IS running, even if our HTTP probe
-# could not reach it (network namespace quirks, etc.).
+# Fallback: if uvicorn logged "Application startup complete" at least once in
+# the last 200 lines, the app IS running, even if our HTTP probe couldn't
+# reach it (network namespace quirks, etc.).
 if [ "$HEALTH_OK" = "0" ]; then
   if $COMPOSE logs api --tail=200 2>/dev/null | grep -q "Application startup complete"; then
     ok "Backend reports 'Application startup complete' in logs — treating as healthy"
@@ -133,10 +172,40 @@ else
   warn "is_duplicate NOT in container — image is stale. Re-run with:  $COMPOSE build --no-cache api && $COMPOSE up -d --force-recreate api"
 fi
 
+# ── 5. (Optional) Amend the latest commit with a clean message and push ─────
+if [ -n "$MSG_FILE" ]; then
+  log "Step 5/5 — Amending latest commit message and force-pushing to origin/${BRANCH}"
+
+  # Snapshot the current HEAD in case we need to roll back
+  PRE_AMEND_HEAD="$(git rev-parse HEAD)"
+
+  # Configure a sensible identity if one isn't set on EC2 (idempotent)
+  git config user.email >/dev/null 2>&1 || git config user.email "deploy@jelcos.ai"
+  git config user.name  >/dev/null 2>&1 || git config user.name  "EC2 Deploy Bot"
+
+  if git commit --amend -F "$MSG_FILE" --no-verify --allow-empty >/dev/null 2>&1; then
+    AMENDED_HEAD="$(git rev-parse --short HEAD)"
+    ok "Commit amended locally → ${AMENDED_HEAD}"
+
+    if git push --force-with-lease="${BRANCH}:${PRE_AMEND_HEAD}" origin "HEAD:${BRANCH}" 2>/dev/null; then
+      ok "Force-pushed amended commit to origin/${BRANCH}"
+      echo "    First line of new message:"
+      echo "    $(head -n1 "$MSG_FILE")"
+    else
+      warn "Push failed (someone else may have pushed since pull). Local amend kept."
+      warn "Manual recovery: git push --force-with-lease origin ${BRANCH}"
+    fi
+  else
+    warn "git commit --amend failed — message file may be malformed. Skipping push."
+  fi
+else
+  log "Step 5/5 — No commit message provided (skipping amend & push)"
+fi
+
 echo
 echo -e "${GREEN}════════════════════════════════════════════════════════════════${NC}"
 echo -e "${GREEN}✓ Deployment complete${NC}"
-echo -e "  Now at commit: ${NEW_HEAD}"
+echo -e "  Now at commit: $(git rev-parse --short HEAD)"
 echo -e "  Backend:       healthy"
 echo -e "  Frontend:      Cloudflare Pages auto-deploys (allow ~1–2 min)"
 echo -e "${GREEN}════════════════════════════════════════════════════════════════${NC}"
