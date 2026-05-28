@@ -52,21 +52,6 @@ def _decider_status(doc: Dict[str, Any]) -> str:
     return "draft"
 
 
-def _pros_cons_flavor(doc: Dict[str, Any]) -> str:
-    """
-    Distinguish the lightweight Pros & Cons mode from the 8-Step framework.
-    Heuristic: if `options` array is populated (8-step seeds 0 options initially,
-    user adds them in Step 2) OR `current_step > 1`, treat as 8-step.
-    Otherwise treat as normal (legacy `pros`/`cons` flat lists).
-    """
-    cur_step = int(doc.get("current_step") or 1)
-    has_options = bool(doc.get("options"))
-    has_factors = bool(doc.get("factors"))
-    if cur_step > 1 or has_options or has_factors:
-        return "pros_cons_8step"
-    return "pros_cons"
-
-
 def _pros_cons_status(doc: Dict[str, Any]) -> str:
     if doc.get("converted_decision_id"):
         return "completed"
@@ -117,14 +102,14 @@ def _norm_decider(doc: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _norm_pros_cons(doc: Dict[str, Any]) -> Dict[str, Any]:
-    flavor = _pros_cons_flavor(doc)
-    if flavor == "pros_cons_8step":
-        route = f"/tools/pros-cons-wizard?id={doc.get('id')}&module=pros-cons"
-    else:
-        route = f"/tools/pros-cons?id={doc.get('id')}"
+    # Unified Pros & Cons — the simple two-column flavour was retired
+    # (user request: keep only the 8-Step wizard, rename to "Pros & Cons").
+    # All items — including legacy `pros`/`cons`-only docs — now open in
+    # the 8-Step wizard which handles empty state gracefully.
+    route = f"/tools/pros-cons-wizard?id={doc.get('id')}&module=pros-cons"
     return {
         "id": doc.get("id"),
-        "type": flavor,  # "pros_cons" | "pros_cons_8step"
+        "type": "pros_cons",
         "title": doc.get("title") or "Untitled analysis",
         "context": doc.get("context") or "",
         "life_area": doc.get("life_area"),
@@ -186,13 +171,13 @@ async def list_solution_box(
                 continue
             results.append(item)
 
-    # --- Pros & Cons (covers both normal + 8-step) ---
+    # --- Pros & Cons (unified — 8-step is the only flavour now) ---
+    # Legacy "pros_cons_8step" filter still accepted so older URLs / clients
+    # continue to work; all items now report type="pros_cons".
     if type_filter in (None, "pros_cons", "pros_cons_8step"):
         cursor = db.pros_cons.find({"user_id": uid}, {"_id": 0}).sort("updated_at", -1)
         async for doc in cursor:
             item = _norm_pros_cons(doc)
-            if type_filter and item["type"] != type_filter:
-                continue
             if life_area_filter and item["life_area"] != life_area_filter:
                 continue
             if status_filter and item["status"] != status_filter:
@@ -219,7 +204,7 @@ async def list_solution_box(
 async def solution_box_counts(user: dict = Depends(get_current_user)):
     """Aggregate counts by type / life_area / status — for dashboard cards & filter badges."""
     uid = user["user_id"]
-    by_type: Dict[str, int] = {"decider": 0, "pros_cons": 0, "pros_cons_8step": 0, "swot": 0}
+    by_type: Dict[str, int] = {"decider": 0, "pros_cons": 0, "swot": 0}
     by_life_area: Dict[str, int] = {}
     by_status: Dict[str, int] = {"draft": 0, "in_progress": 0, "completed": 0}
 

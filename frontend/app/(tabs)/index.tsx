@@ -308,23 +308,9 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Decision Kickstarters — Quick Pros & Cons, 8-Step Wizard, SWOT */}
+          {/* Decision Kickstarters — Pros & Cons (8-step), SWOT */}
           <Text style={styles.sectionTitle}>Decision Kickstarters</Text>
           <View style={styles.quickActions}>
-            <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push('/tools/pros-cons' as any)}
-            >
-              <LinearGradient
-                colors={['#059669', '#10B981']}
-                style={styles.actionIcon}
-              >
-                <Ionicons name="swap-horizontal" size={24} color={COLORS.white} />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Pros & Cons</Text>
-              <Text style={styles.actionSubtitle}>Quick weigh — list & decide</Text>
-            </TouchableOpacity>
-
             <TouchableOpacity
               style={styles.actionCard}
               onPress={() => router.push('/tools/pros-cons-wizard?module=pros-cons' as any)}
@@ -333,10 +319,10 @@ export default function HomeScreen() {
                 colors={['#7C3AED', '#A855F7']}
                 style={styles.actionIcon}
               >
-                <Ionicons name="list" size={24} color={COLORS.white} />
+                <Ionicons name="layers" size={24} color={COLORS.white} />
               </LinearGradient>
-              <Text style={styles.actionTitle}>Pros & Cons (8-Step)</Text>
-              <Text style={styles.actionSubtitle}>Deep framework wizard</Text>
+              <Text style={styles.actionTitle}>Pros & Cons</Text>
+              <Text style={styles.actionSubtitle}>Deep 8-step framework</Text>
             </TouchableOpacity>
 
             <TouchableOpacity

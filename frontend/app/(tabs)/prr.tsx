@@ -32,7 +32,7 @@ import { LIFE_AREAS, getLifeArea } from '../../src/constants/lifeAreas';
  * Each card deep-links to the correct wizard/detail page.
  */
 
-type SolutionType = 'decider' | 'pros_cons' | 'pros_cons_8step' | 'swot';
+type SolutionType = 'decider' | 'pros_cons' | 'swot';
 type SolutionStatus = 'draft' | 'in_progress' | 'completed';
 
 interface SolutionItem {
@@ -53,16 +53,14 @@ interface SolutionItem {
 const TYPE_CHIPS: { key: 'all' | SolutionType; label: string; icon: string; color: string }[] = [
   { key: 'all',              label: 'All',         icon: 'apps',           color: COLORS.primary },
   { key: 'decider',          label: 'Decider',     icon: 'analytics',      color: '#6366F1' },
-  { key: 'pros_cons',        label: 'Pros & Cons', icon: 'swap-horizontal',color: '#10B981' },
-  { key: 'pros_cons_8step',  label: '8-Step',      icon: 'layers',         color: '#7C3AED' },
+  { key: 'pros_cons',        label: 'Pros & Cons', icon: 'layers',         color: '#7C3AED' },
   { key: 'swot',             label: 'SWOT',        icon: 'grid',           color: '#F59E0B' },
 ];
 
 const TYPE_META: Record<SolutionType, { label: string; short: string; icon: string; color: string; bg: string }> = {
-  decider:         { label: 'Decider',           short: 'Decider',  icon: 'analytics',       color: '#6366F1', bg: '#EEF2FF' },
-  pros_cons:       { label: 'Pros & Cons',       short: 'P&C',      icon: 'swap-horizontal', color: '#10B981', bg: '#ECFDF5' },
-  pros_cons_8step: { label: 'Pros & Cons 8-Step',short: '8-Step',   icon: 'layers',          color: '#7C3AED', bg: '#F5F3FF' },
-  swot:            { label: 'SWOT',              short: 'SWOT',     icon: 'grid',            color: '#F59E0B', bg: '#FFFBEB' },
+  decider:         { label: 'Decider',     short: 'Decider',  icon: 'analytics',       color: '#6366F1', bg: '#EEF2FF' },
+  pros_cons:       { label: 'Pros & Cons', short: 'P&C',      icon: 'layers',          color: '#7C3AED', bg: '#F5F3FF' },
+  swot:            { label: 'SWOT',        short: 'SWOT',     icon: 'grid',            color: '#F59E0B', bg: '#FFFBEB' },
 };
 
 const STATUS_META: Record<SolutionStatus, { label: string; color: string; bg: string }> = {
@@ -166,8 +164,7 @@ export default function SolutionBoxScreen() {
       let endpoint = '';
       switch (deleteTarget.type) {
         case 'decider':         endpoint = `/decisions/${deleteTarget.id}`; break;
-        case 'pros_cons':
-        case 'pros_cons_8step': endpoint = `/pros-cons/${deleteTarget.id}`; break;
+        case 'pros_cons':       endpoint = `/pros-cons/${deleteTarget.id}`; break;
         case 'swot':            endpoint = `/swot/${deleteTarget.id}`; break;
       }
       await api.delete(endpoint);
@@ -442,28 +439,14 @@ export default function SolutionBoxScreen() {
 
             <TouchableOpacity
               style={[styles.newMenuItem, { borderColor: TYPE_META.pros_cons.color + '40' }]}
-              onPress={() => { setShowNewMenu(false); router.push('/tools/pros-cons'); }}
+              onPress={() => { setShowNewMenu(false); router.push('/tools/pros-cons-wizard?module=pros-cons'); }}
             >
               <View style={[styles.newMenuIcon, { backgroundColor: TYPE_META.pros_cons.bg }]}>
                 <Ionicons name={TYPE_META.pros_cons.icon as any} size={20} color={TYPE_META.pros_cons.color} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.newMenuItemTitle}>Pros &amp; Cons</Text>
-                <Text style={styles.newMenuItemDesc}>Simple two-column comparison</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.newMenuItem, { borderColor: TYPE_META.pros_cons_8step.color + '40' }]}
-              onPress={() => { setShowNewMenu(false); router.push('/tools/pros-cons'); }}
-            >
-              <View style={[styles.newMenuIcon, { backgroundColor: TYPE_META.pros_cons_8step.bg }]}>
-                <Ionicons name={TYPE_META.pros_cons_8step.icon as any} size={20} color={TYPE_META.pros_cons_8step.color} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.newMenuItemTitle}>Pros &amp; Cons (8-Step)</Text>
-                <Text style={styles.newMenuItemDesc}>Deep guided framework with factors &amp; options</Text>
+                <Text style={styles.newMenuItemDesc}>Guided 8-step framework with factors &amp; options</Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
             </TouchableOpacity>

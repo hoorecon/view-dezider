@@ -215,7 +215,7 @@ export const ROUTE_DICTIONARY: RouteDefinition[] = [
   },
   {
     id: 'pros_cons',
-    path: '/tools/pros-cons',
+    path: '/tools/pros-cons-wizard?module=pros-cons',
     label: 'Pros & Cons',
     icon: 'swap-horizontal',
     keywords: {
