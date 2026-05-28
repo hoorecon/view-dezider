@@ -151,6 +151,19 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return; // skip the smart auto-jump below — user asked for a specific step
       }
 
+      // SWOT-converted Deciders ALWAYS land on Step 2 (Define Factors &
+      // Criteria) — that's the only place users can rename the AI-prefilled
+      // factor names (pencil icon). Without this guard, the smart auto-jump
+      // below would push them forward to Step 5 (because factors already
+      // have category="primary") and they'd never see the rename pencil.
+      const isSwotSourced = (response.data as any).source_module === 'swot'
+        || (response.data as any).allow_single_option === true;
+      if (!overrideConsumedRef.current && isSwotSourced) {
+        overrideConsumedRef.current = true;
+        setCurrentStep(2);
+        return;
+      }
+
       // Smart auto-jump to the furthest meaningful step based on data present.
       if (response.data.status === 'completed') {
         setCurrentStep(10);

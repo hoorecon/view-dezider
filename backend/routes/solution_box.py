@@ -107,7 +107,13 @@ def _norm_decider(doc: Dict[str, Any]) -> Dict[str, Any]:
         "current_step": None,
         "created_at": _iso(doc.get("created_at")),
         "updated_at": _iso(doc.get("updated_at") or doc.get("created_at")),
-        "route": f"/prr/{doc.get('id')}",
+        # SWOT-converted Deciders must open on Step 2 so the user can rename
+        # the AI-prefilled factors via the inline pencil edit. Plain Deciders
+        # open at their default landing step (the wizard auto-jumps).
+        "route": (
+            f"/prr/{doc.get('id')}?step=2" if is_swot_sourced
+            else f"/prr/{doc.get('id')}"
+        ),
         "linked_from_decision_id": doc.get("linked_from_decision_id"),
         "options_count": len(doc.get("options") or []),
     }
