@@ -95,6 +95,11 @@ def _norm_decider(doc: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "id": doc.get("id"),
         "type": sb_type,
+        # Collection hint so the Solution Box delete path picks the right
+        # endpoint: SWOT-converted decisions live in db.decisions even
+        # though they report type="swot". Without this, DELETE /swot/<id>
+        # would 404 and the UI would show "Delete Failed".
+        "_collection": "decisions",
         "title": doc.get("title") or "Untitled decision",
         "context": doc.get("context") or "",
         "life_area": doc.get("folder") or doc.get("life_area"),

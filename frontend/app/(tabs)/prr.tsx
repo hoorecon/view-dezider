@@ -165,7 +165,14 @@ export default function SolutionBoxScreen() {
       switch (deleteTarget.type) {
         case 'decider':         endpoint = `/decisions/${deleteTarget.id}`; break;
         case 'pros_cons':       endpoint = `/pros-cons/${deleteTarget.id}`; break;
-        case 'swot':            endpoint = `/swot/${deleteTarget.id}`; break;
+        case 'swot':
+          // SWOT-converted decisions live in db.decisions (reported with
+          // _collection="decisions" by the backend). Raw SWOT analyses
+          // live in db.swot. Use the collection hint to route correctly.
+          endpoint = (deleteTarget as any)._collection === 'decisions'
+            ? `/decisions/${deleteTarget.id}`
+            : `/swot/${deleteTarget.id}`;
+          break;
       }
       await api.delete(endpoint);
       setItems((prev) => prev.filter((d) => d.id !== deleteTarget.id));

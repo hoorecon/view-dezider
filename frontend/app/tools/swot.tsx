@@ -309,27 +309,11 @@ export default function SwotScreen() {
               ))}
             </View>
 
-            {/* 8-Step Framework CTA */}
-            <TouchableOpacity
-              style={{ marginHorizontal: 16, marginTop: 4, marginBottom: 12, borderRadius: 12, overflow: 'hidden' }}
-              onPress={() => router.push(`/tools/pros-cons-wizard?id=${selectedAnalysis.id}&module=swot` as any)}
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={['#6366F1', '#8B5CF6']}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                style={{ padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}
-              >
-                <Ionicons name="layers-outline" size={22} color="#FFF" />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 14 }}>Open 8-Step Framework</Text>
-                  <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 11, marginTop: 2 }}>
-                    Options · Per-option P&amp;C · Promote · Group · Prioritise · Assess
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color="#FFF" />
-              </LinearGradient>
-            </TouchableOpacity>
+            {/* SWOT flow leads ONLY to the Dezider (Decider). The legacy
+                "Open 8-Step Framework" CTA was removed per UX feedback —
+                users found it confusing alongside "Open My Dezider".
+                If the analysis is unconverted, Convert + Open Decision
+                (rendered further below) is the single forward path. */}
 
             {/* Each Quadrant Section */}
             {QUADRANTS.map(q => (

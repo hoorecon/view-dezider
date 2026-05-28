@@ -45,40 +45,73 @@ async def migrate_swot_decisions_single_option() -> dict:
     async for doc in cursor:
         scanned += 1
         opts = doc.get("options") or []
-        if opts:  # already has at least one option — leave alone
-            skipped += 1
+
+        # Case A — doc has NO options yet (legacy converts from before the
+        # single-option flow): inject a fresh "Current Scenario" option.
+        if not opts:
+            # Build the Current Scenario option with a timestamp from the doc's
+            # created_at so re-running this migration always reproduces the same
+            # label (idempotency aid for support / debugging).
+            created = doc.get("created_at") or datetime.now(timezone.utc)
+            if isinstance(created, str):
+                try:
+                    created = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                except Exception:
+                    created = datetime.now(timezone.utc)
+            label = f"Current Scenario - {created.strftime('%Y-%m-%d %H:%M')}"
+
+            opt_id = str(uuid.uuid4())
+            current_scenario = {
+                "id": opt_id,
+                "name": label,
+                "description": "Auto-injected by SWOT→Decider single-option migration.",
+                "order": 0,
+                "is_default_scenario": True,
+                # CRITICAL: must be present — calculateDynamicWorth on the
+                # frontend reads option.assessments.find(...). Missing → crash.
+                "assessments": [],
+            }
+            patch = {
+                "options": [current_scenario],
+                "allow_single_option": True,
+                "updated_at": datetime.now(timezone.utc),
+            }
+            # Only set mpps_option_id if currently empty (don't overwrite user choice)
+            if not doc.get("mpps_option_id"):
+                patch["mpps_option_id"] = opt_id
+
+            await db.decisions.update_one({"id": doc["id"]}, {"$set": patch})
+            fixed += 1
             continue
 
-        # Build the Current Scenario option with a timestamp from the doc's
-        # created_at so re-running this migration always reproduces the same
-        # label (idempotency aid for support / debugging).
-        created = doc.get("created_at") or datetime.now(timezone.utc)
-        if isinstance(created, str):
-            try:
-                created = datetime.fromisoformat(created.replace("Z", "+00:00"))
-            except Exception:
-                created = datetime.now(timezone.utc)
-        label = f"Current Scenario - {created.strftime('%Y-%m-%d %H:%M')}"
+        # Case B — doc already has options but they're missing the
+        # `assessments` array (intermediate state from an earlier version of
+        # this migration). Backfill `assessments: []` on each option so
+        # Step 7's calculateDynamicWorth doesn't blow up.
+        needs_assessments_backfill = any(
+            ("assessments" not in o) or (o.get("assessments") is None)
+            for o in opts
+        )
+        if needs_assessments_backfill:
+            patched_opts = []
+            for o in opts:
+                no = dict(o)
+                if "assessments" not in no or no.get("assessments") is None:
+                    no["assessments"] = []
+                patched_opts.append(no)
+            patch = {
+                "options": patched_opts,
+                "allow_single_option": True,
+                "updated_at": datetime.now(timezone.utc),
+            }
+            if not doc.get("mpps_option_id") and patched_opts:
+                patch["mpps_option_id"] = patched_opts[0]["id"]
+            await db.decisions.update_one({"id": doc["id"]}, {"$set": patch})
+            fixed += 1
+            continue
 
-        opt_id = str(uuid.uuid4())
-        current_scenario = {
-            "id": opt_id,
-            "name": label,
-            "description": "Auto-injected by SWOT→Decider single-option migration.",
-            "order": 0,
-            "is_default_scenario": True,
-        }
-        patch = {
-            "options": [current_scenario],
-            "allow_single_option": True,
-            "updated_at": datetime.now(timezone.utc),
-        }
-        # Only set mpps_option_id if currently empty (don't overwrite user choice)
-        if not doc.get("mpps_option_id"):
-            patch["mpps_option_id"] = opt_id
-
-        await db.decisions.update_one({"id": doc["id"]}, {"$set": patch})
-        fixed += 1
+        # Doc is healthy
+        skipped += 1
 
     # Record migration ran (also lets us inspect counts via Mongo shell)
     await db.migrations.update_one(

@@ -284,6 +284,9 @@ async def convert_to_decision(analysis_id: str, user: dict = Depends(get_current
         "description": "Auto-created from SWOT conversion. Rename if you'd like.",
         "order": 0,
         "is_default_scenario": True,  # flag used by frontend to lock the option list
+        # CRITICAL: must be present — `calculateDynamicWorth` reads
+        # `option.assessments.find(...)`. Missing array → blank-page crash.
+        "assessments": [],
     }
 
     decision_doc = {

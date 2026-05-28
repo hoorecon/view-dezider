@@ -36,6 +36,26 @@ export default function Step2() {
 
   const [showDataSourceConfig, setShowDataSourceConfig] = useState<{ [key: string]: boolean }>({});
 
+  // Inline rename — pencil icon next to each factor name. Critical for
+  // SWOT-converted decisions where factors are AI-pre-filled and users
+  // want to refine the wording before continuing (e.g., "SHOULD NOT -
+  // Limited budget" → "Budget ≥ ₹5 L").
+  const [renameId, setRenameId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const startFactorRename = (f: Factor) => {
+    setRenameId(f.id);
+    setRenameDraft(f.name || '');
+  };
+  const commitFactorRename = () => {
+    if (!renameId) return;
+    const trimmed = renameDraft.trim();
+    if (trimmed) {
+      updateFactor(renameId, { name: trimmed });
+    }
+    setRenameId(null);
+    setRenameDraft('');
+  };
+
   // Social Learning Templates for Factors
   const [showSLFactorModal, setShowSLFactorModal] = useState(false);
   const [slFactorTemplates, setSlFactorTemplates] = useState<any[]>([]);
@@ -239,7 +259,27 @@ export default function Step2() {
                   <Ionicons name={isExpanded ? 'chevron-down' : 'chevron-forward'} size={18} color={COLORS.textSecondary} />
                 </TouchableOpacity>
               )}
-              <Text style={[styles.factorName, { flex: 1 }]}>{factor.name}</Text>
+              {renameId === factor.id ? (
+                <TextInput
+                  style={[styles.addInput, { flex: 1, marginRight: 8, paddingVertical: 6 }]}
+                  value={renameDraft}
+                  onChangeText={setRenameDraft}
+                  onSubmitEditing={commitFactorRename}
+                  onBlur={commitFactorRename}
+                  autoFocus
+                />
+              ) : (
+                <>
+                  <Text style={[styles.factorName, { flex: 1 }]}>{factor.name}</Text>
+                  <TouchableOpacity
+                    onPress={() => startFactorRename(factor)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={{ marginRight: 8 }}
+                  >
+                    <Ionicons name="pencil" size={16} color={COLORS.primary} />
+                  </TouchableOpacity>
+                </>
+              )}
               {hasChildren && (
                 <View style={[styles.weightTotalBadge, weightTotal === 100 && styles.weightTotalComplete, weightTotal > 100 && styles.weightTotalOver]}>
                   <Text style={styles.weightTotalText}>{weightTotal}%</Text>
