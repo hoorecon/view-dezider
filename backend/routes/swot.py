@@ -274,13 +274,25 @@ async def convert_to_decision(analysis_id: str, user: dict = Depends(get_current
     o_count = len(opportunities)
     t_count = len(threats)
 
+    # SWOT-converted Decisions operate in SINGLE-OPTION mode: there's just
+    # one implicit option representing the user's current state. We seed it
+    # here so Steps 6/7/9/10 don't render an empty options list.
+    # Format (local-readable, sortable):  "Current Scenario - YYYY-MM-DD HH:MM"
+    current_scenario_option = {
+        "id": str(uuid.uuid4()),
+        "name": f"Current Scenario - {now.strftime('%Y-%m-%d %H:%M')}",
+        "description": "Auto-created from SWOT conversion. Rename if you'd like.",
+        "order": 0,
+        "is_default_scenario": True,  # flag used by frontend to lock the option list
+    }
+
     decision_doc = {
         "id": decision_id,
         "user_id": user["user_id"],
         "title": doc["title"],
         "context": doc.get("context", ""),
         "factors": prr_factors,
-        "options": [],
+        "options": [current_scenario_option],
         "chosen_option_id": None,
         "decision_case": None,
         "notes": f"Converted from SWOT Analysis. S:{s_count} W:{w_count} O:{o_count} T:{t_count}.",
@@ -290,7 +302,7 @@ async def convert_to_decision(analysis_id: str, user: dict = Depends(get_current
         "life_area": doc.get("life_area"),
         "decision_type": doc.get("decision_type"),
         "rating_gap_multiplier": 1.0,
-        "mpps_option_id": None,
+        "mpps_option_id": current_scenario_option["id"],  # MPPS always targets the lone option
         "mpps_improvements": [],
         "mpps_projected_worth": None,
         "mpps_timeframe": None,
@@ -298,6 +310,15 @@ async def convert_to_decision(analysis_id: str, user: dict = Depends(get_current
         "status": "in_progress",
         "source_module": "swot",
         "source_id": analysis_id,
+        # SWOT-converted decisions intentionally have ONLY the lone "Current
+        # Scenario" option. Pre-set the single-option flag so Step 7 doesn't
+        # prompt the user with the "only one option — proceed?" confirmation.
+        "allow_single_option": True,
+        # Force /prr/[id] to open on Step 2 (Define Factors), regardless of how
+        # much pre-fill we've done. User can step forward through the
+        # AI-suggested classifications, priorities, ratings and override at
+        # any point.
+        "current_step": 2,
         "created_at": now,
         "updated_at": now,
     }

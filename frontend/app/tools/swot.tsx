@@ -204,7 +204,12 @@ export default function SwotScreen() {
                   text: 'Open Decision',
                   onPress: () => {
                     setShowDetail(false);
-                    router.push(`/tools/new-decision?id=${res.data.decision_id}` as any);
+                    // Always land on Step 2 (Define Factors) so the user can
+                    // review/override the AI-suggested factor list, classifications,
+                    // priorities and ratings — even though Steps 2/3/4/5 are
+                    // already pre-filled. Source_module="swot" on the doc tells
+                    // /prr/[id] to render Steps 6/7 in single-option mode.
+                    router.push(`/prr/${res.data.decision_id}?step=2` as any);
                   }
                 }]
               );
@@ -518,7 +523,7 @@ export default function SwotScreen() {
                 style={styles.convertBtn}
                 onPress={() => {
                   setShowDetail(false);
-                  router.push(`/tools/new-decision?id=${selectedAnalysis.converted_decision_id}` as any);
+                  router.push(`/prr/${selectedAnalysis.converted_decision_id}?step=2` as any);
                 }}
               >
                 <LinearGradient

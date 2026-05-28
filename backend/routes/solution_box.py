@@ -85,9 +85,16 @@ def _swot_status(doc: Dict[str, Any]) -> str:
 
 
 def _norm_decider(doc: Dict[str, Any]) -> Dict[str, Any]:
+    # SWOT-converted Decisions (source_module == "swot") should be grouped
+    # under the SWOT filter in the Solution Box, not under Decider — even
+    # though the data now lives in db.decisions and the UI is /prr/[id].
+    # User UX feedback: keep it under the SWOT bucket end-to-end.
+    is_swot_sourced = (doc.get("source_module") == "swot")
+    sb_type = "swot" if is_swot_sourced else "decider"
+
     return {
         "id": doc.get("id"),
-        "type": "decider",
+        "type": sb_type,
         "title": doc.get("title") or "Untitled decision",
         "context": doc.get("context") or "",
         "life_area": doc.get("folder") or doc.get("life_area"),
@@ -160,11 +167,28 @@ async def list_solution_box(
 
     results: List[Dict[str, Any]] = []
 
-    # --- Decider ---
-    if type_filter in (None, "decider"):
-        cursor = db.decisions.find({"user_id": uid}, {"_id": 0}).sort("updated_at", -1)
+    # --- Decider (excluding SWOT-converted) + SWOT-converted under swot filter ---
+    # SWOT-converted decisions live in db.decisions but report type="swot"
+    # via _norm_decider. We split the iteration so each chip shows the right
+    # items: "decider" filter excludes SWOT-converted, "swot" filter pulls
+    # them in alongside db.swot rows.
+    decider_iter_needed = type_filter in (None, "decider")
+    swot_via_decisions_needed = type_filter in (None, "swot")
+    if decider_iter_needed or swot_via_decisions_needed:
+        # Mongo filter — when ONLY swot-from-decisions is wanted, narrow at
+        # the DB layer; otherwise pull all and filter in Python (we still
+        # need to bucket each doc by its source_module).
+        mongo_q: Dict[str, Any] = {"user_id": uid}
+        if not decider_iter_needed and swot_via_decisions_needed:
+            mongo_q["source_module"] = "swot"
+        cursor = db.decisions.find(mongo_q, {"_id": 0}).sort("updated_at", -1)
         async for doc in cursor:
             item = _norm_decider(doc)
+            # Skip docs that don't match the requested chip
+            if type_filter == "decider" and item["type"] != "decider":
+                continue
+            if type_filter == "swot" and item["type"] != "swot":
+                continue
             if life_area_filter and item["life_area"] != life_area_filter:
                 continue
             if status_filter and item["status"] != status_filter:

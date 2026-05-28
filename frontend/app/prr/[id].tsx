@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import VoiceStepInput from '../../src/components/VoiceStepInput';
@@ -49,6 +50,23 @@ function PRRDecisionDetailInner() {
 
   const [showCLD, setShowCLD] = useState(false);
   const [showCallModal, setShowCallModal] = useState(false);
+
+  // Honour ?step=N query param coming from SWOT→Decider conversion so we
+  // always land on Step 2 instead of the persisted current_step.
+  // Apply once per load so navigating between steps inside the page isn't
+  // hijacked by the query param.
+  const { step: stepParam } = useLocalSearchParams<{ step?: string }>();
+  const appliedStepParamRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!decision) return;
+    if (!stepParam) return;
+    if (appliedStepParamRef.current === String(decision.id)) return;
+    const n = parseInt(String(stepParam), 10);
+    if (!Number.isNaN(n) && n >= 2 && n <= 10) {
+      setCurrentStep(n);
+      appliedStepParamRef.current = String(decision.id);
+    }
+  }, [decision, stepParam, setCurrentStep]);
 
   const handleCLDApply = (results: {
     classifications: { [factorId: string]: 'primary' | 'secondary' };

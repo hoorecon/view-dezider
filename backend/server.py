@@ -333,6 +333,16 @@ async def startup_db_client():
         await ensure_admin_data_seeded_on_boot()
     except Exception as e:
         logger.error(f"Admin data seed at boot failed: {e}")
+
+    # One-shot, idempotent migration — SWOT-converted Decisions need at least
+    # one "Current Scenario" option so Steps 6/7/9/10 of /prr/[id] render.
+    try:
+        from core.migrations.swot_decisions_single_option import (
+            migrate_swot_decisions_single_option,
+        )
+        await migrate_swot_decisions_single_option()
+    except Exception as e:
+        logger.error(f"SWOT-decisions single-option migration failed: {e}")
     try:
         # If tier_matrix smart-seed was previously applied with stale module ids
         # (where root tier ended up with < 5 modules), auto-reset to apply the

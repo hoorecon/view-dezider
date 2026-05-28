@@ -84,6 +84,82 @@ export default function Step6() {
     setShowSLModal(false);
   };
 
+  // ── SWOT-converted single-option mode ───────────────────────────────
+  // A decision created via SWOT → Decider conversion represents ONE
+  // implicit scenario ("Current Scenario - YYYY-MM-DD HH:MM"). The user
+  // shouldn't be adding more options here, just optionally renaming the
+  // one we auto-injected. Hide the Solutions Store / Social Learning
+  // entry points, the manual-add row, and the delete button. Allow
+  // inline rename via a small pencil-edit button so they can label it
+  // contextually (e.g., "Q2 2026 baseline").
+  const isSwotSourced = (decision as any)?.source_module === 'swot';
+  const singleOption = isSwotSourced ? decision.options[0] : null;
+  const [renaming, setRenaming] = useState(false);
+  const [renameDraft, setRenameDraft] = useState('');
+  const startRename = () => {
+    if (!singleOption) return;
+    setRenameDraft(singleOption.name);
+    setRenaming(true);
+  };
+  const commitRename = () => {
+    if (!singleOption) return;
+    const trimmed = renameDraft.trim();
+    if (!trimmed || trimmed === singleOption.name) { setRenaming(false); return; }
+    const updated = decision.options.map((o, i) =>
+      i === 0 ? { ...o, name: trimmed } : o
+    );
+    saveDecision({ options: updated });
+    setRenaming(false);
+  };
+
+  if (isSwotSourced && singleOption) {
+    return (
+      <View style={styles.stepContent}>
+        <Text style={styles.stepTitle}>Step 6: Current Scenario</Text>
+        <Text style={styles.stepDescription}>
+          SWOT-converted decisions analyse a single scenario — your current
+          state at the moment of conversion. You can rename it for clarity,
+          but you can't add multiple options here.
+        </Text>
+
+        <Card style={styles.optionCard}>
+          <View style={styles.optionHeader}>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={[localStyles.storeBadge, { backgroundColor: '#FEF3C7' }]}>
+                <Ionicons name="time" size={10} color="#92400E" />
+              </View>
+              {renaming ? (
+                <TextInput
+                  style={[styles.addInput, { flex: 1, marginRight: 8 }]}
+                  value={renameDraft}
+                  onChangeText={setRenameDraft}
+                  onSubmitEditing={commitRename}
+                  onBlur={commitRename}
+                  autoFocus
+                />
+              ) : (
+                <Text style={styles.optionName}>{singleOption.name}</Text>
+              )}
+            </View>
+            {!renaming && (
+              <TouchableOpacity onPress={startRename} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="pencil" size={18} color={COLORS.primary} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </Card>
+
+        <View style={styles.navButtons}>
+          <TouchableOpacity style={styles.backButton} onPress={() => setCurrentStep(5)}>
+            <Ionicons name="arrow-back" size={18} color={COLORS.text} />
+            <Text style={styles.backButtonText}>Back</Text>
+          </TouchableOpacity>
+          <GradientButton title="Next" onPress={() => setCurrentStep(7)} />
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.stepContent}>
       <Text style={styles.stepTitle}>Step 6: Define Options</Text>
