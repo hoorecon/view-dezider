@@ -90,7 +90,15 @@ export const useDecision = (): DecisionContextType => {
 };
 
 export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { id } = useLocalSearchParams();
+  const params = useLocalSearchParams<{ id?: string | string[]; step?: string | string[] }>();
+  const id = Array.isArray(params.id) ? params.id[0] : params.id;
+  // Single-shot guard so the ?step=N override is consumed only on the
+  // first fetchDecision() call (not on subsequent refreshes triggered by
+  // save / reload). Once true, the smart auto-jump takes over.
+  const overrideConsumedRef = React.useRef(false);
+  // Alias so fetchDecision() can read the latest step value without
+  // re-creating the function on every render. (Closures pick this up.)
+  const searchParams = params as { step?: string | string[] };
   const router = useRouter();
   const [decision, setDecision] = useState<Decision | null>(null);
   const [loading, setLoading] = useState(true);
@@ -122,6 +130,28 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try {
       const response = await api.get(`/decisions/${id}`);
       setDecision(response.data);
+
+      // ── ?step=N URL override (SWOT->Decider conversion uses this to
+      // force-land on Step 2 even when the doc already has factors).
+      // Consume the param ONCE on first load — clear it from the ref so
+      // subsequent fetchDecision() calls (e.g. refresh after save) fall
+      // back to the smart auto-jump below.
+      const stepOverrideRaw = searchParams?.step;
+      const stepOverride = stepOverrideRaw
+        ? parseInt(String(Array.isArray(stepOverrideRaw) ? stepOverrideRaw[0] : stepOverrideRaw), 10)
+        : NaN;
+      if (
+        !overrideConsumedRef.current &&
+        !Number.isNaN(stepOverride) &&
+        stepOverride >= 2 &&
+        stepOverride <= 10
+      ) {
+        overrideConsumedRef.current = true;
+        setCurrentStep(stepOverride);
+        return; // skip the smart auto-jump below — user asked for a specific step
+      }
+
+      // Smart auto-jump to the furthest meaningful step based on data present.
       if (response.data.status === 'completed') {
         setCurrentStep(10);
       } else if (response.data.chosen_option_id) {
