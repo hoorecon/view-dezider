@@ -20,7 +20,16 @@ interface Entitlement { sku_code: string; balance: number; granted_qty: number; 
 
 declare const Razorpay: any; // injected by /razorpay-checkout.html or RN SDK
 
-function formatINR(paise: number) { return '₹' + (paise / 100).toFixed(paise % 100 === 0 ? 0 : 2); }
+function formatINR(paise: number) {
+  const rupees = paise / 100;
+  const fixed = rupees.toFixed(paise % 100 === 0 ? 0 : 2);
+  // Indian numbering: last 3 digits separated normally, then groups of 2
+  const [intPart, decPart] = fixed.split('.');
+  const lastThree = intPart.slice(-3);
+  const rest = intPart.slice(0, -3);
+  const formatted = rest ? rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' + lastThree : lastThree;
+  return '₹' + formatted + (decPart ? '.' + decPart : '');
+}
 
 export default function StoreScreen() {
   const router = useRouter();

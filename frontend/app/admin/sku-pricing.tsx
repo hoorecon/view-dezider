@@ -14,7 +14,15 @@ import { COLORS } from '../../src/constants/colors';
 
 interface Sku { code: string; name: string; tagline: string; description: string; price_paise: number; quota: number; active: boolean; display_order: number; badge_color: string; kind: string; }
 
-function formatINR(p: number) { return '₹' + (p / 100).toFixed(p % 100 === 0 ? 0 : 2); }
+function formatINR(p: number) {
+  const rupees = p / 100;
+  const fixed = rupees.toFixed(p % 100 === 0 ? 0 : 2);
+  const [intPart, decPart] = fixed.split('.');
+  const lastThree = intPart.slice(-3);
+  const rest = intPart.slice(0, -3);
+  const formatted = rest ? rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' + lastThree : lastThree;
+  return '₹' + formatted + (decPart ? '.' + decPart : '');
+}
 
 export default function AdminSkuPricing() {
   const [skus, setSkus] = useState<Sku[]>([]);
