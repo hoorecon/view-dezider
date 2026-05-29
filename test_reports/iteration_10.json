@@ -1,0 +1,58 @@
+{
+  "summary": "Phase 2 verification: SWOT Save-as-Template backend (8/8 pytest passing) + UI flow end-to-end (modal opens, POST /api/swot/{id}/save-as-template returns 200 with factor_count=4, success alert shown). Discovered ONE significant bug: templates created via save-as-template store life_area_id as a raw human-readable string (e.g., 'Career') instead of the canonical taxonomy id (e.g., 'la_career'), which prevents them from surfacing in the /tools/new-decision template picker (which calls /api/hos/templates/suggest with life_area_id=la_*). SWOT flag chips rendering code in new-decision.tsx is correct but COULD NOT be visually validated because the picker returns 0 templates for module=swot due to the life_area_id mismatch above. Regressions for /tools/add-solution, /prr/new render fine with back+home headers.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/swot/{id}/save-as-template",
+        "issue": "life_area_id is set from swot.get('life_area') (a free-text label like 'Career') instead of the canonical taxonomy id (la_career). This breaks discoverability via /api/hos/templates/suggest?life_area_id=la_*&module=swot. Fix at /app/backend/routes/swot.py:265 — either look up the taxonomy id from the SWOT analysis (it should already store life_area_id), or look up swot_analyses.life_area_id and use it directly. Also consider falling back to empty (which behaves as wildcard) instead of leaking the raw label.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "GET /api/hos/templates/suggest",
+        "issue": "When module=swot is passed, no SWOT-saved templates surface because (a) life_area_id mismatch above, AND (b) it's unclear whether suggest filters by applies_to_modules. Even with empty life_area_id, our admin-saved templates (life_area_id='') did not surface. Recommend confirming the suggest query honors applies_to_modules contains 'swot' OR template_type='AUTHORIZED_STANDARD' with empty life_area as wildcard."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "/tools/new-decision template picker — SWOT module",
+        "issue": "Picker calls /api/hos/templates/suggest with module=swot and returns 0 templates even when SWOT templates exist in DB. Root cause is backend bug above (life_area_id stored as 'Career' rather than 'la_career'). SWOT flag chip rendering (S/W/O/T color-coded chips on template cards) cannot be visually verified end-to-end until backend bug is fixed.",
+        "affected_testIDs": []
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_swot_save_as_template.py",
+    "/app/test_reports/pytest/swot_save_as_template.xml"
+  ],
+  "action_items": [
+    "FIX backend/routes/swot.py:265: use swot.get('life_area_id') (canonical id) instead of swot.get('life_area') (label). If SWOT analyses don't carry life_area_id, look it up by name in life_areas collection or leave it empty so it's wildcard.",
+    "VERIFY /api/hos/templates/suggest correctly surfaces docs where applies_to_modules contains 'swot' (currently returns 0 for module=swot even though hos_decision_templates has 25 such docs).",
+    "After backend fix, re-run a UI walkthrough of /tools/new-decision?module=swot to visually confirm S/W/O/T color-coded chips render on template cards (code at new-decision.tsx:625–665 looks correct, just couldn't be exercised).",
+    "Add testID attributes to SWOT detail buttons: save-as-template-button, save-template-submit, template-name-input, template-description-input, is-public-toggle — currently tests rely on text matching which is brittle.",
+    "Consider adding goHome button (with safeBack already present) to SWOT detail header for parity with list view (only list view shows Home icon)."
+  ],
+  "critical_code_review_comments": [
+    "swot.tsx is 1148 lines — approaching the 700-line threshold. Recommend splitting the modal components (Add Item Modal, Save Template Modal) into separate files.",
+    "Save Template modal in swot.tsx lacks testID on its core inputs/buttons; tests had to use text matching with .first selectors.",
+    "swot.py save-as-template handler does not validate that user-provided name is unique per user — duplicate templates with identical titles can be silently created."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_swot_save_as_template.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (8/8 pytest passing for save-as-template validation, response shape, factor derivation, admin vs non-admin path, discoverability via /hos/templates list)",
+    "frontend": "~70% (SWOT list, detail, Save-as-Template modal & POST all working; new-decision template picker chips couldn't be visually verified due to backend taxonomy bug)"
+  },
+  "seed_data_creation": "Created several TEST_* SWOT templates and one TEST_UI_CS_* template in hos_decision_templates. Two TEST_SWOT_* analyses still present (test cleanup deletes most but module-scoped fixtures don't clean templates). Safe to leave; named TEST_ prefix.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "After main agent fixes the life_area_id bug at swot.py:265, retest by: (1) login as admin@test.com / AdminPass2026!, (2) go to /tools/swot, create a fresh SWOT in some life area like 'Career', add 1 item per quadrant, click 'Save as Template' (name auto-prefills), submit. (3) Then go to /tools/new-decision?module=swot, step through to Step 5 selecting same life area + ask type 'problem' — verify the just-saved template appears with S/W/O/T color chips on its card. (4) Use the test creds in /app/memory/test_credentials.md for non-admin path (harden_1777921741@example.com).",
+  "rca_of_issue": "Root cause: /app/backend/routes/swot.py line 265 sets `life_area_id` to `swot.get('life_area')` which returns the human-readable label string (e.g., 'Career'), not the canonical taxonomy id (e.g., 'la_career'). The /api/hos/templates/suggest endpoint filters by life_area_id strictly. Repro: POST /api/swot to create SWOT with life_area='Career', fill items, POST save-as-template → inspect template doc → life_area_id='Career' (raw) instead of 'la_career'. Mitigation: change line 265 to `swot.get('life_area_id') or ''` (the SWOT analysis likely already stores canonical id) OR resolve the label to id via a lookup in life_areas collection."
+}
