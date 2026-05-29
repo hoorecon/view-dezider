@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
   ActivityIndicator, Alert, KeyboardAvoidingView, Platform, FlatList,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -16,17 +16,27 @@ import api from '../../src/utils/api';
 interface LifeArea { id: string; name: string; slug: string; icon: string; color: string; order: number; }
 interface AskType { id: string; name: string; slug: string; icon: string; color: string; description: string; priority_label: string; }
 interface SubArea { id: string; name: string; life_area_id: string; }
+interface Scenario {
+  id: string; title: string; sub_area_id?: string; life_area_id?: string;
+  representative_template_id?: string; template_count?: number;
+}
 interface Template {
   id: string; title: string; description: string; template_type: string;
   tags?: string[]; popularity?: number; life_area_id: string; ask_type_id: string;
-  acting_as_contexts: string[];
+  acting_as_contexts: string[]; applies_to_modules?: string[]; org_types?: string[];
+  decision_types?: string[];
 }
+type ModuleKey = 'dezider' | 'swot' | 'pros-cons';
 
 // ====== CONSTANTS ======
+// 6 OrgType cards. Width tuned so 2 fit per row on mobile, 3 per row on web.
 const ACTING_AS = [
-  { key: 'INDIVIDUAL', label: 'Individual', icon: 'person', color: '#6366F1', desc: 'Personal decision' },
-  { key: 'ORGANIZATION', label: 'Organization', icon: 'business', color: '#0EA5E9', desc: 'Business / team decision' },
-  { key: 'GOVERNMENT', label: 'Government', icon: 'globe', color: '#8B5CF6', desc: 'Public / policy decision' },
+  { key: 'INDIVIDUAL',    label: 'Individual',             icon: 'person',           color: '#6366F1', desc: 'Self / family' },
+  { key: 'BUSINESS_ORG',  label: 'Business Organization',  icon: 'business',         color: '#0EA5E9', desc: 'Company / startup / SMB' },
+  { key: 'ACADEMIC_ORG',  label: 'Academic Organization',  icon: 'school',           color: '#F59E0B', desc: 'School / college / research' },
+  { key: 'NONPROFIT_ORG', label: 'Non-profit Organization',icon: 'heart',            color: '#10B981', desc: 'NGO / charity / foundation' },
+  { key: 'ASSOCIATION',   label: 'Association',            icon: 'people-circle',    color: '#F43F5E', desc: 'Society / club / housing' },
+  { key: 'GOVERNMENT',    label: 'Government',             icon: 'globe',            color: '#8B5CF6', desc: 'Public / policy / civic' },
 ];
 
 const TEMPLATE_TYPE_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
@@ -34,11 +44,46 @@ const TEMPLATE_TYPE_CONFIG: Record<string, { label: string; color: string; icon:
   DYNAMIC_CLD_STARTER: { label: 'CLD Starter', color: '#F59E0B', icon: 'flash' },
 };
 
-const STEPS = ['Context', 'Life Area', 'Ask Type', 'Describe', 'Choose Template'];
+// Module-specific configuration: header, gradient, step list, post-create route.
+const MODULE_CONFIG: Record<ModuleKey, {
+  title: string;
+  subtitle: string;
+  gradient: [string, string];
+  hasTemplatesStep: boolean;
+  finalButtonLabel: string;
+}> = {
+  'dezider': {
+    title: 'My Dezider', subtitle: 'New Decision',
+    gradient: ['#6366F1', '#8B5CF6'],
+    hasTemplatesStep: true, finalButtonLabel: 'Find Templates',
+  },
+  'swot': {
+    title: 'SWOT Analysis', subtitle: 'New SWOT',
+    gradient: ['#1E40AF', '#3B82F6'],
+    hasTemplatesStep: true, finalButtonLabel: 'Find Templates',
+  },
+  'pros-cons': {
+    title: 'Pros & Cons', subtitle: 'New Analysis',
+    gradient: ['#7C3AED', '#A855F7'],
+    hasTemplatesStep: false, finalButtonLabel: 'Create & Start Wizard',
+  },
+};
+
+const STEPS_BASE = ['Context', 'Life Area', 'Ask Type', 'Define'];
+const STEPS_WITH_TEMPLATES = [...STEPS_BASE, 'Choose Template'];
 
 export default function NewDecisionIntake() {
   const router = useRouter();
   const { user } = useAuthStore();
+  const params = useLocalSearchParams<{ module?: string }>();
+
+  // Module key from URL (?module=dezider|swot|pros-cons). Defaults to dezider.
+  const moduleKey: ModuleKey = useMemo(() => {
+    const m = String(params.module || 'dezider').toLowerCase();
+    return (m === 'swot' || m === 'pros-cons') ? m as ModuleKey : 'dezider';
+  }, [params.module]);
+  const moduleCfg = MODULE_CONFIG[moduleKey];
+  const STEPS = moduleCfg.hasTemplatesStep ? STEPS_WITH_TEMPLATES : STEPS_BASE;
 
   // Step tracking
   const [step, setStep] = useState(0);
@@ -50,10 +95,16 @@ export default function NewDecisionIntake() {
   const [searchText, setSearchText] = useState('');
   const [customTitle, setCustomTitle] = useState('');
 
+  // Step-4 new structured fields
+  const [selectedSubArea, setSelectedSubArea] = useState<SubArea | null>(null);
+  const [selectedScenario, setSelectedScenario] = useState<Scenario | null>(null);
+  const [aiParsing, setAiParsing] = useState(false);
+
   // Data
   const [lifeAreas, setLifeAreas] = useState<LifeArea[]>([]);
   const [askTypes, setAskTypes] = useState<AskType[]>([]);
   const [subAreas, setSubAreas] = useState<SubArea[]>([]);
+  const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
 
   // Loading
@@ -106,7 +157,9 @@ export default function NewDecisionIntake() {
         acting_as: actingAs,
         life_area_id: selectedArea.id,
         ask_type_id: selectedAskType.id,
+        module: moduleKey,
       });
+      if (selectedSubArea) params.append('sub_area_id', selectedSubArea.id);
       if (searchText.trim()) params.append('q', searchText.trim());
       const r = await api.get(`/hos/templates/suggest?${params}`);
       setTemplates(r.data || []);
@@ -120,15 +173,114 @@ export default function NewDecisionIntake() {
       api.get(`/hos/sub-areas?life_area_id=${selectedArea.id}`)
         .then(r => setSubAreas(r.data || []))
         .catch(() => setSubAreas([]));
+      // Reset Step-4 dependent state
+      setSelectedSubArea(null);
+      setSelectedScenario(null);
     }
   }, [selectedArea]);
 
+  // Fetch scenarios when life area / sub area changes
+  useEffect(() => {
+    if (!selectedArea) { setScenarios([]); return; }
+    const p = new URLSearchParams({
+      life_area_id: selectedArea.id,
+      module: moduleKey,
+      limit: '50',
+    });
+    if (selectedSubArea) p.append('sub_area_id', selectedSubArea.id);
+    api.get(`/hos/scenarios?${p}`)
+      .then(r => setScenarios(r.data || []))
+      .catch(() => setScenarios([]));
+  }, [selectedArea, selectedSubArea, moduleKey]);
+
+  // AI-parse: when user types in the free-text box, attempt to match a
+  // Sub-area and Scenario via lightweight keyword scoring (no LLM call —
+  // cheap & instant). Triggered debounced via onEndEditing/onBlur.
+  const aiParseFreeText = useCallback(() => {
+    const q = searchText.trim().toLowerCase();
+    if (!q || q.length < 4) return;
+    setAiParsing(true);
+    try {
+      // Sub-area match: pick the one whose name shares the most word tokens with the query
+      if (!selectedSubArea && subAreas.length) {
+        const score = (sa: SubArea) => {
+          const tokens = sa.name.toLowerCase().split(/\W+/).filter(t => t.length > 2);
+          return tokens.reduce((s, t) => s + (q.includes(t) ? 1 : 0), 0);
+        };
+        let best: SubArea | null = null; let bestScore = 0;
+        for (const sa of subAreas) {
+          const sc = score(sa);
+          if (sc > bestScore) { best = sa; bestScore = sc; }
+        }
+        if (best && bestScore >= 1) setSelectedSubArea(best);
+      }
+      // Scenario match: same approach using scenario.title
+      if (!selectedScenario && scenarios.length) {
+        const score = (s: Scenario) => {
+          const tokens = s.title.toLowerCase().split(/\W+/).filter(t => t.length > 2);
+          return tokens.reduce((acc, t) => acc + (q.includes(t) ? 1 : 0), 0);
+        };
+        let best: Scenario | null = null; let bestScore = 0;
+        for (const s of scenarios) {
+          const sc = score(s);
+          if (sc > bestScore) { best = s; bestScore = sc; }
+        }
+        if (best && bestScore >= 1) setSelectedScenario(best);
+      }
+    } finally {
+      setAiParsing(false);
+    }
+  }, [searchText, subAreas, scenarios, selectedSubArea, selectedScenario]);
+
   // ====== DETERMINE ACTING AS FROM USER CONTEXT ======
   useEffect(() => {
-    if (user?.org_id) {
-      setActingAs('ORGANIZATION');
-    }
+    // If user belongs to an org, pre-select the most likely OrgType.
+    // Defaults to BUSINESS_ORG (most common) — user can change to academic/non-profit/etc.
+    if (user?.org_id) setActingAs('BUSINESS_ORG');
   }, [user]);
+
+  // ====== SMART-DEFAULT TITLE ======
+  // Computed in real-time so the placeholder in Step-4 title input updates as
+  // the user picks Sub-area / Scenario. Used both as placeholder and as the
+  // final fallback when the user leaves the title field empty.
+  const smartDefaultTitle = useMemo(() => {
+    const ts = new Date();
+    const stamp = ts.toLocaleString('en-IN', {
+      day: 'numeric', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    });
+    if (selectedScenario) return `${selectedScenario.title} — ${stamp}`;
+    if (selectedSubArea)  return `${selectedSubArea.name} — ${stamp}`;
+    if (selectedArea)     return `${selectedArea.name} — ${stamp}`;
+    return `New Decision — ${stamp}`;
+  }, [selectedScenario, selectedSubArea, selectedArea]);
+
+  // ====== CREATE PROS & CONS analysis (P&C path skips Step 5) ======
+  const createProsConsAnalysis = async () => {
+    if (!selectedArea) {
+      showAlert('Missing Context', 'Please choose a Life Area before continuing.');
+      return;
+    }
+    setCreating(true);
+    try {
+      const title = customTitle.trim() || smartDefaultTitle;
+      const r = await api.post('/pros-cons', {
+        title,
+        context: searchText.trim(),
+        life_area: selectedArea.id,
+      });
+      const id = r.data?.id;
+      if (id) {
+        router.replace(`/tools/pros-cons-wizard?id=${id}&module=pros-cons` as any);
+      } else {
+        showAlert('Error', 'Could not create Pros & Cons analysis.');
+      }
+    } catch (e: any) {
+      showAlert('Error', e?.response?.data?.detail || 'Failed to create analysis.');
+    } finally {
+      setCreating(false);
+    }
+  };
 
   // ====== CREATE DECISION ======
   const handleCreateDecision = async (templateId?: string, sourceType?: string) => {
@@ -296,40 +448,123 @@ export default function NewDecisionIntake() {
     </View>
   );
 
-  const renderStep3 = () => (
-    <View>
-      <Text style={s.stepTitle}>Describe your decision</Text>
-      <Text style={s.stepSubtitle}>Type keywords or a question to find relevant templates</Text>
-      <TextInput
-        style={s.searchInput}
-        placeholder='e.g. "Should I quit my job?", "cash flow issue"'
-        value={searchText}
-        onChangeText={setSearchText}
-        placeholderTextColor={COLORS.textMuted}
-        multiline={false}
-        returnKeyType="search"
-        onSubmitEditing={nextStep}
-      />
-      {/* Sub-areas as quick chips */}
-      {subAreas.length > 0 && (
-        <View style={{ marginTop: 16 }}>
-          <Text style={s.chipSectionLabel}>Related sub-areas in {selectedArea?.name}:</Text>
+  const renderStep3 = () => {
+    // Step-4 (index 3): "Define" — structured form.
+    // Layout: free-text (AI parse) → Sub-area chips → Scenario chips → Title.
+    return (
+      <View>
+        <Text style={s.stepTitle}>Tell us about your decision</Text>
+        <Text style={s.stepSubtitle}>
+          {moduleKey === 'pros-cons'
+            ? "Describe it — we'll set up the analysis"
+            : "Type freely or pick from suggestions"}
+        </Text>
+
+        {/* ① Free-text — AI parses → ②③ pre-fill */}
+        <Text style={s.fieldLabel}>① Describe your decision <Text style={s.fieldOpt}>(optional)</Text></Text>
+        <TextInput
+          style={s.searchInput}
+          placeholder='e.g. "Should I quit my job to start a startup?"'
+          value={searchText}
+          onChangeText={setSearchText}
+          onBlur={aiParseFreeText}
+          onEndEditing={aiParseFreeText}
+          placeholderTextColor={COLORS.textMuted}
+          multiline
+          numberOfLines={2}
+        />
+        {!!searchText.trim() && (
+          <View style={s.aiHint}>
+            <Ionicons name="sparkles" size={14} color="#7C3AED" />
+            <Text style={s.aiHintText}>
+              {aiParsing ? 'Parsing…' : 'AI will pre-fill Sub-area & Scenario below'}
+            </Text>
+          </View>
+        )}
+
+        {/* ② Sub-area chips */}
+        <Text style={[s.fieldLabel, { marginTop: 18 }]}>
+          ② Sub-area in {selectedArea?.name} <Text style={s.fieldOpt}>(optional)</Text>
+        </Text>
+        {subAreas.length === 0 ? (
+          <Text style={s.emptyHint}>No sub-areas configured yet for this life area.</Text>
+        ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipScroll}>
             {subAreas.map(sa => (
               <TouchableOpacity
                 key={sa.id}
-                style={s.subAreaChip}
-                onPress={() => setSearchText(sa.name)}
+                style={[
+                  s.subAreaChip,
+                  selectedSubArea?.id === sa.id && { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+                ]}
+                onPress={() => {
+                  setSelectedSubArea(selectedSubArea?.id === sa.id ? null : sa);
+                  setSelectedScenario(null); // reset scenario when sub-area changes
+                }}
               >
-                <Text style={s.subAreaChipText}>{sa.name}</Text>
+                <Text
+                  style={[
+                    s.subAreaChipText,
+                    selectedSubArea?.id === sa.id && { color: '#FFF', fontWeight: '700' },
+                  ]}
+                >{sa.name}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
-        </View>
-      )}
-      <Text style={s.hintText}>You can also skip this and browse all templates</Text>
-    </View>
-  );
+        )}
+
+        {/* ③ Scenario chips */}
+        <Text style={[s.fieldLabel, { marginTop: 18 }]}>
+          ③ Scenario <Text style={s.fieldOpt}>(optional · auto-suggest)</Text>
+        </Text>
+        {scenarios.length === 0 ? (
+          <Text style={s.emptyHint}>
+            {selectedSubArea
+              ? `No scenarios authored yet for ${selectedSubArea.name}.`
+              : 'Pick a sub-area above to see scenarios.'}
+          </Text>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipScroll}>
+            {scenarios.map(sc => (
+              <TouchableOpacity
+                key={sc.id}
+                style={[
+                  s.subAreaChip,
+                  selectedScenario?.id === sc.id && { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
+                ]}
+                onPress={() => setSelectedScenario(selectedScenario?.id === sc.id ? null : sc)}
+              >
+                <Text
+                  style={[
+                    s.subAreaChipText,
+                    selectedScenario?.id === sc.id && { color: '#FFF', fontWeight: '700' },
+                  ]}
+                  numberOfLines={1}
+                >{sc.title}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+
+        {/* ④ Title with smart default */}
+        <Text style={[s.fieldLabel, { marginTop: 18 }]}>
+          ④ Decision title <Text style={s.fieldOpt}>(optional)</Text>
+        </Text>
+        <TextInput
+          style={s.searchInput}
+          placeholder={smartDefaultTitle}
+          placeholderTextColor={COLORS.textMuted}
+          value={customTitle}
+          onChangeText={setCustomTitle}
+          multiline={false}
+          returnKeyType="done"
+        />
+        <Text style={s.hintText}>
+          Leave blank to use: <Text style={{ fontWeight: '600' }}>{smartDefaultTitle}</Text>
+        </Text>
+      </View>
+    );
+  };
 
   const renderStep4 = () => (
     <View style={{ flex: 1 }}>
@@ -422,13 +657,13 @@ export default function NewDecisionIntake() {
     <SafeAreaView style={s.container} edges={['top']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         {/* Header */}
-        <LinearGradient colors={['#6366F1', '#8B5CF6']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.header}>
+        <LinearGradient colors={moduleCfg.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.header}>
           <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
             <Ionicons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
           <View>
-            <Text style={s.headerTitle}>My Dezider</Text>
-            <Text style={s.headerSubtitle}>New Decision</Text>
+            <Text style={s.headerTitle}>{moduleCfg.title}</Text>
+            <Text style={s.headerSubtitle}>{moduleCfg.subtitle}</Text>
           </View>
           <View style={{ width: 40 }} />
         </LinearGradient>
@@ -449,13 +684,15 @@ export default function NewDecisionIntake() {
               {step === 1 && renderStep1()}
               {step === 2 && renderStep2()}
               {step === 3 && renderStep3()}
-              {step === 4 && renderStep4()}
+              {step === 4 && moduleCfg.hasTemplatesStep && renderStep4()}
             </>
           )}
         </ScrollView>
 
-        {/* Navigation buttons */}
-        {!seeding && step < 4 && (
+        {/* Navigation buttons.
+            - For modules WITH templates: nav visible on steps 0-3; templates step (4) has its own actions.
+            - For Pros & Cons (no templates step): nav visible on steps 0-3 and step 3 button reads "Create & Start Wizard" → createProsConsAnalysis(). */}
+        {!seeding && step < (moduleCfg.hasTemplatesStep ? 4 : 4) && (
           <View style={s.navRow}>
             {step > 0 && (
               <TouchableOpacity style={s.navBtnBack} onPress={prevStep}>
@@ -465,11 +702,22 @@ export default function NewDecisionIntake() {
             )}
             <TouchableOpacity
               style={[s.navBtnNext, !canProceed() && s.navBtnDisabled]}
-              onPress={nextStep}
-              disabled={!canProceed()}
+              onPress={() => {
+                if (step === 3 && !moduleCfg.hasTemplatesStep) {
+                  createProsConsAnalysis();
+                } else {
+                  nextStep();
+                }
+              }}
+              disabled={!canProceed() || creating}
             >
-              <Text style={s.navBtnNextText}>{step === 3 ? 'Find Templates' : 'Next'}</Text>
-              <Ionicons name="arrow-forward" size={18} color="#FFF" />
+              <Text style={s.navBtnNextText}>
+                {step === 3 ? moduleCfg.finalButtonLabel : 'Next'}
+              </Text>
+              <Ionicons
+                name={step === 3 && !moduleCfg.hasTemplatesStep ? 'checkmark' : 'arrow-forward'}
+                size={18} color="#FFF"
+              />
             </TouchableOpacity>
           </View>
         )}
@@ -518,14 +766,15 @@ const s = StyleSheet.create({
   stepSubtitle: { fontSize: 14, color: COLORS.textSecondary, marginBottom: 20, lineHeight: 20 },
 
   // Step 0: Context cards
-  contextCards: { gap: 12 },
+  contextCards: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   contextCard: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.white,
-    borderRadius: 14, padding: 16, borderWidth: 2, borderColor: COLORS.border, gap: 14,
+    width: '48%' as any, flexDirection: 'column', alignItems: 'center', backgroundColor: COLORS.white,
+    borderRadius: 14, padding: 14, borderWidth: 2, borderColor: COLORS.border, gap: 8,
+    minHeight: 130,
   },
-  contextIcon: { width: 52, height: 52, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  contextLabel: { fontSize: 16, fontWeight: '600', color: COLORS.textPrimary },
-  contextDesc: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
+  contextIcon: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  contextLabel: { fontSize: 13, fontWeight: '600', color: COLORS.textPrimary, textAlign: 'center' },
+  contextDesc: { fontSize: 11, color: COLORS.textMuted, textAlign: 'center', marginTop: 2 },
   checkCircle: {
     position: 'absolute', top: 12, right: 12, width: 24, height: 24, borderRadius: 12,
     justifyContent: 'center', alignItems: 'center',
@@ -563,13 +812,23 @@ const s = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, color: COLORS.textPrimary,
   },
   chipSectionLabel: { fontSize: 13, fontWeight: '600', color: COLORS.textSecondary, marginBottom: 8 },
-  chipScroll: { gap: 8 },
+  chipScroll: { gap: 8, paddingVertical: 4 },
   subAreaChip: {
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
     backgroundColor: COLORS.primary + '10', borderWidth: 1, borderColor: COLORS.primary + '30',
+    maxWidth: 280,
   },
   subAreaChipText: { fontSize: 13, color: COLORS.primary, fontWeight: '500' },
-  hintText: { fontSize: 12, color: COLORS.textMuted, marginTop: 16, fontStyle: 'italic' },
+  hintText: { fontSize: 12, color: COLORS.textMuted, marginTop: 8, fontStyle: 'italic' },
+
+  // Step-4 structured form labels
+  fieldLabel: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 8 },
+  fieldOpt: { fontSize: 12, fontWeight: '400', color: COLORS.textMuted },
+  aiHint: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginTop: 6, paddingHorizontal: 4,
+  },
+  aiHintText: { fontSize: 12, color: '#7C3AED', fontStyle: 'italic' },
 
   // Step 4: Templates
   scratchCard: {

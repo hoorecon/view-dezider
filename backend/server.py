@@ -343,6 +343,16 @@ async def startup_db_client():
         await migrate_swot_decisions_single_option()
     except Exception as e:
         logger.error(f"SWOT-decisions single-option migration failed: {e}")
+
+    # Idempotent — adds applies_to_modules/org_types/decision_types/swot_flag to
+    # templates AND org_types/decision_types/scenario_ids to solutions_store.
+    try:
+        from core.migrations.template_taxonomy_v2 import (
+            migrate_template_taxonomy_v2,
+        )
+        await migrate_template_taxonomy_v2()
+    except Exception as e:
+        logger.error(f"Template-taxonomy v2 migration failed: {e}")
     try:
         # If tier_matrix smart-seed was previously applied with stale module ids
         # (where root tier ended up with < 5 modules), auto-reset to apply the

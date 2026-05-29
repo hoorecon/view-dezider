@@ -125,6 +125,13 @@ async def create_solution(request: Request, user: dict = Depends(get_current_use
         "life_area_id": body.get("life_area_id"),
         "sub_area_id": body.get("sub_area_id"),
         "category_id": body.get("category_id"),
+        # ── Cross-cutting classification (v2 taxonomy) ──
+        # A Solution has ONE primary life-area/sub-area but can be associated
+        # with MANY scenarios across other life-areas/sub-areas via scenario_ids.
+        # org_types/decision_types are multi-select filters.
+        "org_types":      body.get("org_types") or [],
+        "decision_types": body.get("decision_types") or [],
+        "scenario_ids":   body.get("scenario_ids") or [],
         "visibility": visibility,
         "approval_status": approval_status,
         "created_by": user["user_id"],
@@ -161,6 +168,9 @@ async def list_solutions(
     sub_area_id: Optional[str] = None,
     category_id: Optional[str] = None,
     catalog_node_id: Optional[str] = None,
+    org_type: Optional[str] = None,
+    decision_type: Optional[str] = None,
+    scenario_id: Optional[str] = None,
     country: Optional[str] = None,
     city: Optional[str] = None,
     language: Optional[str] = None,
@@ -172,6 +182,9 @@ async def list_solutions(
 
     `sort=top_rated` ranks by the new ReviewNet `overall_rating × log(1+review_count)`
     score so freshly-popular items rise to the top.
+
+    `org_type`, `decision_type`, `scenario_id` filters honor the v2 taxonomy
+    arrays — solutions with empty arrays are treated as "applies to all".
     """
     query = {"status": "active"}
 
@@ -201,6 +214,25 @@ async def list_solutions(
         query["language"] = language
     if city:
         query["city"] = {"$regex": city, "$options": "i"}
+
+    # ── v2 taxonomy filters — empty array on doc = wildcard ──
+    extra_and = []
+    if org_type:
+        extra_and.append({"$or": [
+            {"org_types": {"$size": 0}},
+            {"org_types": org_type.upper()},
+        ]})
+    if decision_type:
+        extra_and.append({"$or": [
+            {"decision_types": {"$size": 0}},
+            {"decision_types": decision_type.lower()},
+        ]})
+    if scenario_id:
+        # scenario membership is positive-only (no wildcard) since a scenario
+        # link is a deliberate decision by the solution creator
+        extra_and.append({"scenario_ids": scenario_id})
+    if extra_and:
+        query["$and"] = extra_and
 
     sort_spec = "name"
     if sort == "newest":
@@ -339,7 +371,9 @@ async def update_solution(solution_id: str, request: Request, user: dict = Depen
     for field in ["name", "description", "provider", "url", "image_url", "tags",
                    "price_range", "currency", "country", "state", "city", "language",
                    "quantitative_factors", "life_area_id", "sub_area_id", "category_id",
-                   "visibility", "type_specific", "status"]:
+                   "visibility", "type_specific", "status",
+                   # v2 taxonomy fields
+                   "org_types", "decision_types", "scenario_ids"]:
         if field in body:
             updates[field] = body[field]
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()

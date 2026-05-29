@@ -26,10 +26,21 @@ router = APIRouter(prefix="/hos", tags=["HOS Decision Intake"])
 # ENUMS / CONSTANTS
 # ========================
 
-ACTING_AS_CONTEXTS = ["INDIVIDUAL", "ORGANIZATION", "GOVERNMENT"]
+ACTING_AS_CONTEXTS = [
+    "INDIVIDUAL",
+    "BUSINESS_ORG",
+    "ACADEMIC_ORG",
+    "NONPROFIT_ORG",
+    "ASSOCIATION",
+    "GOVERNMENT",
+]
+# Legacy contexts kept for backward compatibility with old templates
+LEGACY_ACTING_AS_CONTEXTS = ["INDIVIDUAL", "ORGANIZATION", "GOVERNMENT"]
 ASK_TYPES = ["PROBLEM", "NEED", "ASPIRATION"]
 TEMPLATE_TYPES = ["AUTHORIZED_STANDARD", "DYNAMIC_CLD_STARTER", "CUSTOM_BLANK"]
-ORG_TYPES = ["BUSINESS", "NONPROFIT", "GOVERNMENT"]
+ORG_TYPES = ["BUSINESS_ORG", "ACADEMIC_ORG", "NONPROFIT_ORG", "ASSOCIATION", "GOVERNMENT"]
+APPLIES_TO_MODULES = ["dezider", "swot"]
+DECISION_TYPES_VALID = ["problem", "need", "aspiration"]
 
 # ========================
 # PYDANTIC MODELS
@@ -120,19 +131,73 @@ async def autosuggest_templates(
     q: Optional[str] = None,
     sub_area_id: Optional[str] = None,
     category_id: Optional[str] = None,
+    module: str = Query("dezider"),   # 'dezider' | 'swot'
     limit: int = 20,
 ):
     """
     Autosuggest matching scenarios/templates (Level 5).
-    Uses required context filters + optional search text for ranking.
+
+    Filters by:
+      - module      → templates whose `applies_to_modules` includes the requested module
+      - acting_as   → 6-value OrgType.  Empty `org_types` array on a doc means
+                      "applies to ALL OrgTypes". Legacy docs that still only have
+                      `acting_as_contexts` are also matched via that field.
+      - ask_type_id → existing single-value filter; the new `decision_types`
+                      multi-array is also honored if present.
+      - life_area_id required
+      - sub_area_id, category_id optional
+      - q free-text search across title/description/tags
     """
-    # Build base query from required filters
+    # Decision type derived from ask_type_id slug (at_problem → 'problem', etc.)
+    decision_type = ""
+    if ask_type_id:
+        decision_type = ask_type_id.replace("at_", "").lower()
+
+    module_lc = (module or "dezider").strip().lower()
+    if module_lc not in APPLIES_TO_MODULES:
+        module_lc = "dezider"
+
+    # Base required filters (life area + module)
     query: Dict[str, Any] = {
         "status": "active",
-        "acting_as_contexts": acting_as.upper(),
         "life_area_id": life_area_id,
-        "ask_type_id": ask_type_id,
+        # applies_to_modules: array on doc. Empty/missing array = legacy "dezider-only".
+        # We match if the array contains the requested module OR (for legacy docs)
+        # if the field is missing AND the requested module is 'dezider'.
+        "$and": [],
     }
+
+    # Module filter
+    if module_lc == "dezider":
+        query["$and"].append({
+            "$or": [
+                {"applies_to_modules": "dezider"},
+                {"applies_to_modules": {"$exists": False}},  # legacy docs
+            ]
+        })
+    else:  # swot
+        query["$and"].append({"applies_to_modules": "swot"})
+
+    # Org-type filter (legacy + new). Empty org_types = wildcard.
+    acting_as_upper = (acting_as or "").upper()
+    org_filter_clauses = [{"org_types": {"$size": 0}}]  # wildcard rule
+    if acting_as_upper:
+        org_filter_clauses.append({"org_types": acting_as_upper})
+        # Also tolerate legacy `acting_as_contexts` array
+        if acting_as_upper in ("BUSINESS_ORG", "ACADEMIC_ORG", "NONPROFIT_ORG", "ASSOCIATION"):
+            org_filter_clauses.append({"acting_as_contexts": "ORGANIZATION"})
+        else:
+            org_filter_clauses.append({"acting_as_contexts": acting_as_upper})
+    query["$and"].append({"$or": org_filter_clauses})
+
+    # Decision-type filter (legacy ask_type_id + new decision_types). Empty decision_types = wildcard.
+    dt_clauses = [{"decision_types": {"$size": 0}}]
+    if decision_type:
+        dt_clauses.append({"decision_types": decision_type})
+    if ask_type_id:
+        dt_clauses.append({"ask_type_id": ask_type_id})
+    query["$and"].append({"$or": dt_clauses})
+
     if sub_area_id:
         query["sub_area_id"] = sub_area_id
     if category_id:
@@ -141,29 +206,97 @@ async def autosuggest_templates(
     # If search text, use regex for partial matching
     if q and q.strip():
         search_pattern = re.escape(q.strip())
-        query["$or"] = [
+        query["$and"].append({"$or": [
             {"title": {"$regex": search_pattern, "$options": "i"}},
             {"description": {"$regex": search_pattern, "$options": "i"}},
             {"tags": {"$regex": search_pattern, "$options": "i"}},
-        ]
+        ]})
 
     items = await db.hos_decision_templates.find(
         query, {"_id": 0}
     ).sort([("popularity", -1), ("order", 1)]).to_list(limit)
 
-    # If no exact matches with search text, relax to just context filters
-    if q and q.strip() and len(items) == 0:
-        fallback_query: Dict[str, Any] = {
+    # Relax fallback — drop sub_area/category/q if no exact matches
+    if (sub_area_id or category_id or (q and q.strip())) and len(items) == 0:
+        relaxed = {
             "status": "active",
-            "acting_as_contexts": acting_as.upper(),
             "life_area_id": life_area_id,
-            "ask_type_id": ask_type_id,
+            "$and": query["$and"][:3],   # keep module + org + decision-type filters
         }
         items = await db.hos_decision_templates.find(
-            fallback_query, {"_id": 0}
+            relaxed, {"_id": 0}
         ).sort([("popularity", -1), ("order", 1)]).to_list(limit)
 
     return items
+
+
+@router.get("/scenarios")
+async def list_scenarios(
+    life_area_id: Optional[str] = None,
+    sub_area_id: Optional[str] = None,
+    module: str = Query("dezider"),
+    limit: int = 50,
+):
+    """
+    Return distinct scenarios for the given life-area/sub-area, derived from
+    `hos_decision_templates.scenario_mapping`. Each scenario carries enough
+    info for the Step-4 dropdown:
+        {id, title, sub_area_id, life_area_id, template_id (representative)}
+    Used by the new structured Step-4 UI.
+    """
+    module_lc = (module or "dezider").strip().lower()
+    if module_lc not in APPLIES_TO_MODULES:
+        module_lc = "dezider"
+
+    query: Dict[str, Any] = {"status": "active"}
+    if life_area_id:
+        query["life_area_id"] = life_area_id
+    if sub_area_id:
+        query["sub_area_id"] = sub_area_id
+
+    if module_lc == "dezider":
+        query["$or"] = [
+            {"applies_to_modules": "dezider"},
+            {"applies_to_modules": {"$exists": False}},
+        ]
+    else:
+        query["applies_to_modules"] = "swot"
+
+    cursor = db.hos_decision_templates.find(
+        query,
+        {"_id": 0, "id": 1, "title": 1, "scenario_mapping": 1,
+         "sub_area_id": 1, "life_area_id": 1, "popularity": 1},
+    ).sort([("popularity", -1), ("order", 1)]).limit(limit)
+
+    # Collapse multiple templates that share the same scenario title under one entry.
+    seen: Dict[str, Dict[str, Any]] = {}
+    async for doc in cursor:
+        sm = doc.get("scenario_mapping") or {}
+        title = (
+            (sm.get("suggested_new_scenario") or {}).get("title")
+            or sm.get("predefined_scenario_title")
+            or doc.get("title")
+            or ""
+        )
+        if not title:
+            continue
+        key = title.strip().lower()
+        if key in seen:
+            seen[key]["template_count"] = seen[key].get("template_count", 1) + 1
+            continue
+        seen[key] = {
+            # Deterministic synthetic id so the frontend dropdown can use it
+            # as a select value without hitting another endpoint.
+            "id": sm.get("predefined_scenario_id")
+                  or f"scn_{doc.get('life_area_id','')}_{doc.get('sub_area_id','')}_{key.replace(' ','_')[:60]}",
+            "title": title,
+            "sub_area_id": doc.get("sub_area_id"),
+            "life_area_id": doc.get("life_area_id"),
+            "representative_template_id": doc.get("id"),
+            "template_count": 1,
+        }
+
+    return list(seen.values())
 
 @router.get("/templates/{template_id}")
 async def get_template_detail(template_id: str):

@@ -147,7 +147,7 @@ export default function ProsConsListScreen() {
         </View>
         <TouchableOpacity
           style={styles.createBtnHeader}
-          onPress={() => setShowCreateModal(true)}
+          onPress={() => router.push('/tools/new-decision?module=pros-cons' as any)}
         >
           <Ionicons name="add" size={22} color="#7C3AED" />
         </TouchableOpacity>
@@ -181,7 +181,7 @@ export default function ProsConsListScreen() {
               </Text>
               <TouchableOpacity
                 style={styles.emptyCreateBtn}
-                onPress={() => setShowCreateModal(true)}
+                onPress={() => router.push('/tools/new-decision?module=pros-cons' as any)}
               >
                 <Ionicons name="add" size={20} color="#FFF" />
                 <Text style={styles.emptyCreateText}>New Pros & Cons</Text>
