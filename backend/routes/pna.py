@@ -79,6 +79,7 @@ async def create_item(request: Request, user: dict = Depends(get_current_user)):
         "tags": body.get("tags", []),
         "linked_decision_id": body.get("linked_decision_id"),
         "linked_goal_id": body.get("linked_goal_id"),
+        "linked_goal_title": body.get("linked_goal_title"),
         "action_plan": body.get("action_plan", ""),
         "target_date": body.get("target_date"),
         "resolved_date": None,
@@ -135,7 +136,7 @@ async def update_item(item_id: str, request: Request, user: dict = Depends(get_c
     allowed = [
         "life_area", "category", "title", "description", "priority",
         "status", "impact_score", "urgency_score", "tags",
-        "linked_decision_id", "linked_goal_id", "action_plan",
+        "linked_decision_id", "linked_goal_id", "linked_goal_title", "action_plan",
         "target_date", "notes",
     ]
     update = {k: body[k] for k in allowed if k in body}

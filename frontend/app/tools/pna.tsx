@@ -1,9 +1,9 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, ActivityIndicator, Modal, TextInput,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, useWindowDimensions,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -46,9 +46,17 @@ export default function PNAScreen() {
   const [editItem, setEditItem] = useState<any>(null);
   const [form, setForm] = useState({
     title: '', description: '', category: 'need', priority: 'medium',
-    life_area: '', impact_score: 5, urgency_score: 5, action_plan: '', target_date: '',
+    life_area: '', impact_score: 5, urgency_score: 5,
+    action_plan: '', target_date: '',
+    linked_goal_id: '' as string,
+    linked_goal_title: '' as string,
   });
   const [saving, setSaving] = useState(false);
+  const [gemGoals, setGemGoals] = useState<Array<{ goal_id: string; title: string; life_area?: string; project_status?: string }>>([]);
+  const [showGemPicker, setShowGemPicker] = useState(false);
+  const [creatingGoal, setCreatingGoal] = useState(false);
+  const { width: winWidth } = useWindowDimensions();
+  const isWide = winWidth >= 768;
 
   const fetchDashboard = async () => {
     try {
@@ -88,8 +96,10 @@ export default function PNAScreen() {
       title: '', description: '', category,
       priority: 'medium', life_area: areaId || selectedArea || '',
       impact_score: 5, urgency_score: 5, action_plan: '', target_date: '',
+      linked_goal_id: '', linked_goal_title: '',
     });
     setShowModal(true);
+    fetchGemGoals(areaId || selectedArea || '');
   };
 
   const openEditModal = (item: any) => {
@@ -100,8 +110,59 @@ export default function PNAScreen() {
       life_area: item.life_area || '', impact_score: item.impact_score || 5,
       urgency_score: item.urgency_score || 5,
       action_plan: item.action_plan || '', target_date: item.target_date || '',
+      linked_goal_id: item.linked_goal_id || '',
+      linked_goal_title: item.linked_goal_title || '',
     });
     setShowModal(true);
+    fetchGemGoals(item.life_area || '');
+  };
+
+  const fetchGemGoals = async (lifeArea: string) => {
+    try {
+      const params: any = {};
+      if (lifeArea) params.life_area = lifeArea;
+      const res = await api.get('/gem/goals', { params });
+      setGemGoals(res.data || []);
+    } catch (e) {
+      setGemGoals([]);
+    }
+  };
+
+  const handleCreateGemGoal = async () => {
+    if (!form.title.trim()) {
+      return showAlert('Title required', 'Add a title for the PNA item first — the same will seed the new GEM goal.');
+    }
+    if (!form.life_area) {
+      return showAlert('Life area required', 'Pick a life area first.');
+    }
+    setCreatingGoal(true);
+    try {
+      const goalType = form.category === 'aspiration' ? 'aspiration' : (form.category === 'need' ? 'objective' : 'project');
+      const res = await api.post('/gem/goals', {
+        title: form.title,
+        description: form.description || `Auto-created from PNA item: ${form.title}`,
+        life_area: form.life_area,
+        priority: form.priority,
+        goal_type: goalType,
+        project_status: 'open',
+        status: 'active',
+      });
+      const goal = res.data;
+      setForm(prev => ({ ...prev, linked_goal_id: goal.goal_id, linked_goal_title: goal.title }));
+      setGemGoals(prev => [goal, ...prev]);
+      showAlert('GEM Goal created', `Linked to "${goal.title}"`);
+    } catch (e: any) {
+      showAlert('Could not create goal', e?.response?.data?.detail || 'Try again');
+    } finally { setCreatingGoal(false); }
+  };
+
+  const unlinkGoal = () => {
+    setForm(prev => ({ ...prev, linked_goal_id: '', linked_goal_title: '' }));
+  };
+
+  const pickGoal = (goal: { goal_id: string; title: string }) => {
+    setForm(prev => ({ ...prev, linked_goal_id: goal.goal_id, linked_goal_title: goal.title }));
+    setShowGemPicker(false);
   };
 
   const handleSave = async () => {
@@ -369,12 +430,12 @@ export default function PNAScreen() {
   };
 
   const renderFormModal = () => (
-    <Modal visible={showModal} animationType="slide" transparent>
+    <Modal visible={showModal} animationType={isWide ? 'fade' : 'slide'} transparent>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={s.modalOverlay}
+        style={isWide ? s.modalOverlayWide : s.modalOverlay}
       >
-        <View style={s.modalContent}>
+        <View style={isWide ? s.modalContentWide : s.modalContent}>
           <View style={s.modalHeader}>
             <Text style={s.modalTitle}>{editItem ? 'Edit Item' : 'New PNA Item'}</Text>
             <TouchableOpacity onPress={() => setShowModal(false)}>
@@ -475,13 +536,57 @@ export default function PNAScreen() {
               </View>
             </View>
 
-            <Text style={s.fieldLabel}>Action Plan</Text>
-            <TextInput
-              style={[s.input, { height: 60, textAlignVertical: 'top' }]}
-              multiline placeholder="Steps to address..."
-              value={form.action_plan} onChangeText={(t) => setForm({ ...form, action_plan: t })}
-              placeholderTextColor="#9CA3AF"
-            />
+            <Text style={s.fieldLabel}>Linked GEM Goal</Text>
+            {form.linked_goal_id ? (
+              <View style={s.gemLinkedRow}>
+                <Ionicons name="flag" size={16} color="#7C3AED" />
+                <Text style={s.gemLinkedText} numberOfLines={2}>
+                  {form.linked_goal_title || `Goal ${form.linked_goal_id.slice(0, 8)}`}
+                </Text>
+                <TouchableOpacity onPress={() => router.push(`/tools/gem-goal?goal_id=${form.linked_goal_id}` as any)} hitSlop={6}>
+                  <Ionicons name="open-outline" size={16} color="#7C3AED" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={unlinkGoal} hitSlop={6}>
+                  <Ionicons name="close-circle" size={16} color="#94A3B8" />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={s.gemActions}>
+                <TouchableOpacity style={s.gemBtnGhost} onPress={() => setShowGemPicker(v => !v)}>
+                  <Ionicons name="link" size={14} color="#7C3AED" />
+                  <Text style={s.gemBtnGhostText}>
+                    {showGemPicker ? 'Hide list' : `Link existing (${gemGoals.length})`}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.gemBtnPrimary, creatingGoal && { opacity: 0.6 }]}
+                  onPress={handleCreateGemGoal}
+                  disabled={creatingGoal}
+                >
+                  {creatingGoal
+                    ? <ActivityIndicator size="small" color="#FFF" />
+                    : <><Ionicons name="add-circle" size={14} color="#FFF" /><Text style={s.gemBtnPrimaryText}>Create in GEM</Text></>}
+                </TouchableOpacity>
+              </View>
+            )}
+            {showGemPicker && !form.linked_goal_id && (
+              <View style={s.gemPicker}>
+                {gemGoals.length === 0 ? (
+                  <Text style={s.gemEmpty}>No existing GEM goals for this life area. Tap "Create in GEM" to start one.</Text>
+                ) : (
+                  gemGoals.slice(0, 12).map(g => (
+                    <TouchableOpacity key={g.goal_id} style={s.gemPickItem} onPress={() => pickGoal(g)}>
+                      <Ionicons name="flag-outline" size={14} color="#7C3AED" />
+                      <Text style={s.gemPickText} numberOfLines={1}>{g.title}</Text>
+                      {g.project_status ? <Text style={s.gemPickStatus}>{g.project_status}</Text> : null}
+                    </TouchableOpacity>
+                  ))
+                )}
+              </View>
+            )}
+            <Text style={s.gemHint}>
+              Goal Execution Manager tracks the work needed to address this {CAT_CFG[form.category]?.label?.toLowerCase() || 'item'}.
+            </Text>
           </ScrollView>
 
           <TouchableOpacity
@@ -606,26 +711,43 @@ const s = StyleSheet.create({
   emptyStateSub: { color: '#6B7280', fontSize: 13, marginTop: 4 },
 
   // Modal
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.55)', justifyContent: 'flex-end' },
+  modalOverlayWide: { flex: 1, backgroundColor: 'rgba(15,23,42,0.55)', justifyContent: 'center', alignItems: 'center', padding: 16 },
   modalContent: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '85%' },
+  modalContentWide: { backgroundColor: '#FFFFFF', borderRadius: 18, padding: 24, maxWidth: 560, width: '100%', maxHeight: '88%', shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   modalTitle: { color: '#0F172A', fontSize: 18, fontWeight: '700' },
-  fieldLabel: { color: '#94A3B8', fontSize: 12, fontWeight: '600', marginBottom: 6, marginTop: 8 },
-  input: { backgroundColor: '#F8FAFC', borderRadius: 10, borderWidth: 1, borderColor: '#334155', color: '#0F172A', paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, marginBottom: 4 },
+  fieldLabel: { color: '#475569', fontSize: 12, fontWeight: '700', marginBottom: 6, marginTop: 8, textTransform: 'uppercase', letterSpacing: 0.4 },
+  input: { backgroundColor: '#F8FAFC', borderRadius: 10, borderWidth: 1, borderColor: '#E5E7EB', color: '#0F172A', paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, marginBottom: 4 },
+
+  // GEM Goal linker (replaces Action Plan)
+  gemLinkedRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F5F3FF', borderColor: '#DDD6FE', borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 4 },
+  gemLinkedText: { flex: 1, color: '#5B21B6', fontSize: 13, fontWeight: '600' },
+  gemActions: { flexDirection: 'row', gap: 8, marginBottom: 4 },
+  gemBtnGhost: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderColor: '#DDD6FE', backgroundColor: '#F5F3FF', borderRadius: 10, paddingVertical: 10 },
+  gemBtnGhostText: { color: '#7C3AED', fontSize: 13, fontWeight: '700' },
+  gemBtnPrimary: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#7C3AED', borderRadius: 10, paddingVertical: 10 },
+  gemBtnPrimaryText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+  gemPicker: { backgroundColor: '#F8FAFC', borderRadius: 10, padding: 8, marginTop: 6, gap: 4, maxHeight: 220 },
+  gemPickItem: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, backgroundColor: '#FFF' },
+  gemPickText: { flex: 1, color: '#0F172A', fontSize: 13 },
+  gemPickStatus: { fontSize: 10, color: '#7C3AED', fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  gemEmpty: { color: '#94A3B8', fontSize: 12, padding: 8, fontStyle: 'italic' },
+  gemHint: { color: '#94A3B8', fontSize: 11, marginTop: 6, lineHeight: 16 },
 
   catSelector: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-  catOption: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 10, borderWidth: 1.5, borderColor: '#334155', paddingVertical: 8 },
-  catOptText: { fontSize: 12, fontWeight: '600', color: '#94A3B8' },
+  catOption: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 10, borderWidth: 1.5, borderColor: '#E5E7EB', paddingVertical: 8 },
+  catOptText: { fontSize: 12, fontWeight: '600', color: '#475569' },
 
   priRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-  priOption: { flex: 1, borderRadius: 8, borderWidth: 1.5, borderColor: '#334155', paddingVertical: 6, alignItems: 'center' },
-  priOptText: { fontSize: 12, fontWeight: '600', color: '#94A3B8' },
+  priOption: { flex: 1, borderRadius: 8, borderWidth: 1.5, borderColor: '#E5E7EB', paddingVertical: 6, alignItems: 'center' },
+  priOptText: { fontSize: 12, fontWeight: '600', color: '#475569' },
 
-  areaChip: { borderRadius: 8, borderWidth: 1, borderColor: '#334155', paddingHorizontal: 12, paddingVertical: 6, marginRight: 8 },
-  areaChipText: { color: '#94A3B8', fontSize: 12, fontWeight: '500' },
+  areaChip: { borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB', paddingHorizontal: 12, paddingVertical: 6, marginRight: 8 },
+  areaChipText: { color: '#475569', fontSize: 12, fontWeight: '500' },
 
   scoreRow: { flexDirection: 'row' },
 
-  saveBtn: { backgroundColor: '#6366F1', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 16 },
-  saveBtnText: { color: '#0F172A', fontSize: 16, fontWeight: '700' },
+  saveBtn: { backgroundColor: '#7C3AED', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 16 },
+  saveBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
 });
