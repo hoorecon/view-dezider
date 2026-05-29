@@ -691,3 +691,143 @@ async def my_orders(user: dict = Depends(get_current_user)):
         {"user_id": user["user_id"], "type": "sku_purchase"}, {"_id": 0, "razorpay_order": 0}
     ).sort("created_at", -1).to_list(50)
     return {"orders": docs}
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# L4 EXPERT REVIEW QUEUE — admin-only fulfillment workflow
+# ────────────────────────────────────────────────────────────────────────────
+# Collection: `expert_deliveries`
+# Status machine:
+#   awaiting_assignment  → admin picks an expert and assigns
+#   in_progress          → expert is working on the review
+#   delivered            → expert review document handed to user
+#   cancelled            → refunded / dropped
+L4_STATUSES = ["awaiting_assignment", "in_progress", "delivered", "cancelled"]
+
+
+class L4AssignBody(BaseModel):
+    expert_id: str
+    expert_name: Optional[str] = None
+    sla_hours: Optional[int] = 48
+    admin_notes: Optional[str] = None
+
+
+class L4StatusBody(BaseModel):
+    status: str
+    deliverable_url: Optional[str] = None
+    deliverable_note: Optional[str] = None
+
+
+@router.get("/admin/l4-queue")
+async def admin_l4_queue(
+    status: Optional[str] = Query(None),
+    user: dict = Depends(get_current_user),
+):
+    """Admin-only: list all L4 Expert Review deliveries with light enrichment."""
+    if not _is_admin(user):
+        raise HTTPException(status_code=403, detail="Admin role required")
+    q: Dict[str, Any] = {"sku_code": "L4"}
+    if status:
+        if status not in L4_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Unknown status: {status}")
+        q["status"] = status
+    rows = await db.expert_deliveries.find(q, {"_id": 0}).sort("created_at", -1).to_list(200)
+
+    # Enrich with payer info if missing
+    for r in rows:
+        if not r.get("user_email") and r.get("user_id"):
+            u = await db.users.find_one({"user_id": r["user_id"]}, {"_id": 0, "email": 1, "name": 1})
+            if u:
+                r["user_email"] = u.get("email", "")
+                r["user_name"] = r.get("user_name") or u.get("name", "")
+    # Status counts for the header bar
+    counts = {s: 0 for s in L4_STATUSES}
+    async for row in db.expert_deliveries.aggregate([
+        {"$match": {"sku_code": "L4"}},
+        {"$group": {"_id": "$status", "n": {"$sum": 1}}},
+    ]):
+        if row["_id"] in counts:
+            counts[row["_id"]] = row["n"]
+    return {"items": rows, "counts": counts, "statuses": L4_STATUSES}
+
+
+@router.post("/admin/l4-queue/{delivery_id}/assign")
+async def admin_l4_assign(
+    delivery_id: str,
+    body: L4AssignBody,
+    user: dict = Depends(get_current_user),
+):
+    """Admin-only: assign an expert to an L4 delivery."""
+    if not _is_admin(user):
+        raise HTTPException(status_code=403, detail="Admin role required")
+
+    delivery = await db.expert_deliveries.find_one({"id": delivery_id, "sku_code": "L4"})
+    if not delivery:
+        raise HTTPException(status_code=404, detail="Delivery not found")
+
+    expert = await db.experts.find_one({"expert_id": body.expert_id}, {"_id": 0})
+    expert_name = body.expert_name or (expert.get("name") if expert else "")
+
+    due_at = None
+    if body.sla_hours:
+        from datetime import timedelta
+        due_at = (datetime.now(timezone.utc) + timedelta(hours=body.sla_hours)).isoformat()
+
+    await db.expert_deliveries.update_one(
+        {"id": delivery_id},
+        {"$set": {
+            "expert_id": body.expert_id,
+            "expert_name": expert_name,
+            "status": "in_progress",
+            "assigned_by": user["user_id"],
+            "assigned_by_name": user.get("name", ""),
+            "assigned_at": _now(),
+            "due_at": due_at,
+            "admin_notes": body.admin_notes,
+        }},
+    )
+    return await db.expert_deliveries.find_one({"id": delivery_id}, {"_id": 0})
+
+
+@router.put("/admin/l4-queue/{delivery_id}/status")
+async def admin_l4_status(
+    delivery_id: str,
+    body: L4StatusBody,
+    user: dict = Depends(get_current_user),
+):
+    """Admin-only: transition an L4 delivery (e.g. mark as delivered)."""
+    if not _is_admin(user):
+        raise HTTPException(status_code=403, detail="Admin role required")
+    if body.status not in L4_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Expected one of: {L4_STATUSES}")
+
+    delivery = await db.expert_deliveries.find_one({"id": delivery_id, "sku_code": "L4"})
+    if not delivery:
+        raise HTTPException(status_code=404, detail="Delivery not found")
+
+    update: Dict[str, Any] = {"status": body.status, "updated_at": _now()}
+    if body.status == "delivered":
+        update["delivered_at"] = _now()
+        update["delivered_by"] = user["user_id"]
+        if body.deliverable_url:
+            update["deliverable_url"] = body.deliverable_url
+        if body.deliverable_note:
+            update["deliverable_note"] = body.deliverable_note
+    elif body.status == "cancelled":
+        update["cancelled_at"] = _now()
+        update["cancelled_by"] = user["user_id"]
+
+    await db.expert_deliveries.update_one({"id": delivery_id}, {"$set": update})
+    return await db.expert_deliveries.find_one({"id": delivery_id}, {"_id": 0})
+
+
+@router.get("/admin/experts-pick-list")
+async def admin_experts_pick_list(user: dict = Depends(get_current_user)):
+    """Tiny lookup for the admin assign-modal dropdown."""
+    if not _is_admin(user):
+        raise HTTPException(status_code=403, detail="Admin role required")
+    items = await db.experts.find(
+        {"status": {"$ne": "disabled"}},
+        {"_id": 0, "expert_id": 1, "name": 1, "specializations": 1, "rating_avg": 1, "is_online": 1},
+    ).sort("rating_avg", -1).to_list(200)
+    return {"experts": items}

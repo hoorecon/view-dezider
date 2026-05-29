@@ -271,7 +271,7 @@ export default function ContactsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
-      <LinearGradient colors={['#1E293B','#475569']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.header}>
+      <LinearGradient colors={['#FFFFFF','#475569']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={22} color="#FFF" />
         </TouchableOpacity>
@@ -445,7 +445,7 @@ const styles = StyleSheet.create({
   centered: {flex:1, justifyContent:'center', alignItems:'center'},
   header: {flexDirection:'row', alignItems:'center', padding:16, paddingTop:12, paddingBottom:18, gap:12},
   backBtn: {width:40, height:40, borderRadius:20, backgroundColor:'rgba(255,255,255,0.15)', justifyContent:'center', alignItems:'center'},
-  headerTitle: {fontSize:20, fontWeight:'700', color:'#FFF'},
+  headerTitle: {fontSize:20, fontWeight:'700', color: '#0F172A'},
   headerSub: {fontSize:11, color:'rgba(255,255,255,0.7)', marginTop:2},
   createHdrBtn: {width:40, height:40, borderRadius:20, backgroundColor:'#FFF', justifyContent:'center', alignItems:'center'},
   searchBar: {flexDirection:'row', alignItems:'center', paddingHorizontal:16, paddingVertical:10, gap:8, backgroundColor:'#FFF', borderBottomWidth:1, borderBottomColor:'#E5E7EB'},
@@ -453,17 +453,17 @@ const styles = StyleSheet.create({
   searchInput: {flex:1, fontSize:14, color: COLORS.textPrimary},
   filterToggle: {width:40, height:40, borderRadius:10, backgroundColor:'#F3F4F6', justifyContent:'center', alignItems:'center'},
   filterBadge: {position:'absolute', top:-2, right:-2, width:16, height:16, borderRadius:8, backgroundColor:'#EF4444', justifyContent:'center', alignItems:'center'},
-  filterBadgeText: {fontSize:9, fontWeight:'800', color:'#FFF'},
+  filterBadgeText: {fontSize:9, fontWeight:'800', color: '#0F172A'},
   filterBar: {paddingVertical:8, backgroundColor:'#F9FAFB', borderBottomWidth:1, borderBottomColor:'#E5E7EB'},
   filterChip: {flexDirection:'row', alignItems:'center', gap:4, paddingHorizontal:12, paddingVertical:6, borderRadius:16, backgroundColor:'#FFF', borderWidth:1, borderColor:'#E5E7EB'},
   filterChipText: {fontSize:12, fontWeight:'600', color: COLORS.textSecondary},
   emptyState: {alignItems:'center', paddingVertical:48, gap:10},
   emptyTitle: {fontSize:18, fontWeight:'700', color: COLORS.textPrimary},
   emptyText: {fontSize:13, color: COLORS.textSecondary, textAlign:'center', paddingHorizontal:32},
-  emptyBtn: {flexDirection:'row', alignItems:'center', gap:8, backgroundColor:'#1E293B', paddingHorizontal:20, paddingVertical:12, borderRadius:12, marginTop:8},
+  emptyBtn: {flexDirection:'row', alignItems:'center', gap:8, backgroundColor:'#FFFFFF', paddingHorizontal:20, paddingVertical:12, borderRadius:12, marginTop:8},
   contactCard: {flexDirection:'row', alignItems:'center', gap:12, backgroundColor:'#FFF', borderRadius:12, padding:14, marginBottom:10, borderWidth:1, borderColor:'#F3F4F6'},
   avatar: {width:44, height:44, borderRadius:22, backgroundColor:'#6366F1', justifyContent:'center', alignItems:'center'},
-  avatarText: {fontSize:18, fontWeight:'700', color:'#FFF'},
+  avatarText: {fontSize:18, fontWeight:'700', color: '#0F172A'},
   smeBadge: {position:'absolute', bottom:-2, right:-2, width:16, height:16, borderRadius:8, backgroundColor:'#F59E0B', justifyContent:'center', alignItems:'center', borderWidth:2, borderColor:'#FFF'},
   contactName: {fontSize:15, fontWeight:'600', color: COLORS.textPrimary},
   contactMeta: {fontSize:12, color: COLORS.textSecondary},
@@ -476,7 +476,7 @@ const styles = StyleSheet.create({
   modalTitle: {fontSize:18, fontWeight:'700', color: COLORS.textPrimary},
   stepTabs: {flexDirection:'row', gap:4, marginBottom:16},
   stepTab: {flex:1, paddingVertical:8, borderRadius:8, backgroundColor:'#F3F4F6', alignItems:'center'},
-  stepTabActive: {backgroundColor:'#1E293B'},
+  stepTabActive: {backgroundColor:'#FFFFFF'},
   stepTabText: {fontSize:11, fontWeight:'600', color: COLORS.textSecondary},
   inputLabel: {fontSize:13, fontWeight:'600', color: COLORS.textSecondary, marginBottom:6, marginTop:8},
   textInput: {backgroundColor:'#F9FAFB', borderRadius:10, padding:12, fontSize:14, color: COLORS.textPrimary, borderWidth:1, borderColor:'#E5E7EB', marginBottom:8},
@@ -491,7 +491,7 @@ const styles = StyleSheet.create({
   prevBtn: {paddingHorizontal:16, paddingVertical:12, borderRadius:10, backgroundColor:'#F3F4F6'},
   prevBtnText: {fontSize:14, fontWeight:'600', color: COLORS.textSecondary},
   nextBtn: {flexDirection:'row', alignItems:'center', gap:6, paddingHorizontal:20, paddingVertical:12, borderRadius:10, backgroundColor:'#6366F1'},
-  nextBtnText: {fontSize:14, fontWeight:'600', color:'#FFF'},
+  nextBtnText: {fontSize:14, fontWeight:'600', color: '#0F172A'},
   saveBtn: {paddingHorizontal:24, paddingVertical:12, borderRadius:10, backgroundColor:'#059669'},
-  saveBtnText: {fontSize:14, fontWeight:'700', color:'#FFF'},
+  saveBtnText: {fontSize:14, fontWeight:'700', color: '#0F172A'},
 });

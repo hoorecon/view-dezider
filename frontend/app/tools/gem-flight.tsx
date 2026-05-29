@@ -188,7 +188,7 @@ export default function GemFlightScreen() {
                 activeOpacity={0.7}
               >
                 <LinearGradient
-                  colors={proj.status === 'completed' ? ['#059669', '#10B981'] : ['#1E293B', '#334155']}
+                  colors={proj.status === 'completed' ? ['#059669', '#10B981'] : ['#FFFFFF', '#334155']}
                   style={s.projectGradient}
                 >
                   {/* Top Row: Icon + Title + Status */}
@@ -355,26 +355,26 @@ export default function GemFlightScreen() {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0F172A' },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
   loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { paddingHorizontal: 16, paddingVertical: 16, flexDirection: 'row', alignItems: 'center' },
   backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center', marginRight: 8 },
-  headerTitle: { fontSize: 22, fontWeight: '800', color: '#FFF' },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A' },
   headerSub: { fontSize: 13, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
   addBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' },
   scroll: { flex: 1 },
   scrollContent: { padding: 16, paddingBottom: 40 },
   emptyState: { alignItems: 'center', paddingTop: 60, paddingHorizontal: 32 },
-  emptyTitle: { fontSize: 20, fontWeight: '700', color: '#FFF', marginTop: 16 },
+  emptyTitle: { fontSize: 20, fontWeight: '700', color: '#0F172A', marginTop: 16 },
   emptyDesc: { fontSize: 14, color: 'rgba(255,255,255,0.6)', textAlign: 'center', lineHeight: 22, marginTop: 8 },
   createBtn: { marginTop: 24, borderRadius: 14, overflow: 'hidden' },
   createGradient: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 14, gap: 8 },
-  createBtnText: { fontSize: 16, fontWeight: '700', color: '#FFF' },
+  createBtnText: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
   projectCard: { marginBottom: 16, borderRadius: 16, overflow: 'hidden' },
   projectGradient: { padding: 16 },
   projectTop: { flexDirection: 'row', alignItems: 'center' },
   phaseIcon: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center' },
-  projectTitle: { fontSize: 17, fontWeight: '700', color: '#FFF' },
+  projectTitle: { fontSize: 17, fontWeight: '700', color: '#0F172A' },
   metaRow: { flexDirection: 'row', gap: 8, marginTop: 4, flexWrap: 'wrap' },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   badgeText: { fontSize: 10, fontWeight: '700' },

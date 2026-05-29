@@ -493,7 +493,7 @@ export default function LifestyleDesignerScreen() {
           </TouchableOpacity>
         </View>
 
-        <LinearGradient colors={['#1E293B', '#0F172A']} style={s.heroBanner}>
+        <LinearGradient colors={['#FFFFFF', '#F8FAFC']} style={s.heroBanner}>
           <Ionicons name="color-palette" size={32} color="#A78BFA" />
           <View style={{ marginLeft: 12, flex: 1 }}>
             <Text style={s.heroTitle}>Design Your Ideal Lifestyle</Text>
@@ -528,22 +528,22 @@ export default function LifestyleDesignerScreen() {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0F172A' },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-  headerTitle: { color: '#FFF', fontSize: 18, fontWeight: '700', flex: 1, marginLeft: 12 },
+  headerTitle: { color: '#0F172A', fontSize: 18, fontWeight: '700', flex: 1, marginLeft: 12 },
   heroBanner: { borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  heroTitle: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  heroTitle: { color: '#0F172A', fontSize: 16, fontWeight: '700' },
   heroSub: { color: '#94A3B8', fontSize: 12, marginTop: 4 },
 
   // Tabs
   tabRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
-  tabBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, backgroundColor: '#1E293B' },
+  tabBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, backgroundColor: '#FFFFFF' },
   tabBtnActive: { backgroundColor: '#6366F1' },
   tabBtnText: { color: '#94A3B8', fontSize: 13, fontWeight: '600' },
 
   // Active Banner
   activeBanner: { borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  activeName: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  activeName: { color: '#0F172A', fontSize: 15, fontWeight: '700' },
   activeSub: { color: 'rgba(255,255,255,0.7)', fontSize: 12 },
   compareBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FFF', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
   compareBtnText: { color: '#059669', fontSize: 12, fontWeight: '600' },
@@ -552,10 +552,10 @@ const s = StyleSheet.create({
   noPlanText: { color: '#FDE68A', fontSize: 13, flex: 1 },
 
   // Section
-  sectionTitle: { color: '#FFF', fontSize: 16, fontWeight: '700', marginBottom: 12, marginTop: 4 },
+  sectionTitle: { color: '#0F172A', fontSize: 16, fontWeight: '700', marginBottom: 12, marginTop: 4 },
   planListHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   createBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#6366F1', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
-  createBtnText: { color: '#FFF', fontSize: 13, fontWeight: '600' },
+  createBtnText: { color: '#0F172A', fontSize: 13, fontWeight: '600' },
 
   // Empty
   emptyState: { alignItems: 'center', paddingVertical: 40 },
@@ -563,17 +563,17 @@ const s = StyleSheet.create({
   emptySub: { color: '#6B7280', fontSize: 13, marginTop: 4, textAlign: 'center', paddingHorizontal: 24 },
 
   // Plan Card
-  planCard: { backgroundColor: '#1E293B', borderRadius: 14, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: 'transparent' },
+  planCard: { backgroundColor: '#FFFFFF', borderRadius: 14, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: 'transparent' },
   planCardHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10 },
-  planName: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  planName: { color: '#0F172A', fontSize: 15, fontWeight: '700' },
   planDesc: { color: '#94A3B8', fontSize: 12, marginTop: 2 },
   activeTag: { backgroundColor: '#059669', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  activeTagText: { color: '#FFF', fontSize: 11, fontWeight: '700' },
+  activeTagText: { color: '#0F172A', fontSize: 11, fontWeight: '700' },
 
   allocSummary: { flexDirection: 'row', gap: 12, marginBottom: 8 },
   allocSumItem: { flex: 1, alignItems: 'center' },
   allocSumLabel: { color: '#6B7280', fontSize: 11 },
-  allocSumHrs: { color: '#FFF', fontSize: 14, fontWeight: '700' },
+  allocSumHrs: { color: '#0F172A', fontSize: 14, fontWeight: '700' },
 
   topAreasRow: { flexDirection: 'row', gap: 6, marginBottom: 10, flexWrap: 'wrap' },
   topAreaChip: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
@@ -585,13 +585,13 @@ const s = StyleSheet.create({
 
   // Comparison
   dtTabs: { flexDirection: 'row', gap: 6, marginBottom: 12 },
-  dtTab: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 8, backgroundColor: '#1E293B', flexDirection: 'row', justifyContent: 'center', gap: 4 },
+  dtTab: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 8, backgroundColor: '#FFFFFF', flexDirection: 'row', justifyContent: 'center', gap: 4 },
   dtTabActive: { backgroundColor: '#6366F1' },
   dtTabText: { color: '#94A3B8', fontSize: 12, fontWeight: '600' },
 
-  compRow: { backgroundColor: '#1E293B', borderRadius: 12, padding: 12, marginBottom: 8 },
+  compRow: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 12, marginBottom: 8 },
   compHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  compAreaName: { color: '#FFF', fontSize: 13, fontWeight: '600', flex: 1 },
+  compAreaName: { color: '#0F172A', fontSize: 13, fontWeight: '600', flex: 1 },
   compStatusBadge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 },
   compStatusText: { fontSize: 11, fontWeight: '600' },
   compBarBg: { height: 6, borderRadius: 3, backgroundColor: '#334155', overflow: 'hidden' },
@@ -600,29 +600,29 @@ const s = StyleSheet.create({
   compNumLabel: { color: '#94A3B8', fontSize: 11 },
   compGap: { fontSize: 11, fontWeight: '700' },
 
-  totalRow: { backgroundColor: '#1E293B', borderRadius: 12, padding: 14, marginTop: 4, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  totalLabel: { color: '#FFF', fontSize: 14, fontWeight: '700' },
+  totalRow: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 14, marginTop: 4, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  totalLabel: { color: '#0F172A', fontSize: 14, fontWeight: '700' },
   totalVal: { color: '#94A3B8', fontSize: 12, fontWeight: '600' },
 
   // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#1E293B', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '90%' },
+  modalContent: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '90%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  modalTitle: { color: '#FFF', fontSize: 18, fontWeight: '700' },
+  modalTitle: { color: '#0F172A', fontSize: 18, fontWeight: '700' },
   fieldLabel: { color: '#94A3B8', fontSize: 12, fontWeight: '600', marginBottom: 6, marginTop: 8 },
-  input: { backgroundColor: '#0F172A', borderRadius: 10, borderWidth: 1, borderColor: '#334155', color: '#FFF', paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, marginBottom: 4 },
+  input: { backgroundColor: '#F8FAFC', borderRadius: 10, borderWidth: 1, borderColor: '#334155', color: '#0F172A', paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, marginBottom: 4 },
 
   warningBar: { backgroundColor: '#DC2626', borderRadius: 8, padding: 8, flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-  warningText: { color: '#FFF', fontSize: 12, fontWeight: '600' },
+  warningText: { color: '#0F172A', fontSize: 12, fontWeight: '600' },
 
-  allocRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#1E293B' },
+  allocRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#FFFFFF' },
   allocIcon: { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginRight: 8 },
-  allocName: { color: '#E2E8F0', fontSize: 13, flex: 1 },
+  allocName: { color: '#475569', fontSize: 13, flex: 1 },
   allocInputWrap: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  incBtn: { width: 28, height: 28, borderRadius: 6, backgroundColor: '#0F172A', justifyContent: 'center', alignItems: 'center' },
-  allocInput: { width: 48, textAlign: 'center', backgroundColor: '#0F172A', borderRadius: 6, color: '#FFF', fontSize: 14, fontWeight: '600', paddingVertical: 4, borderWidth: 1, borderColor: '#334155' },
+  incBtn: { width: 28, height: 28, borderRadius: 6, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center' },
+  allocInput: { width: 48, textAlign: 'center', backgroundColor: '#F8FAFC', borderRadius: 6, color: '#0F172A', fontSize: 14, fontWeight: '600', paddingVertical: 4, borderWidth: 1, borderColor: '#334155' },
   hrsLabel: { color: '#6B7280', fontSize: 11, marginLeft: 2 },
 
   saveBtn: { backgroundColor: '#6366F1', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 12 },
-  saveBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  saveBtnText: { color: '#0F172A', fontSize: 16, fontWeight: '700' },
 });

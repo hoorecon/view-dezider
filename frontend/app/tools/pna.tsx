@@ -526,7 +526,7 @@ export default function PNAScreen() {
           </TouchableOpacity>
         </View>
 
-        <LinearGradient colors={['#1E293B', '#0F172A']} style={s.heroBanner}>
+        <LinearGradient colors={['#FFFFFF', '#F8FAFC']} style={s.heroBanner}>
           <Ionicons name="layers" size={32} color="#818CF8" />
           <View style={{ marginLeft: 12, flex: 1 }}>
             <Text style={s.heroTitle}>Problems · Needs · Aspirations</Text>
@@ -543,29 +543,29 @@ export default function PNAScreen() {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0F172A' },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-  headerTitle: { color: '#FFF', fontSize: 18, fontWeight: '700', flex: 1, marginLeft: 12 },
+  headerTitle: { color: '#0F172A', fontSize: 18, fontWeight: '700', flex: 1, marginLeft: 12 },
   heroBanner: { borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
-  heroTitle: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  heroTitle: { color: '#0F172A', fontSize: 16, fontWeight: '700' },
   heroSub: { color: '#94A3B8', fontSize: 12, marginTop: 4 },
 
   // Summary
   summaryRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
-  summaryCard: { flex: 1, backgroundColor: '#1E293B', borderRadius: 12, padding: 12, alignItems: 'center', borderLeftWidth: 3 },
-  summaryNum: { color: '#FFF', fontSize: 22, fontWeight: '700', marginTop: 4 },
+  summaryCard: { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 12, padding: 12, alignItems: 'center', borderLeftWidth: 3 },
+  summaryNum: { color: '#0F172A', fontSize: 22, fontWeight: '700', marginTop: 4 },
   summaryLabel: { color: '#94A3B8', fontSize: 11, marginTop: 2 },
 
   alertBanner: { backgroundColor: '#DC2626', borderRadius: 10, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
-  alertText: { color: '#FFF', fontSize: 13, fontWeight: '600' },
+  alertText: { color: '#0F172A', fontSize: 13, fontWeight: '600' },
 
   // Section
-  sectionTitle: { color: '#FFF', fontSize: 16, fontWeight: '700', marginBottom: 12, marginTop: 8 },
+  sectionTitle: { color: '#0F172A', fontSize: 16, fontWeight: '700', marginBottom: 12, marginTop: 8 },
 
   // Area rows
-  areaRow: { backgroundColor: '#1E293B', borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  areaRow: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   areaIconWrap: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  areaName: { color: '#FFF', fontSize: 14, fontWeight: '600' },
+  areaName: { color: '#0F172A', fontSize: 14, fontWeight: '600' },
   areaCountsRow: { flexDirection: 'row', gap: 6, marginTop: 4, flexWrap: 'wrap' },
   countBadge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   countText: { fontSize: 11, fontWeight: '600' },
@@ -575,19 +575,19 @@ const s = StyleSheet.create({
   // Area header
   areaHeader: { borderRadius: 16, padding: 16, marginBottom: 16 },
   areaHeaderRow: { flexDirection: 'row', alignItems: 'center' },
-  areaHeaderTitle: { color: '#FFF', fontSize: 18, fontWeight: '700' },
+  areaHeaderTitle: { color: '#0F172A', fontSize: 18, fontWeight: '700' },
   areaHeaderSub: { color: '#94A3B8', fontSize: 12, marginTop: 2 },
   addBtnRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
   addCatBtn: { flexDirection: 'row', alignItems: 'center', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, gap: 4 },
-  addCatText: { color: '#FFF', fontSize: 12, fontWeight: '600' },
+  addCatText: { color: '#0F172A', fontSize: 12, fontWeight: '600' },
 
   catSectionTitle: { fontSize: 15, fontWeight: '700', marginTop: 12, marginBottom: 8 },
 
   // Item Card
-  itemCard: { backgroundColor: '#1E293B', borderRadius: 12, padding: 14, marginBottom: 8 },
+  itemCard: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 14, marginBottom: 8 },
   itemHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   catDot: { width: 10, height: 10, borderRadius: 5, marginTop: 4 },
-  itemTitle: { color: '#FFF', fontSize: 14, fontWeight: '600', flex: 1 },
+  itemTitle: { color: '#0F172A', fontSize: 14, fontWeight: '600', flex: 1 },
   itemDesc: { color: '#94A3B8', fontSize: 12, marginTop: 6, marginLeft: 18 },
   itemMetaRow: { flexDirection: 'row', gap: 6, marginTop: 8, marginLeft: 18, flexWrap: 'wrap' },
   statusBadge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
@@ -597,7 +597,7 @@ const s = StyleSheet.create({
   scoreBadge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   scoreText: { fontSize: 11, fontWeight: '600' },
   itemActions: { flexDirection: 'row', gap: 10, marginTop: 10, marginLeft: 18, flexWrap: 'wrap' },
-  actBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 6, borderRadius: 6, backgroundColor: '#0F172A' },
+  actBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 6, borderRadius: 6, backgroundColor: '#F8FAFC' },
   actText: { fontSize: 11, fontWeight: '600' },
 
   // Empty state
@@ -607,11 +607,11 @@ const s = StyleSheet.create({
 
   // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#1E293B', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '85%' },
+  modalContent: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '85%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  modalTitle: { color: '#FFF', fontSize: 18, fontWeight: '700' },
+  modalTitle: { color: '#0F172A', fontSize: 18, fontWeight: '700' },
   fieldLabel: { color: '#94A3B8', fontSize: 12, fontWeight: '600', marginBottom: 6, marginTop: 8 },
-  input: { backgroundColor: '#0F172A', borderRadius: 10, borderWidth: 1, borderColor: '#334155', color: '#FFF', paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, marginBottom: 4 },
+  input: { backgroundColor: '#F8FAFC', borderRadius: 10, borderWidth: 1, borderColor: '#334155', color: '#0F172A', paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, marginBottom: 4 },
 
   catSelector: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   catOption: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 10, borderWidth: 1.5, borderColor: '#334155', paddingVertical: 8 },
@@ -627,5 +627,5 @@ const s = StyleSheet.create({
   scoreRow: { flexDirection: 'row' },
 
   saveBtn: { backgroundColor: '#6366F1', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 16 },
-  saveBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  saveBtnText: { color: '#0F172A', fontSize: 16, fontWeight: '700' },
 });

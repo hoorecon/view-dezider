@@ -217,7 +217,7 @@ export default function CTTTaskScreen() {
     <SafeAreaView style={st.container} edges={['top']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         {/* Header */}
-        <LinearGradient colors={['#1E3A5F', '#2D5F8B']} style={st.header}>
+        <LinearGradient colors={['#F1F5F9', '#2D5F8B']} style={st.header}>
           <TouchableOpacity onPress={() => router.back()} style={st.backBtn}>
             <Ionicons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
@@ -547,7 +547,7 @@ const st = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, paddingBottom: 18 },
   backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: '#FFF' },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
   headerSub: { fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 2, textTransform: 'capitalize' },
   deleteBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' },
 
@@ -587,12 +587,12 @@ const st = StyleSheet.create({
   routineLabel: { fontSize: 14, fontWeight: '600', color: COLORS.textPrimary },
   routineHint: { fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
   freqChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: COLORS.border, backgroundColor: COLORS.white },
-  freqActive: { backgroundColor: '#1E3A5F', borderColor: '#1E3A5F' },
+  freqActive: { backgroundColor: '#F1F5F9', borderColor: '#F1F5F9' },
 
   // Bottom
   bottom: { padding: 16, paddingBottom: Platform.OS === 'ios' ? 20 : 16, borderTopWidth: 1, borderTopColor: COLORS.border, backgroundColor: COLORS.white },
   calendarSyncBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#E8F0FE', borderRadius: 10, paddingVertical: 10, marginBottom: 8, borderWidth: 1, borderColor: '#4285F430' },
   calendarSyncText: { fontSize: 13, fontWeight: '600', color: '#4285F4' },
-  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#1E3A5F', borderRadius: 14, paddingVertical: 16 },
-  saveBtnText: { fontSize: 16, fontWeight: '700', color: '#FFF' },
+  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#F1F5F9', borderRadius: 14, paddingVertical: 16 },
+  saveBtnText: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
 });

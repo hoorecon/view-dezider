@@ -69,7 +69,7 @@ export default function GEMScreen() {
 
   return (
     <SafeAreaView style={s.container} edges={['top']}>
-      <LinearGradient colors={['#0F766E','#14B8A6']} style={s.header}>
+      <LinearGradient colors={['#0D9488','#14B8A6']} style={s.header}>
         <TouchableOpacity onPress={()=>router.back()} style={s.backBtn}>
           <Ionicons name="arrow-back" size={24} color="#FFF" />
         </TouchableOpacity>
@@ -186,7 +186,7 @@ const s = StyleSheet.create({
   container:{flex:1,backgroundColor:COLORS.background},
   header:{flexDirection:'row',alignItems:'center',padding:16,paddingBottom:20},
   backBtn:{width:40,height:40,borderRadius:20,backgroundColor:'rgba(255,255,255,0.2)',justifyContent:'center',alignItems:'center',marginRight:12},
-  headerTitle:{fontSize:18,fontWeight:'700',color:'#FFF'},
+  headerTitle:{fontSize:18,fontWeight:'700',color: '#0F172A'},
   headerSub:{fontSize:11,color:'rgba(255,255,255,0.7)',marginTop:2},
   addBtn:{width:40,height:40,borderRadius:20,backgroundColor:'rgba(255,255,255,0.2)',justifyContent:'center',alignItems:'center'},
   summaryRow:{flexDirection:'row',padding:12,gap:8},
@@ -198,12 +198,12 @@ const s = StyleSheet.create({
   areaChip:{flexDirection:'row',alignItems:'center',gap:4,paddingHorizontal:10,paddingVertical:6,borderRadius:16,borderWidth:1,borderColor:COLORS.border,backgroundColor:COLORS.white},
   areaText:{fontSize:11,fontWeight:'600',color:COLORS.textMuted},
   areaBadge:{width:16,height:16,borderRadius:8,alignItems:'center',justifyContent:'center'},
-  areaBadgeText:{fontSize:9,fontWeight:'700',color:'#FFF'},
+  areaBadgeText:{fontSize:9,fontWeight:'700',color: '#0F172A'},
   scroll:{flex:1},scrollContent:{padding:16,paddingBottom:32},
   empty:{alignItems:'center',paddingTop:40},
   emptyTitle:{fontSize:18,fontWeight:'700',color:COLORS.textPrimary,marginTop:16},
   emptySub:{fontSize:14,color:COLORS.textSecondary,textAlign:'center',marginTop:8,paddingHorizontal:32},
-  emptyBtn:{marginTop:20,paddingHorizontal:24,paddingVertical:12,backgroundColor:'#0F766E',borderRadius:12},
+  emptyBtn:{marginTop:20,paddingHorizontal:24,paddingVertical:12,backgroundColor:'#0D9488',borderRadius:12},
   goalCard:{backgroundColor:COLORS.white,borderRadius:14,padding:14,marginBottom:10,borderWidth:1,borderColor:COLORS.border,borderLeftWidth:4},
   goalHeader:{flexDirection:'row',alignItems:'center',gap:8,marginBottom:6},
   typeBadge:{flexDirection:'row',alignItems:'center',gap:4,paddingHorizontal:8,paddingVertical:3,borderRadius:8},

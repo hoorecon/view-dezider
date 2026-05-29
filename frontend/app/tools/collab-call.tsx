@@ -321,31 +321,31 @@ export default function CollabCallScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#111827' },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
 
   // Loading
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
-  loadingText: { fontSize: 16, fontWeight: '700', color: '#FFF' },
+  loadingText: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
   loadingHint: { fontSize: 12, color: '#9CA3AF' },
   retryBtn: { paddingHorizontal: 24, paddingVertical: 10, borderRadius: 8, backgroundColor: '#374151', marginTop: 12 },
-  retryBtnText: { fontSize: 14, fontWeight: '600', color: '#FFF' },
+  retryBtnText: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
 
   // Top Bar
-  topBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#1F2937', gap: 8 },
+  topBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#FFFFFF', gap: 8 },
   topBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
   topInfo: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' },
-  topTitle: { fontSize: 14, fontWeight: '700', color: '#FFF', flex: 1 },
+  topTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A', flex: 1 },
   participantCount: { position: 'absolute', top: -4, right: -4, backgroundColor: '#059669', borderRadius: 8, minWidth: 16, height: 16, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4 },
-  participantCountText: { fontSize: 9, fontWeight: '800', color: '#FFF' },
+  participantCountText: { fontSize: 9, fontWeight: '800', color: '#0F172A' },
 
   // Participants Panel
-  participantsPanel: { backgroundColor: '#1F2937', paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#374151' },
+  participantsPanel: { backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#374151' },
   panelTitle: { fontSize: 13, fontWeight: '700', color: '#D1D5DB', marginBottom: 8 },
   participantRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
   participantAvatar: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#7C3AED', justifyContent: 'center', alignItems: 'center' },
-  participantAvatarText: { fontSize: 11, fontWeight: '700', color: '#FFF' },
-  participantName: { fontSize: 12, fontWeight: '600', color: '#E5E7EB' },
+  participantAvatarText: { fontSize: 11, fontWeight: '700', color: '#0F172A' },
+  participantName: { fontSize: 12, fontWeight: '600', color: '#475569' },
   participantRole: { fontSize: 10, color: '#9CA3AF' },
   sharingInfo: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, padding: 8, backgroundColor: '#172554', borderRadius: 8 },
   sharingText: { fontSize: 11, color: '#93C5FD' },
@@ -360,18 +360,18 @@ const styles = StyleSheet.create({
   videoContainer: { flex: 1, backgroundColor: '#000' },
   webVideoWrapper: { flex: 1, overflow: 'hidden' },
   webview: { flex: 1 },
-  webviewLoading: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: '#111827' },
+  webviewLoading: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
 
   // Fallback
   fallbackContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
-  fallbackTitle: { fontSize: 20, fontWeight: '800', color: '#FFF' },
+  fallbackTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A' },
   fallbackDesc: { fontSize: 13, color: '#9CA3AF' },
   openBrowserBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#059669', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, marginTop: 8 },
-  openBrowserText: { fontSize: 14, fontWeight: '700', color: '#FFF' },
+  openBrowserText: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
   fallbackHint: { fontSize: 11, color: '#6B7280', textAlign: 'center', marginTop: 12, lineHeight: 18 },
 
   // Bottom Controls
-  bottomControls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#1F2937', borderTopWidth: 1, borderTopColor: '#374151' },
+  bottomControls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#374151' },
   controlBtn: { alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.08)' },
   controlBtnActive: { backgroundColor: '#3B82F6' },
   controlLabel: { fontSize: 10, fontWeight: '600', color: '#9CA3AF' },
@@ -380,6 +380,6 @@ const styles = StyleSheet.create({
   // Presence check
   presenceBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#F97316' },
   presencePulse: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FFF' },
-  presenceTitle: { fontSize: 13, fontWeight: '700', color: '#FFF' },
+  presenceTitle: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
   presenceSub: { fontSize: 10, color: 'rgba(255,255,255,0.8)', marginTop: 1 },
 });

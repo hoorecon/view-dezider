@@ -84,7 +84,7 @@ export default function GEMGoalScreen() {
   return (
     <SafeAreaView style={st.c} edges={['top']}>
       <KeyboardAvoidingView behavior={Platform.OS==='ios'?'padding':'height'} style={{flex:1}}>
-        <LinearGradient colors={['#0F766E','#14B8A6']} style={st.hdr}>
+        <LinearGradient colors={['#0D9488','#14B8A6']} style={st.hdr}>
           <TouchableOpacity onPress={()=>router.back()} style={st.back}>
             <Ionicons name="arrow-back" size={24} color="#FFF" />
           </TouchableOpacity>
@@ -196,7 +196,7 @@ const st = StyleSheet.create({
   c:{flex:1,backgroundColor:COLORS.background},
   hdr:{flexDirection:'row',alignItems:'center',padding:16,paddingBottom:20},
   back:{width:40,height:40,borderRadius:20,backgroundColor:'rgba(255,255,255,0.2)',justifyContent:'center',alignItems:'center',marginRight:12},
-  hdrT:{fontSize:18,fontWeight:'700',color:'#FFF'},
+  hdrT:{fontSize:18,fontWeight:'700',color: '#0F172A'},
   lbl:{fontSize:13,fontWeight:'600',color:COLORS.textPrimary,marginTop:14,marginBottom:4},
   sec:{fontSize:15,fontWeight:'700',color:COLORS.primary,marginBottom:2},
   inp:{backgroundColor:COLORS.white,borderRadius:10,borderWidth:1,borderColor:COLORS.border,paddingHorizontal:14,paddingVertical:10,fontSize:14,color:COLORS.textPrimary,marginBottom:4},
@@ -212,8 +212,8 @@ const st = StyleSheet.create({
   launchSection:{marginTop:20,padding:14,backgroundColor:COLORS.white,borderRadius:14,borderWidth:1,borderColor:COLORS.border},
   launchRow:{flexDirection:'row',gap:8},
   launchBtn:{flex:1,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:6,paddingVertical:12,borderRadius:10},
-  launchText:{fontSize:11,fontWeight:'700',color:'#FFF'},
+  launchText:{fontSize:11,fontWeight:'700',color: '#0F172A'},
   bottom:{padding:16,borderTopWidth:1,borderTopColor:COLORS.border,backgroundColor:COLORS.white},
-  saveBtn:{flexDirection:'row',alignItems:'center',justifyContent:'center',gap:6,backgroundColor:'#0F766E',borderRadius:12,paddingVertical:14},
-  saveTxt:{fontSize:15,fontWeight:'700',color:'#FFF'},
+  saveBtn:{flexDirection:'row',alignItems:'center',justifyContent:'center',gap:6,backgroundColor:'#0D9488',borderRadius:12,paddingVertical:14},
+  saveTxt:{fontSize:15,fontWeight:'700',color: '#0F172A'},
 });

@@ -987,14 +987,14 @@ function ModulesTab({ dashboard, dynamics, onFetchIgis, gis, igis }: {
 // STYLES
 // ========================
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0F172A' },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
   loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
   loadingText: { fontSize: 14, color: 'rgba(255,255,255,0.5)' },
 
   // Header
   headerBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10 },
   headerBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.12)', justifyContent: 'center', alignItems: 'center' },
-  headerTitle: { fontSize: 17, fontWeight: '700', color: '#FFF' },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: '#0F172A' },
   headerPhase: { fontSize: 12, color: 'rgba(255,255,255,0.6)', marginTop: 1 },
 
   // Sky Section
@@ -1033,7 +1033,7 @@ const s = StyleSheet.create({
   stepDot: { width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
   stepDotCompleted: { backgroundColor: '#10B981' },
   stepDotCurrent: { backgroundColor: '#818CF8', borderWidth: 2, borderColor: '#FFF' },
-  stepDotText: { fontSize: 9, fontWeight: '800', color: '#FFF' },
+  stepDotText: { fontSize: 9, fontWeight: '800', color: '#0F172A' },
 
   etaRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8, flexWrap: 'wrap', gap: 4 },
   etaText: { fontSize: 11, color: 'rgba(255,255,255,0.6)', fontWeight: '600' },
@@ -1043,11 +1043,11 @@ const s = StyleSheet.create({
   tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 8, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.06)' },
   tabActive: { backgroundColor: 'rgba(129,140,248,0.3)' },
   tabText: { fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.5)' },
-  tabTextActive: { color: '#FFF' },
+  tabTextActive: { color: '#0F172A' },
   tabContent: { flex: 1 },
 
   // Section
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#FFF', marginBottom: 12, marginTop: 8 },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A', marginBottom: 12, marginTop: 8 },
   sectionDesc: { fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 12, marginTop: -8 },
 
   // Cockpit Gauges
@@ -1062,20 +1062,20 @@ const s = StyleSheet.create({
   // Status Grid
   statusGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
   statusCard: { width: '47%', flexGrow: 1, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, padding: 14, alignItems: 'center', gap: 4 },
-  statusValue: { fontSize: 20, fontWeight: '800', color: '#FFF' },
+  statusValue: { fontSize: 20, fontWeight: '800', color: '#0F172A' },
   statusLabel: { fontSize: 11, color: 'rgba(255,255,255,0.5)', fontWeight: '600' },
 
   // Health
   healthCard: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, padding: 16, marginBottom: 16 },
-  healthTitle: { fontSize: 14, fontWeight: '700', color: '#FFF', marginBottom: 10 },
+  healthTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A', marginBottom: 10 },
   healthRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  healthScore: { fontSize: 28, fontWeight: '800', color: '#FFF', width: 60 },
+  healthScore: { fontSize: 28, fontWeight: '800', color: '#0F172A', width: 60 },
   healthBarTrack: { flex: 1, height: 8, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 4, overflow: 'hidden' },
   healthBarFill: { height: '100%', borderRadius: 4 },
 
   // Journey
   journeyCard: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, padding: 16 },
-  journeyTitle: { fontSize: 14, fontWeight: '700', color: '#FFF', marginBottom: 12 },
+  journeyTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A', marginBottom: 12 },
   journeyRow: { flexDirection: 'row', alignItems: 'center' },
   journeyPoint: { flex: 1, alignItems: 'center' },
   journeyEmoji: { fontSize: 24 },
@@ -1089,9 +1089,9 @@ const s = StyleSheet.create({
   stepCardCompleted: { borderLeftColor: '#10B981', backgroundColor: 'rgba(16,185,129,0.08)' },
   stepIcon: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
   stepNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  stepName: { fontSize: 14, fontWeight: '700', color: '#FFF' },
+  stepName: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
   currentBadge: { backgroundColor: '#818CF8', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  currentBadgeText: { fontSize: 9, fontWeight: '800', color: '#FFF' },
+  currentBadgeText: { fontSize: 9, fontWeight: '800', color: '#0F172A' },
   stepDesc: { fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 4, lineHeight: 18 },
   stepNotes: { fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 6, fontStyle: 'italic' },
   stepDate: { fontSize: 10, color: '#10B981', marginTop: 4 },
@@ -1118,7 +1118,7 @@ const s = StyleSheet.create({
   secretIconWrap: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
   secretNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   secretNum: { fontSize: 11, fontWeight: '800', color: 'rgba(255,255,255,0.4)', backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 },
-  secretName: { fontSize: 13, fontWeight: '700', color: '#FFF' },
+  secretName: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
   secretPart: { fontSize: 10, color: 'rgba(255,255,255,0.4)', marginTop: 2 },
   secretScore: { fontSize: 16, fontWeight: '800' },
   secretBar: { height: 3, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 2, marginTop: 8, overflow: 'hidden' },
@@ -1127,7 +1127,7 @@ const s = StyleSheet.create({
   // GIS
   gisGrid: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   gisCard: { flex: 1, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, padding: 14, alignItems: 'center', gap: 6 },
-  gisLabel: { fontSize: 12, fontWeight: '700', color: '#FFF' },
+  gisLabel: { fontSize: 12, fontWeight: '700', color: '#0F172A' },
   gisScore: { fontSize: 18, fontWeight: '800', color: '#818CF8' },
   gisDesc: { fontSize: 10, color: 'rgba(255,255,255,0.4)', textAlign: 'center' },
 
@@ -1135,7 +1135,7 @@ const s = StyleSheet.create({
   igisGrid: { flexDirection: 'row', gap: 10, marginBottom: 16, flexWrap: 'wrap' },
   igisCard: { width: '31%', flexGrow: 1, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, padding: 12, alignItems: 'center', gap: 4 },
   igisEmoji: { fontSize: 28 },
-  igisLabel: { fontSize: 11, fontWeight: '700', color: '#FFF', textAlign: 'center' },
+  igisLabel: { fontSize: 11, fontWeight: '700', color: '#0F172A', textAlign: 'center' },
   igisDesc: { fontSize: 9, color: 'rgba(255,255,255,0.4)', textAlign: 'center' },
   igisStub: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, marginTop: 4 },
   igisStubText: { fontSize: 9, fontWeight: '700' },
@@ -1145,14 +1145,14 @@ const s = StyleSheet.create({
   liveIgisGradient: { padding: 14 },
   liveIgisHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   liveIgisEmoji: { fontSize: 28 },
-  liveIgisTitle: { fontSize: 14, fontWeight: '700', color: '#FFF' },
+  liveIgisTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
   liveIgisDesc: { fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 2 },
   liveBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(16,185,129,0.2)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981' },
   liveBadgeText: { fontSize: 9, fontWeight: '800', color: '#10B981' },
   liveMetricsRow: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' },
   liveMetric: { alignItems: 'center' },
-  liveMetricVal: { fontSize: 18, fontWeight: '800', color: '#FFF' },
+  liveMetricVal: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
   liveMetricLabel: { fontSize: 9, color: 'rgba(255,255,255,0.5)', fontWeight: '600', marginTop: 2 },
   liveNoData: { fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 10, fontStyle: 'italic' },
   saLevelBar: { flexDirection: 'row', gap: 6, marginTop: 10, height: 50, alignItems: 'flex-end' },
@@ -1163,7 +1163,7 @@ const s = StyleSheet.create({
   // Linked Modules
   linkedCard: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, padding: 14, marginBottom: 12 },
   linkedHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
-  linkedTitle: { fontSize: 14, fontWeight: '700', color: '#FFF' },
+  linkedTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
   linkedEmpty: { fontSize: 12, color: 'rgba(255,255,255,0.4)' },
   linkedItem: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
   linkedDot: { width: 8, height: 8, borderRadius: 4 },

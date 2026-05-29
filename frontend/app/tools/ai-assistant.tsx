@@ -135,7 +135,7 @@ export default function AIAssistantScreen() {
 
   const renderConversationList = () => (
     <>
-      <LinearGradient colors={['#1E293B', '#0F172A']} style={s.heroBanner}>
+      <LinearGradient colors={['#FFFFFF', '#F8FAFC']} style={s.heroBanner}>
         <Ionicons name="chatbubble-ellipses" size={32} color="#818CF8" />
         <View style={{ marginLeft: 12, flex: 1 }}>
           <Text style={s.heroTitle}>AI Solution Assistant</Text>
@@ -354,11 +354,11 @@ export default function AIAssistantScreen() {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0F172A' },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, paddingBottom: 8 },
-  headerTitle: { color: '#FFF', fontSize: 18, fontWeight: '700', flex: 1, marginLeft: 12 },
+  headerTitle: { color: '#0F172A', fontSize: 18, fontWeight: '700', flex: 1, marginLeft: 12 },
   heroBanner: { borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  heroTitle: { color: '#FFF', fontSize: 17, fontWeight: '700' },
+  heroTitle: { color: '#0F172A', fontSize: 17, fontWeight: '700' },
   heroSub: { color: '#94A3B8', fontSize: 12, marginTop: 4 },
 
   // Language
@@ -369,26 +369,26 @@ const s = StyleSheet.create({
   langChipText: { color: '#94A3B8', fontSize: 11, fontWeight: '500' },
 
   newChatBtn: { backgroundColor: '#6366F1', borderRadius: 12, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 20 },
-  newChatText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  newChatText: { color: '#0F172A', fontSize: 15, fontWeight: '700' },
 
-  sectionTitle: { color: '#FFF', fontSize: 16, fontWeight: '700', marginBottom: 12 },
+  sectionTitle: { color: '#0F172A', fontSize: 16, fontWeight: '700', marginBottom: 12 },
 
   emptyState: { alignItems: 'center', paddingVertical: 30 },
   emptyText: { color: '#9CA3AF', fontSize: 16, fontWeight: '600', marginTop: 12 },
   emptySub: { color: '#6B7280', fontSize: 13, marginTop: 4, textAlign: 'center' },
 
-  convCard: { backgroundColor: '#1E293B', borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  convCard: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   convIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#818CF820', justifyContent: 'center', alignItems: 'center' },
-  convTitle: { color: '#FFF', fontSize: 14, fontWeight: '600' },
+  convTitle: { color: '#0F172A', fontSize: 14, fontWeight: '600' },
   convSub: { color: '#6B7280', fontSize: 11, marginTop: 2 },
 
   quickRow: { flexDirection: 'row', gap: 8 },
-  quickCard: { flex: 1, backgroundColor: '#1E293B', borderRadius: 12, padding: 14, alignItems: 'center', gap: 6 },
+  quickCard: { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 12, padding: 14, alignItems: 'center', gap: 6 },
   quickText: { color: '#94A3B8', fontSize: 11, fontWeight: '600' },
 
   // Chat
-  chatHeader: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#1E293B' },
-  chatTitle: { color: '#FFF', fontSize: 14, fontWeight: '600' },
+  chatHeader: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#FFFFFF' },
+  chatTitle: { color: '#0F172A', fontSize: 14, fontWeight: '600' },
   chatLang: { color: '#6B7280', fontSize: 11 },
   ttsBtn: { padding: 8 },
   stopBtn: { padding: 8 },
@@ -396,10 +396,10 @@ const s = StyleSheet.create({
   chatMessages: { flex: 1, marginTop: 8 },
 
   welcomeMsg: { alignItems: 'center', paddingVertical: 40 },
-  welcomeTitle: { color: '#FFF', fontSize: 18, fontWeight: '700', marginTop: 12 },
+  welcomeTitle: { color: '#0F172A', fontSize: 18, fontWeight: '700', marginTop: 12 },
   welcomeSub: { color: '#94A3B8', fontSize: 13, marginTop: 6, textAlign: 'center', lineHeight: 20, paddingHorizontal: 16 },
   suggestionRow: { marginTop: 16, gap: 8, width: '100%', paddingHorizontal: 16 },
-  sugChip: { backgroundColor: '#1E293B', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#334155' },
+  sugChip: { backgroundColor: '#FFFFFF', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#334155' },
   sugText: { color: '#A78BFA', fontSize: 13, fontWeight: '500' },
 
   msgBubble: { flexDirection: 'row', marginBottom: 12, alignItems: 'flex-start' },
@@ -408,12 +408,12 @@ const s = StyleSheet.create({
   aiAvatar: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#1E1B4B', justifyContent: 'center', alignItems: 'center', marginRight: 8, marginTop: 2 },
   msgContent: { maxWidth: '80%', borderRadius: 14, padding: 12 },
   userContent: { backgroundColor: '#6366F1', borderBottomRightRadius: 4, marginLeft: 'auto' },
-  aiContent: { backgroundColor: '#1E293B', borderBottomLeftRadius: 4, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' },
-  msgText: { color: '#E2E8F0', fontSize: 14, lineHeight: 20 },
+  aiContent: { backgroundColor: '#FFFFFF', borderBottomLeftRadius: 4, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' },
+  msgText: { color: '#475569', fontSize: 14, lineHeight: 20 },
   speakBtn: { padding: 6, marginLeft: 4, marginTop: 2 },
 
   // Input
-  inputBar: { flexDirection: 'row', alignItems: 'flex-end', paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#1E293B', gap: 8 },
-  chatInput: { flex: 1, backgroundColor: '#1E293B', borderRadius: 12, borderWidth: 1, borderColor: '#334155', color: '#FFF', paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, maxHeight: 100 },
+  inputBar: { flexDirection: 'row', alignItems: 'flex-end', paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#FFFFFF', gap: 8 },
+  chatInput: { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: '#334155', color: '#0F172A', paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, maxHeight: 100 },
   sendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#6366F1', justifyContent: 'center', alignItems: 'center' },
 });

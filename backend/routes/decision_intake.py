@@ -316,6 +316,136 @@ async def get_template_detail(template_id: str):
 
     return template
 
+
+def _is_admin_user(user: dict) -> bool:
+    role = (user or {}).get("role", "")
+    org_role = (user or {}).get("org_role", "")
+    return role in ("super_admin", "co_admin", "admin") or org_role in (
+        "org_super_admin", "org_co_admin"
+    )
+
+
+@router.delete("/templates/{template_id}")
+async def delete_template(
+    template_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Delete a decision template.
+
+    Authorisation:
+      • Admins (super_admin / co_admin) can delete any template.
+      • Regular users can only delete templates THEY authored
+        (created_by_user_id == own user_id) AND which are still
+        in CUSTOM_BLANK / unapproved status (you cannot remove a
+        template that has been approved by an admin).
+
+    Deletion is HARD (removes the row entirely) plus a side-purge
+    of any orphan `hos_template_defaults` row keyed by the same
+    template_id, so the SWOT-saved templates can be cleaned up
+    without leaving stale data.
+    """
+    tpl = await db.hos_decision_templates.find_one({"id": template_id}, {"_id": 0})
+    if not tpl:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    is_admin = _is_admin_user(user)
+    is_author = (tpl.get("created_by_user_id") == user.get("user_id"))
+    approved = tpl.get("approval_status") == "approved"
+    authorized = tpl.get("source_type") == "AUTHORIZED_STANDARD"
+
+    if not is_admin:
+        if not is_author:
+            raise HTTPException(
+                status_code=403,
+                detail="Only the template author or an admin may delete this template.",
+            )
+        if approved or authorized:
+            raise HTTPException(
+                status_code=403,
+                detail="Approved/authorized templates can only be removed by an admin.",
+            )
+
+    res = await db.hos_decision_templates.delete_one({"id": template_id})
+    await db.hos_template_defaults.delete_many({"template_id": template_id})
+
+    # Audit trail (best-effort)
+    try:
+        await db.hos_template_deletion_log.insert_one({
+            "id": str(uuid.uuid4()),
+            "template_id": template_id,
+            "title": tpl.get("title", ""),
+            "deleted_by": user.get("user_id"),
+            "deleted_by_name": user.get("name", ""),
+            "deleted_by_role": "admin" if is_admin else "author",
+            "source_type": tpl.get("source_type"),
+            "approval_status": tpl.get("approval_status"),
+            "at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        pass
+
+    return {
+        "deleted": bool(res.deleted_count),
+        "template_id": template_id,
+        "message": "Template deleted.",
+    }
+
+
+@router.post("/admin/templates/bulk-delete")
+async def admin_bulk_delete_templates(
+    body: Dict[str, Any],
+    user: dict = Depends(get_current_user),
+):
+    """Admin-only convenience: hard-delete multiple templates by id list.
+
+    Useful for cleaning up TEST_* leftovers from prior testing-agent runs.
+    Body: { "ids": ["t1", "t2", ...] } or { "title_prefix": "TEST_" }.
+    """
+    if not _is_admin_user(user):
+        raise HTTPException(status_code=403, detail="Admin role required")
+
+    ids = list(body.get("ids") or [])
+    prefix = body.get("title_prefix")
+    query: Dict[str, Any] = {}
+    if ids:
+        query["id"] = {"$in": ids}
+    elif prefix:
+        query["title"] = {"$regex": f"^{re.escape(str(prefix))}"}
+    else:
+        raise HTTPException(status_code=400, detail="Provide `ids` or `title_prefix`")
+
+    # Capture for audit
+    matching = await db.hos_decision_templates.find(
+        query, {"_id": 0, "id": 1, "title": 1}
+    ).to_list(500)
+    if not matching:
+        return {"deleted_count": 0, "matched": []}
+
+    matched_ids = [m["id"] for m in matching]
+    res = await db.hos_decision_templates.delete_many({"id": {"$in": matched_ids}})
+    await db.hos_template_defaults.delete_many({"template_id": {"$in": matched_ids}})
+
+    try:
+        await db.hos_template_deletion_log.insert_many([
+            {
+                "id": str(uuid.uuid4()),
+                "template_id": m["id"],
+                "title": m.get("title", ""),
+                "deleted_by": user.get("user_id"),
+                "deleted_by_name": user.get("name", ""),
+                "deleted_by_role": "admin_bulk",
+                "at": datetime.now(timezone.utc).isoformat(),
+            }
+            for m in matching
+        ])
+    except Exception:
+        pass
+
+    return {
+        "deleted_count": res.deleted_count,
+        "matched": [{"id": m["id"], "title": m.get("title")} for m in matching],
+    }
+
 # ========================
 # DECISION CREATION
 # ========================

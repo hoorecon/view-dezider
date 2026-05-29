@@ -13,7 +13,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
   TextInput, Modal, KeyboardAvoidingView, Platform, Switch,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import api from '../../../src/utils/api';
@@ -42,6 +42,7 @@ const DEFAULT_LANGS = ['en', 'hi', 'ta', 'te', 'kn', 'ml', 'mr', 'bn', 'gu'];
 
 export default function ExpertNetScreen() {
   const router = useRouter();
+  const searchParams = useLocalSearchParams<{ from_module?: string; decision_id?: string; life_area_id?: string; sub_area_id?: string }>();
   const [tab, setTab] = useState<Tab>('discover');
 
   // shared
@@ -68,7 +69,14 @@ export default function ExpertNetScreen() {
         ))}
       </ScrollView>
 
-      {tab === 'discover' && <DiscoverTab onPickExpert={() => null} />}
+      {tab === 'discover' && (
+        <DiscoverTab
+          onPickExpert={() => null}
+          contextModule={searchParams.from_module || null}
+          contextLifeArea={searchParams.life_area_id || null}
+          contextDecisionId={searchParams.decision_id || null}
+        />
+      )}
       {tab === 'bookings' && <BookingsTab />}
       {tab === 'recommendations' && <RecommendationsTab />}
       {tab === 'webinars' && <WebinarsTab />}
@@ -80,7 +88,7 @@ export default function ExpertNetScreen() {
 // ---------------------------------------------------------------------------
 // Discover tab
 // ---------------------------------------------------------------------------
-function DiscoverTab({ onPickExpert }: { onPickExpert: (e: Expert) => void }) {
+function DiscoverTab({ onPickExpert, contextModule, contextLifeArea, contextDecisionId }: { onPickExpert: (e: Expert) => void; contextModule?: string | null; contextLifeArea?: string | null; contextDecisionId?: string | null }) {
   const router = useRouter();
   const [items, setItems] = useState<Expert[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,7 +97,19 @@ function DiscoverTab({ onPickExpert }: { onPickExpert: (e: Expert) => void }) {
   const [maxRate, setMaxRate] = useState<number | null>(null);
   const [minRating, setMinRating] = useState<number | null>(null);
   const [sort, setSort] = useState<string>('rating');
-  const [q, setQ] = useState('');
+  // Pre-fill search with the life-area slug (e.g. "la_career" → "career") so
+  // experts whose specializations cover that life area surface first.
+  const initialQ = contextLifeArea
+    ? String(contextLifeArea).replace(/^la_/, '').replace(/_/g, ' ')
+    : '';
+  const [q, setQ] = useState(initialQ);
+  const [showContext, setShowContext] = useState(!!contextModule);
+
+  const moduleLabel: Record<string, string> = {
+    dezider: 'My Dezider',
+    pros_cons: 'Pros & Cons',
+    swot: 'SWOT Analysis',
+  };
 
   const load = useCallback(async () => {
     try {
@@ -121,6 +141,18 @@ function DiscoverTab({ onPickExpert }: { onPickExpert: (e: Expert) => void }) {
 
   return (
     <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 80 }}>
+      {showContext && contextModule ? (
+        <View style={styles.ctxBanner}>
+          <Ionicons name="link" size={14} color="#7C3AED" />
+          <Text style={styles.ctxText}>
+            Finding experts for <Text style={{ fontWeight: '700' }}>{moduleLabel[contextModule] || contextModule}</Text>
+            {contextLifeArea ? <> · <Text style={{ fontWeight: '700' }}>{String(contextLifeArea).replace(/^la_/, '').replace(/_/g, ' ')}</Text></> : null}
+          </Text>
+          <TouchableOpacity onPress={() => { setShowContext(false); setQ(''); }} hitSlop={8}>
+            <Ionicons name="close-circle" size={16} color="#94A3B8" />
+          </TouchableOpacity>
+        </View>
+      ) : null}
       <View style={styles.searchBar}>
         <Ionicons name="search" size={16} color={COLORS.textMuted} />
         <TextInput placeholder="Search by specialization (mental_health, tax, ...)" placeholderTextColor={COLORS.textMuted} style={{ flex: 1, color: COLORS.textPrimary, fontSize: 13 }} value={q} onChangeText={setQ} onSubmitEditing={load} />
@@ -526,6 +558,8 @@ const styles = StyleSheet.create({
   tabTextActive: { color: COLORS.primary, fontWeight: '700' },
 
   searchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.white, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, marginBottom: 10 },
+  ctxBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F5F3FF', borderWidth: 1, borderColor: '#DDD6FE', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, marginBottom: 10 },
+  ctxText: { color: '#5B21B6', fontSize: 12, flex: 1 },
   filterChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.white },
   filterChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   filterChipText: { fontSize: 11, color: COLORS.textSecondary, fontWeight: '500' },

@@ -346,16 +346,16 @@ export default function FaceAuthScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#111827' },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
   centerContent: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
-  permTitle: { fontSize: 18, fontWeight: '700', color: '#FFF', marginTop: 8 },
+  permTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A', marginTop: 8 },
   permDesc: { fontSize: 13, color: '#9CA3AF', textAlign: 'center' },
   backButton: { paddingHorizontal: 24, paddingVertical: 10, borderRadius: 8, backgroundColor: '#374151', marginTop: 16 },
-  backButtonText: { fontSize: 14, fontWeight: '600', color: '#FFF' },
+  backButtonText: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
 
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#1F2937', gap: 10 },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#FFFFFF', gap: 10 },
   headerBtn: { width: 38, height: 38, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
-  headerTitle: { fontSize: 16, fontWeight: '800', color: '#FFF' },
+  headerTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
   headerSub: { fontSize: 11, color: '#9CA3AF', marginTop: 1 },
   registeredBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#ECFDF5', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   registeredText: { fontSize: 10, fontWeight: '600', color: '#059669' },
@@ -363,7 +363,7 @@ const styles = StyleSheet.create({
   cameraContainer: { flex: 1, position: 'relative', overflow: 'hidden' },
   webCamera: { flex: 1, backgroundColor: '#000' },
   camera: { flex: 1 },
-  noCameraFallback: { flex: 1, backgroundColor: '#1F2937', justifyContent: 'center', alignItems: 'center', gap: 8 },
+  noCameraFallback: { flex: 1, backgroundColor: '#FFFFFF', justifyContent: 'center', alignItems: 'center', gap: 8 },
   noCameraText: { fontSize: 14, color: '#9CA3AF' },
 
   overlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' },
@@ -374,26 +374,26 @@ const styles = StyleSheet.create({
   guideBottomRight: { top: undefined, bottom: 0, left: undefined, right: 0, borderTopWidth: 0, borderLeftWidth: 0, borderBottomWidth: 3, borderRightWidth: 3, borderTopLeftRadius: 0, borderBottomRightRadius: 20 },
 
   promptBanner: { position: 'absolute', top: 40, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, gap: 6 },
-  promptText: { fontSize: 14, fontWeight: '700', color: '#FFF' },
+  promptText: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
   promptProgress: { flexDirection: 'row', gap: 6 },
   promptDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.3)' },
   promptDotActive: { backgroundColor: '#059669' },
 
   processingOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', gap: 12 },
-  processingText: { fontSize: 14, fontWeight: '600', color: '#FFF' },
+  processingText: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
 
-  resultPanel: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#1F2937', borderTopWidth: 1, borderTopColor: '#374151' },
+  resultPanel: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#374151' },
   resultSuccess: { borderTopColor: '#059669', borderTopWidth: 2 },
   resultFail: { borderTopColor: '#DC2626', borderTopWidth: 2 },
-  resultTitle: { fontSize: 14, fontWeight: '700', color: '#FFF' },
+  resultTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
   resultDetail: { fontSize: 11, color: '#9CA3AF', marginTop: 2 },
 
-  controls: { alignItems: 'center', paddingVertical: 16, backgroundColor: '#1F2937' },
+  controls: { alignItems: 'center', paddingVertical: 16, backgroundColor: '#FFFFFF' },
   captureBtn: { width: 72, height: 72, borderRadius: 36, borderWidth: 3, borderColor: '#059669', justifyContent: 'center', alignItems: 'center' },
   captureBtnInner: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#059669', justifyContent: 'center', alignItems: 'center' },
   captureHint: { fontSize: 12, color: '#9CA3AF', marginTop: 8 },
   actionRow: { flexDirection: 'row', gap: 10 },
   actionBtnGreen: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#059669', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
   actionBtnGray: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#374151', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
-  actionBtnText: { fontSize: 13, fontWeight: '600', color: '#FFF' },
+  actionBtnText: { fontSize: 13, fontWeight: '600', color: '#0F172A' },
 });

@@ -24,6 +24,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import api from '../../src/utils/api';
+import ModuleStoreActions from '../../src/components/ModuleStoreActions';
 import { showAlert } from '../../src/utils/alert';
 import { LIFE_AREAS as LIFE_AREAS_CANONICAL } from '../../src/constants/lifeAreas';
 import { safeBack, goHome } from '../../src/utils/navigation';
@@ -1951,6 +1952,15 @@ export default function ProsConsWizard() {
                         Decided on {new Date(decidedAt).toLocaleString()}
                       </Text>
                     )}
+
+                    {analysis?.id ? (
+                      <ModuleStoreActions
+                        module="pros_cons"
+                        decisionId={analysis.id}
+                        lifeAreaId={(analysis as any)?.life_area_id || (analysis as any)?.life_area || null}
+                        subAreaId={(analysis as any)?.sub_area_id || null}
+                      />
+                    ) : null}
                   </View>
                 );
               })()}

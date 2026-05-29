@@ -17,6 +17,7 @@ import ShareStepModal from '../../src/components/ShareStepModal';
 import CLDViewer from '../../src/components/CLDViewer';
 import ExpertCallModal from '../../src/components/ExpertCallModal';
 import LinkedSourcePill from '../../src/components/decisions/LinkedSourcePill';
+import ModuleStoreActions from '../../src/components/ModuleStoreActions';
 import { deadlineCountdown, formatHorizon } from '../../src/utils/dateLocalize';
 import { DecisionProvider, useDecision } from '../../src/context/DecisionContext';
 import { styles } from '../../src/styles/decisionStyles';
@@ -237,6 +238,12 @@ function PRRDecisionDetailInner() {
           showsVerticalScrollIndicator={false}
         >
           {renderCurrentStep()}
+          <ModuleStoreActions
+            module="dezider"
+            decisionId={id || ''}
+            lifeAreaId={(decision as any)?.life_area_id || decision?.life_area || null}
+            subAreaId={(decision as any)?.sub_area_id || null}
+          />
         </ScrollView>
         {/* Universal voice input panel */}
         {currentStep !== 5 && (

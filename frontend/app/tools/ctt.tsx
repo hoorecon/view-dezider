@@ -517,7 +517,7 @@ export default function CTTScreen() {
   return (
     <SafeAreaView style={s.container} edges={['top']}>
       {/* Header */}
-      <LinearGradient colors={['#1E3A5F', '#2D5F8B']} style={s.header}>
+      <LinearGradient colors={['#F1F5F9', '#2D5F8B']} style={s.header}>
         <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
           <Ionicons name="arrow-back" size={22} color="#FFF" />
         </TouchableOpacity>
@@ -607,11 +607,11 @@ const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, paddingBottom: 18 },
   backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: '#FFF' },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
   headerSub: { fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   importBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.2)' },
-  importText: { fontSize: 12, fontWeight: '600', color: '#FFF' },
+  importText: { fontSize: 12, fontWeight: '600', color: '#0F172A' },
   addBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
 
   // Stats
@@ -624,18 +624,18 @@ const s = StyleSheet.create({
   // View toggle
   viewToggleRow: { flexDirection: 'row', paddingHorizontal: 16, paddingTop: 10, gap: 6 },
   viewToggle: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.border },
-  viewToggleActive: { backgroundColor: '#1E3A5F', borderColor: '#1E3A5F' },
+  viewToggleActive: { backgroundColor: '#F1F5F9', borderColor: '#F1F5F9' },
   viewToggleText: { fontSize: 11, fontWeight: '600', color: COLORS.textMuted },
 
   // Filters
   filtersContainer: { paddingVertical: 8 },
   filterRow: { flexDirection: 'row', paddingHorizontal: 16, gap: 6 },
   filterChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.border },
-  filterActive: { backgroundColor: '#1E3A5F', borderColor: '#1E3A5F' },
+  filterActive: { backgroundColor: '#F1F5F9', borderColor: '#F1F5F9' },
   filterActiveSecondary: { backgroundColor: COLORS.primary + '12', borderColor: COLORS.primary },
   filterDot: { width: 8, height: 8, borderRadius: 4 },
   filterText: { fontSize: 11, fontWeight: '600', color: COLORS.textMuted },
-  filterTextActive: { color: '#FFF' },
+  filterTextActive: { color: '#0F172A' },
   filterDivider: { width: 1, height: 20, backgroundColor: COLORS.border, marginHorizontal: 4 },
 
   // Loading
@@ -652,8 +652,8 @@ const s = StyleSheet.create({
   emptyTitle: { fontSize: 20, fontWeight: '700', color: COLORS.textPrimary },
   emptySub: { fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', marginTop: 8, lineHeight: 20 },
   emptyActions: { flexDirection: 'row', gap: 12, marginTop: 24 },
-  emptyBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 12, backgroundColor: '#1E3A5F' },
-  emptyBtnText: { fontSize: 14, fontWeight: '600', color: '#FFF' },
+  emptyBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 12, backgroundColor: '#F1F5F9' },
+  emptyBtnText: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
 
   // Task card
   taskCard: { backgroundColor: COLORS.white, borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: COLORS.border },
