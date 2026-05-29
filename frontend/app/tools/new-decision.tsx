@@ -26,6 +26,9 @@ interface Template {
   tags?: string[]; popularity?: number; life_area_id: string; ask_type_id: string;
   acting_as_contexts: string[]; applies_to_modules?: string[]; org_types?: string[];
   decision_types?: string[];
+  // SWOT templates carry per-factor S/W/O/T flags. We expose the array so the
+  // picker can render small color-coded counts as a preview.
+  factors?: Array<{ id?: string; name?: string; swot_flag?: 'S' | 'W' | 'O' | 'T' | null }>;
 }
 type ModuleKey = 'dezider' | 'swot' | 'pros-cons';
 
@@ -43,6 +46,16 @@ const ACTING_AS = [
 const TEMPLATE_TYPE_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
   AUTHORIZED_STANDARD: { label: 'Curated', color: '#10B981', icon: 'shield-checkmark' },
   DYNAMIC_CLD_STARTER: { label: 'CLD Starter', color: '#F59E0B', icon: 'flash' },
+};
+
+// SWOT flag color map — used to render small letter chips on template cards
+// when the user is in the SWOT module. Mirrors the quadrant colours used in
+// /tools/swot.tsx so the visual language stays consistent across screens.
+const SWOT_FLAG_META: Record<'S' | 'W' | 'O' | 'T', { label: string; color: string; bg: string }> = {
+  S: { label: 'S', color: '#059669', bg: '#ECFDF5' },
+  W: { label: 'W', color: '#DC2626', bg: '#FEF2F2' },
+  O: { label: 'O', color: '#2563EB', bg: '#EFF6FF' },
+  T: { label: 'T', color: '#D97706', bg: '#FFFBEB' },
 };
 
 // Module-specific configuration: header, gradient, step list, post-create route.
@@ -608,7 +621,19 @@ export default function NewDecisionIntake() {
         <FlatList
           data={templates}
           keyExtractor={item => item.id}
-          renderItem={({ item }) => (
+          renderItem={({ item }) => {
+            // Compute SWOT-flag counts (only meaningful when module=swot).
+            const flagCounts: Record<'S' | 'W' | 'O' | 'T', number> = { S: 0, W: 0, O: 0, T: 0 };
+            if (moduleKey === 'swot' && Array.isArray(item.factors)) {
+              for (const f of item.factors) {
+                const fl = (f?.swot_flag || '').toString().toUpperCase();
+                if (fl === 'S' || fl === 'W' || fl === 'O' || fl === 'T') {
+                  flagCounts[fl as 'S' | 'W' | 'O' | 'T'] += 1;
+                }
+              }
+            }
+            const totalFlags = flagCounts.S + flagCounts.W + flagCounts.O + flagCounts.T;
+            return (
             <TouchableOpacity
               style={s.templateCard}
               onPress={() => handleCreateDecision(item.id, item.template_type)}
@@ -620,6 +645,30 @@ export default function NewDecisionIntake() {
                   <Text style={s.templateDesc} numberOfLines={2}>{item.description}</Text>
                 </View>
               </View>
+              {/* SWOT flag preview — only render in SWOT module and only if any
+                  flagged factor exists. Gives the user a quick glance at how
+                  many S/W/O/T factors a template will seed. */}
+              {moduleKey === 'swot' && totalFlags > 0 && (
+                <View style={{ flexDirection: 'row', gap: 4, marginBottom: 8, flexWrap: 'wrap' }}>
+                  {(['S', 'W', 'O', 'T'] as const).map(k => {
+                    if (flagCounts[k] === 0) return null;
+                    const m = SWOT_FLAG_META[k];
+                    return (
+                      <View
+                        key={k}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 3,
+                          paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10,
+                          backgroundColor: m.bg, borderWidth: 1, borderColor: m.color + '40',
+                        }}
+                      >
+                        <Text style={{ fontSize: 10, fontWeight: '800', color: m.color }}>{m.label}</Text>
+                        <Text style={{ fontSize: 10, color: m.color, fontWeight: '600' }}>{flagCounts[k]}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
               <View style={s.templateFooter}>
                 {TEMPLATE_TYPE_CONFIG[item.template_type] && (
                   <View style={[s.typeBadge, { backgroundColor: TEMPLATE_TYPE_CONFIG[item.template_type].color + '15' }]}>
@@ -636,7 +685,8 @@ export default function NewDecisionIntake() {
                 ))}
               </View>
             </TouchableOpacity>
-          )}
+          );
+          }}
           ListEmptyComponent={
             !loadingTemplates ? (
               <View style={s.emptyTemplates}>

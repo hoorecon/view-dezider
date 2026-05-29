@@ -163,6 +163,136 @@ async def delete_swot(analysis_id: str, user: dict = Depends(get_current_user)):
 
 
 # ========================
+# SAVE AS TEMPLATE (Phase 2)
+# ========================
+
+class SwotSaveAsTemplateRequest(BaseModel):
+    """Payload for POST /swot/{analysis_id}/save-as-template.
+
+    `name` is required and becomes the template title. `description` is optional
+    and shows in the template-picker. `is_public=True` makes the template
+    discoverable by all users (subject to admin moderation); otherwise the
+    template stays private to the creator.
+    """
+    name: str
+    description: str = ""
+    is_public: bool = False
+
+
+@router.post("/{analysis_id}/save-as-template")
+async def save_swot_as_template(
+    analysis_id: str,
+    data: SwotSaveAsTemplateRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Promote a SWOT analysis into a reusable v2 template.
+
+    The new doc lives in `hos_decision_templates` so it can be surfaced by the
+    standard `/hos/templates/suggest?module=swot` endpoint used by the new
+    intake flow.
+
+    Factor shape preserves the SWOT-flag per item:
+        factors: [{
+            id, name, swot_flag: 'S'|'W'|'O'|'T',
+            polarity: 'positive' | 'negative',
+            internal_external: 'internal' | 'external',
+            description, weightage
+        }, ...]
+
+    Wildcards (`org_types=[]`, `decision_types=[]`) keep the template eligible
+    for any caller until an admin curates it.
+    """
+    if not data.name.strip():
+        raise HTTPException(status_code=400, detail="Template name is required")
+
+    swot = await db.swot_analyses.find_one(
+        {"id": analysis_id, "user_id": user["user_id"]}, {"_id": 0}
+    )
+    if not swot:
+        raise HTTPException(status_code=404, detail="SWOT analysis not found")
+
+    # Aggregate the 4 quadrants into a single factor list, preserving flag.
+    QUADRANT_META = [
+        ("strengths",     "S", "positive", "internal"),
+        ("weaknesses",    "W", "negative", "internal"),
+        ("opportunities", "O", "positive", "external"),
+        ("threats",       "T", "negative", "external"),
+    ]
+    factors: List[Dict[str, Any]] = []
+    for key, flag, polarity, ie in QUADRANT_META:
+        for item in (swot.get(key) or []):
+            factors.append({
+                "id": item.get("id") or str(uuid.uuid4()),
+                "name": item.get("text", ""),
+                "description": item.get("description", ""),
+                "swot_flag": flag,
+                "polarity": polarity,
+                "internal_external": ie,
+                "weightage": item.get("impact", 5),
+            })
+
+    if not factors:
+        raise HTTPException(
+            status_code=400,
+            detail="Add at least one S/W/O/T item before saving as template",
+        )
+
+    # Map decision_type → derived decision_types[] (legacy + v2 compat).
+    dt = (swot.get("decision_type") or "").lower()
+    decision_types = [dt] if dt in ("problem", "need", "aspiration") else []
+
+    template_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    template_doc = {
+        "id": template_id,
+        "title": data.name.strip(),
+        "description": data.description.strip()
+            or f"Saved from SWOT analysis: {swot.get('title', '')}",
+        "template_type": "AUTHORIZED_STANDARD" if user.get("role") in (
+            "super_admin", "co_admin", "admin"
+        ) else "CUSTOM_BLANK",
+        "status": "active",
+        "popularity": 0,
+        "order": 0,
+        # Taxonomy v2 fields
+        "applies_to_modules": ["swot"],
+        "org_types": [],          # wildcard — admin can narrow later
+        "decision_types": decision_types,
+        # Legacy compatibility — derive single-value fields so the existing
+        # /hos/templates filter (without the v2 query) still finds this doc.
+        "acting_as_contexts": ["INDIVIDUAL"],
+        "ask_type_id": f"at_{dt}" if dt else "at_problem",
+        "life_area_id": swot.get("life_area") or "",
+        "sub_area_id": None,
+        "category_id": None,
+        # Authorship + audit
+        "factors": factors,
+        "is_public": bool(data.is_public),
+        "visibility": "PUBLIC" if data.is_public else "PRIVATE",
+        "approval_status": "approved" if user.get("role") in (
+            "super_admin", "co_admin", "admin"
+        ) else "pending",
+        "created_by": user["user_id"],
+        "created_by_name": user.get("name", "Unknown"),
+        "source_swot_analysis_id": analysis_id,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    await db.hos_decision_templates.insert_one(template_doc)
+    logger.info(
+        "SWOT %s saved as template %s by user %s (%d factors, public=%s)",
+        analysis_id, template_id, user["user_id"], len(factors), data.is_public,
+    )
+    return {
+        "id": template_id,
+        "template_id": template_id,
+        "factor_count": len(factors),
+        "message": "Template saved successfully",
+    }
+
+
+# ========================
 # CONVERT TO PRR DECISION
 # ========================
 

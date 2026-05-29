@@ -69,6 +69,13 @@ export default function SwotScreen() {
   const [converting, setConverting] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Phase 2 — Save as Template state
+  const [showSaveTplModal, setShowSaveTplModal] = useState(false);
+  const [tplName, setTplName] = useState('');
+  const [tplDesc, setTplDesc] = useState('');
+  const [tplIsPublic, setTplIsPublic] = useState(false);
+  const [savingTpl, setSavingTpl] = useState(false);
+
   const fetchAnalyses = async () => {
     try {
       const res = await api.get('/swot');
@@ -228,6 +235,47 @@ export default function SwotScreen() {
         }
       ]
     );
+  };
+
+  // Phase 2 — Save SWOT as template (POSTs to /swot/{id}/save-as-template,
+  // which writes into hos_decision_templates with applies_to_modules:['swot']
+  // and per-factor swot_flag preserved.)
+  const handleSaveAsTemplate = async () => {
+    if (!selectedAnalysis) return;
+    if (!tplName.trim()) {
+      showAlert('Required', 'Please enter a template name');
+      return;
+    }
+    const totalItems =
+      (selectedAnalysis.strengths?.length || 0) +
+      (selectedAnalysis.weaknesses?.length || 0) +
+      (selectedAnalysis.opportunities?.length || 0) +
+      (selectedAnalysis.threats?.length || 0);
+    if (totalItems === 0) {
+      showAlert('Empty', 'Add at least one S/W/O/T item before saving as template.');
+      return;
+    }
+    setSavingTpl(true);
+    try {
+      const res = await api.post(`/swot/${selectedAnalysis.id}/save-as-template`, {
+        name: tplName.trim(),
+        description: tplDesc.trim(),
+        is_public: tplIsPublic,
+      });
+      setShowSaveTplModal(false);
+      setTplName('');
+      setTplDesc('');
+      setTplIsPublic(false);
+      showAlert(
+        'Template Saved',
+        `"${tplName.trim()}" is now available in the SWOT template picker (${res.data.factor_count} factors).` +
+          (tplIsPublic ? '\n\nPublic templates require admin approval before they appear for other users.' : ''),
+      );
+    } catch (err: any) {
+      showAlert('Error', err?.response?.data?.detail || 'Failed to save template');
+    } finally {
+      setSavingTpl(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -472,56 +520,189 @@ export default function SwotScreen() {
             </Modal>
           )}
 
-          {/* Bottom Convert Button */}
+          {/* Bottom action bar — Save-as-Template (always) + Convert (if not yet) */}
           {!selectedAnalysis.converted_decision_id && (
             <View style={styles.bottomBar}>
-              <TouchableOpacity
-                style={styles.convertBtn}
-                onPress={handleConvertToDecision}
-                disabled={converting}
-              >
-                <LinearGradient
-                  colors={['#6366F1', '#8B5CF6']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.convertGradient}
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity
+                  style={[styles.saveTplBtn]}
+                  onPress={() => {
+                    setTplName(selectedAnalysis.title || '');
+                    setTplDesc('');
+                    setTplIsPublic(false);
+                    setShowSaveTplModal(true);
+                  }}
+                  accessibilityLabel="Save as Template"
                 >
-                  {converting ? (
-                    <>
-                      <ActivityIndicator color="#FFF" size="small" />
-                      <Text style={styles.convertText}>AI generating values...</Text>
-                    </>
-                  ) : (
-                    <>
-                      <Ionicons name="flash" size={20} color="#FFF" />
-                      <Text style={styles.convertText}>Convert to My Dezider</Text>
-                    </>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
+                  <Ionicons name="bookmark-outline" size={18} color="#3B82F6" />
+                  <Text style={styles.saveTplText}>Save as Template</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.convertBtn, { flex: 1 }]}
+                  onPress={handleConvertToDecision}
+                  disabled={converting}
+                >
+                  <LinearGradient
+                    colors={['#6366F1', '#8B5CF6']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.convertGradient}
+                  >
+                    {converting ? (
+                      <>
+                        <ActivityIndicator color="#FFF" size="small" />
+                        <Text style={styles.convertText}>AI generating...</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Ionicons name="flash" size={18} color="#FFF" />
+                        <Text style={styles.convertText}>Convert to Dezider</Text>
+                      </>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
             </View>
           )}
 
           {selectedAnalysis.converted_decision_id && (
             <View style={styles.bottomBar}>
-              <TouchableOpacity
-                style={styles.convertBtn}
-                onPress={() => {
-                  setShowDetail(false);
-                  router.push(`/prr/${selectedAnalysis.converted_decision_id}?step=2` as any);
-                }}
-              >
-                <LinearGradient
-                  colors={['#059669', '#10B981']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.convertGradient}
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity
+                  style={[styles.saveTplBtn]}
+                  onPress={() => {
+                    setTplName(selectedAnalysis.title || '');
+                    setTplDesc('');
+                    setTplIsPublic(false);
+                    setShowSaveTplModal(true);
+                  }}
+                  accessibilityLabel="Save as Template"
                 >
-                  <Ionicons name="open-outline" size={20} color="#FFF" />
-                  <Text style={styles.convertText}>Open My Dezider</Text>
-                </LinearGradient>
-              </TouchableOpacity>
+                  <Ionicons name="bookmark-outline" size={18} color="#3B82F6" />
+                  <Text style={styles.saveTplText}>Save as Template</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.convertBtn, { flex: 1 }]}
+                  onPress={() => {
+                    setShowDetail(false);
+                    router.push(`/prr/${selectedAnalysis.converted_decision_id}?step=2` as any);
+                  }}
+                >
+                  <LinearGradient
+                    colors={['#059669', '#10B981']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.convertGradient}
+                  >
+                    <Ionicons name="open-outline" size={18} color="#FFF" />
+                    <Text style={styles.convertText}>Open Dezider</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
             </View>
+          )}
+
+          {/* Save as Template Modal */}
+          {showSaveTplModal && (
+            <Modal visible={true} transparent animationType="slide">
+              <View style={styles.modalOverlay}>
+                <View style={styles.modalContent}>
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>Save as SWOT Template</Text>
+                    <TouchableOpacity onPress={() => setShowSaveTplModal(false)}>
+                      <Ionicons name="close" size={24} color={COLORS.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <Text style={{ fontSize: 12, color: COLORS.textSecondary, marginBottom: 12 }}>
+                    Reuse this S/W/O/T structure for future analyses. Each item keeps its
+                    quadrant flag (S/W/O/T).
+                  </Text>
+
+                  {/* Flag preview chips — color-coded counts */}
+                  <View style={{ flexDirection: 'row', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+                    {QUADRANTS.map(q => {
+                      const cnt = (selectedAnalysis[q.key] || []).length;
+                      if (cnt === 0) return null;
+                      return (
+                        <View
+                          key={q.key}
+                          style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 4,
+                            paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12,
+                            backgroundColor: q.bgColor, borderWidth: 1, borderColor: q.borderColor,
+                          }}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: q.color }}>
+                            {q.label[0]}
+                          </Text>
+                          <Text style={{ fontSize: 11, color: q.color }}>{cnt}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+
+                  <Text style={styles.inputLabel}>Template name *</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={tplName}
+                    onChangeText={setTplName}
+                    placeholder="e.g., Pre-launch SWOT checklist"
+                    autoFocus
+                  />
+
+                  <Text style={styles.inputLabel}>Description (optional)</Text>
+                  <TextInput
+                    style={[styles.textInput, { height: 70 }]}
+                    value={tplDesc}
+                    onChangeText={setTplDesc}
+                    placeholder="When should someone use this template?"
+                    multiline
+                  />
+
+                  <TouchableOpacity
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 8,
+                      paddingVertical: 10, marginTop: 4,
+                    }}
+                    onPress={() => setTplIsPublic(p => !p)}
+                  >
+                    <Ionicons
+                      name={tplIsPublic ? 'checkbox' : 'square-outline'}
+                      size={20}
+                      color={tplIsPublic ? COLORS.primary : COLORS.textMuted}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.textPrimary }}>
+                        Share publicly
+                      </Text>
+                      <Text style={{ fontSize: 11, color: COLORS.textMuted }}>
+                        Requires admin approval. Leave off to keep private.
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.saveItemBtn,
+                      { backgroundColor: COLORS.primary, marginTop: 12 },
+                      savingTpl && { opacity: 0.6 },
+                    ]}
+                    onPress={handleSaveAsTemplate}
+                    disabled={savingTpl}
+                  >
+                    {savingTpl ? (
+                      <ActivityIndicator color="#FFF" />
+                    ) : (
+                      <>
+                        <Ionicons name="bookmark" size={16} color="#FFF" />
+                        <Text style={styles.saveItemText}>Save Template</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </Modal>
           )}
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -882,6 +1063,13 @@ const styles = StyleSheet.create({
     paddingVertical: 16, gap: 10,
   },
   convertText: { fontSize: 16, fontWeight: '700', color: '#FFF' },
+  saveTplBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 14, paddingVertical: 16, gap: 6,
+    borderRadius: 14, borderWidth: 1.5, borderColor: '#3B82F6',
+    backgroundColor: '#EFF6FF',
+  },
+  saveTplText: { fontSize: 13, fontWeight: '700', color: '#3B82F6' },
 
   // Modal
   modalOverlay: {
