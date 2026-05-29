@@ -22,6 +22,7 @@ import TimingFieldset, { TimingValue } from '../../src/components/decisions/Timi
 import DecisionLinkPicker, { LinkSelection } from '../../src/components/decisions/DecisionLinkPicker';
 import LinkedSourcePill from '../../src/components/decisions/LinkedSourcePill';
 import { addDaysISO } from '../../src/utils/dateLocalize';
+import { safeBack, goHome } from '../../src/utils/navigation';
 
 const FOLDERS = [
   { id: 'holistic_health', name: 'Holistic Health', icon: 'fitness', color: '#10B981' },
@@ -161,11 +162,22 @@ export default function NewPRRDecision() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
+        {/* Top nav bar — back + home so the user is never trapped in a
+            "browser-back-out-of-app" dead end. */}
+        <View style={styles.topBar}>
+          <TouchableOpacity onPress={() => safeBack(router)} style={styles.topBarBtn} accessibilityLabel="Back">
+            <Ionicons name="chevron-back" size={22} color={COLORS.textPrimary} />
+          </TouchableOpacity>
+          <Text style={styles.topBarTitle}>New Decision</Text>
+          <TouchableOpacity onPress={() => goHome(router)} style={styles.topBarBtn} accessibilityLabel="Home">
+            <Ionicons name="home-outline" size={20} color={COLORS.textPrimary} />
+          </TouchableOpacity>
+        </View>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
@@ -368,6 +380,22 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   keyboardView: { flex: 1 },
   scrollContent: { padding: 16 },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    backgroundColor: COLORS.white,
+  },
+  topBarBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  topBarTitle: {
+    flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '700', color: COLORS.textPrimary,
+  },
   linkBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: COLORS.primary, borderStyle: 'dashed', justifyContent: 'center', marginBottom: 8 },
   linkBtnText: { fontSize: 12, fontWeight: '600', color: COLORS.primary },
   header: { marginBottom: 24 },

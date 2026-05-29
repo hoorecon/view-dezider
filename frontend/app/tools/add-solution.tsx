@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import api from '../../src/utils/api';
 import { useAuthStore } from '../../src/store/authStore';
+import { safeBack, goHome } from '../../src/utils/navigation';
 
 const COLORS = {
   bg: '#0F172A', surface: '#1E293B', surfaceLight: '#334155',
@@ -25,6 +26,22 @@ const TYPES = [
   { id: 'PERSON_CONTACT', icon: 'person', label: 'Person', color: '#EC4899' },
 ];
 
+// Taxonomy v2 — keep in sync with backend `decision_intake.py::ORG_TYPES`.
+const ORG_TYPES_LIST = [
+  { id: 'INDIVIDUAL', label: 'Individual' },
+  { id: 'BUSINESS_ORG', label: 'Business' },
+  { id: 'ACADEMIC_ORG', label: 'Academic' },
+  { id: 'NONPROFIT_ORG', label: 'Nonprofit' },
+  { id: 'ASSOCIATION', label: 'Association' },
+  { id: 'GOVERNMENT', label: 'Government' },
+];
+
+const DECISION_TYPES_LIST = [
+  { id: 'problem', label: 'Problem', color: '#EF4444' },
+  { id: 'need', label: 'Need', color: '#F59E0B' },
+  { id: 'aspiration', label: 'Aspiration', color: '#10B981' },
+];
+
 const VISIBILITY = [
   { id: 'PRIVATE', icon: 'lock-closed', label: 'Private (Only Me)', desc: 'Only visible to you' },
   { id: 'ORG', icon: 'people', label: 'My Organization', desc: 'Visible to your org members' },
@@ -38,6 +55,11 @@ export default function AddSolutionScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [lifeAreas, setLifeAreas] = useState<any[]>([]);
   const [subAreas, setSubAreas] = useState<any[]>([]);
+  // Taxonomy v2 (Batch 1D/1E) — admin-targeting fields. Allow multi-select.
+  const [orgTypes, setOrgTypes] = useState<string[]>([]);
+  const [decisionTypes, setDecisionTypes] = useState<string[]>([]);
+  const [scenarios, setScenarios] = useState<any[]>([]);
+  const [scenarioIds, setScenarioIds] = useState<string[]>([]);
 
   // Form data
   const [form, setForm] = useState({
@@ -61,6 +83,26 @@ export default function AddSolutionScreen() {
         .then(r => setSubAreas(r.data)).catch(() => {});
     }
   }, [form.life_area_id]);
+
+  // Load scenarios (Batch 1E) — drives the multi-select scenarios chip row.
+  // Filtered by life-area and (when chosen) sub-area, so admins only see
+  // relevant scenario suggestions.
+  useEffect(() => {
+    if (!form.life_area_id) { setScenarios([]); return; }
+    const params: any = { life_area_id: form.life_area_id };
+    if (form.sub_area_id) params.sub_area_id = form.sub_area_id;
+    api.get('/hos/scenarios', { params })
+      .then(r => setScenarios(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setScenarios([]));
+  }, [form.life_area_id, form.sub_area_id]);
+
+  const toggleArrayValue = (
+    arr: string[],
+    setter: (next: string[]) => void,
+    value: string,
+  ) => {
+    setter(arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value]);
+  };
 
   const updateForm = (key: string, value: string) => setForm(prev => ({ ...prev, [key]: value }));
 
@@ -88,6 +130,10 @@ export default function AddSolutionScreen() {
         ...form,
         tags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
         type_specific: typeSpecific,
+        // Taxonomy v2 — multi-select arrays. Empty array = wildcard "applies to all".
+        org_types: orgTypes,
+        decision_types: decisionTypes,
+        scenario_ids: scenarioIds,
         quantitative_factors: quantFactors
           .filter(f => f.factor_name.trim())
           .map(f => ({
@@ -211,6 +257,89 @@ export default function AddSolutionScreen() {
       <Text style={styles.inputLabel}>City</Text>
       <TextInput style={styles.input} placeholder="Chennai" placeholderTextColor={COLORS.textMuted}
         value={form.city} onChangeText={v => updateForm('city', v)} />
+
+      {/* ─── Batch 1D/1E — Taxonomy v2 targeting ─────────────────────────────
+          These multi-select chip rows let admins (or solution authors) target
+          their solution to specific OrgTypes, Decision Types, and Scenarios.
+          Empty arrays mean "applies to all" (wildcard semantics, enforced
+          server-side via $size:0 filters in /api/solutions-store/browse). */}
+      <View style={{ marginTop: 18, paddingTop: 14, borderTopWidth: 1, borderTopColor: COLORS.border }}>
+        <Text style={[styles.stepTitle, { fontSize: 15, marginBottom: 4 }]}>Targeting (optional)</Text>
+        <Text style={styles.stepSubtitle}>Leave empty = applies to all. Select to narrow down.</Text>
+
+        <Text style={styles.inputLabel}>Org Types</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+          {ORG_TYPES_LIST.map(o => {
+            const active = orgTypes.includes(o.id);
+            return (
+              <TouchableOpacity
+                key={o.id}
+                style={[styles.chip, active && styles.chipActive]}
+                onPress={() => toggleArrayValue(orgTypes, setOrgTypes, o.id)}
+                accessibilityLabel={`Toggle org type ${o.label}`}
+                accessibilityState={{ selected: active }}
+              >
+                {active && <Ionicons name="checkmark" size={12} color={COLORS.primary} />}
+                <Text style={[styles.chipText, active && styles.chipTextActive]}>{o.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <Text style={styles.inputLabel}>Decision Types</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+          {DECISION_TYPES_LIST.map(d => {
+            const active = decisionTypes.includes(d.id);
+            return (
+              <TouchableOpacity
+                key={d.id}
+                style={[
+                  styles.chip,
+                  active && { backgroundColor: d.color + '25', borderColor: d.color },
+                ]}
+                onPress={() => toggleArrayValue(decisionTypes, setDecisionTypes, d.id)}
+                accessibilityLabel={`Toggle decision type ${d.label}`}
+                accessibilityState={{ selected: active }}
+              >
+                {active && <Ionicons name="checkmark" size={12} color={d.color} />}
+                <Text style={[styles.chipText, active && { color: d.color, fontWeight: '600' }]}>{d.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <Text style={styles.inputLabel}>
+          Scenarios {form.life_area_id ? `(${scenarios.length})` : '— pick Life Area first'}
+        </Text>
+        {form.life_area_id ? (
+          scenarios.length === 0 ? (
+            <Text style={{ fontSize: 11, color: COLORS.textMuted, paddingVertical: 6 }}>
+              No scenarios found for this {form.sub_area_id ? 'sub-area' : 'life area'}.
+            </Text>
+          ) : (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 4 }}>
+              {scenarios.map((sc: any) => {
+                const id = sc.id || sc.scenario_id;
+                const active = scenarioIds.includes(id);
+                return (
+                  <TouchableOpacity
+                    key={id}
+                    style={[styles.chip, active && styles.chipActive]}
+                    onPress={() => toggleArrayValue(scenarioIds, setScenarioIds, id)}
+                    accessibilityLabel={`Toggle scenario ${sc.title}`}
+                    accessibilityState={{ selected: active }}
+                  >
+                    {active && <Ionicons name="checkmark" size={12} color={COLORS.primary} />}
+                    <Text style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>
+                      {sc.title}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )
+        ) : null}
+      </View>
     </>
   );
 
@@ -260,10 +389,13 @@ export default function AddSolutionScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => step > 0 ? setStep(step - 1) : router.back()} style={styles.backBtn}>
+          <TouchableOpacity onPress={() => step > 0 ? setStep(step - 1) : safeBack(router)} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={24} color={COLORS.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Add Solution</Text>
+          <TouchableOpacity onPress={() => goHome(router)} style={styles.backBtn} accessibilityLabel="Home">
+            <Ionicons name="home-outline" size={20} color={COLORS.text} />
+          </TouchableOpacity>
           <Text style={styles.stepIndicator}>{step + 1}/{steps.length}</Text>
         </View>
 

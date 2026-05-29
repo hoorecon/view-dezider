@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import VoiceStepInput from '../../src/components/VoiceStepInput';
@@ -21,6 +21,7 @@ import { deadlineCountdown, formatHorizon } from '../../src/utils/dateLocalize';
 import { DecisionProvider, useDecision } from '../../src/context/DecisionContext';
 import { styles } from '../../src/styles/decisionStyles';
 import { calculateRatingsFromOrder } from '../../src/utils/decisionHelpers';
+import { safeBack, goHome } from '../../src/utils/navigation';
 
 // Step components
 import Step2 from '../../src/components/steps/Step2';
@@ -34,6 +35,7 @@ import Step9 from '../../src/components/steps/Step9';
 import Step10 from '../../src/components/steps/Step10';
 
 function PRRDecisionDetailInner() {
+  const router = useRouter();
   const {
     decision,
     loading,
@@ -179,12 +181,26 @@ function PRRDecisionDetailInner() {
         style={styles.keyboardView}
       >
         <View style={styles.titleSection}>
+          <TouchableOpacity
+            onPress={() => safeBack(router)}
+            style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginRight: 6 }}
+            accessibilityLabel="Back"
+          >
+            <Ionicons name="chevron-back" size={22} color={COLORS.textPrimary} />
+          </TouchableOpacity>
           <Text style={styles.decisionTitle} numberOfLines={1}>{decision.title}</Text>
           <View style={styles.headerStatusBadge}>
             <Text style={styles.headerStatusText}>
               Step {currentStep}/10
             </Text>
           </View>
+          <TouchableOpacity
+            onPress={() => goHome(router)}
+            style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginLeft: 6 }}
+            accessibilityLabel="Home"
+          >
+            <Ionicons name="home-outline" size={19} color={COLORS.textPrimary} />
+          </TouchableOpacity>
         </View>
         {/* Timing context banner (Enhancement #4) */}
         {(decision.deadline_date || decision.impact_horizon_value || decision.linked_from_decision_id) && (() => {

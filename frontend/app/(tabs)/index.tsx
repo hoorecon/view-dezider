@@ -8,6 +8,7 @@ import {
   RefreshControl,
   Image,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -52,6 +53,8 @@ interface JournalReminder {
 export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
+  const { width: winWidth } = useWindowDimensions();
+  const isNarrow = winWidth < 480;
   const [stats, setStats] = useState<Stats | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -189,22 +192,32 @@ export default function HomeScreen() {
           colors={GRADIENTS.primary}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={styles.header}
+          style={[styles.header, isNarrow && styles.headerNarrow]}
         >
           <View style={styles.headerContent}>
             <View style={styles.headerLeft}>
-              <Text style={styles.greeting}>{getGreeting()},</Text>
-              <Text style={styles.userName}>{user?.name || 'Decision Maker'}</Text>
+              <Text style={styles.greeting} numberOfLines={1}>{getGreeting()},</Text>
+              <Text
+                style={[styles.userName, isNarrow && styles.userNameNarrow]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {user?.name || 'Decision Maker'}
+              </Text>
             </View>
             <View style={styles.headerRight}>
-              {/* Font-size A / A+ / A++ pill group (web-wide accessibility) */}
-              <FontScaleButton variant="dark" style={{ marginRight: 8 }} />
+              {/* Font-size A / A+ / A++ pill group — kept inline on wider screens only.
+                  On narrow phones we move it to its own row below to avoid squishing
+                  the greeting/userName. */}
+              {!isNarrow && (
+                <FontScaleButton variant="dark" style={{ marginRight: 4 }} />
+              )}
               {/* Switch-to-admin button — only visible for admins so they can
                   jump back without using the browser back button. Gated by
                   isClient to avoid SSR/client hydration mismatch on user state. */}
               {isClient && (user?.is_admin || ['admin', 'super_admin', 'co_admin'].includes((user?.role || '').toLowerCase())) && (
                 <TouchableOpacity
-                  style={styles.headerIconBtn}
+                  style={[styles.headerIconBtn, isNarrow && styles.headerIconBtnNarrow]}
                   onPress={() => {
                     // Force a hard navigation on web so React Router state
                     // doesn't get confused; on native fall back to router.replace.
@@ -216,14 +229,14 @@ export default function HomeScreen() {
                   }}
                   accessibilityLabel="Switch to admin dashboard"
                 >
-                  <Ionicons name="shield-checkmark" size={22} color="#FFF" />
+                  <Ionicons name="shield-checkmark" size={isNarrow ? 18 : 22} color="#FFF" />
                 </TouchableOpacity>
               )}
               <TouchableOpacity
-                style={styles.headerIconBtn}
+                style={[styles.headerIconBtn, isNarrow && styles.headerIconBtnNarrow]}
                 onPress={() => router.push('/notifications')}
               >
-                <Ionicons name="notifications-outline" size={22} color="#FFF" />
+                <Ionicons name="notifications-outline" size={isNarrow ? 18 : 22} color="#FFF" />
                 {unreadCount > 0 && (
                   <View style={styles.badge}>
                     <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
@@ -232,10 +245,17 @@ export default function HomeScreen() {
               </TouchableOpacity>
               <Image
                 source={{ uri: 'https://customer-assets.emergentagent.com/job_chapter2-guide/artifacts/acyqe96y_VENTURE%20BUDDHA-SqaureHD.png' }}
-                style={styles.headerLogo}
+                style={[styles.headerLogo, isNarrow && styles.headerLogoNarrow]}
               />
             </View>
           </View>
+          {/* On narrow screens, FontScaleButton lives on its own row so the
+              greeting + username can use the full width. */}
+          {isNarrow && (
+            <View style={styles.fontScaleRow}>
+              <FontScaleButton variant="dark" />
+            </View>
+          )}
           <Text style={styles.tagline}>Make conscious decisions, shape your destiny</Text>
         </LinearGradient>
 
@@ -1186,6 +1206,11 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
   },
+  headerNarrow: {
+    padding: 16,
+    paddingTop: 18,
+    paddingBottom: 24,
+  },
   headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1194,11 +1219,14 @@ const styles = StyleSheet.create({
   },
   headerLeft: {
     flex: 1,
+    minWidth: 0,
+    marginRight: 8,
   },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
+    flexShrink: 0,
   },
   headerIconBtn: {
     width: 40,
@@ -1207,6 +1235,17 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  headerIconBtnNarrow: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  fontScaleRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: -4,
+    marginBottom: 6,
   },
   badge: {
     position: 'absolute',
@@ -1233,6 +1272,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: COLORS.white,
   },
+  headerLogoNarrow: {
+    width: 36,
+    height: 36,
+    borderRadius: 9,
+  },
   greeting: {
     fontSize: 16,
     color: 'rgba(255,255,255,0.8)',
@@ -1241,6 +1285,9 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '700',
     color: COLORS.white,
+  },
+  userNameNarrow: {
+    fontSize: 20,
   },
   tagline: {
     fontSize: 14,
