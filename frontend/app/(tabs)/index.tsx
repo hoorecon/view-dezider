@@ -281,7 +281,7 @@ export default function HomeScreen() {
           <View style={styles.quickActions}>
             <TouchableOpacity
               style={styles.actionCard}
-              onPress={() => router.push('/tools/new-decision')}
+              onPress={() => router.push('/tools/dezider-list' as any)}
             >
               <LinearGradient
                 colors={['#6366F1', '#8B5CF6']}
@@ -290,7 +290,7 @@ export default function HomeScreen() {
                 <Ionicons name="compass" size={24} color={COLORS.white} />
               </LinearGradient>
               <Text style={styles.actionTitle}>New Decision</Text>
-              <Text style={styles.actionSubtitle}>HOS Decision Engine</Text>
+              <Text style={styles.actionSubtitle}>My Dezider</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -308,12 +308,12 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Decision Kickstarters — Pros & Cons (8-step), SWOT */}
+          {/* Decision Kickstarters — Pros & Cons, SWOT */}
           <Text style={styles.sectionTitle}>Decision Kickstarters</Text>
           <View style={styles.quickActions}>
             <TouchableOpacity
               style={styles.actionCard}
-              onPress={() => router.push('/tools/pros-cons-wizard?module=pros-cons' as any)}
+              onPress={() => router.push('/tools/pros-cons-list' as any)}
             >
               <LinearGradient
                 colors={['#7C3AED', '#A855F7']}
@@ -337,20 +337,6 @@ export default function HomeScreen() {
               </LinearGradient>
               <Text style={styles.actionTitle}>SWOT Analysis</Text>
               <Text style={styles.actionSubtitle}>Quick 4-quadrant view</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push('/tools/pros-cons-wizard?module=swot' as any)}
-            >
-              <LinearGradient
-                colors={['#C2410C', '#F97316']}
-                style={styles.actionIcon}
-              >
-                <Ionicons name="git-branch" size={24} color={COLORS.white} />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>SWOT (8-Step)</Text>
-              <Text style={styles.actionSubtitle}>Deep framework wizard</Text>
             </TouchableOpacity>
           </View>
 
