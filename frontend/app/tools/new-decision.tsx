@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import { useAuthStore } from '../../src/store/authStore';
+import { safeBack, goHome } from '../../src/utils/navigation';
 import api from '../../src/utils/api';
 
 // ====== TYPES ======
@@ -658,14 +659,16 @@ export default function NewDecisionIntake() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         {/* Header */}
         <LinearGradient colors={moduleCfg.gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.header}>
-          <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
+          <TouchableOpacity onPress={() => safeBack(router)} style={s.backBtn}>
             <Ionicons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
-          <View>
+          <View style={{ flex: 1, alignItems: 'center' }}>
             <Text style={s.headerTitle}>{moduleCfg.title}</Text>
             <Text style={s.headerSubtitle}>{moduleCfg.subtitle}</Text>
           </View>
-          <View style={{ width: 40 }} />
+          <TouchableOpacity onPress={() => goHome(router)} style={s.backBtn} accessibilityLabel="Home">
+            <Ionicons name="home" size={20} color="#FFF" />
+          </TouchableOpacity>
         </LinearGradient>
 
         {/* Step indicator */}

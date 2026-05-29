@@ -20,6 +20,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import { LIFE_AREAS as LIFE_AREAS_CANONICAL } from '../../src/constants/lifeAreas';
 import { showAlert } from '../../src/utils/alert';
+import { safeBack, goHome } from '../../src/utils/navigation';
 import api from '../../src/utils/api';
 
 interface DecisionItem {
@@ -112,16 +113,19 @@ export default function DeziderListScreen() {
         end={{ x: 1, y: 1 }}
         style={styles.header}
       >
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => safeBack(router)}>
           <Ionicons name="arrow-back" size={22} color="#FFF" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>My Dezider</Text>
           <Text style={styles.headerSub}>10-step hybrid decision framework</Text>
         </View>
+        <TouchableOpacity onPress={() => goHome(router)} style={[styles.backBtn, { marginRight: 8 }]} accessibilityLabel="Home">
+          <Ionicons name="home" size={20} color="#FFF" />
+        </TouchableOpacity>
         <TouchableOpacity
           style={styles.createBtnHeader}
-          onPress={() => router.push('/tools/new-decision' as any)}
+          onPress={() => router.push('/tools/new-decision?module=dezider' as any)}
         >
           <Ionicons name="add" size={22} color="#6366F1" />
         </TouchableOpacity>

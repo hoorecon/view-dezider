@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import { LIFE_AREAS as LIFE_AREAS_CANONICAL } from '../../src/constants/lifeAreas';
+import { safeBack, goHome } from '../../src/utils/navigation';
 import api from '../../src/utils/api';
 
 interface SwotItem {
@@ -537,13 +538,16 @@ export default function SwotScreen() {
         end={{ x: 1, y: 1 }}
         style={styles.header}
       >
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => safeBack(router)}>
           <Ionicons name="arrow-back" size={22} color="#FFF" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>SWOT Analysis</Text>
           <Text style={styles.headerSub}>Strengths, Weaknesses, Opportunities, Threats → PRR</Text>
         </View>
+        <TouchableOpacity onPress={() => goHome(router)} style={[styles.backBtn, { marginRight: 8 }]} accessibilityLabel="Home">
+          <Ionicons name="home" size={20} color="#FFF" />
+        </TouchableOpacity>
         <TouchableOpacity
           style={styles.createBtnHeader}
           onPress={() => setShowCreateModal(true)}

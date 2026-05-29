@@ -26,6 +26,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
 import { LIFE_AREAS as LIFE_AREAS_CANONICAL } from '../../src/constants/lifeAreas';
+import { safeBack, goHome } from '../../src/utils/navigation';
 
 type Source = 'direct' | 'pro' | 'con';
 interface Factor {
@@ -710,13 +711,16 @@ export default function ProsConsWizard() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       {/* Header */}
       <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={styles.headerBtn}>
           <Ionicons name="chevron-back" size={22} color="#fff" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle} numberOfLines={1}>{analysis.title}</Text>
           <Text style={styles.headerSub}>{module === 'swot' ? 'SWOT' : 'Pros & Cons'} · 8-step framework</Text>
         </View>
+        <TouchableOpacity onPress={() => goHome(router)} style={styles.headerBtn} accessibilityLabel="Home">
+          <Ionicons name="home" size={20} color="#fff" />
+        </TouchableOpacity>
         <TouchableOpacity onPress={() => setShowGuidelines(true)} style={styles.headerBtn}>
           <Ionicons name="bulb-outline" size={22} color="#fff" />
         </TouchableOpacity>
