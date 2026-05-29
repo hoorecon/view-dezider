@@ -27,9 +27,36 @@ from models.decision_framework_models import (
     compute_satisfaction_value,
     compute_option_rollups,
 )
+from data.hos_seed_data import LIFE_AREAS as _HOS_LIFE_AREAS
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/swot", tags=["SWOT Analysis"])
+
+# Lookup: bare slug ("career") OR human label ("Career") → canonical id ("la_career").
+# Used by save-as-template to ensure the new template is discoverable by
+# /api/hos/templates/suggest, which keys off the canonical `life_area_id`.
+_LIFE_AREA_SLUG_TO_ID: Dict[str, str] = {}
+for _la in _HOS_LIFE_AREAS:
+    _LIFE_AREA_SLUG_TO_ID[_la["slug"]] = _la["id"]
+    _LIFE_AREA_SLUG_TO_ID[_la["id"]] = _la["id"]
+    _LIFE_AREA_SLUG_TO_ID[_la["name"].lower()] = _la["id"]
+
+
+def _normalize_life_area_id(value: Optional[str]) -> str:
+    """Map a SWOT's stored life_area (slug, id, or label) → canonical la_* id.
+
+    Returns "" if the value cannot be resolved — callers should treat that as
+    "no life area set".
+    """
+    if not value:
+        return ""
+    v = str(value).strip()
+    if not v:
+        return ""
+    # Already canonical (e.g. "la_career") — keep as-is.
+    if v.startswith("la_"):
+        return v
+    return _LIFE_AREA_SLUG_TO_ID.get(v, _LIFE_AREA_SLUG_TO_ID.get(v.lower(), ""))
 
 
 def _now():
@@ -262,7 +289,7 @@ async def save_swot_as_template(
         # /hos/templates filter (without the v2 query) still finds this doc.
         "acting_as_contexts": ["INDIVIDUAL"],
         "ask_type_id": f"at_{dt}" if dt else "at_problem",
-        "life_area_id": swot.get("life_area") or "",
+        "life_area_id": _normalize_life_area_id(swot.get("life_area")),
         "sub_area_id": None,
         "category_id": None,
         # Authorship + audit

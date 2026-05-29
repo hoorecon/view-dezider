@@ -1,0 +1,48 @@
+{
+  "summary": "Phase 2 SWOT Save-as-Template HIGH bug RE-TEST PASSED end-to-end after the _normalize_life_area_id() fix in /app/backend/routes/swot.py. Backend: 15/15 pytest cases pass (8 from existing test_swot_save_as_template.py + 7 new in test_swot_life_area_normalization.py covering all 3 input shapes — bare slug 'career', canonical 'la_career', label 'Career' — plus an unknown→'' wildcard regression guard and a full round-trip through /api/hos/templates/suggest). Frontend: completed the intake wizard at /tools/new-decision?module=swot through Acting As → Career → Problem → Define → Find Templates and confirmed the picker now lists 9 SWOT-sourced templates, each card showing color-coded S(green)/W(red)/O(blue)/T(orange) flag chips with counts. Both bug fix verifications confirmed. Note: expo-av deprecation warning is still surfacing in console — should migrate to expo-audio/expo-video (independent of this iteration).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "DELETE /api/hos/templates/{id}", "issue": "Endpoint either missing or not honoring DELETE — returned non-2xx for 8 cleanup calls. Test data (TEST_NORM_*, TEST_SUGGEST_*) remains in DB but is harmless. Worth confirming admin-only delete route exists."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/tools/new-decision step 4 (Define)", "issues": ["Scenario chips row is populated with full template names (e.g. 'TEST_UI_CS_1780053644') instead of curated scenario titles. Likely the /hos/scenarios endpoint is returning template-derived rows. Cosmetic — does not block the template picker, but pollutes step 4 with raw IDs."]}
+    ],
+    "react_native_issues": [
+      {"component": "expo-av (deprecated package)", "issue": "Console warning: '[expo-av]: Expo AV has been deprecated and will be removed in SDK 54. Use the expo-audio and expo-video packages to replace the required functionality.' — must migrate. Reference: search for `from 'expo-av'` in /app/frontend/."},
+      {"component": "shadow* style props", "issue": "Console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Multiple components use shadowColor/shadowOpacity/shadowRadius."},
+      {"component": "props.pointerEvents", "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents'."},
+      {"component": "Image.style.resizeMode", "issue": "Console warning: 'Image: style.resizeMode is deprecated. Please use props.resizeMode'."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_swot_save_as_template.py",
+    "/app/backend/tests/test_swot_life_area_normalization.py",
+    "/app/test_reports/pytest/swot_save_as_template_v11.xml",
+    "/app/test_reports/pytest/swot_life_area_norm_v11.xml",
+    "/app/test_reports/pytest/swot_full_v11.xml"
+  ],
+  "action_items": [
+    "(Optional / out-of-scope) Migrate expo-av to expo-audio + expo-video before SDK 54.",
+    "(Optional) Replace shadow*/pointerEvents/Image.resizeMode legacy style props with boxShadow + style.pointerEvents + props.resizeMode.",
+    "(Cosmetic) In /tools/new-decision step 4, filter the Scenario chip source so SWOT-saved template titles don't leak into the scenarios picker.",
+    "(Optional) Add a DELETE /api/hos/templates/{id} admin endpoint to let tests clean up after themselves; current run leaves 9 TEST_* templates in the la_career/swot bucket."
+  ],
+  "critical_code_review_comments": [
+    "_normalize_life_area_id() now uses the LIFE_AREAS slug→id table — confirmed it resolves bare slug, canonical id, and human label, falling back to '' for unknown inputs. Looks correct.",
+    "frontend/app/tools/new-decision.tsx renders the SWOT chip via SWOT_FLAG_META, which now produces accessible color-coded chips on each factor (verified at runtime)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_swot_life_area_normalization.py (new file)"
+  ],
+  "success_rate": {"backend": "100% (15/15 pytest)", "frontend": "100% (template picker shows 9 SWOT templates with full S/W/O/T chip rendering)"},
+  "seed_data_creation": "Created and PARTIALLY left behind ~9 'TEST_NORM_*' and 'TEST_SUGGEST_*' templates under (acting_as=INDIVIDUAL, life_area_id=la_career, ask_type_id=at_problem, module=swot). Attempted cleanup via DELETE /api/hos/templates/{id} but the endpoint did not honor the delete. Recommend either adding a delete route or having a maintenance cleanup remove TEST_* prefixed templates.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "If iterating further: (1) main credentials in /app/memory/test_credentials.md (admin@test.com / AdminPass2026!). (2) Login route is /auth/login (NOT /login). (3) Intake wizard buttons say 'Next' on steps 1-3, then 'Find Templates' on step 4. Use page.get_by_text('Next', exact=True).first.click(force=True) — TouchableOpacity renders as a div without role=button. (4) Both pytest files in /app/backend/tests/test_swot_save_as_template.py and test_swot_life_area_normalization.py are reusable as regression suites; they require env EXPO_PUBLIC_BACKEND_URL or default to the preview URL embedded in the file. (5) SWOT flag chip colors: S=#059669 green, W=#DC2626 red, O=#2563EB blue, T=#D97706 orange.",
+  "rca_of_issue": "Previous iteration HIGH bug RCA: SWOT.save-as-template was storing life_area_id as the raw 'life_area' string from the SWOT record (often the human label 'Career'), but /api/hos/templates/suggest filters by canonical id 'la_career'. Fix in /app/backend/routes/swot.py: _normalize_life_area_id() now resolves the input against data/hos_seed_data.LIFE_AREAS using id→id, slug→id, and case-insensitive name→id, returning '' for unknown values (so unknowns become wildcard rather than mismatched). Verified by parametrized tests for all three input shapes and a positive suggest-endpoint round-trip."
+}
