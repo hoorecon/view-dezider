@@ -427,8 +427,8 @@ export default function NewDecisionIntake() {
             <Ionicons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
           <View>
-            <Text style={s.headerTitle}>New Decision</Text>
-            <Text style={s.headerSubtitle}>HOS Decision Engine</Text>
+            <Text style={s.headerTitle}>My Dezider</Text>
+            <Text style={s.headerSubtitle}>New Decision</Text>
           </View>
           <View style={{ width: 40 }} />
         </LinearGradient>

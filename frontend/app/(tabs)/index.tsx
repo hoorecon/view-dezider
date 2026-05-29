@@ -289,8 +289,8 @@ export default function HomeScreen() {
               >
                 <Ionicons name="compass" size={24} color={COLORS.white} />
               </LinearGradient>
-              <Text style={styles.actionTitle}>New Decision</Text>
-              <Text style={styles.actionSubtitle}>My Dezider</Text>
+              <Text style={styles.actionTitle}>My Dezider</Text>
+              <Text style={styles.actionSubtitle}>New Decision</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
