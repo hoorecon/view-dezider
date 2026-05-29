@@ -21,6 +21,7 @@ import { LIFE_AREAS as LIFE_AREAS_CANONICAL } from '../../src/constants/lifeArea
 import { showAlert } from '../../src/utils/alert';
 import { safeBack, goHome } from '../../src/utils/navigation';
 import api from '../../src/utils/api';
+import PaywallGate from '../../src/components/PaywallGate';
 
 interface ProsConsAnalysis {
   id: string;
@@ -149,12 +150,14 @@ export default function ProsConsListScreen() {
         <TouchableOpacity onPress={() => goHome(router)} style={[styles.backBtn, { marginRight: 8 }]} accessibilityLabel="Home">
           <Ionicons name="home" size={20} color="#FFF" />
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.createBtnHeader}
-          onPress={() => router.push('/tools/new-decision?module=pros-cons' as any)}
-        >
-          <Ionicons name="add" size={22} color="#7C3AED" />
-        </TouchableOpacity>
+        <PaywallGate module="pros_cons">
+          <TouchableOpacity
+            style={styles.createBtnHeader}
+            onPress={() => router.push('/tools/new-decision?module=pros-cons' as any)}
+          >
+            <Ionicons name="add" size={22} color="#7C3AED" />
+          </TouchableOpacity>
+        </PaywallGate>
       </LinearGradient>
 
       {loading ? (
@@ -183,13 +186,15 @@ export default function ProsConsListScreen() {
               <Text style={styles.emptyStateText}>
                 Create your first analysis to weigh options across pros, cons & factors.
               </Text>
-              <TouchableOpacity
-                style={styles.emptyCreateBtn}
-                onPress={() => router.push('/tools/new-decision?module=pros-cons' as any)}
-              >
-                <Ionicons name="add" size={20} color="#FFF" />
-                <Text style={styles.emptyCreateText}>New Pros & Cons</Text>
-              </TouchableOpacity>
+              <PaywallGate module="pros_cons">
+                <TouchableOpacity
+                  style={styles.emptyCreateBtn}
+                  onPress={() => router.push('/tools/new-decision?module=pros-cons' as any)}
+                >
+                  <Ionicons name="add" size={20} color="#FFF" />
+                  <Text style={styles.emptyCreateText}>New Pros & Cons</Text>
+                </TouchableOpacity>
+              </PaywallGate>
             </View>
           ) : (
             items.map(p => {

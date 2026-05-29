@@ -1,0 +1,42 @@
+{
+  "summary": "Phase A+B+B+ on-demand SKU storefront fully tested. All 21 backend pytest cases PASS (catalog seeding & defaults, admin price edits with 403 guards, reset-defaults, idempotent in-house solutions seed, entitlements/access-check, Razorpay order creation for L1/L2/L3/L4, forged-signature rejection, PDF flow incl. 402 without entitlement, 200 + %PDF magic bytes after L1 grant, idempotent re-download not consuming L1, cross-module bindings dezider/pros_cons/swot, 404 unknown decision, 400 unknown module). Frontend /store renders all 4 SKU cards with ₹199/₹999/₹1999/₹2800 + Monthly Subscription tile in mobile viewport. /admin/sku-pricing renders 4 editable cards with name/tagline/description/price/quota/active + Reset defaults + Seed in-house buttons. Admin nav 'On-Demand SKUs' correctly placed between Tier Matrix and Customer Segments. PaywallGate and ModuleStoreActions present and wired into swot.tsx, pros-cons-list.tsx, dezider-list.tsx. Deprecated packages detected: expo-av (warning logged on every page load).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/store", "issues": ["Price for ₹1,999 renders as '₹1999' (no thousands separator) — minor formatting nit in store.tsx formatINR helper; not blocking"]}
+    ],
+    "react_native_issues": [
+      {"component": "expo-av", "issue": "Deprecated package warning fired on app load: '[expo-av]: Expo AV has been deprecated and will be removed in SDK 54. Use the expo-audio and expo-video packages to replace the required functionality.' Migrate to expo-audio / expo-video."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_sku_store.py",
+    "/app/test_reports/pytest/sku_store_v12.xml"
+  ],
+  "action_items": [
+    "(Optional cosmetic) Update store.tsx formatINR to insert thousands separators so ₹1,999 / ₹2,800 render with commas like the design intent.",
+    "(Optional) Migrate expo-av usages to expo-audio / expo-video (SDK 54 removal). Out of scope for this phase but flagged.",
+    "(Optional) Add testID props to PaywallGate sheet rows, ModuleStoreActions pills, /store buy buttons, and admin sku-pricing Save/Reset/Seed buttons so subsequent agents can target them deterministically."
+  ],
+  "critical_code_review_comments": [
+    "decision_report_unlocks idempotency works correctly — verified by double-download not decrementing balance.",
+    "Razorpay order creation succeeds with TEST keys; payment_orders persisted with type='sku_purchase' and correct sku_code for all 4 SKUs.",
+    "Admin role guard (403) confirmed for PUT /admin/skus/{code}, POST /admin/skus/reset-defaults, POST /admin/seed-in-house-solutions.",
+    "Reset-defaults restores 19900/99900/199900/280000 paise as documented.",
+    "PDF endpoint returns real PDF bytes (magic %PDF) via reportlab across all three modules: dezider, pros_cons, swot."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_sku_store.py (new)"
+  ],
+  "success_rate": {"backend": "100% (21/21)", "frontend": "100% on the two screens tested (/store, /admin/sku-pricing)"},
+  "seed_data_creation": "Test fixtures inserted ephemeral SWOT (TEST_SWOT_*), Dezider (TEST_DEZ_*) and Pros&Cons (TEST_PC_*) docs owned by harden_1777921741@example.com and granted L1 entitlements via direct user_entitlements inserts. All cleaned up in fixture teardown. payment_orders rows from purchase tests remain (test_grant entitlements removed between tests).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Tests live in /app/backend/tests/test_sku_store.py and can be re-run via `MONGO_URL=mongodb://localhost:27017 DB_NAME=test_database pytest backend/tests/test_sku_store.py -v`. Note: login response shape is flat ({user_id, session_token, ...}) NOT nested ({user:{...}, session_token}). Razorpay TEST keys are configured in backend env, so /api/store/purchase happy-path works for order creation (do not attempt /verify happy path — only forged-sig rejection covered).",
+  "rca_of_issue": "n/a — no bugs found in this phase. Initial test ERROR (KeyError 'user') was a wrong assumption about login response shape in the test file; corrected to use top-level user_id and all 21 tests passed."
+}

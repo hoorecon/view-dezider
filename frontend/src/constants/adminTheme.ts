@@ -115,6 +115,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
     label: 'Subscriptions & GTM',
     items: [
       { key: 'tier',     label: 'Tier Matrix',       icon: 'apps',                 href: '/admin/tier-matrix' },
+      { key: 'sku',      label: 'On-Demand SKUs',    icon: 'cart',                 href: '/admin/sku-pricing' },
       { key: 'segments', label: 'Customer Segments', icon: 'people-circle',        href: '/admin/customer-segments' },
       { key: 'pricing',  label: 'Pricing Page',      icon: 'pricetag',             href: '/admin/pricing' },
     ],

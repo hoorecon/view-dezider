@@ -137,6 +137,8 @@ from routes.deo import router as deo_router
 from routes.cld import router as cld_router
 from routes.time_dezider import router as time_dezider_router
 from routes.payments import router as payments_router
+from routes.sku_store import router as sku_store_router
+from routes.decision_reports import router as decision_reports_router
 from routes.gem_flight import router as gem_flight_router
 from routes.consciousness_diary import router as consciousness_diary_router
 from routes.pros_cons import router as pros_cons_router
@@ -212,6 +214,8 @@ api_router.include_router(deo_router)
 api_router.include_router(cld_router)
 api_router.include_router(time_dezider_router)
 api_router.include_router(payments_router)
+api_router.include_router(sku_store_router)
+api_router.include_router(decision_reports_router)
 api_router.include_router(gem_flight_router)
 api_router.include_router(consciousness_diary_router)
 api_router.include_router(pros_cons_router)

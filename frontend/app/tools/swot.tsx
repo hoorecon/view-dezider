@@ -13,6 +13,8 @@ import { COLORS } from '../../src/constants/colors';
 import { LIFE_AREAS as LIFE_AREAS_CANONICAL } from '../../src/constants/lifeAreas';
 import { safeBack, goHome } from '../../src/utils/navigation';
 import api from '../../src/utils/api';
+import PaywallGate from '../../src/components/PaywallGate';
+import ModuleStoreActions from '../../src/components/ModuleStoreActions';
 
 interface SwotItem {
   id: string;
@@ -363,6 +365,13 @@ export default function SwotScreen() {
                 users found it confusing alongside "Open My Dezider".
                 If the analysis is unconverted, Convert + Open Decision
                 (rendered further below) is the single forward path. */}
+
+            {/* On-Demand store actions — PDF / Expert Session / Expert Review */}
+            <ModuleStoreActions
+              module="swot"
+              decisionId={selectedAnalysis.id}
+              lifeAreaId={selectedAnalysis.life_area}
+            />
 
             {/* Each Quadrant Section */}
             {QUADRANTS.map(q => (
@@ -729,12 +738,14 @@ export default function SwotScreen() {
         <TouchableOpacity onPress={() => goHome(router)} style={[styles.backBtn, { marginRight: 8 }]} accessibilityLabel="Home">
           <Ionicons name="home" size={20} color="#FFF" />
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.createBtnHeader}
-          onPress={() => setShowCreateModal(true)}
-        >
-          <Ionicons name="add" size={22} color="#1E40AF" />
-        </TouchableOpacity>
+        <PaywallGate module="swot">
+          <TouchableOpacity
+            style={styles.createBtnHeader}
+            onPress={() => setShowCreateModal(true)}
+          >
+            <Ionicons name="add" size={22} color="#1E40AF" />
+          </TouchableOpacity>
+        </PaywallGate>
       </LinearGradient>
 
       {loading ? (
@@ -762,13 +773,15 @@ export default function SwotScreen() {
               <Text style={styles.emptyStateText}>
                 Create your first SWOT analysis to identify key decision factors.
               </Text>
-              <TouchableOpacity
-                style={styles.emptyCreateBtn}
-                onPress={() => setShowCreateModal(true)}
-              >
-                <Ionicons name="add" size={20} color="#FFF" />
-                <Text style={styles.emptyCreateText}>Create SWOT Analysis</Text>
-              </TouchableOpacity>
+              <PaywallGate module="swot">
+                <TouchableOpacity
+                  style={styles.emptyCreateBtn}
+                  onPress={() => setShowCreateModal(true)}
+                >
+                  <Ionicons name="add" size={20} color="#FFF" />
+                  <Text style={styles.emptyCreateText}>Create SWOT Analysis</Text>
+                </TouchableOpacity>
+              </PaywallGate>
             </View>
           ) : (
             analyses.map(a => (

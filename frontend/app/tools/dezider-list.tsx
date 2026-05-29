@@ -22,6 +22,7 @@ import { LIFE_AREAS as LIFE_AREAS_CANONICAL } from '../../src/constants/lifeArea
 import { showAlert } from '../../src/utils/alert';
 import { safeBack, goHome } from '../../src/utils/navigation';
 import api from '../../src/utils/api';
+import PaywallGate from '../../src/components/PaywallGate';
 
 interface DecisionItem {
   id: string;
@@ -123,12 +124,14 @@ export default function DeziderListScreen() {
         <TouchableOpacity onPress={() => goHome(router)} style={[styles.backBtn, { marginRight: 8 }]} accessibilityLabel="Home">
           <Ionicons name="home" size={20} color="#FFF" />
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.createBtnHeader}
-          onPress={() => router.push('/tools/new-decision?module=dezider' as any)}
-        >
-          <Ionicons name="add" size={22} color="#6366F1" />
-        </TouchableOpacity>
+        <PaywallGate module="dezider">
+          <TouchableOpacity
+            style={styles.createBtnHeader}
+            onPress={() => router.push('/tools/new-decision?module=dezider' as any)}
+          >
+            <Ionicons name="add" size={22} color="#6366F1" />
+          </TouchableOpacity>
+        </PaywallGate>
       </LinearGradient>
 
       {loading ? (
@@ -157,13 +160,15 @@ export default function DeziderListScreen() {
               <Text style={styles.emptyStateText}>
                 Start your first Decision — use a template or build from scratch.
               </Text>
-              <TouchableOpacity
-                style={styles.emptyCreateBtn}
-                onPress={() => router.push('/tools/new-decision' as any)}
-              >
-                <Ionicons name="add" size={20} color="#FFF" />
-                <Text style={styles.emptyCreateText}>New Decision</Text>
-              </TouchableOpacity>
+              <PaywallGate module="dezider">
+                <TouchableOpacity
+                  style={styles.emptyCreateBtn}
+                  onPress={() => router.push('/tools/new-decision' as any)}
+                >
+                  <Ionicons name="add" size={20} color="#FFF" />
+                  <Text style={styles.emptyCreateText}>New Decision</Text>
+                </TouchableOpacity>
+              </PaywallGate>
             </View>
           ) : (
             items.map(d => {
