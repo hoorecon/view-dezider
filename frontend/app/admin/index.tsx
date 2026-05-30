@@ -30,6 +30,7 @@ const QUICK_ACTIONS: QuickAction[] = [
   { key: 'tier-matrix',     label: 'Tier Matrix',         description: '32 modules × 7 chakra tiers · feature gating', icon: 'apps',            color: '#7C3AED', href: '/admin/tier-matrix' },
   { key: 'segments',        label: 'Customer Segments',   description: 'Target Group profiles · multi-currency pricing · AI research', icon: 'people-circle',   color: '#0EA5E9', href: '/admin/customer-segments' },
   { key: 'pricing',         label: 'Pricing Page',        description: 'Public-facing 7-chakra subscription tiers',   icon: 'pricetag',        color: '#10B981', href: '/pricing' },
+  { key: 'payments',        label: 'Payments & Coupons',  description: 'Skip-pay toggle · Coupon CRUD · Org-Type master', icon: 'card', color: '#0D9488', href: '/admin/payments' },
   { key: 'experts',         label: 'Experts',             description: 'Verified expert profiles · ratings · payouts', icon: 'star',            color: '#F59E0B', href: '/admin/experts' },
   { key: 'org-members',     label: 'Org Members',         description: 'Organisation users · roles · invitations',     icon: 'people',          color: '#3B82F6', href: '/admin/org-members' },
   { key: 'acm',             label: 'Access Control',      description: '89 features × subscription plan quotas',       icon: 'shield-checkmark',color: '#6366F1', href: '/admin/acm' },

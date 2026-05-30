@@ -1,0 +1,40 @@
+{
+  "summary": "Comprehensive backend + frontend test of payment_admin.py (skip-payment toggle, coupons CRUD, /coupons/validate SP port, /coupons/redeem, /payments/skip-grant, org-types master). All 33 backend pytest cases PASS — every SP branch (ERR-0/1/2/3/4/5/6/9/10 + MSG-1/2/3 + 100% cap + value-floor-at-0) exercised end-to-end. Admin-only guards verified (non-admin user → 403 on /admin/* and on /payments/skip-grant when toggle OFF). Toggle ON correctly creates a payment_grants doc with amount_charged=0 and payment_method='ADMIN_SKIP'; coupon_code in body auto-redeems and bumps the user's usage_count. /api/payments/skip-grant/history scoped to current user. Org-Type seed contains all 6 system rows sorted by sort_order; system rows soft-disable on DELETE, custom rows hard-delete. Frontend /admin/payments page loads after admin login, all 3 sections render (Skip toggle, Coupons list with 'New' CTA, Org-Type master). No red screen, no JS errors. Deprecated packages detected: expo-av (warning logged on every page load — flagged in earlier iterations too).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Coupons list", "issue": "TEST_PCT200_xxx coupon is displayed as '250%' in the chip — UI shows the raw stored discount_value (250) even though validation caps it at 100. Minor cosmetic; consider clamping the display to min(value,100) for Percentage type. Reference: /app/frontend/app/admin/payments.tsx", "testID": "coupon-row", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "expo-av", "issue": "Deprecation warning logged: 'Expo AV has been deprecated and will be removed in SDK 54. Use the expo-audio and expo-video packages.' Not introduced by this iteration but persists across the app."},
+      {"component": "Image.resizeMode", "issue": "Console warning: 'Image: style.resizeMode is deprecated. Please use props.resizeMode.' — somewhere in the admin layout."},
+      {"component": "shadow* style props", "issue": "Console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' — RN Web migration pending; many screens trigger this."}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_payment_admin.py", "/app/test_reports/pytest/payment_admin.xml"],
+  "action_items": [
+    "OPTIONAL (low priority): Clamp Percentage display in /admin/payments coupon chips to min(value, 100) so admins don't see '250%'. Validation already caps correctly server-side.",
+    "MIGRATION (pre-SDK-54): Replace expo-av with expo-audio (audio) and expo-video (video) — flagged in iteration 15 too.",
+    "RN Web cleanup: replace shadow* style props with boxShadow and Image style.resizeMode with props.resizeMode."
+  ],
+  "critical_code_review_comments": [
+    "payment_admin.py is 642 lines — borderline against the >700 line rule but still acceptable. If more coupon logic is added, split into routes/coupons.py + routes/payment_settings.py + routes/org_types.py.",
+    "delete_coupon does a SOFT delete (sets is_active='N') — correct, preserves usage history. Confirmed in test_err2_inactive (an inactive coupon returns ERR-2 in /validate).",
+    "applicable_org_types check raises ERR-8 when coupon restricts org_types but caller omits org_type — current spec lists ERR-9 only; this is a sensible extra guard and is documented in the code.",
+    "skip-grant safely re-checks the toggle server-side (line 585) — FE cannot bypass. Good security posture.",
+    "Coupon code is consistently uppercased on create + validate + redeem — verified.",
+    "Audit log row inserted on every payment_settings PUT (line 201-206) — verified via direct DB-side effects."
+  ],
+  "updated_files": ["/app/backend/tests/test_payment_admin.py (new file — 33 tests, 100% pass)"],
+  "success_rate": {"backend": "100% (33/33)", "frontend": "100% (page loads, 3 sections visible, toggle/new-coupon CTAs present)"},
+  "seed_data_creation": "Created 11 TEST_* coupons during this run (TEST_PCT_*, TEST_VAL_*, TEST_NET_*, TEST_EXP_*, TEST_FUT_*, TEST_INA_*, TEST_CAP_*, TEST_PUR_*, TEST_OFL_*, TEST_PCT200_* + ad-hoc registered user TEST_payadm_*@example.com). These are easily filterable by the 'TEST_' prefix. Skip-payment toggle was explicitly set back to OFF in teardown (test_zz_teardown_toggle_off).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "test_payment_admin.py is regression-ready. It depends on admin@test.com / AdminPass2026! existing and creates a throwaway user per run (TEST_payadm_<ts>_<rand>@example.com). The toggle is restored to OFF at the end; do NOT assume it is OFF mid-suite (TestSkipGrant toggles it ON). EXPO_PUBLIC_BACKEND_URL is used (not EXPO_BACKEND_URL — Expo's convention).",
+  "rca_of_issue": "N/A — no bugs found in the feature implementation."
+}
