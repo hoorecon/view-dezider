@@ -39,6 +39,7 @@ export default function GoalSetterScreen() {
   const [challenge, setChallenge] = useState('');
   const [specific, setSpecific] = useState('');
   const [measurable, setMeasurable] = useState('');
+  const [metrics, setMetrics] = useState<GoalMetric[]>([]);
   const [achievable, setAchievable] = useState('');
   const [realistic, setRealistic] = useState('');
   const [timebound, setTimebound] = useState('');
@@ -60,6 +61,7 @@ export default function GoalSetterScreen() {
 
   const resetForm = () => {
     setTitle(''); setChallenge(''); setSpecific(''); setMeasurable('');
+    setMetrics([]);
     setAchievable(''); setRealistic(''); setTimebound('');
   };
 
@@ -69,7 +71,7 @@ export default function GoalSetterScreen() {
     try {
       await api.post('/goal-setter/goals', {
         title: title.trim(), challenge: challenge.trim(),
-        specific, measurable, achievable, realistic, timebound,
+        specific, measurable, metrics, achievable, realistic, timebound,
       });
       showAlert('Saved', 'SMART Goal created!');
       resetForm(); setMode('list'); fetchData();
@@ -165,6 +167,19 @@ export default function GoalSetterScreen() {
             <TextInput style={s.smartInput} value={smartValues[f.id as keyof typeof smartValues]}
               onChangeText={smartSetters[f.id]} placeholder={f.hint}
               placeholderTextColor={COLORS.textMuted} multiline />
+            {f.id === 'measurable' && (
+              <View style={s.metricsWrap}>
+                <View style={s.metricsHead}>
+                  <Ionicons name="stats-chart" size={14} color="#059669" />
+                  <Text style={s.metricsHeadText}>Structured Metrics ({metrics.length})</Text>
+                </View>
+                <Text style={s.metricsHelp}>
+                  Define quantifiable metrics — each with name, unit, type, operator, target,
+                  and who sets it. Mirrors Dezider's "Define Factor's Expected Value" step.
+                </Text>
+                <MetricsEditor value={metrics} onChange={setMetrics} />
+              </View>
+            )}
           </View>
         </View>
       ))}
@@ -255,6 +270,15 @@ const s = StyleSheet.create({
   smartName: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
   smartPrompt: { fontSize: 12, color: COLORS.textMuted, marginTop: 1, marginBottom: 4 },
   smartInput: { backgroundColor: COLORS.background, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, color: COLORS.textPrimary, minHeight: 50, textAlignVertical: 'top' },
+
+  metricsWrap: {
+    marginTop: 10, padding: 10,
+    backgroundColor: '#F0FDF4', borderRadius: 10,
+    borderWidth: 1, borderColor: '#A7F3D0',
+  },
+  metricsHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  metricsHeadText: { fontSize: 12, fontWeight: '700', color: '#059669' },
+  metricsHelp: { fontSize: 11, color: '#065F46', marginBottom: 8, lineHeight: 16 },
 
   bottom: { padding: 16, paddingBottom: Platform.OS === 'ios' ? 20 : 16, borderTopWidth: 1, borderTopColor: COLORS.border, backgroundColor: COLORS.white },
   saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#059669', borderRadius: 14, paddingVertical: 16 },
