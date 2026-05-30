@@ -297,17 +297,17 @@ export default function HomeScreen() {
           )}
 
           {/* ════════════════════════════════════════════════════════════════
-              24 AI GUIDES — 9-Section Dashboard (June 2026 refactor)
+              24 AI GUIDES — 9-Section Dashboard (June 2026 — final order)
               -------------------------------------------------------------
-              §1 Self Discovery   →  My 360° Life · GEM
-              §2 Decision Kickstarters → MyDezider · Test123 · Pros&Cons · SWOT
-              §3 Inner State      →  Emotional Gatekeeper · Conflict Breaker
-              §4 Goals & Manifestation → Goal Setter · Manifestation
-              §5 Solution Space   →  Solution Finder · Solution Store · Review Net
-              §6 Execute & Track  →  Action Tracker · CTT
-              §7 Lifestyle Architecture → Lifestyle Dezider · Lifestyle Designer
-              §8 Reflection & Awareness → Lifestyle Analyzer · Consciousness Diary · Unconditional Happiness
-              §9 Collaboration & Management → Collaboration · AALA · Time Intelligence · GEM Flight Model
+              §1 🌌 Self Discovery       →  My 360° Life · GEM
+              §2 🔮 Decision Kickstarters → MyDezider · Test123 · Pros&Cons · SWOT
+              §3 🧩 Solution Space       →  Solution Finder · Solution Store · Review Net
+              §4 ❤️ Inner State          →  Emotional Gatekeeper · Conflict Breaker
+              §5 🎯 Goals & Manifestation → Goal Setter · Manifestation
+              §6 ✅ Execute & Track      →  Action Tracker · CTT
+              §7 🌿 Lifestyle Architecture → Lifestyle Dezider · Lifestyle Designer
+              §8 🪞 Reflection & Awareness → Lifestyle Analyzer · Consciousness Diary · Unconditional Happiness
+              §9 👥 Collaboration & Management → Collaboration · AALA · Time Intelligence · GEM Flight Model
               Pinned strip on top → "Pick up where you left off"
               "More tools" disclosure below → secondary utilities.
               ════════════════════════════════════════════════════════════════ */}
@@ -354,7 +354,7 @@ export default function HomeScreen() {
           </View>
 
           {/* ══════════ §1 SELF DISCOVERY ══════════ */}
-          <Text style={styles.sectionTitle}>1 · Self Discovery</Text>
+          <Text style={styles.sectionTitle}>🌌 1 · Self Discovery</Text>
           <View style={styles.quickActions}>
             <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/pna' as any)}>
               <LinearGradient colors={['#4338CA', '#6366F1']} style={styles.actionIcon}>
@@ -374,7 +374,7 @@ export default function HomeScreen() {
           </View>
 
           {/* ══════════ §2 DECISION KICKSTARTERS ══════════ */}
-          <Text style={styles.sectionTitle}>2 · Decision Kickstarters</Text>
+          <Text style={styles.sectionTitle}>🔮 2 · Decision Kickstarters</Text>
           <View style={styles.quickActions}>
             <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/dezider-list' as any)}>
               <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.actionIcon}>
@@ -408,46 +408,8 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* ══════════ §3 INNER STATE ══════════ */}
-          <Text style={styles.sectionTitle}>3 · Inner State</Text>
-          <View style={styles.quickActions}>
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/emotional-gatekeeper' as any)}>
-              <LinearGradient colors={['#F59E0B', '#D97706']} style={styles.actionIcon}>
-                <Ionicons name="heart-circle" size={24} color={COLORS.white} />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Emotional Gatekeeper</Text>
-              <Text style={styles.actionSubtitle}>Break loops & traps</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/conflict-breaker' as any)}>
-              <LinearGradient colors={['#7C2D12', '#DC2626']} style={styles.actionIcon}>
-                <Ionicons name="flash" size={24} color={COLORS.white} />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Conflict Breaker</Text>
-              <Text style={styles.actionSubtitle}>Crucial conversations</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* ══════════ §4 GOALS & MANIFESTATION ══════════ */}
-          <Text style={styles.sectionTitle}>4 · Goals & Manifestation</Text>
-          <View style={styles.quickActions}>
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/goal-setter' as any)}>
-              <LinearGradient colors={['#059669', '#10B981']} style={styles.actionIcon}>
-                <Ionicons name="flag" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Goal Setter</Text>
-              <Text style={styles.actionSubtitle}>SMART Framework</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/goal-manifestation' as any)}>
-              <LinearGradient colors={['#7C3AED', '#9333EA']} style={styles.actionIcon}>
-                <Ionicons name="sparkles" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Manifestation</Text>
-              <Text style={styles.actionSubtitle}>CAB-FAME 7 stages</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* ══════════ §5 SOLUTION SPACE ══════════ */}
-          <Text style={styles.sectionTitle}>5 · Solution Space</Text>
+          {/* ══════════ §3 SOLUTION SPACE ══════════ */}
+          <Text style={styles.sectionTitle}>🧩 3 · Solution Space</Text>
           <View style={styles.quickActions}>
             <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/solution-finder-list' as any)}>
               <LinearGradient colors={['#7C3AED', '#C084FC']} style={styles.actionIcon}>
@@ -475,8 +437,46 @@ export default function HomeScreen() {
             <View style={[styles.actionCard, { opacity: 0 }]} pointerEvents="none" />
           </View>
 
+          {/* ══════════ §4 INNER STATE ══════════ */}
+          <Text style={styles.sectionTitle}>❤️ 4 · Inner State</Text>
+          <View style={styles.quickActions}>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/emotional-gatekeeper' as any)}>
+              <LinearGradient colors={['#F59E0B', '#D97706']} style={styles.actionIcon}>
+                <Ionicons name="heart-circle" size={24} color={COLORS.white} />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Emotional Gatekeeper</Text>
+              <Text style={styles.actionSubtitle}>Break loops & traps</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/conflict-breaker' as any)}>
+              <LinearGradient colors={['#7C2D12', '#DC2626']} style={styles.actionIcon}>
+                <Ionicons name="flash" size={24} color={COLORS.white} />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Conflict Breaker</Text>
+              <Text style={styles.actionSubtitle}>Crucial conversations</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* ══════════ §5 GOALS & MANIFESTATION ══════════ */}
+          <Text style={styles.sectionTitle}>🎯 5 · Goals & Manifestation</Text>
+          <View style={styles.quickActions}>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/goal-setter' as any)}>
+              <LinearGradient colors={['#059669', '#10B981']} style={styles.actionIcon}>
+                <Ionicons name="flag" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Goal Setter</Text>
+              <Text style={styles.actionSubtitle}>SMART Framework</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/goal-manifestation' as any)}>
+              <LinearGradient colors={['#7C3AED', '#9333EA']} style={styles.actionIcon}>
+                <Ionicons name="sparkles" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Manifestation</Text>
+              <Text style={styles.actionSubtitle}>CAB-FAME 7 stages</Text>
+            </TouchableOpacity>
+          </View>
+
           {/* ══════════ §6 EXECUTE & TRACK ══════════ */}
-          <Text style={styles.sectionTitle}>6 · Execute & Track</Text>
+          <Text style={styles.sectionTitle}>✅ 6 · Execute & Track</Text>
           <View style={styles.quickActions}>
             <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/action-center' as any)}>
               <LinearGradient colors={['#0D9488', '#0F766E']} style={styles.actionIcon}>
@@ -495,7 +495,7 @@ export default function HomeScreen() {
           </View>
 
           {/* ══════════ §7 LIFESTYLE ARCHITECTURE ══════════ */}
-          <Text style={styles.sectionTitle}>7 · Lifestyle Architecture</Text>
+          <Text style={styles.sectionTitle}>🌿 7 · Lifestyle Architecture</Text>
           <View style={styles.quickActions}>
             <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/lifestyle' as any)}>
               <LinearGradient colors={['#065F46', '#059669']} style={styles.actionIcon}>
@@ -514,7 +514,7 @@ export default function HomeScreen() {
           </View>
 
           {/* ══════════ §8 REFLECTION & AWARENESS ══════════ */}
-          <Text style={styles.sectionTitle}>8 · Reflection & Awareness</Text>
+          <Text style={styles.sectionTitle}>🪞 8 · Reflection & Awareness</Text>
           <View style={styles.quickActions}>
             <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/lifestyle-eval' as any)}>
               <LinearGradient colors={['#7C3AED', '#A855F7']} style={styles.actionIcon}>
@@ -543,7 +543,7 @@ export default function HomeScreen() {
           </View>
 
           {/* ══════════ §9 COLLABORATION & MANAGEMENT ══════════ */}
-          <Text style={styles.sectionTitle}>9 · Collaboration & Management</Text>
+          <Text style={styles.sectionTitle}>👥 9 · Collaboration & Management</Text>
           <View style={styles.quickActions}>
             <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/collaborate' as any)}>
               <LinearGradient colors={['#7C3AED', '#A855F7']} style={styles.actionIcon}>
