@@ -100,7 +100,7 @@ async def create_goal(request: Request, user: dict = Depends(get_current_user)):
         # ── Phase-3: Resources & social links picked from Contacts for Realistic ──
         "realistic_resources": body.get("realistic_resources", []),
         "timebound": body.get("timebound", ""),
-        "milestones": body.get("milestones", []),
+        "milestones": [_make_milestone(m) for m in (body.get("milestones") or [])],
         # Meta
         "priority": body.get("priority", "medium"),
         "status": body.get("status", "active"),
