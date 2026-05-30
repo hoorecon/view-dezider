@@ -8,7 +8,7 @@
  * On web: rich React Flow (@xyflow/react) visual editor (drag, connect, polarity toggle).
  * On native: structured tabular list editor with same CRUD operations.
  */
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -20,6 +20,7 @@ import {
   Platform,
   Modal,
   Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -27,7 +28,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import { showAlert } from '../../src/utils/alert';
 import api from '../../src/utils/api';
-import CLDFlowEditor from '../../src/components/CLDFlowEditor';
+import CLDFlowEditor, { type CLDFlowEditorHandle } from '../../src/components/CLDFlowEditor';
 
 interface CLDNode {
   factor_id: string;
@@ -86,6 +87,12 @@ export default function CLDEditorScreen() {
   const [editingNode, setEditingNode] = useState<CLDNode | null>(null);
   const [editingLink, setEditingLink] = useState<CLDLink | null>(null);
   const [linkPicker, setLinkPicker] = useState<{ from?: string; to?: string } | null>(null);
+  const [zoomPct, setZoomPct] = useState(100);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const flowRef = useRef<CLDFlowEditorHandle>(null);
+  const fullscreenRef = useRef<CLDFlowEditorHandle>(null);
+  const win = useWindowDimensions();
 
   const titleSuffix = useMemo(() => {
     if (moduleType) return MODULE_LABEL[moduleType] || moduleType;
@@ -360,7 +367,7 @@ export default function CLDEditorScreen() {
       </View>
 
       {/* Toolbar */}
-      <View style={styles.toolbar}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolbar}>
         <TouchableOpacity style={styles.toolBtn} onPress={addNode}>
           <Ionicons name="add-circle" size={16} color={COLORS.primary} />
           <Text style={styles.toolBtnText}>Add Node</Text>
@@ -385,15 +392,47 @@ export default function CLDEditorScreen() {
           <Ionicons name="trash" size={16} color={COLORS.error} />
           <Text style={[styles.toolBtnText, { color: COLORS.error }]}>Clear</Text>
         </TouchableOpacity>
-      </View>
+
+        {/* Visual separator */}
+        <View style={styles.toolSep} />
+
+        {/* Zoom controls — placed in main toolbar so they cannot be intercepted */}
+        <TouchableOpacity style={styles.zoomBtn} onPress={() => flowRef.current?.zoomOut()}>
+          <Text style={styles.zoomBtnTxt}>−</Text>
+        </TouchableOpacity>
+        <View style={styles.zoomPctWrap}><Text style={styles.zoomPctTxt}>{zoomPct}%</Text></View>
+        <TouchableOpacity style={styles.zoomBtn} onPress={() => flowRef.current?.zoomIn()}>
+          <Text style={styles.zoomBtnTxt}>+</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.toolBtn, styles.fitBtn]} onPress={() => flowRef.current?.fitView()}>
+          <Text style={[styles.toolBtnText, { color: '#7C3AED' }]}>Fit</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.toolBtn, styles.fitBtn]} onPress={() => flowRef.current?.resetView()}>
+          <Text style={[styles.toolBtnText, { color: '#7C3AED' }]}>1:1</Text>
+        </TouchableOpacity>
+
+        <View style={styles.toolSep} />
+
+        <TouchableOpacity style={styles.toolBtn} onPress={() => setFullscreen(true)}>
+          <Ionicons name="expand" size={16} color="#0EA5E9" />
+          <Text style={[styles.toolBtnText, { color: '#0EA5E9' }]}>Fullscreen</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.toolBtn} onPress={() => setHelpOpen(true)}>
+          <Ionicons name="help-circle" size={16} color="#F59E0B" />
+          <Text style={[styles.toolBtnText, { color: '#F59E0B' }]}>Help</Text>
+        </TouchableOpacity>
+      </ScrollView>
 
       {/* Visual canvas — works on both web and native via SVG */}
       <View style={styles.flowWrap}>
         <CLDFlowEditor
+          ref={flowRef}
           nodes={nodes as any}
           links={links as any}
           onNodesChange={(updated) => { setNodes(updated as any); setDirty(true); }}
           onLinksChange={(updated) => { setLinks(updated as any); setDirty(true); }}
+          onZoomChange={setZoomPct}
+          hideToolbar
           onEditNode={(id) => {
             const n = nodes.find(x => x.factor_id === id);
             if (n) setEditingNode(n);
@@ -618,6 +657,103 @@ export default function CLDEditorScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* ── Fullscreen Editor Modal ─────────────────────────── */}
+      <Modal visible={fullscreen} animationType="slide" onRequestClose={() => setFullscreen(false)}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#FFF' }} edges={['top']}>
+          <View style={styles.header}>
+            <TouchableOpacity style={styles.headerBtn} onPress={() => setFullscreen(false)}>
+              <Ionicons name="contract" size={20} color={COLORS.textPrimary} />
+              <Text style={styles.headerBtnText}>Exit Fullscreen</Text>
+            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.title}>CLD Editor — Fullscreen</Text>
+              <Text style={styles.subtitle} numberOfLines={1}>
+                {titleSuffix} · {nodes.length} nodes · {links.length} links
+              </Text>
+            </View>
+            <TouchableOpacity style={styles.toolBtn} onPress={() => fullscreenRef.current?.zoomOut()}>
+              <Text style={styles.zoomBtnTxt}>−</Text>
+            </TouchableOpacity>
+            <Text style={styles.zoomPctTxt}>{fullscreenRef.current?.getZoomPercent() || 100}%</Text>
+            <TouchableOpacity style={styles.toolBtn} onPress={() => fullscreenRef.current?.zoomIn()}>
+              <Text style={styles.zoomBtnTxt}>+</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.toolBtn} onPress={() => fullscreenRef.current?.fitView()}>
+              <Text style={[styles.toolBtnText, { color: '#7C3AED' }]}>Fit</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.toolBtn} onPress={() => setHelpOpen(true)}>
+              <Ionicons name="help-circle" size={18} color="#F59E0B" />
+            </TouchableOpacity>
+          </View>
+          <View style={{ flex: 1 }}>
+            <CLDFlowEditor
+              ref={fullscreenRef}
+              nodes={nodes as any}
+              links={links as any}
+              width={Math.max(800, win.width - 20)}
+              height={Math.max(400, win.height - 130)}
+              hideToolbar
+              onNodesChange={(updated) => { setNodes(updated as any); setDirty(true); }}
+              onLinksChange={(updated) => { setLinks(updated as any); setDirty(true); }}
+              onEditNode={(id) => {
+                const n = nodes.find(x => x.factor_id === id);
+                if (n) setEditingNode(n);
+              }}
+              onEditLink={(from, to) => {
+                const l = links.find(x => x.from_id === from && x.to_id === to);
+                if (l) setEditingLink(l);
+              }}
+            />
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      {/* ── Help / Usage Guide Modal ────────────────────────── */}
+      <Modal visible={helpOpen} transparent animationType="fade" onRequestClose={() => setHelpOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { maxWidth: 520 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <Text style={styles.modalTitle}>📘 How to use the CLD Editor</Text>
+              <TouchableOpacity onPress={() => setHelpOpen(false)}>
+                <Ionicons name="close" size={22} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 460 }}>
+              <Text style={styles.helpHeading}>🟢 Add a Node</Text>
+              <Text style={styles.helpText}>• Click the <Text style={styles.helpBold}>“Add Node”</Text> toolbar button — appears at canvas center.{"\n"}• OR tap any empty area of the canvas — a node is created where you tapped.</Text>
+
+              <Text style={styles.helpHeading}>🔗 Add a Link (with direction)</Text>
+              <Text style={styles.helpText}>1. Tap a node on the canvas — it becomes <Text style={{ color: '#7C3AED', fontWeight: '700' }}>highlighted purple</Text>.{"\n"}2. A floating bar appears with <Text style={styles.helpBold}>“Link from here →”</Text>. Tap it.{"\n"}3. The source node turns <Text style={{ color: '#F59E0B', fontWeight: '700' }}>orange</Text>. Tap any other node — that becomes the <Text style={styles.helpBold}>target</Text>.{"\n"}4. The arrow points from source → target.</Text>
+              <Text style={styles.helpText}>OR click the <Text style={styles.helpBold}>“Add Link”</Text> toolbar button to pick source & target from a list.</Text>
+
+              <Text style={styles.helpHeading}>⚙️ Polarity (+ / −)</Text>
+              <Text style={styles.helpText}>• <Text style={{ color: '#10B981', fontWeight: '700' }}>+ Green solid</Text> = <Text style={styles.helpBold}>reinforcing</Text> (same direction){"\n"}• <Text style={{ color: '#EF4444', fontWeight: '700' }}>− Red dashed</Text> = <Text style={styles.helpBold}>balancing</Text> (opposite direction){"\n"}• Toggle via the swap icon ↔ in the link row below, or open the link editor.</Text>
+
+              <Text style={styles.helpHeading}>✏️ Edit a Node or Link</Text>
+              <Text style={styles.helpText}>• Long-press a node on canvas, OR tap to select then “Edit Node”.{"\n"}• Use the rows in the “Nodes” and “Links” lists below — pencil icon edits, trash deletes.</Text>
+
+              <Text style={styles.helpHeading}>🖱️ Pan, Zoom & Fit</Text>
+              <Text style={styles.helpText}>• <Text style={styles.helpBold}>Pan</Text>: drag any empty area of the canvas.{"\n"}• <Text style={styles.helpBold}>Zoom</Text>: use the toolbar <Text style={styles.helpBold}>+ / −</Text> buttons, or scroll the mouse wheel.{"\n"}• <Text style={styles.helpBold}>Fit</Text>: auto-zoom to show all nodes.{"\n"}• <Text style={styles.helpBold}>1:1</Text>: reset to 100% zoom.</Text>
+
+              <Text style={styles.helpHeading}>🔄 Move a Node</Text>
+              <Text style={styles.helpText}>Drag a node directly — release where you want it.</Text>
+
+              <Text style={styles.helpHeading}>🪄 Generate (AI / Deterministic)</Text>
+              <Text style={styles.helpText}>The <Text style={styles.helpBold}>“Generate”</Text> button asks the backend to populate the CLD based on the module data (TEPFI grid, Time Dezider radial, Master bridge, etc.).</Text>
+
+              <Text style={styles.helpHeading}>🖥️ Fullscreen</Text>
+              <Text style={styles.helpText}>Click <Text style={styles.helpBold}>“Fullscreen”</Text> in the toolbar for a much larger editing area.</Text>
+
+              <Text style={styles.helpHeading}>💾 Save</Text>
+              <Text style={styles.helpText}>The purple Save button at top-right becomes active when you make changes. Click to persist.</Text>
+            </ScrollView>
+            <TouchableOpacity style={[styles.modalBtn, styles.modalBtnPrimary, { marginTop: 12 }]} onPress={() => setHelpOpen(false)}>
+              <Text style={styles.modalBtnPrimaryText}>Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -642,7 +778,7 @@ const styles = StyleSheet.create({
   },
   saveBtnText: { color: '#FFF', fontWeight: '700', fontSize: 13 },
   toolbar: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: 8,
+    flexDirection: 'row', gap: 8, alignItems: 'center',
     paddingHorizontal: 12, paddingVertical: 10,
     backgroundColor: '#F8FAFC', borderBottomWidth: 1, borderBottomColor: '#E2E8F0',
   },
@@ -653,6 +789,19 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   toolBtnText: { color: COLORS.primary, fontWeight: '600', fontSize: 12 },
+  toolSep: { width: 1, height: 22, backgroundColor: '#E2E8F0', marginHorizontal: 4 },
+  zoomBtn: {
+    width: 30, height: 30, borderRadius: 6,
+    backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E2E8F0',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  zoomBtnTxt: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary, lineHeight: 18 },
+  zoomPctWrap: { minWidth: 44, alignItems: 'center' },
+  zoomPctTxt: { fontSize: 11, fontWeight: '700', color: COLORS.textMuted, paddingHorizontal: 6 },
+  fitBtn: { backgroundColor: '#EDE9FE' },
+  helpHeading: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary, marginTop: 10, marginBottom: 4 },
+  helpText: { fontSize: 12, color: COLORS.textSecondary, lineHeight: 18, marginBottom: 4 },
+  helpBold: { fontWeight: '700', color: COLORS.textPrimary },
   flowWrap: { height: 360, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
   section: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 8 },
   row: {

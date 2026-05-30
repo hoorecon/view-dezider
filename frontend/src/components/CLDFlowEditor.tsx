@@ -11,7 +11,7 @@
  *  - Polarity-aware edges (green "+" reinforcing, dashed red "−" balancing)
  *  - "Fit" button auto-scales view to all nodes
  */
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { View, StyleSheet, PanResponder, Platform, TouchableOpacity, Text } from 'react-native';
 import Svg, { Circle, Line, Defs, Marker, Path as SvgPath, Text as SvgText, G } from 'react-native-svg';
 import { COLORS } from '../constants/colors';
@@ -40,22 +40,35 @@ interface Props {
   onLinksChange: (l: CLDLink[]) => void;
   onEditNode?: (id: string) => void;
   onEditLink?: (from: string, to: string) => void;
+  /** Custom canvas width (web). Defaults to 900. */
+  width?: number;
+  /** Custom canvas height. Defaults to 360. */
+  height?: number;
+  /** Hide internal toolbar hint (for embedding inside a custom wrapper) */
+  hideToolbar?: boolean;
+  /** Notify parent of zoom % changes (for displaying in external toolbar) */
+  onZoomChange?: (zoomPct: number) => void;
 }
 
-const CANVAS_W = Platform.OS === 'web' ? 900 : 360;
-const CANVAS_H = 360;
+export interface CLDFlowEditorHandle {
+  zoomIn: () => void;
+  zoomOut: () => void;
+  fitView: () => void;
+  resetView: () => void;
+  getZoomPercent: () => number;
+}
+
+const DEFAULT_W = Platform.OS === 'web' ? 900 : 360;
+const DEFAULT_H = 360;
 const NODE_R = 22;
 const MIN_ZOOM = 0.3;
 const MAX_ZOOM = 3;
 const DRAG_THRESHOLD = 4;
 
-export default function CLDFlowEditor({
-  nodes,
-  links,
-  onNodesChange,
-  onLinksChange,
-  onEditNode,
-}: Props) {
+const CLDFlowEditor = forwardRef<CLDFlowEditorHandle, Props>(function CLDFlowEditor(
+  { nodes, links, onNodesChange, onLinksChange, onEditNode, width, height, hideToolbar, onZoomChange },
+  ref,
+) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [linkMode, setLinkMode] = useState<{ from?: string }>({});
   const [vx, setVx] = useState(0);
@@ -64,8 +77,8 @@ export default function CLDFlowEditor({
 
   const panStartRef = useRef<{ x: number; y: number; vx: number; vy: number; moved: boolean } | null>(null);
 
-  const canvasW = CANVAS_W;
-  const canvasH = CANVAS_H;
+  const canvasW = width ?? DEFAULT_W;
+  const canvasH = height ?? DEFAULT_H;
   const viewW = canvasW / zoom;
   const viewH = canvasH / zoom;
   const viewBox = `${vx} ${vy} ${viewW} ${viewH}`;
@@ -122,8 +135,8 @@ export default function CLDFlowEditor({
     return () => clearTimeout(t);
   }, [nodes, canvasW, canvasH]);
 
-  const fitView = () => {
-    if (nodes.length === 0) { resetView(); return; }
+  const fitView = useCallback(() => {
+    if (nodes.length === 0) { setVx(0); setVy(0); setZoom(1); return; }
     const xs = nodes.map(n => n.x ?? 0);
     const ys = nodes.map(n => n.y ?? 0);
     const minX = Math.min(...xs) - NODE_R - 20;
@@ -136,7 +149,20 @@ export default function CLDFlowEditor({
     setZoom(fitZoom);
     setVx(minX);
     setVy(minY);
-  };
+  }, [nodes, canvasW, canvasH]);
+
+  // Notify parent of zoom changes
+  useEffect(() => {
+    if (onZoomChange) onZoomChange(Math.round(zoom * 100));
+  }, [zoom, onZoomChange]);
+
+  useImperativeHandle(ref, () => ({
+    zoomIn: () => doZoom(1.25),
+    zoomOut: () => doZoom(0.8),
+    fitView,
+    resetView,
+    getZoomPercent: () => Math.round(zoom * 100),
+  }), [doZoom, fitView, zoom]);
 
   const moveNode = (id: string, x: number, y: number) => {
     onNodesChange(nodes.map(n => (n.factor_id === id ? { ...n, x, y } : n)));
@@ -231,32 +257,52 @@ export default function CLDFlowEditor({
       : {};
 
   return (
-    <View style={styles.wrap}>
-      <View style={styles.toolBar}>
-        <Text style={styles.toolHint}>
-          {linkMode.from
-            ? '🔗 Tap a target node to create a link'
-            : selectedId
-            ? '✏️ Use "Link from here" · long-press a node to edit · drag empty area to pan'
-            : '👆 Tap empty area to add node · drag to pan · scroll / +/− to zoom'}
-        </Text>
-        {selectedId && !linkMode.from && (
-          <View style={styles.toolBtnRow}>
-            <TouchableOpacity style={styles.toolBtn} onPress={startLinkFromSelected}>
-              <Text style={styles.toolBtnText}>Link from here →</Text>
-            </TouchableOpacity>
-            {onEditNode && (
-              <TouchableOpacity style={styles.toolBtn} onPress={() => onEditNode(selectedId)}>
-                <Text style={styles.toolBtnText}>Edit Node</Text>
+    <View style={[styles.wrap, { width: canvasW }]}>
+      {!hideToolbar && (
+        <View style={styles.toolBar}>
+          <Text style={styles.toolHint}>
+            {linkMode.from
+              ? '🔗 Tap a target node to create a link'
+              : selectedId
+              ? '✏️ Use "Link from here" · long-press a node to edit · drag empty area to pan'
+              : '👆 Tap empty area to add node · drag to pan · scroll / +/− to zoom'}
+          </Text>
+          {selectedId && !linkMode.from && (
+            <View style={styles.toolBtnRow}>
+              <TouchableOpacity style={styles.toolBtn} onPress={startLinkFromSelected}>
+                <Text style={styles.toolBtnText}>Link from here →</Text>
               </TouchableOpacity>
-            )}
-          </View>
-        )}
-      </View>
+              {onEditNode && (
+                <TouchableOpacity style={styles.toolBtn} onPress={() => onEditNode(selectedId)}>
+                  <Text style={styles.toolBtnText}>Edit Node</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+        </View>
+      )}
 
-      <View style={styles.canvasOuter}>
-        <View style={styles.canvasInner} {...webWheelProps}>
-          <Svg width={canvasW} height={canvasH} viewBox={viewBox}>
+      {/* Mini inline action bar (always visible) — shown when a node is selected */}
+      {hideToolbar && selectedId && !linkMode.from && (
+        <View style={styles.miniBar}>
+          <TouchableOpacity style={styles.toolBtn} onPress={startLinkFromSelected}>
+            <Text style={styles.toolBtnText}>Link from here →</Text>
+          </TouchableOpacity>
+          {onEditNode && (
+            <TouchableOpacity style={styles.toolBtn} onPress={() => onEditNode(selectedId)}>
+              <Text style={styles.toolBtnText}>Edit Node</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+      {hideToolbar && linkMode.from && (
+        <View style={styles.miniBar}>
+          <Text style={styles.toolHint}>🔗 Tap a target node to create a link · tap source again to cancel</Text>
+        </View>
+      )}
+
+      <View style={[styles.canvasOuter, { width: canvasW, height: canvasH }]}>
+        <View style={[styles.canvasInner, { width: canvasW, height: canvasH }]} {...webWheelProps}>          <Svg width={canvasW} height={canvasH} viewBox={viewBox}>
             <Defs>
               <Marker id="arrowR" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
                 <SvgPath d="M0,0 L0,6 L9,3 z" fill="#10B981" />
@@ -381,65 +427,25 @@ export default function CLDFlowEditor({
               );
             })}
           </View>
-
-          {/* Floating zoom controls */}
-          <View style={styles.zoomBox} pointerEvents="box-none">
-            <TouchableOpacity style={styles.zoomBtn} onPress={() => doZoom(1.25)} accessibilityLabel="Zoom in">
-              <Text style={styles.zoomTxt}>+</Text>
-            </TouchableOpacity>
-            <Text style={styles.zoomPct}>{Math.round(zoom * 100)}%</Text>
-            <TouchableOpacity style={styles.zoomBtn} onPress={() => doZoom(0.8)} accessibilityLabel="Zoom out">
-              <Text style={styles.zoomTxt}>−</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.zoomBtn, styles.fitBtn]} onPress={fitView} accessibilityLabel="Fit view">
-              <Text style={styles.fitTxt}>Fit</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.zoomBtn, styles.fitBtn]} onPress={resetView} accessibilityLabel="Reset">
-              <Text style={styles.fitTxt}>1:1</Text>
-            </TouchableOpacity>
-          </View>
         </View>
       </View>
     </View>
   );
-}
+});
+
+export default CLDFlowEditor;
 
 const styles = StyleSheet.create({
-  wrap: { flex: 1, backgroundColor: '#FFFFFF' },
+  wrap: { backgroundColor: '#FFFFFF', alignSelf: 'center' },
   toolBar: { paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#FAFAFA', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
+  miniBar: {
+    flexDirection: 'row', gap: 6, paddingHorizontal: 12, paddingVertical: 6,
+    backgroundColor: '#FAFAFA', borderBottomWidth: 1, borderBottomColor: '#E2E8F0',
+  },
   toolHint: { fontSize: 11, color: COLORS.textMuted },
   toolBtnRow: { flexDirection: 'row', gap: 6, marginTop: 6 },
   toolBtn: { paddingHorizontal: 10, paddingVertical: 5, backgroundColor: '#EDE9FE', borderRadius: 6 },
   toolBtnText: { fontSize: 11, fontWeight: '700', color: '#7C3AED' },
-  canvasOuter: { width: CANVAS_W, height: CANVAS_H, alignSelf: 'center', backgroundColor: '#FAFAFA', position: 'relative' },
-  canvasInner: { width: CANVAS_W, height: CANVAS_H, position: 'relative', overflow: 'hidden' },
-
-  zoomBox: {
-    position: 'absolute',
-    right: 10,
-    bottom: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  zoomBtn: {
-    width: 30, height: 30, borderRadius: 6,
-    backgroundColor: '#F1F5F9',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  zoomTxt: { fontSize: 18, fontWeight: '700', color: COLORS.textPrimary, lineHeight: 20 },
-  zoomPct: { fontSize: 11, color: COLORS.textMuted, minWidth: 36, textAlign: 'center', fontWeight: '600' },
-  fitBtn: { backgroundColor: '#EDE9FE', width: 38 },
-  fitTxt: { fontSize: 11, fontWeight: '700', color: '#7C3AED' },
+  canvasOuter: { alignSelf: 'center', backgroundColor: '#FAFAFA', position: 'relative' },
+  canvasInner: { position: 'relative', overflow: 'hidden' },
 });
