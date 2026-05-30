@@ -88,6 +88,7 @@ export default function CLDEditorScreen() {
   const [editingLink, setEditingLink] = useState<CLDLink | null>(null);
   const [linkPicker, setLinkPicker] = useState<{ from?: string; to?: string } | null>(null);
   const [zoomPct, setZoomPct] = useState(100);
+  const [fullscreenZoomPct, setFullscreenZoomPct] = useState(100);
   const [fullscreen, setFullscreen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const flowRef = useRef<CLDFlowEditorHandle>(null);
@@ -366,8 +367,13 @@ export default function CLDEditorScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Toolbar */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolbar}>
+      {/* Toolbar — horizontally scrollable on web/native, with fixed height so icons render */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.toolbarScroll}
+        contentContainerStyle={styles.toolbar}
+      >
         <TouchableOpacity style={styles.toolBtn} onPress={addNode}>
           <Ionicons name="add-circle" size={16} color={COLORS.primary} />
           <Text style={styles.toolBtnText}>Add Node</Text>
@@ -675,7 +681,7 @@ export default function CLDEditorScreen() {
             <TouchableOpacity style={styles.toolBtn} onPress={() => fullscreenRef.current?.zoomOut()}>
               <Text style={styles.zoomBtnTxt}>−</Text>
             </TouchableOpacity>
-            <Text style={styles.zoomPctTxt}>{fullscreenRef.current?.getZoomPercent() || 100}%</Text>
+            <Text style={styles.zoomPctTxt}>{fullscreenZoomPct}%</Text>
             <TouchableOpacity style={styles.toolBtn} onPress={() => fullscreenRef.current?.zoomIn()}>
               <Text style={styles.zoomBtnTxt}>+</Text>
             </TouchableOpacity>
@@ -694,6 +700,7 @@ export default function CLDEditorScreen() {
               width={Math.max(800, win.width - 20)}
               height={Math.max(400, win.height - 130)}
               hideToolbar
+              onZoomChange={setFullscreenZoomPct}
               onNodesChange={(updated) => { setNodes(updated as any); setDirty(true); }}
               onLinksChange={(updated) => { setLinks(updated as any); setDirty(true); }}
               onEditNode={(id) => {
@@ -777,10 +784,17 @@ const styles = StyleSheet.create({
     borderRadius: 8, minWidth: 80, justifyContent: 'center',
   },
   saveBtnText: { color: '#FFF', fontWeight: '700', fontSize: 13 },
+  toolbarScroll: {
+    flexGrow: 0,
+    height: 60,
+    backgroundColor: '#F8FAFC',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
   toolbar: {
     flexDirection: 'row', gap: 8, alignItems: 'center',
     paddingHorizontal: 12, paddingVertical: 10,
-    backgroundColor: '#F8FAFC', borderBottomWidth: 1, borderBottomColor: '#E2E8F0',
+    height: 60,
   },
   toolBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
