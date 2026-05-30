@@ -25,6 +25,19 @@ const ORG_SUBTYPE_MAP: Record<string, string[]> = {
   govt: ['central_govt', 'state_govt', 'psu', 'autonomous_body', 'local_body'],
 };
 
+const SOCIAL_LINK_DEFS = [
+  { id: 'gmail', label: 'Gmail', icon: 'mail' as const, placeholder: 'you@gmail.com' },
+  { id: 'official_email', label: 'Official Email', icon: 'mail-open' as const, placeholder: 'you@company.com' },
+  { id: 'whatsapp', label: 'WhatsApp', icon: 'logo-whatsapp' as const, placeholder: 'https://wa.me/91...' },
+  { id: 'telegram', label: 'Telegram', icon: 'paper-plane' as const, placeholder: 'https://t.me/handle' },
+  { id: 'linkedin', label: 'LinkedIn', icon: 'logo-linkedin' as const, placeholder: 'https://linkedin.com/in/handle' },
+  { id: 'youtube', label: 'YouTube', icon: 'logo-youtube' as const, placeholder: 'https://youtube.com/@channel' },
+  { id: 'instagram', label: 'Instagram', icon: 'logo-instagram' as const, placeholder: 'https://instagram.com/handle' },
+  { id: 'facebook', label: 'Facebook', icon: 'logo-facebook' as const, placeholder: 'https://facebook.com/handle' },
+  { id: 'x', label: 'X (Twitter)', icon: 'logo-twitter' as const, placeholder: 'https://x.com/handle' },
+  { id: 'reddit', label: 'Reddit', icon: 'logo-reddit' as const, placeholder: 'https://reddit.com/user/handle' },
+];
+
 export default function ContactsScreen() {
   const router = useRouter();
   const [contacts, setContacts] = useState<any[]>([]);
@@ -70,7 +83,13 @@ export default function ContactsScreen() {
     } catch (err) { /* ignore */ }
   };
 
-  useFocusEffect(useCallback(() => { fetchContacts(); fetchFilterOptions(); }, []));
+  useFocusEffect(useCallback(() => {
+    (async () => {
+      try { await api.post('/contacts/ensure-self', {}); } catch (e) { /* ignore */ }
+      fetchContacts();
+      fetchFilterOptions();
+    })();
+  }, []));
 
   React.useEffect(() => {
     const t = setTimeout(fetchContacts, 300);
@@ -85,7 +104,16 @@ export default function ContactsScreen() {
       profession: '', skills: [], organization: '', designation: '', business_network: '',
       social_status: '', relationship_status: '', caste: '', religion: '', political_party: '',
       tags: [], notes: '', is_sme: false, sme_domains: [],
-      org_type: '', org_subtype: '' });
+      org_type: '', org_subtype: '',
+      // ── Phase-1 defaults ──
+      time_bandwidth_hours_per_month: '',
+      resources: {
+        finance: { amount: '', currency: 'INR', note: '' },
+        infrastructure: { description: '', note: '' },
+        people_connects: { count: '', note: '' },
+      },
+      social_links: SOCIAL_LINK_DEFS.reduce((acc, d) => ({ ...acc, [d.id]: '' }), {}),
+    });
     setFormStep(0);
     setShowModal(true);
   };
@@ -139,7 +167,18 @@ export default function ContactsScreen() {
     setForm({ ...form, skills });
   };
 
-  const FORM_STEPS = ['Basic Info', 'Demographics', 'Professional', 'Social'];
+  const FORM_STEPS = ['Basic', 'Demographics', 'Professional', 'Social', 'Resources', 'Links'];
+  const LAST_STEP = FORM_STEPS.length - 1;
+  const setFormPath = (path: string[], value: any) => {
+    const next: any = { ...form };
+    let cur = next;
+    for (let i = 0; i < path.length - 1; i++) {
+      cur[path[i]] = { ...(cur[path[i]] || {}) };
+      cur = cur[path[i]];
+    }
+    cur[path[path.length - 1]] = value;
+    setForm(next);
+  };
 
   const renderFormStep = () => {
     switch (formStep) {
@@ -265,6 +304,96 @@ export default function ContactsScreen() {
           <TextInput style={styles.textInput} placeholder="Optional" value={form.political_party || ''} onChangeText={v => setForm({...form, political_party: v})} />
         </View>
       );
+      case 4: return (
+        <View>
+          <Text style={styles.inputLabel}>Available Time Bandwidth (Hours / month)</Text>
+          <TextInput
+            style={styles.textInput}
+            placeholder="e.g., 40"
+            keyboardType="numeric"
+            value={String(form.time_bandwidth_hours_per_month ?? '')}
+            onChangeText={v => setForm({ ...form, time_bandwidth_hours_per_month: v })}
+          />
+
+          <Text style={[styles.inputLabel, { marginTop: 12, fontWeight: '700' }]}>💰 Finance</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TextInput
+              style={[styles.textInput, { flex: 2 }]}
+              placeholder="Amount"
+              keyboardType="numeric"
+              value={String(form.resources?.finance?.amount ?? '')}
+              onChangeText={v => setFormPath(['resources', 'finance', 'amount'], v)}
+            />
+            <TextInput
+              style={[styles.textInput, { flex: 1 }]}
+              placeholder="INR"
+              value={form.resources?.finance?.currency ?? 'INR'}
+              onChangeText={v => setFormPath(['resources', 'finance', 'currency'], v.toUpperCase())}
+              autoCapitalize="characters"
+              maxLength={4}
+            />
+          </View>
+          <TextInput
+            style={[styles.textInput, { height: 50 }]}
+            placeholder="Finance note (e.g., personal savings, willing to invest…)"
+            value={form.resources?.finance?.note ?? ''}
+            onChangeText={v => setFormPath(['resources', 'finance', 'note'], v)}
+            multiline
+          />
+
+          <Text style={[styles.inputLabel, { marginTop: 12, fontWeight: '700' }]}>🏗️ Infrastructure</Text>
+          <TextInput
+            style={styles.textInput}
+            placeholder="Description (laptop, workspace, vehicle, lab…)"
+            value={form.resources?.infrastructure?.description ?? ''}
+            onChangeText={v => setFormPath(['resources', 'infrastructure', 'description'], v)}
+          />
+          <TextInput
+            style={[styles.textInput, { height: 50 }]}
+            placeholder="Note"
+            value={form.resources?.infrastructure?.note ?? ''}
+            onChangeText={v => setFormPath(['resources', 'infrastructure', 'note'], v)}
+            multiline
+          />
+
+          <Text style={[styles.inputLabel, { marginTop: 12, fontWeight: '700' }]}>👥 People Connects</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TextInput
+              style={[styles.textInput, { flex: 1 }]}
+              placeholder="Approx. count"
+              keyboardType="numeric"
+              value={String(form.resources?.people_connects?.count ?? '')}
+              onChangeText={v => setFormPath(['resources', 'people_connects', 'count'], v)}
+            />
+            <TextInput
+              style={[styles.textInput, { flex: 3 }]}
+              placeholder="Note (founders, investors, mentors, customers…)"
+              value={form.resources?.people_connects?.note ?? ''}
+              onChangeText={v => setFormPath(['resources', 'people_connects', 'note'], v)}
+            />
+          </View>
+        </View>
+      );
+      case 5: return (
+        <View>
+          <Text style={[styles.inputLabel, { fontWeight: '700', marginBottom: 8 }]}>Reference Links / Social Handles</Text>
+          {SOCIAL_LINK_DEFS.map(d => (
+            <View key={d.id} style={{ marginBottom: 6 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <Ionicons name={d.icon} size={14} color={COLORS.primary} />
+                <Text style={[styles.inputLabel, { marginTop: 0, marginBottom: 0 }]}>{d.label}</Text>
+              </View>
+              <TextInput
+                style={styles.textInput}
+                placeholder={d.placeholder}
+                value={form.social_links?.[d.id] ?? ''}
+                onChangeText={v => setFormPath(['social_links', d.id], v)}
+                autoCapitalize="none"
+              />
+            </View>
+          ))}
+        </View>
+      );
     }
   };
 
@@ -369,7 +498,15 @@ export default function ContactsScreen() {
                   {c.is_sme && <View style={styles.smeBadge}><Ionicons name="star" size={8} color="#FFF" /></View>}
                 </View>
                 <View style={{flex:1}}>
-                  <Text style={styles.contactName} numberOfLines={1}>{c.name}</Text>
+                  <View style={{flexDirection:'row', alignItems:'center', gap:6}}>
+                    <Text style={styles.contactName} numberOfLines={1}>{c.name}</Text>
+                    {c.is_self && (
+                      <View style={[styles.miniTag, {backgroundColor:'#FEF3C7'}]}>
+                        <Ionicons name="person-circle" size={10} color="#D97706" />
+                        <Text style={[styles.miniTagText, {color:'#D97706'}]}>You</Text>
+                      </View>
+                    )}
+                  </View>
                   <View style={{flexDirection:'row', gap: 8, marginTop: 2}}>
                     {c.profession ? <Text style={styles.contactMeta}>{c.profession}</Text> : null}
                     {c.organization ? <Text style={styles.contactMeta}>• {c.organization}</Text> : null}
@@ -381,8 +518,8 @@ export default function ContactsScreen() {
                     {c.linked_user_id ? <View style={[styles.miniTag, {backgroundColor: '#ECFDF5'}]}><Ionicons name="link" size={10} color="#059669" /><Text style={[styles.miniTagText, {color: '#059669'}]}>Linked</Text></View> : null}
                   </View>
                 </View>
-                <TouchableOpacity style={{padding: 6}} onPress={() => handleDelete(c.id)}>
-                  <Ionicons name="trash-outline" size={16} color="#9CA3AF" />
+                <TouchableOpacity style={{padding: 6, opacity: c.is_self ? 0.3 : 1}} disabled={c.is_self} onPress={() => handleDelete(c.id)}>
+                  <Ionicons name={c.is_self ? 'lock-closed-outline' : 'trash-outline'} size={16} color="#9CA3AF" />
                 </TouchableOpacity>
               </TouchableOpacity>
             ))
@@ -421,7 +558,7 @@ export default function ContactsScreen() {
                   </TouchableOpacity>
                 )}
                 <View style={{flex: 1}} />
-                {formStep < 3 ? (
+                {formStep < LAST_STEP ? (
                   <TouchableOpacity style={styles.nextBtn} onPress={() => setFormStep(formStep + 1)}>
                     <Text style={styles.nextBtnText}>Next</Text>
                     <Ionicons name="arrow-forward" size={16} color="#FFF" />

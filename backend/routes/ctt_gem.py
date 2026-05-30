@@ -404,6 +404,8 @@ async def create_gem_goal(request: Request, user: dict = Depends(get_current_use
         "title": body.get("title", ""),
         "description": body.get("description", ""),
         "smart_goal": body.get("smart_goal", ""),
+        # ── Link to a structured SMART Goal in Goal Setter (single source of truth for milestones) ──
+        "linked_smart_goal_id": body.get("linked_smart_goal_id"),
         "priority": body.get("priority", "medium"),
         "status": body.get("status", "active"),
         # ── Enhancement #6: Project status / mode ──
@@ -457,6 +459,7 @@ async def update_gem_goal(goal_id: str, request: Request, user: dict = Depends(g
 
     allowed = [
         "life_area", "goal_type", "title", "description", "smart_goal",
+        "linked_smart_goal_id",
         "priority", "status", "project_status", "target_date",
         "linked_decisions", "linked_solution_finders", "linked_solution_matrices",
         "progress_percent",

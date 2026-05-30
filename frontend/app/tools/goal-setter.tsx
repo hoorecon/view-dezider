@@ -12,6 +12,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import { AudioGuidePlayer } from '../../src/components/AudioGuidePlayer';
 import MetricsEditor, { type GoalMetric } from '../../src/components/MetricsEditor';
+import SkillsetPicker from '../../src/components/SkillsetPicker';
+import ResourcePicker, { type PickedResource } from '../../src/components/ResourcePicker';
+import MilestoneEditor, { type SmartMilestone } from '../../src/components/MilestoneEditor';
 import api from '../../src/utils/api';
 
 const AUDIO_URL = 'https://customer-assets.emergentagent.com/job_a7a2d7ec-9ce2-470b-8ff8-d26638aa4277/artifacts/unvj7j0c_Goal%20Setter.mp3';
@@ -41,8 +44,12 @@ export default function GoalSetterScreen() {
   const [measurable, setMeasurable] = useState('');
   const [metrics, setMetrics] = useState<GoalMetric[]>([]);
   const [achievable, setAchievable] = useState('');
+  const [achievableSkills, setAchievableSkills] = useState<string[]>([]);
   const [realistic, setRealistic] = useState('');
+  const [realisticResources, setRealisticResources] = useState<PickedResource[]>([]);
   const [timebound, setTimebound] = useState('');
+  const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
+  const [goalMilestones, setGoalMilestones] = useState<SmartMilestone[]>([]);
 
   const fetchData = async () => {
     try {
@@ -62,21 +69,58 @@ export default function GoalSetterScreen() {
   const resetForm = () => {
     setTitle(''); setChallenge(''); setSpecific(''); setMeasurable('');
     setMetrics([]);
-    setAchievable(''); setRealistic(''); setTimebound('');
+    setAchievable(''); setAchievableSkills([]);
+    setRealistic(''); setRealisticResources([]);
+    setTimebound('');
+    setEditingGoalId(null);
+    setGoalMilestones([]);
   };
 
   const handleSave = async () => {
     if (!title.trim()) { showAlert('Required', 'Enter a goal title'); return; }
     setSaving(true);
     try {
-      await api.post('/goal-setter/goals', {
+      const payload = {
         title: title.trim(), challenge: challenge.trim(),
-        specific, measurable, metrics, achievable, realistic, timebound,
-      });
+        specific, measurable, metrics,
+        achievable, achievable_skills: achievableSkills,
+        realistic, realistic_resources: realisticResources,
+        timebound,
+      };
+      if (editingGoalId) {
+        await api.put(`/goal-setter/goals/${editingGoalId}`, payload);
+      } else {
+        const res = await api.post('/goal-setter/goals', payload);
+        // Promote draft milestones to server-side
+        if (goalMilestones.length > 0 && res.data?.goal_id) {
+          const gid = res.data.goal_id;
+          for (const m of goalMilestones) {
+            // Strip draft prefix; backend assigns a real milestone_id
+            const { milestone_id: _drop, ...rest } = m as any;
+            await api.post(`/goal-setter/goals/${gid}/milestones`, rest);
+          }
+        }
+      }
       showAlert('Saved', 'SMART Goal created!');
       resetForm(); setMode('list'); fetchData();
     } catch (e) { showAlert('Error', 'Failed to save'); }
     finally { setSaving(false); }
+  };
+
+  const openEdit = async (id: string) => {
+    try {
+      const res = await api.get(`/goal-setter/goals/${id}`);
+      const g = res.data;
+      setTitle(g.title || ''); setChallenge(g.challenge || '');
+      setSpecific(g.specific || ''); setMeasurable(g.measurable || '');
+      setMetrics(g.metrics || []);
+      setAchievable(g.achievable || ''); setAchievableSkills(g.achievable_skills || []);
+      setRealistic(g.realistic || ''); setRealisticResources(g.realistic_resources || []);
+      setTimebound(g.timebound || '');
+      setGoalMilestones(g.milestones || []);
+      setEditingGoalId(id);
+      setMode('create');
+    } catch (e) { showAlert('Error', 'Failed to load goal'); }
   };
 
   const handleDelete = (id: string) => {
@@ -113,7 +157,7 @@ export default function GoalSetterScreen() {
         </View>
       ) : (
         goals.map(g => (
-          <TouchableOpacity key={g.goal_id} style={s.goalCard} activeOpacity={0.7}>
+          <TouchableOpacity key={g.goal_id} style={s.goalCard} activeOpacity={0.7} onPress={() => openEdit(g.goal_id)}>
             <View style={s.goalRow}>
               <View style={{ flex: 1 }}>
                 <Text style={s.goalTitle} numberOfLines={1}>{g.title}</Text>
@@ -180,9 +224,39 @@ export default function GoalSetterScreen() {
                 <MetricsEditor value={metrics} onChange={setMetrics} />
               </View>
             )}
+            {f.id === 'achievable' && (
+              <View style={s.skillsWrap}>
+                <SkillsetPicker value={achievableSkills} onChange={setAchievableSkills} />
+              </View>
+            )}
+            {f.id === 'realistic' && (
+              <View style={s.resourceWrap}>
+                <ResourcePicker value={realisticResources} onChange={setRealisticResources} />
+              </View>
+            )}
           </View>
         </View>
       ))}
+
+      {/* ── Milestones: recursive SMART grids under this Goal ── */}
+      <View style={s.milestoneSection}>
+        <View style={s.milestoneHead}>
+          <Ionicons name="flag" size={16} color="#059669" />
+          <Text style={s.milestoneTitle}>Milestones (Recursive SMART)</Text>
+          <View style={s.milestoneBadge}><Text style={s.milestoneBadgeText}>{goalMilestones.length}</Text></View>
+        </View>
+        <Text style={s.milestoneHelp}>
+          Break this goal into smaller SMART sub-goals to reach the metrics gradually.
+          Each milestone has its own S·M·A·R·T grid + structured metrics. Once this
+          Goal is linked to a GEM Goal, the milestones become read-only there
+          (status & progress updates still possible).
+        </Text>
+        <MilestoneEditor
+          goalId={editingGoalId}
+          milestones={goalMilestones}
+          onChange={setGoalMilestones}
+        />
+      </View>
     </>
   );
 
@@ -279,6 +353,14 @@ const s = StyleSheet.create({
   metricsHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
   metricsHeadText: { fontSize: 12, fontWeight: '700', color: '#059669' },
   metricsHelp: { fontSize: 11, color: '#065F46', marginBottom: 8, lineHeight: 16 },
+  skillsWrap: { marginTop: 10, padding: 10, backgroundColor: '#FFFBEB', borderRadius: 10, borderWidth: 1, borderColor: '#FDE68A' },
+  resourceWrap: { marginTop: 10, padding: 10, backgroundColor: '#F5F3FF', borderRadius: 10, borderWidth: 1, borderColor: '#DDD6FE' },
+  milestoneSection: { marginTop: 18, padding: 12, backgroundColor: '#ECFDF5', borderRadius: 12, borderWidth: 1, borderColor: '#A7F3D0' },
+  milestoneHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  milestoneTitle: { flex: 1, fontSize: 14, fontWeight: '700', color: '#059669' },
+  milestoneBadge: { backgroundColor: '#059669', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
+  milestoneBadgeText: { fontSize: 11, fontWeight: '700', color: '#FFFFFF' },
+  milestoneHelp: { fontSize: 11, color: '#065F46', marginBottom: 10, lineHeight: 16 },
 
   bottom: { padding: 16, paddingBottom: Platform.OS === 'ios' ? 20 : 16, borderTopWidth: 1, borderTopColor: COLORS.border, backgroundColor: COLORS.white },
   saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#059669', borderRadius: 14, paddingVertical: 16 },

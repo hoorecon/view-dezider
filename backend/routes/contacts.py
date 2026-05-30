@@ -31,6 +31,55 @@ ORG_SUBTYPE_MAP = {
     "govt": ["central_govt", "state_govt", "psu", "autonomous_body", "local_body"],
 }
 
+# ── Helpers for new Phase-1 fields ───────────────────────────────────────
+
+SOCIAL_LINK_KEYS = [
+    "gmail", "official_email", "whatsapp", "telegram",
+    "linkedin", "youtube", "instagram", "facebook", "x", "reddit",
+]
+
+
+def _to_float(v):
+    try:
+        if v in (None, ""):
+            return None
+        return float(v)
+    except (ValueError, TypeError):
+        return None
+
+
+def _normalize_resources(r):
+    """Structured resources: finance (amount/currency/note), infrastructure, people_connects."""
+    if not isinstance(r, dict):
+        r = {}
+    fin = r.get("finance") if isinstance(r.get("finance"), dict) else {}
+    infra = r.get("infrastructure") if isinstance(r.get("infrastructure"), dict) else {}
+    people = r.get("people_connects") if isinstance(r.get("people_connects"), dict) else {}
+    return {
+        "finance": {
+            "amount": _to_float(fin.get("amount")),
+            "currency": (fin.get("currency") or "INR").upper(),
+            "note": (fin.get("note") or "").strip(),
+        },
+        "infrastructure": {
+            "description": (infra.get("description") or "").strip(),
+            "note": (infra.get("note") or "").strip(),
+        },
+        "people_connects": {
+            "count": int(_to_float(people.get("count")) or 0),
+            "note": (people.get("note") or "").strip(),
+        },
+    }
+
+
+def _normalize_social_links(s):
+    if not isinstance(s, dict):
+        s = {}
+    out = {}
+    for k in SOCIAL_LINK_KEYS:
+        out[k] = (s.get(k) or "").strip()
+    return out
+
 
 @router.post("")
 async def create_contact(request: Request, user: dict = Depends(get_current_user)):
@@ -73,6 +122,11 @@ async def create_contact(request: Request, user: dict = Depends(get_current_user
         "caste": body.get("caste", ""),
         "religion": body.get("religion", ""),
         "political_party": body.get("political_party", ""),
+        # ── Capacity, Resources & Social Reach (used by Goal Setter Achievable / Realistic pickers) ──
+        "is_self": bool(body.get("is_self", False)),
+        "time_bandwidth_hours_per_month": _to_float(body.get("time_bandwidth_hours_per_month")),
+        "resources": _normalize_resources(body.get("resources")),
+        "social_links": _normalize_social_links(body.get("social_links")),
         # Meta
         "tags": body.get("tags", []),  # custom user tags
         "notes": body.get("notes", ""),
@@ -218,11 +272,20 @@ async def update_contact(contact_id: str, request: Request, user: dict = Depends
         "social_status", "relationship_status", "caste", "religion", "political_party",
         "tags", "notes", "is_sme", "sme_domains", "profile_image",
         "org_type", "org_subtype",
+        # ── Phase-1 additions ──
+        "time_bandwidth_hours_per_month", "resources", "social_links",
     ]
     update = {}
     for field in allowed:
         if field in body:
-            update[field] = body[field]
+            if field == "time_bandwidth_hours_per_month":
+                update[field] = _to_float(body[field])
+            elif field == "resources":
+                update[field] = _normalize_resources(body[field])
+            elif field == "social_links":
+                update[field] = _normalize_social_links(body[field])
+            else:
+                update[field] = body[field]
     update["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     # Re-check platform link if email changed
@@ -238,10 +301,109 @@ async def update_contact(contact_id: str, request: Request, user: dict = Depends
 
 @router.delete("/{contact_id}")
 async def delete_contact(contact_id: str, user: dict = Depends(get_current_user)):
+    existing = await db.contacts.find_one({"id": contact_id, "user_id": user["user_id"]}, {"_id": 0, "is_self": 1})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    if existing.get("is_self"):
+        raise HTTPException(status_code=400, detail="The 'Self' contact cannot be deleted")
     result = await db.contacts.delete_one({"id": contact_id, "user_id": user["user_id"]})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Contact not found")
     return {"message": "Contact deleted"}
+
+
+@router.post("/ensure-self")
+async def ensure_self_contact(user: dict = Depends(get_current_user)):
+    """
+    Idempotently create the 'Self' contact for the logged-in user.
+    The Self contact is the first contact and represents the user themself.
+    """
+    existing = await db.contacts.find_one(
+        {"user_id": user["user_id"], "is_self": True}, {"_id": 0}
+    )
+    if existing:
+        return existing
+
+    now = datetime.now(timezone.utc).isoformat()
+    contact_id = f"contact_{uuid.uuid4().hex[:12]}"
+    doc = {
+        "id": contact_id,
+        "user_id": user["user_id"],
+        "name": user.get("name") or "Self",
+        "email": (user.get("email") or "").strip().lower(),
+        "phone": (user.get("phone") or "").strip(),
+        "whatsapp": "",
+        "linkedin_url": "",
+        "gender": "", "age_group": "", "country": "", "state": "", "city": "", "language": "",
+        "profession": "", "skills": [], "organization": "", "designation": "", "business_network": "",
+        "org_type": "individual", "org_subtype": "professional",
+        "social_status": "", "relationship_status": "", "caste": "", "religion": "", "political_party": "",
+        "is_self": True,
+        "time_bandwidth_hours_per_month": None,
+        "resources": _normalize_resources(None),
+        "social_links": _normalize_social_links(None),
+        "tags": ["self"], "notes": "This is YOU — your own resource & skill profile.",
+        "is_sme": False, "sme_domains": [],
+        "import_source": "system",
+        "linked_user_id": user["user_id"],
+        "profile_image": "",
+        "verified": True,
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.contacts.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@router.get("/skills/aggregate")
+async def aggregate_skills(user: dict = Depends(get_current_user)):
+    """
+    Returns the union of all skills across the user's contacts (incl. Self),
+    with the contact-ids of who has each skill. Powers the Goal Setter
+    'Achievable → Skillset' picker.
+    """
+    pipeline = [
+        {"$match": {"user_id": user["user_id"]}},
+        {"$unwind": "$skills"},
+        {"$group": {
+            "_id": "$skills",
+            "contact_ids": {"$addToSet": "$id"},
+            "contact_names": {"$addToSet": "$name"},
+        }},
+        {"$sort": {"_id": 1}},
+    ]
+    rows = await db.contacts.aggregate(pipeline).to_list(500)
+    return {
+        "skills": [
+            {
+                "skill": r["_id"],
+                "contact_ids": r["contact_ids"],
+                "contact_names": r["contact_names"],
+            }
+            for r in rows if r["_id"]
+        ]
+    }
+
+
+@router.post("/{contact_id}/skills/add")
+async def add_skill_to_contact(contact_id: str, request: Request, user: dict = Depends(get_current_user)):
+    body = await request.json()
+    skill = (body.get("skill") or "").strip()
+    if not skill:
+        raise HTTPException(status_code=400, detail="Skill is required")
+    contact = await db.contacts.find_one({"id": contact_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    skills = list(contact.get("skills") or [])
+    if skill not in skills:
+        skills.append(skill)
+        await db.contacts.update_one(
+            {"id": contact_id},
+            {"$set": {"skills": skills, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        )
+    updated = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
+    return updated
 
 
 @router.post("/import-bulk")
