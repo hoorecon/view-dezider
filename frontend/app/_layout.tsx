@@ -196,9 +196,7 @@ export default function RootLayout() {
         <Stack.Screen 
           name="test123/[id]" 
           options={{ 
-            headerShown: true,
-            headerTitle: 'Test123 Session',
-            headerTintColor: COLORS.primary,
+            headerShown: false,
           }} 
         />
         <Stack.Screen 

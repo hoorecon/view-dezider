@@ -468,51 +468,107 @@ export default function Test123Detail() {
     </View>
   );
 
-  const renderComplete = () => (
-    <View style={styles.testContent}>
-      <View style={styles.completeHeader}>
-        <Ionicons name="checkmark-circle" size={64} color={COLORS.success} />
-        <Text style={styles.completeTitle}>Decision Made!</Text>
+  const renderComplete = () => {
+    const emotionalAnswer = session.is_emotional === true
+      ? 'Yes — I was emotional'
+      : session.is_emotional === false
+        ? 'No — I was calm'
+        : null;
+    const worstCaseAnswer = session.ready_for_worst === true
+      ? 'Yes — I can face this worst case'
+      : session.ready_for_worst === false
+        ? 'No, its too risky'
+        : null;
+
+    return (
+      <View style={styles.testContent}>
+        <View style={styles.completeHeader}>
+          <Ionicons name="checkmark-circle" size={64} color={COLORS.success} />
+          <Text style={styles.completeTitle}>Decision Made!</Text>
+        </View>
+
+        <Card style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>Situation:</Text>
+          <Text style={styles.summaryText}>{session.situation}</Text>
+        </Card>
+
+        {/* Step 1 Q&A — Emotional Check */}
+        {emotionalAnswer && (
+          <Card style={styles.summaryCard}>
+            <Text style={styles.summaryQ}>Am I emotional right now?</Text>
+            <Text style={styles.summaryA}>{emotionalAnswer}</Text>
+          </Card>
+        )}
+
+        {/* Step 1.5 Q&A — Focus / What I Really Want */}
+        {session.what_i_want ? (
+          <Card style={styles.summaryCard}>
+            <Text style={styles.summaryQ}>What do I really want?</Text>
+            <Text style={styles.summaryA}>{session.what_i_want}</Text>
+          </Card>
+        ) : null}
+
+        {/* Step 2 Q&A — Worst Case Scenario */}
+        {session.worst_case_scenario ? (
+          <Card style={styles.summaryCard}>
+            <Text style={styles.summaryQ}>What's the worst that could happen?</Text>
+            <Text style={styles.summaryA}>{session.worst_case_scenario}</Text>
+          </Card>
+        ) : null}
+        {worstCaseAnswer && (
+          <Card style={styles.summaryCard}>
+            <Text style={styles.summaryQ}>Can I face this worst case?</Text>
+            <Text style={styles.summaryA}>{worstCaseAnswer}</Text>
+          </Card>
+        )}
+
+        {/* Step 3 — Needs (all + important) */}
+        {session.all_needs && session.all_needs.length > 0 ? (
+          <Card style={styles.summaryCard}>
+            <Text style={styles.summaryQ}>What are all my needs in this situation?</Text>
+            {session.all_needs.map((n, i) => {
+              const isImportant = session.important_needs?.includes(n);
+              return (
+                <View key={`need-${i}`} style={styles.needSummaryRow}>
+                  <Ionicons
+                    name={isImportant ? 'star' : 'ellipse-outline'}
+                    size={14}
+                    color={isImportant ? COLORS.warning : COLORS.textMuted}
+                  />
+                  <Text style={[styles.needSummaryText, isImportant && { fontWeight: '700', color: COLORS.textPrimary }]}>
+                    {n}
+                  </Text>
+                </View>
+              );
+            })}
+            {session.important_needs && session.important_needs.length > 0 ? (
+              <Text style={styles.summaryHint}>
+                ⭐ {session.important_needs.length} marked as most important — must be secured.
+              </Text>
+            ) : null}
+          </Card>
+        ) : null}
+
+        {session.action_plan ? (
+          <Card style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>Action Plan:</Text>
+            <Text style={styles.summaryText}>{session.action_plan}</Text>
+          </Card>
+        ) : null}
+
+        <Card style={[styles.summaryCard, styles.decisionCard]}>
+          <Text style={styles.decisionLabel}>Final Decision:</Text>
+          <Text style={styles.decisionText}>{session.final_decision}</Text>
+        </Card>
+
+        <GradientButton
+          title="Done"
+          onPress={() => router.back()}
+          style={styles.actionButton}
+        />
       </View>
-
-      <Card style={styles.summaryCard}>
-        <Text style={styles.summaryLabel}>Situation:</Text>
-        <Text style={styles.summaryText}>{session.situation}</Text>
-      </Card>
-
-      {session.what_i_want && (
-        <Card style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>What I Wanted:</Text>
-          <Text style={styles.summaryText}>{session.what_i_want}</Text>
-        </Card>
-      )}
-
-      {session.worst_case_scenario && (
-        <Card style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Worst Case Considered:</Text>
-          <Text style={styles.summaryText}>{session.worst_case_scenario}</Text>
-        </Card>
-      )}
-
-      {session.action_plan && (
-        <Card style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Action Plan:</Text>
-          <Text style={styles.summaryText}>{session.action_plan}</Text>
-        </Card>
-      )}
-
-      <Card style={[styles.summaryCard, styles.decisionCard]}>
-        <Text style={styles.decisionLabel}>Final Decision:</Text>
-        <Text style={styles.decisionText}>{session.final_decision}</Text>
-      </Card>
-
-      <GradientButton
-        title="Done"
-        onPress={() => router.back()}
-        style={styles.actionButton}
-      />
-    </View>
-  );
+    );
+  };
 
   const renderCurrentTest = () => {
     if (currentTest === 4) return renderComplete();
@@ -528,25 +584,60 @@ export default function Test123Detail() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Progress indicator */}
+        {/* Explicit Back / Home toolbar — Stack default header's tint is
+            barely visible on this screen's white BG, so render a clear
+            high-contrast pair here. */}
+        <View style={styles.topBar}>
+          <TouchableOpacity
+            style={styles.topBarBtn}
+            onPress={() => router.back()}
+            accessibilityLabel="Back"
+            hitSlop={8}
+          >
+            <Ionicons name="arrow-back" size={20} color={COLORS.textPrimary} />
+            <Text style={styles.topBarBtnText}>Back</Text>
+          </TouchableOpacity>
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity
+            style={styles.topBarBtnSolid}
+            onPress={() => router.push('/' as any)}
+            accessibilityLabel="Home"
+            hitSlop={8}
+          >
+            <Ionicons name="home" size={18} color={COLORS.white} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Progress indicator — tap a completed/touched step to jump back
+            and edit. The current step stays highlighted; you cannot
+            skip ahead. */}
         <View style={styles.progressContainer}>
-          {[1, 2, 3].map((test) => (
-            <View
-              key={test}
-              style={[
-                styles.progressDot,
-                (session.completed_test >= test || currentTest > test) &&
-                  styles.progressDotComplete,
-                Math.ceil(currentTest) === test && styles.progressDotCurrent,
-              ]}
-            >
-              {session.completed_test >= test ? (
-                <Ionicons name="checkmark" size={14} color={COLORS.white} />
-              ) : (
-                <Text style={styles.progressText}>{test}</Text>
-              )}
-            </View>
-          ))}
+          {[1, 2, 3].map((test) => {
+            const reached = session.completed_test >= test || currentTest > test;
+            const isCurrent = Math.ceil(currentTest) === test;
+            const canJump = reached || isCurrent;
+            return (
+              <TouchableOpacity
+                key={test}
+                disabled={!canJump}
+                onPress={() => canJump && setCurrentTest(test)}
+                hitSlop={10}
+                style={[
+                  styles.progressDot,
+                  reached && styles.progressDotComplete,
+                  isCurrent && styles.progressDotCurrent,
+                  canJump && !isCurrent && styles.progressDotEditable,
+                ]}
+                accessibilityLabel={`Step ${test}${canJump ? ' (tap to edit)' : ''}`}
+              >
+                {session.completed_test >= test ? (
+                  <Ionicons name="checkmark" size={14} color={COLORS.white} />
+                ) : (
+                  <Text style={styles.progressText}>{test}</Text>
+                )}
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         {renderCurrentTest()}
@@ -556,6 +647,77 @@ export default function Test123Detail() {
 }
 
 const styles = StyleSheet.create({
+  // ── Top navigation toolbar (explicit Back / Home) ──────────────
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+    marginBottom: 6,
+    gap: 8,
+  },
+  topBarBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+  },
+  topBarBtnText: {
+    color: COLORS.textPrimary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  topBarBtnSolid: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+  },
+
+  // ── Summary Q&A styles ─────────────────────────────────────────
+  summaryQ: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.primary,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  summaryA: {
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    lineHeight: 20,
+  },
+  summaryHint: {
+    fontSize: 11,
+    color: COLORS.warning,
+    marginTop: 6,
+    fontStyle: 'italic',
+  },
+  needSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 3,
+  },
+  needSummaryText: {
+    flex: 1,
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+
+  // ── Editable progress dot affordance ───────────────────────────
+  progressDotEditable: {
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+  },
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
