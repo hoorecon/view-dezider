@@ -90,6 +90,9 @@ async def create_goal(request: Request, user: dict = Depends(get_current_user)):
         # SMART fields
         "specific": body.get("specific", ""),
         "measurable": body.get("measurable", ""),
+        # New: structured metric array for Measurable section
+        # Each metric: { name, unit, type, operator, target_value, set_by, owner_role }
+        "metrics": body.get("metrics", []),
         "achievable": body.get("achievable", ""),
         "realistic": body.get("realistic", ""),
         "timebound": body.get("timebound", ""),
@@ -136,7 +139,7 @@ async def update_goal(goal_id: str, request: Request, user: dict = Depends(get_c
     body = await request.json()
     now = datetime.now(timezone.utc).isoformat()
     update = {"updated_at": now}
-    for f in ["title", "life_area", "challenge", "specific", "measurable", "achievable",
+    for f in ["title", "life_area", "challenge", "specific", "measurable", "metrics", "achievable",
               "realistic", "timebound", "milestones", "priority", "status", "progress_pct", "notes"]:
         if f in body:
             update[f] = body[f]
