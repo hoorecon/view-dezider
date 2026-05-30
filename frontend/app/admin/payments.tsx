@@ -297,8 +297,8 @@ export default function AdminPaymentsScreen() {
                       </View>
                       <View style={[s.pill, { backgroundColor: '#EEF2FF' }]}>
                         <Text style={[s.pillText, { color: '#4338CA' }]}>
-                          {c.discount_type === 'Percentage' ? `${c.discount_value}%` :
-                           c.discount_type === 'Value' ? `−₹${c.discount_value}` : `=₹${c.discount_value}`}
+                          {c.discount_type === 'Percentage' ? `${Math.min(100, Math.max(0, Number(c.discount_value)||0))}%` :
+                           c.discount_type === 'Value' ? `−₹${Math.max(0, Number(c.discount_value)||0)}` : `=₹${Math.max(0, Number(c.discount_value)||0)}`}
                         </Text>
                       </View>
                     </View>
