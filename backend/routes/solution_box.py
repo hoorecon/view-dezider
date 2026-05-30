@@ -84,6 +84,46 @@ def _swot_status(doc: Dict[str, Any]) -> str:
     return "draft"
 
 
+def _test123_status(doc: Dict[str, Any]) -> str:
+    """Test123 is the 3-step quick-decision module (situation → worst case → needs).
+
+    Status heuristic:
+      - completed when a final_decision string is recorded
+      - in_progress once worst_case OR any needs entered
+      - draft otherwise (only `situation` filled)
+    """
+    if (doc.get("final_decision") or "").strip():
+        return "completed"
+    if (
+        (doc.get("worst_case") or "").strip()
+        or (doc.get("all_needs") or [])
+        or (doc.get("important_needs") or [])
+    ):
+        return "in_progress"
+    return "draft"
+
+
+def _norm_test123(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize a `test123_sessions` doc into the Solution Box shape."""
+    situation = (doc.get("situation") or "").strip()
+    title = (situation[:60] + ("…" if len(situation) > 60 else "")) if situation else "Quick Decision (Test123)"
+    return {
+        "id": doc.get("id"),
+        "type": "test123",
+        "title": title,
+        "context": situation,
+        "life_area": doc.get("life_area"),
+        "status": _test123_status(doc),
+        "current_step": int(doc.get("current_step") or 1),
+        "created_at": _iso(doc.get("created_at")),
+        "updated_at": _iso(doc.get("updated_at") or doc.get("created_at")),
+        "route": f"/test123/{doc.get('id')}",
+        "linked_from_decision_id": None,
+        "options_count": len(doc.get("all_needs") or []),
+    }
+
+
+
 def _norm_decider(doc: Dict[str, Any]) -> Dict[str, Any]:
     # SWOT-converted Decisions (source_module == "swot") should be grouped
     # under the SWOT filter in the Solution Box, not under Decider — even
@@ -230,6 +270,17 @@ async def list_solution_box(
                 continue
             results.append(item)
 
+    # --- Test123 (3-step quick-decision) ---
+    if type_filter in (None, "test123"):
+        cursor = db.test123_sessions.find({"user_id": uid}, {"_id": 0}).sort("updated_at", -1)
+        async for doc in cursor:
+            item = _norm_test123(doc)
+            if life_area_filter and item["life_area"] != life_area_filter:
+                continue
+            if status_filter and item["status"] != status_filter:
+                continue
+            results.append(item)
+
     # Sort merged results by updated_at desc (None last)
     results.sort(key=lambda r: r.get("updated_at") or "", reverse=True)
     return results
@@ -239,7 +290,7 @@ async def list_solution_box(
 async def solution_box_counts(user: dict = Depends(get_current_user)):
     """Aggregate counts by type / life_area / status — for dashboard cards & filter badges."""
     uid = user["user_id"]
-    by_type: Dict[str, int] = {"decider": 0, "pros_cons": 0, "swot": 0}
+    by_type: Dict[str, int] = {"decider": 0, "pros_cons": 0, "swot": 0, "test123": 0}
     by_life_area: Dict[str, int] = {}
     by_status: Dict[str, int] = {"draft": 0, "in_progress": 0, "completed": 0}
 
@@ -255,6 +306,8 @@ async def solution_box_counts(user: dict = Depends(get_current_user)):
         await _bump(_norm_pros_cons(doc))
     async for doc in db.swot.find({"user_id": uid}, {"_id": 0}):
         await _bump(_norm_swot(doc))
+    async for doc in db.test123_sessions.find({"user_id": uid}, {"_id": 0}):
+        await _bump(_norm_test123(doc))
 
     total = sum(by_type.values())
     return {

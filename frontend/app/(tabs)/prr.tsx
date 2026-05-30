@@ -32,7 +32,7 @@ import { LIFE_AREAS, getLifeArea } from '../../src/constants/lifeAreas';
  * Each card deep-links to the correct wizard/detail page.
  */
 
-type SolutionType = 'decider' | 'pros_cons' | 'swot';
+type SolutionType = 'decider' | 'pros_cons' | 'swot' | 'test123';
 type SolutionStatus = 'draft' | 'in_progress' | 'completed';
 
 interface SolutionItem {
@@ -55,12 +55,14 @@ const TYPE_CHIPS: { key: 'all' | SolutionType; label: string; icon: string; colo
   { key: 'decider',          label: 'Decider',     icon: 'analytics',      color: '#6366F1' },
   { key: 'pros_cons',        label: 'Pros & Cons', icon: 'layers',         color: '#7C3AED' },
   { key: 'swot',             label: 'SWOT',        icon: 'grid',           color: '#F59E0B' },
+  { key: 'test123',          label: 'Test123',     icon: 'flash',          color: '#EC4899' },
 ];
 
 const TYPE_META: Record<SolutionType, { label: string; short: string; icon: string; color: string; bg: string }> = {
   decider:         { label: 'Decider',     short: 'Decider',  icon: 'analytics',       color: '#6366F1', bg: '#EEF2FF' },
   pros_cons:       { label: 'Pros & Cons', short: 'P&C',      icon: 'layers',          color: '#7C3AED', bg: '#F5F3FF' },
   swot:            { label: 'SWOT',        short: 'SWOT',     icon: 'grid',            color: '#F59E0B', bg: '#FFFBEB' },
+  test123:         { label: 'Test123',     short: 'Test123',  icon: 'flash',           color: '#EC4899', bg: '#FDF2F8' },
 };
 
 const STATUS_META: Record<SolutionStatus, { label: string; color: string; bg: string }> = {
@@ -468,6 +470,20 @@ export default function SolutionBoxScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.newMenuItemTitle}>SWOT</Text>
                 <Text style={styles.newMenuItemDesc}>Strengths · Weaknesses · Opportunities · Threats</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.newMenuItem, { borderColor: TYPE_META.test123.color + '40' }]}
+              onPress={() => { setShowNewMenu(false); router.push('/test123/new' as any); }}
+            >
+              <View style={[styles.newMenuIcon, { backgroundColor: TYPE_META.test123.bg }]}>
+                <Ionicons name={TYPE_META.test123.icon as any} size={20} color={TYPE_META.test123.color} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.newMenuItemTitle}>Test123 · Quick Decision</Text>
+                <Text style={styles.newMenuItemDesc}>3-step gut check: situation → worst case → real needs</Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
             </TouchableOpacity>

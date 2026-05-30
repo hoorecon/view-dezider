@@ -45,6 +45,8 @@ export default function Test123Detail() {
   const [whatIWant, setWhatIWant] = useState('');
   const [worstCase, setWorstCase] = useState('');
   const [newNeed, setNewNeed] = useState('');
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editingText, setEditingText] = useState('');
   const [actionPlan, setActionPlan] = useState('');
   const [finalDecision, setFinalDecision] = useState('');
 
@@ -141,12 +143,41 @@ export default function Test123Detail() {
     setNewNeed('');
   };
 
+  const startEditNeed = (index: number, current: string) => {
+    setEditingIndex(index);
+    setEditingText(current);
+  };
+
+  const commitEditNeed = () => {
+    if (editingIndex === null || !session) return;
+    const trimmed = editingText.trim();
+    if (!trimmed) {
+      // Empty value cancels the edit
+      setEditingIndex(null);
+      setEditingText('');
+      return;
+    }
+    const oldVal = session.all_needs[editingIndex];
+    const updatedNeeds = session.all_needs.map((n, i) => (i === editingIndex ? trimmed : n));
+    // Keep the "important" flag intact for the renamed entry
+    const updatedImportant = session.important_needs.map((n) => (n === oldVal ? trimmed : n));
+    saveSession({ all_needs: updatedNeeds, important_needs: updatedImportant });
+    setEditingIndex(null);
+    setEditingText('');
+  };
+
+  const cancelEditNeed = () => {
+    setEditingIndex(null);
+    setEditingText('');
+  };
+
   const removeNeed = (index: number) => {
     const updatedNeeds = session!.all_needs.filter((_, i) => i !== index);
     const updatedImportant = session!.important_needs.filter(
       (need) => updatedNeeds.includes(need)
     );
     saveSession({ all_needs: updatedNeeds, important_needs: updatedImportant });
+    if (editingIndex === index) cancelEditNeed();
   };
 
   const toggleImportantNeed = (need: string) => {
@@ -284,7 +315,7 @@ export default function Test123Detail() {
               }}
             >
               <Ionicons name="checkmark-circle" size={24} color={COLORS.white} />
-              <Text style={styles.yesNoText}>Yes, I accept it</Text>
+              <Text style={styles.yesNoText}>Yes, I can face this worst case</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -295,7 +326,7 @@ export default function Test123Detail() {
               }}
             >
               <Ionicons name="close-circle" size={24} color={COLORS.white} />
-              <Text style={styles.yesNoText}>No, too risky</Text>
+              <Text style={styles.yesNoText}>No, its too risky</Text>
             </TouchableOpacity>
           </View>
         </>
@@ -319,24 +350,62 @@ export default function Test123Detail() {
 
       <View style={styles.needsSection}>
         <Text style={styles.sectionLabel}>All My Needs:</Text>
-        {session.all_needs.map((need, index) => (
-          <Card key={index} style={styles.needCard}>
-            <TouchableOpacity
-              style={styles.needRow}
-              onPress={() => toggleImportantNeed(need)}
-            >
-              <Ionicons
-                name={session.important_needs.includes(need) ? 'star' : 'star-outline'}
-                size={20}
-                color={session.important_needs.includes(need) ? COLORS.warning : COLORS.textMuted}
-              />
-              <Text style={styles.needText}>{need}</Text>
-              <TouchableOpacity onPress={() => removeNeed(index)}>
-                <Ionicons name="close" size={20} color={COLORS.error} />
-              </TouchableOpacity>
-            </TouchableOpacity>
-          </Card>
-        ))}
+        <Text style={styles.helperText}>
+          Tap ⭐ to mark a need as "Most Important", ✎ to edit, ✕ to remove.
+        </Text>
+        {session.all_needs.map((need, index) => {
+          const isEditing = editingIndex === index;
+          const isImportant = session.important_needs.includes(need);
+          return (
+            <Card key={index} style={styles.needCard}>
+              <View style={styles.needRow}>
+                <TouchableOpacity onPress={() => toggleImportantNeed(need)} hitSlop={8}>
+                  <Ionicons
+                    name={isImportant ? 'star' : 'star-outline'}
+                    size={20}
+                    color={isImportant ? COLORS.warning : COLORS.textMuted}
+                  />
+                </TouchableOpacity>
+
+                {isEditing ? (
+                  <TextInput
+                    style={styles.needEditInput}
+                    value={editingText}
+                    onChangeText={setEditingText}
+                    autoFocus
+                    onSubmitEditing={commitEditNeed}
+                    placeholder="Need..."
+                    placeholderTextColor={COLORS.textMuted}
+                  />
+                ) : (
+                  <TouchableOpacity style={styles.needTextWrap} onPress={() => toggleImportantNeed(need)}>
+                    <Text style={styles.needText}>{need}</Text>
+                  </TouchableOpacity>
+                )}
+
+                {isEditing ? (
+                  <>
+                    <TouchableOpacity onPress={commitEditNeed} hitSlop={8} style={styles.editActionBtn}>
+                      <Ionicons name="checkmark" size={20} color={COLORS.success || '#16A34A'} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={cancelEditNeed} hitSlop={8} style={styles.editActionBtn}>
+                      <Ionicons name="close" size={20} color={COLORS.textMuted} />
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                    <TouchableOpacity onPress={() => startEditNeed(index, need)} hitSlop={8} style={styles.editActionBtn} accessibilityLabel="Edit need">
+                      <Ionicons name="pencil" size={18} color={COLORS.primary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => removeNeed(index)} hitSlop={8} style={styles.editActionBtn} accessibilityLabel="Remove need">
+                      <Ionicons name="close" size={20} color={COLORS.error} />
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            </Card>
+          );
+        })}
 
         <View style={styles.addNeedRow}>
           <TextInput
@@ -352,16 +421,23 @@ export default function Test123Detail() {
           </TouchableOpacity>
         </View>
 
-        {session.important_needs.length > 0 && (
-          <View style={styles.importantSection}>
-            <Text style={styles.importantLabel}>
-              Most Important ({session.important_needs.length} selected):
-            </Text>
+        {/* Always render the "Most Important" section so users see it as
+            a clear next step even before they tap any star. */}
+        <View style={styles.importantSection}>
+          <Text style={styles.importantLabel}>
+            Most Important Needs{session.important_needs.length > 0 ? ` (${session.important_needs.length} selected)` : ''}:
+          </Text>
+          {session.important_needs.length > 0 ? (
             <Text style={styles.importantNeeds}>
               {session.important_needs.join(', ')}
             </Text>
-          </View>
-        )}
+          ) : (
+            <Text style={styles.importantHint}>
+              Tap the ⭐ next to any need above to mark it as critical. These are
+              the ones you must secure even if everything else is compromised.
+            </Text>
+          )}
+        </View>
       </View>
 
       <Input
@@ -662,6 +738,36 @@ const styles = StyleSheet.create({
   importantNeeds: {
     fontSize: 14,
     color: COLORS.textPrimary,
+  },
+  importantHint: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontStyle: 'italic',
+    lineHeight: 17,
+  },
+  helperText: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    marginBottom: 8,
+    marginTop: -4,
+  },
+  needTextWrap: {
+    flex: 1,
+  },
+  needEditInput: {
+    flex: 1,
+    height: 36,
+    backgroundColor: COLORS.white,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  editActionBtn: {
+    paddingHorizontal: 4,
+    paddingVertical: 4,
   },
   completeHeader: {
     alignItems: 'center',
