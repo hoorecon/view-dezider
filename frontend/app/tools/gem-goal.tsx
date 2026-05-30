@@ -64,7 +64,18 @@ export default function GEMGoalScreen() {
       const res = await api.get(`/gem/goals/${editId}`);
       const d = res.data;
       setTitle(d.title||''); setDescription(d.description||''); setSmartGoal(d.smart_goal||'');
-      setLifeArea(d.life_area||''); setGoalType(d.goal_type||'aspiration');
+      setLifeArea(d.life_area||'');
+      // Backward-compat: PNA used to write goal_type as 'project'/'objective'/'task',
+      // and earlier GEM versions used 'long_term'. Normalise to the canonical 3-way
+      // vocabulary supported by GOAL_TYPES.
+      const rawType = (d.goal_type || 'aspiration') as string;
+      const typeMap: Record<string, string> = {
+        project: 'problem', task: 'problem',
+        objective: 'need',
+        long_term: 'aspiration', short_term: 'need',
+        problem: 'problem', need: 'need', aspiration: 'aspiration',
+      };
+      setGoalType(typeMap[rawType] || 'aspiration');
       setPriority(d.priority||'medium'); setStatus(d.status||'active');
       setTargetDate(d.target_date||''); setProgress(d.progress_percent||0);
       setLinkedSmartGoalId(d.linked_smart_goal_id || null);

@@ -137,7 +137,10 @@ export default function PNAScreen() {
     }
     setCreatingGoal(true);
     try {
-      const goalType = form.category === 'aspiration' ? 'aspiration' : (form.category === 'need' ? 'objective' : 'project');
+      // Pass PNA category straight through — GEM uses the same 3-way vocabulary
+      // (problem | need | aspiration). Previously we remapped to project/objective
+      // which broke the chip prepopulation when re-opening the GEM Goal.
+      const goalType = form.category;
       const res = await api.post('/gem/goals', {
         title: form.title,
         description: form.description || `Auto-created from PNA item: ${form.title}`,
@@ -154,6 +157,15 @@ export default function PNAScreen() {
     } catch (e: any) {
       showAlert('Could not create goal', e?.response?.data?.detail || 'Try again');
     } finally { setCreatingGoal(false); }
+  };
+
+  const openLinkedGoal = () => {
+    if (!form.linked_goal_id) return;
+    // Close PNA modal first so navigation isn't stacked on top of it
+    setShowModal(false);
+    setTimeout(() => {
+      router.push(`/tools/gem-goal?id=${form.linked_goal_id}` as any);
+    }, 80);
   };
 
   const unlinkGoal = () => {
@@ -543,7 +555,7 @@ export default function PNAScreen() {
                 <Text style={s.gemLinkedText} numberOfLines={2}>
                   {form.linked_goal_title || `Goal ${form.linked_goal_id.slice(0, 8)}`}
                 </Text>
-                <TouchableOpacity onPress={() => router.push(`/tools/gem-goal?goal_id=${form.linked_goal_id}` as any)} hitSlop={6}>
+                <TouchableOpacity onPress={openLinkedGoal} hitSlop={6}>
                   <Ionicons name="open-outline" size={16} color="#7C3AED" />
                 </TouchableOpacity>
                 <TouchableOpacity onPress={unlinkGoal} hitSlop={6}>

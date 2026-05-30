@@ -1,0 +1,34 @@
+{
+  "summary": "PNA <-> GEM linkage bug fix verified end-to-end on the preview environment. All 3 fixes work: (1) PNA modal closes BEFORE navigation (no stacked overlay); (2) URL uses correct `?id=` query param (not legacy `goal_id`); (3) GEM Goal page is pre-populated with title, description, life_area (Health), and the matching Goal Type chip is highlighted for all three PNA categories (Problem -> red Problem chip, Need -> amber Need chip, Aspiration -> green Aspiration chip). Backend round-trip for `goal_type` in {problem,need,aspiration} works correctly. Phase 5 'Linked SMART Goal' section still renders at the bottom of the GEM Goal page (no regression). IMPORTANT: Metro bundler was serving a STALE bundle before testing; an `expo` supervisor restart was required to pick up the new pna.tsx/gem-goal.tsx code -- main agent should keep this in mind for future iterations or after large source rewrites.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "expo-av", "issue": "Deprecation warning logged: 'Expo AV has been deprecated and will be removed in SDK 54. Use the expo-audio and expo-video packages to replace the required functionality.' Not related to this fix, but should be migrated. Reference: console warning during /tools/pna page load."}
+    ]
+  },
+  "test_report_links": ["/tmp/test_gem_pna.py"],
+  "action_items": [
+    "Migrate expo-av usage to expo-audio (audio) and expo-video (video) before SDK 54 — unrelated to current fix but flagged per Expo deprecation policy.",
+    "When applying frontend source-level fixes in future iterations, do a `sudo supervisorctl restart expo` after writing files to ensure Metro serves the fresh bundle (otherwise testing the bug fix will incorrectly show the bug still occurring)."
+  ],
+  "critical_code_review_comments": [
+    "pna.tsx (lines 162-169) `openLinkedGoal` correctly closes the modal then router.push with `id=` — looks good.",
+    "pna.tsx (line 143) `goalType = form.category` correctly passes canonical problem|need|aspiration — good.",
+    "gem-goal.tsx (lines 71-78) `typeMap` covers legacy values (project->problem, task->problem, objective->need, long_term->aspiration, short_term->need) — backward-compatible mapping is correct.",
+    "gem-goal.tsx line 29 reads `useLocalSearchParams()` for `id` — matches the URL produced by pna.tsx.",
+    "Note: PNA modal `openLinkedGoal` uses setTimeout(80) between setShowModal(false) and router.push — this works on web but may want a `requestAnimationFrame` pattern for guaranteed paint flush; not blocking."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Created and then deleted 3 temporary GEM goals (Chronic Thyroid, Daily Meditation, Run Marathon) under admin@test.com during E2E testing. All cleaned up via DELETE /api/gem/goals/{id}.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "PNA<->GEM linkage fix (iteration 15) is fully verified. Live preview was serving a stale Metro bundle until expo was restarted via supervisor — keep this in mind: if a fix looks like it's not applied, check the bundle text first (curl the entry.bundle URL and grep for the new string) before re-debugging the source code.",
+  "rca_of_issue": "ORIGINAL RCA (recap, confirmed): (a) pna.tsx pushed `/tools/gem-goal?goal_id=...` but gem-goal.tsx reads `id` via useLocalSearchParams, so editId was undefined and loadGoal() never executed -> defaults (goalType=aspiration) shown. (b) Open icon onPress only navigated without closing modal -> stacked overlay. (c) handleCreateGemGoal previously mapped category->goal_type via project/objective/aspiration vocabulary, so PNA-created GEM goals stored 'project' for problems and 'objective' for needs, which no longer matched the chip ids. FIXES SHIPPED: openLinkedGoal helper now closes modal then pushes `?id=`; goal_type is sent as the canonical category; gem-goal.tsx loadGoal applies a typeMap to map legacy values to canonical ones. VERIFICATION: All 3 categories Problem/Need/Aspiration round-trip correctly through PNA create -> GEM goal page pre-populated with matching chip highlighted; backend POST/GET on /api/gem/goals returns goal_type unchanged for all 3 canonical values."
+}
