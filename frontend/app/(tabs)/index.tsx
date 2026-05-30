@@ -296,174 +296,291 @@ export default function HomeScreen() {
             </TouchableOpacity>
           )}
 
-          {/* Quick Actions */}
-          <Text style={styles.sectionTitle}>Quick Actions</Text>
-          <View style={styles.quickActions}>
+          {/* ════════════════════════════════════════════════════════════════
+              24 AI GUIDES — 9-Section Dashboard (June 2026 refactor)
+              -------------------------------------------------------------
+              §1 Self Discovery   →  My 360° Life · GEM
+              §2 Decision Kickstarters → MyDezider · Test123 · Pros&Cons · SWOT
+              §3 Inner State      →  Emotional Gatekeeper · Conflict Breaker
+              §4 Goals & Manifestation → Goal Setter · Manifestation
+              §5 Solution Space   →  Solution Finder · Solution Store · Review Net
+              §6 Execute & Track  →  Action Tracker · CTT
+              §7 Lifestyle Architecture → Lifestyle Dezider · Lifestyle Designer
+              §8 Reflection & Awareness → Lifestyle Analyzer · Consciousness Diary · Unconditional Happiness
+              §9 Collaboration & Management → Collaboration · AALA · Time Intelligence · GEM Flight Model
+              Pinned strip on top → "Pick up where you left off"
+              "More tools" disclosure below → secondary utilities.
+              ════════════════════════════════════════════════════════════════ */}
+
+          {/* PINNED — "Pick up where you left off" */}
+          <Text style={styles.sectionTitle}>Pick up where you left off</Text>
+          <View style={styles.colabRow}>
             <TouchableOpacity
-              style={styles.actionCard}
+              style={styles.colabCard}
               onPress={() => router.push('/tools/dezider-list' as any)}
             >
-              <LinearGradient
-                colors={['#6366F1', '#8B5CF6']}
-                style={styles.actionIcon}
-              >
-                <Ionicons name="compass" size={24} color={COLORS.white} />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>My Dezider</Text>
-              <Text style={styles.actionSubtitle}>New Decision</Text>
+              <View style={[styles.colabIconWrap, { backgroundColor: 'rgba(99,102,241,0.1)' }]}>
+                <Ionicons name="compass" size={22} color="#6366F1" />
+              </View>
+              <Text style={styles.colabTitle}>Last Decision</Text>
+              <Text style={styles.colabSubtitle}>
+                {stats?.decisions.total ? `${stats.decisions.total} total · ${stats.decisions.completed || 0} done` : 'Start your first'}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push('/test123' as any)}
+              style={styles.colabCard}
+              onPress={() => router.push('/tools/action-center' as any)}
             >
-              <LinearGradient
-                colors={[COLORS.accent, COLORS.accentDark]}
-                style={styles.actionIcon}
-              >
+              <View style={[styles.colabIconWrap, { backgroundColor: 'rgba(13,148,136,0.1)' }]}>
+                <Ionicons name="checkmark-done-circle" size={22} color="#0D9488" />
+              </View>
+              <Text style={styles.colabTitle}>Action Tracker</Text>
+              <Text style={styles.colabSubtitle}>
+                {cttStats?.total ? `${cttStats.total} on plate` : 'All clear'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.colabCard}
+              onPress={() => router.push('/tools/lifestyle-designer' as any)}
+            >
+              <View style={[styles.colabIconWrap, { backgroundColor: 'rgba(234,88,12,0.1)' }]}>
+                <Ionicons name="color-palette" size={22} color="#EA580C" />
+              </View>
+              <Text style={styles.colabTitle}>Today's Routine</Text>
+              <Text style={styles.colabSubtitle}>Lifestyle plan</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* ══════════ §1 SELF DISCOVERY ══════════ */}
+          <Text style={styles.sectionTitle}>1 · Self Discovery</Text>
+          <View style={styles.quickActions}>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/pna' as any)}>
+              <LinearGradient colors={['#4338CA', '#6366F1']} style={styles.actionIcon}>
+                <Ionicons name="layers" size={24} color={COLORS.white} />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>My 360° Life</Text>
+              <Text style={styles.actionSubtitle}>Problems · Needs · Aspirations</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/gem' as any)}>
+              <LinearGradient colors={['#0F766E', '#14B8A6']} style={styles.actionIcon}>
+                <Ionicons name="flag" size={24} color={COLORS.white} />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>GEM</Text>
+              <Text style={styles.actionSubtitle}>Goal Execution Manager</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* ══════════ §2 DECISION KICKSTARTERS ══════════ */}
+          <Text style={styles.sectionTitle}>2 · Decision Kickstarters</Text>
+          <View style={styles.quickActions}>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/dezider-list' as any)}>
+              <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.actionIcon}>
+                <Ionicons name="compass" size={24} color={COLORS.white} />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>MyDezider</Text>
+              <Text style={styles.actionSubtitle}>10-step canonical</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/test123' as any)}>
+              <LinearGradient colors={[COLORS.accent, COLORS.accentDark]} style={styles.actionIcon}>
                 <Ionicons name="flash" size={24} color={COLORS.white} />
               </LinearGradient>
               <Text style={styles.actionTitle}>Test123</Text>
               <Text style={styles.actionSubtitle}>Instant decision</Text>
             </TouchableOpacity>
           </View>
-
-          {/* Decision Kickstarters — Pros & Cons, SWOT */}
-          <Text style={styles.sectionTitle}>Decision Kickstarters</Text>
           <View style={styles.quickActions}>
-            <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push('/tools/pros-cons-list' as any)}
-            >
-              <LinearGradient
-                colors={['#7C3AED', '#A855F7']}
-                style={styles.actionIcon}
-              >
-                <Ionicons name="layers" size={24} color={COLORS.white} />
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/pros-cons-list' as any)}>
+              <LinearGradient colors={['#059669', '#10B981']} style={styles.actionIcon}>
+                <Ionicons name="git-compare" size={24} color={COLORS.white} />
               </LinearGradient>
               <Text style={styles.actionTitle}>Pros & Cons</Text>
-              <Text style={styles.actionSubtitle}>Deep 8-step framework</Text>
+              <Text style={styles.actionSubtitle}>Two-column starter</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push('/tools/swot' as any)}
-            >
-              <LinearGradient
-                colors={['#1E40AF', '#3B82F6']}
-                style={styles.actionIcon}
-              >
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/swot' as any)}>
+              <LinearGradient colors={['#1E40AF', '#3B82F6']} style={styles.actionIcon}>
                 <Ionicons name="grid" size={24} color={COLORS.white} />
               </LinearGradient>
               <Text style={styles.actionTitle}>SWOT Analysis</Text>
-              <Text style={styles.actionSubtitle}>Quick 4-quadrant view</Text>
+              <Text style={styles.actionSubtitle}>4-quadrant strategic</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Solution Builders — promoted to first-class modules. Still
-              cross-referenced inside GEM (launchSolutionFinder /
-              launchSolutionMatrix) for in-context flows. */}
-          {(featureFlags.solution_finder || featureFlags.solution_matrix) && (
-            <View style={styles.quickActions}>
-              {featureFlags.solution_finder && (
-                <TouchableOpacity
-                  style={styles.actionCard}
-                  onPress={() => router.push('/tools/solution-finder-list' as any)}
-                >
-                  <LinearGradient
-                    colors={['#7C3AED', '#C084FC']}
-                    style={styles.actionIcon}
-                  >
-                    <Ionicons name="bulb" size={24} color={COLORS.white} />
-                  </LinearGradient>
-                  <Text style={styles.actionTitle}>Simple Solution Finder</Text>
-                  <Text style={styles.actionSubtitle}>Concerns → RCA → Risks → Plan</Text>
-                </TouchableOpacity>
-              )}
-              {featureFlags.solution_matrix && (
-                <TouchableOpacity
-                  style={styles.actionCard}
-                  onPress={() => router.push('/tools/solution-matrix-list' as any)}
-                >
-                  <LinearGradient
-                    colors={['#0F766E', '#14B8A6']}
-                    style={styles.actionIcon}
-                  >
-                    <Ionicons name="apps" size={24} color={COLORS.white} />
-                  </LinearGradient>
-                  <Text style={styles.actionTitle}>Advanced Solution Matrix</Text>
-                  <Text style={styles.actionSubtitle}>Scored multi-option matrix</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-
-          {/* Multi-User Collaboration */}
-          <Text style={styles.sectionTitle}>Collaboration</Text>
+          {/* ══════════ §3 INNER STATE ══════════ */}
+          <Text style={styles.sectionTitle}>3 · Inner State</Text>
           <View style={styles.quickActions}>
-            <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push('/tools/contacts' as any)}
-            >
-              <LinearGradient
-                colors={['#1E293B', '#475569']}
-                style={styles.actionIcon}
-              >
-                <Ionicons name="people" size={24} color={COLORS.white} />
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/emotional-gatekeeper' as any)}>
+              <LinearGradient colors={['#F59E0B', '#D97706']} style={styles.actionIcon}>
+                <Ionicons name="heart-circle" size={24} color={COLORS.white} />
               </LinearGradient>
-              <Text style={styles.actionTitle}>Contacts</Text>
-              <Text style={styles.actionSubtitle}>Manage & filter participants</Text>
+              <Text style={styles.actionTitle}>Emotional Gatekeeper</Text>
+              <Text style={styles.actionSubtitle}>Break loops & traps</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/conflict-breaker' as any)}>
+              <LinearGradient colors={['#7C2D12', '#DC2626']} style={styles.actionIcon}>
+                <Ionicons name="flash" size={24} color={COLORS.white} />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Conflict Breaker</Text>
+              <Text style={styles.actionSubtitle}>Crucial conversations</Text>
+            </TouchableOpacity>
+          </View>
 
-            <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push('/tools/collaborate' as any)}
-            >
-              <LinearGradient
-                colors={['#7C3AED', '#A855F7']}
-                style={styles.actionIcon}
-              >
+          {/* ══════════ §4 GOALS & MANIFESTATION ══════════ */}
+          <Text style={styles.sectionTitle}>4 · Goals & Manifestation</Text>
+          <View style={styles.quickActions}>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/goal-setter' as any)}>
+              <LinearGradient colors={['#059669', '#10B981']} style={styles.actionIcon}>
+                <Ionicons name="flag" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Goal Setter</Text>
+              <Text style={styles.actionSubtitle}>SMART Framework</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/goal-manifestation' as any)}>
+              <LinearGradient colors={['#7C3AED', '#9333EA']} style={styles.actionIcon}>
+                <Ionicons name="sparkles" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Manifestation</Text>
+              <Text style={styles.actionSubtitle}>CAB-FAME 7 stages</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* ══════════ §5 SOLUTION SPACE ══════════ */}
+          <Text style={styles.sectionTitle}>5 · Solution Space</Text>
+          <View style={styles.quickActions}>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/solution-finder-list' as any)}>
+              <LinearGradient colors={['#7C3AED', '#C084FC']} style={styles.actionIcon}>
+                <Ionicons name="bulb" size={24} color={COLORS.white} />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Solution Finder</Text>
+              <Text style={styles.actionSubtitle}>Concerns → RCA → Plan · ASM</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/solutions-store' as any)}>
+              <LinearGradient colors={['#7C3AED', '#A855F7']} style={styles.actionIcon}>
+                <Ionicons name="storefront" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Solution Store</Text>
+              <Text style={styles.actionSubtitle}>Products & services</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.quickActions}>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/review-net' as any)}>
+              <LinearGradient colors={['#F59E0B', '#FBBF24']} style={styles.actionIcon}>
+                <Ionicons name="star" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Review Net</Text>
+              <Text style={styles.actionSubtitle}>Factor-wise ratings</Text>
+            </TouchableOpacity>
+            <View style={[styles.actionCard, { opacity: 0 }]} pointerEvents="none" />
+          </View>
+
+          {/* ══════════ §6 EXECUTE & TRACK ══════════ */}
+          <Text style={styles.sectionTitle}>6 · Execute & Track</Text>
+          <View style={styles.quickActions}>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/action-center' as any)}>
+              <LinearGradient colors={['#0D9488', '#0F766E']} style={styles.actionIcon}>
+                <Ionicons name="checkmark-done-circle" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Action Tracker</Text>
+              <Text style={styles.actionSubtitle}>Universal inbox</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/ctt' as any)}>
+              <LinearGradient colors={['#1E3A5F', '#2D5F8B']} style={styles.actionIcon}>
+                <Ionicons name="clipboard" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>CTT</Text>
+              <Text style={styles.actionSubtitle}>Project tracker</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* ══════════ §7 LIFESTYLE ARCHITECTURE ══════════ */}
+          <Text style={styles.sectionTitle}>7 · Lifestyle Architecture</Text>
+          <View style={styles.quickActions}>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/lifestyle' as any)}>
+              <LinearGradient colors={['#065F46', '#059669']} style={styles.actionIcon}>
+                <Ionicons name="leaf" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Lifestyle Dezider</Text>
+              <Text style={styles.actionSubtitle}>Decide a change</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/lifestyle-designer' as any)}>
+              <LinearGradient colors={['#7C2D12', '#EA580C']} style={styles.actionIcon}>
+                <Ionicons name="color-palette" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Lifestyle Designer</Text>
+              <Text style={styles.actionSubtitle}>Design daily routine</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* ══════════ §8 REFLECTION & AWARENESS ══════════ */}
+          <Text style={styles.sectionTitle}>8 · Reflection & Awareness</Text>
+          <View style={styles.quickActions}>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/lifestyle-eval' as any)}>
+              <LinearGradient colors={['#7C3AED', '#A855F7']} style={styles.actionIcon}>
+                <Ionicons name="analytics" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Lifestyle Analyzer</Text>
+              <Text style={styles.actionSubtitle}>Actual vs Planned</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/consciousness-diary' as any)}>
+              <LinearGradient colors={['#1E1B4B', '#3730A3']} style={styles.actionIcon}>
+                <Ionicons name="eye" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Consciousness Diary</Text>
+              <Text style={styles.actionSubtitle}>Self-awareness journal</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.quickActions}>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/unconditional-happiness' as any)}>
+              <LinearGradient colors={['#EC4899', '#F472B6']} style={styles.actionIcon}>
+                <Ionicons name="happy" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Unconditional Happiness</Text>
+              <Text style={styles.actionSubtitle}>Celebrate · Streaks</Text>
+            </TouchableOpacity>
+            <View style={[styles.actionCard, { opacity: 0 }]} pointerEvents="none" />
+          </View>
+
+          {/* ══════════ §9 COLLABORATION & MANAGEMENT ══════════ */}
+          <Text style={styles.sectionTitle}>9 · Collaboration & Management</Text>
+          <View style={styles.quickActions}>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/collaborate' as any)}>
+              <LinearGradient colors={['#7C3AED', '#A855F7']} style={styles.actionIcon}>
                 <Ionicons name="git-network" size={24} color={COLORS.white} />
               </LinearGradient>
-              <Text style={styles.actionTitle}>Group Decisions</Text>
-              <Text style={styles.actionSubtitle}>Multi-user collaboration</Text>
+              <Text style={styles.actionTitle}>Collaboration Hub</Text>
+              <Text style={styles.actionSubtitle}>Group decisions · Contacts</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/aala' as any)}>
+              <LinearGradient colors={['#0EA5E9', '#2563EB']} style={styles.actionIcon}>
+                <Ionicons name="wallet" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>AALA</Text>
+              <Text style={styles.actionSubtitle}>Assets & Liabilities</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.quickActions}>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/time-dezider' as any)}>
+              <LinearGradient colors={['#7C3AED', '#A855F7']} style={styles.actionIcon}>
+                <Ionicons name="time-outline" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Time Intelligence</Text>
+              <Text style={styles.actionSubtitle}>Daily schedule AI</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/gem-flight' as any)}>
+              <LinearGradient colors={['#0C1445', '#3949AB']} style={styles.actionIcon}>
+                <Ionicons name="airplane" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>GEM Flight Model</Text>
+              <Text style={styles.actionSubtitle}>Pilot your goals</Text>
             </TouchableOpacity>
           </View>
 
-          {/* GEM Flight Model — Orchestrator */}
-          <TouchableOpacity
-            style={styles.cttCard}
-            onPress={() => router.push('/tools/gem-flight' as any)}
-            activeOpacity={0.7}
-          >
-            <LinearGradient
-              colors={['#0C1445', '#1A237E', '#3949AB']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.cttGradient}
-            >
-              <View style={styles.cttHeader}>
-                <View style={styles.cttIconWrap}>
-                  <Ionicons name="airplane" size={24} color="#FFF" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cttTitle}>GEM Flight Model</Text>
-                  <Text style={styles.cttSubtitle}>
-                    Navigate your goals like a pilot — from Point A to Point B
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.7)" />
-              </View>
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {/* Collaborate & Insights */}
-          <Text style={styles.sectionTitle}>Collaborate & Insights</Text>
+          {/* ══════════ MORE TOOLS (secondary utilities) ══════════ */}
+          <Text style={styles.sectionTitle}>More Tools</Text>
           <View style={styles.colabRow}>
-            <TouchableOpacity
-              style={styles.colabCard}
-              onPress={() => router.push('/inbox')}
-            >
+            <TouchableOpacity style={styles.colabCard} onPress={() => router.push('/inbox')}>
               <View style={[styles.colabIconWrap, { backgroundColor: 'rgba(99,102,241,0.1)' }]}>
                 <Ionicons name="mail-unread" size={22} color="#6366F1" />
                 {inboxPending > 0 && (
@@ -477,11 +594,7 @@ export default function HomeScreen() {
                 {inboxPending > 0 ? `${inboxPending} pending` : 'No pending'}
               </Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.colabCard}
-              onPress={() => router.push('/notifications')}
-            >
+            <TouchableOpacity style={styles.colabCard} onPress={() => router.push('/notifications')}>
               <View style={[styles.colabIconWrap, { backgroundColor: 'rgba(245,158,11,0.1)' }]}>
                 <Ionicons name="notifications" size={22} color="#F59E0B" />
                 {unreadCount > 0 && (
@@ -495,11 +608,7 @@ export default function HomeScreen() {
                 {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
               </Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.colabCard}
-              onPress={() => router.push('/analytics')}
-            >
+            <TouchableOpacity style={styles.colabCard} onPress={() => router.push('/analytics')}>
               <View style={[styles.colabIconWrap, { backgroundColor: 'rgba(16,185,129,0.1)' }]}>
                 <Ionicons name="bar-chart" size={22} color="#10B981" />
               </View>
@@ -507,483 +616,86 @@ export default function HomeScreen() {
               <Text style={styles.colabSubtitle}>Life areas</Text>
             </TouchableOpacity>
           </View>
-
-          {/* Solution Tools — REMOVED: now promoted to first-class modules
-              immediately below Pros & Cons / SWOT (search for "Solution
-              Builders" above). Cross-references in GEM are preserved. */}
-
-          {/* CTT - Centralized Task Tracker */}
-          <Text style={styles.sectionTitle}>Task Tracker</Text>
-          <TouchableOpacity
-            style={styles.cttCard}
-            onPress={() => router.push('/tools/ctt')}
-            activeOpacity={0.7}
-          >
-            <LinearGradient
-              colors={['#1E3A5F', '#2D5F8B']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.cttGradient}
-            >
-              <View style={styles.cttHeader}>
-                <View style={styles.cttIconWrap}>
-                  <Ionicons name="clipboard" size={24} color="#FFF" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cttTitle}>Centralized Task Tracker</Text>
-                  <Text style={styles.cttSubtitle}>
-                    Track all action items from Decisions, Solutions & Goals
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.7)" />
-              </View>
-              {cttStats && cttStats.total > 0 && (
-                <View style={styles.cttStatsRow}>
-                  <View style={styles.cttStatItem}>
-                    <Text style={styles.cttStatNum}>{cttStats.total}</Text>
-                    <Text style={styles.cttStatLabel}>Total</Text>
-                  </View>
-                  <View style={[styles.cttStatDivider]} />
-                  <View style={styles.cttStatItem}>
-                    <Text style={[styles.cttStatNum, { color: '#3B82F6' }]}>{cttStats.by_status?.in_progress || 0}</Text>
-                    <Text style={styles.cttStatLabel}>Active</Text>
-                  </View>
-                  <View style={[styles.cttStatDivider]} />
-                  <View style={styles.cttStatItem}>
-                    <Text style={[styles.cttStatNum, { color: '#10B981' }]}>{cttStats.by_status?.done || 0}</Text>
-                    <Text style={styles.cttStatLabel}>Done</Text>
-                  </View>
-                  <View style={[styles.cttStatDivider]} />
-                  <View style={styles.cttStatItem}>
-                    <Text style={[styles.cttStatNum, { color: '#EF4444' }]}>{cttStats.by_status?.blocked || 0}</Text>
-                    <Text style={styles.cttStatLabel}>Blocked</Text>
-                  </View>
-                  <View style={[styles.cttStatDivider]} />
-                  <View style={styles.cttStatItem}>
-                    <Text style={[styles.cttStatNum, { color: '#F59E0B' }]}>{cttStats.routine_count || 0}</Text>
-                    <Text style={styles.cttStatLabel}>Routines</Text>
-                  </View>
-                </View>
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {/* Social Learning Pipeline */}
-          <TouchableOpacity
-            style={styles.calendarCard}
-            onPress={() => router.push('/tools/social-learning' as any)}
-            activeOpacity={0.7}
-          >
-            <LinearGradient
-              colors={['#7C3AED', '#A855F7']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.calendarGradient}
-            >
-              <Ionicons name="newspaper" size={24} color="#FFF" />
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.calendarTitle}>Social Learning</Text>
-                <Text style={styles.calendarSub}>News → Intelligence → Templates for decisions</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {/* GEM + TEPFI + Calendar Quick Actions */}
-          <Text style={styles.sectionTitle}>Management Tools</Text>
           <View style={styles.quickActions}>
-            <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push('/tools/solutions-store')}
-            >
-              <LinearGradient
-                colors={['#7C3AED', '#A855F7']}
-                style={styles.actionIcon}
-              >
-                <Ionicons name="storefront" size={24} color="#FFF" />
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/contacts' as any)}>
+              <LinearGradient colors={['#1E293B', '#475569']} style={styles.actionIcon}>
+                <Ionicons name="people" size={24} color={COLORS.white} />
               </LinearGradient>
-              <Text style={styles.actionTitle}>Solutions Store</Text>
-              <Text style={styles.actionSubtitle}>Products & services</Text>
+              <Text style={styles.actionTitle}>Contacts</Text>
+              <Text style={styles.actionSubtitle}>Manage participants</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push('/tools/google-calendar')}
-            >
-              <LinearGradient
-                colors={['#4285F4', '#34A853']}
-                style={styles.actionIcon}
-              >
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/calendar-view')}>
+              <LinearGradient colors={['#4285F4', '#5B9EF4']} style={styles.actionIcon}>
                 <Ionicons name="calendar" size={24} color="#FFF" />
               </LinearGradient>
-              <Text style={styles.actionTitle}>Google Calendar</Text>
-              <Text style={styles.actionSubtitle}>Sync tasks & events</Text>
+              <Text style={styles.actionTitle}>Calendar</Text>
+              <Text style={styles.actionSubtitle}>Schedules & deadlines</Text>
             </TouchableOpacity>
           </View>
-
           <View style={styles.quickActions}>
-            <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push('/tools/gem')}
-            >
-              <LinearGradient
-                colors={['#0F766E', '#14B8A6']}
-                style={styles.actionIcon}
-              >
-                <Ionicons name="flag" size={24} color="#FFF" />
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/ai-assistant' as any)}>
+              <LinearGradient colors={['#312E81', '#818CF8']} style={styles.actionIcon}>
+                <Ionicons name="chatbubble-ellipses" size={24} color="#FFF" />
               </LinearGradient>
-              <Text style={styles.actionTitle}>Goals (GEM)</Text>
-              <Text style={styles.actionSubtitle}>Track life goals</Text>
+              <Text style={styles.actionTitle}>AI Assistant</Text>
+              <Text style={styles.actionSubtitle}>Cross-module advisor</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push('/tools/tepfi')}
-            >
-              <LinearGradient
-                colors={['#7C3AED', '#A855F7']}
-                style={styles.actionIcon}
-              >
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/public-pulse' as any)}>
+              <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.actionIcon}>
+                <Ionicons name="pulse" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Public Pulse</Text>
+              <Text style={styles.actionSubtitle}>Self-discovery</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.quickActions}>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/social-learning' as any)}>
+              <LinearGradient colors={['#7C3AED', '#A855F7']} style={styles.actionIcon}>
+                <Ionicons name="newspaper" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Social Learning</Text>
+              <Text style={styles.actionSubtitle}>News → templates</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/tepfi')}>
+              <LinearGradient colors={['#7C3AED', '#A855F7']} style={styles.actionIcon}>
                 <Ionicons name="cube" size={24} color="#FFF" />
               </LinearGradient>
               <Text style={styles.actionTitle}>TEPFI Matrix</Text>
               <Text style={styles.actionSubtitle}>Resource tracking</Text>
             </TouchableOpacity>
           </View>
-
           <View style={styles.quickActions}>
-            <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push('/tools/deo' as any)}
-            >
-              <LinearGradient
-                colors={['#059669', '#10B981']}
-                style={styles.actionIcon}
-              >
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/deo' as any)}>
+              <LinearGradient colors={['#059669', '#10B981']} style={styles.actionIcon}>
                 <Ionicons name="git-network" size={24} color="#FFF" />
               </LinearGradient>
               <Text style={styles.actionTitle}>DEO</Text>
               <Text style={styles.actionSubtitle}>Import & API</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push('/tools/cld-engine' as any)}
-            >
-              <LinearGradient
-                colors={['#1E40AF', '#3B82F6']}
-                style={styles.actionIcon}
-              >
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/cld-engine' as any)}>
+              <LinearGradient colors={['#1E40AF', '#3B82F6']} style={styles.actionIcon}>
                 <Ionicons name="git-network-outline" size={24} color="#FFF" />
               </LinearGradient>
               <Text style={styles.actionTitle}>CLD Engine</Text>
               <Text style={styles.actionSubtitle}>Systems thinking</Text>
             </TouchableOpacity>
           </View>
-
-          {/* Time Dezider & Time Store */}
-          <Text style={styles.sectionTitle}>Time Intelligence</Text>
           <View style={styles.quickActions}>
-            <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push('/tools/time-dezider' as any)}
-            >
-              <LinearGradient
-                colors={['#7C3AED', '#A855F7']}
-                style={styles.actionIcon}
-              >
-                <Ionicons name="time-outline" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Time Dezider</Text>
-              <Text style={styles.actionSubtitle}>Daily schedule AI</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push('/tools/time-store' as any)}
-            >
-              <LinearGradient
-                colors={['#DC2626', '#EF4444']}
-                style={styles.actionIcon}
-              >
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/time-store' as any)}>
+              <LinearGradient colors={['#DC2626', '#EF4444']} style={styles.actionIcon}>
                 <Ionicons name="cart-outline" size={24} color="#FFF" />
               </LinearGradient>
               <Text style={styles.actionTitle}>Time Store</Text>
               <Text style={styles.actionSubtitle}>Buy back time</Text>
             </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity
-            style={styles.calendarCard}
-            onPress={() => router.push('/tools/calendar-view')}
-            activeOpacity={0.7}
-          >
-            <LinearGradient
-              colors={['#4285F4', '#5B9EF4']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.calendarGradient}
-            >
-              <Ionicons name="calendar" size={24} color="#FFF" />
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.calendarTitle}>Calendar & Scheduling</Text>
-                <Text style={styles.calendarSub}>View upcoming deadlines & export to Google Calendar</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {/* Lifestyle Dezider */}
-          <TouchableOpacity
-            style={styles.calendarCard}
-            onPress={() => router.push('/tools/lifestyle')}
-            activeOpacity={0.7}
-          >
-            <LinearGradient
-              colors={['#065F46', '#059669']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.calendarGradient}
-            >
-              <Ionicons name="leaf" size={24} color="#FFF" />
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.calendarTitle}>Lifestyle Dezider</Text>
-                <Text style={styles.calendarSub}>Manage routines & assess lifestyle effectiveness</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {/* AI Solution Assistant */}
-          <TouchableOpacity
-            style={styles.calendarCard}
-            onPress={() => router.push('/tools/ai-assistant' as any)}
-            activeOpacity={0.7}
-          >
-            <LinearGradient
-              colors={['#312E81', '#818CF8']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.calendarGradient}
-            >
-              <Ionicons name="chatbubble-ellipses" size={24} color="#FFF" />
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.calendarTitle}>AI Solution Assistant</Text>
-                <Text style={styles.calendarSub}>Personal advisor across all modules — 6 languages</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {/* Public Pulse */}
-          <TouchableOpacity
-            style={styles.calendarCard}
-            onPress={() => router.push('/tools/public-pulse' as any)}
-            activeOpacity={0.7}
-          >
-            <LinearGradient
-              colors={['#6366F1', '#8B5CF6']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.calendarGradient}
-            >
-              <Ionicons name="pulse" size={24} color="#FFF" />
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.calendarTitle}>Public Pulse</Text>
-                <Text style={styles.calendarSub}>Self-discovery Score™ tools + live public insights</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {/* The Conflict Breaker */}
-          <TouchableOpacity
-            style={styles.calendarCard}
-            onPress={() => router.push('/tools/conflict-breaker' as any)}
-            activeOpacity={0.7}
-          >
-            <LinearGradient
-              colors={['#7C2D12', '#DC2626']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.calendarGradient}
-            >
-              <Ionicons name="flash" size={24} color="#FFF" />
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.calendarTitle}>The Conflict Breaker</Text>
-                <Text style={styles.calendarSub}>Prepare for Crucial Conversations with clarity & respect</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {/* PNA Framework */}
-          <TouchableOpacity
-            style={styles.calendarCard}
-            onPress={() => router.push('/tools/pna' as any)}
-            activeOpacity={0.7}
-          >
-            <LinearGradient
-              colors={['#4338CA', '#6366F1']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.calendarGradient}
-            >
-              <Ionicons name="layers" size={24} color="#FFF" />
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.calendarTitle}>PNA Framework</Text>
-                <Text style={styles.calendarSub}>Track Problems, Needs & Aspirations across 10 life areas</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {/* Lifestyle Designer */}
-          <TouchableOpacity
-            style={styles.calendarCard}
-            onPress={() => router.push('/tools/lifestyle-designer' as any)}
-            activeOpacity={0.7}
-          >
-            <LinearGradient
-              colors={['#7C2D12', '#EA580C']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.calendarGradient}
-            >
-              <Ionicons name="color-palette" size={24} color="#FFF" />
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.calendarTitle}>Lifestyle Designer</Text>
-                <Text style={styles.calendarSub}>Design your ideal day — plan hours per life area & compare</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {/* EVE Modules: AALA & LEE */}
-          <Text style={styles.sectionTitle}>EVE — Evaluation & Tracking</Text>
-          <View style={styles.quickActions}>
-            <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push('/tools/aala' as any)}
-            >
-              <LinearGradient
-                colors={['#0EA5E9', '#2563EB']}
-                style={styles.actionIcon}
-              >
-                <Ionicons name="wallet" size={24} color="#FFF" />
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/subscription' as any)}>
+              <LinearGradient colors={['#1E293B', '#334155']} style={styles.actionIcon}>
+                <Ionicons name="diamond-outline" size={24} color="#FFF" />
               </LinearGradient>
-              <Text style={styles.actionTitle}>AALA</Text>
-              <Text style={styles.actionSubtitle}>Assets & Liabilities</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push('/tools/lifestyle-eval' as any)}
-            >
-              <LinearGradient
-                colors={['#7C3AED', '#A855F7']}
-                style={styles.actionIcon}
-              >
-                <Ionicons name="analytics" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Lifestyle Eval</Text>
-              <Text style={styles.actionSubtitle}>Actual vs Planned</Text>
+              <Text style={styles.actionTitle}>Subscription</Text>
+              <Text style={styles.actionSubtitle}>Credits & plans</Text>
             </TouchableOpacity>
           </View>
-
-          {/* Goal & Manifestation Modules */}
-          <Text style={styles.sectionTitle}>Goals & Manifestation</Text>
-          <View style={styles.quickActions}>
-            <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push('/tools/goal-setter' as any)}
-            >
-              <LinearGradient
-                colors={['#059669', '#10B981']}
-                style={styles.actionIcon}
-              >
-                <Ionicons name="flag" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Goal Setter</Text>
-              <Text style={styles.actionSubtitle}>SMART Framework</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push('/tools/goal-manifestation' as any)}
-            >
-              <LinearGradient
-                colors={['#7C3AED', '#9333EA']}
-                style={styles.actionIcon}
-              >
-                <Ionicons name="sparkles" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Manifestation</Text>
-              <Text style={styles.actionSubtitle}>CAB-FAME 7 Stages</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Unconditional Happiness */}
-          <TouchableOpacity
-            style={styles.calendarCard}
-            onPress={() => router.push('/tools/unconditional-happiness' as any)}
-            activeOpacity={0.7}
-          >
-            <LinearGradient
-              colors={['#EC4899', '#F472B6']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.calendarGradient}
-            >
-              <Ionicons name="happy" size={24} color="#FFF" />
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.calendarTitle}>Unconditional Happiness</Text>
-                <Text style={styles.calendarSub}>Celebrate life without conditions — streak tracking</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {/* Consciousness Diary */}
-          <TouchableOpacity
-            style={styles.calendarCard}
-            onPress={() => router.push('/tools/consciousness-diary' as any)}
-            activeOpacity={0.7}
-          >
-            <LinearGradient
-              colors={['#1E1B4B', '#3730A3']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.calendarGradient}
-            >
-              <Ionicons name="eye" size={24} color="#FFF" />
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.calendarTitle}>Consciousness Diary</Text>
-                <Text style={styles.calendarSub}>Track self-awareness, emotions & inner wellness</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {/* Credits & Subscription Banner */}
-          <TouchableOpacity
-            style={styles.calendarCard}
-            onPress={() => router.push('/tools/subscription' as any)}
-          >
-            <LinearGradient
-              colors={['#1E293B', '#334155']}
-              style={styles.calendarGradient}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Ionicons name="diamond-outline" size={22} color="#FFF" />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.calendarTitle}>Credits & Subscription</Text>
-                  <Text style={styles.calendarSub}>Manage your plan, buy credits, view history</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.6)" />
-              </View>
-            </LinearGradient>
-          </TouchableOpacity>
 
           {/* Stats */}
           <Text style={styles.sectionTitle}>Your Progress</Text>
@@ -1078,47 +790,6 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </Card>
 
-          {/* Emotional Gatekeeper */}
-          <TouchableOpacity
-            style={styles.calendarCard}
-            onPress={() => router.push('/tools/emotional-gatekeeper' as any)}
-            activeOpacity={0.7}
-          >
-            <LinearGradient
-              colors={['#F59E0B', '#D97706']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.calendarGradient}
-            >
-              <Ionicons name="heart-circle" size={24} color="#FFF" />
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.calendarTitle}>Emotional Gatekeeper</Text>
-                <Text style={styles.calendarSub}>Break traps, loops & limitations with AI coaching</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {/* Action Center — universal Who·What·By-when tracker */}
-          <TouchableOpacity
-            style={styles.calendarCard}
-            onPress={() => router.push('/tools/action-center' as any)}
-            activeOpacity={0.7}
-          >
-            <LinearGradient
-              colors={['#0D9488', '#0F766E']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.calendarGradient}
-            >
-              <Ionicons name="checkmark-done-circle" size={24} color="#FFF" />
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.calendarTitle}>Action Center</Text>
-                <Text style={styles.calendarSub}>Track all Who · What · By-when action items · Port to CTT / LifeStyle</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
-            </LinearGradient>
-          </TouchableOpacity>
           </>
           )}
         </View>
