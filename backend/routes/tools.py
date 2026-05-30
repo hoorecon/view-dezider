@@ -25,7 +25,23 @@ router = APIRouter()
 
 @router.post("/solution-finders")
 async def create_solution_finder(request: Request, user: dict = Depends(get_current_user)):
-    """Create a new Simple Solution Finder entry"""
+    """Create a new Simple Solution Finder entry.
+
+    Schema v2 (June 2026 overhaul) — structured 4-level tree:
+      concerns: [{concern_id, text, is_primary, order}]            ← Q1 (a)+(b) via ⭐
+      root_causes: [{rca_id, concern_id, text, order}]              ← Q2 (NEW)
+      solutions: [{sol_id, rca_id, text, capabilities, resources}]  ← Q3
+      risks: [{risk_id, sol_id, name, impact_pct, probability_pct,  ← Q4a
+              risk_index_pct, order}]
+      mitigations: [{mit_id, risk_id, text, order}]                 ← Q4b (1..many)
+      contingencies: [{cont_id, risk_id, text, order}]              ← Q4c (1..many)
+      action_plan_items: [{ap_id, source_type, source_id, text,     ← Q5
+              who, by_when, status, pushed_to_action_center,
+              action_id, pushed_to_ctt, pushed_to_lifestyle}]
+    Legacy v1 free-text fields are still accepted on the body but new entries
+    should use the v2 arrays. Use POST /solution-finders/{id}/push-action-plan
+    to fan out Q5 items into the universal Action Center.
+    """
     body = await request.json()
     entry_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
@@ -37,6 +53,16 @@ async def create_solution_finder(request: Request, user: dict = Depends(get_curr
         "area_of_life": body.get("area_of_life", ""),
         "smart_goal": body.get("smart_goal", ""),
         "milestones": body.get("milestones", []),
+        # --- v2 structured tree ---
+        "concerns": body.get("concerns", []),
+        "root_causes": body.get("root_causes", []),
+        "solutions": body.get("solutions", []),
+        "risks": body.get("risks", []),
+        "mitigations": body.get("mitigations", []),
+        "contingencies": body.get("contingencies", []),
+        "action_plan_items": body.get("action_plan_items", []),
+        "schema_version": body.get("schema_version", 2),
+        # --- legacy v1 (kept for backward read compat) ---
         "q1_all_concerns": body.get("q1_all_concerns", ""),
         "q2_primary_concerns": body.get("q2_primary_concerns", ""),
         "q3_capabilities": body.get("q3_capabilities", ""),
@@ -110,11 +136,21 @@ async def update_solution_finder(entry_id: str, request: Request, user: dict = D
     update_fields = {}
     allowed = [
         "area_of_life", "smart_goal", "milestones",
+        # legacy v1
         "q1_all_concerns", "q2_primary_concerns",
         "q3_capabilities", "q3_resources", "q3_solutions",
         "external_help_aspect", "external_help_level", "external_help_from",
         "q4_negative_consequences", "q4_mitigation_plans", "q4_contingency_plans",
         "action_items", "status",
+        # v2 structured tree (June 2026 overhaul)
+        "concerns", "root_causes", "solutions", "risks",
+        "mitigations", "contingencies", "action_plan_items",
+        "schema_version",
+        # timing + linking (Enhancements #4 & #5 — still supported)
+        "deadline_date", "impact_horizon_value", "impact_horizon_unit",
+        "linked_from_decision_id", "linked_from_module",
+        "linked_from_option_label", "linked_from_score_pct",
+        "allow_single_option",
     ]
     for field in allowed:
         if field in body:
@@ -134,6 +170,115 @@ async def delete_solution_finder(entry_id: str, user: dict = Depends(get_current
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Entry not found")
     return {"message": "Entry deleted"}
+
+
+@router.post("/solution-finders/{entry_id}/push-action-plan")
+async def push_action_plan_to_action_center(
+    entry_id: str, request: Request, user: dict = Depends(get_current_user)
+):
+    """Q5 → Action Center fan-out.
+
+    Body: { "ap_ids": ["..."], "push_to_ctt": bool, "push_to_lifestyle": bool }
+    Pushes any action_plan_item that's not yet pushed to the universal
+    `action_items` collection (source_module='solution_finder'). Updates each
+    item's `pushed_to_action_center` + `action_id` markers in place. Optional
+    `push_to_ctt` / `push_to_lifestyle` mirror the action into CTT tasks or
+    Lifestyle routines respectively.
+    """
+    body = await request.json()
+    requested_ids = set(body.get("ap_ids") or [])
+    push_ctt = bool(body.get("push_to_ctt", False))
+    push_lifestyle = bool(body.get("push_to_lifestyle", False))
+
+    entry = await db.solution_finders.find_one(
+        {"entry_id": entry_id, "user_id": user["user_id"]}
+    )
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
+
+    plan = list(entry.get("action_plan_items") or [])
+    now = datetime.now(timezone.utc).isoformat()
+    pushed = 0
+    ctt_count = 0
+    life_count = 0
+
+    for it in plan:
+        ap_id = it.get("ap_id")
+        if requested_ids and ap_id not in requested_ids:
+            continue
+        if it.get("pushed_to_action_center"):
+            continue
+        action_id = str(uuid.uuid4())
+        await db.action_items.insert_one({
+            "action_id": action_id,
+            "user_id": user["user_id"],
+            "title": it.get("text") or "Solution Finder action",
+            "description": it.get("description", ""),
+            "who": it.get("who", ""),
+            "by_when": it.get("by_when"),
+            "status": it.get("status") or "pending",
+            "source_module": "solution_finder",
+            "source_id": entry_id,
+            "source_label": entry.get("smart_goal") or "Simple Solution Finder",
+            "source_sub_type": it.get("source_type"),  # solution|mitigation|contingency
+            "source_sub_id": it.get("source_id"),
+            "recurrence_type": "one_time",
+            "created_at": now,
+            "updated_at": now,
+        })
+        it["pushed_to_action_center"] = True
+        it["action_id"] = action_id
+        pushed += 1
+
+        if push_ctt:
+            await db.ctt_tasks.insert_one({
+                "task_id": str(uuid.uuid4()),
+                "user_id": user["user_id"],
+                "task": it.get("text") or "Solution Finder action",
+                "deadline": it.get("by_when"),
+                "status": "pending",
+                "source_module": "solution_finder",
+                "source_id": entry_id,
+                "linked_action_id": action_id,
+                "created_at": now, "updated_at": now,
+            })
+            it["pushed_to_ctt"] = True
+            ctt_count += 1
+
+        if push_lifestyle:
+            await db.lifestyle_routines.insert_one({
+                "routine_id": str(uuid.uuid4()),
+                "user_id": user["user_id"],
+                "name": it.get("text") or "Solution Finder routine",
+                "description": f"From Simple Solution Finder: {entry.get('smart_goal','')}",
+                "source_module": "solution_finder",
+                "source_id": entry_id,
+                "linked_action_id": action_id,
+                "created_at": now, "updated_at": now,
+            })
+            it["pushed_to_lifestyle"] = True
+            life_count += 1
+
+    await db.solution_finders.update_one(
+        {"entry_id": entry_id, "user_id": user["user_id"]},
+        {"$set": {"action_plan_items": plan, "updated_at": now}},
+    )
+    return {
+        "pushed_to_action_center": pushed,
+        "pushed_to_ctt": ctt_count,
+        "pushed_to_lifestyle": life_count,
+        "action_plan_items": plan,
+    }
+
+
+@router.post("/solution-finders/_admin/wipe-legacy")
+async def wipe_legacy_solution_finders(user: dict = Depends(get_current_user)):
+    """One-time admin op to delete all existing solution_finder entries for
+    this user before the v2 schema rolls out. Per user direction during the
+    SSF schema overhaul ('Just delete existing items as nothing serious is
+    there now')."""
+    r = await db.solution_finders.delete_many({"user_id": user["user_id"]})
+    return {"deleted": r.deleted_count}
 
 
 # ========================

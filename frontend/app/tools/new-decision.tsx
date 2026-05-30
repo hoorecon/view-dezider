@@ -12,6 +12,8 @@ import { COLORS } from '../../src/constants/colors';
 import { useAuthStore } from '../../src/store/authStore';
 import { safeBack, goHome } from '../../src/utils/navigation';
 import api from '../../src/utils/api';
+import TimingFieldset, { TimingValue } from '../../src/components/decisions/TimingFieldset';
+import { addDaysISO } from '../../src/utils/dateLocalize';
 
 // ====== TYPES ======
 interface LifeArea { id: string; name: string; slug: string; icon: string; color: string; order: number; }
@@ -108,6 +110,13 @@ export default function NewDecisionIntake() {
   const [selectedAskType, setSelectedAskType] = useState<AskType | null>(null);
   const [searchText, setSearchText] = useState('');
   const [customTitle, setCustomTitle] = useState('');
+  // Timing (added on Initial-Info Step 4 so deadline + impact horizon flow
+  // into the PRR decision from the very start). Default = 1 week.
+  const [timing, setTiming] = useState<TimingValue>({
+    deadline_date: addDaysISO(7),
+    impact_horizon_value: 7,
+    impact_horizon_unit: 'days',
+  });
 
   // Step-4 new structured fields
   const [selectedSubArea, setSelectedSubArea] = useState<SubArea | null>(null);
@@ -318,6 +327,11 @@ export default function NewDecisionIntake() {
         title: title || (templateId ? templates.find(t => t.id === templateId)?.title || 'New Decision' : 'New Decision'),
         raw_user_input: searchText.trim() || title,
         source_type: sourceType || (templateId ? 'AUTHORIZED_STANDARD' : 'CUSTOM_BLANK'),
+        // Timing captured on Initial-Info Step 4 — flows through to the PRR
+        // decision doc, Action Center handoffs, and downstream reminders.
+        deadline_date: timing.deadline_date || null,
+        impact_horizon_value: timing.impact_horizon_value ?? null,
+        impact_horizon_unit: timing.impact_horizon_unit || null,
       };
 
       const r = await api.post('/hos/decisions', payload);
@@ -597,6 +611,13 @@ export default function NewDecisionIntake() {
         onChangeText={setCustomTitle}
         placeholderTextColor={COLORS.textMuted}
       />
+
+      {/* Timing — Deadline + Impact horizon. Captured here so the very first
+          PRR decision record carries a deadline that downstream Action Center
+          handoffs and reminders can inherit. */}
+      <View style={{ marginBottom: 14 }}>
+        <TimingFieldset value={timing} onChange={setTiming} />
+      </View>
 
       {/* Create from scratch button — always visible */}
       <TouchableOpacity

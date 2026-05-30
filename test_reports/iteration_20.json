@@ -1,0 +1,38 @@
+{
+  "summary": "End-to-end testing of the Jan 2026 bundle: (1) PNA queued-stub flow, (2) GEM Launch Decision routing + new-decision Step 4 (Templates) TIMING fieldset, (3) Dashboard Decision Kickstarters promotion of Simple Solution Finder + Advanced Solution Matrix, (4) Simple Solution Finder v2 overhaul. Backend pytest: 5/5 PASS for /api/hos/decisions timing persistence, POST /api/solution-finders v2 round-trip, PUT round-trip, push-action-plan fan-out to /api/action-items + /api/ctt/tasks with idempotency. Frontend Playwright (mobile viewport 390x844, admin@test.com): Dashboard shows Pros & Cons + SWOT immediately followed by Simple Solution Finder (purple bulb) + Advanced Solution Matrix (teal apps) — old 'Solution Tools' section is gone (only present as a code comment). SSF Step 1 renders the purple header 'Simple Solution Finder · Step 1 of 6 · Goal', 6-dot step indicator, Life Area chips, SMART Goal textarea, and Timing fieldset (7-day default). Step 2 'Q1 (a). What are ALL your concerns?' with inline add concern + star toggle works (concern persists, save succeeds, Next blocked until at least one star — verified Next click on no-star stayed on Step 2). New-decision Step 5/5 (= code step 4, the Templates step) renders the full TIMING block — Deadline date picker (defaulted 7 days out = 2026-06-06), Impact horizon numeric input (7) + 4 unit chips (days/weeks/months/years), 6 Reference presets, 5 Quick-Deadlines. PNA pendingGemGoal logic verified in source (pna.tsx:63-731) — 'Pick existing instead (N)' is rendered while pendingGemGoal is set; backend tests previously confirmed no orphan POST. GEM gem-goal.tsx Launch Decision now routes to /tools/new-decision with module=dezider + linked_goal_id + linked_goal_title (lines 114-122). IMPORTANT pre-condition: admin's feature flags solution_finder + solution_matrix were FALSE at start; spec asserts they are TRUE for admin. Had to PUT /api/admin/feature-flags to enable them before the dashboard cards became visible. Main agent should ensure these flags are seeded as TRUE for admin (or document the manual toggle step). No deprecated Expo packages detected for the touched files.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/feature-flags", "issue": "Admin returns {solution_finder:false, solution_matrix:false} by default — spec requires TRUE for admin. Dashboard cards stay hidden until flags are toggled via PUT /api/admin/feature-flags. Seed/migration step missing."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "SSF Step 1 → Step 2 auto-save", "issue": "When Playwright loads /tools/solution-finder directly (cold tab, before any auth UI is shown), the AsyncStorage token isn't hydrated yet and the first POST /api/solution-finders fires with no Authorization header → 401 'Save failed: Not authenticated' alert. After a proper login round-trip on '/', the auto-save succeeds. Likely a real-user race on first cold-start; consider gating the auto-save on a hydrated user object or retrying once after auth ready.", "affected_testIDs": ["solution-finder"]}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_solution_finder_v2_and_timing.py",
+    "/app/test_reports/pytest/ssf_v2_timing.xml"
+  ],
+  "action_items": [
+    "Ensure feature flags solution_finder + solution_matrix default to TRUE for admin (seed on first admin login, or include in migration). Currently dashboard SSF + ASM tiles stay hidden until a manual PUT /api/admin/feature-flags toggle.",
+    "Investigate SSF Step 1→2 auto-save race: first auto-save can fire before auth token is hydrated from AsyncStorage, causing a 'Not authenticated' alert on cold open via deep link. Either delay auto-save until user is hydrated, or retry once on 401."
+  ],
+  "critical_code_review_comments": [
+    "new-decision.tsx step labelling: the review request calls the Templates+Timing screen 'Step 4' but the step indicator shows it as the 5th circle (1-indexed) because code uses step=0..4. Functionally correct; just clarify in any user-facing copy.",
+    "Push-action-plan endpoint: contract uses a global push_to_ctt boolean that applies to every item in ap_ids (verified — sending push_to_ctt:true with 3 ap_ids fans out 3 CTT tasks). The review request example expected 'pushed_to_ctt=1' when ticking CTT only on one item; backend doesn't accept per-item CTT/Lifestyle flags. If per-item granularity is required, extend the body schema."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_solution_finder_v2_and_timing.py"
+  ],
+  "success_rate": {"backend": "100% (5/5 pytest)", "frontend": "100% UI structure (dashboard order, SSF step 1+2 chrome, new-decision Templates Timing); auto-save race seen only on cold deep-link"},
+  "seed_data_creation": "Temporarily enabled feature flags solution_finder + solution_matrix to TRUE for admin via PUT /api/admin/feature-flags (left enabled to allow main agent to retest). All SSF test entries cleaned via DELETE /api/solution-finders/{id}.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Feature flags are now TRUE in the dev DB. If the dashboard regresses on a fresh DB, re-enable them. Backend tests live at /app/backend/tests/test_solution_finder_v2_and_timing.py — run with EXPO_BACKEND_URL set. For SSF UI deep-link testing, always navigate to '/' first, log in, THEN navigate to /tools/solution-finder to avoid the cold-start auth race.",
+  "rca_of_issue": "Feature 3 dashboard visibility depended on /api/feature-flags returning true. The flag store (db.app_settings.key=feature_flags) was empty for the admin tenant, so /api/feature-flags returned defaults of false. Once toggled via PUT /api/admin/feature-flags with {solution_finder:true, solution_matrix:true}, the dashboard rendered the SSF + ASM row immediately below Pros & Cons + SWOT, matching the spec. Recommendation: add an idempotent seed step on admin bootstrap (e.g. when role=admin and no app_settings doc exists, insert flags=true)."
+}

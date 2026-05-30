@@ -642,7 +642,7 @@ export default function PNAScreen() {
             </View>
 
             <Text style={s.fieldLabel}>Linked GEM Goal</Text>
-            {form.linked_goal_id ? (
+            {form.linked_goal_id && (
               <View style={s.gemLinkedRow}>
                 <Ionicons name="flag" size={16} color={pendingGemGoal ? '#F59E0B' : '#7C3AED'} />
                 <Text style={s.gemLinkedText} numberOfLines={2}>
@@ -658,26 +658,37 @@ export default function PNAScreen() {
                   <Ionicons name="close-circle" size={16} color="#94A3B8" />
                 </TouchableOpacity>
               </View>
-            ) : (
+            )}
+            {/* Backlog fix: keep the "Browse GEM" CTA visible even when a stub
+                is queued, so the user can swap to an existing goal in ONE click
+                (pickGoal() discards the queued stub — no orphan). The "Create
+                in GEM" button is hidden when a stub is already queued. */}
+            {(!form.linked_goal_id || pendingGemGoal) && (
               <View style={s.gemActions}>
                 <TouchableOpacity style={s.gemBtnGhost} onPress={() => setShowGemPicker(v => !v)}>
                   <Ionicons name="link" size={14} color="#7C3AED" />
                   <Text style={s.gemBtnGhostText}>
-                    {showGemPicker ? 'Hide list' : `Browse GEM (${gemGoals.length} available)`}
+                    {showGemPicker
+                      ? 'Hide list'
+                      : pendingGemGoal
+                        ? `Pick existing instead (${gemGoals.length})`
+                        : `Browse GEM (${gemGoals.length} available)`}
                   </Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.gemBtnPrimary, creatingGoal && { opacity: 0.6 }]}
-                  onPress={handleCreateGemGoal}
-                  disabled={creatingGoal}
-                >
-                  {creatingGoal
-                    ? <ActivityIndicator size="small" color="#FFF" />
-                    : <><Ionicons name="add-circle" size={14} color="#FFF" /><Text style={s.gemBtnPrimaryText}>Create in GEM</Text></>}
-                </TouchableOpacity>
+                {!pendingGemGoal && (
+                  <TouchableOpacity
+                    style={[s.gemBtnPrimary, creatingGoal && { opacity: 0.6 }]}
+                    onPress={handleCreateGemGoal}
+                    disabled={creatingGoal}
+                  >
+                    {creatingGoal
+                      ? <ActivityIndicator size="small" color="#FFF" />
+                      : <><Ionicons name="add-circle" size={14} color="#FFF" /><Text style={s.gemBtnPrimaryText}>Create in GEM</Text></>}
+                  </TouchableOpacity>
+                )}
               </View>
             )}
-            {showGemPicker && !form.linked_goal_id && (
+            {showGemPicker && (!form.linked_goal_id || pendingGemGoal) && (
               <View style={s.gemPicker}>
                 {/* Bug 3: small header + "Show all areas" toggle so the user can
                     always find an existing GEM goal even when life_area slugs

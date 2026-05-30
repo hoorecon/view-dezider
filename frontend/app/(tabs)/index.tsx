@@ -360,6 +360,44 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Solution Builders — promoted to first-class modules. Still
+              cross-referenced inside GEM (launchSolutionFinder /
+              launchSolutionMatrix) for in-context flows. */}
+          {(featureFlags.solution_finder || featureFlags.solution_matrix) && (
+            <View style={styles.quickActions}>
+              {featureFlags.solution_finder && (
+                <TouchableOpacity
+                  style={styles.actionCard}
+                  onPress={() => router.push('/tools/solution-finder-list' as any)}
+                >
+                  <LinearGradient
+                    colors={['#7C3AED', '#C084FC']}
+                    style={styles.actionIcon}
+                  >
+                    <Ionicons name="bulb" size={24} color={COLORS.white} />
+                  </LinearGradient>
+                  <Text style={styles.actionTitle}>Simple Solution Finder</Text>
+                  <Text style={styles.actionSubtitle}>Concerns → RCA → Risks → Plan</Text>
+                </TouchableOpacity>
+              )}
+              {featureFlags.solution_matrix && (
+                <TouchableOpacity
+                  style={styles.actionCard}
+                  onPress={() => router.push('/tools/solution-matrix-list' as any)}
+                >
+                  <LinearGradient
+                    colors={['#0F766E', '#14B8A6']}
+                    style={styles.actionIcon}
+                  >
+                    <Ionicons name="apps" size={24} color={COLORS.white} />
+                  </LinearGradient>
+                  <Text style={styles.actionTitle}>Advanced Solution Matrix</Text>
+                  <Text style={styles.actionSubtitle}>Scored multi-option matrix</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
           {/* Multi-User Collaboration */}
           <Text style={styles.sectionTitle}>Collaboration</Text>
           <View style={styles.quickActions}>
@@ -470,44 +508,9 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Solution Tools (WOWO gated) */}
-          {(featureFlags.solution_finder || featureFlags.solution_matrix) && (
-            <>
-              <Text style={styles.sectionTitle}>Solution Tools</Text>
-              <View style={styles.quickActions}>
-                {featureFlags.solution_finder && (
-                  <TouchableOpacity
-                    style={styles.actionCard}
-                    onPress={() => router.push('/tools/solution-finder-list')}
-                  >
-                    <LinearGradient
-                      colors={[COLORS.teal, COLORS.tealDark]}
-                      style={styles.actionIcon}
-                    >
-                      <Ionicons name="search" size={24} color={COLORS.white} />
-                    </LinearGradient>
-                    <Text style={styles.actionTitle}>Solution Finder</Text>
-                    <Text style={styles.actionSubtitle}>Structured problem solving</Text>
-                  </TouchableOpacity>
-                )}
-                {featureFlags.solution_matrix && (
-                  <TouchableOpacity
-                    style={styles.actionCard}
-                    onPress={() => router.push('/tools/solution-matrix-list')}
-                  >
-                    <LinearGradient
-                      colors={[COLORS.accent, COLORS.accentDark]}
-                      style={styles.actionIcon}
-                    >
-                      <Ionicons name="grid" size={24} color={COLORS.white} />
-                    </LinearGradient>
-                    <Text style={styles.actionTitle}>Solution Matrix</Text>
-                    <Text style={styles.actionSubtitle}>Advanced multi-layer analysis</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </>
-          )}
+          {/* Solution Tools — REMOVED: now promoted to first-class modules
+              immediately below Pros & Cons / SWOT (search for "Solution
+              Builders" above). Cross-references in GEM are preserved. */}
 
           {/* CTT - Centralized Task Tracker */}
           <Text style={styles.sectionTitle}>Task Tracker</Text>

@@ -1,30 +1,35 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { showAlert } from '../../src/utils/alert';
+/**
+ * Simple Solution Finder — v2 schema (June 2026 overhaul).
+ *
+ *   Concerns (⭐ promote to PRIMARY)            ← Q1 (a) + (b)
+ *      └─ Root Cause Analysis (per primary)     ← Q2
+ *           └─ Solutions (per RCA)              ← Q3   [→ Send to ASM]
+ *                └─ Risks (Impact% × Probability% = Index%)  ← Q4 (a)
+ *                     ├─ Mitigations (1..many)  ← Q4 (b)  [→ Send to ASM]
+ *                     └─ Contingencies (1..many) ← Q4 (c) [→ Send to ASM]
+ *   Action Plan = Solutions + Mitigations + Contingencies → Action Center → CTT / Lifestyle.
+ *
+ * Cross-references:
+ *  - Promoted to a first-class dashboard module (Pros&Cons / SWOT row).
+ *  - Still launchable from inside GEM goals (gem-goal.tsx → launchSolutionFinder).
+ *  - "Send to ASM" pills hand a deeper-analysis context to /tools/solution-matrix.
+ */
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  Alert,
-  ActivityIndicator,
-  RefreshControl,
-  Platform,
-  KeyboardAvoidingView,
-  Modal,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
+  ActivityIndicator, KeyboardAvoidingView, Platform, Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, GRADIENTS } from '../../src/constants/colors';
+import { showAlert } from '../../src/utils/alert';
+import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import TimingFieldset, { TimingValue } from '../../src/components/decisions/TimingFieldset';
-import DecisionLinkPicker, { LinkSelection } from '../../src/components/decisions/DecisionLinkPicker';
-import LinkedSourcePill from '../../src/components/decisions/LinkedSourcePill';
 import { addDaysISO } from '../../src/utils/dateLocalize';
 
+// ============== CONSTANTS ==============
 const LIFE_AREAS = [
   { id: 'career', name: 'Career', icon: 'briefcase' },
   { id: 'finance', name: 'Finance', icon: 'cash' },
@@ -34,100 +39,100 @@ const LIFE_AREAS = [
   { id: 'knowledge_skills', name: 'Knowledge & Skills', icon: 'school' },
   { id: 'social_image', name: 'Social Image', icon: 'people' },
   { id: 'social_contributions', name: 'Social Contributions', icon: 'globe' },
-  { id: 'hobbies_entertainment', name: 'Hobbies & Entertainment', icon: 'game-controller' },
+  { id: 'hobbies_entertainment', name: 'Hobbies', icon: 'game-controller' },
   { id: 'spirituality_religion', name: 'Spirituality', icon: 'leaf' },
 ];
 
-const HELP_LEVELS = [
-  'One-time Consulting',
-  'Problem Solving',
-  'Regular Coaching',
+const STEPS = [
+  { title: 'Goal',         icon: 'flag' },
+  { title: 'Concerns',     icon: 'alert-circle' },
+  { title: 'RCA',          icon: 'git-branch' },
+  { title: 'Solutions',    icon: 'bulb' },
+  { title: 'Risks',        icon: 'shield-checkmark' },
+  { title: 'Action Plan',  icon: 'rocket' },
 ];
 
-interface ActionItem {
-  action: string;
-  who: string;
-  by_when: string;
-  status: string;
+// ============== TYPES ==============
+interface Concern { id: string; text: string; is_primary: boolean; order: number; }
+interface RootCause { id: string; concern_id: string; text: string; }
+interface Solution { id: string; rca_id: string; text: string; capabilities?: string; resources?: string; }
+interface Risk {
+  id: string; sol_id: string; name: string;
+  impact_pct?: number; probability_pct?: number; risk_index_pct?: number;
+}
+interface Mitigation { id: string; risk_id: string; text: string; }
+interface Contingency { id: string; risk_id: string; text: string; }
+interface APItem {
+  ap_id: string;
+  source_type: 'solution' | 'mitigation' | 'contingency';
+  source_id: string;
+  text: string;
+  who?: string;
+  by_when?: string;
+  status?: string;
+  pushed_to_action_center?: boolean;
+  action_id?: string;
+  pushed_to_ctt?: boolean;
+  pushed_to_lifestyle?: boolean;
+  push_ctt?: boolean;       // selected-but-not-yet-pushed flag (UI only)
+  push_lifestyle?: boolean;
 }
 
-interface Milestone {
-  description: string;
-  timeline: string;
-}
+// ============== HELPERS ==============
+const uid = () => Math.random().toString(36).slice(2, 10);
+const clampPct = (n: any): number | undefined => {
+  const x = parseInt(String(n ?? '').replace(/[^0-9]/g, ''), 10);
+  if (isNaN(x)) return undefined;
+  return Math.min(100, Math.max(0, x));
+};
 
-export default function SolutionFinderScreen() {
+// ============== COMPONENT ==============
+export default function SimpleSolutionFinder() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const editId = params.id as string | undefined;
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [currentStep, setCurrentStep] = useState(0);
   const [savedId, setSavedId] = useState<string | null>(editId || null);
+  const [step, setStep] = useState(0);
 
-  // Collaboration
-  const [showCollabModal, setShowCollabModal] = useState(false);
-  const [collabModes, setCollabModes] = useState<any[]>([]);
-  const [collabContacts, setCollabContacts] = useState<any[]>([]);
-  const [collabSelectedMode, setCollabSelectedMode] = useState('equal');
-  const [collabSelectedContacts, setCollabSelectedContacts] = useState<Set<string>>(new Set());
-  const [collabSessionMode, setCollabSessionMode] = useState('async');
-  const [collabCreating, setCollabCreating] = useState(false);
-  const [existingCollabs, setExistingCollabs] = useState<any[]>([]);
-
-  // Form state
+  // Step 0 — Goal
   const [areaOfLife, setAreaOfLife] = useState('');
   const [smartGoal, setSmartGoal] = useState('');
-
-  // Enhancement #4 — Timing default 1 week
   const [timing, setTiming] = useState<TimingValue>({
-    deadline_date: addDaysISO(7),
-    impact_horizon_value: 7,
-    impact_horizon_unit: 'days',
+    deadline_date: addDaysISO(7), impact_horizon_value: 7, impact_horizon_unit: 'days',
   });
 
-  // Enhancement #5a — Linked source decision
-  const [linkedSource, setLinkedSource] = useState<LinkSelection | null>(null);
-  const [showLinkPicker, setShowLinkPicker] = useState(false);
-  const [milestones, setMilestones] = useState<Milestone[]>([{ description: '', timeline: '' }]);
-  const [q1AllConcerns, setQ1AllConcerns] = useState('');
-  const [q2PrimaryConcerns, setQ2PrimaryConcerns] = useState('');
-  const [q3Capabilities, setQ3Capabilities] = useState('');
-  const [q3Resources, setQ3Resources] = useState('');
-  const [q3Solutions, setQ3Solutions] = useState('');
-  const [externalHelpAspect, setExternalHelpAspect] = useState('');
-  const [externalHelpLevel, setExternalHelpLevel] = useState('');
-  const [externalHelpFrom, setExternalHelpFrom] = useState('');
-  const [q4NegConsequences, setQ4NegConsequences] = useState('');
-  const [q4Mitigation, setQ4Mitigation] = useState('');
-  const [q4Contingency, setQ4Contingency] = useState('');
-  const [actionItems, setActionItems] = useState<ActionItem[]>([{ action: '', who: '', by_when: '', status: 'pending' }]);
+  // Step 1..4 — structured tree
+  const [concerns, setConcerns] = useState<Concern[]>([]);
+  const [rootCauses, setRootCauses] = useState<RootCause[]>([]);
+  const [solutions, setSolutions] = useState<Solution[]>([]);
+  const [risks, setRisks] = useState<Risk[]>([]);
+  const [mitigations, setMitigations] = useState<Mitigation[]>([]);
+  const [contingencies, setContingencies] = useState<Contingency[]>([]);
+  const [actionPlan, setActionPlan] = useState<APItem[]>([]);
 
-  // Social Learning for Q4
-  const [showSLRiskModal, setShowSLRiskModal] = useState(false);
-  const [slRiskTemplates, setSlRiskTemplates] = useState<any[]>([]);
-  const [loadingSLRisk, setLoadingSLRisk] = useState(false);
+  // Per-row "draft" inputs (so adding doesn't require a modal)
+  const [newConcernText, setNewConcernText] = useState('');
+  const [newRcaText, setNewRcaText] = useState<Record<string, string>>({});
+  const [newSolText, setNewSolText] = useState<Record<string, string>>({});
+  const [newRiskText, setNewRiskText] = useState<Record<string, string>>({});
+  const [newMitText, setNewMitText] = useState<Record<string, string>>({});
+  const [newConText, setNewConText] = useState<Record<string, string>>({});
 
-  // Prefill from Social Learning templates
-  useEffect(() => {
-    if (params.from_social_learning) {
-      if (params.prefill_goal) setSmartGoal(params.prefill_goal as string);
-      if (params.prefill_concerns) setQ1AllConcerns(params.prefill_concerns as string);
-      if (params.prefill_risks) setQ4Mitigation(params.prefill_risks as string);
-      if (params.prefill_actions) setQ4Contingency(params.prefill_actions as string);
-      if (params.prefill_area) setAreaOfLife(params.prefill_area as string);
-    }
-  }, [params.from_social_learning]);
+  // ============ DERIVED ============
+  const primaryConcerns = useMemo(
+    () => concerns.filter(c => c.is_primary).sort((a, b) => a.order - b.order),
+    [concerns]
+  );
+  const rcasFor = (cid: string) => rootCauses.filter(r => r.concern_id === cid);
+  const solsFor = (rid: string) => solutions.filter(s => s.rca_id === rid);
+  const risksFor = (sid: string) => risks.filter(r => r.sol_id === sid);
+  const mitsFor = (riskId: string) => mitigations.filter(m => m.risk_id === riskId);
+  const consFor = (riskId: string) => contingencies.filter(c => c.risk_id === riskId);
 
-  const steps = [
-    { title: 'Life Area & Goal', icon: 'flag' },
-    { title: 'Concerns', icon: 'alert-circle' },
-    { title: 'Influence & Solutions', icon: 'bulb' },
-    { title: 'Risk Management', icon: 'shield-checkmark' },
-    { title: 'Action Plan', icon: 'rocket' },
-  ];
-
+  // ============ LOAD ============
   useEffect(() => {
     if (editId) loadEntry();
   }, [editId]);
@@ -139,978 +144,802 @@ export default function SolutionFinderScreen() {
       const d = res.data;
       setAreaOfLife(d.area_of_life || '');
       setSmartGoal(d.smart_goal || '');
-      setMilestones(d.milestones?.length ? d.milestones : [{ description: '', timeline: '' }]);
-      setQ1AllConcerns(d.q1_all_concerns || '');
-      setQ2PrimaryConcerns(d.q2_primary_concerns || '');
-      setQ3Capabilities(d.q3_capabilities || '');
-      setQ3Resources(d.q3_resources || '');
-      setQ3Solutions(d.q3_solutions || '');
-      setExternalHelpAspect(d.external_help_aspect || '');
-      setExternalHelpLevel(d.external_help_level || '');
-      setExternalHelpFrom(d.external_help_from || '');
-      setQ4NegConsequences(d.q4_negative_consequences || '');
-      setQ4Mitigation(d.q4_mitigation_plans || '');
-      setQ4Contingency(d.q4_contingency_plans || '');
-      setActionItems(d.action_items?.length ? d.action_items : [{ action: '', who: '', by_when: '', status: 'pending' }]);
+      setTiming({
+        deadline_date: d.deadline_date || addDaysISO(7),
+        impact_horizon_value: d.impact_horizon_value ?? 7,
+        impact_horizon_unit: d.impact_horizon_unit || 'days',
+      });
+      setConcerns(d.concerns || []);
+      setRootCauses(d.root_causes || []);
+      setSolutions(d.solutions || []);
+      setRisks(d.risks || []);
+      setMitigations(d.mitigations || []);
+      setContingencies(d.contingencies || []);
+      setActionPlan(d.action_plan_items || []);
     } catch (e) {
       showAlert('Error', 'Failed to load entry');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
-  // Social Learning templates for Q4 Risk
-  const fetchSLRiskTemplates = async () => {
-    setLoadingSLRisk(true);
-    try {
-      const res = await api.get('/social-learning/templates-for-solution-finder', {
-        params: { life_area: areaOfLife || undefined, include_personal: true, limit: 20 },
-      });
-      // Combine all 3 tiers
-      const all: any[] = [];
-      (res.data?.tier_1_personal || []).forEach((t: any) => all.push({ ...t, _tierLabel: 'Personal' }));
-      (res.data?.tier_2_authorized || []).forEach((t: any) => all.push({ ...t, _tierLabel: 'Authorized' }));
-      (res.data?.tier_3_ai_derived || []).forEach((t: any) => all.push({ ...t, _tierLabel: 'AI Premium' }));
-      setSlRiskTemplates(all);
-    } catch (e) {
-      console.error('Failed to load SL risk templates:', e);
-      setSlRiskTemplates([]);
-    } finally {
-      setLoadingSLRisk(false);
-    }
-  };
+  // ============ SAVE ============
+  const buildPayload = () => ({
+    area_of_life: areaOfLife,
+    smart_goal: smartGoal,
+    deadline_date: timing.deadline_date || null,
+    impact_horizon_value: timing.impact_horizon_value ?? null,
+    impact_horizon_unit: timing.impact_horizon_unit || null,
+    concerns,
+    root_causes: rootCauses,
+    solutions,
+    risks,
+    mitigations,
+    contingencies,
+    action_plan_items: actionPlan,
+    schema_version: 2,
+  });
 
-  const applySLRiskTemplate = (t: any) => {
-    const risks = t.risks || [];
-    const riskLines = risks.map((r: any) =>
-      `[Risk Index: ${r.risk_index || 'N/A'}] ${r.risk_name} (Prob: ${r.probability}/10, Impact: ${r.impact}/10)`
-    ).join('\n');
-    const mitigations = risks.map((r: any) => r.mitigation_plan).filter(Boolean).join('\n');
-    const contingencies = risks.map((r: any) => r.contingency_plan).filter(Boolean).join('\n');
-
-    if (riskLines) setQ4NegConsequences(prev => prev ? prev + '\n' + riskLines : riskLines);
-    if (mitigations) setQ4Mitigation(prev => prev ? prev + '\n' + mitigations : mitigations);
-    if (contingencies) setQ4Contingency(prev => prev ? prev + '\n' + contingencies : contingencies);
-    setShowSLRiskModal(false);
-    showAlert('Applied', `${risks.length} risks with mitigations & contingencies added from ${t._tierLabel || 'Social Learning'}.`);
-  };
-
-  const handleSave = async () => {
+  const handleSave = useCallback(async (silent = false): Promise<string | null> => {
     if (!areaOfLife) {
-      showAlert('Required', 'Please select an area of life');
-      return;
+      if (!silent) showAlert('Required', 'Pick a life area.');
+      return null;
     }
     if (!smartGoal.trim()) {
-      showAlert('Required', 'Please enter a SMART goal');
-      return;
+      if (!silent) showAlert('Required', 'Enter your SMART goal.');
+      return null;
     }
-
     setSaving(true);
     try {
-      const payload = {
-        area_of_life: areaOfLife,
-        smart_goal: smartGoal,
-        milestones: milestones.filter(m => m.description.trim()),
-        q1_all_concerns: q1AllConcerns,
-        q2_primary_concerns: q2PrimaryConcerns,
-        q3_capabilities: q3Capabilities,
-        q3_resources: q3Resources,
-        q3_solutions: q3Solutions,
-        external_help_aspect: externalHelpAspect,
-        external_help_level: externalHelpLevel,
-        external_help_from: externalHelpFrom,
-        q4_negative_consequences: q4NegConsequences,
-        q4_mitigation_plans: q4Mitigation,
-        q4_contingency_plans: q4Contingency,
-        action_items: actionItems.filter(a => a.action.trim()),
-        status: currentStep >= 4 ? 'completed' : 'in_progress',
-        // Timing (Enhancement #4)
-        deadline_date: timing.deadline_date,
-        impact_horizon_value: timing.impact_horizon_value,
-        impact_horizon_unit: timing.impact_horizon_unit,
-        // Linking (Enhancement #5a)
-        linked_from_decision_id: linkedSource?.linked_from_decision_id || null,
-        linked_from_module: linkedSource?.linked_from_module || null,
-        linked_from_option_label: linkedSource?.linked_from_option_label || null,
-        linked_from_score_pct: linkedSource?.linked_from_score_pct ?? null,
-      };
-
-      if (editId) {
-        await api.put(`/solution-finders/${editId}`, payload);
+      const payload = buildPayload();
+      let id = savedId;
+      if (id) {
+        await api.put(`/solution-finders/${id}`, payload);
       } else {
-        const res = await api.post('/solution-finders', payload);
-        if (res.data?.id) setSavedId(res.data.id);
+        const r = await api.post('/solution-finders', payload);
+        id = r.data.entry_id;
+        setSavedId(id);
       }
-      showAlert('Saved', 'Solution Finder saved successfully!', [
-        { text: 'OK', onPress: () => router.back() }
-      ]);
-    } catch (e) {
-      showAlert('Error', 'Failed to save');
-    } finally {
-      setSaving(false);
-    }
+      return id;
+    } catch (e: any) {
+      showAlert('Save failed', e?.response?.data?.detail || 'Try again');
+      return null;
+    } finally { setSaving(false); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedId, areaOfLife, smartGoal, timing, concerns, rootCauses, solutions, risks, mitigations, contingencies, actionPlan]);
+
+  // ============ CRUD HELPERS ============
+  const addConcern = () => {
+    const t = newConcernText.trim();
+    if (!t) return;
+    setConcerns(prev => [...prev, { id: uid(), text: t, is_primary: false, order: prev.length }]);
+    setNewConcernText('');
+  };
+  const togglePrimary = (cid: string) =>
+    setConcerns(prev => prev.map(c => c.id === cid ? { ...c, is_primary: !c.is_primary } : c));
+  const editConcern = (cid: string, text: string) =>
+    setConcerns(prev => prev.map(c => c.id === cid ? { ...c, text } : c));
+  const removeConcern = (cid: string) => {
+    setConcerns(prev => prev.filter(c => c.id !== cid));
+    // Cascade: drop RCAs / solutions / risks / mitigations / contingencies tied to it.
+    const rcaIds = rootCauses.filter(r => r.concern_id === cid).map(r => r.id);
+    const solIds = solutions.filter(s => rcaIds.includes(s.rca_id)).map(s => s.id);
+    const riskIds = risks.filter(r => solIds.includes(r.sol_id)).map(r => r.id);
+    setRootCauses(prev => prev.filter(r => r.concern_id !== cid));
+    setSolutions(prev => prev.filter(s => !rcaIds.includes(s.rca_id)));
+    setRisks(prev => prev.filter(r => !solIds.includes(r.sol_id)));
+    setMitigations(prev => prev.filter(m => !riskIds.includes(m.risk_id)));
+    setContingencies(prev => prev.filter(c => !riskIds.includes(c.risk_id)));
   };
 
-  const addMilestone = () => setMilestones([...milestones, { description: '', timeline: '' }]);
-  const removeMilestone = (i: number) => {
-    if (milestones.length > 1) setMilestones(milestones.filter((_, idx) => idx !== i));
+  const addRca = (cid: string) => {
+    const t = (newRcaText[cid] || '').trim(); if (!t) return;
+    setRootCauses(prev => [...prev, { id: uid(), concern_id: cid, text: t }]);
+    setNewRcaText(prev => ({ ...prev, [cid]: '' }));
   };
-  const updateMilestone = (i: number, field: keyof Milestone, val: string) => {
-    const updated = [...milestones];
-    updated[i] = { ...updated[i], [field]: val };
-    setMilestones(updated);
-  };
-
-  const addActionItem = () => setActionItems([...actionItems, { action: '', who: '', by_when: '', status: 'pending' }]);
-  const removeActionItem = (i: number) => {
-    if (actionItems.length > 1) setActionItems(actionItems.filter((_, idx) => idx !== i));
-  };
-  const updateActionItem = (i: number, field: keyof ActionItem, val: string) => {
-    const updated = [...actionItems];
-    updated[i] = { ...updated[i], [field]: val };
-    setActionItems(updated);
+  const removeRca = (rid: string) => {
+    const solIds = solutions.filter(s => s.rca_id === rid).map(s => s.id);
+    const riskIds = risks.filter(r => solIds.includes(r.sol_id)).map(r => r.id);
+    setRootCauses(prev => prev.filter(r => r.id !== rid));
+    setSolutions(prev => prev.filter(s => s.rca_id !== rid));
+    setRisks(prev => prev.filter(r => !solIds.includes(r.sol_id)));
+    setMitigations(prev => prev.filter(m => !riskIds.includes(m.risk_id)));
+    setContingencies(prev => prev.filter(c => !riskIds.includes(c.risk_id)));
   };
 
-  // ======== COLLABORATION ========
-  const openCollabModal = async () => {
-    if (!savedId) {
-      showAlert('Save First', 'Please save this Solution Finder entry before starting a collaboration session.');
+  const addSolution = (rcaId: string) => {
+    const t = (newSolText[rcaId] || '').trim(); if (!t) return;
+    setSolutions(prev => [...prev, { id: uid(), rca_id: rcaId, text: t }]);
+    setNewSolText(prev => ({ ...prev, [rcaId]: '' }));
+  };
+  const editSolution = (sid: string, patch: Partial<Solution>) =>
+    setSolutions(prev => prev.map(s => s.id === sid ? { ...s, ...patch } : s));
+  const removeSolution = (sid: string) => {
+    const riskIds = risks.filter(r => r.sol_id === sid).map(r => r.id);
+    setSolutions(prev => prev.filter(s => s.id !== sid));
+    setRisks(prev => prev.filter(r => r.sol_id !== sid));
+    setMitigations(prev => prev.filter(m => !riskIds.includes(m.risk_id)));
+    setContingencies(prev => prev.filter(c => !riskIds.includes(c.risk_id)));
+  };
+
+  const addRisk = (sid: string) => {
+    const t = (newRiskText[sid] || '').trim(); if (!t) return;
+    setRisks(prev => [...prev, { id: uid(), sol_id: sid, name: t }]);
+    setNewRiskText(prev => ({ ...prev, [sid]: '' }));
+  };
+  const editRisk = (rid: string, patch: Partial<Risk>) =>
+    setRisks(prev => prev.map(r => {
+      if (r.id !== rid) return r;
+      const next = { ...r, ...patch };
+      const i = next.impact_pct, p = next.probability_pct;
+      if (typeof i === 'number' && typeof p === 'number') {
+        next.risk_index_pct = Math.round((i * p) / 100);  // both are %, index is %
+      } else {
+        next.risk_index_pct = undefined;
+      }
+      return next;
+    }));
+  const removeRisk = (rid: string) => {
+    setRisks(prev => prev.filter(r => r.id !== rid));
+    setMitigations(prev => prev.filter(m => m.risk_id !== rid));
+    setContingencies(prev => prev.filter(c => c.risk_id !== rid));
+  };
+
+  const addMitigation = (riskId: string) => {
+    const t = (newMitText[riskId] || '').trim(); if (!t) return;
+    setMitigations(prev => [...prev, { id: uid(), risk_id: riskId, text: t }]);
+    setNewMitText(prev => ({ ...prev, [riskId]: '' }));
+  };
+  const removeMitigation = (mid: string) =>
+    setMitigations(prev => prev.filter(m => m.id !== mid));
+
+  const addContingency = (riskId: string) => {
+    const t = (newConText[riskId] || '').trim(); if (!t) return;
+    setContingencies(prev => [...prev, { id: uid(), risk_id: riskId, text: t }]);
+    setNewConText(prev => ({ ...prev, [riskId]: '' }));
+  };
+  const removeContingency = (cid: string) =>
+    setContingencies(prev => prev.filter(c => c.id !== cid));
+
+  // ============ ACTION PLAN AGGREGATOR ============
+  // Q5: derives a fresh list from solutions + mitigations + contingencies, but
+  // PRESERVES any push-state already captured on existing items so re-running
+  // the aggregator doesn't clobber "pushed_to_action_center" markers.
+  const recomputePlan = () => {
+    const next: APItem[] = [];
+    const idxBy = new Map(actionPlan.map(p => [`${p.source_type}:${p.source_id}`, p]));
+    const upsert = (source_type: APItem['source_type'], source_id: string, text: string) => {
+      const key = `${source_type}:${source_id}`;
+      const prior = idxBy.get(key);
+      next.push(prior
+        ? { ...prior, text }
+        : { ap_id: uid(), source_type, source_id, text, status: 'pending' });
+    };
+    solutions.forEach(s => upsert('solution', s.id, s.text));
+    mitigations.forEach(m => upsert('mitigation', m.id, m.text));
+    contingencies.forEach(c => upsert('contingency', c.id, c.text));
+    setActionPlan(next);
+  };
+
+  // ============ SEND-TO-ASM HOOK ============
+  // Hands off context to Advanced Solution Matrix. Saves first so the SF entry
+  // exists, then deep-links with the SF entry_id + the source sub-id.
+  const sendToASM = async (source: 'solution' | 'mitigation' | 'contingency', sourceId: string, label: string) => {
+    const id = await handleSave(true);
+    if (!id) return;
+    router.push({
+      pathname: '/tools/solution-matrix',
+      params: {
+        from_sf_entry_id: id,
+        from_sf_source: source,
+        from_sf_source_id: sourceId,
+        prefill_title: `Deep-dive: ${label.slice(0, 60)}`,
+        prefill_area: areaOfLife,
+      },
+    } as any);
+  };
+
+  // ============ PUSH TO ACTION CENTER ============
+  const togglePlanFlag = (apId: string, k: 'push_ctt' | 'push_lifestyle') =>
+    setActionPlan(prev => prev.map(p => p.ap_id === apId ? { ...p, [k]: !p[k] } : p));
+
+  const editPlanItem = (apId: string, patch: Partial<APItem>) =>
+    setActionPlan(prev => prev.map(p => p.ap_id === apId ? { ...p, ...patch } : p));
+
+  const pushAllToActionCenter = async () => {
+    const id = await handleSave(true);
+    if (!id) return;
+    const ap_ids = actionPlan.filter(p => !p.pushed_to_action_center).map(p => p.ap_id);
+    if (ap_ids.length === 0) {
+      showAlert('Nothing to push', 'All items are already in Action Center.');
       return;
     }
+    const push_to_ctt = actionPlan.some(p => p.push_ctt && !p.pushed_to_ctt);
+    const push_to_lifestyle = actionPlan.some(p => p.push_lifestyle && !p.pushed_to_lifestyle);
     try {
-      const [modesRes, contactsRes, sessionsRes] = await Promise.all([
-        api.get('/collaboration/decision-modes').catch(() => ({ data: [] })),
-        api.get('/contacts?limit=100').catch(() => ({ data: [] })),
-        api.get('/collaboration/sessions').catch(() => ({ data: [] })),
-      ]);
-      setCollabModes(modesRes.data || []);
-      setCollabContacts(contactsRes.data || []);
-      // Filter sessions linked to this solution finder
-      const linked = (sessionsRes.data || []).filter((s: any) => s.module_id === savedId && s.module_type === 'solution_finder');
-      setExistingCollabs(linked);
-    } catch (e) { /* ignore */ }
-    setShowCollabModal(true);
-  };
-
-  const handleCreateCollab = async () => {
-    if (collabSelectedContacts.size === 0) {
-      showAlert('Required', 'Select at least one participant');
-      return;
-    }
-    setCollabCreating(true);
-    try {
-      await api.post('/collaboration/sessions', {
-        module_type: 'solution_finder',
-        module_id: savedId,
-        title: `${areaOfLife ? areaOfLife.replace(/_/g, ' ') + ': ' : ''}${smartGoal.slice(0, 50) || 'Solution Finder'}`,
-        decision_mode_id: collabSelectedMode,
-        participant_contact_ids: Array.from(collabSelectedContacts),
-        auth_config: { methods_required: 0, verify_each_time: false, enabled_methods: [] },
-        notify_participants: true,
-        session_mode: collabSessionMode,
+      const r = await api.post(`/solution-finders/${id}/push-action-plan`, {
+        ap_ids, push_to_ctt, push_to_lifestyle,
       });
-      showAlert('Session Created', 'Group collaboration session launched! Participants will be notified.');
-      setShowCollabModal(false);
-      setCollabSelectedContacts(new Set());
-    } catch (err: any) {
-      showAlert('Error', err.response?.data?.detail || 'Failed to create session');
-    } finally {
-      setCollabCreating(false);
+      setActionPlan(r.data.action_plan_items || []);
+      showAlert('Pushed',
+        `${r.data.pushed_to_action_center} to Action Center` +
+        (r.data.pushed_to_ctt ? ` · ${r.data.pushed_to_ctt} to CTT` : '') +
+        (r.data.pushed_to_lifestyle ? ` · ${r.data.pushed_to_lifestyle} to Lifestyle` : ''));
+    } catch (e: any) {
+      showAlert('Push failed', e?.response?.data?.detail || 'Try again');
     }
   };
 
-  const toggleCollabContact = (id: string) => {
-    const newSet = new Set(collabSelectedContacts);
-    if (newSet.has(id)) newSet.delete(id); else newSet.add(id);
-    setCollabSelectedContacts(newSet);
+  // ============ NAVIGATION GUARDS ============
+  const canProceed = () => {
+    if (step === 0) return !!areaOfLife && !!smartGoal.trim();
+    if (step === 1) return concerns.some(c => c.is_primary);
+    if (step === 2) return rootCauses.length > 0;
+    if (step === 3) return solutions.length > 0;
+    if (step === 4) return true; // risks optional
+    return true;
   };
 
+  const onNext = async () => {
+    if (!canProceed()) {
+      const msg =
+        step === 0 ? 'Pick a life area and enter a SMART goal.'
+        : step === 1 ? 'Tap the ⭐ on at least one concern to mark it as PRIMARY.'
+        : step === 2 ? 'Add at least one Root Cause for a primary concern.'
+        : step === 3 ? 'Add at least one Solution.'
+        : 'Cannot proceed.';
+      return showAlert('Step incomplete', msg);
+    }
+    // Auto-save on each transition (silent).
+    await handleSave(true);
+    if (step === 4) recomputePlan();
+    setStep(s => Math.min(5, s + 1));
+  };
+  const onBack = () => setStep(s => Math.max(0, s - 1));
+
+  // ============ RENDER STEPS ============
+  const renderStepIndicator = () => (
+    <View style={s.stepIndicator}>
+      {STEPS.map((st, i) => (
+        <View key={st.title} style={s.stepDotWrap}>
+          <View style={[s.stepDot, i <= step && s.stepDotActive]}>
+            <Ionicons name={st.icon as any} size={12} color={i <= step ? '#FFF' : '#94A3B8'} />
+          </View>
+          {i < STEPS.length - 1 && <View style={[s.stepLine, i < step && s.stepLineActive]} />}
+        </View>
+      ))}
+    </View>
+  );
+
+  const renderStep0 = () => (
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 80 }}>
+      <Text style={s.sectionLabel}>Life Area</Text>
+      <View style={s.areaGrid}>
+        {LIFE_AREAS.map(a => (
+          <TouchableOpacity
+            key={a.id}
+            style={[s.areaChip, areaOfLife === a.id && s.areaChipActive]}
+            onPress={() => setAreaOfLife(a.id)}
+          >
+            <Ionicons name={a.icon as any} size={14} color={areaOfLife === a.id ? '#FFF' : '#475569'} />
+            <Text style={[s.areaChipText, areaOfLife === a.id && { color: '#FFF' }]}>{a.name}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <Text style={s.sectionLabel}>SMART Goal</Text>
+      <TextInput
+        style={[s.textArea, { minHeight: 70 }]}
+        multiline placeholder="Specific · Measurable · Achievable · Relevant · Time-bound"
+        placeholderTextColor="#9CA3AF" value={smartGoal} onChangeText={setSmartGoal}
+      />
+      <View style={{ height: 12 }} />
+      <TimingFieldset value={timing} onChange={setTiming} />
+    </ScrollView>
+  );
+
+  const renderStep1 = () => (
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 80 }}>
+      <Text style={s.qTitle}>Q1 (a). What are ALL your concerns?</Text>
+      <Text style={s.qHint}>Tap the ⭐ next to a concern to mark it as PRIMARY (Q1 (b)). You can come back and add more stars later.</Text>
+      {concerns.length === 0 && <Text style={s.empty}>No concerns yet. Add one below.</Text>}
+      {concerns.map(c => (
+        <View key={c.id} style={s.concernRow}>
+          <TouchableOpacity onPress={() => togglePrimary(c.id)} hitSlop={8}>
+            <Ionicons
+              name={c.is_primary ? 'star' : 'star-outline'}
+              size={22}
+              color={c.is_primary ? '#F59E0B' : '#94A3B8'}
+            />
+          </TouchableOpacity>
+          <TextInput
+            style={s.concernInput}
+            value={c.text}
+            onChangeText={t => editConcern(c.id, t)}
+            placeholder="Concern..."
+            placeholderTextColor="#9CA3AF"
+          />
+          <TouchableOpacity onPress={() => removeConcern(c.id)} hitSlop={8}>
+            <Ionicons name="close-circle" size={20} color="#CBD5E1" />
+          </TouchableOpacity>
+        </View>
+      ))}
+      <View style={s.addRow}>
+        <TextInput
+          style={s.addInput}
+          placeholder="Add a concern..."
+          placeholderTextColor="#9CA3AF"
+          value={newConcernText}
+          onChangeText={setNewConcernText}
+          onSubmitEditing={addConcern}
+        />
+        <TouchableOpacity style={s.addBtn} onPress={addConcern}>
+          <Ionicons name="add" size={20} color="#FFF" />
+        </TouchableOpacity>
+      </View>
+      {primaryConcerns.length > 0 && (
+        <View style={s.previewBox}>
+          <Text style={s.previewTitle}>Q1 (b). PRIMARY concerns ({primaryConcerns.length})</Text>
+          {primaryConcerns.map((c, i) => (
+            <Text key={c.id} style={s.previewItem}>{i + 1}. {c.text}</Text>
+          ))}
+        </View>
+      )}
+    </ScrollView>
+  );
+
+  const renderStep2 = () => (
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 80 }}>
+      <Text style={s.qTitle}>Q2. Root Cause Analysis</Text>
+      <Text style={s.qHint}>For each PRIMARY concern, list the root causes (1 to many).</Text>
+      {primaryConcerns.length === 0 && (
+        <Text style={s.empty}>No primary concerns yet. Go back to Q1 and tap ⭐ to mark some.</Text>
+      )}
+      {primaryConcerns.map((c, i) => (
+        <View key={c.id} style={s.groupCard}>
+          <Text style={s.groupTitle}>{i + 1}. {c.text}</Text>
+          {rcasFor(c.id).map(r => (
+            <View key={r.id} style={s.childRow}>
+              <View style={s.bullet} />
+              <Text style={s.childText}>{r.text}</Text>
+              <TouchableOpacity onPress={() => removeRca(r.id)} hitSlop={6}>
+                <Ionicons name="close" size={16} color="#94A3B8" />
+              </TouchableOpacity>
+            </View>
+          ))}
+          <View style={s.addRow}>
+            <TextInput
+              style={s.addInput}
+              placeholder="Add a root cause..."
+              placeholderTextColor="#9CA3AF"
+              value={newRcaText[c.id] || ''}
+              onChangeText={t => setNewRcaText(prev => ({ ...prev, [c.id]: t }))}
+              onSubmitEditing={() => addRca(c.id)}
+            />
+            <TouchableOpacity style={s.addBtn} onPress={() => addRca(c.id)}>
+              <Ionicons name="add" size={18} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      ))}
+    </ScrollView>
+  );
+
+  const renderStep3 = () => (
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 80 }}>
+      <Text style={s.qTitle}>Q3. Solutions within your Capabilities & Resources</Text>
+      <Text style={s.qHint}>For each Root Cause, list practical solutions. Use the “Send to ASM” pill to deep-dive any solution in the Advanced Solution Matrix.</Text>
+      {rootCauses.length === 0 && (
+        <Text style={s.empty}>No root causes yet. Go back to Q2.</Text>
+      )}
+      {primaryConcerns.map(c => (
+        <View key={c.id} style={{ marginBottom: 8 }}>
+          <Text style={s.groupHeader}>{c.text}</Text>
+          {rcasFor(c.id).map(r => (
+            <View key={r.id} style={s.groupCard}>
+              <Text style={s.subGroupTitle}>{r.text}</Text>
+              {solsFor(r.id).map(sol => (
+                <View key={sol.id} style={s.solCard}>
+                  <View style={s.solRow}>
+                    <View style={s.bullet} />
+                    <TextInput
+                      style={s.solInput}
+                      value={sol.text}
+                      onChangeText={t => editSolution(sol.id, { text: t })}
+                      placeholder="Solution..."
+                      placeholderTextColor="#9CA3AF"
+                      multiline
+                    />
+                    <TouchableOpacity onPress={() => sendToASM('solution', sol.id, sol.text)} style={s.asmPill}>
+                      <Ionicons name="apps" size={11} color="#0F766E" />
+                      <Text style={s.asmPillText}>ASM</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => removeSolution(sol.id)} hitSlop={6}>
+                      <Ionicons name="close" size={16} color="#94A3B8" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+              <View style={s.addRow}>
+                <TextInput
+                  style={s.addInput}
+                  placeholder="Add a solution..."
+                  placeholderTextColor="#9CA3AF"
+                  value={newSolText[r.id] || ''}
+                  onChangeText={t => setNewSolText(prev => ({ ...prev, [r.id]: t }))}
+                  onSubmitEditing={() => addSolution(r.id)}
+                />
+                <TouchableOpacity style={s.addBtn} onPress={() => addSolution(r.id)}>
+                  <Ionicons name="add" size={18} color="#FFF" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))}
+        </View>
+      ))}
+    </ScrollView>
+  );
+
+  const renderStep4 = () => (
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 80 }}>
+      <Text style={s.qTitle}>Q4. Risk Management</Text>
+      <Text style={s.qHint}>
+        4a · Risks per solution (Impact% × Probability% = Risk Index%).{'\n'}
+        4b · Mitigations (1..many) · 4c · Contingencies (1..many). Use “ASM” to deep-dive any item.
+      </Text>
+      {solutions.length === 0 && <Text style={s.empty}>No solutions yet. Go back to Q3.</Text>}
+      {solutions.map(sol => (
+        <View key={sol.id} style={s.groupCard}>
+          <Text style={s.subGroupTitle}>Solution: {sol.text}</Text>
+          {risksFor(sol.id).map(r => (
+            <View key={r.id} style={s.riskCard}>
+              <View style={s.riskHeader}>
+                <Ionicons name="alert-circle" size={16} color="#DC2626" />
+                <TextInput
+                  style={s.riskNameInput}
+                  value={r.name}
+                  onChangeText={t => editRisk(r.id, { name: t })}
+                  placeholder="Risk name..."
+                  placeholderTextColor="#9CA3AF"
+                />
+                <TouchableOpacity onPress={() => removeRisk(r.id)} hitSlop={6}>
+                  <Ionicons name="close" size={16} color="#94A3B8" />
+                </TouchableOpacity>
+              </View>
+              <View style={s.riskScores}>
+                <View style={s.scoreCol}>
+                  <Text style={s.scoreLbl}>Impact %</Text>
+                  <TextInput
+                    style={s.scoreInput}
+                    keyboardType="numeric"
+                    value={r.impact_pct == null ? '' : String(r.impact_pct)}
+                    onChangeText={t => editRisk(r.id, { impact_pct: clampPct(t) })}
+                    placeholder="0-100"
+                    placeholderTextColor="#9CA3AF"
+                  />
+                </View>
+                <Text style={s.scoreX}>×</Text>
+                <View style={s.scoreCol}>
+                  <Text style={s.scoreLbl}>Probability %</Text>
+                  <TextInput
+                    style={s.scoreInput}
+                    keyboardType="numeric"
+                    value={r.probability_pct == null ? '' : String(r.probability_pct)}
+                    onChangeText={t => editRisk(r.id, { probability_pct: clampPct(t) })}
+                    placeholder="0-100"
+                    placeholderTextColor="#9CA3AF"
+                  />
+                </View>
+                <Text style={s.scoreX}>=</Text>
+                <View style={s.scoreCol}>
+                  <Text style={s.scoreLbl}>Index %</Text>
+                  <View style={[s.scoreInput, s.scoreDerived]}>
+                    <Text style={s.scoreDerivedText}>
+                      {r.risk_index_pct == null ? '—' : `${r.risk_index_pct}%`}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* 4b — Mitigations (1..many) */}
+              <Text style={s.subSubLabel}>4b · Mitigations</Text>
+              {mitsFor(r.id).map(m => (
+                <View key={m.id} style={s.childRow}>
+                  <View style={[s.bullet, { backgroundColor: '#10B981' }]} />
+                  <Text style={s.childText}>{m.text}</Text>
+                  <TouchableOpacity onPress={() => sendToASM('mitigation', m.id, m.text)} style={s.asmPill}>
+                    <Ionicons name="apps" size={11} color="#0F766E" />
+                    <Text style={s.asmPillText}>ASM</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => removeMitigation(m.id)} hitSlop={6}>
+                    <Ionicons name="close" size={16} color="#94A3B8" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <View style={s.addRow}>
+                <TextInput
+                  style={s.addInput}
+                  placeholder="Add a mitigation..."
+                  placeholderTextColor="#9CA3AF"
+                  value={newMitText[r.id] || ''}
+                  onChangeText={t => setNewMitText(prev => ({ ...prev, [r.id]: t }))}
+                  onSubmitEditing={() => addMitigation(r.id)}
+                />
+                <TouchableOpacity style={s.addBtn} onPress={() => addMitigation(r.id)}>
+                  <Ionicons name="add" size={18} color="#FFF" />
+                </TouchableOpacity>
+              </View>
+
+              {/* 4c — Contingencies (1..many) */}
+              <Text style={s.subSubLabel}>4c · Contingencies</Text>
+              {consFor(r.id).map(c => (
+                <View key={c.id} style={s.childRow}>
+                  <View style={[s.bullet, { backgroundColor: '#F59E0B' }]} />
+                  <Text style={s.childText}>{c.text}</Text>
+                  <TouchableOpacity onPress={() => sendToASM('contingency', c.id, c.text)} style={s.asmPill}>
+                    <Ionicons name="apps" size={11} color="#0F766E" />
+                    <Text style={s.asmPillText}>ASM</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => removeContingency(c.id)} hitSlop={6}>
+                    <Ionicons name="close" size={16} color="#94A3B8" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <View style={s.addRow}>
+                <TextInput
+                  style={s.addInput}
+                  placeholder="Add a contingency..."
+                  placeholderTextColor="#9CA3AF"
+                  value={newConText[r.id] || ''}
+                  onChangeText={t => setNewConText(prev => ({ ...prev, [r.id]: t }))}
+                  onSubmitEditing={() => addContingency(r.id)}
+                />
+                <TouchableOpacity style={s.addBtn} onPress={() => addContingency(r.id)}>
+                  <Ionicons name="add" size={18} color="#FFF" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))}
+          <View style={s.addRow}>
+            <TextInput
+              style={s.addInput}
+              placeholder="Add a risk for this solution..."
+              placeholderTextColor="#9CA3AF"
+              value={newRiskText[sol.id] || ''}
+              onChangeText={t => setNewRiskText(prev => ({ ...prev, [sol.id]: t }))}
+              onSubmitEditing={() => addRisk(sol.id)}
+            />
+            <TouchableOpacity style={s.addBtn} onPress={() => addRisk(sol.id)}>
+              <Ionicons name="add" size={18} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      ))}
+    </ScrollView>
+  );
+
+  const renderStep5 = () => (
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 80 }}>
+      <Text style={s.qTitle}>Q5. Action Plan</Text>
+      <Text style={s.qHint}>
+        Auto-aggregated from Solutions, Mitigations & Contingencies. Edit owners / dates, tick CTT or Lifestyle if applicable, then push everything to your universal Action Center.
+      </Text>
+      <TouchableOpacity onPress={recomputePlan} style={s.regenBtn}>
+        <Ionicons name="refresh" size={14} color="#0F172A" />
+        <Text style={s.regenText}>Re-aggregate from Q3 + Q4b + Q4c</Text>
+      </TouchableOpacity>
+      {actionPlan.length === 0 && (
+        <Text style={s.empty}>Nothing aggregated yet. Add items in Q3 / Q4 and tap re-aggregate.</Text>
+      )}
+      {actionPlan.map(p => (
+        <View key={p.ap_id} style={s.apCard}>
+          <View style={s.apHeader}>
+            <View style={[s.apTag,
+              p.source_type === 'solution' && { backgroundColor: '#EEF2FF', borderColor: '#6366F1' },
+              p.source_type === 'mitigation' && { backgroundColor: '#ECFDF5', borderColor: '#10B981' },
+              p.source_type === 'contingency' && { backgroundColor: '#FFFBEB', borderColor: '#F59E0B' },
+            ]}>
+              <Text style={s.apTagText}>{p.source_type.toUpperCase()}</Text>
+            </View>
+            {p.pushed_to_action_center && (
+              <View style={s.apPushed}>
+                <Ionicons name="checkmark-circle" size={12} color="#10B981" />
+                <Text style={s.apPushedText}>In Action Center</Text>
+              </View>
+            )}
+          </View>
+          <Text style={s.apText}>{p.text}</Text>
+          <View style={s.apMetaRow}>
+            <TextInput
+              style={[s.apMetaInput, { flex: 1 }]}
+              placeholder="Owner / Who"
+              placeholderTextColor="#9CA3AF"
+              value={p.who || ''}
+              onChangeText={t => editPlanItem(p.ap_id, { who: t })}
+            />
+            <TextInput
+              style={[s.apMetaInput, { width: 110 }]}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor="#9CA3AF"
+              value={p.by_when || ''}
+              onChangeText={t => editPlanItem(p.ap_id, { by_when: t })}
+            />
+          </View>
+          <View style={s.apFlagRow}>
+            <TouchableOpacity
+              onPress={() => togglePlanFlag(p.ap_id, 'push_ctt')}
+              style={[s.apFlag, (p.push_ctt || p.pushed_to_ctt) && s.apFlagActive]}
+            >
+              <Ionicons
+                name={p.pushed_to_ctt ? 'checkmark-done' : p.push_ctt ? 'checkmark' : 'add'}
+                size={12} color={(p.push_ctt || p.pushed_to_ctt) ? '#FFF' : '#475569'}
+              />
+              <Text style={[s.apFlagText, (p.push_ctt || p.pushed_to_ctt) && { color: '#FFF' }]}>
+                → CTT
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => togglePlanFlag(p.ap_id, 'push_lifestyle')}
+              style={[s.apFlag, (p.push_lifestyle || p.pushed_to_lifestyle) && s.apFlagActive]}
+            >
+              <Ionicons
+                name={p.pushed_to_lifestyle ? 'checkmark-done' : p.push_lifestyle ? 'checkmark' : 'add'}
+                size={12} color={(p.push_lifestyle || p.pushed_to_lifestyle) ? '#FFF' : '#475569'}
+              />
+              <Text style={[s.apFlagText, (p.push_lifestyle || p.pushed_to_lifestyle) && { color: '#FFF' }]}>
+                → Lifestyle
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ))}
+      {actionPlan.length > 0 && (
+        <TouchableOpacity style={s.pushBtn} onPress={pushAllToActionCenter}>
+          <Ionicons name="rocket" size={16} color="#FFF" />
+          <Text style={s.pushBtnText}>Push pending items to Action Center</Text>
+        </TouchableOpacity>
+      )}
+    </ScrollView>
+  );
+
+  // ============ MAIN RENDER ============
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 40 }} />
+      <SafeAreaView style={s.container}>
+        <ActivityIndicator size="large" color="#7C3AED" style={{ marginTop: 60 }} />
       </SafeAreaView>
     );
   }
 
-  const renderStepContent = () => {
-    switch (currentStep) {
-      case 0:
-        return (
-          <View>
-            <Text style={styles.stepLabel}>Select Area of Life</Text>
-            <View style={styles.areaGrid}>
-              {LIFE_AREAS.map(area => (
-                <TouchableOpacity
-                  key={area.id}
-                  style={[
-                    styles.areaChip,
-                    areaOfLife === area.id && styles.areaChipActive
-                  ]}
-                  onPress={() => setAreaOfLife(area.id)}
-                >
-                  <Ionicons
-                    name={area.icon as any}
-                    size={18}
-                    color={areaOfLife === area.id ? '#FFF' : COLORS.primary}
-                  />
-                  <Text style={[
-                    styles.areaChipText,
-                    areaOfLife === area.id && styles.areaChipTextActive
-                  ]}>{area.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={styles.stepLabel}>SMART Goal</Text>
-            <TextInput
-              style={styles.textArea}
-              placeholder="e.g., To earn minimum Rs.3 lakh income on or before 30.10.2025"
-              placeholderTextColor={COLORS.textMuted}
-              value={smartGoal}
-              onChangeText={setSmartGoal}
-              multiline
-              numberOfLines={3}
-            />
-
-            <View style={styles.labelRow}>
-              <Text style={styles.stepLabel}>Milestones</Text>
-              <TouchableOpacity onPress={addMilestone} style={styles.addBtn}>
-                <Ionicons name="add-circle" size={22} color={COLORS.primary} />
-              </TouchableOpacity>
-            </View>
-            {milestones.map((m, i) => (
-              <View key={i} style={styles.milestoneCard}>
-                <View style={styles.milestoneHeader}>
-                  <Text style={styles.milestoneNum}>#{i + 1}</Text>
-                  {milestones.length > 1 && (
-                    <TouchableOpacity onPress={() => removeMilestone(i)}>
-                      <Ionicons name="close-circle" size={20} color={COLORS.error} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Milestone description"
-                  placeholderTextColor={COLORS.textMuted}
-                  value={m.description}
-                  onChangeText={v => updateMilestone(i, 'description', v)}
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Timeline (e.g., 15.09.2025)"
-                  placeholderTextColor={COLORS.textMuted}
-                  value={m.timeline}
-                  onChangeText={v => updateMilestone(i, 'timeline', v)}
-                />
-              </View>
-            ))}
-          </View>
-        );
-
-      case 1:
-        return (
-          <View>
-            <Text style={styles.stepLabel}>Q1. What are ALL your concerns?</Text>
-            <Text style={styles.hint}>List every worry, challenge, or obstacle related to your goal</Text>
-            <TextInput
-              style={styles.textArea}
-              placeholder="1. Fees negotiation\n2. Health concerns\n3. Time management..."
-              placeholderTextColor={COLORS.textMuted}
-              value={q1AllConcerns}
-              onChangeText={setQ1AllConcerns}
-              multiline
-              numberOfLines={5}
-            />
-
-            <Text style={styles.stepLabel}>Q2. What are your PRIMARY concerns now?</Text>
-            <Text style={styles.hint}>Prioritize the most critical concerns from Q1</Text>
-            <TextInput
-              style={styles.textArea}
-              placeholder="1. Time management\n2. Marketing & Sales..."
-              placeholderTextColor={COLORS.textMuted}
-              value={q2PrimaryConcerns}
-              onChangeText={setQ2PrimaryConcerns}
-              multiline
-              numberOfLines={4}
-            />
-          </View>
-        );
-
-      case 2:
-        return (
-          <View>
-            <Text style={styles.sectionHeader}>Q3.1 Current Influence Level</Text>
-
-            <Text style={styles.stepLabel}>Capabilities (Knowledge, Skills)</Text>
-            <TextInput
-              style={styles.textArea}
-              placeholder="e.g., 1. Domain knowledge\n2. Communication skills"
-              placeholderTextColor={COLORS.textMuted}
-              value={q3Capabilities}
-              onChangeText={setQ3Capabilities}
-              multiline
-              numberOfLines={3}
-            />
-
-            <Text style={styles.stepLabel}>Resources (Contacts, Time, Money, Assets)</Text>
-            <TextInput
-              style={styles.textArea}
-              placeholder="e.g., 1. Social image\n2. Existing contacts\n3. Time"
-              placeholderTextColor={COLORS.textMuted}
-              value={q3Resources}
-              onChangeText={setQ3Resources}
-              multiline
-              numberOfLines={3}
-            />
-
-            <Text style={styles.sectionHeader}>Q3.2 Solutions within Influence</Text>
-            <Text style={styles.hint}>What can you do within your current influence level to address primary concerns?</Text>
-            <TextInput
-              style={styles.textArea}
-              placeholder="e.g., 1. Prepare a fees structure\n2. Learn online teaching"
-              placeholderTextColor={COLORS.textMuted}
-              value={q3Solutions}
-              onChangeText={setQ3Solutions}
-              multiline
-              numberOfLines={4}
-            />
-
-            <Text style={styles.sectionHeader}>External Help Needed</Text>
-
-            <Text style={styles.stepLabel}>What aspect needs external help?</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g., Social media marketing"
-              placeholderTextColor={COLORS.textMuted}
-              value={externalHelpAspect}
-              onChangeText={setExternalHelpAspect}
-            />
-
-            <Text style={styles.stepLabel}>Level of Help</Text>
-            <View style={styles.helpLevelRow}>
-              {HELP_LEVELS.map(level => (
-                <TouchableOpacity
-                  key={level}
-                  style={[
-                    styles.helpChip,
-                    externalHelpLevel === level && styles.helpChipActive
-                  ]}
-                  onPress={() => setExternalHelpLevel(level)}
-                >
-                  <Text style={[
-                    styles.helpChipText,
-                    externalHelpLevel === level && styles.helpChipTextActive
-                  ]}>{level}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={styles.stepLabel}>Help from whom?</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g., Friend, Mentor, Expert"
-              placeholderTextColor={COLORS.textMuted}
-              value={externalHelpFrom}
-              onChangeText={setExternalHelpFrom}
-            />
-          </View>
-        );
-
-      case 3:
-        return (
-          <View>
-            <Text style={styles.sectionHeader}>Q4. Risk Management</Text>
-
-            {/* Social Learning Risk Templates */}
-            <TouchableOpacity
-              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F5F3FF', borderRadius: 10, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: '#DDD6FE', gap: 10 }}
-              onPress={() => { setShowSLRiskModal(true); fetchSLRiskTemplates(); }}
-            >
-              <Ionicons name="newspaper" size={18} color="#7C3AED" />
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: '#7C3AED' }}>Load from Social Learning</Text>
-                <Text style={{ fontSize: 10, color: '#8B5CF6' }}>Auto-fill risks from real-world scenarios</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color="#7C3AED" />
-            </TouchableOpacity>
-
-            <Text style={styles.stepLabel}>Possible Negative Consequences</Text>
-            <TextInput
-              style={styles.textArea}
-              placeholder="1. Family disturbance\n2. Health/Mindset problems"
-              placeholderTextColor={COLORS.textMuted}
-              value={q4NegConsequences}
-              onChangeText={setQ4NegConsequences}
-              multiline
-              numberOfLines={4}
-            />
-
-            <Text style={styles.stepLabel}>Mitigation Plans</Text>
-            <Text style={styles.hint}>How will you prevent these consequences?</Text>
-            <TextInput
-              style={styles.textArea}
-              placeholder="1. Set boundaries\n2. Regular self-care"
-              placeholderTextColor={COLORS.textMuted}
-              value={q4Mitigation}
-              onChangeText={setQ4Mitigation}
-              multiline
-              numberOfLines={4}
-            />
-
-            <Text style={styles.stepLabel}>Contingency Plans</Text>
-            <Text style={styles.hint}>Backup plans if consequences occur despite mitigation</Text>
-            <TextInput
-              style={styles.textArea}
-              placeholder="1. Pause sales temporarily\n2. Seek professional help"
-              placeholderTextColor={COLORS.textMuted}
-              value={q4Contingency}
-              onChangeText={setQ4Contingency}
-              multiline
-              numberOfLines={4}
-            />
-          </View>
-        );
-
-      case 4:
-        return (
-          <View>
-            <Text style={styles.sectionHeader}>Q5. Action Plan</Text>
-
-            <View style={styles.labelRow}>
-              <Text style={styles.stepLabel}>Action Items</Text>
-              <TouchableOpacity onPress={addActionItem} style={styles.addBtn}>
-                <Ionicons name="add-circle" size={22} color={COLORS.primary} />
-              </TouchableOpacity>
-            </View>
-
-            {actionItems.map((item, i) => (
-              <View key={i} style={styles.actionCard}>
-                <View style={styles.milestoneHeader}>
-                  <Text style={styles.milestoneNum}>Action #{i + 1}</Text>
-                  {actionItems.length > 1 && (
-                    <TouchableOpacity onPress={() => removeActionItem(i)}>
-                      <Ionicons name="close-circle" size={20} color={COLORS.error} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-                <TextInput
-                  style={styles.input}
-                  placeholder="What action?"
-                  placeholderTextColor={COLORS.textMuted}
-                  value={item.action}
-                  onChangeText={v => updateActionItem(i, 'action', v)}
-                />
-                <View style={styles.twoCol}>
-                  <TextInput
-                    style={[styles.input, { flex: 1 }]}
-                    placeholder="Who does?"
-                    placeholderTextColor={COLORS.textMuted}
-                    value={item.who}
-                    onChangeText={v => updateActionItem(i, 'who', v)}
-                  />
-                  <TextInput
-                    style={[styles.input, { flex: 1 }]}
-                    placeholder="By when?"
-                    placeholderTextColor={COLORS.textMuted}
-                    value={item.by_when}
-                    onChangeText={v => updateActionItem(i, 'by_when', v)}
-                  />
-                </View>
-                <View style={styles.statusRow}>
-                  {['pending', 'in_progress', 'completed'].map(s => (
-                    <TouchableOpacity
-                      key={s}
-                      style={[
-                        styles.statusChip,
-                        item.status === s && styles.statusChipActive
-                      ]}
-                      onPress={() => updateActionItem(i, 'status', s)}
-                    >
-                      <Text style={[
-                        styles.statusChipText,
-                        item.status === s && styles.statusChipTextActive
-                      ]}>{s.replace('_', ' ').toUpperCase()}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            ))}
-          </View>
-        );
-
-      default:
-        return null;
-    }
-  };
-
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
-      >
-        {/* Header */}
-        <LinearGradient colors={GRADIENTS.header} style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={24} color="#FFF" />
-          </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.headerTitle}>Simple Solution Finder</Text>
-            <Text style={styles.headerSub}>Step {currentStep + 1} of {steps.length}</Text>
-          </View>
-          <TouchableOpacity style={styles.collabHdrBtn} onPress={openCollabModal}>
-            <Ionicons name="people" size={18} color="#7C3AED" />
-          </TouchableOpacity>
-        </LinearGradient>
-
-        {/* Step Indicators */}
-        <View style={styles.stepIndicator}>
-          {steps.map((step, i) => (
-            <TouchableOpacity
-              key={i}
-              style={[
-                styles.stepDot,
-                currentStep === i && styles.stepDotActive,
-                currentStep > i && styles.stepDotDone
-              ]}
-              onPress={() => setCurrentStep(i)}
-            >
-              <Ionicons
-                name={step.icon as any}
-                size={16}
-                color={currentStep >= i ? '#FFF' : COLORS.textMuted}
-              />
-            </TouchableOpacity>
-          ))}
+    <SafeAreaView style={s.container} edges={['top']}>
+      <LinearGradient colors={['#7C3AED', '#C084FC']} style={s.header}>
+        <TouchableOpacity onPress={() => router.back()} style={s.headerBtn}>
+          <Ionicons name="arrow-back" size={22} color="#FFF" />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text style={s.headerTitle}>Simple Solution Finder</Text>
+          <Text style={s.headerSub}>Step {step + 1} of {STEPS.length} · {STEPS[step].title}</Text>
         </View>
-
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          <Text style={styles.currentStepTitle}>{steps[currentStep].title}</Text>
-          {currentStep === 0 && (
-            <>
-              <TimingFieldset value={timing} onChange={setTiming} />
-              {linkedSource ? (
-                <LinkedSourcePill
-                  decision_id={linkedSource.linked_from_decision_id}
-                  module={linkedSource.linked_from_module}
-                  option_label={linkedSource.linked_from_option_label}
-                  score_pct={linkedSource.linked_from_score_pct ?? undefined}
-                  title={linkedSource.title}
-                  onRemove={() => setLinkedSource(null)}
-                />
-              ) : (
-                <TouchableOpacity onPress={() => setShowLinkPicker(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: COLORS.primary, borderStyle: 'dashed', justifyContent: 'center', marginVertical: 6 }} testID="sf-link-from-prev">
-                  <Ionicons name="link-outline" size={13} color={COLORS.primary} />
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.primary }}>Link from previous decision (optional)</Text>
-                </TouchableOpacity>
-              )}
-            </>
-          )}
-          {renderStepContent()}
-          <DecisionLinkPicker visible={showLinkPicker} onClose={() => setShowLinkPicker(false)} onSelect={setLinkedSource} />
-        </ScrollView>
-
-        {/* Bottom Nav */}
-        <View style={styles.bottomNav}>
-          {currentStep > 0 && (
-            <TouchableOpacity
-              style={styles.navBtnSecondary}
-              onPress={() => setCurrentStep(currentStep - 1)}
-            >
-              <Ionicons name="arrow-back" size={18} color={COLORS.primary} />
-              <Text style={styles.navBtnSecondaryText}>Back</Text>
-            </TouchableOpacity>
-          )}
-          <View style={{ flex: 1 }} />
-          {currentStep < steps.length - 1 ? (
-            <TouchableOpacity
-              style={styles.navBtnPrimary}
-              onPress={() => setCurrentStep(currentStep + 1)}
-            >
-              <Text style={styles.navBtnPrimaryText}>Next</Text>
-              <Ionicons name="arrow-forward" size={18} color="#FFF" />
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={[styles.navBtnPrimary, saving && { opacity: 0.7 }]}
-              onPress={handleSave}
-              disabled={saving}
-            >
-              {saving ? (
-                <ActivityIndicator size="small" color="#FFF" />
-              ) : (
-                <>
-                  <Ionicons name="checkmark-circle" size={18} color="#FFF" />
-                  <Text style={styles.navBtnPrimaryText}>Save</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Collaboration Modal */}
-        <Modal visible={showCollabModal} transparent animationType="slide">
-          <View style={styles.collabOverlay}>
-            <View style={styles.collabModalContent}>
-              <View style={styles.collabModalHeader}>
-                <Ionicons name="people" size={22} color="#7C3AED" />
-                <Text style={styles.collabModalTitle}>Group Collaborate</Text>
-                <View style={{ flex: 1 }} />
-                <TouchableOpacity onPress={() => setShowCollabModal(false)}>
-                  <Ionicons name="close" size={24} color="#6B7280" />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
-                {/* Existing Sessions */}
-                {existingCollabs.length > 0 && (
-                  <View style={styles.existingCollabSection}>
-                    <Text style={styles.collabSectionTitle}>Active Sessions ({existingCollabs.length})</Text>
-                    {existingCollabs.map((s: any) => (
-                      <View key={s.id} style={styles.existingCollabCard}>
-                        <Ionicons name="git-network" size={16} color="#7C3AED" />
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.existingCollabTitle}>{s.title}</Text>
-                          <Text style={styles.existingCollabMeta}>
-                            {s.session_mode === 'live_sync' ? 'Live Sync' : 'Async'} • {(s.participants || []).length} people
-                          </Text>
-                        </View>
-                        <View style={[styles.existingCollabStatus, { backgroundColor: s.status === 'active' ? '#ECFDF5' : '#EFF6FF' }]}>
-                          <Text style={{ fontSize: 10, fontWeight: '600', color: s.status === 'active' ? '#059669' : '#3B82F6' }}>
-                            {s.status}
-                          </Text>
-                        </View>
-                      </View>
-                    ))}
-                  </View>
-                )}
-
-                {/* Create New */}
-                <Text style={styles.collabSectionTitle}>New Session</Text>
-
-                {/* Session Mode */}
-                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-                  {[{key: 'async', label: 'Async', icon: 'time-outline'}, {key: 'live_sync', label: 'Live Sync', icon: 'videocam-outline'}].map(m => (
-                    <TouchableOpacity key={m.key}
-                      style={[styles.collabModeChip, collabSessionMode === m.key && styles.collabModeChipActive]}
-                      onPress={() => setCollabSessionMode(m.key)}>
-                      <Ionicons name={m.icon as any} size={14} color={collabSessionMode === m.key ? '#FFF' : '#6B7280'} />
-                      <Text style={[styles.collabModeChipText, collabSessionMode === m.key && { color: '#FFF' }]}>{m.label}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                {/* Decision Mode */}
-                {collabModes.length > 0 && (
-                  <View style={{ marginBottom: 12 }}>
-                    <Text style={styles.collabFieldLabel}>Decision Mode</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                      <View style={{ flexDirection: 'row', gap: 6 }}>
-                        {collabModes.map((mode: any) => (
-                          <TouchableOpacity key={mode.id}
-                            style={[styles.collabModeChip, collabSelectedMode === mode.id && styles.collabModeChipActive]}
-                            onPress={() => setCollabSelectedMode(mode.id)}>
-                            <Text style={[styles.collabModeChipText, collabSelectedMode === mode.id && { color: '#FFF' }]}>{mode.name}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </ScrollView>
-                  </View>
-                )}
-
-                {/* Select Participants */}
-                <Text style={styles.collabFieldLabel}>Participants ({collabSelectedContacts.size} selected)</Text>
-                {collabContacts.length === 0 ? (
-                  <Text style={styles.collabNoContacts}>No contacts found. Add contacts from the Contacts screen first.</Text>
-                ) : (
-                  collabContacts.map((c: any) => (
-                    <TouchableOpacity key={c.id}
-                      style={[styles.collabContactRow, collabSelectedContacts.has(c.id) && styles.collabContactRowActive]}
-                      onPress={() => toggleCollabContact(c.id)}>
-                      <View style={styles.collabContactAvatar}>
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFF' }}>{(c.name || '?')[0].toUpperCase()}</Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.collabContactName}>{c.name}</Text>
-                        <Text style={styles.collabContactMeta}>{[c.profession, c.org_type].filter(Boolean).join(' • ')}</Text>
-                      </View>
-                      <Ionicons name={collabSelectedContacts.has(c.id) ? 'checkmark-circle' : 'ellipse-outline'} size={20}
-                        color={collabSelectedContacts.has(c.id) ? '#059669' : '#D1D5DB'} />
-                    </TouchableOpacity>
-                  ))
-                )}
-              </ScrollView>
-
-              <TouchableOpacity style={styles.collabLaunchBtn} onPress={handleCreateCollab} disabled={collabCreating}>
-                {collabCreating ? <ActivityIndicator color="#FFF" size="small" /> : (
-                  <>
-                    <Ionicons name="rocket" size={16} color="#FFF" />
-                    <Text style={styles.collabLaunchText}>Launch Group Session</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
-
-        {/* Social Learning Risk Templates Modal */}
-        <Modal visible={showSLRiskModal} transparent animationType="slide">
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
-            <View style={{ backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '70%' }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Ionicons name="newspaper" size={20} color="#7C3AED" />
-                  <Text style={{ fontSize: 16, fontWeight: '700', color: '#1F2937' }}>Social Learning Risks</Text>
-                </View>
-                <TouchableOpacity onPress={() => setShowSLRiskModal(false)}>
-                  <Ionicons name="close" size={24} color="#6B7280" />
-                </TouchableOpacity>
-              </View>
-              <Text style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 12 }}>
-                Select a template to auto-populate risk insights
-              </Text>
-              {loadingSLRisk ? (
-                <ActivityIndicator size="large" color="#7C3AED" style={{ marginTop: 40 }} />
-              ) : slRiskTemplates.length === 0 ? (
-                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
-                  <Ionicons name="newspaper-outline" size={40} color="#D1D5DB" />
-                  <Text style={{ fontSize: 14, color: '#9CA3AF', marginTop: 8 }}>No risk templates available</Text>
-                </View>
-              ) : (
-                <ScrollView showsVerticalScrollIndicator={false}>
-                  {slRiskTemplates.map((t: any) => (
-                    <TouchableOpacity
-                      key={t.id}
-                      style={{ backgroundColor: '#F9FAFB', borderRadius: 10, padding: 12, marginBottom: 8, borderLeftWidth: 3, borderLeftColor: t.tier === 3 ? '#7C3AED' : t.tier === 2 ? '#059669' : '#6B7280' }}
-                      onPress={() => applySLRiskTemplate(t)}
-                    >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                        <View style={{ backgroundColor: t.tier === 3 ? '#F5F3FF' : t.tier === 2 ? '#ECFDF5' : '#F3F4F6', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
-                          <Text style={{ fontSize: 9, fontWeight: '700', color: t.tier === 3 ? '#7C3AED' : t.tier === 2 ? '#059669' : '#6B7280' }}>
-                            {t._tierLabel}
-                          </Text>
-                        </View>
-                        <Text style={{ fontSize: 10, color: '#9CA3AF' }}>{(t.risks || []).length} risks</Text>
-                      </View>
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: '#1F2937' }} numberOfLines={1}>
-                        {t.scenario_title || t.title}
-                      </Text>
-                      {(t.risks || []).length > 0 && (
-                        <View style={{ marginTop: 6 }}>
-                          {(t.risks || []).slice(0, 3).map((r: any, i: number) => (
-                            <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 3 }}>
-                              <View style={{ width: 18, height: 18, borderRadius: 4, backgroundColor: (r.risk_index || 0) >= 50 ? '#FEF2F2' : (r.risk_index || 0) >= 25 ? '#FFFBEB' : '#ECFDF5', justifyContent: 'center', alignItems: 'center' }}>
-                                <Text style={{ fontSize: 8, fontWeight: '700', color: (r.risk_index || 0) >= 50 ? '#EF4444' : (r.risk_index || 0) >= 25 ? '#D97706' : '#059669' }}>
-                                  {r.risk_index || '?'}
-                                </Text>
-                              </View>
-                              <Text style={{ fontSize: 10, color: '#374151', flex: 1 }} numberOfLines={1}>{r.risk_name}</Text>
-                              <Text style={{ fontSize: 8, color: '#9CA3AF' }}>P{r.probability} × I{r.impact}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      )}
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 }}>
-                        <Ionicons name="add-circle" size={14} color="#7C3AED" />
-                        <Text style={{ fontSize: 10, color: '#7C3AED', fontWeight: '500' }}>Tap to apply risks + mitigations</Text>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              )}
-            </View>
-          </View>
-        </Modal>
+        {saving && <ActivityIndicator size="small" color="#FFF" />}
+      </LinearGradient>
+      {renderStepIndicator()}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        {step === 0 && renderStep0()}
+        {step === 1 && renderStep1()}
+        {step === 2 && renderStep2()}
+        {step === 3 && renderStep3()}
+        {step === 4 && renderStep4()}
+        {step === 5 && renderStep5()}
       </KeyboardAvoidingView>
+      <View style={s.footer}>
+        <TouchableOpacity style={s.backBtn} onPress={onBack} disabled={step === 0}>
+          <Ionicons name="arrow-back" size={16} color={step === 0 ? '#CBD5E1' : '#475569'} />
+          <Text style={[s.backBtnText, step === 0 && { color: '#CBD5E1' }]}>Back</Text>
+        </TouchableOpacity>
+        {step < 5 ? (
+          <TouchableOpacity style={s.nextBtn} onPress={onNext}>
+            <Text style={s.nextBtnText}>{step === 4 ? 'Build Action Plan' : 'Next'}</Text>
+            <Ionicons name="arrow-forward" size={16} color="#FFF" />
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={s.nextBtn} onPress={() => handleSave().then(() => router.back())}>
+            <Ionicons name="checkmark" size={16} color="#FFF" />
+            <Text style={s.nextBtnText}>Save & Close</Text>
+          </TouchableOpacity>
+        )}
+      </View>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    paddingBottom: 20,
-  },
-  backBtn: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    justifyContent: 'center', alignItems: 'center',
-    marginRight: 12,
-  },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: '#FFF' },
-  headerSub: { fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
-  stepIndicator: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 12,
-    paddingVertical: 14,
-    backgroundColor: COLORS.white,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  stepDot: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: COLORS.divider,
-    justifyContent: 'center', alignItems: 'center',
-  },
-  stepDotActive: { backgroundColor: COLORS.primary },
-  stepDotDone: { backgroundColor: COLORS.success },
-  scrollView: { flex: 1 },
-  scrollContent: { padding: 16, paddingBottom: 32 },
-  currentStepTitle: {
-    fontSize: 20, fontWeight: '700', color: COLORS.textPrimary,
-    marginBottom: 16,
-  },
-  stepLabel: {
-    fontSize: 14, fontWeight: '600', color: COLORS.textPrimary,
-    marginTop: 16, marginBottom: 6,
-  },
-  hint: {
-    fontSize: 12, color: COLORS.textMuted, marginBottom: 8,
-  },
-  sectionHeader: {
-    fontSize: 16, fontWeight: '700', color: COLORS.primary,
-    marginTop: 20, marginBottom: 4,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
-    paddingBottom: 6,
-  },
-  areaGrid: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8,
-  },
-  areaChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 12, paddingVertical: 8,
-    borderRadius: 20, borderWidth: 1, borderColor: COLORS.primary,
-    backgroundColor: 'rgba(142,36,170,0.05)',
-  },
-  areaChipActive: {
-    backgroundColor: COLORS.primary, borderColor: COLORS.primary,
-  },
-  areaChipText: {
-    fontSize: 12, fontWeight: '500', color: COLORS.primary,
-  },
-  areaChipTextActive: { color: '#FFF' },
-  input: {
-    backgroundColor: COLORS.white,
-    borderRadius: 10, borderWidth: 1, borderColor: COLORS.border,
-    paddingHorizontal: 14, paddingVertical: 10,
-    fontSize: 14, color: COLORS.textPrimary,
-    marginBottom: 8,
-  },
-  textArea: {
-    backgroundColor: COLORS.white,
-    borderRadius: 10, borderWidth: 1, borderColor: COLORS.border,
-    paddingHorizontal: 14, paddingVertical: 10,
-    fontSize: 14, color: COLORS.textPrimary,
-    minHeight: 80, textAlignVertical: 'top',
-    marginBottom: 8,
-  },
-  labelRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-  },
-  addBtn: { padding: 4 },
-  milestoneCard: {
-    backgroundColor: COLORS.white, borderRadius: 12,
-    padding: 12, marginBottom: 10,
-    borderWidth: 1, borderColor: COLORS.border,
-  },
-  milestoneHeader: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', marginBottom: 8,
-  },
-  milestoneNum: {
-    fontSize: 13, fontWeight: '600', color: COLORS.primary,
-  },
-  actionCard: {
-    backgroundColor: COLORS.white, borderRadius: 12,
-    padding: 12, marginBottom: 12,
-    borderWidth: 1, borderColor: COLORS.border,
-  },
-  twoCol: {
-    flexDirection: 'row', gap: 8,
-  },
-  helpLevelRow: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8,
-  },
-  helpChip: {
-    paddingHorizontal: 14, paddingVertical: 8,
-    borderRadius: 20, borderWidth: 1, borderColor: COLORS.border,
-    backgroundColor: COLORS.white,
-  },
-  helpChipActive: {
-    backgroundColor: COLORS.teal, borderColor: COLORS.teal,
-  },
-  helpChipText: {
-    fontSize: 12, fontWeight: '500', color: COLORS.textSecondary,
-  },
-  helpChipTextActive: { color: '#FFF' },
-  statusRow: {
-    flexDirection: 'row', gap: 6, marginTop: 4,
-  },
-  statusChip: {
-    paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: 12, borderWidth: 1, borderColor: COLORS.border,
-    backgroundColor: COLORS.divider,
-  },
-  statusChipActive: {
-    backgroundColor: COLORS.success, borderColor: COLORS.success,
-  },
-  statusChipText: {
-    fontSize: 10, fontWeight: '600', color: COLORS.textMuted,
-  },
-  statusChipTextActive: { color: '#FFF' },
-  bottomNav: {
-    flexDirection: 'row', alignItems: 'center',
-    padding: 16, borderTopWidth: 1,
-    borderTopColor: COLORS.border, backgroundColor: COLORS.white,
-  },
-  navBtnSecondary: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 16, paddingVertical: 10,
-    borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary,
-  },
-  navBtnSecondaryText: {
-    fontSize: 14, fontWeight: '600', color: COLORS.primary,
-  },
-  navBtnPrimary: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 20, paddingVertical: 12,
-    borderRadius: 10, backgroundColor: COLORS.primary,
-  },
-  navBtnPrimaryText: {
-    fontSize: 14, fontWeight: '600', color: '#FFF',
-  },
+// ============== STYLES ==============
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 12 },
+  headerBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { color: '#FFF', fontSize: 16, fontWeight: '800' },
+  headerSub: { color: 'rgba(255,255,255,0.85)', fontSize: 11, marginTop: 2 },
 
-  // Collaboration integration styles
-  collabHdrBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center' },
-  collabOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end', alignItems: 'center' },
-  collabModalContent: { width: '100%', maxWidth: 500, backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '80%' },
-  collabModalHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
-  collabModalTitle: { fontSize: 18, fontWeight: '700', color: '#1F2937' },
-  collabSectionTitle: { fontSize: 14, fontWeight: '700', color: '#374151', marginBottom: 8, marginTop: 4 },
-  existingCollabSection: { marginBottom: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', paddingBottom: 12 },
-  existingCollabCard: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 8, backgroundColor: '#F5F3FF', marginBottom: 6 },
-  existingCollabTitle: { fontSize: 12, fontWeight: '600', color: '#374151' },
-  existingCollabMeta: { fontSize: 10, color: '#9CA3AF', marginTop: 1 },
-  existingCollabStatus: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  collabModeChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: '#E5E7EB' },
-  collabModeChipActive: { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
-  collabModeChipText: { fontSize: 12, fontWeight: '600', color: '#6B7280' },
-  collabFieldLabel: { fontSize: 12, fontWeight: '600', color: '#6B7280', marginBottom: 6 },
-  collabNoContacts: { fontSize: 12, color: '#9CA3AF', fontStyle: 'italic', marginBottom: 12 },
-  collabContactRow: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 8, backgroundColor: '#F9FAFB', marginBottom: 4 },
-  collabContactRowActive: { backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0' },
-  collabContactAvatar: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#7C3AED', justifyContent: 'center', alignItems: 'center' },
-  collabContactName: { fontSize: 12, fontWeight: '600', color: '#374151' },
-  collabContactMeta: { fontSize: 10, color: '#9CA3AF' },
-  collabLaunchBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#059669', borderRadius: 12, paddingVertical: 14, marginTop: 12 },
-  collabLaunchText: { fontSize: 14, fontWeight: '700', color: '#FFF' },
+  stepIndicator: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  stepDotWrap: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  stepDot: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center' },
+  stepDotActive: { backgroundColor: '#7C3AED' },
+  stepLine: { flex: 1, height: 2, backgroundColor: '#E2E8F0', marginHorizontal: 4 },
+  stepLineActive: { backgroundColor: '#7C3AED' },
+
+  sectionLabel: { fontSize: 11, fontWeight: '800', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8, marginTop: 4 },
+  qTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A', marginBottom: 6 },
+  qHint: { fontSize: 12, color: '#64748B', lineHeight: 18, marginBottom: 12 },
+  empty: { fontSize: 12, color: '#94A3B8', fontStyle: 'italic', textAlign: 'center', padding: 16 },
+
+  areaGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 },
+  areaChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E2E8F0' },
+  areaChipActive: { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
+  areaChipText: { fontSize: 11, fontWeight: '600', color: '#475569' },
+
+  textArea: { backgroundColor: '#FFF', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#E2E8F0', fontSize: 13, color: '#0F172A', textAlignVertical: 'top' },
+
+  concernRow: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, backgroundColor: '#FFF', borderRadius: 10, marginBottom: 6, borderWidth: 1, borderColor: '#F1F5F9' },
+  concernInput: { flex: 1, fontSize: 13, color: '#0F172A', paddingVertical: 4 },
+
+  addRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+  addInput: { flex: 1, backgroundColor: '#FFF', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 12, color: '#0F172A', borderWidth: 1, borderColor: '#E2E8F0' },
+  addBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#7C3AED', alignItems: 'center', justifyContent: 'center' },
+
+  previewBox: { marginTop: 16, backgroundColor: '#FEF3C7', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#FCD34D' },
+  previewTitle: { fontSize: 12, fontWeight: '800', color: '#92400E', marginBottom: 6 },
+  previewItem: { fontSize: 12, color: '#78350F', marginBottom: 2 },
+
+  groupHeader: { fontSize: 12, fontWeight: '800', color: '#0F172A', marginTop: 8, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 },
+  groupCard: { backgroundColor: '#FFF', borderRadius: 12, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: '#F1F5F9' },
+  groupTitle: { fontSize: 13, fontWeight: '700', color: '#0F172A', marginBottom: 8 },
+  subGroupTitle: { fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 8 },
+  subSubLabel: { fontSize: 10, fontWeight: '800', color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 10, marginBottom: 4 },
+
+  childRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
+  bullet: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#7C3AED' },
+  childText: { flex: 1, fontSize: 12, color: '#0F172A' },
+
+  solCard: { marginBottom: 4 },
+  solRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  solInput: { flex: 1, fontSize: 12, color: '#0F172A', paddingVertical: 4 },
+
+  asmPill: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 10, backgroundColor: '#F0FDFA', borderWidth: 1, borderColor: '#5EEAD4' },
+  asmPillText: { fontSize: 9, fontWeight: '800', color: '#0F766E' },
+
+  riskCard: { backgroundColor: '#FEF2F2', borderRadius: 10, padding: 10, marginBottom: 8, borderWidth: 1, borderColor: '#FECACA' },
+  riskHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  riskNameInput: { flex: 1, fontSize: 13, fontWeight: '700', color: '#0F172A', paddingVertical: 2 },
+
+  riskScores: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginBottom: 6 },
+  scoreCol: { flex: 1 },
+  scoreLbl: { fontSize: 9, fontWeight: '700', color: '#64748B', textTransform: 'uppercase' },
+  scoreInput: { backgroundColor: '#FFF', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 6, fontSize: 12, color: '#0F172A', borderWidth: 1, borderColor: '#E2E8F0', minHeight: 32 },
+  scoreDerived: { backgroundColor: '#FEF3C7', justifyContent: 'center', alignItems: 'center', borderColor: '#FCD34D' },
+  scoreDerivedText: { fontSize: 13, fontWeight: '800', color: '#92400E' },
+  scoreX: { fontSize: 14, fontWeight: '800', color: '#94A3B8', paddingBottom: 6 },
+
+  regenBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#E2E8F0', borderRadius: 8, marginBottom: 12 },
+  regenText: { fontSize: 11, fontWeight: '700', color: '#0F172A' },
+
+  apCard: { backgroundColor: '#FFF', borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#F1F5F9' },
+  apHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  apTag: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, borderWidth: 1, backgroundColor: '#F1F5F9', borderColor: '#CBD5E1' },
+  apTagText: { fontSize: 9, fontWeight: '800', color: '#0F172A', letterSpacing: 0.5 },
+  apPushed: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  apPushedText: { fontSize: 10, fontWeight: '700', color: '#10B981' },
+  apText: { fontSize: 13, color: '#0F172A', marginBottom: 6 },
+  apMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  apMetaInput: { backgroundColor: '#F8FAFC', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 6, fontSize: 11, color: '#0F172A', borderWidth: 1, borderColor: '#E2E8F0' },
+  apFlagRow: { flexDirection: 'row', gap: 6 },
+  apFlag: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#CBD5E1' },
+  apFlagActive: { backgroundColor: '#10B981', borderColor: '#10B981' },
+  apFlagText: { fontSize: 10, fontWeight: '700', color: '#475569' },
+
+  pushBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#10B981', borderRadius: 12, paddingVertical: 12, marginTop: 8 },
+  pushBtnText: { color: '#FFF', fontSize: 13, fontWeight: '800' },
+
+  footer: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderTopWidth: 1, borderTopColor: '#F1F5F9', backgroundColor: '#FFF' },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, backgroundColor: '#F1F5F9' },
+  backBtnText: { fontSize: 12, fontWeight: '700', color: '#475569' },
+  nextBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 10, backgroundColor: '#7C3AED' },
+  nextBtnText: { color: '#FFF', fontSize: 13, fontWeight: '800' },
 });

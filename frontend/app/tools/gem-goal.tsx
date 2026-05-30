@@ -111,7 +111,17 @@ export default function GEMGoalScreen() {
   };
 
   // Quick launch actions
-  const launchDecision = () => router.push('/prr/new');
+  // The "Launch Decision" CTA used to route to /prr/new (the duplicate dezider
+  // module that was removed). It now seeds a fresh entry in the main MyDezider
+  // flow with the current GEM goal pre-linked.
+  const launchDecision = () => router.push({
+    pathname: '/tools/new-decision',
+    params: {
+      module: 'dezider',
+      linked_goal_id: editId || '',
+      linked_goal_title: title || '',
+    },
+  } as any);
   const launchSolutionFinder = () => router.push('/tools/solution-finder');
   const launchSolutionMatrix = () => router.push('/tools/solution-matrix');
 

@@ -56,6 +56,12 @@ class DecisionCreateFromTemplate(BaseModel):
     title: str
     raw_user_input: Optional[str] = ""
     source_type: str = "CUSTOM_BLANK"  # AUTHORIZED_STANDARD / DYNAMIC_CLD_STARTER / CUSTOM_BLANK
+    # Timing fields — added on Initial-Info Step 4 so that downstream PRR steps
+    # (and Action Center / CTT / Lifestyle handoffs) inherit a consistent
+    # deadline + impact horizon from the very start.
+    deadline_date: Optional[str] = None       # ISO date string YYYY-MM-DD
+    impact_horizon_value: Optional[int] = None
+    impact_horizon_unit: Optional[str] = None # days | weeks | months | years
 
 # ========================
 # MASTER DATA ENDPOINTS
@@ -513,6 +519,10 @@ async def create_decision_from_intake(
         "mpps_projected_worth": None,
         "mpps_timeframe": None,
         "implementation_review_date": None,
+        # Timing — captured on Initial-Info Step 4 (Decision Title screen).
+        "deadline_date": payload.deadline_date,
+        "impact_horizon_value": payload.impact_horizon_value,
+        "impact_horizon_unit": payload.impact_horizon_unit,
         "status": "draft",
         "created_at": now,
         "updated_at": now,
