@@ -1,0 +1,42 @@
+{
+  "summary": "Frontend testing of PNA New Item modal (/tools/pna) — all 4 bug fixes verified. Bug 1 (Impact/Urgency text inputs): typing 7, 8 keeps the typed value on blur (no more snap to 1/10); typing 15 clamps to 10; empty resets to 5; values persist via POST and reload (impact_score=7, urgency_score=8 confirmed via backend GET). Bug 2 (button copy): label reads 'Browse GEM (0 available)' before click and 'Hide list' after click. Bug 3 (Show all areas toggle): picker shows 'Filter: holistic_health' header with 'Show all areas' link; clicking issues a second GET /api/gem/goals with no life_area param and updates label to 'All life areas' / 'Filter to current area'. Bug 4 (defer-create): clicking 'Create in GEM' shows queued amber row, sentinel '__pending__' never hits the wire, NO POST to /api/gem/goals on queue, modal-close cancel path leaves 0 GEM goals (verified via backend GET), Save path emits ONE GEM POST followed by PNA POST with the real goal_id (atomic), unlink-while-queued correctly clears pendingGemGoal so Save emits 0 GEM POSTs. Cleanup completed (all test data deleted).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Bug 4 — Pick existing while queued (spec scenario)",
+        "issue": "Spec asks: with a queued GEM goal, click 'Browse GEM' and pick an existing goal. In current UI, the gemActions row (Browse/Create) is HIDDEN while linkedGoalId is set (including the queued sentinel), so the user cannot reach 'Browse GEM' without first clicking the unlink (X) icon on the queued row. Underlying logic is safe — pickGoal() clears pendingGemGoal, and no orphan is created — but the exact UI path described in the spec is unreachable in one click. Minor UX nuance; if you want the literal spec flow, render the Browse GEM ghost button alongside the linked-goal row when pendingGemGoal is set.",
+        "affected_testIDs": []
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "expo-av", "issue": "Deprecation warning in console: '[expo-av]: Expo AV has been deprecated and will be removed in SDK 54. Use the expo-audio and expo-video packages.' (Pre-existing project-wide, not introduced by this PR.)"},
+      {"component": "TouchableWithoutFeedback", "issue": "Console warning: 'TouchableWithoutFeedback is deprecated. Please use Pressable.' (Likely from a dependency or shared modal wrapper.)"},
+      {"component": "shadow* style props", "issue": "Console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' (Project-wide, not specific to pna.tsx.)"},
+      {"component": "props.pointerEvents", "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents'."}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_19.json"],
+  "action_items": [
+    "Optional UX: keep the 'Browse GEM' button visible (or duplicate it inside the queued-goal row) so users can swap a queued goal for an existing one without first clicking unlink. Functional safety is fine today.",
+    "Project-level (out of scope for this PR): migrate expo-av to expo-audio/expo-video before SDK 54, replace TouchableWithoutFeedback with Pressable, and migrate shadow*/pointerEvents to the new APIs."
+  ],
+  "critical_code_review_comments": [
+    "pna.tsx implementation looks correct: pendingGemGoal is held in state and reset on closeModal/openCreate/openEdit/handleUnlinkGoal/pickGoal; handleSave atomically POSTs /gem/goals first (if queued) then /pna/items with the real id. Sentinel '__pending__' is never sent to the wire — verified via Playwright request interception (POST body to /api/pna/items contains the real UUID, not the sentinel).",
+    "Defensive guard: handleSave correctly substitutes '__pending__' with a freshly-created goal_id; if the GEM POST fails, the PNA save is aborted with an error alert — good behavior.",
+    "GET /api/gem/goals is re-issued with life_area param dropped when 'Show all areas' is toggled — matches spec.",
+    "Impact/Urgency inputs now use a separate string buffer (impactText/urgencyText) that clamps only on blur — verified intermediate values like 7, 8 are preserved during typing."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only run)", "frontend": "100% on the 4 targeted bug fixes; 1 minor UX nuance noted on Bug 4 'pick existing while queued' (Browse button hidden when linked)"},
+  "seed_data_creation": "Created 2 PNA items ('Test PNA timestamps', 'Unlink while queued test') and 1 GEM goal ('Test PNA timestamps') during testing; all cleaned up via DELETE API. Verified final state: pna holistic_health count=0, gem count=0.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Admin login: admin@test.com / AdminPass2026!. PNA modal is reached via /tools/pna → click life area card → '+ Need' (or +Problem/+Aspiration). Modal selector pattern: input[placeholder=\"1-10\"] for impact/urgency, input[placeholder=\"What's the problem, need, or aspiration?\"] for title. Close X is rendered as a sibling Touchable in the header row containing the 'New PNA Item' / 'Edit Item' title. Backend endpoints (unchanged this PR): POST/GET /api/gem/goals, POST/PUT/DELETE /api/pna/items.",
+  "rca_of_issue": "All 4 fixes in pna.tsx work as designed:\n1) Impact/Urgency: separate text buffer (impactText, urgencyText) with onChangeText that filters digits only, and onBlur that clamps to [1,10] (empty → 5). Fixes the old behavior where every keystroke was clamped through Math.min/max(parseInt(...)).\n2) Button copy: dynamic label `Browse GEM (${availableGoals.length} available)` / `Hide list` based on isPickerOpen.\n3) Show-all toggle: new state showAllAreas; useEffect refetches /api/gem/goals with life_area param only when !showAllAreas. Header row inside picker reflects current filter state.\n4) Defer-create: pendingGemGoal state holds {title, description, life_area, priority, goal_type}; linkedGoalId is set to '__pending__' purely as a UI marker. handleSave detects the sentinel, POSTs /gem/goals to get the real id, then POSTs /api/pna/items with that id. closeModal resets pendingGemGoal so X-cancel produces zero side effects. Network capture confirms zero stray POSTs to /api/gem/goals during cancel and exactly one POST during Save."
+}

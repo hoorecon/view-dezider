@@ -53,9 +53,21 @@ export default function PNAScreen() {
     linked_goal_title: '' as string,
   });
   const [saving, setSaving] = useState(false);
-  const [gemGoals, setGemGoals] = useState<Array<{ goal_id: string; title: string; life_area?: string; project_status?: string }>>([]);
+  const [gemGoals, setGemGoals] = useState<Array<{ goal_id: string; title: string; life_area?: string; project_status?: string; goal_type?: string }>>([]);
   const [showGemPicker, setShowGemPicker] = useState(false);
   const [creatingGoal, setCreatingGoal] = useState(false);
+  // Bug 3: when ON, picker shows ALL the user's GEM goals (not only the current life area).
+  const [showAllAreas, setShowAllAreas] = useState(false);
+  // Bug 4 (Option A — defer-create): stash the would-be GEM payload locally and
+  // create it only when the PNA item is saved, so cancelling produces no orphan.
+  const [pendingGemGoal, setPendingGemGoal] = useState<null | {
+    title: string; description: string; life_area: string; priority: string;
+    goal_type: string; project_status: string; status: string;
+  }>(null);
+  // Bug 1: keep raw text while user is editing so they can type "8" without
+  // the value clamping to 1 or 10 mid-keystroke. Clamp on blur and on save.
+  const [impactRaw, setImpactRaw] = useState('5');
+  const [urgencyRaw, setUrgencyRaw] = useState('5');
   const { width: winWidth } = useWindowDimensions();
   const isWide = winWidth >= 768;
 
@@ -99,6 +111,11 @@ export default function PNAScreen() {
       impact_score: 5, urgency_score: 5, action_plan: '', target_date: '',
       linked_goal_id: '', linked_goal_title: '',
     });
+    setImpactRaw('5');
+    setUrgencyRaw('5');
+    setPendingGemGoal(null);
+    setShowGemPicker(false);
+    setShowAllAreas(false);
     setShowModal(true);
     fetchGemGoals(areaId || selectedArea || '');
   };
@@ -114,14 +131,22 @@ export default function PNAScreen() {
       linked_goal_id: item.linked_goal_id || '',
       linked_goal_title: item.linked_goal_title || '',
     });
+    setImpactRaw(String(item.impact_score || 5));
+    setUrgencyRaw(String(item.urgency_score || 5));
+    setPendingGemGoal(null);
+    setShowGemPicker(false);
+    setShowAllAreas(false);
     setShowModal(true);
     fetchGemGoals(item.life_area || '');
   };
 
+  // Bug 3: when `showAllAreas` is true, drop the life_area filter so the picker
+  // can never be "empty" when an existing GEM goal lives under a slightly
+  // different life_area slug (legacy data).
   const fetchGemGoals = async (lifeArea: string) => {
     try {
       const params: any = {};
-      if (lifeArea) params.life_area = lifeArea;
+      if (lifeArea && !showAllAreas) params.life_area = lifeArea;
       const res = await api.get('/gem/goals', { params });
       setGemGoals(res.data || []);
     } catch (e) {
@@ -129,6 +154,15 @@ export default function PNAScreen() {
     }
   };
 
+  // Re-fetch whenever the "Show all areas" toggle changes (only while modal open)
+  useEffect(() => {
+    if (showModal) fetchGemGoals(form.life_area);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showAllAreas]);
+
+  // Bug 4 (Option A): "Create in GEM" stashes the payload locally and shows a
+  // queued badge. The actual POST happens inside handleSave so cancelling the
+  // PNA modal produces no orphan GEM record.
   const handleCreateGemGoal = async () => {
     if (!form.title.trim()) {
       return showAlert('Title required', 'Add a title for the PNA item first — the same will seed the new GEM goal.');
@@ -136,28 +170,20 @@ export default function PNAScreen() {
     if (!form.life_area) {
       return showAlert('Life area required', 'Pick a life area first.');
     }
-    setCreatingGoal(true);
-    try {
-      // Pass PNA category straight through — GEM uses the same 3-way vocabulary
-      // (problem | need | aspiration). Previously we remapped to project/objective
-      // which broke the chip prepopulation when re-opening the GEM Goal.
-      const goalType = form.category;
-      const res = await api.post('/gem/goals', {
-        title: form.title,
-        description: form.description || `Auto-created from PNA item: ${form.title}`,
-        life_area: form.life_area,
-        priority: form.priority,
-        goal_type: goalType,
-        project_status: 'open',
-        status: 'active',
-      });
-      const goal = res.data;
-      setForm(prev => ({ ...prev, linked_goal_id: goal.goal_id, linked_goal_title: goal.title }));
-      setGemGoals(prev => [goal, ...prev]);
-      showAlert('GEM Goal created', `Linked to "${goal.title}"`);
-    } catch (e: any) {
-      showAlert('Could not create goal', e?.response?.data?.detail || 'Try again');
-    } finally { setCreatingGoal(false); }
+    const payload = {
+      title: form.title,
+      description: form.description || `Auto-created from PNA item: ${form.title}`,
+      life_area: form.life_area,
+      priority: form.priority,
+      goal_type: form.category, // problem | need | aspiration
+      project_status: 'open',
+      status: 'active',
+    };
+    setPendingGemGoal(payload);
+    // Use a sentinel id so the linked-row UI renders; we'll swap it for the
+    // real goal_id at save time.
+    setForm(prev => ({ ...prev, linked_goal_id: '__pending__', linked_goal_title: form.title }));
+    showAlert('GEM goal queued', `Will be created in GEM when you save this PNA item — no orphan if you cancel.`);
   };
 
   const openLinkedGoal = () => {
@@ -171,28 +197,75 @@ export default function PNAScreen() {
 
   const unlinkGoal = () => {
     setForm(prev => ({ ...prev, linked_goal_id: '', linked_goal_title: '' }));
+    setPendingGemGoal(null);
   };
 
   const pickGoal = (goal: { goal_id: string; title: string }) => {
     setForm(prev => ({ ...prev, linked_goal_id: goal.goal_id, linked_goal_title: goal.title }));
+    setPendingGemGoal(null); // user picked an existing one — drop any queued stub
     setShowGemPicker(false);
   };
 
   const handleSave = async () => {
     if (!form.title.trim()) return showAlert('Error', 'Title is required');
     if (!form.life_area) return showAlert('Error', 'Life area is required');
+    // Bug 1: final clamp from the raw text right before save.
+    const clamp = (s: string) => {
+      const n = parseInt(s, 10);
+      return isNaN(n) ? 5 : Math.min(10, Math.max(1, n));
+    };
+    const impact = clamp(impactRaw);
+    const urgency = clamp(urgencyRaw);
     setSaving(true);
     try {
-      if (editItem) {
-        await api.put(`/pna/items/${editItem.item_id}`, form);
-      } else {
-        await api.post('/pna/items', form);
+      // Bug 4 (Option A): if user clicked "Create in GEM" earlier we have a
+      // pending payload — POST it now (atomic with PNA save) and capture the
+      // real goal_id. If this POST fails we abort BEFORE saving the PNA so the
+      // user can retry without an orphan.
+      let linked_goal_id = form.linked_goal_id;
+      let linked_goal_title = form.linked_goal_title;
+      if (pendingGemGoal) {
+        try {
+          const gres = await api.post('/gem/goals', pendingGemGoal);
+          linked_goal_id = gres.data.goal_id;
+          linked_goal_title = gres.data.title;
+        } catch (ge: any) {
+          setSaving(false);
+          return showAlert('Could not create GEM goal',
+            ge?.response?.data?.detail || 'Try again or unlink the goal first.');
+        }
       }
+      // Sentinel safety net — never persist '__pending__' to the DB.
+      if (linked_goal_id === '__pending__') {
+        linked_goal_id = '';
+        linked_goal_title = '';
+      }
+      const payload = {
+        ...form,
+        impact_score: impact,
+        urgency_score: urgency,
+        linked_goal_id,
+        linked_goal_title,
+      };
+      if (editItem) {
+        await api.put(`/pna/items/${editItem.item_id}`, payload);
+      } else {
+        await api.post('/pna/items', payload);
+      }
+      setPendingGemGoal(null);
       setShowModal(false);
       fetchDashboard();
       if (viewMode === 'area' && selectedArea) fetchAreaDetail(selectedArea);
     } catch (e) { showAlert('Error', 'Failed to save'); }
     finally { setSaving(false); }
+  };
+
+  // Closing the modal (X / backdrop) — drop any queued GEM stub so it never
+  // leaks into a future open.
+  const closeModal = () => {
+    setPendingGemGoal(null);
+    setShowGemPicker(false);
+    setShowModal(false);
   };
 
   const handleDelete = (itemId: string) => {
@@ -452,7 +525,7 @@ export default function PNAScreen() {
         <View style={isWide ? s.modalContentWide : s.modalContent}>
           <View style={s.modalHeader}>
             <Text style={s.modalTitle}>{editItem ? 'Edit Item' : 'New PNA Item'}</Text>
-            <TouchableOpacity onPress={() => setShowModal(false)}>
+            <TouchableOpacity onPress={closeModal}>
               <Ionicons name="close" size={24} color="#6B7280" />
             </TouchableOpacity>
           </View>
@@ -535,17 +608,35 @@ export default function PNAScreen() {
               <View style={{ flex: 1, marginRight: 8 }}>
                 <Text style={s.fieldLabel}>Impact (1-10)</Text>
                 <TextInput
-                  style={s.input} keyboardType="numeric" value={String(form.impact_score)}
-                  onChangeText={(t) => setForm({ ...form, impact_score: Math.min(10, Math.max(1, parseInt(t) || 1)) })}
+                  style={s.input}
+                  keyboardType="numeric"
+                  value={impactRaw}
+                  onChangeText={(t) => setImpactRaw(t.replace(/[^0-9]/g, '').slice(0, 2))}
+                  onBlur={() => {
+                    const n = parseInt(impactRaw, 10);
+                    const clamped = isNaN(n) ? 5 : Math.min(10, Math.max(1, n));
+                    setImpactRaw(String(clamped));
+                    setForm({ ...form, impact_score: clamped });
+                  }}
                   placeholderTextColor="#9CA3AF"
+                  placeholder="1-10"
                 />
               </View>
               <View style={{ flex: 1, marginLeft: 8 }}>
                 <Text style={s.fieldLabel}>Urgency (1-10)</Text>
                 <TextInput
-                  style={s.input} keyboardType="numeric" value={String(form.urgency_score)}
-                  onChangeText={(t) => setForm({ ...form, urgency_score: Math.min(10, Math.max(1, parseInt(t) || 1)) })}
+                  style={s.input}
+                  keyboardType="numeric"
+                  value={urgencyRaw}
+                  onChangeText={(t) => setUrgencyRaw(t.replace(/[^0-9]/g, '').slice(0, 2))}
+                  onBlur={() => {
+                    const n = parseInt(urgencyRaw, 10);
+                    const clamped = isNaN(n) ? 5 : Math.min(10, Math.max(1, n));
+                    setUrgencyRaw(String(clamped));
+                    setForm({ ...form, urgency_score: clamped });
+                  }}
                   placeholderTextColor="#9CA3AF"
+                  placeholder="1-10"
                 />
               </View>
             </View>
@@ -553,13 +644,16 @@ export default function PNAScreen() {
             <Text style={s.fieldLabel}>Linked GEM Goal</Text>
             {form.linked_goal_id ? (
               <View style={s.gemLinkedRow}>
-                <Ionicons name="flag" size={16} color="#7C3AED" />
+                <Ionicons name="flag" size={16} color={pendingGemGoal ? '#F59E0B' : '#7C3AED'} />
                 <Text style={s.gemLinkedText} numberOfLines={2}>
                   {form.linked_goal_title || `Goal ${form.linked_goal_id.slice(0, 8)}`}
+                  {pendingGemGoal ? '  ·  queued' : ''}
                 </Text>
-                <TouchableOpacity onPress={openLinkedGoal} hitSlop={6}>
-                  <Ionicons name="open-outline" size={16} color="#7C3AED" />
-                </TouchableOpacity>
+                {!pendingGemGoal && (
+                  <TouchableOpacity onPress={openLinkedGoal} hitSlop={6}>
+                    <Ionicons name="open-outline" size={16} color="#7C3AED" />
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity onPress={unlinkGoal} hitSlop={6}>
                   <Ionicons name="close-circle" size={16} color="#94A3B8" />
                 </TouchableOpacity>
@@ -569,7 +663,7 @@ export default function PNAScreen() {
                 <TouchableOpacity style={s.gemBtnGhost} onPress={() => setShowGemPicker(v => !v)}>
                   <Ionicons name="link" size={14} color="#7C3AED" />
                   <Text style={s.gemBtnGhostText}>
-                    {showGemPicker ? 'Hide list' : `Link existing (${gemGoals.length})`}
+                    {showGemPicker ? 'Hide list' : `Browse GEM (${gemGoals.length} available)`}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -585,13 +679,37 @@ export default function PNAScreen() {
             )}
             {showGemPicker && !form.linked_goal_id && (
               <View style={s.gemPicker}>
+                {/* Bug 3: small header + "Show all areas" toggle so the user can
+                    always find an existing GEM goal even when life_area slugs
+                    are mismatched in older data. */}
+                <View style={s.gemPickerHeader}>
+                  <Text style={s.gemPickerHeaderText} numberOfLines={1}>
+                    {showAllAreas ? 'All life areas' : `Filter: ${form.life_area || '(none)'}`}
+                  </Text>
+                  <TouchableOpacity onPress={() => setShowAllAreas(v => !v)} hitSlop={6}>
+                    <Text style={s.gemPickerToggle}>
+                      {showAllAreas ? 'Filter to current area' : 'Show all areas'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
                 {gemGoals.length === 0 ? (
-                  <Text style={s.gemEmpty}>No existing GEM goals for this life area. Tap "Create in GEM" to start one.</Text>
+                  <Text style={s.gemEmpty}>
+                    {showAllAreas
+                      ? 'You have no GEM goals yet. Tap "Create in GEM" to start one.'
+                      : 'No GEM goals in this life area. Tap "Show all areas" above or "Create in GEM".'}
+                  </Text>
                 ) : (
-                  gemGoals.slice(0, 12).map(g => (
+                  gemGoals.slice(0, 20).map(g => (
                     <TouchableOpacity key={g.goal_id} style={s.gemPickItem} onPress={() => pickGoal(g)}>
                       <Ionicons name="flag-outline" size={14} color="#7C3AED" />
-                      <Text style={s.gemPickText} numberOfLines={1}>{g.title}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.gemPickText} numberOfLines={1}>{g.title}</Text>
+                        {(g.life_area || g.goal_type) ? (
+                          <Text style={s.gemPickMeta} numberOfLines={1}>
+                            {[g.life_area, g.goal_type].filter(Boolean).join(' · ')}
+                          </Text>
+                        ) : null}
+                      </View>
                       {g.project_status ? <Text style={s.gemPickStatus}>{g.project_status}</Text> : null}
                     </TouchableOpacity>
                   ))
@@ -599,7 +717,9 @@ export default function PNAScreen() {
               </View>
             )}
             <Text style={s.gemHint}>
-              Goal Execution Manager tracks the work needed to address this {CAT_CFG[form.category]?.label?.toLowerCase() || 'item'}.
+              {pendingGemGoal
+                ? `New GEM goal is queued — it will be created when you tap ${editItem ? 'Update' : 'Save'} (no orphan if you cancel).`
+                : `Goal Execution Manager tracks the work needed to address this ${CAT_CFG[form.category]?.label?.toLowerCase() || 'item'}.`}
             </Text>
           </ScrollView>
 
@@ -742,9 +862,13 @@ const s = StyleSheet.create({
   gemBtnGhostText: { color: '#7C3AED', fontSize: 13, fontWeight: '700' },
   gemBtnPrimary: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#7C3AED', borderRadius: 10, paddingVertical: 10 },
   gemBtnPrimaryText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
-  gemPicker: { backgroundColor: '#F8FAFC', borderRadius: 10, padding: 8, marginTop: 6, gap: 4, maxHeight: 220 },
+  gemPicker: { backgroundColor: '#F8FAFC', borderRadius: 10, padding: 8, marginTop: 6, gap: 4, maxHeight: 240 },
+  gemPickerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 6, paddingVertical: 4, marginBottom: 2 },
+  gemPickerHeaderText: { flex: 1, fontSize: 10, fontWeight: '700', color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.5 },
+  gemPickerToggle: { fontSize: 11, color: '#7C3AED', fontWeight: '700' },
   gemPickItem: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, backgroundColor: '#FFF' },
-  gemPickText: { flex: 1, color: '#0F172A', fontSize: 13 },
+  gemPickText: { color: '#0F172A', fontSize: 13 },
+  gemPickMeta: { color: '#64748B', fontSize: 10, marginTop: 1, textTransform: 'capitalize' },
   gemPickStatus: { fontSize: 10, color: '#7C3AED', fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
   gemEmpty: { color: '#94A3B8', fontSize: 12, padding: 8, fontStyle: 'italic' },
   gemHint: { color: '#94A3B8', fontSize: 11, marginTop: 6, lineHeight: 16 },
