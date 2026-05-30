@@ -15,6 +15,7 @@ import MetricsEditor, { type GoalMetric } from '../../src/components/MetricsEdit
 import SkillsetPicker from '../../src/components/SkillsetPicker';
 import ResourcePicker, { type PickedResource } from '../../src/components/ResourcePicker';
 import MilestoneEditor, { type SmartMilestone } from '../../src/components/MilestoneEditor';
+import TimestampLine from '../../src/components/TimestampLine';
 import api from '../../src/utils/api';
 
 const AUDIO_URL = 'https://customer-assets.emergentagent.com/job_a7a2d7ec-9ce2-470b-8ff8-d26638aa4277/artifacts/unvj7j0c_Goal%20Setter.mp3';
@@ -162,6 +163,7 @@ export default function GoalSetterScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={s.goalTitle} numberOfLines={1}>{g.title}</Text>
                 <Text style={s.goalSub}>{g.status} · {g.created_at?.split('T')[0]}</Text>
+                <TimestampLine entity={g} compact />
               </View>
               <TouchableOpacity onPress={() => handleDelete(g.goal_id)}><Ionicons name="trash-outline" size={16} color={COLORS.textMuted} /></TouchableOpacity>
             </View>

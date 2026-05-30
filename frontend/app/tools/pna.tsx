@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import TimestampLine from '../../src/components/TimestampLine';
 
 const CAT_CFG: Record<string, { color: string; icon: string; label: string }> = {
   problem:    { color: '#EF4444', icon: 'alert-circle',  label: 'Problem' },
@@ -389,6 +390,7 @@ export default function PNAScreen() {
           <View style={[s.catDot, { backgroundColor: cat.color }]} />
           <Text style={s.itemTitle} numberOfLines={2}>{item.title}</Text>
         </View>
+        <TimestampLine entity={item} compact />
         {item.description ? (
           <Text style={s.itemDesc} numberOfLines={2}>{item.description}</Text>
         ) : null}

@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import { LIFE_AREAS as LIFE_AREAS_CANONICAL } from '../../src/constants/lifeAreas';
 import { safeBack, goHome } from '../../src/utils/navigation';
+import TimestampLine from '../../src/components/TimestampLine';
 import api from '../../src/utils/api';
 import PaywallGate from '../../src/components/PaywallGate';
 import ModuleStoreActions from '../../src/components/ModuleStoreActions';
@@ -833,6 +834,7 @@ export default function SwotScreen() {
                   <Text style={styles.listCardDate}>
                     {new Date(a.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                   </Text>
+                  <TimestampLine entity={a} compact />
                   <Text style={styles.listTotalItems}>{getTotalItems(a)} items</Text>
                   <View style={{ flex: 1 }} />
                   <TouchableOpacity

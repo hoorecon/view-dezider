@@ -23,6 +23,7 @@ import { showAlert } from '../../src/utils/alert';
 import { safeBack, goHome } from '../../src/utils/navigation';
 import api from '../../src/utils/api';
 import PaywallGate from '../../src/components/PaywallGate';
+import TimestampLine from '../../src/components/TimestampLine';
 
 interface DecisionItem {
   id: string;
@@ -214,6 +215,7 @@ export default function DeziderListScreen() {
                     <Text style={styles.listCardDate}>
                       {new Date(d.updated_at || d.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </Text>
+                    <TimestampLine entity={d} compact />
                     <View style={{ flex: 1 }} />
                     <TouchableOpacity
                       style={styles.deleteBtn}

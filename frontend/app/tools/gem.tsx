@@ -11,6 +11,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import ProjectStatusPicker from '../../src/components/decisions/ProjectStatusPicker';
+import TimestampLine from '../../src/components/TimestampLine';
 
 const LIFE_AREAS = [
   {id:'career',name:'Career',icon:'briefcase',c:'#3B82F6'},
@@ -174,6 +175,7 @@ export default function GEMScreen() {
                   {(g.linked_decisions?.length||0)+(g.linked_solution_finders?.length||0)+(g.linked_solution_matrices?.length||0)} linked items
                 </Text>
               </View>
+              <TimestampLine entity={g} compact />
             </TouchableOpacity>
           );
         })}
