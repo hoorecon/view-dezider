@@ -25,6 +25,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { showAlert } from '../../src/utils/alert';
 import { COLORS } from '../../src/constants/colors';
+import { useAuthStore } from '../../src/store/authStore';
 import api from '../../src/utils/api';
 import TimingFieldset, { TimingValue } from '../../src/components/decisions/TimingFieldset';
 import { addDaysISO } from '../../src/utils/dateLocalize';
@@ -91,6 +92,11 @@ export default function SimpleSolutionFinder() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const editId = params.id as string | undefined;
+  // Hydration gate — auth store rehydrates async from secure storage; we must
+  // NOT fire any /api calls until the user is loaded, else the auto-save on
+  // step transitions blows up with a 401 on cold deep-link to this page.
+  const user = useAuthStore(st => st.user);
+  const authHydrated = !!user;
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -134,8 +140,9 @@ export default function SimpleSolutionFinder() {
 
   // ============ LOAD ============
   useEffect(() => {
-    if (editId) loadEntry();
-  }, [editId]);
+    // Gate load on auth hydration to avoid the cold-deep-link 401 race.
+    if (editId && authHydrated) loadEntry();
+  }, [editId, authHydrated]);
 
   const loadEntry = async () => {
     setLoading(true);
@@ -179,6 +186,9 @@ export default function SimpleSolutionFinder() {
   });
 
   const handleSave = useCallback(async (silent = false): Promise<string | null> => {
+    // Skip silently if auth isn't ready yet — caller will get a null and the
+    // step transition still works locally; data persists on the next save.
+    if (!authHydrated) return null;
     if (!areaOfLife) {
       if (!silent) showAlert('Required', 'Pick a life area.');
       return null;
@@ -200,11 +210,11 @@ export default function SimpleSolutionFinder() {
       }
       return id;
     } catch (e: any) {
-      showAlert('Save failed', e?.response?.data?.detail || 'Try again');
+      if (!silent) showAlert('Save failed', e?.response?.data?.detail || 'Try again');
       return null;
     } finally { setSaving(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [savedId, areaOfLife, smartGoal, timing, concerns, rootCauses, solutions, risks, mitigations, contingencies, actionPlan]);
+  }, [savedId, areaOfLife, smartGoal, timing, concerns, rootCauses, solutions, risks, mitigations, contingencies, actionPlan, authHydrated]);
 
   // ============ CRUD HELPERS ============
   const addConcern = () => {
@@ -347,17 +357,20 @@ export default function SimpleSolutionFinder() {
   const pushAllToActionCenter = async () => {
     const id = await handleSave(true);
     if (!id) return;
-    const ap_ids = actionPlan.filter(p => !p.pushed_to_action_center).map(p => p.ap_id);
-    if (ap_ids.length === 0) {
+    // Build per-item payload so each row only goes where the user ticked it.
+    const items = actionPlan
+      .filter(p => !p.pushed_to_action_center)
+      .map(p => ({
+        ap_id: p.ap_id,
+        push_ctt: !!p.push_ctt && !p.pushed_to_ctt,
+        push_lifestyle: !!p.push_lifestyle && !p.pushed_to_lifestyle,
+      }));
+    if (items.length === 0) {
       showAlert('Nothing to push', 'All items are already in Action Center.');
       return;
     }
-    const push_to_ctt = actionPlan.some(p => p.push_ctt && !p.pushed_to_ctt);
-    const push_to_lifestyle = actionPlan.some(p => p.push_lifestyle && !p.pushed_to_lifestyle);
     try {
-      const r = await api.post(`/solution-finders/${id}/push-action-plan`, {
-        ap_ids, push_to_ctt, push_to_lifestyle,
-      });
+      const r = await api.post(`/solution-finders/${id}/push-action-plan`, { items });
       setActionPlan(r.data.action_plan_items || []);
       showAlert('Pushed',
         `${r.data.pushed_to_action_center} to Action Center` +

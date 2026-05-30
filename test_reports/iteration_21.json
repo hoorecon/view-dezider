@@ -1,0 +1,28 @@
+{
+  "summary": "Targeted re-test of iteration_20 follow-up — ALL 3 fixes verified PASSING. (1) Feature-flag DEFAULTS: with no app_settings doc (deleteMany executed), GET /api/feature-flags (auth) AND /api/feature-flags/public both return {solution_finder:true, solution_matrix:true}. Partial doc with empty flags{} also defaults to true. (2) SSF cold deep-link: after admin login on '/', navigated directly to /tools/solution-finder, picked Holistic Health + filled SMART goal + clicked Next — NO 'Save failed: Not authenticated' alert appeared. Advanced cleanly to Step 2 of 6 · Concerns. authHydrated gating in solution-finder.tsx:191 (`if (!authHydrated) return null;`) is doing its job. (3) push-action-plan per-item: items=[{ap_sol push_ctt:true},{ap_mit push_lifestyle:true},{ap_cont 0/0}] → pushed_to_action_center=3, pushed_to_ctt=1, pushed_to_lifestyle=1. Verified exactly 1 CTT task linked to the SF entry (not 3). Legacy {ap_ids:[A,B], push_to_ctt:true, push_to_lifestyle:false} still backward-compatible — both ap_ids got CTT (pushed_to_ctt=2). Backend pytest 4/4 PASS. No deprecated Expo packages newly introduced.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter21_retest.py",
+    "/app/test_reports/pytest/iter21_retest.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/tools.py push-action-plan endpoint correctly distinguishes items[] (per-item flags) from ap_ids+push_to_ctt+push_to_lifestyle (global legacy). The branch on `body.get('items')` is clean. Idempotency preserved via `pushed_to_action_center` check at line 222.",
+    "routes/admin.py get_feature_flags() correctly returns defaults True when no doc exists (line 24) AND when doc exists but flag key missing (line 27/28 .get('...', True)). Both endpoints (auth + public) share identical default semantics.",
+    "frontend/app/tools/solution-finder.tsx handleSave() gates on `if (!authHydrated) return null;` (line 191) and loadEntry also waits on authHydrated (line 144). authHydrated derived from `!!user` (useAuthStore selector, line 99) — sound."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter21_retest.py"
+  ],
+  "success_rate": {"backend": "100% (4/4 pytest)", "frontend": "100% (cold deep-link → Step 2 transition; no auth alert)"},
+  "seed_data_creation": "Test created and cleaned 2 transient SF entries (TEST_iter21_*). app_settings.feature_flags doc was deleted and left empty (matches default semantics — endpoints return TRUE without it).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All 3 follow-up fixes from iteration_20 are now PASSING and verified end-to-end. Tests live at /app/backend/tests/test_iter21_retest.py. Feature flags app_settings doc is currently absent (defaults-true path exercised). If running future regression, you can either leave it absent (defaults apply) or PUT /api/admin/feature-flags to set explicit values."
+}

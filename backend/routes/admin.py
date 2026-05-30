@@ -13,27 +13,32 @@ router = APIRouter()
 
 @router.get("/feature-flags")
 async def get_feature_flags(user: dict = Depends(get_current_user)):
-    """Get all feature flags (WOWO settings)"""
+    """Get all feature flags (WOWO settings).
+
+    Both `solution_finder` and `solution_matrix` default to TRUE — they were
+    promoted to first-class dashboard modules in the June 2026 overhaul.
+    Admins can still toggle them off via the admin payment/settings UI.
+    """
     settings = await db.app_settings.find_one({"key": "feature_flags"})
     if not settings:
-        return {"solution_finder": False, "solution_matrix": False}
+        return {"solution_finder": True, "solution_matrix": True}
     flags = settings.get("flags", {})
     return {
-        "solution_finder": flags.get("solution_finder", False),
-        "solution_matrix": flags.get("solution_matrix", False),
+        "solution_finder": flags.get("solution_finder", True),
+        "solution_matrix": flags.get("solution_matrix", True),
     }
 
 
 @router.get("/feature-flags/public")
 async def get_public_feature_flags():
-    """Get feature flags without auth (for conditional UI rendering)"""
+    """Get feature flags without auth (for conditional UI rendering)."""
     settings = await db.app_settings.find_one({"key": "feature_flags"})
     if not settings:
-        return {"solution_finder": False, "solution_matrix": False}
+        return {"solution_finder": True, "solution_matrix": True}
     flags = settings.get("flags", {})
     return {
-        "solution_finder": flags.get("solution_finder", False),
-        "solution_matrix": flags.get("solution_matrix", False),
+        "solution_finder": flags.get("solution_finder", True),
+        "solution_matrix": flags.get("solution_matrix", True),
     }
 
 

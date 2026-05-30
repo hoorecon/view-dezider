@@ -176,19 +176,32 @@ async def delete_solution_finder(entry_id: str, user: dict = Depends(get_current
 async def push_action_plan_to_action_center(
     entry_id: str, request: Request, user: dict = Depends(get_current_user)
 ):
-    """Q5 → Action Center fan-out.
+    """Q5 → Action Center fan-out (per-item granularity).
 
-    Body: { "ap_ids": ["..."], "push_to_ctt": bool, "push_to_lifestyle": bool }
+    Accepts either of two body shapes:
+      A)  { "items": [{"ap_id": "...", "push_ctt": bool, "push_lifestyle": bool}, ...] }
+          → preferred. Per-item CTT / Lifestyle decisions.
+      B)  { "ap_ids": ["..."], "push_to_ctt": bool, "push_to_lifestyle": bool }
+          → legacy global-flag shape (kept for backward compat).
+
     Pushes any action_plan_item that's not yet pushed to the universal
-    `action_items` collection (source_module='solution_finder'). Updates each
-    item's `pushed_to_action_center` + `action_id` markers in place. Optional
-    `push_to_ctt` / `push_to_lifestyle` mirror the action into CTT tasks or
-    Lifestyle routines respectively.
+    `action_items` collection (source_module='solution_finder'), and only
+    fans the item into CTT / Lifestyle when its own per-item flag is true.
+    Idempotent: items with pushed_to_action_center=true are skipped.
     """
     body = await request.json()
-    requested_ids = set(body.get("ap_ids") or [])
-    push_ctt = bool(body.get("push_to_ctt", False))
-    push_lifestyle = bool(body.get("push_to_lifestyle", False))
+    items_arr = body.get("items")
+    if items_arr:
+        item_flags = {it["ap_id"]: (bool(it.get("push_ctt")), bool(it.get("push_lifestyle")))
+                      for it in items_arr if it.get("ap_id")}
+        requested_ids = set(item_flags.keys())
+        legacy_ctt = False
+        legacy_life = False
+    else:
+        requested_ids = set(body.get("ap_ids") or [])
+        legacy_ctt = bool(body.get("push_to_ctt", False))
+        legacy_life = bool(body.get("push_to_lifestyle", False))
+        item_flags = {ap_id: (legacy_ctt, legacy_life) for ap_id in requested_ids}
 
     entry = await db.solution_finders.find_one(
         {"entry_id": entry_id, "user_id": user["user_id"]}
@@ -208,6 +221,7 @@ async def push_action_plan_to_action_center(
             continue
         if it.get("pushed_to_action_center"):
             continue
+        want_ctt, want_life = item_flags.get(ap_id, (False, False))
         action_id = str(uuid.uuid4())
         await db.action_items.insert_one({
             "action_id": action_id,
@@ -230,7 +244,7 @@ async def push_action_plan_to_action_center(
         it["action_id"] = action_id
         pushed += 1
 
-        if push_ctt:
+        if want_ctt and not it.get("pushed_to_ctt"):
             await db.ctt_tasks.insert_one({
                 "task_id": str(uuid.uuid4()),
                 "user_id": user["user_id"],
@@ -245,7 +259,7 @@ async def push_action_plan_to_action_center(
             it["pushed_to_ctt"] = True
             ctt_count += 1
 
-        if push_lifestyle:
+        if want_life and not it.get("pushed_to_lifestyle"):
             await db.lifestyle_routines.insert_one({
                 "routine_id": str(uuid.uuid4()),
                 "user_id": user["user_id"],
