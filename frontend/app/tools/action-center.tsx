@@ -11,6 +11,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
+import TimestampLine from '../../src/components/TimestampLine';
 
 type ActionItem = {
   action_id: string; title: string; who: string; by_when?: string|null;
@@ -144,6 +145,7 @@ export default function ActionCenter() {
                 <View style={{ flex: 1 }}>
                   <Text style={s.rowTitle} numberOfLines={2}>{it.title}</Text>
                   <Text style={s.rowSource}>{SOURCE_LABEL[it.source_module] || it.source_module}{it.source_label ? ` · ${it.source_label}` : ''}</Text>
+                  <TimestampLine entity={it} compact />
                   <View style={s.metaRow}>
                     {!!it.who && <Text style={s.metaText}>👤 {it.who}</Text>}
                     {!!it.by_when && <Text style={s.metaText}>📅 {it.by_when}</Text>}

@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import TimestampLine from '../../src/components/TimestampLine';
 import TimingFieldset, { TimingValue } from '../../src/components/decisions/TimingFieldset';
 import DecisionLinkPicker, { LinkSelection } from '../../src/components/decisions/DecisionLinkPicker';
 import LinkedSourcePill from '../../src/components/decisions/LinkedSourcePill';
@@ -628,6 +629,7 @@ export default function ConflictBreakerScreen() {
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={s.sessTitle}>{sess.title || 'Untitled'}</Text>
                 <Text style={s.sessSub}>Stage {sess.current_stage || 1}: {stage?.name || ''}</Text>
+                <TimestampLine entity={sess} compact />
                 <View style={s.sessMetaRow}>
                   <View style={[s.sessBadge, { backgroundColor: sess.status === 'completed' ? '#059669' : '#6366F1' }]}>
                     <Text style={s.sessBadgeText}>{sess.status || 'draft'}</Text>

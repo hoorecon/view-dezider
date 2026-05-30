@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import TimestampLine from '../../src/components/TimestampLine';
 
 const FREQ_LABELS: Record<string, string> = {
   hourly: 'Hourly', daily: 'Daily', weekly: 'Weekly',
@@ -346,6 +347,7 @@ export default function LifestyleScreen() {
       </View>
       <Text style={s.routineName} numberOfLines={2}>{routine.name || 'Untitled Routine'}</Text>
       {routine.description ? <Text style={s.routineDesc} numberOfLines={1}>{routine.description}</Text> : null}
+      <TimestampLine entity={routine} compact />
       <View style={s.routineBottom}>
         {routine.time_slot ? (
           <View style={s.routineMeta}>

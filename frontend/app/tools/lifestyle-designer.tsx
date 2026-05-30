@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import TimestampLine from '../../src/components/TimestampLine';
 
 const LIFE_AREAS = [
   { id: 'holistic_health', name: 'Holistic Health', icon: 'fitness', color: '#10B981' },
@@ -215,6 +216,7 @@ export default function LifestyleDesignerScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={s.planName}>{plan.name}</Text>
                 {plan.description ? <Text style={s.planDesc}>{plan.description}</Text> : null}
+                <TimestampLine entity={plan} compact />
               </View>
               {plan.is_active && (
                 <View style={s.activeTag}>

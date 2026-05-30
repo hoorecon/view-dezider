@@ -11,6 +11,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, GRADIENTS } from '../../src/constants/colors';
 
 import api from '../../src/utils/api';
+import TimestampLine from '../../src/components/TimestampLine';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -366,6 +367,7 @@ export default function CTTScreen() {
       {/* Task name */}
       <Text style={s.taskTitle} numberOfLines={2}>{task.task || 'Untitled Task'}</Text>
       {task.sub_task ? <Text style={s.taskSub} numberOfLines={1}>{task.sub_task}</Text> : null}
+      <TimestampLine entity={task} compact />
 
       {/* Meta info */}
       <View style={s.taskMeta}>
@@ -478,6 +480,7 @@ export default function CTTScreen() {
                   </View>
                   <Text style={s.boardCardTitle} numberOfLines={2}>{task.task || 'Untitled'}</Text>
                   {task.deadline && <Text style={s.boardCardDate}>{task.deadline}</Text>}
+                  <TimestampLine entity={task} compact />
                 </TouchableOpacity>
               ))}
             </ScrollView>
