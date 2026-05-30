@@ -8041,3 +8041,29 @@ agent_communication:
       and native. End-to-end verified via screenshot on /cld/editor?module_type=master
       showing 24 nodes (15 TEPFI + 9 Time Dezider) and 40 cross-linked edges.
       Phase B (Rules Engine) + Phase C (AI Suggestions) skipped per user direction.
+
+
+## 2026-05-30b — UX fixes: Test123 relocation + CLD zoom/pan + visible new.tsx header
+
+frontend:
+  - task: "Remove Test123 bottom tab; relocate as Dashboard module with history + big Start CTA + delete"
+    implemented: true
+    working: true
+    file: "frontend/app/(tabs)/_layout.tsx, frontend/app/(tabs)/index.tsx, frontend/app/test123/index.tsx (new)"
+  - task: "Visible Back/Home header on /test123/new"
+    implemented: true
+    working: true
+    file: "frontend/app/test123/new.tsx"
+  - task: "CLD Editor zoom + pan + drag (master diagram now fully viewable)"
+    implemented: true
+    working: true
+    file: "frontend/src/components/CLDFlowEditor.tsx"
+
+agent_communication:
+  - agent: "main"
+    message: |
+      All three UX issues fixed and visually verified:
+      1) Test123 tab removed → Dashboard module entry with history list + big "Start Test123" gradient CTA + per-row trash delete
+      2) /test123/new now has visible Back+Home top bar (was invisible on white BG)
+      3) CLD Editor now has zoom (+/−/wheel), pan (drag empty area), Fit, 1:1 buttons.
+         Master 24-node bridge auto-fits to 71% on load so the entire diagram is visible.

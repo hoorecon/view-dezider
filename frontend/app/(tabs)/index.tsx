@@ -315,7 +315,7 @@ export default function HomeScreen() {
 
             <TouchableOpacity
               style={styles.actionCard}
-              onPress={() => router.push('/test123/new')}
+              onPress={() => router.push('/test123' as any)}
             >
               <LinearGradient
                 colors={[COLORS.accent, COLORS.accentDark]}

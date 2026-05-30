@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -40,7 +41,21 @@ export default function NewTest123() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      {/* Visible Top Bar with Back & Home */}
+      <View style={styles.topBar}>
+        <TouchableOpacity style={styles.topBtn} onPress={() => router.back()} accessibilityLabel="Back">
+          <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
+        </TouchableOpacity>
+        <Text style={styles.topTitle}>Test123 — Quick Decision</Text>
+        <TouchableOpacity
+          style={[styles.topBtn, styles.topBtnPrimary]}
+          onPress={() => router.push('/(tabs)/' as any)}
+          accessibilityLabel="Home"
+        >
+          <Ionicons name="home" size={20} color="#FFF" />
+        </TouchableOpacity>
+      </View>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
@@ -117,6 +132,26 @@ export default function NewTest123() {
 }
 
 const styles = StyleSheet.create({
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    backgroundColor: '#FFFFFF',
+  },
+  topBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F1F5F9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  topBtnPrimary: { backgroundColor: COLORS.accent },
+  topTitle: { flex: 1, fontSize: 15, fontWeight: '700', color: COLORS.textPrimary, textAlign: 'center' },
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
