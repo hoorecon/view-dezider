@@ -176,6 +176,13 @@ export default function SolutionMatrixScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const editId = params.id as string | undefined;
+  // SSF → ASM deep-link prefill (Q3/Q4b/Q4c "Send to ASM" pill).
+  const sfEntryId = params.from_sf_entry_id as string | undefined;
+  const sfSource = params.from_sf_source as ('solution' | 'mitigation' | 'contingency' | undefined);
+  const sfSourceId = params.from_sf_source_id as string | undefined;
+  const prefillTitle = params.prefill_title as string | undefined;
+  const prefillArea = params.prefill_area as string | undefined;
+  const camePreloadedFromSF = !!sfEntryId && !editId;
 
   const { checkFeature } = useACM();
   const pdfAccess = checkFeature('solution_matrix_pdf_export');
@@ -257,6 +264,21 @@ export default function SolutionMatrixScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editId]);
 
+  // SSF → ASM deep-link prefill. Only applies on fresh (non-edit) opens, and
+  // only fills empty fields so we don't trample an in-progress draft if the
+  // user later opens the same URL.
+  useEffect(() => {
+    if (!camePreloadedFromSF) return;
+    if (prefillArea && !areaOfLife) setAreaOfLife(prefillArea);
+    if (prefillTitle && !smartGoal) setSmartGoal(prefillTitle);
+    // Seed the q2 priority concerns with the source label so the user knows
+    // exactly which SF item they're deep-diving on. They can edit / clear it.
+    if (prefillTitle && !q2PriorityConcerns) {
+      setQ2PriorityConcerns(`From Simple Solution Finder (${sfSource || 'item'}): ${prefillTitle.replace(/^Deep-dive:\s*/, '')}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [camePreloadedFromSF]);
+
   const loadEntry = async () => {
     setLoading(true);
     try {
@@ -312,6 +334,11 @@ export default function SolutionMatrixScreen() {
     q4_mitigation_plans: q4Mitigation,
     q4_contingency_plans: q4Contingency,
     action_items: actionItems.filter(a => a.what.trim()),
+    // SSF deep-link linkage — surfaces in lists / future cross-views.
+    linked_from_sf_entry_id: sfEntryId || null,
+    linked_from_sf_source: sfSource || null,
+    linked_from_sf_source_id: sfSourceId || null,
+    linked_from_sf_label: prefillTitle || null,
     status: currentStep >= 6 ? 'completed' : 'in_progress',
   });
 
@@ -883,6 +910,32 @@ export default function SolutionMatrixScreen() {
           </View>
         </LinearGradient>
 
+        {/* SSF → ASM deep-link banner. Shown only when ASM was opened from
+            the "Send to ASM" pill on a Simple Solution Finder Q3/Q4b/Q4c
+            row. Tap → returns to that SF entry. */}
+        {camePreloadedFromSF && (
+          <View style={styles.sfBanner}>
+            <Ionicons name="bulb" size={16} color="#7C3AED" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sfBannerLabel}>
+                Deep-diving from Simple Solution Finder{sfSource ? ` · ${String(sfSource).toUpperCase()}` : ''}
+              </Text>
+              {prefillTitle ? (
+                <Text style={styles.sfBannerText} numberOfLines={1}>
+                  {prefillTitle.replace(/^Deep-dive:\s*/, '')}
+                </Text>
+              ) : null}
+            </View>
+            <TouchableOpacity
+              onPress={() => router.push({ pathname: '/tools/solution-finder', params: { id: sfEntryId } } as any)}
+              style={styles.sfBannerBtn}
+            >
+              <Text style={styles.sfBannerBtnText}>Back to SF</Text>
+              <Ionicons name="arrow-back" size={12} color="#7C3AED" />
+            </TouchableOpacity>
+          </View>
+        )}
+
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stepScroll}>
           <View style={styles.stepIndicator}>
             {steps.map((step, i) => (
@@ -1007,6 +1060,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
   stepScroll: { backgroundColor: COLORS.white, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  // SSF deep-link banner — sits between the gradient header and the step pills.
+  sfBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#F5F3FF', borderBottomWidth: 1, borderBottomColor: '#E9D5FF',
+    paddingHorizontal: 14, paddingVertical: 10,
+  },
+  sfBannerLabel: { fontSize: 10, fontWeight: '800', color: '#7C3AED', textTransform: 'uppercase', letterSpacing: 0.5 },
+  sfBannerText: { fontSize: 12, color: '#3B2467', marginTop: 1, fontWeight: '600' },
+  sfBannerBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#C4B5FD' },
+  sfBannerBtnText: { fontSize: 11, fontWeight: '700', color: '#7C3AED' },
   stepIndicator: { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
   stepPill: {
     flexDirection: 'row', alignItems: 'center', gap: 4,

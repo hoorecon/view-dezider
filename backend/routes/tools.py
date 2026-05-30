@@ -358,6 +358,13 @@ async def create_solution_matrix(request: Request, user: dict = Depends(get_curr
         "q4_mitigation_plans": body.get("q4_mitigation_plans", ""),
         "q4_contingency_plans": body.get("q4_contingency_plans", ""),
         "action_items": body.get("action_items", []),
+        # SSF deep-link linkage — set when ASM was launched from a "Send to ASM"
+        # pill in Simple Solution Finder (Q3/Q4b/Q4c). Lets ASM render a back
+        # banner and lets future views reverse-link from SF → ASM.
+        "linked_from_sf_entry_id": body.get("linked_from_sf_entry_id"),
+        "linked_from_sf_source": body.get("linked_from_sf_source"),
+        "linked_from_sf_source_id": body.get("linked_from_sf_source_id"),
+        "linked_from_sf_label": body.get("linked_from_sf_label"),
         "status": body.get("status", "in_progress"),
         "created_at": now,
         "updated_at": now,
@@ -407,6 +414,9 @@ async def update_solution_matrix(entry_id: str, request: Request, user: dict = D
         "solution_category", "solution_sources",
         "q4_negative_consequences", "q4_mitigation_plans", "q4_contingency_plans",
         "action_items", "status",
+        # SSF deep-link linkage (set when ASM opened from SF "Send to ASM" pill)
+        "linked_from_sf_entry_id", "linked_from_sf_source",
+        "linked_from_sf_source_id", "linked_from_sf_label",
     ]
     for field in allowed:
         if field in body:

@@ -28,6 +28,11 @@ from pydantic import BaseModel, Field
 
 from core.database import db
 from core.auth import get_current_user
+# Single source of truth for the global skip-payment toggle storage key.
+# Imported here so the `_key` lookup can't drift away from how
+# payment_admin.py writes the document (caused the production bug where
+# the toggle was ON but paywalls still triggered — iter22).
+from routes.payment_admin import PAYMENT_SETTING_KEY
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/store", tags=["SKU Store"])
@@ -430,8 +435,9 @@ async def has_any_paid_access(user_id: str, module: Optional[str] = None) -> Dic
       3. L1 balance > 0 (single report)
     """
     # Global skip check — single source of truth in app_settings, keyed by
-    # `_key="payments_global"` (PAYMENT_SETTING_KEY from payment_admin.py).
-    s = await db.app_settings.find_one({"_key": "payments_global"}, {"_id": 0})
+    # PAYMENT_SETTING_KEY (imported from payment_admin.py). Sharing the constant
+    # prevents the key-name drift that caused the iter22 production bug.
+    s = await db.app_settings.find_one({"_key": PAYMENT_SETTING_KEY}, {"_id": 0})
     if s and s.get("skip_payment_all_flows"):
         return {
             "has_access": True,
