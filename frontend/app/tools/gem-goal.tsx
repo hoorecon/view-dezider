@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Alert, ActivityIndicator, Platform, KeyboardAvoidingView,
+  TextInput, Alert, ActivityIndicator, Platform, KeyboardAvoidingView, Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,6 +11,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import Slider from '@react-native-community/slider';
+import LinkedGoalMilestonesView from '../../src/components/LinkedGoalMilestonesView';
 
 const LIFE_AREAS = [
   {id:'career',name:'Career',icon:'briefcase'},{id:'finance',name:'Finance',icon:'cash'},
@@ -40,7 +41,22 @@ export default function GEMGoalScreen() {
   const [targetDate, setTargetDate] = useState('');
   const [progress, setProgress] = useState(0);
 
+  // ── Phase 5: Linked SMART Goal (from Goal Setter) ──
+  const [linkedSmartGoalId, setLinkedSmartGoalId] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [smartGoalsList, setSmartGoalsList] = useState<any[]>([]);
+  const [smartGoalsLoading, setSmartGoalsLoading] = useState(false);
+
   useEffect(() => { if(editId) loadGoal(); }, [editId]);
+
+  const loadSmartGoals = async () => {
+    setSmartGoalsLoading(true);
+    try {
+      const res = await api.get('/goal-setter/goals');
+      setSmartGoalsList(res.data || []);
+    } catch (e) { console.error('Load SMART goals', e); }
+    finally { setSmartGoalsLoading(false); }
+  };
 
   const loadGoal = async () => {
     setLoading(true);
@@ -51,6 +67,7 @@ export default function GEMGoalScreen() {
       setLifeArea(d.life_area||''); setGoalType(d.goal_type||'aspiration');
       setPriority(d.priority||'medium'); setStatus(d.status||'active');
       setTargetDate(d.target_date||''); setProgress(d.progress_percent||0);
+      setLinkedSmartGoalId(d.linked_smart_goal_id || null);
     } catch(e) { showAlert('Error','Failed to load'); }
     finally { setLoading(false); }
   };
@@ -64,12 +81,22 @@ export default function GEMGoalScreen() {
         title, description, smart_goal: smartGoal, life_area: lifeArea,
         goal_type: goalType, priority, status,
         target_date: targetDate||null, progress_percent: Math.round(progress),
+        linked_smart_goal_id: linkedSmartGoalId,
       };
       if(editId) await api.put(`/gem/goals/${editId}`, payload);
       else await api.post('/gem/goals', payload);
       showAlert('Saved','Goal saved!', [{text:'OK',onPress:()=>router.back()}]);
     } catch(e) { showAlert('Error','Failed to save'); }
     finally { setSaving(false); }
+  };
+
+  const openPicker = () => { loadSmartGoals(); setPickerOpen(true); };
+  const selectSmartGoal = (id: string) => { setLinkedSmartGoalId(id); setPickerOpen(false); };
+  const unlinkSmartGoal = () => {
+    showAlert('Unlink SMART Goal', 'Remove the link to this SMART Goal? Milestone progress already saved is preserved in Goal Setter.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Unlink', style: 'destructive', onPress: () => setLinkedSmartGoalId(null) },
+    ]);
   };
 
   // Quick launch actions
@@ -122,6 +149,24 @@ export default function GEMGoalScreen() {
           <TextInput style={st.ta} value={description} onChangeText={setDescription} placeholder="Describe your goal..." placeholderTextColor={COLORS.textMuted} multiline numberOfLines={3} />
           <Text style={st.lbl}>SMART Goal</Text>
           <TextInput style={st.ta} value={smartGoal} onChangeText={setSmartGoal} placeholder="Specific, Measurable, Achievable, Relevant, Time-bound" placeholderTextColor={COLORS.textMuted} multiline numberOfLines={3} />
+
+          {/* ── Phase 5: Linked SMART Goal (Goal Setter ↔ GEM) ── */}
+          <Text style={st.lbl}>Linked SMART Goal</Text>
+          {linkedSmartGoalId ? (
+            <LinkedGoalMilestonesView
+              smartGoalId={linkedSmartGoalId}
+              onUnlink={unlinkSmartGoal}
+            />
+          ) : (
+            <TouchableOpacity style={st.linkBtn} onPress={openPicker}>
+              <Ionicons name="link" size={16} color="#059669" />
+              <View style={{ flex: 1 }}>
+                <Text style={st.linkBtnText}>Link a SMART Goal</Text>
+                <Text style={st.linkBtnSub}>Surface its milestones here for execution</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#059669" />
+            </TouchableOpacity>
+          )}
 
           {/* Priority */}
           <Text style={st.lbl}>Priority</Text>
@@ -187,6 +232,49 @@ export default function GEMGoalScreen() {
               <><Ionicons name="checkmark-circle" size={18} color="#FFF" /><Text style={st.saveTxt}>Save Goal</Text></>}
           </TouchableOpacity>
         </View>
+
+        {/* ── SMART Goal Picker Modal ── */}
+        <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
+          <View style={st.modalOverlay}>
+            <View style={st.modalBox}>
+              <View style={st.modalHead}>
+                <Ionicons name="link" size={18} color="#059669" />
+                <Text style={st.modalTitle}>Select SMART Goal to Link</Text>
+                <TouchableOpacity onPress={() => setPickerOpen(false)}>
+                  <Ionicons name="close" size={22} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={st.modalHelp}>
+                Linking surfaces the goal's milestones inside this GEM card. Structure stays read-only; status & progress remain editable.
+              </Text>
+              {smartGoalsLoading ? (
+                <ActivityIndicator color={COLORS.primary} style={{ padding: 20 }} />
+              ) : smartGoalsList.length === 0 ? (
+                <View style={st.emptyPick}>
+                  <Ionicons name="flag-outline" size={36} color={COLORS.textMuted} />
+                  <Text style={st.emptyPickText}>No SMART Goals yet. Create one in Goal Setter first.</Text>
+                  <TouchableOpacity style={st.gotoBtn} onPress={() => { setPickerOpen(false); router.push('/tools/goal-setter'); }}>
+                    <Text style={st.gotoBtnText}>Open Goal Setter</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <ScrollView style={{ maxHeight: 420 }}>
+                  {smartGoalsList.map((g: any) => (
+                    <TouchableOpacity key={g.goal_id} style={st.pickRow} onPress={() => selectSmartGoal(g.goal_id)}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={st.pickTitle} numberOfLines={1}>{g.title}</Text>
+                        <Text style={st.pickSub}>
+                          {(g.milestones || []).length} milestones · {(g.metrics || []).length} metrics · {g.status || 'active'}
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+          </View>
+        </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -216,4 +304,22 @@ const st = StyleSheet.create({
   bottom:{padding:16,borderTopWidth:1,borderTopColor:COLORS.border,backgroundColor:COLORS.white},
   saveBtn:{flexDirection:'row',alignItems:'center',justifyContent:'center',gap:6,backgroundColor:'#0D9488',borderRadius:12,paddingVertical:14},
   saveTxt:{fontSize:15,fontWeight:'700',color: '#0F172A'},
+
+  // ── Phase 5: Linked SMART Goal ──
+  linkBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 12, backgroundColor: '#F0FDF4', borderWidth: 1, borderColor: '#A7F3D0', marginTop: 6 },
+  linkBtnText: { fontSize: 14, fontWeight: '700', color: '#065F46' },
+  linkBtnSub: { fontSize: 11, color: '#047857', marginTop: 1 },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalBox: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 18, maxHeight: '85%' },
+  modalHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  modalTitle: { flex: 1, fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
+  modalHelp: { fontSize: 12, color: COLORS.textMuted, marginBottom: 12, lineHeight: 16 },
+  pickRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, marginBottom: 6, backgroundColor: '#FAFAFA' },
+  pickTitle: { fontSize: 14, fontWeight: '600', color: COLORS.textPrimary },
+  pickSub: { fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
+  emptyPick: { alignItems: 'center', padding: 30, gap: 10 },
+  emptyPickText: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center' },
+  gotoBtn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10, backgroundColor: '#059669' },
+  gotoBtnText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
 });

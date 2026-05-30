@@ -1,0 +1,67 @@
+{
+  "summary": "Phase 5 (GEM ↔ SMART Goal linkage) fully tested end-to-end. Backend: 19/19 pytest cases passed in /app/backend/tests/test_phase5_gem_smart_link.py covering POST /api/goal-setter/goals (with metrics/skills/resources/milestones), POST /api/goal-setter/goals/{gid}/milestones, PUT /api/goal-setter/goals/{gid}/milestones/{mid}/status (status pending|in_progress|done|blocked, progress_pct clamping 0-100, done→100 auto, invalid status → 400), PUT/GET /api/gem/goals/{gid} with linked_smart_goal_id (set + unlink to null persist), POST /api/contacts/ensure-self idempotency, POST /api/contacts with is_sme/skillset/resources(finance.amount, infrastructure.description, people_connects.count)/social_links/time_bandwidth roundtrip, Self contact delete protection, and skills aggregate inclusion. Frontend: /tools/gem-goal?id=<gem_id> on a GEM goal linked to a SMART goal correctly renders the LinkedGoalMilestonesView with SMART grid (S/M/A/R/T) read-only, Target Metrics, Milestones list with status chips (Pending/In Progress/Done/Blocked) and 0% Progress indicator, and a working Unlink button. Tapping the 'In Progress' chip on milestone successfully fired PUT to backend and the state changed (verified MVP Launch → in_progress via API roundtrip). Picker modal shows 'No SMART Goals yet' + 'Open Goal Setter' deep link when user has none. Deprecated packages detected: expo-av (used in AudioGuidePlayer.tsx + VoiceInput.tsx) — per Expo guidance must migrate to expo-audio / expo-video before SDK 54.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/goal-setter/goals",
+        "issue": "Inline milestones passed in body at goal create time are stored verbatim and do NOT get an auto-assigned milestone_id (the route stores body['milestones'] as-is without normalising via _make_milestone). Such milestones become un-targetable by PUT /milestones/{mid}/status because lookup is by milestone_id. Frontend works around this by only sending 'draft_' milestones via POST /goals/{gid}/milestones AFTER create (see goal-setter.tsx ~line 100), so end-users are unaffected today, but the endpoint contract is inconsistent. Recommend normalising every inline milestone through _make_milestone() in routes/goal_setter.py create_goal()."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "gem-goal.tsx (LinkedGoalMilestonesView)",
+        "issues": [
+          "Each milestone row renders both a status-chip row (Pending/In Progress/Done/Blocked) AND a separate small S·M·A·R·T row above it. The standalone S·M·A·R·T row reads as a meaningless line of single letters in the read-only view; if those letters are intended to be tap-to-reveal sub-SMART fields they should either be made obviously interactive (icons + chevron) or hidden when the sub-SMART fields are empty.",
+          "Heading text inside the linked card duplicates with the outer 'Linked SMART Goal' label, which can feel redundant. Consider hiding the outer header when a goal is linked."
+        ]
+      }
+    ],
+    "react_native_issues": [
+      {
+        "component": "expo-av",
+        "issue": "Deprecated package 'expo-av' is installed (package.json line 26: ^16.0.8) and imported in /app/frontend/src/components/AudioGuidePlayer.tsx:5 and /app/frontend/src/components/VoiceInput.tsx:11. Per Expo, expo-av will be removed in SDK 54 — migrate to expo-audio (for Audio) and expo-video (for Video)."
+      },
+      {
+        "component": "Image.resizeMode style prop",
+        "issue": "Console warning: 'Image: style.resizeMode is deprecated. Please use props.resizeMode.' — search the codebase for Image components using resizeMode inside StyleSheet and move the value to a prop."
+      },
+      {
+        "component": "shadow* style props",
+        "issue": "Console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' — RN 0.76+ recommends boxShadow. Audit StyleSheet.create blocks using shadowColor/shadowOffset/shadowOpacity/shadowRadius."
+      },
+      {
+        "component": "View pointerEvents prop",
+        "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Move pointerEvents from prop to style object on affected View components."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase5_gem_smart_link.py",
+    "/app/test_reports/pytest/phase5_v14.xml"
+  ],
+  "action_items": [
+    "Backend: normalise inline milestones in POST /api/goal-setter/goals via _make_milestone() so they get milestone_id/status/progress_pct defaults (minor — frontend bypasses it today).",
+    "Frontend: migrate expo-av → expo-audio (AudioGuidePlayer.tsx, VoiceInput.tsx) ahead of Expo SDK 54.",
+    "Frontend: fix deprecation warnings (Image resizeMode prop, shadow* → boxShadow, View pointerEvents → style.pointerEvents).",
+    "Design: clarify or hide the bare 'S M A R T' letter row inside each milestone tile in LinkedGoalMilestonesView when sub-SMART fields are empty."
+  ],
+  "critical_code_review_comments": [
+    "routes/goal_setter.py create_goal() trusts client-supplied milestones[] structure; should round-trip through _make_milestone() for consistency with POST /milestones path.",
+    "LinkedGoalMilestonesView correctly relies on stable milestone_id from the server — this is why the inline-create bypass on the frontend matters."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase5_gem_smart_link.py (NEW — 19 pytest cases)",
+    "/app/test_reports/pytest/phase5_v14.xml (NEW — JUnit XML output)"
+  ],
+  "success_rate": {"backend": "100% (19/19)", "frontend": "100% on critical Phase 5 flows tested (link picker, linked view render, S·M·A·R·T grid, milestones, status chip PUT roundtrip, unlink button visible)"},
+  "seed_data_creation": "Each test class self-creates TEST_/UI_TEST_ prefixed entities (SMART goals, GEM goals, contacts) and the TestZCleanup class (plus the browser flow) deletes them. No residual test data should remain.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend regression: run `pytest /app/backend/tests/test_phase5_gem_smart_link.py -v`. To re-test Phase 5 UI manually, navigate to /tools/gem-goal?id=<gem_goal_id> after creating a GEM goal linked to a SMART goal — the param is `id`, not `goal_id`. Login via API at /api/auth/login returns `session_token` which the frontend persists in localStorage as `auth_token`. Phases 1-4 (contacts 6-step form, goal-setter metrics/skills/resources/milestones authoring) were not exhaustively UI-tested — only their backend contracts were validated through pytest; the frontend smoke confirmed all related screens load without red-screens.",
+  "rca_of_issue": "N/A — no blocking defects found. The one backend inconsistency (inline-create milestones missing milestone_id) is benign in practice because goal-setter.tsx already promotes draft milestones via the dedicated POST /milestones endpoint after the goal is created."
+}
