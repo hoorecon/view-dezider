@@ -10,6 +10,7 @@ import { COLORS } from '../src/constants/colors';
 import { registerForPushNotifications, addNotificationResponseListener } from '../src/utils/pushNotifications';
 import GlobalVoiceNav from '../src/components/GlobalVoiceNav';
 import WebFrame from '../src/components/WebFrame';
+import WebScrollFix from '../src/components/WebScrollFix';
 import AlertHost from '../src/components/AlertHost';
 import GlobalFontScale from '../src/components/GlobalFontScale';
 import { FontScaleProvider } from '../src/contexts/FontScaleContext';
@@ -307,6 +308,7 @@ export default function RootLayout() {
       {/* but OUTSIDE WebFrame so it can position itself anywhere on the viewport */}
       <AlertHost />
       <GlobalFontScale />
+      <WebScrollFix />
       </FontScaleProvider>
       <GlobalVoiceNav />
     </>
