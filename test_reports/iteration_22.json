@@ -1,0 +1,57 @@
+{
+  "summary": "Iter22 testing of admin Skip Payment toggle integration with /api/store/access-check. CRITICAL BACKEND BUG CONFIRMED: the 'fix' applied to sku_store.py:has_any_paid_access() does NOT actually read the admin skip flag — it queries the wrong document. sku_store.py looks up db.app_settings.find_one({'key': 'payment_settings'}), but payment_admin.py stores the settings as {'_key': 'payments_global'}. BOTH the field name (key vs _key) AND the value (payment_settings vs payments_global) are mismatched, so the query always returns None and the skip branch never fires. Verified directly against the Mongo doc and via 5 pytest cases — baseline + toggle-off cases pass; toggle-on + idempotency cases FAIL with has_access=false even after PUT /api/admin/payment-settings returns 200 with skip_payment_all_flows=true. This reproduces the exact production bug the user reported. Frontend PaywallGate.tsx code review looks correct (proper Dimensions>=640 breakpoint, sheetWide styles with maxWidth 480 + shadow, lockBadge, 'Not now' + 'See all plans' footer, backdrop dismiss), but live UI verification was blocked because the preview /api/auth/register returned 403, causing PaywallGate's fail-open fallback to mask the gate (has_access defaults to true on error — a silent-bypass concern in itself).",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "GET /api/store/access-check",
+        "issue": "Admin Skip Payment toggle never affects access-check because sku_store.py:has_any_paid_access() queries db.app_settings.find_one({'key': 'payment_settings'}) (sku_store.py:433) but payment_admin.py persists it as {'_key': 'payments_global'} (payment_admin.py:157, 161, 195-198). Both the field name and value are wrong. Fix: change the query in sku_store.py to db.app_settings.find_one({'_key': 'payments_global'}) — must match PAYMENT_SETTING_KEY constant in payment_admin.py. Ideally, export that constant and import it in sku_store.py to prevent future drift.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "PaywallGate skip-flow E2E",
+        "issue": "Could not fully verify the skip-flag-ON E2E flow because the backend bug above prevents skip from ever taking effect. Once the backend key mismatch is fixed, /api/store/access-check will return {has_access:true, via:'admin_skip'} and PaywallGate (PaywallGate.tsx:65-72) will correctly call onAllowed() and bypass the modal.",
+        "affected_testIDs": []
+      },
+      {
+        "flow": "PaywallGate fail-open on auth/error",
+        "issue": "PaywallGate.tsx:55-58 silently sets has_access=true on ANY API error (including 401). This means unauthenticated users (or users hitting a CORS / 500) will bypass the paywall entirely. While not part of this iteration, this masks bugs during testing and is a soft security smell. Suggest distinguishing 401 (fail closed → redirect to login) from 5xx (fail open).",
+        "affected_testIDs": ["new-decision-btn"]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_skip_payment_iter22.py",
+    "/app/test_reports/pytest/iter22_skip_payment.xml"
+  ],
+  "action_items": [
+    "FIX (CRITICAL): In /app/backend/routes/sku_store.py line 433, change db.app_settings.find_one({'key': 'payment_settings'}, ...) → db.app_settings.find_one({'_key': 'payments_global'}, ...). Optionally import PAYMENT_SETTING_KEY from payment_admin.py to use the same constant.",
+    "After the fix, re-run /app/backend/tests/test_skip_payment_iter22.py — all 5 tests must pass.",
+    "Consider exporting PAYMENT_SETTING_KEY as a shared constant in core/ to prevent future drift.",
+    "Frontend: consider tightening PaywallGate.tsx fail-open behavior so a 401 redirects to login rather than silently granting access."
+  ],
+  "critical_code_review_comments": [
+    "Naming inconsistency: payment_admin.py uses '_key' as the document discriminator field while typical Mongo convention is just 'key'. Either is fine, but BOTH sides must agree. A shared constant is the safest fix.",
+    "sku_store.py:433 uses a magic-string key/value pair instead of importing PAYMENT_SETTING_KEY — exactly the kind of duplication that allowed this bug to ship.",
+    "PaywallGate.tsx 'fail open' on ALL errors (line 55-58) is a security/UX smell. At minimum log a console.warn so silent bypasses are visible during QA."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_skip_payment_iter22.py (NEW)"
+  ],
+  "success_rate": {
+    "backend": "60% (3/5 pytest cases — the 2 failures pinpoint the real bug)",
+    "frontend": "not_verified (blocked by upstream backend bug + preview /api/auth/register 403 throttling)"
+  },
+  "seed_data_creation": "Test creates one fresh free user per pytest run (freeuser_iter22_<ts>@example.com / Pass2026!). Test toggles the admin skip flag ON and OFF; final test_cleanup_skip_off ensures it ends OFF.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "After main agent fixes sku_store.py:433 (use _key='payments_global' to match payment_admin.PAYMENT_SETTING_KEY), simply re-run: pytest /app/backend/tests/test_skip_payment_iter22.py -v . All 5 tests must pass. Then manually verify frontend wide/narrow modal at viewports 1280x800 and 390x844 — code looks correct, just needs visual confirmation. Use admin@test.com / AdminPass2026! for admin auth.",
+  "rca_of_issue": "ROOT CAUSE: The 'fix' for the skip-payment toggle introduced a brand-new query against db.app_settings using the literal pair {'key': 'payment_settings'}. However, the document is written by payment_admin.py (since well before this iteration) using {'_key': 'payments_global'} where PAYMENT_SETTING_KEY = 'payments_global' and the discriminator field is '_key' (line 157, 161, 195). Result: find_one returns None on every call, the skip branch in has_any_paid_access() never executes, and access-check returns {has_access:false, via:null, balance:0} even when the admin has enabled skip via the PUT /admin/payment-settings endpoint. REPRODUCTION: (1) PUT /api/admin/payment-settings {skip_payment_all_flows:true, skip_payment_reason:'X'} as admin → 200 OK, settings persisted. (2) GET /api/store/access-check?module=dezider as a fresh user → returns {has_access:false, via:null, balance:0} instead of expected {has_access:true, via:'admin_skip'}. (3) Direct Mongo dump shows the doc is at {_key:'payments_global', skip_payment_all_flows:true, ...} confirming the storage key. MITIGATION: One-line change in /app/backend/routes/sku_store.py:433 — db.app_settings.find_one({'_key': 'payments_global'}, {'_id': 0}). Recommend importing PAYMENT_SETTING_KEY from payment_admin.py instead of hard-coding it again."
+}

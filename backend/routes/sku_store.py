@@ -421,10 +421,22 @@ async def has_any_paid_access(user_id: str, module: Optional[str] = None) -> Dic
     """Returns whether user has ANY way to use the module without paying again.
 
     Checks (in order):
+      0. GLOBAL admin "Skip Payment" toggle (payment_admin · /admin/payment-settings)
+         — when ACTIVE the FE is told the user has access via 'admin_skip' so the
+         paywall never shows. This was missing earlier and caused the production
+         bug where the toggle was ON but the Dezider paywall still appeared.
       1. Active monthly subscription on credit_wallets
       2. L2 balance > 0 (bundle covers all 3 modules)
       3. L1 balance > 0 (single report)
     """
+    # Global skip check — single source of truth in app_settings.
+    s = await db.app_settings.find_one({"key": "payment_settings"}, {"_id": 0})
+    if s and s.get("skip_payment_all_flows"):
+        return {
+            "has_access": True,
+            "via": "admin_skip",
+            "skip_reason": s.get("skip_payment_reason") or "",
+        }
     # Subscription check
     wallet = await db.credit_wallets.find_one(
         {"user_id": user_id}, {"_id": 0, "subscription_status": 1, "current_plan": 1}

@@ -13,7 +13,7 @@
  *    bottom-sheet modal explaining options and deep-linking to /store.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator } from 'react-native';
+import { Dimensions, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import api from '../utils/api';
@@ -38,6 +38,15 @@ export default function PaywallGate({ module, children, onAllowed }: Props) {
   const router = useRouter();
   const [state, setState] = useState<AccessState>({ has_access: true, loading: true });
   const [showSheet, setShowSheet] = useState(false);
+  // Centered card on wider viewports (web / tablet); native bottom-sheet on
+  // narrow phone screens. Refreshes on resize so the modal stays appropriate.
+  const [isWide, setIsWide] = useState(() => Dimensions.get('window').width >= 640);
+  useEffect(() => {
+    const sub = Dimensions.addEventListener('change', ({ window }) => {
+      setIsWide(window.width >= 640);
+    });
+    return () => sub.remove();
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -69,21 +78,30 @@ export default function PaywallGate({ module, children, onAllowed }: Props) {
     <>
       {wrapped}
       <Modal visible={showSheet} transparent animationType="fade" onRequestClose={() => setShowSheet(false)}>
-        <Pressable style={styles.backdrop} onPress={() => setShowSheet(false)}>
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-            <View style={styles.handle} />
-            <Ionicons name="lock-closed" size={36} color="#7C3AED" />
+        <Pressable style={[styles.backdrop, isWide && styles.backdropCentered]} onPress={() => setShowSheet(false)}>
+          <Pressable style={[styles.sheet, isWide && styles.sheetWide]} onPress={(e) => e.stopPropagation()}>
+            {!isWide && <View style={styles.handle} />}
+            <View style={styles.lockBadge}>
+              <Ionicons name="lock-closed" size={22} color="#7C3AED" />
+            </View>
             <Text style={styles.title}>Unlock {MODULE_LABEL[module]}</Text>
-            <Text style={styles.body}>You need a paid plan or on-demand pack to create a new {MODULE_LABEL[module]} decision. Pick what suits you:</Text>
+            <Text style={styles.body}>
+              Pick a plan or on-demand pack to create a new {MODULE_LABEL[module]} decision.
+            </Text>
             <View style={styles.options}>
               <OptionRow icon="document-text" tone="#3B82F6" title="DIY Decision Report" desc="₹199 · 1 decision + PDF" onPress={() => { setShowSheet(false); router.push({ pathname: '/store', params: { highlight: 'L1', module } } as any); }} />
               <OptionRow icon="people" tone="#7C3AED" title="10-Decision Family Bundle" desc="₹999 · 10 decisions across modules" onPress={() => { setShowSheet(false); router.push({ pathname: '/store', params: { highlight: 'L2', module } } as any); }} />
               <OptionRow icon="infinite" tone="#059669" title="Monthly Subscription" desc="From ₹149/mo · unlimited" onPress={() => { setShowSheet(false); router.push('/pricing' as any); }} />
             </View>
-            <TouchableOpacity style={styles.viewAll} onPress={() => { setShowSheet(false); router.push({ pathname: '/store', params: { module } } as any); }}>
-              <Text style={styles.viewAllText}>See all plans →</Text>
-            </TouchableOpacity>
-            {state.loading && <ActivityIndicator size="small" />}
+            <View style={styles.footerRow}>
+              <TouchableOpacity style={styles.dismissBtn} onPress={() => setShowSheet(false)}>
+                <Text style={styles.dismissText}>Not now</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.viewAll} onPress={() => { setShowSheet(false); router.push({ pathname: '/store', params: { module } } as any); }}>
+                <Text style={styles.viewAllText}>See all plans →</Text>
+              </TouchableOpacity>
+            </View>
+            {state.loading && <ActivityIndicator size="small" style={{ marginTop: 8 }} />}
           </Pressable>
         </Pressable>
       </Modal>
@@ -107,16 +125,59 @@ function OptionRow({ icon, tone, title, desc, onPress }: { icon: any; tone: stri
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 28, alignItems: 'center', gap: 6 },
+  // Backdrop centers on wide viewports, sticks to bottom on narrow phones.
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+    justifyContent: 'flex-end',
+    alignItems: 'stretch',
+    ...Platform.select({ web: { backdropFilter: 'blur(2px)' as any }, default: {} }),
+  },
+  backdropCentered: { justifyContent: 'center', alignItems: 'center', padding: 16 },
+  sheet: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 22,
+    paddingTop: 12,
+    paddingBottom: 24,
+    alignItems: 'center',
+    gap: 4,
+  },
+  // Elegant centered card on wider screens — replaces edge-to-edge bottom sheet.
+  sheetWide: {
+    width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
+    marginVertical: 'auto' as any,
+    marginBottom: 60,
+    marginTop: 60,
+    borderRadius: 18,
+    paddingTop: 24,
+    paddingBottom: 22,
+    paddingHorizontal: 26,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowOffset: { width: 0, height: 12 },
+    shadowRadius: 28,
+    elevation: 24,
+  },
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#E5E7EB', marginBottom: 10 },
-  title: { fontSize: 20, fontWeight: '700', color: '#0F172A', marginTop: 8 },
-  body: { fontSize: 14, color: '#475569', textAlign: 'center', marginTop: 4, marginBottom: 12, lineHeight: 20 },
-  options: { width: '100%', gap: 10, marginTop: 4 },
-  option: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 12, gap: 12 },
+  lockBadge: {
+    width: 52, height: 52, borderRadius: 26,
+    backgroundColor: '#F5F3FF', alignItems: 'center', justifyContent: 'center',
+    marginBottom: 12,
+  },
+  title: { fontSize: 19, fontWeight: '700', color: '#0F172A', marginTop: 2 },
+  body: { fontSize: 13, color: '#475569', textAlign: 'center', marginTop: 6, marginBottom: 14, lineHeight: 19, maxWidth: 380 },
+  options: { width: '100%', gap: 10, marginTop: 2 },
+  option: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14, gap: 12, backgroundColor: '#FFF' },
   optionIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-  optionTitle: { fontSize: 15, fontWeight: '600', color: '#0F172A' },
+  optionTitle: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
   optionDesc: { fontSize: 12, color: '#64748B', marginTop: 1 },
-  viewAll: { marginTop: 16, paddingHorizontal: 16, paddingVertical: 10 },
-  viewAllText: { color: '#7C3AED', fontWeight: '600', fontSize: 14 },
+  footerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginTop: 14, paddingHorizontal: 2 },
+  dismissBtn: { paddingHorizontal: 14, paddingVertical: 8 },
+  dismissText: { color: '#64748B', fontWeight: '600', fontSize: 13 },
+  viewAll: { paddingHorizontal: 14, paddingVertical: 8 },
+  viewAllText: { color: '#7C3AED', fontWeight: '700', fontSize: 13 },
 });
