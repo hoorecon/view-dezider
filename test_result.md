@@ -7942,3 +7942,102 @@ agent_communication:
       I am marking the task `working: "NA"` (not "false") because
       nothing failed in the app itself — only the test harness was
       unable to drive the browser past J1.
+
+
+## 2026-05-30 — CLD Engine Revamp Phases A + D (Visual Editor + TEPFI↔Time Dezider Bridge)
+
+backend:
+  - task: "Module CLD save/delete + Phase D structured TEPFI/TimeDezider/Master generators"
+    implemented: true
+    working: true
+    file: "backend/routes/cld.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          Added 6 new endpoints in routes/cld.py:
+          - POST /api/cld/module/{module_type}/save (manual CRUD)
+          - DELETE /api/cld/module/{module_type}
+          - POST /api/cld/module/tepfi/generate-structured (deterministic 15 nodes × 22 links)
+          - POST /api/cld/module/time_dezider/generate-structured (radial layout with Available Time hub)
+          - POST /api/cld/module/master/generate-bridge (TEPFI + Time Dezider with cross-module bridges)
+          Verified live via curl: master bridge returned 24 nodes + 40 links.
+
+frontend:
+  - task: "Standalone CLD Visual Editor screen (Phase A) — universal SVG canvas + list editor"
+    implemented: true
+    working: true
+    file: "frontend/app/cld/editor.tsx, frontend/src/components/CLDFlowEditor.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          New /app/cld/editor route accepts ?module_type=X or ?decision_id=X.
+          Toolbar: Add Node / Add Link / Layout / Generate / Clear / Save.
+          Visual canvas built with react-native-svg (universal web+native).
+          Features:
+          - Tap empty area to add node
+          - Tap node to select; tap "Link from here" → tap target to draw link
+          - Long-press node to edit name/classification/base value/rank
+          - Polarity-aware rendering: green "+" reinforcing, dashed red "−" balancing
+          - Strength-based stroke width
+          - Per-node tap drag (native PanResponder)
+          List editor below SVG: edit/delete each node + each link with polarity swap.
+          NOTE: Initially attempted @xyflow/react but it shipped ESM-only with `import.meta`
+          which breaks Metro web. Replaced with native SVG canvas; package uninstalled.
+
+  - task: "Wire CLD Editor entry points from cld-engine, tepfi, time-dezider screens"
+    implemented: true
+    working: true
+    file: "frontend/app/tools/cld-engine.tsx, tepfi.tsx, time-dezider.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          - cld-engine.tsx: added "Edit" button per module card → /cld/editor?module_type=X
+          - tepfi.tsx: added git-network icon in header → /cld/editor?module_type=tepfi
+          - time-dezider.tsx: added git-network icon in header → /cld/editor?module_type=time_dezider
+
+  - task: "Test123 UX verification (final summary Q&A + clickable progress dots + visible header)"
+    implemented: true
+    working: true
+    file: "frontend/app/test123/[id].tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          Screenshot verified on completed session:
+          - All Q&A responses rendered (Situation, Am I Emotional, What I Want, Worst Case, Can I Face, All Needs, Action Plan, Final Decision)
+          - Top-left Back button + top-right purple Home button visible on white BG
+          - 3 progress checkmark dots clickable
+
+test_plan:
+  current_focus:
+    - "CLD Editor visual canvas (SVG-based) — drag, tap-to-add, polarity rendering"
+    - "Phase D TEPFI/Time Dezider/Master bridge generators"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "medium"
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Test123 P0 verified visually. CLD Engine Phase A (Visual Editor + Manual CRUD)
+      and Phase D (TEPFI↔Time Dezider deterministic generators + cross-module bridges)
+      delivered. Initially tried @xyflow/react but its ESM `import.meta` broke Metro web,
+      so pivoted to a lighter universal react-native-svg canvas which works on both web
+      and native. End-to-end verified via screenshot on /cld/editor?module_type=master
+      showing 24 nodes (15 TEPFI + 9 Time Dezider) and 40 cross-linked edges.
+      Phase B (Rules Engine) + Phase C (AI Suggestions) skipped per user direction.

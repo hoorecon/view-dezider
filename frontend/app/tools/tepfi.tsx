@@ -203,6 +203,9 @@ export default function TEPFIScreen() {
             {dashboard?.total_entries || 0} assessments | Time • Effort • People • Finance • Infra
           </Text>
         </View>
+        <TouchableOpacity onPress={() => router.push({ pathname: '/cld/editor', params: { module_type: 'tepfi' } } as any)} style={s.addBtn}>
+          <Ionicons name="git-network" size={20} color="#FFF" />
+        </TouchableOpacity>
         <TouchableOpacity onPress={() => router.push('/tools/tepfi-entry')} style={s.addBtn}>
           <Ionicons name="add" size={22} color="#FFF" />
         </TouchableOpacity>

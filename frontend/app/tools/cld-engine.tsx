@@ -234,6 +234,13 @@ export default function CLDEngineScreen() {
                       )}
                     </View>
                     <TouchableOpacity
+                      style={[styles.editBtn, { borderColor: mod.color }]}
+                      onPress={() => router.push({ pathname: '/cld/editor', params: { module_type: mod.id } } as any)}
+                    >
+                      <Ionicons name="create-outline" size={14} color={mod.color} />
+                      <Text style={[styles.editBtnText, { color: mod.color }]}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
                       style={[styles.genBtn, { backgroundColor: mod.color }, isGenerating && { opacity: 0.5 }]}
                       onPress={() => generateModuleCLD(mod.id)}
                       disabled={isGenerating}
@@ -392,6 +399,8 @@ const styles = StyleSheet.create({
   moduleCardDesc: { fontSize: 11, color: COLORS.textMuted },
   moduleCardStats: { fontSize: 11, color: COLORS.primary, fontWeight: '600', marginTop: 2 },
   genBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  editBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1, marginRight: 6 },
+  editBtnText: { fontSize: 11, fontWeight: '700' },
 
   // Sections
   sectionTitle: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 4, marginTop: 8 },

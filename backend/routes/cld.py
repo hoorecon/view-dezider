@@ -359,6 +359,337 @@ async def get_module_cld(module_type: str, request: Request, user: dict = Depend
     return cld
 
 
+# ════════════════════════════════════════════════════════
+# CLD ENGINE PHASE A — Manual CRUD for Module CLDs
+# ════════════════════════════════════════════════════════
+
+@router.post("/module/{module_type}/save")
+async def save_module_cld(module_type: str, request: Request, user: dict = Depends(get_current_user)):
+    """Save or update a manually-edited module CLD (Phase A visual editor)."""
+    if module_type not in MODULE_TYPES:
+        raise HTTPException(400, f"Invalid module_type. Use: {MODULE_TYPES}")
+    body = await request.json()
+    context_id = body.get("context_id", "default")
+    now = datetime.now(timezone.utc)
+
+    doc = {
+        "user_id": user["user_id"],
+        "module_type": module_type,
+        "context_id": context_id,
+        "decision_id": f"module_{module_type}_{context_id}",
+        "nodes": body.get("nodes", []),
+        "links": body.get("links", []),
+        "loops": body.get("loops", []),
+        "layout_type": body.get("layout_type", "manual"),
+        "notes": body.get("notes", ""),
+        "updated_at": now,
+    }
+    existing = await db.cld_diagrams.find_one(
+        {"user_id": user["user_id"], "module_type": module_type, "context_id": context_id}
+    )
+    if existing:
+        await db.cld_diagrams.update_one(
+            {"user_id": user["user_id"], "module_type": module_type, "context_id": context_id},
+            {"$set": doc}
+        )
+        return {"message": "Module CLD updated", "node_count": len(doc["nodes"]), "link_count": len(doc["links"])}
+    else:
+        doc["cld_id"] = f"CLD-{module_type.upper()}-{uuid.uuid4().hex[:8].upper()}"
+        doc["created_at"] = now
+        await db.cld_diagrams.insert_one(doc)
+        return {"message": "Module CLD saved", "cld_id": doc["cld_id"]}
+
+
+@router.delete("/module/{module_type}")
+async def delete_module_cld(module_type: str, request: Request, user: dict = Depends(get_current_user)):
+    """Delete a module CLD."""
+    context_id = request.query_params.get("context_id", "default")
+    result = await db.cld_diagrams.delete_one(
+        {"user_id": user["user_id"], "module_type": module_type, "context_id": context_id}
+    )
+    if result.deleted_count == 0:
+        raise HTTPException(404, "Module CLD not found")
+    return {"message": "Module CLD deleted"}
+
+
+# ════════════════════════════════════════════════════════
+# CLD ENGINE PHASE D — TEPFI + Time Dezider deterministic generators
+# ════════════════════════════════════════════════════════
+
+def _build_tepfi_cld_graph(tepfi_entries: list) -> dict:
+    """Build a deterministic TEPFI 5×3 (Time/Effort/People/Finance/Infra × Self/Micro/Macro) CLD.
+    Each cell becomes a node; structural causal links connect dimensions within the same layer,
+    and cross-layer links flow Self → Micro → Macro.
+    """
+    DIMS = [
+        ("time", "Time", "#3B82F6"),
+        ("effort", "Effort", "#F59E0B"),
+        ("people", "People", "#10B981"),
+        ("finance", "Finance", "#8B5CF6"),
+        ("infra", "Infrastructure", "#EF4444"),
+    ]
+    LAYERS = [("self", "Self"), ("micro", "Micro"), ("macro", "Macro")]
+
+    # Aggregate scores by (dim, layer)
+    cell_scores: dict = {}
+    for entry in tepfi_entries:
+        dims_data = entry.get("dimensions", {}) if isinstance(entry, dict) else {}
+        for dim_id, _, _ in DIMS:
+            dim_data = dims_data.get(dim_id, {}) or {}
+            for layer_id, _ in LAYERS:
+                level = dim_data.get(layer_id, {}) or {}
+                score = level.get("score", 0) or 0
+                key = (dim_id, layer_id)
+                cell_scores.setdefault(key, []).append(score)
+    cell_avg = {k: (sum(v) / len(v)) if v else 0 for k, v in cell_scores.items()}
+
+    nodes = []
+    for di, (dim_id, dim_name, color) in enumerate(DIMS):
+        for li, (layer_id, layer_name) in enumerate(LAYERS):
+            score = round(cell_avg.get((dim_id, layer_id), 0), 1)
+            nodes.append({
+                "factor_id": f"tepfi_{dim_id}_{layer_id}",
+                "name": f"{dim_name}·{layer_name}",
+                "x": 80 + li * 200,
+                "y": 60 + di * 100,
+                "base_value": min(100.0, score * 10),
+                "centrality": 0.5,
+                "classification": "primary" if score >= 7 else "secondary",
+                "priority_rank": di + 1,
+                "gap_multiplier": max(0.5, 2.0 - score / 5.0) if score else 1.5,
+                "locked": False,
+                "color": color,
+                "tepfi_dim": dim_id,
+                "tepfi_layer": layer_id,
+            })
+
+    links = []
+    # Within-layer dimension chains: Time → Effort → People → Finance → Infra
+    for li, (layer_id, _) in enumerate(LAYERS):
+        for di in range(len(DIMS) - 1):
+            d1, d2 = DIMS[di][0], DIMS[di + 1][0]
+            links.append({
+                "from_id": f"tepfi_{d1}_{layer_id}",
+                "to_id": f"tepfi_{d2}_{layer_id}",
+                "link_type": "reinforcing",
+                "strength": 5.0,
+                "delay": 0,
+                "description": f"{DIMS[di][1]} fuels {DIMS[di+1][1]} at {layer_id} layer",
+            })
+    # Cross-layer flow: Self → Micro → Macro for each dimension
+    for dim_id, dim_name, _ in DIMS:
+        links.append({
+            "from_id": f"tepfi_{dim_id}_self",
+            "to_id": f"tepfi_{dim_id}_micro",
+            "link_type": "reinforcing", "strength": 6.0, "delay": 1,
+            "description": f"Personal {dim_name} scales to micro environment",
+        })
+        links.append({
+            "from_id": f"tepfi_{dim_id}_micro",
+            "to_id": f"tepfi_{dim_id}_macro",
+            "link_type": "reinforcing", "strength": 5.0, "delay": 2,
+            "description": f"Micro {dim_name} aggregates into macro impact",
+        })
+    return {"nodes": nodes, "links": links}
+
+
+def _build_time_dezider_cld_graph(time_entries: list, life_areas_hours: dict) -> dict:
+    """Time Dezider CLD: nodes are life-area time allocations; central node is 'Available Time'.
+    Each allocation drains Available Time (balancing) but reinforces outcomes."""
+    nodes = [{
+        "factor_id": "td_available",
+        "name": "Available Time",
+        "x": 300, "y": 220, "base_value": 100.0,
+        "centrality": 1.0, "classification": "primary",
+        "priority_rank": 1, "gap_multiplier": 1.0, "locked": True,
+        "color": "#6366F1",
+    }]
+    links = []
+
+    area_meta = [
+        ("career", "Career", "#3B82F6"),
+        ("finance", "Finance", "#8B5CF6"),
+        ("relationships", "Relationships", "#EC4899"),
+        ("holistic_health", "Health", "#10B981"),
+        ("knowledge_skills", "Learning", "#F59E0B"),
+        ("hobbies_entertainment", "Leisure", "#F97316"),
+        ("spirituality_religion", "Spirituality", "#84CC16"),
+        ("social_contributions", "Contribution", "#06B6D4"),
+    ]
+    import math as _m
+    n = len(area_meta)
+    for i, (area_id, name, color) in enumerate(area_meta):
+        angle = 2 * _m.pi * i / n
+        x = 300 + 200 * _m.cos(angle)
+        y = 220 + 160 * _m.sin(angle)
+        hours = float(life_areas_hours.get(area_id, 0) or 0)
+        nodes.append({
+            "factor_id": f"td_{area_id}",
+            "name": f"{name} ({hours}h)" if hours else name,
+            "x": x, "y": y,
+            "base_value": min(100.0, hours * 4) if hours else 30.0,
+            "centrality": 0.6,
+            "classification": "primary" if hours >= 5 else "secondary",
+            "priority_rank": i + 2,
+            "gap_multiplier": 1.0,
+            "locked": False,
+            "color": color,
+            "life_area": area_id,
+        })
+        # Available time DRAINS into each area (balancing for available, reinforcing for area)
+        links.append({
+            "from_id": "td_available", "to_id": f"td_{area_id}",
+            "link_type": "reinforcing", "strength": min(10.0, max(2.0, hours)),
+            "delay": 0,
+            "description": f"Time allocated to {name}",
+        })
+        # Each area, when neglected, generates backlog that further drains availability
+        links.append({
+            "from_id": f"td_{area_id}", "to_id": "td_available",
+            "link_type": "balancing", "strength": 4.0, "delay": 1,
+            "description": f"Neglected {name} creates rework that drains Available Time",
+        })
+    return {"nodes": nodes, "links": links}
+
+
+def _add_tepfi_timedezider_bridges(nodes: list, links: list) -> None:
+    """Add cross-module causal links between TEPFI Time/Effort and Time Dezider Available Time."""
+    has_tepfi_time_self = any(n.get("factor_id") == "tepfi_time_self" for n in nodes)
+    has_td_available = any(n.get("factor_id") == "td_available" for n in nodes)
+    if has_tepfi_time_self and has_td_available:
+        links.append({
+            "from_id": "tepfi_time_self", "to_id": "td_available",
+            "link_type": "reinforcing", "strength": 7.0, "delay": 0,
+            "description": "Personal time discipline (TEPFI·Time·Self) drives Available Time",
+        })
+    if any(n.get("factor_id") == "tepfi_effort_self" for n in nodes) and has_td_available:
+        links.append({
+            "from_id": "tepfi_effort_self", "to_id": "td_available",
+            "link_type": "balancing", "strength": 4.0, "delay": 1,
+            "description": "High effort burn depletes Available Time",
+        })
+
+
+@router.post("/module/tepfi/generate-structured")
+async def generate_tepfi_structured(request: Request, user: dict = Depends(get_current_user)):
+    """Deterministic Phase D generator for TEPFI module CLD (no LLM call)."""
+    uid = user["user_id"]
+    body = await request.json() if request.headers.get("content-type") == "application/json" else {}
+    context_id = body.get("context_id", "default")
+    tepfi_entries = await db.tepfi_entries.find({"user_id": uid}, {"_id": 0}).to_list(50)
+    graph = _build_tepfi_cld_graph(tepfi_entries)
+    now = datetime.now(timezone.utc)
+    doc = {
+        "cld_id": f"CLD-TEPFI-{uuid.uuid4().hex[:8].upper()}",
+        "user_id": uid,
+        "module_type": "tepfi",
+        "context_id": context_id,
+        "decision_id": f"module_tepfi_{context_id}",
+        "nodes": graph["nodes"],
+        "links": graph["links"],
+        "loops": [],
+        "layout_type": "grid",
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.cld_diagrams.update_one(
+        {"user_id": uid, "module_type": "tepfi", "context_id": context_id},
+        {"$set": doc}, upsert=True
+    )
+    return {"message": "TEPFI CLD generated", "node_count": len(doc["nodes"]), "link_count": len(doc["links"])}
+
+
+@router.post("/module/time_dezider/generate-structured")
+async def generate_time_dezider_structured(request: Request, user: dict = Depends(get_current_user)):
+    """Deterministic Phase D generator for Time Dezider module CLD (no LLM call)."""
+    uid = user["user_id"]
+    body = await request.json() if request.headers.get("content-type") == "application/json" else {}
+    context_id = body.get("context_id", "default")
+    # Aggregate hours per life area from active lifestyle plan
+    plan = await db.lifestyle_plans.find_one({"user_id": uid, "is_active": True}, {"_id": 0})
+    area_hours: dict = {}
+    if plan:
+        weekday = (plan.get("allocations", {}) or {}).get("weekday", {}) or {}
+        for area_id, alloc in weekday.items():
+            if isinstance(alloc, dict):
+                area_hours[area_id] = float(alloc.get("hours", 0) or 0)
+    graph = _build_time_dezider_cld_graph([], area_hours)
+    now = datetime.now(timezone.utc)
+    doc = {
+        "cld_id": f"CLD-TIMEDEZIDER-{uuid.uuid4().hex[:8].upper()}",
+        "user_id": uid,
+        "module_type": "time_dezider",
+        "context_id": context_id,
+        "decision_id": f"module_time_dezider_{context_id}",
+        "nodes": graph["nodes"],
+        "links": graph["links"],
+        "loops": [],
+        "layout_type": "radial",
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.cld_diagrams.update_one(
+        {"user_id": uid, "module_type": "time_dezider", "context_id": context_id},
+        {"$set": doc}, upsert=True
+    )
+    return {"message": "Time Dezider CLD generated", "node_count": len(doc["nodes"]), "link_count": len(doc["links"])}
+
+
+@router.post("/module/master/generate-bridge")
+async def generate_master_bridge(request: Request, user: dict = Depends(get_current_user)):
+    """Generate a Master CLD that bridges TEPFI + Time Dezider deterministically (Phase D)."""
+    uid = user["user_id"]
+    body = await request.json() if request.headers.get("content-type") == "application/json" else {}
+    context_id = body.get("context_id", "default")
+
+    tepfi_entries = await db.tepfi_entries.find({"user_id": uid}, {"_id": 0}).to_list(50)
+    tepfi_graph = _build_tepfi_cld_graph(tepfi_entries)
+
+    plan = await db.lifestyle_plans.find_one({"user_id": uid, "is_active": True}, {"_id": 0})
+    area_hours: dict = {}
+    if plan:
+        weekday = (plan.get("allocations", {}) or {}).get("weekday", {}) or {}
+        for area_id, alloc in weekday.items():
+            if isinstance(alloc, dict):
+                area_hours[area_id] = float(alloc.get("hours", 0) or 0)
+    td_graph = _build_time_dezider_cld_graph([], area_hours)
+
+    # Offset TEPFI nodes to the left and Time Dezider to the right for visual clarity
+    for n in tepfi_graph["nodes"]:
+        n["x"] = n["x"]  # 80..480
+    for n in td_graph["nodes"]:
+        n["x"] = n["x"] + 600  # 700..1100
+
+    all_nodes = tepfi_graph["nodes"] + td_graph["nodes"]
+    all_links = tepfi_graph["links"] + td_graph["links"]
+    _add_tepfi_timedezider_bridges(all_nodes, all_links)
+
+    now = datetime.now(timezone.utc)
+    doc = {
+        "cld_id": f"CLD-MASTER-{uuid.uuid4().hex[:8].upper()}",
+        "user_id": uid,
+        "module_type": "master",
+        "context_id": context_id,
+        "decision_id": f"module_master_{context_id}",
+        "nodes": all_nodes,
+        "links": all_links,
+        "loops": [],
+        "layout_type": "manual",
+        "created_at": now,
+        "updated_at": now,
+        "bridge_modules": ["tepfi", "time_dezider"],
+    }
+    await db.cld_diagrams.update_one(
+        {"user_id": uid, "module_type": "master", "context_id": context_id},
+        {"$set": doc}, upsert=True
+    )
+    return {
+        "message": "Master TEPFI ↔ Time Dezider bridge CLD generated",
+        "node_count": len(all_nodes),
+        "link_count": len(all_links),
+    }
+
+
 # ========================
 # CLD CRUD ENDPOINTS
 # ========================

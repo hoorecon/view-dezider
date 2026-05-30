@@ -99,6 +99,9 @@ export default function TimeDeziderScreen() {
           <Text style={styles.h1}>Time Dezider</Text>
           <Text style={styles.sub}>Raja Guru for a Raja</Text>
         </View>
+        <TouchableOpacity onPress={() => router.push({ pathname: '/cld/editor', params: { module_type: 'time_dezider' } } as any)} style={{ marginRight: 12 }}>
+          <Ionicons name="git-network" size={22} color="#FFF" />
+        </TouchableOpacity>
         <TouchableOpacity onPress={() => setSettingsOpen(true)}>
           <Ionicons name="settings" size={22} color="#FFF" />
         </TouchableOpacity>
