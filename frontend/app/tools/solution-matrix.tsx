@@ -1059,7 +1059,17 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center', alignItems: 'center',
   },
-  stepScroll: { backgroundColor: COLORS.white, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  // Step pills strip must NEVER grow vertically (the bug that made the pills
+  // look like tall columns on web). flexGrow:0 + a fixed comfortable height
+  // keeps it as a clean compact horizontal strip on every viewport.
+  stepScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  stepIndicator: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
   // SSF deep-link banner — sits between the gradient header and the step pills.
   sfBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
@@ -1070,7 +1080,8 @@ const styles = StyleSheet.create({
   sfBannerText: { fontSize: 12, color: '#3B2467', marginTop: 1, fontWeight: '600' },
   sfBannerBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#C4B5FD' },
   sfBannerBtnText: { fontSize: 11, fontWeight: '700', color: '#7C3AED' },
-  stepIndicator: { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
+  // (stepIndicator defined above with the stepScroll fix — removed the duplicate
+  //  here which previously had no alignItems and let pills stretch vertically.)
   stepPill: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 12, paddingVertical: 8,

@@ -118,6 +118,8 @@ export default function SimpleSolutionFinder() {
   const [mitigations, setMitigations] = useState<Mitigation[]>([]);
   const [contingencies, setContingencies] = useState<Contingency[]>([]);
   const [actionPlan, setActionPlan] = useState<APItem[]>([]);
+  // Reverse hook — counts of ASM deep-dives per Q3/Q4b/Q4c row keyed by source_id.
+  const [asmCounts, setAsmCounts] = useState<Record<string, number>>({});
 
   // Per-row "draft" inputs (so adding doesn't require a modal)
   const [newConcernText, setNewConcernText] = useState('');
@@ -167,6 +169,28 @@ export default function SimpleSolutionFinder() {
       showAlert('Error', 'Failed to load entry');
     } finally { setLoading(false); }
   };
+
+  // Reverse hook fetch — keeps ASM deep-dive counts fresh for the badges next
+  // to Solutions / Mitigations / Contingencies. Re-runs whenever the screen
+  // regains focus (e.g. user came back from /tools/solution-matrix after a
+  // "Send to ASM" round-trip).
+  const fetchAsmCounts = useCallback(async (id: string | null | undefined) => {
+    if (!id || !authHydrated) return;
+    try {
+      const r = await api.get(`/solution-finders/${id}/asm-links`);
+      setAsmCounts(r.data || {});
+    } catch {
+      /* silent — badge is purely informational */
+    }
+  }, [authHydrated]);
+
+  useEffect(() => {
+    fetchAsmCounts(savedId);
+  }, [savedId, fetchAsmCounts]);
+
+  useFocusEffect(useCallback(() => {
+    if (savedId) fetchAsmCounts(savedId);
+  }, [savedId, fetchAsmCounts]));
 
   // ============ SAVE ============
   const buildPayload = () => ({
@@ -560,6 +584,12 @@ export default function SimpleSolutionFinder() {
                       placeholderTextColor="#9CA3AF"
                       multiline
                     />
+                    {asmCounts[sol.id] > 0 && (
+                      <View style={s.asmCountBadge}>
+                        <Ionicons name="bar-chart" size={9} color="#0F766E" />
+                        <Text style={s.asmCountBadgeText}>{asmCounts[sol.id]}</Text>
+                      </View>
+                    )}
                     <TouchableOpacity onPress={() => sendToASM('solution', sol.id, sol.text)} style={s.asmPill}>
                       <Ionicons name="apps" size={11} color="#0F766E" />
                       <Text style={s.asmPillText}>ASM</Text>
@@ -657,6 +687,12 @@ export default function SimpleSolutionFinder() {
                 <View key={m.id} style={s.childRow}>
                   <View style={[s.bullet, { backgroundColor: '#10B981' }]} />
                   <Text style={s.childText}>{m.text}</Text>
+                  {asmCounts[m.id] > 0 && (
+                    <View style={s.asmCountBadge}>
+                      <Ionicons name="bar-chart" size={9} color="#0F766E" />
+                      <Text style={s.asmCountBadgeText}>{asmCounts[m.id]}</Text>
+                    </View>
+                  )}
                   <TouchableOpacity onPress={() => sendToASM('mitigation', m.id, m.text)} style={s.asmPill}>
                     <Ionicons name="apps" size={11} color="#0F766E" />
                     <Text style={s.asmPillText}>ASM</Text>
@@ -686,6 +722,12 @@ export default function SimpleSolutionFinder() {
                 <View key={c.id} style={s.childRow}>
                   <View style={[s.bullet, { backgroundColor: '#F59E0B' }]} />
                   <Text style={s.childText}>{c.text}</Text>
+                  {asmCounts[c.id] > 0 && (
+                    <View style={s.asmCountBadge}>
+                      <Ionicons name="bar-chart" size={9} color="#0F766E" />
+                      <Text style={s.asmCountBadgeText}>{asmCounts[c.id]}</Text>
+                    </View>
+                  )}
                   <TouchableOpacity onPress={() => sendToASM('contingency', c.id, c.text)} style={s.asmPill}>
                     <Ionicons name="apps" size={11} color="#0F766E" />
                     <Text style={s.asmPillText}>ASM</Text>
@@ -917,6 +959,11 @@ const s = StyleSheet.create({
 
   asmPill: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 10, backgroundColor: '#F0FDFA', borderWidth: 1, borderColor: '#5EEAD4' },
   asmPillText: { fontSize: 9, fontWeight: '800', color: '#0F766E' },
+  // Tiny badge that shows how many ASM deep-dives exist for this row
+  // (Solutions / Mitigations / Contingencies). Reverse hook from
+  // /api/solution-finders/{id}/asm-links.
+  asmCountBadge: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 8, backgroundColor: '#CCFBF1' },
+  asmCountBadgeText: { fontSize: 9, fontWeight: '800', color: '#0F766E' },
 
   riskCard: { backgroundColor: '#FEF2F2', borderRadius: 10, padding: 10, marginBottom: 8, borderWidth: 1, borderColor: '#FECACA' },
   riskHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },

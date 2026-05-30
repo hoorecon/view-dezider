@@ -295,6 +295,34 @@ async def wipe_legacy_solution_finders(user: dict = Depends(get_current_user)):
     return {"deleted": r.deleted_count}
 
 
+@router.get("/solution-finders/{entry_id}/asm-links")
+async def get_asm_deep_dive_counts(
+    entry_id: str, user: dict = Depends(get_current_user)
+):
+    """Reverse hook for the SSF UI.
+
+    Returns the count of Advanced Solution Matrix entries that were spawned
+    from each Q3/Q4b/Q4c row of this Simple Solution Finder, so the SSF UI
+    can render a small "📊 N ASM deep-dive(s)" badge next to each row.
+    Response shape: { "<source_id>": <count>, ... }
+    """
+    entry = await db.solution_finders.find_one(
+        {"entry_id": entry_id, "user_id": user["user_id"]}, {"_id": 0, "entry_id": 1},
+    )
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    cursor = db.solution_matrices.find(
+        {"user_id": user["user_id"], "linked_from_sf_entry_id": entry_id},
+        {"_id": 0, "linked_from_sf_source_id": 1},
+    )
+    counts: Dict[str, int] = {}
+    async for d in cursor:
+        sid = d.get("linked_from_sf_source_id")
+        if sid:
+            counts[sid] = counts.get(sid, 0) + 1
+    return counts
+
+
 # ========================
 # ADVANCED SOLUTION MATRIX
 # ========================
