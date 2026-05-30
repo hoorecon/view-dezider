@@ -429,8 +429,9 @@ async def has_any_paid_access(user_id: str, module: Optional[str] = None) -> Dic
       2. L2 balance > 0 (bundle covers all 3 modules)
       3. L1 balance > 0 (single report)
     """
-    # Global skip check — single source of truth in app_settings.
-    s = await db.app_settings.find_one({"key": "payment_settings"}, {"_id": 0})
+    # Global skip check — single source of truth in app_settings, keyed by
+    # `_key="payments_global"` (PAYMENT_SETTING_KEY from payment_admin.py).
+    s = await db.app_settings.find_one({"_key": "payments_global"}, {"_id": 0})
     if s and s.get("skip_payment_all_flows"):
         return {
             "has_access": True,

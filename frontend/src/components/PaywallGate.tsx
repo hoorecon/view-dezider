@@ -52,9 +52,14 @@ export default function PaywallGate({ module, children, onAllowed }: Props) {
     try {
       const res = await api.get('/store/access-check', { params: { module } });
       setState({ has_access: !!res.data?.has_access, via: res.data?.via, balance: res.data?.balance, loading: false });
-    } catch {
-      // Fail open so a broken backend never blocks creators.
-      setState({ has_access: true, loading: false });
+    } catch (e: any) {
+      // SECURITY: on 401/403 we must NOT bail to has_access=true — that would
+      // silently bypass the paywall for any auth blip. Only treat 5xx / network
+      // errors as fail-open (matches the original intent of "don't block
+      // creators when the backend is down").
+      const status = e?.response?.status;
+      const failOpen = !status || status >= 500;
+      setState({ has_access: failOpen, loading: false });
     }
   }, [module]);
 
