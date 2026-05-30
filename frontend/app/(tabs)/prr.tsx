@@ -175,6 +175,9 @@ export default function SolutionBoxScreen() {
             ? `/decisions/${deleteTarget.id}`
             : `/swot/${deleteTarget.id}`;
           break;
+        case 'test123':         endpoint = `/test123/${deleteTarget.id}`; break;
+        default:
+          throw new Error(`Unsupported solution type: ${deleteTarget.type}`);
       }
       await api.delete(endpoint);
       setItems((prev) => prev.filter((d) => d.id !== deleteTarget.id));

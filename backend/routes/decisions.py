@@ -410,6 +410,17 @@ async def update_test123_session(session_id: str, update_data: Test123Update, us
     return {"message": "Session updated successfully"}
 
 
+@router.delete("/test123/{session_id}")
+async def delete_test123_session(session_id: str, user: dict = Depends(get_current_user)):
+    """Delete a Test123 quick-decision session owned by the caller."""
+    res = await db.test123_sessions.delete_one(
+        {"id": session_id, "user_id": user["user_id"]}
+    )
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"deleted": True, "session_id": session_id, "message": "Session deleted."}
+
+
 # ========================
 # MODE ASSESSMENT ROUTES
 # ========================
