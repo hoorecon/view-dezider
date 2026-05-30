@@ -66,9 +66,12 @@ const MAX_ZOOM = 3;
 const DRAG_THRESHOLD = 4;
 
 const CLDFlowEditor = forwardRef<CLDFlowEditorHandle, Props>(function CLDFlowEditor(
-  { nodes, links, onNodesChange, onLinksChange, onEditNode, width, height, hideToolbar, onZoomChange },
+  { nodes: nodesProp, links: linksProp, onNodesChange, onLinksChange, onEditNode, width, height, hideToolbar, onZoomChange },
   ref,
 ) {
+  // Defensive: ensure we always work with arrays even if parent passes undefined
+  const nodes = Array.isArray(nodesProp) ? nodesProp : [];
+  const links = Array.isArray(linksProp) ? linksProp : [];
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [linkMode, setLinkMode] = useState<{ from?: string }>({});
   const [vx, setVx] = useState(0);

@@ -104,29 +104,23 @@ export default function CLDEditorScreen() {
   const fetchCld = useCallback(async () => {
     setLoading(true);
     try {
+      let cld: any = null;
       if (moduleType) {
         const res = await api.get(`/cld/module/${moduleType}`, { params: { context_id: contextId } });
-        const cld = res.data?.cld ?? res.data;
-        if (cld && cld.nodes) {
-          setNodes(cld.nodes || []);
-          setLinks(cld.links || []);
-        } else {
-          setNodes([]);
-          setLinks([]);
-        }
+        // Some endpoints wrap the doc in { cld: {...} }; others return the doc directly.
+        cld = res.data?.cld ?? (res.data?.nodes ? res.data : null);
       } else if (decisionId) {
         const res = await api.get(`/cld/${decisionId}`);
-        const cld = res.data?.cld;
-        if (cld) {
-          setNodes(cld.nodes || []);
-          setLinks(cld.links || []);
-        } else {
-          setNodes([]);
-          setLinks([]);
-        }
+        cld = res.data?.cld ?? (res.data?.nodes ? res.data : null);
       }
+      const safeNodes = Array.isArray(cld?.nodes) ? cld.nodes : [];
+      const safeLinks = Array.isArray(cld?.links) ? cld.links : [];
+      setNodes(safeNodes);
+      setLinks(safeLinks);
     } catch (e: any) {
       console.warn('Fetch CLD failed', e?.response?.data || e.message);
+      setNodes([]);
+      setLinks([]);
     } finally {
       setLoading(false);
     }
@@ -252,6 +246,10 @@ export default function CLDEditorScreen() {
         await api.post(`/cld/module/time_dezider/generate-structured`, { context_id: contextId });
       } else if (moduleType === 'master') {
         await api.post(`/cld/module/master/generate-bridge`, { context_id: contextId });
+      } else if (moduleType === 'decision') {
+        showAlert('Decision module',
+          'Decision CLDs are generated automatically from your PRR decisions. Open a specific decision and use its CLD tab instead.');
+        return;
       } else if (moduleType) {
         await api.post(`/cld/module/${moduleType}/generate`, { context_id: contextId });
       } else if (decisionId) {
@@ -367,13 +365,8 @@ export default function CLDEditorScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Toolbar — horizontally scrollable on web/native, with fixed height so icons render */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.toolbarScroll}
-        contentContainerStyle={styles.toolbar}
-      >
+      {/* Toolbar — plain View with wrap so it CANNOT collapse no matter what state. */}
+      <View style={styles.toolbar}>
         <TouchableOpacity style={styles.toolBtn} onPress={addNode}>
           <Ionicons name="add-circle" size={16} color={COLORS.primary} />
           <Text style={styles.toolBtnText}>Add Node</Text>
@@ -427,7 +420,7 @@ export default function CLDEditorScreen() {
           <Ionicons name="help-circle" size={16} color="#F59E0B" />
           <Text style={[styles.toolBtnText, { color: '#F59E0B' }]}>Help</Text>
         </TouchableOpacity>
-      </ScrollView>
+      </View>
 
       {/* Visual canvas — works on both web and native via SVG */}
       <View style={styles.flowWrap}>
@@ -784,17 +777,18 @@ const styles = StyleSheet.create({
     borderRadius: 8, minWidth: 80, justifyContent: 'center',
   },
   saveBtnText: { color: '#FFF', fontWeight: '700', fontSize: 13 },
-  toolbarScroll: {
-    flexGrow: 0,
-    height: 60,
+  toolbar: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 60,
     backgroundColor: '#F8FAFC',
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
-  },
-  toolbar: {
-    flexDirection: 'row', gap: 8, alignItems: 'center',
-    paddingHorizontal: 12, paddingVertical: 10,
-    height: 60,
+    flexShrink: 0,
   },
   toolBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
