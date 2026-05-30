@@ -1075,42 +1075,6 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </Card>
 
-          {/* My Dezider System Overview */}
-          <Text style={styles.sectionTitle}>My Dezider - 10 Steps</Text>
-          <Card style={styles.prrCard}>
-            <Text style={styles.prrIntro}>
-              My Dezider is a hybrid decision-making system that merges logic and emotions for optimal outcomes.
-            </Text>
-            <View style={styles.prrSteps}>
-              {[
-                'State context & options',
-                'List all factors',
-                'Classify factors',
-                'Prioritize factors',
-                'Assign ratings',
-                'Assess options',
-                'Calculate worth %',
-                'Case 1: Obvious choice',
-                'Case 2: Trial option',
-                'Case 3: Accept best',
-              ].map((step, index) => (
-                <View key={index} style={styles.prrStep}>
-                  <View style={styles.stepNumber}>
-                    <Text style={styles.stepNumberText}>{index + 1}</Text>
-                  </View>
-                  <Text style={styles.stepText}>{step}</Text>
-                </View>
-              ))}
-            </View>
-            <TouchableOpacity
-              style={styles.startPRRButton}
-              onPress={() => router.push('/prr/new')}
-            >
-              <Text style={styles.startPRRText}>Start My Dezider Analysis</Text>
-              <Ionicons name="arrow-forward" size={16} color={COLORS.white} />
-            </TouchableOpacity>
-          </Card>
-
           {/* Emotional Gatekeeper */}
           <TouchableOpacity
             style={styles.calendarCard}
@@ -1132,28 +1096,26 @@ export default function HomeScreen() {
             </LinearGradient>
           </TouchableOpacity>
 
-          {/* Coming Soon Modules */}
-          <Text style={styles.sectionTitle}>Coming Soon</Text>
-          <View style={{ gap: 10, marginBottom: 16 }}>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#EF444420', gap: 12 }}
+          {/* Action Center — universal Who·What·By-when tracker */}
+          <TouchableOpacity
+            style={styles.calendarCard}
+            onPress={() => router.push('/tools/action-center' as any)}
+            activeOpacity={0.7}
+          >
+            <LinearGradient
+              colors={['#0D9488', '#0F766E']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.calendarGradient}
             >
-              <LinearGradient
-                colors={['#EF4444', '#DC2626']}
-                style={{ width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' }}
-              >
-                <Ionicons name="flash" size={24} color="#FFF" />
-              </LinearGradient>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.textPrimary }}>The Conflict Breaker</Text>
-                <Text style={{ fontSize: 12, color: COLORS.textMuted }}>Structured conflict resolution frameworks</Text>
+              <Ionicons name="checkmark-done-circle" size={24} color="#FFF" />
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.calendarTitle}>Action Center</Text>
+                <Text style={styles.calendarSub}>Track all Who · What · By-when action items · Port to CTT / LifeStyle</Text>
               </View>
-              <View style={{ backgroundColor: '#FEF2F2', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }}>
-                <Text style={{ fontSize: 10, fontWeight: '600', color: '#EF4444' }}>SOON</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
+              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.7)" />
+            </LinearGradient>
+          </TouchableOpacity>
           </>
           )}
         </View>

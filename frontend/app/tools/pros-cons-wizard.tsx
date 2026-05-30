@@ -25,6 +25,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import api from '../../src/utils/api';
 import ModuleStoreActions from '../../src/components/ModuleStoreActions';
+import ActionItemEditor from '../../src/components/ActionItemEditor';
 import { showAlert } from '../../src/utils/alert';
 import { LIFE_AREAS as LIFE_AREAS_CANONICAL } from '../../src/constants/lifeAreas';
 import { safeBack, goHome } from '../../src/utils/navigation';
@@ -1959,6 +1960,17 @@ export default function ProsConsWizard() {
                         decisionId={analysis.id}
                         lifeAreaId={(analysis as any)?.life_area_id || (analysis as any)?.life_area || null}
                         subAreaId={(analysis as any)?.sub_area_id || null}
+                      />
+                    ) : null}
+
+                    {/* ─── Action Plan capture (Phase B) ─── */}
+                    {analysis?.id ? (
+                      <ActionItemEditor
+                        sourceModule="PROS_CONS"
+                        sourceId={analysis.id}
+                        sourceLabel={`Pros & Cons · ${(analysis as any)?.title || ''}`}
+                        defaultLifeArea={(analysis as any)?.life_area || ''}
+                        title="Action Plan — Who · What · By When"
                       />
                     ) : null}
                   </View>

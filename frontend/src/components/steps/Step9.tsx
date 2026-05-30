@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import { useRouter } from 'expo-router';
 import { COLORS } from '../../constants/colors';
 import { Card } from '../Card';
 import { GradientButton } from '../GradientButton';
@@ -13,6 +14,7 @@ import type { Factor, MPPSImprovement, MPPSActionItem } from '../../types/decisi
 
 export default function Step9() {
   const { decision, saveDecision, calculateDynamicWorth, setCurrentStep } = useDecision();
+  const router = useRouter();
 
   const topLevelFactors = decision.factors.filter(f => !f.parent_id);
   const improvements = decision.mpps_improvements || [];
@@ -483,6 +485,39 @@ export default function Step9() {
           <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.primary }}>PDF</Text>
         </TouchableOpacity>
       </View>
+
+      {/* ─── Action Center bridge (Phase B) ──────────────────────────
+          Push the inline MPPS action items into the universal Action
+          Item store so they can be ported into CTT or LifeStyle and
+          tracked centrally. Idempotent on the server side. */}
+      <TouchableOpacity
+        onPress={async () => {
+          try {
+            const token = await AsyncStorage.getItem('session_token');
+            const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
+            const r = await fetch(`${baseUrl}/api/action-items/import-from-mpps/${decision.id}`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            });
+            const j = await r.json();
+            if (!r.ok) throw new Error(j.detail || 'Import failed');
+            Alert.alert(
+              'Imported',
+              `${j.imported_count || 0} action item${(j.imported_count||0)===1?'':'s'} pushed to the Action Center.`,
+              [
+                { text: 'Stay here' },
+                { text: 'Open Action Center', onPress: () => { try { router.push('/tools/action-center' as any); } catch {} } },
+              ]
+            );
+          } catch (err: any) {
+            Alert.alert('Could not import', err?.message || 'Try again');
+          }
+        }}
+        style={{ marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, backgroundColor: '#F0FDFA', borderRadius: 10, borderWidth: 1, borderColor: '#0D9488' }}
+      >
+        <Ionicons name="link" size={16} color="#0D9488" />
+        <Text style={{ fontSize: 13, fontWeight: '700', color: '#0D9488' }}>Push to Action Center · CTT / LifeStyle</Text>
+      </TouchableOpacity>
 
       <View style={styles.navButtons}>
         <TouchableOpacity style={styles.backButton} onPress={() => setCurrentStep(8)}>

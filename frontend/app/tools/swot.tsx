@@ -15,6 +15,7 @@ import { safeBack, goHome } from '../../src/utils/navigation';
 import api from '../../src/utils/api';
 import PaywallGate from '../../src/components/PaywallGate';
 import ModuleStoreActions from '../../src/components/ModuleStoreActions';
+import ActionItemEditor from '../../src/components/ActionItemEditor';
 
 interface SwotItem {
   id: string;
@@ -371,6 +372,17 @@ export default function SwotScreen() {
               module="swot"
               decisionId={selectedAnalysis.id}
               lifeAreaId={selectedAnalysis.life_area}
+            />
+
+            {/* ─── Action Plan capture (Phase B) ──────────────────────
+                Who / What / By when for SWOT conclusions. Items can be
+                ported into CTT (on-demand) or LifeStyle (recurring). */}
+            <ActionItemEditor
+              sourceModule="SWOT"
+              sourceId={selectedAnalysis.id}
+              sourceLabel={`SWOT · ${selectedAnalysis.title || ''}`}
+              defaultLifeArea={selectedAnalysis.life_area || ''}
+              title="Action Plan — Who · What · By When"
             />
 
             {/* Each Quadrant Section */}

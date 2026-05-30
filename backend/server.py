@@ -138,6 +138,7 @@ from routes.cld import router as cld_router
 from routes.time_dezider import router as time_dezider_router
 from routes.payments import router as payments_router
 from routes.payment_admin import router as payment_admin_router
+from routes.action_items import router as action_items_router
 from routes.sku_store import router as sku_store_router
 from routes.decision_reports import router as decision_reports_router
 from routes.gem_flight import router as gem_flight_router
@@ -264,6 +265,7 @@ api_router.include_router(customer_segments_router)
 api_router.include_router(decision_linking_router)
 api_router.include_router(integrations_router)
 api_router.include_router(payment_admin_router)
+api_router.include_router(action_items_router)
 from routes.regression import router as regression_router  # noqa: E402
 api_router.include_router(regression_router)
 
