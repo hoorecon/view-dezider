@@ -8142,3 +8142,47 @@ agent_communication:
         - Profile page scrolls (web) top→bottom
         - NO "Administration" section, NO role badge, NO admin /admin/* quick links visible
         - "Account Security" Set/Change Password section IS visible
+
+
+## 2026-05-31b — FIX: Solution Finder ASM placement corrected to the 7-level spec
+
+frontend:
+  - task: "Move ASM controls to correct steps: NONE in Q2; 4 levels in Q3; 3 levels in Q4"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/tools/solution-finder.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          User reported ASM was inverted: present in Q2 (wrong), removed from Q3, partial in Q4.
+          Corrected to the 7-level spec:
+          - Q2 Root Cause Analysis: ZERO ASM controls (removed Overall bar, per-concern, per-root-cause).
+          - Q3 Solution Identification: ASM at 4 levels — Overall (all_concerns), per PRIMARY concern,
+            per Root Cause, per Solution (upgraded solution from send-only pill to full From-ASM+ASM cluster).
+          - Q4 Risk: ASM at 3 levels — per Risk (already), per Mitigation, per Contingency (upgraded
+            mitigation+contingency from send-only pill to full cluster).
+          Source-id keys unchanged (all_concerns/ALL_CONCERNS, concern=c.id, root_cause=r.id,
+          solution=sol.id, risk=r.id, mitigation=m.id, contingency=c.id) so existing asm-entries/links
+          and count badges keep working. Babel-parse OK. (eslint 'interface reserved' is a known
+          false-positive for this repo's parser config.)
+
+test_plan:
+  current_focus:
+    - "Solution Finder: ASM placement — Q2 none, Q3 four levels, Q4 three levels"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Validate Solution Finder ASM placement (FRONTEND). Login regular user
+      harden_1777921741@example.com / HardenPass2026!. Open Solution Finder (Dashboard tool),
+      walk Q1→Q4. Assert:
+        Q2 (Root Cause Analysis): NO "From ASM" / "ASM" pills anywhere.
+        Q3 (Solutions): ASM cluster at Overall bar, per primary concern header, per root cause, per solution.
+        Q4 (Risk): ASM cluster per risk, per mitigation, per contingency.

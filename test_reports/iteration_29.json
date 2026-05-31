@@ -1,0 +1,38 @@
+{
+  "summary": "Validated Solution Finder ASM placement after the Q2/Q3/Q4 reshuffle. Q2 (renderStep2) confirmed at runtime to have ZERO ASM controls (From-ASM=0, ASM=0, Overall=0). Q3 (renderStep3) and Q4 (renderStep4) confirmed via static review to render renderAsmControls exactly at the spec'd 4 (all_concerns, concern, root_cause, solution) and 3 (risk, mitigation, contingency) levels respectively. UI E2E for Q3/Q4 ASM count assertions was blocked by a Playwright<->React-Native-Web TextInput interaction bug: typing/keyboard input into single-line RN-Web TextInputs (Add a concern, Add a root cause, Add a solution, etc.) does not propagate to the controlled `new*Text` state, so addConcern()/addRca()/addSolution() see an empty string and the row is not created. Same input fails with both `page.fill()`, `page.keyboard.type()` (with delay), and `Enter` (onSubmitEditing). This input-binding bug is NOT introduced by this iteration's change — it pre-existed — but it prevents end-to-end automation of the SF flow. Auth and navigation work, login + reach Solution Finder + step navigation are fine.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Solution Finder · Q1b/Q2/Q3/Q4 row creation via TextInput + 'Add' button",
+        "issue": "Typing into the single-line TextInput components (placeholders 'Add a concern...', 'Add a root cause...', 'Add a solution...', 'Add a risk...', 'Add a mitigation...', 'Add a contingency...') via Playwright (.fill, keyboard.type, Enter for onSubmitEditing) does not update the controlled React state (newConcernText/newRcaText/newSolText/...). Pressing the '+' button afterwards therefore early-returns at `if (!t) return;` and no row is added. This blocks any browser-automation regression for SF. The likely cause is RN-Web reading the value from a non-standard property path on the DOM element; the workaround is to attach `testID` to each TextInput + add Button and let testing use page.fill + a programmatic state update via `document.querySelector(...)._valueTracker.setValue('') ; input.dispatchEvent(new Event('input',{bubbles:true}))`, OR (preferred) expose stable testIDs and rely on `onChangeText` being driven through a small testID-enabled helper.",
+        "affected_testIDs": []
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_29.json"
+  ],
+  "action_items": [
+    "ADD testID attributes to each TextInput AND its add (+) TouchableOpacity in solution-finder.tsx (e.g. testID='sf-concern-input' / 'sf-concern-add-btn', testID='sf-rca-input-{cid}' / 'sf-rca-add-btn-{cid}', sf-sol-input-{rid}, sf-risk-input-{solId}, sf-mitigation-input-{rId}, sf-contingency-input-{rId}). This will eliminate the Playwright/RN-Web TextInput binding ambiguity and unblock E2E regression testing.",
+    "ADD testID to renderAsmControls cluster itself (e.g. testID=`sf-asm-cluster-${source}-${sourceId}`) so the testing agent can assert exact counts per source — currently we have to fall back to text-content scraping ('From ASM', exact 'ASM') which works but is brittle.",
+    "Optional: surface a single hidden marker on Q2 (e.g. testID='sf-step-q2-asm-absent') to make the 'zero ASM on Q2' invariant trivially assertable for future regressions."
+  ],
+  "critical_code_review_comments": [
+    "renderStep2 (lines 645-692) correctly does NOT invoke renderAsmControls — matches spec (Q2 = 0 ASM levels).",
+    "renderStep3 (lines 694+) invokes renderAsmControls 4 times: all_concerns (705), concern (712), root_cause (718), solution (736) — matches spec (Q3 = 4 ASM levels).",
+    "renderStep4 (lines 811+) invokes renderAsmControls 3 times: risk (837), mitigation (892), contingency (928) — matches spec (Q4 = 3 ASM levels).",
+    "Total = 7 ASM levels across Q3+Q4 (4+3), 0 on Q2 — exactly the corrected placement requested.",
+    "renderAsmControls itself (lines 465-482) is properly reused and parameterized by (source, sourceId, label); the 'From ASM' button and 'ASM' send-pill are bundled together so the cluster either appears in full or not at all — no risk of partial mis-placement."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "Code-level: 100% pass (Q2=0, Q3=4, Q4=3). Runtime: partial — Q2 zero-ASM invariant verified at runtime; Q3/Q4 counts not reached due to Playwright/RN-Web TextInput input bug blocking row creation (pre-existing, not introduced this iteration)."},
+  "seed_data_creation": "None. Used the harden_1777921741@example.com regular user from /app/memory/test_credentials.md.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Next agent: do not waste cycles on browser automation of SF rows until the testIDs are added on TextInputs and '+' buttons. Use the static-code assertion (grep for renderAsmControls in renderStep2/3/4) as the authoritative check for ASM-placement regressions, plus a runtime DOM-scrape check on Q2 to assert ZERO occurrences of 'From ASM' and exact-text 'ASM'. Login: harden_1777921741@example.com / HardenPass2026!. Solution Finder lives at /tools/solution-finder. Internal step indices: 0=Goal, 1=Concerns, 2=Q2 RCA, 3=Q3 Solutions, 4=Q4 Risk, 5=Action Plan (display label shows Step n+1 of 6).",
+  "rca_of_issue": "N/A — no defect in the ASM-placement change. The static code matches the requested 7-level layout (Q2=0, Q3=4, Q4=3). The one runtime obstacle (Playwright cannot type into RN-Web single-line TextInputs and have state persist) is a pre-existing automation gap, addressable by adding testIDs."
+}

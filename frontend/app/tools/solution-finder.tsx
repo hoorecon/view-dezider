@@ -2,12 +2,15 @@
  * Simple Solution Finder — v2 schema (June 2026 overhaul).
  *
  *   Concerns (⭐ promote to PRIMARY)            ← Q1 (a) + (b)
- *      └─ Root Cause Analysis (per primary)     ← Q2
- *           └─ Solutions (per RCA)              ← Q3   [→ Send to ASM]
- *                └─ Risks (Impact% × Probability% = Index%)  ← Q4 (a)
- *                     ├─ Mitigations (1..many)  ← Q4 (b)  [→ Send to ASM]
- *                     └─ Contingencies (1..many) ← Q4 (c) [→ Send to ASM]
+ *      └─ Root Cause Analysis (per primary)     ← Q2   [NO ASM — root-cause discovery only]
+ *           └─ Solutions (per RCA)              ← Q3   [ASM at 4 levels: Overall · per PRIMARY concern · per Root Cause · per Solution]
+ *                └─ Risks (Impact% × Probability% = Index%)  ← Q4 (a)  [ASM per Risk]
+ *                     ├─ Mitigations (1..many)  ← Q4 (b)  [ASM per Mitigation]
+ *                     └─ Contingencies (1..many) ← Q4 (c) [ASM per Contingency]
  *   Action Plan = Solutions + Mitigations + Contingencies → Action Center → CTT / Lifestyle.
+ *
+ * ASM is part of STEP 3 (Solution Identification) and STEP 4 (Risk) — 7 levels total.
+ * It is intentionally ABSENT from Q2 (root-cause analysis).
  *
  * Cross-references:
  *  - Promoted to a first-class dashboard module (Pros&Cons / SWOT row).
@@ -646,18 +649,10 @@ export default function SimpleSolutionFinder() {
       {primaryConcerns.length === 0 && (
         <Text style={s.empty}>No primary concerns yet. Go back to Q1 and tap ⭐ to mark some.</Text>
       )}
-      {primaryConcerns.length > 0 && (
-        <View style={s.allConcernsBar}>
-          <Ionicons name="albums-outline" size={14} color="#7C3AED" />
-          <Text style={s.allConcernsText}>Overall · across all PRIMARY concerns</Text>
-          {renderAsmControls('all_concerns', 'ALL_CONCERNS', smartGoal || 'All Primary Concerns')}
-        </View>
-      )}
       {primaryConcerns.map((c, i) => (
         <View key={c.id} style={s.groupCard}>
           <View style={s.groupTitleRow}>
             <Text style={[s.groupTitle, { flex: 1, marginBottom: 0 }]}>{i + 1}. {c.text}</Text>
-            {renderAsmControls('concern', c.id, c.text)}
           </View>
           {rcasFor(c.id).map(r => (
             <View key={r.id} style={s.rcaItem}>
@@ -676,7 +671,6 @@ export default function SimpleSolutionFinder() {
                   <Ionicons name="close" size={16} color="#94A3B8" />
                 </TouchableOpacity>
               </View>
-              <View style={s.rcaAsmRow}>{renderAsmControls('root_cause', r.id, r.text)}</View>
             </View>
           ))}
           <View style={s.addRow}>
@@ -700,16 +694,29 @@ export default function SimpleSolutionFinder() {
   const renderStep3 = () => (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 80 }}>
       <Text style={s.qTitle}>Q3. Solutions within your Current Capabilities & Resources</Text>
-      <Text style={s.qHint}>For each Root Cause, list practical solutions. Use the “Send to ASM” pill to deep-dive any solution in the Advanced Solution Matrix.</Text>
+      <Text style={s.qHint}>Step 3 · Solution Identification. ASM deep-dive is available at every level — Overall, per PRIMARY concern, per Root Cause, and per Solution.</Text>
       {rootCauses.length === 0 && (
         <Text style={s.empty}>No root causes yet. Go back to Q2.</Text>
       )}
+      {primaryConcerns.length > 0 && (
+        <View style={s.allConcernsBar}>
+          <Ionicons name="albums-outline" size={14} color="#7C3AED" />
+          <Text style={s.allConcernsText}>Overall · across all PRIMARY concerns</Text>
+          {renderAsmControls('all_concerns', 'ALL_CONCERNS', smartGoal || 'All Primary Concerns')}
+        </View>
+      )}
       {primaryConcerns.map(c => (
         <View key={c.id} style={{ marginBottom: 8 }}>
-          <Text style={s.groupHeader}>{c.text}</Text>
+          <View style={s.groupTitleRow}>
+            <Text style={[s.groupHeader, { flex: 1, marginBottom: 0 }]}>{c.text}</Text>
+            {renderAsmControls('concern', c.id, c.text)}
+          </View>
           {rcasFor(c.id).map(r => (
             <View key={r.id} style={s.groupCard}>
-              <Text style={s.subGroupTitle}>{r.text}</Text>
+              <View style={s.groupTitleRow}>
+                <Text style={[s.subGroupTitle, { flex: 1, marginBottom: 0 }]}>{r.text}</Text>
+                {renderAsmControls('root_cause', r.id, r.text)}
+              </View>
               {solsFor(r.id).map(sol => (
                 <View key={sol.id} style={s.solCard}>
                   <View style={s.solRow}>
@@ -722,20 +729,11 @@ export default function SimpleSolutionFinder() {
                       placeholderTextColor="#9CA3AF"
                       multiline
                     />
-                    {asmCounts[sol.id] > 0 && (
-                      <View style={s.asmCountBadge}>
-                        <Ionicons name="bar-chart" size={9} color="#0F766E" />
-                        <Text style={s.asmCountBadgeText}>{asmCounts[sol.id]}</Text>
-                      </View>
-                    )}
-                    <TouchableOpacity onPress={() => sendToASM('solution', sol.id, sol.text)} style={s.asmPill}>
-                      <Ionicons name="apps" size={11} color="#0F766E" />
-                      <Text style={s.asmPillText}>ASM</Text>
-                    </TouchableOpacity>
                     <TouchableOpacity onPress={() => removeSolution(sol.id)} hitSlop={6}>
                       <Ionicons name="close" size={16} color="#94A3B8" />
                     </TouchableOpacity>
                   </View>
+                  <View style={s.rcaAsmRow}>{renderAsmControls('solution', sol.id, sol.text)}</View>
                 </View>
               ))}
               <View style={s.addRow}>
@@ -875,30 +873,23 @@ export default function SimpleSolutionFinder() {
               {/* 4b — Mitigations (1..many) */}
               <Text style={s.subSubLabel}>4b · Mitigations</Text>
               {mitsFor(r.id).map(m => (
-                <View key={m.id} style={s.childRow}>
-                  <View style={[s.bullet, { backgroundColor: '#10B981' }]} />
-                  <TextInput
-                    style={s.childInput}
-                    value={m.text}
-                    onChangeText={t => editMitigation(m.id, t)}
-                    placeholder="Mitigation..."
-                    placeholderTextColor="#9CA3AF"
-                    multiline
-                  />
-                  <Ionicons name="pencil" size={12} color="#94A3B8" />
-                  {asmCounts[m.id] > 0 && (
-                    <View style={s.asmCountBadge}>
-                      <Ionicons name="bar-chart" size={9} color="#0F766E" />
-                      <Text style={s.asmCountBadgeText}>{asmCounts[m.id]}</Text>
-                    </View>
-                  )}
-                  <TouchableOpacity onPress={() => sendToASM('mitigation', m.id, m.text)} style={s.asmPill}>
-                    <Ionicons name="apps" size={11} color="#0F766E" />
-                    <Text style={s.asmPillText}>ASM</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => removeMitigation(m.id)} hitSlop={6}>
-                    <Ionicons name="close" size={16} color="#94A3B8" />
-                  </TouchableOpacity>
+                <View key={m.id}>
+                  <View style={s.childRow}>
+                    <View style={[s.bullet, { backgroundColor: '#10B981' }]} />
+                    <TextInput
+                      style={s.childInput}
+                      value={m.text}
+                      onChangeText={t => editMitigation(m.id, t)}
+                      placeholder="Mitigation..."
+                      placeholderTextColor="#9CA3AF"
+                      multiline
+                    />
+                    <Ionicons name="pencil" size={12} color="#94A3B8" />
+                    <TouchableOpacity onPress={() => removeMitigation(m.id)} hitSlop={6}>
+                      <Ionicons name="close" size={16} color="#94A3B8" />
+                    </TouchableOpacity>
+                  </View>
+                  <View style={s.rcaAsmRow}>{renderAsmControls('mitigation', m.id, m.text)}</View>
                 </View>
               ))}
               <View style={s.addRow}>
@@ -918,30 +909,23 @@ export default function SimpleSolutionFinder() {
               {/* 4c — Contingencies (1..many) */}
               <Text style={s.subSubLabel}>4c · Contingencies</Text>
               {consFor(r.id).map(c => (
-                <View key={c.id} style={s.childRow}>
-                  <View style={[s.bullet, { backgroundColor: '#F59E0B' }]} />
-                  <TextInput
-                    style={s.childInput}
-                    value={c.text}
-                    onChangeText={t => editContingency(c.id, t)}
-                    placeholder="Contingency..."
-                    placeholderTextColor="#9CA3AF"
-                    multiline
-                  />
-                  <Ionicons name="pencil" size={12} color="#94A3B8" />
-                  {asmCounts[c.id] > 0 && (
-                    <View style={s.asmCountBadge}>
-                      <Ionicons name="bar-chart" size={9} color="#0F766E" />
-                      <Text style={s.asmCountBadgeText}>{asmCounts[c.id]}</Text>
-                    </View>
-                  )}
-                  <TouchableOpacity onPress={() => sendToASM('contingency', c.id, c.text)} style={s.asmPill}>
-                    <Ionicons name="apps" size={11} color="#0F766E" />
-                    <Text style={s.asmPillText}>ASM</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => removeContingency(c.id)} hitSlop={6}>
-                    <Ionicons name="close" size={16} color="#94A3B8" />
-                  </TouchableOpacity>
+                <View key={c.id}>
+                  <View style={s.childRow}>
+                    <View style={[s.bullet, { backgroundColor: '#F59E0B' }]} />
+                    <TextInput
+                      style={s.childInput}
+                      value={c.text}
+                      onChangeText={t => editContingency(c.id, t)}
+                      placeholder="Contingency..."
+                      placeholderTextColor="#9CA3AF"
+                      multiline
+                    />
+                    <Ionicons name="pencil" size={12} color="#94A3B8" />
+                    <TouchableOpacity onPress={() => removeContingency(c.id)} hitSlop={6}>
+                      <Ionicons name="close" size={16} color="#94A3B8" />
+                    </TouchableOpacity>
+                  </View>
+                  <View style={s.rcaAsmRow}>{renderAsmControls('contingency', c.id, c.text)}</View>
                 </View>
               ))}
               <View style={s.addRow}>
