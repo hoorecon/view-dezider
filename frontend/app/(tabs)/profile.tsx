@@ -8,8 +8,6 @@ import {
   Alert,
   Image,
   ActivityIndicator,
-  TextInput,
-  Switch,
   Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -27,65 +25,6 @@ interface AssessmentQuestion {
   id: string;
   text: string;
   mode: string;
-}
-
-// WOWO Feature Flag Toggle Component
-function WowoToggle({ label, flagKey }: { label: string; flagKey: string }) {
-  const [enabled, setEnabled] = useState(false);
-  const [toggling, setToggling] = useState(false);
-
-  useEffect(() => {
-    fetchFlag();
-  }, []);
-
-  const fetchFlag = async () => {
-    try {
-      const res = await api.get('/feature-flags');
-      setEnabled(res.data?.[flagKey] || false);
-    } catch (e) {
-      console.error('Error fetching flag:', e);
-    }
-  };
-
-  const toggleFlag = async (val: boolean) => {
-    setToggling(true);
-    try {
-      // We need to send all flags so get current first
-      const res = await api.get('/feature-flags');
-      const flags = res.data || {};
-      flags[flagKey] = val;
-      await api.put('/admin/feature-flags', flags);
-      setEnabled(val);
-    } catch (e) {
-      showAlert('Error', 'Failed to update feature flag');
-    } finally {
-      setToggling(false);
-    }
-  };
-
-  return (
-    <View style={{
-      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-      paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.divider,
-    }}>
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 14, fontWeight: '500', color: COLORS.textPrimary }}>{label}</Text>
-        <Text style={{ fontSize: 11, color: enabled ? COLORS.success : COLORS.textMuted }}>
-          {enabled ? 'Wire ON' : 'Wire OFF'}
-        </Text>
-      </View>
-      {toggling ? (
-        <ActivityIndicator size="small" color={COLORS.primary} />
-      ) : (
-        <Switch
-          value={enabled}
-          onValueChange={toggleFlag}
-          trackColor={{ false: '#D1D5DB', true: COLORS.success + '80' }}
-          thumbColor={enabled ? COLORS.success : '#9CA3AF'}
-        />
-      )}
-    </View>
-  );
 }
 
 export default function ProfileScreen() {
@@ -106,13 +45,8 @@ export default function ProfileScreen() {
   const [passwordError, setPasswordError] = useState('');
   const [hasPassword, setHasPassword] = useState(false);
 
-  // Admin state
+  // Role — used only to conditionally show admin quick-links (server enforces real access)
   const [userRole, setUserRole] = useState('user');
-  const [showAdminPanel, setShowAdminPanel] = useState(false);
-  const [adminUsers, setAdminUsers] = useState<any[]>([]);
-  const [promoteEmail, setPromoteEmail] = useState('');
-  const [promoteRole, setPromoteRole] = useState<'admin' | 'co_admin'>('admin');
-  const [adminLoading, setAdminLoading] = useState(false);
 
   useEffect(() => {
     fetchQuestions();
@@ -224,78 +158,6 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleAdminSetup = async () => {
-    showAlert(
-      'Become Super Admin',
-      'This will make you the Super Admin. This can only be done once.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm',
-          onPress: async () => {
-            try {
-              await api.post('/admin/setup');
-              setUserRole('super_admin');
-              showAlert('Success', 'You are now Super Admin!');
-            } catch (err: any) {
-              showAlert('Error', err.response?.data?.detail || 'Setup failed');
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const fetchAdminUsers = async () => {
-    try {
-      const response = await api.get('/admin/users');
-      setAdminUsers(response.data || []);
-    } catch (err: any) {
-      console.error('Error fetching admin users:', err);
-    }
-  };
-
-  const handlePromoteUser = async () => {
-    if (!promoteEmail.trim()) {
-      showAlert('Error', 'Please enter an email address');
-      return;
-    }
-    setAdminLoading(true);
-    try {
-      await api.post('/admin/promote', { email: promoteEmail.trim(), role: promoteRole });
-      showAlert('Success', `${promoteEmail} promoted to ${promoteRole === 'co_admin' ? 'Co-Admin' : 'Admin'}`);
-      setPromoteEmail('');
-      fetchAdminUsers();
-    } catch (err: any) {
-      showAlert('Error', err.response?.data?.detail || 'Promotion failed');
-    } finally {
-      setAdminLoading(false);
-    }
-  };
-
-  const handleDemoteUser = (email: string, role: string) => {
-    showAlert(
-      'Demote User',
-      `Remove ${role} role from ${email}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Demote',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await api.post('/admin/demote', { email });
-              fetchAdminUsers();
-              showAlert('Done', `${email} demoted to regular user`);
-            } catch (err: any) {
-              showAlert('Error', err.response?.data?.detail || 'Demotion failed');
-            }
-          },
-        },
-      ]
-    );
-  };
-
   const getModeColor = (mode: string) => {
     switch (mode) {
       case 'emotional': return COLORS.emotional;
@@ -399,25 +261,6 @@ export default function ProfileScreen() {
                 {user?.auth_method === 'google' ? 'Google Account' : 'Email Account'}
               </Text>
             </View>
-            {userRole !== 'user' && (
-              <View style={[styles.authBadge, styles.roleBadge, 
-                userRole === 'super_admin' && styles.roleBadgeSuperAdmin,
-                userRole === 'co_admin' && styles.roleBadgeCoAdmin,
-                userRole === 'admin' && styles.roleBadgeAdmin,
-              ]}>
-                <Ionicons
-                  name={userRole === 'super_admin' ? 'shield' : userRole === 'co_admin' ? 'shield-half' : 'shield-outline'}
-                  size={12}
-                  color={userRole === 'super_admin' ? '#F59E0B' : userRole === 'co_admin' ? '#8B5CF6' : '#3B82F6'}
-                />
-                <Text style={[styles.authText, { 
-                  color: userRole === 'super_admin' ? '#F59E0B' : userRole === 'co_admin' ? '#8B5CF6' : '#3B82F6',
-                  fontWeight: '700',
-                }]}>
-                  {userRole === 'super_admin' ? 'Super Admin' : userRole === 'co_admin' ? 'Co-Admin' : 'Admin'}
-                </Text>
-              </View>
-            )}
           </View>
         </View>
       </Card>
@@ -501,142 +344,8 @@ export default function ProfileScreen() {
         </Card>
       )}
 
-      {/* Admin Panel - visible to admins and setup for regular users */}
-      <Text style={styles.sectionTitle}>Administration</Text>
-      <Card style={styles.passwordCard}>
-        {userRole === 'user' ? (
-          <TouchableOpacity style={styles.adminSetupRow} onPress={handleAdminSetup}>
-            <View style={[styles.passwordSetIcon, { backgroundColor: 'rgba(245, 158, 11, 0.1)' }]}>
-              <Ionicons name="shield-outline" size={24} color="#F59E0B" />
-            </View>
-            <View style={styles.passwordSetInfo}>
-              <Text style={styles.passwordSetTitle}>Become Super Admin</Text>
-              <Text style={styles.passwordSetSubtitle}>One-time setup (if no admin exists)</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={COLORS.textMuted} />
-          </TouchableOpacity>
-        ) : (
-          <>
-            <TouchableOpacity
-              style={styles.adminSetupRow}
-              onPress={() => {
-                setShowAdminPanel(!showAdminPanel);
-                if (!showAdminPanel) fetchAdminUsers();
-              }}
-            >
-              <View style={[styles.passwordSetIcon, { backgroundColor: 'rgba(245, 158, 11, 0.1)' }]}>
-                <Ionicons
-                  name={userRole === 'super_admin' ? 'shield' : userRole === 'co_admin' ? 'shield-half' : 'shield-outline'}
-                  size={24}
-                  color="#F59E0B"
-                />
-              </View>
-              <View style={styles.passwordSetInfo}>
-                <Text style={styles.passwordSetTitle}>Manage Admins</Text>
-                <Text style={styles.passwordSetSubtitle}>
-                  {userRole === 'super_admin' ? 'Full control' : userRole === 'co_admin' ? 'Can manage admins' : 'View only'}
-                </Text>
-              </View>
-              <Ionicons name={showAdminPanel ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textMuted} />
-            </TouchableOpacity>
-
-            {showAdminPanel && (
-              <View style={styles.adminPanelContent}>
-                {/* Promote section - Super Admin & Co-Admin only */}
-                {(userRole === 'super_admin' || userRole === 'co_admin') && (
-                  <View style={styles.promoteSection}>
-                    <Text style={styles.promoteSectionTitle}>Add Admin</Text>
-                    <TextInput
-                      style={styles.promoteInput}
-                      value={promoteEmail}
-                      onChangeText={setPromoteEmail}
-                      placeholder="User email..."
-                      placeholderTextColor={COLORS.textMuted}
-                      autoCapitalize="none"
-                      keyboardType="email-address"
-                    />
-                    <View style={styles.promoteRoleRow}>
-                      <TouchableOpacity
-                        style={[styles.roleChip, promoteRole === 'admin' && styles.roleChipActive]}
-                        onPress={() => setPromoteRole('admin')}
-                      >
-                        <Text style={[styles.roleChipText, promoteRole === 'admin' && styles.roleChipTextActive]}>Admin</Text>
-                      </TouchableOpacity>
-                      {userRole === 'super_admin' && (
-                        <TouchableOpacity
-                          style={[styles.roleChip, promoteRole === 'co_admin' && styles.roleChipActive]}
-                          onPress={() => setPromoteRole('co_admin')}
-                        >
-                          <Text style={[styles.roleChipText, promoteRole === 'co_admin' && styles.roleChipTextActive]}>Co-Admin</Text>
-                        </TouchableOpacity>
-                      )}
-                      <TouchableOpacity
-                        style={styles.promoteBtn}
-                        onPress={handlePromoteUser}
-                        disabled={adminLoading}
-                      >
-                        {adminLoading ? (
-                          <ActivityIndicator size="small" color="#FFF" />
-                        ) : (
-                          <Text style={styles.promoteBtnText}>Promote</Text>
-                        )}
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )}
-
-                {/* Admin Users List */}
-                <Text style={styles.adminListTitle}>Admin Team</Text>
-                {adminUsers.map((admin, idx) => (
-                  <View key={idx} style={styles.adminUserRow}>
-                    <View style={styles.adminUserInfo}>
-                      <Text style={styles.adminUserName}>{admin.name}</Text>
-                      <Text style={styles.adminUserEmail}>{admin.email}</Text>
-                    </View>
-                    <View style={[styles.adminRoleBadge,
-                      admin.role === 'super_admin' && { backgroundColor: 'rgba(245, 158, 11, 0.1)' },
-                      admin.role === 'co_admin' && { backgroundColor: 'rgba(139, 92, 246, 0.1)' },
-                      admin.role === 'admin' && { backgroundColor: 'rgba(59, 130, 246, 0.1)' },
-                    ]}>
-                      <Text style={[styles.adminRoleBadgeText,
-                        admin.role === 'super_admin' && { color: '#F59E0B' },
-                        admin.role === 'co_admin' && { color: '#8B5CF6' },
-                        admin.role === 'admin' && { color: '#3B82F6' },
-                      ]}>
-                        {admin.role === 'super_admin' ? 'Super' : admin.role === 'co_admin' ? 'Co-Admin' : 'Admin'}
-                      </Text>
-                    </View>
-                    {/* Demote button - based on hierarchy */}
-                    {admin.role !== 'super_admin' && (
-                      (userRole === 'super_admin' || (userRole === 'co_admin' && admin.role === 'admin')) ? (
-                        <TouchableOpacity onPress={() => handleDemoteUser(admin.email, admin.role)} style={styles.demoteBtn}>
-                          <Ionicons name="remove-circle-outline" size={18} color={COLORS.error} />
-                        </TouchableOpacity>
-                      ) : null
-                    )}
-                  </View>
-                ))}
-                {adminUsers.length === 0 && (
-                  <Text style={styles.noAdminsText}>No admin users found</Text>
-                )}
-
-                {/* WOWO Feature Flags Toggle */}
-                <View style={styles.wowoSection}>
-                  <Text style={styles.promoteSectionTitle}>WOWO Feature Flags</Text>
-                  <Text style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 10 }}>
-                    Wire On / Wire Off - Toggle features for all users
-                  </Text>
-                  <WowoToggle label="Solution Finder" flagKey="solution_finder" />
-                  <WowoToggle label="Advanced Solution Matrix" flagKey="solution_matrix" />
-                </View>
-              </View>
-            )}
-          </>
-        )}
-      </Card>
-
-      {/* Set Password Section - Show for Google users or users who want to change password */}
-      {(user?.auth_method === 'google' || user?.auth_method === 'google_and_email') && (
+      {/* Account Security — Set / Change Password (available to all users) */}
+      {!!user && (
         <>
           <Text style={styles.sectionTitle}>Account Security</Text>
           <Card style={styles.passwordCard}>
@@ -735,6 +444,9 @@ export default function ProfileScreen() {
         </>
       )}
 
+      {/* Admin-only quick links (hidden from regular users) */}
+      {userRole !== 'user' && (
+        <>
       {/* Manage Experts */}
       <TouchableOpacity
         style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}
@@ -826,6 +538,8 @@ export default function ProfileScreen() {
         </View>
         <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
       </TouchableOpacity>
+        </>
+      )}
 
       {/* Public Pricing page */}
       <TouchableOpacity
@@ -955,6 +669,7 @@ export default function ProfileScreen() {
       </TouchableOpacity>
 
       {/* Org Members Management */}
+      {userRole !== 'user' && (
       <TouchableOpacity
         style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}
         onPress={() => router.push('/admin/org-members')}
@@ -968,6 +683,7 @@ export default function ProfileScreen() {
         </View>
         <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
       </TouchableOpacity>
+      )}
 
       {/* Centralized Task Tracker */}
       <TouchableOpacity
@@ -1000,6 +716,7 @@ export default function ProfileScreen() {
       </TouchableOpacity>
 
       {/* Pending Approvals - Admin Only */}
+      {userRole !== 'user' && (
       <TouchableOpacity
         style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#F59E0B30', marginBottom: 12 }}
         onPress={() => router.push('/admin/pending-approvals' as any)}
@@ -1013,6 +730,7 @@ export default function ProfileScreen() {
         </View>
         <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
       </TouchableOpacity>
+      )}
 
       {/* Documentation Hub - Admin Only */}
       {userRole !== 'user' && (
@@ -1194,7 +912,7 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
         <View style={styles.header}>
           <Text style={styles.title}>Profile</Text>
         </View>

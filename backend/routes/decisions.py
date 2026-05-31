@@ -12,8 +12,8 @@ from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse
 from core.database import db
 from core.auth import (
-    get_current_user, require_admin,
-    get_user_role, get_role_level, ADMIN_ROLES,
+    get_current_user, require_admin, require_root_super_admin,
+    get_user_role, get_role_level, ADMIN_ROLES, ROOT_SUPER_ADMIN_EMAIL,
 )
 from core.helpers import create_notification
 from models.decisions_models import (
@@ -301,14 +301,19 @@ async def update_template(template_id: str, data: SaveTemplateRequest, user: dic
 
 @router.post("/admin/setup")
 async def admin_setup(user: dict = Depends(get_current_user)):
+    # SECURITY: Only the designated root super-admin email may ever claim
+    # super_admin via setup. This blocks self-elevation by any other user.
+    email = (user.get("email") or "").strip().lower()
+    if email != ROOT_SUPER_ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Only the root super-admin may perform setup")
     existing_super = await db.users.find_one({"role": "super_admin"}, {"_id": 0})
-    if existing_super:
+    if existing_super and (existing_super.get("email") or "").strip().lower() != ROOT_SUPER_ADMIN_EMAIL:
         raise HTTPException(status_code=400, detail="Super Admin already exists")
     await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"role": "super_admin"}})
     return {"message": "You are now Super Admin", "role": "super_admin"}
 
 @router.post("/admin/promote")
-async def promote_user(data: PromoteUserRequest, user: dict = Depends(get_current_user)):
+async def promote_user(data: PromoteUserRequest, user: dict = Depends(require_root_super_admin)):
     promoter_role = get_user_role(user)
     promoter_level = get_role_level(promoter_role)
     target_role = data.role
@@ -329,16 +334,18 @@ async def promote_user(data: PromoteUserRequest, user: dict = Depends(get_curren
     return {"message": f"User {data.email} promoted to {target_role}"}
 
 @router.post("/admin/demote")
-async def demote_user(data: DemoteUserRequest, user: dict = Depends(get_current_user)):
+async def demote_user(data: DemoteUserRequest, user: dict = Depends(require_root_super_admin)):
     demoter_role = get_user_role(user)
     demoter_level = get_role_level(demoter_role)
     target_user = await db.users.find_one({"email": data.email.lower()}, {"_id": 0})
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found with this email")
     target_role = get_user_role(target_user)
-    target_level = get_role_level(target_role)
     if target_user["user_id"] == user["user_id"]:
         raise HTTPException(status_code=400, detail="Cannot demote yourself")
+    # The root super-admin can never be demoted via API.
+    if (target_user.get("email") or "").strip().lower() == ROOT_SUPER_ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Root super-admin cannot be demoted")
     if target_role == "super_admin":
         raise HTTPException(status_code=403, detail="Super Admin cannot be demoted")
     if target_role == "co_admin" and demoter_role != "super_admin":

@@ -15,6 +15,13 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 ROLE_HIERARCHY = {"super_admin": 3, "co_admin": 2, "admin": 1, "user": 0}
 ADMIN_ROLES = ["admin", "co_admin", "super_admin"]
 
+# The SINGLE root super-admin authorized to grant/revoke platform admin roles.
+# Configurable via env but defaults to the designated owner. NO API endpoint may
+# ever change this value — it is the sole authority for role management.
+ROOT_SUPER_ADMIN_EMAIL = os.environ.get(
+    "ROOT_SUPER_ADMIN_EMAIL", "veales.vedic.decisions@gmail.com"
+).strip().lower()
+
 ORG_ROLE_HIERARCHY = {"org_super_admin": 3, "org_co_admin": 2, "org_admin": 1, "org_member": 0}
 ORG_ADMIN_ROLES = ["org_admin", "org_co_admin", "org_super_admin"]
 
@@ -107,4 +114,20 @@ async def require_super_admin(user: dict = Depends(get_current_user)):
     role = get_user_role(user)
     if get_role_level(role) < 3:
         raise HTTPException(status_code=403, detail="Super Admin access required")
+    return user
+
+
+async def require_root_super_admin(user: dict = Depends(get_current_user)):
+    """Only the single hard-coded root super-admin may grant/revoke admin roles.
+
+    This is the strictest guard: the caller must BOTH hold the super_admin role
+    AND match the configured ROOT_SUPER_ADMIN_EMAIL. No other account — even a
+    super_admin — can manage platform roles.
+    """
+    email = (user.get("email") or "").strip().lower()
+    if email != ROOT_SUPER_ADMIN_EMAIL or get_user_role(user) != "super_admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Only the root super-admin can manage roles",
+        )
     return user

@@ -20,6 +20,14 @@ testing agent and any fork agents. They are refreshed when stale.
 - **Password**: `AdminPass2026!`
 - **Role**: `admin`
 - **Use for**: admin-only endpoints (DPDP audit log, /api/admin-docs, /api/metrics/json, ACM seed)
+- **NOTE (security lockdown)**: This account is NOT the root super-admin, so it MUST receive 403 on `/api/admin/promote`, `/api/admin/demote`, `/api/admin/setup`.
+
+## Root Super Admin (role=super_admin) — DEV mirror of prod root — ACTIVE
+- **Email**: `veales.vedic.decisions@gmail.com`
+- **Password**: `Jelcos@Admin2026`
+- **Role**: `super_admin`
+- **user_id**: `user_87819d8c4fd3`
+- **Use for**: the ONLY account allowed to grant/revoke admin roles (`/api/admin/promote`, `/api/admin/demote`). Positive-path role-management tests.
 
 ## Primary test user (regular user role)
 - **Email**: `harden_1777921741@example.com`

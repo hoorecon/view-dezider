@@ -8067,3 +8067,78 @@ agent_communication:
       2) /test123/new now has visible Back+Home top bar (was invisible on white BG)
       3) CLD Editor now has zoom (+/−/wheel), pan (drag empty area), Fit, 1:1 buttons.
          Master 24-node bridge auto-fits to 71% on load so the entire diagram is visible.
+
+
+## 2026-05-31 — P0 Security: Root-only admin role management + consumer Profile cleanup & scroll fix
+
+backend:
+  - task: "Lock down admin role management to single root super-admin email"
+    implemented: true
+    working: "NA"
+    file: "backend/core/auth.py, backend/routes/decisions.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          SECURITY FIX for self-elevation vulnerability. Added ROOT_SUPER_ADMIN_EMAIL
+          (env-configurable, default veales.vedic.decisions@gmail.com) + new dependency
+          require_root_super_admin (email==root AND role==super_admin) in core/auth.py.
+          Locked the 3 role-mutating endpoints in routes/decisions.py:
+            • POST /api/admin/setup    → only root email may become super_admin
+            • POST /api/admin/promote  → Depends(require_root_super_admin)
+            • POST /api/admin/demote   → Depends(require_root_super_admin); root cannot be demoted
+          Also added DB remediation script backend/scripts/revoke_unauthorized_admins.py
+          (demotes all admins/super_admins except root; idempotent; supports --dry-run).
+          NOTE: local dev DB does NOT auto-run the destructive script (preserves test admins);
+          the root email was created locally as super_admin for positive-path testing.
+
+frontend:
+  - task: "Consumer Profile — fix scroll lock, remove admin role-mgmt section + role badge, gate admin links, password for all"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/(tabs)/profile.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          - Scroll fix: added style={{flex:1}} to the page ScrollView (was unbounded → no scroll on web).
+          - Removed the "Administration" role-management card (Become Super Admin / Manage Admins /
+            promote / demote / WOWO toggles) and the Super/Co/Admin role badge from the header.
+          - Gated ALL previously-ungated /admin/* quick links (Manage Experts, Templates, Central Catalog,
+            ReviewNet, Tier Matrix, Customer Segments, Org Members, Pending Approvals) behind userRole!=='user'
+            so regular consumers see ZERO admin links.
+          - "Account Security" (Set / Change Password) now shown to ALL users (was Google-only).
+          - Removed dead admin handlers/state/WowoToggle + unused Switch/TextInput imports.
+
+test_plan:
+  current_focus:
+    - "Backend: root-only lockdown on /api/admin/setup, /promote, /demote (negative + positive)"
+    - "Frontend: Profile scroll works; no admin UI for regular users; password section for all"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Please test the P0 security lockdown (BACKEND) and the consumer Profile changes (FRONTEND).
+      Credentials in /app/memory/test_credentials.md:
+        • Root super-admin (DEV): veales.vedic.decisions@gmail.com / Jelcos@Admin2026 (role super_admin)
+        • Non-root admin: admin@test.com / AdminPass2026! (role admin)
+        • Regular user: harden_1777921741@example.com / HardenPass2026!
+      BACKEND expected:
+        - Regular user POST /api/admin/setup → 403
+        - admin@test.com POST /api/admin/promote {email, role:"admin"} → 403 (not root)
+        - admin@test.com POST /api/admin/demote → 403
+        - Root POST /api/admin/promote a regular user to "admin" → 200; then demote → 200
+        - Root POST /api/admin/demote on root email → 403 (cannot demote root)
+      FRONTEND expected (login as regular user harden_1777921741):
+        - Profile page scrolls (web) top→bottom
+        - NO "Administration" section, NO role badge, NO admin /admin/* quick links visible
+        - "Account Security" Set/Change Password section IS visible
