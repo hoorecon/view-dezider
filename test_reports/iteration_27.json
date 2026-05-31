@@ -1,0 +1,37 @@
+{
+  "summary": "RETEST PASSED for iteration-26 critical fixes. (A) ASM /tools/solution-matrix opens WITHOUT white-screen/hooks crash both standalone and when opened with ?id=<asm_id> — all 3 tabs (Solution Matrix, Categories & Sources, Action Plan) render; Action Plan tab renders aggregated section ('No matrix entries yet' for empty cells which is correct). (B) Solution Finder reload hydration works end-to-end: created a fresh SF via API with 2 concerns, 3 RCAs, 2 solutions, 1 risk + 1 mitigation + 1 contingency; reopened by id and stepped through Q1→Q4 — every concern/RCA/solution/risk/mitigation/contingency hydrated (rcasFor/solsFor/risksFor return data); per-row 'ASM' pills render at all levels and 'From ASM' pill renders next to existing linked risk. (C) No expo-av imports remain in src/app (grep clean); VoiceInput uses expo-audio; AudioGuidePlayer and dashboard mic FAB render without runtime crash on web. Backend: 6/6 iter27 tests + 9/9 iter26 tests pass (health, SF create, SF reload field hydration, ASM create linked, asm-entries endpoint returns categories/sources, push-action-plan). Font A/A+ pill (bottom:96) sits above Build Action Plan/Save button without overlap.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "package.json", "issue": "'expo-av' (^16.0.8) still listed as a dependency though no source file imports it anymore (migration to expo-audio complete). Should be removed from package.json to avoid confusion and shrink bundle. Reference: /app/frontend/package.json:27"}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter27_retest.py",
+    "/app/backend/tests/test_asm_entries_iter26.py",
+    "/app/test_reports/pytest/iter27_retest.xml"
+  ],
+  "action_items": [
+    "Optional cleanup: remove 'expo-av' from /app/frontend/package.json dependencies (no longer imported)."
+  ],
+  "critical_code_review_comments": [
+    "solution-matrix.tsx: aggregatedActions useMemo is now correctly placed BEFORE the 'if (loading) return ...' early-return at line ~539 — Rules-of-Hooks fix is in effect and verified at runtime.",
+    "solution-finder.tsx: defensive withId() normalizer in loadEntry preserves id/_id and falls back to uid(); verified that root_causes/solutions/risks/mitigations/contingencies retain their parent-id pointers (concern_id, rca_id, sol_id, risk_id) post-reload.",
+    "VoiceInput.tsx: imports cleanly from 'expo-audio'; web preview no longer crashes (deep audio still requires native build, which is expected)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter27_retest.py (new — 6 tests)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Created two SFs and one ASM (TEST_iter27_ui, TEST_iter27_hydration, [ASM]-SL TEST_sol_one) during UI testing. All prefixed with TEST_ for cleanup.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All iteration-26 critical bugs are FIXED. Backend tests in /app/backend/tests/test_iter27_retest.py and test_asm_entries_iter26.py are stable and reusable. For Phase 2 picker round-trip UI test, the asm-entries endpoint is already proven returning categories/sources arrays — picker UI test was not exercised end-to-end with a click since the round-trip is already covered by the backend hydration test plus the per-row ASM pill render on reload, which were both confirmed.",
+  "rca_of_issue": "Iter26 bugs root causes — all addressed: (1) The Rules-of-Hooks crash was a useMemo placed after a conditional early return; relocating aggregatedActions before the 'if(loading)' guard restored deterministic hook count across renders. (2) VoiceInput's expo-av import was the source of bundle errors on Expo SDK 54+ where expo-av is removed; migration to expo-audio fixed it. (3) The SF reload empty-children regression came from inconsistent id/_id field handling; the withId() normalizer ensures every node has a stable id and preserves cross-refs (concern_id, rca_id, sol_id, risk_id), so rcasFor/solsFor/risksFor return the expected children."
+}

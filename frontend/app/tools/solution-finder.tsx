@@ -160,12 +160,15 @@ export default function SimpleSolutionFinder() {
         impact_horizon_value: d.impact_horizon_value ?? 7,
         impact_horizon_unit: d.impact_horizon_unit || 'days',
       });
-      setConcerns(d.concerns || []);
-      setRootCauses(d.root_causes || []);
-      setSolutions(d.solutions || []);
-      setRisks(d.risks || []);
-      setMitigations(d.mitigations || []);
-      setContingencies(d.contingencies || []);
+      // Defensive: ensure every tree node has a stable `id` (legacy/synthetic
+      // rows may carry only parent refs). No-op for frontend-created data.
+      const withId = (arr: any[]) => (arr || []).map((o: any) => ({ ...o, id: o.id || o._id || uid() }));
+      setConcerns(withId(d.concerns));
+      setRootCauses(withId(d.root_causes));
+      setSolutions(withId(d.solutions));
+      setRisks(withId(d.risks));
+      setMitigations(withId(d.mitigations));
+      setContingencies(withId(d.contingencies));
       setActionPlan(d.action_plan_items || []);
     } catch (e) {
       showAlert('Error', 'Failed to load entry');

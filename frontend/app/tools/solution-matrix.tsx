@@ -502,6 +502,39 @@ export default function SolutionMatrixScreen() {
   const [apLife, setApLife] = useState<Record<string, boolean>>({});
   const [pushingPlan, setPushingPlan] = useState(false);
 
+  // ── Action Plan = aggregate of every non-empty matrix cell entry ──
+  // (declared BEFORE the loading early-return to preserve Rules of Hooks)
+  const aggregatedActions = useMemo(() => {
+    const labels: Record<string, string> = { self: 'SELF', micro: 'MICRO', macro: 'MACRO' };
+    const sets: [string, MatrixLayerSet][] = [
+      ['self', matrixSelf], ['micro', matrixMicro], ['macro', matrixMacro],
+    ];
+    const slots = matrixMode === 'standard'
+      ? ['aggregate']
+      : ['individual', 'org', 'govt', 'nature'];
+    const out: { id: string; label: string; text: string }[] = [];
+    sets.forEach(([lk, set]) => {
+      slots.forEach(slot => {
+        const cell = (set as any)[slot] as MatrixCell | undefined;
+        if (!cell) return;
+        TEPFI_FIELDS.forEach(f => {
+          const v = (cell as any)[f.key];
+          if (v && String(v).trim()) {
+            const slotLabel = matrixMode === 'standard'
+              ? 'Aggregate'
+              : (ORG_TYPES.find(o => o.key === slot)?.label || slot);
+            out.push({
+              id: `${lk}:${slot}:${f.key}`,
+              label: `${labels[lk]} · ${slotLabel} · ${f.label}`,
+              text: String(v).trim(),
+            });
+          }
+        });
+      });
+    });
+    return out;
+  }, [matrixSelf, matrixMicro, matrixMacro, matrixMode]);
+
   // ---------- Renderers ----------
   if (loading) {
     return (
@@ -675,37 +708,6 @@ export default function SolutionMatrixScreen() {
   };
 
   // ── Action Plan = aggregate of every non-empty matrix cell entry ──
-  const aggregatedActions = useMemo(() => {
-    const labels: Record<string, string> = { self: 'SELF', micro: 'MICRO', macro: 'MACRO' };
-    const sets: [string, MatrixLayerSet][] = [
-      ['self', matrixSelf], ['micro', matrixMicro], ['macro', matrixMacro],
-    ];
-    const slots = matrixMode === 'standard'
-      ? ['aggregate']
-      : ['individual', 'org', 'govt', 'nature'];
-    const out: { id: string; label: string; text: string }[] = [];
-    sets.forEach(([lk, set]) => {
-      slots.forEach(slot => {
-        const cell = (set as any)[slot] as MatrixCell | undefined;
-        if (!cell) return;
-        TEPFI_FIELDS.forEach(f => {
-          const v = (cell as any)[f.key];
-          if (v && String(v).trim()) {
-            const slotLabel = matrixMode === 'standard'
-              ? 'Aggregate'
-              : (ORG_TYPES.find(o => o.key === slot)?.label || slot);
-            out.push({
-              id: `${lk}:${slot}:${f.key}`,
-              label: `${labels[lk]} · ${slotLabel} · ${f.label}`,
-              text: String(v).trim(),
-            });
-          }
-        });
-      });
-    });
-    return out;
-  }, [matrixSelf, matrixMicro, matrixMacro, matrixMode]);
-
   const pushSelectedActions = async () => {
     if (!editId) {
       showAlert('Save first', 'Save this matrix (tap Save), then push the action plan.');
