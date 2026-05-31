@@ -241,12 +241,8 @@ export default function SolutionMatrixScreen() {
   }, [matrixMode]);
 
   const steps = [
-    { title: 'Life Area & Goal', icon: 'flag' },
-    { title: 'Concerns', icon: 'alert-circle' },
-    { title: 'Simpler Solutions', icon: 'bulb' },
     { title: 'Solution Matrix', icon: 'grid' },
     { title: 'Categories & Sources', icon: 'layers' },
-    { title: 'Risk Management', icon: 'shield-checkmark' },
     { title: 'Action Plan', icon: 'rocket' },
   ];
 
@@ -339,12 +335,12 @@ export default function SolutionMatrixScreen() {
     linked_from_sf_source: sfSource || null,
     linked_from_sf_source_id: sfSourceId || null,
     linked_from_sf_label: prefillTitle || null,
-    status: currentStep >= 6 ? 'completed' : 'in_progress',
+    status: currentStep >= 2 ? 'completed' : 'in_progress',
   });
 
   const handleSave = async () => {
-    if (!areaOfLife || !smartGoal.trim()) {
-      showAlert('Required', 'Please select area and enter SMART goal');
+    if (!smartGoal.trim()) {
+      showAlert('Required', 'Please enter a Title for this matrix.');
       return;
     }
     setSaving(true);
@@ -500,17 +496,11 @@ export default function SolutionMatrixScreen() {
     });
   };
 
-  const addMilestone = () => setMilestones([...milestones, { description: '', timeline: '' }]);
-  const removeMilestone = (i: number) => { if (milestones.length > 1) setMilestones(milestones.filter((_, idx) => idx !== i)); };
-  const updateMilestone = (i: number, field: string, val: string) => {
-    const u = [...milestones]; u[i] = { ...u[i], [field]: val }; setMilestones(u);
-  };
-
-  const addActionItem = () => setActionItems([...actionItems, { who: '', what: '', by_when: '', status: 'pending' }]);
-  const removeActionItem = (i: number) => { if (actionItems.length > 1) setActionItems(actionItems.filter((_, idx) => idx !== i)); };
-  const updateActionItem = (i: number, field: keyof ActionItem, val: string) => {
-    const u = [...actionItems]; u[i] = { ...u[i], [field]: val }; setActionItems(u);
-  };
+  // ── Action Plan (aggregation of all matrix cell entries) ──
+  const [apSelected, setApSelected] = useState<Record<string, boolean>>({});
+  const [apCtt, setApCtt] = useState<Record<string, boolean>>({});
+  const [apLife, setApLife] = useState<Record<string, boolean>>({});
+  const [pushingPlan, setPushingPlan] = useState(false);
 
   // ---------- Renderers ----------
   if (loading) {
@@ -684,93 +674,162 @@ export default function SolutionMatrixScreen() {
     );
   };
 
+  // ── Action Plan = aggregate of every non-empty matrix cell entry ──
+  const aggregatedActions = useMemo(() => {
+    const labels: Record<string, string> = { self: 'SELF', micro: 'MICRO', macro: 'MACRO' };
+    const sets: [string, MatrixLayerSet][] = [
+      ['self', matrixSelf], ['micro', matrixMicro], ['macro', matrixMacro],
+    ];
+    const slots = matrixMode === 'standard'
+      ? ['aggregate']
+      : ['individual', 'org', 'govt', 'nature'];
+    const out: { id: string; label: string; text: string }[] = [];
+    sets.forEach(([lk, set]) => {
+      slots.forEach(slot => {
+        const cell = (set as any)[slot] as MatrixCell | undefined;
+        if (!cell) return;
+        TEPFI_FIELDS.forEach(f => {
+          const v = (cell as any)[f.key];
+          if (v && String(v).trim()) {
+            const slotLabel = matrixMode === 'standard'
+              ? 'Aggregate'
+              : (ORG_TYPES.find(o => o.key === slot)?.label || slot);
+            out.push({
+              id: `${lk}:${slot}:${f.key}`,
+              label: `${labels[lk]} · ${slotLabel} · ${f.label}`,
+              text: String(v).trim(),
+            });
+          }
+        });
+      });
+    });
+    return out;
+  }, [matrixSelf, matrixMicro, matrixMacro, matrixMode]);
+
+  const pushSelectedActions = async () => {
+    if (!editId) {
+      showAlert('Save first', 'Save this matrix (tap Save), then push the action plan.');
+      return;
+    }
+    const items = aggregatedActions
+      .filter(a => apSelected[a.id])
+      .map(a => ({ text: `${a.label}: ${a.text}`, push_ctt: !!apCtt[a.id], push_lifestyle: !!apLife[a.id] }));
+    if (items.length === 0) {
+      showAlert('Nothing selected', 'Select at least one item to push.');
+      return;
+    }
+    setPushingPlan(true);
+    try {
+      const r = await api.post(`/solution-matrices/${editId}/push-action-plan`, { items });
+      showAlert('Pushed', `${r.data.pushed_to_action_center} → Action Center, ${r.data.pushed_to_ctt} → CTT, ${r.data.pushed_to_lifestyle} → Lifestyle.`);
+      setApSelected({}); setApCtt({}); setApLife({});
+    } catch {
+      showAlert('Error', 'Failed to push action plan.');
+    } finally {
+      setPushingPlan(false);
+    }
+  };
+
+  const renderActionPlan = () => {
+    const allSelected = aggregatedActions.length > 0 && aggregatedActions.every(a => apSelected[a.id]);
+    return (
+      <View>
+        <Text style={styles.sectionHeader}>Action Plan</Text>
+        <Text style={styles.hint}>
+          Every filled matrix cell becomes a candidate action. Select items and push them to
+          Action Center, CTT, or Lifestyle Dezider.
+        </Text>
+        {!editId && (
+          <Text style={styles.apWarn}>Tip: Save this matrix first to enable pushing.</Text>
+        )}
+        {aggregatedActions.length === 0 ? (
+          <Text style={styles.modalEmpty}>No matrix entries yet. Fill the Solution Matrix tab first.</Text>
+        ) : (
+          <>
+            <TouchableOpacity
+              style={styles.apSelectAll}
+              onPress={() => {
+                const next: Record<string, boolean> = {};
+                aggregatedActions.forEach(a => { next[a.id] = !allSelected; });
+                setApSelected(next);
+              }}
+            >
+              <Ionicons name={allSelected ? 'checkbox' : 'square-outline'} size={18} color={COLORS.primary} />
+              <Text style={styles.apSelectAllText}>{allSelected ? 'Unselect all' : 'Select all'}</Text>
+            </TouchableOpacity>
+
+            {aggregatedActions.map(a => {
+              const sel = !!apSelected[a.id];
+              return (
+                <View key={a.id} style={[styles.apCard, sel && styles.apCardSel]}>
+                  <TouchableOpacity
+                    style={styles.apRow}
+                    onPress={() => setApSelected(p => ({ ...p, [a.id]: !p[a.id] }))}
+                  >
+                    <Ionicons name={sel ? 'checkbox' : 'square-outline'} size={20} color={sel ? COLORS.primary : COLORS.textMuted} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.apLabel}>{a.label}</Text>
+                      <Text style={styles.apText}>{a.text}</Text>
+                    </View>
+                  </TouchableOpacity>
+                  {sel && (
+                    <View style={styles.apFlags}>
+                      <TouchableOpacity
+                        style={[styles.apFlag, apCtt[a.id] && styles.apFlagOn]}
+                        onPress={() => setApCtt(p => ({ ...p, [a.id]: !p[a.id] }))}
+                      >
+                        <Ionicons name="time" size={12} color={apCtt[a.id] ? '#FFF' : COLORS.accent} />
+                        <Text style={[styles.apFlagText, apCtt[a.id] && { color: '#FFF' }]}>CTT</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.apFlag, apLife[a.id] && styles.apFlagOn]}
+                        onPress={() => setApLife(p => ({ ...p, [a.id]: !p[a.id] }))}
+                      >
+                        <Ionicons name="sunny" size={12} color={apLife[a.id] ? '#FFF' : COLORS.accent} />
+                        <Text style={[styles.apFlagText, apLife[a.id] && { color: '#FFF' }]}>Lifestyle</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+
+            <TouchableOpacity
+              style={[styles.apPushBtn, pushingPlan && { opacity: 0.6 }]}
+              onPress={pushSelectedActions}
+              disabled={pushingPlan}
+            >
+              {pushingPlan ? <ActivityIndicator size="small" color="#FFF" /> : (
+                <>
+                  <Ionicons name="rocket" size={16} color="#FFF" />
+                  <Text style={styles.apPushText}>Push selected to Action Center</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+    );
+  };
+
   const renderStepContent = () => {
     switch (currentStep) {
       case 0:
         return (
           <View>
-            <Text style={styles.stepLabel}>Select Area of Life</Text>
-            <View style={styles.areaGrid}>
-              {LIFE_AREAS.map(area => (
-                <TouchableOpacity
-                  key={area.id}
-                  style={[styles.areaChip, areaOfLife === area.id && styles.areaChipActive]}
-                  onPress={() => setAreaOfLife(area.id)}
-                >
-                  <Ionicons name={area.icon as any} size={16} color={areaOfLife === area.id ? '#FFF' : COLORS.primary} />
-                  <Text style={[styles.areaChipText, areaOfLife === area.id && styles.areaChipTextActive]}>{area.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <Text style={styles.stepLabel}>SMART Goal</Text>
+            <Text style={styles.stepLabel}>Title</Text>
             <TextInput
               style={styles.textArea}
-              placeholder="Specific, Measurable, Achievable, Relevant, Time-bound goal"
+              placeholder="Title (e.g. [ASM]-SL <solution text>)"
               placeholderTextColor={COLORS.textMuted}
               value={smartGoal}
               onChangeText={setSmartGoal}
-              multiline numberOfLines={3}
+              multiline numberOfLines={2}
             />
-            <View style={styles.labelRow}>
-              <Text style={styles.stepLabel}>Milestones</Text>
-              <TouchableOpacity onPress={addMilestone}>
-                <Ionicons name="add-circle" size={22} color={COLORS.primary} />
-              </TouchableOpacity>
-            </View>
-            {milestones.map((m, i) => (
-              <View key={i} style={styles.milestoneCard}>
-                <View style={styles.milestoneHeader}>
-                  <Text style={styles.milestoneNum}>#{i + 1}</Text>
-                  {milestones.length > 1 && (
-                    <TouchableOpacity onPress={() => removeMilestone(i)}>
-                      <Ionicons name="close-circle" size={20} color={COLORS.error} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-                <TextInput style={styles.input} placeholder="Milestone description" placeholderTextColor={COLORS.textMuted}
-                  value={m.description} onChangeText={v => updateMilestone(i, 'description', v)} />
-                <TextInput style={styles.input} placeholder="Timeline" placeholderTextColor={COLORS.textMuted}
-                  value={m.timeline} onChangeText={v => updateMilestone(i, 'timeline', v)} />
-              </View>
-            ))}
+            {renderMatrixSection()}
           </View>
         );
       case 1:
-        return (
-          <View>
-            <Text style={styles.stepLabel}>Q1. What are ALL your concerns?</Text>
-            <TextInput style={styles.textArea} placeholder="List all concerns..." placeholderTextColor={COLORS.textMuted}
-              value={q1AllConcerns} onChangeText={setQ1AllConcerns} multiline numberOfLines={5} />
-            <Text style={styles.stepLabel}>Q2. What are your PRIORITY concerns?</Text>
-            <TextInput style={styles.textArea} placeholder="Top priorities..." placeholderTextColor={COLORS.textMuted}
-              value={q2PriorityConcerns} onChangeText={setQ2PriorityConcerns} multiline numberOfLines={4} />
-          </View>
-        );
-      case 2:
-        return (
-          <View>
-            <Text style={styles.sectionHeader}>(3.1.1) Simpler Solutions</Text>
-            <Text style={styles.stepLabel}>Solutions within Current Influence Level</Text>
-            <TextInput style={styles.textArea} placeholder="What can you do now?" placeholderTextColor={COLORS.textMuted}
-              value={simplerSolutions} onChangeText={setSimplerSolutions} multiline numberOfLines={4} />
-            <Text style={styles.stepLabel}>Current Capabilities</Text>
-            <TextInput style={styles.textArea} placeholder="Knowledge, Skills..." placeholderTextColor={COLORS.textMuted}
-              value={simplerCapabilities} onChangeText={setSimplerCapabilities} multiline numberOfLines={3} />
-            <Text style={styles.stepLabel}>Resources at Present</Text>
-            <TextInput style={styles.textArea} placeholder="Contacts, Time, Money, Assets..." placeholderTextColor={COLORS.textMuted}
-              value={simplerResources} onChangeText={setSimplerResources} multiline numberOfLines={3} />
-            <Text style={styles.sectionHeader}>External Help</Text>
-            <TextInput style={styles.input} placeholder="What aspect needs help?" placeholderTextColor={COLORS.textMuted}
-              value={simplerHelpAspect} onChangeText={setSimplerHelpAspect} />
-            <TextInput style={styles.input} placeholder="Level of help (Consulting/Problem Solving/Coaching)" placeholderTextColor={COLORS.textMuted}
-              value={simplerHelpLevel} onChangeText={setSimplerHelpLevel} />
-            <TextInput style={styles.input} placeholder="Help from whom?" placeholderTextColor={COLORS.textMuted}
-              value={simplerHelpFrom} onChangeText={setSimplerHelpFrom} />
-          </View>
-        );
-      case 3:
-        return renderMatrixSection();
-      case 4:
         return (
           <View>
             <Text style={styles.sectionHeader}>(3.2) Solution Category</Text>
@@ -811,64 +870,8 @@ export default function SolutionMatrixScreen() {
             ))}
           </View>
         );
-      case 5:
-        return (
-          <View>
-            <Text style={styles.sectionHeader}>Q4. Risk Management</Text>
-            <Text style={styles.stepLabel}>Possible Negative Consequences</Text>
-            <TextInput style={styles.textArea} placeholder="What could go wrong?" placeholderTextColor={COLORS.textMuted}
-              value={q4NegConsequences} onChangeText={setQ4NegConsequences} multiline numberOfLines={4} />
-            <Text style={styles.stepLabel}>Mitigation Plans</Text>
-            <TextInput style={styles.textArea} placeholder="How to prevent?" placeholderTextColor={COLORS.textMuted}
-              value={q4Mitigation} onChangeText={setQ4Mitigation} multiline numberOfLines={4} />
-            <Text style={styles.stepLabel}>Contingency Plans</Text>
-            <TextInput style={styles.textArea} placeholder="Backup plans..." placeholderTextColor={COLORS.textMuted}
-              value={q4Contingency} onChangeText={setQ4Contingency} multiline numberOfLines={4} />
-          </View>
-        );
-      case 6:
-        return (
-          <View>
-            <Text style={styles.sectionHeader}>Q5. Action Plan</Text>
-            <View style={styles.labelRow}>
-              <Text style={styles.stepLabel}>Action Items</Text>
-              <TouchableOpacity onPress={addActionItem}>
-                <Ionicons name="add-circle" size={22} color={COLORS.primary} />
-              </TouchableOpacity>
-            </View>
-            {actionItems.map((item, i) => (
-              <View key={i} style={styles.actionCard}>
-                <View style={styles.milestoneHeader}>
-                  <Text style={styles.milestoneNum}>Action #{i + 1}</Text>
-                  {actionItems.length > 1 && (
-                    <TouchableOpacity onPress={() => removeActionItem(i)}>
-                      <Ionicons name="close-circle" size={20} color={COLORS.error} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-                <TextInput style={styles.input} placeholder="WHAT action?" placeholderTextColor={COLORS.textMuted}
-                  value={item.what} onChangeText={v => updateActionItem(i, 'what', v)} />
-                <View style={styles.twoCol}>
-                  <TextInput style={[styles.input, { flex: 1 }]} placeholder="WHO does?" placeholderTextColor={COLORS.textMuted}
-                    value={item.who} onChangeText={v => updateActionItem(i, 'who', v)} />
-                  <TextInput style={[styles.input, { flex: 1 }]} placeholder="By WHEN?" placeholderTextColor={COLORS.textMuted}
-                    value={item.by_when} onChangeText={v => updateActionItem(i, 'by_when', v)} />
-                </View>
-                <View style={styles.statusRow}>
-                  {['pending', 'in_progress', 'completed'].map(s => (
-                    <TouchableOpacity key={s}
-                      style={[styles.statusChip, item.status === s && styles.statusChipActive]}
-                      onPress={() => updateActionItem(i, 'status', s)}>
-                      <Text style={[styles.statusChipText, item.status === s && styles.statusChipTextActive]}>
-                        {s.replace('_', ' ').toUpperCase()}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            ))}
-          </View>
-        );
+      case 2:
+        return renderActionPlan();
       default: return null;
     }
   };
@@ -1045,6 +1048,20 @@ export default function SolutionMatrixScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
+  apWarn: { fontSize: 12, color: '#B45309', backgroundColor: '#FEF3C7', padding: 8, borderRadius: 8, marginBottom: 8 },
+  apSelectAll: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, marginBottom: 4 },
+  apSelectAllText: { fontSize: 13, fontWeight: '700', color: COLORS.primary },
+  apCard: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, padding: 10, marginBottom: 8, backgroundColor: '#FFF' },
+  apCardSel: { borderColor: COLORS.primary, backgroundColor: '#EEF2FF' },
+  apRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  apLabel: { fontSize: 10, fontWeight: '800', color: '#64748B', letterSpacing: 0.4 },
+  apText: { fontSize: 13, color: '#0F172A', marginTop: 2 },
+  apFlags: { flexDirection: 'row', gap: 8, marginTop: 8, marginLeft: 30 },
+  apFlag: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14, borderWidth: 1, borderColor: COLORS.accent, backgroundColor: '#FFF' },
+  apFlagOn: { backgroundColor: COLORS.accent },
+  apFlagText: { fontSize: 11, fontWeight: '700', color: COLORS.accent },
+  apPushBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, paddingVertical: 14, borderRadius: 12, marginTop: 12 },
+  apPushText: { fontSize: 15, fontWeight: '700', color: '#FFF' },
   header: { flexDirection: 'row', alignItems: 'center', padding: 16, paddingBottom: 20 },
   backBtn: {
     width: 40, height: 40, borderRadius: 20,

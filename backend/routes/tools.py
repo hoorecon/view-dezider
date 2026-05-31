@@ -285,6 +285,92 @@ async def push_action_plan_to_action_center(
     }
 
 
+@router.post("/solution-matrices/{entry_id}/push-action-plan")
+async def push_matrix_action_plan(
+    entry_id: str, request: Request, user: dict = Depends(get_current_user)
+):
+    """ASM Action Plan → Action Center / CTT / Lifestyle fan-out.
+
+    The ASM Action Plan is the aggregate of every non-empty matrix cell entry
+    (15 or 60 cells). The frontend sends the selected aggregated items:
+
+      { "items": [ { "text": "<Layer·OrgType·Field: detail>",
+                     "push_ctt": bool, "push_lifestyle": bool }, ... ] }
+
+    Each selected item is written to the universal action_items collection
+    (source_module='solution_matrix'), and optionally fanned into CTT and/or
+    Lifestyle when its per-item flag is set.
+    """
+    body = await request.json()
+    items_arr = body.get("items") or []
+    entry = await db.solution_matrices.find_one(
+        {"entry_id": entry_id, "user_id": user["user_id"]}
+    )
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
+
+    now = datetime.now(timezone.utc).isoformat()
+    label = entry.get("smart_goal") or "Advanced Solution Matrix"
+    pushed = ctt_count = life_count = 0
+
+    for it in items_arr:
+        text = (it.get("text") or "").strip()
+        if not text:
+            continue
+        want_ctt = bool(it.get("push_ctt"))
+        want_life = bool(it.get("push_lifestyle"))
+        action_id = str(uuid.uuid4())
+        await db.action_items.insert_one({
+            "action_id": action_id,
+            "user_id": user["user_id"],
+            "title": text,
+            "description": it.get("description", ""),
+            "who": it.get("who", ""),
+            "by_when": it.get("by_when"),
+            "status": it.get("status") or "pending",
+            "source_module": "solution_matrix",
+            "source_id": entry_id,
+            "source_label": label,
+            "recurrence_type": "one_time",
+            "created_at": now,
+            "updated_at": now,
+        })
+        pushed += 1
+
+        if want_ctt:
+            await db.ctt_tasks.insert_one({
+                "task_id": str(uuid.uuid4()),
+                "user_id": user["user_id"],
+                "task": text,
+                "deadline": it.get("by_when"),
+                "status": "pending",
+                "source_module": "solution_matrix",
+                "source_id": entry_id,
+                "linked_action_id": action_id,
+                "created_at": now, "updated_at": now,
+            })
+            ctt_count += 1
+
+        if want_life:
+            await db.lifestyle_routines.insert_one({
+                "routine_id": str(uuid.uuid4()),
+                "user_id": user["user_id"],
+                "name": text,
+                "description": f"From Advanced Solution Matrix: {label}",
+                "source_module": "solution_matrix",
+                "source_id": entry_id,
+                "linked_action_id": action_id,
+                "created_at": now, "updated_at": now,
+            })
+            life_count += 1
+
+    return {
+        "pushed_to_action_center": pushed,
+        "pushed_to_ctt": ctt_count,
+        "pushed_to_lifestyle": life_count,
+    }
+
+
 @router.post("/solution-finders/_admin/wipe-legacy")
 async def wipe_legacy_solution_finders(user: dict = Depends(get_current_user)):
     """One-time admin op to delete all existing solution_finder entries for

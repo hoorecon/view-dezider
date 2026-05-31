@@ -20,7 +20,7 @@ Subscription Plans (for paid): starter, pro, enterprise, api
 # Bump this version whenever ACM_MODULES / USER_TYPES / SUBSCRIPTION_PLANS change.
 # Boot-time auto-seed (core/acm_engine.py) reseeds DB iff stored version < this one.
 # Format: "YYYY-MM-DD-N" — human-readable, monotonically sortable.
-ACM_SEED_VERSION = "2026-05-04-04"
+ACM_SEED_VERSION = "2026-06-02-05"
 
 # Release stages (ordered by visibility)
 RELEASE_STAGES = [
@@ -273,7 +273,7 @@ ACM_MODULES = [
                 "access": {
                     "unit_tester": _full(), "integration_tester": _full(),
                     "alpha": _full(), "beta": _full(),
-                    "free": _locked(), "trial": _full(),
+                    "free": _full(), "trial": _full(),
                     "paid_starter": _full(), "paid_pro": _full(),
                     "paid_enterprise": _full(), "paid_api": _full(),
                 },
@@ -287,8 +287,8 @@ ACM_MODULES = [
                 "access": {
                     "unit_tester": _full(), "integration_tester": _full(),
                     "alpha": _full(), "beta": _full(),
-                    "free": _locked(), "trial": _full(),
-                    "paid_starter": _locked(), "paid_pro": _full(),
+                    "free": _full(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
                     "paid_enterprise": _full(), "paid_api": _full(),
                 },
             },
@@ -301,8 +301,8 @@ ACM_MODULES = [
                 "access": {
                     "unit_tester": _full(), "integration_tester": _full(),
                     "alpha": _full(), "beta": _full(),
-                    "free": _locked(), "trial": _full(),
-                    "paid_starter": _locked(), "paid_pro": _full(),
+                    "free": _full(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
                     "paid_enterprise": _full(), "paid_api": _full(),
                 },
             },
