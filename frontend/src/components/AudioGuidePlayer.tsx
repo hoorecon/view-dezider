@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
-import { Audio } from 'expo-av';
+import { useAudioPlayer, useAudioPlayerStatus, setAudioModeAsync } from 'expo-audio';
 import { Ionicons } from '@expo/vector-icons';
 
 interface AudioGuidePlayerProps {
@@ -15,73 +15,41 @@ interface AudioGuidePlayerProps {
 export const AudioGuidePlayer: React.FC<AudioGuidePlayerProps> = ({
   uri, title, color = '#0EA5E9', compact = false,
 }) => {
-  const soundRef = useRef<Audio.Sound | null>(null);
-  const [status, setStatus] = useState<'idle' | 'loading' | 'playing' | 'paused'>('idle');
-  const [position, setPosition] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const player = useAudioPlayer(uri ? { uri } : null);
+  const pstatus = useAudioPlayerStatus(player);
+  const [intentPlay, setIntentPlay] = useState(false);
+
+  const playing = !!pstatus?.playing;
+  const isLoaded = !!pstatus?.isLoaded;
+  const position = (pstatus?.currentTime ?? 0) * 1000;   // seconds → millis for formatTime
+  const duration = (pstatus?.duration ?? 0) * 1000;
+  const status: 'idle' | 'loading' | 'playing' | 'paused' =
+    playing ? 'playing' : (intentPlay && !isLoaded ? 'loading' : 'idle');
 
   useEffect(() => {
-    return () => {
-      if (soundRef.current) {
-        soundRef.current.unloadAsync();
-      }
-    };
-  }, []);
+    if (pstatus?.didJustFinish) {
+      try { player.seekTo(0); player.pause(); } catch { /* noop */ }
+      setIntentPlay(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pstatus?.didJustFinish]);
 
   const formatTime = (millis: number) => {
-    const totalSecs = Math.floor(millis / 1000);
+    const totalSecs = Math.floor((millis || 0) / 1000);
     const m = Math.floor(totalSecs / 60);
     const s = totalSecs % 60;
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  const loadAndPlay = async () => {
+  const handlePress = async () => {
     try {
-      setStatus('loading');
-      await Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
-      });
-
-      if (soundRef.current) {
-        await soundRef.current.playAsync();
-        setStatus('playing');
-        return;
-      }
-
-      const { sound } = await Audio.Sound.createAsync(
-        { uri },
-        { shouldPlay: true },
-        (s) => {
-          if (s.isLoaded) {
-            setPosition(s.positionMillis);
-            setDuration(s.durationMillis || 0);
-            if (s.didJustFinish) {
-              setStatus('idle');
-              setPosition(0);
-              soundRef.current?.setPositionAsync(0);
-            }
-          }
-        }
-      );
-      soundRef.current = sound;
-      setStatus('playing');
+      await setAudioModeAsync({ playsInSilentMode: true });
+      if (playing) { player.pause(); setIntentPlay(false); }
+      else { setIntentPlay(true); player.play(); }
     } catch (err) {
       console.error('Audio error:', err);
-      setStatus('idle');
+      setIntentPlay(false);
     }
-  };
-
-  const pause = async () => {
-    if (soundRef.current) {
-      await soundRef.current.pauseAsync();
-      setStatus('paused');
-    }
-  };
-
-  const handlePress = () => {
-    if (status === 'playing') pause();
-    else loadAndPlay();
   };
 
   const progress = duration > 0 ? position / duration : 0;

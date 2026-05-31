@@ -69,7 +69,9 @@ export default function GlobalFontScale() {
 const styles = StyleSheet.create({
   wrap: {
     right: 16,
-    bottom: 16,
+    // Raised above bottom action bars / tab bars / wizard Save CTAs so the
+    // floating A/A+/A++ pill never overlaps a primary button on narrow widths.
+    bottom: 96,
     zIndex: 9000,
     // Keep within safe-area on iOS web (notched layouts)
     paddingBottom: 0,

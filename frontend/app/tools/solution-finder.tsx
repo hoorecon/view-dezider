@@ -403,20 +403,77 @@ export default function SimpleSolutionFinder() {
   // ============ SEND-TO-ASM HOOK ============
   // Hands off context to Advanced Solution Matrix. Saves first so the SF entry
   // exists, then deep-links with the SF entry_id + the source sub-id.
-  const sendToASM = async (source: 'solution' | 'mitigation' | 'contingency', sourceId: string, label: string) => {
+  // Level-Specific Notation (LSN) for the ASM title prefix.
+  // OL=Overall (all primary concerns), PL=Primary Concern, RL=Root Cause,
+  // SL=Solution, RK=Risk, ML=Mitigation, CL=Contingency.
+  const LSN: Record<string, string> = {
+    all_concerns: 'OL', concern: 'PL', root_cause: 'RL',
+    solution: 'SL', risk: 'RK', mitigation: 'ML', contingency: 'CL',
+  };
+  type AsmSource = 'all_concerns' | 'concern' | 'root_cause' | 'solution' | 'risk' | 'mitigation' | 'contingency';
+  const sendToASM = async (source: AsmSource, sourceId: string, label: string) => {
     const id = await handleSave(true);
     if (!id) return;
+    const lsn = LSN[source] || 'SL';
     router.push({
       pathname: '/tools/solution-matrix',
       params: {
         from_sf_entry_id: id,
         from_sf_source: source,
         from_sf_source_id: sourceId,
-        prefill_title: `Deep-dive: ${label.slice(0, 60)}`,
+        prefill_title: `[ASM]-${lsn} ${(label || '').slice(0, 60)}`.trim(),
         prefill_area: areaOfLife,
       },
     } as any);
   };
+
+  // ============ FROM-ASM PICKER (Phase 2) ============
+  // Shows the ASM analyses linked to THIS Solution Finder at a given level/row,
+  // with a Category & Source-wise summary and a deep-link back to the ASM.
+  const [asmPicker, setAsmPicker] = useState<{ open: boolean; items: any[]; title: string }>(
+    { open: false, items: [], title: '' }
+  );
+
+  const openAsmPicker = async (source: AsmSource, sourceId: string, label: string) => {
+    const id = savedId || (await handleSave(true));
+    if (!id) return;
+    try {
+      const r = await api.get(`/solution-finders/${id}/asm-entries`);
+      const items = (r.data || []).filter((e: any) => e.source === source && e.source_id === sourceId);
+      setAsmPicker({ open: true, items, title: label || 'Linked ASM analyses' });
+    } catch {
+      setAsmPicker({ open: true, items: [], title: label || 'Linked ASM analyses' });
+    }
+  };
+
+  const openAsmEntry = (entryId: string) => {
+    setAsmPicker({ open: false, items: [], title: '' });
+    router.push({ pathname: '/tools/solution-matrix', params: { id: entryId } } as any);
+  };
+
+  const prettify = (k: string) =>
+    (k || '').replace(/_/g, ' ').replace(/\b\w/g, m => m.toUpperCase());
+
+  // Reusable ASM control cluster for any level/row: count badge (tap → From ASM
+  // picker), explicit "From ASM" button, and "Send to ASM" pill.
+  const renderAsmControls = (source: AsmSource, sourceId: string, label: string) => (
+    <View style={s.asmControls}>
+      {asmCounts[sourceId] > 0 && (
+        <TouchableOpacity style={s.asmCountBadge} onPress={() => openAsmPicker(source, sourceId, label)}>
+          <Ionicons name="albums" size={9} color="#0F766E" />
+          <Text style={s.asmCountBadgeText}>{asmCounts[sourceId]}</Text>
+        </TouchableOpacity>
+      )}
+      <TouchableOpacity style={s.asmFromPill} onPress={() => openAsmPicker(source, sourceId, label)}>
+        <Ionicons name="download-outline" size={10} color="#7C3AED" />
+        <Text style={s.asmFromPillText}>From ASM</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => sendToASM(source, sourceId, label)} style={s.asmPill}>
+        <Ionicons name="grid-outline" size={10} color="#0F766E" />
+        <Text style={s.asmPillText}>ASM</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   // ============ PUSH TO ACTION CENTER ============
   const togglePlanFlag = (apId: string, k: 'push_ctt' | 'push_lifestyle') =>
@@ -586,24 +643,37 @@ export default function SimpleSolutionFinder() {
       {primaryConcerns.length === 0 && (
         <Text style={s.empty}>No primary concerns yet. Go back to Q1 and tap ⭐ to mark some.</Text>
       )}
+      {primaryConcerns.length > 0 && (
+        <View style={s.allConcernsBar}>
+          <Ionicons name="albums-outline" size={14} color="#7C3AED" />
+          <Text style={s.allConcernsText}>Overall · across all PRIMARY concerns</Text>
+          {renderAsmControls('all_concerns', 'ALL_CONCERNS', smartGoal || 'All Primary Concerns')}
+        </View>
+      )}
       {primaryConcerns.map((c, i) => (
         <View key={c.id} style={s.groupCard}>
-          <Text style={s.groupTitle}>{i + 1}. {c.text}</Text>
+          <View style={s.groupTitleRow}>
+            <Text style={[s.groupTitle, { flex: 1, marginBottom: 0 }]}>{i + 1}. {c.text}</Text>
+            {renderAsmControls('concern', c.id, c.text)}
+          </View>
           {rcasFor(c.id).map(r => (
-            <View key={r.id} style={s.childRow}>
-              <View style={s.bullet} />
-              <TextInput
-                style={s.childInput}
-                value={r.text}
-                onChangeText={t => editRca(r.id, t)}
-                placeholder="Root cause..."
-                placeholderTextColor="#9CA3AF"
-                multiline
-              />
-              <Ionicons name="pencil" size={12} color="#94A3B8" />
-              <TouchableOpacity onPress={() => removeRca(r.id)} hitSlop={6}>
-                <Ionicons name="close" size={16} color="#94A3B8" />
-              </TouchableOpacity>
+            <View key={r.id} style={s.rcaItem}>
+              <View style={s.childRow}>
+                <View style={s.bullet} />
+                <TextInput
+                  style={s.childInput}
+                  value={r.text}
+                  onChangeText={t => editRca(r.id, t)}
+                  placeholder="Root cause..."
+                  placeholderTextColor="#9CA3AF"
+                  multiline
+                />
+                <Ionicons name="pencil" size={12} color="#94A3B8" />
+                <TouchableOpacity onPress={() => removeRca(r.id)} hitSlop={6}>
+                  <Ionicons name="close" size={16} color="#94A3B8" />
+                </TouchableOpacity>
+              </View>
+              <View style={s.rcaAsmRow}>{renderAsmControls('root_cause', r.id, r.text)}</View>
             </View>
           ))}
           <View style={s.addRow}>
@@ -763,6 +833,7 @@ export default function SimpleSolutionFinder() {
                   <Ionicons name="close" size={16} color="#94A3B8" />
                 </TouchableOpacity>
               </View>
+              <View style={s.riskAsmRow}>{renderAsmControls('risk', r.id, r.name || 'Risk')}</View>
               <View style={s.riskScores}>
                 <View style={s.scoreCol}>
                   <Text style={s.scoreLbl}>Impact %</Text>
@@ -1034,6 +1105,42 @@ export default function SimpleSolutionFinder() {
           </TouchableOpacity>
         )}
       </View>
+
+      <Modal visible={asmPicker.open} transparent animationType="slide" onRequestClose={() => setAsmPicker({ open: false, items: [], title: '' })}>
+        <View style={s.capModalBg}>
+          <View style={s.capModalCard}>
+            <View style={s.capModalHead}>
+              <Text style={s.capModalTitle} numberOfLines={1}>ASM · {asmPicker.title}</Text>
+              <TouchableOpacity onPress={() => setAsmPicker({ open: false, items: [], title: '' })} hitSlop={8}>
+                <Ionicons name="close" size={22} color="#475569" />
+              </TouchableOpacity>
+            </View>
+            {asmPicker.items.length === 0 ? (
+              <Text style={s.asmModalEmpty}>No ASM analyses linked at this level yet. Use the “ASM” pill to create one.</Text>
+            ) : (
+              <ScrollView style={{ maxHeight: 360 }}>
+                {asmPicker.items.map((e: any) => (
+                  <View key={e.entry_id} style={s.asmModalRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.asmModalEntryTitle} numberOfLines={2}>{e.title}</Text>
+                      <Text style={s.asmModalMeta}>
+                        Categories: {(e.categories && e.categories.length) ? e.categories.map(prettify).join(', ') : '—'}
+                      </Text>
+                      <Text style={s.asmModalMeta}>
+                        Sources: {(e.sources && e.sources.length) ? e.sources.map(prettify).join(', ') : '—'}
+                      </Text>
+                    </View>
+                    <TouchableOpacity style={s.asmOpenBtn} onPress={() => openAsmEntry(e.entry_id)}>
+                      <Ionicons name="open-outline" size={13} color="#FFF" />
+                      <Text style={s.asmOpenBtnText}>Open</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1112,6 +1219,21 @@ const s = StyleSheet.create({
   // /api/solution-finders/{id}/asm-links.
   asmCountBadge: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 8, backgroundColor: '#CCFBF1' },
   asmCountBadgeText: { fontSize: 9, fontWeight: '800', color: '#0F766E' },
+  asmControls: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  asmFromPill: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 10, backgroundColor: '#F5F3FF', borderWidth: 1, borderColor: '#DDD6FE' },
+  asmFromPillText: { fontSize: 9, fontWeight: '800', color: '#7C3AED' },
+  allConcernsBar: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FAF5FF', borderWidth: 1, borderColor: '#E9D5FF', borderRadius: 10, padding: 10, marginBottom: 10 },
+  allConcernsText: { flex: 1, fontSize: 12, fontWeight: '700', color: '#6D28D9' },
+  groupTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  rcaItem: { marginBottom: 6 },
+  rcaAsmRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 2, paddingLeft: 18 },
+  riskAsmRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 6 },
+  asmModalEmpty: { fontSize: 13, color: '#94A3B8', paddingVertical: 16, textAlign: 'center' },
+  asmModalRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  asmModalEntryTitle: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
+  asmModalMeta: { fontSize: 11, color: '#64748B', marginTop: 2 },
+  asmOpenBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#7C3AED', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
+  asmOpenBtnText: { fontSize: 12, fontWeight: '700', color: '#FFF' },
 
   riskCard: { backgroundColor: '#FEF2F2', borderRadius: 10, padding: 10, marginBottom: 8, borderWidth: 1, borderColor: '#FECACA' },
   riskHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },

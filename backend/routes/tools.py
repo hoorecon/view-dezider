@@ -1,5 +1,6 @@
 """Solution Finder and Solution Matrix tool endpoints."""
 import uuid
+from typing import Dict
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import Response
@@ -407,6 +408,44 @@ async def get_asm_deep_dive_counts(
         if sid:
             counts[sid] = counts.get(sid, 0) + 1
     return counts
+
+
+@router.get("/solution-finders/{entry_id}/asm-entries")
+async def list_linked_asm_entries(
+    entry_id: str, user: dict = Depends(get_current_user)
+):
+    """Phase-2 "From ASM" picker source.
+
+    Returns the Advanced Solution Matrix analyses linked to this Solution
+    Finder, each with a Category & Source-wise summary plus its entry_id so the
+    UI can deep-link back to the ASM Solution Matrix tab (/tools/solution-matrix?id=<entry_id>).
+    The SF UI filters this list by (source, source_id) for the level/row tapped.
+    Response: [{ entry_id, title, source, source_id, categories: [...], sources: [...], updated_at }]
+    """
+    entry = await db.solution_finders.find_one(
+        {"entry_id": entry_id, "user_id": user["user_id"]}, {"_id": 0, "entry_id": 1},
+    )
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    cursor = db.solution_matrices.find(
+        {"user_id": user["user_id"], "linked_from_sf_entry_id": entry_id},
+        {"_id": 0},
+    )
+    out = []
+    async for d in cursor:
+        cats = [k for k, v in (d.get("solution_category") or {}).items() if v]
+        srcs = [k for k, v in (d.get("solution_sources") or {}).items() if (v or "").strip()]
+        out.append({
+            "entry_id": d.get("entry_id"),
+            "title": d.get("smart_goal") or "Untitled ASM",
+            "source": d.get("linked_from_sf_source"),
+            "source_id": d.get("linked_from_sf_source_id"),
+            "categories": cats,
+            "sources": srcs,
+            "updated_at": d.get("updated_at"),
+        })
+    out.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
+    return out
 
 
 # ========================

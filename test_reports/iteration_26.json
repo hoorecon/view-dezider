@@ -1,0 +1,83 @@
+{
+  "summary": "Iteration 26 — Phase 1/2 ASM features tested end-to-end. Backend GET /api/solution-finders/{id}/asm-entries works (9/9 pytest). Frontend Q2 RCA renders all 3 levels of ASM controls (Overall · across all PRIMARY concerns, per-concern, per-RCA). Deep-link from the 'ASM' pill correctly opens /tools/solution-matrix with prefill_title '[ASM]-RL <root cause text>' (verified for RL; OL/PL helpers use same util). Phase 2 'From ASM' picker opens modal, shows empty state with proper message, and populated state with Categories + Sources summary + Open button. Count badge appears on the bar. CRITICAL bugs found: (a) tapping 'Open' inside the From ASM picker (→ /tools/solution-matrix?id=<entry_id>) crashes with React 'Rendered fewer hooks than expected' due to an early `if (loading) return` at line 506 of solution-matrix.tsx BEFORE useMemo/useState declared later at lines 678 and 500-503; (b) VoiceInput.tsx still imported `Audio` from `expo-av` while the body used `useAudioRecorder`/`RecordingPresets`/`AudioModule`/`setAudioModeAsync` without imports — every eg-* tool crashed with 'useAudioRecorder is not defined' on load — FIXED by replacing the import with the correct expo-audio imports. Regression bug observed (likely pre-existing): SF loaded by id renders concerns text only, but RCAs/solutions never display because frontend Concern/RootCause types use `id` while backend persists `concern_id`/`rca_id`/`sol_id` — no field remap on load. Font widget at bottom:96 verified above bottom action bars (no overlap with Next/Save).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "solution-matrix.tsx",
+        "issue": "Rules-of-Hooks violation: `if (loading) return <Loading/>` at line 506 is before useState hooks at lines 500-503 are followed by useMemo `aggregatedActions` at line 678 (and useState at lines 500-503 are actually declared between the conditional return and earlier hooks). Opening solution-matrix with `?id=<entry_id>` (i.e., the Phase 2 'Open' button) sets loading=true, then false, triggering 'Rendered fewer hooks than expected. This may be caused by an accidental early return statement.' Page is blank. Reference: /app/frontend/app/tools/solution-matrix.tsx:506",
+        "testID": "n/a",
+        "priority": "CRITICAL"
+      },
+      {
+        "component": "solution-finder.tsx (load-by-id hydration)",
+        "issue": "Loaded SF (`?id=...`) renders only top-level concern text. Per-concern RCAs and solutions never appear because frontend types use `id`/`concern_id` but backend persists `concern_id`/`rca_id`/`sol_id`. `rcasFor(c.id)` returns [] because hydrated concerns have `concern_id` (undefined `id`). Likely pre-existing but blocks Phase 2 testing of per-RCA/Solution From ASM at the rca/solution level. Reference: /app/frontend/app/tools/solution-finder.tsx:57,58,139,705",
+        "testID": "n/a",
+        "priority": "HIGH"
+      },
+      {
+        "component": "solution-finder.tsx",
+        "issue": "Console warning: 'Each child in a list should have a unique key prop' originating from SimpleSolutionFinder render path. Reference: /app/frontend/app/tools/solution-finder.tsx",
+        "testID": "n/a",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Phase 2 — From ASM → Open existing linked ASM",
+        "issue": "Modal lists linked ASM correctly with category+source summary, but clicking 'Open' navigates to /tools/solution-matrix?id=<entry_id> which immediately crashes with Rules-of-Hooks error (see solution-matrix.tsx). End-to-end Phase 2 round-trip is broken.",
+        "affected_testIDs": []
+      }
+    ],
+    "design_issues": [
+      {
+        "screen": "global (floating font widget)",
+        "issues": ["Verified font widget (A/A+/A++ pill) sits at bottom-right above bottom action bars; no visible overlap with Save/Next CTAs across SF stepper and ASM banner screens."]
+      }
+    ],
+    "react_native_issues": [
+      {
+        "component": "VoiceInput.tsx",
+        "issue": "Imported `Audio` from deprecated `expo-av` while the body used `useAudioRecorder`, `RecordingPresets`, `AudioModule`, `setAudioModeAsync` without any expo-audio import — caused ReferenceError 'useAudioRecorder is not defined' on every eg-* tool. FIXED in test by replacing the import with `import { useAudioRecorder, RecordingPresets, AudioModule, setAudioModeAsync } from 'expo-audio';`. Reference: /app/frontend/src/components/VoiceInput.tsx:11"
+      },
+      {
+        "component": "package.json",
+        "issue": "`expo-av: ^16.0.8` is still listed as a dependency. Since the codebase has migrated to expo-audio, expo-av should be removed to complete the migration. Reference: /app/frontend/package.json:27"
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_asm_entries_iter26.py",
+    "/app/test_reports/pytest/iter26.xml"
+  ],
+  "action_items": [
+    "Fix solution-matrix.tsx Rules-of-Hooks violation: move the `if (loading) return ...` guard AFTER ALL hook declarations (useState/useMemo/useEffect). Specifically, the early return at line 506 must be moved below the useMemo `aggregatedActions` at line 678 (and any other hooks declared later in the component body). This unblocks Phase 2 'Open' navigation.",
+    "Add hydration normalization in solution-finder.tsx loadEntry: when backend returns concerns/root_causes/solutions, remap `concern_id` → `id` (and keep `concern_id` for cross-refs), `rca_id` → `id`, `sol_id` → `id`. Or refactor types to use `concern_id`/`rca_id`/`sol_id` directly throughout the renderer. Without this, saved SFs render blank from step 3 onward.",
+    "Remove `expo-av` from /app/frontend/package.json dependencies and run `yarn install` to complete the migration; verify app still bundles.",
+    "Fix the 'unique key prop' warning in SimpleSolutionFinder list rendering.",
+    "Optional retest: confirm `Open` from From ASM picker lands on a fully-populated ASM after the hooks fix; confirm `[ASM]-PL <concern>` and `[ASM]-OL Overall` deep-links once SF load hydration is fixed (needed to exercise per-concern/RCA/sol levels after reload)."
+  ],
+  "critical_code_review_comments": [
+    "solution-matrix.tsx is 1273 lines — over the 700-line guideline; consider splitting tabs into sub-modules.",
+    "solution-matrix.tsx has an early conditional return before subsequent hooks — classic Rules-of-Hooks bug.",
+    "solution-finder.tsx is 1276 lines — also over 700 LOC guideline; ASM controls + stepper + From ASM modal could be extracted.",
+    "Concern/RootCause/Solution shapes diverge between frontend (`id`) and backend (`concern_id`/`rca_id`/`sol_id`) — needs a single contract or explicit mapper.",
+    "VoiceInput.tsx shipped with unresolved identifiers from incomplete expo-av → expo-audio migration; CI should add a build/type-check or lint guard."
+  ],
+  "updated_files": [
+    "/app/frontend/src/components/VoiceInput.tsx (fixed expo-av → expo-audio imports)",
+    "/app/backend/tests/test_asm_entries_iter26.py (new — 9 tests for Phase 2 backend + regression)"
+  ],
+  "success_rate": {
+    "backend": "100% (9/9 tests passed)",
+    "frontend": "~70% — ASM controls render OK at all 3 Q2 levels, deep-link/title prefix OK, From ASM empty + populated OK; Open round-trip and SF reload hydration broken"
+  },
+  "seed_data_creation": "Created TEST_-prefixed SF + 2 linked ASM entries via API for UI assertions (entry 83f03a9e-…). Backend pytest fixtures clean up their own TEST_ data; the UI-only seed entries remain (TEST_-prefixed) for the main agent to clean if desired.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "After the hooks bug in solution-matrix.tsx is fixed, re-run /tools/solution-matrix?id=<existing entry id> and re-test Phase 2 'Open' button — should land on a fully populated ASM with all wizard tabs visible. After the SF load hydration fix, verify per-concern/per-RCA/per-Solution/per-Risk From ASM pickers also display Linked entries (currently the rows themselves disappear after reload). Backend endpoint /api/solution-finders/{id}/asm-entries is solid — reuse /app/backend/tests/test_asm_entries_iter26.py.",
+  "rca_of_issue": "1) solution-matrix.tsx:506 has `if (loading) return <Loading/>;` placed BEFORE the useMemo `aggregatedActions` at line 678 and several useStates around lines 500-503. When Phase 2 'Open' navigates with `?id=<entry_id>`, loadEntry sets loading=true then false, causing React to render a different number of hooks across renders → 'Rendered fewer hooks than expected'. Fix: move the loading guard AFTER all hook declarations, OR render <Loading/> as an inline early branch inside JSX (after the hook block). 2) VoiceInput.tsx was importing the wrong package — replaced `import { Audio } from 'expo-av';` with `import { useAudioRecorder, RecordingPresets, AudioModule, setAudioModeAsync } from 'expo-audio';` and restarted expo. eg-aim now loads cleanly with the Voice Input button visible. 3) Concern/RootCause hydration mismatch — frontend defines `id` field on its types and renders via `c.id`/`r.id`, but backend stores `concern_id`/`rca_id`/`sol_id`; loadEntry assigns the raw payload arrays directly without remapping, so on reload the lookups all return empty."
+}
