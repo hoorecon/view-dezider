@@ -592,7 +592,6 @@ export default function SimpleSolutionFinder() {
           {rcasFor(c.id).map(r => (
             <View key={r.id} style={s.childRow}>
               <View style={s.bullet} />
-              <Ionicons name="pencil" size={12} color="#94A3B8" />
               <TextInput
                 style={s.childInput}
                 value={r.text}
@@ -601,6 +600,7 @@ export default function SimpleSolutionFinder() {
                 placeholderTextColor="#9CA3AF"
                 multiline
               />
+              <Ionicons name="pencil" size={12} color="#94A3B8" />
               <TouchableOpacity onPress={() => removeRca(r.id)} hitSlop={6}>
                 <Ionicons name="close" size={16} color="#94A3B8" />
               </TouchableOpacity>
@@ -803,7 +803,6 @@ export default function SimpleSolutionFinder() {
               {mitsFor(r.id).map(m => (
                 <View key={m.id} style={s.childRow}>
                   <View style={[s.bullet, { backgroundColor: '#10B981' }]} />
-                  <Ionicons name="pencil" size={12} color="#94A3B8" />
                   <TextInput
                     style={s.childInput}
                     value={m.text}
@@ -812,6 +811,7 @@ export default function SimpleSolutionFinder() {
                     placeholderTextColor="#9CA3AF"
                     multiline
                   />
+                  <Ionicons name="pencil" size={12} color="#94A3B8" />
                   {asmCounts[m.id] > 0 && (
                     <View style={s.asmCountBadge}>
                       <Ionicons name="bar-chart" size={9} color="#0F766E" />
@@ -846,7 +846,6 @@ export default function SimpleSolutionFinder() {
               {consFor(r.id).map(c => (
                 <View key={c.id} style={s.childRow}>
                   <View style={[s.bullet, { backgroundColor: '#F59E0B' }]} />
-                  <Ionicons name="pencil" size={12} color="#94A3B8" />
                   <TextInput
                     style={s.childInput}
                     value={c.text}
@@ -855,6 +854,7 @@ export default function SimpleSolutionFinder() {
                     placeholderTextColor="#9CA3AF"
                     multiline
                   />
+                  <Ionicons name="pencil" size={12} color="#94A3B8" />
                   {asmCounts[c.id] > 0 && (
                     <View style={s.asmCountBadge}>
                       <Ionicons name="bar-chart" size={9} color="#0F766E" />
