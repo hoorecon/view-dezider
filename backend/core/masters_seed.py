@@ -101,7 +101,18 @@ async def dedup_masters_on_boot():
 
     Preference order for the row to KEEP: seed rows first, then lowest `order`,
     then earliest `created_at`.
+
+    Version-gated: runs ONCE (per DEDUP_VERSION) and is an instant no-op on
+    every subsequent boot/worker, so it never adds latency to multi-worker
+    startups after the first successful run.
     """
+    DEDUP_VERSION = "2026-06-02-01"
+    try:
+        meta = await db.app_config.find_one({"key": "masters_dedup"})
+        if meta and (meta.get("value") or {}).get("version") == DEDUP_VERSION:
+            return  # already deduped at this version — fast no-op
+    except Exception:
+        pass
     try:
         pipeline = [
             {
@@ -118,11 +129,8 @@ async def dedup_masters_on_boot():
             {"$match": {"count": {"$gt": 1}}},
         ]
         groups = await db.masters.aggregate(pipeline).to_list(None)
-        if not groups:
-            return
-
         total_removed = 0
-        for g in groups:
+        for g in (groups or []):
             ids = [i for i in (g.get("ids") or []) if i]
             if len(ids) <= 1:
                 continue
@@ -143,5 +151,13 @@ async def dedup_masters_on_boot():
 
         if total_removed:
             logger.info(f"Masters dedup — removed {total_removed} duplicate rows across {len(groups)} groups.")
+
+        # Mark done so this never runs again at this version (fast no-op on
+        # all future boots / workers).
+        await db.app_config.update_one(
+            {"key": "masters_dedup"},
+            {"$set": {"key": "masters_dedup", "value": {"version": DEDUP_VERSION, "updated_at": _now()}}},
+            upsert=True,
+        )
     except Exception as e:  # pragma: no cover
         logger.error(f"Masters dedup failed: {e}")

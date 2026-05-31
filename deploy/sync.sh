@@ -145,8 +145,10 @@ log "Step 3/4 — Recreating container with the fresh image"
 $COMPOSE up -d --force-recreate api
 ok "Container recreated"
 
-# Brief pause for app startup
-sleep 4
+# Pause for app startup. This app runs MULTIPLE uvicorn workers and each one
+# re-runs the full boot sequence (DB indexes + ACM + seeds + migrations), so a
+# cold multi-worker boot can take 20-30s before any worker accepts connections.
+sleep 8
 
 # ── 4. Verify ────────────────────────────────────────────────────────────────
 log "Step 4/4 — Verifying backend is healthy"
@@ -177,13 +179,13 @@ for u in URLS:
         continue
 sys.exit(1)
 '
-for i in 1 2 3 4 5; do
+for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
   if $COMPOSE exec -T api python -c "$PY_PROBE" >/dev/null 2>&1; then
     ok "Backend responding on /api/health (inside-container Python probe)"
     HEALTH_OK=1
     break
   fi
-  warn "Health check attempt $i/5 failed, retrying in 3s..."
+  warn "Health check attempt $i/12 failed (workers may still be booting), retrying in 3s..."
   sleep 3
 done
 
