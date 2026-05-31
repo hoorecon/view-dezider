@@ -310,7 +310,14 @@ app.include_router(api_router)
 # ========================
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
+    # Auth uses Bearer tokens (Authorization header), NOT cookies, so credentials
+    # must be False. Combining allow_credentials=True with allow_origins=["*"]
+    # makes Starlette emit "Access-Control-Allow-Origin: *" together with
+    # "Access-Control-Allow-Credentials: true" on cookie-less responses — an
+    # illegal combination that browsers reject with a NetworkError (this broke
+    # cross-origin login from jelcos.ai → api.jelcos.ai). With credentials=False
+    # the response is a clean "ACAO: *" which every browser accepts.
+    allow_credentials=False,
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
