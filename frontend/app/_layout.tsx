@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Platform } from 'react-native';
+import { View, Text, Platform } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
@@ -14,6 +14,50 @@ import WebScrollFix from '../src/components/WebScrollFix';
 import AlertHost from '../src/components/AlertHost';
 import GlobalFontScale from '../src/components/GlobalFontScale';
 import { FontScaleProvider } from '../src/contexts/FontScaleContext';
+
+// ----------------------------------------------------------------------
+// NavErrorBoundary — last line of defence against the React-Navigation
+// "Cannot read properties of undefined (reading 'stale')" white-screen.
+// React render errors don't reliably reach window.onerror in production
+// bundles, so a real error boundary is the only guaranteed catch. On the
+// first crash it wipes persisted state and reloads ONCE (sessionStorage
+// guard prevents reload loops); if it somehow crashes again it shows a
+// friendly recovery message instead of a blank page.
+// ----------------------------------------------------------------------
+class NavErrorBoundary extends React.Component<{ children: React.ReactNode }, { crashed: boolean }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { crashed: false };
+  }
+  static getDerivedStateFromError() {
+    return { crashed: true };
+  }
+  componentDidCatch() {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      try {
+        const FLAG = '__jelcos_eb_recovered__';
+        if (!sessionStorage.getItem(FLAG)) {
+          sessionStorage.setItem(FLAG, '1');
+          try { localStorage.clear(); } catch { /* ignore */ }
+          window.location.reload();
+        }
+      } catch { /* ignore */ }
+    }
+  }
+  render() {
+    if (this.state.crashed) {
+      return (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: '#FFFFFF' }}>
+          <Text style={{ fontSize: 17, fontWeight: '700', color: '#0F172A', marginBottom: 8 }}>Updating to the latest version…</Text>
+          <Text style={{ fontSize: 13, color: '#64748B', textAlign: 'center', lineHeight: 19 }}>
+            If this message stays for more than a few seconds, please refresh the page (Ctrl/Cmd + Shift + R).
+          </Text>
+        </View>
+      );
+    }
+    return this.props.children as any;
+  }
+}
 
 // ----------------------------------------------------------------------
 // Web-only: inject @font-face for Ionicons so static Cloudflare/Pages
