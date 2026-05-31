@@ -208,7 +208,7 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <>
+    <NavErrorBoundary>
       <StatusBar style="dark" />
       <FontScaleProvider>
         <WebFrame>
@@ -370,6 +370,6 @@ export default function RootLayout() {
       <WebScrollFix />
       </FontScaleProvider>
       <GlobalVoiceNav />
-    </>
+    </NavErrorBoundary>
   );
 }
