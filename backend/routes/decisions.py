@@ -341,11 +341,11 @@ async def demote_user(data: DemoteUserRequest, user: dict = Depends(require_root
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found with this email")
     target_role = get_user_role(target_user)
-    if target_user["user_id"] == user["user_id"]:
-        raise HTTPException(status_code=400, detail="Cannot demote yourself")
-    # The root super-admin can never be demoted via API.
+    # The root super-admin can never be demoted via API (checked first).
     if (target_user.get("email") or "").strip().lower() == ROOT_SUPER_ADMIN_EMAIL:
         raise HTTPException(status_code=403, detail="Root super-admin cannot be demoted")
+    if target_user["user_id"] == user["user_id"]:
+        raise HTTPException(status_code=400, detail="Cannot demote yourself")
     if target_role == "super_admin":
         raise HTTPException(status_code=403, detail="Super Admin cannot be demoted")
     if target_role == "co_admin" and demoter_role != "super_admin":
