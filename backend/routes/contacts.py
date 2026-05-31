@@ -110,6 +110,7 @@ async def create_contact(request: Request, user: dict = Depends(get_current_user
         "state": body.get("state", ""),
         "city": body.get("city", ""),
         "language": body.get("language", ""),
+        "languages": body.get("languages", []),
         # Professional
         "profession": body.get("profession", ""),
         "occupation": body.get("occupation", ""),
