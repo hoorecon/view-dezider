@@ -56,30 +56,22 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
   // and reload once. This is idempotent: second boot sees matching
   // stamp and is a no-op.
   // -------------------------------------------------------------------
-  const BUILD_VERSION = '2026-05-25-spa-v1';
+  const BUILD_VERSION = '2026-06-02-masters-v2';
   const STAMP_KEY = '__jelcos_build_version__';
   try {
     const storedStamp = localStorage.getItem(STAMP_KEY);
     if (storedStamp && storedStamp !== BUILD_VERSION) {
-      // Wipe known-fragile keys from old build
-      const wipePrefixes = [
-        '@react-navigation/',
-        'RNL_STATE',
-        'navigation_state',
-        'persist:',
-        'zustand:',
-      ];
-      Object.keys(localStorage).forEach((k) => {
-        if (wipePrefixes.some((p) => k.startsWith(p))) {
-          try { localStorage.removeItem(k); } catch { /* ignore */ }
-        }
-      });
-      localStorage.setItem(STAMP_KEY, BUILD_VERSION);
+      // Build changed under this browser. Any persisted React-Navigation /
+      // Zustand / AsyncStorage state may reference the OLD route tree and will
+      // crash useNavigationBuilder with "reading 'stale'". Clearing prefix-
+      // matched keys is fragile (the poisoned key may use another name), so on
+      // a version change we wipe ALL of localStorage, then re-stamp and reload
+      // once. One-time cost: the user re-authenticates. This GUARANTEES no
+      // stale navigation state can survive the upgrade.
+      try { localStorage.clear(); } catch { /* ignore */ }
+      try { sessionStorage.clear(); } catch { /* ignore */ }
+      try { localStorage.setItem(STAMP_KEY, BUILD_VERSION); } catch { /* ignore */ }
       // Reload once so React Navigation rebuilds state from scratch.
-      // window.location.reload() unloads the document, so any code after
-      // it on this tick is moot — no early `return` needed (and `return`
-      // at module scope would actually abort module evaluation, leaving
-      // RootLayout unregistered and rendering a blank page).
       if (typeof window !== 'undefined') {
         window.location.reload();
       }
@@ -90,6 +82,29 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
   } catch {
     /* localStorage unavailable (e.g. private mode + Safari restrictions) — skip */
   }
+
+  // -------------------------------------------------------------------
+  // Runtime self-heal for the React-Navigation "reading 'stale'" crash.
+  //
+  // If a future deploy ever ships with mismatched persisted nav state and
+  // useNavigationBuilder throws while rehydrating, the whole app white-
+  // screens. This global handler detects that specific error, wipes
+  // storage and reloads exactly once (guarded by a sessionStorage flag so
+  // it can never loop). It's a belt-and-suspenders backup to the
+  // BUILD_VERSION wipe above.
+  // -------------------------------------------------------------------
+  const NAV_RECOVER_FLAG = '__jelcos_nav_recovered__';
+  window.addEventListener('error', (ev: any) => {
+    const msg = (ev && (ev.message || (ev.error && ev.error.message))) || '';
+    if (/reading 'stale'|getRehydratedState/.test(String(msg))) {
+      try {
+        if (sessionStorage.getItem(NAV_RECOVER_FLAG)) return; // already tried — don't loop
+        sessionStorage.setItem(NAV_RECOVER_FLAG, '1');
+      } catch { /* ignore */ }
+      try { localStorage.clear(); } catch { /* ignore */ }
+      try { window.location.reload(); } catch { /* ignore */ }
+    }
+  });
 
   // -------------------------------------------------------------------
   // Visible browser scrollbar styling (cosmetic only — does NOT change
