@@ -3,7 +3,7 @@ import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, ActivityIndicator, TextInput, Modal,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, Image, Linking,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,6 +11,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import MasterSelect from '../../src/components/MasterSelect';
+import * as ImagePicker from 'expo-image-picker';
+
+const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'JPY', 'CNY', 'AUD', 'CAD', 'CHF', 'AED', 'SGD'];
 
 const GENDER_OPTIONS = ['male', 'female', 'non_binary', 'prefer_not_to_say'];
 const AGE_GROUPS = ['18-25', '26-35', '36-45', '46-55', '56-65', '65+'];
@@ -100,15 +104,15 @@ export default function ContactsScreen() {
 
   const openCreate = () => {
     setEditingId(null);
-    setForm({ name: '', email: '', phone: '', whatsapp: '', gender: '', age_group: '', country: '', language: '',
-      profession: '', skills: [], organization: '', designation: '', business_network: '',
+    setForm({ name: '', email: '', phone: '', whatsapp: '', gender: '', age_group: '', country: '', language: '', languages: [],
+      profession: '', occupation: '', skills: [], drives: [], traits: [], organization: '', designation: '', business_network: '',
       social_status: '', relationship_status: '', caste: '', religion: '', political_party: '',
-      tags: [], notes: '', is_sme: false, sme_domains: [],
+      tags: [], notes: '', is_sme: false, sme_domains: [], profile_image: '',
       org_type: '', org_subtype: '',
       // ── Phase-1 defaults ──
       time_bandwidth_hours_per_month: '',
       resources: {
-        finance: { amount: '', currency: 'INR', note: '' },
+        finance: { amount: '', currency: 'INR', note: '', monthly_cashflow: '', monthly_expenses: '', net_worth: '' },
         infrastructure: { description: '', note: '' },
         people_connects: { count: '', note: '' },
       },
@@ -167,6 +171,32 @@ export default function ContactsScreen() {
     setForm({ ...form, skills });
   };
 
+  const pickPhoto = async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        if (perm.canAskAgain === false) {
+          showAlert('Permission needed', 'Allow Photos access to attach a contact photo.', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => { try { Linking.openSettings(); } catch (e) {} } },
+          ]);
+        }
+        return;
+      }
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true, aspect: [1, 1], quality: 0.6, base64: true,
+      });
+      if (!res.canceled && res.assets && res.assets[0]) {
+        const a = res.assets[0];
+        const uri = a.base64 ? `data:image/jpeg;base64,${a.base64}` : a.uri;
+        setForm((f: any) => ({ ...f, profile_image: uri }));
+      }
+    } catch (e) {
+      showAlert('Error', 'Could not attach photo');
+    }
+  };
+
   const FORM_STEPS = ['Basic', 'Demographics', 'Social', 'Professional', 'Resources', 'Links'];
   const LAST_STEP = FORM_STEPS.length - 1;
   const setFormPath = (path: string[], value: any) => {
@@ -184,6 +214,24 @@ export default function ContactsScreen() {
     switch (formStep) {
       case 0: return (
         <View>
+          <View style={styles.photoRow}>
+            <TouchableOpacity style={styles.photoBtn} onPress={pickPhoto}>
+              {form.profile_image ? (
+                <Image source={{ uri: form.profile_image }} style={styles.photoImg} />
+              ) : (
+                <Ionicons name="camera" size={24} color="#94A3B8" />
+              )}
+            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.photoLabel}>Contact Photo</Text>
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+                <TouchableOpacity onPress={pickPhoto}><Text style={styles.photoAction}>{form.profile_image ? 'Change' : 'Add Photo'}</Text></TouchableOpacity>
+                {!!form.profile_image && (
+                  <TouchableOpacity onPress={() => setForm({ ...form, profile_image: '' })}><Text style={[styles.photoAction, { color: '#EF4444' }]}>Remove</Text></TouchableOpacity>
+                )}
+              </View>
+            </View>
+          </View>
           <Text style={styles.inputLabel}>Name *</Text>
           <TextInput style={styles.textInput} placeholder="Full name" value={form.name || ''} onChangeText={v => setForm({...form, name: v})} autoFocus />
           <Text style={styles.inputLabel}>Email</Text>
@@ -220,8 +268,8 @@ export default function ContactsScreen() {
           </View>
           <Text style={styles.inputLabel}>Country</Text>
           <TextInput style={styles.textInput} placeholder="e.g., India" value={form.country || ''} onChangeText={v => setForm({...form, country: v})} />
-          <Text style={styles.inputLabel}>Language</Text>
-          <TextInput style={styles.textInput} placeholder="e.g., English, Hindi" value={form.language || ''} onChangeText={v => setForm({...form, language: v})} />
+          <Text style={styles.inputLabel}>Language(s)</Text>
+          <MasterSelect type="language" mode="multi" value={form.languages || []} onChange={(v) => setForm({ ...form, languages: v })} placeholder="Search languages…" />
         </View>
       );
       case 3: return (
@@ -250,6 +298,8 @@ export default function ContactsScreen() {
           )}
           <Text style={styles.inputLabel}>Profession</Text>
           <TextInput style={styles.textInput} placeholder="e.g., Engineer" value={form.profession || ''} onChangeText={v => setForm({...form, profession: v})} />
+          <Text style={styles.inputLabel}>Occupation</Text>
+          <MasterSelect type="occupation" mode="single" value={form.occupation || ''} onChange={(v) => setForm({ ...form, occupation: v })} placeholder="Search occupation…" />
           <Text style={styles.inputLabel}>Organization</Text>
           <TextInput style={styles.textInput} placeholder="e.g., Venture Buddha" value={form.organization || ''} onChangeText={v => setForm({...form, organization: v})} />
           <Text style={styles.inputLabel}>Designation</Text>
@@ -257,19 +307,11 @@ export default function ContactsScreen() {
           <Text style={styles.inputLabel}>Business Network</Text>
           <TextInput style={styles.textInput} placeholder="e.g., TiE, BNI" value={form.business_network || ''} onChangeText={v => setForm({...form, business_network: v})} />
           <Text style={styles.inputLabel}>Skills</Text>
-          <View style={{flexDirection:'row', gap: 8, marginBottom: 8}}>
-            <TextInput style={[styles.textInput, {flex: 1, marginBottom: 0}]} placeholder="Add a skill" value={skillInput} onChangeText={setSkillInput} onSubmitEditing={addSkill} />
-            <TouchableOpacity style={styles.addSkillBtn} onPress={addSkill}>
-              <Ionicons name="add" size={20} color="#FFF" />
-            </TouchableOpacity>
-          </View>
-          <View style={styles.chipRow}>
-            {(form.skills || []).map((s: string, i: number) => (
-              <TouchableOpacity key={i} style={[styles.chip, styles.chipActive]} onPress={() => removeSkill(i)}>
-                <Text style={{color:'#FFF', fontSize:12}}>{s} ×</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <MasterSelect type="skill" mode="multi" value={form.skills || []} onChange={(v) => setForm({ ...form, skills: v })} placeholder="Search or add a skill…" />
+          <Text style={styles.inputLabel}>Drives (motivations)</Text>
+          <MasterSelect type="drive" mode="multi" value={form.drives || []} onChange={(v) => setForm({ ...form, drives: v })} placeholder="e.g., Achievement, Autonomy…" />
+          <Text style={styles.inputLabel}>Traits (attitude)</Text>
+          <MasterSelect type="trait" mode="multi" value={form.traits || []} onChange={(v) => setForm({ ...form, traits: v })} placeholder="e.g., Attention to Detail, Extroversion…" />
           <TouchableOpacity style={styles.smeToggle} onPress={() => setForm({...form, is_sme: !form.is_sme})}>
             <Ionicons name={form.is_sme ? 'checkbox' : 'square-outline'} size={22} color={form.is_sme ? '#8B5CF6' : COLORS.textMuted} />
             <Text style={styles.smeLabel}>Mark as Subject Matter Expert (SME)</Text>
@@ -296,10 +338,10 @@ export default function ContactsScreen() {
               </TouchableOpacity>
             ))}
           </View>
-          <Text style={styles.inputLabel}>Caste</Text>
-          <TextInput style={styles.textInput} placeholder="Optional" value={form.caste || ''} onChangeText={v => setForm({...form, caste: v})} />
           <Text style={styles.inputLabel}>Religion</Text>
-          <TextInput style={styles.textInput} placeholder="Optional" value={form.religion || ''} onChangeText={v => setForm({...form, religion: v})} />
+          <MasterSelect type="religion" mode="single" value={form.religion || ''} onChange={(v) => setForm({ ...form, religion: v, caste: '' })} placeholder="Select or type religion…" />
+          <Text style={styles.inputLabel}>Caste</Text>
+          <MasterSelect key={`caste-${form.religion || 'none'}`} type="caste" mode="single" parent={form.religion || null} value={form.caste || ''} onChange={(v) => setForm({ ...form, caste: v })} placeholder={form.religion ? 'Select or type caste…' : 'Select religion first (or type)…'} />
           <Text style={styles.inputLabel}>Political Party</Text>
           <TextInput style={styles.textInput} placeholder="Optional" value={form.political_party || ''} onChangeText={v => setForm({...form, political_party: v})} />
         </View>
@@ -316,23 +358,27 @@ export default function ContactsScreen() {
           />
 
           <Text style={[styles.inputLabel, { marginTop: 12, fontWeight: '700' }]}>💰 Finance</Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <TextInput
-              style={[styles.textInput, { flex: 2 }]}
-              placeholder="Amount"
-              keyboardType="numeric"
-              value={String(form.resources?.finance?.amount ?? '')}
-              onChangeText={v => setFormPath(['resources', 'finance', 'amount'], v)}
-            />
-            <TextInput
-              style={[styles.textInput, { flex: 1 }]}
-              placeholder="INR"
-              value={form.resources?.finance?.currency ?? 'INR'}
-              onChangeText={v => setFormPath(['resources', 'finance', 'currency'], v.toUpperCase())}
-              autoCapitalize="characters"
-              maxLength={4}
-            />
+          <Text style={[styles.inputLabel, { marginTop: 2 }]}>Currency</Text>
+          <View style={styles.chipRow}>
+            {CURRENCIES.map(c => (
+              <TouchableOpacity key={c} style={[styles.chip, (form.resources?.finance?.currency || 'INR') === c && styles.chipActive]}
+                onPress={() => setFormPath(['resources', 'finance', 'currency'], c)}>
+                <Text style={[styles.chipText, (form.resources?.finance?.currency || 'INR') === c && { color: '#FFF' }]}>{c}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
+          <Text style={styles.inputLabel}>Monthly Cashflow ({form.resources?.finance?.currency || 'INR'})</Text>
+          <TextInput style={styles.textInput} placeholder="e.g., 150000" keyboardType="numeric"
+            value={String(form.resources?.finance?.monthly_cashflow ?? '')}
+            onChangeText={v => setFormPath(['resources', 'finance', 'monthly_cashflow'], v)} />
+          <Text style={styles.inputLabel}>Monthly Expenses ({form.resources?.finance?.currency || 'INR'})</Text>
+          <TextInput style={styles.textInput} placeholder="e.g., 90000" keyboardType="numeric"
+            value={String(form.resources?.finance?.monthly_expenses ?? '')}
+            onChangeText={v => setFormPath(['resources', 'finance', 'monthly_expenses'], v)} />
+          <Text style={styles.inputLabel}>Total Net Worth ({form.resources?.finance?.currency || 'INR'})</Text>
+          <TextInput style={styles.textInput} placeholder="e.g., 5000000" keyboardType="numeric"
+            value={String(form.resources?.finance?.net_worth ?? '')}
+            onChangeText={v => setFormPath(['resources', 'finance', 'net_worth'], v)} />
           <TextInput
             style={[styles.textInput, { height: 50 }]}
             placeholder="Finance note (e.g., personal savings, willing to invest…)"
@@ -632,4 +678,9 @@ const styles = StyleSheet.create({
   nextBtnText: {fontSize:14, fontWeight:'600', color: '#0F172A'},
   saveBtn: {paddingHorizontal:24, paddingVertical:12, borderRadius:10, backgroundColor:'#059669'},
   saveBtnText: {fontSize:14, fontWeight:'700', color: '#0F172A'},
+  photoRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 },
+  photoBtn: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E2E8F0', overflow: 'hidden' },
+  photoImg: { width: 64, height: 64, borderRadius: 32 },
+  photoLabel: { fontSize: 13, fontWeight: '600', color: '#0F172A' },
+  photoAction: { fontSize: 13, fontWeight: '600', color: '#6366F1' },
 });

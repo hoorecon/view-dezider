@@ -1,0 +1,2097 @@
+{
+ "version": "2026-06-02-01",
+ "religions": [
+  {
+   "value": "Hindu"
+  },
+  {
+   "value": "Muslim"
+  },
+  {
+   "value": "Christian"
+  },
+  {
+   "value": "Buddhist"
+  },
+  {
+   "value": "Jain"
+  },
+  {
+   "value": "Sikh"
+  },
+  {
+   "value": "Zoroastrian (Parsi)"
+  },
+  {
+   "value": "Jewish"
+  },
+  {
+   "value": "Baha'i"
+  },
+  {
+   "value": "Other"
+  },
+  {
+   "value": "Atheist / None"
+  }
+ ],
+ "castes": [
+  {
+   "value": "Adaviyar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Adi Andhra",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Agamudayar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Agri (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Aheria",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Ahirwar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Ahluwalia (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "All India Kurmi Kshatriya Mahasabha",
+   "parent": "Hindu"
+  },
+  {
+   "value": "All India Vaishya Federation",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Ambalavasi",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Ambattar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Andhra Vaishnavas",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Arora",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Arunattu Vellalar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Asati",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Asur people",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Attar (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Badagas",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bagal (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bairagi Brahmin (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Baishya Kapali",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Baishya Saha",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Baiswar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Balija",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Banai (sub-tribe)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Banajiga",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Banaphar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bandhmati",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bania (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Barai (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Barika (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Barujibi",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bathudi Tribe",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bauri (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bedia (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Beldar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bengali Kayastha",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bhambi",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bhambi Khalpa",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bhambi Rohit",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bhambi Sindhi Mochi",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bhandari (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bhanushali",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bhar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bharbhunja (Hindu)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bhat",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bhatraju",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bhattathiri",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bhatti",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bhavsar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bhil Gametia",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bhil Mama",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bhoi",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bhottada",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bhulia",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bhumihar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Billava",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bind (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Binjhal",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Birhor people",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bonda people",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Boom Boom Mattukaran",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bot (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Boya (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Brahmin",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Budabukkala",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Bunt (community)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Burud (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Dhobi",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Chakyar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Chambhar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Chandala",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Charan",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Chasa (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Chaukalshi",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Cherayi Panicker",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Chero",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Chettiar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Chhaparband",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Chhipi",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Cholanaikkan",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Chozhia Vellalar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Chunara",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Chunaru",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Dabgar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Dahima",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Daivadnya",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Daivampadi",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Dangi people",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Desikar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Deswali Majhi",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Devadiga",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Devanga",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Devendrakulam",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Dewar (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Dhagi",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Dhakar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Dheevara (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Dhekaru",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Dhusia",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Dogra Jheer",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Dumal",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Elur Chetty",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Eradi",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Ezhava",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Ezhuthachan (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Gadhia (community)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Gahoi",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Ganak",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Gandhabanik",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Gauda and Kunbi",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Gavli",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Gawaria",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Ghamaila",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Gharami",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Ghasi",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Ghasiara",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Ghirth",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Gihara",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Godha",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Golconda Vyapari Brahmin",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Golla (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Gollewar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Gopal (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Goriya",
+   "parent": "Hindu"
+  },
+  {
+   "value": "List of gotras",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Goud",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Gour (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Gowala (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Gowari",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Gudia (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Gudigar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Guptan",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Gurjar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Halba (tribe)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Halpati",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Halwai",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Hatkar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Hatwal",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Hebbars",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Heri (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Hilpulayan",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Holar caste",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Hoogar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Hurkiya",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Idangai",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Idiga",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Ilayathu",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Isai Vellalar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Iyengar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Iyer",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Jaiswal (surname)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Jalia Kaibarta",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Jāti",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Jats",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Jhamar (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Jhora",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Jogi (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Joisar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Juang people",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Julaha",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Jyotish (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kaarkaathaar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kadaiyar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kadia (Muslim)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kadia Kumbhar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kaikadi people",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kaikalas",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kalabaz",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kalari Panicker",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kalingi",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kalita (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kalwar (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kamar (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Mukguhar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kamma (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kammalar (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kanakkan",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kanet",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kani tribe",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kaniyar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kansabanik",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kansara",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kanyakubja Brahmin",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kapariya",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kapu (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Karmakar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kartha",
+   "parent": "Hindu"
+  },
+  {
+   "value": "List of Kashmiri tribes",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Katesar",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kathi people",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kesarwani",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kewat",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Khairaha",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Khant (caste)",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kharol",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Kharwa caste",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Khati",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Khatik",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Khatri",
+   "parent": "Hindu"
+  },
+  {
+   "value": "Dawoodi Bohra",
+   "parent": "Muslim"
+  },
+  {
+   "value": "Others",
+   "parent": "Muslim"
+  },
+  {
+   "value": "Shia",
+   "parent": "Muslim"
+  },
+  {
+   "value": "Sunni",
+   "parent": "Muslim"
+  },
+  {
+   "value": "Syrian",
+   "parent": "Muslim"
+  },
+  {
+   "value": "Catholic",
+   "parent": "Christian"
+  },
+  {
+   "value": "Marthoma",
+   "parent": "Christian"
+  },
+  {
+   "value": "Nadar",
+   "parent": "Christian"
+  },
+  {
+   "value": "Others",
+   "parent": "Christian"
+  },
+  {
+   "value": "Protestant",
+   "parent": "Christian"
+  },
+  {
+   "value": "Buddist",
+   "parent": "Buddhist"
+  },
+  {
+   "value": "Buraku",
+   "parent": "Buddhist"
+  },
+  {
+   "value": "Others",
+   "parent": "Buddhist"
+  },
+  {
+   "value": "Paya Kyun",
+   "parent": "Buddhist"
+  },
+  {
+   "value": "Ragyapa",
+   "parent": "Buddhist"
+  },
+  {
+   "value": "Digambar",
+   "parent": "Jain"
+  },
+  {
+   "value": "Others",
+   "parent": "Jain"
+  },
+  {
+   "value": "Pitambar",
+   "parent": "Jain"
+  },
+  {
+   "value": "Swetambar",
+   "parent": "Jain"
+  },
+  {
+   "value": "Arora",
+   "parent": "Sikh"
+  },
+  {
+   "value": "Beaver",
+   "parent": "Sikh"
+  },
+  {
+   "value": "Goldsmith",
+   "parent": "Sikh"
+  },
+  {
+   "value": "Gursikh",
+   "parent": "Sikh"
+  },
+  {
+   "value": "Jatt",
+   "parent": "Sikh"
+  },
+  {
+   "value": "Kamboj",
+   "parent": "Sikh"
+  },
+  {
+   "value": "Kesadhari",
+   "parent": "Sikh"
+  },
+  {
+   "value": "Khatri",
+   "parent": "Sikh"
+  },
+  {
+   "value": "Kshatriya",
+   "parent": "Sikh"
+  },
+  {
+   "value": "Labana",
+   "parent": "Sikh"
+  },
+  {
+   "value": "Mazhbi/majabi",
+   "parent": "Sikh"
+  },
+  {
+   "value": "Nai",
+   "parent": "Sikh"
+  },
+  {
+   "value": "Others",
+   "parent": "Sikh"
+  },
+  {
+   "value": "Rajput",
+   "parent": "Sikh"
+  },
+  {
+   "value": "Ramdasia",
+   "parent": "Sikh"
+  },
+  {
+   "value": "Ramgharia",
+   "parent": "Sikh"
+  },
+  {
+   "value": "Ravidasia",
+   "parent": "Sikh"
+  },
+  {
+   "value": "Saini",
+   "parent": "Sikh"
+  },
+  {
+   "value": "Tonk Kshatriya",
+   "parent": "Sikh"
+  }
+ ],
+ "languages": [
+  {
+   "value": "Arabic"
+  },
+  {
+   "value": "Assamese"
+  },
+  {
+   "value": "Awadhi"
+  },
+  {
+   "value": "Bengali"
+  },
+  {
+   "value": "Bhojpuri"
+  },
+  {
+   "value": "Bodo"
+  },
+  {
+   "value": "Burmese"
+  },
+  {
+   "value": "Chinese (Mandarin, Cantonese)"
+  },
+  {
+   "value": "Dogri"
+  },
+  {
+   "value": "English"
+  },
+  {
+   "value": "French"
+  },
+  {
+   "value": "German"
+  },
+  {
+   "value": "Gujarati"
+  },
+  {
+   "value": "Hebrew"
+  },
+  {
+   "value": "Hindi"
+  },
+  {
+   "value": "Italian"
+  },
+  {
+   "value": "Japanese"
+  },
+  {
+   "value": "Kannada"
+  },
+  {
+   "value": "Kashmiri"
+  },
+  {
+   "value": "Konkani"
+  },
+  {
+   "value": "Korean"
+  },
+  {
+   "value": "Maithili"
+  },
+  {
+   "value": "Malayalam"
+  },
+  {
+   "value": "Manipuri"
+  },
+  {
+   "value": "Marathi"
+  },
+  {
+   "value": "Nepali"
+  },
+  {
+   "value": "Odia"
+  },
+  {
+   "value": "Persian (Farsi)"
+  },
+  {
+   "value": "Portuguese"
+  },
+  {
+   "value": "Punjabi"
+  },
+  {
+   "value": "Rajasthani"
+  },
+  {
+   "value": "Russian"
+  },
+  {
+   "value": "Sadri"
+  },
+  {
+   "value": "Santali"
+  },
+  {
+   "value": "Sindhi"
+  },
+  {
+   "value": "Spanish"
+  },
+  {
+   "value": "Swahili"
+  },
+  {
+   "value": "Tamil"
+  },
+  {
+   "value": "Telugu"
+  },
+  {
+   "value": "Tulu"
+  },
+  {
+   "value": "Thai"
+  },
+  {
+   "value": "Turkish"
+  },
+  {
+   "value": "Urdu"
+  },
+  {
+   "value": "Vietnamese"
+  }
+ ],
+ "occupations": [
+  {
+   "value": "Accountant"
+  },
+  {
+   "value": "Actor"
+  },
+  {
+   "value": "Acupuncturist"
+  },
+  {
+   "value": "Administrative Assistant"
+  },
+  {
+   "value": "Advertising Manager"
+  },
+  {
+   "value": "Aerospace Engineer"
+  },
+  {
+   "value": "Agricultural Engineer"
+  },
+  {
+   "value": "Agricultural Scientist"
+  },
+  {
+   "value": "Air Traffic Controller"
+  },
+  {
+   "value": "Aircraft Mechanic"
+  },
+  {
+   "value": "Airline Pilot"
+  },
+  {
+   "value": "Animator"
+  },
+  {
+   "value": "Anthropologist"
+  },
+  {
+   "value": "Archaeologist"
+  },
+  {
+   "value": "Architect"
+  },
+  {
+   "value": "Archivist"
+  },
+  {
+   "value": "Artist"
+  },
+  {
+   "value": "Astronomer"
+  },
+  {
+   "value": "Athletic Trainer"
+  },
+  {
+   "value": "Audiologist"
+  },
+  {
+   "value": "Auto Mechanic"
+  },
+  {
+   "value": "Automotive Engineer"
+  },
+  {
+   "value": "Banker"
+  },
+  {
+   "value": "Barber"
+  },
+  {
+   "value": "Bartender"
+  },
+  {
+   "value": "Biochemist"
+  },
+  {
+   "value": "Biomedical Engineer"
+  },
+  {
+   "value": "Biotechnologist"
+  },
+  {
+   "value": "Blacksmith"
+  },
+  {
+   "value": "Blogger"
+  },
+  {
+   "value": "Book Editor"
+  },
+  {
+   "value": "Bookkeeper"
+  },
+  {
+   "value": "Botanist"
+  },
+  {
+   "value": "Broadcast Journalist"
+  },
+  {
+   "value": "Builder"
+  },
+  {
+   "value": "Bus Driver"
+  },
+  {
+   "value": "Business Analyst"
+  },
+  {
+   "value": "Butcher"
+  },
+  {
+   "value": "Carpenter"
+  },
+  {
+   "value": "Cashier"
+  },
+  {
+   "value": "Chef"
+  },
+  {
+   "value": "Chemical Engineer"
+  },
+  {
+   "value": "Chemist"
+  },
+  {
+   "value": "Chiropractor"
+  },
+  {
+   "value": "Civil Engineer"
+  },
+  {
+   "value": "Claims Adjuster"
+  },
+  {
+   "value": "Clinical Psychologist"
+  },
+  {
+   "value": "Coach (Sports)"
+  },
+  {
+   "value": "Computer Programmer"
+  },
+  {
+   "value": "Conservation Scientist"
+  },
+  {
+   "value": "Construction Manager"
+  },
+  {
+   "value": "Copywriter"
+  },
+  {
+   "value": "Costume Designer"
+  },
+  {
+   "value": "Court Reporter"
+  },
+  {
+   "value": "Criminologist"
+  },
+  {
+   "value": "Customer Service Representative"
+  },
+  {
+   "value": "Cybersecurity Analyst"
+  },
+  {
+   "value": "Data Analyst"
+  },
+  {
+   "value": "Data Scientist"
+  },
+  {
+   "value": "Database Administrator"
+  },
+  {
+   "value": "Dentist"
+  },
+  {
+   "value": "Dermatologist"
+  },
+  {
+   "value": "Detective"
+  },
+  {
+   "value": "Dietitian"
+  },
+  {
+   "value": "Digital Marketer"
+  },
+  {
+   "value": "Director (Film/Theater)"
+  },
+  {
+   "value": "Doctor"
+  },
+  {
+   "value": "Dog Trainer"
+  },
+  {
+   "value": "Drone Operator"
+  },
+  {
+   "value": "Economist"
+  },
+  {
+   "value": "Editor"
+  },
+  {
+   "value": "Electrical Engineer"
+  },
+  {
+   "value": "Electrician"
+  },
+  {
+   "value": "Elementary School Teacher"
+  },
+  {
+   "value": "Emergency Medical Technician (EMT)"
+  },
+  {
+   "value": "Environmental Engineer"
+  },
+  {
+   "value": "Environmental Scientist"
+  },
+  {
+   "value": "Event Planner"
+  },
+  {
+   "value": "Executive Assistant"
+  },
+  {
+   "value": "Factory Worker"
+  },
+  {
+   "value": "Fashion Designer"
+  },
+  {
+   "value": "Film Producer"
+  },
+  {
+   "value": "Financial Analyst"
+  },
+  {
+   "value": "Firefighter"
+  },
+  {
+   "value": "Fitness Trainer"
+  },
+  {
+   "value": "Flight Attendant"
+  },
+  {
+   "value": "Florist"
+  },
+  {
+   "value": "Forensic Scientist"
+  },
+  {
+   "value": "Freelance Writer"
+  },
+  {
+   "value": "Fundraiser"
+  },
+  {
+   "value": "Game Developer"
+  },
+  {
+   "value": "Gardener"
+  },
+  {
+   "value": "Geneticist"
+  },
+  {
+   "value": "Geologist"
+  },
+  {
+   "value": "Graphic Designer"
+  },
+  {
+   "value": "Guidance Counselor"
+  },
+  {
+   "value": "Gym Instructor"
+  },
+  {
+   "value": "Hairdresser"
+  },
+  {
+   "value": "Health and Safety Officer"
+  },
+  {
+   "value": "Historian"
+  },
+  {
+   "value": "Hotel Manager"
+  },
+  {
+   "value": "Housekeeper"
+  },
+  {
+   "value": "Human Resource Manager"
+  },
+  {
+   "value": "Hydrologist"
+  },
+  {
+   "value": "Illustrator"
+  },
+  {
+   "value": "Industrial Designer"
+  },
+  {
+   "value": "Industrial Engineer"
+  },
+  {
+   "value": "Information Security Analyst"
+  },
+  {
+   "value": "Insurance Agent"
+  },
+  {
+   "value": "Interior Designer"
+  },
+  {
+   "value": "Interpreter"
+  },
+  {
+   "value": "Investment Banker"
+  },
+  {
+   "value": "IT Consultant"
+  },
+  {
+   "value": "Janitor"
+  },
+  {
+   "value": "Jeweler"
+  },
+  {
+   "value": "Journalist"
+  },
+  {
+   "value": "Judge"
+  },
+  {
+   "value": "Kindergarten Teacher"
+  },
+  {
+   "value": "Karate Instructor"
+  },
+  {
+   "value": "Laboratory Technician"
+  },
+  {
+   "value": "Land Surveyor"
+  },
+  {
+   "value": "Lawyer"
+  },
+  {
+   "value": "Librarian"
+  },
+  {
+   "value": "Life Coach"
+  },
+  {
+   "value": "Linguist"
+  },
+  {
+   "value": "Locksmith"
+  },
+  {
+   "value": "Machine Learning Engineer"
+  },
+  {
+   "value": "Machinist"
+  },
+  {
+   "value": "Makeup Artist"
+  },
+  {
+   "value": "Management Consultant"
+  },
+  {
+   "value": "Marine Biologist"
+  },
+  {
+   "value": "Marketing Manager"
+  },
+  {
+   "value": "Mathematician"
+  },
+  {
+   "value": "Mechanical Engineer"
+  },
+  {
+   "value": "Medical Assistant"
+  },
+  {
+   "value": "Medical Laboratory Technician"
+  },
+  {
+   "value": "Meteorologist"
+  },
+  {
+   "value": "Microbiologist"
+  },
+  {
+   "value": "Military Officer"
+  },
+  {
+   "value": "Miner"
+  },
+  {
+   "value": "Music Producer"
+  },
+  {
+   "value": "Music Teacher"
+  },
+  {
+   "value": "Musician"
+  },
+  {
+   "value": "Nanny"
+  },
+  {
+   "value": "Network Administrator"
+  },
+  {
+   "value": "Neurologist"
+  },
+  {
+   "value": "Nurse"
+  },
+  {
+   "value": "Nutritionist"
+  },
+  {
+   "value": "Occupational Therapist"
+  },
+  {
+   "value": "Oceanographer"
+  },
+  {
+   "value": "Office Manager"
+  },
+  {
+   "value": "Oncologist"
+  },
+  {
+   "value": "Ophthalmologist"
+  },
+  {
+   "value": "Optometrist"
+  },
+  {
+   "value": "Painter"
+  },
+  {
+   "value": "Paralegal"
+  },
+  {
+   "value": "Paramedic"
+  },
+  {
+   "value": "Park Ranger"
+  },
+  {
+   "value": "Pathologist"
+  },
+  {
+   "value": "Personal Trainer"
+  },
+  {
+   "value": "Pharmacist"
+  },
+  {
+   "value": "Photographer"
+  },
+  {
+   "value": "Physical Therapist"
+  },
+  {
+   "value": "Physicist"
+  },
+  {
+   "value": "Pilot"
+  },
+  {
+   "value": "Plumber"
+  },
+  {
+   "value": "Police Officer"
+  },
+  {
+   "value": "Political Analyst"
+  },
+  {
+   "value": "Preschool Teacher"
+  },
+  {
+   "value": "Private Investigator"
+  },
+  {
+   "value": "Professor"
+  },
+  {
+   "value": "Programmer"
+  },
+  {
+   "value": "Project Manager"
+  },
+  {
+   "value": "Psychiatrist"
+  },
+  {
+   "value": "Psychologist"
+  },
+  {
+   "value": "Public Relations Specialist"
+  },
+  {
+   "value": "Publisher"
+  },
+  {
+   "value": "Quality Assurance Analyst"
+  },
+  {
+   "value": "Quantity Surveyor"
+  },
+  {
+   "value": "Radiologist"
+  },
+  {
+   "value": "Real Estate Agent"
+  },
+  {
+   "value": "Receptionist"
+  },
+  {
+   "value": "Recruiter"
+  },
+  {
+   "value": "Renewable Energy Engineer"
+  },
+  {
+   "value": "Research Scientist"
+  },
+  {
+   "value": "Respiratory Therapist"
+  },
+  {
+   "value": "Restaurant Manager"
+  },
+  {
+   "value": "Retail Manager"
+  },
+  {
+   "value": "Robotics Engineer"
+  },
+  {
+   "value": "Safety Inspector"
+  },
+  {
+   "value": "Sales Representative"
+  },
+  {
+   "value": "School Counselor"
+  },
+  {
+   "value": "School Principal"
+  },
+  {
+   "value": "Scientist"
+  },
+  {
+   "value": "Screenwriter"
+  },
+  {
+   "value": "Sculptor"
+  },
+  {
+   "value": "Security Guard"
+  },
+  {
+   "value": "Social Media Manager"
+  },
+  {
+   "value": "Social Worker"
+  },
+  {
+   "value": "Software Developer"
+  },
+  {
+   "value": "Software Engineer"
+  },
+  {
+   "value": "Songwriter"
+  },
+  {
+   "value": "Sound Engineer"
+  },
+  {
+   "value": "Special Education Teacher"
+  },
+  {
+   "value": "Speech Therapist"
+  },
+  {
+   "value": "Statistician"
+  },
+  {
+   "value": "Stockbroker"
+  },
+  {
+   "value": "Surgeon"
+  },
+  {
+   "value": "Surveyor"
+  },
+  {
+   "value": "Tax Consultant"
+  },
+  {
+   "value": "Teacher"
+  },
+  {
+   "value": "Tattoo Artist"
+  },
+  {
+   "value": "Taxi Driver"
+  },
+  {
+   "value": "Technical Writer"
+  },
+  {
+   "value": "Tour Guide"
+  },
+  {
+   "value": "Translator"
+  },
+  {
+   "value": "Travel Agent"
+  },
+  {
+   "value": "Truck Driver"
+  },
+  {
+   "value": "Tutor"
+  },
+  {
+   "value": "Urologist"
+  },
+  {
+   "value": "UX/UI Designer"
+  },
+  {
+   "value": "Veterinarian"
+  },
+  {
+   "value": "Video Editor"
+  },
+  {
+   "value": "Virologist"
+  },
+  {
+   "value": "Vocal Coach"
+  },
+  {
+   "value": "Waiter/Waitress"
+  },
+  {
+   "value": "Web Developer"
+  },
+  {
+   "value": "Welder"
+  },
+  {
+   "value": "Wildlife Biologist"
+  },
+  {
+   "value": "Writer"
+  },
+  {
+   "value": "Zoologist"
+  }
+ ],
+ "skills": [
+  {
+   "value": "Accounting"
+  },
+  {
+   "value": "Financial Analysis"
+  },
+  {
+   "value": "Project Management"
+  },
+  {
+   "value": "Public Speaking"
+  },
+  {
+   "value": "Negotiation"
+  },
+  {
+   "value": "Sales"
+  },
+  {
+   "value": "Marketing"
+  },
+  {
+   "value": "Content Writing"
+  },
+  {
+   "value": "Copywriting"
+  },
+  {
+   "value": "Graphic Design"
+  },
+  {
+   "value": "UI/UX Design"
+  },
+  {
+   "value": "Product Management"
+  },
+  {
+   "value": "Software Development"
+  },
+  {
+   "value": "Data Analysis"
+  },
+  {
+   "value": "Machine Learning"
+  },
+  {
+   "value": "SEO"
+  },
+  {
+   "value": "Social Media Management"
+  },
+  {
+   "value": "Customer Support"
+  },
+  {
+   "value": "Team Leadership"
+  },
+  {
+   "value": "Strategic Planning"
+  },
+  {
+   "value": "Operations Management"
+  },
+  {
+   "value": "Supply Chain"
+  },
+  {
+   "value": "Recruiting"
+  },
+  {
+   "value": "Coaching & Mentoring"
+  },
+  {
+   "value": "Conflict Resolution"
+  },
+  {
+   "value": "Time Management"
+  },
+  {
+   "value": "Research"
+  },
+  {
+   "value": "Legal Drafting"
+  },
+  {
+   "value": "Bookkeeping"
+  },
+  {
+   "value": "Cooking"
+  },
+  {
+   "value": "Carpentry"
+  },
+  {
+   "value": "Electrical Work"
+  },
+  {
+   "value": "Plumbing"
+  },
+  {
+   "value": "Photography"
+  },
+  {
+   "value": "Video Editing"
+  },
+  {
+   "value": "Translation"
+  },
+  {
+   "value": "Teaching"
+  },
+  {
+   "value": "Counseling"
+  },
+  {
+   "value": "Event Planning"
+  },
+  {
+   "value": "Fundraising"
+  }
+ ],
+ "drives": [
+  {
+   "value": "Achievement"
+  },
+  {
+   "value": "Recognition"
+  },
+  {
+   "value": "Financial Security"
+  },
+  {
+   "value": "Autonomy"
+  },
+  {
+   "value": "Mastery"
+  },
+  {
+   "value": "Purpose & Meaning"
+  },
+  {
+   "value": "Helping Others"
+  },
+  {
+   "value": "Power & Influence"
+  },
+  {
+   "value": "Belonging"
+  },
+  {
+   "value": "Stability"
+  },
+  {
+   "value": "Growth & Learning"
+  },
+  {
+   "value": "Adventure"
+  },
+  {
+   "value": "Creativity"
+  },
+  {
+   "value": "Competition"
+  },
+  {
+   "value": "Legacy"
+  },
+  {
+   "value": "Fairness & Justice"
+  },
+  {
+   "value": "Independence"
+  },
+  {
+   "value": "Status"
+  },
+  {
+   "value": "Curiosity"
+  },
+  {
+   "value": "Service"
+  }
+ ],
+ "traits": [
+  {
+   "value": "Attention to Detail"
+  },
+  {
+   "value": "Extroversion"
+  },
+  {
+   "value": "Introversion"
+  },
+  {
+   "value": "Conscientiousness"
+  },
+  {
+   "value": "Empathy"
+  },
+  {
+   "value": "Resilience"
+  },
+  {
+   "value": "Patience"
+  },
+  {
+   "value": "Decisiveness"
+  },
+  {
+   "value": "Adaptability"
+  },
+  {
+   "value": "Optimism"
+  },
+  {
+   "value": "Discipline"
+  },
+  {
+   "value": "Assertiveness"
+  },
+  {
+   "value": "Open-mindedness"
+  },
+  {
+   "value": "Reliability"
+  },
+  {
+   "value": "Analytical"
+  },
+  {
+   "value": "Creative"
+  },
+  {
+   "value": "Calm Under Pressure"
+  },
+  {
+   "value": "Persuasiveness"
+  },
+  {
+   "value": "Collaboration"
+  },
+  {
+   "value": "Risk-taking"
+  },
+  {
+   "value": "Self-motivation"
+  },
+  {
+   "value": "Honesty"
+  },
+  {
+   "value": "Diplomacy"
+  },
+  {
+   "value": "Proactiveness"
+  },
+  {
+   "value": "Big-picture Thinking"
+  },
+  {
+   "value": "Humility"
+  },
+  {
+   "value": "Ambition"
+  },
+  {
+   "value": "Pragmatism"
+  },
+  {
+   "value": "Tactfulness"
+  },
+  {
+   "value": "Perseverance"
+  }
+ ]
+}

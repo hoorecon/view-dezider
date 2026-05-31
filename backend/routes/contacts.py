@@ -60,6 +60,9 @@ def _normalize_resources(r):
             "amount": _to_float(fin.get("amount")),
             "currency": (fin.get("currency") or "INR").upper(),
             "note": (fin.get("note") or "").strip(),
+            "monthly_cashflow": _to_float(fin.get("monthly_cashflow")),
+            "monthly_expenses": _to_float(fin.get("monthly_expenses")),
+            "net_worth": _to_float(fin.get("net_worth")),
         },
         "infrastructure": {
             "description": (infra.get("description") or "").strip(),
@@ -109,7 +112,10 @@ async def create_contact(request: Request, user: dict = Depends(get_current_user
         "language": body.get("language", ""),
         # Professional
         "profession": body.get("profession", ""),
+        "occupation": body.get("occupation", ""),
         "skills": body.get("skills", []),  # list of strings
+        "drives": body.get("drives", []),  # list of strings (motivations)
+        "traits": body.get("traits", []),  # list of strings (attitude)
         "organization": body.get("organization", ""),
         "designation": body.get("designation", ""),
         "business_network": body.get("business_network", ""),
@@ -274,6 +280,8 @@ async def update_contact(contact_id: str, request: Request, user: dict = Depends
         "org_type", "org_subtype",
         # ── Phase-1 additions ──
         "time_bandwidth_hours_per_month", "resources", "social_links",
+        # ── Phase-2 additions (masters-backed) ──
+        "languages", "occupation", "drives", "traits",
     ]
     update = {}
     for field in allowed:

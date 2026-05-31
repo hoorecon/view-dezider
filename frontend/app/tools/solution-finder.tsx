@@ -114,6 +114,8 @@ export default function SimpleSolutionFinder() {
   const [concerns, setConcerns] = useState<Concern[]>([]);
   const [rootCauses, setRootCauses] = useState<RootCause[]>([]);
   const [solutions, setSolutions] = useState<Solution[]>([]);
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [capPicker, setCapPicker] = useState<{ open: boolean; rcaId: string | null }>({ open: false, rcaId: null });
   const [risks, setRisks] = useState<Risk[]>([]);
   const [mitigations, setMitigations] = useState<Mitigation[]>([]);
   const [contingencies, setContingencies] = useState<Contingency[]>([]);
@@ -193,7 +195,7 @@ export default function SimpleSolutionFinder() {
   }, [savedId, fetchAsmCounts]));
 
   // ============ SAVE ============
-  const buildPayload = () => ({
+  const buildPayload = (statusOverride?: string) => ({
     area_of_life: areaOfLife,
     smart_goal: smartGoal,
     deadline_date: timing.deadline_date || null,
@@ -207,9 +209,10 @@ export default function SimpleSolutionFinder() {
     contingencies,
     action_plan_items: actionPlan,
     schema_version: 2,
+    ...(statusOverride ? { status: statusOverride } : {}),
   });
 
-  const handleSave = useCallback(async (silent = false): Promise<string | null> => {
+  const handleSave = useCallback(async (silent = false, statusOverride?: string): Promise<string | null> => {
     // Skip silently if auth isn't ready yet — caller will get a null and the
     // step transition still works locally; data persists on the next save.
     if (!authHydrated) return null;
@@ -223,7 +226,7 @@ export default function SimpleSolutionFinder() {
     }
     setSaving(true);
     try {
-      const payload = buildPayload();
+      const payload = buildPayload(statusOverride);
       let id = savedId;
       if (id) {
         await api.put(`/solution-finders/${id}`, payload);
@@ -292,6 +295,44 @@ export default function SimpleSolutionFinder() {
     setRisks(prev => prev.filter(r => r.sol_id !== sid));
     setMitigations(prev => prev.filter(m => !riskIds.includes(m.risk_id)));
     setContingencies(prev => prev.filter(c => !riskIds.includes(c.risk_id)));
+  };
+
+  // ── Q3: pull skills / resources from Self (Contact-Self) and other contacts ──
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await api.get('/contacts?limit=100');
+        setContacts(res.data?.contacts || res.data?.items || res.data || []);
+      } catch (e) { /* non-fatal */ }
+    })();
+  }, []);
+
+  const resourceLines = (c: any): string[] => {
+    const out: string[] = [];
+    const fin = c?.resources?.finance || {};
+    const cur = fin.currency || 'INR';
+    if (fin.net_worth) out.push(`Net worth ${cur} ${fin.net_worth}`);
+    if (fin.monthly_cashflow) out.push(`Monthly cashflow ${cur} ${fin.monthly_cashflow}`);
+    if (fin.amount) out.push(`Funds ${cur} ${fin.amount}`);
+    const infra = c?.resources?.infrastructure?.description;
+    if (infra) out.push(`Infrastructure: ${infra}`);
+    const people = c?.resources?.people_connects?.count;
+    if (people) out.push(`People network: ${people} connects`);
+    return out;
+  };
+
+  const addSolutionFromCapability = (rcaId: string, who: string, kind: 'skill' | 'resource', label: string) => {
+    const isSelf = who === 'Self';
+    const prefix = isSelf
+      ? (kind === 'skill' ? 'Use my skill' : 'Use my resource')
+      : (kind === 'skill' ? `Leverage ${who}'s skill` : `Tap ${who}'s resource`);
+    const text = `${prefix}: ${label}`;
+    setSolutions(prev => [...prev, {
+      id: uid(), rca_id: rcaId, text,
+      capabilities: kind === 'skill' ? `${who}: ${label}` : undefined,
+      resources: kind === 'resource' ? `${who}: ${label}` : undefined,
+    }]);
+    setCapPicker({ open: false, rcaId: null });
   };
 
   const addRisk = (sid: string) => {
@@ -630,10 +671,62 @@ export default function SimpleSolutionFinder() {
                   <Ionicons name="add" size={18} color="#FFF" />
                 </TouchableOpacity>
               </View>
+              <TouchableOpacity style={s.capBtn} onPress={() => setCapPicker({ open: true, rcaId: r.id })}>
+                <Ionicons name="people" size={13} color="#6366F1" />
+                <Text style={s.capBtnText}>From Skills &amp; Resources (Self / Contacts)</Text>
+              </TouchableOpacity>
             </View>
           ))}
         </View>
       ))}
+
+      <Modal visible={capPicker.open} transparent animationType="slide" onRequestClose={() => setCapPicker({ open: false, rcaId: null })}>
+        <View style={s.capModalBg}>
+          <View style={s.capModalCard}>
+            <View style={s.capModalHead}>
+              <Text style={s.capModalTitle}>Pick a Skill or Resource</Text>
+              <TouchableOpacity onPress={() => setCapPicker({ open: false, rcaId: null })} hitSlop={8}>
+                <Ionicons name="close" size={22} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 440 }}>
+              {[...contacts].sort((a, b) => (b.is_self ? 1 : 0) - (a.is_self ? 1 : 0)).map((c) => {
+                const who = c.is_self ? 'Self' : (c.name || 'Contact');
+                const skills: string[] = c.skills || [];
+                const resLines = resourceLines(c);
+                if (skills.length === 0 && resLines.length === 0) return null;
+                const rid = capPicker.rcaId as string;
+                return (
+                  <View key={c.id} style={s.capGroup}>
+                    <Text style={s.capWho}>{c.is_self ? '🧑 Self (You)' : `👤 ${who}`}</Text>
+                    {skills.length > 0 && <Text style={s.capKind}>Skills</Text>}
+                    <View style={s.capChips}>
+                      {skills.map((sk, i) => (
+                        <TouchableOpacity key={`s${i}`} style={s.capChip} onPress={() => addSolutionFromCapability(rid, who, 'skill', sk)}>
+                          <Ionicons name="construct" size={11} color="#4338CA" />
+                          <Text style={s.capChipText}>{sk}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    {resLines.length > 0 && <Text style={s.capKind}>Resources</Text>}
+                    <View style={s.capChips}>
+                      {resLines.map((rl, i) => (
+                        <TouchableOpacity key={`r${i}`} style={[s.capChip, { backgroundColor: '#ECFDF5' }]} onPress={() => addSolutionFromCapability(rid, who, 'resource', rl)}>
+                          <Ionicons name="cube" size={11} color="#047857" />
+                          <Text style={[s.capChipText, { color: '#047857' }]}>{rl}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                );
+              })}
+              {contacts.every(c => (c.skills || []).length === 0 && resourceLines(c).length === 0) && (
+                <Text style={s.capEmpty}>No skills or resources captured yet. Add them under Contacts → Professional / Resources.</Text>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 
@@ -912,7 +1005,7 @@ export default function SimpleSolutionFinder() {
             <Ionicons name="arrow-forward" size={16} color="#FFF" />
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity style={s.nextBtn} onPress={() => handleSave().then(() => router.back())}>
+          <TouchableOpacity style={s.nextBtn} onPress={() => handleSave(false, 'completed').then(() => router.back())}>
             <Ionicons name="checkmark" size={16} color="#FFF" />
             <Text style={s.nextBtnText}>Save & Close</Text>
           </TouchableOpacity>
@@ -935,6 +1028,19 @@ const s = StyleSheet.create({
   stepDot: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center' },
   stepDotActive: { backgroundColor: '#7C3AED' },
   stepEditBadge: { position: 'absolute', top: -4, right: -4, width: 14, height: 14, borderRadius: 7, backgroundColor: '#F59E0B', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#FFF' },
+  capBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: '#C7D2FE', backgroundColor: '#EEF2FF', alignSelf: 'flex-start' },
+  capBtnText: { fontSize: 12, fontWeight: '600', color: '#4338CA' },
+  capModalBg: { flex: 1, backgroundColor: '#00000066', justifyContent: 'flex-end' },
+  capModalCard: { backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: 28 },
+  capModalHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  capModalTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
+  capGroup: { marginBottom: 14, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', paddingBottom: 10 },
+  capWho: { fontSize: 14, fontWeight: '700', color: '#0F172A', marginBottom: 6 },
+  capKind: { fontSize: 11, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', marginTop: 4, marginBottom: 4 },
+  capChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  capChip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#EEF2FF', paddingVertical: 7, paddingHorizontal: 10, borderRadius: 14 },
+  capChipText: { fontSize: 12, fontWeight: '600', color: '#4338CA' },
+  capEmpty: { fontSize: 13, color: '#94A3B8', textAlign: 'center', paddingVertical: 24 },
   stepLine: { flex: 1, height: 2, backgroundColor: '#E2E8F0', marginHorizontal: 4 },
   stepLineActive: { backgroundColor: '#7C3AED' },
 

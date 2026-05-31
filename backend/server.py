@@ -266,6 +266,8 @@ api_router.include_router(decision_linking_router)
 api_router.include_router(integrations_router)
 api_router.include_router(payment_admin_router)
 api_router.include_router(action_items_router)
+from routes.masters import router as masters_router  # noqa: E402
+api_router.include_router(masters_router)
 from routes.regression import router as regression_router  # noqa: E402
 api_router.include_router(regression_router)
 
@@ -341,6 +343,11 @@ async def startup_db_client():
         await ensure_admin_data_seeded_on_boot()
     except Exception as e:
         logger.error(f"Admin data seed at boot failed: {e}")
+    try:
+        from core.masters_seed import ensure_masters_seeded_on_boot
+        await ensure_masters_seeded_on_boot()
+    except Exception as e:
+        logger.error(f"Masters seed at boot failed: {e}")
 
     # One-shot, idempotent migration — SWOT-converted Decisions need at least
     # one "Current Scenario" option so Steps 6/7/9/10 of /prr/[id] render.

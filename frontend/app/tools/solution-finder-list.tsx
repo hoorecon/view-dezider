@@ -136,7 +136,16 @@ export default function SolutionFinderListScreen() {
               <Text style={styles.cardGoal} numberOfLines={2}>{entry.smart_goal || 'No goal set'}</Text>
               <View style={styles.cardFooter}>
                 <Text style={styles.cardDate}>
-                  {new Date(entry.created_at).toLocaleDateString()}
+                  {(() => {
+                    const raw = entry.updated_at || entry.created_at;
+                    if (!raw) return '';
+                    const d = new Date(raw);
+                    if (isNaN(d.getTime())) return '';
+                    return d.toLocaleString(undefined, {
+                      year: 'numeric', month: 'short', day: 'numeric',
+                      hour: '2-digit', minute: '2-digit',
+                    });
+                  })()}
                 </Text>
                 <Text style={styles.cardActions}>
                   {(entry.action_items || []).length} action items

@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 23 — Tested SF bug-fixes, Phase B Contacts fields, Phase C Masters (admin CRUD + 403, search, cascade, seed counts), and frontend flows for Contacts modal tab order, Admin Masters UI, SF list timestamps, and SF header. Backend: 20/20 pytest cases pass. Frontend: All testable UI checks pass. Q3 capability picker text verified via source (live click-test requires multi-step entry setup). Deprecated package detected: expo-av is still installed and imported.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/contacts", "issue": "POST /api/contacts persists ALL Phase-2 fields (occupation/drives/traits/profile_image/resources.finance.*) but does NOT persist `languages` array on initial create — it is only writable via PUT /api/contacts/{id}. Verified: round-trip GET shows the field missing after POST but present after a follow-up PUT. Recommend adding `languages` to the POST allowed field list in /app/backend/routes/contacts.py."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/admin/masters", "issues": ["No testID attributes on TouchableOpacity buttons (chips, +, edit, delete) — makes automated UI tests brittle. Recommend adding testIDs."]},
+      {"screen": "/tools/contacts (New Contact modal)", "issues": ["No testID attributes on tab buttons, currency chips, photo picker, or finance fields."]}
+    ],
+    "react_native_issues": [
+      {"component": "expo-av", "issue": "Deprecated package expo-av@^16.0.8 is still installed and imported. Reference: /app/frontend/package.json:26, /app/frontend/src/components/AudioGuidePlayer.tsx:5, /app/frontend/src/components/VoiceInput.tsx:11. Console shows: '[expo-av]: Expo AV has been deprecated and will be removed in SDK 54. Use the expo-audio and expo-video packages.' Migrate audio playback/recording to expo-audio and video to expo-video."}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter23_masters_contacts_sf.py", "/app/test_reports/pytest/iter23.xml"],
+  "action_items": [
+    "Add `languages` field to POST /api/contacts allowed-fields list (currently only PUT accepts it). Open /app/backend/routes/contacts.py around the create handler.",
+    "Migrate from deprecated expo-av to expo-audio + expo-video. Update /app/frontend/src/components/AudioGuidePlayer.tsx and /app/frontend/src/components/VoiceInput.tsx and remove expo-av from package.json.",
+    "Add testID attributes to interactive elements in /app/frontend/app/admin/masters.tsx (chips, add button, edit/delete icons, modal save/cancel) and /app/frontend/app/tools/contacts.tsx (tab buttons, currency chips, photo picker, finance fields) to enable robust automated UI testing.",
+    "OPTIONAL: End-to-end UI test of Q3 capability picker (requires creating an SF entry with concern → cause to reach step 5). Text strings verified in source at /app/frontend/app/tools/solution-finder.tsx lines 622, 676, 983."
+  ],
+  "critical_code_review_comments": [
+    "Inconsistency between POST and PUT field whitelists in /app/backend/routes/contacts.py (`languages` only in PUT). New Contact UI sends `languages` array on create; field is silently dropped.",
+    "Several files use deprecated expo-av — high-priority migration before SDK 54 upgrade.",
+    "No testID props on interactive elements in admin/masters.tsx, tools/contacts.tsx — adds friction to UI test automation (system prompt mandates testIDs)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter23_masters_contacts_sf.py (created)"
+  ],
+  "success_rate": {"backend": "100% (20/20)", "frontend": "~95% — all visible flows OK; Q3 capability picker only static-text verified"},
+  "seed_data_creation": "None retained — all test-created masters & contacts deleted in test teardown.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend route paths: /api/solution-finders/* (NOT /api/tools/solution-finders/* as stated in original problem statement). Admin auth uses a SEPARATE /admin/login portal (yellow Admin Portal) — sign in with admin@test.com / AdminPass2026! before /admin/masters loads. Login response token key is `session_token`. Masters API base: /api/masters/{type}, list endpoint returns { items: [...] } not bare list. Frontend Q3 needs concern + cause added through Steps 2-4 before step 5 (Q3) is reachable; consider seeding a SF entry directly via POST /api/solution-finders with v2 arrays for a UI click-through test of the capability picker.",
+  "rca_of_issue": "Bug Fix #1 (SF complete-on-Save&Close): PUT /api/solution-finders/{id} with {status: 'completed'} persists correctly — verified via create→PUT→GET sequence and via list endpoint. Bug Fix #2 (date+time): SF list card shows e.g. 'May 31, 2026, 12:49 PM' (verified live), code at /app/frontend/app/tools/solution-finder-list.tsx:140-144 uses (updated_at || created_at) with toLocaleString."
+}
