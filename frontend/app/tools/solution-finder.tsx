@@ -281,6 +281,8 @@ export default function SimpleSolutionFinder() {
     setMitigations(prev => prev.filter(m => !riskIds.includes(m.risk_id)));
     setContingencies(prev => prev.filter(c => !riskIds.includes(c.risk_id)));
   };
+  const editRca = (rid: string, text: string) =>
+    setRootCauses(prev => prev.map(r => r.id === rid ? { ...r, text } : r));
 
   const addSolution = (rcaId: string) => {
     const t = (newSolText[rcaId] || '').trim(); if (!t) return;
@@ -365,6 +367,8 @@ export default function SimpleSolutionFinder() {
   };
   const removeMitigation = (mid: string) =>
     setMitigations(prev => prev.filter(m => m.id !== mid));
+  const editMitigation = (mid: string, text: string) =>
+    setMitigations(prev => prev.map(m => m.id === mid ? { ...m, text } : m));
 
   const addContingency = (riskId: string) => {
     const t = (newConText[riskId] || '').trim(); if (!t) return;
@@ -373,6 +377,8 @@ export default function SimpleSolutionFinder() {
   };
   const removeContingency = (cid: string) =>
     setContingencies(prev => prev.filter(c => c.id !== cid));
+  const editContingency = (cid: string, text: string) =>
+    setContingencies(prev => prev.map(c => c.id === cid ? { ...c, text } : c));
 
   // ============ ACTION PLAN AGGREGATOR ============
   // Q5: derives a fresh list from solutions + mitigations + contingencies, but
@@ -478,24 +484,17 @@ export default function SimpleSolutionFinder() {
     <View style={s.stepIndicator}>
       {STEPS.map((st, i) => {
         const canEdit = i <= step;                 // already reached → tappable
-        const isInputStep = i < STEPS.length - 1;   // every step except final Action Plan
-        const showPencil = canEdit && isInputStep && i !== step; // editable + not current
         return (
           <View key={st.title} style={s.stepDotWrap}>
             <TouchableOpacity
               activeOpacity={canEdit ? 0.7 : 1}
               disabled={!canEdit}
               onPress={() => { if (canEdit) setStep(i); }}
-              accessibilityLabel={`Step ${i + 1}: ${st.title}${showPencil ? ' (edit)' : ''}`}
+              accessibilityLabel={`Step ${i + 1}: ${st.title}`}
             >
               <View style={[s.stepDot, i <= step && s.stepDotActive]}>
                 <Ionicons name={st.icon as any} size={12} color={i <= step ? '#FFF' : '#94A3B8'} />
               </View>
-              {showPencil && (
-                <View style={s.stepEditBadge}>
-                  <Ionicons name="pencil" size={8} color="#FFF" />
-                </View>
-              )}
             </TouchableOpacity>
             {i < STEPS.length - 1 && <View style={[s.stepLine, i < step && s.stepLineActive]} />}
           </View>
@@ -593,7 +592,15 @@ export default function SimpleSolutionFinder() {
           {rcasFor(c.id).map(r => (
             <View key={r.id} style={s.childRow}>
               <View style={s.bullet} />
-              <Text style={s.childText}>{r.text}</Text>
+              <Ionicons name="pencil" size={12} color="#94A3B8" />
+              <TextInput
+                style={s.childInput}
+                value={r.text}
+                onChangeText={t => editRca(r.id, t)}
+                placeholder="Root cause..."
+                placeholderTextColor="#9CA3AF"
+                multiline
+              />
               <TouchableOpacity onPress={() => removeRca(r.id)} hitSlop={6}>
                 <Ionicons name="close" size={16} color="#94A3B8" />
               </TouchableOpacity>
@@ -796,7 +803,15 @@ export default function SimpleSolutionFinder() {
               {mitsFor(r.id).map(m => (
                 <View key={m.id} style={s.childRow}>
                   <View style={[s.bullet, { backgroundColor: '#10B981' }]} />
-                  <Text style={s.childText}>{m.text}</Text>
+                  <Ionicons name="pencil" size={12} color="#94A3B8" />
+                  <TextInput
+                    style={s.childInput}
+                    value={m.text}
+                    onChangeText={t => editMitigation(m.id, t)}
+                    placeholder="Mitigation..."
+                    placeholderTextColor="#9CA3AF"
+                    multiline
+                  />
                   {asmCounts[m.id] > 0 && (
                     <View style={s.asmCountBadge}>
                       <Ionicons name="bar-chart" size={9} color="#0F766E" />
@@ -831,7 +846,15 @@ export default function SimpleSolutionFinder() {
               {consFor(r.id).map(c => (
                 <View key={c.id} style={s.childRow}>
                   <View style={[s.bullet, { backgroundColor: '#F59E0B' }]} />
-                  <Text style={s.childText}>{c.text}</Text>
+                  <Ionicons name="pencil" size={12} color="#94A3B8" />
+                  <TextInput
+                    style={s.childInput}
+                    value={c.text}
+                    onChangeText={t => editContingency(c.id, t)}
+                    placeholder="Contingency..."
+                    placeholderTextColor="#9CA3AF"
+                    multiline
+                  />
                   {asmCounts[c.id] > 0 && (
                     <View style={s.asmCountBadge}>
                       <Ionicons name="bar-chart" size={9} color="#0F766E" />
@@ -1076,6 +1099,7 @@ const s = StyleSheet.create({
   childRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
   bullet: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#7C3AED' },
   childText: { flex: 1, fontSize: 12, color: '#0F172A' },
+  childInput: { flex: 1, fontSize: 12, color: '#0F172A', paddingVertical: 4 },
 
   solCard: { marginBottom: 4 },
   solRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },

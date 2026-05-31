@@ -70,6 +70,16 @@ SELF_HASH="$(sha256sum "$SELF_PATH" 2>/dev/null | awk '{print $1}')"
 log "Branch target: ${YELLOW}${BRANCH}${NC}"
 log "Repo dir:      ${YELLOW}$(pwd)${NC}"
 
+# ── Loud reminder: this script is BACKEND-ONLY ──────────────────────────────
+echo -e "${YELLOW}┌──────────────────────────────────────────────────────────────┐${NC}"
+echo -e "${YELLOW}│  NOTE: sync.sh deploys the BACKEND (API) only.                 │${NC}"
+echo -e "${YELLOW}│  The FRONTEND is hosted on Cloudflare Pages and auto-builds     │${NC}"
+echo -e "${YELLOW}│  from a GitHub push to '${BRANCH}'. If you changed UI, make sure  │${NC}"
+echo -e "${YELLOW}│  the code was pushed (Emergent → Save to GitHub) so Cloudflare  │${NC}"
+echo -e "${YELLOW}│  rebuilds it. Running this script does NOT update the frontend. │${NC}"
+echo -e "${YELLOW}│  See deploy guide: ./DEPLOY.md                                  │${NC}"
+echo -e "${YELLOW}└──────────────────────────────────────────────────────────────┘${NC}"
+
 # ── If a commit message source was provided, capture it BEFORE git reset ─────
 # (because reset would not lose the temp file, but we want to fail fast if the
 #  file is missing / stdin is empty.)
@@ -235,8 +245,11 @@ fi
 
 echo
 echo -e "${GREEN}════════════════════════════════════════════════════════════════${NC}"
-echo -e "${GREEN}✓ Deployment complete${NC}"
+echo -e "${GREEN}✓ Backend deployment complete${NC}"
 echo -e "  Now at commit: $(git rev-parse --short HEAD)"
 echo -e "  Backend:       healthy"
-echo -e "  Frontend:      Cloudflare Pages auto-deploys (allow ~1–2 min)"
+echo -e "${YELLOW}  Frontend:      NOT deployed by this script.${NC}"
+echo -e "${YELLOW}                 → Cloudflare Pages auto-builds from a push to '${BRANCH}'.${NC}"
+echo -e "${YELLOW}                 → If your UI fix isn't live, push it (Save to GitHub)${NC}"
+echo -e "${YELLOW}                   and wait ~1–2 min, then HARD-REFRESH the site.${NC}"
 echo -e "${GREEN}════════════════════════════════════════════════════════════════${NC}"

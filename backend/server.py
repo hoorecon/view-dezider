@@ -351,8 +351,9 @@ async def startup_db_client():
     except Exception as e:
         logger.error(f"Admin data seed at boot failed: {e}")
     try:
-        from core.masters_seed import ensure_masters_seeded_on_boot
+        from core.masters_seed import ensure_masters_seeded_on_boot, dedup_masters_on_boot
         await ensure_masters_seeded_on_boot()
+        await dedup_masters_on_boot()
     except Exception as e:
         logger.error(f"Masters seed at boot failed: {e}")
 

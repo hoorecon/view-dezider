@@ -523,7 +523,7 @@ export default function CTTScreen() {
       {/* Header */}
       <LinearGradient colors={['#F1F5F9', '#2D5F8B']} style={s.header}>
         <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
-          <Ionicons name="arrow-back" size={22} color="#FFF" />
+          <Ionicons name="arrow-back" size={22} color="#1E293B" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={s.headerTitle}>Task Tracker (CTT)</Text>
@@ -610,7 +610,7 @@ export default function CTTScreen() {
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, paddingBottom: 18 },
-  backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(15,23,42,0.06)', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
   headerTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
   headerSub: { fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },

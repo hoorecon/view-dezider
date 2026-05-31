@@ -88,3 +88,60 @@ async def ensure_masters_seeded_on_boot():
         upsert=True,
     )
     logger.info(f"Masters seed v{version} applied — inserted {inserted} new rows.")
+
+
+async def dedup_masters_on_boot():
+    """Remove duplicate masters rows.
+
+    Production databases accumulated duplicate rows (e.g. 'Accounting' twice,
+    'Financial Analysis' thrice) from earlier seeding runs that pre-dated the
+    (type, value_lower, parent_lower) identity check. This scans for any such
+    duplicate groups and keeps a single canonical row per group, deleting the
+    rest. Idempotent + cheap: if there are no duplicates it does nothing.
+
+    Preference order for the row to KEEP: seed rows first, then lowest `order`,
+    then earliest `created_at`.
+    """
+    try:
+        pipeline = [
+            {
+                "$group": {
+                    "_id": {
+                        "type": "$type",
+                        "value_lower": {"$ifNull": ["$value_lower", ""]},
+                        "parent_lower": {"$ifNull": ["$parent_lower", ""]},
+                    },
+                    "ids": {"$addToSet": "$master_id"},
+                    "count": {"$sum": 1},
+                }
+            },
+            {"$match": {"count": {"$gt": 1}}},
+        ]
+        groups = await db.masters.aggregate(pipeline).to_list(None)
+        if not groups:
+            return
+
+        total_removed = 0
+        for g in groups:
+            ids = [i for i in (g.get("ids") or []) if i]
+            if len(ids) <= 1:
+                continue
+            # Fetch the rows to decide which one to keep.
+            docs = await db.masters.find({"master_id": {"$in": ids}}).to_list(None)
+            if len(docs) <= 1:
+                continue
+            docs.sort(key=lambda d: (
+                0 if d.get("is_seed") else 1,
+                d.get("order", 1_000_000),
+                d.get("created_at", ""),
+            ))
+            keep_id = docs[0].get("master_id")
+            remove_ids = [d.get("master_id") for d in docs[1:] if d.get("master_id") and d.get("master_id") != keep_id]
+            if remove_ids:
+                res = await db.masters.delete_many({"master_id": {"$in": remove_ids}})
+                total_removed += res.deleted_count
+
+        if total_removed:
+            logger.info(f"Masters dedup — removed {total_removed} duplicate rows across {len(groups)} groups.")
+    except Exception as e:  # pragma: no cover
+        logger.error(f"Masters dedup failed: {e}")

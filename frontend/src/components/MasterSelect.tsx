@@ -62,18 +62,33 @@ export default function MasterSelect({
     return () => { cancelled = true; };
   }, [type, parent]);
 
+  // De-duplicate options (DB can contain duplicate seed rows) — case-insensitive,
+  // keeping the first-seen original casing. This is the root fix for the
+  // "Accounting / Accounting / Financial Analysis x3" repeated entries.
+  const uniqueOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const o of options) {
+      const key = (o || '').trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(o);
+    }
+    return out;
+  }, [options]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const base = q ? options.filter(o => o.toLowerCase().includes(q)) : options;
+    const base = q ? uniqueOptions.filter(o => o.toLowerCase().includes(q)) : uniqueOptions;
     // de-dupe against already selected for multi
     const avail = mode === 'multi' ? base.filter(o => !selectedArr.includes(o)) : base;
     return avail.slice(0, maxVisible);
-  }, [query, options, selectedArr, mode, maxVisible]);
+  }, [query, uniqueOptions, selectedArr, mode, maxVisible]);
 
   const exactExists = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return !!q && options.some(o => o.toLowerCase() === q);
-  }, [query, options]);
+    return !!q && uniqueOptions.some(o => o.toLowerCase() === q);
+  }, [query, uniqueOptions]);
 
   const pick = (v: string) => {
     if (mode === 'multi') {
@@ -99,7 +114,11 @@ export default function MasterSelect({
     allowFreeType && query.trim().length > 0 && !exactExists &&
     !(mode === 'multi' && selectedArr.includes(query.trim()));
 
-  const showList = focused || query.trim().length > 0;
+  // Show the dropdown while typing. On focus with an empty query, only auto-open
+  // for short lists (browsable) — large lists (occupations/castes = 200+) require
+  // typing so the user isn't dumped a giant unfiltered list ("awkward" behaviour).
+  const hasQuery = query.trim().length > 0;
+  const showList = hasQuery || (focused && uniqueOptions.length > 0 && uniqueOptions.length <= 30);
 
   return (
     <View style={styles.wrap}>

@@ -448,7 +448,7 @@ export default function ContactsScreen() {
       {/* Header */}
       <LinearGradient colors={['#FFFFFF','#475569']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={22} color="#FFF" />
+          <Ionicons name="arrow-back" size={22} color="#1E293B" />
         </TouchableOpacity>
         <View style={{flex:1}}>
           <Text style={styles.headerTitle}>Contacts</Text>
@@ -540,7 +540,11 @@ export default function ContactsScreen() {
             contacts.map(c => (
               <TouchableOpacity key={c.id} style={styles.contactCard} onPress={() => openEdit(c.id)} activeOpacity={0.7}>
                 <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{(c.name || '?')[0].toUpperCase()}</Text>
+                  {c.profile_image ? (
+                    <Image source={{ uri: c.profile_image }} style={styles.avatarImg} />
+                  ) : (
+                    <Text style={styles.avatarText}>{(c.name || '?')[0].toUpperCase()}</Text>
+                  )}
                   {c.is_sme && <View style={styles.smeBadge}><Ionicons name="star" size={8} color="#FFF" /></View>}
                 </View>
                 <View style={{flex:1}}>
@@ -627,9 +631,9 @@ const styles = StyleSheet.create({
   container: {flex:1, backgroundColor: COLORS.background},
   centered: {flex:1, justifyContent:'center', alignItems:'center'},
   header: {flexDirection:'row', alignItems:'center', padding:16, paddingTop:12, paddingBottom:18, gap:12},
-  backBtn: {width:40, height:40, borderRadius:20, backgroundColor:'rgba(255,255,255,0.15)', justifyContent:'center', alignItems:'center'},
+  backBtn: {width:40, height:40, borderRadius:20, backgroundColor:'rgba(15,23,42,0.06)', justifyContent:'center', alignItems:'center'},
   headerTitle: {fontSize:20, fontWeight:'700', color: '#0F172A'},
-  headerSub: {fontSize:11, color:'rgba(255,255,255,0.7)', marginTop:2},
+  headerSub: {fontSize:11, color:'#475569', marginTop:2},
   createHdrBtn: {width:40, height:40, borderRadius:20, backgroundColor:'#FFF', justifyContent:'center', alignItems:'center'},
   searchBar: {flexDirection:'row', alignItems:'center', paddingHorizontal:16, paddingVertical:10, gap:8, backgroundColor:'#FFF', borderBottomWidth:1, borderBottomColor:'#E5E7EB'},
   searchInputWrap: {flex:1, flexDirection:'row', alignItems:'center', gap:8, backgroundColor:'#F9FAFB', borderRadius:10, paddingHorizontal:12, paddingVertical:8, borderWidth:1, borderColor:'#E5E7EB'},
@@ -645,7 +649,8 @@ const styles = StyleSheet.create({
   emptyText: {fontSize:13, color: COLORS.textSecondary, textAlign:'center', paddingHorizontal:32},
   emptyBtn: {flexDirection:'row', alignItems:'center', gap:8, backgroundColor:'#FFFFFF', paddingHorizontal:20, paddingVertical:12, borderRadius:12, marginTop:8},
   contactCard: {flexDirection:'row', alignItems:'center', gap:12, backgroundColor:'#FFF', borderRadius:12, padding:14, marginBottom:10, borderWidth:1, borderColor:'#F3F4F6'},
-  avatar: {width:44, height:44, borderRadius:22, backgroundColor:'#6366F1', justifyContent:'center', alignItems:'center'},
+  avatar: {width:44, height:44, borderRadius:22, backgroundColor:'#6366F1', justifyContent:'center', alignItems:'center', overflow:'hidden'},
+  avatarImg: {width:44, height:44, borderRadius:22},
   avatarText: {fontSize:18, fontWeight:'700', color: '#0F172A'},
   smeBadge: {position:'absolute', bottom:-2, right:-2, width:16, height:16, borderRadius:8, backgroundColor:'#F59E0B', justifyContent:'center', alignItems:'center', borderWidth:2, borderColor:'#FFF'},
   contactName: {fontSize:15, fontWeight:'600', color: COLORS.textPrimary},
