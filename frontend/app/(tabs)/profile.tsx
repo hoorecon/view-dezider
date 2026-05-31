@@ -626,7 +626,7 @@ export default function ProfileScreen() {
                   <Text style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 10 }}>
                     Wire On / Wire Off - Toggle features for all users
                   </Text>
-                  <WowoToggle label="Simple Solution Finder" flagKey="solution_finder" />
+                  <WowoToggle label="Solution Finder" flagKey="solution_finder" />
                   <WowoToggle label="Advanced Solution Matrix" flagKey="solution_matrix" />
                 </View>
               </View>

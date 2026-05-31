@@ -15,7 +15,7 @@ import api from '../../src/utils/api';
 const GENDER_OPTIONS = ['male', 'female', 'non_binary', 'prefer_not_to_say'];
 const AGE_GROUPS = ['18-25', '26-35', '36-45', '46-55', '56-65', '65+'];
 const SOCIAL_STATUS = ['student', 'employed', 'self_employed', 'business_owner', 'retired', 'homemaker'];
-const REL_STATUS = ['single', 'married', 'divorced', 'widowed', 'in_relationship', 'prefer_not_to_say'];
+const REL_STATUS = ['single', 'married', 'divorced', 'separated', 'widowed', 'in_relationship', 'prefer_not_to_say'];
 const ORG_TYPES = ['individual', 'business', 'ngo', 'association', 'govt'];
 const ORG_SUBTYPE_MAP: Record<string, string[]> = {
   individual: ['freelancer', 'consultant', 'professional'],
@@ -167,7 +167,7 @@ export default function ContactsScreen() {
     setForm({ ...form, skills });
   };
 
-  const FORM_STEPS = ['Basic', 'Demographics', 'Professional', 'Social', 'Resources', 'Links'];
+  const FORM_STEPS = ['Basic', 'Demographics', 'Social', 'Professional', 'Resources', 'Links'];
   const LAST_STEP = FORM_STEPS.length - 1;
   const setFormPath = (path: string[], value: any) => {
     const next: any = { ...form };
@@ -224,7 +224,7 @@ export default function ContactsScreen() {
           <TextInput style={styles.textInput} placeholder="e.g., English, Hindi" value={form.language || ''} onChangeText={v => setForm({...form, language: v})} />
         </View>
       );
-      case 2: return (
+      case 3: return (
         <View>
           <Text style={styles.inputLabel}>Organization Type</Text>
           <View style={styles.chipRow}>
@@ -276,7 +276,7 @@ export default function ContactsScreen() {
           </TouchableOpacity>
         </View>
       );
-      case 3: return (
+      case 2: return (
         <View>
           <Text style={styles.inputLabel}>Social Status</Text>
           <View style={styles.chipRow}>
@@ -542,12 +542,12 @@ export default function ContactsScreen() {
                 {FORM_STEPS.map((s, i) => (
                   <TouchableOpacity key={i} style={[styles.stepTab, formStep === i && styles.stepTabActive]}
                     onPress={() => setFormStep(i)}>
-                    <Text style={[styles.stepTabText, formStep === i && {color:'#FFF'}]}>{s}</Text>
+                    <Text numberOfLines={1} style={[styles.stepTabText, formStep === i && styles.stepTabTextActive]}>{s}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
 
-              <ScrollView style={{maxHeight: 400}} showsVerticalScrollIndicator={false}>
+              <ScrollView style={{maxHeight: 400}} showsVerticalScrollIndicator={true} persistentScrollbar={true}>
                 {renderFormStep()}
               </ScrollView>
 
@@ -612,9 +612,10 @@ const styles = StyleSheet.create({
   modalHeader: {flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:16},
   modalTitle: {fontSize:18, fontWeight:'700', color: COLORS.textPrimary},
   stepTabs: {flexDirection:'row', gap:4, marginBottom:16},
-  stepTab: {flex:1, paddingVertical:8, borderRadius:8, backgroundColor:'#F3F4F6', alignItems:'center'},
-  stepTabActive: {backgroundColor:'#FFFFFF'},
+  stepTab: {flex:1, paddingVertical:8, paddingHorizontal:2, borderRadius:8, backgroundColor:'#F3F4F6', alignItems:'center'},
+  stepTabActive: {backgroundColor:'#6366F1'},
   stepTabText: {fontSize:11, fontWeight:'600', color: COLORS.textSecondary},
+  stepTabTextActive: {color:'#FFFFFF'},
   inputLabel: {fontSize:13, fontWeight:'600', color: COLORS.textSecondary, marginBottom:6, marginTop:8},
   textInput: {backgroundColor:'#F9FAFB', borderRadius:10, padding:12, fontSize:14, color: COLORS.textPrimary, borderWidth:1, borderColor:'#E5E7EB', marginBottom:8},
   chipRow: {flexDirection:'row', flexWrap:'wrap', gap:6, marginBottom:8},

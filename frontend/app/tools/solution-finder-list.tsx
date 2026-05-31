@@ -81,7 +81,7 @@ export default function SolutionFinderListScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color="#FFF" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Simple Solution Finder</Text>
+        <Text style={styles.headerTitle}>Solution Finder</Text>
         <TouchableOpacity
           style={styles.addHeaderBtn}
           onPress={() => router.push('/tools/solution-finder')}

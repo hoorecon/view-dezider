@@ -435,14 +435,31 @@ export default function SimpleSolutionFinder() {
   // ============ RENDER STEPS ============
   const renderStepIndicator = () => (
     <View style={s.stepIndicator}>
-      {STEPS.map((st, i) => (
-        <View key={st.title} style={s.stepDotWrap}>
-          <View style={[s.stepDot, i <= step && s.stepDotActive]}>
-            <Ionicons name={st.icon as any} size={12} color={i <= step ? '#FFF' : '#94A3B8'} />
+      {STEPS.map((st, i) => {
+        const canEdit = i <= step;                 // already reached → tappable
+        const isInputStep = i < STEPS.length - 1;   // every step except final Action Plan
+        const showPencil = canEdit && isInputStep && i !== step; // editable + not current
+        return (
+          <View key={st.title} style={s.stepDotWrap}>
+            <TouchableOpacity
+              activeOpacity={canEdit ? 0.7 : 1}
+              disabled={!canEdit}
+              onPress={() => { if (canEdit) setStep(i); }}
+              accessibilityLabel={`Step ${i + 1}: ${st.title}${showPencil ? ' (edit)' : ''}`}
+            >
+              <View style={[s.stepDot, i <= step && s.stepDotActive]}>
+                <Ionicons name={st.icon as any} size={12} color={i <= step ? '#FFF' : '#94A3B8'} />
+              </View>
+              {showPencil && (
+                <View style={s.stepEditBadge}>
+                  <Ionicons name="pencil" size={8} color="#FFF" />
+                </View>
+              )}
+            </TouchableOpacity>
+            {i < STEPS.length - 1 && <View style={[s.stepLine, i < step && s.stepLineActive]} />}
           </View>
-          {i < STEPS.length - 1 && <View style={[s.stepLine, i < step && s.stepLineActive]} />}
-        </View>
-      ))}
+        );
+      })}
     </View>
   );
 
@@ -561,7 +578,7 @@ export default function SimpleSolutionFinder() {
 
   const renderStep3 = () => (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 80 }}>
-      <Text style={s.qTitle}>Q3. Solutions within your Capabilities & Resources</Text>
+      <Text style={s.qTitle}>Q3. Solutions within your Current Capabilities & Resources</Text>
       <Text style={s.qHint}>For each Root Cause, list practical solutions. Use the “Send to ASM” pill to deep-dive any solution in the Advanced Solution Matrix.</Text>
       {rootCauses.length === 0 && (
         <Text style={s.empty}>No root causes yet. Go back to Q2.</Text>
@@ -870,7 +887,7 @@ export default function SimpleSolutionFinder() {
           <Ionicons name="arrow-back" size={22} color="#FFF" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={s.headerTitle}>Simple Solution Finder</Text>
+          <Text style={s.headerTitle}>Solution Finder</Text>
           <Text style={s.headerSub}>Step {step + 1} of {STEPS.length} · {STEPS[step].title}</Text>
         </View>
         {saving && <ActivityIndicator size="small" color="#FFF" />}
@@ -917,6 +934,7 @@ const s = StyleSheet.create({
   stepDotWrap: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   stepDot: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center' },
   stepDotActive: { backgroundColor: '#7C3AED' },
+  stepEditBadge: { position: 'absolute', top: -4, right: -4, width: 14, height: 14, borderRadius: 7, backgroundColor: '#F59E0B', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#FFF' },
   stepLine: { flex: 1, height: 2, backgroundColor: '#E2E8F0', marginHorizontal: 4 },
   stepLineActive: { backgroundColor: '#7C3AED' },
 

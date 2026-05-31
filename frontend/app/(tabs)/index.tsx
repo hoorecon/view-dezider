@@ -312,8 +312,9 @@ export default function HomeScreen() {
               "More tools" disclosure below → secondary utilities.
               ════════════════════════════════════════════════════════════════ */}
 
-          {/* PINNED — "Pick up where you left off" */}
-          <Text style={styles.sectionTitle}>Pick up where you left off</Text>
+          {/* PINNED — "Quick Links" */}
+          <Text style={styles.sectionTitle}>Quick Links</Text>
+          <Text style={styles.sectionSubtitle}>Pick up where you left off</Text>
           <View style={styles.colabRow}>
             <TouchableOpacity
               style={styles.colabCard}
@@ -939,6 +940,13 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     marginBottom: 12,
     marginTop: 8,
+  },
+  sectionSubtitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: COLORS.textSecondary,
+    marginTop: -8,
+    marginBottom: 12,
   },
   quickActions: {
     flexDirection: 'row',
