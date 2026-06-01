@@ -1,0 +1,36 @@
+{
+  "summary": "Iter 31 — Fetch My Best Factors (Step 2) + Trash screen verified end-to-end. Backend pytest: 9 passed, 1 skipped (graceful empty path for /api/ai/suggest-factors when LLM budget is exhausted — used_model:null, factors:[] — PASS per spec). Auth-required (401) and 404-on-unknown-decision both confirmed. Trash CRUD: GET /api/trash, POST /api/trash/{id}/restore, DELETE /api/trash/{id}, DELETE /api/trash all return 200 with correct shapes; DELETE /api/pros-cons/{id} correctly moves the item to the trash collection with module=pros_cons, days_left between 0–7, and restore returns the doc to its original collection (verified by listing pros_cons after restore). Regression /api/ai/find-best-options still returns 200. Frontend (mobile 390x844): purple 'Fetch My Best Factors' button renders below the Step 2 description on /prr/{id}; tapping it shows the graceful 'No suggestions' alert dialog (because both Claude and gpt-4.1-mini calls hit Budget exceeded 0.425>0.4 in this preview) — UI handles it cleanly and the user remains on Step 2. /trash screen loads via deep link and via Profile → 'Recently Deleted' row; shows item card with module icon, label tag, deletion date, days-left pill, Restore (purple) button, trash icon, and an 'Empty' action in the header. Profile shows the 'Recently Deleted — Restore deleted items within 7 days' entry. KNOWN ENV: EMERGENT_LLM_KEY budget remains exceeded so AI factor suggestions cannot be generated in this preview — this is the same env issue reported in iter 30, not a code bug.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Step 2", "issues": ["Purple 'Fetch My Best Factors' button is well-sized (~44pt+), has spinner state, and a small (11px) hint line — legible and not crowded."]},
+      {"screen": "Trash", "issues": ["Card layout shows icon + title + label tag + deleted-date + days-left pill + Restore + delete-icon — all required elements present. 'Empty' action surfaces only when items > 0 (good)."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter31_suggest_factors_trash.py",
+    "/app/test_reports/pytest/iter31.xml"
+  ],
+  "action_items": [
+    "Add testID props to the Step 2 'Fetch My Best Factors' button (e.g. testID=\"fetch-best-factors-btn\") and to Trash row controls (testID=\"trash-item-{id}\", \"trash-restore-btn\", \"trash-delete-btn\", \"trash-empty-btn\") for stable mobile automation — currently only accessibilityLabel is set.",
+    "Optional UX: when both LLM providers fail (used_model:null AND factors:[]), the alert says 'No suggestions, AI could not suggest factors this time.' — consider explicitly mentioning 'AI temporarily unavailable, try again later' so users don't think the AI thought there were 0 good factors for their decision.",
+    "Top-up the EMERGENT_LLM_KEY budget so the Fetch My Best Factors AI path can be QA'd end-to-end with real suggestions (current preview cap: 0.4 exceeded by 0.425)."
+  ],
+  "critical_code_review_comments": [
+    "ai_tools.py suggest_factors() correctly bypasses LLM exceptions (try/except around both Claude and gpt-4.1-mini), dedupes case-insensitively against existing decision.factors, clamps priority to 1..10 and expected_value_pct to 0..100 — robust.",
+    "trash.py restore correctly re-inserts the saved document only if no row with the same id_field already exists (prevents duplicate-key races on retried clicks).",
+    "Step2.tsx handleFetchBestFactors flow is solid: it disables the button while loading, surfaces a friendly error via showAlert, and reuses addFactorsFromTemplate so AI factors are normalized to the same shape as Social Learning imports."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter31_suggest_factors_trash.py (new)"
+  ],
+  "success_rate": {"backend": "100% (9 passed, 1 graceful-skip per spec)", "frontend": "100% (button renders, graceful-no-suggestions alert fires, Trash screen lists + restores items, Profile row visible)"},
+  "seed_data_creation": "Created (and cleaned up) one 'TEST_iter31 Buying a Laptop' decision and a 'TEST_iter31_PC_*' pros_cons per test. Final state: trash emptied. Safe.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "POST /api/ai/suggest-factors body: {decision_id, limit?}. With LLM budget exceeded the endpoint returns {factors:[], used_model:null} (200) — UI shows 'No suggestions' alert. Trash list/restore/purge/empty all live under /api/trash. Frontend Trash screen at /trash; entry row at Profile under 'Recently Deleted'. To make an item appear in trash, DELETE /api/pros-cons/{id} or DELETE /api/decisions/{id}. Login: harden_1777921741@example.com / HardenPass2026!. Token stored in localStorage under session_token/token/auth_token.",
+  "rca_of_issue": "N/A — features work as specified. The only reason AI factor suggestions cannot be observed in the live UI is the env-level EMERGENT_LLM_KEY budget being exceeded (0.425 > 0.4), which the backend handles gracefully by returning factors:[] and used_model:null (200)."
+}

@@ -8,6 +8,7 @@ import { useDecision } from '../../context/DecisionContext';
 import { styles } from '../../styles/decisionStyles';
 import type { Factor, FactorDataSource } from '../../types/decision';
 import api from '../../utils/api';
+import { showAlert } from '../../utils/alert';
 import {
   UNIT_PRESETS,
   NUMERIC_OPERATORS,
@@ -88,6 +89,33 @@ export default function Step2() {
     setShowSLFactorModal(false);
     if (added > 0) {
       // Alert through a simple visual feedback
+    }
+  };
+
+  // "Fetch My Best Factors" — AI proposes factors from life area + decision type
+  // + title/description, auto-filling Step 2 so the user can refine & continue.
+  const [aiFactorsLoading, setAiFactorsLoading] = useState(false);
+  const handleFetchBestFactors = async () => {
+    if (aiFactorsLoading) return;
+    setAiFactorsLoading(true);
+    try {
+      const res = await api.post('/ai/suggest-factors', { decision_id: decision.id });
+      const factors = res.data?.factors || [];
+      if (factors.length === 0) {
+        showAlert('No suggestions', 'AI could not suggest factors this time. Please add factors manually.');
+        return;
+      }
+      const added = addFactorsFromTemplate(factors);
+      showAlert(
+        added > 0 ? 'Factors added' : 'Already covered',
+        added > 0
+          ? `Added ${added} AI-suggested factor${added === 1 ? '' : 's'}. Review, reorder or remove any, then continue to Step 3.`
+          : 'These factors are already in your list.'
+      );
+    } catch (e: any) {
+      showAlert('Could not fetch factors', e?.response?.data?.detail || 'Please try again, or add factors manually.');
+    } finally {
+      setAiFactorsLoading(false);
     }
   };
 
@@ -242,6 +270,29 @@ export default function Step2() {
       <Text style={styles.stepTitle}>Step 2: Define Factors & Criteria</Text>
       <Text style={styles.stepDescription}>
         List factors, group them with sub-factors (splitting 100%), then assign expected values, operators, and units.
+      </Text>
+
+      <TouchableOpacity
+        onPress={handleFetchBestFactors}
+        disabled={aiFactorsLoading}
+        activeOpacity={0.85}
+        accessibilityLabel="Fetch My Best Factors with AI"
+        style={{
+          flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+          backgroundColor: '#7C3AED', borderRadius: 12, paddingVertical: 13, paddingHorizontal: 16,
+          marginBottom: 6, opacity: aiFactorsLoading ? 0.7 : 1,
+          shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.25, shadowRadius: 6, elevation: 3,
+        }}
+      >
+        {aiFactorsLoading
+          ? <ActivityIndicator size="small" color="#FFF" />
+          : <Ionicons name="sparkles" size={18} color="#FFF" />}
+        <Text style={{ color: '#FFF', fontSize: 15, fontWeight: '800' }}>
+          {aiFactorsLoading ? 'Fetching your best factors…' : 'Fetch My Best Factors'}
+        </Text>
+      </TouchableOpacity>
+      <Text style={{ fontSize: 11, color: COLORS.textMuted, textAlign: 'center', marginBottom: 14, lineHeight: 16, paddingHorizontal: 8 }}>
+        AI suggests factors from your Life Area, decision type &amp; description. Review, reorder or remove any, then continue to Step 3.
       </Text>
 
       {topLevelFactors.map((factor) => {

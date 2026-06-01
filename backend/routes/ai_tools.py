@@ -475,13 +475,13 @@ async def _store_candidates(user: dict, life_area_id, sub_area_id, goal_tokens: 
     } for s in top]
 
 
-async def _run_options_llm(prompt: str, user: dict, provider: str, model: str, api_key: str):
+async def _run_options_llm(prompt: str, user: dict, provider: str, model: str, api_key: str, list_key: str = "options"):
     from core.llm_compat import LlmChat, UserMessage
     import json as json_module
     chat = LlmChat(
         api_key=api_key,
-        session_id=f"findopts_{user['user_id']}_{uuid.uuid4().hex[:8]}",
-        system_message="You are a decision-options strategist. Return only valid JSON.",
+        session_id=f"aigen_{user['user_id']}_{uuid.uuid4().hex[:8]}",
+        system_message="You are a decision-support strategist. Return only valid JSON.",
     ).with_model(provider, model)
     resp = await chat.send_message(UserMessage(text=prompt))
     txt = (resp or "").strip()
@@ -491,7 +491,7 @@ async def _run_options_llm(prompt: str, user: dict, provider: str, model: str, a
         txt = txt[4:].strip()
     data = json_module.loads(txt)
     if isinstance(data, dict):
-        return data.get("options", [])
+        return data.get(list_key, [])
     if isinstance(data, list):
         return data
     return []
@@ -635,3 +635,108 @@ Use "store_index": null for options that are NOT from the store list."""
             })
 
     return {"options": merged, "used_model": used_model, "store_match_count": len(store)}
+
+
+# ============================================================================
+# FETCH MY BEST FACTORS — AI-suggested decision factors for Step 2
+# ============================================================================
+@router.post("/ai/suggest-factors")
+@limiter.limit(AI_LIMIT)
+async def suggest_factors(request: Request, user: dict = Depends(get_current_user)):
+    """AI-suggest 5-8 well-chosen decision factors for a PRR decision, based on the
+    chosen life area, decision type, and the decision's title + description.
+
+    Lets a user auto-fill Step 2 (Define Factors & Criteria) and proceed to Step 3.
+    Returns factors in the same shape consumed by addFactorsFromTemplate().
+    """
+    body = await request.json()
+    decision_id = body.get("decision_id")
+    limit = max(4, min(8, int(body.get("limit") or 7)))
+
+    title = body.get("title", "")
+    context = body.get("context", "")
+    life_area = body.get("life_area")
+    decision_type = body.get("decision_type")
+    existing_names = set()
+
+    if decision_id:
+        dec = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
+        if not dec:
+            raise HTTPException(status_code=404, detail="Decision not found")
+        title = dec.get("title", title)
+        context = dec.get("context", context)
+        life_area = dec.get("life_area", life_area)
+        decision_type = dec.get("decision_type", decision_type)
+        existing_names = {(f.get("name") or "").strip().lower() for f in (dec.get("factors") or [])}
+
+    api_key = os.getenv("EMERGENT_LLM_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="LLM key not configured")
+
+    prompt = f"""You help a user define the decision factors (criteria) they will use to evaluate options.
+
+Life area: {life_area or 'general'}
+Decision type: {decision_type or 'general'}
+Decision title: {title or '(none)'}
+Description / context: {context or '(none)'}
+
+Propose the {limit} MOST important, DISTINCT factors a thoughtful person would weigh for this
+decision. Mark the truly critical ones as "primary" and the rest as "secondary". For factors that
+are naturally measurable, set factor_type "quantitative" and suggest a sensible expected target as
+a percentage 0-100 in "expected_value_pct"; otherwise use "qualitative".
+
+Order them from MOST important (priority 10) to least (priority 1).
+
+Return ONLY valid JSON, no markdown:
+{{"factors":[{{"name":"short factor name","category":"primary","priority":9,"factor_type":"quantitative","expected_value_pct":80,"rationale":"one concise sentence"}}]}}"""
+
+    used_model = "claude-sonnet-4-5-20250929"
+    raw = []
+    try:
+        raw = await _run_options_llm(prompt, user, "anthropic", used_model, api_key, list_key="factors")
+    except Exception as e1:
+        logger.warning(f"suggest-factors primary (claude) failed: {e1}; retrying gpt-4.1-mini")
+        try:
+            used_model = "gpt-4.1-mini"
+            raw = await _run_options_llm(prompt, user, "openai", used_model, api_key, list_key="factors")
+        except Exception as e2:
+            logger.error(f"suggest-factors fallback failed: {e2}")
+            raw = []
+            used_model = None
+
+    factors = []
+    seen = set(existing_names)
+    for f in raw:
+        name = (f.get("name") or "").strip()
+        if not name:
+            continue
+        key = name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cat = "primary" if str(f.get("category")).lower() == "primary" else "secondary"
+        ftype = "quantitative" if str(f.get("factor_type")).lower() == "quantitative" else "qualitative"
+        try:
+            pr = int(f.get("priority"))
+        except (TypeError, ValueError):
+            pr = 7 if cat == "primary" else 5
+        pr = max(1, min(10, pr))
+        item = {
+            "name": name,
+            "priority": pr,
+            "factor_type": ftype,
+            "category": cat,
+            "rationale": (f.get("rationale") or "").strip(),
+        }
+        exp = f.get("expected_value_pct")
+        if ftype == "quantitative" and exp not in (None, ""):
+            try:
+                item["expected_value_pct"] = max(0, min(100, float(exp)))
+            except (TypeError, ValueError):
+                pass
+        factors.append(item)
+        if len(factors) >= limit:
+            break
+
+    return {"factors": factors, "used_model": used_model}
+

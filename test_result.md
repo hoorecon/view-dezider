@@ -8312,3 +8312,60 @@ agent_communication:
       Use dev creds harden_1777921741@example.com / HardenPass2026!. Focus on: 200 response shape,
       <=5 deduped options, source tagging, graceful fallback with no factors and no store matches.
       Frontend: verify Step 5 button -> Step 6 prefill + badges/rationale -> proceed to Step 7.
+
+#====================================================================================================
+# FEATURE: Fetch My Best Factors (Step 2 AI) + In-app Trash screen — added 2026-06-01
+#====================================================================================================
+backend_suggest_factors:
+  - task: "POST /api/ai/suggest-factors"
+    implemented: true
+    working: "NA"
+    file: "backend/routes/ai_tools.py"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          New AI endpoint that suggests 4-8 decision factors for a PRR decision based on life_area,
+          decision_type, title and context. Input {decision_id, limit?}. Returns
+          {factors:[{name, priority(1-10), factor_type, category, expected_value_pct?, rationale}], used_model}.
+          LLM: claude-sonnet-4-5-20250929 primary, gpt-4.1-mini fallback (core.llm_compat + EMERGENT_LLM_KEY).
+          Dedupes vs existing decision factors. NOTE: Emergent key budget may be exhausted in preview;
+          on both-LLM failure it returns factors:[] with used_model:null (graceful). TEST: login
+          harden_1777921741@example.com / HardenPass2026!, create a decision with life_area+title+context,
+          POST the endpoint -> expect 200 with factors[] when budget available; 404 for bad decision_id;
+          401 unauth.
+
+frontend_fetch_factors_and_trash:
+  - task: "Step 2 'Fetch My Best Factors' button + In-app Trash screen (/trash)"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/components/steps/Step2.tsx, frontend/app/trash.tsx, frontend/app/(tabs)/profile.tsx"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          (1) Step 2 (Define Factors) now has a purple "Fetch My Best Factors" button below the description.
+          On tap it calls /api/ai/suggest-factors and prefills factors via addFactorsFromTemplate(); user
+          stays on Step 2 to review/reorder/remove then continues to Step 3. Loading spinner + alert feedback.
+          (2) New /trash screen (reachable from Profile -> "Recently Deleted") consuming existing
+          /api/trash endpoints: lists soft-deleted items with module label, deleted date, days-left pill;
+          Restore button (POST /trash/{id}/restore), permanent delete (DELETE /trash/{id}) with confirm,
+          and "Empty" (DELETE /trash) with confirm. Pull-to-refresh + empty state.
+          TEST (frontend): login harden_1777921741@example.com / HardenPass2026!. (a) PRR Step 2 button shows
+          + tap triggers loading (AI may be budget-limited -> alert is acceptable). (b) Profile shows
+          "Recently Deleted" row -> opens /trash; if a pros_cons/decision is deleted it appears there and
+          Restore returns it. Verify confirm dialogs for permanent delete + empty.
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Test the two new features. Backend: POST /api/ai/suggest-factors (auth, 404, success shape) — note the
+      Emergent LLM key budget may be exhausted in this preview, in which case factors:[] + used_model:null is
+      the correct graceful response (not a bug). Frontend: Step 2 "Fetch My Best Factors" button + the new
+      /trash screen (list/restore/permanent-delete/empty) reachable from Profile -> Recently Deleted. To get a
+      trash item, soft-delete a Pros & Cons or Decision (delete now routes to trash). Creds:
+      harden_1777921741@example.com / HardenPass2026!

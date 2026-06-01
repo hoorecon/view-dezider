@@ -444,6 +444,23 @@ export default function ProfileScreen() {
         </>
       )}
 
+      {/* Recently Deleted (Trash) — available to all users */}
+      {!!user && (
+        <TouchableOpacity
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}
+          onPress={() => router.push('/trash' as any)}
+        >
+          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#64748B', alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="trash-bin" size={18} color="#FFF" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.text }}>Recently Deleted</Text>
+            <Text style={{ fontSize: 12, color: COLORS.textMuted }}>Restore deleted items within 7 days</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+        </TouchableOpacity>
+      )}
+
       {/* Admin-only quick links (hidden from regular users) */}
       {userRole !== 'user' && (
         <>
