@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import Response
 from core.database import db
+from core.trash import move_to_trash
 from core.auth import get_current_user
 from models.solution_matrix_models import (
     empty_layer_set,
@@ -167,10 +168,10 @@ async def update_solution_finder(entry_id: str, request: Request, user: dict = D
 
 @router.delete("/solution-finders/{entry_id}")
 async def delete_solution_finder(entry_id: str, user: dict = Depends(get_current_user)):
-    result = await db.solution_finders.delete_one({"entry_id": entry_id, "user_id": user["user_id"]})
-    if result.deleted_count == 0:
+    moved = await move_to_trash("solution_finder", entry_id, user["user_id"])
+    if not moved:
         raise HTTPException(status_code=404, detail="Entry not found")
-    return {"message": "Entry deleted"}
+    return {"message": "Entry moved to Trash"}
 
 
 @router.post("/solution-finders/{entry_id}/push-action-plan")
@@ -590,10 +591,10 @@ async def update_solution_matrix(entry_id: str, request: Request, user: dict = D
 
 @router.delete("/solution-matrices/{entry_id}")
 async def delete_solution_matrix(entry_id: str, user: dict = Depends(get_current_user)):
-    result = await db.solution_matrices.delete_one({"entry_id": entry_id, "user_id": user["user_id"]})
-    if result.deleted_count == 0:
+    moved = await move_to_trash("solution_matrix", entry_id, user["user_id"])
+    if not moved:
         raise HTTPException(status_code=404, detail="Entry not found")
-    return {"message": "Entry deleted"}
+    return {"message": "Entry moved to Trash"}
 
 
 # ---------- PDF Export ----------

@@ -14,6 +14,7 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException, Depends
 from core.database import db
+from core.trash import move_to_trash
 from core.auth import get_current_user
 
 from models.decision_framework_models import (
@@ -160,11 +161,11 @@ async def update_pros_cons(analysis_id: str, data: ProsConsUpdate, user: dict = 
 
 @router.delete("/{analysis_id}")
 async def delete_pros_cons(analysis_id: str, user: dict = Depends(get_current_user)):
-    """Delete a Pros & Cons analysis"""
-    result = await db.pros_cons.delete_one({"id": analysis_id, "user_id": user["user_id"]})
-    if result.deleted_count == 0:
+    """Delete a Pros & Cons analysis (moves to Trash)"""
+    moved = await move_to_trash("pros_cons", analysis_id, user["user_id"])
+    if not moved:
         raise HTTPException(status_code=404, detail="Analysis not found")
-    return {"message": "Analysis deleted"}
+    return {"message": "Analysis moved to Trash"}
 
 
 # ========================

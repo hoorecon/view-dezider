@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, EmailStr
 from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse
 from core.database import db
+from core.trash import move_to_trash
 from core.auth import (
     get_current_user, require_admin, require_root_super_admin,
     get_user_role, get_role_level, ADMIN_ROLES, ROOT_SUPER_ADMIN_EMAIL,
@@ -106,10 +107,10 @@ async def update_decision(decision_id: str, update_data: PRRDecisionUpdate, user
 
 @router.delete("/decisions/{decision_id}")
 async def delete_decision(decision_id: str, user: dict = Depends(get_current_user)):
-    result = await db.decisions.delete_one({"id": decision_id, "user_id": user["user_id"]})
-    if result.deleted_count == 0:
+    moved = await move_to_trash("decision", decision_id, user["user_id"])
+    if not moved:
         raise HTTPException(status_code=404, detail="Decision not found")
-    return {"message": "Decision deleted successfully"}
+    return {"message": "Decision moved to Trash"}
 
 @router.post("/decisions/{decision_id}/clone")
 async def clone_decision(decision_id: str, data: CloneDecisionRequest, user: dict = Depends(get_current_user)):

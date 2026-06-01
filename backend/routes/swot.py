@@ -14,6 +14,7 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException, Depends
 from core.database import db
+from core.trash import move_to_trash
 from core.auth import get_current_user
 
 from models.decision_framework_models import (
@@ -182,11 +183,11 @@ async def update_swot(analysis_id: str, data: SwotUpdate, user: dict = Depends(g
 
 @router.delete("/{analysis_id}")
 async def delete_swot(analysis_id: str, user: dict = Depends(get_current_user)):
-    """Delete a SWOT analysis"""
-    result = await db.swot_analyses.delete_one({"id": analysis_id, "user_id": user["user_id"]})
-    if result.deleted_count == 0:
+    """Delete a SWOT analysis (moves to Trash)"""
+    moved = await move_to_trash("swot", analysis_id, user["user_id"])
+    if not moved:
         raise HTTPException(status_code=404, detail="SWOT analysis not found")
-    return {"message": "SWOT analysis deleted"}
+    return {"message": "SWOT analysis moved to Trash"}
 
 
 # ========================
