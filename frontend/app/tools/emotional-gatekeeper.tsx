@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import { formatAbsolute } from '../../src/utils/datetime';
 
 const EG_COLORS = {
   amber: '#F59E0B',
@@ -241,7 +242,7 @@ export default function EmotionalGatekeeperScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.sessionTitle}>{s.title}</Text>
                     <Text style={styles.sessionMeta}>
-                      {s.status} • {new Date(s.created_at).toLocaleDateString()}
+                      {s.status} • {formatAbsolute(s.created_at)}
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />

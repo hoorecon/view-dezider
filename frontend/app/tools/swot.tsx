@@ -14,6 +14,7 @@ import { LIFE_AREAS as LIFE_AREAS_CANONICAL } from '../../src/constants/lifeArea
 import { safeBack, goHome } from '../../src/utils/navigation';
 import TimestampLine from '../../src/components/TimestampLine';
 import api from '../../src/utils/api';
+import { formatAbsolute } from '../../src/utils/datetime';
 import PaywallGate from '../../src/components/PaywallGate';
 import ModuleStoreActions from '../../src/components/ModuleStoreActions';
 import ActionItemEditor from '../../src/components/ActionItemEditor';
@@ -832,7 +833,7 @@ export default function SwotScreen() {
 
                 <View style={styles.listCardFooter}>
                   <Text style={styles.listCardDate}>
-                    {new Date(a.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    {formatAbsolute(a.updated_at || a.created_at)}
                   </Text>
                   <TimestampLine entity={a} compact />
                   <Text style={styles.listTotalItems}>{getTotalItems(a)} items</Text>

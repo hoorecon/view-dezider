@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import { formatAbsolute } from '../../src/utils/datetime';
 
 const STATUS_COLORS: Record<string, {bg: string; text: string; label: string}> = {
   active: { bg: '#ECFDF5', text: '#059669', label: 'Active' },
@@ -524,7 +525,7 @@ export default function CollaborateScreen() {
                       <Text style={styles.verifyJoinText}>Verify</Text>
                     </TouchableOpacity>
                     <Text style={styles.sessionDate}>
-                      {new Date(s.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                      {formatAbsolute(s.created_at)}
                     </Text>
                   </View>
                   {/* Video Call Button for Live Sync */}

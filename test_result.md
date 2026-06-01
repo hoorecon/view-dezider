@@ -8208,3 +8208,21 @@ frontend+backend:
           - Backend save-as-template rewritten to mirror /clone cumulative copy for all 5 levels.
           Verified via API: factors(reset cat/rating), classification(cat), prioritization(+rating),
           options(+option names), assessment(+assessments). use_template unchanged (copies stored subset).
+
+
+## 2026-06-01b — Timestamps (date + time) on decision-flow list cards + Solution Box
+
+frontend:
+  - task: "Show date + time on list cards across decision-flow modules & Solution Box"
+    implemented: true
+    working: true
+    file: "prr.tsx, dezider-list.tsx, pros-cons-list.tsx, swot.tsx, solution-matrix-list.tsx, emotional-gatekeeper.tsx, eg-session.tsx, collaborate.tsx"
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          Replaced date-only toLocaleDateString renders with existing formatAbsolute() (datetime.ts)
+          which outputs '5 Jun, 06:51 PM' (current year) / '5 Jun 2025, 06:51 PM' (older).
+          Verified visually in Solution Box: 'TmplTest → 1 Jun, 7:32 PM', 'Buy Car X vs Y → 18 May, 9:38 AM'.
+          solution-finder-list already showed time. Peripheral non-decision lists (subscription txns,
+          calendar, public-pulse, expert-net, journal) left as-is unless requested.

@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import { formatAbsolute } from '../../src/utils/datetime';
 
 export default function EGSessionScreen() {
   const router = useRouter();
@@ -116,7 +117,7 @@ export default function EGSessionScreen() {
           <View style={st.typeBadge}>
             <Text style={st.typeBadgeText}>{session.session_type?.toUpperCase()}</Text>
           </View>
-          <Text style={st.headerDate}>{new Date(session.created_at).toLocaleDateString()}</Text>
+          <Text style={st.headerDate}>{formatAbsolute(session.created_at)}</Text>
           <View style={[st.statusBadge, { backgroundColor: session.status === 'completed' ? '#10B981' : '#F59E0B' }]}>
             <Text style={st.statusText}>{session.status}</Text>
           </View>

@@ -22,6 +22,7 @@ import { LIFE_AREAS as LIFE_AREAS_CANONICAL } from '../../src/constants/lifeArea
 import { showAlert } from '../../src/utils/alert';
 import { safeBack, goHome } from '../../src/utils/navigation';
 import api from '../../src/utils/api';
+import { formatAbsolute } from '../../src/utils/datetime';
 import PaywallGate from '../../src/components/PaywallGate';
 import TimestampLine from '../../src/components/TimestampLine';
 
@@ -213,7 +214,7 @@ export default function DeziderListScreen() {
 
                   <View style={styles.listCardFooter}>
                     <Text style={styles.listCardDate}>
-                      {new Date(d.updated_at || d.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {formatAbsolute(d.updated_at || d.created_at)}
                     </Text>
                     <TimestampLine entity={d} compact />
                     <View style={{ flex: 1 }} />

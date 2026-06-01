@@ -19,6 +19,7 @@ import { Card } from '../../src/components/Card';
 import CloneTemplateModal from '../../src/components/CloneTemplateModal';
 import TemplateBrowserModal from '../../src/components/TemplateBrowserModal';
 import api from '../../src/utils/api';
+import { formatAbsolute } from '../../src/utils/datetime';
 import { LIFE_AREAS, getLifeArea } from '../../src/constants/lifeAreas';
 
 /**
@@ -194,7 +195,7 @@ export default function SolutionBoxScreen() {
     if (!dateString) return '';
     const date = new Date(dateString);
     if (isNaN(date.getTime())) return '';
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return formatAbsolute(dateString);
   };
 
   const selectedFolderData = getLifeArea(selectedLifeArea);

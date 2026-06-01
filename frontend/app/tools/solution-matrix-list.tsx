@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import { formatAbsolute } from '../../src/utils/datetime';
 
 export default function SolutionMatrixListScreen() {
   const router = useRouter();
@@ -151,7 +152,7 @@ export default function SolutionMatrixListScreen() {
                   </View>
                 )}
                 <View style={styles.cardFooter}>
-                  <Text style={styles.cardDate}>{new Date(entry.created_at).toLocaleDateString()}</Text>
+                  <Text style={styles.cardDate}>{formatAbsolute(entry.updated_at || entry.created_at)}</Text>
                   <Text style={styles.cardActions}>
                     {(entry.action_items || []).length} actions
                   </Text>
