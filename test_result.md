@@ -8249,3 +8249,66 @@ frontend:
           Verified via screenshots: icon renders, hover tooltip shows, decision NOT deleted (DB intact).
           NOTE: RN-Web Pressable does NOT forward the `title` DOM attr, so the native browser tooltip
           relies on the custom HoverTooltip bubble (onHoverIn/onHoverOut) — which works.
+
+#====================================================================================================
+# FEATURE: Find My Best Options (AI + Solution Store) — added 2026-06-01
+#====================================================================================================
+backend_find_best_options:
+  - task: "POST /api/ai/find-best-options"
+    implemented: true
+    working: "NA"
+    file: "backend/routes/ai_tools.py, backend/models/decisions_models.py"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          New AI endpoint that suggests the top 3-5 best-suited options for a PRR decision,
+          blended with matching Solution-Store items, ranked by the user's prioritized factors.
+          - Input: {decision_id, limit?}. Loads decision (title/context/life_area/life_area_id/
+            sub_area_id/factors/options) server-side.
+          - Queries solutions_store (visibility-aware) by life_area_id/sub_area_id; if too few,
+            broadens and ranks by token overlap (factor names + goal + tags + qf factor_name + desc).
+            Attaches price_range + avg rating (review_net -> solution_reviews fallback).
+          - LLM: primary anthropic/claude-sonnet-4-5-20250929, fallback openai/gpt-4.1-mini
+            (via core.llm_compat shim + EMERGENT_LLM_KEY). Returns JSON {options:[{name,rationale,store_index}]}.
+          - Merges/dedupes (by name + against existing decision options), tags source 'store'|'ai',
+            caps to limit (3-5). Fallback: if LLM empty, returns top store matches directly.
+          - Extended DecisionOption model with optional: solution_id, source, ai_rationale, price_range, rating.
+          TEST: login as harden_1777921741@example.com / HardenPass2026!. Create a PRR decision with
+          life_area + a few factors, then POST /api/ai/find-best-options {decision_id}. Expect 200 with
+          options[] (<=5), each having name + source + ai_rationale; store-sourced items carry solution_id.
+          Verify it also works with NO factors (graceful fallback) and that response is valid even when
+          no store items match (AI-only options). Rate-limited (AI_LIMIT).
+
+frontend_find_best_options:
+  - task: "Step 5 'Find My Best Options' button + Step 6 prefill with source badges"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/components/steps/Step5.tsx, frontend/src/components/steps/Step6.tsx, frontend/src/context/DecisionContext.tsx, frontend/src/types/decision.ts"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Step 5 (Rate Importance) now has a purple "Find My Best Options" button beside the existing
+          "Add Options" CTA. On tap: persists ratings, calls /api/ai/find-best-options, prefills the
+          returned 3-5 options into Step 6 via new context method prefillBestOptions(), then navigates
+          to Step 6. Loading state shows a spinner + "Finding your best options…".
+          Step 6 option cards now render a source badge (🤖 AI / 🏬 Store), a price chip + rating chip
+          for store items, and an italic AI rationale line. Each option remains removable.
+          TEST (frontend): login as harden_1777921741@example.com / HardenPass2026!. Start/open a PRR
+          decision (My Dezider), add factors, go to Step 5, tap "Find My Best Options", confirm it lands
+          on Step 6 with prefilled options + badges/rationale, and that options can be removed and the
+          user can proceed to Step 7 (Assess Options).
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Please test the new "Find My Best Options" feature end-to-end (backend + frontend).
+      Backend endpoint: POST /api/ai/find-best-options (uses Claude Sonnet 4.5 primary, gpt-4.1-mini fallback).
+      Use dev creds harden_1777921741@example.com / HardenPass2026!. Focus on: 200 response shape,
+      <=5 deduped options, source tagging, graceful fallback with no factors and no store matches.
+      Frontend: verify Step 5 button -> Step 6 prefill + badges/rationale -> proceed to Step 7.

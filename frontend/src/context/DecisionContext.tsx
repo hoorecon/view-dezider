@@ -3,7 +3,7 @@ import { Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '../utils/api';
-import type { Factor, OptionAssessment, DecisionOption, MPPSImprovement, Decision } from '../types/decision';
+import type { Factor, OptionAssessment, DecisionOption, MPPSImprovement, Decision, BestOptionSuggestion } from '../types/decision';
 import { calculateRatingsFromOrder } from '../utils/decisionHelpers';
 import { StepVoiceCommand } from '../utils/stepVoiceParser';
 
@@ -32,6 +32,7 @@ interface DecisionContextType {
   addOption: () => void;
   addOptionByName: (name: string) => void;
   addOptionFromStore: (name: string, solutionId: string) => void;
+  prefillBestOptions: (suggestions: BestOptionSuggestion[]) => number;
   removeOption: (optionId: string) => void;
   newOptionName: string;
   setNewOptionName: (name: string) => void;
@@ -336,6 +337,40 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     saveDecision({ options: updatedOptions });
   };
 
+  // Prefill multiple AI/Store suggestions in one shot (Find My Best Options).
+  // De-dupes against existing options by lowercased name and by solution_id,
+  // appends provenance metadata, and persists with a single save.
+  const prefillBestOptions = (suggestions: BestOptionSuggestion[]): number => {
+    if (!decision || !Array.isArray(suggestions) || suggestions.length === 0) return 0;
+    const existing = decision.options || [];
+    const nameSeen = new Set(existing.map(o => (o.name || '').trim().toLowerCase()));
+    const solSeen = new Set(existing.map(o => o.solution_id).filter(Boolean) as string[]);
+    const additions: DecisionOption[] = [];
+    suggestions.forEach((s, i) => {
+      const name = (s.name || '').trim();
+      if (!name) return;
+      const key = name.toLowerCase();
+      if (nameSeen.has(key)) return;
+      if (s.solution_id && solSeen.has(s.solution_id)) return;
+      nameSeen.add(key);
+      if (s.solution_id) solSeen.add(s.solution_id);
+      additions.push({
+        id: `option_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 6)}`,
+        name,
+        assessments: [],
+        worth_percentage: 0,
+        source: s.source || 'ai',
+        ai_rationale: s.ai_rationale || undefined,
+        ...(s.solution_id ? { solution_id: s.solution_id } : {}),
+        ...(s.price_range ? { price_range: s.price_range } : {}),
+        ...(typeof s.rating === 'number' ? { rating: s.rating } : {}),
+      });
+    });
+    if (additions.length === 0) return 0;
+    saveDecision({ options: [...existing, ...additions] });
+    return additions.length;
+  };
+
   const removeOption = (optionId: string) => {
     const updatedOptions = decision!.options.filter((o) => o.id !== optionId);
     saveDecision({ options: updatedOptions });
@@ -549,7 +584,7 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     fetchDecision,
     addFactor, addFactorsFromTemplate, updateFactor, removeFactor, moveFactorUp, moveFactorDown, applyRatingsAndContinue,
     newFactorName, setNewFactorName,
-    addOption, addOptionByName, addOptionFromStore, removeOption,
+    addOption, addOptionByName, addOptionFromStore, prefillBestOptions, removeOption,
     newOptionName, setNewOptionName,
     updateAssessment, getAssessmentValue, getAssessmentMode, getUnitValue, getActualValue, getAssessmentKey,
     selectOption,

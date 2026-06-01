@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/colors';
 import { Card } from '../Card';
@@ -7,9 +7,37 @@ import { GradientButton } from '../GradientButton';
 import { useDecision } from '../../context/DecisionContext';
 import { styles } from '../../styles/decisionStyles';
 import { GAP_PRESETS, STANDARD_GAP, calculateRatingsFromOrder } from '../../utils/decisionHelpers';
+import api from '../../utils/api';
+import { showAlert } from '../../utils/alert';
 
 export default function Step5() {
-  const { decision, saveDecision, applyRatingsAndContinue, setCurrentStep } = useDecision();
+  const { decision, saveDecision, applyRatingsAndContinue, setCurrentStep, prefillBestOptions } = useDecision();
+  const [aiLoading, setAiLoading] = useState(false);
+
+  // "Find My Best Options" — persists current ratings, asks AI (+ Solution Store)
+  // for the top 3-5 options tailored to the life area & prioritized factors,
+  // prefills them into Step 6 for review, then advances.
+  const handleFindBestOptions = async () => {
+    if (aiLoading) return;
+    setAiLoading(true);
+    try {
+      const factorsWithRatings = calculateRatingsFromOrder(decision.factors, decision.rating_gap_multiplier || 1.0);
+      await saveDecision({ factors: factorsWithRatings });
+      const res = await api.post('/ai/find-best-options', { decision_id: decision.id });
+      const opts = res.data?.options || [];
+      if (opts.length === 0) {
+        showAlert('No suggestions', 'AI could not find options this time. You can add options manually in the next step.');
+        setCurrentStep(6);
+        return;
+      }
+      prefillBestOptions(opts);
+      setCurrentStep(6);
+    } catch (e: any) {
+      showAlert('Could not fetch options', e?.response?.data?.detail || 'Please try again, or add options manually.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   const recalculated = calculateRatingsFromOrder(decision.factors);
   const topLevelRecalc = recalculated.filter(f => !f.parent_id);
@@ -139,6 +167,24 @@ export default function Step5() {
         </View>
       </Card>
 
+      <TouchableOpacity
+        style={[localS.aiBtn, aiLoading && { opacity: 0.7 }]}
+        onPress={handleFindBestOptions}
+        disabled={aiLoading}
+        activeOpacity={0.85}
+        accessibilityLabel="Find My Best Options with AI"
+      >
+        {aiLoading
+          ? <ActivityIndicator size="small" color="#FFF" />
+          : <Ionicons name="sparkles" size={18} color="#FFF" />}
+        <Text style={localS.aiBtnText}>
+          {aiLoading ? 'Finding your best options…' : 'Find My Best Options'}
+        </Text>
+      </TouchableOpacity>
+      <Text style={localS.aiHint}>
+        AI picks the top options for this Life Area & your prioritized factors (incl. matching Solution Store items). Review &amp; remove any in the next step.
+      </Text>
+
       <View style={styles.navButtons}>
         <TouchableOpacity style={styles.backButton} onPress={() => setCurrentStep(4)}>
           <Ionicons name="arrow-back" size={20} color={COLORS.textSecondary} />
@@ -153,3 +199,24 @@ export default function Step5() {
     </View>
   );
 }
+
+const localS = StyleSheet.create({
+  aiBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#7C3AED',
+    borderRadius: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    marginTop: 8,
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  aiBtnText: { color: '#FFF', fontSize: 15, fontWeight: '800' },
+  aiHint: { fontSize: 11, color: COLORS.textMuted, textAlign: 'center', marginTop: 6, marginBottom: 4, lineHeight: 16, paddingHorizontal: 8 },
+});

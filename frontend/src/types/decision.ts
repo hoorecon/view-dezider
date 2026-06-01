@@ -43,6 +43,20 @@ export interface DecisionOption {
   assessments: OptionAssessment[];
   worth_percentage: number;
   solution_id?: string;  // Links to Solutions Store for auto-populated data
+  source?: 'ai' | 'store' | 'manual';  // provenance (Find My Best Options)
+  ai_rationale?: string;               // one-line why this option fits
+  price_range?: string;                // store item price badge
+  rating?: number;                     // store item avg rating badge
+}
+
+// A single AI/Store suggestion returned by POST /api/ai/find-best-options
+export interface BestOptionSuggestion {
+  name: string;
+  ai_rationale?: string;
+  source?: 'ai' | 'store';
+  solution_id?: string;
+  price_range?: string;
+  rating?: number;
 }
 
 export interface MPPSActionItem {

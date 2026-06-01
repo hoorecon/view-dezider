@@ -204,23 +204,55 @@ export default function Step6() {
       </TouchableOpacity>
 
       {/* Current Options */}
-      {decision.options.map((option) => (
-        <Card key={option.id} style={styles.optionCard}>
-          <View style={styles.optionHeader}>
-            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              {option.solution_id && (
-                <View style={localStyles.storeBadge}>
-                  <Ionicons name="storefront" size={10} color="#10B981" />
+      {decision.options.map((option) => {
+        const isStore = !!option.solution_id || option.source === 'store';
+        return (
+          <Card key={option.id} style={styles.optionCard}>
+            <View style={styles.optionHeader}>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                  {isStore ? (
+                    <View style={localStyles.srcBadgeStore}>
+                      <Ionicons name="storefront" size={10} color="#047857" />
+                      <Text style={localStyles.srcBadgeStoreText}>Store</Text>
+                    </View>
+                  ) : option.source === 'ai' ? (
+                    <View style={localStyles.srcBadgeAi}>
+                      <Ionicons name="sparkles" size={10} color="#7C3AED" />
+                      <Text style={localStyles.srcBadgeAiText}>AI</Text>
+                    </View>
+                  ) : null}
+                  <Text style={styles.optionName}>{option.name}</Text>
                 </View>
-              )}
-              <Text style={styles.optionName}>{option.name}</Text>
+                {/* Store price / rating chips */}
+                {(option.price_range || typeof option.rating === 'number') && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                    {option.price_range ? (
+                      <View style={localStyles.metaChip}>
+                        <Ionicons name="pricetag" size={9} color="#0369A1" />
+                        <Text style={localStyles.metaChipText}>{option.price_range}</Text>
+                      </View>
+                    ) : null}
+                    {typeof option.rating === 'number' ? (
+                      <View style={[localStyles.metaChip, { backgroundColor: '#FEF3C7' }]}>
+                        <Ionicons name="star" size={9} color="#B45309" />
+                        <Text style={[localStyles.metaChipText, { color: '#92400E' }]}>{option.rating}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                )}
+                {/* AI rationale */}
+                {option.ai_rationale ? (
+                  <Text style={localStyles.rationale}>{option.ai_rationale}</Text>
+                ) : null}
+              </View>
+              <TouchableOpacity onPress={() => removeOption(option.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close-circle" size={22} color={COLORS.error} />
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={() => removeOption(option.id)}>
-              <Ionicons name="close-circle" size={22} color={COLORS.error} />
-            </TouchableOpacity>
-          </View>
-        </Card>
-      ))}
+          </Card>
+        );
+      })}
 
       {/* Manual Input */}
       <View style={styles.addFactorRow}>
@@ -464,6 +496,22 @@ const localStyles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  srcBadgeStore: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: '#D1FAE5', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2,
+  },
+  srcBadgeStoreText: { fontSize: 9, fontWeight: '800', color: '#047857' },
+  srcBadgeAi: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: '#F3E8FF', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2,
+  },
+  srcBadgeAiText: { fontSize: 9, fontWeight: '800', color: '#7C3AED' },
+  metaChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: '#E0F2FE', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2,
+  },
+  metaChipText: { fontSize: 9, fontWeight: '700', color: '#0369A1' },
+  rationale: { fontSize: 11, color: '#64748B', lineHeight: 16, marginTop: 4, fontStyle: 'italic' },
   // Modal
   modalOverlay: {
     flex: 1,

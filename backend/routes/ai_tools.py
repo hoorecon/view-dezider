@@ -384,3 +384,253 @@ Return ONLY valid JSON, no markdown fences, no explanation outside the JSON."""
         if "JSONDecodeError" in type(e).__name__:
             raise HTTPException(status_code=500, detail=f"AI returned invalid JSON: {str(e)[:100]}")
         raise HTTPException(status_code=500, detail=f"CLD analysis failed: {str(e)[:200]}")
+
+
+
+# ============================================================================
+# FIND MY BEST OPTIONS — AI-suggested options blended with Solution Store
+# ============================================================================
+import re as _re
+
+
+def _tok(text: str) -> set:
+    """Tokenise into lowercased words >2 chars."""
+    return {t for t in _re.split(r"[^a-z0-9]+", str(text or "").lower()) if len(t) > 2}
+
+
+async def _store_candidates(user: dict, life_area_id, sub_area_id, goal_tokens: set, title: str, context: str):
+    """Return up to 6 ranked Solution-Store candidates relevant to the goal/factors."""
+    vis_filter = [
+        {"created_by": user["user_id"]},
+        {"is_authorized": True},
+        {"visibility": "PUBLIC", "approval_status": "approved"},
+    ]
+    if user.get("org_id"):
+        vis_filter.append({"visibility": "ORG", "org_id": user["org_id"]})
+    base_q = {"status": "active", "$or": vis_filter}
+
+    docs = []
+    if life_area_id:
+        q = dict(base_q)
+        q["life_area_id"] = life_area_id
+        if sub_area_id:
+            q["sub_area_id"] = sub_area_id
+        docs = await db.solutions_store.find(q, {"_id": 0}).to_list(80)
+        if len(docs) < 3 and sub_area_id:
+            q.pop("sub_area_id", None)
+            docs = await db.solutions_store.find(q, {"_id": 0}).to_list(80)
+    taxonomy_hit = len(docs) > 0
+    if len(docs) < 3:
+        docs = await db.solutions_store.find(base_q, {"_id": 0}).to_list(200)
+
+    tokens = set(goal_tokens) | _tok(f"{title} {context}")
+
+    def _score(sol) -> int:
+        toks = _tok(sol.get("name"))
+        for t in (sol.get("tags") or []):
+            toks |= _tok(t)
+        for qf in (sol.get("quantitative_factors") or []):
+            toks |= _tok(qf.get("factor_name", ""))
+        toks |= _tok(sol.get("description"))
+        score = len(tokens & toks)
+        if life_area_id and sol.get("life_area_id") == life_area_id:
+            score += 2
+        if sub_area_id and sol.get("sub_area_id") == sub_area_id:
+            score += 1
+        return score
+
+    scored = sorted(((s, _score(s)) for s in docs), key=lambda x: x[1], reverse=True)
+    # Keep relevant items: positive overlap, OR taxonomy-filtered set when we matched a life area.
+    relevant = [s for s, sc in scored if sc > 0]
+    if not relevant and taxonomy_hit:
+        relevant = [s for s, _ in scored]
+    top = relevant[:6]
+
+    ratings = {}
+    ids = [s["solution_id"] for s in top]
+    if ids:
+        try:
+            agg = await db.review_net.aggregate([
+                {"$match": {"solution_id": {"$in": ids}, "status": {"$in": ["approved", "auto_approved"]}}},
+                {"$group": {"_id": "$solution_id", "avg": {"$avg": "$overall_rating"}, "count": {"$sum": 1}}},
+            ]).to_list(50)
+            for a in agg:
+                if a.get("avg") is not None:
+                    ratings[a["_id"]] = round(float(a["avg"]), 1)
+            legacy = await db.solution_reviews.aggregate([
+                {"$match": {"solution_id": {"$in": ids}}},
+                {"$group": {"_id": "$solution_id", "avg": {"$avg": "$overall_rating"}}},
+            ]).to_list(50)
+            for a in legacy:
+                if a["_id"] not in ratings and a.get("avg") is not None:
+                    ratings[a["_id"]] = round(float(a["avg"]), 1)
+        except Exception as e:
+            logger.warning(f"find-best-options rating agg failed: {e}")
+
+    return [{
+        "solution_id": s["solution_id"],
+        "name": s.get("name", "Untitled"),
+        "price_range": s.get("price_range") or None,
+        "rating": ratings.get(s["solution_id"]),
+    } for s in top]
+
+
+async def _run_options_llm(prompt: str, user: dict, provider: str, model: str, api_key: str):
+    from core.llm_compat import LlmChat, UserMessage
+    import json as json_module
+    chat = LlmChat(
+        api_key=api_key,
+        session_id=f"findopts_{user['user_id']}_{uuid.uuid4().hex[:8]}",
+        system_message="You are a decision-options strategist. Return only valid JSON.",
+    ).with_model(provider, model)
+    resp = await chat.send_message(UserMessage(text=prompt))
+    txt = (resp or "").strip()
+    if txt.startswith("```"):
+        txt = txt.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    if txt.lower().startswith("json"):
+        txt = txt[4:].strip()
+    data = json_module.loads(txt)
+    if isinstance(data, dict):
+        return data.get("options", [])
+    if isinstance(data, list):
+        return data
+    return []
+
+
+@router.post("/ai/find-best-options")
+@limiter.limit(AI_LIMIT)
+async def find_best_options(request: Request, user: dict = Depends(get_current_user)):
+    """AI-suggest the top 3-5 best-suited options for a PRR decision, blended with
+    matching Solution-Store items, ranked by the user's prioritized factors.
+
+    Lets users who have no options yet prefill Step 6 and continue to assessment.
+    """
+    body = await request.json()
+    decision_id = body.get("decision_id")
+    limit = max(3, min(5, int(body.get("limit") or 5)))
+
+    title = body.get("title", "")
+    context = body.get("context", "")
+    life_area = body.get("life_area")
+    life_area_id = body.get("life_area_id")
+    sub_area_id = body.get("sub_area_id")
+    factors = body.get("factors", [])
+    existing_names = set()
+
+    if decision_id:
+        dec = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
+        if not dec:
+            raise HTTPException(status_code=404, detail="Decision not found")
+        title = dec.get("title", title)
+        context = dec.get("context", context)
+        life_area = dec.get("life_area", life_area)
+        life_area_id = dec.get("life_area_id", life_area_id)
+        sub_area_id = dec.get("sub_area_id", sub_area_id)
+        factors = dec.get("factors") or factors
+        existing_names = {(o.get("name") or "").strip().lower() for o in (dec.get("options") or [])}
+
+    api_key = os.getenv("EMERGENT_LLM_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="LLM key not configured")
+
+    # Prioritized factors: most important first (rating desc, then order asc).
+    pri = sorted(
+        [f for f in factors if f.get("name")],
+        key=lambda f: (-int(f.get("rating") or 0), int(f.get("order") or 0)),
+    )
+    factor_tokens = set()
+    factor_lines = []
+    for f in pri:
+        nm = str(f.get("name"))
+        factor_tokens |= _tok(nm)
+        exp, op, unit = f.get("expected_value"), f.get("operator"), f.get("unit")
+        extra = ""
+        if exp not in (None, ""):
+            extra = f" (target {op or ''} {exp}{(' ' + str(unit)) if unit else ''})"
+        factor_lines.append(f"- {nm} [{f.get('category') or 'primary'}]{extra}")
+    factor_block = "\n".join(factor_lines) if factor_lines else "(no factors yet — infer sensible criteria from the goal)"
+
+    store = await _store_candidates(user, life_area_id, sub_area_id, factor_tokens, title, context)
+    cand_lines = []
+    for i, c in enumerate(store):
+        pb = f", price {c['price_range']}" if c.get("price_range") else ""
+        rb = f", {c['rating']}\u2605" if c.get("rating") else ""
+        cand_lines.append(f"[{i}] {c['name']}{pb}{rb}")
+    cand_block = "\n".join(cand_lines) if cand_lines else "(none available)"
+
+    goal = title or context or "the user's goal"
+    prompt = f"""You help a user choose the BEST options for a decision so they can evaluate them.
+
+Life area: {life_area or life_area_id or 'general'}
+Goal / expectations: {goal}
+Context: {context or '(none)'}
+
+Prioritized decision factors (most important first):
+{factor_block}
+
+Available Solution-Store items (you MAY reuse these via "store_index"):
+{cand_block}
+
+Return the {limit} BEST-suited, DISTINCT options, ranked best-first, that best satisfy the
+prioritized factors and the user's goal. Prefer a Solution-Store item when one genuinely fits
+(set its "store_index"); otherwise propose a strong, realistic real-world option.
+
+Return ONLY valid JSON, no markdown:
+{{"options":[{{"name":"...","rationale":"one concise sentence linking it to the top factors","store_index":0}}]}}
+Use "store_index": null for options that are NOT from the store list."""
+
+    used_model = "claude-sonnet-4-5-20250929"
+    ai_options = []
+    try:
+        ai_options = await _run_options_llm(prompt, user, "anthropic", used_model, api_key)
+    except Exception as e1:
+        logger.warning(f"find-best-options primary (claude) failed: {e1}; retrying gpt-4.1-mini")
+        try:
+            used_model = "gpt-4.1-mini"
+            ai_options = await _run_options_llm(prompt, user, "openai", used_model, api_key)
+        except Exception as e2:
+            logger.error(f"find-best-options fallback failed: {e2}")
+            ai_options = []
+
+    merged = []
+    seen = set(existing_names)
+    for opt in ai_options:
+        name = (opt.get("name") or "").strip()
+        if not name:
+            continue
+        si = opt.get("store_index")
+        st = store[si] if isinstance(si, int) and 0 <= si < len(store) else None
+        if st:
+            name = st["name"]
+        key = name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        item = {
+            "name": name,
+            "ai_rationale": (opt.get("rationale") or "").strip(),
+            "source": "store" if st else "ai",
+        }
+        if st:
+            item["solution_id"] = st["solution_id"]
+            item["price_range"] = st.get("price_range")
+            item["rating"] = st.get("rating")
+        merged.append(item)
+        if len(merged) >= limit:
+            break
+
+    # Fallback: if the model produced nothing usable, surface top store matches directly.
+    if not merged and store:
+        for c in store[:limit]:
+            if c["name"].lower() in seen:
+                continue
+            merged.append({
+                "name": c["name"],
+                "ai_rationale": "Matched from the Solution Store by your prioritized factors.",
+                "source": "store",
+                "solution_id": c["solution_id"],
+                "price_range": c.get("price_range"),
+                "rating": c.get("rating"),
+            })
+
+    return {"options": merged, "used_model": used_model, "store_match_count": len(store)}

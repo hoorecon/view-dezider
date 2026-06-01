@@ -63,6 +63,12 @@ class DecisionOption(BaseModel):
     name: str
     assessments: List[OptionAssessment] = []
     worth_percentage: float = 0.0
+    # ── Option provenance (Find My Best Options + Solution Store linkage) ──
+    solution_id: Optional[str] = None        # links to a Solutions Store item
+    source: Optional[str] = None             # 'ai' | 'store' | 'manual'
+    ai_rationale: Optional[str] = None       # one-line why this option fits
+    price_range: Optional[str] = None        # store item price badge
+    rating: Optional[float] = None           # store item avg rating badge
 
 
 class PRRDecision(BaseModel):
