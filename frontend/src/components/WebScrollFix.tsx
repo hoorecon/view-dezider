@@ -44,30 +44,57 @@ function isTextEntry(el: any): boolean {
   return false;
 }
 
-function findMainScroller(): HTMLElement | null {
+function isScrollable(el: any): boolean {
+  if (!el || el.nodeType !== 1) return false;
+  if (el.scrollHeight - el.clientHeight < 8) return false;
+  const oy = window.getComputedStyle(el).overflowY;
+  return oy === 'auto' || oy === 'scroll' || oy === 'overlay';
+}
+
+// Walk up from a node to the first scrollable ancestor (inclusive).
+function nearestScrollable(node: any): HTMLElement | null {
+  let el = node as HTMLElement | null;
+  while (el && el !== document.body && el !== document.documentElement) {
+    if (isScrollable(el)) return el;
+    el = el.parentElement;
+  }
+  return null;
+}
+
+// Is this element inside a fixed-position overlay (modal / bottom-sheet)?
+function insideOverlay(node: any): boolean {
+  let el = node as HTMLElement | null;
+  while (el && el !== document.body) {
+    if (window.getComputedStyle(el).position === 'fixed') return true;
+    el = el.parentElement;
+  }
+  return false;
+}
+
+// Fallback: the most relevant visible scroller. A scroller inside a modal /
+// bottom-sheet overlay always wins over the page scroller behind it.
+function findBestScroller(): HTMLElement | null {
   if (typeof document === 'undefined') return null;
   const vh = window.innerHeight || document.documentElement.clientHeight;
   let best: HTMLElement | null = null;
-  let bestScore = 0;
+  let bestScore = -1;
 
   const nodes = document.querySelectorAll('div');
   for (let i = 0; i < nodes.length; i++) {
     const el = nodes[i] as HTMLElement;
-    // Must actually have overflowing content
-    if (el.scrollHeight - el.clientHeight < 24) continue;
-
-    const style = window.getComputedStyle(el);
-    const oy = style.overflowY;
-    if (oy !== 'auto' && oy !== 'scroll' && oy !== 'overlay') continue;
+    if (!isScrollable(el)) continue;
 
     const rect = el.getBoundingClientRect();
-    if (rect.height < 120) continue;
+    if (rect.height < 80) continue;
     // Must be at least partially visible in viewport
     if (rect.bottom <= 0 || rect.top >= vh) continue;
 
     const visibleHeight = Math.min(rect.bottom, vh) - Math.max(rect.top, 0);
-    if (visibleHeight > bestScore) {
-      bestScore = visibleHeight;
+    // Strongly prefer a scroller that lives inside a modal/bottom-sheet so the
+    // page behind the overlay never steals the keys.
+    const score = visibleHeight + (insideOverlay(el) ? 1_000_000 : 0);
+    if (score > bestScore) {
+      bestScore = score;
       best = el;
     }
   }
@@ -78,6 +105,25 @@ export default function WebScrollFix() {
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
 
+    // Track the pointer so we can scroll whatever the cursor is over. This is
+    // what makes modals / bottom-sheets / split panes scroll correctly instead
+    // of the page behind them.
+    let lastX = (window.innerWidth || 800) / 2;
+    let lastY = (window.innerHeight || 600) / 2;
+    const onMove = (e: MouseEvent) => { lastX = e.clientX; lastY = e.clientY; };
+    window.addEventListener('mousemove', onMove, { passive: true });
+
+    const pickScroller = (): HTMLElement | null => {
+      // 1) Scroller under the mouse pointer (handles modals & multi-pane).
+      let s = nearestScrollable(document.elementFromPoint(lastX, lastY));
+      if (s) return s;
+      // 2) Scroller that owns the currently focused element (keyboard users).
+      s = nearestScrollable(document.activeElement);
+      if (s) return s;
+      // 3) Best visible scroller — a modal/bottom-sheet scroller wins.
+      return findBestScroller();
+    };
+
     const onKeyDown = (e: KeyboardEvent) => {
       if (!SCROLL_KEYS.has(e.key)) return;
       // Don't hijack typing or in-field navigation
@@ -85,7 +131,7 @@ export default function WebScrollFix() {
       // Let modifier combos (Ctrl/Cmd/Alt) fall through to the browser
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
-      const scroller = findMainScroller();
+      const scroller = pickScroller();
       if (!scroller) return;
 
       const page = Math.max(scroller.clientHeight * 0.9, 100);
@@ -121,7 +167,10 @@ export default function WebScrollFix() {
     };
 
     window.addEventListener('keydown', onKeyDown, { capture: true, passive: false });
-    return () => window.removeEventListener('keydown', onKeyDown, { capture: true } as any);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, { capture: true } as any);
+      window.removeEventListener('mousemove', onMove as any);
+    };
   }, []);
 
   return null;
