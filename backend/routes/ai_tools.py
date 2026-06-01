@@ -591,6 +591,7 @@ Use "store_index": null for options that are NOT from the store list."""
         except Exception as e2:
             logger.error(f"find-best-options fallback failed: {e2}")
             ai_options = []
+            used_model = None  # both LLM calls failed → Store-only result below
 
     merged = []
     seen = set(existing_names)
