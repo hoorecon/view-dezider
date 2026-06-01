@@ -102,7 +102,13 @@ export default function Step2() {
       const res = await api.post('/ai/suggest-factors', { decision_id: decision.id });
       const factors = res.data?.factors || [];
       if (factors.length === 0) {
-        showAlert('No suggestions', 'AI could not suggest factors this time. Please add factors manually.');
+        const unavailable = res.data?.used_model == null;
+        showAlert(
+          unavailable ? 'AI temporarily unavailable' : 'No suggestions',
+          unavailable
+            ? 'Could not reach the AI service right now. Please try again shortly, or add factors manually.'
+            : 'AI could not suggest factors this time. Please add factors manually.'
+        );
         return;
       }
       const added = addFactorsFromTemplate(factors);

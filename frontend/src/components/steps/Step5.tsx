@@ -26,7 +26,13 @@ export default function Step5() {
       const res = await api.post('/ai/find-best-options', { decision_id: decision.id });
       const opts = res.data?.options || [];
       if (opts.length === 0) {
-        showAlert('No suggestions', 'AI could not find options this time. You can add options manually in the next step.');
+        const unavailable = res.data?.used_model == null;
+        showAlert(
+          unavailable ? 'AI temporarily unavailable' : 'No suggestions',
+          unavailable
+            ? 'Could not reach the AI service right now. Please try again shortly, or add options manually.'
+            : 'AI could not find options this time. You can add options manually in the next step.'
+        );
         setCurrentStep(6);
         return;
       }
