@@ -22,7 +22,9 @@ interface CloneTemplateModalProps {
   onTemplateSuccess?: () => void;
 }
 
-const CLONE_LEVELS = [
+// Shared 5-level copy depth — used identically by BOTH the Clone and Template tabs.
+// Levels are cumulative (each includes everything above it).
+const COPY_LEVELS = [
   {
     key: 'factors',
     label: 'Copy Factors',
@@ -55,29 +57,21 @@ const CLONE_LEVELS = [
     key: 'assessment',
     label: 'Copy Assessment',
     icon: 'copy-outline' as const,
-    description: 'Full clone — everything including assessments',
-    color: '#10B981',
-  },
-];
-
-const TEMPLATE_TYPES = [
-  {
-    key: 'options',
-    label: 'With Options',
-    icon: 'layers-outline' as const,
-    description: 'Factors prioritized + Options listed (no assessments)',
-    color: '#F59E0B',
-  },
-  {
-    key: 'assessment',
-    label: 'With Assessment',
-    icon: 'analytics-outline' as const,
-    description: 'Full template including all assessments',
+    description: 'Everything — factors, options & all assessments',
     color: '#10B981',
   },
 ];
 
 type Tab = 'clone' | 'template';
+
+// Template names are auto-prefixed by visibility so they are easy to tell apart.
+const TEMPLATE_PREFIXES: Record<string, string> = {
+  private: '[Private-Template] ',
+  shared: '[Shared-Template] ',
+  public: '[Public-Template] ',
+};
+const stripTemplatePrefix = (name: string) =>
+  name.replace(/^\s*\[(Private|Shared|Public)-Template\]\s*/i, '');
 
 const VISIBILITY_OPTIONS = [
   {
@@ -150,7 +144,7 @@ export default function CloneTemplateModal({
       });
       onCloneSuccess(response.data.id);
       onClose();
-      Alert.alert('Cloned!', `Decision cloned with "${CLONE_LEVELS.find(l => l.key === selectedCloneLevel)?.label}"`);
+      Alert.alert('Cloned!', `Decision cloned with "${COPY_LEVELS.find(l => l.key === selectedCloneLevel)?.label}"`);
     } catch (err: any) {
       Alert.alert('Error', err.response?.data?.detail || 'Failed to clone decision');
     } finally {
@@ -173,9 +167,13 @@ export default function CloneTemplateModal({
       const shared_with = visibility === 'shared'
         ? sharedEmails.split(',').map(e => e.trim()).filter(e => e)
         : [];
-      
+
+      // Auto-prefix the template name by visibility so templates are easy to tell apart.
+      const prefix = TEMPLATE_PREFIXES[visibility] || TEMPLATE_PREFIXES.private;
+      const finalName = (prefix + stripTemplatePrefix(title.trim())).trim();
+
       await api.post(`/decisions/${decision.id}/save-as-template`, {
-        name: title.trim(),
+        name: finalName,
         template_type: selectedTemplateType,
         visibility,
         shared_with,
@@ -183,7 +181,7 @@ export default function CloneTemplateModal({
       onTemplateSuccess?.();
       onClose();
       const visLabel = visibility === 'public' ? 'publicly' : visibility === 'shared' ? `with ${shared_with.length} account(s)` : 'privately';
-      Alert.alert('Saved!', `Template saved ${visLabel}`);
+      Alert.alert('Saved!', `Template saved ${visLabel} as "${finalName}"`);
     } catch (err: any) {
       Alert.alert('Error', err.response?.data?.detail || 'Failed to save template');
     } finally {
@@ -244,6 +242,11 @@ export default function CloneTemplateModal({
                 placeholder={activeTab === 'clone' ? 'Enter decision title...' : 'Enter template name...'}
                 placeholderTextColor={COLORS.textMuted}
               />
+              {activeTab === 'template' && (
+                <Text style={styles.savedAsHint}>
+                  Saved as: {TEMPLATE_PREFIXES[visibility]}{stripTemplatePrefix(title.trim()) || '…'}
+                </Text>
+              )}
             </View>
 
             {/* Clone Levels / Template Types */}
@@ -280,8 +283,8 @@ export default function CloneTemplateModal({
               </View>
             ) : (
               <View style={styles.optionsSection}>
-                <Text style={styles.sectionLabel}>Template type</Text>
-                {TEMPLATE_TYPES.map((type) => (
+                <Text style={styles.sectionLabel}>What to copy?</Text>
+                {COPY_LEVELS.map((type) => (
                   <TouchableOpacity
                     key={type.key}
                     style={[
@@ -482,6 +485,12 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     borderWidth: 1,
     borderColor: COLORS.border,
+  },
+  savedAsHint: {
+    fontSize: 12,
+    color: COLORS.primary,
+    marginTop: 6,
+    fontWeight: '600',
   },
   optionsSection: {
     marginBottom: 16,

@@ -173,23 +173,53 @@ async def save_as_template(decision_id: str, data: SaveTemplateRequest, user: di
         raise HTTPException(status_code=404, detail="Decision not found")
     template_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
+
+    # 5 cumulative depth levels, identical semantics to /clone:
+    #   factors < classification < prioritization < options < assessment
+    level = data.template_type
+    if level not in ("factors", "classification", "prioritization", "options", "assessment"):
+        level = "options"  # backward-compatible default
+
+    orig_factors = original.get("factors", [])
+    factors = []
+    for f in orig_factors:
+        factors.append({"id": str(uuid.uuid4()), "name": f["name"], "order": f.get("order", 0),
+                        "category": "primary", "rating": 0})
+    if level in ("classification", "prioritization", "options", "assessment"):
+        for i, f in enumerate(orig_factors):
+            if i < len(factors):
+                factors[i]["category"] = f.get("category", "primary")
+    if level in ("prioritization", "options", "assessment"):
+        for i, f in enumerate(orig_factors):
+            if i < len(factors):
+                factors[i]["rating"] = f.get("rating", 0)
+
+    options = []
+    if level in ("options", "assessment"):
+        factor_id_map = {}
+        for i, of in enumerate(orig_factors):
+            if i < len(factors):
+                factor_id_map[of["id"]] = factors[i]["id"]
+        for opt in original.get("options", []):
+            new_opt = {"id": str(uuid.uuid4()), "name": opt["name"], "assessments": [], "worth_percentage": 0.0}
+            if level == "assessment":
+                for asmt in opt.get("assessments", []):
+                    new_fid = factor_id_map.get(asmt["factor_id"], asmt["factor_id"])
+                    new_opt["assessments"].append({"factor_id": new_fid, "percentage": asmt.get("percentage"),
+                                                   "unit_value": asmt.get("unit_value"), "assessment_mode": asmt.get("assessment_mode")})
+                new_opt["worth_percentage"] = opt.get("worth_percentage", 0.0)
+            options.append(new_opt)
+
     template = {
-        "id": template_id, "name": data.name, "template_type": data.template_type,
+        "id": template_id, "name": data.name, "template_type": level,
         "visibility": data.visibility,
         "shared_with": [e.strip().lower() for e in data.shared_with if e.strip()],
         "created_by": user["user_id"], "created_by_name": user.get("name", "Unknown"),
         "created_by_email": user.get("email", ""),
         "source_decision_title": original.get("title", ""),
-        "context": original.get("context", ""), "factors": original.get("factors", []),
-        "options": [], "created_at": now,
+        "context": original.get("context", ""), "factors": factors,
+        "options": options, "created_at": now,
     }
-    if data.template_type in ("options", "assessment"):
-        for opt in original.get("options", []):
-            new_opt = {"id": opt["id"], "name": opt["name"], "assessments": [], "worth_percentage": 0.0}
-            if data.template_type == "assessment":
-                new_opt["assessments"] = opt.get("assessments", [])
-                new_opt["worth_percentage"] = opt.get("worth_percentage", 0.0)
-            template["options"].append(new_opt)
     await db.templates.insert_one(template)
     return {"id": template_id, "message": "Template saved successfully"}
 

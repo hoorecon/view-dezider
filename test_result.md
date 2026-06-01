@@ -8186,3 +8186,25 @@ agent_communication:
         Q2 (Root Cause Analysis): NO "From ASM" / "ASM" pills anywhere.
         Q3 (Solutions): ASM cluster at Overall bar, per primary concern header, per root cause, per solution.
         Q4 (Risk): ASM cluster per risk, per mitigation, per contingency.
+
+
+## 2026-06-01 — Clone vs Template: unified to same 5 depth levels + visibility name prefix
+
+frontend+backend:
+  - task: "Unify Save-as-Template depth to the same 5 levels as Clone; auto-prefix template name by visibility"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/components/CloneTemplateModal.tsx, backend/routes/decisions.py"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          User reported ambiguity: Clone tab had 5 copy levels but Template tab only 2 ('With Options',
+          'With Assessment'), with overlapping wording. Per user choice 1a:
+          - Frontend: both Clone and Template tabs now use ONE shared COPY_LEVELS list
+            (Copy Factors / Classification / Prioritization / Options / Assessment).
+          - Template name is auto-prefixed by visibility: '[Private-Template] ' / '[Shared-Template] ' /
+            '[Public-Template] ' (stripped+reapplied on save; live 'Saved as:' hint under the name field).
+          - Backend save-as-template rewritten to mirror /clone cumulative copy for all 5 levels.
+          Verified via API: factors(reset cat/rating), classification(cat), prioritization(+rating),
+          options(+option names), assessment(+assessments). use_template unchanged (copies stored subset).
