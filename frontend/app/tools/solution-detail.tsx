@@ -35,6 +35,7 @@ export default function SolutionDetailScreen() {
   const router = useRouter();
   const { solution_id } = useLocalSearchParams();
   const { session } = useAuthStore();
+  const { user } = useAuthStore();
 
   const [solution, setSolution] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -195,6 +196,15 @@ export default function SolutionDetailScreen() {
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle} numberOfLines={1}>{solution.name}</Text>
         </View>
+        {(user?.user_id === solution.created_by || ['super_admin', 'co_admin', 'admin'].includes(user?.role || '')) && (
+          <TouchableOpacity
+            onPress={() => router.push({ pathname: '/tools/bulk-factor-update', params: { solution_id: String(solution_id), name: solution.name } })}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="Bulk factor updates"
+          >
+            <Ionicons name="cloud-upload-outline" size={22} color={COLORS.primary} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Tabs */}

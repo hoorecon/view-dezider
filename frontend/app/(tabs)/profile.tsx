@@ -524,6 +524,21 @@ export default function ProfileScreen() {
         <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
       </TouchableOpacity>
 
+      {/* Solution Store — Factor value submissions (admin review) */}
+      <TouchableOpacity
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}
+        onPress={() => router.push('/tools/factor-submissions' as any)}
+      >
+        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#0EA5E9', alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="documents" size={18} color="#FFF" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>Factor Submissions</Text>
+          <Text style={{ fontSize: 12, color: COLORS.textMuted }}>Review & approve bulk factor-value uploads</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+      </TouchableOpacity>
+
       {/* Tier Matrix — 7-chakra subscription gating (admin) */}
       <TouchableOpacity
         testID="profile-tier-matrix"

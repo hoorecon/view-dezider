@@ -8424,3 +8424,65 @@ agent_communication:
       Solutions Store item in the decision's life_area with quantitative_factors whose factor_name matches the
       decision factors, then verify factor_values flow into assessments + worth. Creds:
       harden_1777921741@example.com / HardenPass2026!
+
+#====================================================================================================
+# PHASE 2: Solution Store bulk factor-value ingestion (XLS / Google Sheet / Webhook) — 2026-06-01
+#====================================================================================================
+backend_store_ingestion:
+  - task: "Solution Store factor-value ingestion API (routes/store_ingestion.py)"
+    implemented: true
+    working: "NA"
+    file: "backend/routes/store_ingestion.py, backend/server.py"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          New endpoints (all under /api, admin-review workflow):
+          - GET  /api/solutions-store/factor-template.xlsx?solution_id= -> XLSX template (openpyxl),
+            prefilled with the solution's current factors if owner/admin. Columns: solution_id, factor_name,
+            factor_type, value, unit, currency, source_note, effective_date + Instructions sheet.
+          - POST /api/solutions-store/factor-values/upload (multipart xlsx, ?solution_id=) -> parse -> pending submission(s).
+          - POST /api/solutions-store/factor-values/import-gsheet {sheet_url, solution_id?} -> fetch published CSV (httpx) -> pending.
+          - GET/POST /api/solutions-store/{solution_id}/ingestion-token -> view/generate per-solution webhook token (owner/admin).
+          - POST /api/solutions-store/factor-values/webhook (header X-Ingestion-Token, body {rows:[...]}) -> pending (or auto-apply if token.auto_approve).
+          - GET  /api/solutions-store/factor-submissions?status= -> list (admins see all; owners see own).
+          - POST /api/solutions-store/factor-submissions/{id}/approve|reject (admin) -> approve upserts rows into
+            solution.quantitative_factors (by factor_name), reject discards.
+          All submissions land status=pending and require admin approval before values go live.
+          TEST: login harden_1777921741@example.com / HardenPass2026! create a solution (owner). Generate token,
+          POST webhook with that token -> pending submission created. Upload is multipart xlsx. Admin
+          (admin@test.com / AdminPass2026!) lists pending, approves -> verify solution.quantitative_factors updated.
+          Webhook with bad/missing token -> 401. Token endpoints for a non-owned solution -> 403/404.
+
+frontend_store_ingestion:
+  - task: "Bulk Factor Updates screen + Admin Factor Submissions screen + entry points"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/tools/bulk-factor-update.tsx, frontend/app/tools/factor-submissions.tsx, frontend/app/tools/solution-detail.tsx, frontend/app/(tabs)/profile.tsx"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          - bulk-factor-update.tsx (owner): download template (auth blob on web / FileSystem+Sharing native),
+            pick & upload .xlsx (expo-document-picker + FormData), paste Google Sheet link & import, webhook card
+            showing endpoint URL + token (copy/regenerate) + sample payload, and a recent-submissions status list.
+            Reached from solution-detail header (cloud-upload icon) for owner/admin.
+          - factor-submissions.tsx (admin): Pending/Approved/Rejected tabs, expandable rows preview, Approve & apply / Reject.
+            Reached from Profile -> "Factor Submissions".
+          TEST (frontend): as owner open a solution -> tap cloud-upload header icon -> Bulk Factor Updates screen loads;
+          Generate token shows token + webhook URL + copy works; paste a public Google Sheet CSV link -> import shows
+          "submitted for review". As admin open Profile -> Factor Submissions -> Pending -> Approve applies values.
+
+agent_communication:
+  - agent: "main"
+    message: |
+      PHASE 2 complete: Solution Store bulk factor-value ingestion via XLS upload, Google Sheet (published CSV) link,
+      and a per-solution Webhook API token. Everything is admin-reviewed (status=pending) before being applied to the
+      solution's quantitative_factors. Test backend endpoints + the two new screens. Creds:
+      owner/user harden_1777921741@example.com / HardenPass2026!  ; admin admin@test.com / AdminPass2026!.
+      For Google Sheet test, any public 'Published to web' CSV with headers solution_id,factor_name,factor_type,value works.
+      NOTE: AI endpoints unaffected (LLM budget still exhausted in preview — unrelated).

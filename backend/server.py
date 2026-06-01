@@ -132,6 +132,7 @@ from routes.lifestyle import router as lifestyle_router
 from routes.decision_intake import router as decision_intake_router
 from routes.org_auth import router as org_auth_router
 from routes.solutions_store import router as solutions_store_router
+from routes.store_ingestion import router as store_ingestion_router
 from routes.google_calendar import router as google_calendar_router
 from routes.deo import router as deo_router
 from routes.cld import router as cld_router
@@ -212,6 +213,7 @@ api_router.include_router(lifestyle_router)
 api_router.include_router(decision_intake_router)
 api_router.include_router(org_auth_router)
 api_router.include_router(solutions_store_router)
+api_router.include_router(store_ingestion_router)
 api_router.include_router(google_calendar_router)
 api_router.include_router(deo_router)
 api_router.include_router(cld_router)
