@@ -8369,3 +8369,58 @@ agent_communication:
       /trash screen (list/restore/permanent-delete/empty) reachable from Profile -> Recently Deleted. To get a
       trash item, soft-delete a Pros & Cons or Decision (delete now routes to trash). Creds:
       harden_1777921741@example.com / HardenPass2026!
+
+#====================================================================================================
+# ENHANCEMENT: Find My Best Options now prefills ACTUAL VALUES + auto % per factor — 2026-06-01
+#====================================================================================================
+backend_find_best_options_factor_values:
+  - task: "POST /api/ai/find-best-options now returns factor_values per option"
+    implemented: true
+    working: "NA"
+    file: "backend/routes/ai_tools.py"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Each option now includes factor_values: [{factor_id, value}] mapping the option's actual value
+          for each prioritized factor. Sources: Solution-Store quantitative_factors (authoritative, matched
+          by factor_name -> decision factor) OVERRIDE AI estimates. Added _match_factor_id() (exact/contain/
+          token-overlap). LLM prompt now asks for per-factor "factor_values". Store path works even when LLM
+          budget is exhausted. TEST: create a decision with factors that have operator+expected_value (e.g.
+          "Budget" <= 50000, "Rating" >= 4) and a Solutions Store item in the same life_area whose
+          quantitative_factors include matching factor_name+value; call /api/ai/find-best-options and confirm
+          the store-sourced option returns factor_values with those factor_ids+values.
+
+frontend_prefill_scoring:
+  - task: "Step 6 prefill builds assessments + auto worth %; Step 7 shows actual values + %"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/context/DecisionContext.tsx (prefillBestOptions), frontend/src/components/steps/Step6.tsx, frontend/src/types/decision.ts"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          prefillBestOptions now converts each factor_value into an OptionAssessment via the existing
+          calculateAutoPercentage(factor, value) engine (honors operator proportionality: >=/> directly
+          proportional actual/expected; <=/< indirectly proportional expected/actual; = deviation), stores
+          actual_value + unit_value + percentage (mode 'auto'), and computes worth_percentage via
+          calculateDynamicWorth. Step 6 shows an "Auto worth X%" chip on pre-assessed options. When the user
+          continues to Step 7, the options are already populated with actual values and per-factor % and the
+          option worth. TEST (frontend): with the store-seeded scenario above, tap Step 5 "Find My Best
+          Options" -> Step 6 shows options with "Auto worth %" chip -> Step 7 shows actual values + auto %
+          per factor already filled; values remain editable.
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Enhancement to the previously-passing Find My Best Options. NEW: options come back with per-factor
+      actual values (Store quantitative_factors authoritative, AI estimates otherwise) and the app auto-scores
+      them through calculateAutoPercentage + calculateDynamicWorth so Step 6/7 arrive pre-assessed. The
+      Emergent LLM budget is still exhausted in preview, so test the STORE path (no AI needed): seed/find a
+      Solutions Store item in the decision's life_area with quantitative_factors whose factor_name matches the
+      decision factors, then verify factor_values flow into assessments + worth. Creds:
+      harden_1777921741@example.com / HardenPass2026!

@@ -339,10 +339,14 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Prefill multiple AI/Store suggestions in one shot (Find My Best Options).
   // De-dupes against existing options by lowercased name and by solution_id,
-  // appends provenance metadata, and persists with a single save.
+  // appends provenance metadata, builds per-factor assessments from the supplied
+  // actual values (Store data or AI estimates) — running each through the
+  // automated scoring engine (calculateAutoPercentage) — and computes worth %,
+  // then persists with a single save.
   const prefillBestOptions = (suggestions: BestOptionSuggestion[]): number => {
     if (!decision || !Array.isArray(suggestions) || suggestions.length === 0) return 0;
     const existing = decision.options || [];
+    const factors = decision.factors || [];
     const nameSeen = new Set(existing.map(o => (o.name || '').trim().toLowerCase()));
     const solSeen = new Set(existing.map(o => o.solution_id).filter(Boolean) as string[]);
     const additions: DecisionOption[] = [];
@@ -354,17 +358,43 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (s.solution_id && solSeen.has(s.solution_id)) return;
       nameSeen.add(key);
       if (s.solution_id) solSeen.add(s.solution_id);
-      additions.push({
+
+      // Build assessments: actual value -> auto % via the proportionality engine.
+      const assessments: OptionAssessment[] = [];
+      (s.factor_values || []).forEach((fv) => {
+        const factor = factors.find(f => f.id === fv.factor_id);
+        if (!factor || fv.value === undefined || fv.value === null || fv.value === '') return;
+        const isText = (factor.data_type || 'numeric') === 'text';
+        const numericActual = typeof fv.value === 'number'
+          ? fv.value
+          : (!isText ? parseFloat(String(fv.value)) : NaN);
+        const pct = calculateAutoPercentage(factor, fv.value);
+        const unitStr = factor.unit ? ` ${factor.unit}` : '';
+        const display = isText
+          ? String(fv.value)
+          : `${fv.value}${unitStr}`;
+        assessments.push({
+          factor_id: fv.factor_id,
+          percentage: pct !== null ? pct : undefined,
+          actual_value: !isText && !isNaN(numericActual) ? numericActual : undefined,
+          unit_value: display,
+          assessment_mode: 'auto',
+        } as OptionAssessment);
+      });
+
+      const baseOption: DecisionOption = {
         id: `option_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 6)}`,
         name,
-        assessments: [],
+        assessments,
         worth_percentage: 0,
         source: s.source || 'ai',
         ai_rationale: s.ai_rationale || undefined,
         ...(s.solution_id ? { solution_id: s.solution_id } : {}),
         ...(s.price_range ? { price_range: s.price_range } : {}),
         ...(typeof s.rating === 'number' ? { rating: s.rating } : {}),
-      });
+      };
+      baseOption.worth_percentage = calcDynamicWorth(baseOption).worth;
+      additions.push(baseOption);
     });
     if (additions.length === 0) return 0;
     saveDecision({ options: [...existing, ...additions] });

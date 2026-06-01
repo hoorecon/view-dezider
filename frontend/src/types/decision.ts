@@ -57,6 +57,8 @@ export interface BestOptionSuggestion {
   solution_id?: string;
   price_range?: string;
   rating?: number;
+  // Per-factor estimated/known actual values (Store data or AI estimate)
+  factor_values?: { factor_id: string; value: number | string }[];
 }
 
 export interface MPPSActionItem {

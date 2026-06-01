@@ -241,6 +241,17 @@ export default function Step6() {
                     ) : null}
                   </View>
                 )}
+                {/* Auto-scored worth (from prefilled actual values) */}
+                {typeof option.worth_percentage === 'number' && option.worth_percentage > 0 && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                    <View style={[localStyles.metaChip, { backgroundColor: '#DCFCE7' }]}>
+                      <Ionicons name="calculator" size={9} color="#15803D" />
+                      <Text style={[localStyles.metaChipText, { color: '#15803D' }]}>
+                        Auto worth {option.worth_percentage}%
+                      </Text>
+                    </View>
+                  </View>
+                )}
                 {/* AI rationale */}
                 {option.ai_rationale ? (
                   <Text style={localStyles.rationale}>{option.ai_rationale}</Text>

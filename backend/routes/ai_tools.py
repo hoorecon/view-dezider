@@ -398,6 +398,30 @@ def _tok(text: str) -> set:
     return {t for t in _re.split(r"[^a-z0-9]+", str(text or "").lower()) if len(t) > 2}
 
 
+def _match_factor_id(name, factor_index):
+    """Map a factor name (from AI or a Store quantitative_factor) to a decision
+    factor id. Exact (case-insensitive) match first, then containment, then best
+    token overlap."""
+    if not name or not factor_index:
+        return None
+    ln = str(name).lower().strip()
+    if not ln:
+        return None
+    for fi in factor_index:
+        if fi["lname"] == ln:
+            return fi["id"]
+    for fi in factor_index:
+        if fi["lname"] and (fi["lname"] in ln or ln in fi["lname"]):
+            return fi["id"]
+    name_toks = _tok(name)
+    best, best_score = None, 0
+    for fi in factor_index:
+        score = len(name_toks & _tok(fi["name"]))
+        if score > best_score:
+            best, best_score = fi["id"], score
+    return best if best_score > 0 else None
+
+
 async def _store_candidates(user: dict, life_area_id, sub_area_id, goal_tokens: set, title: str, context: str):
     """Return up to 6 ranked Solution-Store candidates relevant to the goal/factors."""
     vis_filter = [
@@ -472,6 +496,7 @@ async def _store_candidates(user: dict, life_area_id, sub_area_id, goal_tokens: 
         "name": s.get("name", "Untitled"),
         "price_range": s.get("price_range") or None,
         "rating": ratings.get(s["solution_id"]),
+        "quantitative_factors": s.get("quantitative_factors") or [],
     } for s in top]
 
 
@@ -540,6 +565,7 @@ async def find_best_options(request: Request, user: dict = Depends(get_current_u
     )
     factor_tokens = set()
     factor_lines = []
+    factor_index = []  # [{id, name, lname, data_type}] for value mapping
     for f in pri:
         nm = str(f.get("name"))
         factor_tokens |= _tok(nm)
@@ -548,7 +574,14 @@ async def find_best_options(request: Request, user: dict = Depends(get_current_u
         if exp not in (None, ""):
             extra = f" (target {op or ''} {exp}{(' ' + str(unit)) if unit else ''})"
         factor_lines.append(f"- {nm} [{f.get('category') or 'primary'}]{extra}")
+        factor_index.append({
+            "id": f.get("id"),
+            "name": nm,
+            "lname": nm.lower().strip(),
+            "data_type": f.get("data_type") or "numeric",
+        })
     factor_block = "\n".join(factor_lines) if factor_lines else "(no factors yet — infer sensible criteria from the goal)"
+    factor_name_list = ", ".join(fi["name"] for fi in factor_index) or "(none)"
 
     store = await _store_candidates(user, life_area_id, sub_area_id, factor_tokens, title, context)
     cand_lines = []
@@ -575,8 +608,12 @@ Return the {limit} BEST-suited, DISTINCT options, ranked best-first, that best s
 prioritized factors and the user's goal. Prefer a Solution-Store item when one genuinely fits
 (set its "store_index"); otherwise propose a strong, realistic real-world option.
 
+For EACH option, also estimate the option's ACTUAL value for every prioritized factor in
+"factor_values" (use the EXACT factor names: {factor_name_list}). Give a realistic number for
+quantitative factors (no units, just the number) and a short word/phrase for qualitative ones.
+
 Return ONLY valid JSON, no markdown:
-{{"options":[{{"name":"...","rationale":"one concise sentence linking it to the top factors","store_index":0}}]}}
+{{"options":[{{"name":"...","rationale":"one concise sentence linking it to the top factors","store_index":0,"factor_values":[{{"factor":"<exact factor name>","value":<number or "short text">}}]}}]}}
 Use "store_index": null for options that are NOT from the store list."""
 
     used_model = "claude-sonnet-4-5-20250929"
@@ -616,6 +653,20 @@ Use "store_index": null for options that are NOT from the store list."""
             item["solution_id"] = st["solution_id"]
             item["price_range"] = st.get("price_range")
             item["rating"] = st.get("rating")
+        # Per-factor actual values: AI estimates first, Store data overrides (authoritative).
+        fv_map = {}
+        for fv in (opt.get("factor_values") or []):
+            fid = _match_factor_id(fv.get("factor"), factor_index)
+            if fid and fv.get("value") not in (None, ""):
+                fv_map[fid] = fv.get("value")
+        if st:
+            for qf in (st.get("quantitative_factors") or []):
+                fid = _match_factor_id(qf.get("factor_name"), factor_index)
+                val = qf.get("value")
+                if fid and val not in (None, ""):
+                    fv_map[fid] = val
+        if fv_map:
+            item["factor_values"] = [{"factor_id": fid, "value": v} for fid, v in fv_map.items()]
         merged.append(item)
         if len(merged) >= limit:
             break
@@ -625,14 +676,23 @@ Use "store_index": null for options that are NOT from the store list."""
         for c in store[:limit]:
             if c["name"].lower() in seen:
                 continue
-            merged.append({
+            fv_map = {}
+            for qf in (c.get("quantitative_factors") or []):
+                fid = _match_factor_id(qf.get("factor_name"), factor_index)
+                val = qf.get("value")
+                if fid and val not in (None, ""):
+                    fv_map[fid] = val
+            entry = {
                 "name": c["name"],
                 "ai_rationale": "Matched from the Solution Store by your prioritized factors.",
                 "source": "store",
                 "solution_id": c["solution_id"],
                 "price_range": c.get("price_range"),
                 "rating": c.get("rating"),
-            })
+            }
+            if fv_map:
+                entry["factor_values"] = [{"factor_id": fid, "value": v} for fid, v in fv_map.items()]
+            merged.append(entry)
 
     return {"options": merged, "used_model": used_model, "store_match_count": len(store)}
 
