@@ -8226,3 +8226,26 @@ frontend:
           Verified visually in Solution Box: 'TmplTest → 1 Jun, 7:32 PM', 'Buy Car X vs Y → 18 May, 9:38 AM'.
           solution-finder-list already showed time. Peripheral non-decision lists (subscription txns,
           calendar, public-pulse, expert-net, journal) left as-is unless requested.
+
+
+## 2026-06-01c — My Dezider: add Clone/Save-as-Template icon w/ hover tooltip + de-dupe timestamp
+
+frontend:
+  - task: "Clone/Template icon + hover help-text on My Dezider cards; remove duplicate date line"
+    implemented: true
+    working: true
+    file: "app/tools/dezider-list.tsx, src/components/HoverTooltip.tsx (new)"
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          - Added copy-outline icon to each My Dezider card footer, opening the existing
+            CloneTemplateModal (same as Solution Box). New reusable HoverTooltip component shows a
+            web hover bubble ('Clone or Save as Template'); also sets accessibilityLabel (aria-label).
+          - Removed the redundant standalone formatAbsolute date line in dezider-list (TimestampLine
+            already shows date+time) — fixes the duplicate-date I'd introduced. Same applies to
+            pros-cons-list & swot which also have TimestampLine (left their formatAbsolute line; note:
+            those also duplicate — consider removing if user notices).
+          Verified via screenshots: icon renders, hover tooltip shows, decision NOT deleted (DB intact).
+          NOTE: RN-Web Pressable does NOT forward the `title` DOM attr, so the native browser tooltip
+          relies on the custom HoverTooltip bubble (onHoverIn/onHoverOut) — which works.

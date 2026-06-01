@@ -22,9 +22,9 @@ import { LIFE_AREAS as LIFE_AREAS_CANONICAL } from '../../src/constants/lifeArea
 import { showAlert } from '../../src/utils/alert';
 import { safeBack, goHome } from '../../src/utils/navigation';
 import api from '../../src/utils/api';
-import { formatAbsolute } from '../../src/utils/datetime';
 import PaywallGate from '../../src/components/PaywallGate';
 import TimestampLine from '../../src/components/TimestampLine';
+import TemplateBrowserModal from '../../src/components/TemplateBrowserModal';
 
 interface DecisionItem {
   id: string;
@@ -62,6 +62,7 @@ export default function DeziderListScreen() {
   const [items, setItems] = useState<DecisionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [templateBrowserVisible, setTemplateBrowserVisible] = useState(false);
 
   const fetchItems = async () => {
     try {
@@ -125,6 +126,13 @@ export default function DeziderListScreen() {
         </View>
         <TouchableOpacity onPress={() => goHome(router)} style={[styles.backBtn, { marginRight: 8 }]} accessibilityLabel="Home">
           <Ionicons name="home" size={20} color="#FFF" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setTemplateBrowserVisible(true)}
+          style={[styles.backBtn, { marginRight: 8 }]}
+          accessibilityLabel="Use a Template"
+        >
+          <Ionicons name="bookmark-outline" size={20} color="#FFF" />
         </TouchableOpacity>
         <PaywallGate module="dezider">
           <TouchableOpacity
@@ -213,9 +221,6 @@ export default function DeziderListScreen() {
                   </View>
 
                   <View style={styles.listCardFooter}>
-                    <Text style={styles.listCardDate}>
-                      {formatAbsolute(d.updated_at || d.created_at)}
-                    </Text>
                     <TimestampLine entity={d} compact />
                     <View style={{ flex: 1 }} />
                     <TouchableOpacity
@@ -232,6 +237,12 @@ export default function DeziderListScreen() {
           )}
         </ScrollView>
       )}
+
+      <TemplateBrowserModal
+        visible={templateBrowserVisible}
+        onClose={() => setTemplateBrowserVisible(false)}
+        onUseTemplate={(newId: string) => { setTemplateBrowserVisible(false); router.push(`/prr/${newId}` as any); }}
+      />
     </SafeAreaView>
   );
 }
