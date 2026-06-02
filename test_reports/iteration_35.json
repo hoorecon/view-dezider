@@ -1,0 +1,33 @@
+{
+  "summary": "Backend-only regression for the admin-skip-payment PDF download fix in routes/decision_reports.py. All 10 tests passed against the public preview URL. With skip_payment_all_flows=ON, the no-entitlement user (harden_1777921741@example.com) now gets 200 + a valid PDF body on /api/reports/{module}/{id}.pdf for pros_cons, dezider, and swot, and /info returns unlocked=true with unlocked_via='admin_skip'. With the toggle OFF, /info returns unlocked=false and .pdf returns 402 (entitlement gate restored). The iter34 collection-name fix (db.pros_cons) still holds. Toggle restored to OFF (its original state) at teardown — verified via direct GET after test run.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter35_admin_skip_payment_reports.py",
+    "/app/test_reports/pytest/iter35_admin_skip.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/decision_reports.py:86 — free-pass branch now correctly includes 'admin_skip' alongside 'subscription' and 'L2'. Validated end-to-end: PDF returns 200 with X-Report-Access-Via header = 'admin_skip' on first download.",
+    "routes/decision_reports.py:133 — report_info now treats 'admin_skip' as free access, so info.unlocked=true / unlocked_via='admin_skip' even before any prior_unlock row exists. The FE will correctly show the 'Download PDF' button.",
+    "routes/sku_store.py:444 — has_any_paid_access returns via='admin_skip' only when app_settings.skip_payment_all_flows is True; the toggle OFF path correctly falls through to the normal entitlement check (verified by 402 on the negative test).",
+    "Note (non-blocking): _check_access_and_maybe_consume inserts a decision_report_unlocks row tagged via='admin_skip' even though the access is global, not bound to L1/L2 inventory. This is harmless (the prior_unlock row will keep the report free even if the admin toggle is later switched OFF), which may or may not be the desired behavior — flagging for product confirmation. If the intent is for downloads to re-lock when the toggle is disabled, the unlocks row should NOT be persisted for 'admin_skip'."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter35_admin_skip_payment_reports.py (new)"
+  ],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "N/A (backend-only request)"},
+  "seed_data_creation": "Per module-scoped session: 1 Pros & Cons (TEST_iter35_PnC_*), 1 dezider decision (TEST_iter35_Dez_*), 1 SWOT (TEST_iter35_Swot_*), plus a throwaway PnC (TEST_iter35_Neg_PnC_*) for the OFF-branch negative test. All test rows are deleted on teardown (best-effort). The global skip-payment toggle is captured at the start, flipped ON, then OFF, and restored to its original value (default OFF) in the original_toggle fixture teardown. Final state confirmed via curl: skip_payment_all_flows=false.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Use EXPO_PUBLIC_BACKEND_URL from frontend/.env (the test falls back to localhost:8001). Login token field is `session_token`. The admin toggle is at PUT/GET /api/admin/payment-settings; only admin role can write. The fix being tested: routes/decision_reports.py _check_access_and_maybe_consume + report_info now include 'admin_skip' in the free-pass set (alongside 'subscription' and 'L2'). When that toggle is ON, has_any_paid_access returns via='admin_skip' for every user. If you re-run iter35, always verify the toggle ends in OFF state — the module-scoped fixture handles this but a hard failure mid-run could leave it ON.",
+  "rca_of_issue": "Root cause: routes/decision_reports.py:_check_access_and_maybe_consume only granted free pass when has_any_paid_access().via was in ('subscription','L2'); the new admin override path returns via='admin_skip' (from routes/sku_store.py:444 driven by app_settings.payments_global.skip_payment_all_flows), which was not whitelisted — so the .pdf endpoint reached the L1 consume step, failed, and raised 402. Concurrently, report_info also omitted 'admin_skip' from its `free` check so the FE saw unlocked=false and rendered the paywall. Fix: add 'admin_skip' to both whitelists. Verified: with toggle ON, .pdf=200 (PDF body) and /info.unlocked=true/via=admin_skip across all 3 modules; with toggle OFF, /info.unlocked=false and .pdf=402 with entitlement-related detail (NOT 'analysis not found')."
+}

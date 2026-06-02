@@ -81,9 +81,9 @@ async def _check_access_and_maybe_consume(
     if prior:
         return {"access_via": prior.get("via", "prior_unlock"), "consumed": False}
 
-    # L2 bundle / subscription → free pass
+    # L2 bundle / subscription / global admin skip-payment → free pass
     access = await has_any_paid_access(user_id)
-    if access.get("has_access") and access.get("via") in ("subscription", "L2"):
+    if access.get("has_access") and access.get("via") in ("subscription", "L2", "admin_skip"):
         await db.decision_report_unlocks.insert_one({
             "user_id": user_id,
             "key": unlock_key,
@@ -127,11 +127,15 @@ async def report_info(
     prior = await db.decision_report_unlocks.find_one(
         {"user_id": user["user_id"], "key": unlock_key}, {"_id": 0}
     )
+    # Free access (global admin skip-payment, active subscription, or L2 bundle)
+    # should present as already-unlocked so the FE shows "Download PDF" — not a paywall.
+    access = await has_any_paid_access(user["user_id"])
+    free = bool(access.get("has_access")) and access.get("via") in ("subscription", "L2", "admin_skip")
     return {
         "module": module,
         "decision_id": decision_id,
-        "unlocked": bool(prior),
-        "unlocked_via": (prior or {}).get("via"),
+        "unlocked": bool(prior) or free,
+        "unlocked_via": (prior or {}).get("via") or (access.get("via") if free else None),
         "l1_balance": await get_active_balance(user["user_id"], "L1"),
         "l2_balance": await get_active_balance(user["user_id"], "L2"),
     }
