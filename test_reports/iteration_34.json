@@ -1,0 +1,30 @@
+{
+  "summary": "Backend-only regression for the Pros & Cons PDF report collection-name bug fix in routes/decision_reports.py (db.pros_cons_analyses → db.pros_cons). All 5 tests passed against the public preview URL. Owner now gets 200 on /api/reports/pros_cons/{id}/info and 402 (entitlement gating, NOT 404) on /api/reports/pros_cons/{id}.pdf. dezider + swot regression paths still work; nonexistent id correctly returns 404.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_pros_cons_report_fix.py",
+    "/app/test_reports/pytest/iter34_pros_cons_report.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/decision_reports.py _load_decision('pros_cons') correctly reads db.pros_cons (line 56) — matches the storage collection used by routes/pros_cons.py. Confirmed by 200 on /info and 402 (not 404) on /.pdf for the owner."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_pros_cons_report_fix.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "N/A (backend-only request)"},
+  "seed_data_creation": "Each test run creates one TEST_PnC_ReportFix_* analysis via POST /api/pros-cons and deletes it via DELETE /api/pros-cons/{id} on teardown. If a decision/swot did not exist for the regression user, the test conditionally creates one via POST /api/decisions or POST /api/swot.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Use EXPO_PUBLIC_BACKEND_URL from /app/frontend/.env (the existing test file already falls back to localhost:8001 if unset). Auth token field returned by /api/auth/login is `session_token`. The PDF endpoint returning 402 for an entitlement-less owner is the EXPECTED PASS state for this bug; 404 would be a regression.",
+  "rca_of_issue": "Root cause: routes/decision_reports.py used db.pros_cons_analyses (which is empty) instead of db.pros_cons (where routes/pros_cons.py actually persists). Fix (single-line, line 56): `await db.pros_cons.find_one({\"id\": decision_id, \"user_id\": user_id}, {\"_id\": 0})`. Repro before fix: create PnC analysis → call /api/reports/pros_cons/{id}/info → 404 'Pros & Cons analysis not found'. After fix: 200 on /info, 402 on /.pdf (entitlement gate, as designed)."
+}

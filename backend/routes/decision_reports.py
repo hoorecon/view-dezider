@@ -7,7 +7,7 @@ A single endpoint serves all 3 modules:
 
 Modules:
     dezider   → reads `decisions` (PRR Decision flow)
-    pros_cons → reads `pros_cons_analyses`
+    pros_cons → reads `pros_cons`
     swot      → reads `swot_analyses`
 
 Access policy (in order):
@@ -53,7 +53,7 @@ async def _load_decision(module: str, decision_id: str, user_id: str) -> Dict[st
             raise HTTPException(status_code=404, detail="Decision not found")
         return {"module": "dezider", "raw": doc, "title": doc.get("title", "Untitled Decision")}
     if module == "pros_cons":
-        doc = await db.pros_cons_analyses.find_one(
+        doc = await db.pros_cons.find_one(
             {"id": decision_id, "user_id": user_id}, {"_id": 0}
         )
         if not doc:
