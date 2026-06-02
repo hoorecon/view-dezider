@@ -63,7 +63,7 @@ const STEPS = [
   { n: 4, label: 'Group' },
   { n: 5, label: 'Review' },
   { n: 6, label: 'Mandatory' },
-  { n: 7, label: 'Prioritise' },
+  { n: 7, label: 'Prioritize & Assess' },
   { n: 8, label: 'Assess' },
 ];
 
@@ -382,6 +382,18 @@ export default function ProsConsWizard() {
   const [collapsedOptIds, setCollapsedOptIds] = useState<Set<string>>(new Set());
   const [collapsedProsIds, setCollapsedProsIds] = useState<Set<string>>(new Set());
   const [collapsedConsIds, setCollapsedConsIds] = useState<Set<string>>(new Set());
+
+  // Step 7: per-factor expand for assessment. Default = ALL COLLAPSED so the
+  // user gets a compact, glanceable list to re-prioritize. Expanding a card
+  // (or tapping "Assess all") reveals the per-option Satisfaction % inputs.
+  const [step7ExpandedIds, setStep7ExpandedIds] = useState<Set<string>>(new Set());
+  const toggleStep7Expand = (fid: string) => {
+    setStep7ExpandedIds((prev) => {
+      const n = new Set(prev);
+      if (n.has(fid)) n.delete(fid); else n.add(fid);
+      return n;
+    });
+  };
   const toggleOptCollapsed = (oid: string) => {
     setCollapsedOptIds((s) => {
       const n = new Set(s);
@@ -1392,7 +1404,9 @@ export default function ProsConsWizard() {
               .filter(f => f.notation !== 'mandatory').sort(sortFn);
 
             // Renders one card (extracted so we don't duplicate JSX for A & B).
-            const renderCard = (f: Factor, displayIdx: number, sectionList: Factor[], sectionLabel: 'A' | 'B') => (
+            const renderCard = (f: Factor, displayIdx: number, sectionList: Factor[], sectionLabel: 'A' | 'B') => {
+              const expanded = step7ExpandedIds.has(f.id);
+              return (
               <View key={f.id} style={styles.factorCard}>
                 <View style={styles.factorCardHeader}>
                   <Text style={[styles.rankBadge, sectionLabel === 'A' ? { backgroundColor: COLORS.mandatory } : { backgroundColor: COLORS.optional }]}>
@@ -1413,6 +1427,14 @@ export default function ProsConsWizard() {
                       accessibilityLabel={`Move ${displayName(f)} down within ${sectionLabel === 'A' ? 'Mandatory' : 'Optional'} section`}
                     >
                       <Ionicons name="chevron-down" size={22} color={displayIdx === sectionList.length - 1 ? COLORS.border : COLORS.textDim} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => toggleStep7Expand(f.id)}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: expanded ? COLORS.primary : '#EDE7F6', borderRadius: 8, paddingHorizontal: 9, paddingVertical: 5, marginLeft: 4 }}
+                      accessibilityLabel={expanded ? `Collapse ${displayName(f)}` : `Assess ${displayName(f)}`}
+                    >
+                      <Ionicons name={expanded ? 'chevron-up' : 'create-outline'} size={13} color={expanded ? '#fff' : COLORS.primary} />
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: expanded ? '#fff' : COLORS.primary }}>{expanded ? 'Done' : 'Assess'}</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -1452,7 +1474,7 @@ export default function ProsConsWizard() {
                     onSave={(text) => updateFactor(f.id, { unit: text || null })}
                   />
                 </View>
-                {analysis.options.map(o => {
+                {expanded && analysis.options.map(o => {
                   const cell = (analysis.assessments?.[o.id] || {})[f.id] || { assessment_pct: 0, cell_value: 0, actual_value: '' };
                   return (
                     <View key={o.id} style={[styles.assessRow, { flexWrap: 'wrap' }]}>
@@ -1466,7 +1488,7 @@ export default function ProsConsWizard() {
                         onSave={(text) => upsertCell(o.id, f.id, { actual_value: text })}
                       />
                       {f.unit ? <Text style={[styles.cellLabel, { color: COLORS.textDim }]}>{f.unit}</Text> : null}
-                      <Text style={styles.cellLabel}>Assess %</Text>
+                      <Text style={styles.cellLabel}>Satisfaction %</Text>
                       <DebouncedInput
                         style={[styles.inputSm, { width: 56 }]}
                         keyboardType="number-pad"
@@ -1482,18 +1504,33 @@ export default function ProsConsWizard() {
                 {/* option Actual & Assess %. These values are captured but DO    */}
                 {/* NOT contribute to scoring (parent's rating dominates per the  */}
                 {/* aggregator's main-factor-only filter).                        */}
-                <SubFactorEditableList
-                  subs={childrenOf(f.id)}
-                  options={analysis.options}
-                  assessments={analysis.assessments || {}}
-                  displayNameOf={displayName}
-                  hasRenameOf={hasRename}
-                  originalNameOf={originalName}
-                  onFactorPatch={(fid, patch) => updateFactor(fid, patch)}
-                  onCellPatch={(oid, fid, patch) => upsertCell(oid, fid, patch)}
-                />
+                {expanded && (
+                  <SubFactorEditableList
+                    subs={childrenOf(f.id)}
+                    options={analysis.options}
+                    assessments={analysis.assessments || {}}
+                    displayNameOf={displayName}
+                    hasRenameOf={hasRename}
+                    originalNameOf={originalName}
+                    onFactorPatch={(fid, patch) => updateFactor(fid, patch)}
+                    onCellPatch={(oid, fid, patch) => upsertCell(oid, fid, patch)}
+                  />
+                )}
+                {!expanded && (
+                  <TouchableOpacity
+                    onPress={() => toggleStep7Expand(f.id)}
+                    style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                    accessibilityLabel={`Assess options for ${displayName(f)}`}
+                  >
+                    <Ionicons name="chevron-down" size={14} color={COLORS.primary} />
+                    <Text style={{ fontSize: 12, color: COLORS.primary, fontWeight: '700' }}>
+                      Assess {analysis.options.length} option{analysis.options.length === 1 ? '' : 's'} →
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
-            );
+              );
+            };
 
             // ── Bottom-most factor in the combined visual order ────────
             // Visual top→bottom : [A1…An, B1…Bn]. Bottom-most = last B (or
@@ -1549,12 +1586,34 @@ export default function ProsConsWizard() {
 
             return (
               <View>
-                <Text style={styles.stepTitle}>Step 7 — Prioritise &amp; Assess %</Text>
+                <Text style={styles.stepTitle}>Step 7 — Prioritize &amp; Assess %</Text>
                 <Text style={styles.stepHint}>
                   Bottom factor (lowest priority) = <Text style={{ fontWeight: '800' }}>10</Text>. Each step
                   up adds a per-pair gap that <Text style={{ fontWeight: '800' }}>you control individually</Text>{' '}
                   between every two factors via the toggle that appears below each card.
                   Default gap is 100% (+10); change any one to tighten (50%) or widen (200%) just that pair.
+                </Text>
+
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 8 }}>
+                  <TouchableOpacity
+                    onPress={() => setStep7ExpandedIds(new Set([...mandatoryFactors, ...optionalFactors].map(ff => ff.id)))}
+                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: COLORS.primary, borderRadius: 10, paddingVertical: 11 }}
+                    accessibilityLabel="Expand all factors to assess"
+                  >
+                    <Ionicons name="create-outline" size={16} color="#fff" />
+                    <Text style={{ color: '#fff', fontWeight: '800', fontSize: 13 }}>Assess all</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setStep7ExpandedIds(new Set())}
+                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1.5, borderColor: COLORS.primary, borderRadius: 10, paddingVertical: 10 }}
+                    accessibilityLabel="Collapse all factors"
+                  >
+                    <Ionicons name="contract-outline" size={16} color={COLORS.primary} />
+                    <Text style={{ color: COLORS.primary, fontWeight: '800', fontSize: 13 }}>Collapse all</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={{ fontSize: 11.5, color: COLORS.textDim, marginBottom: 12, lineHeight: 17 }}>
+                  Factors are collapsed for easy re-prioritization. Tap <Text style={{ fontWeight: '800' }}>Assess</Text> on a factor (or “Assess all”) to enter the Satisfaction % for each option.
                 </Text>
 
                 {/* ─── Mandatory (A) section ─── */}
@@ -2710,7 +2769,7 @@ function SubFactorEditableList({
                       onSave={(text) => onCellPatch(o.id, s.id, { actual_value: text })}
                     />
                     {s.unit ? <Text style={[styles.cellLabel, { color: COLORS.textDim }]}>{s.unit}</Text> : null}
-                    <Text style={styles.cellLabel}>Assess %</Text>
+                    <Text style={styles.cellLabel}>Satisfaction %</Text>
                     <DebouncedInput
                       style={[styles.inputSm, { width: 56 }]}
                       keyboardType="number-pad"
