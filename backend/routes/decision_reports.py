@@ -81,9 +81,15 @@ async def _check_access_and_maybe_consume(
     if prior:
         return {"access_via": prior.get("via", "prior_unlock"), "consumed": False}
 
-    # L2 bundle / subscription / global admin skip-payment → free pass
+    # Global admin skip-payment → free pass, but DON'T persist an unlock record:
+    # this is a temporary override, so access must re-evaluate each time and
+    # re-lock automatically once the admin turns the toggle off.
     access = await has_any_paid_access(user_id)
-    if access.get("has_access") and access.get("via") in ("subscription", "L2", "admin_skip"):
+    if access.get("has_access") and access.get("via") == "admin_skip":
+        return {"access_via": "admin_skip", "consumed": False}
+
+    # L2 bundle / subscription → free pass (durable entitlement → persist unlock)
+    if access.get("has_access") and access.get("via") in ("subscription", "L2"):
         await db.decision_report_unlocks.insert_one({
             "user_id": user_id,
             "key": unlock_key,
