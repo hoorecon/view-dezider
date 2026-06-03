@@ -12,11 +12,10 @@
  *
  * Renders as a soft-coloured horizontal row of pills, safe in narrow viewports.
  */
-import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform, ActivityIndicator, Linking, Modal, TextInput } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, ActivityIndicator, Linking, Modal, TextInput, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import * as Contacts from 'expo-contacts';
 import api from '../utils/api';
 import { showAlert, confirmDialog } from '../utils/alert';
 import type { DecisionModule } from './PaywallGate';
@@ -40,6 +39,11 @@ export default function ModuleStoreActions({ module, decisionId, lifeAreaId, sub
   const [sharePhone, setSharePhone] = useState('');
   const [shareName, setShareName] = useState('');
   const [shareBusy, setShareBusy] = useState(false);
+  // In-app Contacts picker
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [contactSearch, setContactSearch] = useState('');
+  const [contactsLoading, setContactsLoading] = useState(false);
 
   const loadInfo = useCallback(async () => {
     try {
@@ -137,54 +141,41 @@ export default function ModuleStoreActions({ module, decisionId, lifeAreaId, sub
     } finally { setShareBusy(false); }
   }, [module, decisionId, shareChannel, shareEmail, sharePhone, shareName]);
 
-  const pickContact = useCallback(async () => {
-    if (Platform.OS === 'web') {
-      // Web Contact Picker API (Chrome on Android). Not available on desktop browsers.
-      const nav: any = typeof navigator !== 'undefined' ? navigator : null;
-      if (nav?.contacts?.select) {
-        try {
-          const props = shareChannel === 'email' ? ['email', 'name'] : ['tel', 'name'];
-          const picked = await nav.contacts.select(props, { multiple: false });
-          const c = picked?.[0];
-          if (!c) return;
-          if (shareChannel === 'email' && c.email?.[0]) setShareEmail(String(c.email[0]));
-          if (shareChannel === 'whatsapp' && c.tel?.[0]) setSharePhone(String(c.tel[0]).replace(/[^\d+]/g, ''));
-          if (c.name?.[0] && !shareName.trim()) setShareName(String(c.name[0]));
-        } catch { /* user cancelled */ }
-      } else {
-        showAlert('Open JELCOS on your phone', 'Contact picker isn’t supported by desktop browsers. Use the JELCOS mobile app to pick from contacts — or just type the email/number here.');
-      }
-      return;
-    }
+  const openContactPicker = useCallback(async () => {
+    setPickerOpen(true);
+    setContactSearch('');
+    setContactsLoading(true);
     try {
-      const perm = await Contacts.requestPermissionsAsync();
-      if (perm.status !== 'granted') {
-        if (perm.canAskAgain === false) {
-          const go = await confirmDialog(
-            'Contacts permission needed',
-            'Enable Contacts access in Settings to pick a recipient — or just type it in manually.',
-            { confirmText: 'Open Settings' },
-          );
-          if (go) Linking.openSettings();
-        }
-        return; // denial only reduces capability — manual entry still works
-      }
-      const contact = await Contacts.presentContactPickerAsync();
-      if (!contact) return;
-      if (shareChannel === 'email') {
-        const email = contact.emails?.[0]?.email;
-        if (email) setShareEmail(String(email));
-        else showAlert('No email found', 'This contact has no email. Pick another or type it in.');
-      } else {
-        const phone = contact.phoneNumbers?.[0]?.number;
-        if (phone) setSharePhone(String(phone).replace(/[^\d+]/g, ''));
-        else showAlert('No number found', 'This contact has no phone number. Pick another or type it in.');
-      }
-      if (contact.name && !shareName.trim()) setShareName(contact.name);
+      const res = await api.get('/contacts', { params: { limit: 200 } });
+      setContacts(res.data?.contacts || []);
     } catch {
-      showAlert('Contacts', 'Could not open contacts. Please type the details manually.');
+      showAlert('Contacts', 'Could not load your contacts. You can still type the details manually.');
+      setContacts([]);
+    } finally {
+      setContactsLoading(false);
     }
+  }, []);
+
+  const chooseContact = useCallback((c: any) => {
+    if (shareChannel === 'email') {
+      const email = (c.email || '').trim();
+      if (!email) { showAlert('No email saved', `${c.name || 'This contact'} has no email. Add one in Contacts or type it manually.`); return; }
+      setShareEmail(email);
+    } else {
+      const wa = String(c.whatsapp || c.phone || '').replace(/[^\d+]/g, '');
+      if (!wa) { showAlert('No number saved', `${c.name || 'This contact'} has no WhatsApp/phone number. Add one in Contacts or type it manually.`); return; }
+      setSharePhone(wa);
+    }
+    if (c.name && !shareName.trim()) setShareName(c.name);
+    setPickerOpen(false);
   }, [shareChannel, shareName]);
+
+  const filteredContacts = useMemo(() => {
+    const q = contactSearch.trim().toLowerCase();
+    if (!q) return contacts;
+    return contacts.filter((c) =>
+      `${c.name || ''} ${c.email || ''} ${c.phone || ''} ${c.whatsapp || ''} ${c.organization || ''}`.toLowerCase().includes(q));
+  }, [contacts, contactSearch]);
 
   return (
     <View style={s.row}>
@@ -207,9 +198,9 @@ export default function ModuleStoreActions({ module, decisionId, lifeAreaId, sub
             ) : (
               <TextInput style={s.input} placeholder="WhatsApp number (with country code)" placeholderTextColor="#9CA3AF" keyboardType="phone-pad" value={sharePhone} onChangeText={setSharePhone} />
             )}
-            <TouchableOpacity style={s.pickBtn} onPress={pickContact}>
+            <TouchableOpacity style={s.pickBtn} onPress={openContactPicker}>
               <Ionicons name="people" size={16} color="#7C3AED" />
-              <Text style={s.pickTxt}>Pick from contacts</Text>
+              <Text style={s.pickTxt}>Pick from Contacts</Text>
             </TouchableOpacity>
             <TextInput style={s.input} placeholder="Recipient name (optional)" placeholderTextColor="#9CA3AF" value={shareName} onChangeText={setShareName} />
             <View style={s.sheetBtns}>
@@ -218,6 +209,52 @@ export default function ModuleStoreActions({ module, decisionId, lifeAreaId, sub
                 {shareBusy ? <ActivityIndicator size="small" color="#fff" /> : <Text style={s.sendTxt}>Send</Text>}
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* In-app Contacts picker */}
+      <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
+        <View style={s.backdrop}>
+          <View style={[s.sheet, { maxHeight: '82%', paddingBottom: 12 }]}>
+            <View style={s.pickerHead}>
+              <Text style={s.sheetTitle}>Pick from Contacts</Text>
+              <TouchableOpacity onPress={() => setPickerOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={22} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+            <Text style={s.sheetSub}>Choose a contact to fill their {shareChannel === 'email' ? 'email' : 'WhatsApp number'} automatically.</Text>
+            <View style={s.searchBox}>
+              <Ionicons name="search" size={16} color="#9CA3AF" />
+              <TextInput style={s.searchInput} placeholder="Search name, email, phone…" placeholderTextColor="#9CA3AF" value={contactSearch} onChangeText={setContactSearch} autoCapitalize="none" />
+            </View>
+            {contactsLoading ? (
+              <ActivityIndicator color="#7C3AED" style={{ marginVertical: 24 }} />
+            ) : (
+              <ScrollView style={{ maxHeight: 380 }} keyboardShouldPersistTaps="handled">
+                {filteredContacts.length === 0 ? (
+                  <Text style={s.emptyTxt}>No contacts found. Add people in the Contacts module, or close this and type the {shareChannel === 'email' ? 'email' : 'number'} manually.</Text>
+                ) : filteredContacts.map((c, i) => {
+                  const detail = shareChannel === 'email' ? (c.email || 'No email saved') : (c.whatsapp || c.phone || 'No number saved');
+                  const disabled = shareChannel === 'email' ? !c.email : !(c.whatsapp || c.phone);
+                  return (
+                    <TouchableOpacity
+                      key={c.contact_id || c.id || `${c.name}-${i}`}
+                      style={[s.contactRow, disabled && { opacity: 0.45 }]}
+                      onPress={() => chooseContact(c)}
+                      disabled={disabled}
+                    >
+                      <View style={s.avatar}><Text style={s.avatarTxt}>{(c.name || '?').slice(0, 1).toUpperCase()}</Text></View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.contactName} numberOfLines={1}>{c.name || 'Unnamed'}</Text>
+                        <Text style={s.contactDetail} numberOfLines={1}>{detail}</Text>
+                      </View>
+                      {!disabled && <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
           </View>
         </View>
       </Modal>
@@ -260,6 +297,15 @@ const s = StyleSheet.create({
   input: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, fontSize: 15, color: '#111827', marginBottom: 10 },
   pickBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: '#7C3AED', backgroundColor: '#7C3AED10', marginBottom: 10 },
   pickTxt: { fontSize: 14, fontWeight: '700', color: '#7C3AED' },
+  pickerHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  searchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, paddingHorizontal: 12, paddingVertical: Platform.OS === 'ios' ? 10 : 6, marginBottom: 8 },
+  searchInput: { flex: 1, fontSize: 14, color: '#111827', padding: 0 },
+  contactRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: '#F1F1F4' },
+  avatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#7C3AED', alignItems: 'center', justifyContent: 'center' },
+  avatarTxt: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  contactName: { fontSize: 14.5, fontWeight: '700', color: '#111827' },
+  contactDetail: { fontSize: 12.5, color: '#6B7280', marginTop: 2 },
+  emptyTxt: { fontSize: 13, color: '#9CA3AF', textAlign: 'center', paddingVertical: 28, lineHeight: 19, paddingHorizontal: 8 },
   sheetBtns: { flexDirection: 'row', gap: 10, marginTop: 4 },
   sheetBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   cancelBtn: { backgroundColor: '#F3F4F6' },
