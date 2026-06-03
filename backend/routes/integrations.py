@@ -279,8 +279,20 @@ async def test_integration(
         "ok": len(missing) == 0,
         "missing_fields": missing,
         "tested_at": dt.datetime.utcnow().isoformat(),
-        "note": "MVP test only checks required fields are present. Live API ping coming in Phase 2.",
+        "note": "Checks that required fields are present.",
     }
+
+    # Razorpay: when fields are present, perform a real (read-only) auth check.
+    if provider == "razorpay" and not missing:
+        from core.integrations import validate_razorpay_keys
+        verdict = await validate_razorpay_keys(cfg.get("key_id", ""), cfg.get("key_secret", ""))
+        if verdict is True:
+            result["note"] = "Authenticated successfully with Razorpay (live check)."
+        elif verdict is False:
+            result["ok"] = False
+            result["note"] = "Razorpay rejected these credentials — check the Key ID / Secret."
+        else:  # None — could not reach Razorpay
+            result["note"] = "Fields present, but Razorpay was unreachable for a live check."
     await db.integrations.update_one(
         {"provider": provider},
         {"$set": {"last_tested_at": dt.datetime.utcnow(), "last_test_result": result}},
