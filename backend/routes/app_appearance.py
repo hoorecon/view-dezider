@@ -6,7 +6,13 @@ family is chosen by an admin and applied app-wide (web + native) by the
 frontend FontFamilyProvider. Default is "Inter" (matches jelcos.ai).
 """
 import logging
+import base64
+import binascii
+import time
+from io import BytesIO
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel, Field
 
 from core.database import db
@@ -18,6 +24,8 @@ router = APIRouter(tags=["Appearance"])
 APPEARANCE_KEY = "appearance"
 DEFAULT_FONT = "Inter"
 DEFAULT_COMPANY_NAME = "HOORECON IT-Sys Pvt Ltd"
+MAX_LOGO_BYTES = 1024 * 1024  # 1 MB
+ALLOWED_LOGO_MIME = {"image/png", "image/jpeg", "image/jpg"}
 
 # Allow-list of selectable fonts (Google Fonts + System). Keep in sync with the
 # frontend FONT_OPTIONS list in src/constants/fonts.ts.
@@ -62,6 +70,9 @@ async def get_appearance():
         "font_options": ALLOWED_FONTS,
         "default_font": DEFAULT_FONT,
         "company_name": doc.get("company_name") or DEFAULT_COMPANY_NAME,
+        "has_logo": bool(doc.get("logo_base64")),
+        "logo_url": "/api/appearance/logo" if doc.get("logo_base64") else None,
+        "logo_version": int(doc.get("logo_version") or 0),
     }
 
 
@@ -97,3 +108,91 @@ async def update_appearance(body: AppearanceUpdate, user: dict = Depends(get_cur
     )
     logger.info("App font set to %s by %s", body.font_family, user.get("email"))
     return {"success": True, "font_family": body.font_family}
+
+
+# ───────────────────────── Logo ─────────────────────────
+class LogoUpdate(BaseModel):
+    logo_base64: str = Field(..., min_length=10)
+
+
+def _parse_logo(data_url: str):
+    """Return (raw_bytes, mime) from a data URL or raise HTTPException."""
+    s = (data_url or "").strip()
+    mime = "image/png"
+    if s.startswith("data:"):
+        try:
+            header, b64 = s.split(",", 1)
+            mime = header.split(";")[0].replace("data:", "").lower() or "image/png"
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid image data.")
+    else:
+        b64 = s
+    if mime not in ALLOWED_LOGO_MIME:
+        raise HTTPException(status_code=400, detail="Logo must be a PNG or JPG image.")
+    try:
+        raw = base64.b64decode(b64, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid image encoding.")
+    if len(raw) > MAX_LOGO_BYTES:
+        raise HTTPException(status_code=400, detail="Logo must be 1 MB or smaller.")
+    if len(raw) < 50:
+        raise HTTPException(status_code=400, detail="Image is empty or corrupt.")
+    return raw, ("image/jpeg" if mime == "image/jpg" else mime)
+
+
+async def get_app_logo() -> Optional[str]:
+    """Return the stored logo as a data URL, or None. Used by PDF rendering."""
+    doc = await _get_doc()
+    return doc.get("logo_base64")
+
+
+@router.put("/admin/logo")
+async def update_logo(body: LogoUpdate, user: dict = Depends(get_current_user)):
+    if user.get("role") != "super_admin":
+        raise HTTPException(status_code=403, detail="Super-admin access required.")
+    raw, mime = _parse_logo(body.logo_base64)
+    data_url = f"data:{mime};base64,{base64.b64encode(raw).decode()}"
+    await db.app_settings.update_one(
+        {"key": APPEARANCE_KEY},
+        {"$set": {
+            "key": APPEARANCE_KEY,
+            "logo_base64": data_url,
+            "logo_mime": mime,
+            "logo_version": int(time.time()),
+        }},
+        upsert=True,
+    )
+    logger.info("Logo updated (%d bytes, %s) by %s", len(raw), mime, user.get("email"))
+    return {"success": True, "has_logo": True, "logo_url": "/api/appearance/logo"}
+
+
+@router.delete("/admin/logo")
+async def delete_logo(user: dict = Depends(get_current_user)):
+    if user.get("role") != "super_admin":
+        raise HTTPException(status_code=403, detail="Super-admin access required.")
+    await db.app_settings.update_one(
+        {"key": APPEARANCE_KEY},
+        {"$unset": {"logo_base64": "", "logo_mime": ""}, "$set": {"logo_version": int(time.time())}},
+        upsert=True,
+    )
+    return {"success": True, "has_logo": False}
+
+
+@router.get("/appearance/logo")
+async def serve_logo():
+    """Serve the raw logo image (cacheable). 404 when no logo is configured."""
+    doc = await _get_doc()
+    data_url = doc.get("logo_base64")
+    if not data_url:
+        return Response(status_code=404)
+    mime = doc.get("logo_mime") or "image/png"
+    try:
+        b64 = data_url.split(",", 1)[1] if "," in data_url else data_url
+        raw = base64.b64decode(b64)
+    except Exception:
+        return Response(status_code=404)
+    return StreamingResponse(
+        BytesIO(raw),
+        media_type=mime,
+        headers={"Cache-Control": "public, max-age=300"},
+    )

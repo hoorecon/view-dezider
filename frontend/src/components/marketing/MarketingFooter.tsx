@@ -3,24 +3,26 @@
  * and links to all legal/policy pages (required for payment-gateway review).
  */
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Linking, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Linking, useWindowDimensions, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { COLORS } from '../../constants/colors';
 import { COMPANY, LEGAL_LINKS } from '../../constants/company';
-import { useCompanyName } from '../../contexts/FontFamilyContext';
+import { useCompanyName, useAppLogo } from '../../contexts/FontFamilyContext';
 
 export default function MarketingFooter() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const twoCol = width >= 760;
   const companyName = useCompanyName();
+  const logoUri = useAppLogo();
 
   return (
     <View style={styles.footer}>
       <View style={[styles.inner, twoCol && styles.innerRow]}>
         {/* Company block */}
         <View style={[styles.col, twoCol && { flex: 1.4, paddingRight: 24 }]}>
+          {logoUri ? <Image source={{ uri: logoUri }} style={styles.footerLogo} resizeMode="contain" /> : null}
           <Text style={styles.brand}>{COMPANY.product}</Text>
           <Text style={styles.tagline}>{COMPANY.tagline}</Text>
           <Text style={styles.legalName}>{companyName}</Text>
@@ -74,6 +76,7 @@ const styles = StyleSheet.create({
   innerRow: { flexDirection: 'row', flexWrap: 'wrap' },
   col: { marginBottom: 24 },
   brand: { fontSize: 20, fontWeight: '900', color: '#FFFFFF', letterSpacing: 0.4 },
+  footerLogo: { width: 120, height: 44, marginBottom: 10 },
   tagline: { fontSize: 12, color: '#A9ABC9', marginTop: 4, marginBottom: 14, lineHeight: 18 },
   legalName: { fontSize: 13, fontWeight: '700', color: '#E2E3F0', marginBottom: 6 },
   addr: { fontSize: 12, color: '#8E90B0', lineHeight: 18 },

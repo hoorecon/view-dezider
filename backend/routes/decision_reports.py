@@ -202,20 +202,32 @@ def _t(v) -> str:
     return str(v)
 
 
-def _build_pdf(payload: Dict[str, Any]) -> bytes:
+def _build_pdf(payload: Dict[str, Any], logo_data_url=None) -> bytes:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import mm
+    from reportlab.lib.utils import ImageReader
     from reportlab.platypus import (
         SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
     )
 
     buf = io.BytesIO()
+
+    # Optional admin-configured logo (data URL) drawn on every page header.
+    _logo_reader = None
+    if logo_data_url:
+        try:
+            import base64 as _b64
+            _raw = logo_data_url.split(",", 1)[1] if "," in logo_data_url else logo_data_url
+            _logo_reader = ImageReader(io.BytesIO(_b64.b64decode(_raw)))
+        except Exception:
+            _logo_reader = None
+
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
         leftMargin=18 * mm, rightMargin=18 * mm,
-        topMargin=18 * mm, bottomMargin=18 * mm,
+        topMargin=(28 if _logo_reader else 18) * mm, bottomMargin=18 * mm,
         title=payload.get("title", "Decision Report"),
         author="JELCOS AI",
     )
@@ -322,6 +334,17 @@ def _build_pdf(payload: Dict[str, Any]) -> bytes:
 
     def _page_footer(canvas, _doc):
         canvas.saveState()
+        # Admin logo on the header of every page (top-right).
+        if _logo_reader is not None:
+            try:
+                _lw, _lh = 30 * mm, 14 * mm
+                canvas.drawImage(
+                    _logo_reader, A4[0] - 18 * mm - _lw, A4[1] - 20 * mm,
+                    width=_lw, height=_lh, preserveAspectRatio=True,
+                    anchor="ne", mask="auto",
+                )
+            except Exception:
+                pass
         canvas.setFont("Helvetica", 8)
         canvas.setFillColor(colors.HexColor("#94A3B8"))
         canvas.drawRightString(A4[0] - 18 * mm, 10 * mm, f"Page {_doc.page}")
@@ -1206,7 +1229,9 @@ async def download_report_pdf(
     tzname = await _user_timezone(user["user_id"])
     payload["generated_at"] = _format_local(datetime.now(timezone.utc), tzname)
 
-    pdf_bytes = _build_pdf(payload)
+    from routes.app_appearance import get_app_logo
+    logo = await get_app_logo()
+    pdf_bytes = _build_pdf(payload, logo_data_url=logo)
     filename = f"dezider_{module}_{decision_id[:8]}.pdf"
     return StreamingResponse(
         io.BytesIO(pdf_bytes),

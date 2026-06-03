@@ -13,7 +13,8 @@
       "infoPlist": {
         "NSSpeechRecognitionUsageDescription": "Quickly assess decisions using voice commands",
         "NSMicrophoneUsageDescription": "Speak assessment values hands-free",
-        "NSContactsUsageDescription": "Pick a recipient to share a report"
+        "NSContactsUsageDescription": "Pick a recipient to share a report",
+        "NSPhotoLibraryUsageDescription": "Choose a brand logo for your app"
       }
     },
     "android": {

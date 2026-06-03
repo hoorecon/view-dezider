@@ -1,0 +1,41 @@
+{
+  "summary": "Iter49 — Tested Super-Admin App Logo feature (backend + frontend). Backend pytest 15/15 PASS. Verified: (1) PUT /api/admin/logo with PNG data-URL as super_admin → 200 {success:true, has_logo:true}, GET /api/appearance reflects has_logo:true + logo_url:/api/appearance/logo + non-zero logo_version, GET /api/appearance/logo returns 200 image/png. (2) Validation: invalid base64 → 400, image/gif data-URL → 400, oversized (>1MB raw) PNG → 400 with '1 MB' message. (3) AuthZ: PUT + DELETE as admin@test.com (non-super) → 403; unauth PUT → 401. (4) DELETE as super_admin → {has_logo:false}; subsequent /appearance/logo → 404 and /appearance has_logo:false. (5) PDF + Logo: with logo SET, /api/reports/dezider/<id>.pdf returns 200 application/pdf with %PDF magic, and with logo REMOVED, PDF still returns 200 — both paths verified for the existing dezider decision 9420c8cc... (used admin payment-settings skip_payment_all_flows=ON to bypass L1 gate during the test then restored to false). (6) Regression: /api/appearance still returns font_family='Inter', font_options[] (8 entries), company_name='HOORECON IT-Sys Pvt Ltd'. Frontend (desktop 1280x900): /admin/appearance renders correctly with NEW 'App Logo' section showing PNG/JPG/1MB hint, preview placeholder (image-outline icon), and 'Upload logo' purple button — alongside existing Company / Legal Name editor + Save button and 8-font picker with Inter pre-selected. Marketing landing (/) shows 'JELCOS AI' brand + tagline 'Joyful Executive's Life Choices Operating System — Powered by AI' in the header. Footer contains 'HOORECON' company name. Login screen (/auth/login) renders with the default JELCOS logo fallback (no admin logo set), JELCOS AI heading, tagline, Email/Password inputs, Sign In button, Google OAuth, Sign Up link. Zero console errors on the marketing page. CRITICAL FIX APPLIED: /app/frontend/app/auth/login.tsx had a 3-line dangling fragment after the StyleSheet close ('});\\n: COLORS.textMuted,\\n  },\\n});') at lines 683-685 which caused 'SyntaxError: Unexpected token (683:0)' and bricked the entire web bundle (Metro returned 500 for every script). After removing the malformed trailing fragment, bundle compiles cleanly (Web Bundled 2677ms, 1369 modules) and all screens load. LOGO LEFT REMOVED per the agent-to-agent-context note: GET /api/appearance/logo → 404, has_logo:false at end. No expo/react-native deprecated packages detected; no red-screen errors.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "app/auth/login.tsx", "issue": "FIXED in this iter. Lines 683-685 contained a dangling fragment ('): COLORS.textMuted, }, });') AFTER the legitimate StyleSheet close on line 682 — a leftover from a prior edit. This caused Babel 'SyntaxError: Unexpected token (683:0)' and the Metro web bundle returned HTTP 500 for every script tag (entire web preview was blank). Removed the trailing 3 lines; bundle now compiles in ~2.7s.", "testID": "—", "priority": "CRITICAL"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter49_logo.py",
+    "/app/test_reports/pytest/iter49.xml"
+  ],
+  "action_items": [
+    "LOW: Add testID props on /admin/appearance for: company-name-input, save-company-btn, app-logo-upload-btn, app-logo-remove-btn, app-logo-preview-img, font-option-<key>. The screen currently relies on text-content selectors.",
+    "LOW: Consider adding a CI lint step (or ts-check) on every commit to catch the kind of dangling-syntax leftover that bricked the bundle this iteration. A simple `tsc --noEmit` on app/**/*.tsx would have flagged login.tsx:683 instantly.",
+    "LOW: Image (1x1 PNG) used in tests is fine; but the validation message currently says 'Logo must be 1 MB or smaller.' — exact wording matched in pytest. If the message is ever rewritten, update test_oversized_payload_returns_400 assertion."
+  ],
+  "critical_code_review_comments": [
+    "routes/app_appearance.py is clean: data-URL parsing with mime allow-list (png/jpeg/jpg), base64 validate=True, 1MB cap, super-admin-only PUT/DELETE, lazy import of get_app_logo() from decision_reports + report_shares, logo_version bumped to int(time.time()) on every change for cache-busting.",
+    "decision_reports._build_pdf draws the logo on every page via onFirstPage/onLaterPages canvases — and tolerates a malformed data-URL by swallowing the exception (no crash), confirmed by test_pdf_renders_after_logo_removed.",
+    "app_appearance.py: GET /appearance returns has_logo/logo_url/logo_version unconditionally so the frontend can decide fallback vs configured logo without an extra round-trip — good.",
+    "Frontend admin/appearance.tsx pickLogo() correctly enforces PNG/JPG + 1MB on the client (1.4*1024*1024 base64 length guard) BEFORE the server call — good UX.",
+    "login.tsx: pre-existing non-fatal 'getRehydratedState .stale TypeError' from zustand persist on web is unrelated to the logo feature and still present. Worth a follow-up but not a blocker."
+  ],
+  "updated_files": [
+    "/app/frontend/app/auth/login.tsx (removed dangling 3-line syntax-error fragment after StyleSheet.create close; lines 683-685 deleted)",
+    "/app/backend/tests/test_iter49_logo.py (NEW pytest suite, 15 tests, all passing)"
+  ],
+  "success_rate": {"backend": "100% (15/15)", "frontend": "100% (admin/appearance App Logo section + marketing header tagline + footer + login screen all verified)"},
+  "seed_data_creation": "None. Used the existing regular-user (harden_1777921741@example.com) and their existing dezider decision (id 9420c8cc-526c-4891-9dfc-8cef3a908a77) for the PDF integration test. Toggled admin payment-settings skip_payment_all_flows ON during the PDF tests then restored to OFF.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend regression suite at /app/backend/tests/test_iter49_logo.py covers all logo endpoints + PDF embedding. Logo is left REMOVED in the DB so the default JELCOS branding fallback is active. Logo bytes are stored as a base64 data URL in app_settings (key='appearance', fields logo_base64/logo_mime/logo_version). If a future iteration changes the validation copy ('1 MB or smaller.') update the oversize-test assertion. The login.tsx syntax bug fixed in this iter was inside the StyleSheet block — keep an eye on it whenever the file is edited.",
+  "rca_of_issue": "Bug: Entire web preview was blank (all routes returned a white page; bundle endpoint returned HTTP 500). Root cause: /app/frontend/app/auth/login.tsx had a 3-line orphan fragment after the legitimate StyleSheet.create({...}) close on line 682 — lines 683-685 contained ': COLORS.textMuted,\\n  },\\n});' — a leftover from a prior edit (probably an in-place change to the otpCancelText style that wasn't fully cleaned up). Babel raised 'SyntaxError: /app/frontend/app/auth/login.tsx: Unexpected token (683:0)' and Metro failed every bundle request with 500. Reproduction: `curl https://dashboard-rewire.preview.emergentagent.com/node_modules/expo-router/entry.bundle?platform=web` → HTTP/1.1 500. Fix: removed the 3 dangling lines so the file ends cleanly at the single `});` on the original line 682. After save, Metro recompiled (Web Bundled 2677ms, 1369 modules) and all screens load."
+}

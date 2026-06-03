@@ -21,6 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { useAuthStore } from '../../src/store/authStore';
+import { useAppLogo } from '../../src/contexts/FontFamilyContext';
 import { COLORS } from '../../src/constants/colors';
 import { Input } from '../../src/components/Input';
 import { GradientButton } from '../../src/components/GradientButton';
@@ -34,6 +35,7 @@ const ORG_TYPES = [
 export default function LoginScreen() {
   const router = useRouter();
   const { login, loginWithGoogle, isAuthenticated, fetchOrgBranding, orgBranding, user } = useAuthStore();
+  const appLogo = useAppLogo();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

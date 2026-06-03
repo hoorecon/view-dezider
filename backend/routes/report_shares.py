@@ -351,7 +351,9 @@ async def shared_report_pdf(token: str, user: dict = Depends(get_current_user)):
     payload = _BUILDERS[module](info["raw"])
     tzname = await _user_timezone(user["user_id"])
     payload["generated_at"] = _format_local(datetime.now(timezone.utc), tzname)
-    pdf = _build_pdf(payload)
+    from routes.app_appearance import get_app_logo
+    logo = await get_app_logo()
+    pdf = _build_pdf(payload, logo_data_url=logo)
     return Response(
         content=pdf,
         media_type="application/pdf",

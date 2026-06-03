@@ -26,17 +26,21 @@ const LINK_ID = 'app-google-font-link';
 interface FontFamilyValue {
   fontKey: string;
   companyName: string;
+  logoUri: string | null;
   ready: boolean;
   setFont: (key: string) => void;
   setCompanyName: (name: string) => void;
+  refreshAppearance: () => Promise<void>;
 }
 
 const FontFamilyContext = createContext<FontFamilyValue>({
   fontKey: DEFAULT_FONT_KEY,
   companyName: 'HOORECON IT-Sys Pvt Ltd',
+  logoUri: null,
   ready: false,
   setFont: () => {},
   setCompanyName: () => {},
+  refreshAppearance: async () => {},
 });
 
 function applyWebFont(key: string) {
@@ -70,6 +74,7 @@ function applyWebFont(key: string) {
 export const FontFamilyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [fontKey, setFontKey] = useState<string>(DEFAULT_FONT_KEY);
   const [companyName, setCompanyNameState] = useState<string>('HOORECON IT-Sys Pvt Ltd');
+  const [logoUri, setLogoUri] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
 
   const apply = useCallback((key: string) => {
@@ -77,6 +82,21 @@ export const FontFamilyProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setFontKey(valid);
     applyWebFont(valid);
   }, []);
+
+  const fetchAppearance = useCallback(async () => {
+    const res = await fetch(`${API_URL}/api/appearance`);
+    if (!res.ok) return;
+    const data = await res.json();
+    apply(data?.font_family || DEFAULT_FONT_KEY);
+    AsyncStorage.setItem(STORAGE_KEY, data?.font_family || DEFAULT_FONT_KEY).catch(() => {});
+    if (data?.company_name) {
+      setCompanyNameState(data.company_name);
+      AsyncStorage.setItem('app_company_name_v1', data.company_name).catch(() => {});
+    }
+    const uri = data?.has_logo ? `${API_URL}/api/appearance/logo?v=${data?.logo_version || 0}` : null;
+    setLogoUri(uri);
+    AsyncStorage.setItem('app_logo_uri_v1', uri || '').catch(() => {});
+  }, [apply]);
 
   // Hydrate from cache instantly, then reconcile with the server.
   useEffect(() => {
@@ -87,30 +107,19 @@ export const FontFamilyProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (cached && !cancelled) apply(cached);
         const cachedCo = await AsyncStorage.getItem('app_company_name_v1');
         if (cachedCo && !cancelled) setCompanyNameState(cachedCo);
+        const cachedLogo = await AsyncStorage.getItem('app_logo_uri_v1');
+        if (cachedLogo && !cancelled) setLogoUri(cachedLogo || null);
       } catch { /* ignore */ }
 
       try {
-        const res = await fetch(`${API_URL}/api/appearance`);
-        if (res.ok) {
-          const data = await res.json();
-          const serverFont = data?.font_family || DEFAULT_FONT_KEY;
-          const serverCo = data?.company_name;
-          if (!cancelled) {
-            apply(serverFont);
-            AsyncStorage.setItem(STORAGE_KEY, serverFont).catch(() => {});
-            if (serverCo) {
-              setCompanyNameState(serverCo);
-              AsyncStorage.setItem('app_company_name_v1', serverCo).catch(() => {});
-            }
-          }
-        }
+        if (!cancelled) await fetchAppearance();
       } catch { /* offline — keep cached/default */ }
       finally {
         if (!cancelled) setReady(true);
       }
     })();
     return () => { cancelled = true; };
-  }, [apply]);
+  }, [apply, fetchAppearance]);
 
   const setFont = useCallback((key: string) => {
     apply(key);
@@ -123,7 +132,7 @@ export const FontFamilyProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, []);
 
   return (
-    <FontFamilyContext.Provider value={{ fontKey, companyName, ready, setFont, setCompanyName }}>
+    <FontFamilyContext.Provider value={{ fontKey, companyName, logoUri, ready, setFont, setCompanyName, refreshAppearance: fetchAppearance }}>
       {children}
     </FontFamilyContext.Provider>
   );
@@ -131,3 +140,4 @@ export const FontFamilyProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
 export const useFontFamily = () => useContext(FontFamilyContext);
 export const useCompanyName = () => useContext(FontFamilyContext).companyName;
+export const useAppLogo = () => useContext(FontFamilyContext).logoUri;
