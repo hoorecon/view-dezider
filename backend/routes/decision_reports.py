@@ -150,6 +150,41 @@ async def report_info(
 # ────────────────────────────────────────────────────────────────────────────
 # PDF rendering helpers (reportlab)
 # ────────────────────────────────────────────────────────────────────────────
+def _esc(v) -> str:
+    """Escape free text so it is safe inside a reportlab Paragraph."""
+    from xml.sax.saxutils import escape
+    return escape("" if v is None else str(v))
+
+
+def _p(v) -> str:
+    """Escaped value or an em-dash placeholder (safe to embed in markup)."""
+    if v is None or v == "":
+        return "—"
+    return _esc(v)
+
+
+def _num(v) -> str:
+    """Compact number formatting (no trailing .0)."""
+    if v is None or v == "":
+        return "—"
+    try:
+        fv = float(v)
+        return str(int(fv)) if fv == int(fv) else f"{fv:.1f}"
+    except (TypeError, ValueError):
+        return str(v)
+
+
+def _t(v) -> str:
+    """Raw cell text with an em-dash placeholder.
+
+    NOTE: table cells are XML-escaped inside `_build_pdf`, so values returned
+    here must NOT be pre-escaped (otherwise '&' becomes '&amp;amp;').
+    """
+    if v is None or v == "":
+        return "—"
+    return str(v)
+
+
 def _build_pdf(payload: Dict[str, Any]) -> bytes:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
@@ -165,7 +200,7 @@ def _build_pdf(payload: Dict[str, Any]) -> bytes:
         leftMargin=18 * mm, rightMargin=18 * mm,
         topMargin=18 * mm, bottomMargin=18 * mm,
         title=payload.get("title", "Decision Report"),
-        author="JELCOS / Dezider",
+        author="JELCOS AI",
     )
     styles = getSampleStyleSheet()
     h1 = ParagraphStyle(
@@ -183,11 +218,11 @@ def _build_pdf(payload: Dict[str, Any]) -> bytes:
     )
 
     story = []
-    story.append(Paragraph("Dezider Decision Report", h1))
-    story.append(Paragraph(payload.get("title", "Untitled"), h2))
+    story.append(Paragraph("JELCOS AI — Decision Report", h1))
+    story.append(Paragraph(_esc(payload.get("title", "Untitled")), h2))
     story.append(Paragraph(
-        f"Module: <b>{payload['module_label']}</b> &nbsp;&nbsp;|&nbsp;&nbsp; "
-        f"Generated: <b>{payload['generated_at']}</b>",
+        f"Module: <b>{_esc(payload['module_label'])}</b> &nbsp;&nbsp;|&nbsp;&nbsp; "
+        f"Generated: <b>{_esc(payload['generated_at'])}</b>",
         small,
     ))
     story.append(Spacer(1, 6 * mm))
@@ -195,31 +230,50 @@ def _build_pdf(payload: Dict[str, Any]) -> bytes:
     # Context / summary block
     if payload.get("context"):
         story.append(Paragraph("Context", h2))
-        story.append(Paragraph(payload["context"], body))
+        story.append(Paragraph(_esc(payload["context"]), body))
         story.append(Spacer(1, 4 * mm))
+
+    # Available content width — tables are sized to this so they never overflow.
+    content_width = A4[0] - doc.leftMargin - doc.rightMargin
+    cell_style = ParagraphStyle("cell", parent=body, fontSize=9, leading=12)
+    head_cell_style = ParagraphStyle(
+        "hcell", parent=body, fontSize=9.5, leading=12,
+        textColor=colors.white, fontName="Helvetica-Bold",
+    )
 
     # Module-specific body
     for section in payload.get("sections", []):
-        story.append(Paragraph(section["heading"], h2))
+        if section.get("heading"):
+            story.append(Paragraph(_esc(section["heading"]), h2))
         if section.get("paragraph"):
             story.append(Paragraph(section["paragraph"], body))
             story.append(Spacer(1, 2 * mm))
         if section.get("table"):
-            tbl = Table(section["table"], colWidths=section.get("colWidths"))
+            data = section["table"]
+            ncols = len(data[0]) if data else 1
+            ratios = section.get("col_ratios") or [1] * ncols
+            tot = float(sum(ratios)) or 1.0
+            col_widths = [content_width * (r / tot) for r in ratios]
+            # Wrap each cell in a Paragraph so long text wraps within its column
+            # instead of running off the page edge.
+            wrapped = []
+            for ri, row in enumerate(data):
+                style = head_cell_style if ri == 0 else cell_style
+                wrapped.append([
+                    c if isinstance(c, Paragraph) else Paragraph(_esc(c), style)
+                    for c in row
+                ])
+            tbl = Table(wrapped, colWidths=col_widths, repeatRows=1)
             tbl.setStyle(TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E40AF")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, 0), 10),
                 ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
                 ("ROWBACKGROUNDS", (0, 1), (-1, -1),
-                    [colors.white, colors.HexColor("#F1F5F9")]),
+                    [colors.white, colors.HexColor("#F8FAFC")]),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("FONTSIZE", (0, 1), (-1, -1), 9),
-                ("LEFTPADDING", (0, 0), (-1, -1), 4),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
             ]))
             story.append(tbl)
             story.append(Spacer(1, 4 * mm))
@@ -227,8 +281,8 @@ def _build_pdf(payload: Dict[str, Any]) -> bytes:
     # Footer
     story.append(Spacer(1, 8 * mm))
     story.append(Paragraph(
-        "Generated by JELCOS Dezider — this report is for the user's personal "
-        "decision-making use. Confidential. © JELCOS",
+        "Generated by JELCOS AI — this report is for your personal "
+        "decision-making use. Confidential. © JELCOS AI",
         small,
     ))
     doc.build(story)
@@ -281,29 +335,177 @@ def _pdf_payload_for_dezider(raw: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _pdf_payload_for_pros_cons(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """Build a COMPLETE Pros & Cons report.
+
+    Handles both schemas:
+      • Rich (Step-7 revamp): factors + options + assessments + rollups →
+        full prioritisation, ranking, Satisfaction %, and per-option detail.
+      • Flat (legacy): standalone `pros`/`cons` lists with importance.
+    """
     sections = []
+
+    factors = raw.get("factors") or []
     options = raw.get("options") or []
-    for o in options:
-        pros = o.get("pros") or []
-        cons = o.get("cons") or []
-        max_rows = max(len(pros), len(cons), 1)
-        rows = [["Pros", "Cons"]]
-        for i in range(max_rows):
-            p = pros[i] if i < len(pros) else {}
-            c = cons[i] if i < len(cons) else {}
-            rows.append([
-                str((p.get("text") or p.get("name") or "—"))[:120],
-                str((c.get("text") or c.get("name") or "—"))[:120],
+    assessments = raw.get("assessments") or {}
+    rollups = raw.get("rollups") or []
+    flat_pros = raw.get("pros") or []
+    flat_cons = raw.get("cons") or []
+
+    is_rich = bool(factors) and bool(options)
+
+    # ── Decision overview (always) ──────────────────────────────────────────
+    sections.append({
+        "heading": "Decision Overview",
+        "paragraph": (
+            f"Type: <b>{_esc(raw.get('decision_type') or '—')}</b> "
+            f"&nbsp;&nbsp;·&nbsp;&nbsp; Life Area: "
+            f"<b>{_esc(raw.get('life_area') or '—')}</b>"
+        ),
+    })
+
+    if is_rich:
+        # ── Factors & Priorities ────────────────────────────────────────────
+        fsorted = sorted(factors, key=lambda f: (f.get("priority_rank") or 9999))
+        frows = [["Rank", "Factor", "Type", "Std Rating", "Expected", "Unit"]]
+        for f in fsorted:
+            frows.append([
+                _num(f.get("priority_rank")),
+                _t(f.get("name")),
+                (str(f.get("notation") or "").capitalize() or "—"),
+                _num(f.get("std_rating")),
+                _t(f.get("expected_value")),
+                _t(f.get("unit")),
             ])
         sections.append({
-            "heading": f"Option: {o.get('name') or o.get('title') or 'Untitled'}",
-            "table": rows,
+            "heading": "Factors & Priorities",
+            "table": frows,
+            "col_ratios": [0.8, 3.0, 1.5, 1.4, 1.6, 1.1],
         })
+
+        # ── Options Ranking — Satisfaction % ────────────────────────────────
+        roll_by_opt = {r.get("option_id"): r for r in rollups}
+
+        def _rank_key(o):
+            r = roll_by_opt.get(o.get("id")) or {}
+            rk = r.get("rank_high_to_low")
+            return rk if rk is not None else 9999
+
+        osorted = sorted(options, key=_rank_key)
+        orows = [["Rank", "Option", "Joint Score", "Satisfaction %", "Status"]]
+        for o in osorted:
+            r = roll_by_opt.get(o.get("id")) or {}
+            orows.append([
+                _num(r.get("rank_high_to_low")),
+                _t(o.get("name")),
+                _num(r.get("joint_score")),
+                f"{_num(r.get('overall_satisfaction_pct'))}%",
+                "Disqualified" if r.get("disqualified") else "Qualified",
+            ])
+        sections.append({
+            "heading": "Options Ranking — Satisfaction %",
+            "table": orows,
+            "col_ratios": [0.8, 2.6, 1.4, 1.6, 1.4],
+        })
+
+        # ── Per-option detailed assessment matrix ───────────────────────────
+        for o in osorted:
+            oid = o.get("id")
+            cell_map = assessments.get(oid) or {}
+            if not cell_map:
+                continue
+            drows = [["Factor", "Actual Value", "Satisfaction %", "Assessment %"]]
+            for f in fsorted:
+                cell = cell_map.get(f.get("id"))
+                if not cell:
+                    continue
+                drows.append([
+                    _t(f.get("name")),
+                    _t(cell.get("actual_value")),
+                    f"{_num(cell.get('satisfaction_pct'))}%",
+                    f"{_num(cell.get('assessment_pct'))}%",
+                ])
+            if len(drows) > 1:
+                sections.append({
+                    "heading": f"Assessment Detail — {o.get('name') or 'Option'}",
+                    "table": drows,
+                    "col_ratios": [3.0, 2.0, 1.6, 1.6],
+                })
+
+        # ── Pros & Cons captured per option (optional) ──────────────────────
+        for o in osorted:
+            pros = o.get("pros") or []
+            cons = o.get("cons") or []
+            if not pros and not cons:
+                continue
+            max_rows = max(len(pros), len(cons), 1)
+            rows = [["Pros", "Cons"]]
+            for i in range(max_rows):
+                p = pros[i] if i < len(pros) else {}
+                c = cons[i] if i < len(cons) else {}
+                rows.append([
+                    _t(p.get("text") or p.get("name")),
+                    _t(c.get("text") or c.get("name")),
+                ])
+            sections.append({
+                "heading": f"Pros & Cons — {o.get('name') or 'Option'}",
+                "table": rows,
+                "col_ratios": [1, 1],
+            })
+
+        # ── Recommendation (top-ranked qualified option) ────────────────────
+        top = next(
+            ((o, roll_by_opt.get(o.get("id")) or {}) for o in osorted
+             if not (roll_by_opt.get(o.get("id")) or {}).get("disqualified")),
+            None,
+        )
+        if top:
+            o, r = top
+            sections.append({
+                "heading": "Recommendation",
+                "paragraph": (
+                    f"Based on your prioritised factors, "
+                    f"<b>{_esc(o.get('name') or 'the top option')}</b> ranks highest "
+                    f"with a joint score of <b>{_esc(_num(r.get('joint_score')))}</b> "
+                    f"and an overall satisfaction of "
+                    f"<b>{_esc(_num(r.get('overall_satisfaction_pct')))}%</b>."
+                ),
+            })
+    else:
+        # ── Legacy flat schema: standalone Pros / Cons with importance ───────
+        if flat_pros:
+            rows = [["Pro", "Description", "Importance"]]
+            for p in flat_pros:
+                rows.append([
+                    _t(p.get("text") or p.get("name")),
+                    _t(p.get("description")),
+                    _num(p.get("importance")),
+                ])
+            sections.append({
+                "heading": "Pros", "table": rows,
+                "col_ratios": [2.0, 3.4, 1.2],
+            })
+        if flat_cons:
+            rows = [["Con", "Description", "Importance"]]
+            for c in flat_cons:
+                rows.append([
+                    _t(c.get("text") or c.get("name")),
+                    _t(c.get("description")),
+                    _num(c.get("importance")),
+                ])
+            sections.append({
+                "heading": "Cons", "table": rows,
+                "col_ratios": [2.0, 3.4, 1.2],
+            })
+        if not flat_pros and not flat_cons:
+            sections.append({
+                "heading": "No Data",
+                "paragraph": "This analysis has no pros, cons, or factor data yet.",
+            })
 
     if raw.get("final_decision"):
         sections.append({
             "heading": "Final Decision",
-            "paragraph": str(raw["final_decision"])[:1200],
+            "paragraph": _esc(str(raw["final_decision"])[:1500]),
         })
 
     return {
