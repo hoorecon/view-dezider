@@ -82,8 +82,8 @@ export default function WhatsAppVerifyScreen() {
     setVerifying(true);
     try {
       await api.post('/auth/whatsapp/verify-otp', { code: code.trim() });
+      // Refresh auth so the (tabs) gate sees whatsapp_verified=true, then route.
       await checkAuth();
-      showAlert('Verified', 'Your WhatsApp number is verified.');
       router.replace('/(tabs)' as any);
     } catch (e: any) {
       showAlert('Verification failed', e?.response?.data?.detail || 'Invalid or expired code.');
