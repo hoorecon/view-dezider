@@ -83,15 +83,24 @@ async def _user_phone(user_id: str) -> Optional[str]:
 async def _send_email(to: str, subject: str, html: str) -> None:
     if not RESEND_API_KEY:
         raise RuntimeError("RESEND_API_KEY not configured")
+    last_err = None
     async with httpx.AsyncClient(timeout=20) as client:
-        r = await client.post(
-            "https://api.resend.com/emails",
-            headers={"Authorization": f"Bearer {RESEND_API_KEY}",
-                     "Content-Type": "application/json"},
-            json={"from": RESEND_FROM, "to": [to], "subject": subject, "html": html},
-        )
-    if r.status_code >= 300:
-        raise RuntimeError(f"Resend error {r.status_code}: {r.text[:300]}")
+        for attempt in range(3):  # absorb Resend's 2 req/s rate limit
+            r = await client.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {RESEND_API_KEY}",
+                         "Content-Type": "application/json"},
+                json={"from": RESEND_FROM, "to": [to], "subject": subject, "html": html},
+            )
+            if r.status_code < 300:
+                return
+            last_err = f"Resend error {r.status_code}: {r.text[:300]}"
+            if r.status_code == 429 and attempt < 2:
+                import asyncio
+                await asyncio.sleep(0.7 * (attempt + 1))
+                continue
+            break
+    raise RuntimeError(last_err or "Resend error")
 
 
 async def _send_whatsapp(to: str, body: str) -> None:
