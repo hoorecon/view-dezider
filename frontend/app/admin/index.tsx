@@ -38,6 +38,7 @@ const QUICK_ACTIONS: QuickAction[] = [
   { key: 'incident',        label: 'Incident Response',   description: 'Active incidents · post-mortems · SLAs',       icon: 'alert-circle',    color: '#DC2626', href: '/admin/incident-response' },
   { key: 'docs',            label: 'Admin Docs',          description: 'PRD · SRS · UAT · Postman · Regression',       icon: 'library',         color: '#059669', href: '/admin/docs' },
   { key: 'masters',         label: 'Masters',             description: 'Religions · Castes · Languages · Occupations · Skills · Drives · Traits', icon: 'list-circle', color: '#9333EA', href: '/admin/masters' },
+  { key: 'appearance',      label: 'Appearance · Font',   description: 'App-wide font family · Inter default · live preview', icon: 'text', color: '#EC4899', href: '/admin/appearance' },
 ];
 
 export default function AdminHomeScreen() {

@@ -14,6 +14,7 @@ import WebScrollFix from '../src/components/WebScrollFix';
 import AlertHost from '../src/components/AlertHost';
 import GlobalFontScale from '../src/components/GlobalFontScale';
 import { FontScaleProvider } from '../src/contexts/FontScaleContext';
+import { FontFamilyProvider } from '../src/contexts/FontFamilyContext';
 
 // ----------------------------------------------------------------------
 // NavErrorBoundary — last line of defence against the React-Navigation
@@ -247,6 +248,7 @@ export default function RootLayout() {
   return (
     <NavErrorBoundary>
       <StatusBar style="dark" />
+      <FontFamilyProvider>
       <FontScaleProvider>
         <WebFrame>
         <Stack
@@ -407,6 +409,7 @@ export default function RootLayout() {
       <WebScrollFix />
       </FontScaleProvider>
       <GlobalVoiceNav />
+      </FontFamilyProvider>
     </NavErrorBoundary>
   );
 }

@@ -1,0 +1,38 @@
+{
+  "summary": "Iter47 — Tested Item 4 (admin-configurable font) plus re-verified Items 2 and 3 fixes from iter46. Backend pytest 7/7 PASS after I fixed a 500 DuplicateKeyError in PUT /api/admin/appearance: the route stored its doc under `_key='appearance'` but the `app_settings` collection has a unique index on `key:1` (see core/db_indices.py) and an existing payments doc already occupies `key:null` — so the upsert collided. Switched the route to use the indexed field name `key` (matching routes/admin.py convention). Frontend on http://localhost:3000: (a) Admin Appearance page renders all 8 font options (System default, Inter, Roboto, Poppins, Plus Jakarta Sans, Hind, Noto Sans Devanagari, JetBrains Mono) with live preview text; tapping Poppins persisted server-side (GET /api/appearance → Poppins) and tapping Inter restored it; Google Fonts <link> injected, document font-family applied. (b) Fresh-user WhatsApp verify gate now redirects away from /whatsapp-verify after Verify & continue (lands on /), confirming the checkAuth-before-replace fix. (c) Dashboard renders 'Your Report Quota' card at top with L1–L4 rows (Bought/Used/Left) and 'Buy more' button — no ReferenceError. Zero console errors during the run.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/admin/appearance", "issue": "FIXED in this iter. Route stored doc as `_key='appearance'` but the app_settings collection has unique index on `key:1` and an existing `payments_global` doc already sits at `key:null`. Upsert tried to insert another `key:null` → E11000 DuplicateKeyError → 500. Changed query/$set to use `key` (matches routes/admin.py + core/db_indices.py). routes/payment_admin.py uses the same `_key` pattern but its single inserted doc happened to be the first, so it doesn't fail; consider migrating it too for consistency."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter47_appearance.py",
+    "/app/test_reports/pytest/iter47.xml"
+  ],
+  "action_items": [
+    "LOW: Consider aligning routes/payment_admin.py to also use `key` instead of `_key` for the same reason — it sits next to the appearance bug. Right now it works only because `payments_global` was the first doc inserted with `key:null`.",
+    "LOW: Add testID props on /admin/appearance (font-option-<key>, font-check-<key>) and on /whatsapp-verify (phone-input, send-otp-btn, otp-input, verify-btn, demo-code-text). Tests currently fall back to text matching."
+  ],
+  "critical_code_review_comments": [
+    "routes/app_appearance.py was using `_key` against a collection whose unique index is on `key` (see core/db_indices.py:221). Result: silent 500 in production whenever any other settings doc occupies the `key:null` slot. Convention drift — all app_settings code should standardize on `key`.",
+    "FontFamilyContext correctly avoids touching icon fonts because it sets fontFamily on documentElement (cascading) instead of !important inline. Verified at runtime: documentElement -> 'Inter, -apple-system, …'.",
+    "whatsapp-verify.tsx now awaits checkAuth() before router.replace('/(tabs)') (line 86–87) — confirmed to work end-to-end."
+  ],
+  "updated_files": [
+    "/app/backend/routes/app_appearance.py (changed `_key` → `key` to match unique index)",
+    "/app/backend/tests/test_iter47_appearance.py (NEW pytest suite, 7 tests, all passing)"
+  ],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% (Items 2, 3, 4 all verified end-to-end)"},
+  "seed_data_creation": "Registered one fresh user (iter47fe_<ts>@example.com) for the WhatsApp gate run; an admin font flip to Poppins was applied then reset to Inter so no production-visible state remains.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend regression at /app/backend/tests/test_iter47_appearance.py covers: GET /api/appearance public, admin PUT happy path + GET reflects + reset, non-admin 403, invalid font 400, no-auth 401/403, full whatsapp-verify flow, /store skus + my-entitlements. The `_key` → `key` field rename also fixed all admin font writes; if main agent later renames payment_admin.py, drop the corresponding skip there as well.",
+  "rca_of_issue": "Bug: PUT /api/admin/appearance returned 500 with `DuplicateKeyError: E11000 dup key { key: null }`. Root cause: the `app_settings` collection has a UNIQUE index on `key:1` (defined in core/db_indices.py); the new appearance route was storing its doc under field name `_key` (underscore prefix), leaving `key` undefined → Mongo coerces missing to `null` → and the existing `payments_global` doc (also written by routes/payment_admin.py with `_key`) already owned `key:null`. Second upsert into the same null slot collided. Fix applied: change the four touch points in routes/app_appearance.py (find_one filter, update_one filter, $set body) from `_key` to `key`. After fix, pytest goes 7/7 and admin font picker on web persists and is reflected by the public GET."
+}

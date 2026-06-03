@@ -117,6 +117,7 @@ async def request_observability_middleware(request: Request, call_next):
 # -- Core routes (extracted from monolith) --
 from routes.auth_routes import router as auth_router
 from routes.whatsapp_otp import router as whatsapp_otp_router
+from routes.app_appearance import router as appearance_router
 from routes.organizations import router as org_router
 from routes.decisions import router as decisions_router
 from routes.notifications import router as notif_router
@@ -200,6 +201,7 @@ from routes.integrations import router as integrations_router
 # Core routes (no extra prefix — paths defined in each router)
 api_router.include_router(auth_router)
 api_router.include_router(whatsapp_otp_router)
+api_router.include_router(appearance_router)
 api_router.include_router(org_router)
 api_router.include_router(decisions_router)
 api_router.include_router(notif_router)
