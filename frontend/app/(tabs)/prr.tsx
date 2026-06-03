@@ -415,6 +415,12 @@ export default function SolutionBoxScreen() {
         <View style={styles.headerActions}>
           <TouchableOpacity
             style={styles.templateButton}
+            onPress={() => router.push('/shared-with-me' as any)}
+          >
+            <Ionicons name="share-social-outline" size={20} color={COLORS.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.templateButton}
             onPress={() => setTemplateBrowserVisible(true)}
           >
             <Ionicons name="bookmark-outline" size={20} color={COLORS.primary} />

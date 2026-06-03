@@ -148,6 +148,7 @@ from routes.pros_cons import router as pros_cons_router
 from routes.swot import router as swot_router
 from routes.trash import router as trash_router
 from routes.solution_box import router as solution_box_router
+from routes.report_shares import router as report_shares_router
 from routes.admin_docs import router as admin_docs_router
 from routes.contacts import router as contacts_router
 from routes.collaboration import router as collaboration_router
@@ -227,6 +228,7 @@ api_router.include_router(pros_cons_router)
 api_router.include_router(swot_router)
 api_router.include_router(trash_router)
 api_router.include_router(solution_box_router)
+api_router.include_router(report_shares_router)
 api_router.include_router(admin_docs_router)
 api_router.include_router(contacts_router)
 api_router.include_router(collaboration_router)

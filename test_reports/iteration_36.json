@@ -1,0 +1,36 @@
+{
+  "summary": "Backend-only regression for Phases 2-6: report PDFs (all 4 modules: dezider, pros_cons, swot, solution_finder), Solution Box aggregation/intake fields/solution_finder counts/type filter, decisions MPPS per-option persistence, and Report Shares (create + ownership 404 + missing-email 400 + recipient flow shared-with-me/accept/download + 3rd-user 403). 21/21 tests passed in a single run against the live backend. Admin skip-payment toggle was flipped ON for owner-path PDF tests, OFF for the share-path test (to prove the share PDF endpoint is FREE), and restored to its original state (OFF) at teardown — re-verified via direct GET /api/admin/payment-settings.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter36_phase6_reports_shares_solutionbox_mpps.py",
+    "/app/test_reports/pytest/iter36.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/report_shares.py:299 — /shares/{token}/report.pdf correctly bypasses the L1/L2/admin-skip paywall entirely (no _check_access_and_maybe_consume call). Verified with skip_payment_all_flows=OFF and a recipient with NO entitlements: still returns 200 application/pdf. Good separation between owner-paywall path and shared-recipient FREE path.",
+    "routes/report_shares.py:145 _user_can_access — correctly matches by accepted_by_user_id OR normalized email OR normalized phone. The 403 negative is enforced before auto-accept (line 305-306 raises 403 before line 309 update). Third-user 403 test confirms this ACL.",
+    "routes/report_shares.py:168 create_share — ownership check delegates to _load_decision (404 on cross-user). Channel validation (line 172) + recipient_email-required-for-email (line 181) cover the 400 cases. Auth is enforced via Depends(get_current_user). All 3 negative/positive variants verified.",
+    "routes/solution_box.py:42 _intake_fields — every list item now exposes acting_as_context / decision_type / sub_area_name / scenario_title keys (None when absent). All 5 source collections (decisions, pros_cons, swot, test123_sessions, solution_finders) call _intake_fields. by_type in /counts initializes 'solution_finder': 0 so the key is always present.",
+    "routes/decisions.py:81 PUT /decisions/{id} — mpps_by_option Dict[str, List[MPPSImprovement]] is accepted via PRRDecisionUpdate and persisted verbatim (line 86 update_dict). Subsequent GET returns it intact with factor_id/original_percentage/projected_percentage/improvement_plan preserved. No schema drift.",
+    "Note (non-blocking, carried from iter35): routes/decision_reports.py still inserts a decision_report_unlocks row tagged via='admin_skip' on first .pdf download under the toggle; product should confirm whether downloads should re-lock if the admin toggle is later switched OFF (currently they remain unlocked via prior_unlock).",
+    "Note (non-blocking): POST /api/shares responds 200 even when the Resend send fails (sent=false + error in body). This is by design (logger.exception + don't drop the share row) and the happy-path Resend send to delivered@resend.dev was verified live (sent=true). Worth surfacing send_error in the FE so users see if WhatsApp/email failed."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter36_phase6_reports_shares_solutionbox_mpps.py (new)"
+  ],
+  "success_rate": {"backend": "100% (21/21)", "frontend": "N/A (backend-only request)"},
+  "seed_data_creation": "Module-scoped fixtures seed one of each: TEST_iter36_Dez_* (decision), TEST_iter36_PnC_* (pros-cons), TEST_iter36_Swot_* (swot), TEST_iter36_SF_* (solution_finder) — owned by super_admin (veales.vedic.decisions@gmail.com). An MPPS-only decision TEST_iter36_MPPS_* is created+deleted inside the MPPS test. A throwaway third user TEST_iter36_third_<hex>@example.com is registered via /api/auth/register for the 403 test (NOT cleaned up — uses unique hex). All seeded docs are best-effort deleted on teardown. Admin skip-payment toggle is restored to its captured original state (OFF) on teardown — verified post-run via direct GET.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Login token field is `session_token` (NOT `token` or `access_token`). Solution Finder create POST /api/solution-finders returns {entry_id: ...} (NOT id). Decisions create POST /api/decisions returns {id: ...}. Pros-cons & SWOT both return {id: ...}. The /api/shares/{token}/report.pdf endpoint is FREE — do NOT enable skip_payment to validate it; in fact this iteration explicitly disables it before the recipient-PDF test to prove the bypass. POST /api/shares responds 200 with {ok:true,sent:<bool>,token,link,error} — assert on `sent` only when Resend is live (delivered@resend.dev currently works). The third user is created via /api/auth/register; if that path ever changes to /signup, the fixture falls back automatically.",
+  "rca_of_issue": "N/A — feature-completeness validation pass. No bugs found. Implementation matches the spec across all 6 areas (Reports, Solution Box, MPPS, Shares create, Shares recipient flow, Shares ACL). Two non-blocking design observations flagged in critical_code_review_comments for product/UX consideration but no functional defects."
+}

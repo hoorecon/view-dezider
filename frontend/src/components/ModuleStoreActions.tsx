@@ -13,7 +13,7 @@
  * Renders as a soft-coloured horizontal row of pills, safe in narrow viewports.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform, ActivityIndicator, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, ActivityIndicator, Linking, Modal, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import api from '../utils/api';
@@ -33,6 +33,12 @@ export default function ModuleStoreActions({ module, decisionId, lifeAreaId, sub
   const router = useRouter();
   const [info, setInfo] = useState<ReportInfo | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareChannel, setShareChannel] = useState<'email' | 'whatsapp'>('email');
+  const [shareEmail, setShareEmail] = useState('');
+  const [sharePhone, setSharePhone] = useState('');
+  const [shareName, setShareName] = useState('');
+  const [shareBusy, setShareBusy] = useState(false);
 
   const loadInfo = useCallback(async () => {
     try {
@@ -108,12 +114,68 @@ export default function ModuleStoreActions({ module, decisionId, lifeAreaId, sub
     router.push({ pathname: '/store', params: { highlight: 'L4', module, decision_id: decisionId } } as any);
   }, [router, module, decisionId]);
 
+  const submitShare = useCallback(async () => {
+    if (shareChannel === 'email' && !shareEmail.trim()) { showAlert('Email needed', 'Enter the recipient email.'); return; }
+    if (shareChannel === 'whatsapp' && !sharePhone.trim()) { showAlert('Phone needed', 'Enter the WhatsApp number with country code.'); return; }
+    setShareBusy(true);
+    try {
+      const res = await api.post('/shares', {
+        module, decision_id: decisionId, channel: shareChannel,
+        recipient_email: shareChannel === 'email' ? shareEmail.trim() : undefined,
+        recipient_phone: shareChannel === 'whatsapp' ? sharePhone.trim() : undefined,
+        recipient_name: shareName.trim() || undefined,
+      });
+      setShareOpen(false); setShareEmail(''); setSharePhone(''); setShareName('');
+      if (res.data?.sent) {
+        showAlert('Shared', `Link sent via ${shareChannel === 'email' ? 'email' : 'WhatsApp'}. They'll find it under "Shared with me" after logging in.`);
+      } else {
+        showAlert('Saved — delivery pending', res.data?.error ? `Could not deliver: ${res.data.error}` : 'Share created but delivery failed.');
+      }
+    } catch (e: any) {
+      showAlert('Share failed', e?.response?.data?.detail || 'Try again later.');
+    } finally { setShareBusy(false); }
+  }, [module, decisionId, shareChannel, shareEmail, sharePhone, shareName]);
+
   return (
     <View style={s.row}>
       <Pill icon="download" label={info?.unlocked ? 'Download PDF' : 'Unlock PDF'} tone="#3B82F6" busy={busy === 'L1'} onPress={downloadPdf} hint={info?.unlocked ? null : info?.l1_balance ? `${info.l1_balance} L1 left` : null} />
       <Pill icon="videocam" label="Book Expert" tone="#059669" busy={busy === 'L3'} onPress={bookExpert} />
       <Pill icon="ribbon" label="Expert Review" tone="#DC2626" busy={busy === 'L4'} onPress={orderReview} />
+      <Pill icon="share-social" label="Share" tone="#7C3AED" onPress={() => setShareOpen(true)} />
+
+      <Modal visible={shareOpen} transparent animationType="fade" onRequestClose={() => setShareOpen(false)}>
+        <View style={s.backdrop}>
+          <View style={s.sheet}>
+            <Text style={s.sheetTitle}>Share this report</Text>
+            <Text style={s.sheetSub}>They'll get a secure link. After logging in (or signing up free), it appears in their “Shared with me”.</Text>
+            <View style={s.segRow}>
+              <SegBtn label="Email" active={shareChannel === 'email'} onPress={() => setShareChannel('email')} />
+              <SegBtn label="WhatsApp" active={shareChannel === 'whatsapp'} onPress={() => setShareChannel('whatsapp')} />
+            </View>
+            {shareChannel === 'email' ? (
+              <TextInput style={s.input} placeholder="Recipient email" placeholderTextColor="#9CA3AF" autoCapitalize="none" keyboardType="email-address" value={shareEmail} onChangeText={setShareEmail} />
+            ) : (
+              <TextInput style={s.input} placeholder="WhatsApp number (with country code)" placeholderTextColor="#9CA3AF" keyboardType="phone-pad" value={sharePhone} onChangeText={setSharePhone} />
+            )}
+            <TextInput style={s.input} placeholder="Recipient name (optional)" placeholderTextColor="#9CA3AF" value={shareName} onChangeText={setShareName} />
+            <View style={s.sheetBtns}>
+              <TouchableOpacity style={[s.sheetBtn, s.cancelBtn]} onPress={() => setShareOpen(false)} disabled={shareBusy}><Text style={s.cancelTxt}>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity style={[s.sheetBtn, s.sendBtn]} onPress={submitShare} disabled={shareBusy}>
+                {shareBusy ? <ActivityIndicator size="small" color="#fff" /> : <Text style={s.sendTxt}>Send</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
+  );
+}
+
+function SegBtn({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <TouchableOpacity onPress={onPress} style={[s.seg, active && s.segActive]}>
+      <Text style={[s.segTxt, active && s.segTxtActive]}>{label}</Text>
+    </TouchableOpacity>
   );
 }
 
@@ -132,4 +194,20 @@ const s = StyleSheet.create({
   pill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1 },
   pillText: { fontSize: 13, fontWeight: '700' },
   pillHint: { fontSize: 11, fontWeight: '600', opacity: 0.85 },
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 20 },
+  sheet: { backgroundColor: '#fff', borderRadius: 16, padding: 20 },
+  sheetTitle: { fontSize: 18, fontWeight: '800', color: '#111827' },
+  sheetSub: { fontSize: 12.5, color: '#6B7280', marginTop: 6, marginBottom: 14, lineHeight: 18 },
+  segRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  seg: { flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: '#E5E7EB', alignItems: 'center' },
+  segActive: { borderColor: '#7C3AED', backgroundColor: '#7C3AED15' },
+  segTxt: { fontSize: 14, fontWeight: '700', color: '#6B7280' },
+  segTxtActive: { color: '#7C3AED' },
+  input: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, fontSize: 15, color: '#111827', marginBottom: 10 },
+  sheetBtns: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  sheetBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  cancelBtn: { backgroundColor: '#F3F4F6' },
+  cancelTxt: { fontSize: 15, fontWeight: '700', color: '#374151' },
+  sendBtn: { backgroundColor: '#7C3AED' },
+  sendTxt: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });
