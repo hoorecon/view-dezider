@@ -65,6 +65,41 @@ export default function PaywallGate({ module, children, onAllowed }: Props) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  // Live pricing for the unlock sheet — fetched from the SAME catalog the Store
+  // uses (/store/skus) plus subscription plans, so Admin price edits reflect
+  // here too. Loaded lazily the first time the sheet opens; falls back to the
+  // default copy if the request fails.
+  const money = (paise?: number) => '₹' + Math.round((paise || 0) / 100).toLocaleString('en-IN');
+  const [pricing, setPricing] = useState<{ l1?: string; l2?: string; sub?: string }>({});
+  useEffect(() => {
+    if (!showSheet || pricing.l1) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [skuRes, planRes] = await Promise.all([
+          api.get('/store/skus'),
+          api.get('/payments/plans').catch(() => null),
+        ]);
+        const byCode: Record<string, any> = {};
+        (skuRes.data?.skus || []).forEach((s: any) => { byCode[s.code] = s; });
+        const l1 = byCode['L1'];
+        const l2 = byCode['L2'];
+        const paid = (planRes?.data?.plans || [])
+          .map((p: any) => p.price_paise)
+          .filter((x: number) => x > 0);
+        if (cancelled) return;
+        setPricing({
+          l1: l1 ? `${money(l1.price_paise)} · 1 decision + PDF` : undefined,
+          l2: l2 ? `${money(l2.price_paise)} · 10 decisions across modules` : undefined,
+          sub: paid.length ? `From ${money(Math.min(...paid))}/mo · unlimited` : undefined,
+        });
+      } catch {
+        /* keep fallback copy */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [showSheet, pricing.l1]);
+
   const handlePress = useCallback(() => {
     if (state.loading) return;
     if (state.has_access) {
@@ -94,9 +129,9 @@ export default function PaywallGate({ module, children, onAllowed }: Props) {
               Pick a plan or on-demand pack to create a new {MODULE_LABEL[module]} decision.
             </Text>
             <View style={styles.options}>
-              <OptionRow icon="document-text" tone="#3B82F6" title="DIY Decision Report" desc="₹199 · 1 decision + PDF" onPress={() => { setShowSheet(false); router.push({ pathname: '/store', params: { highlight: 'L1', module } } as any); }} />
-              <OptionRow icon="people" tone="#7C3AED" title="10-Decision Family Bundle" desc="₹999 · 10 decisions across modules" onPress={() => { setShowSheet(false); router.push({ pathname: '/store', params: { highlight: 'L2', module } } as any); }} />
-              <OptionRow icon="infinite" tone="#059669" title="Monthly Subscription" desc="From ₹149/mo · unlimited" onPress={() => { setShowSheet(false); router.push('/pricing' as any); }} />
+              <OptionRow icon="document-text" tone="#3B82F6" title="DIY Decision Report" desc={pricing.l1 ?? '₹199 · 1 decision + PDF'} onPress={() => { setShowSheet(false); router.push({ pathname: '/store', params: { highlight: 'L1', module } } as any); }} />
+              <OptionRow icon="people" tone="#7C3AED" title="10-Decision Family Bundle" desc={pricing.l2 ?? '₹999 · 10 decisions across modules'} onPress={() => { setShowSheet(false); router.push({ pathname: '/store', params: { highlight: 'L2', module } } as any); }} />
+              <OptionRow icon="infinite" tone="#059669" title="Monthly Subscription" desc={pricing.sub ?? 'From ₹149/mo · unlimited'} onPress={() => { setShowSheet(false); router.push('/pricing' as any); }} />
             </View>
             <View style={styles.footerRow}>
               <TouchableOpacity style={styles.dismissBtn} onPress={() => setShowSheet(false)}>
