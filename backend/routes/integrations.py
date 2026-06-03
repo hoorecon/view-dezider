@@ -255,7 +255,7 @@ async def update_integration(
     except Exception:
         pass
 
-    return await get_integration_detail(provider, current_user, db)
+    return await get_integration_detail(provider, current_user)
 
 
 @router.post("/{provider}/test")

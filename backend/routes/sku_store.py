@@ -39,21 +39,11 @@ router = APIRouter(prefix="/store", tags=["SKU Store"])
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# Razorpay client (lazy import, reused from payments.py env)
+# Razorpay credentials are resolved at REQUEST time via core.integrations
+# (Admin-UI config first, env fallback) so dashboard edits take effect without
+# a restart. See core/integrations.py.
 # ────────────────────────────────────────────────────────────────────────────
-try:
-    import razorpay as _razorpay
-except Exception:  # pragma: no cover
-    _razorpay = None
-
-RZP_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "")
-RZP_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "")
-_rzp_client = None
-if _razorpay and RZP_KEY_ID and RZP_KEY_SECRET:
-    try:
-        _rzp_client = _razorpay.Client(auth=(RZP_KEY_ID, RZP_KEY_SECRET))
-    except Exception as e:  # pragma: no cover
-        logger.warning("Razorpay client init failed: %s", e)
+from core.integrations import get_razorpay_client, resolve_razorpay_creds  # noqa: E402
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -560,7 +550,8 @@ class PurchaseRequest(BaseModel):
 @router.post("/purchase")
 async def purchase_sku(body: PurchaseRequest, user: dict = Depends(get_current_user)):
     """Create a Razorpay order for an SKU purchase. Verify via /store/verify."""
-    if not _rzp_client:
+    rzp_client, key_id, _ = await get_razorpay_client()
+    if not rzp_client:
         raise HTTPException(status_code=500, detail="Payment gateway not configured")
 
     code = body.sku_code.upper()
@@ -569,7 +560,7 @@ async def purchase_sku(body: PurchaseRequest, user: dict = Depends(get_current_u
         raise HTTPException(status_code=400, detail=f"SKU {code} is not available")
 
     try:
-        order = _rzp_client.order.create({
+        order = rzp_client.order.create({
             "amount": int(sku["price_paise"]),
             "currency": "INR",
             "receipt": f"sku_{code}_{user['user_id'][:8]}_{uuid.uuid4().hex[:6]}",
@@ -605,7 +596,7 @@ async def purchase_sku(body: PurchaseRequest, user: dict = Depends(get_current_u
         "order_id": order["id"],
         "amount": int(sku["price_paise"]),
         "currency": "INR",
-        "key_id": RZP_KEY_ID,
+        "key_id": key_id,
         "sku": sku,
         "user_name": user.get("name", ""),
         "user_email": user.get("email", ""),
@@ -621,11 +612,12 @@ class VerifyRequest(BaseModel):
 @router.post("/verify")
 async def verify_sku_purchase(body: VerifyRequest, user: dict = Depends(get_current_user)):
     """Verify Razorpay signature and grant the entitlement."""
-    if not RZP_KEY_SECRET:
+    _, key_secret, _ = await resolve_razorpay_creds()
+    if not key_secret:
         raise HTTPException(status_code=500, detail="Payment gateway not configured")
 
     expected = hmac.new(
-        RZP_KEY_SECRET.encode("utf-8"),
+        key_secret.encode("utf-8"),
         f"{body.razorpay_order_id}|{body.razorpay_payment_id}".encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()

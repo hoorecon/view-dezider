@@ -20,6 +20,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, Request
 from core.database import db
 from core.auth import get_current_user
+from core.integrations import get_razorpay_client, resolve_razorpay_creds
 from dotenv import load_dotenv
 from pathlib import Path
 
@@ -283,6 +284,7 @@ async def get_payment_history(user: dict = Depends(get_current_user)):
 @router.post("/payments/create-topup-order")
 async def create_topup_order(request: Request, user: dict = Depends(get_current_user)):
     """Create a Razorpay order for a credit top-up pack"""
+    rzp_client, key_id, _ = await get_razorpay_client()
     if not rzp_client:
         raise HTTPException(status_code=500, detail="Payment gateway not configured")
 
@@ -324,7 +326,7 @@ async def create_topup_order(request: Request, user: dict = Depends(get_current_
             "order_id": order["id"],
             "amount": pack["price_paise"],
             "currency": "INR",
-            "key_id": RZP_KEY_ID,
+            "key_id": key_id,
             "pack": pack,
             "user_name": user.get("name", ""),
             "user_email": user.get("email", ""),
@@ -341,6 +343,7 @@ async def create_topup_order(request: Request, user: dict = Depends(get_current_
 @router.post("/payments/create-subscription")
 async def create_subscription(request: Request, user: dict = Depends(get_current_user)):
     """Create a Razorpay subscription for a monthly plan"""
+    rzp_client, key_id, _ = await get_razorpay_client()
     if not rzp_client:
         raise HTTPException(status_code=500, detail="Payment gateway not configured")
 
@@ -409,10 +412,14 @@ async def verify_payment(request: Request, user: dict = Depends(get_current_user
     if not all([razorpay_order_id, razorpay_payment_id, razorpay_signature]):
         raise HTTPException(status_code=400, detail="Missing payment verification fields")
 
+    _, key_secret, _ = await resolve_razorpay_creds()
+    if not key_secret:
+        raise HTTPException(status_code=500, detail="Payment gateway not configured")
+
     # Verify signature
     try:
         generated_signature = hmac.new(
-            RZP_KEY_SECRET.encode('utf-8'),
+            key_secret.encode('utf-8'),
             f"{razorpay_order_id}|{razorpay_payment_id}".encode('utf-8'),
             hashlib.sha256
         ).hexdigest()
@@ -511,7 +518,7 @@ async def razorpay_webhook(request: Request):
         signature = request.headers.get("X-Razorpay-Signature", "")
 
         # Verify webhook signature if secret is configured
-        webhook_secret = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
+        _, _, webhook_secret = await resolve_razorpay_creds()
         if webhook_secret and signature:
             expected = hmac.new(
                 webhook_secret.encode('utf-8'),
