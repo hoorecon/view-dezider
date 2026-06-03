@@ -22,6 +22,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import api from '../utils/api';
 import { showAlert } from '../utils/alert';
+import { formatDMY } from '../utils/datetime';
 
 type ActionItem = {
   action_id: string;
@@ -213,17 +214,19 @@ export default function ActionItemEditor(props: Props) {
         <ActivityIndicator color="#0D9488" style={{ marginVertical: 12 }} />
       ) : items.length === 0 ? (
         <Text style={s.empty}>No action items yet. Capture concrete next steps here.</Text>
-      ) : items.map(it => {
+      ) : items.map((it, idx) => {
         const pri = PRIORITY_OPTS.find(p => p.id === it.priority) || PRIORITY_OPTS[1];
         const st  = STATUS_OPTS.find(p => p.id === it.status) || STATUS_OPTS[0];
         return (
           <View key={it.action_id} style={s.row}>
             <View style={[s.priDot, { backgroundColor: pri.color }]} />
             <View style={{ flex: 1 }}>
-              <Text style={s.rowTitle} numberOfLines={2}>{it.title}</Text>
+              <Text style={s.rowTitle} numberOfLines={2}>
+                <Text style={s.serialNo}>{idx + 1}. </Text>{it.title}
+              </Text>
               <View style={s.metaRow}>
                 {!!it.who && <Text style={s.metaText}>👤 {it.who}</Text>}
-                {!!it.by_when && <Text style={s.metaText}>📅 {it.by_when}</Text>}
+                {!!it.by_when && <Text style={s.metaText}>📅 {formatDMY(it.by_when)}</Text>}
                 <Text style={s.metaText}>{it.recurrence_type === 'recurring' ? `🔁 ${it.recurrence_frequency}${it.recurrence_time ? ` @ ${it.recurrence_time}` : ''}` : '⚡ one-time'}</Text>
               </View>
               <View style={s.chipsRow}>
@@ -359,6 +362,7 @@ const s = StyleSheet.create({
   row: { flexDirection: 'row', gap: 8, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#CCFBF1' },
   priDot: { width: 10, height: 10, borderRadius: 5, marginTop: 4 },
   rowTitle: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
+  serialNo: { color: '#0D9488', fontWeight: '800' },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   metaText: { fontSize: 11, color: '#475569' },
 

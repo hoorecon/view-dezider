@@ -313,9 +313,17 @@ def _build_pdf(payload: Dict[str, Any]) -> bytes:
     story.append(Spacer(1, 2 * mm))
     story.append(Paragraph(
         "This report is for your personal decision-making use. Confidential. © JELCOS AI",
-        small,
+        brand_footer,
     ))
-    doc.build(story)
+
+    def _page_footer(canvas, _doc):
+        canvas.saveState()
+        canvas.setFont("Helvetica", 8)
+        canvas.setFillColor(colors.HexColor("#94A3B8"))
+        canvas.drawRightString(A4[0] - 18 * mm, 10 * mm, f"Page {_doc.page}")
+        canvas.restoreState()
+
+    doc.build(story, onFirstPage=_page_footer, onLaterPages=_page_footer)
     return buf.getvalue()
 
 
@@ -597,7 +605,7 @@ def _format_local(dt_utc: datetime, tzname: str) -> str:
     except Exception:
         local = dt_utc
     abbr = local.tzname() or ""
-    return local.strftime(f"%d %b %Y, %H:%M {abbr}").strip()
+    return local.strftime(f"%d-%m-%Y, %H:%M {abbr}").strip()
 
 
 def _decision_overview_section(raw: Dict[str, Any]) -> Dict[str, Any]:
@@ -625,9 +633,23 @@ def _fmt_date(v) -> str:
         return "—"
     try:
         s = str(v).replace("Z", "+00:00")
-        return datetime.fromisoformat(s).strftime("%d %b %Y, %H:%M")
+        return datetime.fromisoformat(s).strftime("%d-%m-%Y, %H:%M")
     except Exception:
         return str(v)[:25]
+
+
+def _ddmmyyyy(v) -> str:
+    """Display a date as DD-MM-YYYY (accepts 'YYYY-MM-DD' or full ISO datetime).
+    Returns an em-dash placeholder when empty so it is table-cell safe."""
+    if v is None or v == "":
+        return "—"
+    import re
+    s = str(v).strip()
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00")).strftime("%d-%m-%Y")
+    except Exception:
+        m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", s)
+        return f"{m.group(3)}-{m.group(2)}-{m.group(1)}" if m else s
 
 
 def _final_decision_sections(raw, opt_name_by_id, action_items):
@@ -655,22 +677,23 @@ def _final_decision_sections(raw, opt_name_by_id, action_items):
         out.append({"heading": "Final Decision", "paragraph": "<br/>".join(lines)})
 
     if action_items:
-        rows = [["Action", "Who", "By When", "Recurrence", "Status"]]
-        for a in action_items:
+        rows = [["ID", "Action", "Who", "By When", "Recurrence", "Status"]]
+        for idx, a in enumerate(action_items, 1):
             rec = (a.get("recurrence_type") or "").lower()
             if rec == "recurring":
                 rec = (a.get("recurrence_frequency") or "Recurring").title()
             else:
                 rec = "One-time"
             rows.append([
+                _num(idx),
                 _t(a.get("title")),
                 _t(a.get("who")),
-                _t(a.get("by_when")),
+                _ddmmyyyy(a.get("by_when")),
                 rec,
                 _t((a.get("status") or "").replace("_", " ").title()),
             ])
         out.append({"heading": "Action Plan — Who · What · By When", "table": rows,
-                    "col_ratios": [3.2, 1.7, 1.4, 1.4, 1.2]})
+                    "col_ratios": [0.6, 3.0, 1.6, 1.4, 1.4, 1.2]})
     return out
 
 
@@ -1103,19 +1126,20 @@ def _pdf_payload_for_solution_finder(raw: Dict[str, Any]) -> Dict[str, Any]:
 
     ap = raw.get("action_plan_items") or raw.get("action_items") or []
     if ap:
-        rows = [["Action", "Who", "By When", "Status"]]
-        for it in ap:
+        rows = [["ID", "Action", "Who", "By When", "Status"]]
+        for idx, it in enumerate(ap, 1):
             if isinstance(it, dict):
                 rows.append([
+                    _num(idx),
                     _t(it.get("text") or it.get("what") or it.get("title")),
                     _t(it.get("who")),
-                    _t(it.get("by_when") or it.get("byWhen") or it.get("deadline")),
+                    _ddmmyyyy(it.get("by_when") or it.get("byWhen") or it.get("deadline")),
                     _t(it.get("status")),
                 ])
             else:
-                rows.append([_t(str(it)), "—", "—", "—"])
+                rows.append([_num(idx), _t(str(it)), "—", "—", "—"])
         sections.append({"heading": "Action Plan", "table": rows,
-                         "col_ratios": [3.4, 1.6, 1.6, 1.2]})
+                         "col_ratios": [0.6, 3.2, 1.5, 1.5, 1.2]})
 
     goal = (raw.get("smart_goal") or "").strip()
     title = (goal[:80] + ("…" if len(goal) > 80 else "")) if goal else "Solution Finder"

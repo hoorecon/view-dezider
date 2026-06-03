@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
 import TimestampLine from '../../src/components/TimestampLine';
+import { formatDMY } from '../../src/utils/datetime';
 
 type ActionItem = {
   action_id: string; title: string; who: string; by_when?: string|null;
@@ -148,7 +149,7 @@ export default function ActionCenter() {
                   <TimestampLine entity={it} compact />
                   <View style={s.metaRow}>
                     {!!it.who && <Text style={s.metaText}>👤 {it.who}</Text>}
-                    {!!it.by_when && <Text style={s.metaText}>📅 {it.by_when}</Text>}
+                    {!!it.by_when && <Text style={s.metaText}>📅 {formatDMY(it.by_when)}</Text>}
                     <Text style={s.metaText}>{it.recurrence_type === 'recurring' ? `🔁 ${it.recurrence_frequency}` : '⚡ one-time'}</Text>
                   </View>
                   <View style={s.tagRow}>

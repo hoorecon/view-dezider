@@ -40,6 +40,15 @@ export function formatAbsolute(input: any): string {
     : `${dd} ${mo} ${yr}, ${h}:${m} ${ampm}`;
 }
 
+/** "DD-MM-YYYY" — for date-only fields (action deadlines, review dates). */
+export function formatDMY(input: any): string {
+  const d = _parse(input);
+  if (!d) return '';
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${dd}-${mm}-${d.getFullYear()}`;
+}
+
 /** "just now" · "5m ago" · "2h ago" · "yesterday" · "3d ago" · "Jun 5" */
 export function formatRelative(input: any): string {
   const d = _parse(input);
