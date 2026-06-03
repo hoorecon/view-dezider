@@ -23,6 +23,10 @@ import { formatAbsolute } from '../../src/utils/datetime';
 import { LIFE_AREAS, getLifeArea } from '../../src/constants/lifeAreas';
 import ListFilterBar, { DateRangeKey, withinDateRange } from '../../src/components/ListFilterBar';
 
+// Stable references so the pinned ListFilterBar never re-mounts on parent renders.
+const NOOP = () => {};
+const EMPTY_ARR: string[] = [];
+
 /**
  * Solution Box — unified home for ALL solution flows owned by the user:
  *   - Decider              (db.decisions)
@@ -424,15 +428,6 @@ export default function SolutionBoxScreen() {
         </View>
       )}
       {renderTypeChips()}
-      <ListFilterBar
-        search={search} onSearch={setSearch}
-        dateRange={dateRange} onDateRange={setDateRange}
-        lifeArea={null} onLifeArea={() => {}}
-        decisionType={decisionType} onDecisionType={setDecisionType}
-        availableLifeAreas={[]}
-        availableDecisionTypes={availableDecisionTypes}
-        searchPlaceholder="Search your Solution Box…"
-      />
     </View>
   );
 
@@ -463,6 +458,18 @@ export default function SolutionBoxScreen() {
             <Ionicons name="add" size={24} color={COLORS.white} />
           </TouchableOpacity>
         </View>
+      </View>
+
+      <View style={styles.filterBarWrap}>
+        <ListFilterBar
+          search={search} onSearch={setSearch}
+          dateRange={dateRange} onDateRange={setDateRange}
+          lifeArea={null} onLifeArea={NOOP}
+          decisionType={decisionType} onDecisionType={setDecisionType}
+          availableLifeAreas={EMPTY_ARR}
+          availableDecisionTypes={availableDecisionTypes}
+          searchPlaceholder="Search your Solution Box…"
+        />
       </View>
 
       <FlatList
@@ -623,6 +630,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center',
   },
   list: { padding: 16, paddingTop: 0, flexGrow: 1 },
+  filterBarWrap: { paddingHorizontal: 16, paddingTop: 4 },
 
   // Folder Grid
   foldersSection: { marginBottom: 16 },

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/colors';
@@ -69,24 +69,47 @@ export default function ListFilterBar({
     : [];
   const dtList = availableDecisionTypes || [];
 
+  // Keep the search text in LOCAL state and debounce the parent update.
+  // While the user is actively typing, the parent never re-renders — so the
+  // FlatList header subtree (and this TextInput) is never reconciled/remounted
+  // mid-keystroke (which was dropping focus on every letter on RN-web).
+  const [localSearch, setLocalSearch] = useState(search);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sync down if the parent clears/changes search programmatically.
+  useEffect(() => { setLocalSearch(search); }, [search]);
+  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
+
+  const handleSearch = (text: string) => {
+    setLocalSearch(text);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => onSearch(text), 250);
+  };
+
+  const clearSearch = () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setLocalSearch('');
+    onSearch('');
+  };
+
   return (
     <View style={s.wrap}>
       {/* Search */}
-      <View style={s.searchBox}>
+      <View style={s.searchBox} testID="list-filter-search-box">
         <Ionicons name="search" size={16} color={COLORS.textMuted} />
         <TextInput
           testID="list-filter-search"
           style={s.searchInput}
           placeholder={searchPlaceholder || 'Search by title…'}
           placeholderTextColor={COLORS.textMuted}
-          value={search}
-          onChangeText={onSearch}
+          value={localSearch}
+          onChangeText={handleSearch}
           autoCapitalize="none"
           returnKeyType="search"
           clearButtonMode="while-editing"
         />
-        {search.length > 0 && Platform.OS !== 'ios' && (
-          <TouchableOpacity onPress={() => onSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        {localSearch.length > 0 && Platform.OS !== 'ios' && (
+          <TouchableOpacity onPress={clearSearch} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Ionicons name="close-circle" size={16} color={COLORS.textMuted} />
           </TouchableOpacity>
         )}

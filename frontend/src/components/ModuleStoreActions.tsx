@@ -139,7 +139,21 @@ export default function ModuleStoreActions({ module, decisionId, lifeAreaId, sub
 
   const pickContact = useCallback(async () => {
     if (Platform.OS === 'web') {
-      showAlert('Use the mobile app', 'Picking from contacts works on your phone. On web, type the email/number manually.');
+      // Web Contact Picker API (Chrome on Android). Not available on desktop browsers.
+      const nav: any = typeof navigator !== 'undefined' ? navigator : null;
+      if (nav?.contacts?.select) {
+        try {
+          const props = shareChannel === 'email' ? ['email', 'name'] : ['tel', 'name'];
+          const picked = await nav.contacts.select(props, { multiple: false });
+          const c = picked?.[0];
+          if (!c) return;
+          if (shareChannel === 'email' && c.email?.[0]) setShareEmail(String(c.email[0]));
+          if (shareChannel === 'whatsapp' && c.tel?.[0]) setSharePhone(String(c.tel[0]).replace(/[^\d+]/g, ''));
+          if (c.name?.[0] && !shareName.trim()) setShareName(String(c.name[0]));
+        } catch { /* user cancelled */ }
+      } else {
+        showAlert('Open JELCOS on your phone', 'Contact picker isn’t supported by desktop browsers. Use the JELCOS mobile app to pick from contacts — or just type the email/number here.');
+      }
       return;
     }
     try {
@@ -193,12 +207,10 @@ export default function ModuleStoreActions({ module, decisionId, lifeAreaId, sub
             ) : (
               <TextInput style={s.input} placeholder="WhatsApp number (with country code)" placeholderTextColor="#9CA3AF" keyboardType="phone-pad" value={sharePhone} onChangeText={setSharePhone} />
             )}
-            {Platform.OS !== 'web' && (
-              <TouchableOpacity style={s.pickBtn} onPress={pickContact}>
-                <Ionicons name="people" size={16} color="#7C3AED" />
-                <Text style={s.pickTxt}>Pick from contacts</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity style={s.pickBtn} onPress={pickContact}>
+              <Ionicons name="people" size={16} color="#7C3AED" />
+              <Text style={s.pickTxt}>Pick from contacts</Text>
+            </TouchableOpacity>
             <TextInput style={s.input} placeholder="Recipient name (optional)" placeholderTextColor="#9CA3AF" value={shareName} onChangeText={setShareName} />
             <View style={s.sheetBtns}>
               <TouchableOpacity style={[s.sheetBtn, s.cancelBtn]} onPress={() => setShareOpen(false)} disabled={shareBusy}><Text style={s.cancelTxt}>Cancel</Text></TouchableOpacity>
@@ -236,8 +248,8 @@ const s = StyleSheet.create({
   pill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1 },
   pillText: { fontSize: 13, fontWeight: '700' },
   pillHint: { fontSize: 11, fontWeight: '600', opacity: 0.85 },
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 20 },
-  sheet: { backgroundColor: '#fff', borderRadius: 16, padding: 20 },
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  sheet: { backgroundColor: '#fff', borderRadius: 16, padding: 20, width: '100%', maxWidth: 440, alignSelf: 'center' },
   sheetTitle: { fontSize: 18, fontWeight: '800', color: '#111827' },
   sheetSub: { fontSize: 12.5, color: '#6B7280', marginTop: 6, marginBottom: 14, lineHeight: 18 },
   segRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
