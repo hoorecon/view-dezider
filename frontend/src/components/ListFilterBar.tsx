@@ -75,6 +75,7 @@ export default function ListFilterBar({
       <View style={s.searchBox}>
         <Ionicons name="search" size={16} color={COLORS.textMuted} />
         <TextInput
+          testID="list-filter-search"
           style={s.searchInput}
           placeholder={searchPlaceholder || 'Search by title…'}
           placeholderTextColor={COLORS.textMuted}

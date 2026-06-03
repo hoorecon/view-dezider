@@ -1,0 +1,45 @@
+{
+  "summary": "Solution Box search focus-retention re-test (attempt #4 — FlatList + View-rooted ListHeaderComponent) — STILL FAILING with the same symptom. Login → Solution Box tab → click search input → keyboard.type('ekanga'). After the FIRST keystroke ('e'), the underlying <input> DOM node is REMOUNTED (data-remount-tag attribute disappears), focus drops to <body>, and the remaining 5 keystrokes never reach the input. Final value freezes at 'e', not 'ekanga'. Date-range chip ('Last 30 days') and decision-type chip ('Product Purchase') DO still toggle after typing — only the search-typing flow is broken. Additionally discovered: the new testID='list-filter-search' is NOT being rendered to the DOM as data-testid (only one <input> in the page; its data-testid is null). The placeholder-based selector still works, but the agreed-on testID never reaches the web build.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "prr.tsx / ListFilterBar TextInput (search input)",
+        "issue": "FOCUS-RETENTION BUG NOT FIXED. After first keystroke the <input> is remounted (DOM node replaced), focus goes to BODY, only 'e' captured out of 'ekanga'. Diagnostic remount-detection tag (data-remount-tag='TAG_BEFORE_TYPING' set on the input pre-typing) is missing after typing → confirms remount. Switching prr.tsx back to FlatList + ListHeaderComponent={renderHeader()} where renderHeader returns a <View> did NOT change the behaviour. Reference: /app/frontend/app/(tabs)/prr.tsx:402-437 (renderHeader), :468-478 (FlatList).",
+        "testID": "list-filter-search (NOT reaching DOM)",
+        "priority": "CRITICAL"
+      },
+      {
+        "component": "ListFilterBar TextInput testID propagation",
+        "issue": "testID='list-filter-search' is defined on the TextInput at /app/frontend/src/components/ListFilterBar.tsx:78 but the rendered DOM <input> has no data-testid attribute (diagnostic dump: [{tag:'INPUT', placeholder:'Search your Solution Box…', testid:null}]). This means the requested selector cannot be used by the testing agent; only placeholder/text fallbacks work. The TextInput may be wrapped or the testID is being shadowed.",
+        "testID": "list-filter-search",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "PRIMARY FIX (still required): hoist the `search` state OUT of prr.tsx and into ListFilterBar itself (component-local state) with a debounced/throttled onSearch callback wrapped in useCallback. This is the only approach that guarantees the parent tree (FlatList header) is NOT re-rendered on every keystroke, regardless of FlatList vs ScrollView. Pattern (proven on RN Web): ListFilterBar manages an internal `localSearch` state, calls onSearch(value) inside a useEffect debounced ~150ms; parent's `search` state only updates after debounce → list filters live but TextInput subtree never remounts mid-keystroke.",
+    "ALTERNATE FIX: wrap ListFilterBar in React.memo, AND make every callback prop stable via useCallback. Currently prr.tsx:430 passes `onLifeArea={() => {}}` (NEW function each render) which alone defeats memoization. Stabilising all callback props PLUS React.memo on ListFilterBar should stop the input subtree from re-rendering on parent state changes.",
+    "INVESTIGATE testID PROPAGATION: testID='list-filter-search' on the TextInput at ListFilterBar.tsx:78 is NOT showing up in the DOM as data-testid. Verify the rendered input retains the attribute — possibly the TextInput is being wrapped by something that swallows the prop, or the RN Web version in use doesn't forward testID for TextInput. Also add testID to the search-box View container as a fallback.",
+    "EXPECTED REPRO STILL 100% DETERMINISTIC: Login as harden_1777921741@example.com → click 'Solution Box' tab → click the 'Search your Solution Box…' input → page.keyboard.type('ekanga'). Observe value freezes at 'e' and document.activeElement becomes BODY.",
+    "Reference of working pattern: confirm shared.tsx really renders identically. If shared.tsx ALSO suffers the same bug but went unreported, then the 'known-good' baseline is wrong — please retest shared.tsx the same way to confirm or refute."
+  ],
+  "critical_code_review_comments": [
+    "prr.tsx:430 — `onLifeArea={() => {}}` is a brand-new arrow each render. Even with FlatList ListHeaderComponent, passing an unstable callback to ListFilterBar will cause its subtree to re-render whenever the parent renders.",
+    "prr.tsx:476 — `ListHeaderComponent={renderHeader()}` invokes the function inline, producing a fresh JSX tree on every parent render. Prefer `ListHeaderComponent={MemoizedHeader}` or define renderHeader outside the component, or memoize via useMemo keyed only on header-relevant state.",
+    "ListFilterBar.tsx:78 — testID set, but does not propagate. RN Web should map testID → data-testid for TextInput. Check react-native-web version & whether the TextInput is wrapped/proxied (e.g., custom HOC). Add a wrapping View with testID as a safety net.",
+    "prr.tsx:111-119 — `displayItems` recomputes (correctly memoized) but each render still emits a new ListHeaderComponent JSX. The combination of changing data length + new header element identity is the trigger.",
+    "Consider giving renderHeader a stable identity via React.memo or useMemo([showFolders, selectedLifeArea, selectedFolderData, selectedType, search, dateRange, decisionType, availableDecisionTypes])."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "n/a (skipped)", "frontend": "0% (focus bug unresolved, attempt #4)" },
+  "seed_data_creation": "None — used existing harden_1777921741 user with existing seeded items (TEST_FE Laptop visible).",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Bug repro is 100% deterministic. Login harden_1777921741@example.com / HardenPass2026! (button is named 'Sign In', not 'Login'). Click 'Solution Box' bottom tab. Use selector input[placeholder*='Solution Box'] because testID='list-filter-search' does NOT propagate to DOM (data-testid is null on the rendered <input>). Click the input, tag it with data-remount-tag via page.evaluate, then page.keyboard.type('ekanga'). After the FIRST keystroke 'e', the input is remounted (tag missing), focus moves to BODY, and remaining keystrokes are dropped. Chips ('Last 30 days', 'Product Purchase') still toggle correctly. Fix attempts so far: #1 ScrollView wrap, #2 dynamic key, #3 single <View> wrap, #4 FlatList + View ListHeaderComponent — ALL FAIL. Strongly recommend hoisting search state into ListFilterBar (debounced upward propagation) so the FlatList header subtree no longer re-renders per keystroke.",
+  "rca_of_issue": "Same root cause as iteration 40 — the underlying <input> rendered by ListFilterBar's TextInput is REMOUNTED on every state change of `search` in prr.tsx. Confirmed via DOM-tagging test (data-remount-tag attribute disappears after the first keystroke and document.activeElement becomes BODY). Reverting to FlatList + a View-rooted ListHeaderComponent (per recommendation #1) did NOT prevent the remount, indicating that the trigger is not the ScrollView child reconciliation but rather the identity of ListHeaderComponent itself: `ListHeaderComponent={renderHeader()}` evaluates to a fresh JSX element on every parent render. Combined with unstable callback props (`onLifeArea={() => {}}` is a new arrow each render), ListFilterBar cannot bail out of re-rendering, and within RN Web a re-render of the TextInput parent at the moment a keystroke is being processed can cause the input node to be replaced — focus is lost and subsequent keystrokes go to body. Definitive mitigation: move `search` state INTO ListFilterBar (component-local) and propagate to parent via a debounced/stable onChange. Parent's `search` then changes at most ~once per 150ms, AFTER the user has typed, so the TextInput subtree is never reconciled in the middle of typing."
+}

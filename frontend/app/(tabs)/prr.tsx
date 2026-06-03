@@ -400,7 +400,7 @@ export default function SolutionBoxScreen() {
   );
 
   const renderHeader = () => (
-    <>
+    <View>
       {showFolders && renderFolderGrid()}
       {selectedLifeArea && (
         <View style={styles.filterBar}>
@@ -433,7 +433,7 @@ export default function SolutionBoxScreen() {
         availableDecisionTypes={availableDecisionTypes}
         searchPlaceholder="Search your Solution Box…"
       />
-    </>
+    </View>
   );
 
   return (
@@ -465,21 +465,17 @@ export default function SolutionBoxScreen() {
         </View>
       </View>
 
-      <ScrollView
+      <FlatList
+        data={displayItems}
+        renderItem={renderItem}
+        keyExtractor={(item) => `${item.type}-${item.id}`}
         contentContainerStyle={[styles.list, { paddingBottom: 100 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      >
-        <View>{renderHeader()}</View>
-        {loading ? null : (
-          displayItems.length === 0
-            ? renderEmpty()
-            : displayItems.map((item) => (
-                <View key={`${item.type}-${item.id}`}>{renderItem({ item })}</View>
-              ))
-        )}
-      </ScrollView>
+        ListHeaderComponent={renderHeader()}
+        ListEmptyComponent={loading ? null : renderEmpty}
+      />
 
       {/* New flow chooser modal */}
       <Modal
