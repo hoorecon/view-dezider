@@ -18,19 +18,22 @@ import { usePathname } from 'expo-router';
 
 const BREAKPOINT_DESKTOP = 768;
 
-type Variant = 'admin' | 'auth' | 'public' | 'app';
+type Variant = 'admin' | 'auth' | 'public' | 'app' | 'landing';
 
 const MAX_WIDTH: Record<Variant, number> = {
-  admin:  9999,   // admin shell handles itself
+  admin:   9999,  // admin shell handles itself
   auth:    980,   // hero card for login/register
   public:  720,   // pricing / org portal
   app:     960,   // user app: home, tools, profile, etc.
+  landing: 9999,  // marketing/legal pages manage their own full-bleed layout
 };
 
 function classifyRoute(pathname: string | null | undefined): Variant {
   const p = pathname || '/';
   if (p.startsWith('/admin')) return 'admin';
-  if (p.startsWith('/auth') || p === '/' || p.startsWith('/index')) return 'auth';
+  // Public marketing + legal pages own their full-width responsive layout.
+  if (p === '/' || p.startsWith('/index') || p.startsWith('/legal') || p.startsWith('/contact')) return 'landing';
+  if (p.startsWith('/auth')) return 'auth';
   if (p.startsWith('/pricing') || p.startsWith('/p/')) return 'public';
   return 'app';
 }

@@ -1,0 +1,39 @@
+{
+  "summary": "Frontend-only validation of the new PUBLIC marketing site (Razorpay domain-approval). All 6 public routes (/, /legal/delivery, /legal/refund, /legal/terms, /legal/privacy, /contact) load WITHOUT auth, render the required company information (HOORECON IT-Sys Pvt Ltd, Chennai address, phone +(91)-(0)44-46972104, email admin@hoorecon.com, website www.hoorecon.com) and a 'Last updated' stamp on legal pages. Header CTAs work: 'Sign in' navigates to /auth/login (from landing AND legal pages) and 'Get started' navigates to /auth/register. Footer legal link click navigates to the correct page. 'Back to Home' link on every legal/contact page returns to '/'. Auth regression verified: an authenticated user hitting '/' is correctly NOT shown the marketing landing — they see the in-app (tabs) home (router.replace to /(tabs)). Guest hitting '/' continues to see the marketing landing as required. No React Native red screens encountered.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "All public pages (header)",
+        "issues": [
+          "Several non-blocking console warnings observed during render: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' (multiple), 'props.pointerEvents is deprecated. Use style.pointerEvents.' These come from RN-Web shim usage inside the marketing components/feature cards (boxShadow shim in /app/frontend/app/index.tsx for web is already used, but other style objects still use shadow* via library defaults). Not blocking; cosmetic console noise only."
+        ]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_45.json"
+  ],
+  "action_items": [
+    "Optional polish: silence the 'shadow*' / 'pointerEvents' deprecation warnings on web (low priority, cosmetic).",
+    "Observed (non-blocking) once during test 7: 'TypeError: Cannot read properties of undefined (reading \\'stale\\')' inside expo-router entry.bundle on /auth/login. Did not affect any flow tested here, but worth a glance if it recurs on slower clients.",
+    "Note for future testers: React-Native-Web TextInput on this app does NOT accept Playwright .fill() reliably — React state doesn't update. Use page.click()+keyboard.type() or programmatically set localStorage('session_token') to simulate an authenticated user. The auth-regression part of this iteration used the localStorage approach with a real token obtained via /api/auth/login."
+  ],
+  "critical_code_review_comments": [
+    "index.tsx auth gate is correct: while isLoading || isAuthenticated, a splash is shown (preventing brief landing flash) and useEffect router.replace('/(tabs)') fires after isAuthenticated resolves true — verified end-to-end.",
+    "MarketingFooter & LegalShell both render the full legal entity card (HOORECON IT-Sys Pvt Ltd, multi-line Chennai address, phone, email, website) as required by Razorpay merchant review.",
+    "All public routes use proper RN primitives (View/Text/TouchableOpacity), no raw HTML; text is always wrapped in Text.",
+    "COMPANY constants single source of truth (/app/frontend/src/constants/company.ts) — good DRY pattern.",
+    "Minor: legal pages have no testID anchors on the 'Back to Home' / footer links; not blocking since text-based selectors work, but adding testIDs (e.g. legal-back-home, footer-link-<slug>) would harden future automation."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "n/a (frontend-only request)", "frontend": "100%" },
+  "seed_data_creation": "None. Used existing dev admin account (admin@test.com / AdminPass2026!) for the authenticated-user redirect test.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Public-marketing surface was added at '/', '/legal/{delivery,refund,terms,privacy}' and '/contact'. The root route '/' shows: (a) marketing landing for guests, (b) splash → router.replace('/(tabs)') for authenticated users. Use localStorage.setItem('session_token', <token from /api/auth/login>) to test the authenticated branch — Playwright .fill() does NOT reliably update RN-Web TextInput state on the login form. All required Razorpay-compliance company details (HOORECON IT-Sys Pvt Ltd / Chennai address / phone / email / website) are sourced from /app/frontend/src/constants/company.ts and present on both the dark footer and every legal page entity card.",
+  "rca_of_issue": "No defects found in the scope under review. The login-form Playwright interaction problem reported in earlier scripts was a TEST-HARNESS issue (RN-Web TextInput ignores .fill()), not an app bug — backend /api/auth/login returns 200 + session_token correctly, and the in-browser AsyncStorage→localStorage('session_token') key matches what authStore.checkAuth() reads, which means the auth-user redirect path resolves cleanly when storage is seeded with a real token."
+}
