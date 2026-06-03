@@ -61,6 +61,14 @@ async def create_decision(decision: PRRDecisionCreate, user: dict = Depends(get_
     doc_dict = decision_doc.dict()
     doc_dict["org_id"] = org_id
     await db.decisions.insert_one(doc_dict)
+    # Consume one entitlement for this new decision (prefers L2 bundle → L1) and
+    # pre-unlock its report so the PDF stays free. Subscriptions/admin-skip and
+    # users without a pack are not charged. Never blocks creation.
+    try:
+        from routes.sku_store import ensure_decision_entitlement
+        await ensure_decision_entitlement(user["user_id"], module="dezider", decision_id=decision_doc.id)
+    except Exception as e:
+        logger.warning("entitlement consume on decision create failed: %s", e)
     return {"id": decision_doc.id, "message": "Decision created successfully"}
 
 @router.get("/decisions", response_model=List[dict])

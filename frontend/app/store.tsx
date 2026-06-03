@@ -6,7 +6,7 @@
  * descriptions are fetched from /api/store/skus (NOT hardcoded).
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, Linking } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, Linking, Modal, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,7 +15,7 @@ import api from '../src/utils/api';
 import { showAlert } from '../src/utils/alert';
 import { safeBack } from '../src/utils/navigation';
 
-interface Sku { code: string; name: string; tagline: string; description: string; price_paise: number; quota: number; kind: string; badge_color: string; icon: string; active: boolean; display_order: number; }
+interface Sku { code: string; name: string; tagline: string; description: string; price_paise: number; gst_percent?: number; quota: number; kind: string; badge_color: string; icon: string; active: boolean; display_order: number; }
 interface Entitlement { sku_code: string; balance: number; granted_qty: number; consumed_qty: number; last_used_at?: string | null }
 
 declare const Razorpay: any; // injected by /razorpay-checkout.html or RN SDK

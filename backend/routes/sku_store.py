@@ -32,7 +32,7 @@ from core.auth import get_current_user
 # Imported here so the `_key` lookup can't drift away from how
 # payment_admin.py writes the document (caused the production bug where
 # the toggle was ON but paywalls still triggered — iter22).
-from routes.payment_admin import PAYMENT_SETTING_KEY
+from routes.payment_admin import PAYMENT_SETTING_KEY, evaluate_coupon, record_coupon_redemption
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/store", tags=["SKU Store"])
@@ -60,6 +60,7 @@ DEFAULT_SKUS: List[Dict[str, Any]] = [
         "tagline": "Mass entry",
         "description": "Unlock the in-app decision summary plus a polished PDF report you can download or email yourself.",
         "price_paise": 19900,        # ₹199 excl. GST
+        "gst_percent": 18,
         "quota": 1,
         "kind": "report",            # report | bundle | session | review
         "applies_to_modules": ["dezider", "pros_cons", "swot"],
@@ -76,6 +77,7 @@ DEFAULT_SKUS: List[Dict[str, Any]] = [
         "tagline": "Main scalable product",
         "description": "10 decisions you can spend freely across My Dezider, Pros & Cons and SWOT — share with family.",
         "price_paise": 99900,        # ₹999
+        "gst_percent": 18,
         "quota": 10,
         "kind": "bundle",
         "applies_to_modules": ["dezider", "pros_cons", "swot"],
@@ -92,6 +94,7 @@ DEFAULT_SKUS: List[Dict[str, Any]] = [
         "tagline": "Main assisted revenue",
         "description": "Book a 1-on-1 expert call with screen-share inside your decision flow. Filter by life-area & sub-area.",
         "price_paise": 199900,       # ₹1,999
+        "gst_percent": 18,
         "quota": 1,
         "kind": "session",
         "applies_to_modules": ["dezider", "pros_cons", "swot"],
@@ -235,6 +238,8 @@ async def list_skus(active_only: bool = True):
     if active_only:
         q["active"] = True
     items = await db.sku_catalog.find(q, {"_id": 0}).sort("display_order", 1).to_list(50)
+    for it in items:
+        it.setdefault("gst_percent", 18)
     return {"skus": items}
 
 
@@ -244,6 +249,7 @@ async def get_sku(code: str):
     sku = await db.sku_catalog.find_one({"code": code.upper()}, {"_id": 0})
     if not sku:
         raise HTTPException(status_code=404, detail="SKU not found")
+    sku.setdefault("gst_percent", 18)
     return sku
 
 
@@ -252,6 +258,7 @@ class SkuPriceUpdate(BaseModel):
     tagline: Optional[str] = None
     description: Optional[str] = None
     price_paise: Optional[int] = Field(default=None, ge=0)
+    gst_percent: Optional[float] = Field(default=None, ge=0, le=100)
     quota: Optional[int] = Field(default=None, ge=1)
     active: Optional[bool] = None
     display_order: Optional[int] = None
@@ -538,6 +545,61 @@ async def consume_for_decision(
     )
 
 
+async def ensure_decision_entitlement(
+    user_id: str,
+    *,
+    module: str,
+    decision_id: str,
+) -> Dict[str, Any]:
+    """Consume ONE entitlement when a NEW decision is created.
+
+    Order: prefer L2 bundle → L1 single. The decision's report is pre-unlocked
+    (persisted in `decision_report_unlocks`) so a later PDF export is free — no
+    double charge. Subscriptions / admin-skip grant a free pass (no consumption).
+    If the user has NO consumable pack, creation is still allowed (no charge);
+    the report paywall applies later. Never raises — never blocks creation.
+    """
+    unlock_key = f"{module}:{decision_id}"
+
+    async def _persist(via: str):
+        await db.decision_report_unlocks.update_one(
+            {"user_id": user_id, "key": unlock_key},
+            {"$setOnInsert": {
+                "user_id": user_id,
+                "key": unlock_key,
+                "module": module,
+                "decision_id": decision_id,
+                "via": via,
+                "consumed_on": "create",
+                "at": _now(),
+            }},
+            upsert=True,
+        )
+
+    prior = await db.decision_report_unlocks.find_one(
+        {"user_id": user_id, "key": unlock_key}, {"_id": 0}
+    )
+    if prior:
+        return {"via": prior.get("via"), "consumed": False, "already": True}
+
+    access = await has_any_paid_access(user_id, module=module)
+    via = access.get("via")
+    if access.get("has_access") and via == "admin_skip":
+        return {"via": "admin_skip", "consumed": False}          # temporary — don't persist
+    if access.get("has_access") and via == "subscription":
+        await _persist("subscription")
+        return {"via": "subscription", "consumed": False}
+    if access.get("has_access") and via in ("L2", "L1"):
+        if await consume_one(user_id, "L2", decision_id=decision_id, module=module):
+            await _persist("L2")
+            return {"via": "L2", "consumed": True}
+        if await consume_one(user_id, "L1", decision_id=decision_id, module=module):
+            await _persist("L1")
+            return {"via": "L1", "consumed": True}
+    # No consumable entitlement — allow free creation; report paywall applies later.
+    return {"via": None, "consumed": False}
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # CHECKOUT (Razorpay)
 # ────────────────────────────────────────────────────────────────────────────
@@ -545,11 +607,16 @@ class PurchaseRequest(BaseModel):
     sku_code: str
     decision_id: Optional[str] = None         # for L1/L3/L4 contextual purchase
     module: Optional[str] = None              # 'dezider' | 'pros_cons' | 'swot'
+    coupon_code: Optional[str] = None         # optional discount code
 
 
 @router.post("/purchase")
 async def purchase_sku(body: PurchaseRequest, user: dict = Depends(get_current_user)):
-    """Create a Razorpay order for an SKU purchase. Verify via /store/verify."""
+    """Create a Razorpay order for an SKU purchase (coupon + GST applied).
+
+    Amount math:  base → (− coupon discount) = taxable → (+ GST%) = total.
+    Verify via /store/verify.
+    """
     rzp_client, key_id, _ = await get_razorpay_client()
     if not rzp_client:
         raise HTTPException(status_code=500, detail="Payment gateway not configured")
@@ -559,9 +626,44 @@ async def purchase_sku(body: PurchaseRequest, user: dict = Depends(get_current_u
     if not sku or not sku.get("active"):
         raise HTTPException(status_code=400, detail=f"SKU {code} is not available")
 
+    base_paise = int(sku["price_paise"])
+    gst_percent = float(sku.get("gst_percent", 18) or 0)
+
+    # Coupon — re-validated server-side (never trust client-sent amounts).
+    coupon_code = (body.coupon_code or "").strip().upper() or None
+    discount_paise = 0
+    coupon_net_rupees = None
+    if coupon_code:
+        ev = await evaluate_coupon(
+            code=coupon_code,
+            list_price=base_paise / 100.0,
+            user_id=user["user_id"],
+            flow="STORE",
+        )
+        if not ev.get("valid"):
+            raise HTTPException(status_code=400, detail=ev.get("remarks") or "Invalid coupon")
+        coupon_net_rupees = float(ev.get("net_payable_amount", base_paise / 100.0))
+        taxable_paise = max(0, round(coupon_net_rupees * 100))
+        discount_paise = max(0, base_paise - taxable_paise)
+    else:
+        taxable_paise = base_paise
+
+    gst_paise = int(round(taxable_paise * gst_percent / 100.0))
+    total_paise = taxable_paise + gst_paise
+
+    breakdown = {
+        "base_paise": base_paise,
+        "discount_paise": discount_paise,
+        "taxable_paise": taxable_paise,
+        "gst_percent": gst_percent,
+        "gst_paise": gst_paise,
+        "total_paise": total_paise,
+        "coupon_code": coupon_code,
+    }
+
     try:
         order = rzp_client.order.create({
-            "amount": int(sku["price_paise"]),
+            "amount": int(total_paise),
             "currency": "INR",
             "receipt": f"sku_{code}_{user['user_id'][:8]}_{uuid.uuid4().hex[:6]}",
             "payment_capture": 1,
@@ -572,6 +674,7 @@ async def purchase_sku(body: PurchaseRequest, user: dict = Depends(get_current_u
                 "quota": str(sku.get("quota", 1)),
                 "module": body.module or "",
                 "decision_id": body.decision_id or "",
+                "coupon_code": coupon_code or "",
             },
         })
     except Exception as e:
@@ -584,7 +687,10 @@ async def purchase_sku(body: PurchaseRequest, user: dict = Depends(get_current_u
         "type": "sku_purchase",
         "sku_code": code,
         "quota": int(sku.get("quota", 1)),
-        "amount_paise": int(sku["price_paise"]),
+        "amount_paise": int(total_paise),
+        "pricing": breakdown,
+        "coupon_code": coupon_code,
+        "coupon_net_amount": coupon_net_rupees,
         "module": body.module,
         "decision_id": body.decision_id,
         "status": "created",
@@ -594,10 +700,11 @@ async def purchase_sku(body: PurchaseRequest, user: dict = Depends(get_current_u
 
     return {
         "order_id": order["id"],
-        "amount": int(sku["price_paise"]),
+        "amount": int(total_paise),
         "currency": "INR",
         "key_id": key_id,
         "sku": sku,
+        "pricing": breakdown,
         "user_name": user.get("name", ""),
         "user_email": user.get("email", ""),
     }
@@ -650,6 +757,21 @@ async def verify_sku_purchase(body: VerifyRequest, user: dict = Depends(get_curr
     sku_code = order["sku_code"]
     qty = int(order.get("quota", 1))
     await grant_entitlement(user["user_id"], sku_code, qty, body.razorpay_order_id)
+
+    # Redeem the coupon now that payment succeeded (increments usage counters).
+    if order.get("coupon_code"):
+        try:
+            await record_coupon_redemption(
+                code=order["coupon_code"],
+                user_id=user["user_id"],
+                org_id=user.get("org_id"),
+                order_id=body.razorpay_order_id,
+                flow="STORE",
+                list_price=(order.get("pricing", {}) or {}).get("base_paise", 0) / 100.0,
+                net_payable_amount=order.get("coupon_net_amount") or 0,
+            )
+        except Exception as e:
+            logger.warning("Coupon redemption record failed for %s: %s", order.get("coupon_code"), e)
 
     # L4 manual fulfillment: also create an expert_deliveries placeholder so
     # admin sees this in the queue.

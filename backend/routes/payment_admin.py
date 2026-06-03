@@ -367,18 +367,36 @@ async def delete_coupon(code: str, user: dict = Depends(get_current_user)):
 
 @router.post("/coupons/validate")
 async def validate_coupon(request: Request, user: dict = Depends(get_current_user)):
+    """Public (auth) coupon check. Thin wrapper over evaluate_coupon()."""
+    body = await request.json()
+    return await evaluate_coupon(
+        code=(body.get("coupon_code") or "").strip().upper(),
+        list_price=float(body.get("list_price") or 0),
+        user_id=user.get("user_id"),
+        org_type=(body.get("org_type") or "").upper() or None,
+        flow=(body.get("flow") or "").upper() or None,
+    )
+
+
+async def evaluate_coupon(
+    *,
+    code: str,
+    list_price: float,
+    user_id: Optional[str],
+    org_type: Optional[str] = None,
+    flow: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     Port of SP_GetDiscount with two enhancements:
       • per-user usage is read from `coupon_usages` (was an input arg in the SP).
       • `applicable_org_types` is honoured (new field).
-    Body  : { coupon_code, list_price, org_type?, flow? }
-    Output: full SP-shape struct — see end of function.
+    Reusable from both the public endpoint and the server-side checkout.
+    Output: full SP-shape struct (see end of function).
     """
-    body = await request.json()
-    code = (body.get("coupon_code") or "").strip().upper()
-    list_price = float(body.get("list_price") or 0)
-    org_type = (body.get("org_type") or "").upper() or None
-    flow = (body.get("flow") or "").upper() or None
+    code = (code or "").strip().upper()
+    list_price = float(list_price or 0)
+    org_type = (org_type or "").upper() or None
+    flow = (flow or "").upper() or None
 
     out: Dict[str, Any] = {
         "coupon_code": code,
@@ -459,7 +477,7 @@ async def validate_coupon(request: Request, user: dict = Depends(get_current_use
     if mupu is not None:
         per_user_used = await db.coupon_usages.count_documents({
             "coupon_code": code,
-            "user_id": user.get("user_id"),
+            "user_id": user_id,
         })
         if per_user_used >= int(mupu):
             out["remarks"] = "[ERR-#6] Valid, Currently Active, Sales-Enabled Coupon Code - but Max Usage Limit Per User has reached !"
@@ -521,33 +539,53 @@ async def validate_coupon(request: Request, user: dict = Depends(get_current_use
 @router.post("/coupons/redeem")
 async def redeem_coupon(request: Request, user: dict = Depends(get_current_user)):
     """
-    Called by the server side AFTER a successful Razorpay capture *or* after a
-    skip-grant. Atomically increments `current_usage_limit` and records the
-    per-user usage row so the next /validate call recomputes caps correctly.
-    Body: { coupon_code, order_id?, flow?, list_price?, net_payable_amount? }
+    Called AFTER a successful Razorpay capture (or skip-grant). Atomically
+    increments `current_usage_limit` and records per-user usage. Thin wrapper
+    over record_coupon_redemption().
     """
     body = await request.json()
     code = (body.get("coupon_code") or "").strip().upper()
     if not code:
         raise HTTPException(status_code=400, detail="coupon_code is required")
+    return await record_coupon_redemption(
+        code=code,
+        user_id=user.get("user_id"),
+        org_id=user.get("org_id"),
+        order_id=body.get("order_id"),
+        flow=(body.get("flow") or "").upper() or None,
+        list_price=float(body.get("list_price") or 0),
+        net_payable_amount=float(body.get("net_payable_amount") or 0),
+    )
+
+
+async def record_coupon_redemption(
+    *,
+    code: str,
+    user_id: Optional[str],
+    org_id: Optional[str] = None,
+    order_id: Optional[str] = None,
+    flow: Optional[str] = None,
+    list_price: float = 0,
+    net_payable_amount: float = 0,
+) -> Dict[str, Any]:
+    """Increment global usage + record a per-user usage row. Reusable server-side."""
+    code = (code or "").strip().upper()
     coupon = await db.coupons.find_one({"coupon_code": code})
     if not coupon:
         raise HTTPException(status_code=404, detail="Coupon not found")
 
-    # Increment global counter
     await db.coupons.update_one(
         {"coupon_code": code},
         {"$inc": {"current_usage_limit": 1}, "$set": {"updated_at": _now().isoformat()}},
     )
-    # Record per-user usage
     usage_doc = {
         "coupon_code": code,
-        "user_id": user.get("user_id"),
-        "org_id": user.get("org_id"),
-        "order_id": body.get("order_id"),
-        "flow": (body.get("flow") or "").upper() or None,
-        "list_price": float(body.get("list_price") or 0),
-        "net_payable_amount": float(body.get("net_payable_amount") or 0),
+        "user_id": user_id,
+        "org_id": org_id,
+        "order_id": order_id,
+        "flow": (flow or "").upper() or None,
+        "list_price": float(list_price or 0),
+        "net_payable_amount": float(net_payable_amount or 0),
         "used_at": _now().isoformat(),
     }
     await db.coupon_usages.insert_one(usage_doc)
