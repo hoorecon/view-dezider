@@ -290,38 +290,170 @@ def _build_pdf(payload: Dict[str, Any]) -> bytes:
     return buf.getvalue()
 
 
+def _dez_effective_pct(factor, factors, a_by_fid):
+    """Effective assessment % for a factor — weighted avg of sub-factors when
+    present, else its own assessment (mirrors calculateDynamicWorth)."""
+    subs = [f for f in factors if f.get("parent_id") == factor.get("id")]
+    if not subs:
+        return a_by_fid.get(factor.get("id"))
+    wsum = 0.0
+    wtot = 0.0
+    any_ = False
+    for sub in subs:
+        sp = a_by_fid.get(sub.get("id"))
+        sw = float(sub.get("weight") or 0)
+        if sp is not None and sw > 0:
+            wsum += float(sp) * sw / 100.0
+            wtot += sw
+            any_ = True
+    if not any_ or wtot == 0:
+        return None
+    return round(wsum * (100.0 / wtot), 1)
+
+
+def _dez_worth(option, factors, overrides=None):
+    """Option worth % = Σ(rating × effective% / 100) / Σ rating × 100."""
+    top = [f for f in factors if not f.get("parent_id")]
+    total_rating = sum(float(f.get("rating") or 0) for f in top)
+    if total_rating <= 0:
+        return 0.0
+    a_by_fid = {a.get("factor_id"): a.get("percentage")
+                for a in (option.get("assessments") or [])}
+    if overrides:
+        a_by_fid = {**a_by_fid, **overrides}
+    wsum = 0.0
+    for f in top:
+        pct = _dez_effective_pct(f, factors, a_by_fid)
+        if pct is not None:
+            wsum += float(f.get("rating") or 0) * max(0.0, min(100.0, float(pct))) / 100.0
+    return round(min(100.0, max(0.0, wsum / total_rating * 100.0)), 1)
+
+
 def _pdf_payload_for_dezider(raw: Dict[str, Any]) -> Dict[str, Any]:
-    sections = []
+    """Detailed My Dezider report — mirrors Pros & Cons: intake overview,
+    factors, per-option assessment detail, Satisfaction-% ranking + Standard
+    Recommendation, and MPPS analysis + Final Recommendation."""
+    sections = [_decision_overview_section(raw)]
+
     options = raw.get("options") or []
     factors = raw.get("factors") or []
+    top = [f for f in factors if not f.get("parent_id")]
+    fsorted = sorted(top, key=lambda f: (f.get("order") if f.get("order") is not None else 9999))
 
-    sections.append(_decision_overview_section(raw))
+    if not options or not factors:
+        # Minimal fallback for empty decisions
+        if raw.get("final_decision"):
+            sections.append({"heading": "Final Decision",
+                             "paragraph": _esc(str(raw["final_decision"])[:1500])})
+        return {"title": raw.get("title", "Untitled Decision"),
+                "context": raw.get("context"), "module_label": "My Dezider",
+                "sections": sections}
 
-    if options:
-        rows = [["#", "Option", "Final Score"]]
-        for i, o in enumerate(options, 1):
-            rows.append([
-                str(i),
-                str(o.get("name") or o.get("title") or f"Option {i}")[:80],
-                f"{o.get('final_score', '—')}",
+    # ── Factors & Priorities ────────────────────────────────────────────────
+    frows = [["#", "Factor", "Category", "Rating"]]
+    for i, f in enumerate(fsorted, 1):
+        frows.append([
+            _num(i), _t(f.get("name")),
+            _t(str(f.get("category") or "").title() or "—"), _num(f.get("rating")),
+        ])
+    sections.append({"heading": "Factors & Priorities", "table": frows,
+                     "col_ratios": [0.7, 3.4, 1.6, 1.2]})
+
+    # ── Per-option metrics ──────────────────────────────────────────────────
+    worth_by_opt = {o.get("id"): _dez_worth(o, factors) for o in options}
+    osorted = sorted(options, key=lambda o: worth_by_opt.get(o.get("id"), 0), reverse=True)
+
+    # ── Assessment Detail per option (Satisfaction %) ───────────────────────
+    for o in osorted:
+        a_by_fid = {a.get("factor_id"): a.get("percentage")
+                    for a in (o.get("assessments") or [])}
+        drows = [["Factor", "Satisfaction %"]]
+        for f in fsorted:
+            pct = _dez_effective_pct(f, factors, a_by_fid)
+            if pct is None:
+                continue
+            drows.append([_t(f.get("name")), f"{_num(pct)}%"])
+        if len(drows) > 1:
+            sections.append({
+                "heading": f"Assessment Detail — {o.get('name') or 'Option'}",
+                "table": drows, "col_ratios": [3.6, 1.6],
+            })
+
+    # ── Options Ranking — Satisfaction % + Standard Recommendation ──────────
+    orows = [["Rank", "Option", "Satisfaction %"]]
+    for i, o in enumerate(osorted, 1):
+        orows.append([_num(i), _t(o.get("name")), f"{_num(worth_by_opt.get(o.get('id')))}%"])
+    sections.append({"heading": "Options Ranking — Satisfaction %", "table": orows,
+                     "col_ratios": [0.8, 3.2, 1.8]})
+
+    if osorted:
+        top_o = osorted[0]
+        sections.append({
+            "heading": "Standard Recommendation",
+            "paragraph": (
+                f"Based on your weighted factors, "
+                f"<b>{_esc(top_o.get('name') or 'the top option')}</b> ranks #1 "
+                f"with a satisfaction of <b>{_esc(_num(worth_by_opt.get(top_o.get('id'))))}%</b>."
+            ),
+        })
+
+    # ── MPPS Analysis + Final Recommendation ────────────────────────────────
+    improvements = [i for i in (raw.get("mpps_improvements") or [])
+                    if i.get("factor_id")]
+    mpps_oid = raw.get("mpps_option_id")
+    if improvements and mpps_oid:
+        fname = {f.get("id"): f.get("name") for f in factors}
+        target = next((o for o in options if o.get("id") == mpps_oid), None)
+        tgt_name = (target or {}).get("name") or "the target option"
+        irows = [["Factor", "Current %", "Projected %", "Improvement Plan"]]
+        overrides = {}
+        for imp in improvements:
+            cur = imp.get("original_percentage")
+            proj = imp.get("projected_percentage")
+            if proj is not None:
+                overrides[imp.get("factor_id")] = proj
+            irows.append([
+                _t(fname.get(imp.get("factor_id")) or "—"),
+                f"{_num(cur)}%" if cur is not None else "—",
+                f"{_num(proj)}%" if proj is not None else "—",
+                _t(imp.get("improvement_plan")),
             ])
-        sections.append({"heading": "Options Evaluated", "table": rows})
+        sections.append({
+            "heading": f"MPPS Analysis (Case-2) — {tgt_name}",
+            "table": irows, "col_ratios": [2.6, 1.2, 1.3, 3.2],
+        })
 
-    if factors:
-        rows = [["Factor", "Weight", "Direction"]]
-        for f in factors:
-            rows.append([
-                str(f.get("name", "") or "")[:60],
-                f"{f.get('weightage', '—')}",
-                str(f.get("polarity") or f.get("direction") or "—"),
+        # Recompute the target option's worth with projected %, then re-rank
+        mpps_worth = {oid: w for oid, w in worth_by_opt.items()}
+        if target is not None:
+            mpps_worth[mpps_oid] = _dez_worth(target, factors, overrides=overrides)
+        ranked_mpps = sorted(options, key=lambda o: mpps_worth.get(o.get("id"), 0), reverse=True)
+        mrows = [["Rank", "Option", "Satisfaction %", "MPPS Satisfaction %"]]
+        for i, o in enumerate(ranked_mpps, 1):
+            mrows.append([
+                _num(i), _t(o.get("name")),
+                f"{_num(worth_by_opt.get(o.get('id')))}%",
+                f"{_num(mpps_worth.get(o.get('id')))}%",
             ])
-        sections.append({"heading": "Factors Considered", "table": rows})
+        sections.append({"heading": "Revised Ranking after MPPS", "table": mrows,
+                         "col_ratios": [0.8, 3.0, 1.8, 2.0]})
+
+        if ranked_mpps:
+            top_m = ranked_mpps[0]
+            sections.append({
+                "heading": "Final Recommendation",
+                "paragraph": (
+                    f"After MPPS improvements, "
+                    f"<b>{_esc(top_m.get('name') or 'the top option')}</b> ranks #1 "
+                    f"with a projected satisfaction of "
+                    f"<b>{_esc(_num(mpps_worth.get(top_m.get('id'))))}%</b> "
+                    f"(was {_esc(_num(worth_by_opt.get(top_m.get('id'))))}%)."
+                ),
+            })
 
     if raw.get("final_decision"):
-        sections.append({
-            "heading": "Final Decision",
-            "paragraph": str(raw["final_decision"])[:1200],
-        })
+        sections.append({"heading": "Final Decision",
+                         "paragraph": _esc(str(raw["final_decision"])[:1500])})
 
     return {
         "title": raw.get("title", "Untitled Decision"),
