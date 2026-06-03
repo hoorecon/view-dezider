@@ -12,7 +12,8 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSSpeechRecognitionUsageDescription": "Quickly assess decisions using voice commands",
-        "NSMicrophoneUsageDescription": "Speak assessment values hands-free"
+        "NSMicrophoneUsageDescription": "Speak assessment values hands-free",
+        "NSContactsUsageDescription": "Pick a recipient to share a report"
       }
     },
     "android": {
@@ -22,7 +23,8 @@
       },
       "edgeToEdgeEnabled": true,
       "permissions": [
-        "RECORD_AUDIO"
+        "RECORD_AUDIO",
+        "READ_CONTACTS"
       ]
     },
     "web": {

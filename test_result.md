@@ -8486,3 +8486,69 @@ agent_communication:
       owner/user harden_1777921741@example.com / HardenPass2026!  ; admin admin@test.com / AdminPass2026!.
       For Google Sheet test, any public 'Published to web' CSV with headers solution_id,factor_name,factor_type,value works.
       NOTE: AI endpoints unaffected (LLM budget still exhausted in preview — unrelated).
+
+
+backend:
+  - task: "Report Shares — life_area/decision_type meta on share + shared-with-me filters"
+    implemented: true
+    working: "NA"
+    file: "backend/routes/report_shares.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Enhancement for "Shared with me" filtering. Added _share_meta(module, raw) which extracts
+          life_area (area_of_life for solution_finder; life_area||folder otherwise) and decision_type.
+          POST /api/shares now stores life_area + decision_type on the share doc.
+          GET /api/shares/shared-with-me now returns life_area + decision_type per item, with a
+          best-effort enrichment fallback (loads the source decision) for legacy pre-meta shares.
+          Resend + UltraMsg credentials present in backend/.env (PUBLIC_APP_URL=https://jelcos.ai).
+          TEST: create email + whatsapp shares across modules (dezider/pros_cons/swot/solution_finder),
+          verify shared-with-me returns life_area + decision_type; verify ownership 404 + channel 400 guards;
+          verify recipient (different account) sees the share with meta. Creds: owner harden_1777921741@example.com /
+          HardenPass2026!. Recipient: register a throwaway account or use admin@test.com / AdminPass2026!.
+
+frontend:
+  - task: "Shared with me tab + Solution Box filters + full 'Solution Finder' label + contacts picker"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/(tabs)/shared.tsx, frontend/app/(tabs)/_layout.tsx, frontend/app/(tabs)/prr.tsx, frontend/src/components/ListFilterBar.tsx, frontend/src/components/ModuleStoreActions.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          (1) New "Shared with me" primary tab placed between Solution Box and Journal in (tabs)/_layout.tsx.
+              Renders shared reports with filters: text search, date-range presets (All/7d/30d/90d/Year),
+              life area, and decision type (ListFilterBar). Legacy /shared-with-me now redirects to /(tabs)/shared,
+              and /shared/[token] post-accept also routes to the tab.
+          (2) Solution Box (prr.tsx): added search + date-range + decision-type filters (ListFilterBar) layered on
+              the existing life-area folder grid & flow-type chips; list now renders displayItems.
+          (3) Solution Finder badge label changed from "Sol. Finder" to full "Solution Finder" (chips + cards).
+          (4) Share modal (ModuleStoreActions.tsx): added "Pick from contacts" (expo-contacts presentContactPickerAsync)
+              alongside manual entry — NATIVE ONLY (hidden on web; shows guidance). Contacts permission handled
+              (request → openSettings when canAskAgain=false). app.json updated: iOS NSContactsUsageDescription + Android READ_CONTACTS.
+          TEST (frontend, web): login harden_1777921741@example.com / HardenPass2026!. Verify 5 tabs incl. "Shared".
+          Open Solution Box: confirm full "Solution Finder" chip label, search box, date-range chips, decision-type chips filter the list.
+          Open Shared tab: confirm it loads (empty state ok) + filter bar present. Open any decision detail → tap Share →
+          modal opens with Email/WhatsApp toggle + manual inputs (contacts button is hidden on web — that's expected).
+          NOTE: contacts picker requires a native build to validate (won't appear on web preview).
+
+agent_communication:
+  - agent: "main"
+    message: |
+      IMPORTANT: handoff summary was STALE — Phases 2–6 (Dezider/SWOT/Solution Finder PDFs, per-option MPPS in Step9 + PDF,
+      Solution Box merging Solution Finder + intake fields, full Resend/UltraMsg sharing + shared-with-me) were ALREADY
+      implemented in the inherited code. This session ADDED the user's requested refinements only:
+        - "Shared with me" as a tab (between Solution Box & Journal) + filters (search/date-range/life-area/decision-type)
+        - Same search + date-range + decision-type filters on Solution Box
+        - Full "Solution Finder" badge name (was "Sol. Finder")
+        - Contacts picker (expo-contacts) + manual entry in the report share modal
+        - Backend: share docs/shared-with-me now carry life_area + decision_type for the filters
+      Please test BACKEND (report_shares meta + shared-with-me) and FRONTEND (web) per the task entries above.
+      Skip native-only contacts picker validation (note it requires a build). Credentials in /app/memory/test_credentials.md.

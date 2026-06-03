@@ -25,7 +25,7 @@ export default function SharedDeepLink() {
       const stored = await AsyncStorage.getItem('session_token');
       if (isAuthenticated || stored) {
         try { await api.post(`/shares/${token}/accept`); } catch { /* ignore */ }
-        router.replace('/shared-with-me');
+        router.replace('/(tabs)/shared');
       } else {
         await AsyncStorage.setItem('pending_share_token', String(token));
         router.replace('/auth/login');

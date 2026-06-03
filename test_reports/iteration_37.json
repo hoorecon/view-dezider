@@ -1,0 +1,34 @@
+{
+  "summary": "Iter 37 — Report-share meta (life_area/decision_type), 'Shared' tab + filters, full 'Solution Finder' label. Backend: 14/14 pytest tests passed against public EXPO_BACKEND_URL. All 4 modules (dezider, pros_cons, swot, solution_finder) accept EMAIL + WHATSAPP shares (8 POSTs returned 200 with token/link). /api/shares/shared-with-me exposes life_area + decision_type keys on every item (populated where source doc has them; SF always has life_area). Guards verified: 404 for non-owned decision_id, 400 for missing recipient_email (email) and missing recipient_phone (whatsapp). /api/solution-box returns solution_finder items with intake fields (acting_as_context, decision_type, sub_area_name, scenario_title). PDF download regression OK (200, application/pdf) with admin skip-payment ON. Frontend (mobile web, 390x844): login → 5 bottom tabs in order Home/Solution Box/Shared/Journal/Profile ✓. Solution Box renders chips with FULL 'Solution Finder' label (no 'Sol. Finder' truncation), search placeholder 'Search your Solution Box…', date-range chips (All time/Last 7/30/90 days), decision-type chips (All types/Product Purchase). Typing in search filters list to empty state. 'Shared' tab loads cleanly for admin (12/12 items) showing module icon, title, sharer name, life_area badge, search 'Search shared reports…', 'All time' chips, 'All areas' + decision-type chips. Share modal on a Dezider detail shows Email/WhatsApp toggle, Recipient email + Recipient name (optional) fields, Cancel+Send; 'Pick from contacts' correctly hidden on web. No critical or design issues found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/shares (email)", "issue": "Resend hit a 429 'Too many requests' once during back-to-back tests (2 req/s limit). The /api/shares call itself still returned 200 (token created) but delivery failed for that one email. Worth adding a small server-side throttle or retry."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter37_shares_meta_filters.py",
+    "/app/test_reports/pytest/iter37.xml"
+  ],
+  "action_items": [
+    "Optional: add a small in-process throttle / retry for Resend to absorb the 2 req/s rate limit when users bulk-share."
+  ],
+  "critical_code_review_comments": [
+    "report_shares.py raises RuntimeError on Resend 429 — currently swallowed enough to still return 200; consider returning a clearer 'delivery_pending' flag or retrying."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter37_shares_meta_filters.py (new)"
+  ],
+  "success_rate": {"backend": "100% (14/14)", "frontend": "100% (8/8 review-request items)"},
+  "seed_data_creation": "Created via tests: TEST_share_dezider, TEST_share_pc, TEST_share_swot (owner). For admin: TEST_admin_pdf_iter37 (deleted at end of PDF test). 8 share rows linking owner→admin@test.com across 4 modules × 2 channels — these power the 'Shared with me' UI test.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Login session token is in JSON field 'session_token' (NOT 'token'/'access_token'). Reports/PDF endpoints enforce entitlement — to test as admin, toggle PUT /api/admin/payment-settings {skip_payment_all_flows:true} first and restore after. Direct route /dezider 404s; use /tools/dezider-list (reachable via 'MyDezider' card on Home). To open a decision detail, navigate to /prr/{decision_id}. Share pill text is exactly 'Share' (use exact=True; 'Shared Inbox' will match otherwise).",
+  "rca_of_issue": "N/A — no failures."
+}

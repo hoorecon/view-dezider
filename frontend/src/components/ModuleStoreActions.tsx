@@ -16,6 +16,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform, ActivityIndicator, Linking, Modal, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import * as Contacts from 'expo-contacts';
 import api from '../utils/api';
 import { showAlert, confirmDialog } from '../utils/alert';
 import type { DecisionModule } from './PaywallGate';
@@ -136,6 +137,41 @@ export default function ModuleStoreActions({ module, decisionId, lifeAreaId, sub
     } finally { setShareBusy(false); }
   }, [module, decisionId, shareChannel, shareEmail, sharePhone, shareName]);
 
+  const pickContact = useCallback(async () => {
+    if (Platform.OS === 'web') {
+      showAlert('Use the mobile app', 'Picking from contacts works on your phone. On web, type the email/number manually.');
+      return;
+    }
+    try {
+      const perm = await Contacts.requestPermissionsAsync();
+      if (perm.status !== 'granted') {
+        if (perm.canAskAgain === false) {
+          const go = await confirmDialog(
+            'Contacts permission needed',
+            'Enable Contacts access in Settings to pick a recipient — or just type it in manually.',
+            { confirmText: 'Open Settings' },
+          );
+          if (go) Linking.openSettings();
+        }
+        return; // denial only reduces capability — manual entry still works
+      }
+      const contact = await Contacts.presentContactPickerAsync();
+      if (!contact) return;
+      if (shareChannel === 'email') {
+        const email = contact.emails?.[0]?.email;
+        if (email) setShareEmail(String(email));
+        else showAlert('No email found', 'This contact has no email. Pick another or type it in.');
+      } else {
+        const phone = contact.phoneNumbers?.[0]?.number;
+        if (phone) setSharePhone(String(phone).replace(/[^\d+]/g, ''));
+        else showAlert('No number found', 'This contact has no phone number. Pick another or type it in.');
+      }
+      if (contact.name && !shareName.trim()) setShareName(contact.name);
+    } catch {
+      showAlert('Contacts', 'Could not open contacts. Please type the details manually.');
+    }
+  }, [shareChannel, shareName]);
+
   return (
     <View style={s.row}>
       <Pill icon="download" label={info?.unlocked ? 'Download PDF' : 'Unlock PDF'} tone="#3B82F6" busy={busy === 'L1'} onPress={downloadPdf} hint={info?.unlocked ? null : info?.l1_balance ? `${info.l1_balance} L1 left` : null} />
@@ -156,6 +192,12 @@ export default function ModuleStoreActions({ module, decisionId, lifeAreaId, sub
               <TextInput style={s.input} placeholder="Recipient email" placeholderTextColor="#9CA3AF" autoCapitalize="none" keyboardType="email-address" value={shareEmail} onChangeText={setShareEmail} />
             ) : (
               <TextInput style={s.input} placeholder="WhatsApp number (with country code)" placeholderTextColor="#9CA3AF" keyboardType="phone-pad" value={sharePhone} onChangeText={setSharePhone} />
+            )}
+            {Platform.OS !== 'web' && (
+              <TouchableOpacity style={s.pickBtn} onPress={pickContact}>
+                <Ionicons name="people" size={16} color="#7C3AED" />
+                <Text style={s.pickTxt}>Pick from contacts</Text>
+              </TouchableOpacity>
             )}
             <TextInput style={s.input} placeholder="Recipient name (optional)" placeholderTextColor="#9CA3AF" value={shareName} onChangeText={setShareName} />
             <View style={s.sheetBtns}>
@@ -204,6 +246,8 @@ const s = StyleSheet.create({
   segTxt: { fontSize: 14, fontWeight: '700', color: '#6B7280' },
   segTxtActive: { color: '#7C3AED' },
   input: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, fontSize: 15, color: '#111827', marginBottom: 10 },
+  pickBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: '#7C3AED', backgroundColor: '#7C3AED10', marginBottom: 10 },
+  pickTxt: { fontSize: 14, fontWeight: '700', color: '#7C3AED' },
   sheetBtns: { flexDirection: 'row', gap: 10, marginTop: 4 },
   sheetBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   cancelBtn: { backgroundColor: '#F3F4F6' },

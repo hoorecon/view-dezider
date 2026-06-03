@@ -59,6 +59,15 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="shared"
+        options={{
+          title: 'Shared',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="share-social" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="journal"
         options={{
           title: 'Journal',

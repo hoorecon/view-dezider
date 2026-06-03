@@ -142,6 +142,16 @@ def _wa_text(owner: str, title: str, module_label: str, link: str) -> str:
     )
 
 
+def _share_meta(module: str, raw: dict) -> Dict[str, Any]:
+    """Extract life_area + decision_type from a source doc so the recipient's
+    'Shared with me' list can offer the same filters as Solution Box."""
+    if module == "solution_finder":
+        la = raw.get("area_of_life")
+    else:
+        la = raw.get("life_area") or raw.get("folder")
+    return {"life_area": la, "decision_type": raw.get("decision_type")}
+
+
 def _user_can_access(user: dict, share: dict, phone: Optional[str]) -> bool:
     if share.get("accepted_by_user_id") == user["user_id"]:
         return True
@@ -175,6 +185,7 @@ async def create_share(payload: ShareCreate, user: dict = Depends(get_current_us
     # Ownership check — raises 404 if the user does not own this decision.
     info = await _load_decision(module, payload.decision_id, user["user_id"])
     title = info.get("title") or MODULE_LABELS[module]
+    meta = _share_meta(module, info.get("raw") or {})
 
     rec_email = _norm_email(payload.recipient_email)
     rec_phone = _norm_phone(payload.recipient_phone)
@@ -198,6 +209,8 @@ async def create_share(payload: ShareCreate, user: dict = Depends(get_current_us
         "recipient_email": rec_email,
         "recipient_phone": rec_phone,
         "recipient_name": payload.recipient_name,
+        "life_area": meta.get("life_area"),
+        "decision_type": meta.get("decision_type"),
         "status": "pending",
         "accepted_by_user_id": None,
         "sent": False,
@@ -244,6 +257,15 @@ async def shared_with_me(user: dict = Depends(get_current_user)):
         if s.get("owner_id") == user["user_id"]:
             continue  # don't show the user's own shares back to them
         created = s.get("created_at")
+        la = s.get("life_area")
+        dt = s.get("decision_type")
+        if la is None and dt is None:  # enrich legacy shares (pre-meta)
+            try:
+                info = await _load_decision(s["module"], s["decision_id"], s["owner_id"])
+                m = _share_meta(s["module"], info.get("raw") or {})
+                la, dt = m["life_area"], m["decision_type"]
+            except Exception:
+                pass
         items.append({
             "token": s.get("token"),
             "module": s.get("module"),
@@ -253,6 +275,8 @@ async def shared_with_me(user: dict = Depends(get_current_user)):
             "owner_name": s.get("owner_name"),
             "channel": s.get("channel"),
             "status": s.get("status"),
+            "life_area": la,
+            "decision_type": dt,
             "created_at": created.isoformat() if isinstance(created, datetime) else created,
         })
     return {"items": items}

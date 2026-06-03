@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { showAlert } from '../../src/utils/alert';
 import {
   View,
@@ -21,6 +21,7 @@ import TemplateBrowserModal from '../../src/components/TemplateBrowserModal';
 import api from '../../src/utils/api';
 import { formatAbsolute } from '../../src/utils/datetime';
 import { LIFE_AREAS, getLifeArea } from '../../src/constants/lifeAreas';
+import ListFilterBar, { DateRangeKey, withinDateRange } from '../../src/components/ListFilterBar';
 
 /**
  * Solution Box — unified home for ALL solution flows owned by the user:
@@ -62,7 +63,7 @@ const TYPE_CHIPS: { key: 'all' | SolutionType; label: string; icon: string; colo
   { key: 'pros_cons',        label: 'Pros & Cons', icon: 'layers',         color: '#7C3AED' },
   { key: 'swot',             label: 'SWOT',        icon: 'grid',           color: '#F59E0B' },
   { key: 'test123',          label: 'Test123',     icon: 'flash',          color: '#EC4899' },
-  { key: 'solution_finder',  label: 'Sol. Finder', icon: 'compass',        color: '#0EA5E9' },
+  { key: 'solution_finder',  label: 'Solution Finder', icon: 'compass',        color: '#0EA5E9' },
 ];
 
 const TYPE_META: Record<SolutionType, { label: string; short: string; icon: string; color: string; bg: string }> = {
@@ -70,7 +71,7 @@ const TYPE_META: Record<SolutionType, { label: string; short: string; icon: stri
   pros_cons:       { label: 'Pros & Cons', short: 'P&C',      icon: 'layers',          color: '#7C3AED', bg: '#F5F3FF' },
   swot:            { label: 'SWOT',        short: 'SWOT',     icon: 'grid',            color: '#F59E0B', bg: '#FFFBEB' },
   test123:         { label: 'Test123',     short: 'Test123',  icon: 'flash',           color: '#EC4899', bg: '#FDF2F8' },
-  solution_finder: { label: 'Sol. Finder', short: 'Finder',   icon: 'compass',         color: '#0EA5E9', bg: '#F0F9FF' },
+  solution_finder: { label: 'Solution Finder', short: 'Finder',   icon: 'compass',         color: '#0EA5E9', bg: '#F0F9FF' },
 };
 
 const STATUS_META: Record<SolutionStatus, { label: string; color: string; bg: string }> = {
@@ -95,6 +96,27 @@ export default function SolutionBoxScreen() {
   const [templateBrowserVisible, setTemplateBrowserVisible] = useState(false);
   const [userRole, setUserRole] = useState('user');
   const [folderCounts, setFolderCounts] = useState<Record<string, number>>({});
+
+  // Extra client-side filters (search + date range + decision type) layered
+  // on top of the server-side life-area & flow-type filtering.
+  const [search, setSearch] = useState('');
+  const [dateRange, setDateRange] = useState<DateRangeKey>('all');
+  const [decisionType, setDecisionType] = useState<string | null>(null);
+
+  const availableDecisionTypes = useMemo(
+    () => Array.from(new Set(items.map((i) => i.decision_type).filter(Boolean))) as string[],
+    [items],
+  );
+
+  const displayItems = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return items.filter((it) => {
+      if (q && !(`${it.title} ${it.context || ''} ${it.sub_area_name || ''} ${it.scenario_title || ''}`.toLowerCase().includes(q))) return false;
+      if (decisionType && it.decision_type !== decisionType) return false;
+      if (!withinDateRange(it.updated_at || it.created_at, dateRange)) return false;
+      return true;
+    });
+  }, [items, search, decisionType, dateRange]);
 
   const fetchItems = async (
     lifeAreaFilter?: string | null,
@@ -402,6 +424,15 @@ export default function SolutionBoxScreen() {
         </View>
       )}
       {renderTypeChips()}
+      <ListFilterBar
+        search={search} onSearch={setSearch}
+        dateRange={dateRange} onDateRange={setDateRange}
+        lifeArea={null} onLifeArea={() => {}}
+        decisionType={decisionType} onDecisionType={setDecisionType}
+        availableLifeAreas={[]}
+        availableDecisionTypes={availableDecisionTypes}
+        searchPlaceholder="Search your Solution Box…"
+      />
     </>
   );
 
@@ -415,7 +446,7 @@ export default function SolutionBoxScreen() {
         <View style={styles.headerActions}>
           <TouchableOpacity
             style={styles.templateButton}
-            onPress={() => router.push('/shared-with-me' as any)}
+            onPress={() => router.push('/(tabs)/shared' as any)}
           >
             <Ionicons name="share-social-outline" size={20} color={COLORS.primary} />
           </TouchableOpacity>
@@ -435,7 +466,7 @@ export default function SolutionBoxScreen() {
       </View>
 
       <FlatList
-        data={items}
+        data={displayItems}
         renderItem={renderItem}
         keyExtractor={(item) => `${item.type}-${item.id}`}
         contentContainerStyle={[styles.list, { paddingBottom: 100 }]}
