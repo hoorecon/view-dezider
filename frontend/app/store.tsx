@@ -38,6 +38,10 @@ export default function StoreScreen() {
   const [ents, setEnts] = useState<Entitlement[]>([]);
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState<string | null>(null);
+  // Checkout modal + coupon state
+  const [checkoutSku, setCheckoutSku] = useState<Sku | null>(null);
+  const [couponInput, setCouponInput] = useState('');
+  const [couponState, setCouponState] = useState<{ status: 'idle' | 'checking' | 'valid' | 'invalid'; net?: number; message?: string }>({ status: 'idle' });
 
   const load = useCallback(async () => {
     try {
@@ -56,13 +60,15 @@ export default function StoreScreen() {
 
   const balanceFor = (code: string) => (ents.find(x => x.sku_code === code)?.balance ?? 0);
 
-  const startPurchase = useCallback(async (sku: Sku) => {
+  const startPurchase = useCallback(async (sku: Sku, couponCode?: string) => {
     setPurchasing(sku.code);
+    setCheckoutSku(null);
     try {
       const orderRes = await api.post('/store/purchase', {
         sku_code: sku.code,
         decision_id: params.decision_id || null,
         module: params.module || null,
+        coupon_code: couponCode || null,
       });
       const data = orderRes.data;
       if (Platform.OS === 'web') {
@@ -100,6 +106,46 @@ export default function StoreScreen() {
       setTimeout(() => setPurchasing(null), 1200);
     }
   }, [params, load, router]);
+
+  const openCheckout = useCallback((sku: Sku) => {
+    setCouponInput('');
+    setCouponState({ status: 'idle' });
+    setCheckoutSku(sku);
+  }, []);
+
+  const applyCoupon = useCallback(async () => {
+    if (!checkoutSku) return;
+    const code = couponInput.trim().toUpperCase();
+    if (!code) { setCouponState({ status: 'idle' }); return; }
+    setCouponState({ status: 'checking' });
+    try {
+      const r = await api.post('/coupons/validate', {
+        coupon_code: code,
+        list_price: checkoutSku.price_paise / 100,
+        flow: 'STORE',
+      });
+      if (r.data?.valid) {
+        setCouponState({ status: 'valid', net: Number(r.data.net_payable_amount), message: r.data.coupon_desc || 'Coupon applied' });
+      } else {
+        setCouponState({ status: 'invalid', message: r.data?.remarks || 'Invalid coupon' });
+      }
+    } catch (e: any) {
+      setCouponState({ status: 'invalid', message: e?.response?.data?.detail || 'Could not validate coupon' });
+    }
+  }, [checkoutSku, couponInput]);
+
+  // Live price preview inside the checkout modal
+  const previewTotals = (() => {
+    if (!checkoutSku) return null;
+    const base = checkoutSku.price_paise;
+    const gstPct = checkoutSku.gst_percent ?? 18;
+    const couponValid = couponState.status === 'valid' && typeof couponState.net === 'number';
+    const taxable = couponValid ? Math.max(0, Math.round((couponState.net as number) * 100)) : base;
+    const discount = Math.max(0, base - taxable);
+    const gst = Math.round(taxable * gstPct / 100);
+    const total = taxable + gst;
+    return { base, gstPct, taxable, discount, gst, total };
+  })();
 
   return (
     <SafeAreaView style={s.root} edges={['top']}>
@@ -145,7 +191,7 @@ export default function StoreScreen() {
                   </View>
                   <TouchableOpacity
                     style={[s.buyBtn, { backgroundColor: tone }, purchasing === sku.code && { opacity: 0.6 }]}
-                    onPress={() => startPurchase(sku)}
+                    onPress={() => openCheckout(sku)}
                     disabled={purchasing === sku.code}
                   >
                     {purchasing === sku.code ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={s.buyText}>{bal > 0 ? 'Buy more' : 'Buy now'}</Text>}
@@ -170,6 +216,71 @@ export default function StoreScreen() {
           <Text style={s.disclaimer}>Powered by Razorpay · 100% PCI-DSS · Indian GST invoices issued. Need help? support@jelcos.ai</Text>
         </ScrollView>
       )}
+
+      {/* Checkout + coupon modal */}
+      <Modal visible={!!checkoutSku} transparent animationType="fade" onRequestClose={() => setCheckoutSku(null)}>
+        <View style={s.modalOverlay}>
+          <View style={s.modalCard}>
+            <View style={s.modalHead}>
+              <Text style={s.modalTitle}>{checkoutSku?.name}</Text>
+              <TouchableOpacity onPress={() => setCheckoutSku(null)} accessibilityLabel="Close">
+                <Ionicons name="close" size={22} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={s.modalSub}>{checkoutSku?.tagline}</Text>
+
+            {/* Coupon input */}
+            <Text style={s.couponLabel}>Have a coupon?</Text>
+            <View style={s.couponRow}>
+              <TextInput
+                value={couponInput}
+                onChangeText={(t) => { setCouponInput(t.toUpperCase()); if (couponState.status !== 'idle') setCouponState({ status: 'idle' }); }}
+                placeholder="Enter code"
+                placeholderTextColor="#94A3B8"
+                autoCapitalize="characters"
+                style={s.couponInput}
+              />
+              <TouchableOpacity
+                style={[s.couponBtn, couponState.status === 'checking' && { opacity: 0.6 }]}
+                onPress={applyCoupon}
+                disabled={couponState.status === 'checking'}
+              >
+                {couponState.status === 'checking'
+                  ? <ActivityIndicator size="small" color="#FFF" />
+                  : <Text style={s.couponBtnText}>Apply</Text>}
+              </TouchableOpacity>
+            </View>
+            {couponState.status === 'valid' && (
+              <View style={s.couponMsgOk}><Ionicons name="checkmark-circle" size={14} color="#059669" /><Text style={s.couponMsgOkText}>{couponState.message}</Text></View>
+            )}
+            {couponState.status === 'invalid' && (
+              <View style={s.couponMsgErr}><Ionicons name="alert-circle" size={14} color="#DC2626" /><Text style={s.couponMsgErrText}>{couponState.message}</Text></View>
+            )}
+
+            {/* Price breakdown */}
+            {previewTotals && (
+              <View style={s.breakdown}>
+                <View style={s.bRow}><Text style={s.bLabel}>Base price</Text><Text style={s.bVal}>{formatINR(previewTotals.base)}</Text></View>
+                {previewTotals.discount > 0 && (
+                  <View style={s.bRow}><Text style={[s.bLabel, { color: '#059669' }]}>Coupon discount</Text><Text style={[s.bVal, { color: '#059669' }]}>− {formatINR(previewTotals.discount)}</Text></View>
+                )}
+                <View style={s.bRow}><Text style={s.bLabel}>GST ({previewTotals.gstPct}%)</Text><Text style={s.bVal}>{formatINR(previewTotals.gst)}</Text></View>
+                <View style={[s.bRow, s.bTotalRow]}><Text style={s.bTotalLabel}>Total payable</Text><Text style={s.bTotalVal}>{formatINR(previewTotals.total)}</Text></View>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[s.payBtn, { backgroundColor: checkoutSku?.badge_color || '#7C3AED' }]}
+              onPress={() => checkoutSku && startPurchase(checkoutSku, couponState.status === 'valid' ? couponInput.trim().toUpperCase() : undefined)}
+            >
+              <Ionicons name="lock-closed" size={16} color="#FFF" />
+              <Text style={s.payText}>Pay {previewTotals ? formatINR(previewTotals.total) : ''}</Text>
+            </TouchableOpacity>
+            <Text style={s.modalDisclaimer}>Secured by Razorpay · GST invoice issued</Text>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -229,4 +340,28 @@ const s = StyleSheet.create({
   subTitle: { color: '#FFFFFF', fontWeight: '700', fontSize: 16 },
   subDesc: { color: '#D1FAE5', fontSize: 12, marginTop: 3, lineHeight: 17 },
   disclaimer: { color: '#94A3B8', fontSize: 11, textAlign: 'center', lineHeight: 16, marginTop: 4 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.55)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalCard: { width: '100%', maxWidth: 420, backgroundColor: '#FFFFFF', borderRadius: 18, padding: 20 },
+  modalHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  modalTitle: { color: '#0F172A', fontSize: 18, fontWeight: '800', flex: 1, paddingRight: 8 },
+  modalSub: { color: '#7C3AED', fontSize: 12, fontWeight: '600', marginTop: 2, marginBottom: 14 },
+  couponLabel: { color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 8 },
+  couponRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  couponInput: { flex: 1, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: '#0F172A', backgroundColor: '#F8FAFC' },
+  couponBtn: { backgroundColor: '#7C3AED', borderRadius: 10, paddingHorizontal: 18, paddingVertical: 11, minWidth: 72, alignItems: 'center' },
+  couponBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
+  couponMsgOk: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
+  couponMsgOkText: { color: '#059669', fontSize: 12, fontWeight: '600', flex: 1 },
+  couponMsgErr: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
+  couponMsgErrText: { color: '#DC2626', fontSize: 12, fontWeight: '600', flex: 1 },
+  breakdown: { marginTop: 16, backgroundColor: '#F8FAFC', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#E5E7EB' },
+  bRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  bLabel: { color: '#475569', fontSize: 13 },
+  bVal: { color: '#0F172A', fontSize: 13, fontWeight: '600' },
+  bTotalRow: { borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 10, marginBottom: 0, marginTop: 2 },
+  bTotalLabel: { color: '#0F172A', fontSize: 15, fontWeight: '800' },
+  bTotalVal: { color: '#7C3AED', fontSize: 18, fontWeight: '800' },
+  payBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 16, paddingVertical: 14, borderRadius: 12 },
+  payText: { color: '#FFFFFF', fontWeight: '800', fontSize: 15 },
+  modalDisclaimer: { color: '#94A3B8', fontSize: 11, textAlign: 'center', marginTop: 10 },
 });

@@ -168,3 +168,21 @@ async def get_razorpay_client():
         except Exception as e:  # pragma: no cover
             logger.warning("Razorpay client init failed: %s", e)
     return client, r["key_id"], r["key_secret"]
+
+
+# ── UltraMsg (WhatsApp) resolution ───────────────────────────────────────────
+async def resolve_ultramsg_creds() -> Tuple[str, str, str]:
+    """Return (instance_id, token, source) for UltraMsg WhatsApp.
+
+    Priority: Admin UI (db.integrations, enabled) → .env fallback.
+    source ∈ {"admin_ui", "env", "none"}.
+    """
+    admin = await get_integration("ultramsg")  # {} when disabled/missing
+    if admin.get("instance_id") and admin.get("token"):
+        return admin["instance_id"], admin["token"], "admin_ui"
+
+    env_instance = os.getenv("ULTRAMSG_INSTANCE_ID", "")
+    env_token = os.getenv("ULTRAMSG_API_TOKEN", "")
+    if env_instance and env_token:
+        return env_instance, env_token, "env"
+    return "", "", "none"

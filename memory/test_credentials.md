@@ -63,3 +63,10 @@ The response will contain `session_token` for Bearer header use.
 ## Notes
 - Email domains using `.test`/`.example`/`.localhost` are REJECTED by Pydantic email validation. Use `@example.com`, `@test.com`, or any real-looking domain.
 - Tokens expire after 7 days; re-issue via `/api/auth/login` if `/api/auth/me` returns 401.
+
+## WhatsApp verification gate (NEW — June 2026)
+- After login, the app routes any user with `whatsapp_verified != true` to `/whatsapp-verify` before they can use the in-app tabs.
+- To pass the gate during testing: `POST /api/auth/whatsapp/send-otp` with `{ "phone_number": "+919876543210" }`. The JSON response echoes `dev_code` (since live WhatsApp delivery may be unconfigured). Then `POST /api/auth/whatsapp/verify-otp` with `{ "code": "<dev_code>" }`.
+- `GET /api/auth/whatsapp/status` returns `{ whatsapp_number, whatsapp_verified }`.
+- The `/store` route and `/admin` area are NOT behind this gate.
+

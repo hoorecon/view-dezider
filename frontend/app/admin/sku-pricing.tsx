@@ -12,7 +12,7 @@ import api from '../../src/utils/api';
 import { showAlert, confirmDialog } from '../../src/utils/alert';
 import { COLORS } from '../../src/constants/colors';
 
-interface Sku { code: string; name: string; tagline: string; description: string; price_paise: number; quota: number; active: boolean; display_order: number; badge_color: string; kind: string; }
+interface Sku { code: string; name: string; tagline: string; description: string; price_paise: number; gst_percent?: number; quota: number; active: boolean; display_order: number; badge_color: string; kind: string; }
 
 function formatINR(p: number) {
   const rupees = p / 100;
@@ -134,18 +134,29 @@ export default function AdminSkuPricing() {
                   keyboardType="numeric"
                   style={s.input}
                 />
-                <Text style={s.hint}>{formatINR(effective.price_paise ?? 0)} → {Math.round((effective.price_paise ?? 0) * 1.18) / 100} incl. 18% GST</Text>
+                <Text style={s.hint}>{formatINR(effective.price_paise ?? 0)} → {formatINR(Math.round((effective.price_paise ?? 0) * (1 + (effective.gst_percent ?? 18) / 100)))} incl. {effective.gst_percent ?? 18}% GST</Text>
               </View>
               <View style={{ width: 14 }} />
-              <View style={{ width: 110 }}>
-                <Text style={s.label}>Quota</Text>
+              <View style={{ width: 90 }}>
+                <Text style={s.label}>GST %</Text>
                 <TextInput
-                  value={String(effective.quota ?? 1)}
-                  onChangeText={t => patch(sku.code, 'quota', Math.max(1, parseInt(t.replace(/[^0-9]/g, ''), 10) || 1))}
+                  value={String(effective.gst_percent ?? 18)}
+                  onChangeText={t => patch(sku.code, 'gst_percent', Math.max(0, Math.min(100, parseFloat(t.replace(/[^0-9.]/g, '')) || 0)))}
                   keyboardType="numeric"
                   style={s.input}
                 />
               </View>
+            </View>
+
+            <View style={{ marginTop: 12, maxWidth: 260 }}>
+              <Text style={s.label}>Allowed Quota per User (per purchase)</Text>
+              <TextInput
+                value={String(effective.quota ?? 1)}
+                onChangeText={t => patch(sku.code, 'quota', Math.max(1, parseInt(t.replace(/[^0-9]/g, ''), 10) || 1))}
+                keyboardType="numeric"
+                style={s.input}
+              />
+              <Text style={s.hint}>Number of decision reports this purchase unlocks for the user.</Text>
             </View>
 
             <View style={s.saveRow}>

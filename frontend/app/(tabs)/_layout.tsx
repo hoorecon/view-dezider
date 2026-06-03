@@ -1,12 +1,21 @@
 import React from 'react';
-import { Tabs } from 'expo-router';
+import { Tabs, Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import { Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuthStore } from '../../src/store/authStore';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
+  const { user, isAuthenticated } = useAuthStore();
+
+  // Mandatory WhatsApp verification gate: an authenticated user whose WhatsApp
+  // number is not yet verified is routed to the verification screen before
+  // they can use any in-app service.
+  if (isAuthenticated && user && user.whatsapp_verified !== true) {
+    return <Redirect href="/whatsapp-verify" />;
+  }
 
   // Calculate proper bottom padding for the tab bar
   // On iOS/Android: use safe area insets to avoid overlapping with gesture bar

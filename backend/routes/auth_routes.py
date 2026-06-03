@@ -206,6 +206,8 @@ async def get_me(user: dict = Depends(get_current_user)):
         "has_password": bool(user.get("password_hash")),
         "role": user.get("role", "user"),
         "org_id": user.get("org_id"), "org_role": user.get("org_role"),
+        "whatsapp_number": user.get("whatsapp_number"),
+        "whatsapp_verified": bool(user.get("whatsapp_verified")),
     }
 
 

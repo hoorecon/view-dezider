@@ -62,6 +62,8 @@ export default function HomeScreen() {
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags>({ solution_finder: false, solution_matrix: false });
   const [cttStats, setCttStats] = useState<CTTStats | null>(null);
   const [journalReminders, setJournalReminders] = useState<JournalReminder[]>([]);
+  const [quotaSkus, setQuotaSkus] = useState<any[]>([]);
+  const [quotaEnts, setQuotaEnts] = useState<Record<string, { granted: number; consumed: number; balance: number }>>({});
 
   // ---------------------------------------------------------------------------
   // Hydration-safe client mount gate
@@ -141,8 +143,29 @@ export default function HomeScreen() {
     }
   };
 
+  const fetchQuota = async () => {
+    try {
+      const [s, e] = await Promise.all([
+        api.get('/store/skus'),
+        api.get('/store/my-entitlements').catch(() => ({ data: { entitlements: [] } })),
+      ]);
+      setQuotaSkus(s.data.skus || []);
+      const map: Record<string, { granted: number; consumed: number; balance: number }> = {};
+      (e.data.entitlements || []).forEach((it: any) => {
+        map[it.sku_code] = {
+          granted: it.granted_qty || 0,
+          consumed: it.consumed_qty || 0,
+          balance: it.balance || 0,
+        };
+      });
+      setQuotaEnts(map);
+    } catch (error) {
+      console.error('Error fetching quota:', error);
+    }
+  };
+
   const fetchAll = async () => {
-    await Promise.all([fetchStats(), fetchUnreadCount(), fetchInboxCount(), fetchFeatureFlags(), fetchCttStats(), fetchJournalReminders()]);
+    await Promise.all([fetchStats(), fetchUnreadCount(), fetchInboxCount(), fetchFeatureFlags(), fetchCttStats(), fetchJournalReminders(), fetchQuota()]);
   };
 
   useFocusEffect(
@@ -274,6 +297,42 @@ export default function HomeScreen() {
             </View>
           ) : (
           <>
+          {/* ════════ Report Quota Summary (glanceable for everyone) ════════ */}
+          <View style={styles.quotaCard}>
+            <View style={styles.quotaHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                <Ionicons name="documents" size={18} color={COLORS.primary} />
+                <Text style={styles.quotaHeaderTitle}>Your Report Quota</Text>
+              </View>
+              <TouchableOpacity onPress={() => router.push('/store' as any)} style={styles.quotaBuyBtn} accessibilityLabel="Buy more reports">
+                <Ionicons name="add" size={14} color="#FFF" />
+                <Text style={styles.quotaBuyText}>Buy more</Text>
+              </TouchableOpacity>
+            </View>
+            {quotaSkus.filter((sk: any) => sk.active).length === 0 ? (
+              <Text style={styles.quotaEmpty}>Loading your balances…</Text>
+            ) : (
+              quotaSkus.filter((sk: any) => sk.active).map((sk: any) => {
+                const m = quotaEnts[sk.code] || { granted: 0, consumed: 0, balance: 0 };
+                return (
+                  <View key={sk.code} style={styles.quotaRow}>
+                    <View style={styles.quotaRowLeft}>
+                      <View style={[styles.quotaBadge, { backgroundColor: (sk.badge_color || '#7C3AED') + '22' }]}>
+                        <Text style={[styles.quotaBadgeText, { color: sk.badge_color || '#7C3AED' }]}>{sk.code}</Text>
+                      </View>
+                      <Text style={styles.quotaSkuName} numberOfLines={1}>{sk.name}</Text>
+                    </View>
+                    <View style={styles.quotaMetrics}>
+                      <View style={styles.quotaMetric}><Text style={styles.quotaMetricNum}>{m.granted}</Text><Text style={styles.quotaMetricLabel}>Bought</Text></View>
+                      <View style={styles.quotaMetric}><Text style={[styles.quotaMetricNum, { color: '#D97706' }]}>{m.consumed}</Text><Text style={styles.quotaMetricLabel}>Used</Text></View>
+                      <View style={styles.quotaMetric}><Text style={[styles.quotaMetricNum, { color: '#059669' }]}>{m.balance}</Text><Text style={styles.quotaMetricLabel}>Left</Text></View>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </View>
+
           {/* Journal Review Reminders Banner */}
           {journalReminders.length > 0 && (
             <TouchableOpacity
@@ -803,6 +862,95 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  // Report Quota card
+  quotaCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.05)',
+    elevation: 2,
+  },
+  quotaHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  quotaHeaderTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  quotaBuyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  quotaBuyText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  quotaEmpty: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    paddingVertical: 8,
+  },
+  quotaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.divider,
+  },
+  quotaRowLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 0,
+  },
+  quotaBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  quotaBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  quotaSkuName: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    flexShrink: 1,
+  },
+  quotaMetrics: {
+    flexDirection: 'row',
+    gap: 14,
+  },
+  quotaMetric: {
+    alignItems: 'center',
+    minWidth: 44,
+  },
+  quotaMetricNum: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+  },
+  quotaMetricLabel: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+    textTransform: 'uppercase',
+    marginTop: 1,
   },
   // Reminder Banner
   reminderBanner: {

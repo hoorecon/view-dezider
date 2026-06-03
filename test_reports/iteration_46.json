@@ -1,0 +1,58 @@
+{
+  "summary": "Iter46 — Tested store math/coupon/GST, my-entitlements, decision create-without-entitlement, and WhatsApp OTP backend; tested /store coupon modal and WhatsApp gate on frontend. Backend: 9/9 pytest passed after I fixed a TypeError in routes/whatsapp_otp.py (offset-naive `last_sent_at` vs offset-aware `now`) which was causing the cooldown resend path to return 500 instead of 429. Frontend /store: Buy-now opens checkout modal with 'Have a coupon?' input, Apply button, and price breakdown (Base ₹199, GST 18% ₹35.82, Total ₹234.82) — math matches backend. CRITICAL bug found in /app/frontend/app/(tabs)/index.tsx: `ReferenceError: quotaSkus is not defined at HomeScreen` — the new dashboard 'Your Report Quota' card calls setQuotaSkus/setQuotaEnts and references quotaSkus/quotaEnts but the useState declarations were MISSING. This crashed the entire dashboard (caught by Expo Router error boundary, sending the user back to '/'). I added the two missing useState lines as a minimal repair so testing could continue. After fix + expo restart, the WhatsApp gate page now renders correctly: phone input → 'Send code on WhatsApp' → backend echoes dev_code → 'Demo code (WhatsApp delivery pending): <6-digit>' box renders. NEW FINDING — in my run the 'Verify & continue' tap did not visibly redirect to /(tabs); auth store may not be refreshed post-verify (the (tabs) gate keeps bouncing back). Main agent should confirm whatsapp-verify success handler refetches /api/auth/me or updates the store before router.replace('/(tabs)').",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/auth/whatsapp/send-otp (resend within cooldown)", "issue": "FIXED in this iter. Was returning 500 TypeError because `last_sent_at` from Mongo is offset-naive but `now` is offset-aware. Added tz coercion in routes/whatsapp_otp.py. The same coercion was already in verify-otp; send-otp was missing it."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "app/(tabs)/index.tsx HomeScreen",
+        "issue": "CRITICAL: `ReferenceError: quotaSkus is not defined`. `setQuotaSkus`/`setQuotaEnts` are called from fetchQuota and `quotaSkus`/`quotaEnts` are read in JSX, but the useState hooks were never declared. Dashboard crashed completely and was punted back to '/' via expo-router's error boundary. I added a minimal fix (added the two missing useState lines around line 65 of (tabs)/index.tsx) so further testing could proceed, but main agent should review where these states should live (likely also need to invoke fetchQuota on mount/refresh — check if it's already wired into useEffect/onRefresh).",
+        "testID": "n/a",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "WhatsApp verify → dashboard redirect",
+        "issue": "After tapping 'Verify & continue' with the correct dev_code, URL stayed on /whatsapp-verify instead of redirecting to /(tabs). Backend POST /api/auth/whatsapp/verify-otp returns success:true and /api/auth/me reflects whatsapp_verified:true (confirmed in pytest). Likely cause: the verify handler in app/whatsapp-verify.tsx does not refresh the auth-store user (or the (tabs) layout gate reads stale local state). Suggested: after verify success call useAuthStore.getState().checkAuth() or refetch /auth/me before router.replace('/(tabs)').",
+        "affected_testIDs": []
+      }
+    ],
+    "design_issues": [
+      {"screen": "global", "issues": ["Recurring 'shadow*' style props deprecated and 'props.pointerEvents is deprecated' console warnings (carry-over from previous iterations; cosmetic)."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter46_store_whatsapp_quota.py",
+    "/app/test_reports/pytest/iter46.xml"
+  ],
+  "action_items": [
+    "HIGH: Review the quick-fix I applied to /app/frontend/app/(tabs)/index.tsx — verify the two added useState lines (`quotaSkus`, `quotaEnts`) are placed correctly and that fetchQuota is actually called on mount/onRefresh. The original implementation appears to have been pasted without its state setup; please also ensure the card hides cleanly when entitlements array is empty.",
+    "HIGH: Fix WhatsApp verify → dashboard redirect. After POST /api/auth/whatsapp/verify-otp returns success, the frontend must refresh user state (useAuthStore.checkAuth() or refetch /auth/me) before router.replace('/(tabs)'), otherwise the (tabs)/_layout gate keeps the user on /whatsapp-verify.",
+    "INFO: The backend OTP timezone fix I applied is small and targeted; please retain it. UltraMsg credentials configured (.env) and the live send succeeded once during testing (200 from api.ultramsg.com).",
+    "LOW: Add testID attributes to whatsapp-verify screen elements (phone-input, send-otp-btn, otp-input, verify-btn, demo-code-text) and to the new dashboard quota card (report-quota-card, quota-row-L1, quota-row-L2, buy-more-btn) — will materially harden future automation; currently selectors fall back to text matching."
+  ],
+  "critical_code_review_comments": [
+    "routes/whatsapp_otp.py: cooldown check used a naive Mongo datetime against tz-aware `now` — caused 500. Verify-otp already had `tzinfo=utc` coercion; send-otp was missing it. Now fixed.",
+    "(tabs)/index.tsx: setters referenced without matching useState — defensive code-review missed this. Recommend a TS strict mode pass; the project's babel/TS config evidently does not enforce no-undef.",
+    "Frontend dashboard 'Your Report Quota' card references `quotaSkus.filter(sk => sk.active).length === 0` and per-SKU rollup logic — looked structurally correct; only the state declarations were missing.",
+    "Backend pricing math is correct: base × (1 + gst%) total verified for L1 (₹199 → ₹234.82). pricing breakdown returned in /store/purchase response matches Razorpay order amount.",
+    "Coupon validate endpoint and admin SKU gst_percent update both behave per spec."
+  ],
+  "updated_files": [
+    "/app/backend/routes/whatsapp_otp.py (added tz coercion for last_sent_at on cooldown check)",
+    "/app/frontend/app/(tabs)/index.tsx (added missing useState quotaSkus + quotaEnts to stop ReferenceError)",
+    "/app/backend/tests/test_iter46_store_whatsapp_quota.py (NEW pytest suite, 9 tests, all passing)"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "Item1 PASS; Item2 BLOCKED by missing useState in dashboard (now minimally repaired, needs main agent review); Item3 partial — gate UI + dev_code visible, but verify→redirect did not navigate (auth store stale)"},
+  "seed_data_creation": "Registered 3 fresh users via /api/auth/register for clean entitlement + WA-gate flows (e.g. iter46fe3_<ts>@example.com). No production data touched.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend pytest at /app/backend/tests/test_iter46_store_whatsapp_quota.py covers store math/coupon/gst/quota/whatsapp; safe to re-run. The two open items requiring main-agent attention: (1) confirm the quotaSkus/quotaEnts useState additions in (tabs)/index.tsx are the right home and that fetchQuota is invoked (search the file for `fetchQuota(` to verify it's called from useEffect/onRefresh); (2) after /api/auth/whatsapp/verify-otp succeeds the frontend must refresh auth state before navigating to /(tabs). To reproduce the gate: register a fresh user via POST /api/auth/register, then in the browser localStorage.setItem('session_token', <token>) and visit /whatsapp-verify (NOT /(tabs), since the broken dashboard or stale store may bounce you back). The send-otp response includes dev_code (6 digits). UltraMsg is live (logs show 200 from api.ultramsg.com).",
+  "rca_of_issue": "Two distinct defects: (A) Backend whatsapp_otp.py:136 subtracted offset-aware `now` from offset-naive `last_sent_at` returned by Mongo, raising TypeError -> 500. Fix: coerce `last_sent.replace(tzinfo=timezone.utc)` when naive (mirrors existing verify-otp guard at line 213). (B) Frontend (tabs)/index.tsx adds a new 'Your Report Quota' section that uses `quotaSkus`/`quotaEnts` but never declares the useState hooks for them -> ReferenceError on render -> entire HomeScreen crashes -> expo-router error boundary punts user back to '/'. Fix: added `const [quotaSkus, setQuotaSkus] = useState<any[]>([])` and matching `quotaEnts` state."
+}
