@@ -471,7 +471,7 @@ export default function SolutionBoxScreen() {
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        {renderHeader()}
+        <View>{renderHeader()}</View>
         {loading ? null : (
           displayItems.length === 0
             ? renderEmpty()

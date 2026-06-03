@@ -1,0 +1,38 @@
+{
+  "summary": "FINAL re-test of Solution Box search focus-retention bug — STILL FAILING. After login → Solution Box → click search box → type 'ekanga' one letter at a time: focus is lost immediately after the FIRST keystroke (active element becomes BODY, value='e'). Only the first character is captured; remaining 5 keystrokes go to the document body and are dropped. Final input value is 'e', not 'ekanga'. Diagnostic test (tagging the <input> with data-test-tag before typing) proves the DOM input element is REMOUNTED (replaced) after the first keystroke — the tag disappears. So fix attempt #3 (wrapping renderHeader() in a single <View> inside the ScrollView) did not eliminate the remount. The chips ('Last 30 days', 'Product Purchase') do still work after typing — only the typing flow is broken.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "prr.tsx / ListFilterBar TextInput",
+        "issue": "TextInput in Solution Box search loses focus after the FIRST keystroke because React Native Web replaces (remounts) the underlying <input> DOM element. Verified via data-test-tag attribute disappearing after typing 'e' (sameInstance=false). Result: only 1 character is typed; remaining keystrokes hit document.body. Reference: /app/frontend/app/(tabs)/prr.tsx:468-482 (ScrollView with `<View>{renderHeader()}</View>` + dynamic keyed item Views).",
+        "testID": "(input has no testID — placeholder selector used)",
+        "priority": "CRITICAL"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "FIX STILL OPEN — focus retention NOT achieved. Recommended next attempts in priority order:",
+    "1) Mirror the proven-good pattern from /app/frontend/app/(tabs)/shared.tsx exactly: use FlatList with `ListHeaderComponent={<View>...<ListFilterBar.../></View>}` (pass a JSX ELEMENT, not invoke renderHeader() as a function). The Shared tab uses a stable JSX element instance, not a re-created function-call result.",
+    "2) If FlatList is undesirable, decouple the search state from the screen: lift `search` into ListFilterBar as internal state and propagate via a debounced onChange callback wrapped in useCallback with stable identity. This way the parent screen never re-renders ListFilterBar's TextInput subtree on each keystroke.",
+    "3) Wrap ListFilterBar in React.memo and ensure all callback props (onSearch, onDateRange, onDecisionType, onLifeArea) are useCallback-stable. Currently `onSearch={setSearch}` is stable (it is a setState fn) but `onLifeArea={() => {}}` is a NEW arrow function on every render — this alone breaks memoization of ListFilterBar.",
+    "4) Verify Fragment usage: renderHeader() returns a <> Fragment. When that Fragment is placed inside <View>...</View>, the Fragment's children become children of the View. Mixing a non-keyed View at index 0 with a keyed map array as sibling inside ScrollView can still trigger remount in React Native Web's ScrollView child reconciliation. Consider giving the wrapper View an explicit key='header' AND wrapping the keyed item list in another keyed View, OR consolidate everything inside a single ListHeaderComponent of a FlatList.",
+    "5) Add testID='search-input' to the TextInput in ListFilterBar to make future tests robust."
+  ],
+  "critical_code_review_comments": [
+    "prr.tsx line 430: `onLifeArea={() => {}}` creates a new function identity on every render — defeats any memoization on ListFilterBar.",
+    "prr.tsx line 474: `<View>{renderHeader()}</View>` invokes renderHeader on every render, producing a brand-new Fragment subtree. Combined with sibling keyed items array, the ScrollView child reconciliation in RN Web is unstable enough to remount the TextInput.",
+    "Shared tab (shared.tsx line 158-173) is the working reference — it passes ListHeaderComponent as a JSX element (FlatList prop) rather than rendering inline among other children."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "n/a (skipped)", "frontend": "0%" },
+  "seed_data_creation": "None — used existing user harden_1777921741@example.com.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Repro is 100% deterministic: login → Solution Box tab → focus search input → keyboard.type('e'). After ONE keystroke, document.activeElement becomes BODY and input value freezes at 'e'. Use the data-test-tag trick (set a unique attribute on the <input> via page.evaluate before typing; after typing, query the same selector — if the attribute is missing, the input was remounted). This is fix-attempt #3 failure; do NOT try another minor variant of `<View>{renderHeader()}</View>`. Use FlatList ListHeaderComponent with a JSX element (like shared.tsx), or hoist search state into ListFilterBar.",
+  "rca_of_issue": "Root cause confirmed by DOM-tagging test: the underlying <input> element produced by the TextInput inside ListFilterBar is REMOUNTED (DOM node replaced) on every state update of `search`. Because React Native Web replaces the input node, the browser focus is dropped to <body> and subsequent keystrokes go to body (which is why all 5 letters after the first 'e' are lost — they never reach the input). The remount happens because the ScrollView in prr.tsx receives children = [<View>{Fragment children…}</View>, ...keyedItemViews]. When `search` changes, displayItems re-filters, the dynamic array of keyed item Views changes length, and React Native Web's ScrollView child-array reconciliation (which uses React.Children.toArray internally) ends up replacing the unkeyed wrapper View — taking the TextInput down with it. The known-good Shared tab avoids this by using FlatList's separate ListHeaderComponent slot (not part of the child array). Mitigation: switch prr.tsx back to FlatList with ListHeaderComponent={<View>...<ListFilterBar/></View>}, OR move `search` state to be local inside ListFilterBar."
+}
