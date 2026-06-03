@@ -39,6 +39,49 @@ def _iso(v: Any) -> Optional[str]:
     return str(v)
 
 
+def _intake_fields(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Initial-intake info surfaced on list cards (For / Type / Sub-area / Scenario)."""
+    return {
+        "acting_as_context": doc.get("acting_as_context"),
+        "decision_type": doc.get("decision_type"),
+        "sub_area_name": doc.get("sub_area_name") or doc.get("sub_area"),
+        "scenario_title": doc.get("scenario_title") or doc.get("scenario"),
+    }
+
+
+def _solution_finder_status(doc: Dict[str, Any]) -> str:
+    s = (doc.get("status") or "").lower()
+    if s in ("draft", "in_progress", "completed"):
+        return s
+    if doc.get("action_items"):
+        return "completed"
+    if doc.get("q1_all_concerns") or doc.get("q3_solutions") or doc.get("milestones"):
+        return "in_progress"
+    return "draft"
+
+
+def _norm_solution_finder(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize a `solution_finders` doc into the Solution Box shape."""
+    goal = (doc.get("smart_goal") or "").strip()
+    title = (goal[:60] + ("…" if len(goal) > 60 else "")) if goal else "Solution Finder"
+    item = {
+        "id": doc.get("entry_id"),
+        "type": "solution_finder",
+        "title": title,
+        "context": goal,
+        "life_area": doc.get("area_of_life"),
+        "status": _solution_finder_status(doc),
+        "current_step": None,
+        "created_at": _iso(doc.get("created_at")),
+        "updated_at": _iso(doc.get("updated_at") or doc.get("created_at")),
+        "route": f"/tools/solution-finder?id={doc.get('entry_id')}",
+        "linked_from_decision_id": None,
+        "options_count": len(doc.get("action_items") or []),
+    }
+    item.update(_intake_fields(doc))
+    return item
+
+
 def _decider_status(doc: Dict[str, Any]) -> str:
     """Pass-through with safe default for legacy rows."""
     s = (doc.get("status") or "").lower()
@@ -235,6 +278,7 @@ async def list_solution_box(
         cursor = db.decisions.find(mongo_q, {"_id": 0}).sort("updated_at", -1)
         async for doc in cursor:
             item = _norm_decider(doc)
+            item.update(_intake_fields(doc))
             # Skip docs that don't match the requested chip
             if type_filter == "decider" and item["type"] != "decider":
                 continue
@@ -253,6 +297,7 @@ async def list_solution_box(
         cursor = db.pros_cons.find({"user_id": uid}, {"_id": 0}).sort("updated_at", -1)
         async for doc in cursor:
             item = _norm_pros_cons(doc)
+            item.update(_intake_fields(doc))
             if life_area_filter and item["life_area"] != life_area_filter:
                 continue
             if status_filter and item["status"] != status_filter:
@@ -264,6 +309,7 @@ async def list_solution_box(
         cursor = db.swot.find({"user_id": uid}, {"_id": 0}).sort("updated_at", -1)
         async for doc in cursor:
             item = _norm_swot(doc)
+            item.update(_intake_fields(doc))
             if life_area_filter and item["life_area"] != life_area_filter:
                 continue
             if status_filter and item["status"] != status_filter:
@@ -275,6 +321,18 @@ async def list_solution_box(
         cursor = db.test123_sessions.find({"user_id": uid}, {"_id": 0}).sort("updated_at", -1)
         async for doc in cursor:
             item = _norm_test123(doc)
+            item.update(_intake_fields(doc))
+            if life_area_filter and item["life_area"] != life_area_filter:
+                continue
+            if status_filter and item["status"] != status_filter:
+                continue
+            results.append(item)
+
+    # --- Solution Finder (5-step worksheet) ---
+    if type_filter in (None, "solution_finder"):
+        cursor = db.solution_finders.find({"user_id": uid}, {"_id": 0}).sort("updated_at", -1)
+        async for doc in cursor:
+            item = _norm_solution_finder(doc)
             if life_area_filter and item["life_area"] != life_area_filter:
                 continue
             if status_filter and item["status"] != status_filter:
@@ -290,7 +348,7 @@ async def list_solution_box(
 async def solution_box_counts(user: dict = Depends(get_current_user)):
     """Aggregate counts by type / life_area / status — for dashboard cards & filter badges."""
     uid = user["user_id"]
-    by_type: Dict[str, int] = {"decider": 0, "pros_cons": 0, "swot": 0, "test123": 0}
+    by_type: Dict[str, int] = {"decider": 0, "pros_cons": 0, "swot": 0, "test123": 0, "solution_finder": 0}
     by_life_area: Dict[str, int] = {}
     by_status: Dict[str, int] = {"draft": 0, "in_progress": 0, "completed": 0}
 
@@ -308,6 +366,8 @@ async def solution_box_counts(user: dict = Depends(get_current_user)):
         await _bump(_norm_swot(doc))
     async for doc in db.test123_sessions.find({"user_id": uid}, {"_id": 0}):
         await _bump(_norm_test123(doc))
+    async for doc in db.solution_finders.find({"user_id": uid}, {"_id": 0}):
+        await _bump(_norm_solution_finder(doc))
 
     total = sum(by_type.values())
     return {

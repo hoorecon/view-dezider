@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -17,8 +17,10 @@ export default function Step9() {
   const router = useRouter();
 
   const topLevelFactors = decision.factors.filter(f => !f.parent_id);
-  const improvements = decision.mpps_improvements || [];
   const mppsTimeframe = decision.mpps_timeframe || '';
+  const mppsByOption = decision.mpps_by_option || {};
+  // Phase 4: MPPS can be applied to ANY option (not just the best one).
+  const [selectedMppsOptionId, setSelectedMppsOptionId] = useState<string>(decision.mpps_option_id || '');
 
   const optionsWithDynamicWorth = decision.options.map(option => ({
     ...option,
@@ -36,8 +38,11 @@ export default function Step9() {
     );
   }
 
-  const mppsOptionId = decision.mpps_option_id || bestOption.id;
+  const mppsOptionId = selectedMppsOptionId || decision.mpps_option_id || bestOption.id;
   const targetOption = decision.options.find(o => o.id === mppsOptionId) || bestOption;
+  // Improvements for the currently-selected option (legacy single-option store as fallback).
+  const improvements: MPPSImprovement[] = mppsByOption[mppsOptionId]
+    || (mppsOptionId === decision.mpps_option_id ? (decision.mpps_improvements || []) : []);
   const targetWorth = calculateDynamicWorth(targetOption).worth;
 
   const getFactorAssessmentPctLocal = (factor: Factor): number | null => {
@@ -101,7 +106,11 @@ export default function Step9() {
       };
       existing.push(newImp);
     }
-    saveDecision({ mpps_option_id: mppsOptionId, mpps_improvements: existing });
+    saveDecision({
+      mpps_option_id: mppsOptionId,
+      mpps_improvements: existing,
+      mpps_by_option: { ...mppsByOption, [mppsOptionId]: existing },
+    });
   };
 
   const addActionItem = (factorId: string) => {
@@ -139,6 +148,7 @@ export default function Step9() {
       mpps_improvements: improvements,
       mpps_projected_worth: mppsWorth,
       mpps_timeframe: mppsTimeframe,
+      mpps_by_option: { ...mppsByOption, [mppsOptionId]: improvements },
     });
   };
 
@@ -173,8 +183,37 @@ export default function Step9() {
     <View style={styles.stepContent}>
       <Text style={styles.stepTitle}>Step 9: MPPS Analysis</Text>
       <Text style={styles.stepDescription}>
-        Max Possible Practical Solution — Improve weak factors of the best option within a defined timeframe.
+        Max Possible Practical Solution — improve weak factors of any option within a defined
+        timeframe. A lower-ranked option can become #1 after improvements.
       </Text>
+
+      {/* Phase 4: choose ANY option to run MPPS on */}
+      <Text style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 6 }}>
+        Select an option to improve:
+      </Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+        {sortedOptions.map((o, idx) => {
+          const selected = o.id === mppsOptionId;
+          return (
+            <TouchableOpacity
+              key={o.id}
+              onPress={() => setSelectedMppsOptionId(o.id)}
+              style={{
+                paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1.5,
+                borderColor: selected ? COLORS.primary : COLORS.border,
+                backgroundColor: selected ? COLORS.primary + '15' : COLORS.white,
+              }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '700', color: selected ? COLORS.primary : COLORS.textPrimary }}>
+                #{idx + 1} {o.name}
+              </Text>
+              <Text style={{ fontSize: 11, color: COLORS.textMuted }}>
+                Worth {o.dynamic_worth.toFixed(1)}%
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
 
       {/* Option + Timeframe header */}
       <Card style={[styles.factorCard, { borderLeftWidth: 3, borderLeftColor: COLORS.primary }]}>

@@ -33,7 +33,7 @@ import { LIFE_AREAS, getLifeArea } from '../../src/constants/lifeAreas';
  * Each card deep-links to the correct wizard/detail page.
  */
 
-type SolutionType = 'decider' | 'pros_cons' | 'swot' | 'test123';
+type SolutionType = 'decider' | 'pros_cons' | 'swot' | 'test123' | 'solution_finder';
 type SolutionStatus = 'draft' | 'in_progress' | 'completed';
 
 interface SolutionItem {
@@ -49,6 +49,11 @@ interface SolutionItem {
   route: string;
   linked_from_decision_id?: string | null;
   options_count?: number;
+  _collection?: string;
+  acting_as_context?: string | null;
+  decision_type?: string | null;
+  sub_area_name?: string | null;
+  scenario_title?: string | null;
 }
 
 const TYPE_CHIPS: { key: 'all' | SolutionType; label: string; icon: string; color: string }[] = [
@@ -57,6 +62,7 @@ const TYPE_CHIPS: { key: 'all' | SolutionType; label: string; icon: string; colo
   { key: 'pros_cons',        label: 'Pros & Cons', icon: 'layers',         color: '#7C3AED' },
   { key: 'swot',             label: 'SWOT',        icon: 'grid',           color: '#F59E0B' },
   { key: 'test123',          label: 'Test123',     icon: 'flash',          color: '#EC4899' },
+  { key: 'solution_finder',  label: 'Sol. Finder', icon: 'compass',        color: '#0EA5E9' },
 ];
 
 const TYPE_META: Record<SolutionType, { label: string; short: string; icon: string; color: string; bg: string }> = {
@@ -64,6 +70,7 @@ const TYPE_META: Record<SolutionType, { label: string; short: string; icon: stri
   pros_cons:       { label: 'Pros & Cons', short: 'P&C',      icon: 'layers',          color: '#7C3AED', bg: '#F5F3FF' },
   swot:            { label: 'SWOT',        short: 'SWOT',     icon: 'grid',            color: '#F59E0B', bg: '#FFFBEB' },
   test123:         { label: 'Test123',     short: 'Test123',  icon: 'flash',           color: '#EC4899', bg: '#FDF2F8' },
+  solution_finder: { label: 'Sol. Finder', short: 'Finder',   icon: 'compass',         color: '#0EA5E9', bg: '#F0F9FF' },
 };
 
 const STATUS_META: Record<SolutionStatus, { label: string; color: string; bg: string }> = {
@@ -177,6 +184,7 @@ export default function SolutionBoxScreen() {
             : `/swot/${deleteTarget.id}`;
           break;
         case 'test123':         endpoint = `/test123/${deleteTarget.id}`; break;
+        case 'solution_finder': endpoint = `/solution-finders/${deleteTarget.id}`; break;
         default:
           throw new Error(`Unsupported solution type: ${deleteTarget.type}`);
       }
@@ -297,6 +305,17 @@ export default function SolutionBoxScreen() {
           <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
           {!!item.context && (
             <Text style={styles.cardContext} numberOfLines={2}>{item.context}</Text>
+          )}
+          {(item.sub_area_name || item.scenario_title || item.acting_as_context) && (
+            <Text style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 4 }} numberOfLines={1}>
+              {[
+                item.acting_as_context
+                  ? item.acting_as_context.charAt(0) + item.acting_as_context.slice(1).toLowerCase()
+                  : null,
+                item.sub_area_name,
+                item.scenario_title,
+              ].filter(Boolean).join(' · ')}
+            </Text>
           )}
 
           <View style={styles.cardFooter}>

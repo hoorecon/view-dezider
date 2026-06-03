@@ -96,6 +96,7 @@ export interface Decision {
   mpps_improvements?: MPPSImprovement[];
   mpps_projected_worth?: number;
   mpps_timeframe?: string;
+  mpps_by_option?: Record<string, MPPSImprovement[]>;
   life_area?: string;
   decision_type?: string;
   implementation_review_date?: string;

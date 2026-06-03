@@ -67,6 +67,14 @@ async def _load_decision(module: str, decision_id: str, user_id: str) -> Dict[st
         if not doc:
             raise HTTPException(status_code=404, detail="SWOT analysis not found")
         return {"module": "swot", "raw": doc, "title": doc.get("title", "Untitled SWOT")}
+    if module == "solution_finder":
+        doc = await db.solution_finders.find_one(
+            {"entry_id": decision_id, "user_id": user_id}, {"_id": 0}
+        )
+        if not doc:
+            raise HTTPException(status_code=404, detail="Solution Finder entry not found")
+        return {"module": "solution_finder", "raw": doc,
+                "title": doc.get("smart_goal") or "Solution Finder"}
     raise HTTPException(status_code=400, detail=f"Unknown module: {module}")
 
 
@@ -397,36 +405,38 @@ def _pdf_payload_for_dezider(raw: Dict[str, Any]) -> Dict[str, Any]:
             ),
         })
 
-    # ── MPPS Analysis + Final Recommendation ────────────────────────────────
-    improvements = [i for i in (raw.get("mpps_improvements") or [])
-                    if i.get("factor_id")]
-    mpps_oid = raw.get("mpps_option_id")
-    if improvements and mpps_oid:
+    # ── MPPS Analysis + Final Recommendation (per-option, Phase 4) ──────────
+    mpps_by_option = raw.get("mpps_by_option") or {}
+    if not mpps_by_option and raw.get("mpps_option_id") and raw.get("mpps_improvements"):
+        mpps_by_option = {raw["mpps_option_id"]: raw["mpps_improvements"]}
+    mpps_by_option = {oid: imps for oid, imps in mpps_by_option.items()
+                      if any(i.get("factor_id") for i in (imps or []))}
+    if mpps_by_option:
         fname = {f.get("id"): f.get("name") for f in factors}
-        target = next((o for o in options if o.get("id") == mpps_oid), None)
-        tgt_name = (target or {}).get("name") or "the target option"
-        irows = [["Factor", "Current %", "Projected %", "Improvement Plan"]]
-        overrides = {}
-        for imp in improvements:
-            cur = imp.get("original_percentage")
-            proj = imp.get("projected_percentage")
-            if proj is not None:
-                overrides[imp.get("factor_id")] = proj
-            irows.append([
-                _t(fname.get(imp.get("factor_id")) or "—"),
-                f"{_num(cur)}%" if cur is not None else "—",
-                f"{_num(proj)}%" if proj is not None else "—",
-                _t(imp.get("improvement_plan")),
-            ])
-        sections.append({
-            "heading": f"MPPS Analysis (Case-2) — {tgt_name}",
-            "table": irows, "col_ratios": [2.6, 1.2, 1.3, 3.2],
-        })
+        opt_by_id = {o.get("id"): o for o in options}
+        mpps_worth = dict(worth_by_opt)
+        for oid, imps in mpps_by_option.items():
+            opt = opt_by_id.get(oid)
+            if not opt:
+                continue
+            overrides = {i.get("factor_id"): i.get("projected_percentage")
+                         for i in imps if i.get("projected_percentage") is not None}
+            mpps_worth[oid] = _dez_worth(opt, factors, overrides=overrides)
+            irows = [["Factor", "Current %", "Projected %", "Improvement Plan"]]
+            for imp in imps:
+                cur = imp.get("original_percentage")
+                proj = imp.get("projected_percentage")
+                irows.append([
+                    _t(fname.get(imp.get("factor_id")) or "—"),
+                    f"{_num(cur)}%" if cur is not None else "—",
+                    f"{_num(proj)}%" if proj is not None else "—",
+                    _t(imp.get("improvement_plan")),
+                ])
+            sections.append({
+                "heading": f"MPPS Improvements — {opt.get('name') or 'Option'}",
+                "table": irows, "col_ratios": [2.6, 1.2, 1.3, 3.2],
+            })
 
-        # Recompute the target option's worth with projected %, then re-rank
-        mpps_worth = {oid: w for oid, w in worth_by_opt.items()}
-        if target is not None:
-            mpps_worth[mpps_oid] = _dez_worth(target, factors, overrides=overrides)
         ranked_mpps = sorted(options, key=lambda o: mpps_worth.get(o.get("id"), 0), reverse=True)
         mrows = [["Rank", "Option", "Satisfaction %", "MPPS Satisfaction %"]]
         for i, o in enumerate(ranked_mpps, 1):
@@ -573,7 +583,7 @@ def _decision_overview_section(raw: Dict[str, Any]) -> Dict[str, Any]:
     """Shared 'Decision Overview' block — surfaces the initial intake info
     (For / Life Area / Type / Sub-area / Scenario). Reused across all modules."""
     type_label = _decision_type_label(raw.get("decision_type")) or "Not specified"
-    area_label = _life_area_label(raw.get("life_area")) or "Not specified"
+    area_label = _life_area_label(raw.get("life_area") or raw.get("area_of_life")) or "Not specified"
     acting = _acting_as_label(raw.get("acting_as_context"))
     lines = []
     if acting:
@@ -940,6 +950,110 @@ def _pdf_payload_for_swot(raw: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _sf_text(it) -> str:
+    if isinstance(it, str):
+        return it
+    if isinstance(it, dict):
+        return (it.get("text") or it.get("label") or it.get("title")
+                or it.get("name") or it.get("description") or "—")
+    return str(it)
+
+
+def _sf_rows(items, header):
+    rows = [[header]]
+    for it in items:
+        rows.append([_t(_sf_text(it))])
+    return rows
+
+
+def _pdf_payload_for_solution_finder(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """Content report for the Solution Finder worksheet (no scoring/% — it is a
+    goal → concerns → solutions → risks → action-plan worksheet)."""
+    sections = [_decision_overview_section(raw)]
+
+    if raw.get("smart_goal"):
+        sections.append({"heading": "SMART Goal",
+                         "paragraph": _esc(str(raw["smart_goal"])[:2000])})
+    if raw.get("milestones"):
+        sections.append({"heading": "Milestones",
+                         "table": _sf_rows(raw["milestones"], "Milestone")})
+
+    if raw.get("concerns"):
+        sections.append({"heading": "Concerns", "table": _sf_rows(raw["concerns"], "Concern")})
+    elif raw.get("q1_all_concerns") or raw.get("q2_primary_concerns"):
+        lines = []
+        if raw.get("q2_primary_concerns"):
+            lines.append(f"<b>Primary:</b> {_esc(str(raw['q2_primary_concerns']))}")
+        if raw.get("q1_all_concerns"):
+            lines.append(f"<b>All:</b> {_esc(str(raw['q1_all_concerns']))}")
+        sections.append({"heading": "Concerns", "paragraph": "<br/>".join(lines)})
+
+    if raw.get("root_causes"):
+        sections.append({"heading": "Root Causes",
+                         "table": _sf_rows(raw["root_causes"], "Root Cause")})
+
+    cr = []
+    if raw.get("q3_capabilities"):
+        cr.append(f"<b>Capabilities:</b> {_esc(str(raw['q3_capabilities']))}")
+    if raw.get("q3_resources"):
+        cr.append(f"<b>Resources:</b> {_esc(str(raw['q3_resources']))}")
+    if cr:
+        sections.append({"heading": "Capabilities & Resources", "paragraph": "<br/>".join(cr)})
+
+    if raw.get("solutions"):
+        sections.append({"heading": "Solutions", "table": _sf_rows(raw["solutions"], "Solution")})
+    elif raw.get("q3_solutions"):
+        sections.append({"heading": "Solutions", "paragraph": _esc(str(raw["q3_solutions"]))})
+
+    eh = []
+    if raw.get("external_help_aspect"):
+        eh.append(f"<b>Aspect:</b> {_esc(str(raw['external_help_aspect']))}")
+    if raw.get("external_help_level"):
+        eh.append(f"<b>Level:</b> {_esc(str(raw['external_help_level']))}")
+    if raw.get("external_help_from"):
+        eh.append(f"<b>From:</b> {_esc(str(raw['external_help_from']))}")
+    if eh:
+        sections.append({"heading": "External Help", "paragraph": "<br/>".join(eh)})
+
+    if raw.get("risks"):
+        sections.append({"heading": "Risks", "table": _sf_rows(raw["risks"], "Risk")})
+    elif raw.get("q4_negative_consequences"):
+        sections.append({"heading": "Risks", "paragraph": _esc(str(raw["q4_negative_consequences"]))})
+    if raw.get("mitigations"):
+        sections.append({"heading": "Mitigations", "table": _sf_rows(raw["mitigations"], "Mitigation")})
+    elif raw.get("q4_mitigation_plans"):
+        sections.append({"heading": "Mitigations", "paragraph": _esc(str(raw["q4_mitigation_plans"]))})
+    if raw.get("contingencies"):
+        sections.append({"heading": "Contingencies", "table": _sf_rows(raw["contingencies"], "Contingency")})
+    elif raw.get("q4_contingency_plans"):
+        sections.append({"heading": "Contingencies", "paragraph": _esc(str(raw["q4_contingency_plans"]))})
+
+    ap = raw.get("action_plan_items") or raw.get("action_items") or []
+    if ap:
+        rows = [["Action", "Who", "By When", "Status"]]
+        for it in ap:
+            if isinstance(it, dict):
+                rows.append([
+                    _t(it.get("text") or it.get("what") or it.get("title")),
+                    _t(it.get("who")),
+                    _t(it.get("by_when") or it.get("byWhen") or it.get("deadline")),
+                    _t(it.get("status")),
+                ])
+            else:
+                rows.append([_t(str(it)), "—", "—", "—"])
+        sections.append({"heading": "Action Plan", "table": rows,
+                         "col_ratios": [3.4, 1.6, 1.6, 1.2]})
+
+    goal = (raw.get("smart_goal") or "").strip()
+    title = (goal[:80] + ("…" if len(goal) > 80 else "")) if goal else "Solution Finder"
+    return {
+        "title": title,
+        "context": None,
+        "module_label": "Solution Finder",
+        "sections": sections,
+    }
+
+
 @router.get("/{module}/{decision_id}.pdf")
 async def download_report_pdf(
     module: str,
@@ -956,6 +1070,7 @@ async def download_report_pdf(
         "dezider":    _pdf_payload_for_dezider,
         "pros_cons":  _pdf_payload_for_pros_cons,
         "swot":       _pdf_payload_for_swot,
+        "solution_finder": _pdf_payload_for_solution_finder,
     }[module.lower()]
     payload = builder(raw)
     tzname = await _user_timezone(user["user_id"])

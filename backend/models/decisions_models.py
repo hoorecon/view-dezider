@@ -143,6 +143,8 @@ class PRRDecisionUpdate(BaseModel):
     mpps_improvements: Optional[List[MPPSImprovement]] = None
     mpps_projected_worth: Optional[float] = None
     mpps_timeframe: Optional[str] = None
+    # Per-option MPPS improvements (Phase 4): MPPS enabled for ALL options
+    mpps_by_option: Optional[Dict[str, List[MPPSImprovement]]] = None
     life_area: Optional[str] = None
     decision_type: Optional[str] = None
     implementation_review_date: Optional[datetime] = None
