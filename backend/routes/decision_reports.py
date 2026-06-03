@@ -334,12 +334,110 @@ def _pdf_payload_for_dezider(raw: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+# ── Master label maps (mirror frontend constants/lifeAreas.ts) ──────────────
+_LIFE_AREA_LABELS = {
+    "holistic_health": "Holistic Health",
+    "knowledge_skills": "Knowledge & Skills",
+    "relationships": "Relationships",
+    "finance": "Finance",
+    "assets": "Assets",
+    "career": "Career",
+    "hobbies_entertainment": "Hobbies & Entertainment",
+    "social_image": "Social Image & Influence",
+    "social_contributions": "Social Contributions",
+    "spirituality_religion": "Spirituality & Religion",
+}
+
+_DECISION_TYPE_LABELS = {
+    "need": "Need",
+    "want": "Want",
+    "problem": "Problem",
+    "aspiration": "Aspiration",
+    "product_purchase": "Product Purchase",
+    "standard": "Standard Decision",
+    "lifestyle_analyzer": "Lifestyle Analyzer",
+}
+
+
+def _label_from(code, mapping) -> Optional[str]:
+    """Resolve a stored slug (possibly `la_`/`dt_`-prefixed) to a human label."""
+    if not code:
+        return None
+    key = str(code).strip()
+    for pfx in ("la_", "dt_"):
+        if key.startswith(pfx):
+            key = key[len(pfx):]
+    if key in mapping:
+        return mapping[key]
+    return key.replace("_", " ").title()
+
+
+def _life_area_label(code) -> Optional[str]:
+    return _label_from(code, _LIFE_AREA_LABELS)
+
+
+def _decision_type_label(code) -> Optional[str]:
+    return _label_from(code, _DECISION_TYPE_LABELS)
+
+
+def _scoring_factors(factors):
+    """Top-level, non-duplicate factors — the only ones that score (mirrors
+    compute_option_rollups in decision_framework_models)."""
+    return [
+        f for f in (factors or [])
+        if not f.get("parent_id") and not f.get("is_duplicate")
+    ]
+
+
+def _total_std_rating(sfactors) -> float:
+    return float(sum(float(f.get("std_rating") or 0) for f in sfactors))
+
+
+def _option_metrics(sfactors, opt_assess, total, mandatory_threshold):
+    """Returns dict with joint_score, worth %, mpps worth %, improvement count,
+    disqualified + ids — all derived from `assessment_pct` (Satisfaction %) and
+    the Step-8 `improvement_pct` delta (MPPS / Case-2)."""
+    opt_assess = opt_assess or {}
+    js = 0.0
+    mpps_js = 0.0
+    n_imp = 0
+    dq_ids = []
+    for f in sfactors:
+        cell = opt_assess.get(f.get("id"), {}) or {}
+        std = float(f.get("std_rating") or 0)
+        a = float(cell.get("assessment_pct") or 0)
+        imp = float(cell.get("improvement_pct") or 0)
+        eff = max(0.0, min(100.0, a + imp))
+        js += a * std / 100.0
+        mpps_js += eff * std / 100.0
+        if imp:
+            n_imp += 1
+        if (mandatory_threshold is not None
+                and f.get("notation") == "mandatory"
+                and int(a) < int(mandatory_threshold)):
+            dq_ids.append(f.get("id"))
+    worth = (js / total * 100.0) if total > 0 else 0.0
+    mpps_worth = (mpps_js / total * 100.0) if total > 0 else 0.0
+    return {
+        "joint_score": round(js, 1),
+        "worth": round(worth, 1),
+        "mpps_worth": round(mpps_worth, 1),
+        "n_imp": n_imp,
+        "disqualified": bool(dq_ids),
+        "dq_ids": dq_ids,
+    }
+
+
 def _pdf_payload_for_pros_cons(raw: Dict[str, Any]) -> Dict[str, Any]:
-    """Build a COMPLETE Pros & Cons report.
+    """Build a COMPLETE Pros & Cons report in app navigation order.
+
+    Section order mirrors the wizard flow:
+      Decision Overview → Pros & Cons → Factors & Priorities →
+      Assessment Detail (per option) → Options Ranking (Satisfaction %) +
+      Standard Recommendation → MPPS Analysis + Final Recommendation.
 
     Handles both schemas:
-      • Rich (Step-7 revamp): factors + options + assessments + rollups →
-        full prioritisation, ranking, Satisfaction %, and per-option detail.
+      • Rich (8-step): factors + options + assessments (+ MPPS improvement_pct).
       • Flat (legacy): standalone `pros`/`cons` lists with importance.
     """
     sections = []
@@ -347,131 +445,25 @@ def _pdf_payload_for_pros_cons(raw: Dict[str, Any]) -> Dict[str, Any]:
     factors = raw.get("factors") or []
     options = raw.get("options") or []
     assessments = raw.get("assessments") or {}
-    rollups = raw.get("rollups") or []
+    config = raw.get("config") or {}
     flat_pros = raw.get("pros") or []
     flat_cons = raw.get("cons") or []
 
     is_rich = bool(factors) and bool(options)
 
-    # ── Decision overview (always) ──────────────────────────────────────────
+    # ── 1. Decision Overview (human-readable labels) ────────────────────────
+    type_label = _decision_type_label(raw.get("decision_type")) or "Not specified"
+    area_label = _life_area_label(raw.get("life_area")) or "Not specified"
     sections.append({
         "heading": "Decision Overview",
         "paragraph": (
-            f"Type: <b>{_esc(raw.get('decision_type') or '—')}</b> "
-            f"&nbsp;&nbsp;·&nbsp;&nbsp; Life Area: "
-            f"<b>{_esc(raw.get('life_area') or '—')}</b>"
+            f"Type: <b>{_esc(type_label)}</b> "
+            f"&nbsp;&nbsp;·&nbsp;&nbsp; Life Area: <b>{_esc(area_label)}</b>"
         ),
     })
 
-    if is_rich:
-        # ── Factors & Priorities ────────────────────────────────────────────
-        fsorted = sorted(factors, key=lambda f: (f.get("priority_rank") or 9999))
-        frows = [["Rank", "Factor", "Type", "Std Rating", "Expected", "Unit"]]
-        for f in fsorted:
-            frows.append([
-                _num(f.get("priority_rank")),
-                _t(f.get("name")),
-                (str(f.get("notation") or "").capitalize() or "—"),
-                _num(f.get("std_rating")),
-                _t(f.get("expected_value")),
-                _t(f.get("unit")),
-            ])
-        sections.append({
-            "heading": "Factors & Priorities",
-            "table": frows,
-            "col_ratios": [0.8, 3.0, 1.5, 1.4, 1.6, 1.1],
-        })
-
-        # ── Options Ranking — Satisfaction % ────────────────────────────────
-        roll_by_opt = {r.get("option_id"): r for r in rollups}
-
-        def _rank_key(o):
-            r = roll_by_opt.get(o.get("id")) or {}
-            rk = r.get("rank_high_to_low")
-            return rk if rk is not None else 9999
-
-        osorted = sorted(options, key=_rank_key)
-        orows = [["Rank", "Option", "Joint Score", "Satisfaction %", "Status"]]
-        for o in osorted:
-            r = roll_by_opt.get(o.get("id")) or {}
-            orows.append([
-                _num(r.get("rank_high_to_low")),
-                _t(o.get("name")),
-                _num(r.get("joint_score")),
-                f"{_num(r.get('overall_satisfaction_pct'))}%",
-                "Disqualified" if r.get("disqualified") else "Qualified",
-            ])
-        sections.append({
-            "heading": "Options Ranking — Satisfaction %",
-            "table": orows,
-            "col_ratios": [0.8, 2.6, 1.4, 1.6, 1.4],
-        })
-
-        # ── Per-option detailed assessment matrix ───────────────────────────
-        for o in osorted:
-            oid = o.get("id")
-            cell_map = assessments.get(oid) or {}
-            if not cell_map:
-                continue
-            drows = [["Factor", "Actual Value", "Satisfaction %", "Assessment %"]]
-            for f in fsorted:
-                cell = cell_map.get(f.get("id"))
-                if not cell:
-                    continue
-                drows.append([
-                    _t(f.get("name")),
-                    _t(cell.get("actual_value")),
-                    f"{_num(cell.get('satisfaction_pct'))}%",
-                    f"{_num(cell.get('assessment_pct'))}%",
-                ])
-            if len(drows) > 1:
-                sections.append({
-                    "heading": f"Assessment Detail — {o.get('name') or 'Option'}",
-                    "table": drows,
-                    "col_ratios": [3.0, 2.0, 1.6, 1.6],
-                })
-
-        # ── Pros & Cons captured per option (optional) ──────────────────────
-        for o in osorted:
-            pros = o.get("pros") or []
-            cons = o.get("cons") or []
-            if not pros and not cons:
-                continue
-            max_rows = max(len(pros), len(cons), 1)
-            rows = [["Pros", "Cons"]]
-            for i in range(max_rows):
-                p = pros[i] if i < len(pros) else {}
-                c = cons[i] if i < len(cons) else {}
-                rows.append([
-                    _t(p.get("text") or p.get("name")),
-                    _t(c.get("text") or c.get("name")),
-                ])
-            sections.append({
-                "heading": f"Pros & Cons — {o.get('name') or 'Option'}",
-                "table": rows,
-                "col_ratios": [1, 1],
-            })
-
-        # ── Recommendation (top-ranked qualified option) ────────────────────
-        top = next(
-            ((o, roll_by_opt.get(o.get("id")) or {}) for o in osorted
-             if not (roll_by_opt.get(o.get("id")) or {}).get("disqualified")),
-            None,
-        )
-        if top:
-            o, r = top
-            sections.append({
-                "heading": "Recommendation",
-                "paragraph": (
-                    f"Based on your prioritised factors, "
-                    f"<b>{_esc(o.get('name') or 'the top option')}</b> ranks highest "
-                    f"with a joint score of <b>{_esc(_num(r.get('joint_score')))}</b> "
-                    f"and an overall satisfaction of "
-                    f"<b>{_esc(_num(r.get('overall_satisfaction_pct')))}%</b>."
-                ),
-            })
-    else:
-        # ── Legacy flat schema: standalone Pros / Cons with importance ───────
+    # ── Legacy flat schema (no factor framework) ────────────────────────────
+    if not is_rich:
         if flat_pros:
             rows = [["Pro", "Description", "Importance"]]
             for p in flat_pros:
@@ -480,10 +472,7 @@ def _pdf_payload_for_pros_cons(raw: Dict[str, Any]) -> Dict[str, Any]:
                     _t(p.get("description")),
                     _num(p.get("importance")),
                 ])
-            sections.append({
-                "heading": "Pros", "table": rows,
-                "col_ratios": [2.0, 3.4, 1.2],
-            })
+            sections.append({"heading": "Pros", "table": rows, "col_ratios": [2.0, 3.4, 1.2]})
         if flat_cons:
             rows = [["Con", "Description", "Importance"]]
             for c in flat_cons:
@@ -492,14 +481,221 @@ def _pdf_payload_for_pros_cons(raw: Dict[str, Any]) -> Dict[str, Any]:
                     _t(c.get("description")),
                     _num(c.get("importance")),
                 ])
-            sections.append({
-                "heading": "Cons", "table": rows,
-                "col_ratios": [2.0, 3.4, 1.2],
-            })
+            sections.append({"heading": "Cons", "table": rows, "col_ratios": [2.0, 3.4, 1.2]})
         if not flat_pros and not flat_cons:
             sections.append({
                 "heading": "No Data",
                 "paragraph": "This analysis has no pros, cons, or factor data yet.",
+            })
+        if raw.get("final_decision"):
+            sections.append({
+                "heading": "Final Decision",
+                "paragraph": _esc(str(raw["final_decision"])[:1500]),
+            })
+        return {
+            "title": raw.get("title", "Untitled Pros & Cons"),
+            "context": raw.get("context"),
+            "module_label": "Pros & Cons",
+            "sections": sections,
+        }
+
+    # ========================= RICH 8-STEP SCHEMA ==========================
+    sfactors = _scoring_factors(factors)
+    total_std = _total_std_rating(sfactors)
+    mandatory_threshold = config.get("mandatory_threshold_pct")
+    fsorted = sorted(factors, key=lambda f: (f.get("priority_rank") or 9999))
+
+    metrics = {
+        o.get("id"): _option_metrics(
+            sfactors, assessments.get(o.get("id")) or {}, total_std, mandatory_threshold
+        )
+        for o in options
+    }
+
+    def _ranked(metric_key):
+        """Options by metric desc; disqualified pushed to the bottom (unranked)."""
+        qualified = [o for o in options if not metrics[o.get("id")]["disqualified"]]
+        disq = [o for o in options if metrics[o.get("id")]["disqualified"]]
+        qualified.sort(key=lambda o: metrics[o.get("id")][metric_key], reverse=True)
+        return qualified, disq
+
+    # ── 2. Pros & Cons (per option, mirrors Step-2 in the app) ──────────────
+    pc_added = False
+    for o in options:
+        pros = o.get("pros") or []
+        cons = o.get("cons") or []
+        if not pros and not cons:
+            continue
+        max_rows = max(len(pros), len(cons), 1)
+        rows = [["Pros", "Cons"]]
+        for i in range(max_rows):
+            p = pros[i] if i < len(pros) else {}
+            c = cons[i] if i < len(cons) else {}
+            rows.append([
+                _t(p.get("text") or p.get("name")),
+                _t(c.get("text") or c.get("name")),
+            ])
+        sections.append({
+            "heading": f"Pros & Cons — {o.get('name') or 'Option'}",
+            "table": rows,
+            "col_ratios": [1, 1],
+        })
+        pc_added = True
+    if not pc_added and (flat_pros or flat_cons):
+        max_rows = max(len(flat_pros), len(flat_cons), 1)
+        rows = [["Pros", "Cons"]]
+        for i in range(max_rows):
+            p = flat_pros[i] if i < len(flat_pros) else {}
+            c = flat_cons[i] if i < len(flat_cons) else {}
+            rows.append([
+                _t(p.get("text") or p.get("name")),
+                _t(c.get("text") or c.get("name")),
+            ])
+        sections.append({"heading": "Pros & Cons", "table": rows, "col_ratios": [1, 1]})
+
+    # ── 3. Factors & Priorities ─────────────────────────────────────────────
+    frows = [["Rank", "Factor", "Type", "Std Rating", "Expected", "Unit"]]
+    for f in fsorted:
+        frows.append([
+            _num(f.get("priority_rank")),
+            _t(f.get("name")),
+            (str(f.get("notation") or "").capitalize() or "—"),
+            _num(f.get("std_rating")),
+            _t(f.get("expected_value")),
+            _t(f.get("unit")),
+        ])
+    sections.append({
+        "heading": "Factors & Priorities",
+        "table": frows,
+        "col_ratios": [0.8, 3.0, 1.5, 1.4, 1.6, 1.1],
+    })
+
+    # ── 4. Assessment Detail per option (Satisfaction % = assessment %) ──────
+    q_detail, dq_detail = _ranked("worth")
+    for o in (q_detail + dq_detail):
+        cell_map = assessments.get(o.get("id")) or {}
+        if not cell_map:
+            continue
+        drows = [["Factor", "Actual Value", "Satisfaction %"]]
+        for f in fsorted:
+            cell = cell_map.get(f.get("id"))
+            if not cell:
+                continue
+            drows.append([
+                _t(f.get("name")),
+                _t(cell.get("actual_value")),
+                f"{_num(cell.get('assessment_pct'))}%",
+            ])
+        if len(drows) > 1:
+            sections.append({
+                "heading": f"Assessment Detail — {o.get('name') or 'Option'}",
+                "table": drows,
+                "col_ratios": [3.4, 2.0, 1.6],
+            })
+
+    # ── 5. Options Ranking — Satisfaction % + Standard Recommendation ───────
+    qualified, disq = _ranked("worth")
+    orows = [["Rank", "Option", "Joint Score", "Satisfaction %", "Status"]]
+    for i, o in enumerate(qualified, 1):
+        m = metrics[o.get("id")]
+        orows.append([
+            _num(i), _t(o.get("name")), _num(m["joint_score"]),
+            f"{_num(m['worth'])}%", "Qualified",
+        ])
+    for o in disq:
+        m = metrics[o.get("id")]
+        orows.append([
+            "—", _t(o.get("name")), _num(m["joint_score"]),
+            f"{_num(m['worth'])}%", "Disqualified",
+        ])
+    sections.append({
+        "heading": "Options Ranking — Satisfaction %",
+        "table": orows,
+        "col_ratios": [0.8, 2.6, 1.4, 1.6, 1.4],
+    })
+
+    if qualified:
+        top = qualified[0]
+        m = metrics[top.get("id")]
+        sections.append({
+            "heading": "Standard Recommendation",
+            "paragraph": (
+                f"Based on your prioritised factors, "
+                f"<b>{_esc(top.get('name') or 'the top option')}</b> ranks #1 "
+                f"with a joint score of <b>{_esc(_num(m['joint_score']))}</b> "
+                f"and a satisfaction of <b>{_esc(_num(m['worth']))}%</b>."
+            ),
+        })
+
+    # ── 6. MPPS Analysis (Case-2) + Final Recommendation ────────────────────
+    any_mpps = any(metrics[o.get("id")]["n_imp"] > 0 for o in options)
+    if any_mpps:
+        mt_val = config.get("mpps_max_time_value")
+        mt_unit = config.get("mpps_max_time_unit") or "Months"
+        intro = (
+            "Maximum Possible Practical Solution — projected satisfaction if the "
+            "stated improvements are achieved"
+        )
+        if mt_val:
+            intro += f" within <b>{_esc(_num(mt_val))} {_esc(mt_unit)}</b>"
+        intro += "."
+        sections.append({"heading": "MPPS Analysis (Case-2)", "paragraph": intro})
+
+        for o in (qualified + disq):
+            cell_map = assessments.get(o.get("id")) or {}
+            irows = [["Factor", "Current %", "Improvement", "Projected %"]]
+            for f in fsorted:
+                cell = cell_map.get(f.get("id")) or {}
+                imp = float(cell.get("improvement_pct") or 0)
+                if not imp:
+                    continue
+                cur = float(cell.get("assessment_pct") or 0)
+                proj = max(0.0, min(100.0, cur + imp))
+                irows.append([
+                    _t(f.get("name")),
+                    f"{_num(cur)}%",
+                    f"{'+' if imp > 0 else ''}{_num(imp)} pp",
+                    f"{_num(proj)}%",
+                ])
+            if len(irows) > 1:
+                sections.append({
+                    "heading": f"MPPS Improvements — {o.get('name') or 'Option'}",
+                    "table": irows,
+                    "col_ratios": [3.4, 1.5, 1.7, 1.5],
+                })
+
+        q_mpps, dq_mpps = _ranked("mpps_worth")
+        mrows = [["Rank", "Option", "Satisfaction %", "MPPS Satisfaction %"]]
+        for i, o in enumerate(q_mpps, 1):
+            m = metrics[o.get("id")]
+            mrows.append([
+                _num(i), _t(o.get("name")),
+                f"{_num(m['worth'])}%", f"{_num(m['mpps_worth'])}%",
+            ])
+        for o in dq_mpps:
+            m = metrics[o.get("id")]
+            mrows.append([
+                "—", _t(o.get("name")),
+                f"{_num(m['worth'])}%", f"{_num(m['mpps_worth'])}%",
+            ])
+        sections.append({
+            "heading": "Revised Ranking after MPPS",
+            "table": mrows,
+            "col_ratios": [0.8, 3.0, 1.8, 2.0],
+        })
+
+        if q_mpps:
+            top = q_mpps[0]
+            m = metrics[top.get("id")]
+            sections.append({
+                "heading": "Final Recommendation",
+                "paragraph": (
+                    f"After MPPS improvements, "
+                    f"<b>{_esc(top.get('name') or 'the top option')}</b> ranks #1 "
+                    f"with a projected satisfaction of "
+                    f"<b>{_esc(_num(m['mpps_worth']))}%</b> "
+                    f"(up from {_esc(_num(m['worth']))}%)."
+                ),
             })
 
     if raw.get("final_decision"):
