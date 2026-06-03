@@ -1,0 +1,37 @@
+{
+  "summary": "Re-tested two items after the ScrollView refactor of /app/frontend/app/(tabs)/prr.tsx. (1) FOCUS RETENTION: STILL BROKEN — after a single click on the Solution Box search input, typing 'ekanga' one letter at a time loses focus immediately on the very first keystroke ('e'). The first character is committed to the input value (controlled prop) but document.activeElement becomes <body>, so letters 2-6 never land in the field. Final input value = 'e' (expected 'ekanga'). The ScrollView/sibling rewrite did NOT fix the bug. (2) ACTION ITEM DATE INPUT: Could NOT be live-verified end-to-end because the seed decision 'Education Pathway for Ekanga' does NOT exist for the supplied test user. Backend GET /api/pros-cons returns only one pros_cons analysis for this user — 'Buy Car X vs Y' (step 1, not completed). GET /api/decisions returns 5 MyDezider items (TEST_FE Laptop x2, TEST_FindBestOptions Buying a laptop x2, TmplTest) — none match. Code review of /app/frontend/src/components/ActionItemEditor.tsx confirms the implementation is correct: maskDMY auto-formats DD-MM-YYYY (line 28), dmyToISO converts to YYYY-MM-DD before POST/PUT (line 36), formatDMY prefills on edit (line 176), placeholder '30-08-2026' and label '(DD-MM-YYYY)' present (lines 320-321), display row uses '📅 {formatDMY(it.by_when)}' (line 251). REGRESSIONS: Shared tab search retains focus correctly (typed 'abc' → 'abc', focus held throughout). Solution Box renders/scrolls, decision-type chips (Decider/Pros & Cons/SWOT/Test123/Solution Finder) and date-range chips render properly; 'Solution Finder' chip label fully visible.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Solution Box search TextInput",
+        "issue": "Search input loses focus on the FIRST keystroke. After clicking the input (focus=true) and typing 'e', the value commits to 'e' but document.activeElement becomes <body>. Subsequent keystrokes do not register. Final value after typing 'ekanga' = 'e'. ScrollView/sibling refactor in /app/frontend/app/(tabs)/prr.tsx did NOT resolve the issue.",
+        "testID": "ListFilterBar search input (placeholder 'Search your Solution Box…')",
+        "priority": "CRITICAL"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "FOCUS BUG (still broken): The ScrollView+sibling rewrite did not fix the blur. Most likely cause: ScrollView in react-native-web reconciles its direct children by index, and when displayItems length changes the indices of header-fragment children shift relative to item children, causing react-native-web to remount the TextInput. Two suggested fixes (try in order): (a) wrap renderHeader() output in a single stable <View> so ScrollView's direct child array is [headerView, ...itemViews] and header stays at index 0 regardless of items length; (b) hoist ListFilterBar out of the ScrollView entirely so it lives as a sibling of ScrollView under the SafeAreaView (this is the cleanest fix — Shared tab works because its FlatList ListHeaderComponent is functionally hoisted by FlatList itself; in ScrollView you need to do it manually). Also memoize ListFilterBar with React.memo and stabilize the setSearch/setDateRange/setDecisionType callbacks with useCallback to avoid prop-identity churn.",
+    "DATE INPUT TEST blocker: The completed pros_cons decision titled 'Education Pathway for Ekanga' is NOT seeded for the test user harden_1777921741@example.com. Backend confirms: only 'Buy Car X vs Y' (step 1) exists in /api/pros-cons for this user. Main agent must EITHER (a) seed a completed pros_cons analysis at step 8 named 'Education Pathway for Ekanga' for this user before re-test, OR (b) provide credentials for the user account that owns that decision, OR (c) instruct the testing agent to create a brand-new pros_cons analysis, complete the wizard through to step 8, and then test the Action Plan modal there. Code review of ActionItemEditor.tsx confirms the implementation looks correct for DD-MM-YYYY mask + ISO conversion + serial prefix + 📅 display, but it has not been live-verified at the UI level."
+  ],
+  "critical_code_review_comments": [
+    "/app/frontend/app/(tabs)/prr.tsx line 474: renderHeader() returns a React Fragment with 3-4 children. Recommend wrapping its output in a single <View> so the ScrollView sees a stable [header, ...items] child array (prevents react-native-web from re-keying TextInput when items length changes).",
+    "/app/frontend/src/components/ListFilterBar.tsx: Not wrapped in React.memo and onChangeText/onSearch callbacks are passed as fresh arrow-function/prop instances each render. Combined with the parent re-render on each keystroke this can amplify reconciliation cost and increases the chance of focus loss in react-native-web.",
+    "/app/frontend/app/(tabs)/prr.tsx contentContainerStyle on ScrollView passes a fresh array literal each render ({styles.list, { paddingBottom: 100 }}). Extract to a constant or memoize to avoid prop identity churn."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend-only request)", "frontend": "33% (1/3 — Shared regression passed; SolutionBox focus failed; DateInput could not be reached due to missing seed)"},
+  "seed_data_creation": "None created. NOTE: required seed 'Education Pathway for Ekanga' completed pros_cons decision is MISSING for the harden test user — see action_items.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Login user harden_1777921741@example.com / HardenPass2026!. Backend has only ONE pros_cons analysis for this user ('Buy Car X vs Y', step 1) and 5 MyDezider items (none completed). Until main agent seeds the 'Education Pathway for Ekanga' completed pros_cons (step 8/8), the only way to test the Action Plan DD-MM-YYYY date input is to manually walk a brand-new pros_cons wizard through all 8 steps. The Solution Box focus bug is reproducible 100%: navigate to Solution Box → click the search input (placeholder 'Search your Solution Box…') → press any single key → confirm document.activeElement is no longer the input. The Shared tab (/(tabs)/shared.tsx) which still uses FlatList with ListHeaderComponent works fine — use it as the reference architecture.",
+  "rca_of_issue": "Focus loss RCA hypothesis: In /app/frontend/app/(tabs)/prr.tsx the ScrollView's direct children are `renderHeader()` (a Fragment containing folder grid, filter row, type chips, and ListFilterBar) followed by `displayItems.map(...)` items. React flattens the Fragment children into the parent ScrollView's child list, so the ScrollView effectively has [folder, filterRow, typeChips, ListFilterBar, item0, item1, ...]. When the user types the first key, search state changes, displayItems is recomputed by useMemo and may change length/identity, which shifts every subsequent index. react-native-web's ScrollView (a div with overflow:auto) reconciles its DOM children by index and will commit a structural diff that, in practice, causes the inner <input> inside ListFilterBar to be detached/reattached, dropping focus. The Shared tab does not exhibit this because FlatList's ListHeaderComponent is rendered in a stable wrapper independent of the data list. Recommended mitigation: wrap renderHeader() in a single <View>, OR hoist ListFilterBar to be a sibling of (not inside) the ScrollView."
+}

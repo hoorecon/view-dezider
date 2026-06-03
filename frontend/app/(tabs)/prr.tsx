@@ -465,16 +465,21 @@ export default function SolutionBoxScreen() {
         </View>
       </View>
 
-      <FlatList
-        data={displayItems}
-        renderItem={renderItem}
-        keyExtractor={(item) => `${item.type}-${item.id}`}
+      <ScrollView
         contentContainerStyle={[styles.list, { paddingBottom: 100 }]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        ListHeaderComponent={renderHeader()}
-        ListEmptyComponent={loading ? null : renderEmpty}
-      />
+      >
+        {renderHeader()}
+        {loading ? null : (
+          displayItems.length === 0
+            ? renderEmpty()
+            : displayItems.map((item) => (
+                <View key={`${item.type}-${item.id}`}>{renderItem({ item })}</View>
+              ))
+        )}
+      </ScrollView>
 
       {/* New flow chooser modal */}
       <Modal
