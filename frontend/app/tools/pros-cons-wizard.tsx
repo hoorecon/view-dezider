@@ -2075,10 +2075,14 @@ function NextBack({ onBack, onNext }: { onBack: (() => void) | null; onNext: (()
         <Ionicons name="chevron-back" size={18} color={COLORS.text} />
         <Text style={styles.navBtnText}>Back</Text>
       </TouchableOpacity>
-      <TouchableOpacity style={[styles.navBtnPrimary, !onNext && { opacity: 0.3 }]} onPress={() => onNext?.()} disabled={!onNext}>
-        <Text style={[styles.navBtnText, { color: '#fff' }]}>Next</Text>
-        <Ionicons name="chevron-forward" size={18} color="#fff" />
-      </TouchableOpacity>
+      {onNext ? (
+        <TouchableOpacity style={styles.navBtnPrimary} onPress={() => onNext()}>
+          <Text style={[styles.navBtnText, { color: '#fff' }]}>Next</Text>
+          <Ionicons name="chevron-forward" size={18} color="#fff" />
+        </TouchableOpacity>
+      ) : (
+        <View />
+      )}
     </View>
   );
 }

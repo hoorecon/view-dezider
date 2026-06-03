@@ -92,6 +92,9 @@ class PRRDecision(BaseModel):
     mpps_projected_worth: Optional[float] = None
     mpps_timeframe: Optional[str] = None
     implementation_review_date: Optional[datetime] = None
+    # ── Final decision (parity with Pros & Cons) ──
+    final_choice_reason: Optional[str] = None
+    final_choice_decided_at: Optional[datetime] = None
     # ── Timing (Enhancement #4) ──
     deadline_date: Optional[str] = None              # ISO-8601 yyyy-mm-dd
     impact_horizon_value: int = 7                    # numeric magnitude
@@ -148,6 +151,8 @@ class PRRDecisionUpdate(BaseModel):
     life_area: Optional[str] = None
     decision_type: Optional[str] = None
     implementation_review_date: Optional[datetime] = None
+    final_choice_reason: Optional[str] = None
+    final_choice_decided_at: Optional[datetime] = None
     deadline_date: Optional[str] = None
     impact_horizon_value: Optional[int] = None
     impact_horizon_unit: Optional[str] = None

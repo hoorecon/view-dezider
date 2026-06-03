@@ -100,6 +100,8 @@ export interface Decision {
   life_area?: string;
   decision_type?: string;
   implementation_review_date?: string;
+  final_choice_reason?: string;
+  final_choice_decided_at?: string;
   status: string;
   folder?: string;
   reflection?: string;

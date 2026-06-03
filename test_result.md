@@ -8570,3 +8570,31 @@ agent_communication:
         b) Open a Pros&Cons/Dezider decision → Action Plan → Add → "By When" field: typing digits should auto-format to
            DD-MM-YYYY (e.g. 30082026 → 30-08-2026); Add succeeds; reopening the item for edit shows the date as DD-MM-YYYY.
         c) Confirm Shared tab search (app/(tabs)/shared.tsx) also retains focus (it already used an element header).
+
+
+  - agent: "main"
+    message: |
+      ITER 43 — MyDezider parity + Pros&Cons last-step Next + keyboard scroll regression:
+      1) MyDezider Step10 (src/components/steps/Step10.tsx): added "Why I chose this" reason textarea (shown once an
+         option is chosen) → saves decision.final_choice_reason; added ActionItemEditor (sourceModule=MYDEZIDER_MPPS,
+         sourceId=decision.id) so action items flow to Action Center/CTT/Lifestyle; Complete Decision now stamps
+         final_choice_decided_at + persists reason. Added final_choice_reason/final_choice_decided_at to PRRDecision &
+         PRRDecisionUpdate (models/decisions_models.py) and to the frontend Decision type.
+      2) Dezider PDF (routes/decision_reports.py): _pdf_payload_for_dezider now appends a "Final Decision" section
+         (Final Choice + Decision type + Reason + Review on [DD-MM-YYYY] + Decided on) and the shared "Action Plan"
+         table (new _action_plan_section helper). _load_decision(dezider) now loads _action_items (MYDEZIDER_MPPS).
+         Verified via python smoke test: sections include Final Decision + Action Plan; PDF builds.
+      3) Pros&Cons wizard (app/tools/pros-cons-wizard.tsx): NextBack no longer renders the disabled grey "Next" on the
+         last step (Step 8) — renders nothing when onNext is null.
+      4) WebScrollFix.tsx: added documentScroller() fallback so PageUp/PageDown/Home/End/Arrows/Space scroll the page
+         even when no inner <div> scroller is detected (regression where keys did nothing when focus was outside the
+         module-list container). It is mounted globally in app/_layout.tsx.
+      TEST (frontend, web): login harden_1777921741@example.com / HardenPass2026!.
+        a) Open a My Dezider decision (e.g. /prr/<id>) → reach Step 10 → select a final option → confirm "Why I chose this"
+           textarea appears + Action Plan editor appears; add an action item; Complete Decision works.
+        b) Download My Dezider PDF (GET /api/reports/dezider/<id>.pdf) → must contain Final Decision (choice+reason+review)
+           and Action Plan with serial IDs + DD-MM-YYYY dates.
+        c) Pros&Cons wizard last step (Step 8): the bottom-right disabled "Next" button must be GONE (only Back remains).
+        d) KEYBOARD SCROLL: on the home dashboard (tab Home, which lists modules) WITHOUT clicking inside the list,
+           press PageDown / ArrowDown / End — the module list (or page) must scroll. Then click elsewhere (outside the
+           list, e.g. a header area) and confirm PageDown still scrolls. Verify scrollTop increases.

@@ -101,6 +101,15 @@ function findBestScroller(): HTMLElement | null {
   return best;
 }
 
+// The document's own scroller (html/body) — used when no inner scrollable
+// <div> owns the content (some screens let the page itself scroll).
+function documentScroller(): HTMLElement | null {
+  if (typeof document === 'undefined') return null;
+  const de = (document.scrollingElement || document.documentElement) as HTMLElement;
+  if (de && de.scrollHeight - de.clientHeight >= 8) return de;
+  return null;
+}
+
 export default function WebScrollFix() {
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
@@ -120,8 +129,11 @@ export default function WebScrollFix() {
       // 2) Scroller that owns the currently focused element (keyboard users).
       s = nearestScrollable(document.activeElement);
       if (s) return s;
-      // 3) Best visible scroller — a modal/bottom-sheet scroller wins.
-      return findBestScroller();
+      // 3) Best visible inner scroller — a modal/bottom-sheet scroller wins.
+      s = findBestScroller();
+      if (s) return s;
+      // 4) Last resort: the document itself (page-level scrolling).
+      return documentScroller();
     };
 
     const onKeyDown = (e: KeyboardEvent) => {

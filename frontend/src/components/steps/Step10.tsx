@@ -7,6 +7,7 @@ import { COLORS } from '../../constants/colors';
 import { Card } from '../Card';
 import { GradientButton } from '../GradientButton';
 import { useDecision } from '../../context/DecisionContext';
+import ActionItemEditor from '../ActionItemEditor';
 import { styles } from '../../styles/decisionStyles';
 import { TEPFI_ELEMENTS, TEPFI_LAYERS } from '../../utils/decisionHelpers';
 
@@ -17,6 +18,7 @@ export default function Step10() {
       ? new Date(decision.implementation_review_date).toISOString().split('T')[0]
       : ''
   );
+  const [reasonStr, setReasonStr] = useState(decision.final_choice_reason || '');
 
   const optionsWithDynamicWorth = decision.options.map(option => ({
     ...option,
@@ -102,6 +104,32 @@ export default function Step10() {
           </Card>
         );
       })}
+
+      {/* Why I chose this — reason (parity with Pros & Cons) */}
+      {decision.chosen_option_id && (
+        <Card style={[styles.factorCard, { borderLeftWidth: 3, borderLeftColor: COLORS.success }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <Ionicons name="create-outline" size={16} color={COLORS.success} />
+            <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.textPrimary }}>Why I chose this</Text>
+          </View>
+          <Text style={{ fontSize: 12, color: COLORS.textSecondary, marginBottom: 8 }}>
+            Capture your reasoning for this final choice — it appears in the PDF report.
+          </Text>
+          <TextInput
+            style={{
+              backgroundColor: COLORS.background, borderRadius: 10, borderWidth: 1,
+              borderColor: COLORS.border, paddingHorizontal: 14, paddingVertical: 10,
+              fontSize: 15, color: COLORS.textPrimary, minHeight: 84, textAlignVertical: 'top',
+            }}
+            placeholder="e.g., Best balance of cost and long-term growth…"
+            value={reasonStr}
+            onChangeText={setReasonStr}
+            onBlur={() => { if (reasonStr !== (decision.final_choice_reason || '')) saveDecision({ final_choice_reason: reasonStr }); }}
+            multiline
+            placeholderTextColor={COLORS.textMuted}
+          />
+        </Card>
+      )}
 
       {/* MPPS Improvement Summary */}
       {hasImprovements && (
@@ -199,6 +227,19 @@ export default function Step10() {
         )}
       </Card>
 
+      {/* Action Plan — capture action items that flow to Action Center / CTT / Lifestyle */}
+      {decision.chosen_option_id && (
+        <View style={{ marginTop: 4 }}>
+          <ActionItemEditor
+            sourceModule="MYDEZIDER_MPPS"
+            sourceId={decision.id}
+            sourceLabel={`My Dezider · ${decision.title || ''}`}
+            defaultLifeArea={decision.life_area || decision.folder || ''}
+            title="Action Plan — Who · What · By When"
+          />
+        </View>
+      )}
+
       {/* Document Learnings button (for completed decisions) */}
       {decision.status === 'completed' && (
         <TouchableOpacity
@@ -231,7 +272,11 @@ export default function Step10() {
             <GradientButton
               title="Complete Decision"
               onPress={() => {
-                saveDecision({ status: 'completed' });
+                saveDecision({
+                  status: 'completed',
+                  final_choice_reason: reasonStr || undefined,
+                  final_choice_decided_at: decision.final_choice_decided_at || new Date().toISOString(),
+                });
                 router.back();
               }}
               variant="accent"

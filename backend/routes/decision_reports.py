@@ -52,6 +52,10 @@ async def _load_decision(module: str, decision_id: str, user_id: str) -> Dict[st
         )
         if not doc:
             raise HTTPException(status_code=404, detail="Decision not found")
+        doc["_action_items"] = await db.action_items.find(
+            {"user_id": user_id, "source_module": "MYDEZIDER_MPPS", "source_id": decision_id},
+            {"_id": 0},
+        ).sort("by_when", 1).to_list(200)
         return {"module": "dezider", "raw": doc, "title": doc.get("title", "Untitled Decision")}
     if module == "pros_cons":
         doc = await db.pros_cons.find_one(
@@ -490,9 +494,29 @@ def _pdf_payload_for_dezider(raw: Dict[str, Any]) -> Dict[str, Any]:
                 ),
             })
 
-    if raw.get("final_decision"):
-        sections.append({"heading": "Final Decision",
-                         "paragraph": _esc(str(raw["final_decision"])[:1500])})
+    # ── Final Decision (chosen option + reason + review date) + Action Plan ──
+    opt_name_by_id = {o.get("id"): o.get("name") for o in options}
+    chosen_id = raw.get("chosen_option_id")
+    fd_lines = []
+    if chosen_id and opt_name_by_id.get(chosen_id):
+        fd_lines.append(f"<b>Final Choice:</b> {_esc(opt_name_by_id.get(chosen_id))}")
+    elif raw.get("final_decision"):
+        fd_lines.append(f"<b>Final Choice:</b> {_esc(str(raw['final_decision'])[:1000])}")
+    case = (raw.get("decision_case") or "").replace("_", " ").strip()
+    if chosen_id and case:
+        fd_lines.append(f"<b>Decision type:</b> {_esc(case.title())}")
+    if raw.get("final_choice_reason"):
+        fd_lines.append(f"<b>Reason:</b> {_esc(raw['final_choice_reason'])}")
+    if raw.get("implementation_review_date"):
+        fd_lines.append(f"<b>Review on:</b> {_esc(_ddmmyyyy(raw['implementation_review_date']))}")
+    if raw.get("final_choice_decided_at"):
+        fd_lines.append(f"<b>Decided on:</b> {_esc(_fmt_date(raw['final_choice_decided_at']))}")
+    if fd_lines:
+        sections.append({"heading": "Final Decision", "paragraph": "<br/>".join(fd_lines)})
+
+    aps = _action_plan_section(raw.get("_action_items") or [])
+    if aps:
+        sections.append(aps)
 
     return {
         "title": raw.get("title", "Untitled Decision"),
@@ -652,6 +676,30 @@ def _ddmmyyyy(v) -> str:
         return f"{m.group(3)}-{m.group(2)}-{m.group(1)}" if m else s
 
 
+def _action_plan_section(action_items):
+    """Action Plan table (ID · Action · Who · By When · Recurrence · Status).
+    Shared by Pros & Cons and My Dezider reports."""
+    if not action_items:
+        return None
+    rows = [["ID", "Action", "Who", "By When", "Recurrence", "Status"]]
+    for idx, a in enumerate(action_items, 1):
+        rec = (a.get("recurrence_type") or "").lower()
+        if rec == "recurring":
+            rec = (a.get("recurrence_frequency") or "Recurring").title()
+        else:
+            rec = "One-time"
+        rows.append([
+            _num(idx),
+            _t(a.get("title")),
+            _t(a.get("who")),
+            _ddmmyyyy(a.get("by_when")),
+            rec,
+            _t((a.get("status") or "").replace("_", " ").title()),
+        ])
+    return {"heading": "Action Plan — Who · What · By When", "table": rows,
+            "col_ratios": [0.6, 3.0, 1.6, 1.4, 1.4, 1.2]}
+
+
 def _final_decision_sections(raw, opt_name_by_id, action_items):
     """Final Decision + Reason + Review Date + Action Plan — appended after MPPS."""
     out = []
@@ -676,24 +724,9 @@ def _final_decision_sections(raw, opt_name_by_id, action_items):
     if lines:
         out.append({"heading": "Final Decision", "paragraph": "<br/>".join(lines)})
 
-    if action_items:
-        rows = [["ID", "Action", "Who", "By When", "Recurrence", "Status"]]
-        for idx, a in enumerate(action_items, 1):
-            rec = (a.get("recurrence_type") or "").lower()
-            if rec == "recurring":
-                rec = (a.get("recurrence_frequency") or "Recurring").title()
-            else:
-                rec = "One-time"
-            rows.append([
-                _num(idx),
-                _t(a.get("title")),
-                _t(a.get("who")),
-                _ddmmyyyy(a.get("by_when")),
-                rec,
-                _t((a.get("status") or "").replace("_", " ").title()),
-            ])
-        out.append({"heading": "Action Plan — Who · What · By When", "table": rows,
-                    "col_ratios": [0.6, 3.0, 1.6, 1.4, 1.4, 1.2]})
+    aps = _action_plan_section(action_items)
+    if aps:
+        out.append(aps)
     return out
 
 
