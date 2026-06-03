@@ -1,0 +1,47 @@
+{
+  "summary": "Frontend retest of 2 reported fixes. (1) SOLUTION BOX SEARCH FOCUS RETENTION — STILL BROKEN. Reproduced 2x on mobile viewport (390x844): clicking 'Search your Solution Box…' input, then pressing 'e','k','a','n','g','a' one key at a time. Only the first 'e' registered; document.activeElement became BODY after the first keystroke (focused=False for keys 2..6). The change to ListHeaderComponent={renderHeader()} in prr.tsx did not resolve the issue — the input still blurs on every keystroke. The Shared tab search worked correctly (typed 'abc' → 'abc'), so the bug is specific to the Solution Box screen / how its header is rendered. (2) ACTION ITEM DATE FORMAT — Verified by code review (maskDMY, dmyToISO, formatDMY, '(DD-MM-YYYY)' label, '30-08-2026' placeholder, serial-number prefix all present in ActionItemEditor.tsx). Could not fully exercise UI because the Action Plan section sits on a later step of MyDezider (the only available P&C item opened to Step 6/10 — Define Options). Code-level correctness is high; main agent or a follow-up test should still exercise the modal end-to-end on a finished decision.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "SolutionBoxScreen (prr.tsx)",
+        "issue": "Search box still loses focus after every keystroke. Typed 'ekanga' one letter at a time; only 'e' captured; activeElement = BODY from keystroke #2 onward. The current fix (ListHeaderComponent={renderHeader()}) did NOT eliminate the remount. Reference: /app/frontend/app/(tabs)/prr.tsx:475 (ListHeaderComponent prop) and the inline ListFilterBar at line 427.",
+        "testID": "(missing — search TextInput has no testID; please add testID='solution-box-search')",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Solution Box",
+        "issues": [
+          "TextInput inside search box has no testID — adding testID='solution-box-search' would make this testable and robust for regression.",
+          "Type-filter chip 'Solution Finder' label can collide with the 'Pros & Cons' chip in narrow viewports — verify horizontal scroll keeps full label visible."
+        ]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_38.json"
+  ],
+  "action_items": [
+    "CRITICAL: Re-fix Solution Box search focus retention. Current approach (calling renderHeader() inline) still causes remount of the header subtree on every keystroke because SolutionBoxScreen re-renders on each setSearch, and renderHeader() returns a brand-new element tree containing ListFilterBar/TextInput.",
+    "Recommended fix options (any one): (a) Hoist the search bar OUT of FlatList's ListHeaderComponent and render it as a sibling above the FlatList — this is what the Shared tab effectively achieves and that tab works. (b) Wrap ListFilterBar in React.memo AND pass stable handlers via useCallback so the memo'd subtree is preserved across keystrokes. (c) Move the search TextInput to its own component file with React.memo and pass value+onChange via stable refs.",
+    "Add testID='solution-box-search' to the search TextInput inside ListFilterBar (or expose a prop searchTestID) so this regression can be locked down by an automated test.",
+    "After re-fix, verify the same behaviour also holds with FlatList data prop changing from N → 0 (e.g. type a string that filters everything out) since that branch swaps ListEmptyComponent and was likely the trigger here."
+  ],
+  "critical_code_review_comments": [
+    "prr.tsx: ListEmptyComponent={loading ? null : renderEmpty} passes a function reference; combined with inline ListHeaderComponent={renderHeader()} the FlatList likely re-creates the empty/header subtrees on every search keystroke. Consider extracting both header and empty into stable memoised components.",
+    "ActionItemEditor.tsx: dmyToISO is strict (^(\\d{2})-(\\d{2})-(\\d{4})$). Good. Note that maskDMY will accept invalid calendar dates like 31-02-2026 — dmyToISO will then reject. Currently surfaces 'Invalid date' alert which is fine.",
+    "ActionItemEditor.tsx: when editing, formatDMY(it.by_when) handles both 'YYYY-MM-DD' and ISO timestamps correctly via _parse(). Verified.",
+    "shared.tsx ListHeaderComponent passes inline JSX (not a function call) and search focus retention works — this is the pattern prr.tsx should match."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "n/a (skipped)", "frontend": "50% — date-format fix appears correct in code; focus-retention fix did NOT take effect" },
+  "seed_data_creation": "None. Used existing user harden_1777921741@example.com.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "When verifying focus retention, mobile viewport (390x844) and a slow per-key cadence (>=100ms between keys) are sufficient to reproduce. Track document.activeElement after each keystroke — it flips to BODY immediately after the first character on Solution Box. Use search_input.evaluate('el => el === document.activeElement') to assert. Also verify Shared tab (which currently works) does not regress when re-fixing. For Action Item modal testing, open a *completed* MyDezider or a Pros & Cons decision in finished/Action-Plan state; Step 6/10 wizard view does not expose Action Plan.",
+  "rca_of_issue": "Focus loss in Solution Box happens because the header (which contains the search TextInput inside ListFilterBar) is recreated on every keystroke. The fix ListHeaderComponent={renderHeader()} only changes whether RN treats the prop as element-vs-component; it does NOT prevent a re-render of the parent SolutionBoxScreen on each setSearch which still produces a NEW JSX tree for the header. When FlatList sees displayItems shrink (e.g. matches drop to 0 between 'e' and 'ek') it also swaps to ListEmptyComponent, further disturbing the tree. Net effect: TextInput unmounts/remounts, blur fires, focus → BODY. Fix: move the search input out of ListHeaderComponent (sibling above FlatList) or memoise the header subtree so its React identity is stable across data changes."
+}

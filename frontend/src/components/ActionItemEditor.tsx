@@ -24,6 +24,24 @@ import api from '../utils/api';
 import { showAlert } from '../utils/alert';
 import { formatDMY } from '../utils/datetime';
 
+/** Mask free text into a DD-MM-YYYY shape as the user types. */
+function maskDMY(text: string): string {
+  const d = text.replace(/\D/g, '').slice(0, 8);
+  if (d.length > 4) return `${d.slice(0, 2)}-${d.slice(2, 4)}-${d.slice(4)}`;
+  if (d.length > 2) return `${d.slice(0, 2)}-${d.slice(2)}`;
+  return d;
+}
+
+/** Convert a DD-MM-YYYY string to a sortable YYYY-MM-DD (or null if invalid). */
+function dmyToISO(s: string): string | null {
+  const m = s.trim().match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (!m) return null;
+  const dd = +m[1], mm = +m[2];
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+  const iso = `${m[3]}-${m[2]}-${m[1]}`;
+  return isNaN(new Date(`${iso}T00:00:00`).getTime()) ? null : iso;
+}
+
 type ActionItem = {
   action_id: string;
   source_module: string;
@@ -121,6 +139,10 @@ export default function ActionItemEditor(props: Props) {
 
   const submitNew = async () => {
     if (!fTitle.trim()) return showAlert('Required', 'Action description (What) is required.');
+    const byWhenIso = fByWhen.trim() ? dmyToISO(fByWhen.trim()) : null;
+    if (fByWhen.trim() && !byWhenIso) {
+      return showAlert('Invalid date', 'Enter the date as DD-MM-YYYY (e.g. 30-08-2026).');
+    }
     try {
       const payload: any = {
         source_module: sourceModule,
@@ -129,7 +151,7 @@ export default function ActionItemEditor(props: Props) {
         source_subref: sourceSubref,
         title: fTitle.trim(),
         who: fWho.trim(),
-        by_when: fByWhen || null,
+        by_when: byWhenIso,
         priority: fPriority,
         recurrence_type: fRecurring ? 'recurring' : 'one_time',
         recurrence_frequency: fRecurring ? fFreq : null,
@@ -151,7 +173,7 @@ export default function ActionItemEditor(props: Props) {
   const openEdit = (it: ActionItem) => {
     setEditing(it);
     setFTitle(it.title || ''); setFWho(it.who || '');
-    setFByWhen(it.by_when || ''); setFPriority(it.priority);
+    setFByWhen(it.by_when ? formatDMY(it.by_when) : ''); setFPriority(it.priority);
     setFRecurring(it.recurrence_type === 'recurring');
     setFFreq(it.recurrence_frequency || 'weekly');
     setFTime(it.recurrence_time || '');
@@ -295,8 +317,8 @@ export default function ActionItemEditor(props: Props) {
               <Text style={s.label}>Who <Text style={s.hint}>(assignee name)</Text></Text>
               <TextInput style={s.input} value={fWho} onChangeText={setFWho} placeholder="Self / Jane Doe / Team A" />
 
-              <Text style={s.label}>By When <Text style={s.hint}>(YYYY-MM-DD)</Text></Text>
-              <TextInput style={s.input} value={fByWhen} onChangeText={setFByWhen} placeholder="2026-08-30" />
+              <Text style={s.label}>By When <Text style={s.hint}>(DD-MM-YYYY)</Text></Text>
+              <TextInput style={s.input} value={fByWhen} onChangeText={t => setFByWhen(maskDMY(t))} placeholder="30-08-2026" keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'default'} />
 
               <Text style={s.label}>Priority</Text>
               <View style={s.chipsRow}>

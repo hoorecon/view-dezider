@@ -472,7 +472,7 @@ export default function SolutionBoxScreen() {
         contentContainerStyle={[styles.list, { paddingBottom: 100 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        ListHeaderComponent={renderHeader}
+        ListHeaderComponent={renderHeader()}
         ListEmptyComponent={loading ? null : renderEmpty}
       />
 

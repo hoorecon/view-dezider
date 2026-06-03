@@ -8552,3 +8552,21 @@ agent_communication:
         - Backend: share docs/shared-with-me now carry life_area + decision_type for the filters
       Please test BACKEND (report_shares meta + shared-with-me) and FRONTEND (web) per the task entries above.
       Skip native-only contacts picker validation (note it requires a build). Credentials in /app/memory/test_credentials.md.
+
+
+  - agent: "main"
+    message: |
+      ITER 38 — two user-reported fixes:
+      (1) FOCUS BUG: Solution Box (app/(tabs)/prr.tsx) search input lost focus after each keystroke. Root cause:
+          FlatList received ListHeaderComponent={renderHeader} (a function whose identity changed every render → header
+          remounted → TextInput blurred). Fixed by passing the invoked element: ListHeaderComponent={renderHeader()}.
+      (2) Action Item "By When" INPUT now accepts DD-MM-YYYY (src/components/ActionItemEditor.tsx): masked input
+          (maskDMY auto-inserts dashes), validated + converted to sortable YYYY-MM-DD before saving (dmyToISO),
+          and prefilled as DD-MM-YYYY when editing (formatDMY). Backend storage stays YYYY-MM-DD (sortable) — report
+          _ddmmyyyy display unaffected.
+      TEST (frontend, web): login harden_1777921741@example.com / HardenPass2026!.
+        a) Solution Box → click search → type "ekanga" letter-by-letter WITHOUT re-clicking → full string must remain &
+           input keeps focus (no blur between letters).
+        b) Open a Pros&Cons/Dezider decision → Action Plan → Add → "By When" field: typing digits should auto-format to
+           DD-MM-YYYY (e.g. 30082026 → 30-08-2026); Add succeeds; reopening the item for edit shows the date as DD-MM-YYYY.
+        c) Confirm Shared tab search (app/(tabs)/shared.tsx) also retains focus (it already used an element header).
