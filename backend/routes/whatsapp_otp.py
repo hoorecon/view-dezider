@@ -45,6 +45,9 @@ RESEND_COOLDOWN_SECONDS = int(os.getenv("WA_OTP_RESEND_COOLDOWN_SECONDS", "60"))
 MAX_SEND_PER_DAY = int(os.getenv("WA_OTP_MAX_SEND_PER_DAY", "5"))
 CODE_TTL_MINUTES = int(os.getenv("WA_OTP_CODE_TTL_MINUTES", "10"))
 MAX_VERIFY_ATTEMPTS = int(os.getenv("WA_OTP_MAX_VERIFY_ATTEMPTS", "5"))
+# Debug-only: expose the OTP in the API response even when WhatsApp delivered it.
+# MUST remain false/unset in production (the code is always sent via WhatsApp).
+EXPOSE_DEV_CODE = os.getenv("WA_OTP_EXPOSE_DEV_CODE", "false").strip().lower() == "true"
 _PEPPER = os.getenv("WA_OTP_PEPPER") or (SECRET_KEY or "jelcos-wa-otp")
 
 
@@ -194,9 +197,12 @@ async def send_otp(body: SendOtpRequest, user: dict = Depends(get_current_user))
         "delivered": delivered,
         "phone_number": phone,
         "cooldown_seconds": RESEND_COOLDOWN_SECONDS,
-        # Echoed for testability / environments without live WhatsApp delivery.
-        "dev_code": code,
     }
+    # Security: never expose the OTP over the wire when WhatsApp delivered it.
+    # Only surface it as a fallback when delivery failed, or when the debug
+    # flag WA_OTP_EXPOSE_DEV_CODE=true is explicitly set (non-production only).
+    if not delivered or EXPOSE_DEV_CODE:
+        resp["dev_code"] = code
     if not delivered:
         resp["delivery_error"] = send_error
     return resp
