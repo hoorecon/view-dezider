@@ -3,7 +3,7 @@
  * "email us" action. Linked from the landing page and footer.
  */
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, useWindowDimensions, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -30,7 +30,7 @@ export default function ContactPage() {
   );
 
   return (
-    <View style={styles.root}>
+    <View nativeID="jelcosMarketing" style={styles.root}>
       <MarketingHeader />
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content} showsVerticalScrollIndicator>
         <View style={[styles.body, { width: cardWidth }]}>

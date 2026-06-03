@@ -4,7 +4,7 @@
  * a "Last updated" stamp and the shared footer. Scrollable on all platforms.
  */
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useWindowDimensions, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { COLORS } from '../../constants/colors';
@@ -18,7 +18,7 @@ export default function LegalShell({ doc }: { doc: LegalDoc }) {
   const contentWidth = Math.min(width - 32, 820);
 
   return (
-    <View style={styles.root}>
+    <View nativeID="jelcosMarketing" style={styles.root}>
       <MarketingHeader />
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator>
         <View style={[styles.body, { width: contentWidth }]}>

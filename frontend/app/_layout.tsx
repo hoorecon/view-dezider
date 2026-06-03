@@ -85,6 +85,43 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
   }
 
   // -------------------------------------------------------------------
+  // Web: load the "Inter" UI font (elegant, Google/Amazon-like) from
+  // Google Fonts. Marketing/public pages opt in via a root fontFamily
+  // that cascades to their text. Weights 400–900 are loaded so headings
+  // render at the correct boldness.
+  // -------------------------------------------------------------------
+  const INTER_FONT_ID = '__inter_font_link__';
+  if (!document.getElementById(INTER_FONT_ID)) {
+    const pre1 = document.createElement('link');
+    pre1.rel = 'preconnect';
+    pre1.href = 'https://fonts.googleapis.com';
+    document.head.appendChild(pre1);
+
+    const pre2 = document.createElement('link');
+    pre2.rel = 'preconnect';
+    pre2.href = 'https://fonts.gstatic.com';
+    pre2.crossOrigin = 'anonymous';
+    document.head.appendChild(pre2);
+
+    const link = document.createElement('link');
+    link.id = INTER_FONT_ID;
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap';
+    document.head.appendChild(link);
+
+    // Scope Inter to the public marketing/legal pages. Their root View sets
+    // nativeID="jelcosMarketing" (→ DOM id). font-family inherits to all child
+    // text; Ionicons glyphs keep their own font-family so icons are unaffected.
+    const scope = document.createElement('style');
+    scope.textContent = `
+      #jelcosMarketing div, #jelcosMarketing span, #jelcosMarketing p {
+        font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      }
+    `;
+    document.head.appendChild(scope);
+  }
+
+  // -------------------------------------------------------------------
   // Build-version cache buster.
   //
   // Big deploys (e.g. output:static → output:single, Stack route tree

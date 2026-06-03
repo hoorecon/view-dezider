@@ -94,7 +94,7 @@ export default function Index() {
 
   // ── Public landing page ──
   return (
-    <View style={styles.root}>
+    <View nativeID="jelcosMarketing" style={styles.root}>
       <MarketingHeader />
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator>
         {/* HERO */}
