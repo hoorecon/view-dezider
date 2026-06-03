@@ -24,6 +24,7 @@ import io
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -294,11 +295,7 @@ def _pdf_payload_for_dezider(raw: Dict[str, Any]) -> Dict[str, Any]:
     options = raw.get("options") or []
     factors = raw.get("factors") or []
 
-    sections.append({
-        "heading": "Decision Type",
-        "paragraph": f"Type: <b>{raw.get('decision_type', '—')}</b> · "
-                     f"Life Area: <b>{raw.get('life_area', '—')}</b>",
-    })
+    sections.append(_decision_overview_section(raw))
 
     if options:
         rows = [["#", "Option", "Final Score"]]
@@ -380,6 +377,86 @@ def _decision_type_label(code) -> Optional[str]:
     return _label_from(code, _DECISION_TYPE_LABELS)
 
 
+_ACTING_AS_LABELS = {
+    "INDIVIDUAL": "Individual",
+    "ORGANIZATION": "Organization",
+    "BUSINESS_ORG": "Business / Organization",
+    "BUSINESS": "Business",
+    "GOVERNMENT": "Government",
+}
+
+
+def _acting_as_label(code) -> Optional[str]:
+    if not code:
+        return None
+    return _ACTING_AS_LABELS.get(str(code).upper(), str(code).replace("_", " ").title())
+
+
+# ── Timezone: report timestamp in the user's local zone (Profile → country) ──
+_COUNTRY_TZ = {
+    "india": "Asia/Kolkata", "in": "Asia/Kolkata", "bharat": "Asia/Kolkata",
+    "united states": "America/New_York", "united states of america": "America/New_York",
+    "usa": "America/New_York", "us": "America/New_York", "america": "America/New_York",
+    "united kingdom": "Europe/London", "uk": "Europe/London",
+    "england": "Europe/London", "britain": "Europe/London",
+    "united arab emirates": "Asia/Dubai", "uae": "Asia/Dubai",
+    "singapore": "Asia/Singapore", "sg": "Asia/Singapore",
+    "australia": "Australia/Sydney", "au": "Australia/Sydney",
+    "canada": "America/Toronto", "ca": "America/Toronto",
+    "germany": "Europe/Berlin", "france": "Europe/Paris",
+    "saudi arabia": "Asia/Riyadh", "ksa": "Asia/Riyadh",
+    "qatar": "Asia/Qatar", "kuwait": "Asia/Kuwait",
+    "oman": "Asia/Muscat", "bahrain": "Asia/Bahrain",
+    "malaysia": "Asia/Kuala_Lumpur", "japan": "Asia/Tokyo", "china": "Asia/Shanghai",
+    "new zealand": "Pacific/Auckland", "south africa": "Africa/Johannesburg",
+    "nepal": "Asia/Kathmandu", "sri lanka": "Asia/Colombo",
+    "bangladesh": "Asia/Dhaka", "pakistan": "Asia/Karachi",
+}
+_DEFAULT_TZ = "Asia/Kolkata"
+
+
+async def _user_timezone(user_id: str) -> str:
+    """Resolve the user's timezone from their Self-contact `country`. Falls
+    back to IST (Asia/Kolkata) when country is blank or unmapped."""
+    try:
+        c = await db.contacts.find_one(
+            {"user_id": user_id, "is_self": True}, {"_id": 0, "country": 1}
+        )
+        country = ((c or {}).get("country") or "").strip().lower()
+    except Exception:
+        country = ""
+    return _COUNTRY_TZ.get(country, _DEFAULT_TZ)
+
+
+def _format_local(dt_utc: datetime, tzname: str) -> str:
+    try:
+        local = dt_utc.astimezone(ZoneInfo(tzname))
+    except Exception:
+        local = dt_utc
+    abbr = local.tzname() or ""
+    return local.strftime(f"%d %b %Y, %H:%M {abbr}").strip()
+
+
+def _decision_overview_section(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """Shared 'Decision Overview' block — surfaces the initial intake info
+    (For / Life Area / Type / Sub-area / Scenario). Reused across all modules."""
+    type_label = _decision_type_label(raw.get("decision_type")) or "Not specified"
+    area_label = _life_area_label(raw.get("life_area")) or "Not specified"
+    acting = _acting_as_label(raw.get("acting_as_context"))
+    lines = []
+    if acting:
+        lines.append(f"For: <b>{_esc(acting)}</b>")
+    lines.append(f"Life Area: <b>{_esc(area_label)}</b>")
+    lines.append(f"Type: <b>{_esc(type_label)}</b>")
+    sub = raw.get("sub_area_name") or raw.get("sub_area")
+    if sub:
+        lines.append(f"Sub-area: <b>{_esc(sub)}</b>")
+    scen = raw.get("scenario_title") or raw.get("scenario")
+    if scen:
+        lines.append(f"Scenario: <b>{_esc(scen)}</b>")
+    return {"heading": "Decision Overview", "paragraph": "<br/>".join(lines)}
+
+
 def _scoring_factors(factors):
     """Top-level, non-duplicate factors — the only ones that score (mirrors
     compute_option_rollups in decision_framework_models)."""
@@ -451,16 +528,8 @@ def _pdf_payload_for_pros_cons(raw: Dict[str, Any]) -> Dict[str, Any]:
 
     is_rich = bool(factors) and bool(options)
 
-    # ── 1. Decision Overview (human-readable labels) ────────────────────────
-    type_label = _decision_type_label(raw.get("decision_type")) or "Not specified"
-    area_label = _life_area_label(raw.get("life_area")) or "Not specified"
-    sections.append({
-        "heading": "Decision Overview",
-        "paragraph": (
-            f"Type: <b>{_esc(type_label)}</b> "
-            f"&nbsp;&nbsp;·&nbsp;&nbsp; Life Area: <b>{_esc(area_label)}</b>"
-        ),
-    })
+    # ── 1. Decision Overview (initial intake info) ──────────────────────────
+    sections.append(_decision_overview_section(raw))
 
     # ── Legacy flat schema (no factor framework) ────────────────────────────
     if not is_rich:
@@ -713,7 +782,7 @@ def _pdf_payload_for_pros_cons(raw: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _pdf_payload_for_swot(raw: Dict[str, Any]) -> Dict[str, Any]:
-    sections = []
+    sections = [_decision_overview_section(raw)]
     quadrants = [
         ("Strengths",     raw.get("strengths") or []),
         ("Weaknesses",    raw.get("weaknesses") or []),
@@ -757,7 +826,8 @@ async def download_report_pdf(
         "swot":       _pdf_payload_for_swot,
     }[module.lower()]
     payload = builder(raw)
-    payload["generated_at"] = datetime.now(timezone.utc).strftime("%d %b %Y, %H:%M UTC")
+    tzname = await _user_timezone(user["user_id"])
+    payload["generated_at"] = _format_local(datetime.now(timezone.utc), tzname)
 
     pdf_bytes = _build_pdf(payload)
     filename = f"dezider_{module}_{decision_id[:8]}.pdf"

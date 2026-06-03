@@ -291,6 +291,12 @@ export default function NewDecisionIntake() {
         title,
         context: searchText.trim(),
         life_area: selectedArea.id,
+        decision_type: selectedAskType?.slug || selectedAskType?.id || undefined,
+        acting_as_context: actingAs,
+        sub_area_id: selectedSubArea?.id || undefined,
+        sub_area_name: selectedSubArea?.name || undefined,
+        scenario_id: selectedScenario?.id || undefined,
+        scenario_title: selectedScenario?.title || undefined,
       });
       const id = r.data?.id;
       if (id) {

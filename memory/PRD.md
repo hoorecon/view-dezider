@@ -141,3 +141,49 @@ Multi-user Decision Making App based on a 10-step Proactive Risk Response (PRR) 
 - `POST/GET/PUT/DELETE /api/solution-finders` - Solution Finder CRUD
 - `POST/GET/PUT/DELETE /api/solution-matrices` - Solution Matrix CRUD
 - `GET/PUT /api/admin/call-config` - Video call settings
+
+
+---
+
+# Decision Reports & Intake Track (added 3 Jun 2026)
+
+## User feedback captured
+1. PDF formatting/branding — DONE (text wrap, "JELCOS AI").
+2. Pros & Cons report completeness — DONE (single "Satisfaction %" = assessment %,
+   worth-based ranking, life-area/decision-type labels, app-flow section order,
+   MPPS analysis + Standard & Final Recommendation).
+3. Timezone: "Generated" time in user's local zone (Profile/Self-contact `country`,
+   default IST) — DONE (Phase 1).
+4. Show initial intake info (For/Individual, Life Area, Need, Sub-area, Scenario, Title,
+   Description) in PDF + list-detail.
+5. Apply full treatment (intake + detailed %, Standard Rec, MPPS, Final Rec) to
+   My Dezider, SWOT, Solution Finder reports (not just Pros & Cons).
+6. Add Solution Finder items into Solution Box listing.
+7. My Dezider MPPS must be enabled for ALL options (not just Rank #1) → re-rank by MPPS.
+8. Back-fill existing items: Title/Life-area/Type only (Sub-area/Scenario unrecoverable).
+9. Show "For: Individual/Org/Govt" acting-as line. 10. Solution Box intake persist+display.
+
+## Open earlier request
+- Share report by email (SendGrid/Resend) to non-registered (email) + registered
+  (in-app "Shared with me"); free recipient access; "Shared by <facilitator>".
+
+## Phases
+- Phase 1 (DONE, tested): timezone in all PDFs; shared `_decision_overview_section`
+  used by Pros&Cons/Dezider/SWOT; persist intake on Pros&Cons create
+  (backend `ProsConsCreate` + `new-decision.tsx`); life-area/decision-type labels.
+- Phase 2 (NEXT): list-detail intake display (Pros&Cons/Solution Box/Dezider/SWOT);
+  Solution Box intake persist; add Solution Finder items to Solution Box; back-fill.
+- Phase 3: My Dezider report parity (detailed %, ranking, Standard/MPPS/Final Rec).
+- Phase 4: My Dezider MPPS for ALL options (engine + UI + re-rank).
+- Phase 5: SWOT & Solution Finder report parity.
+- Phase 6: Share report by email.
+
+## Technical notes
+- Pros&Cons MPPS = Step-8 `improvement_pct` delta; effective% = clamp(0..100,
+  assessment%+improvement%); worth = joint_score / Σ std_rating × 100.
+- My Dezider MPPS on `decisions` doc (`mpps_*`); worth via `calculateDynamicWorth`
+  (`frontend/src/utils/decisionHelpers.ts`).
+- Life-area canonical ids in models/decisions_models.py (DB may store `la_`-prefixed).
+- Self-contact (`db.contacts`, is_self=True) `country` = Profile country → timezone.
+- Report builder: `/app/backend/routes/decision_reports.py`.
+

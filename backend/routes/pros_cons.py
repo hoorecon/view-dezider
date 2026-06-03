@@ -78,6 +78,12 @@ class ProsConsCreate(BaseModel):
     context: str = ""
     life_area: Optional[str] = None
     decision_type: Optional[str] = None
+    # Initial-intake info (Individual → Life Area → Need → Sub-area → Scenario)
+    acting_as_context: Optional[str] = None
+    sub_area_id: Optional[str] = None
+    sub_area_name: Optional[str] = None
+    scenario_id: Optional[str] = None
+    scenario_title: Optional[str] = None
 
 
 class ProsConsUpdate(BaseModel):
@@ -103,6 +109,12 @@ async def create_pros_cons(data: ProsConsCreate, user: dict = Depends(get_curren
         "context": data.context,
         "life_area": data.life_area,
         "decision_type": data.decision_type,
+        # Initial-intake info — surfaced in the PDF report & list-detail views
+        "acting_as_context": data.acting_as_context,
+        "sub_area_id": data.sub_area_id,
+        "sub_area_name": data.sub_area_name,
+        "scenario_id": data.scenario_id,
+        "scenario_title": data.scenario_title,
         # Legacy flat list (kept for backward compat)
         "pros": [],
         "cons": [],
