@@ -357,25 +357,55 @@ async def import_from_mpps(decision_id: str, user: dict = Depends(get_current_us
     life_area = dec.get("folder") or dec.get("life_area") or None
     factors = {f.get("id"): f for f in (dec.get("factors") or [])}
 
-    def _fmt_delta(delta) -> str:
-        if delta in (None, "", 0):
-            return ""
+    def _num(v) -> str:
         try:
-            d = float(delta)
-            ds = str(int(d)) if d == int(d) else str(d)
-            return f"({'+' if d >= 0 else ''}{ds}%)"
+            fv = float(v)
+            return str(int(fv)) if fv == int(fv) else str(fv)
         except Exception:
-            return f"({delta}%)"
+            return str(v)
 
-    def _fmt_title(factor_id, action_text, delta) -> str:
-        f = factors.get(factor_id) or {}
-        fname = f.get("name") or "Factor"
-        rating = f.get("std_rating")
+    def _improve_delta(imp) -> Optional[float]:
+        """Improvement gain %, preferring explicit delta_percentage else projected-original."""
+        delta = imp.get("delta_percentage")
+        if delta in (None, ""):
+            orig = imp.get("original_percentage")
+            proj = imp.get("projected_percentage")
+            if orig is not None and proj is not None:
+                try:
+                    delta = float(proj) - float(orig)
+                except Exception:
+                    delta = None
+        try:
+            return float(delta) if delta not in (None, "") else None
+        except Exception:
+            return None
+
+    def _fmt_delta(imp) -> str:
+        d = _improve_delta(imp)
+        if d in (None, 0):
+            return ""
+        return f"[{'+' if d >= 0 else ''}{_num(d)}%]"
+
+    def _realistic_rating(imp):
+        """Realistic rating = MPPS projected (realistic) % after improvement;
+        falls back to a SWOT/Pros&Cons factor's realistic/std rating."""
+        rating = imp.get("projected_percentage")
         if rating is None:
+            f = factors.get(imp.get("factor_id")) or {}
             rating = f.get("realistic_rating")
-        head = f"[{fname} - {rating}]" if rating is not None else f"[{fname}]"
+            if rating is None:
+                rating = f.get("std_rating")
+            if rating is None:
+                rating = f.get("rating")
+        return rating
+
+    def _fmt_title(imp, action_text) -> str:
+        f = factors.get(imp.get("factor_id")) or {}
+        fname = f.get("name") or "Factor"
+        rating = _realistic_rating(imp)
+        head = f"[{fname} - {_num(rating)}]" if rating is not None else f"[{fname}]"
         parts = [head, (action_text or "").strip()]
-        dstr = _fmt_delta(delta)
+        dstr = _fmt_delta(imp)
         if dstr:
             parts.append(dstr)
         return " · ".join([p for p in parts if p])
@@ -383,7 +413,6 @@ async def import_from_mpps(decision_id: str, user: dict = Depends(get_current_us
     inserted: List[Dict[str, Any]] = []
     for imp in dec.get("mpps_improvements") or []:
         factor_id = imp.get("factor_id")
-        delta = imp.get("delta_percentage")
         action_list = imp.get("action_items") or []
         if not action_list:
             # Push every improvement even when no explicit action was typed.
@@ -395,6 +424,7 @@ async def import_from_mpps(decision_id: str, user: dict = Depends(get_current_us
             if not raw_task:
                 continue
             mpps_key = f"{factor_id}|{raw_task}|{ai.get('deadline') or ''}"
+            new_title = _fmt_title(imp, raw_task)
             # Idempotent on a stable key (survives title-format changes).
             existing = await db.action_items.find_one({
                 "user_id": user.get("user_id"),
@@ -403,13 +433,20 @@ async def import_from_mpps(decision_id: str, user: dict = Depends(get_current_us
                 "mpps_key": mpps_key,
             })
             if existing:
+                # Self-heal: keep the visible title in sync with the latest format
+                # (e.g. when the user revises the projected % / delta).
+                if new_title and existing.get("title") != new_title:
+                    await db.action_items.update_one(
+                        {"action_id": existing["action_id"]},
+                        {"$set": {"title": new_title, "updated_at": _now_iso()}},
+                    )
                 continue
             norm = _normalise({
                 "source_module": "MYDEZIDER_MPPS",
                 "source_id": decision_id,
                 "source_label": label,
                 "source_subref": factor_id,
-                "title": _fmt_title(factor_id, raw_task, delta),
+                "title": new_title,
                 "who": ai.get("assignee_name") or "",
                 "assignee_email": ai.get("assignee_email") or "",
                 "assignee_mobile": ai.get("assignee_mobile") or "",

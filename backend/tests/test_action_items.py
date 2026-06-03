@@ -370,8 +370,10 @@ class TestImportFromMpps:
         # Empty title should be skipped → 3 imported (alpha, beta, gamma)
         assert body["imported_count"] == 3
         labels = {it["title"] for it in body["imported"]}
-        assert "TEST_MPPS_item_alpha" in labels
-        assert "TEST_MPPS_item_gamma" in labels
+        # New bracketed format: when the seed has no factor record / projected %,
+        # title falls back to `[Factor] · <task>` (no rating, no delta).
+        assert any("TEST_MPPS_item_alpha" in t for t in labels), labels
+        assert any("TEST_MPPS_item_gamma" in t for t in labels), labels
         # life_area derived from decision.folder
         assert all(it["life_area"] == "Career" for it in body["imported"])
 
