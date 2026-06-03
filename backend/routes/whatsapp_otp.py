@@ -118,12 +118,13 @@ async def send_otp(body: SendOtpRequest, user: dict = Depends(get_current_user))
     user_id = user["user_id"]
     u = await db.users.find_one({"user_id": user_id}, {"_id": 0}) or {}
 
-    if u.get("whatsapp_verified"):
-        return {"success": True, "already_verified": True}
-
     phone = _norm_phone(body.phone_number) or _norm_phone(u.get("whatsapp_number"))
     if not phone:
         raise HTTPException(status_code=400, detail="A WhatsApp number is required.")
+
+    # Already-verified short-circuit applies only when NOT changing the number.
+    if u.get("whatsapp_verified") and phone == _norm_phone(u.get("whatsapp_number")):
+        return {"success": True, "already_verified": True}
 
     now = _now()
     today = date.today().isoformat()

@@ -7,7 +7,7 @@ import logging
 import httpx
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, HTTPException, Request, Response, Depends
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 from core.database import db
 from core.auth import (
@@ -200,9 +200,13 @@ async def google_session(session_data: SessionRequest, response: Response):
 @router.get("/auth/me")
 async def get_me(user: dict = Depends(get_current_user)):
     """Get current authenticated user"""
+    custom_pic = user.get("profile_picture")
     return {
         "user_id": user["user_id"], "email": user["email"], "name": user["name"],
-        "picture": user.get("picture"), "auth_method": user.get("auth_method", "email"),
+        "picture": custom_pic or user.get("picture"),
+        "has_custom_picture": bool(custom_pic),
+        "gender": user.get("gender"),
+        "auth_method": user.get("auth_method", "email"),
         "has_password": bool(user.get("password_hash")),
         "role": user.get("role", "user"),
         "org_id": user.get("org_id"), "org_role": user.get("org_role"),
@@ -210,6 +214,87 @@ async def get_me(user: dict = Depends(get_current_user)):
         "whatsapp_verified": bool(user.get("whatsapp_verified")),
         "can_view_pii": bool(user.get("can_view_pii")),
     }
+
+
+ALLOWED_GENDERS = {"Male", "Female", "Other", "Prefer not to say"}
+
+
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, max_length=80)
+    gender: Optional[str] = None  # one of ALLOWED_GENDERS, or "" to clear
+    profile_picture: Optional[str] = None  # data URL, or "" to remove
+
+
+@router.patch("/auth/profile")
+async def update_profile(body: ProfileUpdate, user: dict = Depends(get_current_user)):
+    """Update editable profile fields: name, gender, profile picture.
+    Email is never editable here."""
+    updates = {}
+    unsets = {}
+
+    if body.name is not None:
+        n = body.name.strip()
+        if len(n) < 1:
+            raise HTTPException(status_code=400, detail="Name cannot be empty.")
+        updates["name"] = n
+
+    if body.gender is not None:
+        g = body.gender.strip()
+        if g == "":
+            unsets["gender"] = ""
+        elif g in ALLOWED_GENDERS:
+            updates["gender"] = g
+        else:
+            raise HTTPException(status_code=400, detail="Invalid gender.")
+
+    if body.profile_picture is not None:
+        pic = body.profile_picture.strip()
+        if pic == "":
+            unsets["profile_picture"] = ""
+        else:
+            _validate_profile_picture(pic)
+            updates["profile_picture"] = pic
+
+    if not updates and not unsets:
+        raise HTTPException(status_code=400, detail="Nothing to update.")
+
+    op = {}
+    if updates:
+        op["$set"] = updates
+    if unsets:
+        op["$unset"] = unsets
+    await db.users.update_one({"user_id": user["user_id"]}, op)
+
+    fresh = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0}) or {}
+    custom_pic = fresh.get("profile_picture")
+    return {
+        "success": True,
+        "name": fresh.get("name"),
+        "gender": fresh.get("gender"),
+        "picture": custom_pic or fresh.get("picture"),
+        "has_custom_picture": bool(custom_pic),
+    }
+
+
+def _validate_profile_picture(data_url: str):
+    import base64 as _b64
+    import binascii as _bin
+    mime = "image/png"
+    b64 = data_url
+    if data_url.startswith("data:"):
+        try:
+            header, b64 = data_url.split(",", 1)
+            mime = header.split(";")[0].replace("data:", "").lower()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid image data.")
+    if mime not in {"image/png", "image/jpeg", "image/jpg"}:
+        raise HTTPException(status_code=400, detail="Picture must be PNG or JPG.")
+    try:
+        raw = _b64.b64decode(b64, validate=True)
+    except (_bin.Error, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid image encoding.")
+    if len(raw) > 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Picture must be 1 MB or smaller.")
 
 
 @router.post("/auth/logout")

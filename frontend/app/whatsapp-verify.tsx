@@ -10,13 +10,15 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator,
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import api from '../src/utils/api';
 import { showAlert } from '../src/utils/alert';
 import { useAuthStore } from '../src/store/authStore';
 
 export default function WhatsAppVerifyScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ change?: string }>();
+  const isChange = params?.change === '1';
   const { user, checkAuth, logout } = useAuthStore();
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
@@ -27,19 +29,19 @@ export default function WhatsAppVerifyScreen() {
   const [devCode, setDevCode] = useState<string | null>(null);
   const timerRef = useRef<any>(null);
 
-  // If already verified, leave immediately.
+  // If already verified (and not explicitly changing the number), leave.
   useEffect(() => {
     (async () => {
       try {
         const r = await api.get('/auth/whatsapp/status');
-        if (r.data?.whatsapp_verified) {
+        if (r.data?.whatsapp_verified && !isChange) {
           router.replace('/(tabs)' as any);
           return;
         }
         if (r.data?.whatsapp_number) setPhone(String(r.data.whatsapp_number));
       } catch { /* ignore */ }
     })();
-  }, [router]);
+  }, [router, isChange]);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -58,13 +60,16 @@ export default function WhatsAppVerifyScreen() {
       const r = await api.post('/auth/whatsapp/send-otp', { phone_number: phone });
       if (r.data?.already_verified) {
         await checkAuth();
-        router.replace('/(tabs)' as any);
+        router.replace((isChange ? '/(tabs)/profile' : '/(tabs)') as any);
         return;
       }
       setStep('enter_code');
       setCooldown(r.data?.cooldown_seconds || 60);
-      setDevCode(r.data?.dev_code || null);
-      if (!r.data?.delivered) {
+      // Only surface an on-screen code when WhatsApp delivery did NOT succeed.
+      if (r.data?.delivered) {
+        setDevCode(null);
+      } else {
+        setDevCode(r.data?.dev_code || null);
         showAlert('Code generated', 'WhatsApp delivery is being set up. Use the code shown on screen to continue.');
       }
     } catch (e: any) {
@@ -84,7 +89,7 @@ export default function WhatsAppVerifyScreen() {
       await api.post('/auth/whatsapp/verify-otp', { code: code.trim() });
       // Refresh auth so the (tabs) gate sees whatsapp_verified=true, then route.
       await checkAuth();
-      router.replace('/(tabs)' as any);
+      router.replace((isChange ? '/(tabs)/profile' : '/(tabs)') as any);
     } catch (e: any) {
       showAlert('Verification failed', e?.response?.data?.detail || 'Invalid or expired code.');
     } finally {

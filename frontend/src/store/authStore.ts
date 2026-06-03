@@ -17,6 +17,8 @@ interface User {
   user_type?: string;
   is_admin?: boolean;
   can_view_pii?: boolean;
+  gender?: string | null;
+  has_custom_picture?: boolean;
   whatsapp_number?: string | null;
   whatsapp_verified?: boolean;
 }

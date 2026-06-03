@@ -9,10 +9,13 @@ import {
   Image,
   ActivityIndicator,
   Platform,
+  Modal,
+  Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '../../src/store/authStore';
 import { COLORS } from '../../src/constants/colors';
 import { Card } from '../../src/components/Card';
@@ -20,6 +23,8 @@ import { GradientButton } from '../../src/components/GradientButton';
 import { Input } from '../../src/components/Input';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
+
+const GENDER_OPTIONS = ['Male', 'Female', 'Other', 'Prefer not to say'];
 
 interface AssessmentQuestion {
   id: string;
@@ -29,7 +34,10 @@ interface AssessmentQuestion {
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { user, logout } = useAuthStore();
+  const { user, logout, checkAuth } = useAuthStore();
+  const [picBusy, setPicBusy] = useState(false);
+  const [genderModalOpen, setGenderModalOpen] = useState(false);
+  const [savingGender, setSavingGender] = useState(false);
   const [questions, setQuestions] = useState<AssessmentQuestion[]>([]);
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [assessmentResult, setAssessmentResult] = useState<any>(null);
@@ -236,18 +244,88 @@ export default function ProfileScreen() {
     </View>
   );
 
+  const saveProfilePicture = async (dataUrl: string | '') => {
+    setPicBusy(true);
+    try {
+      await api.patch('/auth/profile', { profile_picture: dataUrl });
+      await checkAuth();
+    } catch (e: any) {
+      showAlert('Failed', e?.response?.data?.detail || 'Could not update picture.');
+    } finally { setPicBusy(false); }
+  };
+
+  const pickProfilePicture = async () => {
+    if (Platform.OS !== 'web') {
+      const cur = await ImagePicker.getMediaLibraryPermissionsAsync();
+      let status = cur.status;
+      if (status !== 'granted' && cur.canAskAgain) {
+        status = (await ImagePicker.requestMediaLibraryPermissionsAsync()).status;
+      }
+      if (status !== 'granted') {
+        showAlert('Permission needed', 'Allow photo access to set a profile picture.', [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+        ]);
+        return;
+      }
+    }
+    try {
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.8, base64: true,
+      });
+      if (res.canceled || !res.assets?.length) return;
+      const a = res.assets[0];
+      if (!a.base64) { showAlert('Unsupported', 'Could not read the image.'); return; }
+      const mime = (a.mimeType || '').toLowerCase();
+      const normMime = mime.includes('jpeg') || mime.includes('jpg') ? 'image/jpeg'
+        : mime.includes('png') ? 'image/png' : '';
+      if (!normMime) { showAlert('Unsupported format', 'Please choose a PNG or JPG image.'); return; }
+      if (a.base64.length > 1.4 * 1024 * 1024) { showAlert('Too large', 'Picture must be 1 MB or smaller.'); return; }
+      await saveProfilePicture(`data:${normMime};base64,${a.base64}`);
+    } catch (e: any) {
+      showAlert('Picker error', e?.message || 'Could not open the image picker.');
+    }
+  };
+
+  const onAvatarPress = () => {
+    const opts: any[] = [
+      { text: user?.has_custom_picture ? 'Replace photo' : 'Upload photo', onPress: pickProfilePicture },
+    ];
+    if (user?.has_custom_picture) {
+      opts.push({ text: 'Remove photo', style: 'destructive', onPress: () => saveProfilePicture('') });
+    }
+    opts.push({ text: 'Cancel', style: 'cancel' });
+    showAlert('Profile picture', 'Choose an option', opts);
+  };
+
+  const saveGender = async (g: string) => {
+    setSavingGender(true);
+    try {
+      await api.patch('/auth/profile', { gender: g });
+      await checkAuth();
+      setGenderModalOpen(false);
+    } catch (e: any) {
+      showAlert('Failed', e?.response?.data?.detail || 'Could not update gender.');
+    } finally { setSavingGender(false); }
+  };
+
   const renderProfile = () => (
     <>
       {/* User Info */}
       <Card style={styles.userCard}>
         <View style={styles.userInfo}>
-          {user?.picture ? (
-            <Image source={{ uri: user.picture }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarPlaceholder}>
-              <Ionicons name="person" size={32} color={COLORS.white} />
+          <TouchableOpacity onPress={onAvatarPress} activeOpacity={0.8} disabled={picBusy}>
+            {user?.picture ? (
+              <Image source={{ uri: user.picture }} style={styles.avatar} />
+            ) : (
+              <View style={styles.avatarPlaceholder}>
+                <Ionicons name="person" size={32} color={COLORS.white} />
+              </View>
+            )}
+            <View style={styles.avatarEdit}>
+              {picBusy ? <ActivityIndicator size="small" color={COLORS.white} /> : <Ionicons name="camera" size={14} color={COLORS.white} />}
             </View>
-          )}
+          </TouchableOpacity>
           <View style={styles.userDetails}>
             <Text style={styles.userName}>{user?.name}</Text>
             <Text style={styles.userEmail}>{user?.email}</Text>
@@ -263,7 +341,66 @@ export default function ProfileScreen() {
             </View>
           </View>
         </View>
+
+        {/* WhatsApp */}
+        <View style={styles.fieldRow}>
+          <View style={styles.fieldLeft}>
+            <Ionicons name="logo-whatsapp" size={18} color="#25D366" />
+            <View style={{ flexShrink: 1 }}>
+              <Text style={styles.fieldLabel}>WhatsApp</Text>
+              {user?.whatsapp_number ? (
+                <View style={styles.waValueRow}>
+                  <Text style={styles.fieldValue}>{user.whatsapp_number}</Text>
+                  {user?.whatsapp_verified ? (
+                    <View style={styles.verifiedPill}><Ionicons name="checkmark-circle" size={12} color="#059669" /><Text style={styles.verifiedText}>Verified</Text></View>
+                  ) : (
+                    <View style={styles.unverifiedPill}><Text style={styles.unverifiedText}>Unverified</Text></View>
+                  )}
+                </View>
+              ) : (
+                <Text style={styles.fieldMuted}>Not added</Text>
+              )}
+            </View>
+          </View>
+          <TouchableOpacity onPress={() => router.push('/whatsapp-verify?change=1' as any)} style={styles.fieldAction}>
+            <Text style={styles.fieldActionText}>{user?.whatsapp_number ? 'Change' : 'Add'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Gender */}
+        <View style={[styles.fieldRow, { borderBottomWidth: 0 }]}>
+          <View style={styles.fieldLeft}>
+            <Ionicons name="male-female" size={18} color={COLORS.primary} />
+            <View style={{ flexShrink: 1 }}>
+              <Text style={styles.fieldLabel}>Gender <Text style={styles.optional}>(optional)</Text></Text>
+              <Text style={user?.gender ? styles.fieldValue : styles.fieldMuted}>{user?.gender || 'Not set'}</Text>
+            </View>
+          </View>
+          <TouchableOpacity onPress={() => setGenderModalOpen(true)} style={styles.fieldAction}>
+            <Text style={styles.fieldActionText}>Edit</Text>
+          </TouchableOpacity>
+        </View>
       </Card>
+
+      {/* Gender picker modal */}
+      <Modal visible={genderModalOpen} transparent animationType="fade" onRequestClose={() => setGenderModalOpen(false)}>
+        <TouchableOpacity style={styles.gOverlay} activeOpacity={1} onPress={() => setGenderModalOpen(false)}>
+          <View style={styles.gCard}>
+            <Text style={styles.gTitle}>Select gender</Text>
+            {GENDER_OPTIONS.map((g) => (
+              <TouchableOpacity key={g} style={styles.gOption} onPress={() => saveGender(g)} disabled={savingGender}>
+                <Text style={[styles.gOptionText, user?.gender === g && { color: COLORS.primary, fontWeight: '700' }]}>{g}</Text>
+                {user?.gender === g && <Ionicons name="checkmark" size={18} color={COLORS.primary} />}
+              </TouchableOpacity>
+            ))}
+            {!!user?.gender && (
+              <TouchableOpacity style={styles.gOption} onPress={() => saveGender('')} disabled={savingGender}>
+                <Text style={[styles.gOptionText, { color: '#DC2626' }]}>Clear</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Assessment Result */}
       <Text style={styles.sectionTitle}>Your Decision Mode</Text>
@@ -1026,6 +1163,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textSecondary,
   },
+  avatarEdit: {
+    position: 'absolute', right: -2, bottom: -2,
+    width: 24, height: 24, borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: COLORS.white,
+  },
+  fieldRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingTop: 14, marginTop: 14, borderTopWidth: 1, borderTopColor: COLORS.border,
+  },
+  fieldLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, paddingRight: 10 },
+  fieldLabel: { fontSize: 13, color: COLORS.textSecondary, fontWeight: '600' },
+  optional: { fontSize: 11, color: COLORS.textMuted, fontWeight: '400' },
+  fieldValue: { fontSize: 14, color: COLORS.textPrimary, fontWeight: '600', marginTop: 1 },
+  fieldMuted: { fontSize: 14, color: COLORS.textMuted, marginTop: 1 },
+  waValueRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  verifiedPill: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: '#ECFDF5', borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 },
+  verifiedText: { fontSize: 10, color: '#059669', fontWeight: '700' },
+  unverifiedPill: { backgroundColor: '#FEF2F2', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
+  unverifiedText: { fontSize: 10, color: '#DC2626', fontWeight: '700' },
+  fieldAction: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: COLORS.primary + '12' },
+  fieldActionText: { fontSize: 13, color: COLORS.primary, fontWeight: '700' },
+  gOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', justifyContent: 'center', padding: 30 },
+  gCard: { backgroundColor: COLORS.white, borderRadius: 16, padding: 8 },
+  gTitle: { fontSize: 15, fontWeight: '800', color: COLORS.textPrimary, padding: 12 },
+  gOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, paddingHorizontal: 12, borderTopWidth: 1, borderTopColor: COLORS.divider },
+  gOptionText: { fontSize: 15, color: COLORS.textPrimary },
   resultCard: {
     marginBottom: 16,
   },
