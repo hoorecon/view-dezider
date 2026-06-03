@@ -65,6 +65,7 @@ type ActionItem = {
   assignee_email?: string;
   assignee_mobile?: string;
   description?: string;
+  is_mpps?: boolean;
 };
 
 interface Props {

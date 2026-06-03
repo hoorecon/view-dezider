@@ -355,18 +355,52 @@ async def import_from_mpps(decision_id: str, user: dict = Depends(get_current_us
         raise HTTPException(404, "decision not found")
     label = f"My Dezider · MPPS · {dec.get('title','Untitled')}"
     life_area = dec.get("folder") or dec.get("life_area") or None
+    factors = {f.get("id"): f for f in (dec.get("factors") or [])}
+
+    def _fmt_delta(delta) -> str:
+        if delta in (None, "", 0):
+            return ""
+        try:
+            d = float(delta)
+            ds = str(int(d)) if d == int(d) else str(d)
+            return f"({'+' if d >= 0 else ''}{ds}%)"
+        except Exception:
+            return f"({delta}%)"
+
+    def _fmt_title(factor_id, action_text, delta) -> str:
+        f = factors.get(factor_id) or {}
+        fname = f.get("name") or "Factor"
+        rating = f.get("std_rating")
+        if rating is None:
+            rating = f.get("realistic_rating")
+        head = f"[{fname} - {rating}]" if rating is not None else f"[{fname}]"
+        parts = [head, (action_text or "").strip()]
+        dstr = _fmt_delta(delta)
+        if dstr:
+            parts.append(dstr)
+        return " · ".join([p for p in parts if p])
 
     inserted: List[Dict[str, Any]] = []
     for imp in dec.get("mpps_improvements") or []:
-        for ai in imp.get("action_items") or []:
-            # Skip if already imported (heuristic: same source_id + title + by_when + who)
+        factor_id = imp.get("factor_id")
+        delta = imp.get("delta_percentage")
+        action_list = imp.get("action_items") or []
+        if not action_list:
+            # Push every improvement even when no explicit action was typed.
+            fname = (factors.get(factor_id) or {}).get("name") or "this factor"
+            base = (imp.get("improvement_plan") or "").strip() or f"Improve {fname}"
+            action_list = [{"task": base}]
+        for ai in action_list:
+            raw_task = (ai.get("task") or imp.get("improvement_plan") or "").strip()
+            if not raw_task:
+                continue
+            mpps_key = f"{factor_id}|{raw_task}|{ai.get('deadline') or ''}"
+            # Idempotent on a stable key (survives title-format changes).
             existing = await db.action_items.find_one({
                 "user_id": user.get("user_id"),
                 "source_module": "MYDEZIDER_MPPS",
                 "source_id": decision_id,
-                "title": ai.get("task") or "",
-                "by_when": ai.get("deadline"),
-                "who": ai.get("assignee_name") or "",
+                "mpps_key": mpps_key,
             })
             if existing:
                 continue
@@ -374,8 +408,8 @@ async def import_from_mpps(decision_id: str, user: dict = Depends(get_current_us
                 "source_module": "MYDEZIDER_MPPS",
                 "source_id": decision_id,
                 "source_label": label,
-                "source_subref": imp.get("factor_id"),
-                "title": ai.get("task") or "",
+                "source_subref": factor_id,
+                "title": _fmt_title(factor_id, raw_task, delta),
                 "who": ai.get("assignee_name") or "",
                 "assignee_email": ai.get("assignee_email") or "",
                 "assignee_mobile": ai.get("assignee_mobile") or "",
@@ -387,6 +421,8 @@ async def import_from_mpps(decision_id: str, user: dict = Depends(get_current_us
             doc = {
                 "action_id": str(uuid.uuid4()),
                 **norm,
+                "is_mpps": True,
+                "mpps_key": mpps_key,
                 "ported_to": None, "ported_ref_id": None, "ported_at": None,
                 "created_at": _now_iso(), "updated_at": _now_iso(),
             }

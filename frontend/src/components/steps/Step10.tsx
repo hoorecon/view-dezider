@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Alert, TextInput, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -19,6 +19,28 @@ export default function Step10() {
       : ''
   );
   const [reasonStr, setReasonStr] = useState(decision.final_choice_reason || '');
+  // Auto-push MPPS improvement plans into the Action Plan when this step opens.
+  const [mppsReady, setMppsReady] = useState(false);
+  const [actionRefreshKey, setActionRefreshKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const imps = (decision as any).mpps_improvements || [];
+      if (!imps.length) { if (!cancelled) setMppsReady(true); return; }
+      try {
+        const token = await AsyncStorage.getItem('session_token');
+        const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
+        await fetch(`${baseUrl}/api/action-items/import-from-mpps/${decision.id}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        });
+      } catch { /* non-fatal — manual add still works */ }
+      if (!cancelled) { setMppsReady(true); setActionRefreshKey((k) => k + 1); }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [decision.id]);
 
   const optionsWithDynamicWorth = decision.options.map(option => ({
     ...option,
@@ -227,10 +249,12 @@ export default function Step10() {
         )}
       </Card>
 
-      {/* Action Plan — capture action items that flow to Action Center / CTT / Lifestyle */}
-      {decision.chosen_option_id && (
+      {/* Action Plan — MPPS improvement plans auto-pushed here + manual adds.
+          Flows to Action Center / CTT / Lifestyle. */}
+      {mppsReady && (
         <View style={{ marginTop: 4 }}>
           <ActionItemEditor
+            key={actionRefreshKey}
             sourceModule="MYDEZIDER_MPPS"
             sourceId={decision.id}
             sourceLabel={`My Dezider · ${decision.title || ''}`}
