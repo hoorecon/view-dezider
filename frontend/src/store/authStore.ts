@@ -16,6 +16,7 @@ interface User {
   role?: string;
   user_type?: string;
   is_admin?: boolean;
+  can_view_pii?: boolean;
   whatsapp_number?: string | null;
   whatsapp_verified?: boolean;
 }

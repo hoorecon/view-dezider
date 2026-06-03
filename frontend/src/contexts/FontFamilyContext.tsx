@@ -25,14 +25,18 @@ const LINK_ID = 'app-google-font-link';
 
 interface FontFamilyValue {
   fontKey: string;
+  companyName: string;
   ready: boolean;
   setFont: (key: string) => void;
+  setCompanyName: (name: string) => void;
 }
 
 const FontFamilyContext = createContext<FontFamilyValue>({
   fontKey: DEFAULT_FONT_KEY,
+  companyName: 'HOORECON IT-Sys Pvt Ltd',
   ready: false,
   setFont: () => {},
+  setCompanyName: () => {},
 });
 
 function applyWebFont(key: string) {
@@ -65,6 +69,7 @@ function applyWebFont(key: string) {
 
 export const FontFamilyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [fontKey, setFontKey] = useState<string>(DEFAULT_FONT_KEY);
+  const [companyName, setCompanyNameState] = useState<string>('HOORECON IT-Sys Pvt Ltd');
   const [ready, setReady] = useState(false);
 
   const apply = useCallback((key: string) => {
@@ -80,6 +85,8 @@ export const FontFamilyProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       try {
         const cached = await AsyncStorage.getItem(STORAGE_KEY);
         if (cached && !cancelled) apply(cached);
+        const cachedCo = await AsyncStorage.getItem('app_company_name_v1');
+        if (cachedCo && !cancelled) setCompanyNameState(cachedCo);
       } catch { /* ignore */ }
 
       try {
@@ -87,9 +94,14 @@ export const FontFamilyProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (res.ok) {
           const data = await res.json();
           const serverFont = data?.font_family || DEFAULT_FONT_KEY;
+          const serverCo = data?.company_name;
           if (!cancelled) {
             apply(serverFont);
             AsyncStorage.setItem(STORAGE_KEY, serverFont).catch(() => {});
+            if (serverCo) {
+              setCompanyNameState(serverCo);
+              AsyncStorage.setItem('app_company_name_v1', serverCo).catch(() => {});
+            }
           }
         }
       } catch { /* offline — keep cached/default */ }
@@ -105,11 +117,17 @@ export const FontFamilyProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     AsyncStorage.setItem(STORAGE_KEY, key).catch(() => {});
   }, [apply]);
 
+  const setCompanyName = useCallback((name: string) => {
+    setCompanyNameState(name);
+    AsyncStorage.setItem('app_company_name_v1', name).catch(() => {});
+  }, []);
+
   return (
-    <FontFamilyContext.Provider value={{ fontKey, ready, setFont }}>
+    <FontFamilyContext.Provider value={{ fontKey, companyName, ready, setFont, setCompanyName }}>
       {children}
     </FontFamilyContext.Provider>
   );
 };
 
 export const useFontFamily = () => useContext(FontFamilyContext);
+export const useCompanyName = () => useContext(FontFamilyContext).companyName;

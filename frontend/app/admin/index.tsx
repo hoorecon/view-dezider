@@ -39,6 +39,7 @@ const QUICK_ACTIONS: QuickAction[] = [
   { key: 'docs',            label: 'Admin Docs',          description: 'PRD · SRS · UAT · Postman · Regression',       icon: 'library',         color: '#059669', href: '/admin/docs' },
   { key: 'masters',         label: 'Masters',             description: 'Religions · Castes · Languages · Occupations · Skills · Drives · Traits', icon: 'list-circle', color: '#9333EA', href: '/admin/masters' },
   { key: 'appearance',      label: 'Appearance · Font',   description: 'App-wide font family · Inter default · live preview', icon: 'text', color: '#EC4899', href: '/admin/appearance' },
+  { key: 'user-lookup',     label: 'User Lookup (PII)',   description: 'Read-only user view by email + WhatsApp · NDA + audit logged', icon: 'shield-checkmark', color: '#0891B2', href: '/admin/user-lookup' },
 ];
 
 export default function AdminHomeScreen() {

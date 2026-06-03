@@ -17,6 +17,7 @@ router = APIRouter(tags=["Appearance"])
 
 APPEARANCE_KEY = "appearance"
 DEFAULT_FONT = "Inter"
+DEFAULT_COMPANY_NAME = "HOORECON IT-Sys Pvt Ltd"
 
 # Allow-list of selectable fonts (Google Fonts + System). Keep in sync with the
 # frontend FONT_OPTIONS list in src/constants/fonts.ts.
@@ -36,6 +37,10 @@ class AppearanceUpdate(BaseModel):
     font_family: str = Field(..., min_length=1, max_length=60)
 
 
+class CompanyNameUpdate(BaseModel):
+    company_name: str = Field(..., min_length=2, max_length=120)
+
+
 async def _get_doc() -> dict:
     # `key` (NOT `_key`) — the app_settings collection has a unique index on
     # `key:1` (see core/db_indices.py). Using `_key` would leave `key:null`
@@ -47,12 +52,33 @@ async def _get_doc() -> dict:
 
 @router.get("/appearance")
 async def get_appearance():
-    """Public: the current app-wide font family + the selectable options."""
+    """Public: the current app-wide font family + company name + options."""
     doc = await _get_doc()
     font = doc.get("font_family") or DEFAULT_FONT
     if font not in ALLOWED_FONTS:
         font = DEFAULT_FONT
-    return {"font_family": font, "font_options": ALLOWED_FONTS, "default_font": DEFAULT_FONT}
+    return {
+        "font_family": font,
+        "font_options": ALLOWED_FONTS,
+        "default_font": DEFAULT_FONT,
+        "company_name": doc.get("company_name") or DEFAULT_COMPANY_NAME,
+    }
+
+
+@router.put("/admin/company-name")
+async def update_company_name(body: CompanyNameUpdate, user: dict = Depends(get_current_user)):
+    """Super-admin only: centrally update the legal company name used across
+    legal pages, footer and the PII-access NDA."""
+    if user.get("role") != "super_admin":
+        raise HTTPException(status_code=403, detail="Super-admin access required.")
+    name = body.company_name.strip()
+    await db.app_settings.update_one(
+        {"key": APPEARANCE_KEY},
+        {"$set": {"key": APPEARANCE_KEY, "company_name": name}},
+        upsert=True,
+    )
+    logger.info("Company name set to %r by %s", name, user.get("email"))
+    return {"success": True, "company_name": name}
 
 
 @router.put("/admin/appearance")

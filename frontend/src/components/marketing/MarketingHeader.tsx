@@ -25,9 +25,9 @@ export default function MarketingHeader({ activeCta = true }: { activeCta?: bool
         <LinearGradient colors={GRADIENTS.accent} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.mark}>
           <Ionicons name="sparkles" size={18} color="#FFFFFF" />
         </LinearGradient>
-        <View>
+        <View style={styles.brandTextWrap}>
           <Text style={styles.brandName}>{COMPANY.product}</Text>
-          {!compact && <Text style={styles.brandSub}>by {COMPANY.legalName}</Text>}
+          {!compact && <Text style={styles.brandSub} numberOfLines={2}>{COMPANY.tagline}</Text>}
         </View>
       </TouchableOpacity>
 
@@ -53,10 +53,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingVertical: 14,
     backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
-  brand: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  brand: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1, paddingRight: 12 },
+  brandTextWrap: { flexShrink: 1, maxWidth: 360 },
   mark: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   brandName: { fontSize: 17, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: 0.3 },
-  brandSub: { fontSize: 10, color: COLORS.textMuted, marginTop: 1 },
+  brandSub: { fontSize: 10, color: COLORS.textMuted, marginTop: 1, lineHeight: 13 },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   ghostBtn: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10 },
   ghostBtnText: { fontSize: 14, fontWeight: '700', color: COLORS.primary },

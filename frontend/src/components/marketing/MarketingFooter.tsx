@@ -8,11 +8,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { COLORS } from '../../constants/colors';
 import { COMPANY, LEGAL_LINKS } from '../../constants/company';
+import { useCompanyName } from '../../contexts/FontFamilyContext';
 
 export default function MarketingFooter() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const twoCol = width >= 760;
+  const companyName = useCompanyName();
 
   return (
     <View style={styles.footer}>
@@ -21,7 +23,7 @@ export default function MarketingFooter() {
         <View style={[styles.col, twoCol && { flex: 1.4, paddingRight: 24 }]}>
           <Text style={styles.brand}>{COMPANY.product}</Text>
           <Text style={styles.tagline}>{COMPANY.tagline}</Text>
-          <Text style={styles.legalName}>{COMPANY.legalName}</Text>
+          <Text style={styles.legalName}>{companyName}</Text>
           {COMPANY.addressLines.map((l, i) => (
             <Text key={i} style={styles.addr}>{l}</Text>
           ))}
@@ -59,7 +61,7 @@ export default function MarketingFooter() {
 
       <View style={styles.bottomBar}>
         <Text style={styles.copy}>
-          © {new Date().getFullYear()} {COMPANY.legalName}. All rights reserved.
+          © {new Date().getFullYear()} {companyName}. All rights reserved.
         </Text>
       </View>
     </View>
