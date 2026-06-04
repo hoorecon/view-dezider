@@ -7,8 +7,8 @@ import { View, Text, StyleSheet, TouchableOpacity, Linking, useWindowDimensions,
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { COLORS } from '../../constants/colors';
-import { COMPANY, LEGAL_LINKS } from '../../constants/company';
-import { useCompanyName, useAppLogo } from '../../contexts/FontFamilyContext';
+import { LEGAL_LINKS } from '../../constants/company';
+import { useCompanyName, useAppLogo, useCompany } from '../../contexts/FontFamilyContext';
 
 export default function MarketingFooter() {
   const router = useRouter();
@@ -16,6 +16,7 @@ export default function MarketingFooter() {
   const twoCol = width >= 760;
   const companyName = useCompanyName();
   const logoUri = useAppLogo();
+  const company = useCompany();
 
   return (
     <View style={styles.footer}>
@@ -23,28 +24,28 @@ export default function MarketingFooter() {
         {/* Company block */}
         <View style={[styles.col, twoCol && { flex: 1.4, paddingRight: 24 }]}>
           {logoUri ? <Image source={{ uri: logoUri }} style={styles.footerLogo} resizeMode="contain" /> : null}
-          <Text style={styles.brand}>{COMPANY.product}</Text>
-          <Text style={styles.tagline}>{COMPANY.tagline}</Text>
+          <Text style={styles.brand}>{company.product}</Text>
+          <Text style={styles.tagline}>{company.tagline}</Text>
           <Text style={styles.legalName}>{companyName}</Text>
-          {COMPANY.addressLines.map((l, i) => (
+          {company.addressLines.map((l, i) => (
             <Text key={i} style={styles.addr}>{l}</Text>
           ))}
           <View style={styles.contactRow}>
             <Ionicons name="call-outline" size={13} color={COLORS.textSecondary} />
-            <TouchableOpacity onPress={() => Linking.openURL(`tel:${COMPANY.phoneDial}`)}>
-              <Text style={styles.contactLink}>{COMPANY.phone}</Text>
+            <TouchableOpacity onPress={() => Linking.openURL(`tel:${company.phoneDial}`)}>
+              <Text style={styles.contactLink}>{company.phone}</Text>
             </TouchableOpacity>
           </View>
           <View style={styles.contactRow}>
             <Ionicons name="mail-outline" size={13} color={COLORS.textSecondary} />
-            <TouchableOpacity onPress={() => Linking.openURL(`mailto:${COMPANY.email}`)}>
-              <Text style={styles.contactLink}>{COMPANY.email}</Text>
+            <TouchableOpacity onPress={() => Linking.openURL(`mailto:${company.email}`)}>
+              <Text style={styles.contactLink}>{company.email}</Text>
             </TouchableOpacity>
           </View>
           <View style={styles.contactRow}>
             <Ionicons name="globe-outline" size={13} color={COLORS.textSecondary} />
-            <TouchableOpacity onPress={() => Linking.openURL(COMPANY.websiteUrl)}>
-              <Text style={styles.contactLink}>{COMPANY.website}</Text>
+            <TouchableOpacity onPress={() => Linking.openURL(company.websiteUrl)}>
+              <Text style={styles.contactLink}>{company.website}</Text>
             </TouchableOpacity>
           </View>
         </View>

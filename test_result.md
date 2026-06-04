@@ -8762,3 +8762,36 @@ agent_communication:
       Finder — set life area + goal, add a concern, wait ~1s, reload the entry → the concern persists (autosave).
       Creds: super@test.com (super_admin, whatsapp 918888800000), admin@test.com / AdminPass2026! (admin),
       harden_1777921741@example.com / HardenPass2026! (regular user). All routes under /api.
+
+#====================================================================================================
+# Admin-configurable Company Profile (name/tagline/legal/address/phone/email/website/support hours)
+#====================================================================================================
+company_profile_admin:
+  - task: "Editable company profile in Admin, wired into Contact + all policy pages + footer + headers"
+    implemented: true
+    working: "NA"
+    file: "backend/routes/app_appearance.py; frontend/src/constants/company.ts, src/contexts/FontFamilyContext.tsx, app/admin/appearance.tsx, app/contact.tsx, app/index.tsx, src/components/marketing/{LegalShell,MarketingHeader,MarketingFooter}.tsx, app/legal/*.tsx"
+    needs_retesting: true
+    priority: "high"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          GET /api/appearance now returns brand_name, tagline, legal_name(+company_name), address,
+          phone, email, website, support_hours (with defaults). New PUT /api/admin/company-info
+          (super_admin only) updates them (legal_name stored under legacy company_name field).
+          Frontend: company.ts legal docs are now BUILDER FUNCTIONS taking a CompanyInfo; FontFamilyContext
+          hydrates a full `company` object from /api/appearance and exposes useCompany(). Contact page, all 4
+          legal pages (via LegalShell slug), footer entity card, and marketing header brand/tagline now read
+          the dynamic company (fallback = static defaults). Admin Appearance screen has a Company Profile form
+          (brand/display name, tagline, legal entity, address(multiline), phone, email, website, support hours)
+          with one 'Save profile' button (super_admin only).
+agent_communication:
+  - agent: "main"
+    message: |
+      Test: (backend) GET /api/appearance returns the new fields; PUT /api/admin/company-info as super_admin
+      updates them (and as non-super → 403); re-GET reflects changes. (frontend) As Super Admin open
+      /admin/appearance → Company Profile form loads current values; change Legal Entity Name + Phone + Email,
+      Save profile → success; then open /contact and /legal/privacy (public) and confirm the new legal name/
+      phone/email appear in the entity/contact cards. Creds: super admin veales.vedic.decisions@gmail.com /
+      Jelcos@Admin2026 (or super@test.com). All routes under /api.

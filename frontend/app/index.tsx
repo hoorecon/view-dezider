@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
 import { useAuthStore } from '../src/store/authStore';
 import { COLORS, GRADIENTS } from '../src/constants/colors';
-import { COMPANY } from '../src/constants/company';
+import { useCompany } from '../src/contexts/FontFamilyContext';
 import MarketingHeader from '../src/components/marketing/MarketingHeader';
 import MarketingFooter from '../src/components/marketing/MarketingFooter';
 
@@ -33,6 +33,7 @@ const STEPS = [
 
 export default function Index() {
   const router = useRouter();
+  const company = useCompany();
   const { isLoading, isAuthenticated, checkAuth, loginWithGoogle } = useAuthStore();
   const { width } = useWindowDimensions();
   const isWide = width >= 900;
@@ -87,7 +88,7 @@ export default function Index() {
     return (
       <LinearGradient colors={GRADIENTS.primary} style={styles.splash} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
         <ActivityIndicator color={COLORS.white} size="large" />
-        <Text style={styles.splashText}>{COMPANY.product}</Text>
+        <Text style={styles.splashText}>{company.product}</Text>
       </LinearGradient>
     );
   }
@@ -113,7 +114,7 @@ export default function Index() {
               Make every life choice with clarity & confidence
             </Text>
             <Text style={styles.heroSub}>
-              {COMPANY.product} — {COMPANY.tagline}. Structured decision tools and AI insights
+              {company.product} — {company.tagline}. Structured decision tools and AI insights
               that turn complex choices into clear, actionable plans.
             </Text>
             <View style={styles.heroCtas}>
@@ -216,7 +217,7 @@ export default function Index() {
         {/* CTA BAND */}
         <LinearGradient colors={GRADIENTS.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.ctaBand}>
           <Text style={styles.ctaTitle}>Ready to make your next decision a great one?</Text>
-          <Text style={styles.ctaSub}>Join {COMPANY.product} and bring clarity to the choices that matter.</Text>
+          <Text style={styles.ctaSub}>Join {company.product} and bring clarity to the choices that matter.</Text>
           <TouchableOpacity activeOpacity={0.9} onPress={() => router.push('/auth/register')}>
             <View style={styles.ctaBtn}>
               <Text style={styles.ctaBtnText}>Create your free account</Text>

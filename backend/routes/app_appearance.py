@@ -23,7 +23,19 @@ router = APIRouter(tags=["Appearance"])
 
 APPEARANCE_KEY = "appearance"
 DEFAULT_FONT = "Inter"
-DEFAULT_COMPANY_NAME = "HOORECON IT-Sys Pvt Ltd"
+DEFAULT_BRAND_NAME = "JELCOS AI"
+DEFAULT_TAGLINE = "Joyful Executive's Life Choices Operating System — Powered by AI"
+DEFAULT_COMPANY_NAME = "HOORECON IT-Sys Pvt Ltd"  # legal entity name
+DEFAULT_ADDRESS = (
+    "Innov8 Millenia, 2nd Floor, East Wing, RMZ,\n"
+    "Millennia Business Park, Campus 1A, No. 143,\n"
+    "MGR Road (North Veeranam Salai), Perungudi,\n"
+    "Sholinganallur, Chennai-600096, Tamil Nadu, India."
+)
+DEFAULT_PHONE = "+(91)-(0)44-46972104"
+DEFAULT_EMAIL = "admin@hoorecon.com"
+DEFAULT_WEBSITE = "www.hoorecon.com"
+DEFAULT_SUPPORT_HOURS = "Monday–Friday, 10:00 AM – 6:00 PM IST"
 MAX_LOGO_BYTES = 1024 * 1024  # 1 MB
 ALLOWED_LOGO_MIME = {"image/png", "image/jpeg", "image/jpg"}
 
@@ -70,10 +82,52 @@ async def get_appearance():
         "font_options": ALLOWED_FONTS,
         "default_font": DEFAULT_FONT,
         "company_name": doc.get("company_name") or DEFAULT_COMPANY_NAME,
+        # Company / contact profile (Admin-configurable)
+        "brand_name": doc.get("brand_name") or DEFAULT_BRAND_NAME,
+        "tagline": doc.get("tagline") or DEFAULT_TAGLINE,
+        "legal_name": doc.get("company_name") or DEFAULT_COMPANY_NAME,
+        "address": doc.get("address") or DEFAULT_ADDRESS,
+        "phone": doc.get("phone") or DEFAULT_PHONE,
+        "email": doc.get("email") or DEFAULT_EMAIL,
+        "website": doc.get("website") or DEFAULT_WEBSITE,
+        "support_hours": doc.get("support_hours") or DEFAULT_SUPPORT_HOURS,
         "has_logo": bool(doc.get("logo_base64")),
         "logo_url": "/api/appearance/logo" if doc.get("logo_base64") else None,
         "logo_version": int(doc.get("logo_version") or 0),
     }
+
+
+class CompanyInfoUpdate(BaseModel):
+    brand_name: Optional[str] = Field(default=None, max_length=120)
+    tagline: Optional[str] = Field(default=None, max_length=240)
+    legal_name: Optional[str] = Field(default=None, max_length=160)
+    address: Optional[str] = Field(default=None, max_length=600)
+    phone: Optional[str] = Field(default=None, max_length=60)
+    email: Optional[str] = Field(default=None, max_length=120)
+    website: Optional[str] = Field(default=None, max_length=160)
+    support_hours: Optional[str] = Field(default=None, max_length=160)
+
+
+@router.put("/admin/company-info")
+async def update_company_info(body: CompanyInfoUpdate, user: dict = Depends(get_current_user)):
+    """Super-admin only: update the company/contact profile shown on the
+    Contact page, all legal/policy pages, footer and PII-access NDA."""
+    if user.get("role") != "super_admin":
+        raise HTTPException(status_code=403, detail="Super-admin access required.")
+    set_doc: dict = {"key": APPEARANCE_KEY}
+    # `legal_name` is stored under the legacy `company_name` field so existing
+    # consumers (footer, NDA) keep working without migration.
+    if body.legal_name is not None:
+        set_doc["company_name"] = body.legal_name.strip()
+    for field in ("brand_name", "tagline", "address", "phone", "email", "website", "support_hours"):
+        val = getattr(body, field)
+        if val is not None:
+            set_doc[field] = val.strip()
+    await db.app_settings.update_one(
+        {"key": APPEARANCE_KEY}, {"$set": set_doc}, upsert=True
+    )
+    logger.info("Company info updated (%s) by %s", list(set_doc.keys()), user.get("email"))
+    return {"success": True, "updated": [k for k in set_doc if k != "key"]}
 
 
 @router.put("/admin/company-name")

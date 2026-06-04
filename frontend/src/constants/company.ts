@@ -1,12 +1,32 @@
 /**
  * Company / product information and legal-page content.
- * Single source of truth for the public marketing + legal pages.
+ *
+ * The values below are the DEFAULTS / fallbacks. At runtime they are overridden
+ * by the Admin-configured company profile (GET /api/appearance), surfaced via
+ * the `useCompany()` hook. Legal/contact pages build their text from a passed
+ * `CompanyInfo` object so a change in Admin instantly reflects everywhere.
  *
  * Legal entity (Razorpay merchant): HOORECON IT-Sys Pvt Ltd
  * Product: JELCOS AI
  */
 
-export const COMPANY = {
+export type CompanyInfo = {
+  product: string;
+  tagline: string;
+  legalName: string;
+  website: string;
+  websiteUrl: string;
+  email: string;
+  phone: string;
+  phoneDial: string;
+  addressLines: string[];
+  addressShort: string;
+  jurisdiction: string;
+  lastUpdated: string;
+  supportHours: string;
+};
+
+export const COMPANY: CompanyInfo = {
   product: 'JELCOS AI',
   tagline: "Joyful Executive's Life Choices Operating System — Powered by AI",
   legalName: 'HOORECON IT-Sys Pvt Ltd',
@@ -24,6 +44,7 @@ export const COMPANY = {
   addressShort: 'Perungudi, Sholinganallur, Chennai-600096, Tamil Nadu, India.',
   jurisdiction: 'Chennai, Tamil Nadu, India',
   lastUpdated: '03 June 2026',
+  supportHours: 'Monday–Friday, 10:00 AM – 6:00 PM IST',
 };
 
 export const LEGAL_LINKS = [
@@ -47,10 +68,10 @@ export type LegalDoc = {
 };
 
 // ───────────────────────── Privacy Policy ─────────────────────────
-export const PRIVACY_POLICY: LegalDoc = {
+const privacyPolicy = (c: CompanyInfo): LegalDoc => ({
   title: 'Privacy Policy',
   intro:
-    `${COMPANY.legalName} ("we", "us", "our") operates the ${COMPANY.product} application and related ` +
+    `${c.legalName} ("we", "us", "our") operates the ${c.product} application and related ` +
     `services (the "Service"). This Privacy Policy explains what information we collect, how we use it, ` +
     `and the choices you have. By using the Service you agree to the practices described here.`,
   sections: [
@@ -121,18 +142,18 @@ export const PRIVACY_POLICY: LegalDoc = {
     {
       heading: '10. Contact Us',
       paragraphs: [
-        `If you have questions about this Privacy Policy or your data, contact ${COMPANY.legalName} at ${COMPANY.email} or ${COMPANY.phone}.`,
+        `If you have questions about this Privacy Policy or your data, contact ${c.legalName} at ${c.email} or ${c.phone}.`,
       ],
     },
   ],
-};
+});
 
 // ───────────────────────── Terms of Use ─────────────────────────
-export const TERMS_OF_USE: LegalDoc = {
+const termsOfUse = (c: CompanyInfo): LegalDoc => ({
   title: 'Terms of Use',
   intro:
-    `These Terms of Use ("Terms") govern your access to and use of the ${COMPANY.product} application and ` +
-    `services operated by ${COMPANY.legalName}. By creating an account or using the Service, you agree to these Terms.`,
+    `These Terms of Use ("Terms") govern your access to and use of the ${c.product} application and ` +
+    `services operated by ${c.legalName}. By creating an account or using the Service, you agree to these Terms.`,
   sections: [
     {
       heading: '1. Eligibility & Account',
@@ -170,7 +191,7 @@ export const TERMS_OF_USE: LegalDoc = {
     {
       heading: '6. Intellectual Property',
       paragraphs: [
-        `All rights, title and interest in the Service — including software, design and trademarks such as "${COMPANY.product}" — are owned by ${COMPANY.legalName}. Content you create remains yours.`,
+        `All rights, title and interest in the Service — including software, design and trademarks such as "${c.product}" — are owned by ${c.legalName}. Content you create remains yours.`,
       ],
     },
     {
@@ -188,23 +209,23 @@ export const TERMS_OF_USE: LegalDoc = {
     {
       heading: '9. Governing Law',
       paragraphs: [
-        `These Terms are governed by the laws of India, and any disputes are subject to the exclusive jurisdiction of the courts of ${COMPANY.jurisdiction}.`,
+        `These Terms are governed by the laws of India, and any disputes are subject to the exclusive jurisdiction of the courts of ${c.jurisdiction}.`,
       ],
     },
     {
       heading: '10. Contact',
       paragraphs: [
-        `Questions about these Terms? Contact ${COMPANY.legalName} at ${COMPANY.email}.`,
+        `Questions about these Terms? Contact ${c.legalName} at ${c.email}.`,
       ],
     },
   ],
-};
+});
 
 // ──────────────── Refund & Cancellation Policy ────────────────
-export const REFUND_POLICY: LegalDoc = {
+const refundPolicy = (c: CompanyInfo): LegalDoc => ({
   title: 'Refund & Cancellation Policy',
   intro:
-    `This policy explains cancellations and refunds for purchases made on ${COMPANY.product}, operated by ${COMPANY.legalName}.`,
+    `This policy explains cancellations and refunds for purchases made on ${c.product}, operated by ${c.legalName}.`,
   sections: [
     {
       heading: '1. No Refunds',
@@ -235,17 +256,17 @@ export const REFUND_POLICY: LegalDoc = {
     {
       heading: '5. How to Reach Us',
       paragraphs: [
-        `For cancellations or payment queries, email ${COMPANY.email} or call ${COMPANY.phone}. Please include your registered email and payment reference.`,
+        `For cancellations or payment queries, email ${c.email} or call ${c.phone}. Please include your registered email and payment reference.`,
       ],
     },
   ],
-};
+});
 
 // ───────────────────────── Delivery Policy ─────────────────────────
-export const DELIVERY_POLICY: LegalDoc = {
+const deliveryPolicy = (c: CompanyInfo): LegalDoc => ({
   title: 'Delivery Policy',
   intro:
-    `${COMPANY.product} is a digital software service provided by ${COMPANY.legalName}. There is no physical ` +
+    `${c.product} is a digital software service provided by ${c.legalName}. There is no physical ` +
     `shipment of goods. This policy explains how access to paid features is delivered.`,
   sections: [
     {
@@ -265,15 +286,34 @@ export const DELIVERY_POLICY: LegalDoc = {
     {
       heading: '3. Delivery Issues',
       paragraphs: [
-        `If your purchase is not reflected in your account within 24 hours of a successful payment, please contact us at ${COMPANY.email} with your registered email and payment reference, and we will resolve it promptly.`,
+        `If your purchase is not reflected in your account within 24 hours of a successful payment, please contact us at ${c.email} with your registered email and payment reference, and we will resolve it promptly.`,
       ],
     },
   ],
+});
+
+const BUILDERS: Record<string, (c: CompanyInfo) => LegalDoc> = {
+  privacy: privacyPolicy,
+  terms: termsOfUse,
+  refund: refundPolicy,
+  delivery: deliveryPolicy,
 };
 
-export const LEGAL_DOCS: Record<string, LegalDoc> = {
-  privacy: PRIVACY_POLICY,
-  terms: TERMS_OF_USE,
-  refund: REFUND_POLICY,
-  delivery: DELIVERY_POLICY,
-};
+/** Build every legal doc from a (possibly Admin-overridden) company profile. */
+export const getLegalDocs = (c: CompanyInfo = COMPANY): Record<string, LegalDoc> => ({
+  privacy: privacyPolicy(c),
+  terms: termsOfUse(c),
+  refund: refundPolicy(c),
+  delivery: deliveryPolicy(c),
+});
+
+/** Build a single legal doc by slug. */
+export const getLegalDoc = (slug: string, c: CompanyInfo = COMPANY): LegalDoc =>
+  (BUILDERS[slug] || privacyPolicy)(c);
+
+// Static fallbacks (built from defaults) for any non-reactive consumer.
+export const PRIVACY_POLICY = privacyPolicy(COMPANY);
+export const TERMS_OF_USE = termsOfUse(COMPANY);
+export const REFUND_POLICY = refundPolicy(COMPANY);
+export const DELIVERY_POLICY = deliveryPolicy(COMPANY);
+export const LEGAL_DOCS: Record<string, LegalDoc> = getLegalDocs(COMPANY);

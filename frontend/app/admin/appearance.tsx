@@ -25,7 +25,11 @@ export default function AdminAppearance() {
   const user = useAuthStore((s) => s.user);
   const isSuperAdmin = user?.role === 'super_admin';
   const [selected, setSelected] = useState<string>(fontKey);
-  const [companyInput, setCompanyInput] = useState<string>(liveCompany);
+  const [profile, setProfile] = useState({
+    brand_name: '', tagline: '', legal_name: liveCompany,
+    address: '', phone: '', email: '', website: '', support_hours: '',
+  });
+  const setField = (k: string, v: string) => setProfile((prev) => ({ ...prev, [k]: v }));
   const [savingCompany, setSavingCompany] = useState(false);
   const [logoBusy, setLogoBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -36,7 +40,13 @@ export default function AdminAppearance() {
       setLoading(true);
       const r = await api.get('/appearance');
       setSelected(r.data?.font_family || 'Inter');
-      if (r.data?.company_name) setCompanyInput(r.data.company_name);
+      const d = r.data || {};
+      setProfile({
+        brand_name: d.brand_name || '', tagline: d.tagline || '',
+        legal_name: d.legal_name || d.company_name || '', address: d.address || '',
+        phone: d.phone || '', email: d.email || '', website: d.website || '',
+        support_hours: d.support_hours || '',
+      });
     } catch (e: any) {
       showAlert('Load failed', e?.response?.data?.detail || 'Could not fetch appearance settings');
     } finally { setLoading(false); }
@@ -44,17 +54,26 @@ export default function AdminAppearance() {
   useEffect(() => { load(); }, [load]);
 
   const saveCompany = useCallback(async () => {
-    const name = companyInput.trim();
-    if (name.length < 2) { showAlert('Invalid', 'Company name is too short.'); return; }
+    if ((profile.legal_name || '').trim().length < 2) { showAlert('Invalid', 'Legal name is too short.'); return; }
     setSavingCompany(true);
     try {
-      await api.put('/admin/company-name', { company_name: name });
-      setCompanyName(name);
-      showAlert('Saved', 'Company name updated across the app.');
+      await api.put('/admin/company-info', {
+        brand_name: profile.brand_name.trim(),
+        tagline: profile.tagline.trim(),
+        legal_name: profile.legal_name.trim(),
+        address: profile.address,
+        phone: profile.phone.trim(),
+        email: profile.email.trim(),
+        website: profile.website.trim(),
+        support_hours: profile.support_hours.trim(),
+      });
+      setCompanyName(profile.legal_name.trim());
+      await refreshAppearance();
+      showAlert('Saved', 'Company profile updated across Contact, all policy pages, footer & headers.');
     } catch (e: any) {
-      showAlert('Save failed', e?.response?.data?.detail || 'Could not save company name');
+      showAlert('Save failed', e?.response?.data?.detail || 'Could not save company profile');
     } finally { setSavingCompany(false); }
-  }, [companyInput, setCompanyName]);
+  }, [profile, setCompanyName, refreshAppearance]);
 
   const uploadLogo = useCallback(async (dataUrl: string) => {
     setLogoBusy(true);
@@ -147,26 +166,43 @@ export default function AdminAppearance() {
             bundled default (Inter) until a build includes the selected font.
           </Text>
 
-          {/* Company name (Super Admin only) */}
+          {/* Company profile (Super Admin only) */}
           <View style={s.companyCard}>
-            <Text style={s.sectionTitle}>Company / Legal Name</Text>
-            <Text style={s.companyHint}>Used across legal pages, footer and the PII-access NDA.</Text>
-            <View style={s.companyRow}>
-              <TextInput
-                style={[s.companyInput, !isSuperAdmin && { opacity: 0.6 }]}
-                value={companyInput}
-                onChangeText={setCompanyInput}
-                editable={isSuperAdmin}
-                placeholder="HOORECON IT-Sys Pvt Ltd"
-                placeholderTextColor="#94A3B8"
-              />
-              {isSuperAdmin && (
-                <TouchableOpacity style={[s.companySave, savingCompany && { opacity: 0.6 }]} onPress={saveCompany} disabled={savingCompany}>
-                  {savingCompany ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={s.companySaveText}>Save</Text>}
-                </TouchableOpacity>
-              )}
-            </View>
-            {!isSuperAdmin && <Text style={s.companyLocked}>Only a Super Admin can change the company name.</Text>}
+            <Text style={s.sectionTitle}>Company Profile</Text>
+            <Text style={s.companyHint}>Shown on Contact Us, all policy pages, footer, headers & the PII-access NDA.</Text>
+
+            {([
+              ['brand_name', 'Brand / Display Name', 'JELCOS AI', false],
+              ['tagline', 'Tagline', 'Your product tagline', false],
+              ['legal_name', 'Legal Entity Name', 'HOORECON IT-Sys Pvt Ltd', false],
+              ['address', 'Registered Address', 'Street, City, State, PIN, Country', true],
+              ['phone', 'Phone', '+(91)-(0)44-46972104', false],
+              ['email', 'Email', 'admin@hoorecon.com', false],
+              ['website', 'Website', 'www.hoorecon.com', false],
+              ['support_hours', 'Support Hours', 'Mon-Fri, 10:00 AM - 6:00 PM IST', false],
+            ] as [string, string, string, boolean][]).map(([key, label, ph, multi]) => (
+              <View key={key} style={{ marginBottom: 10 }}>
+                <Text style={s.fieldLabel}>{label}</Text>
+                <TextInput
+                  style={[s.companyInput, multi && { minHeight: 70, textAlignVertical: 'top' }, !isSuperAdmin && { opacity: 0.6 }]}
+                  value={(profile as any)[key]}
+                  onChangeText={(v) => setField(key, v)}
+                  editable={isSuperAdmin}
+                  placeholder={ph}
+                  placeholderTextColor="#94A3B8"
+                  multiline={multi}
+                  autoCapitalize={key === 'email' || key === 'website' ? 'none' : 'sentences'}
+                />
+              </View>
+            ))}
+
+            {isSuperAdmin ? (
+              <TouchableOpacity style={[s.companySave, { alignSelf: 'flex-start', paddingHorizontal: 24, marginTop: 4 }, savingCompany && { opacity: 0.6 }]} onPress={saveCompany} disabled={savingCompany}>
+                {savingCompany ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={s.companySaveText}>Save profile</Text>}
+              </TouchableOpacity>
+            ) : (
+              <Text style={s.companyLocked}>Only a Super Admin can change the company profile.</Text>
+            )}
           </View>
 
           {/* Logo (Super Admin only) */}
@@ -250,6 +286,7 @@ const s = StyleSheet.create({
   sectionTitle: { fontSize: 15, fontWeight: '800', color: COLORS.textPrimary, marginBottom: 10, marginTop: 4 },
   companyCard: { backgroundColor: COLORS.white, borderRadius: 12, padding: 16, marginBottom: 20, borderWidth: 1, borderColor: COLORS.border },
   companyHint: { fontSize: 12, color: COLORS.textMuted, marginTop: -6, marginBottom: 12 },
+  fieldLabel: { fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, marginBottom: 4 },
   companyRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   companyInput: { flex: 1, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: COLORS.textPrimary, backgroundColor: '#F8FAFC' },
   companySave: { backgroundColor: COLORS.primary, borderRadius: 10, paddingHorizontal: 18, paddingVertical: 11, minWidth: 70, alignItems: 'center' },

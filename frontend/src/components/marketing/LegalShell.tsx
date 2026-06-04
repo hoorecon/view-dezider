@@ -8,12 +8,15 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useWindowDimensio
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { COLORS } from '../../constants/colors';
-import { COMPANY, LegalDoc } from '../../constants/company';
+import { getLegalDoc } from '../../constants/company';
+import { useCompany } from '../../contexts/FontFamilyContext';
 import MarketingHeader from './MarketingHeader';
 import MarketingFooter from './MarketingFooter';
 
-export default function LegalShell({ doc }: { doc: LegalDoc }) {
+export default function LegalShell({ slug }: { slug: string }) {
   const router = useRouter();
+  const company = useCompany();
+  const doc = getLegalDoc(slug, company);
   const { width } = useWindowDimensions();
   const contentWidth = Math.min(width - 32, 820);
 
@@ -28,7 +31,7 @@ export default function LegalShell({ doc }: { doc: LegalDoc }) {
           </TouchableOpacity>
 
           <Text style={styles.title}>{doc.title}</Text>
-          <Text style={styles.updated}>Last updated: {COMPANY.lastUpdated}</Text>
+          <Text style={styles.updated}>Last updated: {company.lastUpdated}</Text>
 
           {!!doc.intro && <Text style={styles.intro}>{doc.intro}</Text>}
 
@@ -48,13 +51,13 @@ export default function LegalShell({ doc }: { doc: LegalDoc }) {
           ))}
 
           <View style={styles.entityCard}>
-            <Text style={styles.entityName}>{COMPANY.legalName}</Text>
-            {COMPANY.addressLines.map((l, i) => (
+            <Text style={styles.entityName}>{company.legalName}</Text>
+            {company.addressLines.map((l, i) => (
               <Text key={i} style={styles.entityLine}>{l}</Text>
             ))}
-            <Text style={styles.entityLine}>Phone: {COMPANY.phone}</Text>
-            <Text style={styles.entityLine}>Email: {COMPANY.email}</Text>
-            <Text style={styles.entityLine}>Website: {COMPANY.website}</Text>
+            <Text style={styles.entityLine}>Phone: {company.phone}</Text>
+            <Text style={styles.entityLine}>Email: {company.email}</Text>
+            <Text style={styles.entityLine}>Website: {company.website}</Text>
           </View>
         </View>
 

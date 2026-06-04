@@ -1,0 +1,28 @@
+{
+  "summary": "Iter 55 — Admin Company Profile (brand/legal/contact) wired into /api/appearance fully verified. Backend pytest: 8/8 pass. Frontend UI: Super-admin login → /admin/appearance shows the new 'Company Profile' card pre-filled with all 8 current values; editing Legal Entity Name + Phone and tapping 'Save profile' shows the 'Saved — Company profile updated across Contact, all policy pages, footer & headers.' alert. Public /contact and /legal/privacy immediately reflect the new legal name and phone after a reload (no login required). Brand 'JELCOS AI' + tagline are visible in the marketing header. Production-like defaults were restored at the end via PUT /api/admin/company-info so the app is back to JELCOS AI / HOORECON IT-Sys Pvt Ltd / +(91)-(0)44-46972104 / admin@hoorecon.com / www.hoorecon.com. Font + Logo controls on the same Appearance screen still render and the appearance payload still includes font_family + font_options.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter55_company_profile.py",
+    "/app/test_reports/pytest/iter55_company_profile.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/app_appearance.py: PUT /admin/company-info correctly trims every string and persists legal_name under the legacy `company_name` key so the existing footer/NDA/legal docs keep working — good back-compat decision.",
+    "FontFamilyContext.buildCompany() rebuilds the typed CompanyInfo from /api/appearance defensively (falls back to static COMPANY constant if a field is empty), and refreshAppearance() is awaited from saveCompany() in admin/appearance.tsx, so the in-memory company is updated before the success alert.",
+    "Non-super admins correctly receive 403 on PUT /admin/company-info (verified). The companyInput is also rendered with editable={isSuperAdmin}, matching backend authorization."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter55_company_profile.py (new)"
+  ],
+  "success_rate": { "backend": "100%", "frontend": "100%" },
+  "seed_data_creation": "None. PUT /api/admin/company-info was invoked transiently with QA values then restored to production-like defaults (JELCOS AI / HOORECON IT-Sys Pvt Ltd / +(91)-(0)44-46972104 / admin@hoorecon.com / www.hoorecon.com / standard address + support hours). Final GET /api/appearance confirmed the restored values.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Company profile (brand_name, tagline, legal_name, address, phone, email, website, support_hours) lives in app_settings with key='appearance' and is fully Admin-editable via PUT /api/admin/company-info (super-admin only). legal_name is stored under the legacy `company_name` field. Public GET /api/appearance returns BOTH `legal_name` and `company_name` (same value) plus all profile fields with sensible defaults. The frontend hydrates via FontFamilyContext.useCompany(); /contact, /legal/* and the marketing footer/header read from this hook. Tests live in /app/backend/tests/test_iter55_company_profile.py and self-restore production defaults in TestRestoreDefaults."
+}

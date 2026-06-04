@@ -8,14 +8,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, GRADIENTS } from '../../constants/colors';
-import { COMPANY } from '../../constants/company';
-import { useAppLogo } from '../../contexts/FontFamilyContext';
+import { useAppLogo, useCompany } from '../../contexts/FontFamilyContext';
 
 export default function MarketingHeader({ activeCta = true }: { activeCta?: boolean }) {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const compact = width < 640;
   const logoUri = useAppLogo();
+  const company = useCompany();
 
   return (
     <View style={styles.bar}>
@@ -32,8 +32,8 @@ export default function MarketingHeader({ activeCta = true }: { activeCta?: bool
           </LinearGradient>
         )}
         <View style={styles.brandTextWrap}>
-          <Text style={styles.brandName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{COMPANY.product}</Text>
-          {!compact && <Text style={styles.brandSub} numberOfLines={2}>{COMPANY.tagline}</Text>}
+          <Text style={styles.brandName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{company.product}</Text>
+          {!compact && <Text style={styles.brandSub} numberOfLines={2}>{company.tagline}</Text>}
         </View>
       </TouchableOpacity>
 
