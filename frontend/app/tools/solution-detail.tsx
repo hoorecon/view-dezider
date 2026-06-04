@@ -54,6 +54,45 @@ export default function SolutionDetailScreen() {
   const [reviewTitle, setReviewTitle] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // SKU ↔ Solution mapping (admin/owner)
+  const [showSkuModal, setShowSkuModal] = useState(false);
+  const [availableSkus, setAvailableSkus] = useState<any[]>([]);
+  const [selectedSkus, setSelectedSkus] = useState<string[]>([]);
+  const [savingSkus, setSavingSkus] = useState(false);
+
+  const openSkuModal = async () => {
+    setSelectedSkus((solution?.linked_sku_codes || []).map((c: string) => String(c).toUpperCase()));
+    setShowSkuModal(true);
+    try {
+      const res = await api.get('/store/skus?active_only=false');
+      setAvailableSkus(res.data?.skus || []);
+    } catch {
+      setAvailableSkus([]);
+    }
+  };
+
+  const toggleSku = (code: string) => {
+    const c = String(code).toUpperCase();
+    setSelectedSkus(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c]);
+  };
+
+  const saveSkuMapping = async () => {
+    setSavingSkus(true);
+    try {
+      await api.put(`/solutions-store/solutions/${solution_id}`, { linked_sku_codes: selectedSkus });
+      setShowSkuModal(false);
+      await fetchSolution();
+      showAlert('Saved', selectedSkus.length
+        ? `This solution now unlocks via: ${selectedSkus.join(', ')}`
+        : 'SKU mapping cleared — solution is now open to all.');
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || 'Failed to save SKU mapping';
+      showAlert('Error', typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setSavingSkus(false);
+    }
+  };
+
   useEffect(() => { fetchSolution(); }, [solution_id]);
   useEffect(() => {
     if (activeTab === 'reviews' && solution_id) {
@@ -197,13 +236,23 @@ export default function SolutionDetailScreen() {
           <Text style={styles.headerTitle} numberOfLines={1}>{solution.name}</Text>
         </View>
         {(user?.user_id === solution.created_by || ['super_admin', 'co_admin', 'admin'].includes(user?.role || '')) && (
-          <TouchableOpacity
-            onPress={() => router.push({ pathname: '/tools/bulk-factor-update', params: { solution_id: String(solution_id), name: solution.name } })}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityLabel="Bulk factor updates"
-          >
-            <Ionicons name="cloud-upload-outline" size={22} color={COLORS.primary} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+            <TouchableOpacity
+              onPress={openSkuModal}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel="Link SKUs to this solution"
+              testID="link-skus-btn"
+            >
+              <Ionicons name="pricetags-outline" size={22} color={COLORS.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push({ pathname: '/tools/bulk-factor-update', params: { solution_id: String(solution_id), name: solution.name } })}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel="Bulk factor updates"
+            >
+              <Ionicons name="cloud-upload-outline" size={22} color={COLORS.primary} />
+            </TouchableOpacity>
+          </View>
         )}
       </View>
 
@@ -245,6 +294,29 @@ export default function SolutionDetailScreen() {
                 <Text style={[styles.badgeText, { color: COLORS.textMuted }]}>{solution.city || solution.country}</Text>
               </View>
             </View>
+
+            {/* SKU lock banner / mapping info */}
+            {solution.is_locked ? (
+              <View style={styles.lockBanner}>
+                <Ionicons name="lock-closed" size={18} color="#B45309" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.lockBannerTitle}>Premium solution — locked</Text>
+                  <Text style={styles.lockBannerSub}>
+                    Unlock by purchasing {(solution.unlock_skus || []).map((s: any) => s.name).join(' or ')} from the Store.
+                  </Text>
+                </View>
+                <TouchableOpacity style={styles.lockBannerBtn} onPress={() => router.push('/store')}>
+                  <Text style={styles.lockBannerBtnText}>Store</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (solution.unlock_skus?.length > 0 && solution.unlocked_via) ? (
+              <View style={styles.unlockedBanner}>
+                <Ionicons name="checkmark-circle" size={16} color={COLORS.accent} />
+                <Text style={styles.unlockedText}>
+                  Unlocked via {(solution.unlock_skus.find((s: any) => s.code === solution.unlocked_via)?.name) || solution.unlocked_via}
+                </Text>
+              </View>
+            ) : null}
 
             {/* Description */}
             <Text style={styles.description}>{solution.description}</Text>
@@ -610,6 +682,61 @@ export default function SolutionDetailScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* SKU ↔ Solution mapping Modal (admin/owner) */}
+      <Modal visible={showSkuModal} animationType="slide" transparent onRequestClose={() => setShowSkuModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Unlock SKUs</Text>
+              <TouchableOpacity onPress={() => setShowSkuModal(false)}>
+                <Ionicons name="close" size={24} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.skuHint}>
+              Select the SKU(s) a user must own to use this solution in a decision. Leave all unselected to keep it open to everyone.
+            </Text>
+            <ScrollView style={{ maxHeight: 360 }}>
+              {availableSkus.length === 0 ? (
+                <Text style={styles.skuEmpty}>No SKUs available.</Text>
+              ) : availableSkus.map((sku: any) => {
+                const code = String(sku.code).toUpperCase();
+                const on = selectedSkus.includes(code);
+                return (
+                  <TouchableOpacity
+                    key={code}
+                    style={[styles.skuRow, on && styles.skuRowOn]}
+                    onPress={() => toggleSku(code)}
+                    testID={`sku-opt-${code}`}
+                  >
+                    <View style={[styles.skuCheck, on && styles.skuCheckOn]}>
+                      {on && <Ionicons name="checkmark" size={14} color="#FFF" />}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.skuName}>{sku.name} <Text style={styles.skuCode}>({code})</Text></Text>
+                      {sku.price_paise ? (
+                        <Text style={styles.skuPrice}>₹{(sku.price_paise / 100).toFixed(0)}{sku.active === false ? ' · inactive' : ''}</Text>
+                      ) : null}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <TouchableOpacity
+              style={[styles.skuSaveBtn, savingSkus && { opacity: 0.6 }]}
+              onPress={saveSkuMapping}
+              disabled={savingSkus}
+              testID="sku-save-btn"
+            >
+              {savingSkus ? <ActivityIndicator color="#FFF" /> : (
+                <Text style={styles.skuSaveText}>
+                  {selectedSkus.length ? `Save mapping (${selectedSkus.length})` : 'Save (open to all)'}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -680,6 +807,26 @@ const styles = StyleSheet.create({
   modalContent: { backgroundColor: COLORS.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, maxHeight: '85%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   modalTitle: { fontSize: 18, fontWeight: '700', color: COLORS.text },
+
+  // SKU lock banner + mapping modal
+  lockBanner: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FCD34D', borderRadius: 14, padding: 14, marginBottom: 14 },
+  lockBannerTitle: { fontSize: 14, fontWeight: '800', color: '#92400E' },
+  lockBannerSub: { fontSize: 12.5, color: '#B45309', marginTop: 2, lineHeight: 18 },
+  lockBannerBtn: { backgroundColor: '#B45309', paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10 },
+  lockBannerBtnText: { color: '#FFF', fontWeight: '800', fontSize: 13 },
+  unlockedBanner: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.accent + '15', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 14, alignSelf: 'flex-start' },
+  unlockedText: { fontSize: 12.5, color: COLORS.accent, fontWeight: '700' },
+  skuHint: { fontSize: 13, color: COLORS.textMuted, lineHeight: 19, marginBottom: 14 },
+  skuEmpty: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center', paddingVertical: 24 },
+  skuRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 8, backgroundColor: COLORS.surface },
+  skuRowOn: { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '0D' },
+  skuCheck: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center' },
+  skuCheckOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  skuName: { fontSize: 14, fontWeight: '700', color: COLORS.text },
+  skuCode: { fontSize: 12, fontWeight: '600', color: COLORS.textMuted },
+  skuPrice: { fontSize: 12.5, color: COLORS.accent, marginTop: 2, fontWeight: '600' },
+  skuSaveBtn: { backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 15, alignItems: 'center', marginTop: 14 },
+  skuSaveText: { color: '#FFF', fontWeight: '800', fontSize: 15 },
   modalLabel: { fontSize: 14, fontWeight: '600', color: COLORS.text, marginBottom: 8 },
   ratingRow: { marginBottom: 10 },
   ratingLabel: { fontSize: 13, color: COLORS.textSecondary, marginBottom: 4 },

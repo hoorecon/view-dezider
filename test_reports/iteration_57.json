@@ -1,0 +1,37 @@
+{
+  "summary": "SKU↔Solution mapping + entitlement gating feature tested end-to-end. All 8 backend tests pass and frontend UI elements render correctly. Lock banner, link-skus-btn (admin/owner only), Unlock SKUs modal with sku-opt-L1 checkbox and sku-save-btn verified on mobile viewport (390x844).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter57_sku_solution_mapping.py",
+    "/app/test_reports/pytest/iter57.xml"
+  ],
+  "action_items": [
+    "Update /app/memory/test_credentials.md: 'harden_1777921741@example.com' DOES own an L1 entitlement (`unlocked_via='L1'`) — the file claims 'NO L1-L4 entitlements'. This caused initial test failures until a fresh user was registered. Either reset this user's entitlements or correct the doc to say 'owns L1' so future tests register a fresh user for locked-view paths."
+  ],
+  "critical_code_review_comments": [
+    "solutions_store.py is ~1140 lines — consider splitting (mapping helpers + ReviewNet aggregation are large mixed concerns).",
+    "Helper `_enrich_sku_lock` is correctly idempotent and pure; admin/owner/entitled bypass logic matches spec.",
+    "PUT /solutions-store/solutions/{id} correctly uppercases linked_sku_codes and is gated to owner OR role in [super_admin, co_admin, admin] (non-owner regular user → 403, verified)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter57_sku_solution_mapping.py (NEW)"
+  ],
+  "success_rate": {
+    "backend": "100% (8/8)",
+    "frontend": "100% (UI smoke verified on mobile viewport)"
+  },
+  "seed_data_creation": "Registered one throwaway user (sku_ui_<timestamp>@example.com) for the regular-user locked-view path; created and deleted one TEST_owner_lock_bypass_sku_iter57 PRIVATE solution; mapped+cleared L1 on the Apollo Hospitals seed solution (7d16a88f-...). All mappings cleared at end of run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Reusable pytest file at /app/backend/tests/test_iter57_sku_solution_mapping.py registers a fresh user each run (the documented 'regular' user already owns L1). Frontend testIDs used: link-skus-btn (admin/owner header pricetags icon), sku-opt-{CODE}, sku-save-btn. Use mobile viewport 390x844 and pass the WhatsApp gate by POST /api/auth/whatsapp/send-otp → /verify-otp with the returned dev_code (WA_OTP_EXPOSE_DEV_CODE=true).",
+  "rca_of_issue": "Initial 3 test failures (regular-user locked view, detail locked view, apply-to-option block) were not a backend defect — they stemmed from the documented test user harden_1777921741@example.com actually owning an L1 entitlement (`unlocked_via='L1'` confirmed via GET /solutions-store/solutions). Fix applied to the test fixture: register a fresh user with zero entitlements. After this fix, all 8 tests pass and lock/unlock behaviour matches the PRD."
+}

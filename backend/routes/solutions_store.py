@@ -21,6 +21,54 @@ from models.solutions_store_data import (
 
 
 # ================================================================
+# SKU ↔ SOLUTION MAPPING — entitlement gating helpers
+# ================================================================
+async def _owned_sku_codes(user_id: str) -> set:
+    """Set of SKU codes the user currently has a positive active balance for."""
+    docs = await db.user_entitlements.find(
+        {"user_id": user_id, "status": "active"},
+        {"_id": 0, "sku_code": 1, "balance": 1},
+    ).to_list(200)
+    owned = set()
+    for d in docs:
+        if int(d.get("balance") or 0) > 0 and d.get("sku_code"):
+            owned.add(str(d["sku_code"]).upper())
+    return owned
+
+
+async def _sku_meta_map() -> Dict[str, Dict[str, Any]]:
+    """code -> { name, badge_color, price_paise } for display on the storefront."""
+    skus = await db.sku_catalog.find(
+        {}, {"_id": 0, "code": 1, "name": 1, "badge_color": 1, "price_paise": 1}
+    ).to_list(50)
+    return {str(s["code"]).upper(): s for s in skus if s.get("code")}
+
+
+def _enrich_sku_lock(sol: dict, owned: set, sku_meta: Dict[str, Dict[str, Any]], user: dict) -> None:
+    """Annotate a solution doc (in place) with SKU-mapping + lock state.
+
+    A solution is `is_locked` when it has one or more linked SKU codes AND the
+    caller is neither the creator nor an admin nor owns any of the linked SKUs.
+    """
+    codes = [str(c).upper() for c in (sol.get("linked_sku_codes") or [])]
+    sol["linked_sku_codes"] = codes
+    sol["unlock_skus"] = [
+        {
+            "code": c,
+            "name": (sku_meta.get(c) or {}).get("name", c),
+            "badge_color": (sku_meta.get(c) or {}).get("badge_color"),
+            "price_paise": (sku_meta.get(c) or {}).get("price_paise"),
+        }
+        for c in codes
+    ]
+    is_admin = user.get("role") in ("super_admin", "co_admin", "admin")
+    is_owner = sol.get("created_by") == user.get("user_id")
+    unlocked_via = next((c for c in codes if c in owned), None)
+    sol["unlocked_via"] = unlocked_via
+    sol["is_locked"] = bool(codes) and not is_admin and not is_owner and unlocked_via is None
+
+
+# ================================================================
 # LOCATION & LANGUAGE CONFIG ENDPOINTS
 # ================================================================
 
@@ -303,9 +351,14 @@ async def list_solutions(
     if sort == "top_rated":
         solutions.sort(key=lambda s: s.get("_rn_score", 0), reverse=True)
 
+    # SKU ↔ Solution mapping: annotate lock state (fetch owned SKUs + meta once)
+    owned = await _owned_sku_codes(user["user_id"])
+    sku_meta = await _sku_meta_map()
+
     # Strip internal fields before returning
     for sol in solutions:
         sol.pop("_rn_score", None)
+        _enrich_sku_lock(sol, owned, sku_meta, user)
 
     return solutions
 
@@ -353,6 +406,11 @@ async def get_solution_detail(solution_id: str, user: dict = Depends(get_current
         sol["quality_scores"] = []
         sol["overall_avg_rating"] = None
 
+    # SKU ↔ Solution mapping: annotate lock state for this caller
+    owned = await _owned_sku_codes(user["user_id"])
+    sku_meta = await _sku_meta_map()
+    _enrich_sku_lock(sol, owned, sku_meta, user)
+
     return sol
 
 
@@ -373,9 +431,14 @@ async def update_solution(solution_id: str, request: Request, user: dict = Depen
                    "quantitative_factors", "life_area_id", "sub_area_id", "category_id",
                    "visibility", "type_specific", "status",
                    # v2 taxonomy fields
-                   "org_types", "decision_types", "scenario_ids"]:
+                   "org_types", "decision_types", "scenario_ids",
+                   # SKU ↔ Solution mapping (admin/owner sets which SKUs unlock this)
+                   "linked_sku_codes"]:
         if field in body:
-            updates[field] = body[field]
+            if field == "linked_sku_codes":
+                updates[field] = [str(c).upper() for c in (body[field] or [])]
+            else:
+                updates[field] = body[field]
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     await db.solutions_store.update_one({"solution_id": solution_id}, {"$set": updates})
@@ -541,6 +604,20 @@ async def apply_solution_to_option(request: Request, user: dict = Depends(get_cu
     if not sol:
         raise HTTPException(status_code=404, detail="Solution not found")
 
+    # SKU ↔ Solution gating: block applying a locked solution to a decision.
+    linked_codes = [str(c).upper() for c in (sol.get("linked_sku_codes") or [])]
+    if linked_codes:
+        is_admin = user.get("role") in ("super_admin", "co_admin", "admin")
+        is_owner = sol.get("created_by") == user.get("user_id")
+        owned = await _owned_sku_codes(user["user_id"])
+        if not is_admin and not is_owner and not any(c in owned for c in linked_codes):
+            sku_meta = await _sku_meta_map()
+            names = [(sku_meta.get(c) or {}).get("name", c) for c in linked_codes]
+            raise HTTPException(
+                status_code=403,
+                detail=f"This solution is locked. Purchase {', '.join(names)} from the Store to unlock it.",
+            )
+
     # Get quantitative factors
     quant_factors = sol.get("quantitative_factors", [])
 
@@ -560,7 +637,6 @@ async def apply_solution_to_option(request: Request, user: dict = Depends(get_cu
     ]
 
     # NEW: ReviewNet enrichment — segmented per-factor ratings (5-star) + factor names
-    rn_factors_by_id: Dict[str, dict] = {}
     factors_lookup: Dict[str, str] = {}
     rn_per_factor: Dict[str, Dict[str, Any]] = {}
     rn_total = 0

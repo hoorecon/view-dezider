@@ -154,12 +154,19 @@ export default function SolutionsStoreScreen() {
           <Ionicons name={TYPE_ICONS[item.type] as any || 'ellipse'} size={14} color={TYPE_COLORS[item.type]} />
           <Text style={[styles.typeText, { color: TYPE_COLORS[item.type] }]}>{item.type.replace('_', ' ')}</Text>
         </View>
-        {item.is_authorized && (
+        {item.is_locked ? (
+          <View style={styles.lockBadge}>
+            <Ionicons name="lock-closed" size={11} color="#B45309" />
+            <Text style={styles.lockText} numberOfLines={1}>
+              {item.unlock_skus?.[0]?.name || 'Locked'}
+            </Text>
+          </View>
+        ) : item.is_authorized ? (
           <View style={styles.authorizedBadge}>
             <Ionicons name="shield-checkmark" size={12} color={COLORS.accent} />
             <Text style={styles.authorizedText}>Verified</Text>
           </View>
-        )}
+        ) : null}
       </View>
 
       <Text style={styles.cardTitle} numberOfLines={2}>{item.name}</Text>
@@ -414,6 +421,8 @@ const styles = StyleSheet.create({
   typeText: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase' },
   authorizedBadge: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   authorizedText: { fontSize: 11, color: COLORS.accent, fontWeight: '500' },
+  lockBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, maxWidth: 150 },
+  lockText: { fontSize: 11, color: '#B45309', fontWeight: '700' },
   cardTitle: { fontSize: 16, fontWeight: '700', color: COLORS.text, marginBottom: 4 },
   cardDesc: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 18, marginBottom: 8 },
   cardMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 8 },
