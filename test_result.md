@@ -8598,3 +8598,72 @@ agent_communication:
         d) KEYBOARD SCROLL: on the home dashboard (tab Home, which lists modules) WITHOUT clicking inside the list,
            press PageDown / ArrowDown / End — the module list (or page) must scroll. Then click elsewhere (outside the
            list, e.g. a header area) and confirm PageDown still scrolls. Verify scrollTop increases.
+
+
+#====================================================================================================
+# Central Catalog Manager (Explorer) — NEW (June 2026)
+#====================================================================================================
+
+catalog_explorer_feature:
+  - task: "Central Catalog Manager — Explorer lazy tree + role-gated inline CRUD"
+    implemented: true
+    working: "NA"
+    file: "backend/routes/catalog_explorer.py, backend/server.py, frontend/app/admin/catalog/index.tsx, frontend/app/admin/index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Wired up the previously-orphaned catalog_explorer router and added a role-based
+          capability matrix + frontend Windows-Explorer tree.
+
+          BACKEND (/api/catalog-explorer):
+            • GET /meta  → returns org_types, pnrag, leaf_groups, solution_types AND
+              capabilities {role, is_admin, is_super_admin, can_full_crud, can_store_crud}.
+            • GET /children?node_type=...  → lazy children for each tree level:
+                catalog_node (root=life areas) → catalog_node (sub areas/deeper) + OrgType folders (level>=1)
+                org_type → PNRAG (Problem/Need/Risk/Aspiration/General)
+                pnrag → scenarios (cce_scenarios)
+                scenario → 3 leaf groups (decision_templates / solution_templates / solution_items)
+                group → leaf items
+            • Scenario / Decision-Template / Solution-Template CRUD → Super Admin only (_require_full).
+            • Solution-Store-item CRUD → any admin (_require_store, auto-approved is_authorized=true).
+            • DELETE /scenarios/{id} now BLOCKS with 409 if it has child items, unless ?cascade=true
+              (cascade deletes cce templates and UNLINKS scenario from store items, never hard-deletes them).
+            • POST /seed-scenarios-from-templates (Super Admin) → migrates existing decision_templates
+              names into cce_scenarios under each life-area's first sub-area (org_type=individual, pnrag=general).
+
+          PERMISSION MATRIX TO VERIFY:
+            • super_admin (veales.vedic.decisions@gmail.com / Jelcos@Admin2026):
+                /meta capabilities.can_full_crud=true, can_store_crud=true.
+                Can create scenario, decision template, solution template, solution item.
+            • admin (admin@test.com / AdminPass2026!):
+                capabilities.can_full_crud=false, can_store_crud=true.
+                POST /catalog-explorer/scenarios → 403. POST /catalog-explorer/solution-items → allowed.
+            • regular user → all /catalog-explorer/* → 403.
+
+          FRONTEND (/admin/catalog):
+            • Lazy-loaded tree with chevron expand, colored type icons, count badges, breadcrumb-by-indent.
+            • Inline add/edit/delete affordances gated by capabilities returned from /meta.
+            • Super-admin-only header tools: "Verify backbone" (/catalog/seed) and "Migrate scenarios".
+            • Added "Central Catalog" entry to /admin dashboard QUICK_ACTIONS.
+
+          NOTE: cce_scenarios may be empty initially; run "Migrate scenarios" (or POST
+          /api/catalog-explorer/seed-scenarios-from-templates as super_admin) to populate.
+          Backbone (life areas/sub areas) should already exist from prior /catalog seed.
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Please test the Central Catalog Manager (Explorer). BACKEND FIRST then FRONTEND.
+      Backend: verify /api/catalog-explorer/meta capability matrix for super_admin vs admin vs user,
+      verify /children lazily returns each level (catalog_node→org_type→pnrag→scenario→group→items),
+      verify role gates (super-only scenario/template CRUD return 403 for plain admin; solution-item
+      CRUD allowed for admin), verify scenario delete 409-block + cascade=true, and the
+      seed-scenarios-from-templates migration (super_admin). Use super_admin
+      veales.vedic.decisions@gmail.com / Jelcos@Admin2026 and admin admin@test.com / AdminPass2026!.
+      Frontend: login to /admin → open "Central Catalog", expand life area → sub area → an OrgType →
+      a PNRAG bucket; as super_admin run "Migrate scenarios" then add/edit/delete a scenario and a
+      decision template; confirm admin sees structure read-only but can add a Solution Store item.

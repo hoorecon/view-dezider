@@ -67,8 +67,50 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _role(user: dict) -> str:
+    return (user.get("role") or "user").lower()
+
+
+def _caps(user: dict) -> Dict[str, Any]:
+    """Capability matrix that drives both the API guards and the UI affordances.
+
+    - Super Admin  → full CRUD on the catalog structure (catalog nodes,
+                     scenarios, decision templates, ASM solution templates).
+    - Admin/Co-Admin → read-only on the structure, BUT may create/edit/delete
+                     Solution Store items & ReviewNet entries (auto-approved).
+    """
+    role = _role(user)
+    is_admin = role in ("admin", "co_admin", "super_admin")
+    is_super = role == "super_admin"
+    return {
+        "role": role,
+        "is_admin": is_admin,
+        "is_super_admin": is_super,
+        "can_full_crud": is_super,     # structure: nodes, scenarios, templates
+        "can_store_crud": is_admin,    # solution store items + reviewnet (auto-approved)
+    }
+
+
 def _require_admin(user: dict) -> dict:
-    if user.get("role") not in ("admin", "super_admin", "co_admin"):
+    """Read access to the Explorer — any platform admin role."""
+    if _role(user) not in ("admin", "super_admin", "co_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    return user
+
+
+def _require_full(user: dict) -> dict:
+    """Structural changes (scenarios / templates / nodes) — Super Admin only."""
+    if _role(user) != "super_admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Super Admin access required to change catalog structure.",
+        )
+    return user
+
+
+def _require_store(user: dict) -> dict:
+    """Solution Store / ReviewNet entries — any admin (auto-approved)."""
+    if _role(user) not in ("admin", "super_admin", "co_admin"):
         raise HTTPException(status_code=403, detail="Admin access required.")
     return user
 
@@ -115,6 +157,7 @@ async def get_children(
     user: dict = Depends(get_current_user),
 ):
     _require_admin(user)
+    caps = _caps(user)
     out: List[Dict[str, Any]] = []
 
     # ── catalog nodes (life areas + sub areas + deeper) ──
@@ -133,8 +176,8 @@ async def get_children(
                 sublabel=f"L{lvl}" + (f" · {child_count} sub" if child_count else ""),
                 icon=n.get("icon") or ("folder" if lvl < 2 else "folder-open"),
                 color=n.get("color") or "#475569",
-                editable=(lvl >= 2 and not n.get("is_immutable")),
-                deletable=(lvl >= 2 and not n.get("is_immutable")),
+                editable=(caps["can_full_crud"] and lvl >= 2 and not n.get("is_immutable")),
+                deletable=(caps["can_full_crud"] and lvl >= 2 and not n.get("is_immutable")),
                 ctx={"node_id": n["node_id"], "life_area_id": n.get("life_area_id"),
                      "level": lvl, "parent_id": n.get("parent_id")},
                 meta={"is_immutable": bool(n.get("is_immutable")), "level": lvl, "slug": n.get("slug")},
@@ -177,7 +220,7 @@ async def get_children(
             out.append(_node(
                 "scenario", s["scenario_id"], s.get("title", "—"),
                 sublabel=s.get("description") or "Scenario", icon="bookmark", color="#9333EA",
-                editable=True, deletable=True,
+                editable=caps["can_full_crud"], deletable=caps["can_full_crud"],
                 ctx={"scenario_id": s["scenario_id"], "node_id": node_id,
                      "org_type": org_type, "pnrag": pnrag, "life_area_id": life_area_id},
                 meta={"title": s.get("title"), "description": s.get("description")},
@@ -209,7 +252,7 @@ async def get_children(
                     "decision_template", t["template_id"], t.get("title", "—"),
                     sublabel=t.get("decision_type") or "Decision template",
                     icon="git-branch", color="#7C3AED", expandable=False,
-                    editable=True, deletable=True,
+                    editable=caps["can_full_crud"], deletable=caps["can_full_crud"],
                     ctx={"template_id": t["template_id"], "scenario_id": scenario_id},
                     meta=t,
                 ))
@@ -220,7 +263,7 @@ async def get_children(
                     "solution_template", t["template_id"], t.get("title", "—"),
                     sublabel=t.get("asm_stage") or "ASM solution template",
                     icon="construct", color="#0891B2", expandable=False,
-                    editable=True, deletable=True,
+                    editable=caps["can_full_crud"], deletable=caps["can_full_crud"],
                     ctx={"template_id": t["template_id"], "scenario_id": scenario_id},
                     meta=t,
                 ))
@@ -233,7 +276,7 @@ async def get_children(
                     "solution_item", s["solution_id"], s.get("name", "—"),
                     sublabel=f"{s.get('type', '')} · {', '.join(s.get('org_types') or []) or 'any org'}",
                     icon="pricetag", color="#059669", expandable=False,
-                    editable=True, deletable=True, badge=badge,
+                    editable=caps["can_store_crud"], deletable=caps["can_store_crud"], badge=badge,
                     ctx={"solution_id": s["solution_id"], "scenario_id": scenario_id},
                     meta={"type": s.get("type"), "url": s.get("url"), "provider": s.get("provider"),
                           "description": s.get("description"), "org_types": s.get("org_types") or [],
@@ -248,7 +291,7 @@ async def get_children(
 async def explorer_meta(user: dict = Depends(get_current_user)):
     _require_admin(user)
     return {"org_types": ORG_TYPES, "pnrag": PNRAG, "leaf_groups": LEAF_GROUPS,
-            "solution_types": SOLUTION_TYPES}
+            "solution_types": SOLUTION_TYPES, "capabilities": _caps(user)}
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -271,7 +314,7 @@ class ScenarioUpdate(BaseModel):
 
 @router.post("/scenarios")
 async def create_scenario(body: ScenarioCreate, user: dict = Depends(get_current_user)):
-    _require_admin(user)
+    _require_full(user)
     if body.org_type not in ORG_TYPE_KEYS:
         raise HTTPException(400, "Invalid org_type.")
     if body.pnrag not in PNRAG_KEYS:
@@ -297,7 +340,7 @@ async def create_scenario(body: ScenarioCreate, user: dict = Depends(get_current
 
 @router.put("/scenarios/{scenario_id}")
 async def update_scenario(scenario_id: str, body: ScenarioUpdate, user: dict = Depends(get_current_user)):
-    _require_admin(user)
+    _require_full(user)
     updates = {k: v for k, v in body.dict().items() if v is not None}
     if not updates:
         raise HTTPException(400, "Nothing to update.")
@@ -309,12 +352,37 @@ async def update_scenario(scenario_id: str, body: ScenarioUpdate, user: dict = D
 
 
 @router.delete("/scenarios/{scenario_id}")
-async def delete_scenario(scenario_id: str, user: dict = Depends(get_current_user)):
-    _require_admin(user)
+async def delete_scenario(
+    scenario_id: str,
+    cascade: bool = Query(False),
+    user: dict = Depends(get_current_user),
+):
+    _require_full(user)
+    dt = await db.cce_decision_templates.count_documents({"scenario_id": scenario_id})
+    st = await db.cce_solution_templates.count_documents({"scenario_id": scenario_id})
+    si = await db.solutions_store.count_documents({"scenario_ids": scenario_id})
+    if (dt + st + si) and not cascade:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"This scenario still has {dt} decision template(s), {st} solution "
+                f"template(s) and {si} store item(s). Remove them first, or confirm "
+                f"a cascade delete."
+            ),
+        )
     await db.cce_scenarios.delete_one({"scenario_id": scenario_id})
     await db.cce_decision_templates.delete_many({"scenario_id": scenario_id})
     await db.cce_solution_templates.delete_many({"scenario_id": scenario_id})
-    return {"success": True}
+    # Store items are real catalogued records — unlink the scenario, never hard-delete.
+    await db.solutions_store.update_many(
+        {"scenario_ids": scenario_id}, {"$pull": {"scenario_ids": scenario_id}}
+    )
+    return {
+        "success": True,
+        "deleted_decision_templates": dt,
+        "deleted_solution_templates": st,
+        "unlinked_store_items": si,
+    }
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -329,7 +397,7 @@ class DecisionTemplateBody(BaseModel):
 
 @router.post("/decision-templates")
 async def create_decision_template(body: DecisionTemplateBody, user: dict = Depends(get_current_user)):
-    _require_admin(user)
+    _require_full(user)
     if not body.scenario_id:
         raise HTTPException(400, "scenario_id is required.")
     doc = {
@@ -347,7 +415,7 @@ async def create_decision_template(body: DecisionTemplateBody, user: dict = Depe
 
 @router.put("/decision-templates/{template_id}")
 async def update_decision_template(template_id: str, body: DecisionTemplateBody, user: dict = Depends(get_current_user)):
-    _require_admin(user)
+    _require_full(user)
     updates = {"title": body.title.strip(), "updated_at": _now()}
     if body.decision_type is not None:
         updates["decision_type"] = body.decision_type.strip() or None
@@ -361,7 +429,7 @@ async def update_decision_template(template_id: str, body: DecisionTemplateBody,
 
 @router.delete("/decision-templates/{template_id}")
 async def delete_decision_template(template_id: str, user: dict = Depends(get_current_user)):
-    _require_admin(user)
+    _require_full(user)
     await db.cce_decision_templates.delete_one({"template_id": template_id})
     return {"success": True}
 
@@ -378,7 +446,7 @@ class SolutionTemplateBody(BaseModel):
 
 @router.post("/solution-templates")
 async def create_solution_template(body: SolutionTemplateBody, user: dict = Depends(get_current_user)):
-    _require_admin(user)
+    _require_full(user)
     if not body.scenario_id:
         raise HTTPException(400, "scenario_id is required.")
     doc = {
@@ -396,7 +464,7 @@ async def create_solution_template(body: SolutionTemplateBody, user: dict = Depe
 
 @router.put("/solution-templates/{template_id}")
 async def update_solution_template(template_id: str, body: SolutionTemplateBody, user: dict = Depends(get_current_user)):
-    _require_admin(user)
+    _require_full(user)
     updates = {"title": body.title.strip(), "updated_at": _now()}
     if body.asm_stage is not None:
         updates["asm_stage"] = body.asm_stage.strip() or None
@@ -410,7 +478,7 @@ async def update_solution_template(template_id: str, body: SolutionTemplateBody,
 
 @router.delete("/solution-templates/{template_id}")
 async def delete_solution_template(template_id: str, user: dict = Depends(get_current_user)):
-    _require_admin(user)
+    _require_full(user)
     await db.cce_solution_templates.delete_one({"template_id": template_id})
     return {"success": True}
 
@@ -429,7 +497,7 @@ class SolutionItemBody(BaseModel):
 
 @router.post("/solution-items")
 async def create_solution_item(body: SolutionItemBody, user: dict = Depends(get_current_user)):
-    _require_admin(user)
+    _require_store(user)
     if not body.scenario_id:
         raise HTTPException(400, "scenario_id is required.")
     if body.type.upper() not in SOLUTION_TYPES:
@@ -468,7 +536,7 @@ async def create_solution_item(body: SolutionItemBody, user: dict = Depends(get_
 
 @router.put("/solution-items/{solution_id}")
 async def update_solution_item(solution_id: str, body: SolutionItemBody, user: dict = Depends(get_current_user)):
-    _require_admin(user)
+    _require_store(user)
     updates = {"name": body.name.strip(), "updated_at": _now()}
     if body.type:
         updates["type"] = body.type.upper()
@@ -486,7 +554,7 @@ async def update_solution_item(solution_id: str, body: SolutionItemBody, user: d
 
 @router.delete("/solution-items/{solution_id}")
 async def delete_solution_item(solution_id: str, user: dict = Depends(get_current_user)):
-    _require_admin(user)
+    _require_store(user)
     await db.solutions_store.delete_one({"solution_id": solution_id})
     return {"success": True}
 
@@ -512,4 +580,84 @@ async def solution_ratings(solution_id: str, user: dict = Depends(get_current_us
         "overall": (round(sum(overall) / len(overall), 2) if overall else None),
         "review_count": len(reviews),
         "factors": sorted(factors, key=lambda x: x["factor"]),
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Seed / migrate scenarios from existing decision templates (Super Admin)
+# ──────────────────────────────────────────────────────────────────────────────
+@router.post("/seed-scenarios-from-templates")
+async def seed_scenarios_from_templates(
+    force: bool = Query(False),
+    user: dict = Depends(get_current_user),
+):
+    """Best-effort migration: turn existing `decision_templates` rows into
+    Explorer `cce_scenarios` so the tree is populated out of the box.
+
+    Each template is placed under its life-area's FIRST sub-area node with
+    org_type='individual' and pnrag='general'. Idempotent by (title, node).
+    Super Admin only.
+    """
+    _require_full(user)
+
+    # Build life_area_id -> first sub_area (L1) catalog node
+    first_sub_by_la: Dict[str, dict] = {}
+    cur = db.catalog_nodes.find({"level": 1}, {"_id": 0}).sort([("sort_order", 1), ("name", 1)])
+    async for n in cur:
+        la = n.get("life_area_id")
+        if la and la not in first_sub_by_la:
+            first_sub_by_la[la] = n
+
+    created = 0
+    skipped = 0
+    unmatched = 0
+
+    async for t in db.decision_templates.find({}, {"_id": 0}):
+        la = t.get("life_area")
+        node = first_sub_by_la.get(la)
+        if not node:
+            unmatched += 1
+            continue
+        title = (t.get("name") or "").strip()
+        if not title:
+            unmatched += 1
+            continue
+        existing = await db.cce_scenarios.find_one(
+            {"catalog_node_id": node["node_id"], "org_type": "individual",
+             "pnrag": "general", "title": title},
+            {"_id": 1},
+        )
+        if existing and not force:
+            skipped += 1
+            continue
+        if existing and force:
+            skipped += 1
+            continue
+        doc = {
+            "scenario_id": f"scn_{uuid.uuid4().hex[:14]}",
+            "catalog_node_id": node["node_id"],
+            "life_area_id": node.get("life_area_id"),
+            "org_type": "individual",
+            "pnrag": "general",
+            "title": title,
+            "description": (t.get("description") or "").strip() or None,
+            "sort_order": 0,
+            "source": "decision_template_migration",
+            "source_template_id": t.get("id"),
+            "created_at": _now(), "updated_at": _now(),
+        }
+        await db.cce_scenarios.insert_one(doc)
+        created += 1
+
+    # ensure helpful indexes
+    await db.cce_scenarios.create_index([("catalog_node_id", 1), ("org_type", 1), ("pnrag", 1)])
+    await db.cce_scenarios.create_index("scenario_id", unique=True)
+    await db.cce_decision_templates.create_index("scenario_id")
+    await db.cce_solution_templates.create_index("scenario_id")
+
+    return {
+        "ok": True,
+        "scenarios_created": created,
+        "skipped_existing": skipped,
+        "templates_unmatched": unmatched,
     }
