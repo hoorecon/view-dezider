@@ -41,6 +41,7 @@ const QUICK_ACTIONS: QuickAction[] = [
   { key: 'appearance',      label: 'Appearance · Font',   description: 'App-wide font family · Inter default · live preview', icon: 'text', color: '#EC4899', href: '/admin/appearance' },
   { key: 'user-lookup',     label: 'User Lookup (PII)',   description: 'Read-only user view by email + WhatsApp · NDA + audit logged', icon: 'shield-checkmark', color: '#0891B2', href: '/admin/user-lookup' },
   { key: 'catalog',         label: 'Central Catalog',     description: 'Explorer tree · LifeArea→OrgType→PNRAG→Scenario→Templates/Store · inline CRUD', icon: 'git-network', color: '#7C3AED', href: '/admin/catalog' },
+  { key: 'quota-editor',    label: 'Edit Report Allocation', description: 'Correct a user\'s remaining report quota · OTP-authorized · audited', icon: 'create', color: '#059669', href: '/admin/quota-editor' },
 ];
 
 export default function AdminHomeScreen() {

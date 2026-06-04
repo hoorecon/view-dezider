@@ -282,6 +282,11 @@ async def convert_to_decision(analysis_id: str, user: dict = Depends(get_current
         {"id": analysis_id},
         {"$set": {"converted_decision_id": decision_id, "updated_at": now}}
     )
+    try:
+        from routes.sku_store import ensure_decision_entitlement
+        await ensure_decision_entitlement(user["user_id"], module="dezider", decision_id=decision_id)
+    except Exception as _e:
+        logger.warning("entitlement consume on pros_cons convert failed: %s", _e)
 
     return {
         "decision_id": decision_id,

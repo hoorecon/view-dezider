@@ -32,7 +32,7 @@ export default function MarketingHeader({ activeCta = true }: { activeCta?: bool
           </LinearGradient>
         )}
         <View style={styles.brandTextWrap}>
-          <Text style={styles.brandName}>{COMPANY.product}</Text>
+          <Text style={styles.brandName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{COMPANY.product}</Text>
           {!compact && <Text style={styles.brandSub} numberOfLines={2}>{COMPANY.tagline}</Text>}
         </View>
       </TouchableOpacity>

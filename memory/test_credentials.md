@@ -70,3 +70,10 @@ The response will contain `session_token` for Bearer header use.
 - `GET /api/auth/whatsapp/status` returns `{ whatsapp_number, whatsapp_verified }`.
 - The `/store` route and `/admin` area are NOT behind this gate.
 
+
+## Quota Editor (Admin) test data — DEV
+- Tool: /admin/quota-editor  · APIs under /api/admin/quota/*
+- Super admin with WhatsApp set (OTP recipient): super@test.com (whatsapp 918888800000). Also veales super admin works.
+- can_edit_quota grant test: admin@test.com starts WITHOUT the permission (expect 403 on lookup until super admin grants via POST /api/admin/quota/grant {email, grant:true}).
+- Target user for lookup: email ad.shezhiyanraj@gmail.com + mobile 919999900000 (seeded L1 entitlement balance=1,000,000 consumed=3 to simulate the over-allocation).
+- WA_OTP_EXPOSE_DEV_CODE=true in dev → POST /api/admin/quota/request-otp returns dev_code for automated testing (hidden in prod).

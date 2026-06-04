@@ -168,6 +168,11 @@ async def clone_decision(decision_id: str, data: CloneDecisionRequest, user: dic
                 cloned["options"][i]["assessments"] = new_assessments
                 cloned["options"][i]["worth_percentage"] = opt.get("worth_percentage", 0.0)
     await db.decisions.insert_one(cloned)
+    try:
+        from routes.sku_store import ensure_decision_entitlement
+        await ensure_decision_entitlement(user["user_id"], module="dezider", decision_id=new_id)
+    except Exception as e:
+        logger.warning("entitlement consume on clone failed: %s", e)
     return {"id": new_id, "message": f"Decision cloned successfully (level: {clone_level})"}
 
 
@@ -285,6 +290,11 @@ async def use_template(template_id: str, data: UseTemplateRequest, user: dict = 
         "created_at": now, "updated_at": now,
     }
     await db.decisions.insert_one(decision)
+    try:
+        from routes.sku_store import ensure_decision_entitlement
+        await ensure_decision_entitlement(user["user_id"], module="dezider", decision_id=new_id)
+    except Exception as _e:
+        logger.warning("entitlement consume on template-use failed: %s", _e)
     return {"id": new_id, "message": "Decision created from template"}
 
 @router.delete("/templates/{template_id}")

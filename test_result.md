@@ -8693,3 +8693,31 @@ catalog_explorer_node_crud:
              Backbone seed now preserves renamed names (name_custom flag) so "Verify backbone" won't revert edits.
           3. Editor modal converted from full-width bottom sheet to a centered max-width(460) dialog card.
           Gates: all node CRUD = Super Admin only (_require_full). Plain admin still 403 on nodes.
+
+#====================================================================================================
+# Admin "Edit User Report Allocation" + quota consumption wiring + L0 CRUD + logo (June 2026)
+#====================================================================================================
+admin_quota_and_fixes:
+  - task: "Quota consumption wired into clone/template/convert paths; Admin quota editor (OTP); L0 CRUD; logo one-line"
+    implemented: true
+    working: "NA"
+    file: "backend/routes/admin_quota.py, server.py, decisions.py, pros_cons.py, swot.py, catalog_explorer.py; frontend/app/admin/quota-editor.tsx, admin/index.tsx, src/components/marketing/MarketingHeader.tsx, app/admin/catalog/index.tsx"
+    needs_retesting: true
+    priority: "high"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          (A) QUOTA CONSUMPTION FIX: ensure_decision_entitlement now also fires on
+              POST /api/decisions/{id}/clone, POST /api/templates/{id}/use, and the
+              Pros&Cons & SWOT convert-to-decision endpoints (previously only the main
+              /api/decisions create consumed). Verified core consume works (grant 5 → 3 creates → used=3, left=2).
+          (B) ADMIN QUOTA EDITOR (/api/admin/quota/*): permission gate (super_admin OR admin with
+              can_edit_quota). Endpoints: GET /permission, GET /grants, POST /grant (super only),
+              POST /lookup (email+mobile must match same account), POST /request-otp (OTP sent to a
+              super-admin WhatsApp; dev_code exposed only when WA_OTP_EXPOSE_DEV_CODE=true),
+              POST /apply (verifies OTP, sets LEFT by collapsing active rows to one canonical row:
+              balance=new_left, granted=consumed+new_left; writes immutable quota_admin_log; notifies
+              target user via WhatsApp+email with reason), GET /log.
+          (C) L0 CRUD: catalog nodes now editable/deletable at ALL levels incl life areas (L0) for super admin.
+          (D) LOGO: MarketingHeader brand wordmark now numberOfLines=1 + adjustsFontSizeToFit (no "JELCO/S" wrap).

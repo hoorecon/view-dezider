@@ -176,8 +176,8 @@ async def get_children(
                 sublabel=f"L{lvl}" + (f" · {child_count} sub" if child_count else ""),
                 icon=n.get("icon") or ("folder" if lvl < 2 else "folder-open"),
                 color=n.get("color") or "#475569",
-                editable=(caps["can_full_crud"] and lvl >= 1),
-                deletable=(caps["can_full_crud"] and lvl >= 1),
+                editable=caps["can_full_crud"],
+                deletable=caps["can_full_crud"],
                 ctx={"node_id": n["node_id"], "life_area_id": n.get("life_area_id"),
                      "level": lvl, "parent_id": n.get("parent_id")},
                 meta={"is_immutable": bool(n.get("is_immutable")), "level": lvl,
@@ -737,8 +737,6 @@ async def update_catalog_node(node_id: str, body: NodeUpdate, user: dict = Depen
     node = await db.catalog_nodes.find_one({"node_id": node_id}, {"_id": 0})
     if not node:
         raise HTTPException(404, "Node not found.")
-    if int(node.get("level", 0)) < 1:
-        raise HTTPException(403, "Life areas are the fixed first level and cannot be edited.")
     set_doc: Dict[str, Any] = {"updated_at": _dt()}
     if body.name is not None:
         set_doc["name"] = body.name.strip()
@@ -766,8 +764,6 @@ async def delete_catalog_node(
     node = await db.catalog_nodes.find_one({"node_id": node_id}, {"_id": 0})
     if not node:
         raise HTTPException(404, "Node not found.")
-    if int(node.get("level", 0)) < 1:
-        raise HTTPException(403, "Life areas are the fixed first level and cannot be deleted.")
 
     child_nodes = await db.catalog_nodes.count_documents({"parent_id": node_id})
     scn = await db.cce_scenarios.count_documents({"catalog_node_id": node_id})
