@@ -1,0 +1,27 @@
+{
+  "summary": "Iter 56 — Dynamic Company Profile end-to-end re-verification. Backend pytest test_iter55_company_profile.py: 8/8 PASSED (GET /api/appearance returns brand_name, tagline, legal_name, company_name, address, phone, email, website, support_hours with sensible defaults; PUT /api/admin/company-info as super_admin (veales.vedic.decisions@gmail.com) returns 200 and persists; round-trip GET reflects QA values; non-super-admin (admin@test.com) gets 403; unauthenticated gets 401/403; defaults restored at the end). No coroutine/500 errors observed in backend logs — only the benign passlib bcrypt __about__ warning, ignored per request. Frontend /contact renders Registered Office, Phone, Email, Website, Support hours dynamically from /api/appearance (no blank screen). Frontend /legal/privacy, /legal/terms, /legal/refund, /legal/delivery all render via LegalShell with 'HOORECON IT-Sys Pvt Ltd' legal entity card + 'Last updated' line. Marketing footer on /contact shows JELCOS AI brand, tagline, legal name, full address, phone, email, website, and all 5 legal/policy links. Super-admin login → /admin renders correctly with full sidebar (Overview/People/Subscriptions/Content/System sections) + Welcome card + 4 stat cards (Subscription Tiers 7, Customer Segments 6, ACM Features 89, Active Modules 32) + Operations grid; spacing is healthy on desktop viewport, no layout regression from AdminShell padding changes. /admin/appearance shows the Company Profile card with all 8 fields pre-filled (JELCOS AI / tagline / HOORECON IT-Sys Pvt Ltd / Chennai address / +(91)-(0)44-46972104 / admin@hoorecon.com / www.hoorecon.com / Mon–Fri 10–6 IST). Cleanup PUT restored production-like defaults.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter55_company_profile.py",
+    "/app/test_reports/pytest/iter56_company_profile.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/app_appearance.py: _get_doc() is properly async-awaited (line 69) — confirmed no coroutine warnings/exceptions in backend.err.log. The earlier P0 crash is resolved.",
+    "routes/app_appearance.py: PUT /admin/company-info stores legal_name under the legacy `company_name` key for back-compat with footer/NDA/legal docs (line 121) — good migration-free approach.",
+    "routes/app_appearance.py: GET /api/appearance returns BOTH `company_name` and `legal_name` mirroring the same value (line 84, 88), letting old + new consumers coexist.",
+    "Authorization is strict-equality 'super_admin' (line 115) — admin@test.com correctly receives 403 (verified)."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "100%", "frontend": "100%" },
+  "seed_data_creation": "None new. The existing iter55 test self-restores production-like defaults (JELCOS AI / HOORECON IT-Sys Pvt Ltd / +(91)-(0)44-46972104 / admin@hoorecon.com / www.hoorecon.com / Chennai address / Mon–Fri 10–6 IST) after running the QA round-trip — final GET /api/appearance confirms the restored values.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Dynamic Company Profile is fully live. Backend: GET /api/appearance (public) returns brand_name/tagline/legal_name/company_name/address/phone/email/website/support_hours; PUT /api/admin/company-info (super_admin only) updates them; legal_name is persisted as company_name in the app_settings doc keyed key='appearance'. Frontend: FontFamilyContext.useCompany() hydrates the typed CompanyInfo and is consumed by /contact, /legal/* (via LegalShell), and MarketingFooter — no static hardcoded company strings remain in those surfaces. Admin spacing changes in /app/frontend/src/components/admin/AdminShell.tsx and /app/frontend/app/admin/index.tsx are style-only and the desktop dashboard renders cleanly with no overflow/collisions. Backend log warning 'passlib bcrypt __about__' is a known benign passlib<->bcrypt version mismatch — ignore."
+}

@@ -241,15 +241,15 @@ const s = StyleSheet.create({
   },
   sidebarMobile: { position: 'relative', height: '100%' },
 
-  brandBlock: { padding: 16, borderBottomWidth: 1, borderBottomColor: ADMIN_THEME.sidebar.border },
+  brandBlock: { paddingVertical: 16, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: ADMIN_THEME.sidebar.border },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   brandLogo: { width: 32, height: 32, borderRadius: 8, backgroundColor: ADMIN_THEME.semantic.primary, alignItems: 'center', justifyContent: 'center' },
   brandName: { color: '#F8FAFC', fontSize: 14, fontWeight: '700' },
   brandSub: { color: ADMIN_THEME.sidebar.sectionLabel, fontSize: 9, fontWeight: '700', letterSpacing: 1, marginTop: 2 },
 
-  navSection: { paddingHorizontal: 12, paddingTop: 18 },
-  navSectionLabel: { fontSize: 10, color: ADMIN_THEME.sidebar.sectionLabel, fontWeight: '700', letterSpacing: 0.8, paddingHorizontal: 8, paddingBottom: 6, textTransform: 'uppercase' },
-  navItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6, marginBottom: 1 },
+  navSection: { paddingHorizontal: 16, paddingTop: 18 },
+  navSectionLabel: { fontSize: 10, color: ADMIN_THEME.sidebar.sectionLabel, fontWeight: '700', letterSpacing: 0.8, paddingHorizontal: 12, paddingBottom: 6, textTransform: 'uppercase' },
+  navItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 6, marginBottom: 1 },
   navItemHover: { backgroundColor: ADMIN_THEME.sidebar.bgHover },
   navItemActive: { backgroundColor: ADMIN_THEME.sidebar.bgActive },
   navItemText: { color: ADMIN_THEME.sidebar.text, fontSize: 13, fontWeight: '500', flex: 1 },
@@ -258,7 +258,7 @@ const s = StyleSheet.create({
   navBadge: { backgroundColor: ADMIN_THEME.semantic.primary, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8, minWidth: 18, alignItems: 'center' },
   navBadgeText: { color: '#FFF', fontSize: 9, fontWeight: '700' },
 
-  userBlock: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderTopWidth: 1, borderTopColor: ADMIN_THEME.sidebar.border, backgroundColor: '#0A1020' },
+  userBlock: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16, borderTopWidth: 1, borderTopColor: ADMIN_THEME.sidebar.border, backgroundColor: '#0A1020' },
   userAvatar: { width: 30, height: 30, borderRadius: 15, backgroundColor: ADMIN_THEME.semantic.primary, alignItems: 'center', justifyContent: 'center' },
   userAvatarText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
   userName: { color: '#F8FAFC', fontSize: 12, fontWeight: '600' },
