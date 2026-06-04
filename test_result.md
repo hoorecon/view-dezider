@@ -8667,3 +8667,29 @@ agent_communication:
       Frontend: login to /admin → open "Central Catalog", expand life area → sub area → an OrgType →
       a PNRAG bucket; as super_admin run "Migrate scenarios" then add/edit/delete a scenario and a
       decision template; confirm admin sees structure read-only but can add a Solution Store item.
+
+#====================================================================================================
+# Catalog Explorer — FIXES (node CRUD from L1, working pencil, centered modal)
+#====================================================================================================
+catalog_explorer_node_crud:
+  - task: "Catalog NODE CRUD (create child / rename / delete-with-reparent) from L1; centered modal"
+    implemented: true
+    working: "NA"
+    file: "backend/routes/catalog_explorer.py, backend/routes/catalog.py, frontend/app/admin/catalog/index.tsx"
+    needs_retesting: true
+    priority: "high"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Fixes for 3 reported issues (Super Admin):
+          1. Structure CRUD now allowed from L1 (sub-areas) onward (was L2+). Life areas (L0) stay fixed.
+             /children now returns editable/deletable=true for catalog_node lvl>=1.
+          2. Pencil on catalog-node rows now works — NEW endpoints:
+             POST /api/catalog-explorer/nodes {parent_id,name,icon} (create child node, any level)
+             PUT  /api/catalog-explorer/nodes/{node_id} {name,icon} (rename; 403 on L0)
+             DELETE /api/catalog-explorer/nodes/{node_id}?reparent=  (409 if has children unless reparent=true,
+                    which lifts child nodes/scenarios/solutions up one level then deletes; 403 on L0)
+             Backbone seed now preserves renamed names (name_custom flag) so "Verify backbone" won't revert edits.
+          3. Editor modal converted from full-width bottom sheet to a centered max-width(460) dialog card.
+          Gates: all node CRUD = Super Admin only (_require_full). Plain admin still 403 on nodes.

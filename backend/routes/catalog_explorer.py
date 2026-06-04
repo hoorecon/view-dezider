@@ -176,11 +176,12 @@ async def get_children(
                 sublabel=f"L{lvl}" + (f" · {child_count} sub" if child_count else ""),
                 icon=n.get("icon") or ("folder" if lvl < 2 else "folder-open"),
                 color=n.get("color") or "#475569",
-                editable=(caps["can_full_crud"] and lvl >= 2 and not n.get("is_immutable")),
-                deletable=(caps["can_full_crud"] and lvl >= 2 and not n.get("is_immutable")),
+                editable=(caps["can_full_crud"] and lvl >= 1),
+                deletable=(caps["can_full_crud"] and lvl >= 1),
                 ctx={"node_id": n["node_id"], "life_area_id": n.get("life_area_id"),
                      "level": lvl, "parent_id": n.get("parent_id")},
-                meta={"is_immutable": bool(n.get("is_immutable")), "level": lvl, "slug": n.get("slug")},
+                meta={"is_immutable": bool(n.get("is_immutable")), "level": lvl,
+                      "slug": n.get("slug"), "icon": n.get("icon")},
             ))
         # OrgType folders under any node at level >= 1
         if node_id is not None:
@@ -666,3 +667,128 @@ async def seed_scenarios_from_templates(
         "skipped_existing": skipped,
         "templates_unmatched": unmatched,
     }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Catalog NODE CRUD (Super Admin) — create/rename/delete structural nodes.
+# Life areas (L0) are the fixed first level; CRUD is allowed from L1 downward.
+# ──────────────────────────────────────────────────────────────────────────────
+import re as _re
+
+
+def _node_slug(value: str) -> str:
+    value = (value or "").strip().lower()
+    value = _re.sub(r"[^a-z0-9]+", "_", value)
+    value = _re.sub(r"_+", "_", value).strip("_")
+    return value[:60] or "node"
+
+
+def _dt():
+    return datetime.now(timezone.utc)
+
+
+class NodeCreate(BaseModel):
+    parent_id: str
+    name: str = Field(..., min_length=1, max_length=120)
+    icon: Optional[str] = None
+    sort_order: int = 0
+
+
+class NodeUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    icon: Optional[str] = None
+    sort_order: Optional[int] = None
+
+
+@router.post("/nodes")
+async def create_catalog_node(body: NodeCreate, user: dict = Depends(get_current_user)):
+    _require_full(user)
+    parent = await db.catalog_nodes.find_one({"node_id": body.parent_id}, {"_id": 0})
+    if not parent:
+        raise HTTPException(404, "Parent node not found.")
+    new_level = int(parent.get("level", 0)) + 1
+    node_id = f"cnx_{uuid.uuid4().hex[:14]}"
+    sub_area_id = parent.get("sub_area_id") or (node_id if new_level == 1 else None)
+    doc = {
+        "node_id": node_id,
+        "name": body.name.strip(),
+        "slug": _node_slug(body.name),
+        "level": new_level,
+        "parent_id": parent["node_id"],
+        "life_area_id": parent.get("life_area_id"),
+        "sub_area_id": sub_area_id,
+        "icon": (body.icon or "").strip() or None,
+        "color": None,
+        "sort_order": body.sort_order,
+        "is_active": True,
+        "is_immutable": False,
+        "name_custom": True,
+        "created_at": _dt(),
+        "updated_at": _dt(),
+    }
+    await db.catalog_nodes.insert_one(doc)
+    doc.pop("_id", None)
+    return {"success": True, "node_id": node_id, "level": new_level}
+
+
+@router.put("/nodes/{node_id}")
+async def update_catalog_node(node_id: str, body: NodeUpdate, user: dict = Depends(get_current_user)):
+    _require_full(user)
+    node = await db.catalog_nodes.find_one({"node_id": node_id}, {"_id": 0})
+    if not node:
+        raise HTTPException(404, "Node not found.")
+    if int(node.get("level", 0)) < 1:
+        raise HTTPException(403, "Life areas are the fixed first level and cannot be edited.")
+    set_doc: Dict[str, Any] = {"updated_at": _dt()}
+    if body.name is not None:
+        set_doc["name"] = body.name.strip()
+        set_doc["slug"] = _node_slug(body.name)
+        set_doc["name_custom"] = True
+    if body.icon is not None:
+        set_doc["icon"] = body.icon.strip() or None
+    if body.sort_order is not None:
+        set_doc["sort_order"] = body.sort_order
+    await db.catalog_nodes.update_one({"node_id": node_id}, {"$set": set_doc})
+    return {"success": True}
+
+
+@router.delete("/nodes/{node_id}")
+async def delete_catalog_node(
+    node_id: str,
+    reparent: bool = Query(False),
+    user: dict = Depends(get_current_user),
+):
+    """Delete a structural node. If it has descendants/scenarios/solutions the
+    call is blocked (409) unless `reparent=true`, which lifts every direct child
+    (nodes, scenarios, mapped solutions) up one level to this node's parent
+    before deleting. Life areas (L0) can never be deleted."""
+    _require_full(user)
+    node = await db.catalog_nodes.find_one({"node_id": node_id}, {"_id": 0})
+    if not node:
+        raise HTTPException(404, "Node not found.")
+    if int(node.get("level", 0)) < 1:
+        raise HTTPException(403, "Life areas are the fixed first level and cannot be deleted.")
+
+    child_nodes = await db.catalog_nodes.count_documents({"parent_id": node_id})
+    scn = await db.cce_scenarios.count_documents({"catalog_node_id": node_id})
+    sols = await db.solutions_store.count_documents({"catalog_node_id": node_id})
+
+    if (child_nodes + scn + sols) and not reparent:
+        raise HTTPException(
+            409,
+            detail=(
+                f"This node has {child_nodes} sub-node(s), {scn} scenario(s) and "
+                f"{sols} mapped solution(s). Confirm to move them up one level, or "
+                f"remove them first."
+            ),
+        )
+
+    new_parent = node.get("parent_id")
+    if reparent:
+        await db.catalog_nodes.update_many({"parent_id": node_id}, {"$set": {"parent_id": new_parent}})
+        await db.cce_scenarios.update_many({"catalog_node_id": node_id}, {"$set": {"catalog_node_id": new_parent}})
+        await db.solutions_store.update_many({"catalog_node_id": node_id}, {"$set": {"catalog_node_id": new_parent}})
+
+    await db.catalog_nodes.delete_one({"node_id": node_id})
+    return {"success": True, "reparented": bool(reparent),
+            "moved_nodes": child_nodes, "moved_scenarios": scn, "moved_solutions": sols}

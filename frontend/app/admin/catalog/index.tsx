@@ -66,6 +66,13 @@ const GROUP_ENTITY: Record<string, string> = {
 
 interface FieldDef { key: string; label: string; multiline?: boolean; picker?: boolean; }
 const ENTITY_FORM: Record<string, { title: string; fields: FieldDef[] }> = {
+  catalog_node: {
+    title: 'Folder',
+    fields: [
+      { key: 'name', label: 'Name *' },
+      { key: 'icon', label: 'Icon (Ionicons name, optional)' },
+    ],
+  },
   scenario: {
     title: 'Scenario',
     fields: [
@@ -102,6 +109,7 @@ const ENTITY_FORM: Record<string, { title: string; fields: FieldDef[] }> = {
 };
 
 const ENTITY_ENDPOINT: Record<string, string> = {
+  catalog_node: '/catalog-explorer/nodes',
   scenario: '/catalog-explorer/scenarios',
   decision_template: '/catalog-explorer/decision-templates',
   solution_template: '/catalog-explorer/solution-templates',
@@ -199,6 +207,7 @@ export default function AdminCatalogExplorerScreen() {
     let entity = '';
     if (parentNode.node_type === 'pnrag') entity = 'scenario';
     else if (parentNode.node_type === 'group') entity = GROUP_ENTITY[parentNode.ctx?.group] || '';
+    else if (parentNode.node_type === 'catalog_node') entity = 'catalog_node';
     if (!entity) return;
     setEditorMode('create');
     setEditorEntity(entity);
@@ -221,6 +230,8 @@ export default function AdminCatalogExplorerScreen() {
       initial = { title: m.title || node.label || '', asm_stage: m.asm_stage || '', description: m.description || '' };
     } else if (entity === 'solution_item') {
       initial = { name: node.label || '', type: m.type || solutionTypes[0] || 'PRODUCT', provider: m.provider || '', url: m.url || '', description: m.description || '' };
+    } else if (entity === 'catalog_node') {
+      initial = { name: node.label || '', icon: m.icon || '' };
     } else {
       return;
     }
@@ -237,7 +248,7 @@ export default function AdminCatalogExplorerScreen() {
     const entity = editorEntity;
     const base = ENTITY_ENDPOINT[entity];
     // basic required validation
-    const primary = entity === 'solution_item' ? 'name' : 'title';
+    const primary = (entity === 'solution_item' || entity === 'catalog_node') ? 'name' : 'title';
     if (!(form[primary] || '').trim()) {
       showAlert('Required', `Please enter a ${primary === 'name' ? 'name' : 'title'}.`);
       return;
@@ -255,6 +266,8 @@ export default function AdminCatalogExplorerScreen() {
           body = { scenario_id: pc.scenario_id, title: form.title?.trim(), asm_stage: form.asm_stage?.trim() || null, description: form.description?.trim() || null };
         } else if (entity === 'solution_item') {
           body = { scenario_id: pc.scenario_id, name: form.name?.trim(), type: form.type || 'PRODUCT', provider: form.provider?.trim() || '', url: form.url?.trim() || '', description: form.description?.trim() || '' };
+        } else if (entity === 'catalog_node') {
+          body = { parent_id: pc.node_id, name: form.name?.trim(), icon: form.icon?.trim() || null, sort_order: 0 };
         }
         await api.post(base, body);
       } else {
@@ -268,6 +281,8 @@ export default function AdminCatalogExplorerScreen() {
           body = { title: form.title?.trim(), asm_stage: form.asm_stage?.trim() || null, description: form.description?.trim() || null };
         } else if (entity === 'solution_item') {
           body = { name: form.name?.trim(), type: form.type || 'PRODUCT', provider: form.provider?.trim() || '', url: form.url?.trim() || '', description: form.description?.trim() || '' };
+        } else if (entity === 'catalog_node') {
+          body = { name: form.name?.trim(), icon: form.icon?.trim() || null };
         }
         await api.put(`${base}/${id}`, body);
       }
@@ -283,24 +298,32 @@ export default function AdminCatalogExplorerScreen() {
     }
   };
 
-  const doDelete = async (node: ExplorerNode, parentNode: ExplorerNode | null, cascade = false) => {
+  const doDelete = async (node: ExplorerNode, parentNode: ExplorerNode | null, extra: Record<string, any> = {}) => {
     const base = ENTITY_ENDPOINT[node.node_type];
     if (!base) return;
     try {
-      await api.delete(`${base}/${node.id}`, { params: cascade ? { cascade: true } : {} });
+      await api.delete(`${base}/${node.id}`, { params: extra });
       await loadInto(parentNode);
       if (parentNode) setExpanded(prev => ({ ...prev, [parentNode.id]: true }));
     } catch (e: any) {
       const status = e?.response?.status;
       const msg = e?.response?.data?.detail || e.message || 'Delete failed';
-      if (status === 409 && node.node_type === 'scenario' && !cascade) {
-        showAlert('Scenario not empty', typeof msg === 'string' ? msg : 'It still has child items.', [
+      const text = typeof msg === 'string' ? msg : JSON.stringify(msg);
+      if (status === 409 && node.node_type === 'scenario' && !extra.cascade) {
+        showAlert('Scenario not empty', text, [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Delete all', style: 'destructive', onPress: () => doDelete(node, parentNode, true) },
+          { text: 'Delete all', style: 'destructive', onPress: () => doDelete(node, parentNode, { cascade: true }) },
         ]);
         return;
       }
-      showAlert('Delete failed', typeof msg === 'string' ? msg : JSON.stringify(msg));
+      if (status === 409 && node.node_type === 'catalog_node' && !extra.reparent) {
+        showAlert('Folder not empty', text, [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Move items up & delete', style: 'destructive', onPress: () => doDelete(node, parentNode, { reparent: true }) },
+        ]);
+        return;
+      }
+      showAlert('Delete failed', text);
     }
   };
 
@@ -328,6 +351,7 @@ export default function AdminCatalogExplorerScreen() {
   // ── add-affordance check ──
   const canAdd = (node: ExplorerNode): boolean => {
     if (!caps) return false;
+    if (node.node_type === 'catalog_node') return caps.can_full_crud;
     if (node.node_type === 'pnrag') return caps.can_full_crud;
     if (node.node_type === 'group') {
       const g = node.ctx?.group;
@@ -504,7 +528,7 @@ export default function AdminCatalogExplorerScreen() {
       )}
 
       {/* Editor modal */}
-      <Modal visible={editorOpen} transparent animationType="slide" onRequestClose={() => setEditorOpen(false)}>
+      <Modal visible={editorOpen} transparent animationType="fade" onRequestClose={() => setEditorOpen(false)}>
         <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.sheet}>
             <ScrollView keyboardShouldPersistTaps="handled">
@@ -602,8 +626,8 @@ const styles = StyleSheet.create({
 
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: COLORS.white, borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 18, maxHeight: '85%' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center', padding: 16 },
+  sheet: { backgroundColor: COLORS.white, borderRadius: 16, padding: 20, width: '100%', maxWidth: 460, maxHeight: '85%', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
   sheetTitle: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
   sheetSub: { fontSize: 12, color: COLORS.textMuted, marginTop: 2, marginBottom: 4 },
   fieldLabel: { fontSize: 12, fontWeight: '600', color: COLORS.textSecondary, marginTop: 12 },

@@ -114,8 +114,11 @@ async def _ensure_backbone_seeded() -> Dict[str, int]:
             "is_immutable": True,
             "updated_at": _now(),
         }
-        existing = await db.catalog_nodes.find_one({"node_id": node_id}, {"_id": 1})
+        existing = await db.catalog_nodes.find_one({"node_id": node_id}, {"_id": 1, "name_custom": 1})
         if existing:
+            if existing.get("name_custom"):
+                doc.pop("name", None)
+                doc.pop("icon", None)
             await db.catalog_nodes.update_one({"node_id": node_id}, {"$set": doc})
             updated += 1
         else:
@@ -140,8 +143,11 @@ async def _ensure_backbone_seeded() -> Dict[str, int]:
             "is_immutable": True,
             "updated_at": _now(),
         }
-        existing = await db.catalog_nodes.find_one({"node_id": node_id}, {"_id": 1})
+        existing = await db.catalog_nodes.find_one({"node_id": node_id}, {"_id": 1, "name_custom": 1})
         if existing:
+            if existing.get("name_custom"):
+                doc.pop("name", None)
+                doc.pop("icon", None)
             await db.catalog_nodes.update_one({"node_id": node_id}, {"$set": doc})
             updated += 1
         else:
