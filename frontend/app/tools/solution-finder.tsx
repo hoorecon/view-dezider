@@ -17,7 +17,7 @@
  *  - Still launchable from inside GEM goals (gem-goal.tsx → launchSolutionFinder).
  *  - "Send to ASM" pills hand a deeper-analysis context to /tools/solution-matrix.
  */
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
   ActivityIndicator, KeyboardAvoidingView, Platform, Modal,
@@ -261,6 +261,15 @@ export default function SimpleSolutionFinder() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [concerns, rootCauses, solutions, risks, mitigations, contingencies,
       actionPlan, timing, areaOfLife, smartGoal, authHydrated]);
+
+  // Save-on-blur safety net: keep a ref to the latest save fn and flush it once
+  // when the screen loses focus / unmounts, so even edits made in the last <0.9s
+  // before navigating away are never lost.
+  const saveRef = useRef<typeof handleSave | null>(null);
+  useEffect(() => { saveRef.current = handleSave; }, [handleSave]);
+  useFocusEffect(
+    useCallback(() => () => { saveRef.current?.(true); }, []),
+  );
 
 
   // ============ CRUD HELPERS ============
