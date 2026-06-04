@@ -33,6 +33,7 @@ testing agent and any fork agents. They are refreshed when stale.
 - **Email**: `harden_1777921741@example.com`
 - **Password**: `HardenPass2026!`
 - **Role**: `user`
+- ⚠️ **NOTE (SKU entitlements):** this user OWNS an `L1` entitlement (balance>0). So for "locked solution" tests (SKU↔Solution mapping) this user will appear UNLOCKED via L1. To test the LOCKED view, register a fresh throwaway user (see below) which has no L1-L4 entitlements.
 
 ## How to login fresh (if token expired)
 ```
