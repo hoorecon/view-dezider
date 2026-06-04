@@ -1,0 +1,41 @@
+{
+  "summary": "Iter54 — Tested 5 JELCOS fixes: (1) global auth guard, (2) Solution Finder autosave, (3) WhatsApp OTP only once, (4) Journal linkable-items, (5) Journal module list refresh. Backend pytest suite: 7/7 PASS. Frontend flows manually validated via Playwright. CRITICAL security fix (#1) working — /profile, /journal, /tools/solution-finder, /store all redirect to /auth/login for logged-out users; public routes (/, /pricing, /contact, /legal/privacy, /auth/login) still load. WhatsApp gate fix (#3): a WhatsApp-verified user (harden_1777921741) lands on / Home WITHOUT being routed to /whatsapp-verify; /api/auth/login response now includes whatsapp_verified + whatsapp_number. Journal fix (#4/#5): module picker shows exactly 'My Dezider, Pros & Cons, SWOT, Solution Finder, GEM Goal, CTT Task, Lifestyle Routine' — no Solution Matrix; backend GET /api/journal/linkable-items returns the new 7-key shape and never 500s, and the decision array populates after creating a decision. Solution Finder autosave (#2) was NOT exercised via UI (complex multi-step flow not automated this iteration); recommend main agent self-verify or request a focused autosave retest. Note: admin@test.com is NOT WhatsApp-verified in this DB, contrary to the request hint — I verified harden user via the dev OTP flow instead.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Journal — New Entry modal", "issues": ["The '+' FAB and 'Add First Entry' CTA have no data-testid/testID — relied on text matching. Add testIDs to make future automated retests reliable."]}
+    ],
+    "react_native_issues": [
+      {"component": "Journal / global", "issue": "Console error 'Unexpected text node: . A text node cannot be a child of a <View>.' Some raw whitespace/string is being rendered outside a <Text>. Reference: appears on Journal screen after clicking 'Add First Entry'."},
+      {"component": "Global styles", "issue": "Multiple deprecation warnings: 'shadow*' style props are deprecated — use boxShadow; 'props.pointerEvents' is deprecated — use style.pointerEvents."},
+      {"component": "expo-notifications (web)", "issue": "[expo-notifications] Listening to push token changes is not yet fully supported on web — addNotificationResponseListener has no effect on web. Consider gating with Platform.OS !== 'web' in src/utils/pushNotifications.ts."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter54_auth_journal_fixes.py",
+    "/app/test_reports/pytest/iter54.xml"
+  ],
+  "action_items": [
+    "Main agent: please manually verify Solution Finder autosave (#2) — enter Q1a concern, mark star primary, wait 1.5s, navigate away, reopen — concern & primary star should persist. Not automated this iteration.",
+    "Fix React Native warning: 'Unexpected text node: . A text node cannot be a child of a <View>' — somewhere in the Journal tab tree there's stray text/whitespace outside a <Text>. Search /app/frontend/app/(tabs)/journal.tsx and child components.",
+    "Add testID props to Journal screen interactive elements: the FAB '+' (e.g. testID=\"journal-add-entry\"), 'Add First Entry' CTA, the 'Link to Module' dropdown trigger, each picker item.",
+    "Migrate deprecated shadow* style props to boxShadow, and props.pointerEvents to style.pointerEvents across the codebase.",
+    "admin@test.com is NOT WhatsApp-verified in this DB — update test_credentials.md or seed-set admin's whatsapp_verified=true so the docs match reality."
+  ],
+  "critical_code_review_comments": [
+    "Global auth guard in app/_layout.tsx is correct: redirects unauthenticated users from any non-whitelisted first segment to /auth/login, and verified-users-only into /whatsapp-verify when whatsapp_verified !== true. Whitelist contains 'auth, whatsapp-verify, legal, contact, pricing, p, admin' as documented.",
+    "/api/auth/login response now correctly exposes whatsapp_verified (bool) and whatsapp_number so the front-end can decide on the gate purely from the login payload — no extra /api/auth/me round-trip required for that decision.",
+    "/api/journal/linkable-items uses a resilient per-collection _fetch helper; a single bad doc no longer blanks the whole endpoint. Keys are exactly decision, pros_cons, swot, solution_finder, gem, ctt, lifestyle — solution_matrix is fully removed."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter54_auth_journal_fixes.py (new pytest)"
+  ],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% on tested flows (security guard, WhatsApp gate skip for verified user, Journal module picker). Solution Finder autosave UI not exercised."},
+  "seed_data_creation": "Verified harden_1777921741@example.com via the dev WhatsApp OTP endpoints (send-otp → verify-otp with dev_code) so its whatsapp_verified=true now. WhatsApp number set to 919876543210. Used briefly to test the post-login gate skip.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Solution Finder autosave (#2) still needs end-to-end UI verification. Steps: login as harden_1777921741@example.com (already whatsapp_verified=true), open /tools/solution-finder, pick a life area + enter SMART goal to create entry, add a concern in Q1a, tap star to mark primary, wait ≥1.5s, navigate away, reopen via Solution Box list, confirm concern + primary star persisted. Backend was not touched for this — autosave is presumably a debounced PUT to a Solution Finder endpoint; check routes/solution_finder.py for a 'concerns' field write. The admin@test.com creds in test_credentials.md still need WhatsApp verification before being usable for 'no OTP on every login' UI tests.",
+  "rca_of_issue": "All five reported bugs (auth-guard bypass, autosave loss on re-login, OTP every login, missing My Dezider links, stale module list) — the four I tested are fixed at the implementation level. Root causes from the diff: (a) #1 missing redirect in root layout — fixed by adding the useSegments-based guard in app/_layout.tsx with a public-segment whitelist; (b) #3 login response was missing whatsapp_verified so the gate always tripped — fixed in routes/auth_routes.py login() to return whatsapp_verified + whatsapp_number; (c) #4 a per-collection failure in /journal/linkable-items returned 500 / partial empties — fixed with try/except _fetch helper; (d) #5 the endpoint key list still had 'solution_matrix' and missed 'pros_cons' + 'swot' — fixed in routes/decisions.py linkable-items keys to {decision, pros_cons, swot, solution_finder, gem, ctt, lifestyle}."
+}

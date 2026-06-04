@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { View, Text, Platform } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { Ionicons } from '@expo/vector-icons';
@@ -217,10 +217,52 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
   }
 }
 
+// ----------------------------------------------------------------------
+// Public route whitelist for the global auth guard. The FIRST URL segment
+// of these areas may be viewed without a session. Everything else requires
+// an authenticated user (and a verified WhatsApp number). `admin` is listed
+// because app/admin/_layout.tsx runs its own stricter auth+role guard.
+// ----------------------------------------------------------------------
+const PUBLIC_SEGMENTS = new Set<string>([
+  'auth',            // login / register / forgot-password
+  'whatsapp-verify', // post-login WhatsApp gate
+  'legal',           // privacy / terms / refund / delivery
+  'contact',
+  'pricing',
+  'p',               // public shared-report viewer (/p/[slug])
+  'admin',           // self-guarded (auth + admin role)
+]);
+
 export default function RootLayout() {
   const checkAuth = useAuthStore((state) => state.checkAuth);
+  const isLoading = useAuthStore((state) => state.isLoading);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const user = useAuthStore((state) => state.user);
   const hydrateBranding = useBrandingStore((s) => s.hydrate);
   const router = useRouter();
+  const segments = useSegments();
+
+  // --------------------------------------------------------------------
+  // GLOBAL AUTH GUARD. Runs on every navigation. Unauthenticated users are
+  // bounced to /auth/login from any protected route; authenticated-but-
+  // unverified users are forced through /whatsapp-verify. This is the single
+  // source of truth so no protected screen (tabs, tools, prr, …) can ever
+  // render its content to a logged-out visitor.
+  // --------------------------------------------------------------------
+  useEffect(() => {
+    if (isLoading) return; // wait until checkAuth() resolves
+    const first = segments[0] as string | undefined;
+    const isPublic = first === undefined || first === 'index' || PUBLIC_SEGMENTS.has(first);
+
+    if (!isAuthenticated) {
+      if (!isPublic) router.replace('/auth/login');
+      return;
+    }
+    // Authenticated but WhatsApp not yet verified → force the one-time gate.
+    if (user && user.whatsapp_verified !== true && !isPublic) {
+      router.replace('/whatsapp-verify');
+    }
+  }, [segments, isLoading, isAuthenticated, user, router]);
 
   // Native + secondary web path for icon font
   const [fontsLoaded] = useFonts({

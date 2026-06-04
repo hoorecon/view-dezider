@@ -578,19 +578,37 @@ async def get_journal_reminders(user: dict = Depends(get_current_user)):
 @router.get("/journal/linkable-items", response_model=dict)
 async def get_linkable_items(user: dict = Depends(get_current_user)):
     user_id = user["user_id"]
-    decisions = await db.decisions.find({"user_id": user_id}, {"_id": 0, "id": 1, "title": 1, "decision_type": 1, "life_area": 1, "status": 1}).sort("created_at", -1).to_list(50)
-    solution_finders = await db.solution_finders.find({"user_id": user_id}, {"_id": 0, "id": 1, "title": 1}).sort("created_at", -1).to_list(50)
-    solution_matrices = await db.solution_matrices.find({"user_id": user_id}, {"_id": 0, "id": 1, "smart_goal": 1, "area_of_life": 1}).sort("created_at", -1).to_list(50)
-    gem_goals = await db.gem_goals.find({"user_id": user_id}, {"_id": 0, "id": 1, "title": 1, "goal_type": 1, "life_area": 1}).sort("created_at", -1).to_list(50)
-    ctt_tasks = await db.ctt_tasks.find({"user_id": user_id}, {"_id": 0, "id": 1, "task": 1, "life_area": 1, "status": 1}).sort("created_at", -1).to_list(50)
-    lifestyle_routines = await db.lifestyle_routines.find({"user_id": user_id}, {"_id": 0, "id": 1, "name": 1, "life_area": 1, "frequency": 1}).sort("created_at", -1).to_list(50)
+
+    async def _fetch(coll, title_field: str, extra_field: str | None = None):
+        """Resilient per-collection fetch — a bad doc in one module must never
+        wipe out the whole response (this was making My Dezider show empty)."""
+        try:
+            projection = {"_id": 0, "id": 1, title_field: 1}
+            if extra_field:
+                projection[extra_field] = 1
+            docs = await coll.find({"user_id": user_id}, projection).sort("created_at", -1).to_list(50)
+            out = []
+            for d in docs:
+                if not d.get("id"):
+                    continue
+                out.append({
+                    "id": d["id"],
+                    "title": d.get(title_field) or "(untitled)",
+                    "extra": (d.get(extra_field) or "") if extra_field else "",
+                })
+            return out
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("linkable-items fetch failed for %s: %s", title_field, e)
+            return []
+
     return {
-        "decision": [{"id": d["id"], "title": d.get("title", ""), "extra": d.get("decision_type", "")} for d in decisions],
-        "solution_finder": [{"id": d["id"], "title": d.get("title", ""), "extra": ""} for d in solution_finders],
-        "solution_matrix": [{"id": d["id"], "title": d.get("smart_goal", ""), "extra": d.get("area_of_life", "")} for d in solution_matrices],
-        "gem": [{"id": d["id"], "title": d.get("title", ""), "extra": d.get("goal_type", "")} for d in gem_goals],
-        "ctt": [{"id": d["id"], "title": d.get("task", ""), "extra": d.get("status", "")} for d in ctt_tasks],
-        "lifestyle": [{"id": d["id"], "title": d.get("name", ""), "extra": d.get("frequency", "")} for d in lifestyle_routines],
+        "decision": await _fetch(db.decisions, "title", "decision_type"),
+        "pros_cons": await _fetch(db.pros_cons, "title", "decision_type"),
+        "swot": await _fetch(db.swot_analyses, "title", "decision_type"),
+        "solution_finder": await _fetch(db.solution_finders, "title"),
+        "gem": await _fetch(db.gem_goals, "title", "goal_type"),
+        "ctt": await _fetch(db.ctt_tasks, "task", "status"),
+        "lifestyle": await _fetch(db.lifestyle_routines, "name", "frequency"),
     }
 
 @router.get("/journal/{entry_id}")

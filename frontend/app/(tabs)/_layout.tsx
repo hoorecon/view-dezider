@@ -2,18 +2,33 @@ import React from 'react';
 import { Tabs, Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
-import { Platform } from 'react-native';
+import { Platform, View, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../src/store/authStore';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
-  const { user, isAuthenticated } = useAuthStore();
+  const { user, isAuthenticated, isLoading } = useAuthStore();
+
+  // Wait for the session check to resolve before deciding — prevents the
+  // tab content from flashing for a logged-out visitor on a deep link.
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.background }}>
+        <ActivityIndicator color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  // Not signed in → never render protected tabs.
+  if (!isAuthenticated) {
+    return <Redirect href="/auth/login" />;
+  }
 
   // Mandatory WhatsApp verification gate: an authenticated user whose WhatsApp
   // number is not yet verified is routed to the verification screen before
   // they can use any in-app service.
-  if (isAuthenticated && user && user.whatsapp_verified !== true) {
+  if (user && user.whatsapp_verified !== true) {
     return <Redirect href="/whatsapp-verify" />;
   }
 

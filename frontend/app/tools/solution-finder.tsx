@@ -249,6 +249,20 @@ export default function SimpleSolutionFinder() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedId, areaOfLife, smartGoal, timing, concerns, rootCauses, solutions, risks, mitigations, contingencies, actionPlan, authHydrated]);
 
+  // Debounced AUTOSAVE — persists every tree edit (concerns, primary stars,
+  // root causes, solutions, risks, mitigations, contingencies, action plan)
+  // ~0.9s after the last change, so navigating away never loses work. Runs
+  // only once the entry has the minimum required fields (life area + goal).
+  useEffect(() => {
+    if (!authHydrated) return;
+    if (!areaOfLife || !smartGoal.trim()) return;
+    const t = setTimeout(() => { handleSave(true); }, 900);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [concerns, rootCauses, solutions, risks, mitigations, contingencies,
+      actionPlan, timing, areaOfLife, smartGoal, authHydrated]);
+
+
   // ============ CRUD HELPERS ============
   const addConcern = () => {
     const t = newConcernText.trim();

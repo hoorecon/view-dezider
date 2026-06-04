@@ -8721,3 +8721,44 @@ admin_quota_and_fixes:
               target user via WhatsApp+email with reason), GET /log.
           (C) L0 CRUD: catalog nodes now editable/deletable at ALL levels incl life areas (L0) for super admin.
           (D) LOGO: MarketingHeader brand wordmark now numberOfLines=1 + adjustsFontSizeToFit (no "JELCO/S" wrap).
+
+#====================================================================================================
+# Security auth-gate + WhatsApp-every-login + Journal + Solution Finder autosave (June 2026)
+#====================================================================================================
+five_fixes_batch:
+  - task: "Global auth route guard; WhatsApp OTP every-login fix; Journal module list+items; Solution Finder autosave"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/_layout.tsx, frontend/app/(tabs)/_layout.tsx, backend/routes/auth_routes.py, backend/routes/decisions.py, frontend/app/(tabs)/journal.tsx, frontend/app/tools/solution-finder.tsx"
+    needs_retesting: true
+    priority: "high"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          #1 SECURITY (critical): Added a global auth guard in app/_layout.tsx — unauthenticated
+             visitors hitting ANY protected route (/profile, /journal, /tools/*, /prr/*, /store, etc.)
+             are redirected to /auth/login; authenticated-but-unverified users to /whatsapp-verify.
+             Public whitelist: auth, whatsapp-verify, legal, contact, pricing, p, admin (admin self-guards).
+             Also hardened (tabs)/_layout to show a loader while auth resolves and Redirect to login if not authed.
+          #3 WhatsApp OTP every login: /api/auth/login (and register, google) now RETURN whatsapp_verified
+             (+whatsapp_number). Previously omitted → client saw undefined → gate fired on every login.
+          #4+#5 Journal: GET /api/journal/linkable-items rewritten defensively (one bad doc no longer
+             500s the whole response, which had made My Dezider show empty). Added pros_cons + swot;
+             removed solution_matrix. Frontend MODULE_CONFIG updated to match (Pros & Cons, SWOT added; Solution Matrix removed).
+          #2 Solution Finder data loss: added a debounced (0.9s) autosave in solution-finder.tsx so concerns/
+             primary-stars/root-causes/solutions/etc. persist automatically on every edit (previously only saved
+             on 'Next'). Prior prod data already lost is unrecoverable (was never persisted).
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Test these 5 fixes. BACKEND: (a) /api/auth/login response includes whatsapp_verified & whatsapp_number;
+      (b) GET /api/journal/linkable-items returns keys decision/pros_cons/swot/solution_finder/gem/ctt/lifestyle
+      (NO solution_matrix) and never 500s. FRONTEND: (1) SECURITY — open /profile, /journal, /tools/solution-finder
+      in a fresh (logged-out) session → must redirect to /auth/login, NOT render the page. After login (already
+      verified user) you should NOT be asked for WhatsApp OTP again. (4/5) Journal 'New entry' → module picker shows
+      Pros & Cons + SWOT, NOT Solution Matrix; 'Link to Item' for My Dezider lists existing decisions. (2) Solution
+      Finder — set life area + goal, add a concern, wait ~1s, reload the entry → the concern persists (autosave).
+      Creds: super@test.com (super_admin, whatsapp 918888800000), admin@test.com / AdminPass2026! (admin),
+      harden_1777921741@example.com / HardenPass2026! (regular user). All routes under /api.
