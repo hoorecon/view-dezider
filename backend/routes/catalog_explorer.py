@@ -627,10 +627,15 @@ async def seed_scenarios_from_templates(
              "pnrag": "general", "title": title},
             {"_id": 1},
         )
-        if existing and not force:
-            skipped += 1
-            continue
-        if existing and force:
+        if existing:
+            if force:
+                await db.cce_scenarios.update_one(
+                    {"_id": existing["_id"]},
+                    {"$set": {
+                        "description": (t.get("description") or "").strip() or None,
+                        "updated_at": _now(),
+                    }},
+                )
             skipped += 1
             continue
         doc = {
