@@ -1,0 +1,43 @@
+{
+  "summary": "Iter60 — My Dezider AI-assess parity tested. 8/9 pytest cases PASSED against the live preview backend; only 1 secondary edge case failed. Endpoint POST /api/decisions/{id}/factors/{fid}/ai-assess correctly returns 400 on missing actual_value, 404 on bad decision/factor/option ids, and 200 with {percentage 0-100, source in ('ai','ratio')} on the happy path. Persistence verified via GET — option.assessments entry contains {factor_id, percentage, unit_value, assessment_mode='custom'} for both main factor and sub-factor (parent_id) variants. GET/PUT regression on /api/decisions/{id} still 200. Frontend source check confirmed: Step7.tsx renders the AI/sparkles TouchableOpacity with testID md-ai-{optionId}-{factorId} (line 454-468), and POSTs to the correct ai-assess endpoint with {option_id, actual_value} (line 326-329). LLM fallback in this run resolved to source='ratio' (dev key budget exhausted), which is one of the acceptable pass states.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/decisions/{id}/factors/{fid}/ai-assess",
+        "issue": "When actual_value is omitted and the endpoint reuses the previously-stored option.assessments[].unit_value, the stored value is in the form '<num> <unit>' (e.g. '80 INR'). If the LLM call fails (budget exhausted) the numeric-ratio fallback does float('80 INR') which raises ValueError, so the endpoint responds 502 instead of 200. RCA: backend/routes/decisions.py:247-301 — actual is set to option.assessments[].unit_value (which already includes the unit suffix from line 306: f\"{actual}{(' ' + unit) if unit else ''}\") and then float(str(actual)) at line 297 fails. Fix: strip unit from stored unit_value before re-using, or persist a separate numeric field, or sanitize actual via re.sub(r'[^0-9.+-]', '', s) before float()."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter60_md_ai_assess.py",
+    "/app/test_reports/pytest/iter60.xml"
+  ],
+  "action_items": [
+    "Minor: harden the 'reuse stored actual_value' branch in md_ai_assess so the numeric-ratio fallback works when the stored unit_value carries a unit suffix (e.g. '80 INR'). Either strip the unit before float-parsing or persist a separate numeric unit_value_raw. Not blocking — primary flow (client always passes actual_value) works."
+  ],
+  "critical_code_review_comments": [
+    "decisions.py:306 — option.assessments[].unit_value is stored as a display string with unit ('80 INR'); subsequent numeric-fallback parsing in the same handler can't consume it. Consider keeping a raw numeric alongside the display string.",
+    "decisions.py is 1155 lines — exceeds 700-line guideline; consider splitting (ai-assess, xls import/export, CRUD) into sub-modules."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter60_md_ai_assess.py (new)",
+    "/app/test_reports/pytest/iter60.xml (new)",
+    "/app/test_reports/iteration_60.json (new)"
+  ],
+  "success_rate": {
+    "backend": "89% (8/9)",
+    "frontend": "source-verified (no UI run; nested seeded-data flow)"
+  },
+  "seed_data_creation": "Per-module pytest fixture creates TEST_iter60_md_{ts} decision via POST /api/decisions then seeds factors (Cost main + Tax sub-factor with parent_id) and one option (OptA) via PUT /api/decisions/{id}. Cleaned up via DELETE in fixture teardown.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Primary iter60 requirements (400/404/200 happy paths, sub-factor variant, persistence in option.assessments list shape, GET/PUT regression) all pass. The only failing case (test_uses_stored_actual_when_omitted) is an additional edge case I added — it exposes a real but secondary bug in the LLM-unavailable + reuse-stored-actual path. If main agent fixes the float-parse, this test will also pass; otherwise it can be downgraded to xfail. Use EXPO_PUBLIC_BACKEND_URL from frontend/.env (https://dashboard-rewire.preview.emergentagent.com).",
+  "rca_of_issue": "Symptom: 502 'AI assessment unavailable' on second call when client omits actual_value. Repro: 1) POST ai-assess with actual_value='80' → persists option.assessments[].unit_value='80 INR'. 2) POST ai-assess again with NO actual_value → server reuses '80 INR'. 3) LLM key budget exhausted → falls through to numeric ratio. 4) float('80 INR') raises ValueError → pct stays None → 502. Mitigation: in md_ai_assess (decisions.py:294-301), parse av with: import re; av = float(re.sub(r'[^0-9.+-]', '', str(actual)) or '0'); similarly for ev. Or strip unit at line 250 (actual = (existing or {}).get('unit_value')) before assigning."
+}

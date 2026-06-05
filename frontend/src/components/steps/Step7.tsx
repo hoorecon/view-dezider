@@ -55,6 +55,8 @@ export default function Step7() {
   const [fetchingStore, setFetchingStore] = useState<{ [key: string]: boolean }>({});
   // Per option×factor toggle for the optional direct/general assessment fallback.
   const [directOpen, setDirectOpen] = useState<{ [key: string]: boolean }>({});
+  // Per option×factor busy flag for the LLM "AI" satisfaction assessment.
+  const [aiAssessBusy, setAiAssessBusy] = useState<{ [key: string]: boolean }>({});
 
   // Fetch pre-populated data from Solutions Store for options linked to a solution
   const fetchFromSolutionStore = async (optionId: string, solutionId: string) => {
@@ -308,6 +310,42 @@ export default function Step7() {
     return '';
   };
 
+  // LLM-scored satisfaction % from expected vs actual (best for subjective factors).
+  const handleAIAssess = async (optionId: string, factorId: string) => {
+    const key = getAssessmentKey(optionId, factorId);
+    const factor = decision.factors.find(f => f.id === factorId);
+    const actual = getActualInputValue(optionId, factorId);
+    if (!actual || !actual.trim()) {
+      Alert.alert('Add a value first', 'Enter an Actual value so AI can assess satisfaction.');
+      return;
+    }
+    setAiAssessBusy(prev => ({ ...prev, [key]: true }));
+    try {
+      const token = await AsyncStorage.getItem('session_token');
+      const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
+      const resp = await fetch(`${baseUrl}/api/decisions/${decision.id}/factors/${factorId}/ai-assess`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ option_id: optionId, actual_value: actual }),
+      });
+      if (!resp.ok) {
+        const e = await resp.json().catch(() => ({}));
+        throw new Error(e.detail || `Failed (${resp.status})`);
+      }
+      const data = await resp.json();
+      const pct = Math.max(0, Math.min(100, parseInt(String(data.percentage), 10) || 0));
+      const unitStr = factor?.unit || '';
+      const numericActual = parseFloat(actual);
+      const displayValue = `${actual}${unitStr ? ' ' + unitStr : ''}`;
+      updateAssessment(optionId, factorId, pct, 'custom', displayValue, isNaN(numericActual) ? undefined : numericActual);
+      setCustomInputValues(prev => ({ ...prev, [key]: String(pct) }));
+    } catch (err: any) {
+      Alert.alert('AI assessment', err?.message || 'Could not auto-assess. Please enter % manually.');
+    } finally {
+      setAiAssessBusy(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
   const getCustomInputValue = (optionId: string, factorId: string): string => {
     const key = getAssessmentKey(optionId, factorId);
     if (customInputValues[key] !== undefined) return customInputValues[key];
@@ -412,6 +450,22 @@ export default function Step7() {
               <Text style={[styles.lmhText, { color: currentMode === 'custom' ? COLORS.white : COLORS.primary }]}>%</Text>
             </TouchableOpacity>
           )}
+
+          <TouchableOpacity
+            style={[styles.lmhButton, styles.customButton, { borderColor: '#7C3AED', flexDirection: 'row', gap: 2, paddingHorizontal: 6, minWidth: 40 }]}
+            onPress={() => handleAIAssess(option.id, f.id)}
+            disabled={!!aiAssessBusy[key]}
+            testID={`md-ai-${option.id}-${f.id}`}
+          >
+            {aiAssessBusy[key] ? (
+              <ActivityIndicator size="small" color="#7C3AED" />
+            ) : (
+              <>
+                <Ionicons name="sparkles" size={11} color="#7C3AED" />
+                <Text style={[styles.lmhText, { color: '#7C3AED' }]}>AI</Text>
+              </>
+            )}
+          </TouchableOpacity>
 
           <View style={[
             styles.currentValueBadge,
