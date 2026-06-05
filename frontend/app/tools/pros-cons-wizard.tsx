@@ -2349,7 +2349,7 @@ function FactorTreeNode({
                   : `${100 - weightTotal}% unallocated. Optional — weights are normalised on scoring.`}
             </Text>
             {childrenList.length > 1 && (
-              <TouchableOpacity onPress={splitEvenly} style={pcWeightStyles.splitBtn} accessibilityLabel="Split weightage evenly">
+              <TouchableOpacity onPress={splitEvenly} style={pcWeightStyles.splitBtn} testID={`pc-split-${factor.id}`} accessibilityLabel="Split weightage evenly">
                 <Ionicons name="git-compare-outline" size={13} color="#7C3AED" />
                 <Text style={pcWeightStyles.splitBtnText}>Split evenly</Text>
               </TouchableOpacity>

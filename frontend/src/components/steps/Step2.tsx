@@ -513,6 +513,7 @@ export default function Step2() {
                     <TouchableOpacity
                       onPress={() => autoSplitWeights(factor.id)}
                       style={sfStyles.autoSplitBtn}
+                      testID={`md-split-${factor.id}`}
                       accessibilityLabel="Split weightage equally"
                     >
                       <Ionicons name="git-compare-outline" size={13} color="#7C3AED" />
@@ -545,6 +546,7 @@ export default function Step2() {
                         <View style={styles.weightInputWrap}>
                           <TextInput
                             style={styles.weightInput}
+                            testID={`md-subweight-${sub.id}`}
                             value={subWeightInputs[sub.id] !== undefined ? subWeightInputs[sub.id] : (sub.weight ? String(sub.weight) : '')}
                             onChangeText={(v) => setSubWeightInputs({ ...subWeightInputs, [sub.id]: v.replace(/[^0-9]/g, '') })}
                             onBlur={() => handleWeightBlur(sub.id, factor.id)}
