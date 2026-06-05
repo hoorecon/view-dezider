@@ -292,13 +292,17 @@ async def md_ai_assess(
             pct = None
 
     if pct is None:
-        try:
-            ev = float(str(expected))
-            av = float(str(actual))
-            if ev > 0:
-                pct = int(max(0, min(100, round(av / ev * 100))))
-        except Exception:
-            pct = None
+        # Numeric-ratio fallback — tolerate unit-suffixed values like "80 INR".
+        import re as _re
+
+        def _num(s):
+            m = _re.search(r"-?\d+(?:\.\d+)?", str(s))
+            return float(m.group()) if m else None
+
+        ev = _num(expected)
+        av = _num(actual)
+        if ev is not None and ev > 0 and av is not None:
+            pct = int(max(0, min(100, round(av / ev * 100))))
     if pct is None:
         raise HTTPException(status_code=502, detail="AI assessment unavailable — please enter % manually.")
 
