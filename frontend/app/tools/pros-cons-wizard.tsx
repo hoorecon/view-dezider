@@ -27,6 +27,8 @@ import api from '../../src/utils/api';
 import ModuleStoreActions from '../../src/components/ModuleStoreActions';
 import ActionItemEditor from '../../src/components/ActionItemEditor';
 import { showAlert } from '../../src/utils/alert';
+import { LMH_VALUES } from '../../src/utils/decisionHelpers';
+import { downloadAssessmentTemplate, importAssessmentTemplate } from '../../src/utils/assessmentXlsx';
 import { LIFE_AREAS as LIFE_AREAS_CANONICAL } from '../../src/constants/lifeAreas';
 import { safeBack, goHome } from '../../src/utils/navigation';
 
@@ -601,6 +603,49 @@ export default function ProsConsWizard() {
   const upsertCell = async (oid: string, fid: string, patch: any) => {
     try { await api.put(`${base}/${id}/assessments/${oid}/${fid}`, patch); await reload(); }
     catch (e: any) { showAlert('Error', e?.response?.data?.detail || 'Failed'); }
+  };
+
+  // AI satisfaction assessment for a single cell (Step 7). Pros-cons only.
+  const [aiBusy, setAiBusy] = useState<Record<string, boolean>>({});
+  const aiAssessCell = async (oid: string, fid: string, actualValue?: string) => {
+    if (module === 'swot') { showAlert('Not available', 'AI assessment is available in the Pros & Cons flow.'); return; }
+    const key = `${oid}_${fid}`;
+    setAiBusy(b => ({ ...b, [key]: true }));
+    try {
+      await api.post(`${base}/${id}/factors/${fid}/ai-assess`, { option_id: oid, actual_value: actualValue });
+      await reload();
+    } catch (e: any) {
+      showAlert('AI assessment', e?.response?.data?.detail || 'Could not auto-assess. Please enter % manually.');
+    } finally {
+      setAiBusy(b => ({ ...b, [key]: false }));
+    }
+  };
+
+  // ─── Phase C: XLS assessment template export / import (pros-cons only) ───
+  const [xlsBusy, setXlsBusy] = useState(false);
+  const handleDownloadTemplate = async () => {
+    setXlsBusy(true);
+    try {
+      await downloadAssessmentTemplate(`${base}/${id}/assessment-template`, 'assessment-template.xlsx');
+    } catch (e: any) {
+      showAlert('Download failed', e?.message || 'Could not download the template.');
+    } finally {
+      setXlsBusy(false);
+    }
+  };
+  const handleImportTemplate = async () => {
+    setXlsBusy(true);
+    try {
+      const res = await importAssessmentTemplate(`${base}/${id}/assessment-import`);
+      if (res) {
+        await reload();
+        showAlert('Import complete', `Applied ${res.applied} value(s) from ${res.rows} row(s).`);
+      }
+    } catch (e: any) {
+      showAlert('Import failed', e?.message || 'Could not import the file.');
+    } finally {
+      setXlsBusy(false);
+    }
   };
 
   // ─── Aggregate (Step 7.4 + 8.10 + Final Guidelines) ─────
@@ -1490,7 +1535,13 @@ export default function ProsConsWizard() {
                         onSave={(text) => upsertCell(o.id, f.id, { actual_value: text })}
                       />
                       {f.unit ? <Text style={[styles.cellLabel, { color: COLORS.textDim }]}>{f.unit}</Text> : null}
-                      <Text style={styles.cellLabel}>Satisfaction %</Text>
+                      <LmhAiButtons
+                        current={Number(cell.assessment_pct ?? 0)}
+                        onPick={(p) => upsertCell(o.id, f.id, { assessment_pct: p })}
+                        onAI={() => aiAssessCell(o.id, f.id, cell.actual_value || '')}
+                        busy={!!aiBusy[`${o.id}_${f.id}`]}
+                      />
+                      <Text style={styles.cellLabel}>Custom %</Text>
                       <DebouncedInput
                         style={[styles.inputSm, { width: 56 }]}
                         keyboardType="number-pad"
@@ -1516,6 +1567,8 @@ export default function ProsConsWizard() {
                     originalNameOf={originalName}
                     onFactorPatch={(fid, patch) => updateFactor(fid, patch)}
                     onCellPatch={(oid, fid, patch) => upsertCell(oid, fid, patch)}
+                    onAIAssess={(oid, fid, actual) => aiAssessCell(oid, fid, actual)}
+                    aiBusy={aiBusy}
                   />
                 )}
                 {!expanded && (
@@ -1589,6 +1642,18 @@ export default function ProsConsWizard() {
             return (
               <View>
                 <Text style={styles.stepTitle}>Step 7 — Prioritize &amp; Assess %</Text>
+                {module !== 'swot' && (
+                  <View style={pcAssess.xlsBar}>
+                    <TouchableOpacity style={pcAssess.xlsBtn} onPress={handleDownloadTemplate} disabled={xlsBusy} testID="pc-xls-download">
+                      <Ionicons name="download-outline" size={15} color="#1F6FEB" />
+                      <Text style={pcAssess.xlsBtnText}>Download template</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={pcAssess.xlsBtn} onPress={handleImportTemplate} disabled={xlsBusy} testID="pc-xls-import">
+                      {xlsBusy ? <ActivityIndicator size="small" color="#1F6FEB" /> : <Ionicons name="cloud-upload-outline" size={15} color="#1F6FEB" />}
+                      <Text style={pcAssess.xlsBtnText}>Import filled</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
                 <Text style={styles.stepHint}>
                   Bottom factor (lowest priority) = <Text style={{ fontWeight: '800' }}>10</Text>. Each step
                   up adds a per-pair gap that <Text style={{ fontWeight: '800' }}>you control individually</Text>{' '}
@@ -2765,6 +2830,8 @@ function SubFactorEditableList({
   originalNameOf,
   onFactorPatch,
   onCellPatch,
+  onAIAssess,
+  aiBusy,
 }: {
   subs: Factor[];
   options: OptionT[];
@@ -2774,6 +2841,8 @@ function SubFactorEditableList({
   originalNameOf: (f: Factor) => string;
   onFactorPatch: (factorId: string, patch: any) => void;
   onCellPatch: (optionId: string, factorId: string, patch: any) => void;
+  onAIAssess: (optionId: string, factorId: string, actual?: string) => void;
+  aiBusy: Record<string, boolean>;
 }) {
   const [open, setOpen] = useState(false);
   if (!subs || subs.length === 0) return null;
@@ -2842,7 +2911,13 @@ function SubFactorEditableList({
                       onSave={(text) => onCellPatch(o.id, s.id, { actual_value: text })}
                     />
                     {s.unit ? <Text style={[styles.cellLabel, { color: COLORS.textDim }]}>{s.unit}</Text> : null}
-                    <Text style={styles.cellLabel}>Satisfaction %</Text>
+                    <LmhAiButtons
+                      current={Number(cell.assessment_pct ?? 0)}
+                      onPick={(p) => onCellPatch(o.id, s.id, { assessment_pct: p })}
+                      onAI={() => onAIAssess(o.id, s.id, cell.actual_value || '')}
+                      busy={!!aiBusy[`${o.id}_${s.id}`]}
+                    />
+                    <Text style={styles.cellLabel}>Custom %</Text>
                     <DebouncedInput
                       style={[styles.inputSm, { width: 56 }]}
                       keyboardType="number-pad"
@@ -2919,6 +2994,56 @@ function SubFactorReadOnlyList({
     </View>
   );
 }
+
+/**
+ * L / M / H + AI satisfaction controls (parity with My Dezider). Pairs with a
+ * Custom % input that the caller renders separately. `current` highlights the
+ * active L/M/H chip; `onAI` triggers backend LLM assessment.
+ */
+function LmhAiButtons({ current, onPick, onAI, busy }: {
+  current: number;
+  onPick: (pct: number) => void;
+  onAI: () => void;
+  busy?: boolean;
+}) {
+  return (
+    <View style={pcAssess.row}>
+      {(['L', 'M', 'H'] as const).map(k => {
+        const v = LMH_VALUES[k];
+        const active = Number(current) === v.percentage;
+        return (
+          <TouchableOpacity
+            key={k}
+            onPress={() => onPick(v.percentage)}
+            style={[pcAssess.lmh, active && { backgroundColor: v.color, borderColor: v.color }]}
+            accessibilityLabel={`${v.label} satisfaction`}
+          >
+            <Text style={[pcAssess.lmhText, active && { color: '#fff' }]}>{k}</Text>
+          </TouchableOpacity>
+        );
+      })}
+      <TouchableOpacity onPress={onAI} disabled={busy} style={pcAssess.aiBtn} accessibilityLabel="AI assess satisfaction">
+        {busy ? <ActivityIndicator size="small" color="#7C3AED" /> : (
+          <>
+            <Ionicons name="sparkles" size={12} color="#7C3AED" />
+            <Text style={pcAssess.aiText}>AI</Text>
+          </>
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const pcAssess = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  lmh: { width: 26, height: 28, borderRadius: 6, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' },
+  lmhText: { fontSize: 12, fontWeight: '800', color: COLORS.textDim },
+  aiBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, height: 28, paddingHorizontal: 8, borderRadius: 6, borderWidth: 1, borderColor: '#DDD6FE', backgroundColor: '#F5F3FF' },
+  aiText: { fontSize: 11, fontWeight: '800', color: '#7C3AED' },
+  xlsBar: { flexDirection: 'row', gap: 8, marginTop: 8, marginBottom: 4, flexWrap: 'wrap' },
+  xlsBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#BBD6FF', backgroundColor: '#EFF6FF' },
+  xlsBtnText: { fontSize: 12.5, fontWeight: '700', color: '#1F6FEB' },
+});
 
 const pcWeightStyles = StyleSheet.create({
   totalBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: '#E2E8F0' },

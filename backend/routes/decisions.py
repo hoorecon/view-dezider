@@ -8,10 +8,11 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, EmailStr
-from fastapi import APIRouter, HTTPException, Depends, Request
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, HTTPException, Depends, Request, UploadFile, File
+from fastapi.responses import StreamingResponse, Response
 from core.database import db
 from core.trash import move_to_trash
+from core.assessment_xlsx import build_template, parse_template
 from core.auth import (
     get_current_user, require_admin, require_root_super_admin,
     get_user_role, get_role_level, ADMIN_ROLES, ROOT_SUPER_ADMIN_EMAIL,
@@ -112,6 +113,113 @@ async def update_decision(decision_id: str, update_data: PRRDecisionUpdate, user
                 option["worth_percentage"] = 0.0
     await db.decisions.update_one({"id": decision_id}, {"$set": update_dict})
     return {"message": "Decision updated successfully"}
+
+
+# ─── XLS assessment template — export / import (Phase C) ───
+def _md_ordered_factors(decision: dict):
+    factors = decision.get("factors", [])
+    mains = [f for f in factors if not f.get("parent_id")]
+    subs_by_parent: Dict[str, List[dict]] = {}
+    for f in factors:
+        if f.get("parent_id"):
+            subs_by_parent.setdefault(f["parent_id"], []).append(f)
+    ordered = []
+    for m in mains:
+        ordered.append({"id": m["id"], "name": m.get("name") or "", "parent_id": None,
+                        "parent_name": "", "expected": m.get("expected_value"), "unit": m.get("unit") or ""})
+        for s in subs_by_parent.get(m["id"], []):
+            ordered.append({"id": s["id"], "name": s.get("name") or "", "parent_id": m["id"],
+                            "parent_name": m.get("name") or "", "expected": s.get("expected_value"), "unit": s.get("unit") or ""})
+    return ordered
+
+
+@router.get("/decisions/{decision_id}/assessment-template")
+async def md_download_assessment_template(decision_id: str, user: dict = Depends(get_current_user)):
+    decision = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not decision:
+        raise HTTPException(status_code=404, detail="Decision not found")
+    factors = _md_ordered_factors(decision)
+    options = [{"id": o["id"], "name": o.get("name") or "Option"} for o in decision.get("options", [])]
+    # cell lookup: option.assessments[].{percentage, unit_value}
+    cell_index: Dict[str, Dict[str, dict]] = {}
+    for o in decision.get("options", []):
+        cell_index[o["id"]] = {a["factor_id"]: a for a in o.get("assessments", []) if a.get("factor_id")}
+
+    def get_cell(oid: str, fid: str) -> Dict[str, Any]:
+        a = (cell_index.get(oid) or {}).get(fid) or {}
+        return {"actual": a.get("unit_value") or "", "pct": a.get("percentage")}
+
+    title = decision.get("title") or "Decision"
+    data = build_template(title, factors, options, get_cell)
+    safe = "".join(ch for ch in title if ch.isalnum() or ch in (" ", "-", "_")).strip()[:40] or "assessment"
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{safe}-assessment.xlsx"'},
+    )
+
+
+@router.post("/decisions/{decision_id}/assessment-import")
+async def md_import_assessment_template(
+    decision_id: str, file: UploadFile = File(...), user: dict = Depends(get_current_user),
+):
+    decision = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not decision:
+        raise HTTPException(status_code=404, detail="Decision not found")
+    try:
+        raw = await file.read()
+        rows = parse_template(raw)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not read the file: {e}")
+
+    factors = decision.get("factors", [])
+    valid_factor_ids = {f["id"] for f in factors}
+    options = decision.get("options", [])
+    opt_by_id = {o["id"]: o for o in options}
+
+    # index rows per option
+    by_option: Dict[str, Dict[str, dict]] = {}
+    applied = 0
+    for r in rows:
+        fid = r.get("factor_id")
+        oid = r.get("option_id")
+        if fid not in valid_factor_ids or oid not in opt_by_id:
+            continue
+        by_option.setdefault(oid, {})[fid] = r
+
+    for oid, fmap in by_option.items():
+        opt = opt_by_id[oid]
+        asmts = opt.setdefault("assessments", [])
+        existing = {a["factor_id"]: a for a in asmts if a.get("factor_id")}
+        for fid, r in fmap.items():
+            a = existing.get(fid)
+            if not a:
+                a = {"factor_id": fid, "percentage": None, "unit_value": "", "assessment_mode": "custom"}
+                asmts.append(a)
+                existing[fid] = a
+            if "actual" in r:
+                a["unit_value"] = r["actual"]
+            if "assessment_pct" in r:
+                a["percentage"] = int(r["assessment_pct"])
+            applied += 1
+
+    # Recompute a flat worth (top-level factors); the app refines sub-factor
+    # roll-up client-side on next load.
+    total_rating = sum(f.get("rating", 0) for f in factors if not f.get("parent_id"))
+    for opt in options:
+        worth = 0.0
+        if total_rating > 0:
+            for a in opt.get("assessments", []):
+                f = next((x for x in factors if x["id"] == a["factor_id"] and not x.get("parent_id")), None)
+                if f and a.get("percentage") is not None:
+                    worth += (f.get("rating", 0) / total_rating) * max(0, min(100, a["percentage"]))
+        opt["worth_percentage"] = round(min(100.0, max(0.0, worth)), 2)
+
+    await db.decisions.update_one(
+        {"id": decision_id, "user_id": user["user_id"]},
+        {"$set": {"options": options, "updated_at": datetime.now(timezone.utc)}},
+    )
+    return {"applied": applied, "rows": len(rows)}
 
 @router.delete("/decisions/{decision_id}")
 async def delete_decision(decision_id: str, user: dict = Depends(get_current_user)):

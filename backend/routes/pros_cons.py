@@ -12,8 +12,10 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
+from fastapi.responses import Response
 from core.database import db
+from core.assessment_xlsx import build_template, parse_template
 from core.trash import move_to_trash
 from core.auth import get_current_user
 
@@ -854,7 +856,180 @@ async def upsert_assessment(
     return {"cell": cell}
 
 
-# ─── Aggregate / rollup — Step #7.4 + Step #8.10 + Final Guidelines ───
+# ─── AI satisfaction assessment for a single (option, factor) cell ───
+@router.post("/{analysis_id}/factors/{factor_id}/ai-assess")
+async def ai_assess_cell(
+    analysis_id: str, factor_id: str,
+    body: Dict[str, Any], user: dict = Depends(get_current_user),
+):
+    """LLM-scored satisfaction % (0-100) for one (option, factor) given the
+    expected/target and the option's actual value. Used by the Step-7 "AI"
+    button (parity with My Dezider). Falls back to a numeric ratio when the
+    LLM is unavailable and both expected & actual are numeric."""
+    doc = await _load_analysis(analysis_id, user["user_id"])
+    factor = next((f for f in doc["factors"] if f["id"] == factor_id), None)
+    if not factor:
+        raise HTTPException(status_code=404, detail="Factor not found")
+    option_id = body.get("option_id")
+    option = next((o for o in doc["options"] if o["id"] == option_id), None)
+    if not option:
+        raise HTTPException(status_code=404, detail="Option not found")
+
+    cell = ((doc.get("assessments") or {}).get(option_id) or {}).get(factor_id) or {}
+    actual = body.get("actual_value")
+    if actual is None or str(actual).strip() == "":
+        actual = cell.get("actual_value")
+    if actual is None or str(actual).strip() == "":
+        raise HTTPException(status_code=400, detail="Enter an Actual value first so AI can assess satisfaction.")
+
+    expected = factor.get("expected_value") or factor.get("target_value")
+    unit = factor.get("unit") or ""
+    fname = factor.get("display_name") or factor.get("name") or "factor"
+    ftype = factor.get("factor_type") or "qualitative"
+
+    pct: Optional[int] = None
+    api_key = os.getenv("EMERGENT_LLM_KEY")
+    if api_key:
+        prompt = (
+            "Score, as a single integer percentage from 0 to 100, how well an option "
+            "satisfies a decision factor versus its expectation. 100 = fully meets/exceeds, "
+            "0 = not at all.\n"
+            f"Decision: {doc.get('title') or doc.get('name') or ''}\n"
+            f"Factor: {fname} (type: {ftype})\n"
+            f"Expected / target: {expected if expected not in (None, '') else 'not specified'} {unit}\n"
+            f"Option: {option.get('name')}\n"
+            f"Actual value / observation: {actual} {unit}\n"
+            'Return ONLY JSON: {"satisfaction_pct": <integer 0-100>}'
+        )
+        try:
+            from core.llm_compat import LlmChat, UserMessage
+            chat = LlmChat(
+                api_key=api_key,
+                session_id=f"pcassess_{user['user_id']}_{uuid.uuid4().hex[:8]}",
+                system_message="You are a careful decision-analysis assessor. Return only valid JSON.",
+            ).with_model("openai", "gpt-4.1-mini")
+            resp = await chat.send_message(UserMessage(text=prompt))
+            txt = (resp or "").strip()
+            if txt.startswith("```"):
+                txt = txt.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+            parsed = json_module.loads(txt)
+            pct = int(round(float(parsed.get("satisfaction_pct"))))
+        except Exception as e:
+            logging.getLogger("pros_cons").warning(f"AI assess fallback: {e}")
+            pct = None
+
+    if pct is None:
+        # Deterministic fallback: numeric ratio (higher actual = better).
+        try:
+            ev = float(str(expected))
+            av = float(str(actual))
+            if ev > 0:
+                pct = int(max(0, min(100, round(av / ev * 100))))
+        except Exception:
+            pct = None
+    if pct is None:
+        raise HTTPException(status_code=502, detail="AI assessment unavailable — please enter % manually.")
+
+    pct = max(0, min(100, pct))
+    derived_cell_value = compute_cell_value(pct, int(factor.get("std_rating", 0) or 0))
+    await db.pros_cons.update_one(
+        {"id": analysis_id, "user_id": user["user_id"]},
+        {"$set": {
+            f"assessments.{option_id}.{factor_id}.assessment_pct": pct,
+            f"assessments.{option_id}.{factor_id}.actual_value": str(actual),
+            f"assessments.{option_id}.{factor_id}.cell_value": derived_cell_value,
+            "updated_at": datetime.now(timezone.utc),
+        }},
+    )
+    return {"assessment_pct": pct, "cell_value": derived_cell_value, "source": "ai" if api_key else "ratio"}
+
+
+# ─── XLS assessment template — export / import (Phase C) ───
+def _ordered_factors_with_parent(doc: dict) -> List[Dict[str, Any]]:
+    """Main factors each followed by their sub-factors, with parent_name."""
+    factors = [f for f in doc["factors"] if not f.get("is_duplicate")]
+    mains = [f for f in factors if not f.get("parent_id")]
+    subs_by_parent: Dict[str, List[dict]] = {}
+    for f in factors:
+        if f.get("parent_id"):
+            subs_by_parent.setdefault(f["parent_id"], []).append(f)
+
+    def name_of(f):
+        return f.get("display_name") or f.get("name") or ""
+
+    ordered: List[Dict[str, Any]] = []
+    for m in mains:
+        ordered.append({"id": m["id"], "name": name_of(m), "parent_id": None,
+                        "parent_name": "", "expected": m.get("expected_value") or m.get("target_value"),
+                        "unit": m.get("unit") or ""})
+        for s in subs_by_parent.get(m["id"], []):
+            ordered.append({"id": s["id"], "name": name_of(s), "parent_id": m["id"],
+                            "parent_name": name_of(m), "expected": s.get("expected_value") or s.get("target_value"),
+                            "unit": s.get("unit") or ""})
+    return ordered
+
+
+@router.get("/{analysis_id}/assessment-template")
+async def download_assessment_template(analysis_id: str, user: dict = Depends(get_current_user)):
+    doc = await _load_analysis(analysis_id, user["user_id"])
+    factors = _ordered_factors_with_parent(doc)
+    options = [{"id": o["id"], "name": o.get("name") or "Option"} for o in doc["options"]]
+    assessments = doc.get("assessments") or {}
+
+    def get_cell(oid: str, fid: str) -> Dict[str, Any]:
+        c = (assessments.get(oid) or {}).get(fid) or {}
+        return {"actual": c.get("actual_value") or "", "pct": c.get("assessment_pct")}
+
+    title = doc.get("title") or doc.get("name") or "Pros & Cons"
+    data = build_template(title, factors, options, get_cell)
+    safe = "".join(ch for ch in title if ch.isalnum() or ch in (" ", "-", "_")).strip()[:40] or "assessment"
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{safe}-assessment.xlsx"'},
+    )
+
+
+@router.post("/{analysis_id}/assessment-import")
+async def import_assessment_template(
+    analysis_id: str, file: UploadFile = File(...), user: dict = Depends(get_current_user),
+):
+    doc = await _load_analysis(analysis_id, user["user_id"])
+    valid_factor_ids = {f["id"] for f in doc["factors"]}
+    valid_option_ids = {o["id"] for o in doc["options"]}
+    std_by_factor = {f["id"]: int(f.get("std_rating", 0) or 0) for f in doc["factors"]}
+
+    try:
+        raw = await file.read()
+        rows = parse_template(raw)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not read the file: {e}")
+
+    field_updates: Dict[str, Any] = {}
+    applied = 0
+    for r in rows:
+        fid = r.get("factor_id")
+        oid = r.get("option_id")
+        if fid not in valid_factor_ids or oid not in valid_option_ids:
+            continue
+        base = f"assessments.{oid}.{fid}"
+        if "actual" in r:
+            field_updates[f"{base}.actual_value"] = r["actual"]
+        if "assessment_pct" in r:
+            pct = int(r["assessment_pct"])
+            field_updates[f"{base}.assessment_pct"] = pct
+            field_updates[f"{base}.cell_value"] = compute_cell_value(pct, std_by_factor.get(fid, 0))
+        if "actual" in r or "assessment_pct" in r:
+            applied += 1
+
+    if field_updates:
+        field_updates["updated_at"] = datetime.now(timezone.utc)
+        await db.pros_cons.update_one(
+            {"id": analysis_id, "user_id": user["user_id"]}, {"$set": field_updates},
+        )
+    return {"applied": applied, "rows": len(rows)}
+
+
 @router.get("/{analysis_id}/aggregate")
 async def aggregate(analysis_id: str, user: dict = Depends(get_current_user)):
     doc = await _load_analysis(analysis_id, user["user_id"])

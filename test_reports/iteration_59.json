@@ -1,0 +1,46 @@
+{
+  "summary": "Iteration 59 — Pros&Cons AI assess + XLS template export/import (Phase C) tested end-to-end on the BACKEND. All 9 pytest cases pass (9/9 = 100%): AI assess (400 on missing actual, 200 returns pct/cell_value/source and persists, 404 on bad factor), Pros&Cons XLS export (returns valid xlsx with attachment header), Pros&Cons XLS round-trip (template seeded with assessment_pct=75 + actual='9500' on a SUB-factor, re-uploaded unchanged → import applied≥1, sub-factor cell unchanged), Pros&Cons import garbage rejected (400), My Dezider XLS export (returns valid xlsx), My Dezider XLS round-trip (main + sub factor assessments survive export→reupload, worth_percentage recomputed >0), My Dezider import garbage rejected (400). Frontend smoke: landing page loads cleanly on mobile viewport 390x844, no console errors (only harmless shadow*/resizeMode deprecation warnings). All four required testIDs confirmed in source: pc-xls-download + pc-xls-import (pros-cons-wizard.tsx:1647,1651), md-xls-download + md-xls-import (Step7.tsx:443,447). LmhAiButtons component exists with L/M/H chips + sparkles AI button (pros-cons-wizard.tsx:3003), but the L/M/H/AI sub-controls have NO testIDs — minor and the same kind of gap flagged in iter58 for the weight UI.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/pros-cons/{id}/factors/{fid}/ai-assess", "issue": "`source` field in the response is set to 'ai' whenever EMERGENT_LLM_KEY is present, even when the LLM call ACTUALLY failed and the numeric-ratio fallback produced the percentage. During this run the backend logs showed `AI assess fallback: ... Budget has been exceeded! Current cost: 0.4254, Max budget: 0.4` yet the API still returned source='ai'. Recommend tracking whether the LLM branch succeeded and reporting source='ratio' on fallback so the frontend can show an accurate label. Reference: routes/pros_cons.py:944."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "LmhAiButtons (Pros&Cons Step 7 main + sub-factor cells)", "issue": "L/M/H chips and the AI (sparkles) button render correctly but have NO testIDs. Cannot be reliably driven by Playwright for L/M/H/AI flow regression. Reference: /app/frontend/app/tools/pros-cons-wizard.tsx:3003-3035", "testID": "missing (suggest pc-lmh-L/M/H-{oid}-{fid} and pc-ai-{oid}-{fid})", "priority": "LOW"},
+      {"component": "Pros&Cons Step 7 Custom % TextInput", "issue": "The Custom % numeric input adjacent to the L/M/H/AI chips has no obvious dedicated testID. Recommend pc-custom-pct-{oid}-{fid} for parity with My Dezider.", "testID": "missing", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter59_xls_ai_assess.py",
+    "/app/test_reports/pytest/iter59.xml"
+  ],
+  "action_items": [
+    "Add testIDs to LmhAiButtons (and the paired Custom % input) so future agents can deep-test the L/M/H + AI flow in browser. Suggested: testID={`pc-lmh-${k}-${oid}-${fid}`} on each chip, testID={`pc-ai-${oid}-${fid}`} on AI button, testID={`pc-custom-pct-${oid}-${fid}`} on the percent input. Same in Step7.tsx for My Dezider parity.",
+    "Optional: also add testIDs to the L/M/H equivalents in My Dezider Step7.tsx if not yet present.",
+    "Frontend deep-flow test (download triggers a real file, file picker upload round-trip) was deliberately NOT performed — per the agent-to-agent note this is outside Playwright's reach for the web preview. Main agent can self-verify by clicking 'Download template' in browser and re-uploading via 'Import filled'."
+  ],
+  "critical_code_review_comments": [
+    "POST /api/pros-cons/{id}/factors/{fid}/ai-assess correctly enforces presence of Actual via 400 with descriptive detail (routes/pros_cons.py:880-883), and falls back to numeric-ratio when LLM unavailable. Verified by test_ai_assess_requires_actual.",
+    "core/assessment_xlsx.py uses a HIDDEN row-1 machine header (factor_id col + per-option actual:/pct: tokens) — robust to column reorder. Round-trip verified twice (Pros&Cons sub-factor + My Dezider main+sub). Implementation is clean and shared correctly between the two flows.",
+    "routes/decisions.py:184-216 properly upserts assessments by (option, factor), preserving prior fields and only mutating unit_value / percentage when present in the import row. Worth recomputation uses top-level factors only — sub-factor refinement is deferred to the client (documented in code).",
+    "routes/pros_cons.py:933-944 persists assessment_pct + actual_value + cell_value via $set on nested fields (concurrency-safe), consistent with the same pattern used for PUT /assessments. Good.",
+    "Both XLS endpoints return correct Content-Disposition (attachment; filename=...) with sanitized titles (max 40 chars, alnum + space/-/_). Solid."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter59_xls_ai_assess.py (NEW — 9 tests, JUnit /app/test_reports/pytest/iter59.xml)"
+  ],
+  "success_rate": {
+    "backend": "100% (9/9)",
+    "frontend": "Smoke only — landing loads, no errors. Deep XLS+AI button flow not exercised in browser (Playwright cannot drive file download/picker). testIDs for the wizard top-bar XLS buttons (pc-xls-* / md-xls-*) confirmed present in source."
+  },
+  "seed_data_creation": "Module-scoped fixtures create one TEST_iter59_xls_<ts> pros_cons analysis (1 option, 1 main factor 'Salary' + 1 sub-factor 'Bonus') and one TEST_iter59_md_<ts> decision (factors Cost + Tax sub-factor, 1 option). Both are deleted in module teardown — no persistent test data left behind.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use /app/backend/tests/test_iter59_xls_ai_assess.py as the regression baseline for AI-assess + XLS template export/import (both flows). The shared module core/assessment_xlsx.py is exercised through both routers, so a single failure there would surface across multiple tests. Frontend env var is EXPO_PUBLIC_BACKEND_URL. testIDs present: pc-xls-download, pc-xls-import (Step 7 header in pros-cons-wizard.tsx), md-xls-download, md-xls-import (Step7.tsx). testIDs MISSING for the L/M/H/AI/Custom % cell sub-controls — see action items. The login user (harden_1777921741@example.com / HardenPass2026!) already has whatsapp_verified so no OTP gate is needed.",
+  "rca_of_issue": "N/A — feature works correctly at the backend; sub-factor round-trip integrity verified for both flows."
+}

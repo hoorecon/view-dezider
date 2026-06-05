@@ -9,6 +9,8 @@ import { GradientButton } from '../GradientButton';
 import { useDecision } from '../../context/DecisionContext';
 import { styles } from '../../styles/decisionStyles';
 import { LMH_VALUES, effectiveFactorPct } from '../../utils/decisionHelpers';
+import { downloadAssessmentTemplate, importAssessmentTemplate } from '../../utils/assessmentXlsx';
+import { showAlert } from '../../utils/alert';
 import type { Factor } from '../../types/decision';
 
 export default function Step7() {
@@ -19,8 +21,35 @@ export default function Step7() {
     customInputValues, setCustomInputValues,
     actualValues, setActualValues,
     calculateDynamicWorth, calculateAutoPercentage,
-    setCurrentStep,
+    setCurrentStep, fetchDecision,
   } = useDecision();
+
+  // ─── Phase C: XLS assessment template export / import ───
+  const [xlsBusy, setXlsBusy] = useState(false);
+  const handleDownloadTemplate = async () => {
+    setXlsBusy(true);
+    try {
+      await downloadAssessmentTemplate(`/decisions/${decision.id}/assessment-template`, 'assessment-template.xlsx');
+    } catch (e: any) {
+      showAlert('Download failed', e?.message || 'Could not download the template.');
+    } finally {
+      setXlsBusy(false);
+    }
+  };
+  const handleImportTemplate = async () => {
+    setXlsBusy(true);
+    try {
+      const res = await importAssessmentTemplate(`/decisions/${decision.id}/assessment-import`);
+      if (res) {
+        await fetchDecision();
+        showAlert('Import complete', `Applied ${res.applied} value(s) from ${res.rows} row(s).`);
+      }
+    } catch (e: any) {
+      showAlert('Import failed', e?.message || 'Could not import the file.');
+    } finally {
+      setXlsBusy(false);
+    }
+  };
 
   const [fetchingData, setFetchingData] = useState<{ [key: string]: boolean }>({});
   const [fetchingStore, setFetchingStore] = useState<{ [key: string]: boolean }>({});
@@ -410,6 +439,17 @@ export default function Step7() {
         Rate how well each option satisfies each factor using quick LMH toggles or specific percentage.
       </Text>
 
+      <View style={mdXls.bar}>
+        <TouchableOpacity style={mdXls.btn} onPress={handleDownloadTemplate} disabled={xlsBusy} testID="md-xls-download">
+          <Ionicons name="download-outline" size={15} color="#1F6FEB" />
+          <Text style={mdXls.btnText}>Download template</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={mdXls.btn} onPress={handleImportTemplate} disabled={xlsBusy} testID="md-xls-import">
+          {xlsBusy ? <ActivityIndicator size="small" color="#1F6FEB" /> : <Ionicons name="cloud-upload-outline" size={15} color="#1F6FEB" />}
+          <Text style={mdXls.btnText}>Import filled</Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.voiceInputRow}>
         <View style={styles.voiceHintBox}>
           <Ionicons name="mic-outline" size={16} color={COLORS.primary} />
@@ -562,3 +602,9 @@ export default function Step7() {
     </View>
   );
 }
+
+const mdXls = StyleSheet.create({
+  bar: { flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' },
+  btn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#BBD6FF', backgroundColor: '#EFF6FF' },
+  btnText: { fontSize: 12.5, fontWeight: '700', color: '#1F6FEB' },
+});
