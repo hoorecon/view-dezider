@@ -186,6 +186,24 @@ export default function Step2() {
     updateFactor(factorId, { weight: clamped });
   };
 
+  // Auto-split 100% equally across all sub-factors of a parent (largest-remainder
+  // so the total is exactly 100). Clears the local input cache so the UI repaints.
+  const autoSplitWeights = (parentId: string) => {
+    const subs = getSubFactors(parentId);
+    if (subs.length === 0) return;
+    const base = Math.floor(100 / subs.length);
+    const remainder = 100 - base * subs.length;
+    const updated = decision.factors.map((f) => {
+      const idx = subs.findIndex((s) => s.id === f.id);
+      if (idx === -1) return f;
+      return { ...f, weight: base + (idx < remainder ? 1 : 0) };
+    });
+    saveDecision({ factors: updated });
+    const cleared = { ...subWeightInputs };
+    subs.forEach((s) => { delete cleared[s.id]; });
+    setSubWeightInputs(cleared);
+  };
+
   const topLevelFactors = decision.factors.filter(f => !f.parent_id);
   const getSubFactors = (parentId: string) =>
     decision.factors.filter(f => f.parent_id === parentId).sort((a, b) => a.order - b.order);
@@ -491,7 +509,24 @@ export default function Step2() {
                   <Text style={[styles.weightProgressText, weightTotal === 100 && { color: '#10B981' }, weightTotal > 100 && { color: '#EF4444' }]}>
                     {weightTotal}/100%
                   </Text>
+                  {subs.length > 1 && (
+                    <TouchableOpacity
+                      onPress={() => autoSplitWeights(factor.id)}
+                      style={sfStyles.autoSplitBtn}
+                      accessibilityLabel="Split weightage equally"
+                    >
+                      <Ionicons name="git-compare-outline" size={13} color="#7C3AED" />
+                      <Text style={sfStyles.autoSplitBtnText}>Split evenly</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
+                {weightTotal !== 100 && (
+                  <Text style={sfStyles.weightHint}>
+                    {weightTotal > 100
+                      ? `Total exceeds 100% by ${weightTotal - 100}. Adjust or tap “Split evenly”.`
+                      : `${100 - weightTotal}% left to allocate. You can continue — weights are normalised — or tap “Split evenly”.`}
+                  </Text>
+                )}
 
                 {subs.map((sub) => {
                   const subHasExpected = sub.expected_value !== undefined && sub.expected_value !== null;
@@ -712,4 +747,10 @@ const dsStyles = StyleSheet.create({
   dsFieldLabel: { fontSize: 11, fontWeight: '600', color: COLORS.textMuted, marginTop: 4 },
   dsFieldInput: { height: 36, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 10, fontSize: 12, color: COLORS.textPrimary, backgroundColor: '#FFF' },
   dsHint: { fontSize: 10, color: COLORS.textMuted, fontStyle: 'italic', marginTop: 2 },
+});
+
+const sfStyles = StyleSheet.create({
+  autoSplitBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, backgroundColor: '#F5F3FF', borderWidth: 1, borderColor: '#DDD6FE', marginLeft: 8 },
+  autoSplitBtnText: { fontSize: 11, fontWeight: '700', color: '#7C3AED' },
+  weightHint: { fontSize: 10.5, color: COLORS.textMuted, marginTop: 4, marginBottom: 2, lineHeight: 15 },
 });
