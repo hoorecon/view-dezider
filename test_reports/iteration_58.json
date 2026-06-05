@@ -1,0 +1,45 @@
+{
+  "summary": "Sub-factor weightage (Phase A) + sub-factor assessment rollup (Phase B) tested end-to-end on the BACKEND for the Pros & Cons flow. All 5 new pytest cases pass (5/5 = 100%): (1) PUT /api/pros-cons/{id}/factors/{factor_id} persists `weight`; (2) weighted-average rollup (80%@70 + 20%@40 → 64% → cell_value matches std_rating*0.64); (3) equal-mean rollup when sub weights are 0 ((100+50)/2 = 75%); (4) parent fallback when no sub is assessed (uses main factor's own assessment_pct); (5) mandatory knockout disqualifies the option when the ROLLED-UP pct is below threshold (40% < 60% → disqualified=True, main factor in disqualifying_factor_ids). Frontend landing page boots cleanly (no console errors, mobile viewport 390x844). Step 2 / Step 5 weight UI and Step 7 sub-factor rollup UI were NOT deep-clicked because their inputs lack testIDs — see action items.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Step2.tsx (My Dezider sub-factor weight input)", "issue": "Sub-factor weight TextInput and the 'Split evenly' button have NO testID. Cannot be reliably selected by playwright. Reference: /app/frontend/src/components/steps/Step2.tsx:516,547", "testID": "missing", "priority": "MEDIUM"},
+      {"component": "Step7.tsx (My Dezider sub-factor assessment row)", "issue": "Sub-factor Actual/Custom % inputs in Step 7 have NO testID. Reference: /app/frontend/src/components/steps/Step7.tsx:313-499", "testID": "missing", "priority": "MEDIUM"},
+      {"component": "pros-cons-wizard SubFactorEditableList split-evenly", "issue": "Step 5 'Split evenly' button + weight-total badge in Pros & Cons wizard have NO testID (only the per-sub weight TextInput has `pc-subweight-{id}`). Reference: /app/frontend/app/tools/pros-cons-wizard.tsx:2352", "testID": "partial — only pc-subweight-{id}", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter58_subfactor_weightage.py",
+    "/app/test_reports/pytest/iter58.xml"
+  ],
+  "action_items": [
+    "Add testID props to the sub-factor weight UI so future agents can deep-test the flow: Step2 weight TextInput → testID={`dz-subweight-${sub.id}`}, Split-evenly button → testID={`dz-split-evenly-${factor.id}`}, weight-total badge → testID={`dz-weight-total-${factor.id}`}.",
+    "Same in Step7 sub-factor row (custom % input, L/M/H buttons, parent-derived % badge) and in pros-cons-wizard `SubFactorEditableList` (split-evenly button → testID `pc-split-evenly-{parent_id}`, total badge → `pc-weight-total-{parent_id}`).",
+    "Frontend deep UI verification (Step 2 weight entry → save → Split evenly → 100 sum; Step 7 sub-rating → parent badge updates → option Worth %) should be performed by the main agent once testIDs are added, or by a follow-up agent."
+  ],
+  "critical_code_review_comments": [
+    "compute_option_rollups (/app/backend/models/decision_framework_models.py:211-235) correctly implements the spec: weighted when any sub has weight>0, equal-mean otherwise, parent fallback (returns None) when no sub_assessment_pct>0. Verified by tests.",
+    "effectiveFactorPct in decisionHelpers.ts mirrors the same 3-branch logic on the frontend, ensuring the option Worth % aggregation in Step 7 matches what the backend computes for Pros & Cons — good parity.",
+    "pros-cons-wizard.tsx is 3380 lines — flagged previously but worsened by Phase A/B additions (SubFactorEditableList inline). Recommend extracting Step5-WeightedSubList + Step7-SubFactorEditableList into separate components.",
+    "/app/backend/routes/pros_cons.py:387-413 `update_factor` correctly added `weight` to the allow-list — verified by test_put_factor_weight_persists.",
+    "Step 7 knockout (decision_framework_models.py:264-268) now uses the effective rolled-up Assess %, so a main factor without its own cell but with assessed subs can still trigger DQ — verified."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter58_subfactor_weightage.py (NEW — 5 tests)"
+  ],
+  "success_rate": {
+    "backend": "100% (5/5)",
+    "frontend": "Smoke only — landing loads, no console errors. Deep weight-UI flow not exercised (no testIDs)."
+  },
+  "seed_data_creation": "Each pytest run creates ONE 'TEST_iter58_weightage_<ts>' pros_cons analysis with 1 option + 1 main factor + 2 sub-factors, then deletes it in the module-scoped fixture teardown. No persistent test data left behind.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use /app/backend/tests/test_iter58_subfactor_weightage.py as the regression baseline for the sub-factor weight + rollup feature. The login user (harden_1777921741@example.com) already has WhatsApp verified so no OTP gate is needed for direct API tests. UI testIDs for the new weight widgets are MISSING in Step2/Step5/Step7 — the only one present is `pc-subweight-{id}` on the Pros & Cons sub-factor weight TextInput. The frontend env var is `EXPO_PUBLIC_BACKEND_URL` (not `EXPO_BACKEND_URL`) → https://dashboard-rewire.preview.emergentagent.com.",
+  "rca_of_issue": "N/A — feature works correctly at the backend. Only gap: frontend lacks testIDs for the new weight UI which blocks automated browser regression. Action items list the exact testID names to add."
+}

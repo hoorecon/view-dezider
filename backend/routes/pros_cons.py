@@ -399,6 +399,7 @@ async def update_factor(analysis_id: str, factor_id: str, body: Dict[str, Any], 
         "is_duplicate",   # Step 4 — non-destructive de-dup flag (audit history)
         "display_name",   # Step 5+ rename override; original `name` preserved for Steps 1-4
         "priority_gap_pct",  # Step 7 — per-pair gap above the next lower factor
+        "weight",         # Step 5 — sub-factor weightage (% split under a main factor)
     }
     for k, v in body.items():
         if k in allowed:

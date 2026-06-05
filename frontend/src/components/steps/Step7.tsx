@@ -8,7 +8,7 @@ import { Card } from '../Card';
 import { GradientButton } from '../GradientButton';
 import { useDecision } from '../../context/DecisionContext';
 import { styles } from '../../styles/decisionStyles';
-import { LMH_VALUES } from '../../utils/decisionHelpers';
+import { LMH_VALUES, effectiveFactorPct } from '../../utils/decisionHelpers';
 import type { Factor } from '../../types/decision';
 
 export default function Step7() {
@@ -24,6 +24,8 @@ export default function Step7() {
 
   const [fetchingData, setFetchingData] = useState<{ [key: string]: boolean }>({});
   const [fetchingStore, setFetchingStore] = useState<{ [key: string]: boolean }>({});
+  // Per option×factor toggle for the optional direct/general assessment fallback.
+  const [directOpen, setDirectOpen] = useState<{ [key: string]: boolean }>({});
 
   // Fetch pre-populated data from Solutions Store for options linked to a solution
   const fetchFromSolutionStore = async (optionId: string, solutionId: string) => {
@@ -494,21 +496,12 @@ export default function Step7() {
                 const subs = decision.factors.filter(f => f.parent_id === factor.id).sort((a, b) => a.order - b.order);
                 const hasSubs = subs.length > 0;
 
-                const getParentWeightedPct = (): number | null => {
-                  if (!hasSubs) return null;
-                  let wSum = 0; let wTotal = 0; let anyAssessed = false;
-                  for (const sub of subs) {
-                    const sa = option.assessments.find(a => a.factor_id === sub.id);
-                    const sw = sub.weight || 0;
-                    if (sa?.percentage !== undefined && sa?.percentage !== null && sw > 0) {
-                      wSum += (sa.percentage * sw) / 100; wTotal += sw; anyAssessed = true;
-                    }
-                  }
-                  if (!anyAssessed || wTotal === 0) return null;
-                  return Math.round(wSum * (100 / wTotal) * 10) / 10;
-                };
-
-                const parentPct = hasSubs ? getParentWeightedPct() : null;
+                const parentPct = hasSubs ? effectiveFactorPct(factor, decision.factors, option.assessments) : null;
+                const anySubAssessed = hasSubs && subs.some(s => {
+                  const sa = option.assessments.find(a => a.factor_id === s.id);
+                  return sa?.percentage !== undefined && sa?.percentage !== null;
+                });
+                const directKey = `${option.id}_${factor.id}`;
 
                 if (!hasSubs) return renderFactorAssessment(option, factor, false, factor.rating);
 
@@ -534,6 +527,24 @@ export default function Step7() {
                       </View>
                     </View>
                     {subs.map((sub) => renderFactorAssessment(option, sub, true))}
+
+                    {/* General (direct) assessment fallback — used only when no  */}
+                    {/* sub-factor above is rated. Keeps sub-factor rating optional. */}
+                    <TouchableOpacity
+                      onPress={() => setDirectOpen(o => ({ ...o, [directKey]: !o[directKey] }))}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, marginTop: 2 }}
+                      accessibilityLabel={`Assess ${factor.name} directly`}
+                    >
+                      <Ionicons name={directOpen[directKey] ? 'chevron-down' : 'chevron-forward'} size={13} color={COLORS.textMuted} />
+                      <Text style={{ fontSize: 11, color: COLORS.textMuted, fontStyle: 'italic', flex: 1 }}>
+                        Or assess “{factor.name}” directly{anySubAssessed ? ' (ignored — sub-factors are rated)' : ' (used as general assessment)'}
+                      </Text>
+                    </TouchableOpacity>
+                    {directOpen[directKey] && (
+                      <View style={anySubAssessed ? { opacity: 0.5 } : undefined}>
+                        {renderFactorAssessment(option, factor, false)}
+                      </View>
+                    )}
                   </View>
                 );
               })}

@@ -40,6 +40,7 @@ interface Factor {
   factor_type: 'subjective' | 'objective'; improvable: 'y' | 'y_bf' | 'n';
   my_expectation?: string | null; others_expectations?: string | null; market_standard?: string | null;
   realistic_gap_pct: number; realistic_gap_value: number; realistic_rating?: number | null;
+  weight?: number | null;   // Step 5 — sub-factor weightage (% split under its main factor)
 }
 interface ProConItem { id: string; text: string; description?: string; importance: number; promoted_factor_id?: string | null; }
 interface OptionT { id: string; name: string; description?: string; pros: ProConItem[]; cons: ProConItem[]; }
@@ -1328,7 +1329,7 @@ export default function ProsConsWizard() {
           {step === 5 && (
             <View>
               <Text style={styles.stepTitle}>Step 5 — Review Factor Tree</Text>
-              <Text style={styles.stepHint}>Direct factors with their sub-factors (collapsible). Sub-factor-level rating is reserved for a future release — rate at the parent level for now.</Text>
+              <Text style={styles.stepHint}>Direct factors with their sub-factors (collapsible). Set each sub-factor's weightage % (split under its parent) — tap “Split evenly” to balance to 100%. Weights are optional and normalised on scoring.</Text>
               {directFactors.map(f => (
                 <FactorTreeNode
                   key={f.id}
@@ -1339,6 +1340,7 @@ export default function ProsConsWizard() {
                   originalNameOf={originalName}
                   onRename={(fid, newName) => updateFactor(fid, { display_name: newName })}
                   onRevertName={(fid) => updateFactor(fid, { display_name: null })}
+                  onSetWeight={(fid, w) => updateFactor(fid, { weight: w })}
                 />
               ))}
               <NextBack onBack={() => persistStep(4)} onNext={() => persistStep(6)} />
@@ -2276,6 +2278,7 @@ function FactorTreeNode({
   originalNameOf,
   onRename,
   onRevertName,
+  onSetWeight,
 }: {
   factor: Factor;
   childrenList: Factor[];
@@ -2289,8 +2292,29 @@ function FactorTreeNode({
   onRename: (factorId: string, newDisplayName: string) => void | Promise<void>;
   /** Clear the rename — PUT display_name=null. Reverts to original `name`. */
   onRevertName: (factorId: string) => void | Promise<void>;
+  /** Persist a sub-factor weight via PUT weight */
+  onSetWeight: (factorId: string, weight: number) => void | Promise<void>;
 }) {
   const [open, setOpen] = useState(true);
+  const [wInputs, setWInputs] = useState<Record<string, string>>({});
+  const hasSubs = childrenList.length > 0;
+  const weightTotal = childrenList.reduce((s, c) => s + (Number(c.weight) || 0), 0);
+
+  const commitWeight = (childId: string) => {
+    const raw = (wInputs[childId] ?? '').trim();
+    if (raw === '') return;
+    const clamped = Math.min(100, Math.max(0, parseInt(raw, 10) || 0));
+    onSetWeight(childId, clamped);
+  };
+
+  const splitEvenly = () => {
+    if (childrenList.length === 0) return;
+    const base = Math.floor(100 / childrenList.length);
+    const remainder = 100 - base * childrenList.length;
+    childrenList.forEach((c, i) => onSetWeight(c.id, base + (i < remainder ? 1 : 0)));
+    setWInputs({});
+  };
+
   return (
     <View style={styles.treeNode}>
       <View style={styles.treeHead}>
@@ -2305,23 +2329,63 @@ function FactorTreeNode({
           onRename={onRename}
           onRevertName={onRevertName}
         />
-        <Text style={styles.factorMeta}>{childrenList.length} sub</Text>
-      </View>
-      {open && childrenList.map(c => (
-        <View key={c.id} style={styles.treeChild}>
-          <View style={[styles.sourceTag, { backgroundColor: c.source === 'pro' ? COLORS.pro : c.source === 'con' ? COLORS.con : COLORS.direct }]}>
-            <Text style={styles.sourceTagText}>{c.source === 'direct' ? 'D' : c.source === 'pro' ? 'P' : 'C'}</Text>
+        {hasSubs ? (
+          <View style={[pcWeightStyles.totalBadge, weightTotal === 100 && pcWeightStyles.totalOk, weightTotal > 100 && pcWeightStyles.totalOver]}>
+            <Text style={[pcWeightStyles.totalText, weightTotal === 100 && { color: '#fff' }, weightTotal > 100 && { color: '#fff' }]}>{weightTotal}%</Text>
           </View>
-          <RenamableFactorRow
-            factor={c}
-            displayNameOf={displayNameOf}
-            hasRenameOf={hasRenameOf}
-            originalNameOf={originalNameOf}
-            onRename={onRename}
-            onRevertName={onRevertName}
-          />
+        ) : (
+          <Text style={styles.factorMeta}>{childrenList.length} sub</Text>
+        )}
+      </View>
+
+      {open && hasSubs && (
+        <View style={{ marginTop: 6 }}>
+          <View style={pcWeightStyles.splitRow}>
+            <Text style={pcWeightStyles.weightHint}>
+              {weightTotal === 100
+                ? 'Weightage split is balanced (100%).'
+                : weightTotal > 100
+                  ? `Over by ${weightTotal - 100}%. Adjust or split evenly — weights are normalised.`
+                  : `${100 - weightTotal}% unallocated. Optional — weights are normalised on scoring.`}
+            </Text>
+            {childrenList.length > 1 && (
+              <TouchableOpacity onPress={splitEvenly} style={pcWeightStyles.splitBtn} accessibilityLabel="Split weightage evenly">
+                <Ionicons name="git-compare-outline" size={13} color="#7C3AED" />
+                <Text style={pcWeightStyles.splitBtnText}>Split evenly</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {childrenList.map(c => (
+            <View key={c.id} style={styles.treeChild}>
+              <View style={[styles.sourceTag, { backgroundColor: c.source === 'pro' ? COLORS.pro : c.source === 'con' ? COLORS.con : COLORS.direct }]}>
+                <Text style={styles.sourceTagText}>{c.source === 'direct' ? 'D' : c.source === 'pro' ? 'P' : 'C'}</Text>
+              </View>
+              <RenamableFactorRow
+                factor={c}
+                displayNameOf={displayNameOf}
+                hasRenameOf={hasRenameOf}
+                originalNameOf={originalNameOf}
+                onRename={onRename}
+                onRevertName={onRevertName}
+              />
+              <View style={pcWeightStyles.weightWrap}>
+                <TextInput
+                  style={pcWeightStyles.weightInput}
+                  value={wInputs[c.id] !== undefined ? wInputs[c.id] : (c.weight ? String(c.weight) : '')}
+                  onChangeText={(v) => setWInputs({ ...wInputs, [c.id]: v.replace(/[^0-9]/g, '') })}
+                  onBlur={() => commitWeight(c.id)}
+                  keyboardType="number-pad"
+                  placeholder="0"
+                  placeholderTextColor={COLORS.textDim}
+                  testID={`pc-subweight-${c.id}`}
+                />
+                <Text style={pcWeightStyles.weightPct}>%</Text>
+              </View>
+            </View>
+          ))}
         </View>
-      ))}
+      )}
     </View>
   );
 }
@@ -2723,7 +2787,7 @@ function SubFactorEditableList({
       >
         <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={16} color={COLORS.textDim} />
         <Text style={[styles.factorMeta, { color: COLORS.textDim, fontWeight: '600' }]}>
-          Sub-factors ({subs.length}) — data collection (optional, not scored)
+          Sub-factors ({subs.length}) — rate & weight; rolls up into this factor
         </Text>
       </TouchableOpacity>
       {open && (
@@ -2735,6 +2799,11 @@ function SubFactorEditableList({
                   <Text style={styles.sourceTagText}>{s.source === 'direct' ? 'D' : s.source === 'pro' ? 'P' : 'C'}</Text>
                 </View>
                 <Text style={[styles.factorName, { flex: 1 }]} numberOfLines={2}>{displayNameOf(s)}</Text>
+                {s.weight ? (
+                  <View style={pcWeightStyles.totalBadge}>
+                    <Text style={pcWeightStyles.totalText}>wt {s.weight}%</Text>
+                  </View>
+                ) : null}
               </View>
               {hasRenameOf(s) && (
                 <Text style={[styles.factorMeta, { color: COLORS.textDim, fontStyle: 'italic' }]}>
@@ -2781,7 +2850,7 @@ function SubFactorEditableList({
                       onSave={(text) => onCellPatch(o.id, s.id, { assessment_pct: Math.max(0, Math.min(100, parseInt(text, 10) || 0)) })}
                     />
                     <Text style={[styles.cellValue, { color: COLORS.textDim }]}>
-                      (info only)
+                      {s.weight ? `× ${s.weight}%` : 'equal wt'}
                     </Text>
                   </View>
                 );
@@ -2850,6 +2919,21 @@ function SubFactorReadOnlyList({
     </View>
   );
 }
+
+const pcWeightStyles = StyleSheet.create({
+  totalBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: '#E2E8F0' },
+  totalOk: { backgroundColor: '#10B981' },
+  totalOver: { backgroundColor: '#EF4444' },
+  totalText: { fontSize: 11, fontWeight: '800', color: '#475569' },
+  splitRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6, paddingHorizontal: 4 },
+  weightHint: { flex: 1, fontSize: 10.5, color: COLORS.textDim, lineHeight: 15 },
+  splitBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, backgroundColor: '#F5F3FF', borderWidth: 1, borderColor: '#DDD6FE' },
+  splitBtnText: { fontSize: 11, fontWeight: '700', color: '#7C3AED' },
+  weightWrap: { flexDirection: 'row', alignItems: 'center', gap: 2, marginLeft: 6 },
+  weightInput: { minWidth: 38, height: 30, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 6, fontSize: 13, fontWeight: '700', color: COLORS.text, textAlign: 'center', backgroundColor: '#fff' },
+  weightPct: { fontSize: 12, color: COLORS.textDim, fontWeight: '700' },
+});
+
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.bg },

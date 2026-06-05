@@ -123,31 +123,8 @@ export const calculateDynamicWorth = (
   const totalRating = topLevel.reduce((sum, f) => sum + f.rating, 0);
   if (totalRating === 0) return { worth: 0, assessedCount: 0, totalCount: totalFactors };
 
-  const getEffectivePercentage = (factor: Factor): number | null => {
-    const subs = factors.filter(f => f.parent_id === factor.id);
-
-    if (subs.length === 0) {
-      const assessment = option.assessments.find(a => a.factor_id === factor.id);
-      return assessment?.percentage ?? null;
-    }
-
-    let weightedSum = 0;
-    let totalWeight = 0;
-    let anyAssessed = false;
-
-    for (const sub of subs) {
-      const subAssessment = option.assessments.find(a => a.factor_id === sub.id);
-      const subWeight = sub.weight || 0;
-      if (subAssessment?.percentage !== undefined && subAssessment?.percentage !== null && subWeight > 0) {
-        weightedSum += (subAssessment.percentage * subWeight) / 100;
-        totalWeight += subWeight;
-        anyAssessed = true;
-      }
-    }
-
-    if (!anyAssessed || totalWeight === 0) return null;
-    return Math.round(weightedSum * (100 / totalWeight) * 10) / 10;
-  };
+  const getEffectivePercentage = (factor: Factor): number | null =>
+    effectiveFactorPct(factor, factors, option.assessments);
 
   let weightedSum = 0;
   let assessedCount = 0;
@@ -173,29 +150,51 @@ export const calculateDynamicWorth = (
   };
 };
 
+/**
+ * Effective satisfaction % for a (possibly parented) factor.
+ *
+ * Rules (sub-factor assessment is OPTIONAL):
+ *  - No sub-factors → use the factor's own assessment %.
+ *  - Has sub-factors, ≥1 assessed (manual % or AI/value-derived %):
+ *      • if assessed subs carry weights → weighted average normalised by their
+ *        total weight (the un-allocated weight is redistributed across them);
+ *      • if no weights are set → the remaining % is split EQUALLY → simple mean.
+ *  - Has sub-factors but NONE assessed → fall back to the parent's own direct
+ *    ("general") assessment %, if the user entered one; else null (un-assessed).
+ */
+export const effectiveFactorPct = (
+  factor: Factor,
+  factors: Factor[],
+  assessments: { factor_id: string; percentage?: number | null }[]
+): number | null => {
+  const ownPct = (): number | null => {
+    const a = assessments.find(a => a.factor_id === factor.id);
+    return a?.percentage ?? null;
+  };
+
+  const subs = factors.filter(f => f.parent_id === factor.id);
+  if (subs.length === 0) return ownPct();
+
+  const assessed = subs
+    .map(s => ({ s, a: assessments.find(a => a.factor_id === s.id) }))
+    .filter(x => x.a?.percentage !== undefined && x.a?.percentage !== null);
+
+  // No sub-factor assessed → direct/general assessment of the main factor.
+  if (assessed.length === 0) return ownPct();
+
+  const totalWeight = assessed.reduce((sum, x) => sum + (x.s.weight || 0), 0);
+  if (totalWeight > 0) {
+    const wSum = assessed.reduce((sum, x) => sum + ((x.a!.percentage as number) * (x.s.weight || 0)) / 100, 0);
+    return Math.round(wSum * (100 / totalWeight) * 10) / 10;
+  }
+  // No weights set → distribute equally (simple mean of assessed sub %s).
+  const mean = assessed.reduce((sum, x) => sum + (x.a!.percentage as number), 0) / assessed.length;
+  return Math.round(mean * 10) / 10;
+};
+
 // Get effective assessment % for a factor (handles sub-factor aggregation)
 export const getFactorAssessmentPct = (
   factor: Factor,
   factors: Factor[],
   assessments: { factor_id: string; percentage?: number | null }[]
-): number | null => {
-  const subs = factors.filter(f => f.parent_id === factor.id);
-  if (subs.length === 0) {
-    const a = assessments.find(a => a.factor_id === factor.id);
-    return a?.percentage ?? null;
-  }
-  let wSum = 0;
-  let wTotal = 0;
-  let any = false;
-  for (const sub of subs) {
-    const sa = assessments.find(a => a.factor_id === sub.id);
-    const sw = sub.weight || 0;
-    if (sa?.percentage !== undefined && sa?.percentage !== null && sw > 0) {
-      wSum += ((sa.percentage as number) * sw) / 100;
-      wTotal += sw;
-      any = true;
-    }
-  }
-  if (!any || wTotal === 0) return null;
-  return Math.round(wSum * (100 / wTotal) * 10) / 10;
-};
+): number | null => effectiveFactorPct(factor, factors, assessments);

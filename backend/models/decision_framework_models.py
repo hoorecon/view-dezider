@@ -194,13 +194,45 @@ def compute_option_rollups(
     rollups: List[Dict[str, Any]] = []
 
     # Only score MAIN factors:
-    #   - exclude sub-factors (parent_id is set)  → they are rated implicitly
-    #     by their parent in Steps 6/7/8 per the wizard UI contract
+    #   - exclude sub-factors (parent_id is set)  → they roll up into their parent
     #   - exclude duplicates (is_duplicate=True)  → audit history, not active
     scoring_factors = [
         f for f in factors
         if not f.get("parent_id") and not f.get("is_duplicate")
     ]
+
+    # Sub-factor map: parent_id → [sub factor dicts] (active, non-duplicate).
+    subs_by_parent: Dict[str, List[Dict[str, Any]]] = {}
+    for f in factors:
+        pid = f.get("parent_id")
+        if pid and not f.get("is_duplicate"):
+            subs_by_parent.setdefault(pid, []).append(f)
+
+    def _derive_parent_pct(parent_id: str, opt_asmts: Dict[str, Any]) -> Optional[int]:
+        """Roll sub-factor Assess % up into the parent.
+
+        Optional & non-mandatory: only sub-factors with a positive assessment_pct
+        count. Weighted by each sub's `weight`; if no weights are set, the
+        remaining % is split EQUALLY (simple mean). Returns None when no
+        sub-factor is assessed → caller falls back to the parent's own cell
+        (direct/general assessment).
+        """
+        subs = subs_by_parent.get(parent_id, [])
+        if not subs:
+            return None
+        assessed = []
+        for s in subs:
+            sc = opt_asmts.get(s["id"], {}) or {}
+            pct = sc.get("assessment_pct")
+            if pct is not None and int(pct or 0) > 0:
+                assessed.append((s, int(pct)))
+        if not assessed:
+            return None
+        total_w = sum(int(s.get("weight") or 0) for s, _ in assessed)
+        if total_w > 0:
+            wsum = sum(p * int(s.get("weight") or 0) for s, p in assessed)
+            return int(round(wsum / total_w))
+        return int(round(sum(p for _, p in assessed) / len(assessed)))
 
     for opt in options:
         opt_id = opt.get("id")
@@ -214,14 +246,23 @@ def compute_option_rollups(
 
         for f in scoring_factors:
             cell = opt_asmts.get(f["id"], {}) or {}
-            joint_score += float(cell.get("cell_value", 0) or 0)
-            sat_val_sum += float(cell.get("satisfaction_value", 0) or 0)
             rr = f.get("realistic_rating") or f.get("std_rating") or 0
+            derived_pct = _derive_parent_pct(f["id"], opt_asmts)
+
+            if derived_pct is not None:
+                # Sub-factors drive this main factor's Assess %.
+                a_pct = derived_pct
+                joint_score += compute_cell_value(derived_pct, f.get("std_rating") or 0)
+                sat_val_sum += round(float(rr) * (derived_pct / 100.0), 2)
+            else:
+                # Direct/general assessment of the main factor (existing behaviour).
+                a_pct = int(cell.get("assessment_pct", 0) or 0)
+                joint_score += float(cell.get("cell_value", 0) or 0)
+                sat_val_sum += float(cell.get("satisfaction_value", 0) or 0)
             max_sat_val_sum += float(rr)
 
-            # Step #6.2 — knock out
+            # Step #6.2 — knock out (uses the effective Assess %)
             if mt is not None and f.get("notation") == "mandatory":
-                a_pct = int(cell.get("assessment_pct", 0) or 0)
                 if a_pct < int(mt):
                     dq = True
                     dq_factor_ids.append(f["id"])
