@@ -888,6 +888,7 @@ async def ai_assess_cell(
     ftype = factor.get("factor_type") or "qualitative"
 
     pct: Optional[int] = None
+    used_llm = False
     api_key = os.getenv("EMERGENT_LLM_KEY")
     if api_key:
         prompt = (
@@ -914,6 +915,7 @@ async def ai_assess_cell(
                 txt = txt.split("\n", 1)[1].rsplit("```", 1)[0].strip()
             parsed = json_module.loads(txt)
             pct = int(round(float(parsed.get("satisfaction_pct"))))
+            used_llm = True
         except Exception as e:
             logging.getLogger("pros_cons").warning(f"AI assess fallback: {e}")
             pct = None
@@ -941,7 +943,7 @@ async def ai_assess_cell(
             "updated_at": datetime.now(timezone.utc),
         }},
     )
-    return {"assessment_pct": pct, "cell_value": derived_cell_value, "source": "ai" if api_key else "ratio"}
+    return {"assessment_pct": pct, "cell_value": derived_cell_value, "source": "ai" if used_llm else "ratio"}
 
 
 # ─── XLS assessment template — export / import (Phase C) ───
