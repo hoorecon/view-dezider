@@ -9205,3 +9205,23 @@ agent_communication:
            exist. Appends new risks (with impact/probability/index) + mitigations + contingencies, gaps-only dedup.
          - On 402, an 'Out of AI credits' alert offers 'View wallet' → /ai-wallet.
       Test user with AI credits if available; otherwise verify the 402 path / refill prompt.
+
+  - agent: "main"
+    message: |
+      NEW (June 2026) — Pros & Cons Action Plan auto-population (parity with My Dezider MPPS import).
+      Backend: NEW endpoint POST /api/action-items/import-from-pros-cons/{analysis_id} in routes/action_items.py.
+        - For the analysis's CHOSEN option (config.final_choice_option_id), iterate assessments[chosen][factor_id];
+          for each factor with cell.improvement_pct > 0, create an action item titled
+          "[<factor name> - <projected%>] · <notes or 'Improve <factor>'> · [+<delta>%]".
+          projected% = clamp(0..100, assessment_pct + improvement_pct).
+        - Idempotent on key option|factor|delta (field pc_key); self-heals title on change.
+        - Only POSITIVE deltas import. If no chosen option -> {imported_count:0, reason:"no_chosen_option"}.
+        - Requires auth (401 without token). source_module stored as "PROS_CONS".
+      Frontend: pros-cons-wizard.tsx Step 8 now calls this import on entering step 8 / whenever the final option
+        changes, then remounts the ActionItemEditor (key=pcActionKey) so imported items appear in "Action Plan".
+      HOW TO TEST (backend): as a logged-in user, create a P&C analysis, add 1 option + 1-2 factors, set an
+        assessment cell with improvement_pct>0 for that option, set config.final_choice_option_id to that option
+        (PUT /api/{base}/{id}/config), then POST import-from-pros-cons/{id} -> imported_count>=1. GET
+        /api/action-items?source_module=PROS_CONS&source_id={id} shows them. Re-POST must NOT duplicate (idempotent).
+        Setting final_choice_option_id=null and re-POST -> imported_count 0. NOTE the P&C base path/prefix from
+        server.py (routes/pros_cons.py router mount).

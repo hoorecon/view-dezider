@@ -199,6 +199,8 @@ export default function ProsConsWizard() {
   const [step, setStep] = useState<number>(1);
   const [showGuidelines, setShowGuidelines] = useState(false);
   const [guidelines, setGuidelines] = useState<Guideline[]>([]);
+  // Bumped to remount the Step-8 Action Plan editor after the MPPS auto-import.
+  const [pcActionKey, setPcActionKey] = useState(0);
 
   const load = useCallback(async () => {
     // -------------------------------------------------------------
@@ -730,6 +732,23 @@ export default function ProsConsWizard() {
     } finally { setBusy(false); }
   };
   useEffect(() => { if (step === 8 && analysis) runAggregate(); /* refresh on entering step 8 */ }, [step]);
+
+  // Auto-push the CHOSEN option's per-factor improvement deltas (Step 8) into the
+  // Action Plan — mirrors My Dezider's MPPS import. Re-runs when the final option
+  // changes; idempotent on the backend, then remounts the editor to show new items.
+  useEffect(() => {
+    const chosen = (analysis as any)?.config?.final_choice_option_id;
+    if (step !== 8 || !analysis?.id || !chosen) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await api.post(`/action-items/import-from-pros-cons/${analysis.id}`);
+      } catch { /* non-fatal — manual add still works */ }
+      if (!cancelled) setPcActionKey((k) => k + 1);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, analysis?.id, (analysis as any)?.config?.final_choice_option_id]);
 
   /**
    * Step 7 — alphabetical seed on FIRST entry per analysis.
@@ -2128,6 +2147,7 @@ export default function ProsConsWizard() {
                     {/* ─── Action Plan capture (Phase B) ─── */}
                     {analysis?.id ? (
                       <ActionItemEditor
+                        key={pcActionKey}
                         sourceModule="PROS_CONS"
                         sourceId={analysis.id}
                         sourceLabel={`Pros & Cons · ${(analysis as any)?.title || ''}`}
