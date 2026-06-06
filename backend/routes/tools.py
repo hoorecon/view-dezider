@@ -174,6 +174,206 @@ async def delete_solution_finder(entry_id: str, user: dict = Depends(get_current
     return {"message": "Entry moved to Trash"}
 
 
+# ========================
+# SOLUTION FINDER — AI AUTO-FILL (metered AI-credits wallet, Gemini-first)
+# ========================
+# On-demand only (never automatic). Each call gates on the user's AI-credits
+# wallet and charges by actual tokens — consistent with the other AI Assist
+# features. Returns SUGGESTIONS keyed by source id; the frontend appends &
+# fills gaps only (case-insensitive dedup), never overwriting user entries.
+
+def _strip_code_fence(txt: str) -> str:
+    t = (txt or "").strip()
+    if t.startswith("```"):
+        # drop the opening fence line and the trailing fence
+        t = t.split("\n", 1)[-1] if "\n" in t else t
+        t = t.rsplit("```", 1)[0]
+    return t.strip()
+
+
+def _clamp_pct(v) -> int:
+    try:
+        n = int(round(float(v)))
+    except (TypeError, ValueError):
+        return 50
+    return max(0, min(100, n))
+
+
+@router.post("/solution-finders/ai/suggest-solutions")
+async def ai_suggest_solutions(request: Request, user: dict = Depends(get_current_user)):
+    """Q3 — AI-suggest root-cause-specific solutions for the given root causes.
+
+    Body: {
+      area_of_life, smart_goal,
+      root_causes: [{rca_id, text, concern_text?, existing?: [str]}]
+    }
+    Returns: { suggestions: { <rca_id>: [str, ...] } }
+    Metered against the AI-credits wallet. Raises HTTP 402 when out of credits.
+    """
+    import json as _json
+    from core import ai_metering, ai_wallet
+
+    body = await request.json()
+    area = (body.get("area_of_life") or "").strip()
+    goal = (body.get("smart_goal") or "").strip()
+    rcas = [r for r in (body.get("root_causes") or []) if r.get("rca_id") and (r.get("text") or "").strip()]
+    if not rcas:
+        return {"suggestions": {}}
+
+    if not ai_metering.has_any_llm():
+        raise HTTPException(status_code=503, detail="AI is not configured.")
+
+    rca_lines = []
+    for r in rcas:
+        existing = [e for e in (r.get("existing") or []) if (e or "").strip()]
+        ex = f" Already listed (do NOT repeat): {existing}." if existing else ""
+        concern = f" (under concern: {r.get('concern_text')})" if r.get("concern_text") else ""
+        rca_lines.append(f'- id "{r["rca_id"]}": root cause = "{r["text"]}"{concern}.{ex}')
+    rca_block = "\n".join(rca_lines)
+
+    sysmsg = (
+        "You are a practical decision-support coach. For each root cause, propose "
+        "concrete, actionable solutions the user can realistically pursue with their "
+        "own capabilities and resources. Be specific and concise. "
+        "Return ONLY valid JSON, no prose, no markdown."
+    )
+    prompt = (
+        f"Life area: {area or 'general'}. SMART goal: {goal or '(not specified)'}.\n"
+        f"Root causes:\n{rca_block}\n\n"
+        "Propose 2-3 NEW, distinct solutions per root cause. Do not repeat any "
+        "'already listed' items. Each solution is a short imperative phrase (max ~14 words).\n"
+        'Return JSON exactly as: {"suggestions": {"<rca_id>": ["solution 1", "solution 2"]}}'
+    )
+
+    try:
+        txt = await ai_metering.metered_chat(
+            user["user_id"], system_message=sysmsg, prompt=prompt,
+            feature="solution_finder_solutions", session_prefix="sfsol",
+        )
+    except ai_wallet.InsufficientCredits as e:
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"You're out of AI credits (balance {round(e.balance, 2)}). "
+                f"Top up your AI wallet to use AI auto-fill."
+            ),
+        )
+
+    try:
+        data = _json.loads(_strip_code_fence(txt))
+        raw = data.get("suggestions") or data
+    except Exception:
+        raise HTTPException(status_code=502, detail="AI returned an unreadable response — please try again.")
+
+    valid_ids = {r["rca_id"] for r in rcas}
+    out: Dict = {}
+    for k, v in (raw.items() if isinstance(raw, dict) else []):
+        if k not in valid_ids:
+            continue
+        items = [str(x).strip() for x in v if str(x).strip()] if isinstance(v, list) else []
+        if items:
+            out[k] = items[:5]
+    return {"suggestions": out}
+
+
+@router.post("/solution-finders/ai/suggest-risks")
+async def ai_suggest_risks(request: Request, user: dict = Depends(get_current_user)):
+    """Q4 — AI-suggest risks (with impact%/probability%), mitigations & contingencies
+    for the given solutions.
+
+    Body: {
+      area_of_life, smart_goal,
+      solutions: [{sol_id, text, existing_risks?: [str]}]
+    }
+    Returns: { suggestions: { <sol_id>: [
+        {name, impact_pct, probability_pct, mitigations:[str], contingencies:[str]}
+    ] } }
+    Metered against the AI-credits wallet. Raises HTTP 402 when out of credits.
+    """
+    import json as _json
+    from core import ai_metering, ai_wallet
+
+    body = await request.json()
+    area = (body.get("area_of_life") or "").strip()
+    goal = (body.get("smart_goal") or "").strip()
+    sols = [s for s in (body.get("solutions") or []) if s.get("sol_id") and (s.get("text") or "").strip()]
+    if not sols:
+        return {"suggestions": {}}
+
+    if not ai_metering.has_any_llm():
+        raise HTTPException(status_code=503, detail="AI is not configured.")
+
+    sol_lines = []
+    for s in sols:
+        existing = [e for e in (s.get("existing_risks") or []) if (e or "").strip()]
+        ex = f" Already-listed risks (do NOT repeat): {existing}." if existing else ""
+        sol_lines.append(f'- id "{s["sol_id"]}": solution = "{s["text"]}".{ex}')
+    sol_block = "\n".join(sol_lines)
+
+    sysmsg = (
+        "You are a risk-management analyst. For each proposed solution, identify the "
+        "most material risks, estimate Impact% and Probability% (0-100 each), and give "
+        "practical mitigations (reduce likelihood/impact) and contingencies (plan B if it "
+        "happens). Be specific and concise. Return ONLY valid JSON, no prose, no markdown."
+    )
+    prompt = (
+        f"Life area: {area or 'general'}. SMART goal: {goal or '(not specified)'}.\n"
+        f"Solutions:\n{sol_block}\n\n"
+        "For each solution, propose 1-3 NEW distinct risks (do not repeat 'already-listed' "
+        "ones). For each risk give: name (short), impact_pct (0-100), probability_pct (0-100), "
+        "1-2 mitigations, and 1-2 contingencies (short imperative phrases).\n"
+        'Return JSON exactly as: {"suggestions": {"<sol_id>": [{"name": "...", '
+        '"impact_pct": 60, "probability_pct": 40, "mitigations": ["..."], '
+        '"contingencies": ["..."]}]}}'
+    )
+
+    try:
+        txt = await ai_metering.metered_chat(
+            user["user_id"], system_message=sysmsg, prompt=prompt,
+            feature="solution_finder_risks", session_prefix="sfrisk",
+        )
+    except ai_wallet.InsufficientCredits as e:
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"You're out of AI credits (balance {round(e.balance, 2)}). "
+                f"Top up your AI wallet to use AI auto-fill."
+            ),
+        )
+
+    try:
+        data = _json.loads(_strip_code_fence(txt))
+        raw = data.get("suggestions") or data
+    except Exception:
+        raise HTTPException(status_code=502, detail="AI returned an unreadable response — please try again.")
+
+    valid_ids = {s["sol_id"] for s in sols}
+    out: Dict = {}
+    for k, v in (raw.items() if isinstance(raw, dict) else []):
+        if k not in valid_ids or not isinstance(v, list):
+            continue
+        risks = []
+        for r in v[:4]:
+            if not isinstance(r, dict):
+                continue
+            name = str(r.get("name") or "").strip()
+            if not name:
+                continue
+            mits = [str(x).strip() for x in (r.get("mitigations") or []) if str(x).strip()][:4]
+            cons = [str(x).strip() for x in (r.get("contingencies") or []) if str(x).strip()][:4]
+            risks.append({
+                "name": name,
+                "impact_pct": _clamp_pct(r.get("impact_pct")),
+                "probability_pct": _clamp_pct(r.get("probability_pct")),
+                "mitigations": mits,
+                "contingencies": cons,
+            })
+        if risks:
+            out[k] = risks
+    return {"suggestions": out}
+
+
+
 @router.post("/solution-finders/{entry_id}/push-action-plan")
 async def push_action_plan_to_action_center(
     entry_id: str, request: Request, user: dict = Depends(get_current_user)

@@ -321,14 +321,20 @@ async def delete_contact(contact_id: str, user: dict = Depends(get_current_user)
     return {"message": "Contact deleted"}
 
 
-@router.post("/ensure-self")
-async def ensure_self_contact(user: dict = Depends(get_current_user)):
+async def ensure_self_contact_for_user(user: dict) -> dict:
+    """Idempotently create the 'Self' contact for the given user dict.
+
+    Reusable helper — called by the /ensure-self endpoint AND directly from the
+    auth registration flow (email + Google) so every new profile starts with a
+    selectable 'Self' contact (used in Solution Finder Q3 skills/resources).
+    Requires user to carry `user_id`; name/email/phone are best-effort.
     """
-    Idempotently create the 'Self' contact for the logged-in user.
-    The Self contact is the first contact and represents the user themself.
-    """
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Missing user_id")
+
     existing = await db.contacts.find_one(
-        {"user_id": user["user_id"], "is_self": True}, {"_id": 0}
+        {"user_id": user_id, "is_self": True}, {"_id": 0}
     )
     if existing:
         return existing
@@ -337,7 +343,7 @@ async def ensure_self_contact(user: dict = Depends(get_current_user)):
     contact_id = f"contact_{uuid.uuid4().hex[:12]}"
     doc = {
         "id": contact_id,
-        "user_id": user["user_id"],
+        "user_id": user_id,
         "name": user.get("name") or "Self",
         "email": (user.get("email") or "").strip().lower(),
         "phone": (user.get("phone") or "").strip(),
@@ -354,7 +360,7 @@ async def ensure_self_contact(user: dict = Depends(get_current_user)):
         "tags": ["self"], "notes": "This is YOU — your own resource & skill profile.",
         "is_sme": False, "sme_domains": [],
         "import_source": "system",
-        "linked_user_id": user["user_id"],
+        "linked_user_id": user_id,
         "profile_image": "",
         "verified": True,
         "created_at": now,
@@ -363,6 +369,15 @@ async def ensure_self_contact(user: dict = Depends(get_current_user)):
     await db.contacts.insert_one(doc)
     doc.pop("_id", None)
     return doc
+
+
+@router.post("/ensure-self")
+async def ensure_self_contact(user: dict = Depends(get_current_user)):
+    """
+    Idempotently create the 'Self' contact for the logged-in user.
+    The Self contact is the first contact and represents the user themself.
+    """
+    return await ensure_self_contact_for_user(user)
 
 
 @router.get("/skills/aggregate")

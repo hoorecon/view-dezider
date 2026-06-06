@@ -125,6 +125,8 @@ export default function SimpleSolutionFinder() {
   const [actionPlan, setActionPlan] = useState<APItem[]>([]);
   // Reverse hook — counts of ASM deep-dives per Q3/Q4b/Q4c row keyed by source_id.
   const [asmCounts, setAsmCounts] = useState<Record<string, number>>({});
+  // AI auto-fill (metered AI-credits wallet, Gemini-first). On-demand only.
+  const [aiBusy, setAiBusy] = useState<null | 'sol' | 'risk'>(null);
 
   // Per-row "draft" inputs (so adding doesn't require a modal)
   const [newConcernText, setNewConcernText] = useState('');
@@ -326,6 +328,158 @@ export default function SimpleSolutionFinder() {
     setRisks(prev => prev.filter(r => r.sol_id !== sid));
     setMitigations(prev => prev.filter(m => !riskIds.includes(m.risk_id)));
     setContingencies(prev => prev.filter(c => !riskIds.includes(c.risk_id)));
+  };
+
+  // ── Q3 / Q4 AI AUTO-FILL (metered AI-credits wallet; appends & fills gaps only) ──
+  const norm = (t: string) => (t || '').trim().toLowerCase();
+
+  const handleAiError = (e: any, fallback: string) => {
+    if (e?.response?.status === 402) {
+      showAlert('Out of AI credits', e?.response?.data?.detail || 'Top up your AI wallet to use AI auto-fill.', [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'View wallet', onPress: () => router.push('/ai-wallet' as any) },
+      ]);
+    } else {
+      showAlert('AI auto-fill failed', e?.response?.data?.detail || fallback);
+    }
+  };
+
+  // Q3 — append AI-suggested solutions per root cause (dedup, gaps only).
+  const aiFillSolutions = async () => {
+    if (aiBusy) return;
+    if (rootCauses.length === 0) {
+      showAlert('Add root causes first', 'Go to Q2 and add at least one root cause.');
+      return;
+    }
+    setAiBusy('sol');
+    try {
+      const concernText = (cid: string) => concerns.find(c => c.id === cid)?.text || '';
+      const payload = {
+        area_of_life: areaOfLife,
+        smart_goal: smartGoal,
+        root_causes: rootCauses.map(r => ({
+          rca_id: r.id,
+          text: r.text,
+          concern_text: concernText(r.concern_id),
+          existing: solsFor(r.id).map(s => s.text),
+        })),
+      };
+      const res = await api.post('/solution-finders/ai/suggest-solutions', payload);
+      const sug: Record<string, string[]> = res.data?.suggestions || {};
+      let added = 0;
+      setSolutions(prev => {
+        const next = [...prev];
+        Object.entries(sug).forEach(([rcaId, list]) => {
+          const have = new Set(next.filter(s => s.rca_id === rcaId).map(s => norm(s.text)));
+          (list || []).forEach(text => {
+            const t = (text || '').trim();
+            if (t && !have.has(norm(t))) {
+              next.push({ id: uid(), rca_id: rcaId, text: t });
+              have.add(norm(t));
+              added++;
+            }
+          });
+        });
+        return next;
+      });
+      showAlert('AI auto-fill', added > 0 ? `Added ${added} new solution${added === 1 ? '' : 's'}.` : 'No new solutions to add — you’re all set.');
+    } catch (e: any) {
+      handleAiError(e, 'Please try again.');
+    } finally { setAiBusy(null); }
+  };
+
+  // Q4 — append AI-suggested risks (+ mitigations/contingencies) per solution.
+  const aiFillRisks = async () => {
+    if (aiBusy) return;
+    if (solutions.length === 0) {
+      showAlert('Add solutions first', 'Go to Q3 and add at least one solution.');
+      return;
+    }
+    setAiBusy('risk');
+    try {
+      const payload = {
+        area_of_life: areaOfLife,
+        smart_goal: smartGoal,
+        solutions: solutions.map(s => ({
+          sol_id: s.id,
+          text: s.text,
+          existing_risks: risksFor(s.id).map(r => r.name),
+        })),
+      };
+      const res = await api.post('/solution-finders/ai/suggest-risks', payload);
+      const sug: Record<string, any[]> = res.data?.suggestions || {};
+      let addedRisks = 0, addedMits = 0, addedCons = 0;
+      const newRisks: Risk[] = [];
+      const newMits: Mitigation[] = [];
+      const newCons: Contingency[] = [];
+
+      // Snapshot current state for dedup decisions.
+      const risksSnap = [...risks];
+      const mitsSnap = [...mitigations];
+      const consSnap = [...contingencies];
+
+      Object.entries(sug).forEach(([solId, list]) => {
+        const existingForSol = risksSnap.filter(r => r.sol_id === solId);
+        const haveNames = new Set(existingForSol.map(r => norm(r.name)));
+        (list || []).forEach((r: any) => {
+          const name = (r?.name || '').trim();
+          if (!name) return;
+          const i = clampPct(r.impact_pct) ?? 50;
+          const p = clampPct(r.probability_pct) ?? 50;
+          let targetRiskId: string;
+          const matched = existingForSol.find(er => norm(er.name) === norm(name));
+          if (matched) {
+            targetRiskId = matched.id; // fill gaps into existing risk
+          } else if (!haveNames.has(norm(name))) {
+            targetRiskId = uid();
+            newRisks.push({
+              id: targetRiskId, sol_id: solId, name,
+              impact_pct: i, probability_pct: p, risk_index_pct: Math.round((i * p) / 100),
+            });
+            haveNames.add(norm(name));
+            addedRisks++;
+          } else {
+            return;
+          }
+          // Mitigations (gaps only)
+          const haveMits = new Set(
+            [...mitsSnap, ...newMits].filter(m => m.risk_id === targetRiskId).map(m => norm(m.text))
+          );
+          (r?.mitigations || []).forEach((m: string) => {
+            const t = (m || '').trim();
+            if (t && !haveMits.has(norm(t))) {
+              newMits.push({ id: uid(), risk_id: targetRiskId, text: t });
+              haveMits.add(norm(t));
+              addedMits++;
+            }
+          });
+          // Contingencies (gaps only)
+          const haveCons = new Set(
+            [...consSnap, ...newCons].filter(c => c.risk_id === targetRiskId).map(c => norm(c.text))
+          );
+          (r?.contingencies || []).forEach((c: string) => {
+            const t = (c || '').trim();
+            if (t && !haveCons.has(norm(t))) {
+              newCons.push({ id: uid(), risk_id: targetRiskId, text: t });
+              haveCons.add(norm(t));
+              addedCons++;
+            }
+          });
+        });
+      });
+
+      if (newRisks.length) setRisks(prev => [...prev, ...newRisks]);
+      if (newMits.length) setMitigations(prev => [...prev, ...newMits]);
+      if (newCons.length) setContingencies(prev => [...prev, ...newCons]);
+
+      const parts = [];
+      if (addedRisks) parts.push(`${addedRisks} risk${addedRisks === 1 ? '' : 's'}`);
+      if (addedMits) parts.push(`${addedMits} mitigation${addedMits === 1 ? '' : 's'}`);
+      if (addedCons) parts.push(`${addedCons} contingenc${addedCons === 1 ? 'y' : 'ies'}`);
+      showAlert('AI auto-fill', parts.length ? `Added ${parts.join(', ')}.` : 'No new items to add — you’re all set.');
+    } catch (e: any) {
+      handleAiError(e, 'Please try again.');
+    } finally { setAiBusy(null); }
   };
 
   // ── Q3: pull skills / resources from Self (Contact-Self) and other contacts ──
@@ -718,6 +872,19 @@ export default function SimpleSolutionFinder() {
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 80 }}>
       <Text style={s.qTitle}>Q3. Solutions within your Current Capabilities & Resources</Text>
       <Text style={s.qHint}>Step 3 · Solution Identification. ASM deep-dive is available at every level — Overall, per PRIMARY concern, per Root Cause, and per Solution.</Text>
+      {rootCauses.length > 0 && (
+        <TouchableOpacity
+          style={[s.aiFillBtn, aiBusy === 'sol' && s.aiFillBtnBusy]}
+          onPress={aiFillSolutions}
+          disabled={!!aiBusy}
+          activeOpacity={0.8}
+        >
+          {aiBusy === 'sol'
+            ? <ActivityIndicator size="small" color="#FFF" />
+            : <Ionicons name="sparkles" size={15} color="#FFF" />}
+          <Text style={s.aiFillBtnText}>{aiBusy === 'sol' ? 'Generating…' : 'AI auto-fill solutions'}</Text>
+        </TouchableOpacity>
+      )}
       {rootCauses.length === 0 && (
         <Text style={s.empty}>No root causes yet. Go back to Q2.</Text>
       )}
@@ -838,6 +1005,19 @@ export default function SimpleSolutionFinder() {
         4a · Risks per solution (Impact% × Probability% = Risk Index%).{'\n'}
         4b · Mitigations (1..many) · 4c · Contingencies (1..many). Use “ASM” to deep-dive any item.
       </Text>
+      {solutions.length > 0 && (
+        <TouchableOpacity
+          style={[s.aiFillBtn, aiBusy === 'risk' && s.aiFillBtnBusy]}
+          onPress={aiFillRisks}
+          disabled={!!aiBusy}
+          activeOpacity={0.8}
+        >
+          {aiBusy === 'risk'
+            ? <ActivityIndicator size="small" color="#FFF" />
+            : <Ionicons name="sparkles" size={15} color="#FFF" />}
+          <Text style={s.aiFillBtnText}>{aiBusy === 'risk' ? 'Generating…' : 'AI auto-fill risks, mitigations & contingencies'}</Text>
+        </TouchableOpacity>
+      )}
       {solutions.length === 0 && <Text style={s.empty}>No solutions yet. Go back to Q3.</Text>}
       {solutions.map(sol => (
         <View key={sol.id} style={s.groupCard}>
@@ -1170,6 +1350,9 @@ const s = StyleSheet.create({
   stepEditBadge: { position: 'absolute', top: -4, right: -4, width: 14, height: 14, borderRadius: 7, backgroundColor: '#F59E0B', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#FFF' },
   capBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: '#C7D2FE', backgroundColor: '#EEF2FF', alignSelf: 'flex-start' },
   capBtnText: { fontSize: 12, fontWeight: '600', color: '#4338CA' },
+  aiFillBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 11, paddingHorizontal: 14, borderRadius: 12, backgroundColor: '#7C3AED', marginBottom: 14 },
+  aiFillBtnBusy: { backgroundColor: '#A78BFA' },
+  aiFillBtnText: { fontSize: 13, fontWeight: '800', color: '#FFF' },
   capModalBg: { flex: 1, backgroundColor: '#00000066', justifyContent: 'flex-end' },
   capModalCard: { backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: 28 },
   capModalHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },

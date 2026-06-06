@@ -926,34 +926,9 @@ export default function ProsConsWizard() {
                       }}
                     />
 
-                    <Text style={styles.inputLabel}>Life Area (optional)</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
-                      <View style={{ flexDirection: 'row', gap: 6 }}>
-                        {LIFE_AREAS.map(area => {
-                          const active = bLifeArea === area.key;
-                          return (
-                            <TouchableOpacity
-                              key={area.key}
-                              style={[styles.lifeChip, active && styles.lifeChipActive]}
-                              onPress={() => {
-                                const next = active ? '' : area.key;
-                                setBLifeArea(next);
-                                saveBasics({ life_area: next || null });
-                              }}
-                            >
-                              <Ionicons
-                                name={area.icon as any}
-                                size={13}
-                                color={active ? '#fff' : COLORS.textDim}
-                              />
-                              <Text style={[styles.lifeChipText, active && { color: '#fff' }]}>
-                                {area.label}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-                    </ScrollView>
+                    {/* Life Area is captured in the 4-step intake on creation and is
+                        shown in the collapsed summary above — the redundant re-ask
+                        picker was removed (June 2026). */}
                   </View>
                 )}
               </View>

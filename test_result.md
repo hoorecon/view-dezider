@@ -9175,3 +9175,33 @@ agent_communication:
       4. MY DEZIDER Step 2: a sub-factor shows BOTH an edit (pencil → rename) and delete; renaming a sub-factor persists.
       5. MyDezider Step 2 factor meta order is now: Operator, Expected, Unit (operator chips visible).
       6. Regression: factors/sub-factors can still be added, weights set, and the flow proceeds in both modules.
+
+  - agent: "main"
+    message: |
+      NEW BATCH (June 2026) — 3 tasks implemented. Please test backend + frontend.
+
+      BACKEND:
+      A) Auto-create 'Self' contact on registration. routes/auth_routes.py register() and google/session now call
+         routes.contacts.ensure_self_contact_for_user(user_doc) (idempotent, non-fatal). Verify: register a NEW email
+         user via POST /api/auth/register, then GET /api/contacts — exactly one contact with is_self=true should exist
+         (name/email pre-filled). Re-running ensure-self must NOT duplicate it.
+      B) Solution Finder AI auto-fill (metered AI-credits wallet, Gemini-first, charges credits like other AI Assist):
+         - POST /api/solution-finders/ai/suggest-solutions  body {area_of_life, smart_goal, root_causes:[{rca_id,text,
+           concern_text,existing:[...]}]} -> {suggestions:{<rca_id>:[str,...]}}. Only returns ids that were requested.
+         - POST /api/solution-finders/ai/suggest-risks  body {area_of_life, smart_goal, solutions:[{sol_id,text,
+           existing_risks:[...]}]} -> {suggestions:{<sol_id>:[{name,impact_pct(0-100),probability_pct(0-100),
+           mitigations:[str],contingencies:[str]}]}}.
+         - Both require auth (401 without token). When the user's AI wallet balance is 0 they must return HTTP 402.
+           (If the test user has credits, a 200 with suggestions is expected; either is acceptable as long as it's
+           not a 500.)
+
+      FRONTEND:
+      C) PROS & CONS Step 1: the redundant 'Life Area (optional)' picker has been REMOVED (life area is captured in the
+         4-step intake). The collapsed 'About this decision' summary may still show the life area. No picker chips in Step 1.
+      D) SOLUTION FINDER:
+         - Q3 (Solutions step): a purple 'AI auto-fill solutions' button appears when root causes exist. Tapping it
+           appends NEW solutions per root cause (no duplicates, never overwrites existing). Shows a busy spinner.
+         - Q4 (Risks step): a purple 'AI auto-fill risks, mitigations & contingencies' button appears when solutions
+           exist. Appends new risks (with impact/probability/index) + mitigations + contingencies, gaps-only dedup.
+         - On 402, an 'Out of AI credits' alert offers 'View wallet' → /ai-wallet.
+      Test user with AI credits if available; otherwise verify the 402 path / refill prompt.

@@ -81,6 +81,14 @@ async def register(request: Request, user_data: UserCreate, response: Response):
 
     await db.users.insert_one(user_doc)
 
+    # Auto-create the idempotent 'Self' contact so every new profile has a
+    # selectable "Self" in Contacts (used in Solution Finder Q3). Non-fatal.
+    try:
+        from routes.contacts import ensure_self_contact_for_user
+        await ensure_self_contact_for_user(user_doc)
+    except Exception as _e:
+        logging.warning(f"ensure-self on register failed (non-fatal): {_e}")
+
     # Create session
     session_token = f"session_{uuid.uuid4().hex}"
     session_doc = {
@@ -181,6 +189,12 @@ async def google_session(session_data: SessionRequest, response: Response):
             "auth_method": "google", "created_at": datetime.now(timezone.utc)
         }
         await db.users.insert_one(user_doc)
+        # Auto-create the idempotent 'Self' contact for brand-new Google users.
+        try:
+            from routes.contacts import ensure_self_contact_for_user
+            await ensure_self_contact_for_user(user_doc)
+        except Exception as _e:
+            logging.warning(f"ensure-self on google register failed (non-fatal): {_e}")
 
     session_token = f"session_{uuid.uuid4().hex}"
     session_doc = {
