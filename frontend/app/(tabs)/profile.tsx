@@ -23,6 +23,7 @@ import { GradientButton } from '../../src/components/GradientButton';
 import { Input } from '../../src/components/Input';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
+import { useAiWalletStore } from '../../src/store/aiWalletStore';
 
 const GENDER_OPTIONS = ['Male', 'Female', 'Other', 'Prefer not to say'];
 
@@ -35,6 +36,8 @@ interface AssessmentQuestion {
 export default function ProfileScreen() {
   const router = useRouter();
   const { user, logout, checkAuth } = useAuthStore();
+  const aiBalance = useAiWalletStore((s) => s.balance);
+  const refreshAiWallet = useAiWalletStore((s) => s.refresh);
   const [picBusy, setPicBusy] = useState(false);
   const [genderModalOpen, setGenderModalOpen] = useState(false);
   const [savingGender, setSavingGender] = useState(false);
@@ -60,6 +63,7 @@ export default function ProfileScreen() {
     fetchQuestions();
     fetchLatestAssessment();
     fetchUserInfo();
+    refreshAiWallet();
   }, []);
 
   const fetchUserInfo = async () => {
@@ -381,6 +385,27 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
       </Card>
+
+      {/* AI Credits wallet */}
+      <TouchableOpacity activeOpacity={0.85} onPress={() => router.push('/ai-wallet' as any)}>
+        <Card style={styles.aiCreditsCard}>
+          <View style={styles.aiCreditsLeft}>
+            <View style={styles.aiCreditsIcon}>
+              <Ionicons name="sparkles" size={20} color={COLORS.white} />
+            </View>
+            <View style={{ flexShrink: 1 }}>
+              <Text style={styles.aiCreditsLabel}>AI Credits</Text>
+              <Text style={styles.aiCreditsSub}>Powers AI Assist in your decisions</Text>
+            </View>
+          </View>
+          <View style={styles.aiCreditsRight}>
+            <Text style={[styles.aiCreditsValue, aiBalance <= 0 && { color: COLORS.error }]}>
+              {aiBalance.toFixed(aiBalance < 10 ? 1 : 0)}
+            </Text>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+          </View>
+        </Card>
+      </TouchableOpacity>
 
       {/* Gender picker modal */}
       <Modal visible={genderModalOpen} transparent animationType="fade" onRequestClose={() => setGenderModalOpen(false)}>
@@ -1122,6 +1147,21 @@ const styles = StyleSheet.create({
   userCard: {
     marginBottom: 16,
   },
+  aiCreditsCard: {
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  aiCreditsLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 1 },
+  aiCreditsIcon: {
+    width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primary,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  aiCreditsLabel: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary },
+  aiCreditsSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
+  aiCreditsRight: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  aiCreditsValue: { fontSize: 20, fontWeight: '800', color: COLORS.primary },
   userInfo: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -30,6 +30,7 @@ from typing import Any, Dict, Optional, Tuple
 from fastapi import HTTPException
 
 from core.database import db
+from core import ai_metering, ai_wallet
 
 log = logging.getLogger("ai_assess")
 
@@ -151,10 +152,8 @@ async def _fetch_from_data_source(
                 val = data.get("value", data.get("result"))
                 return str(val) if val is not None else None
 
-        api_key = os.getenv("EMERGENT_LLM_KEY")
-        if not api_key:
+        if not ai_metering.has_any_llm():
             return None
-        from core.llm_compat import LlmChat, UserMessage
 
         if dtype == "web_surf":
             search_query = config.get("search_query") or f"{factor.get('name','')} {option_name} {decision_title}"
@@ -192,18 +191,18 @@ async def _fetch_from_data_source(
                 f"Context: {decision_context}. Evaluating: {option_name}. Return only valid JSON."
             )
 
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"dsfetch_{user_id}_{uuid.uuid4().hex[:8]}",
-            system_message=sysmsg,
-        ).with_model("openai", "gpt-4.1-mini")
-        resp = await chat.send_message(UserMessage(text=prompt))
-        txt = (resp or "").strip()
+        txt = await ai_metering.metered_chat(
+            user_id, system_message=sysmsg, prompt=prompt,
+            feature="auto_fetch", session_prefix="dsfetch",
+        )
+        txt = (txt or "").strip()
         if txt.startswith("```"):
             txt = txt.split("\n", 1)[1].rsplit("```", 1)[0].strip()
         data = _json.loads(txt)
         val = data.get("value")
         return str(val) if _has(val) else None
+    except ai_wallet.InsufficientCredits:
+        raise
     except Exception as e:  # never break assessment on a data-source error
         log.warning(f"data-source fetch failed ({dtype}): {e}")
         return None
@@ -356,9 +355,8 @@ async def _assess_pct(
     pct: Optional[int] = None
     inferred_actual: Optional[str] = None
     used_llm = False
-    api_key = os.getenv("EMERGENT_LLM_KEY")
 
-    if api_key:
+    if ai_metering.has_any_llm():
         enrich_lines = ""
         if enrichment:
             q = enrichment.get("quantitative") or []
@@ -390,14 +388,12 @@ async def _assess_pct(
             + "}." + want_actual
         )
         try:
-            from core.llm_compat import LlmChat, UserMessage
-            chat = LlmChat(
-                api_key=api_key,
-                session_id=f"aiassess_{user_id}_{uuid.uuid4().hex[:8]}",
+            txt = await ai_metering.metered_chat(
+                user_id,
                 system_message="You are a careful decision-analysis assessor. Return only valid JSON.",
-            ).with_model("openai", "gpt-4.1-mini")
-            resp = await chat.send_message(UserMessage(text=prompt))
-            txt = (resp or "").strip()
+                prompt=prompt, feature="ai_assess", session_prefix="aiassess",
+            )
+            txt = (txt or "").strip()
             if txt.startswith("```"):
                 txt = txt.split("\n", 1)[1].rsplit("```", 1)[0].strip()
             parsed = _json.loads(txt)
@@ -405,6 +401,8 @@ async def _assess_pct(
             if not _has(actual) and _has(parsed.get("actual")):
                 inferred_actual = str(parsed.get("actual"))
             used_llm = True
+        except ai_wallet.InsufficientCredits:
+            raise
         except Exception as e:
             log.warning(f"AI assess fallback: {e}")
             pct = None
@@ -436,22 +434,31 @@ async def ai_assess_factor(
     ftype = resolve_factor_type(factor)
     validate_expected(factor, ftype)
 
-    actual = provided_actual if _has(provided_actual) else None
-    source = "user" if actual else None
-    enrichment: dict = {}
+    try:
+        actual = provided_actual if _has(provided_actual) else None
+        source = "user" if actual else None
+        enrichment: dict = {}
 
-    if not actual:
-        actual, source, enrichment = await resolve_actual(
-            factor, option, decision_title, decision_context, user_id, ftype
+        if not actual:
+            actual, source, enrichment = await resolve_actual(
+                factor, option, decision_title, decision_context, user_id, ftype
+            )
+
+        # Quantitative MUST end up with an actual; qualitative may be inferred by AI.
+        if ftype == "quantitative" and not _has(actual):
+            raise _missing_actual_error(factor)
+
+        pct, inferred_actual, used_llm = await _assess_pct(
+            factor, option, actual, decision_title, decision_context, enrichment, ftype, user_id
         )
-
-    # Quantitative MUST end up with an actual; qualitative may be inferred by AI.
-    if ftype == "quantitative" and not _has(actual):
-        raise _missing_actual_error(factor)
-
-    pct, inferred_actual, used_llm = await _assess_pct(
-        factor, option, actual, decision_title, decision_context, enrichment, ftype, user_id
-    )
+    except ai_wallet.InsufficientCredits as e:
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"You're out of AI credits (balance {round(e.balance, 2)}). "
+                f"Top up your AI wallet to use AI Assist."
+            ),
+        )
     if pct is None:
         raise HTTPException(status_code=502, detail="AI assessment unavailable — please enter % manually.")
 

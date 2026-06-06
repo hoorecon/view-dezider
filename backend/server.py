@@ -196,6 +196,7 @@ from routes.tier_matrix import router as tier_matrix_router
 from routes.customer_segments import router as customer_segments_router
 from routes.decision_linking import router as decision_linking_router
 from routes.integrations import router as integrations_router
+from routes.ai_wallet import router as ai_wallet_router
 
 
 # ========================
@@ -282,6 +283,7 @@ api_router.include_router(tier_matrix_router)
 api_router.include_router(customer_segments_router)
 api_router.include_router(decision_linking_router)
 api_router.include_router(integrations_router)
+api_router.include_router(ai_wallet_router)
 api_router.include_router(payment_admin_router)
 api_router.include_router(action_items_router)
 from routes.masters import router as masters_router  # noqa: E402

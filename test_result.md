@@ -8941,3 +8941,48 @@ agent_communication:
          refactor must not have broken XLS export/import.)
       Do NOT attempt live Google OAuth — it requires the user's console config + interactive sign-in.
 
+
+ai_credits_wallet_phase2:
+  - task: "Phase 2 — AI Credits Token-Metered Wallet (backend + frontend)"
+    implemented: true
+    working: "NA"
+    file: "backend/routes/ai_wallet.py, backend/core/ai_wallet.py, backend/core/ai_metering.py, backend/core/ai_assess.py, backend/server.py, frontend/app/ai-wallet.tsx, frontend/src/components/AiCreditsBadge.tsx, frontend/src/store/aiWalletStore.ts, frontend/app/(tabs)/profile.tsx, frontend/src/components/steps/Step7.tsx, frontend/app/tools/pros-cons-wizard.tsx"
+    needs_retesting: true
+    priority: "high"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Phase 2 wires a per-user AI-credits wallet. Backend wallet logic (core/ai_wallet.py),
+          Gemini-first metering with Emergent fallback (core/ai_metering.py), and ai_assess.py
+          metering were ALREADY present; this change registers routes/ai_wallet.py in server.py and
+          builds the full frontend.
+
+          Endpoints to test (all under /api), auth = super@test.com / AdminPass2026!:
+            GET  /ai-wallet                  -> {balance, is_admin, unit:'credits', tokens_per_credit}; auto-creates wallet & seeds starting balance on first call.
+            GET  /ai-wallet/ledger?limit=40  -> {items:[...]} ledger entries (seed/debit/grant).
+            GET  /admin/ai-wallet/config     -> super_admin only; {default_user_credits, default_admin_credits, tokens_per_credit}.
+            PUT  /admin/ai-wallet/config     -> super_admin only; updates defaults (reject negatives / non-positive tokens_per_credit -> 400).
+            POST /admin/ai-wallet/grant      -> admin; body {email|user_id, credits, mode:'add'|'set'} -> updates balance + ledger.
+            GET  /admin/ai-wallet/users      -> admin; list wallets with email/name.
+          AI Assess flows (POST /api/decisions/{id}/factors/{fid}/ai-assess and
+          POST /api/pros-cons/{id}/factors/{fid}/ai-assess) now deduct credits by actual tokens and
+          return 402 with a readable detail when the wallet balance is 0 (InsufficientCredits).
+          Frontend: Profile shows an AI Credits card -> /ai-wallet screen (balance, ledger, super-admin
+          config form, admin grant form). AI Assist screens (My Dezider Step 7 & Pros&Cons Step 7) show a
+          compact AiCreditsBadge and, on 402, prompt the user to open the wallet to refill.
+          NOTE: Real Gemini token metering needs GEMINI_API_KEY + a live AI Assess call; if no LLM key is
+          present in CI, test the wallet/config/grant/ledger contract and the 402 gating path.
+agent_communication:
+  - agent: "main"
+    message: |
+      BACKEND test (Phase 2 AI Credits Wallet) — super@test.com / AdminPass2026!, all routes under /api.
+      1. GET /api/ai-wallet -> 200, returns numeric balance + tokens_per_credit; first call seeds wallet.
+      2. GET /api/ai-wallet/ledger -> 200 {items:[...]} (should contain a 'seed' entry after first balance call).
+      3. GET /api/admin/ai-wallet/config (super admin) -> 200 with the 3 default keys.
+      4. PUT /api/admin/ai-wallet/config with {default_user_credits:25, default_admin_credits:250, tokens_per_credit:100} -> 200 echoes new values. Negative or tokens_per_credit<=0 -> 400.
+      5. POST /api/admin/ai-wallet/grant {email:'super@test.com', credits:10, mode:'add'} -> 200, balance increases by 10; verify a 'grant' ledger entry.
+      6. GET /api/admin/ai-wallet/users -> 200 {items:[...]} including email.
+      7. (If a non-super user token is available) GET /api/admin/ai-wallet/config with a normal user -> 403.
+      FRONTEND: log in, open Profile -> tap "AI Credits" card -> /ai-wallet screen shows balance, info, ledger;
+      super admin sees the "Default starting balances" + "Grant credits" forms; saving config + granting works.

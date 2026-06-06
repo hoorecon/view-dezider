@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { COLORS } from '../../constants/colors';
 import { Card } from '../Card';
 import { GradientButton } from '../GradientButton';
+import AiCreditsBadge from '../AiCreditsBadge';
+import { useAiWalletStore } from '../../store/aiWalletStore';
 import { useDecision } from '../../context/DecisionContext';
 import { styles } from '../../styles/decisionStyles';
 import { LMH_VALUES, effectiveFactorPct } from '../../utils/decisionHelpers';
@@ -27,6 +30,8 @@ export default function Step7() {
 
   // ─── Phase C: XLS assessment template export / import ───
   const [xlsBusy, setXlsBusy] = useState(false);
+  const router = useRouter();
+  const refreshAiWallet = useAiWalletStore((s) => s.refresh);
   const handleDownloadTemplate = async () => {
     setXlsBusy(true);
     try {
@@ -377,6 +382,14 @@ export default function Step7() {
       });
       if (!resp.ok) {
         const e = await resp.json().catch(() => ({}));
+        if (resp.status === 402) {
+          Alert.alert('Out of AI credits', e.detail || 'Top up your AI wallet to use AI Assist.', [
+            { text: 'Not now', style: 'cancel' },
+            { text: 'View wallet', onPress: () => router.push('/ai-wallet' as any) },
+          ]);
+          refreshAiWallet();
+          return;
+        }
         throw new Error(e.detail || `Failed (${resp.status})`);
       }
       const data = await resp.json();
@@ -390,6 +403,7 @@ export default function Step7() {
         : undefined;
       updateAssessment(optionId, factorId, pct, 'custom', displayValue, isNaN(numericActual) ? undefined : numericActual);
       setCustomInputValues(prev => ({ ...prev, [key]: String(pct) }));
+      refreshAiWallet();
     } catch (err: any) {
       Alert.alert('AI assessment', err?.message || 'Could not auto-assess. Please enter % manually.');
     } finally {
@@ -571,7 +585,10 @@ export default function Step7() {
       </View>
 
       <Card style={styles.legendCard}>
-        <Text style={styles.legendTitle}>Assessment Legend</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <Text style={[styles.legendTitle, { marginBottom: 0 }]}>Assessment Legend</Text>
+          <AiCreditsBadge compact autoRefresh />
+        </View>
         <View style={styles.legendRow}>
           <View style={styles.legendItem}>
             <View style={[styles.legendDot, { backgroundColor: LMH_VALUES.L.color }]} />

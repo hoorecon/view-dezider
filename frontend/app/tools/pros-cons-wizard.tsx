@@ -32,6 +32,8 @@ import { downloadAssessmentTemplate, importAssessmentTemplate } from '../../src/
 import { createAssessmentGsheet, importAssessmentGsheet, openSheetUrl } from '../../src/utils/googleSheets';
 import { LIFE_AREAS as LIFE_AREAS_CANONICAL } from '../../src/constants/lifeAreas';
 import { safeBack, goHome } from '../../src/utils/navigation';
+import AiCreditsBadge from '../../src/components/AiCreditsBadge';
+import { useAiWalletStore } from '../../src/store/aiWalletStore';
 
 type Source = 'direct' | 'pro' | 'con';
 interface Factor {
@@ -187,6 +189,7 @@ const DebouncedInput = React.forwardRef<any, {
 
 export default function ProsConsWizard() {
   const router = useRouter();
+  const refreshAiWallet = useAiWalletStore((s) => s.refresh);
   const { id, module = 'pros-cons' } = useLocalSearchParams<{ id: string; module?: string }>();
   const base = module === 'swot' ? '/swot' : '/pros-cons';
 
@@ -649,8 +652,17 @@ export default function ProsConsWizard() {
     try {
       await api.post(`${base}/${id}/factors/${fid}/ai-assess`, { option_id: oid, actual_value: actualValue });
       await reload();
+      refreshAiWallet();
     } catch (e: any) {
-      showAlert('AI assessment', e?.response?.data?.detail || 'Could not auto-assess. Please enter % manually.');
+      if (e?.response?.status === 402) {
+        showAlert('Out of AI credits', e?.response?.data?.detail || 'Top up your AI wallet to use AI Assist.', [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'View wallet', onPress: () => router.push('/ai-wallet' as any) },
+        ]);
+        refreshAiWallet();
+      } else {
+        showAlert('AI assessment', e?.response?.data?.detail || 'Could not auto-assess. Please enter % manually.');
+      }
     } finally {
       setAiBusy(b => ({ ...b, [key]: false }));
     }
@@ -1678,7 +1690,10 @@ export default function ProsConsWizard() {
 
             return (
               <View>
-                <Text style={styles.stepTitle}>Step 7 — Prioritize &amp; Assess %</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={[styles.stepTitle, { flex: 1 }]}>Step 7 — Prioritize &amp; Assess %</Text>
+                  {module !== 'swot' && <AiCreditsBadge compact autoRefresh />}
+                </View>
                 {module !== 'swot' && (
                   <View style={pcAssess.xlsBar}>
                     <TouchableOpacity style={pcAssess.xlsBtn} onPress={handleDownloadTemplate} disabled={xlsBusy} testID="pc-xls-download">
