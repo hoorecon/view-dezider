@@ -228,11 +228,16 @@ async def md_ai_assess(
     decision_id: str, factor_id: str,
     body: Dict[str, Any], user: dict = Depends(get_current_user),
 ):
-    """LLM-scored satisfaction % (0-100) for a factor/sub-factor given the
-    expected/target and the option's actual value. Best for subjective
-    (qualitative) factors. Falls back to a numeric ratio if the LLM is
-    unavailable and both expected & actual are numeric."""
-    import json as _json
+    """LLM-scored satisfaction % (0-100) for a factor/sub-factor.
+
+    Validation + actual-value resolution are delegated to core.ai_assess
+    (shared with Pros & Cons for parity):
+      * Quantitative → needs Expected + Operator + Actual (Unit optional).
+      * Qualitative  → needs Expected only; AI fetches/infers the Actual.
+      * Actual resolution: Data Source → linked Solution Store / ReviewNet → AI guess.
+    """
+    from core.ai_assess import ai_assess_factor
+
     decision = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
     if not decision:
         raise HTTPException(status_code=404, detail="Decision not found")
@@ -244,70 +249,27 @@ async def md_ai_assess(
     if not option:
         raise HTTPException(status_code=404, detail="Option not found")
 
-    actual = body.get("actual_value")
-    if actual is None or str(actual).strip() == "":
+    provided_actual = body.get("actual_value")
+    if provided_actual is None or str(provided_actual).strip() == "":
         existing = next((a for a in option.get("assessments", []) if a.get("factor_id") == factor_id), None)
-        actual = (existing or {}).get("unit_value")
-    if actual is None or str(actual).strip() == "":
-        raise HTTPException(status_code=400, detail="Enter an Actual value first so AI can assess satisfaction.")
+        provided_actual = (existing or {}).get("unit_value")
 
-    expected = factor.get("expected_value")
+    result = await ai_assess_factor(
+        factor=factor,
+        option=option,
+        decision_title=decision.get("title") or "",
+        decision_context=decision.get("context") or "",
+        user_id=user["user_id"],
+        provided_actual=provided_actual,
+    )
+
+    pct = result["assessment_pct"]
+    final_actual = result.get("actual_value")
     unit = factor.get("unit") or ""
-    fname = factor.get("name") or "factor"
-    ftype = factor.get("factor_type") or ("qualitative" if factor.get("data_type") == "text" else "quantitative")
-    operator = factor.get("operator") or ""
-
-    pct: Optional[int] = None
-    used_llm = False
-    api_key = os.getenv("EMERGENT_LLM_KEY")
-    if api_key:
-        prompt = (
-            "Score, as a single integer percentage from 0 to 100, how well an option "
-            "satisfies a decision factor versus its expectation. 100 = fully meets/exceeds, "
-            "0 = not at all.\n"
-            f"Decision: {decision.get('title') or ''}\n"
-            f"Context: {decision.get('context') or ''}\n"
-            f"Factor: {fname} (type: {ftype})\n"
-            f"Expected / target: {operator} {expected if expected not in (None, '') else 'not specified'} {unit}\n"
-            f"Option: {option.get('name')}\n"
-            f"Actual value / observation: {actual} {unit}\n"
-            'Return ONLY JSON: {"satisfaction_pct": <integer 0-100>}'
-        )
-        try:
-            from core.llm_compat import LlmChat, UserMessage
-            chat = LlmChat(
-                api_key=api_key,
-                session_id=f"mdassess_{user['user_id']}_{uuid.uuid4().hex[:8]}",
-                system_message="You are a careful decision-analysis assessor. Return only valid JSON.",
-            ).with_model("openai", "gpt-4.1-mini")
-            resp = await chat.send_message(UserMessage(text=prompt))
-            txt = (resp or "").strip()
-            if txt.startswith("```"):
-                txt = txt.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-            parsed = _json.loads(txt)
-            pct = int(round(float(parsed.get("satisfaction_pct"))))
-            used_llm = True
-        except Exception as e:
-            logging.getLogger("decisions").warning(f"MD AI assess fallback: {e}")
-            pct = None
-
-    if pct is None:
-        # Numeric-ratio fallback — tolerate unit-suffixed values like "80 INR".
-        import re as _re
-
-        def _num(s):
-            m = _re.search(r"-?\d+(?:\.\d+)?", str(s))
-            return float(m.group()) if m else None
-
-        ev = _num(expected)
-        av = _num(actual)
-        if ev is not None and ev > 0 and av is not None:
-            pct = int(max(0, min(100, round(av / ev * 100))))
-    if pct is None:
-        raise HTTPException(status_code=502, detail="AI assessment unavailable — please enter % manually.")
-
-    pct = max(0, min(100, pct))
-    unit_value = f"{actual}{(' ' + unit) if unit else ''}"
+    unit_value = (
+        f"{final_actual}{(' ' + unit) if (unit and unit not in str(final_actual)) else ''}"
+        if final_actual not in (None, "") else ""
+    )
     # Upsert into option.assessments
     assessments = option.setdefault("assessments", [])
     a = next((x for x in assessments if x.get("factor_id") == factor_id), None)
@@ -315,13 +277,14 @@ async def md_ai_assess(
         a = {"factor_id": factor_id}
         assessments.append(a)
     a["percentage"] = pct
-    a["unit_value"] = unit_value
+    if unit_value:
+        a["unit_value"] = unit_value
     a["assessment_mode"] = "custom"
     await db.decisions.update_one(
         {"id": decision_id, "user_id": user["user_id"]},
         {"$set": {"options": decision["options"], "updated_at": datetime.now(timezone.utc)}},
     )
-    return {"percentage": pct, "source": "ai" if used_llm else "ratio"}
+    return {"percentage": pct, "actual_value": final_actual, "source": result.get("source")}
 
 @router.delete("/decisions/{decision_id}")
 async def delete_decision(decision_id: str, user: dict = Depends(get_current_user)):

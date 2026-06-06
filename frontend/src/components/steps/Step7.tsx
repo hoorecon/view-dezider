@@ -310,14 +310,36 @@ export default function Step7() {
     return '';
   };
 
-  // LLM-scored satisfaction % from expected vs actual (best for subjective factors).
+  // LLM-scored satisfaction % from expected vs actual. Validation mirrors the
+  // backend (core/ai_assess): Quantitative needs Expected + Operator + Actual;
+  // Qualitative/Subjective needs Expected only (AI fetches/infers the Actual).
   const handleAIAssess = async (optionId: string, factorId: string) => {
     const key = getAssessmentKey(optionId, factorId);
     const factor = decision.factors.find(f => f.id === factorId);
     const actual = getActualInputValue(optionId, factorId);
-    if (!actual || !actual.trim()) {
-      Alert.alert('Add a value first', 'Enter an Actual value so AI can assess satisfaction.');
+    const has = (v: any) => v !== undefined && v !== null && String(v).trim() !== '';
+    const isQual = factor?.data_type === 'text' || factor?.factor_type === 'subjective' || factor?.factor_type === 'qualitative';
+    if (!has(factor?.expected_value)) {
+      Alert.alert(
+        'Set an Expected value',
+        isQual
+          ? 'Add an Expected value for this qualitative factor so AI can assess against it.'
+          : 'Add an Expected value (and Operator) for this quantitative factor before AI Assist.'
+      );
       return;
+    }
+    if (!isQual) {
+      if (!has(factor?.operator)) {
+        Alert.alert('Set an Operator', 'Add an Operator (e.g. ≥) for this quantitative factor before AI Assist.');
+        return;
+      }
+      if (!has(actual)) {
+        Alert.alert(
+          'Add an Actual value',
+          'Quantitative factors need an Actual value. Enter it, set a Data Source, or link this option to a Solution Store item.'
+        );
+        return;
+      }
     }
     setAiAssessBusy(prev => ({ ...prev, [key]: true }));
     try {
@@ -335,8 +357,12 @@ export default function Step7() {
       const data = await resp.json();
       const pct = Math.max(0, Math.min(100, parseInt(String(data.percentage), 10) || 0));
       const unitStr = factor?.unit || '';
-      const numericActual = parseFloat(actual);
-      const displayValue = `${actual}${unitStr ? ' ' + unitStr : ''}`;
+      // Prefer the AI-resolved actual (qualitative gap-fill) when the user left it blank.
+      const effectiveActual = has(actual) ? actual : (data.actual_value != null ? String(data.actual_value) : '');
+      const numericActual = parseFloat(effectiveActual);
+      const displayValue = effectiveActual
+        ? `${effectiveActual}${unitStr && !String(effectiveActual).includes(unitStr) ? ' ' + unitStr : ''}`
+        : undefined;
       updateAssessment(optionId, factorId, pct, 'custom', displayValue, isNaN(numericActual) ? undefined : numericActual);
       setCustomInputValues(prev => ({ ...prev, [key]: String(pct) }));
     } catch (err: any) {
@@ -507,7 +533,7 @@ export default function Step7() {
       <View style={styles.voiceInputRow}>
         <View style={styles.voiceHintBox}>
           <Ionicons name="mic-outline" size={16} color={COLORS.primary} />
-          <Text style={styles.voiceHint}>Use the Voice Input button below to speak commands like "Salary High" or "All Medium"</Text>
+          <Text style={styles.voiceHint}>Use the Voice Input button below to speak commands like “Salary High” or “All Medium”</Text>
         </View>
       </View>
 

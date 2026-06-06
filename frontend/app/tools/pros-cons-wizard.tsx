@@ -622,6 +622,27 @@ export default function ProsConsWizard() {
   const [aiBusy, setAiBusy] = useState<Record<string, boolean>>({});
   const aiAssessCell = async (oid: string, fid: string, actualValue?: string) => {
     if (module === 'swot') { showAlert('Not available', 'AI assessment is available in the Pros & Cons flow.'); return; }
+    // Pre-check mirrors backend (core/ai_assess): Quantitative needs Expected +
+    // Operator + Actual; Qualitative/Subjective needs Expected only (AI fetches Actual).
+    const factor = analysis?.factors.find(f => f.id === fid);
+    const has = (v: any) => v !== undefined && v !== null && String(v).trim() !== '';
+    const isQual = (factor?.data_type || 'numeric') === 'text' || factor?.factor_type === 'subjective';
+    if (factor && !has(factor.expected_value)) {
+      showAlert('Set an Expected value', isQual
+        ? 'Add an Expected value for this qualitative factor (Step 5) so AI can assess against it.'
+        : 'Add an Expected value (and Operator) for this quantitative factor in Step 5 before AI Assist.');
+      return;
+    }
+    if (factor && !isQual) {
+      if (!has(factor.operator)) {
+        showAlert('Set an Operator', 'Add an Operator (e.g. ≥) for this quantitative factor in Step 5 before AI Assist.');
+        return;
+      }
+      if (!has(actualValue)) {
+        showAlert('Add an Actual value', 'Quantitative factors need an Actual value. Enter it, set a Data Source, or link this option to a Solution Store item.');
+        return;
+      }
+    }
     const key = `${oid}_${fid}`;
     setAiBusy(b => ({ ...b, [key]: true }));
     try {

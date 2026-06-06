@@ -8851,3 +8851,46 @@ agent_communication:
       "Set data source" opens the Auto-Fetch modal. Creds: super@test.com / AdminPass2026! (or admin@test.com).
       All routes under /api/pros-cons.
 
+#====================================================================================================
+# AI Assist validation + actual-resolution parity (My Dezider + Pros & Cons)
+#====================================================================================================
+ai_assist_validation:
+  - task: "AI Assist: factor-type-aware validation + actual resolution (Data Source → Solution Store/ReviewNet → AI guess)"
+    implemented: true
+    working: "NA"
+    file: "backend/core/ai_assess.py, backend/routes/pros_cons.py, backend/routes/decisions.py, frontend/src/components/steps/Step7.tsx, frontend/app/tools/pros-cons-wizard.tsx"
+    needs_retesting: true
+    priority: "high"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          New shared helper core/ai_assess.py centralises AI Assist for BOTH My Dezider
+          (POST /api/decisions/{id}/factors/{fid}/ai-assess) and Pros & Cons
+          (POST /api/pros-cons/{id}/factors/{fid}/ai-assess). Rules:
+          • Quantitative factor (data_type 'numeric' / factor_type objective): requires
+            Expected value + Operator + an Actual value (Unit optional). Missing Expected/Operator
+            → 400; missing Actual after resolution → 400.
+          • Qualitative/Subjective factor (data_type 'text' / factor_type subjective): requires
+            Expected value only. Actual optional — AI infers/fetches it and returns actual_value.
+          Actual-resolution chain when no user actual: (1) factor.data_source (webhook/web_surf/ai_llm)
+          via reused fetch logic, (2) linked Solution Store option (option.solution_id) → quantitative
+          factors from Store and qualitative ratings from ReviewNet, (3) AI guess from context.
+          Frontend pre-checks mirror the backend (friendly alerts) in Step7.tsx (My Dezider) and
+          pros-cons-wizard aiAssessCell. My Dezider now also persists the AI-inferred actual for
+          qualitative factors when the user left Actual blank.
+agent_communication:
+  - agent: "main"
+    message: |
+      Test AI Assist validation in BOTH flows (backend focus, no mocks; EMERGENT_LLM_KEY is set).
+      MY DEZIDER (POST /api/decisions/{id}/factors/{fid}/ai-assess, body {option_id, actual_value?}):
+      (1) Quantitative factor (data_type 'numeric') WITHOUT operator → 400 mentioning Operator.
+      (2) Quantitative WITHOUT expected_value → 400 mentioning Expected value.
+      (3) Quantitative WITH expected+operator but NO actual (and no data_source, no solution_id) → 400 mentioning Actual value.
+      (4) Quantitative WITH expected+operator+actual → 200 with integer percentage 0-100.
+      (5) Qualitative factor (data_type 'text') WITHOUT expected_value → 400 mentioning Expected value.
+      (6) Qualitative WITH expected_value but NO actual → 200; response includes actual_value (AI-inferred) and percentage.
+      PROS & CONS (POST /api/pros-cons/{id}/factors/{fid}/ai-assess) — repeat the same 6 cases; set factor metadata via
+      PUT /api/pros-cons/{id}/factors/{fid} {data_type, operator, expected_value, unit}.
+      Creds: admin@test.com / AdminPass2026!. All routes under /api. Note super@test.com may 401 in dev.
+

@@ -903,10 +903,16 @@ async def ai_assess_cell(
     analysis_id: str, factor_id: str,
     body: Dict[str, Any], user: dict = Depends(get_current_user),
 ):
-    """LLM-scored satisfaction % (0-100) for one (option, factor) given the
-    expected/target and the option's actual value. Used by the Step-7 "AI"
-    button (parity with My Dezider). Falls back to a numeric ratio when the
-    LLM is unavailable and both expected & actual are numeric."""
+    """LLM-scored satisfaction % (0-100) for one (option, factor).
+
+    Validation + actual-value resolution are delegated to core.ai_assess
+    (shared with My Dezider for parity):
+      * Quantitative → needs Expected + Operator + Actual (Unit optional).
+      * Qualitative  → needs Expected only; AI fetches/infers the Actual.
+      * Actual resolution: Data Source → linked Solution Store / ReviewNet → AI guess.
+    """
+    from core.ai_assess import ai_assess_factor
+
     doc = await _load_analysis(analysis_id, user["user_id"])
     factor = next((f for f in doc["factors"] if f["id"] == factor_id), None)
     if not factor:
@@ -917,74 +923,39 @@ async def ai_assess_cell(
         raise HTTPException(status_code=404, detail="Option not found")
 
     cell = ((doc.get("assessments") or {}).get(option_id) or {}).get(factor_id) or {}
-    actual = body.get("actual_value")
-    if actual is None or str(actual).strip() == "":
-        actual = cell.get("actual_value")
-    if actual is None or str(actual).strip() == "":
-        raise HTTPException(status_code=400, detail="Enter an Actual value first so AI can assess satisfaction.")
+    provided_actual = body.get("actual_value")
+    if provided_actual is None or str(provided_actual).strip() == "":
+        provided_actual = cell.get("actual_value")
 
-    expected = factor.get("expected_value") or factor.get("target_value")
-    unit = factor.get("unit") or ""
-    fname = factor.get("display_name") or factor.get("name") or "factor"
-    ftype = factor.get("factor_type") or "qualitative"
+    result = await ai_assess_factor(
+        factor=factor,
+        option=option,
+        decision_title=doc.get("title") or doc.get("name") or "",
+        decision_context=doc.get("context") or "",
+        user_id=user["user_id"],
+        provided_actual=provided_actual,
+    )
 
-    pct: Optional[int] = None
-    used_llm = False
-    api_key = os.getenv("EMERGENT_LLM_KEY")
-    if api_key:
-        prompt = (
-            "Score, as a single integer percentage from 0 to 100, how well an option "
-            "satisfies a decision factor versus its expectation. 100 = fully meets/exceeds, "
-            "0 = not at all.\n"
-            f"Decision: {doc.get('title') or doc.get('name') or ''}\n"
-            f"Factor: {fname} (type: {ftype})\n"
-            f"Expected / target: {expected if expected not in (None, '') else 'not specified'} {unit}\n"
-            f"Option: {option.get('name')}\n"
-            f"Actual value / observation: {actual} {unit}\n"
-            'Return ONLY JSON: {"satisfaction_pct": <integer 0-100>}'
-        )
-        try:
-            from core.llm_compat import LlmChat, UserMessage
-            chat = LlmChat(
-                api_key=api_key,
-                session_id=f"pcassess_{user['user_id']}_{uuid.uuid4().hex[:8]}",
-                system_message="You are a careful decision-analysis assessor. Return only valid JSON.",
-            ).with_model("openai", "gpt-4.1-mini")
-            resp = await chat.send_message(UserMessage(text=prompt))
-            txt = (resp or "").strip()
-            if txt.startswith("```"):
-                txt = txt.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-            parsed = json_module.loads(txt)
-            pct = int(round(float(parsed.get("satisfaction_pct"))))
-            used_llm = True
-        except Exception as e:
-            logging.getLogger("pros_cons").warning(f"AI assess fallback: {e}")
-            pct = None
-
-    if pct is None:
-        # Deterministic fallback: numeric ratio (higher actual = better).
-        try:
-            ev = float(str(expected))
-            av = float(str(actual))
-            if ev > 0:
-                pct = int(max(0, min(100, round(av / ev * 100))))
-        except Exception:
-            pct = None
-    if pct is None:
-        raise HTTPException(status_code=502, detail="AI assessment unavailable — please enter % manually.")
-
-    pct = max(0, min(100, pct))
+    pct = result["assessment_pct"]
+    final_actual = result.get("actual_value")
     derived_cell_value = compute_cell_value(pct, int(factor.get("std_rating", 0) or 0))
+    set_doc = {
+        f"assessments.{option_id}.{factor_id}.assessment_pct": pct,
+        f"assessments.{option_id}.{factor_id}.cell_value": derived_cell_value,
+        "updated_at": datetime.now(timezone.utc),
+    }
+    if final_actual is not None and str(final_actual).strip() != "":
+        set_doc[f"assessments.{option_id}.{factor_id}.actual_value"] = str(final_actual)
     await db.pros_cons.update_one(
         {"id": analysis_id, "user_id": user["user_id"]},
-        {"$set": {
-            f"assessments.{option_id}.{factor_id}.assessment_pct": pct,
-            f"assessments.{option_id}.{factor_id}.actual_value": str(actual),
-            f"assessments.{option_id}.{factor_id}.cell_value": derived_cell_value,
-            "updated_at": datetime.now(timezone.utc),
-        }},
+        {"$set": set_doc},
     )
-    return {"assessment_pct": pct, "cell_value": derived_cell_value, "source": "ai" if used_llm else "ratio"}
+    return {
+        "assessment_pct": pct,
+        "cell_value": derived_cell_value,
+        "actual_value": final_actual,
+        "source": result.get("source"),
+    }
 
 
 # ─── XLS assessment template — export / import (Phase C) ───
