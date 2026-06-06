@@ -67,14 +67,14 @@ def _client_config() -> dict:
 # ─────────────────────────────────────────────────────────────
 # OAuth
 # ─────────────────────────────────────────────────────────────
-def build_auth_url(state: str) -> str:
-    flow = Flow.from_client_config(_client_config(), scopes=SCOPES, redirect_uri=REDIRECT_URI)
+def build_auth_url(state: str, redirect_uri: str) -> str:
+    flow = Flow.from_client_config(_client_config(), scopes=SCOPES, redirect_uri=redirect_uri)
     url, _ = flow.authorization_url(access_type="offline", prompt="consent", include_granted_scopes="true", state=state)
     return url
 
 
-def _exchange_code(code: str) -> Credentials:
-    flow = Flow.from_client_config(_client_config(), scopes=SCOPES, redirect_uri=REDIRECT_URI)
+def _exchange_code(code: str, redirect_uri: str) -> Credentials:
+    flow = Flow.from_client_config(_client_config(), scopes=SCOPES, redirect_uri=redirect_uri)
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -82,10 +82,10 @@ def _exchange_code(code: str) -> Credentials:
     return flow.credentials
 
 
-async def exchange_and_store(code: str, user_id: str) -> str:
+async def exchange_and_store(code: str, user_id: str, redirect_uri: str) -> str:
     """Exchange the auth code, fetch the Google account email, persist tokens.
     Returns the connected Google email."""
-    creds = await asyncio.to_thread(_exchange_code, code)
+    creds = await asyncio.to_thread(_exchange_code, code, redirect_uri)
     granted = set(creds.scopes or [])
     if REQUIRED_SCOPE not in granted:
         raise ValueError("The Google Sheets permission was not granted. Please retry and allow Sheets access.")
@@ -233,12 +233,12 @@ async def read_assessment_sheet(user_id: str, spreadsheet_id: str) -> List[List[
 # ─────────────────────────────────────────────────────────────
 # OAuth state (CSRF) — short-lived
 # ─────────────────────────────────────────────────────────────
-async def create_state(user_id: str, return_to: str) -> str:
+async def create_state(user_id: str, return_to: str, redirect_uri: str) -> str:
     state = uuid.uuid4().hex
     await db.google_oauth_state.update_one(
         {"state": state},
         {"$set": {"state": state, "user_id": user_id, "return_to": return_to,
-                  "created_at": datetime.now(timezone.utc)}},
+                  "redirect_uri": redirect_uri, "created_at": datetime.now(timezone.utc)}},
         upsert=True,
     )
     return state

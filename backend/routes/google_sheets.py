@@ -62,15 +62,27 @@ def _close_page(message: str, ok: bool) -> HTMLResponse:
     )
 
 
+def _redirect_uri_from_request(request: Request) -> str:
+    """Build the callback URL from the public host so it works on BOTH preview
+    and production automatically (both must be registered on the OAuth client).
+    Falls back to the configured env value."""
+    host = request.headers.get("x-forwarded-host") or request.url.netloc
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme or "https"
+    if host:
+        return f"{proto}://{host}/api/oauth/sheets/callback"
+    return gs.REDIRECT_URI
+
+
 @router.get("/oauth/sheets/login")
-async def sheets_login(token: str = Query(...), return_to: str = Query(DEFAULT_RETURN)):
+async def sheets_login(request: Request, token: str = Query(...), return_to: str = Query(DEFAULT_RETURN)):
     if not gs.is_configured():
         raise HTTPException(status_code=500, detail="Google Sheets is not configured on the server.")
     user_id = await _user_from_token(token)
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid or expired session.")
-    state = await gs.create_state(user_id, return_to or DEFAULT_RETURN)
-    return RedirectResponse(gs.build_auth_url(state))
+    redirect_uri = _redirect_uri_from_request(request)
+    state = await gs.create_state(user_id, return_to or DEFAULT_RETURN, redirect_uri)
+    return RedirectResponse(gs.build_auth_url(state, redirect_uri))
 
 
 @router.get("/oauth/sheets/callback")
@@ -82,8 +94,9 @@ async def sheets_callback(request: Request, code: str = Query(None), state: str 
     st = await gs.consume_state(state)
     if not st:
         return _close_page("This sign-in link expired. Please try again.", ok=False)
+    redirect_uri = st.get("redirect_uri") or _redirect_uri_from_request(request)
     try:
-        email = await gs.exchange_and_store(code, st["user_id"])
+        email = await gs.exchange_and_store(code, st["user_id"], redirect_uri)
     except Exception as e:
         log.warning(f"sheets callback failed: {e}")
         return _close_page("Could not connect Google Sheets.", ok=False)
