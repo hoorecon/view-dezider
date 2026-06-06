@@ -402,6 +402,8 @@ async def update_factor(analysis_id: str, factor_id: str, body: Dict[str, Any], 
         "display_name",   # Step 5+ rename override; original `name` preserved for Steps 1-4
         "priority_gap_pct",  # Step 7 — per-pair gap above the next lower factor
         "weight",         # Step 5 — sub-factor weightage (% split under a main factor)
+        # Step 5 "Review & Refine Expectations" — factor metadata (parity with My Dezider)
+        "operator", "data_type", "data_source",
     }
     for k, v in body.items():
         if k in allowed:
@@ -580,6 +582,19 @@ async def delete_option(analysis_id: str, option_id: str, user: dict = Depends(g
     return {"deleted": True}
 
 
+def _duplicate_pro_con(doc: dict, kind: str, text: str, exclude_id: str | None = None) -> bool:
+    """True if another item of the same kind ('pros'/'cons') across ALL options
+    already has this text (case-insensitive). Keeps the factor tree unique."""
+    needle = text.strip().lower()
+    for o in doc.get("options", []):
+        for it in o.get(kind, []):
+            if exclude_id and it.get("id") == exclude_id:
+                continue
+            if (it.get("text") or "").strip().lower() == needle:
+                return True
+    return False
+
+
 @router.post("/{analysis_id}/options/{option_id}/pros")
 async def add_pro(analysis_id: str, option_id: str, body: Dict[str, Any], user: dict = Depends(get_current_user)):
     doc = await _load_analysis(analysis_id, user["user_id"])
@@ -587,15 +602,18 @@ async def add_pro(analysis_id: str, option_id: str, body: Dict[str, Any], user: 
     idx = next((i for i, o in enumerate(opts) if o["id"] == option_id), -1)
     if idx < 0:
         raise HTTPException(status_code=404, detail="Option not found")
+    text = (body.get("text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Pro text required")
+    if _duplicate_pro_con(doc, "pros", text):
+        raise HTTPException(status_code=409, detail=f"A Pro named “{text}” already exists in this analysis. Names must be unique.")
     item = {
         "id": str(uuid.uuid4()),
-        "text": (body.get("text") or "").strip(),
+        "text": text,
         "description": body.get("description", ""),
         "importance": int(body.get("importance", 5)),
         "promoted_factor_id": None,
     }
-    if not item["text"]:
-        raise HTTPException(status_code=400, detail="Pro text required")
     opts[idx].setdefault("pros", []).append(item)
     await _persist(analysis_id, user["user_id"], {"options": opts})
     return item
@@ -608,15 +626,18 @@ async def add_con(analysis_id: str, option_id: str, body: Dict[str, Any], user: 
     idx = next((i for i, o in enumerate(opts) if o["id"] == option_id), -1)
     if idx < 0:
         raise HTTPException(status_code=404, detail="Option not found")
+    text = (body.get("text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Con text required")
+    if _duplicate_pro_con(doc, "cons", text):
+        raise HTTPException(status_code=409, detail=f"A Con named “{text}” already exists in this analysis. Names must be unique.")
     item = {
         "id": str(uuid.uuid4()),
-        "text": (body.get("text") or "").strip(),
+        "text": text,
         "description": body.get("description", ""),
         "importance": int(body.get("importance", 5)),
         "promoted_factor_id": None,
     }
-    if not item["text"]:
-        raise HTTPException(status_code=400, detail="Con text required")
     opts[idx].setdefault("cons", []).append(item)
     await _persist(analysis_id, user["user_id"], {"options": opts})
     return item
@@ -646,44 +667,64 @@ async def delete_con(analysis_id: str, option_id: str, item_id: str, user: dict 
 @router.put("/{analysis_id}/options/{option_id}/pros/{item_id}")
 async def update_pro(analysis_id: str, option_id: str, item_id: str,
                      body: Dict[str, Any], user: dict = Depends(get_current_user)):
-    """Inline-edit a Pro's text. Body: { text }"""
+    """Inline-edit a Pro's text. Body: { text }. Enforces uniqueness and
+    propagates the rename to its promoted factor (if already promoted)."""
     text = (body.get("text") or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Pro text cannot be empty")
     doc = await _load_analysis(analysis_id, user["user_id"])
+    if _duplicate_pro_con(doc, "pros", text, exclude_id=item_id):
+        raise HTTPException(status_code=409, detail=f"A Pro named “{text}” already exists in this analysis. Names must be unique.")
     found = False
+    promoted_fid = None
     for o in doc["options"]:
         if o["id"] == option_id:
             for p in o.get("pros", []):
                 if p["id"] == item_id:
                     p["text"] = text
+                    promoted_fid = p.get("promoted_factor_id")
                     found = True
                     break
     if not found:
         raise HTTPException(status_code=404, detail="Pro not found")
-    await _persist(analysis_id, user["user_id"], {"options": doc["options"]})
+    # Propagate rename to the promoted factor (Pros keep their text as the name).
+    if promoted_fid:
+        for f in doc.get("factors", []):
+            if f["id"] == promoted_fid:
+                f["name"] = text
+    await _persist(analysis_id, user["user_id"], {"options": doc["options"], "factors": doc.get("factors", [])})
     return {"updated": True}
 
 
 @router.put("/{analysis_id}/options/{option_id}/cons/{item_id}")
 async def update_con(analysis_id: str, option_id: str, item_id: str,
                      body: Dict[str, Any], user: dict = Depends(get_current_user)):
-    """Inline-edit a Con's text. Body: { text }"""
+    """Inline-edit a Con's text. Body: { text }. Enforces uniqueness and
+    propagates the rename to its promoted 'SHOULD NOT - …' factor."""
     text = (body.get("text") or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Con text cannot be empty")
     doc = await _load_analysis(analysis_id, user["user_id"])
+    if _duplicate_pro_con(doc, "cons", text, exclude_id=item_id):
+        raise HTTPException(status_code=409, detail=f"A Con named “{text}” already exists in this analysis. Names must be unique.")
     found = False
+    promoted_fid = None
     for o in doc["options"]:
         if o["id"] == option_id:
             for c in o.get("cons", []):
                 if c["id"] == item_id:
                     c["text"] = text
+                    promoted_fid = c.get("promoted_factor_id")
                     found = True
                     break
     if not found:
         raise HTTPException(status_code=404, detail="Con not found")
-    await _persist(analysis_id, user["user_id"], {"options": doc["options"]})
+    # Propagate rename to the promoted factor (Cons are prefixed 'SHOULD NOT - ').
+    if promoted_fid:
+        for f in doc.get("factors", []):
+            if f["id"] == promoted_fid:
+                f["name"] = f"SHOULD NOT - {text}"
+    await _persist(analysis_id, user["user_id"], {"options": doc["options"], "factors": doc.get("factors", [])})
     return {"updated": True}
 
 

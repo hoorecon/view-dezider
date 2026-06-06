@@ -1,0 +1,48 @@
+{
+  "summary": "Iter61 — Pros & Cons Wizard (backend + frontend) fully verified. Backend: 5/5 pytest cases PASSED on the live preview backend — duplicate Pro 409, duplicate Con 409 (incl. case-insensitive), Con rename propagates to 'SHOULD NOT - NewConName' factor, Pro rename propagates to new factor name, and sub-factor creation + Step-5 metadata persistence (operator '>=', data_type 'numeric', expected_value '1000', unit 'INR', weight 60, data_source {type:'ai_llm', config:{prompt:'x'}}) all round-trip via GET /api/pros-cons/{id}. Frontend mobile-viewport (390x844): login OK, wizard reachable at /tools/pros-cons-wizard?id=…&module=pros-cons. STEP 1 shows ONLY 'Factor name' input + 'Add Direct Factor' button (no Expected/Unit) — confirmed via DOM text + screenshot. STEP 5 title = 'Step 5 — Review & Refine Expectations'; each factor card has Type toggle (Quantitative/Qualitative), Expected + unit inputs, Operator chips (≥ ≤ > < = ≠), 'Add sub-factor' (testID pc-addsub-{fid}) and 'Set data source (optional)' (testID pc-ds-{fid}). Tapping Add sub-factor twice spawns sub-factor rows and reveals the 'Split evenly' button (testID pc-split-{fid}). Tapping 'Set data source' opens the Auto-Fetch Configuration modal containing Manual entry, Webhook/API, Web Surf, AI / LLM options and a 'Save data source' button (testID pc-ds-save). NOTE: super@test.com credential from review request returned 401 — fell back to admin@test.com (per /app/memory/test_credentials.md). NOTE: modal label in code is 'AI / LLM', not 'AI-LLM' as described in the spec (cosmetic).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Step 1 — direct factor card",
+        "issues": [
+          "Factor name TextInput and 'Add Direct Factor' button have no testID — discoverable only via placeholder='e.g., Mileage' and text='Add Direct Factor'. Adding testIDs (pc-step1-factor-name, pc-step1-add-direct) would harden future regression tests."
+        ]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter61_pros_cons_wizard.py",
+    "/app/test_reports/pytest/iter61.xml"
+  ],
+  "action_items": [
+    "(Optional polish) Cosmetic: the Auto-Fetch modal labels the LLM option as 'AI / LLM'; the iter61 review request describes it as 'AI-LLM'. Functionally identical, no fix required unless the spec name is mandatory.",
+    "(Optional polish) Add testIDs to Step-1 factor-name TextInput and 'Add Direct Factor' button for more robust automation (pros-cons-wizard.tsx:906, :907).",
+    "Credential note: super@test.com (mentioned in this task) returned 401 — only admin@test.com worked on the dev preview. Confirm with main agent whether super@test.com needs to be re-seeded or removed from this task's instructions."
+  ],
+  "critical_code_review_comments": [
+    "/app/frontend/app/tools/pros-cons-wizard.tsx is 3,722 lines — well above the 700-line guideline. Consider splitting per-step (Step1Factors, Step5Refine, FactorTreeNode, DataSourceModal) into separate files under /app/frontend/components/pros-cons/.",
+    "/app/backend/routes/pros_cons.py is 1,099 lines — at the upper end of the guideline. Consider extracting the XLSX template + AI-assess endpoints to sub-modules.",
+    "Duplicate-Pro/Con check (_duplicate_pro_con, lines 585-595) is case-insensitive and scans across ALL options — good, matches the test expectation. Returns HTTP 409 with a clear unicode-quoted message; consistent with My-Dezider patterns."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter61_pros_cons_wizard.py (new)",
+    "/app/test_reports/pytest/iter61.xml (new)",
+    "/app/test_reports/iteration_61.json (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (5/5)",
+    "frontend": "100% — Step 1 minimal layout, Step 5 title, Type toggle, Expected/Unit, Operator chips, Add sub-factor, Split evenly, Set data source modal (Manual/Webhook/Web Surf/AI-LLM/Save) all rendered and interactive"
+  },
+  "seed_data_creation": "Pytest fixture creates one TEST_iter61_{ts} analysis + one Option per module run; auto-cleanup via DELETE in teardown. UI run created a separate TEST_iter61_ui_{ts} analysis (DELETEd at end of run).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All 5 backend cases + every requested Step 1 / Step 5 UI feature passed. Use admin@test.com / AdminPass2026! (super@test.com is currently 401 in this preview env). The wizard URL pattern is /tools/pros-cons-wizard?id={analysis_id}&module=pros-cons; the auth screen testIDs are login-email / login-password / login-submit. Step 5 factor cards expose testIDs pc-type-quant-{fid}, pc-type-qual-{fid}, pc-addsub-{fid}, pc-ds-{fid}, pc-split-{fid}, pc-subweight-{cid}, pc-ds-save (modal save).",
+  "rca_of_issue": "N/A — no defects detected. The single non-blocking observation is a cosmetic label mismatch ('AI / LLM' vs 'AI-LLM' in the spec)."
+}

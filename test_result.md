@@ -8795,3 +8795,59 @@ agent_communication:
       Save profile → success; then open /contact and /legal/privacy (public) and confirm the new legal name/
       phone/email appear in the entity/contact cards. Creds: super admin veales.vedic.decisions@gmail.com /
       Jelcos@Admin2026 (or super@test.com). All routes under /api.
+
+#====================================================================================================
+# Pros & Cons Wizard — Duplicate blocks, rename propagation, Step 5 overhaul (sub-factors + metadata)
+#====================================================================================================
+pros_cons_step5_overhaul:
+  - task: "Pros & Cons — duplicate Pro/Con hard-block + Con rename propagation to 'SHOULD NOT -' factor"
+    implemented: true
+    working: "NA"
+    file: "backend/routes/pros_cons.py"
+    needs_retesting: true
+    priority: "high"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Backend (pros_cons.py) enforces unique Pro/Con names across ALL options (case-insensitive)
+          via _duplicate_pro_con(). add_pro/add_con return HTTP 409 on duplicate. update_pro/update_con
+          also enforce uniqueness (excluding self) and propagate the rename to the promoted factor:
+          Pros set factor.name=text; Cons set factor.name="SHOULD NOT - {text}". Verify:
+          (1) POST .../options/{oid}/pros with a name that already exists (any option) → 409.
+          (2) Same for cons → 409.
+          (3) PUT .../options/{oid}/cons/{iid} renaming a Con that was already promoted (run
+              POST .../promote-pros-cons first) updates the linked factor name to "SHOULD NOT - <new>".
+          (4) PUT a Pro rename updates the promoted factor name to the new text.
+  - task: "Pros & Cons Step 5 — add sub-factors, Split evenly, full metadata parity (Type/Expected/Unit/Operator/Data Source)"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/tools/pros-cons-wizard.tsx"
+    needs_retesting: true
+    priority: "high"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Step 1 no longer collects Expected value/Unit (name only). Step 5 renamed to
+          "Review & Refine Expectations" and now wires FactorTreeNode with onAddSubFactor (creates a
+          sub-factor via POST /factors with parent_id), onPatchFactor (PUT /factors/{id} for
+          data_type/expected_value/unit/operator/data_source), and onOpenDataSource (opens DataSourceModal).
+          "Split evenly" appears whenever a factor has >=1 sub-factor and balances weights to 100%.
+          FactorMetaControls renders Quantitative/Qualitative toggle, Expected+Unit, Operator chips, and a
+          "Set data source" button opening the Auto-Fetch modal (Manual/Webhook/Web Surf/AI-LLM) — full
+          parity with My Dezider Step 2. Backend update_factor already allows operator/data_type/data_source/weight.
+agent_communication:
+  - agent: "main"
+    message: |
+      Test the Pros & Cons wizard changes. BACKEND (pros_cons.py): create an analysis, add an option,
+      add a Pro then try adding a duplicate Pro (expect 409); same for Con; promote-pros-cons then rename a
+      Con via PUT and confirm the linked factor becomes "SHOULD NOT - <new>"; rename a Pro and confirm the
+      linked factor name updates. Also POST a factor with parent_id to create a sub-factor; PUT a factor with
+      {operator, data_type, expected_value, unit, weight, data_source:{type,config}} and confirm persistence on GET.
+      FRONTEND: open a Pros & Cons analysis → Step 1 shows ONLY a factor-name input (no Expected/Unit). Step 5
+      title = "Review & Refine Expectations"; each factor card shows Type toggle, Expected+Unit, Operator chips,
+      "Add sub-factor" button, and after adding >=2 sub-factors a "Split evenly" button balances to 100%.
+      "Set data source" opens the Auto-Fetch modal. Creds: super@test.com / AdminPass2026! (or admin@test.com).
+      All routes under /api/pros-cons.
+

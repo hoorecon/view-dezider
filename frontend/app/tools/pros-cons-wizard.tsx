@@ -27,7 +27,7 @@ import api from '../../src/utils/api';
 import ModuleStoreActions from '../../src/components/ModuleStoreActions';
 import ActionItemEditor from '../../src/components/ActionItemEditor';
 import { showAlert } from '../../src/utils/alert';
-import { LMH_VALUES } from '../../src/utils/decisionHelpers';
+import { LMH_VALUES, NUMERIC_OPERATORS, TEXT_OPERATORS } from '../../src/utils/decisionHelpers';
 import { downloadAssessmentTemplate, importAssessmentTemplate } from '../../src/utils/assessmentXlsx';
 import { LIFE_AREAS as LIFE_AREAS_CANONICAL } from '../../src/constants/lifeAreas';
 import { safeBack, goHome } from '../../src/utils/navigation';
@@ -43,6 +43,12 @@ interface Factor {
   my_expectation?: string | null; others_expectations?: string | null; market_standard?: string | null;
   realistic_gap_pct: number; realistic_gap_value: number; realistic_rating?: number | null;
   weight?: number | null;   // Step 5 — sub-factor weightage (% split under its main factor)
+  // Step 5 "Review & Refine Expectations" — factor metadata (parity with My Dezider).
+  // Classification uses data_type: 'numeric' = Quantitative, 'text' = Qualitative
+  // (we deliberately reuse data_type, NOT factor_type, which already means subjective/objective here).
+  operator?: string | null;
+  data_type?: 'numeric' | 'text' | null;
+  data_source?: { type?: string | null; config?: Record<string, any> } | null;
 }
 interface ProConItem { id: string; text: string; description?: string; importance: number; promoted_factor_id?: string | null; }
 interface OptionT { id: string; name: string; description?: string; pros: ProConItem[]; cons: ProConItem[]; }
@@ -240,8 +246,6 @@ export default function ProsConsWizard() {
 
   // ─── Step 1: Direct Factors ───────────────────────────────
   const [fName, setFName] = useState('');
-  const [fExpected, setFExpected] = useState('');
-  const [fUnit, setFUnit] = useState('');
 
   // ─── Basics (Decision/Topic, Description, Life Area) ─────
   // These appear in a collapsible card at the top of Step 1 so the user
@@ -277,12 +281,8 @@ export default function ProsConsWizard() {
     if (!fName.trim()) return;
     setBusy(true);
     try {
-      await api.post(`${base}/${id}/factors`, {
-        name: fName.trim(),
-        expected_value: fExpected.trim() || null,
-        unit: fUnit.trim() || null,
-      });
-      setFName(''); setFExpected(''); setFUnit('');
+      await api.post(`${base}/${id}/factors`, { name: fName.trim() });
+      setFName('');
       await reload();
     } catch (e: any) {
       showAlert('Error', e?.response?.data?.detail || 'Failed');
@@ -317,30 +317,43 @@ export default function ProsConsWizard() {
     }
   };
 
+  /**
+   * Step-5 helper: create a new sub-factor under `parentId` with a sensible
+   * default name (the user renames it inline via the pencil). Used by the
+   * "+ Add sub-factor" button inside FactorTreeNode so users can grow the
+   * tree directly in Step 5 — parity with My Dezider Step 2.
+   */
+  const addSubFactorQuick = async (parentId: string) => {
+    const existing = analysis?.factors.filter(f => f.parent_id === parentId && !f.is_duplicate).length || 0;
+    const parent = analysis?.factors.find(f => f.id === parentId);
+    const defaultName = `${(parent?.display_name || parent?.name || 'Factor')} — Part ${existing + 1}`;
+    try {
+      await api.post(`${base}/${id}/factors`, { name: defaultName, parent_id: parentId });
+      await reload();
+    } catch (e: any) {
+      showAlert('Error', e?.response?.data?.detail || 'Failed to add sub-factor');
+    }
+  };
+
+  // ─── Step 5: Data Source modal (Auto-Fetch parity with My Dezider) ───
+  const [dsFactor, setDsFactor] = useState<Factor | null>(null);
+
   // ─── Inline-edit state for factors and options ─────────────
   // Track which factor / option is currently in "edit" mode and the
   // working copy of its fields so the user can cancel without saving.
   const [editingFactorId, setEditingFactorId] = useState<string | null>(null);
   const [editFactorName, setEditFactorName] = useState('');
-  const [editFactorExpected, setEditFactorExpected] = useState('');
-  const [editFactorUnit, setEditFactorUnit] = useState('');
 
   const beginEditFactor = (f: Factor) => {
     setEditingFactorId(f.id);
     setEditFactorName(f.name || '');
-    setEditFactorExpected(f.expected_value != null ? String(f.expected_value) : '');
-    setEditFactorUnit(f.unit || '');
   };
   const cancelEditFactor = () => { setEditingFactorId(null); };
   const saveEditFactor = async () => {
     if (!editingFactorId) return;
     const name = editFactorName.trim();
     if (!name) { showAlert('Required', 'Factor name cannot be empty.'); return; }
-    await updateFactor(editingFactorId, {
-      name,
-      expected_value: editFactorExpected.trim() || null,
-      unit: editFactorUnit.trim() || null,
-    });
+    await updateFactor(editingFactorId, { name });
     setEditingFactorId(null);
   };
 
@@ -887,20 +900,10 @@ export default function ProsConsWizard() {
               </View>
 
               <Text style={styles.stepTitle}>Step 1 — List initial Direct Factors</Text>
-              <Text style={styles.stepHint}>Add factors that matter for this decision. Expected value &amp; unit are optional now — you can fill them once factors are finalised (Step 3 onwards).</Text>
+              <Text style={styles.stepHint}>Add the factors that matter for this decision — just the names for now. You’ll set expected values, units, operators and data sources later in Step 5 (Review &amp; Refine Expectations).</Text>
               <View style={styles.card}>
                 <Text style={styles.inputLabel}>Factor name</Text>
-                <TextInput style={styles.input} placeholder="e.g., Mileage" value={fName} onChangeText={setFName} />
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <View style={{ flex: 2 }}>
-                    <Text style={styles.inputLabel}>Expected value (optional)</Text>
-                    <TextInput style={styles.input} placeholder="e.g., 15" value={fExpected} onChangeText={setFExpected} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.inputLabel}>Unit</Text>
-                    <TextInput style={styles.input} placeholder="kmpl" value={fUnit} onChangeText={setFUnit} />
-                  </View>
-                </View>
+                <TextInput style={styles.input} placeholder="e.g., Mileage" value={fName} onChangeText={setFName} onSubmitEditing={addFactor} />
                 <TouchableOpacity style={[styles.primaryBtn, !fName.trim() && { opacity: 0.5 }]}
                   disabled={!fName.trim() || busy} onPress={addFactor}>
                   <Ionicons name="add" size={18} color="#fff" />
@@ -924,22 +927,9 @@ export default function ProsConsWizard() {
                           value={editFactorName}
                           onChangeText={setEditFactorName}
                           autoFocus
+                          onSubmitEditing={saveEditFactor}
                         />
-                        <View style={{ flexDirection: 'row', gap: 6 }}>
-                          <TextInput
-                            style={[styles.input, { flex: 1.4, marginBottom: 0 }]}
-                            placeholder="Expected value (optional)"
-                            value={editFactorExpected}
-                            onChangeText={setEditFactorExpected}
-                          />
-                          <TextInput
-                            style={[styles.input, { flex: 1, marginBottom: 0 }]}
-                            placeholder="Unit"
-                            value={editFactorUnit}
-                            onChangeText={setEditFactorUnit}
-                          />
-                        </View>
-                        <View style={{ flexDirection: 'row', gap: 6, marginTop: 8, justifyContent: 'flex-end' }}>
+                        <View style={{ flexDirection: 'row', gap: 6, marginTop: 2, justifyContent: 'flex-end' }}>
                           <TouchableOpacity onPress={cancelEditFactor} style={styles.editGhostBtn}>
                             <Text style={styles.editGhostBtnText}>Cancel</Text>
                           </TouchableOpacity>
@@ -958,9 +948,6 @@ export default function ProsConsWizard() {
                           accessibilityLabel={`Edit factor ${f.name}`}
                         >
                           <Text style={styles.factorName}>{f.name}</Text>
-                          {!!(f.expected_value || f.unit) && (
-                            <Text style={styles.factorMeta}>Expected: {f.expected_value || '—'} {f.unit || ''}</Text>
-                          )}
                         </TouchableOpacity>
                         <TouchableOpacity
                           onPress={() => beginEditFactor(f)}
@@ -1373,8 +1360,8 @@ export default function ProsConsWizard() {
           {/* ────── STEP 5 ────── */}
           {step === 5 && (
             <View>
-              <Text style={styles.stepTitle}>Step 5 — Review Factor Tree</Text>
-              <Text style={styles.stepHint}>Direct factors with their sub-factors (collapsible). Set each sub-factor's weightage % (split under its parent) — tap “Split evenly” to balance to 100%. Weights are optional and normalised on scoring.</Text>
+              <Text style={styles.stepTitle}>Step 5 — Review &amp; Refine Expectations</Text>
+              <Text style={styles.stepHint}>For each factor (and sub-factor), set the Type (Quantitative/Qualitative), Expected value, Unit, Operator and an optional auto-fetch Data Source. Add sub-factors and tap “Split evenly” to balance their weightage to 100% (weights are optional and normalised on scoring).</Text>
               {directFactors.map(f => (
                 <FactorTreeNode
                   key={f.id}
@@ -1386,6 +1373,9 @@ export default function ProsConsWizard() {
                   onRename={(fid, newName) => updateFactor(fid, { display_name: newName })}
                   onRevertName={(fid) => updateFactor(fid, { display_name: null })}
                   onSetWeight={(fid, w) => updateFactor(fid, { weight: w })}
+                  onAddSubFactor={(pid) => addSubFactorQuick(pid)}
+                  onPatchFactor={(fid, patch) => updateFactor(fid, patch)}
+                  onOpenDataSource={(factor) => setDsFactor(factor)}
                 />
               ))}
               <NextBack onBack={() => persistStep(4)} onNext={() => persistStep(6)} />
@@ -1717,7 +1707,7 @@ export default function ProsConsWizard() {
                   </View>
                   {optionalFactors.length === 0 ? (
                     <Text style={styles.sectionEmpty}>
-                      No Optional factors. Mandatory factors will dominate the score; that's fine.
+                      No Optional factors. Mandatory factors will dominate the score; that’s fine.
                     </Text>
                   ) : (
                     optionalFactors.map((f, i) => (
@@ -1991,8 +1981,8 @@ export default function ProsConsWizard() {
                       <Text style={styles.finalTitle}>Final Decision</Text>
                     </View>
                     <Text style={styles.finalSub}>
-                      Lock in the option you're going with, jot down why (optional),
-                      and set a date by which you'll review whether the call was right.
+                      Lock in the option you’re going with, jot down why (optional),
+                      and set a date by which you’ll review whether the call was right.
                     </Text>
 
                     {/* Option chooser — radio-style chips */}
@@ -2130,6 +2120,16 @@ export default function ProsConsWizard() {
           </View>
         </View>
       </Modal>
+
+      {/* Step 5 — Auto-Fetch Data Source configuration (full parity w/ My Dezider) */}
+      <DataSourceModal
+        factor={dsFactor}
+        onClose={() => setDsFactor(null)}
+        onSave={(fid, ds) => {
+          updateFactor(fid, { data_source: ds });
+          setDsFactor(null);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -2335,6 +2335,197 @@ function FactorGroupRow({ factor, parentName, candidateChildren, onAddChild, onC
   );
 }
 
+const DATA_SOURCE_TYPES = [
+  { value: 'manual', label: 'Manual entry', icon: 'create-outline', hint: 'You enter the actual value yourself during assessment.' },
+  { value: 'webhook', label: 'Webhook / API', icon: 'globe-outline', hint: 'Pull the value from a REST endpoint.' },
+  { value: 'web_surf', label: 'Web Surf', icon: 'search-outline', hint: 'AI searches the web for the value.' },
+  { value: 'ai_llm', label: 'AI / LLM', icon: 'sparkles-outline', hint: 'AI infers the value from a prompt.' },
+];
+
+/** Per-factor metadata: Type (Quant/Qual) + Expected + Unit + Operator + Data Source.
+ *  Shown in Step 5 "Review & Refine Expectations" for every factor & sub-factor. */
+function FactorMetaControls({ factor, onPatch, onOpenDataSource }: {
+  factor: Factor;
+  onPatch: (factorId: string, patch: any) => void;
+  onOpenDataSource: (factor: Factor) => void;
+}) {
+  const isQuant = (factor.data_type || 'numeric') === 'numeric';
+  const operators = isQuant ? NUMERIC_OPERATORS : TEXT_OPERATORS;
+  const dsType = factor.data_source?.type;
+  const dsLabel = DATA_SOURCE_TYPES.find(d => d.value === dsType)?.label;
+  return (
+    <View style={pcMeta.wrap}>
+      <View style={pcMeta.row}>
+        <Text style={pcMeta.label}>Type</Text>
+        <View style={pcMeta.toggle}>
+          <TouchableOpacity
+            style={[pcMeta.toggleBtn, isQuant && pcMeta.toggleQuant]}
+            onPress={() => onPatch(factor.id, { data_type: 'numeric' })}
+            testID={`pc-type-quant-${factor.id}`}
+          >
+            <Text style={[pcMeta.toggleText, isQuant && pcMeta.toggleTextOn]}>Quantitative</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[pcMeta.toggleBtn, !isQuant && pcMeta.toggleQual]}
+            onPress={() => onPatch(factor.id, { data_type: 'text' })}
+            testID={`pc-type-qual-${factor.id}`}
+          >
+            <Text style={[pcMeta.toggleText, !isQuant && pcMeta.toggleTextOn]}>Qualitative</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={pcMeta.row}>
+        <Text style={pcMeta.label}>Expected</Text>
+        <DebouncedInput
+          style={pcMeta.input}
+          value={factor.expected_value != null ? String(factor.expected_value) : ''}
+          placeholder={isQuant ? 'e.g., 1000' : 'e.g., Excellent'}
+          placeholderTextColor={COLORS.textDim}
+          onSave={(t) => onPatch(factor.id, { expected_value: t.trim() || null })}
+        />
+        {isQuant && (
+          <DebouncedInput
+            style={[pcMeta.input, { maxWidth: 84 }]}
+            value={factor.unit || ''}
+            placeholder="unit"
+            placeholderTextColor={COLORS.textDim}
+            onSave={(t) => onPatch(factor.id, { unit: t.trim() || null })}
+          />
+        )}
+      </View>
+
+      <View style={pcMeta.row}>
+        <Text style={pcMeta.label}>Operator</Text>
+        <View style={pcMeta.opWrap}>
+          {operators.map(op => {
+            const active = factor.operator === op.value;
+            return (
+              <TouchableOpacity
+                key={op.value}
+                style={[pcMeta.opChip, active && pcMeta.opChipActive]}
+                onPress={() => onPatch(factor.id, { operator: active ? null : op.value })}
+              >
+                <Text style={[pcMeta.opText, active && pcMeta.toggleTextOn]}>{op.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+
+      <TouchableOpacity style={pcMeta.dsBtn} onPress={() => onOpenDataSource(factor)} testID={`pc-ds-${factor.id}`}>
+        <Ionicons name="cloud-download-outline" size={14} color="#7C3AED" />
+        <Text style={pcMeta.dsBtnText}>{dsLabel ? `Data source: ${dsLabel}` : 'Set data source (optional)'}</Text>
+        <Ionicons name="chevron-forward" size={14} color="#7C3AED" />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+/** Full-parity Auto-Fetch configuration modal (Webhook/API, Web Surf, AI/LLM). */
+function DataSourceModal({ factor, onClose, onSave }: {
+  factor: Factor | null;
+  onClose: () => void;
+  onSave: (factorId: string, data_source: any) => void;
+}) {
+  const [type, setType] = useState<string>(factor?.data_source?.type || 'manual');
+  const [cfg, setCfg] = useState<Record<string, any>>(factor?.data_source?.config || {});
+  React.useEffect(() => {
+    setType(factor?.data_source?.type || 'manual');
+    setCfg(factor?.data_source?.config || {});
+  }, [factor?.id]);
+  if (!factor) return null;
+  const setField = (k: string, v: string) => setCfg(prev => ({ ...prev, [k]: v }));
+  return (
+    <Modal visible={!!factor} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={pcMeta.modalOverlay}>
+        <View style={pcMeta.modalCard}>
+          <View style={pcMeta.modalHead}>
+            <Text style={pcMeta.modalTitle}>Auto-Fetch Configuration</Text>
+            <TouchableOpacity onPress={onClose}><Ionicons name="close" size={22} color={COLORS.text} /></TouchableOpacity>
+          </View>
+          <ScrollView style={{ maxHeight: 420 }}>
+            {DATA_SOURCE_TYPES.map(d => (
+              <TouchableOpacity key={d.value} style={[pcMeta.dsOpt, type === d.value && pcMeta.dsOptOn]} onPress={() => setType(d.value)}>
+                <Ionicons name={d.icon as any} size={18} color={type === d.value ? '#7C3AED' : COLORS.textDim} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[pcMeta.dsOptLabel, type === d.value && { color: '#7C3AED' }]}>{d.label}</Text>
+                  <Text style={pcMeta.dsOptHint}>{d.hint}</Text>
+                </View>
+                {type === d.value && <Ionicons name="checkmark-circle" size={18} color="#7C3AED" />}
+              </TouchableOpacity>
+            ))}
+
+            {type === 'webhook' && (
+              <View style={pcMeta.cfgBox}>
+                <Text style={pcMeta.cfgLabel}>Endpoint URL</Text>
+                <TextInput style={pcMeta.cfgInput} value={cfg.url || ''} onChangeText={(v) => setField('url', v)} placeholder="https://api.example.com/value" placeholderTextColor={COLORS.textDim} autoCapitalize="none" />
+                <Text style={pcMeta.cfgLabel}>JSON path (optional)</Text>
+                <TextInput style={pcMeta.cfgInput} value={cfg.json_path || ''} onChangeText={(v) => setField('json_path', v)} placeholder="data.price" placeholderTextColor={COLORS.textDim} autoCapitalize="none" />
+                <Text style={pcMeta.cfgLabel}>Auth header (optional)</Text>
+                <TextInput style={pcMeta.cfgInput} value={cfg.auth_header || ''} onChangeText={(v) => setField('auth_header', v)} placeholder="Bearer ..." placeholderTextColor={COLORS.textDim} autoCapitalize="none" />
+              </View>
+            )}
+            {type === 'web_surf' && (
+              <View style={pcMeta.cfgBox}>
+                <Text style={pcMeta.cfgLabel}>Search query</Text>
+                <TextInput style={[pcMeta.cfgInput, { height: 64 }]} multiline value={cfg.query || ''} onChangeText={(v) => setField('query', v)} placeholder="e.g., average resale value of <option> in 2025" placeholderTextColor={COLORS.textDim} />
+              </View>
+            )}
+            {type === 'ai_llm' && (
+              <View style={pcMeta.cfgBox}>
+                <Text style={pcMeta.cfgLabel}>AI prompt</Text>
+                <TextInput style={[pcMeta.cfgInput, { height: 80 }]} multiline value={cfg.prompt || ''} onChangeText={(v) => setField('prompt', v)} placeholder="Describe what value the AI should infer for this factor." placeholderTextColor={COLORS.textDim} />
+              </View>
+            )}
+          </ScrollView>
+          <TouchableOpacity
+            style={pcMeta.saveBtn}
+            onPress={() => onSave(factor.id, { type, config: type === 'manual' ? {} : cfg })}
+            testID="pc-ds-save"
+          >
+            <Text style={pcMeta.saveBtnText}>Save data source</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const pcMeta = StyleSheet.create({
+  wrap: { backgroundColor: '#FAFBFF', borderWidth: 1, borderColor: '#E5E9F2', borderRadius: 10, padding: 10, marginTop: 6, gap: 8 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  label: { fontSize: 11.5, fontWeight: '700', color: COLORS.textDim, width: 64 },
+  toggle: { flexDirection: 'row', borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, overflow: 'hidden' },
+  toggleBtn: { paddingHorizontal: 12, paddingVertical: 7, backgroundColor: '#fff' },
+  toggleQuant: { backgroundColor: '#1F6FEB' },
+  toggleQual: { backgroundColor: '#7C3AED' },
+  toggleText: { fontSize: 12, fontWeight: '700', color: COLORS.textDim },
+  toggleTextOn: { color: '#fff' },
+  input: { flex: 1, minWidth: 90, height: 34, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 10, fontSize: 13, color: COLORS.text, backgroundColor: '#fff' },
+  opWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, flex: 1 },
+  opChip: { minWidth: 34, paddingHorizontal: 8, paddingVertical: 6, borderRadius: 7, borderWidth: 1, borderColor: COLORS.border, backgroundColor: '#fff', alignItems: 'center' },
+  opChipActive: { backgroundColor: '#0F766E', borderColor: '#0F766E' },
+  opText: { fontSize: 12, fontWeight: '700', color: COLORS.textDim },
+  dsBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: '#DDD6FE', backgroundColor: '#F5F3FF' },
+  dsBtnText: { flex: 1, fontSize: 12.5, fontWeight: '700', color: '#7C3AED' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalCard: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 18, paddingBottom: 28 },
+  modalHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  modalTitle: { fontSize: 17, fontWeight: '800', color: COLORS.text },
+  dsOpt: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, marginBottom: 8, backgroundColor: '#fff' },
+  dsOptOn: { borderColor: '#7C3AED', backgroundColor: '#F5F3FF' },
+  dsOptLabel: { fontSize: 14, fontWeight: '700', color: COLORS.text },
+  dsOptHint: { fontSize: 11.5, color: COLORS.textDim, marginTop: 1 },
+  cfgBox: { marginTop: 6, marginBottom: 4, gap: 4 },
+  cfgLabel: { fontSize: 12, fontWeight: '700', color: COLORS.textDim, marginTop: 6 },
+  cfgInput: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, fontSize: 13, color: COLORS.text, backgroundColor: '#fff' },
+  saveBtn: { backgroundColor: '#7C3AED', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 14 },
+  saveBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+  addSubBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8, borderWidth: 1, borderColor: '#BBF7D0', backgroundColor: '#F0FDF4', marginTop: 8 },
+  addSubText: { fontSize: 12, fontWeight: '700', color: '#15803D' },
+});
+
 function FactorTreeNode({
   factor,
   childrenList,
@@ -2344,6 +2535,9 @@ function FactorTreeNode({
   onRename,
   onRevertName,
   onSetWeight,
+  onAddSubFactor,
+  onPatchFactor,
+  onOpenDataSource,
 }: {
   factor: Factor;
   childrenList: Factor[];
@@ -2359,6 +2553,12 @@ function FactorTreeNode({
   onRevertName: (factorId: string) => void | Promise<void>;
   /** Persist a sub-factor weight via PUT weight */
   onSetWeight: (factorId: string, weight: number) => void | Promise<void>;
+  /** Create a new sub-factor under this parent */
+  onAddSubFactor: (parentId: string) => void | Promise<void>;
+  /** Persist a factor metadata patch (type/expected/unit/operator/data_source) */
+  onPatchFactor: (factorId: string, patch: any) => void | Promise<void>;
+  /** Open the Data Source modal for a factor */
+  onOpenDataSource: (factor: Factor) => void;
 }) {
   const [open, setOpen] = useState(true);
   const [wInputs, setWInputs] = useState<Record<string, string>>({});
@@ -2399,56 +2599,71 @@ function FactorTreeNode({
             <Text style={[pcWeightStyles.totalText, weightTotal === 100 && { color: '#fff' }, weightTotal > 100 && { color: '#fff' }]}>{weightTotal}%</Text>
           </View>
         ) : (
-          <Text style={styles.factorMeta}>{childrenList.length} sub</Text>
+          <Text style={styles.factorMeta}>leaf</Text>
         )}
       </View>
 
-      {open && hasSubs && (
+      {open && (
         <View style={{ marginTop: 6 }}>
-          <View style={pcWeightStyles.splitRow}>
-            <Text style={pcWeightStyles.weightHint}>
-              {weightTotal === 100
-                ? 'Weightage split is balanced (100%).'
-                : weightTotal > 100
-                  ? `Over by ${weightTotal - 100}%. Adjust or split evenly — weights are normalised.`
-                  : `${100 - weightTotal}% unallocated. Optional — weights are normalised on scoring.`}
-            </Text>
-            {childrenList.length > 1 && (
-              <TouchableOpacity onPress={splitEvenly} style={pcWeightStyles.splitBtn} testID={`pc-split-${factor.id}`} accessibilityLabel="Split weightage evenly">
-                <Ionicons name="git-compare-outline" size={13} color="#7C3AED" />
-                <Text style={pcWeightStyles.splitBtnText}>Split evenly</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          {/* Main factor metadata (Type / Expected / Unit / Operator / Data Source) */}
+          <FactorMetaControls factor={factor} onPatch={onPatchFactor} onOpenDataSource={onOpenDataSource} />
 
-          {childrenList.map(c => (
-            <View key={c.id} style={styles.treeChild}>
-              <View style={[styles.sourceTag, { backgroundColor: c.source === 'pro' ? COLORS.pro : c.source === 'con' ? COLORS.con : COLORS.direct }]}>
-                <Text style={styles.sourceTagText}>{c.source === 'direct' ? 'D' : c.source === 'pro' ? 'P' : 'C'}</Text>
+          {/* Add sub-factor */}
+          <TouchableOpacity style={pcMeta.addSubBtn} onPress={() => onAddSubFactor(factor.id)} testID={`pc-addsub-${factor.id}`}>
+            <Ionicons name="add-circle-outline" size={15} color="#15803D" />
+            <Text style={pcMeta.addSubText}>Add sub-factor</Text>
+          </TouchableOpacity>
+
+          {hasSubs && (
+            <View style={{ marginTop: 8 }}>
+              <View style={pcWeightStyles.splitRow}>
+                <Text style={pcWeightStyles.weightHint}>
+                  {weightTotal === 100
+                    ? 'Weightage split is balanced (100%).'
+                    : weightTotal > 100
+                      ? `Over by ${weightTotal - 100}%. Adjust or split evenly — weights are normalised.`
+                      : `${100 - weightTotal}% unallocated. Optional — weights are normalised on scoring.`}
+                </Text>
+                <TouchableOpacity onPress={splitEvenly} style={pcWeightStyles.splitBtn} testID={`pc-split-${factor.id}`} accessibilityLabel="Split weightage evenly">
+                  <Ionicons name="git-compare-outline" size={13} color="#7C3AED" />
+                  <Text style={pcWeightStyles.splitBtnText}>Split evenly</Text>
+                </TouchableOpacity>
               </View>
-              <RenamableFactorRow
-                factor={c}
-                displayNameOf={displayNameOf}
-                hasRenameOf={hasRenameOf}
-                originalNameOf={originalNameOf}
-                onRename={onRename}
-                onRevertName={onRevertName}
-              />
-              <View style={pcWeightStyles.weightWrap}>
-                <TextInput
-                  style={pcWeightStyles.weightInput}
-                  value={wInputs[c.id] !== undefined ? wInputs[c.id] : (c.weight ? String(c.weight) : '')}
-                  onChangeText={(v) => setWInputs({ ...wInputs, [c.id]: v.replace(/[^0-9]/g, '') })}
-                  onBlur={() => commitWeight(c.id)}
-                  keyboardType="number-pad"
-                  placeholder="0"
-                  placeholderTextColor={COLORS.textDim}
-                  testID={`pc-subweight-${c.id}`}
-                />
-                <Text style={pcWeightStyles.weightPct}>%</Text>
-              </View>
+
+              {childrenList.map(c => (
+                <View key={c.id} style={pcWeightStyles.subBlock}>
+                  <View style={styles.treeChild}>
+                    <View style={[styles.sourceTag, { backgroundColor: c.source === 'pro' ? COLORS.pro : c.source === 'con' ? COLORS.con : COLORS.direct }]}>
+                      <Text style={styles.sourceTagText}>{c.source === 'direct' ? 'D' : c.source === 'pro' ? 'P' : 'C'}</Text>
+                    </View>
+                    <RenamableFactorRow
+                      factor={c}
+                      displayNameOf={displayNameOf}
+                      hasRenameOf={hasRenameOf}
+                      originalNameOf={originalNameOf}
+                      onRename={onRename}
+                      onRevertName={onRevertName}
+                    />
+                    <View style={pcWeightStyles.weightWrap}>
+                      <TextInput
+                        style={pcWeightStyles.weightInput}
+                        value={wInputs[c.id] !== undefined ? wInputs[c.id] : (c.weight ? String(c.weight) : '')}
+                        onChangeText={(v) => setWInputs({ ...wInputs, [c.id]: v.replace(/[^0-9]/g, '') })}
+                        onBlur={() => commitWeight(c.id)}
+                        keyboardType="number-pad"
+                        placeholder="0"
+                        placeholderTextColor={COLORS.textDim}
+                        testID={`pc-subweight-${c.id}`}
+                      />
+                      <Text style={pcWeightStyles.weightPct}>%</Text>
+                    </View>
+                  </View>
+                  {/* Sub-factor metadata */}
+                  <FactorMetaControls factor={c} onPatch={onPatchFactor} onOpenDataSource={onOpenDataSource} />
+                </View>
+              ))}
             </View>
-          ))}
+          )}
         </View>
       )}
     </View>
@@ -2779,7 +2994,7 @@ function MainFactorWithSubs({
           )}
           {hasSubs && (
             <Text style={[styles.factorMeta, { color: COLORS.textDim }]}>
-              {subs.length} sub-factor{subs.length === 1 ? '' : 's'} · inherits this factor's classification
+              {subs.length} sub-factor{subs.length === 1 ? '' : 's'} · inherits this factor’s classification
             </Text>
           )}
         </View>
@@ -3057,6 +3272,7 @@ const pcWeightStyles = StyleSheet.create({
   weightWrap: { flexDirection: 'row', alignItems: 'center', gap: 2, marginLeft: 6 },
   weightInput: { minWidth: 38, height: 30, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 6, fontSize: 13, fontWeight: '700', color: COLORS.text, textAlign: 'center', backgroundColor: '#fff' },
   weightPct: { fontSize: 12, color: COLORS.textDim, fontWeight: '700' },
+  subBlock: { borderLeftWidth: 2, borderLeftColor: '#E5E9F2', paddingLeft: 8, marginBottom: 10, marginTop: 2 },
 });
 
 
