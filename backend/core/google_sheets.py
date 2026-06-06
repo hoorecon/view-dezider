@@ -28,8 +28,9 @@ from core.database import db
 
 log = logging.getLogger("google_sheets")
 
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+# Dedicated Sheets OAuth client (falls back to the app's main Google client).
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_SHEETS_CLIENT_ID") or os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_SHEETS_CLIENT_SECRET") or os.getenv("GOOGLE_CLIENT_SECRET", "")
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 AUTH_URI = "https://accounts.google.com/o/oauth2/auth"
 
