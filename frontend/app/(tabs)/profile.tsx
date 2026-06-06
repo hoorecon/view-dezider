@@ -407,6 +407,24 @@ export default function ProfileScreen() {
         </Card>
       </TouchableOpacity>
 
+      {/* Subscription */}
+      <TouchableOpacity activeOpacity={0.85} onPress={() => router.push('/subscription-plans' as any)}>
+        <Card style={styles.aiCreditsCard}>
+          <View style={styles.aiCreditsLeft}>
+            <View style={[styles.aiCreditsIcon, { backgroundColor: COLORS.secondary || '#5E35B1' }]}>
+              <Ionicons name="ribbon" size={20} color={COLORS.white} />
+            </View>
+            <View style={{ flexShrink: 1 }}>
+              <Text style={styles.aiCreditsLabel}>Subscription</Text>
+              <Text style={styles.aiCreditsSub}>Monthly plans &amp; auto-renew</Text>
+            </View>
+          </View>
+          <View style={styles.aiCreditsRight}>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+          </View>
+        </Card>
+      </TouchableOpacity>
+
       {/* Gender picker modal */}
       <Modal visible={genderModalOpen} transparent animationType="fade" onRequestClose={() => setGenderModalOpen(false)}>
         <TouchableOpacity style={styles.gOverlay} activeOpacity={1} onPress={() => setGenderModalOpen(false)}>

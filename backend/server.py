@@ -197,6 +197,7 @@ from routes.customer_segments import router as customer_segments_router
 from routes.decision_linking import router as decision_linking_router
 from routes.integrations import router as integrations_router
 from routes.ai_wallet import router as ai_wallet_router
+from routes.subscriptions import router as subscriptions_router
 
 
 # ========================
@@ -284,6 +285,7 @@ api_router.include_router(customer_segments_router)
 api_router.include_router(decision_linking_router)
 api_router.include_router(integrations_router)
 api_router.include_router(ai_wallet_router)
+api_router.include_router(subscriptions_router)
 api_router.include_router(payment_admin_router)
 api_router.include_router(action_items_router)
 from routes.masters import router as masters_router  # noqa: E402
@@ -431,6 +433,13 @@ async def startup_db_client():
         _start_reg()
     except Exception as e:
         logger.error(f"Regression suite/scheduler boot failed: {e}", exc_info=True)
+
+    # Start subscription dunning sweep (downgrade after grace expiry)
+    try:
+        from routes.subscriptions import start_dunning_task
+        start_dunning_task()
+    except Exception as e:
+        logger.error(f"Subscription dunning task boot failed: {e}", exc_info=True)
 
 
 @app.on_event("shutdown")

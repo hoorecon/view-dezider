@@ -9021,3 +9021,46 @@ agent_communication:
       6. PUT /api/admin/ai-wallet/config {markup_user_pct:12, blended_usd_per_mtok:2.5, route_linked_account_id:'acc_SyPciERWCkmA6R'} -> 200 echoes; then GET packs reflects new pricing. Revert markup_user_pct to 10 after.
       7. A normal (non-admin) user calling PUT /api/admin/ai-wallet/config -> 403.
       FRONTEND: open Profile -> AI Credits -> wallet screen shows 3 pack cards with ₹ prices + custom amount field; Get price shows a quote; super admin sees the new pricing/markup/FX/Route config fields. (Don't complete a real Razorpay payment.)
+
+subscriptions_phase4:
+  - task: "Phase 4 — Recurring monthly subscriptions (Razorpay Subscriptions) + one-time fallback + dunning"
+    implemented: true
+    working: "NA"
+    file: "backend/routes/subscriptions.py, backend/core/notify.py, backend/server.py, frontend/app/subscription-plans.tsx, frontend/app/(tabs)/profile.tsx"
+    needs_retesting: true
+    priority: "high"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Hybrid: PRIMARY Razorpay Subscription (auto-debit), FALLBACK one-time order (manual renewal).
+          3 real Razorpay plans seeded: basic plan_SyQQFEOgXDv1iD ₹999/1500cr, pro plan_SyQQoS2iyoiYgA ₹1999/4000cr, premium plan_SyQU7DMsIsdlqH ₹3999/9000cr. Billing credits (credit_wallets) — SEPARATE from AI wallet.
+          Endpoints (all /api, Bearer auth unless noted):
+            GET  /subscriptions/plans              -> active plans + recurring_available.
+            GET  /subscriptions/me                 -> current_plan/status/mode/subscription_end/grace_until/plan. Lazy-downgrades if pending+grace expired.
+            POST /subscriptions/create {plan_id}   -> tries subscription.create; returns mode:'recurring'+short_url (verified working live, returns rzp.io short_url). Auto-falls back to mode:'onetime'+order on failure.
+            POST /subscriptions/create-onetime     -> one-time order for a plan.
+            POST /subscriptions/verify-onetime     -> HMAC verify; bad sig -> 400; valid -> grants 1 month (status 'manual').
+            POST /subscriptions/cancel             -> cancels recurring at cycle end (or marks manual cancelled).
+            POST /subscriptions/webhook (no auth)  -> lifecycle: charged/activated grant credits (idempotent); pending -> 48h grace + Email(Resend)+WhatsApp(UltraMsg) alert; halted -> downgrade+notify; cancelled/completed -> mark.
+            GET  /subscriptions/checkout (HTML)    -> hosted one-time Razorpay checkout (web+mobile).
+            GET  /admin/subscriptions/plans        (super_admin) -> all plans.
+            PUT  /admin/subscriptions/plans/{id}   (super_admin) -> edit credits_per_month/active/name.
+            POST /admin/subscriptions/sync         (super_admin) -> pull live price/name from Razorpay.
+          Dunning background task runs hourly (server startup confirmed: "Subscription dunning task started").
+          Frontend: Profile -> "Subscription" card -> /subscription-plans screen: status banner + 3 plan cards (Subscribe auto-renew + Pay-once fallback) + cancel; super admin sees plan config (credits/active/Sync).
+          NOTE: recurring mandate auth + real charge cannot be automated (needs a real customer mandate). Test that create returns recurring+short_url, verify-onetime bad-sig -> 400, admin gating, plan config edit reflects in /subscriptions/plans.
+agent_communication:
+  - agent: "main"
+    message: |
+      BACKEND test (Phase 4) — super admin = veales.vedic.decisions@gmail.com (see /app/memory/test_credentials.md). All /api.
+      1. GET /api/subscriptions/plans -> 200; 3 plans basic/pro/premium with prices 999/1999/3999 + credits 1500/4000/9000.
+      2. GET /api/subscriptions/me -> 200 (status 'none' for a fresh user).
+      3. POST /api/subscriptions/create {plan_id:'plan_SyQQFEOgXDv1iD'} -> 200 mode 'recurring' with short_url + subscription_id (LIVE Razorpay; do NOT complete the mandate). [If recurring rejected it returns mode 'onetime' with order_id — also valid.]
+      4. POST /api/subscriptions/create-onetime {plan_id:'plan_SyQQoS2iyoiYgA'} -> 200 mode 'onetime' order_id + amount(199900 paise) + key_id.
+      5. POST /api/subscriptions/verify-onetime {razorpay_order_id:<from 4>, razorpay_payment_id:'pay_x', razorpay_signature:'bad'} -> 400.
+      6. GET /api/subscriptions/checkout?order_id=x&key_id=y&amount=99900 -> 200 text/html w/ 'checkout.razorpay.com'.
+      7. PUT /api/admin/subscriptions/plans/plan_SyQQFEOgXDv1iD {credits_per_month:1800,active:true} (super admin) -> 200; then GET /api/subscriptions/plans shows 1800. Revert to 1500 after.
+      8. Non-super user PUT /api/admin/subscriptions/plans/... -> 403. POST /api/admin/subscriptions/sync (super) -> 200.
+      9. POST /api/subscriptions/cancel {} for a user with no recurring sub -> 200 graceful message.
+      FRONTEND: Profile -> Subscription card -> screen shows 3 plan cards (Subscribe + Pay once), status banner; super admin sees plan config + Sync. Do NOT complete a real payment/mandate.

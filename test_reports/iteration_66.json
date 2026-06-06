@@ -1,0 +1,42 @@
+{
+  "summary": "Phase-4 Subscriptions (TRUE Razorpay recurring + one-time fallback). Backend: 12/13 pytest cases PASS (92.3%) covering plan catalog (3 active plans basic/pro/premium with prices 999/1999/3999 and credits 1500/4000/9000, recurring_available flag, currency=INR), POST /subscriptions/create (mode='recurring' with subscription_id starting 'sub_' + short_url + key_id — confirmed LIVE on rzp_live_iL8ItgiXVGJie4; basic plan), POST /subscriptions/create-onetime for Pro (mode='onetime', order_id starts 'order_', amount=199900 paise, key_id present, credits=4000), POST /subscriptions/verify-onetime (bogus signature → 400, missing fields → 400), GET /subscriptions/checkout (text/html with checkout.razorpay.com + order_id + amount inlined), POST /subscriptions/cancel for user with no recurring sub (200 with graceful message), invalid plan_id on /create → 400, PUT /admin/subscriptions/plans/{basic} as super_admin sets credits=1800, list reflects 1800, then reverted to 1500 successfully, plain admin@test.com → 403, regular user → 403, POST /admin/subscriptions/sync as super_admin → 200 returning {plans, updated}. ONE backend MINOR bug: GET /subscriptions/me for a fresh user returns status=null instead of 'none' because `_ensure_wallet` seeds the wallet with subscription_status=None and `w.get('subscription_status', 'none')` doesn't fall back on a literal None. Spec required 'none'. Frontend (admin@test.com, 390x844): /subscription-plans renders perfectly — status banner shows 'No active plan', 3 plan cards with gradient headers, prices ₹999/₹1,999/₹3,999, all 3 feature lists, and both 'Subscribe — auto-renew' (filled gradient) and 'Pay once (1 month, no auto-renew)' (outline) buttons per card visible and tappable. Profile→Subscription card link confirmed in code (/(tabs)/profile.tsx:411-426) navigating to /subscription-plans. Super-admin UI section (credits / active switch / Sync button) NOT visually exercised — same WhatsApp-OTP-gate blocker affecting veales.vedic.decisions@gmail.com that was flagged in iteration_64 and iteration_65; backend super-admin paths are however fully verified by pytest.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/subscriptions/me", "issue": "Fresh user wallet returns status=null instead of 'none'. The wallet doc is seeded with subscription_status=None (explicit None, not missing key), so `w.get('subscription_status', 'none')` at routes/subscriptions.py:197 yields None. Fix: `w.get('subscription_status') or 'none'`. Same pattern applies to 'current_plan' (line 196) which luckily defaults to 'free' from get_or_create_wallet, but defensive coding suggested."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter66_subscriptions.py",
+    "/app/test_reports/pytest/iter66_subscriptions.xml"
+  ],
+  "action_items": [
+    "MINOR (1-line backend fix): In /app/backend/routes/subscriptions.py line 197, change `w.get(\"subscription_status\", \"none\")` to `w.get(\"subscription_status\") or \"none\"` so that a freshly seeded wallet (which stores None) surfaces 'none' to the client instead of null. This was the only failing assertion in the Phase-4 regression suite.",
+    "OPTIONAL: Provide a way to bypass the WhatsApp verification gate for the super-admin account (veales.vedic.decisions@gmail.com) — e.g., set whatsapp_verified=true via a dev helper — so the super-admin-only plan config UI (credits TextInput, Active switch, Save button, Sync button) on /subscription-plans can be smoke-tested end-to-end through the UI. Backend coverage already proves the endpoints work; this is purely for UI automation completeness. Same blocker noted in iteration_64 and iteration_65.",
+    "INFO: /app/backend/tests/test_iter66_subscriptions.py is the canonical Phase-4 regression. It does NOT complete any real payment/mandate (it intentionally posts a bogus signature to verify-onetime). The recurring subscription path was confirmed working live: subscription.create returned sub_xxx + rzp.io short_url on the live Razorpay account.",
+    "INFO: Subscription dunning task starts cleanly on backend boot (\"Subscription dunning task started (hourly grace-expiry sweep)\" in supervisor logs)."
+  ],
+  "critical_code_review_comments": [
+    "routes/subscriptions.py: Clean hybrid model — subscription.create with auto-fallback to order.create inside a single try/except is well-implemented. The fallback receipt is correctly clipped to ≤40 chars (Razorpay's limit).",
+    "verify-onetime correctly uses HMAC-SHA256 of '{order_id}|{payment_id}' with key_secret; idempotency via status check ('Already processed' shortcut at line 296). Confirmed via test_verify_onetime_bogus_signature_400.",
+    "Admin gating uses require_super_admin from core.auth — plain admin (role=admin) correctly receives 403 on PUT /admin/subscriptions/plans/{id}. Verified.",
+    "Webhook handler (routes/subscriptions.py:328-382) covers subscription.charged, activated, pending (start_grace + notify), halted (downgrade + notify), cancelled, completed. Signature verification short-circuits to 400 only when both webhook_secret AND header sig are present — graceful when secret absent (acceptable for dev).",
+    "Dunning loop (_dunning_loop) is a belt-and-suspenders alongside webhook subscription.halted; runs hourly. Started via start_dunning_task() on app startup — confirmed in backend logs.",
+    "Frontend subscription-plans.tsx is clean (~345 lines, well below the 700-line threshold). Uses LinearGradient for tier colours, KeyboardAvoidingView for admin form, proper loading/refreshing/busy states per button. status banner correctly handles all 6 status states via STATUS_LABEL map. Cancel button only renders for status='active' + mode='recurring' — correct behaviour."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter66_subscriptions.py (new)"
+  ],
+  "success_rate": {"backend": "92.3% (12/13)", "frontend": "100% for paths exercisable without super_admin WhatsApp bypass (status banner + 3 plan cards + Subscribe/Pay-once buttons + Profile→Subscription navigation)"},
+  "seed_data_creation": "One throwaway user registered via /api/auth/register (email sub_<ts>@example.com). Several payment_orders rows persisted by /create-onetime tests (status='created', no payment_id — harmless). Super-admin Update→GET→Revert round-trip on basic plan (1500→1800→1500) completed cleanly, ending at the spec baseline 1500.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use test_iter66_subscriptions.py as the Phase-4 regression. Razorpay account is LIVE (rzp_live_iL8ItgiXVGJie4) and recurring subscription.create works on this key — the test asserts mode in ('recurring','onetime') but in practice returned 'recurring' with sub_xxx + short_url. DO NOT complete any mandate / open the short_url programmatically — that would create a real charge. The bogus-signature path is the safe way to exercise /verify-onetime. The one failing assertion is purely a `None` vs `'none'` normalization at routes/subscriptions.py:197 — 1-line fix. Super-admin UI testing still requires WhatsApp-gate bypass for veales.vedic.decisions@gmail.com.",
+  "rca_of_issue": "BUG (minor): GET /api/subscriptions/me returns `status: null` instead of `status: 'none'` for a brand-new user. Root cause: routes/payments.get_or_create_wallet seeds a credit_wallets doc with `subscription_status: None` (explicit None). Then routes/subscriptions.my_subscription at line 197 does `w.get('subscription_status', 'none')` — but dict.get's default only fires when the KEY is missing, not when the VALUE is None. Since the key exists with value None, None is returned. Reproduction: register a new user, GET /api/subscriptions/me, observe `status: null`. Mitigation (1 line): change line 197 to `'status': w.get('subscription_status') or 'none',`. The frontend already maps the missing/null case to STATUS_LABEL.none via `const status = me?.status || 'none'` (subscription-plans.tsx:159) so the UI is unaffected — purely an API-contract issue."
+}
