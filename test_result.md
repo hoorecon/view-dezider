@@ -8986,3 +8986,38 @@ agent_communication:
       7. (If a non-super user token is available) GET /api/admin/ai-wallet/config with a normal user -> 403.
       FRONTEND: log in, open Profile -> tap "AI Credits" card -> /ai-wallet screen shows balance, info, ledger;
       super admin sees the "Default starting balances" + "Grant credits" forms; saving config + granting works.
+
+ai_credits_refill_phase3:
+  - task: "Phase 3 — Razorpay AI-credits refill (packs + custom, hidden markup, Route split)"
+    implemented: true
+    working: "NA"
+    file: "backend/routes/ai_wallet.py, backend/core/ai_billing.py, backend/core/ai_wallet.py, frontend/app/ai-wallet.tsx"
+    needs_retesting: true
+    priority: "high"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          New endpoints (all /api, auth = Bearer): 
+            GET  /ai-wallet/packs            -> {packs:[{id,name,credits,price_inr,price_paise,breakdown}], markup_pct, fx_usd_inr, fx_source, min_custom_credits, currency:'INR'}
+            POST /ai-wallet/refill/quote     -> body {credits} or {pack_id}; returns price breakdown (cost_inr, markup_inr, total_inr, total_paise, below_min). Custom < min_custom_credits -> 400.
+            POST /ai-wallet/refill/order     -> creates a Razorpay order (uses existing RAZORPAY creds via core.integrations). Includes Route transfers[] for the markup -> linked account acc_SyPciERWCkmA6R when markup>=₹1; on Route failure it retries WITHOUT transfers (route_applied=false) so checkout still works. Returns {order_id, amount(paise), key_id, credits, price_inr, route_applied, user_name, user_email}. Persists doc in ai_wallet_orders (status 'created').
+            POST /ai-wallet/refill/verify    -> HMAC-SHA256 verify (order|payment, key_secret). Invalid sig -> 400. Valid -> grants credits (ledger kind 'refill' with cost/markup note), marks order 'paid', idempotent on repeat.
+            POST /ai-wallet/refill/webhook   -> Razorpay webhook backup; payment.captured credits idempotently; payment.failed marks failed.
+            GET  /ai-wallet/refill/checkout  -> HTMLResponse hosting Razorpay checkout.js (used by frontend via expo-web-browser; self-calls verify with token from query).
+          Pricing (core/ai_billing.py): cost_usd = credits*tokens_per_credit*blended_usd_per_mtok/1e6; total = cost*(1+markup%); markup% = admin(1) or user(10); INR via live USD->INR (open.er-api.com, 1h cache) with fallback 90. Defaults: packs 5000/20000/50000, blended $2/1M, tpc 100 -> user prices ₹99/₹396/₹990.
+          Admin config now also accepts: blended_usd_per_mtok, markup_admin_pct, markup_user_pct, usd_to_inr_fallback, min_custom_credits, route_linked_account_id, credit_packs (PUT /admin/ai-wallet/config, super_admin only).
+          Frontend: AI Wallet screen shows pack cards (price), custom amount + "Get price" quote + Pay; SuperAdmin config card gained the pricing/markup/FX/Route fields.
+          NOTE: order/verify hit live Razorpay test API. Full positive verify needs a real Razorpay payment (cannot be automated without a real payment signature). Test: packs/quote pricing math, order creation returns order_id+key_id, verify with a bogus signature -> 400, checkout HTML returns 200, super-admin config accepts new fields, and non-admin is rejected (403) on admin config.
+agent_communication:
+  - agent: "main"
+    message: |
+      BACKEND test (Phase 3 refill) — super admin from /app/memory/test_credentials.md; all routes under /api.
+      1. GET /api/ai-wallet/packs -> 200; 3 packs; user prices ~₹99/₹396/₹990; fx_source present.
+      2. POST /api/ai-wallet/refill/quote {credits:1000} -> 200 breakdown; {credits:10} (below min 150) -> 400.
+      3. POST /api/ai-wallet/refill/order {pack_id:'starter'} -> 200 with order_id (order_...), key_id, amount(paise), route_applied flag. (If Razorpay test keys reject Route, route_applied should be false but order still created.)
+      4. POST /api/ai-wallet/refill/verify {razorpay_order_id:<from step3>, razorpay_payment_id:'pay_test', razorpay_signature:'bad'} -> 400 invalid signature.
+      5. GET /api/ai-wallet/refill/checkout?order_id=x&key_id=y&amount=9900 -> 200 text/html containing 'checkout.razorpay.com'.
+      6. PUT /api/admin/ai-wallet/config {markup_user_pct:12, blended_usd_per_mtok:2.5, route_linked_account_id:'acc_SyPciERWCkmA6R'} -> 200 echoes; then GET packs reflects new pricing. Revert markup_user_pct to 10 after.
+      7. A normal (non-admin) user calling PUT /api/admin/ai-wallet/config -> 403.
+      FRONTEND: open Profile -> AI Credits -> wallet screen shows 3 pack cards with ₹ prices + custom amount field; Get price shows a quote; super admin sees the new pricing/markup/FX/Route config fields. (Don't complete a real Razorpay payment.)

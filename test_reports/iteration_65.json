@@ -1,0 +1,36 @@
+{
+  "summary": "Phase 3 — Razorpay refill for AI-credits wallet. Backend: 16/16 pytest cases PASS (100%) covering GET /api/ai-wallet/packs (3 packs, INR pricing, fx_source live/cache/fallback, markup_pct 10% user / 1% admin, min_custom_credits=150), POST /api/ai-wallet/refill/quote (full breakdown, below_min=false at 1000 credits, 400 at 10 credits, pack_id='pro' works, invalid pack_id → 400, cost_inr+markup_inr≈total_inr, total_paise=total_inr*100), POST /api/ai-wallet/refill/order (returns order_id starting with 'order_', amount in paise, key_id, route_applied bool, ai_wallet_orders doc persisted), POST /api/ai-wallet/refill/verify (bogus signature → 400, missing fields → 400), GET /api/ai-wallet/refill/checkout (text/html containing checkout.razorpay.com + order_id + amount), PUT /api/admin/ai-wallet/config gating (regular user 403, plain admin 403, super_admin 200 + packs reflect updated markup), super_admin can update credit_packs + route_linked_account_id + min_custom_credits + blended_usd_per_mtok + usd_to_inr_fallback. NOTE: against this account Razorpay Route is NOT activated for acc_SyPciERWCkmA6R so route_applied returns false — graceful fallback path executes correctly (order is still created). Live FX returned 95.22 (cache), so user-facing prices on this run were ₹104.74/₹418.98/₹1047.45 (10% markup) and admin-facing ₹96.18/₹384.70/₹961.75 (1% markup); spec's ~₹99/₹396/₹990 estimate assumed the ₹90 fallback. Frontend (admin@test.com, mobile 390x844): /ai-wallet renders correctly — balance card (200.00), 3 pack cards Starter/Pro/Power with ₹ buttons and badges (Starter/Popular/Best value), 'Custom amount' input with 'Get price' button working (1000 credits → ₹19.24 with 'Gemini cost ₹19.04 + 1% fee ₹0.19' breakdown shown), 'Grant credits' admin section visible. The super-admin-only Default starting balances / Refill pricing / Markup / FX / Route inputs are present in ai-wallet.tsx (lines 292-373) but could NOT be exercised via UI because the documented super_admin (veales.vedic.decisions@gmail.com) is blocked behind the WhatsApp OTP gate (same constraint flagged in iteration_64). The backend tests fully validate that flow end-to-end including config persistence and packs reflecting updated markup.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter65_ai_wallet_refill.py",
+    "/app/test_reports/pytest/iter65_ai_wallet_refill.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: Activate Razorpay Route for linked account acc_SyPciERWCkmA6R on the live key (rzp_live_iL8ItgiXVGJie4) — currently route_applied=false because the linked account is not yet activated for transfers on this account. The graceful fallback works as designed (orders still create successfully without the transfer), but Route splits aren't actually happening in production until this is enabled.",
+    "OPTIONAL: Provide a dev-bypass for the WhatsApp gate for veales.vedic.decisions@gmail.com (or seed super@test.com with whatsapp_verified=true) so the super-admin UI can be smoke-tested by automation. Same blocker noted in iteration_64.",
+    "INFO: Backend regression file /app/backend/tests/test_iter65_ai_wallet_refill.py is the canonical Phase-3 test suite (16 cases). Reuses module-scoped fixture that resets config to spec defaults and restores markup_user_pct=10 at teardown.",
+    "INFO: ai_wallet_orders documents are created with `amount_paise`, `breakdown`, `route_applied`, `fx_source`, `status='created'` — verified persisting; status flips to 'paid' only on successful /verify (HMAC signature match)."
+  ],
+  "critical_code_review_comments": [
+    "core/ai_billing.price_for_credits is deterministic and matches the spec: cost_usd = credits*tpc*blended/1e6, total_usd = cost_usd*(1+markup/100), then *fx. Verified numerically: 1000 credits @ 100 tpc @ $2/Mtok @ 1.10 markup @ fx≈95.22 ⇒ ₹20.95 (cost ₹19.04 + markup ₹1.90); rounding-safe via paise integer math.",
+    "Route fallback (routes/ai_wallet.py:209-224): if transfers payload fails (Route not enabled), code retries the same order WITHOUT transfers and sets route_applied=false. Order still created — confirmed live behaviour on this account.",
+    "Verify endpoint computes HMAC-SHA256 over '{order_id}|{payment_id}' using key_secret — standard Razorpay handshake. Confirmed 400 on bogus signature. Idempotency: re-posting the same valid signature after status='paid' returns {message:'Payment already processed', credits_added:0} — code path is correct (lines 268-270).",
+    "Frontend ai-wallet.tsx uses BASE_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || process.env.EXPO_PUBLIC_BACKEND_URL — correct env-var usage. WebBrowser.openBrowserAsync(checkout URL) is mobile-safe.",
+    "Admin role (admin@test.com) correctly does NOT see the Super-Admin config card (gated by `isSuperAdmin = role === 'super_admin'`). Verified."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter65_ai_wallet_refill.py (new)"
+  ],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "Admin path verified end-to-end (packs, custom quote with breakdown, grant card); super-admin config UI not exercisable (WhatsApp gate)"},
+  "seed_data_creation": "Registered one throwaway regular user via /api/auth/register (refill_<ts>@example.com). Inserted several ai_wallet_orders rows (status='created') during order tests — no payment_id, harmless. Module fixture resets ai_wallet_config to spec defaults at module start AND restores markup_user_pct=10 at teardown.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use test_iter65_ai_wallet_refill.py as the Phase-3 regression. Razorpay key on this env is rzp_live_iL8ItgiXVGJie4 (LIVE, not test). Route is currently not activated on the linked account so route_applied=false is expected and the test asserts it as a bool (not strictly true). Once Route is enabled, the same test will still pass. Super-admin UI verification requires the WhatsApp gate to be bypassable for veales — main agent may want to set whatsapp_verified=true directly in db.users for the super-admin user, or provide a non-WA-gated super-admin account, to make the UI fully automatable.",
+  "rca_of_issue": "No bug. The only nuance is route_applied=false on this account — that is by design (graceful fallback when Razorpay Route is not enabled on the linked account); orders are still created and checkout still works, the markup just stays in the primary account instead of being split. This matches the explicit spec: 'with graceful fallback if Route not enabled'."
+}

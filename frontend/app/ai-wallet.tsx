@@ -7,11 +7,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as WebBrowser from 'expo-web-browser';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import { COLORS } from '../src/constants/colors';
 import api from '../src/utils/api';
 import { showAlert } from '../src/utils/alert';
 import { useAuthStore } from '../src/store/authStore';
 import { useAiWalletStore } from '../src/store/aiWalletStore';
+
+const BASE_URL = (Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL as string) || process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
 const KIND_META: Record<string, { icon: any; color: string; label: string }> = {
   seed: { icon: 'gift-outline', color: COLORS.success, label: 'Starting balance' },
@@ -43,14 +48,23 @@ export default function AiWalletScreen() {
   const [grantAmount, setGrantAmount] = useState('');
   const [granting, setGranting] = useState(false);
 
+  // refill
+  const [packsInfo, setPacksInfo] = useState<any>(null);
+  const [customCredits, setCustomCredits] = useState('');
+  const [customQuote, setCustomQuote] = useState<any>(null);
+  const [quoting, setQuoting] = useState(false);
+  const [buyingId, setBuyingId] = useState<string | null>(null);
+
   const fetchData = async () => {
     try {
-      const [wRes, lRes] = await Promise.all([
+      const [wRes, lRes, pRes] = await Promise.all([
         api.get('/ai-wallet'),
         api.get('/ai-wallet/ledger?limit=40'),
+        api.get('/ai-wallet/packs'),
       ]);
       setWallet(wRes.data);
       setLedger(lRes.data?.items || []);
+      setPacksInfo(pRes.data);
       if (isSuperAdmin) {
         try {
           const cRes = await api.get('/admin/ai-wallet/config');
@@ -67,6 +81,46 @@ export default function AiWalletScreen() {
   };
 
   useFocusEffect(useCallback(() => { fetchData(); }, []));
+
+  const getCustomQuote = async () => {
+    const c = parseInt(customCredits, 10);
+    if (isNaN(c) || c <= 0) { showAlert('Enter credits', 'Type how many credits you want to buy.'); return; }
+    setQuoting(true);
+    setCustomQuote(null);
+    try {
+      const res = await api.post('/ai-wallet/refill/quote', { credits: c });
+      setCustomQuote(res.data);
+    } catch (e: any) {
+      showAlert('Quote failed', e?.response?.data?.detail || 'Could not price that amount.');
+    } finally {
+      setQuoting(false);
+    }
+  };
+
+  const buy = async (opts: { pack_id?: string; credits?: number }, buttonId: string) => {
+    setBuyingId(buttonId);
+    try {
+      const res = await api.post('/ai-wallet/refill/order', opts);
+      const o = res.data;
+      const token = (await AsyncStorage.getItem('session_token')) || '';
+      const params = new URLSearchParams({
+        order_id: o.order_id,
+        key_id: o.key_id,
+        amount: String(o.amount),
+        token,
+        name: o.user_name || '',
+        email: o.user_email || '',
+      });
+      const url = `${BASE_URL}/api/ai-wallet/refill/checkout?${params.toString()}`;
+      await WebBrowser.openBrowserAsync(url);
+      // user returned from checkout — refresh balance/ledger
+      await fetchData();
+    } catch (e: any) {
+      showAlert('Payment error', e?.response?.data?.detail || 'Could not start checkout. Please try again.');
+    } finally {
+      setBuyingId(null);
+    }
+  };
 
   const balance = Number(wallet?.balance ?? 0);
   const tpc = Number(wallet?.tokens_per_credit ?? 100);
@@ -165,12 +219,73 @@ export default function AiWalletScreen() {
                 AI Assist runs on Gemini first and only charges for the tokens it actually uses
                 ({tpc} tokens = 1 credit). When your balance reaches zero, AI Assist is paused until you refill.
               </Text>
-              <View style={styles.refillNote}>
-                <Ionicons name="card-outline" size={16} color={COLORS.textSecondary} />
-                <Text style={styles.refillNoteText}>
-                  Self-serve refill (Razorpay) is coming soon. For now, ask an admin to add credits.
-                </Text>
+            </View>
+
+            {/* Refill — credit packs */}
+            <Text style={styles.sectionTitle}>Top up credits</Text>
+            <Text style={styles.fieldHint}>
+              Priced at Gemini&apos;s list rate{packsInfo ? ` + ${packsInfo.markup_pct}% service fee` : ''}. Secure payment via Razorpay (INR).
+            </Text>
+
+            {(packsInfo?.packs || []).map((p: any) => (
+              <View key={p.id} style={styles.packRow}>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={styles.packName}>{p.name}</Text>
+                    {!!p.badge && (
+                      <View style={styles.packBadge}><Text style={styles.packBadgeText}>{p.badge}</Text></View>
+                    )}
+                  </View>
+                  <Text style={styles.packCredits}>{p.credits.toLocaleString()} credits</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.buyBtn}
+                  onPress={() => buy({ pack_id: p.id }, p.id)}
+                  disabled={buyingId !== null}
+                >
+                  {buyingId === p.id
+                    ? <ActivityIndicator color={COLORS.white} size="small" />
+                    : <Text style={styles.buyBtnText}>₹{p.price_inr}</Text>}
+                </TouchableOpacity>
               </View>
+            ))}
+
+            {/* Custom amount */}
+            <View style={styles.customCard}>
+              <Text style={styles.fieldLabel}>Custom amount</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  keyboardType="numeric"
+                  value={customCredits}
+                  onChangeText={(t) => { setCustomCredits(t); setCustomQuote(null); }}
+                  placeholder={`Credits (min ${packsInfo?.min_custom_credits ?? 150})`}
+                  placeholderTextColor={COLORS.textMuted}
+                />
+                <TouchableOpacity style={styles.quoteBtn} onPress={getCustomQuote} disabled={quoting}>
+                  {quoting ? <ActivityIndicator color={COLORS.primary} size="small" /> : <Text style={styles.quoteBtnText}>Get price</Text>}
+                </TouchableOpacity>
+              </View>
+              {customQuote && (
+                <View style={styles.quoteBox}>
+                  <Text style={styles.quoteLine}>
+                    {Number(customCredits).toLocaleString()} credits ={'  '}
+                    <Text style={{ fontWeight: '800', color: COLORS.primary }}>₹{customQuote.total_inr}</Text>
+                  </Text>
+                  <Text style={styles.quoteSub}>
+                    Gemini cost ₹{customQuote.cost_inr} + {customQuote.markup_pct}% fee ₹{customQuote.markup_inr}
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.primaryBtn, { marginTop: 10 }]}
+                    onPress={() => buy({ credits: parseInt(customCredits, 10) }, 'custom')}
+                    disabled={buyingId !== null}
+                  >
+                    {buyingId === 'custom'
+                      ? <ActivityIndicator color={COLORS.white} />
+                      : <Text style={styles.primaryBtnText}>Pay ₹{customQuote.total_inr}</Text>}
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
 
             {/* Admin: config (super admin only) */}
@@ -203,6 +318,54 @@ export default function AiWalletScreen() {
                   onChangeText={(t) => setCfg({ ...cfg, tokens_per_credit: t })}
                   placeholder="100"
                 />
+
+                <View style={styles.cfgDivider} />
+                <Text style={[styles.sectionTitle, { marginTop: 4 }]}>Refill pricing</Text>
+                <Text style={styles.fieldHint}>Credits are priced at Gemini&apos;s blended rate × (1 + markup). Markup is hidden from buyers.</Text>
+
+                <Text style={styles.fieldLabel}>Blended Gemini rate (USD / 1M tokens)</Text>
+                <TextInput
+                  style={styles.input} keyboardType="numeric"
+                  value={String(cfg.blended_usd_per_mtok ?? '')}
+                  onChangeText={(t) => setCfg({ ...cfg, blended_usd_per_mtok: t })}
+                  placeholder="2.0"
+                />
+                <Text style={styles.fieldLabel}>Markup % — admin buyers</Text>
+                <TextInput
+                  style={styles.input} keyboardType="numeric"
+                  value={String(cfg.markup_admin_pct ?? '')}
+                  onChangeText={(t) => setCfg({ ...cfg, markup_admin_pct: t })}
+                  placeholder="1"
+                />
+                <Text style={styles.fieldLabel}>Markup % — regular users</Text>
+                <TextInput
+                  style={styles.input} keyboardType="numeric"
+                  value={String(cfg.markup_user_pct ?? '')}
+                  onChangeText={(t) => setCfg({ ...cfg, markup_user_pct: t })}
+                  placeholder="10"
+                />
+                <Text style={styles.fieldLabel}>USD→INR fallback rate</Text>
+                <TextInput
+                  style={styles.input} keyboardType="numeric"
+                  value={String(cfg.usd_to_inr_fallback ?? '')}
+                  onChangeText={(t) => setCfg({ ...cfg, usd_to_inr_fallback: t })}
+                  placeholder="90"
+                />
+                <Text style={styles.fieldLabel}>Minimum custom credits</Text>
+                <TextInput
+                  style={styles.input} keyboardType="numeric"
+                  value={String(cfg.min_custom_credits ?? '')}
+                  onChangeText={(t) => setCfg({ ...cfg, min_custom_credits: t })}
+                  placeholder="150"
+                />
+                <Text style={styles.fieldLabel}>Razorpay Route — markup linked account</Text>
+                <TextInput
+                  style={styles.input} autoCapitalize="none"
+                  value={String(cfg.route_linked_account_id ?? '')}
+                  onChangeText={(t) => setCfg({ ...cfg, route_linked_account_id: t })}
+                  placeholder="acc_XXXXXXXX (blank = no Route)"
+                />
+
                 <TouchableOpacity style={styles.primaryBtn} onPress={saveConfig} disabled={savingCfg}>
                   {savingCfg ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.primaryBtnText}>Save defaults</Text>}
                 </TouchableOpacity>
@@ -314,6 +477,26 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: COLORS.textPrimary, backgroundColor: COLORS.white },
   primaryBtn: { backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginTop: 14 },
   primaryBtnText: { color: COLORS.white, fontWeight: '700', fontSize: 14 },
+  cfgDivider: { height: 1, backgroundColor: COLORS.border, marginVertical: 14 },
+
+  packRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: COLORS.surface, borderRadius: 12, padding: 14, marginBottom: 10,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  packName: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary },
+  packBadge: { backgroundColor: COLORS.primary + '1A', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  packBadgeText: { fontSize: 10, fontWeight: '700', color: COLORS.primary },
+  packCredits: { fontSize: 13, color: COLORS.textSecondary, marginTop: 3 },
+  buyBtn: { backgroundColor: COLORS.primary, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, minWidth: 84, alignItems: 'center' },
+  buyBtnText: { color: COLORS.white, fontWeight: '800', fontSize: 14 },
+
+  customCard: { backgroundColor: COLORS.surface, borderRadius: 12, padding: 14, marginTop: 4, marginBottom: 20, borderWidth: 1, borderColor: COLORS.border },
+  quoteBtn: { borderWidth: 1.5, borderColor: COLORS.primary, borderRadius: 10, paddingHorizontal: 14, justifyContent: 'center', alignItems: 'center' },
+  quoteBtnText: { color: COLORS.primary, fontWeight: '700', fontSize: 13 },
+  quoteBox: { marginTop: 12, backgroundColor: COLORS.divider, borderRadius: 10, padding: 12 },
+  quoteLine: { fontSize: 14, color: COLORS.textPrimary },
+  quoteSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 3 },
 
   emptyLedger: { alignItems: 'center', paddingVertical: 24, gap: 8 },
   emptyLedgerText: { fontSize: 13, color: COLORS.textMuted },

@@ -29,7 +29,19 @@ CONFIG_KEY = "singleton"
 DEFAULTS = {
     "default_user_credits": 20.0,
     "default_admin_credits": 200.0,
-    "tokens_per_credit": 100.0,  # 100 tokens = 1 credit
+    "tokens_per_credit": 100.0,
+    # ── Phase 3 — Razorpay refill / pricing ──
+    "blended_usd_per_mtok": 2.0,       # blended Gemini list rate ($ per 1M tokens)
+    "usd_to_inr_fallback": 90.0,       # used when live FX fetch fails
+    "markup_admin_pct": 1.0,           # hidden markup for admin-role buyers
+    "markup_user_pct": 10.0,           # hidden markup for regular users
+    "route_linked_account_id": "acc_SyPciERWCkmA6R",  # Razorpay Route: markup → this linked account
+    "min_custom_credits": 150.0,       # custom refill floor (keeps order >= ₹1)
+    "credit_packs": [
+        {"id": "starter", "name": "Starter", "credits": 5000, "badge": "Starter"},
+        {"id": "pro", "name": "Pro", "credits": 20000, "badge": "Popular"},
+        {"id": "power", "name": "Power", "credits": 50000, "badge": "Best value"},
+    ],
 }
 
 
@@ -58,17 +70,41 @@ async def get_config() -> Dict[str, Any]:
 
 async def update_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
     allowed = {}
-    for k in ("default_user_credits", "default_admin_credits", "tokens_per_credit"):
+    # positive-required numerics
+    for k in ("default_user_credits", "default_admin_credits", "tokens_per_credit",
+              "blended_usd_per_mtok", "usd_to_inr_fallback", "markup_admin_pct",
+              "markup_user_pct", "min_custom_credits"):
         if k in patch and patch[k] is not None:
             try:
                 val = float(patch[k])
                 if val < 0:
                     raise ValueError
-                if k == "tokens_per_credit" and val <= 0:
+                if k in ("tokens_per_credit", "blended_usd_per_mtok", "usd_to_inr_fallback",
+                         "min_custom_credits") and val <= 0:
                     raise ValueError
                 allowed[k] = val
             except (ValueError, TypeError):
                 raise ValueError(f"Invalid value for {k}")
+    # Razorpay Route linked account id (string; empty disables Route)
+    if "route_linked_account_id" in patch and patch["route_linked_account_id"] is not None:
+        allowed["route_linked_account_id"] = str(patch["route_linked_account_id"]).strip()
+    # credit packs (list of {id,name,credits,badge})
+    if "credit_packs" in patch and isinstance(patch["credit_packs"], list):
+        packs = []
+        for p in patch["credit_packs"]:
+            try:
+                credits = int(float(p.get("credits")))
+                if credits <= 0:
+                    raise ValueError
+                packs.append({
+                    "id": str(p.get("id") or f"pack_{credits}"),
+                    "name": str(p.get("name") or f"{credits} credits"),
+                    "credits": credits,
+                    "badge": str(p.get("badge") or ""),
+                })
+            except (ValueError, TypeError, AttributeError):
+                raise ValueError("Invalid credit pack entry")
+        allowed["credit_packs"] = packs
     if not allowed:
         return await get_config()
     allowed["updated_at"] = _now()
