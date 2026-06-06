@@ -95,6 +95,13 @@ export default function SimpleSolutionFinder() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const editId = params.id as string | undefined;
+  // Robust back: pop history when navigated in-app, else go to the dashboard
+  // (fixes a dead back button on direct/deep-linked loads where there is no
+  // history to pop).
+  const goBack = useCallback(() => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/(tabs)' as any);
+  }, [router]);
   // Hydration gate — auth store rehydrates async from secure storage; we must
   // NOT fire any /api calls until the user is loaded, else the auto-save on
   // step transitions blows up with a 401 on cold deep-link to this page.
@@ -1262,7 +1269,7 @@ export default function SimpleSolutionFinder() {
   return (
     <SafeAreaView style={s.container} edges={['top']}>
       <LinearGradient colors={['#7C3AED', '#C084FC']} style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} style={s.headerBtn}>
+        <TouchableOpacity onPress={goBack} style={s.headerBtn}>
           <Ionicons name="arrow-back" size={22} color="#FFF" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
@@ -1291,7 +1298,7 @@ export default function SimpleSolutionFinder() {
             <Ionicons name="arrow-forward" size={16} color="#FFF" />
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity style={s.nextBtn} onPress={() => handleSave(false, 'completed').then(() => router.back())}>
+          <TouchableOpacity style={s.nextBtn} onPress={() => handleSave(false, 'completed').then(() => goBack())}>
             <Ionicons name="checkmark" size={16} color="#FFF" />
             <Text style={s.nextBtnText}>Save & Close</Text>
           </TouchableOpacity>

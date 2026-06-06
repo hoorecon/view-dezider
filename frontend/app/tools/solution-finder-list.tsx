@@ -23,6 +23,15 @@ export default function SolutionFinderListScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Robust back: pop history if we got here via in-app nav, else go to the
+  // dashboard. Fixes the dead "back" button on direct/deep-linked loads
+  // (e.g. opening /tools/solution-finder-list in a fresh tab) where
+  // router.back() is a no-op because there is no history to pop.
+  const goBack = useCallback(() => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/(tabs)' as any);
+  }, [router]);
+
   const fetchEntries = async () => {
     try {
       const res = await api.get('/solution-finders');
@@ -78,8 +87,8 @@ export default function SolutionFinderListScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <LinearGradient colors={GRADIENTS.header} style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={24} color="#FFF" />
+        <TouchableOpacity onPress={goBack} style={styles.backBtn} accessibilityLabel="Back to dashboard">
+          <Ionicons name="home" size={22} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Solution Finder</Text>
         <TouchableOpacity
