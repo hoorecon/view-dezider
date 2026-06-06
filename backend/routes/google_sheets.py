@@ -81,8 +81,11 @@ async def sheets_login(request: Request, token: str = Query(...), return_to: str
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid or expired session.")
     redirect_uri = _redirect_uri_from_request(request)
-    state = await gs.create_state(user_id, return_to or DEFAULT_RETURN, redirect_uri)
-    return RedirectResponse(gs.build_auth_url(state, redirect_uri))
+    import uuid as _uuid
+    state = _uuid.uuid4().hex
+    auth_url, code_verifier = gs.build_auth_url(state, redirect_uri)
+    await gs.save_state(state, user_id, return_to or DEFAULT_RETURN, redirect_uri, code_verifier)
+    return RedirectResponse(auth_url)
 
 
 @router.get("/oauth/sheets/callback")
@@ -96,10 +99,10 @@ async def sheets_callback(request: Request, code: str = Query(None), state: str 
         return _close_page("This sign-in link expired. Please try again.", ok=False)
     redirect_uri = st.get("redirect_uri") or _redirect_uri_from_request(request)
     try:
-        email = await gs.exchange_and_store(code, st["user_id"], redirect_uri)
+        email = await gs.exchange_and_store(code, st["user_id"], redirect_uri, st.get("code_verifier"))
     except Exception as e:
-        log.warning(f"sheets callback failed: {e}")
-        return _close_page("Could not connect Google Sheets.", ok=False)
+        log.exception(f"sheets callback token exchange failed (redirect_uri={redirect_uri}): {e}")
+        return _close_page(f"Could not connect Google Sheets: {str(e)[:200]}", ok=False)
     return_to = st.get("return_to") or DEFAULT_RETURN
     sep = "&" if "?" in return_to else "?"
     target = f"{return_to}{sep}{urlencode({'sheets': 'connected', 'email': email})}"

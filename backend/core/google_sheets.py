@@ -28,6 +28,9 @@ from core.database import db
 
 log = logging.getLogger("google_sheets")
 
+# Google returns scopes in a different order / adds openid — don't fail on that.
+os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
+
 # Dedicated Sheets OAuth client (falls back to the app's main Google client).
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_SHEETS_CLIENT_ID") or os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_SHEETS_CLIENT_SECRET") or os.getenv("GOOGLE_CLIENT_SECRET", "")
@@ -67,14 +70,23 @@ def _client_config() -> dict:
 # ─────────────────────────────────────────────────────────────
 # OAuth
 # ─────────────────────────────────────────────────────────────
-def build_auth_url(state: str, redirect_uri: str) -> str:
-    flow = Flow.from_client_config(_client_config(), scopes=SCOPES, redirect_uri=redirect_uri)
+def build_auth_url(state: str, redirect_uri: str):
+    """Return (auth_url, code_verifier). The verifier (PKCE) MUST be persisted
+    and reused at token exchange, otherwise Google returns
+    'invalid_grant: Missing code verifier'."""
+    flow = Flow.from_client_config(
+        _client_config(), scopes=SCOPES, redirect_uri=redirect_uri,
+        autogenerate_code_verifier=True,
+    )
     url, _ = flow.authorization_url(access_type="offline", prompt="consent", include_granted_scopes="true", state=state)
-    return url
+    return url, flow.code_verifier
 
 
-def _exchange_code(code: str, redirect_uri: str) -> Credentials:
-    flow = Flow.from_client_config(_client_config(), scopes=SCOPES, redirect_uri=redirect_uri)
+def _exchange_code(code: str, redirect_uri: str, code_verifier: Optional[str]) -> Credentials:
+    flow = Flow.from_client_config(
+        _client_config(), scopes=SCOPES, redirect_uri=redirect_uri,
+        code_verifier=code_verifier, autogenerate_code_verifier=False,
+    )
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -82,10 +94,10 @@ def _exchange_code(code: str, redirect_uri: str) -> Credentials:
     return flow.credentials
 
 
-async def exchange_and_store(code: str, user_id: str, redirect_uri: str) -> str:
+async def exchange_and_store(code: str, user_id: str, redirect_uri: str, code_verifier: Optional[str]) -> str:
     """Exchange the auth code, fetch the Google account email, persist tokens.
     Returns the connected Google email."""
-    creds = await asyncio.to_thread(_exchange_code, code, redirect_uri)
+    creds = await asyncio.to_thread(_exchange_code, code, redirect_uri, code_verifier)
     granted = set(creds.scopes or [])
     if REQUIRED_SCOPE not in granted:
         raise ValueError("The Google Sheets permission was not granted. Please retry and allow Sheets access.")
@@ -233,15 +245,14 @@ async def read_assessment_sheet(user_id: str, spreadsheet_id: str) -> List[List[
 # ─────────────────────────────────────────────────────────────
 # OAuth state (CSRF) — short-lived
 # ─────────────────────────────────────────────────────────────
-async def create_state(user_id: str, return_to: str, redirect_uri: str) -> str:
-    state = uuid.uuid4().hex
+async def save_state(state: str, user_id: str, return_to: str, redirect_uri: str, code_verifier: Optional[str]) -> None:
     await db.google_oauth_state.update_one(
         {"state": state},
         {"$set": {"state": state, "user_id": user_id, "return_to": return_to,
-                  "redirect_uri": redirect_uri, "created_at": datetime.now(timezone.utc)}},
+                  "redirect_uri": redirect_uri, "code_verifier": code_verifier,
+                  "created_at": datetime.now(timezone.utc)}},
         upsert=True,
     )
-    return state
 
 
 async def consume_state(state: str) -> Optional[dict]:
