@@ -878,6 +878,7 @@ export default function SimpleSolutionFinder() {
           onPress={aiFillSolutions}
           disabled={!!aiBusy}
           activeOpacity={0.8}
+          testID="ai-fill-solutions-btn"
         >
           {aiBusy === 'sol'
             ? <ActivityIndicator size="small" color="#FFF" />
@@ -1011,6 +1012,7 @@ export default function SimpleSolutionFinder() {
           onPress={aiFillRisks}
           disabled={!!aiBusy}
           activeOpacity={0.8}
+          testID="ai-fill-risks-btn"
         >
           {aiBusy === 'risk'
             ? <ActivityIndicator size="small" color="#FFF" />
