@@ -469,6 +469,105 @@ async def import_from_mpps(decision_id: str, user: dict = Depends(get_current_us
     return {"imported_count": len(inserted), "imported": inserted}
 
 
+@router.post("/action-items/import-from-pros-cons/{analysis_id}")
+async def import_from_pros_cons(analysis_id: str, user: dict = Depends(get_current_user)):
+    """
+    Seed the Action Plan from the CHOSEN option's per-factor improvement deltas
+    (Pros & Cons Step 8 "Improvement %"). Mirrors the My Dezider MPPS import.
+    Only positive deltas (actionable improvements) are imported. Idempotent —
+    skips items already linked (keyed on option|factor|delta).
+    """
+    doc = await db.pros_cons.find_one(
+        {"id": analysis_id, "user_id": user.get("user_id")}
+    )
+    if not doc:
+        raise HTTPException(404, "analysis not found")
+
+    cfg = doc.get("config") or {}
+    chosen = cfg.get("final_choice_option_id")
+    if not chosen:
+        return {"imported_count": 0, "imported": [], "reason": "no_chosen_option"}
+
+    factors = {f.get("id"): f for f in (doc.get("factors") or [])}
+    assessments = (doc.get("assessments") or {}).get(chosen) or {}
+    label = f"Pros & Cons · {doc.get('title', 'Untitled')}"
+    life_area = doc.get("life_area") or None
+
+    def _num(v) -> str:
+        try:
+            fv = float(v)
+            return str(int(fv)) if fv == int(fv) else str(fv)
+        except Exception:
+            return str(v)
+
+    inserted: List[Dict[str, Any]] = []
+    for factor_id, cell in (assessments or {}).items():
+        if not isinstance(cell, dict):
+            continue
+        try:
+            delta = float(cell.get("improvement_pct") or 0)
+        except Exception:
+            delta = 0.0
+        if delta <= 0:
+            # Only actionable improvements (positive deltas) become action items.
+            continue
+        f = factors.get(factor_id) or {}
+        fname = f.get("name") or "this factor"
+        try:
+            base_assess = float(cell.get("assessment_pct") or 0)
+        except Exception:
+            base_assess = 0.0
+        effective = max(0.0, min(100.0, base_assess + delta))  # projected post-improvement %
+        note = (cell.get("notes") or "").strip()
+        action_text = note or f"Improve {fname}"
+        title = " · ".join([
+            f"[{fname} - {_num(effective)}]",
+            action_text,
+            f"[+{_num(delta)}%]",
+        ])
+        pc_key = f"{chosen}|{factor_id}|{_num(delta)}"
+
+        existing = await db.action_items.find_one({
+            "user_id": user.get("user_id"),
+            "source_module": "PROS_CONS",
+            "source_id": analysis_id,
+            "pc_key": pc_key,
+        })
+        if existing:
+            # Self-heal the visible title if the format/values changed.
+            if title and existing.get("title") != title:
+                await db.action_items.update_one(
+                    {"action_id": existing["action_id"]},
+                    {"$set": {"title": title, "updated_at": _now_iso()}},
+                )
+            continue
+
+        norm = _normalise({
+            "source_module": "PROS_CONS",
+            "source_id": analysis_id,
+            "source_label": label,
+            "source_subref": factor_id,
+            "title": title,
+            "life_area": life_area,
+        }, user)
+        if not norm["title"]:
+            continue
+        doc_ai = {
+            "action_id": str(uuid.uuid4()),
+            **norm,
+            "is_mpps": False,
+            "pc_key": pc_key,
+            "ported_to": None, "ported_ref_id": None, "ported_at": None,
+            "created_at": _now_iso(), "updated_at": _now_iso(),
+        }
+        await db.action_items.insert_one(doc_ai)
+        doc_ai.pop("_id", None)
+        inserted.append(doc_ai)
+
+    return {"imported_count": len(inserted), "imported": inserted}
+
+
+
 # ───── Aggregate stats (for Action Center widget) ────────────────────────
 
 @router.get("/action-items/stats/summary")
