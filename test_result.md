@@ -9105,3 +9105,38 @@ agent_communication:
       6. New decision intake (/tools/new-decision) shows step 1 = "Life Area", step 2 = "This decision is for…" (order swapped) for My Dezider; same swap for Pros & Cons and SWOT intake.
       7. Admin Settings screen shows a "Skip WhatsApp OTP for Admins" toggle (SECURITY section); editable only by super admin.
       8. Browser tab title = "JELCOS AI - Joyful Executive's Life Choices Operating System — Powered by AI" (already verified by main agent).
+
+phase5_step4_ux:
+  - task: "Define step (Step 4) UX simplification per alpha feedback"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/tools/new-decision.tsx"
+    needs_retesting: true
+    priority: "high"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          renderStep3 (the 'Tell us about your decision' / Define step) changes:
+          - HIDDEN the free-text 'Describe your decision' box in the UI. All its state/logic
+            (searchText, aiParseFreeText, aiParsing, AI parse effect) is RETAINED behind a
+            `const SHOW_DESCRIBE_BOX = false` flag so it can be reused later.
+          - Remaining fields renumbered to: ① Sub-area, ② Scenario, ③ Decision title (all optional).
+          - Sub-area chips AND Scenario chips now WRAP (flexWrap via new s.chipWrap) instead of a
+            horizontal ScrollView, so ALL options are visible without horizontal scrolling.
+          - Decision title still auto-fills [LifeArea] — <DateTime> via smartDefaultTitle (placeholder)
+            and remains editable. No backend changes.
+          Applies to My Dezider, Pros & Cons, and SWOT (shared intake screen).
+agent_communication:
+  - agent: "main"
+    message: |
+      FRONTEND-only test. Log in as super admin veales.vedic.decisions@gmail.com / Jelcos@Admin2026
+      (WhatsApp OTP is skipped for admins now). NOTE: the login screen defaults to 'Organization Login' —
+      you may need to switch to the standard/user login mode to sign in with these credentials.
+      1. Go to a new decision (My Dezider): the intake wizard. Step 1 = Life Area, Step 2 = 'This decision is for…',
+         Step 3 = Ask Type, Step 4 = 'Tell us about your decision'.
+      2. On Step 4 confirm: NO 'Describe your decision' text box; fields shown are ① Sub-area, ② Scenario,
+         ③ Decision title; sub-area + scenario chips WRAP (all visible, no horizontal scroll);
+         title shows an auto default like '<LifeArea> — <date/time>' and is editable.
+      3. Confirm a decision can still be created end-to-end (pick sub-area/scenario optional, Create) — no regression.
+      4. Spot-check the same Step 4 for Pros & Cons and SWOT intake (same shared screen).

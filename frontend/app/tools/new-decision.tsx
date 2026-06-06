@@ -484,46 +484,54 @@ export default function NewDecisionIntake() {
 
   const renderStep3 = () => {
     // Step-4 (index 3): "Define" — structured form.
-    // Layout: free-text (AI parse) → Sub-area chips → Scenario chips → Title.
+    // Layout: Sub-area chips → Scenario chips → Title.
+    // Note: the free-text "Describe your decision" box is HIDDEN per alpha-user
+    // feedback (it confused new users). All of its state/logic is retained below
+    // behind SHOW_DESCRIBE_BOX so it can be re-enabled / reused later.
+    const SHOW_DESCRIBE_BOX = false;
     return (
       <View>
         <Text style={s.stepTitle}>Tell us about your decision</Text>
         <Text style={s.stepSubtitle}>
           {moduleKey === 'pros-cons'
             ? "Describe it — we'll set up the analysis"
-            : "Type freely or pick from suggestions"}
+            : "Pick from suggestions — all fields are optional"}
         </Text>
 
-        {/* ① Free-text — AI parses → ②③ pre-fill */}
-        <Text style={s.fieldLabel}>① Describe your decision <Text style={s.fieldOpt}>(optional)</Text></Text>
-        <TextInput
-          style={s.searchInput}
-          placeholder='e.g. "Should I quit my job to start a startup?"'
-          value={searchText}
-          onChangeText={setSearchText}
-          onBlur={aiParseFreeText}
-          onEndEditing={aiParseFreeText}
-          placeholderTextColor={COLORS.textMuted}
-          multiline
-          numberOfLines={2}
-        />
-        {!!searchText.trim() && (
-          <View style={s.aiHint}>
-            <Ionicons name="sparkles" size={14} color="#7C3AED" />
-            <Text style={s.aiHintText}>
-              {aiParsing ? 'Parsing…' : 'AI will pre-fill Sub-area & Scenario below'}
-            </Text>
-          </View>
+        {/* Free-text — HIDDEN per UX feedback (logic retained for future reuse) */}
+        {SHOW_DESCRIBE_BOX && (
+          <>
+            <Text style={s.fieldLabel}>Describe your decision <Text style={s.fieldOpt}>(optional)</Text></Text>
+            <TextInput
+              style={s.searchInput}
+              placeholder='e.g. "Should I quit my job to start a startup?"'
+              value={searchText}
+              onChangeText={setSearchText}
+              onBlur={aiParseFreeText}
+              onEndEditing={aiParseFreeText}
+              placeholderTextColor={COLORS.textMuted}
+              multiline
+              numberOfLines={2}
+            />
+            {!!searchText.trim() && (
+              <View style={s.aiHint}>
+                <Ionicons name="sparkles" size={14} color="#7C3AED" />
+                <Text style={s.aiHintText}>
+                  {aiParsing ? 'Parsing…' : 'AI will pre-fill Sub-area & Scenario below'}
+                </Text>
+              </View>
+            )}
+          </>
         )}
 
-        {/* ② Sub-area chips */}
-        <Text style={[s.fieldLabel, { marginTop: 18 }]}>
-          ② Sub-area in {selectedArea?.name} <Text style={s.fieldOpt}>(optional)</Text>
+        {/* ① Sub-area chips */}
+        <Text style={s.fieldLabel}>
+          ① Sub-area in {selectedArea?.name} <Text style={s.fieldOpt}>(optional)</Text>
         </Text>
         {subAreas.length === 0 ? (
           <Text style={s.emptyHint}>No sub-areas configured yet for this life area.</Text>
         ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipScroll}>
+          <View style={s.chipWrap}>
             {subAreas.map(sa => (
               <TouchableOpacity
                 key={sa.id}
@@ -544,12 +552,12 @@ export default function NewDecisionIntake() {
                 >{sa.name}</Text>
               </TouchableOpacity>
             ))}
-          </ScrollView>
+          </View>
         )}
 
-        {/* ③ Scenario chips */}
+        {/* ② Scenario chips */}
         <Text style={[s.fieldLabel, { marginTop: 18 }]}>
-          ③ Scenario <Text style={s.fieldOpt}>(optional · auto-suggest)</Text>
+          ② Scenario <Text style={s.fieldOpt}>(optional · auto-suggest)</Text>
         </Text>
         {scenarios.length === 0 ? (
           <Text style={s.emptyHint}>
@@ -558,7 +566,7 @@ export default function NewDecisionIntake() {
               : 'Pick a sub-area above to see scenarios.'}
           </Text>
         ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipScroll}>
+          <View style={s.chipWrap}>
             {scenarios.map(sc => (
               <TouchableOpacity
                 key={sc.id}
@@ -573,16 +581,15 @@ export default function NewDecisionIntake() {
                     s.subAreaChipText,
                     selectedScenario?.id === sc.id && { color: '#FFF', fontWeight: '700' },
                   ]}
-                  numberOfLines={1}
                 >{sc.title}</Text>
               </TouchableOpacity>
             ))}
-          </ScrollView>
+          </View>
         )}
 
-        {/* ④ Title with smart default */}
+        {/* ③ Title with smart default */}
         <Text style={[s.fieldLabel, { marginTop: 18 }]}>
-          ④ Decision title <Text style={s.fieldOpt}>(optional)</Text>
+          ③ Decision title <Text style={s.fieldOpt}>(optional)</Text>
         </Text>
         <TextInput
           style={s.searchInput}
@@ -893,6 +900,7 @@ const s = StyleSheet.create({
   },
   chipSectionLabel: { fontSize: 13, fontWeight: '600', color: COLORS.textSecondary, marginBottom: 8 },
   chipScroll: { gap: 8, paddingVertical: 4 },
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingVertical: 4 },
   subAreaChip: {
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
     backgroundColor: COLORS.primary + '10', borderWidth: 1, borderColor: COLORS.primary + '30',

@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 68 — Alpha-user UX polish on /tools/new-decision Step 4 ('Define'). Frontend-only test (mobile 390x844 via Expo web preview). Logged in as super_admin (veales.vedic.decisions@gmail.com) — WhatsApp OTP gate skipped (iter67 toggle ON by default), landed straight on home. Drove the wizard end-to-end for module=dezider, module=swot, and module=pros-cons. ALL 7 spec items PASS for all three modules:\n  ① Step 4 has NO 'Describe your decision' free-text box (SHOW_DESCRIBE_BOX=false flag, logic retained behind it as required) ✓\n  ② Header reads 'Tell us about your decision' with optional fields numbered ① Sub-area in <LifeArea>, ② Scenario, ③ Decision title — each tagged '(optional)' ✓\n  ③ Sub-area chips (8 chips on Career life area: Job & Employment, Business & Startup, Professional Growth, Leadership & Management, Career Transition, Fundraise & Growth Capital, Work Performance, Career Purpose & Direction) and Scenario chips (e.g. 3 chips: Should I expand my startup? / Should I hire a cofounder? / How to negotiate my salary effectively?) wrap to multiple lines via flexWrap:'wrap' (s.chipWrap style) — 0 horizontal-scroll containers detected via window.getComputedStyle audit; every chip visible without horizontal scroll ✓\n  ④ Decision title input shows smart-default placeholder '<LifeArea> — <date>, <HH:MM>' (e.g. 'Career — 6 Jun 2026, 19:12') and is editable; below it the hint 'Leave blank to use: Career — 6 Jun 2026, 19:12' updates live based on Sub-area/Scenario selection (per smartDefaultTitle useMemo at line 269) ✓\n  ⑤ Decision can still be created — Step 4 has 'Find Templates' button (dezider/swot) and 'Create & Start Wizard' button (pros-cons), Sub-area & Scenario remain optional (canProceed step 3 always returns true) ✓\n  ⑥ Same Step 4 layout verified identically for dezider, swot, AND pros-cons (shared screen) ✓\n  ⑦ Wizard step order 1) Life Area → 2) 'This decision is for…' (Context) → 3) Ask Type → 4) Define still holds — verified by reaching step indicator dot '4' active after navigating Career → Individual → Problem ✓\n\nScreenshots in /tmp/{dezider,swot,pros-cons}_step4.png confirm the visual layout end-to-end.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/tmp/dezider_step4.png",
+    "/tmp/swot_step4.png",
+    "/tmp/pros-cons_step4.png"
+  ],
+  "action_items": [
+    "None — all 7 spec items pass end-to-end for dezider/swot/pros-cons.",
+    "Optional nit (NOT a bug): add data-testid attributes to subAreaChip / scenarioChip / customTitle TextInput in /app/frontend/app/tools/new-decision.tsx so future Playwright tests don't need to scrape innerText. Cosmetic — current tests work via visible-text selectors.",
+    "Optional nit (NOT a bug): the now-unused style key `s.chipScroll` (line 902) and the unused `aiHint`/`aiHintText` styles (lines 915-919) plus the `aiParseFreeText` callback (lines 222-256) are dead while SHOW_DESCRIBE_BOX=false. Intentional per spec ('keep logic for later'), so leaving them is correct, but you may want a one-line comment near aiParseFreeText reminding future devs they're gated on SHOW_DESCRIBE_BOX."
+  ],
+  "critical_code_review_comments": [
+    "new-decision.tsx:485-608 — Step 4 renderer is cleanly gated on `SHOW_DESCRIBE_BOX = false` (line 491). The free-text TextInput, AI-hint banner, and onBlur/onEndEditing → aiParseFreeText wiring are all inside the `{SHOW_DESCRIBE_BOX && (...) }` block (lines 502-525), so the box is fully hidden but the state (`searchText`, `setSearchText`) and callback (`aiParseFreeText`) remain available for future re-enable. Minimal, reversible change — matches the spec 'keep its logic for later'.",
+    "subAreas and scenarios are rendered inside `<View style={s.chipWrap}>` (lines 534, 569) where s.chipWrap = {flexDirection:'row', flexWrap:'wrap', gap:8} (line 903). On a 390-wide viewport, all 8 Career sub-area chips render across 4 rows and all 3 scenario chips fit on a single row — verified visually and via computed-style audit. The pre-existing s.subAreaChip.maxWidth=280 (line 907) ensures very long chip text won't break layout.",
+    "smartDefaultTitle (line 269) correctly cascades scenario → sub-area → life-area → 'New Decision', appending a localized date/time stamp via toLocaleString('en-IN'). Memoised against [selectedScenario, selectedSubArea, selectedArea] — re-renders the placeholder + 'Leave blank to use' hint live as the user picks chips. Good UX.",
+    "Title input is multiline=false with returnKeyType='done' (line 600-601). Editable, placeholder shows the smart default in muted color. customTitle state remains the user-typed value, smartDefaultTitle is the fallback consumed in both createProsConsAnalysis (line 289) and handleCreateDecision (line 316 via `title || ...`). No regression.",
+    "Step indicator (line 379-394) and STEPS_BASE (line 88) still read ['Life Area', 'Context', 'Ask Type', 'Define'] — and the render-map at line 770-774 still swaps step 0↔1 (`step === 0 && renderStep1()` for Life Area first). Step order from iter67 preserved. No regression."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only)", "frontend": "100% (7/7 spec items × 3 modules = 21/21)"},
+  "seed_data_creation": "No seed data created. Used the existing super_admin account and the seeded sub_areas/scenarios for Career life area (8 sub-areas, 3 scenarios) returned by /api/hos/* on the dev backend.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "For any future test that drives /tools/new-decision: (a) login at /auth/login — the default mode is 'Organization Login', so first click that dropdown and pick 'Standard Login' before filling email/password; (b) super_admin credentials from /app/memory/test_credentials.md skip the WhatsApp OTP gate (iter67 toggle ON by default); (c) the canonical wizard path is: Life Area (click e.g. 'Career') → Next → Context (default 'Individual' is fine) → Next → Ask Type (click 'Problem'/'Need'/'Aspiration') → Next → Define (Step 4). Step 4 chips wrap; no horizontal scroll exists. The free-text 'Describe your decision' box is gated behind a SHOW_DESCRIBE_BOX=false constant in new-decision.tsx:491 — flip to true to re-enable it for future tests.",
+  "rca_of_issue": "No bug. Frontend-only cosmetic refactor verified end-to-end. The describe-box logic is correctly retained behind a SHOW_DESCRIBE_BOX flag (not deleted), sub-area + scenario chips wrap natively via flexWrap on a row container (no horizontal ScrollView used), all three fields are numbered with circled glyphs ①②③ and marked optional, and the auto-default editable title uses the smartDefaultTitle useMemo. Same screen serves My Dezider, SWOT, and Pros & Cons — all three behave identically on Step 4. Step order from iter67 (Life Area → Context → Ask Type → Define) is preserved."
+}
