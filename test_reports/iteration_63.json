@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 63 — Backend-only validation of Google Sheet assessment-import Phase 1 auth-gating contract + XLS regression after build_value_matrix/parse_rows refactor. All 9 pytest cases passed. Verified: (a) GET /api/oauth/sheets/status returns 200 {connected:false} for admin@test.com (and 401 unauthenticated); (b) Both Pros & Cons and My Dezider POST .../assessment-gsheet return HTTP 428 with detail 'Google account not connected. Connect Google to use Sheets import.' when Google is not connected; (c) Both POST .../assessment-gsheet/import return HTTP 400 with detail 'No Google Sheet linked. Create one first.' when called with empty body and no linked sheet; (d) XLS templates still download as valid xlsx (PK header, ~5-7KB) for both flows; (e) Pros & Cons xlsx round-trip (download → upload via /assessment-import) returns 200 {applied:0, rows:0} with no parser exception — confirms the shared core.assessment_xlsx.parse_rows path still works after the matrix refactor. Real Google OAuth was NOT exercised per request.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter63_gsheet_assessment.py",
+    "/app/test_reports/pytest/iter63_gsheet.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/google_sheets.py:27 — DEFAULT_RETURN is hardcoded to https://dashboard-rewire.preview.emergentagent.com. This is fine in dev but should ideally be sourced from APP_BASE_URL/EXPO_BACKEND_URL env var to avoid breakage when the preview slug changes.",
+    "core/google_sheets.py:37-40 — REDIRECT_URI defaults to the same hardcoded preview host. Already configurable via GOOGLE_SHEETS_REDIRECT_URI env var (good), but the fallback default should either be empty + fail-fast, or be derived from the protected EXPO_BACKEND_URL.",
+    "routes/pros_cons.py is ~1146 lines — exceeds the 700-line guideline. Consider splitting the 8-step framework endpoints and the assessment (xlsx + gsheet) endpoints into separate routers for maintainability.",
+    "routes/decisions.py is ~1179 lines — same split recommendation as above.",
+    "routes/pros_cons.py:1077 & routes/decisions.py:262 — assessment-gsheet/import handlers accept Optional[Dict] body with no Pydantic schema. Minor: a typed model (e.g. AssessmentGSheetImportBody { spreadsheet_id: Optional[str] }) would make the contract self-documenting in OpenAPI."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter63_gsheet_assessment.py (new — 9 tests)",
+    "/app/test_reports/pytest/iter63_gsheet.xml (new — JUnit XML)",
+    "/app/test_reports/iteration_63.json (this report)"
+  ],
+  "success_rate": {
+    "backend": "100% (9/9 passed)",
+    "frontend": "not tested (backend-only per request)"
+  },
+  "seed_data_creation": "Each test class created its own TEST_iter63_* Pros & Cons analysis and PRR Decision via the API. No persistent seed data introduced beyond what the tests created (cleanup via move_to_trash not invoked, but records are prefixed with TEST_iter63_ for easy identification).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iter63 focuses ONLY on the auth-gated contract of /api/oauth/sheets/status + the assessment-gsheet create/import endpoints (under both /api/pros-cons/{id} and /api/decisions/{id}), plus an XLS round-trip regression. Exact responses observed: STATUS=200 {connected:false}, gsheet CREATE → 428 'Google account not connected. Connect Google to use Sheets import.', gsheet IMPORT (no linked sheet) → 400 'No Google Sheet linked. Create one first.'. Both flows behave identically. Real Google OAuth (login/callback/create-sheet/read-sheet) was deliberately NOT exercised because CI has no interactive Google sign-in — to validate the success path, a future iteration needs a stub that injects a fake row into db.google_sheet_tokens and mocks core.google_sheets._get_creds OR Pichai-mode credentials. The XLS template now flows through the same build_value_matrix/parse_rows code that Google Sheets uses, so any future bug in parse_rows will surface in both the XLS round-trip test and the gsheet import path."
+}

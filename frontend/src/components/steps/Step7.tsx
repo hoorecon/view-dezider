@@ -10,6 +10,7 @@ import { useDecision } from '../../context/DecisionContext';
 import { styles } from '../../styles/decisionStyles';
 import { LMH_VALUES, effectiveFactorPct } from '../../utils/decisionHelpers';
 import { downloadAssessmentTemplate, importAssessmentTemplate } from '../../utils/assessmentXlsx';
+import { createAssessmentGsheet, importAssessmentGsheet, openSheetUrl } from '../../utils/googleSheets';
 import { showAlert } from '../../utils/alert';
 import type { Factor } from '../../types/decision';
 
@@ -46,6 +47,30 @@ export default function Step7() {
       }
     } catch (e: any) {
       showAlert('Import failed', e?.message || 'Could not import the file.');
+    } finally {
+      setXlsBusy(false);
+    }
+  };
+  const handleCreateGsheet = async () => {
+    setXlsBusy(true);
+    try {
+      const res = await createAssessmentGsheet(`/decisions/${decision.id}/assessment-gsheet`);
+      await openSheetUrl(res.url);
+      showAlert('Google Sheet ready', 'A Google Sheet was created in your Drive. Fill the “Actual Value” and “Assess %” columns, then tap “Import Sheet”.');
+    } catch (e: any) {
+      showAlert('Google Sheet', e?.message || 'Could not create the Google Sheet.');
+    } finally {
+      setXlsBusy(false);
+    }
+  };
+  const handleImportGsheet = async () => {
+    setXlsBusy(true);
+    try {
+      const res = await importAssessmentGsheet(`/decisions/${decision.id}/assessment-gsheet/import`);
+      await fetchDecision();
+      showAlert('Import complete', `Applied ${res.applied} value(s) from ${res.rows} row(s).`);
+    } catch (e: any) {
+      showAlert('Import failed', e?.message || 'Could not import from the Google Sheet. Create one first if you haven’t.');
     } finally {
       setXlsBusy(false);
     }
@@ -519,14 +544,22 @@ export default function Step7() {
         Rate how well each option satisfies each factor using quick LMH toggles or specific percentage.
       </Text>
 
-      <View style={mdXls.bar}>
+      <View style={[mdXls.bar, { flexWrap: 'wrap' }]}>
         <TouchableOpacity style={mdXls.btn} onPress={handleDownloadTemplate} disabled={xlsBusy} testID="md-xls-download">
           <Ionicons name="download-outline" size={15} color="#1F6FEB" />
-          <Text style={mdXls.btnText}>Download template</Text>
+          <Text style={mdXls.btnText}>Download XLS</Text>
         </TouchableOpacity>
         <TouchableOpacity style={mdXls.btn} onPress={handleImportTemplate} disabled={xlsBusy} testID="md-xls-import">
           {xlsBusy ? <ActivityIndicator size="small" color="#1F6FEB" /> : <Ionicons name="cloud-upload-outline" size={15} color="#1F6FEB" />}
-          <Text style={mdXls.btnText}>Import filled</Text>
+          <Text style={mdXls.btnText}>Import XLS</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={mdXls.btn} onPress={handleCreateGsheet} disabled={xlsBusy} testID="md-gsheet-create">
+          <Ionicons name="logo-google" size={15} color="#0F9D58" />
+          <Text style={[mdXls.btnText, { color: '#0F9D58' }]}>Google Sheet</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={mdXls.btn} onPress={handleImportGsheet} disabled={xlsBusy} testID="md-gsheet-import">
+          {xlsBusy ? <ActivityIndicator size="small" color="#0F9D58" /> : <Ionicons name="cloud-download-outline" size={15} color="#0F9D58" />}
+          <Text style={[mdXls.btnText, { color: '#0F9D58' }]}>Import Sheet</Text>
         </TouchableOpacity>
       </View>
 

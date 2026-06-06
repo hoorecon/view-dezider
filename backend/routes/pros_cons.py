@@ -15,7 +15,8 @@ from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from fastapi.responses import Response
 from core.database import db
-from core.assessment_xlsx import build_template, parse_template
+from core.assessment_xlsx import build_template, parse_template, build_value_matrix, parse_rows
+from core import google_sheets as gs
 from core.trash import move_to_trash
 from core.auth import get_current_user
 
@@ -1018,6 +1019,80 @@ async def import_assessment_template(
         rows = parse_template(raw)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Could not read the file: {e}")
+
+    field_updates: Dict[str, Any] = {}
+    applied = 0
+    for r in rows:
+        fid = r.get("factor_id")
+        oid = r.get("option_id")
+        if fid not in valid_factor_ids or oid not in valid_option_ids:
+            continue
+        base = f"assessments.{oid}.{fid}"
+        if "actual" in r:
+            field_updates[f"{base}.actual_value"] = r["actual"]
+        if "assessment_pct" in r:
+            pct = int(r["assessment_pct"])
+            field_updates[f"{base}.assessment_pct"] = pct
+            field_updates[f"{base}.cell_value"] = compute_cell_value(pct, std_by_factor.get(fid, 0))
+        if "actual" in r or "assessment_pct" in r:
+            applied += 1
+
+    if field_updates:
+        field_updates["updated_at"] = datetime.now(timezone.utc)
+        await db.pros_cons.update_one(
+            {"id": analysis_id, "user_id": user["user_id"]}, {"$set": field_updates},
+        )
+    return {"applied": applied, "rows": len(rows)}
+
+
+@router.post("/{analysis_id}/assessment-gsheet")
+async def create_assessment_gsheet(analysis_id: str, user: dict = Depends(get_current_user)):
+    """Create a Google Sheet (in the user's own Drive) pre-filled with the
+    assessment template. Returns {url, spreadsheet_id}. Requires the user to
+    have connected Google (see /api/oauth/sheets/login)."""
+    doc = await _load_analysis(analysis_id, user["user_id"])
+    factors = _ordered_factors_with_parent(doc)
+    options = [{"id": o["id"], "name": o.get("name") or "Option"} for o in doc["options"]]
+    assessments = doc.get("assessments") or {}
+
+    def get_cell(oid: str, fid: str) -> Dict[str, Any]:
+        c = (assessments.get(oid) or {}).get(fid) or {}
+        return {"actual": c.get("actual_value") or "", "pct": c.get("assessment_pct")}
+
+    title = doc.get("title") or doc.get("name") or "Pros & Cons"
+    matrix = build_value_matrix(factors, options, get_cell)
+    try:
+        res = await gs.create_assessment_sheet(user["user_id"], title, matrix)
+    except PermissionError as e:
+        raise HTTPException(status_code=428, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not create the Google Sheet: {e}")
+    await db.pros_cons.update_one(
+        {"id": analysis_id, "user_id": user["user_id"]},
+        {"$set": {"gsheet_id": res["spreadsheet_id"], "gsheet_url": res["url"], "updated_at": datetime.now(timezone.utc)}},
+    )
+    return res
+
+
+@router.post("/{analysis_id}/assessment-gsheet/import")
+async def import_assessment_gsheet(analysis_id: str, body: Optional[Dict[str, Any]] = None, user: dict = Depends(get_current_user)):
+    """Read back the linked (or provided) Google Sheet and apply the filled
+    Actual/Assess % values. body may include {spreadsheet_id} to override."""
+    doc = await _load_analysis(analysis_id, user["user_id"])
+    spreadsheet_id = (body or {}).get("spreadsheet_id") or doc.get("gsheet_id")
+    if not spreadsheet_id:
+        raise HTTPException(status_code=400, detail="No Google Sheet linked. Create one first.")
+    valid_factor_ids = {f["id"] for f in doc["factors"]}
+    valid_option_ids = {o["id"] for o in doc["options"]}
+    std_by_factor = {f["id"]: int(f.get("std_rating", 0) or 0) for f in doc["factors"]}
+
+    try:
+        values = await gs.read_assessment_sheet(user["user_id"], spreadsheet_id)
+        rows = parse_rows(values)
+    except PermissionError as e:
+        raise HTTPException(status_code=428, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not read the Google Sheet: {e}")
 
     field_updates: Dict[str, Any] = {}
     applied = 0

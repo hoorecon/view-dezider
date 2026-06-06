@@ -137,6 +137,7 @@ from routes.org_auth import router as org_auth_router
 from routes.solutions_store import router as solutions_store_router
 from routes.store_ingestion import router as store_ingestion_router
 from routes.google_calendar import router as google_calendar_router
+from routes.google_sheets import router as google_sheets_router
 from routes.deo import router as deo_router
 from routes.cld import router as cld_router
 from routes.time_dezider import router as time_dezider_router
@@ -224,6 +225,7 @@ api_router.include_router(org_auth_router)
 api_router.include_router(solutions_store_router)
 api_router.include_router(store_ingestion_router)
 api_router.include_router(google_calendar_router)
+api_router.include_router(google_sheets_router)
 api_router.include_router(deo_router)
 api_router.include_router(cld_router)
 api_router.include_router(time_dezider_router)

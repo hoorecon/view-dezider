@@ -29,6 +29,7 @@ import ActionItemEditor from '../../src/components/ActionItemEditor';
 import { showAlert } from '../../src/utils/alert';
 import { LMH_VALUES, NUMERIC_OPERATORS, TEXT_OPERATORS } from '../../src/utils/decisionHelpers';
 import { downloadAssessmentTemplate, importAssessmentTemplate } from '../../src/utils/assessmentXlsx';
+import { createAssessmentGsheet, importAssessmentGsheet, openSheetUrl } from '../../src/utils/googleSheets';
 import { LIFE_AREAS as LIFE_AREAS_CANONICAL } from '../../src/constants/lifeAreas';
 import { safeBack, goHome } from '../../src/utils/navigation';
 
@@ -677,6 +678,31 @@ export default function ProsConsWizard() {
       }
     } catch (e: any) {
       showAlert('Import failed', e?.message || 'Could not import the file.');
+    } finally {
+      setXlsBusy(false);
+    }
+  };
+  // Google Sheet: create a pre-filled sheet in the user's Drive, then re-import once filled.
+  const handleCreateGsheet = async () => {
+    setXlsBusy(true);
+    try {
+      const res = await createAssessmentGsheet(`${base}/${id}/assessment-gsheet`);
+      await openSheetUrl(res.url);
+      showAlert('Google Sheet ready', 'A Google Sheet was created in your Drive. Fill the “Actual Value” and “Assess %” columns, then tap “Import from Google Sheet”.');
+    } catch (e: any) {
+      showAlert('Google Sheet', e?.message || 'Could not create the Google Sheet.');
+    } finally {
+      setXlsBusy(false);
+    }
+  };
+  const handleImportGsheet = async () => {
+    setXlsBusy(true);
+    try {
+      const res = await importAssessmentGsheet(`${base}/${id}/assessment-gsheet/import`);
+      await reload();
+      showAlert('Import complete', `Applied ${res.applied} value(s) from ${res.rows} row(s).`);
+    } catch (e: any) {
+      showAlert('Import failed', e?.message || 'Could not import from the Google Sheet. Create one first if you haven’t.');
     } finally {
       setXlsBusy(false);
     }
@@ -1657,11 +1683,19 @@ export default function ProsConsWizard() {
                   <View style={pcAssess.xlsBar}>
                     <TouchableOpacity style={pcAssess.xlsBtn} onPress={handleDownloadTemplate} disabled={xlsBusy} testID="pc-xls-download">
                       <Ionicons name="download-outline" size={15} color="#1F6FEB" />
-                      <Text style={pcAssess.xlsBtnText}>Download template</Text>
+                      <Text style={pcAssess.xlsBtnText}>Download XLS</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={pcAssess.xlsBtn} onPress={handleImportTemplate} disabled={xlsBusy} testID="pc-xls-import">
                       {xlsBusy ? <ActivityIndicator size="small" color="#1F6FEB" /> : <Ionicons name="cloud-upload-outline" size={15} color="#1F6FEB" />}
-                      <Text style={pcAssess.xlsBtnText}>Import filled</Text>
+                      <Text style={pcAssess.xlsBtnText}>Import XLS</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={pcAssess.xlsBtn} onPress={handleCreateGsheet} disabled={xlsBusy} testID="pc-gsheet-create">
+                      <Ionicons name="logo-google" size={15} color="#0F9D58" />
+                      <Text style={[pcAssess.xlsBtnText, { color: '#0F9D58' }]}>Google Sheet</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={pcAssess.xlsBtn} onPress={handleImportGsheet} disabled={xlsBusy} testID="pc-gsheet-import">
+                      {xlsBusy ? <ActivityIndicator size="small" color="#0F9D58" /> : <Ionicons name="cloud-download-outline" size={15} color="#0F9D58" />}
+                      <Text style={[pcAssess.xlsBtnText, { color: '#0F9D58' }]}>Import Sheet</Text>
                     </TouchableOpacity>
                   </View>
                 )}

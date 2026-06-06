@@ -8894,3 +8894,50 @@ agent_communication:
       PUT /api/pros-cons/{id}/factors/{fid} {data_type, operator, expected_value, unit}.
       Creds: admin@test.com / AdminPass2026!. All routes under /api. Note super@test.com may 401 in dev.
 
+#====================================================================================================
+# Phase 1 — Import Filled assessment from Google Sheet (My Dezider + Pros & Cons)
+#====================================================================================================
+google_sheet_assessment_import:
+  - task: "Google Sheets OAuth + create/import assessment sheet (both flows)"
+    implemented: true
+    working: "NA"
+    file: "backend/core/google_sheets.py, backend/routes/google_sheets.py, backend/core/assessment_xlsx.py, backend/routes/pros_cons.py, backend/routes/decisions.py, frontend/src/utils/googleSheets.ts, frontend/src/components/steps/Step7.tsx, frontend/app/tools/pros-cons-wizard.tsx"
+    needs_retesting: true
+    priority: "high"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          New Google Sheets integration reuses the existing Google OAuth client (GOOGLE_CLIENT_ID/SECRET)
+          — NO API key. Endpoints (all under /api):
+            GET  /oauth/sheets/login?token=&return_to=   (browser entry; validates session token from query)
+            GET  /oauth/sheets/callback                  (exchange code, store tokens, redirect back)
+            GET  /oauth/sheets/status                     -> {connected, email}
+            POST /oauth/sheets/disconnect
+            POST /pros-cons/{id}/assessment-gsheet         -> creates a sheet in user's Drive {url, spreadsheet_id}; 428 if Google not connected
+            POST /pros-cons/{id}/assessment-gsheet/import  -> reads sheet back, applies Actual/Assess%
+            POST /decisions/{id}/assessment-gsheet         (same for My Dezider)
+            POST /decisions/{id}/assessment-gsheet/import
+          core/assessment_xlsx.py refactored: build_value_matrix() (shared 2D builder) + parse_rows()
+          (shared parser) — XLS and Google Sheets use the SAME hidden machine-header contract.
+          Frontend: src/utils/googleSheets.ts (connect via expo-web-browser, create, import, open).
+          New buttons in both assessment steps: "Google Sheet" (create+open) and "Import Sheet".
+          NOTE: The live OAuth round-trip + real sheet create/read CANNOT be validated in CI (needs the
+          user's Google Cloud Console setup: enable Sheets+Drive API, add redirect URI, add spreadsheets
+          scope, plus an interactive Google sign-in). Test only the contract/auth-gating below.
+agent_communication:
+  - agent: "main"
+    message: |
+      BACKEND test (Phase 1 Google Sheets) — admin@test.com / AdminPass2026!, all routes under /api.
+      Because no Google account is connected in CI, validate the AUTH-GATED CONTRACT + XLS regression:
+      1. GET /api/oauth/sheets/status (auth) → 200 {connected:false}.
+      2. Create a Pros & Cons analysis with >=1 factor & >=1 option, then POST
+         /api/pros-cons/{id}/assessment-gsheet (no Google connected) → expect 428 (NEEDS_CONNECT) with a
+         readable detail. Same for POST /api/decisions/{id}/assessment-gsheet → 428.
+      3. POST /api/pros-cons/{id}/assessment-gsheet/import with NO linked sheet → expect 400 ("No Google
+         Sheet linked"). Same for decisions.
+      4. REGRESSION — XLS still works: GET /api/pros-cons/{id}/assessment-template (xlsx download 200),
+         and GET /api/decisions/{id}/assessment-template (200). (The shared build_value_matrix/parse_rows
+         refactor must not have broken XLS export/import.)
+      Do NOT attempt live Google OAuth — it requires the user's console config + interactive sign-in.
+

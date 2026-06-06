@@ -146,26 +146,58 @@ def build_template(
     return buf.getvalue()
 
 
-def parse_template(file_bytes: bytes) -> List[Dict[str, Any]]:
-    """Parse a filled template → list of
-    {factor_id, option_id, actual, assessment_pct}.
+def build_value_matrix(
+    factors: List[Dict[str, Any]],
+    options: List[Dict[str, Any]],
+    get_cell: Callable[[str, str], Dict[str, Any]],
+) -> List[List[Any]]:
+    """Return the assessment template as a plain 2D matrix (list of rows),
+    using the SAME column contract as build_template():
+      row 0 = machine header (hidden on render), row 1 = human header,
+      rows 2.. = data. Used by the Google Sheets writer so XLS and Google
+      Sheets share one import parser (parse_rows)."""
+    fixed_machine = [_KEY_FACTOR_ID, "level", "factor", "parent", "expected", "unit"]
+    fixed_human = ["Factor ID (do not edit)", "Level", "Factor / Sub-factor", "Parent Factor", "Expected / Target", "Unit"]
 
-    Only emits rows where at least one of actual / assessment_pct is provided.
-    Robust to column reordering (uses the hidden machine-header in row 1).
-    """
-    wb = load_workbook(BytesIO(file_bytes), data_only=True)
-    if "Assessment" in wb.sheetnames:
-        ws = wb["Assessment"]
-    else:
-        ws = wb[wb.sheetnames[0]]
+    machine_row: List[Any] = list(fixed_machine)
+    human_row: List[Any] = list(fixed_human)
+    for opt in options:
+        machine_row.append(f"{_KEY_ACTUAL}{opt['id']}")
+        human_row.append(f"{opt.get('name') or 'Option'} — Actual Value")
+        machine_row.append(f"{_KEY_PCT}{opt['id']}")
+        human_row.append(f"{opt.get('name') or 'Option'} — Assess %")
 
-    rows = list(ws.iter_rows(values_only=True))
-    if len(rows) < 3:
+    matrix: List[List[Any]] = [machine_row, human_row]
+    for f in factors:
+        is_sub = bool(f.get("parent_id"))
+        name = f.get("name") or ""
+        row: List[Any] = [
+            f.get("id"),
+            "Sub-factor" if is_sub else "Main Factor",
+            (f"    \u21b3 {name}" if is_sub else name),
+            f.get("parent_name") or "",
+            f.get("expected") if f.get("expected") not in (None, "") else "",
+            f.get("unit") or "",
+        ]
+        for opt in options:
+            existing = get_cell(opt["id"], f["id"]) or {}
+            row.append(existing.get("actual") or "")
+            pv = existing.get("pct")
+            row.append(int(pv) if pv not in (None, "", 0) else "")
+        matrix.append(row)
+    return matrix
+
+
+def parse_rows(rows: List[List[Any]]) -> List[Dict[str, Any]]:
+    """Parse an assessment matrix (list of rows; row 0 = machine header) into
+    a list of {factor_id, option_id, actual, assessment_pct}. Shared by the
+    XLSX parser and the Google Sheets importer."""
+    if not rows or len(rows) < 3:
         return []
 
     machine = [str(c) if c is not None else "" for c in rows[0]]
     factor_id_col: Optional[int] = None
-    col_map: Dict[int, Dict[str, str]] = {}  # col_index -> {"field": "actual"|"pct", "option_id": ...}
+    col_map: Dict[int, Dict[str, str]] = {}
     for idx, token in enumerate(machine):
         if token == _KEY_FACTOR_ID:
             factor_id_col = idx
@@ -177,9 +209,8 @@ def parse_template(file_bytes: bytes) -> List[Dict[str, Any]]:
     if factor_id_col is None:
         raise ValueError("Invalid template: missing factor-id header. Re-download the template.")
 
-    # Accumulate per (factor, option)
     acc: Dict[str, Dict[str, Any]] = {}
-    for row in rows[2:]:  # data starts at row 3 (index 2)
+    for row in rows[2:]:
         if factor_id_col >= len(row):
             continue
         fid = row[factor_id_col]
@@ -201,5 +232,17 @@ def parse_template(file_bytes: bytes) -> List[Dict[str, Any]]:
                     entry["assessment_pct"] = max(0, min(100, int(round(float(val)))))
                 except (ValueError, TypeError):
                     pass
-
     return list(acc.values())
+
+
+def parse_template(file_bytes: bytes) -> List[Dict[str, Any]]:
+    """Parse a filled .xlsx template → list of
+    {factor_id, option_id, actual, assessment_pct}. Robust to column reordering
+    (uses the hidden machine-header in row 1)."""
+    wb = load_workbook(BytesIO(file_bytes), data_only=True)
+    if "Assessment" in wb.sheetnames:
+        ws = wb["Assessment"]
+    else:
+        ws = wb[wb.sheetnames[0]]
+    rows = list(ws.iter_rows(values_only=True))
+    return parse_rows([list(r) for r in rows])

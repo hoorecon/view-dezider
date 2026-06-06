@@ -12,7 +12,8 @@ from fastapi import APIRouter, HTTPException, Depends, Request, UploadFile, File
 from fastapi.responses import StreamingResponse, Response
 from core.database import db
 from core.trash import move_to_trash
-from core.assessment_xlsx import build_template, parse_template
+from core.assessment_xlsx import build_template, parse_template, build_value_matrix, parse_rows
+from core import google_sheets as gs
 from core.auth import (
     get_current_user, require_admin, require_root_super_admin,
     get_user_role, get_role_level, ADMIN_ROLES, ROOT_SUPER_ADMIN_EMAIL,
@@ -172,12 +173,18 @@ async def md_import_assessment_template(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Could not read the file: {e}")
 
+    applied = await _md_apply_assessment_rows(decision, rows, decision_id, user["user_id"])
+    return {"applied": applied, "rows": len(rows)}
+
+
+async def _md_apply_assessment_rows(decision: dict, rows: list, decision_id: str, user_id: str) -> int:
+    """Apply parsed assessment rows (from XLS or Google Sheet) into a decision's
+    option.assessments, recompute flat worth, persist. Returns rows applied."""
     factors = decision.get("factors", [])
     valid_factor_ids = {f["id"] for f in factors}
     options = decision.get("options", [])
     opt_by_id = {o["id"]: o for o in options}
 
-    # index rows per option
     by_option: Dict[str, Dict[str, dict]] = {}
     applied = 0
     for r in rows:
@@ -203,8 +210,6 @@ async def md_import_assessment_template(
                 a["percentage"] = int(r["assessment_pct"])
             applied += 1
 
-    # Recompute a flat worth (top-level factors); the app refines sub-factor
-    # roll-up client-side on next load.
     total_rating = sum(f.get("rating", 0) for f in factors if not f.get("parent_id"))
     for opt in options:
         worth = 0.0
@@ -216,9 +221,61 @@ async def md_import_assessment_template(
         opt["worth_percentage"] = round(min(100.0, max(0.0, worth)), 2)
 
     await db.decisions.update_one(
-        {"id": decision_id, "user_id": user["user_id"]},
+        {"id": decision_id, "user_id": user_id},
         {"$set": {"options": options, "updated_at": datetime.now(timezone.utc)}},
     )
+    return applied
+
+
+@router.post("/decisions/{decision_id}/assessment-gsheet")
+async def md_create_assessment_gsheet(decision_id: str, user: dict = Depends(get_current_user)):
+    """Create a Google Sheet (in the user's own Drive) pre-filled with the
+    assessment template. Returns {url, spreadsheet_id}."""
+    decision = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not decision:
+        raise HTTPException(status_code=404, detail="Decision not found")
+    factors = _md_ordered_factors(decision)
+    options = [{"id": o["id"], "name": o.get("name") or "Option"} for o in decision.get("options", [])]
+    cell_index: Dict[str, Dict[str, dict]] = {}
+    for o in decision.get("options", []):
+        cell_index[o["id"]] = {a["factor_id"]: a for a in o.get("assessments", []) if a.get("factor_id")}
+
+    def get_cell(oid: str, fid: str) -> Dict[str, Any]:
+        a = (cell_index.get(oid) or {}).get(fid) or {}
+        return {"actual": a.get("unit_value") or "", "pct": a.get("percentage")}
+
+    title = decision.get("title") or "Decision"
+    matrix = build_value_matrix(factors, options, get_cell)
+    try:
+        res = await gs.create_assessment_sheet(user["user_id"], title, matrix)
+    except PermissionError as e:
+        raise HTTPException(status_code=428, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not create the Google Sheet: {e}")
+    await db.decisions.update_one(
+        {"id": decision_id, "user_id": user["user_id"]},
+        {"$set": {"gsheet_id": res["spreadsheet_id"], "gsheet_url": res["url"], "updated_at": datetime.now(timezone.utc)}},
+    )
+    return res
+
+
+@router.post("/decisions/{decision_id}/assessment-gsheet/import")
+async def md_import_assessment_gsheet(decision_id: str, body: Optional[Dict[str, Any]] = None, user: dict = Depends(get_current_user)):
+    """Read back the linked (or provided) Google Sheet and apply filled values."""
+    decision = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not decision:
+        raise HTTPException(status_code=404, detail="Decision not found")
+    spreadsheet_id = (body or {}).get("spreadsheet_id") or decision.get("gsheet_id")
+    if not spreadsheet_id:
+        raise HTTPException(status_code=400, detail="No Google Sheet linked. Create one first.")
+    try:
+        values = await gs.read_assessment_sheet(user["user_id"], spreadsheet_id)
+        rows = parse_rows(values)
+    except PermissionError as e:
+        raise HTTPException(status_code=428, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not read the Google Sheet: {e}")
+    applied = await _md_apply_assessment_rows(decision, rows, decision_id, user["user_id"])
     return {"applied": applied, "rows": len(rows)}
 
 
