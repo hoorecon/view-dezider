@@ -193,8 +193,8 @@ async def my_subscription(user: dict = Depends(get_current_user)):
     if w.get("subscription_plan_id"):
         plan = await get_plan(w["subscription_plan_id"])
     return {
-        "current_plan": w.get("current_plan", "free"),
-        "status": w.get("subscription_status", "none"),
+        "current_plan": w.get("current_plan") or "free",
+        "status": w.get("subscription_status") or "none",
         "mode": w.get("subscription_mode"),
         "subscription_id": w.get("subscription_id"),
         "subscription_end": w.get("subscription_end"),
