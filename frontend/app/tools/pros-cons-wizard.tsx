@@ -962,7 +962,7 @@ export default function ProsConsWizard() {
               <Text style={styles.stepHint}>Add the factors that matter for this decision — just the names for now. You’ll set expected values, units, operators and data sources later in Step 5 (Review &amp; Refine Expectations).</Text>
               <View style={styles.card}>
                 <Text style={styles.inputLabel}>Factor name</Text>
-                <TextInput style={styles.input} placeholder="e.g., Mileage" value={fName} onChangeText={setFName} onSubmitEditing={addFactor} />
+                <TextInput style={styles.input} placeholder="e.g., Mileage - in the case of a Car Purchase decision" placeholderTextColor={COLORS.textDim} value={fName} onChangeText={setFName} onSubmitEditing={addFactor} />
                 <TouchableOpacity style={[styles.primaryBtn, !fName.trim() && { opacity: 0.5 }]}
                   disabled={!fName.trim() || busy} onPress={addFactor}>
                   <Ionicons name="add" size={18} color="#fff" />
@@ -1435,6 +1435,7 @@ export default function ProsConsWizard() {
                   onAddSubFactor={(pid) => addSubFactorQuick(pid)}
                   onPatchFactor={(fid, patch) => updateFactor(fid, patch)}
                   onOpenDataSource={(factor) => setDsFactor(factor)}
+                  onDeleteFactor={(factor) => confirmDeleteFactor(factor)}
                 />
               ))}
               <NextBack onBack={() => persistStep(4)} onNext={() => persistStep(6)} />
@@ -2446,6 +2447,24 @@ function FactorMetaControls({ factor, onPatch, onOpenDataSource }: {
       </View>
 
       <View style={pcMeta.row}>
+        <Text style={pcMeta.label}>Operator</Text>
+        <View style={pcMeta.opWrap}>
+          {operators.map(op => {
+            const active = factor.operator === op.value;
+            return (
+              <TouchableOpacity
+                key={op.value}
+                style={[pcMeta.opChip, active && pcMeta.opChipActive]}
+                onPress={() => onPatch(factor.id, { operator: active ? null : op.value })}
+              >
+                <Text style={[pcMeta.opText, active && pcMeta.toggleTextOn]}>{op.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+
+      <View style={pcMeta.row}>
         <Text style={pcMeta.label}>Expected</Text>
         <DebouncedInput
           style={pcMeta.input}
@@ -2463,24 +2482,6 @@ function FactorMetaControls({ factor, onPatch, onOpenDataSource }: {
             onSave={(t) => onPatch(factor.id, { unit: t.trim() || null })}
           />
         )}
-      </View>
-
-      <View style={pcMeta.row}>
-        <Text style={pcMeta.label}>Operator</Text>
-        <View style={pcMeta.opWrap}>
-          {operators.map(op => {
-            const active = factor.operator === op.value;
-            return (
-              <TouchableOpacity
-                key={op.value}
-                style={[pcMeta.opChip, active && pcMeta.opChipActive]}
-                onPress={() => onPatch(factor.id, { operator: active ? null : op.value })}
-              >
-                <Text style={[pcMeta.opText, active && pcMeta.toggleTextOn]}>{op.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
       </View>
 
       <TouchableOpacity style={pcMeta.dsBtn} onPress={() => onOpenDataSource(factor)} testID={`pc-ds-${factor.id}`}>
@@ -2608,6 +2609,7 @@ function FactorTreeNode({
   onAddSubFactor,
   onPatchFactor,
   onOpenDataSource,
+  onDeleteFactor,
 }: {
   factor: Factor;
   childrenList: Factor[];
@@ -2629,6 +2631,8 @@ function FactorTreeNode({
   onPatchFactor: (factorId: string, patch: any) => void | Promise<void>;
   /** Open the Data Source modal for a factor */
   onOpenDataSource: (factor: Factor) => void;
+  /** Delete a factor (with confirm). Only offered for custom sub-factors. */
+  onDeleteFactor: (factor: Factor) => void;
 }) {
   const [open, setOpen] = useState(true);
   const [wInputs, setWInputs] = useState<Record<string, string>>({});
@@ -2727,6 +2731,19 @@ function FactorTreeNode({
                       />
                       <Text style={pcWeightStyles.weightPct}>%</Text>
                     </View>
+                    {/* Delete — only for custom (directly-added) sub-factors, not
+                        sub-factors promoted from pros/cons */}
+                    {c.source === 'direct' && (
+                      <TouchableOpacity
+                        onPress={() => onDeleteFactor(c)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        style={{ marginLeft: 6 }}
+                        testID={`pc-delsub-${c.id}`}
+                        accessibilityLabel="Delete sub-factor"
+                      >
+                        <Ionicons name="trash-outline" size={16} color={COLORS.con} />
+                      </TouchableOpacity>
+                    )}
                   </View>
                   {/* Sub-factor metadata */}
                   <FactorMetaControls factor={c} onPatch={onPatchFactor} onOpenDataSource={onOpenDataSource} />

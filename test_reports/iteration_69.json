@@ -1,0 +1,41 @@
+{
+  "summary": "Frontend-only UX refinement review for Pros&Cons wizard (Step 1, Step 5) and MyDezider Step 2. App loads cleanly with no compile errors on the public Expo web preview. Performed code-level review of all 6 requested behaviours; 4 verified correct as-is, 2 minor bugs detected in COLORS palette references and fixed in-place (COLORS.textMuted/COLORS.error do not exist on the wizard file's COLORS object).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ProsConsWizard Step 1 placeholder colour", "issue": "Used COLORS.textMuted but that key is NOT defined on the local COLORS object (line 84-91 only defines textDim). placeholderTextColor resolved to undefined, so the explicit 'muted grey' intent was relying on the RN default. Fixed by switching to COLORS.textDim ('#64748B').", "testID": "n/a (placeholder)", "priority": "MEDIUM"},
+      {"component": "ProsConsWizard Step 5 sub-factor delete icon colour", "issue": "Ionicons trash-outline used color={COLORS.error}, but COLORS.error is NOT defined on the wizard's COLORS object (only COLORS.con exists for red). Trash icon was rendering with undefined color (RN default → near-black) instead of the destructive red. Fixed by switching to COLORS.con.", "testID": "pc-delsub-<id>", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "verified_behaviours": [
+    "Step 1 factor-name placeholder text reads exactly 'e.g., Mileage - in the case of a Car Purchase decision' (pros-cons-wizard.tsx:965) ✓",
+    "Step 1 placeholder rendered in muted grey via placeholderTextColor=COLORS.textDim (#64748B) — fixed from broken COLORS.textMuted reference ✓",
+    "Step 5 FactorTreeNode renders trash-outline button only when c.source==='direct' (pros-cons-wizard.tsx:2736-2746) — promoted-from-pro/con sub-factors correctly have no delete icon ✓",
+    "Step 5 delete wires to confirmDeleteFactor → deleteFactor (DELETE /factors/{id}) with confirm dialog (pros-cons-wizard.tsx:364-369, 1438) ✓",
+    "Step 5 FactorMetaControls meta-data render order: Type → Operator → Expected (with Unit inline beside Expected) (pros-cons-wizard.tsx:2429-2485). Operator now ALWAYS visible (no hasExpected gate) ✓",
+    "MyDezider Step 2: every top-level factor row shows a pencil icon next to the name (Step2.tsx:349-356) wired to startFactorRename/commitFactorRename ✓",
+    "MyDezider Step 2: every sub-factor row shows a pencil icon (Step2.tsx:550-557) AND a close-circle delete (Step2.tsx:579-581) ✓",
+    "MyDezider Step 2: rename persists via updateFactor (context save) on commit/onBlur/onSubmitEditing (Step2.tsx:50-58) ✓",
+    "MyDezider Step 2 renderCriteria order: Operator chips first, then Expected row, then Unit row (Step2.tsx:224-279). Matches required order ✓",
+    "App boots on https://dashboard-rewire.preview.emergentagent.com with no red-screen / compile error after the two COLORS fixes"
+  ],
+  "test_report_links": ["/app/test_reports/iteration_69.json"],
+  "action_items": [
+    "Main agent: please confirm the two minor color-token fixes (COLORS.textMuted → COLORS.textDim @ line 965, COLORS.error → COLORS.con @ line 2744) are acceptable, or define textMuted/error keys on the wizard's local COLORS object instead. Either approach restores the intended visuals.",
+    "Optional (not blocking): consider grep'ing the rest of the file for other references to undefined COLORS keys to prevent silent fallbacks. A quick scan showed only these two."
+  ],
+  "critical_code_review_comments": [
+    "pros-cons-wizard.tsx is 3809 lines — well past the 700-line guideline. Should be split (FactorTreeNode, FactorMetaControls, DataSourceModal, each Step block can be extracted).",
+    "Local COLORS palette in pros-cons-wizard.tsx is incomplete; safer to import from src/constants/colors.ts (which DOES define textMuted and error)."
+  ],
+  "updated_files": ["/app/frontend/app/tools/pros-cons-wizard.tsx"],
+  "success_rate": {"backend": "n/a (frontend-only review)", "frontend": "100% (all 6 review items verified; 2 minor color regressions auto-fixed)"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "If E1 requests a live end-to-end smoke pass, the flow is: login as veales.vedic.decisions@gmail.com / Jelcos@Admin2026 → switch to standard user login if needed → home → tap Pros & Cons (8-Step) Quick Action → add a Direct factor → Step 2 add option + Pros/Cons → Step 3 Auto-Promote → Step 4 group one promoted factor under the Direct one → Step 5 expand parent, tap 'Add sub-factor' → confirm trash-outline appears ONLY on the newly-added direct sub-factor and NOT on the promoted one. For MyDezider Step 2 just create a decision via the standard My Dezider new-decision modal and add a parent + sub-factor.",
+  "rca_of_issue": "Both bugs trace to a copy/paste of UI code originally written against src/constants/colors.ts (which exports textMuted and error) into the local COLORS object in pros-cons-wizard.tsx which doesn't expose those keys. React Native silently resolves undefined into a default, masking the regression visually."
+}

@@ -217,10 +217,28 @@ export default function Step2() {
   const renderCriteria = (factor: Factor, indent: boolean = false) => {
     const detectedType = getDetectedType(factor);
     const operators = detectedType === 'numeric' ? NUMERIC_OPERATORS : TEXT_OPERATORS;
-    const hasExpected = factor.expected_value !== undefined && factor.expected_value !== null;
 
     return (
       <View style={indent ? styles.subFactorCriteria : undefined}>
+        {/* Operator */}
+        <View style={styles.operatorRow}>
+          <Text style={styles.operatorLabel}>Operator:</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
+            <View style={styles.operatorChipsContainer}>
+              {operators.map((op) => (
+                <TouchableOpacity
+                  key={op.value}
+                  style={[styles.operatorChip, factor.operator === op.value && styles.operatorChipActive]}
+                  onPress={() => updateFactor(factor.id, { operator: op.value })}
+                >
+                  <Text style={[styles.operatorChipText, factor.operator === op.value && styles.operatorChipTextActive]}>{op.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+
+        {/* Expected Value */}
         <View style={styles.expectedRow}>
           <Text style={styles.expectedLabel}>Expected:</Text>
           <TextInput
@@ -236,25 +254,7 @@ export default function Step2() {
           </View>
         </View>
 
-        {hasExpected && (
-          <View style={styles.operatorRow}>
-            <Text style={styles.operatorLabel}>Operator:</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
-              <View style={styles.operatorChipsContainer}>
-                {operators.map((op) => (
-                  <TouchableOpacity
-                    key={op.value}
-                    style={[styles.operatorChip, factor.operator === op.value && styles.operatorChipActive]}
-                    onPress={() => updateFactor(factor.id, { operator: op.value })}
-                  >
-                    <Text style={[styles.operatorChipText, factor.operator === op.value && styles.operatorChipTextActive]}>{op.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
-          </View>
-        )}
-
+        {/* Unit */}
         {detectedType === 'numeric' && (
           <View style={styles.unitSelectorRow}>
             <Text style={styles.unitSelectorLabel}>Unit:</Text>
@@ -456,7 +456,7 @@ export default function Step2() {
                       placeholderTextColor={COLORS.textMuted}
                       autoCapitalize="none"
                     />
-                    <Text style={dsStyles.dsHint}>POST request with factor_name, option_name, decision_title in body. Expects {"{"}"value": ...{"}"} in response.</Text>
+                    <Text style={dsStyles.dsHint}>POST request with factor_name, option_name, decision_title in body. Expects {'{"value": ...}'} in response.</Text>
                   </View>
                 )}
 
@@ -535,7 +535,27 @@ export default function Step2() {
                     <View key={sub.id} style={styles.subFactorItem}>
                       <View style={styles.subFactorHeader}>
                         <View style={styles.subFactorDot} />
-                        <Text style={styles.subFactorName}>{sub.name}</Text>
+                        {renameId === sub.id ? (
+                          <TextInput
+                            style={[styles.addInput, { flex: 1, marginRight: 8, paddingVertical: 4 }]}
+                            value={renameDraft}
+                            onChangeText={setRenameDraft}
+                            onSubmitEditing={commitFactorRename}
+                            onBlur={commitFactorRename}
+                            autoFocus
+                          />
+                        ) : (
+                          <>
+                            <Text style={[styles.subFactorName, { flex: 1 }]}>{sub.name}</Text>
+                            <TouchableOpacity
+                              onPress={() => startFactorRename(sub)}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              style={{ marginRight: 6 }}
+                            >
+                              <Ionicons name="pencil" size={14} color={COLORS.primary} />
+                            </TouchableOpacity>
+                          </>
+                        )}
                         {subHasExpected && (
                           <View style={[styles.criteriaPreview, { marginRight: 4 }]}>
                             <Text style={styles.criteriaPreviewText}>

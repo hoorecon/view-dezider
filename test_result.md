@@ -9140,3 +9140,38 @@ agent_communication:
          title shows an auto default like '<LifeArea> — <date/time>' and is editable.
       3. Confirm a decision can still be created end-to-end (pick sub-area/scenario optional, Create) — no regression.
       4. Spot-check the same Step 4 for Pros & Cons and SWOT intake (same shared screen).
+
+phase5_factor_ux_refinements:
+  - task: "P&C & MyDezider factor UX refinements (placeholder, sub-factor edit/delete, meta order)"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/tools/pros-cons-wizard.tsx, frontend/src/components/steps/Step2.tsx"
+    needs_retesting: true
+    priority: "high"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          1. P&C Step 1 factor-name input placeholder changed to "e.g., Mileage - in the case of a Car Purchase decision"
+             and given placeholderTextColor=COLORS.textMuted (was bright/looked pre-filled).
+          2. P&C Step 5 (FactorTreeNode): custom sub-factors (c.source === 'direct') now show a trash/delete button
+             (wired to confirmDeleteFactor). Sub-factors promoted from pros/cons (source 'pro'/'con') remain non-deletable.
+          3. MyDezider Step 2 (Step2.tsx): sub-factors now have an inline EDIT (pencil → rename TextInput) using the same
+             rename mechanism as main factors (was delete-only).
+          4. Factor meta-data order changed to Operator → Expected Value → Unit in BOTH:
+             - MyDezider Step 2 renderCriteria (was Expected, Operator, Unit; operator now always visible).
+             - P&C Step 5 FactorMetaControls (was Expected/Unit then Operator).
+          No backend changes.
+agent_communication:
+  - agent: "main"
+    message: |
+      FRONTEND-only test. Login super admin veales.vedic.decisions@gmail.com / Jelcos@Admin2026 (admin OTP skipped;
+      the login screen may default to 'Organization Login' — switch to standard user login if needed).
+      1. PROS & CONS: create/open an analysis. Step 1 'Factor name' field placeholder reads
+         "e.g., Mileage - in the case of a Car Purchase decision" in a muted (grey) colour (not bright black).
+      2. P&C Step 5 (Review): for a SUB-factor you added directly (custom), a trash/delete icon appears and deleting it
+         works (with confirm). Sub-factors promoted from a Pro/Con do NOT show delete. Main factor edit/delete unchanged.
+      3. P&C Step 5 factor meta order is now: Operator, then Expected (with Unit beside it).
+      4. MY DEZIDER Step 2: a sub-factor shows BOTH an edit (pencil → rename) and delete; renaming a sub-factor persists.
+      5. MyDezider Step 2 factor meta order is now: Operator, Expected, Unit (operator chips visible).
+      6. Regression: factors/sub-factors can still be added, weights set, and the flow proceeds in both modules.
