@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 67 — Three small polish tasks (SuperAdmin 'Skip WhatsApp OTP for Admins' toggle, decision-intake step swap, browser-tab title). Backend: 9/9 pytest cases PASS (100%) in /app/backend/tests/test_iter67_security_config.py covering: (1) GET /api/admin/security-config defaults to skip_whatsapp_otp_for_admins=true; (2) plain admin can READ but NOT WRITE (PUT → 403); (3) regular non-admin user → 403 on both GET and PUT; (4) PUT as super_admin flips the flag, GET reflects the new value; (5) admin /auth/me whatsapp_verified is True when toggle ON and reverts cleanly; (6) regular user /auth/me whatsapp_verified is unaffected by the toggle (identical OFF vs ON); (7) /auth/login for super_admin returns whatsapp_verified=true (effective) when toggle ON; (8) same for plain admin. Frontend (mobile 390x844, real super_admin login): browser tab title == \"JELCOS AI - Joyful Executive's Life Choices Operating System — Powered by AI\" ✓. Super-admin login lands on the home dashboard (Good Evening, Root Super Admin) — NOT redirected to /whatsapp-verify — confirming the gate is bypassed for admins by default. /admin/settings renders a new SECURITY section with the 'Skip WhatsApp OTP for Admins' toggle in ON state (purple track) and a help line 'When ON, admin-role users bypass the WhatsApp OTP verification step at login. Regular users are unaffected.' Decision intake (/tools/new-decision) step 1 = 'Choose Life Area' ('What domain does this decision belong to?'), step 2 (after picking an area and clicking Next) = 'This decision is for...' Context selector with 6 cards (Individual / Business / Academic / Non-profit / Association / Government). Verified identically for module=dezider, module=swot and module=pros-cons (all three show 'Choose Life Area' as step 1). Final order on screen: 1) Life Area, 2) Context, 3) Ask Type, 4) Define, 5) (Templates if applicable). All three polish items verified end-to-end.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter67_security_config.py",
+    "/app/test_reports/pytest/iter67_security_config.xml"
+  ],
+  "action_items": [
+    "None — all three polish items pass backend and UI verification. The previously-flagged WhatsApp-gate blocker for super-admin (veales.vedic.decisions@gmail.com) is now resolved by this toggle (default ON). Super-admin and plain-admin both reach the home dashboard immediately after login.",
+    "Optional UX nit (NOT a bug): admin/settings.tsx could expose data-testid='skip-otp-admins-toggle' on the Switch and data-testid='security-config-card' on the container to make future Playwright assertions cleaner. Cosmetic; tests passed without it via visible-text scraping.",
+    "INFO: tests reset skip_whatsapp_otp_for_admins to True at module teardown, so config ends in the spec default."
+  ],
+  "critical_code_review_comments": [
+    "core/security_config.py is clean (~50 lines). `effective_whatsapp_verified(user_doc)` is correctly short-circuit OR: returns True if raw flag is set OR (role in ADMIN_ROLES and skip flag is on). ADMIN_ROLES set includes super_admin/admin/co_admin — consistent with core/auth.ADMIN_ROLES used by the rest of the codebase.",
+    "routes/admin.py /admin/security-config split correctly: GET is admin-or-above (any ADMIN_ROLE), PUT is strictly super_admin only. Verified via tests: plain admin gets 403 on PUT but 200 on GET.",
+    "auth_routes.py login (line 144) and /auth/me (line 222) both call effective_whatsapp_verified — so the computed value is consistent across both endpoints. The /api/auth/google/session endpoint at line 203 still uses the RAW whatsapp_verified, but that path is only relevant on the initial Google handshake and the client immediately re-fetches /auth/me, so users still get the correct effective value. Not a bug, just a stylistic asymmetry worth flagging.",
+    "Frontend admin/settings.tsx correctly disables the Switch for non-super admins (`disabled={!isSuperAdmin}`) and appends '(Only a Super Admin can change this.)' to the hint — good UX.",
+    "Frontend tools/new-decision.tsx achieves the step swap purely via the JSX render-map (lines 763-764): `{step === 0 && renderStep1()} {step === 1 && renderStep0()}`. The validation logic at line 365 already expects selectedArea on step 0, so the user flow is consistent. STEPS_BASE label array starts with 'Life Area' so the progress dots also match. Clean minimal change.",
+    "_layout.tsx sets document.title in a useEffect on web only — correct (no-op on native). Title matches spec exactly."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter67_security_config.py (new — 9 pytest cases)"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% (3/3 polish items verified)"},
+  "seed_data_creation": "No new seed data. Module-scoped fixture flips skip_whatsapp_otp_for_admins via PUT /admin/security-config but restores it to True (spec default) on teardown.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "test_iter67_security_config.py is the canonical regression for the security_config toggle. It exercises all role permutations (super_admin, admin, regular user) and verifies both endpoints (admin/security-config GET+PUT, auth/login, auth/me). The toggle ON state is the default and required for super-admin to bypass the WhatsApp OTP gate during automation — the prior blocker for veales.vedic.decisions@gmail.com that affected iterations 64-66 is now resolved by this feature. If you need to UI-test something that requires super-admin AND a fresh whatsapp_verified=false user, simply ensure the toggle is left ON.",
+  "rca_of_issue": "No bug. All three polish items verified working end-to-end: (a) admin/super_admin login → home dashboard (no /whatsapp-verify redirect) with toggle ON by default; (b) decision intake step 1 = Life Area, step 2 = Context for dezider/swot/pros-cons; (c) browser tab title is set correctly via document.title in _layout.tsx useEffect. The earlier whatsapp-gate UI blocker for super-admin (iterations 64-66) is now resolved."
+}

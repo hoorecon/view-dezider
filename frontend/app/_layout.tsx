@@ -242,6 +242,14 @@ export default function RootLayout() {
   const router = useRouter();
   const segments = useSegments();
 
+  // Set the browser tab title on web (dev + SPA export). Keeps the brand
+  // consistent instead of the default Expo project name.
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      document.title = "JELCOS AI - Joyful Executive's Life Choices Operating System — Powered by AI";
+    }
+  }, []);
+
   // --------------------------------------------------------------------
   // GLOBAL AUTH GUARD. Runs on every navigation. Unauthenticated users are
   // bounced to /auth/login from any protected route; authenticated-but-

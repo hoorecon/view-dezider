@@ -110,6 +110,31 @@ async def update_admin_call_config(request: Request, user: dict = Depends(get_cu
     return {"message": "Call config updated", **update}
 
 
+# ========================
+# SECURITY CONFIG (Super Admin) — e.g. skip WhatsApp OTP for admins
+# ========================
+
+@router.get("/admin/security-config")
+async def get_security_config_route(user: dict = Depends(get_current_user)):
+    """Read security settings. Visible to any admin role."""
+    role = get_user_role(user)
+    if role not in ADMIN_ROLES:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    from core.security_config import get_security_config
+    return await get_security_config()
+
+
+@router.put("/admin/security-config")
+async def update_security_config_route(request: Request, user: dict = Depends(get_current_user)):
+    """Update security settings. Super Admin only."""
+    role = get_user_role(user)
+    if role != "super_admin":
+        raise HTTPException(status_code=403, detail="Super Admin access required")
+    body = await request.json()
+    from core.security_config import set_security_config
+    return await set_security_config(body, user["user_id"])
+
+
 
 # ========================
 # ADMIN DATA SEEDING (production starter content for every admin section)

@@ -9064,3 +9064,44 @@ agent_communication:
       8. Non-super user PUT /api/admin/subscriptions/plans/... -> 403. POST /api/admin/subscriptions/sync (super) -> 200.
       9. POST /api/subscriptions/cancel {} for a user with no recurring sub -> 200 graceful message.
       FRONTEND: Profile -> Subscription card -> screen shows 3 plan cards (Subscribe + Pay once), status banner; super admin sees plan config + Sync. Do NOT complete a real payment/mandate.
+
+phase5_polish_tasks:
+  - task: "Skip WhatsApp OTP for Admins (SuperAdmin toggle, default ON) + Initial-Info step swap + brand browser title"
+    implemented: true
+    working: "NA"
+    file: "backend/core/security_config.py, backend/routes/auth_routes.py, backend/routes/admin.py, frontend/app/admin/settings.tsx, frontend/app/tools/new-decision.tsx, frontend/app/+html.tsx, frontend/app/_layout.tsx"
+    needs_retesting: true
+    priority: "high"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          (1) Skip-OTP toggle: db.app_settings key 'security_config' {skip_whatsapp_otp_for_admins} default TRUE.
+              core/security_config.effective_whatsapp_verified() => admins (role admin/super_admin/co_admin) are
+              reported whatsapp_verified=true when toggle ON, so they bypass the post-login WhatsApp OTP gate
+              (client gate in _layout.tsx reads user.whatsapp_verified). Regular users unaffected.
+              Wired into /api/auth/login and /api/auth/me responses.
+              New endpoints: GET /api/admin/security-config (any admin), PUT /api/admin/security-config (super_admin only).
+              Admin UI toggle added to app/admin/settings.tsx (Switch; editable only by super_admin).
+          (2) Initial-Info step swap (shared intake new-decision.tsx for Dezider + Pros&Cons + SWOT):
+              first two steps reordered to 1) Life Area, 2) Context ("This decision is for…"). canProceed + render
+              mapping updated; Life Area now required first.
+          (3) Browser tab title set to "JELCOS AI - Joyful Executive's Life Choices Operating System — Powered by AI"
+              via runtime document.title in app/_layout.tsx (verified: page.title() returns the brand) + +html.tsx.
+agent_communication:
+  - agent: "main"
+    message: |
+      TEST these (super admin = veales.vedic.decisions@gmail.com per /app/memory/test_credentials.md; with skip ON
+      the admin should now log in WITHOUT WhatsApp OTP). All /api.
+      BACKEND:
+      1. GET /api/admin/security-config (admin) -> 200 {skip_whatsapp_otp_for_admins:true} (default).
+      2. PUT /api/admin/security-config {skip_whatsapp_otp_for_admins:false} as super_admin -> 200; GET reflects false.
+         Then a fresh GET /api/auth/me for an ADMIN user should show whatsapp_verified=false (gate re-enabled).
+         Revert to true afterward; admin /auth/me then whatsapp_verified=true.
+      3. PUT /api/admin/security-config as a NON-super-admin -> 403. GET as a plain (non-admin) user -> 403.
+      4. Confirm a regular (non-admin) unverified user's /auth/me still shows whatsapp_verified=false (unaffected by toggle).
+      FRONTEND:
+      5. With toggle ON, logging in as an admin should land in the app (NOT the /whatsapp-verify screen).
+      6. New decision intake (/tools/new-decision) shows step 1 = "Life Area", step 2 = "This decision is for…" (order swapped) for My Dezider; same swap for Pros & Cons and SWOT intake.
+      7. Admin Settings screen shows a "Skip WhatsApp OTP for Admins" toggle (SECURITY section); editable only by super admin.
+      8. Browser tab title = "JELCOS AI - Joyful Executive's Life Choices Operating System — Powered by AI" (already verified by main agent).

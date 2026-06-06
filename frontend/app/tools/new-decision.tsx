@@ -85,7 +85,7 @@ const MODULE_CONFIG: Record<ModuleKey, {
   },
 };
 
-const STEPS_BASE = ['Context', 'Life Area', 'Ask Type', 'Define'];
+const STEPS_BASE = ['Life Area', 'Context', 'Ask Type', 'Define'];
 const STEPS_WITH_TEMPLATES = [...STEPS_BASE, 'Choose Template'];
 
 export default function NewDecisionIntake() {
@@ -362,8 +362,8 @@ export default function NewDecisionIntake() {
 
   // ====== STEP NAVIGATION ======
   const canProceed = () => {
-    if (step === 0) return true; // acting as always has default
-    if (step === 1) return !!selectedArea;
+    if (step === 0) return !!selectedArea; // Life Area is now first
+    if (step === 1) return true; // acting-as (Context) always has a default
     if (step === 2) return !!selectedAskType;
     if (step === 3) return true; // search text is optional
     return true;
@@ -760,8 +760,8 @@ export default function NewDecisionIntake() {
             </View>
           ) : (
             <>
-              {step === 0 && renderStep0()}
-              {step === 1 && renderStep1()}
+              {step === 0 && renderStep1()}
+              {step === 1 && renderStep0()}
               {step === 2 && renderStep2()}
               {step === 3 && renderStep3()}
               {step === 4 && moduleCfg.hasTemplatesStep && renderStep4()}

@@ -29,6 +29,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import { showAlert } from '../../src/utils/alert';
+import { useAuthStore } from '../../src/store/authStore';
 
 type FieldSpec = {
   key: string;
@@ -65,17 +67,39 @@ export default function AdminSettings() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
 
+  const { user } = useAuthStore();
+  const isSuperAdmin = (user?.role || '').toLowerCase() === 'super_admin';
+  const [skipOtpAdmins, setSkipOtpAdmins] = useState(true);
+  const [savingSec, setSavingSec] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.get('/admin/integrations');
       setItems(res.data || []);
+      try {
+        const sec = await api.get('/admin/security-config');
+        setSkipOtpAdmins(sec.data?.skip_whatsapp_otp_for_admins !== false);
+      } catch { /* ignore */ }
     } catch (e: any) {
       console.error('Load integrations failed:', e);
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const toggleSkipOtp = async (val: boolean) => {
+    setSkipOtpAdmins(val);
+    setSavingSec(true);
+    try {
+      await api.put('/admin/security-config', { skip_whatsapp_otp_for_admins: val });
+    } catch (e: any) {
+      setSkipOtpAdmins(!val); // revert on failure
+      showAlert('Update failed', e?.response?.data?.detail || 'Only a Super Admin can change this.');
+    } finally {
+      setSavingSec(false);
+    }
+  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -171,6 +195,24 @@ export default function AdminSettings() {
           <Text style={styles.noticeText}>
             Secrets are masked on display (•••). Submit a new value only when rotating credentials.
           </Text>
+        </View>
+
+        {/* Security settings */}
+        <Text style={styles.categoryHeader}>SECURITY</Text>
+        <View style={styles.secCard}>
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={styles.secTitle}>Skip WhatsApp OTP for Admins</Text>
+            <Text style={styles.secHint}>
+              When ON, admin-role users bypass the WhatsApp OTP verification step at login.
+              Regular users are unaffected.{!isSuperAdmin ? ' (Only a Super Admin can change this.)' : ''}
+            </Text>
+          </View>
+          {savingSec ? (
+            <ActivityIndicator color={COLORS.primary} />
+          ) : (
+            <Switch value={skipOtpAdmins} onValueChange={toggleSkipOtp} disabled={!isSuperAdmin}
+              trackColor={{ true: COLORS.primary }} />
+          )}
         </View>
 
         {loading ? (
@@ -352,6 +394,12 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.cardBg, borderRadius: 12, padding: 16,
     marginBottom: 10, borderWidth: 1, borderColor: COLORS.border,
   },
+  secCard: {
+    backgroundColor: COLORS.cardBg, borderRadius: 12, padding: 16, marginBottom: 18,
+    borderWidth: 1, borderColor: COLORS.border, flexDirection: 'row', alignItems: 'center',
+  },
+  secTitle: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary },
+  secHint: { fontSize: 12, color: COLORS.textSecondary, marginTop: 4, lineHeight: 17 },
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   iconBubble: {
     width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center',

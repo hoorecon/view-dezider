@@ -16,6 +16,7 @@ from core.auth import (
 )
 from core.helpers import generate_user_id
 from core.rate_limiting import limiter, AUTH_LIMIT
+from core.security_config import effective_whatsapp_verified
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Auth"])
@@ -140,7 +141,7 @@ async def login(request: Request, user_data: UserLogin, response: Response):
         "user_type": user_doc.get("user_type"),
         "is_admin": user_doc.get("role", "user") in ("admin", "super_admin", "co_admin"),
         "whatsapp_number": user_doc.get("whatsapp_number"),
-        "whatsapp_verified": bool(user_doc.get("whatsapp_verified")),
+        "whatsapp_verified": await effective_whatsapp_verified(user_doc),
         "session_token": session_token
     }
 
@@ -218,7 +219,7 @@ async def get_me(user: dict = Depends(get_current_user)):
         "role": user.get("role", "user"),
         "org_id": user.get("org_id"), "org_role": user.get("org_role"),
         "whatsapp_number": user.get("whatsapp_number"),
-        "whatsapp_verified": bool(user.get("whatsapp_verified")),
+        "whatsapp_verified": await effective_whatsapp_verified(user),
         "can_view_pii": bool(user.get("can_view_pii")),
     }
 
