@@ -253,7 +253,7 @@ export default function CloneTemplateModal({
             {activeTab === 'clone' ? (
               <View style={styles.optionsSection}>
                 <Text style={styles.sectionLabel}>What to copy?</Text>
-                {CLONE_LEVELS.map((level) => (
+                {COPY_LEVELS.map((level) => (
                   <TouchableOpacity
                     key={level.key}
                     style={[

@@ -367,6 +367,8 @@ export default function SolutionBoxScreen() {
             <TouchableOpacity
               onPress={() => { setCloneTarget(item); setCloneModalVisible(true); }}
               style={styles.actionButton}
+              testID={`clone-decision-${item.id}`}
+              accessibilityLabel="Clone this decision"
             >
               <Ionicons name="copy-outline" size={18} color={COLORS.primary} />
             </TouchableOpacity>

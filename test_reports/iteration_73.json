@@ -1,0 +1,34 @@
+{
+  "summary": "Narrow frontend bug-fix verification for the CloneTemplateModal ReferenceError (CLONE_LEVELS is not defined). FIX CONFIRMED. Logged in as regular user (harden_1777921741@example.com), seeded a Decider via POST /api/decisions, switched the Solution Box filter to 'Decider', clicked the copy/clone icon on the Decider card. The Clone/Template modal opened with header 'Clone Decision', the 'What to copy?' section, and all 5 copy levels (Copy Factors, Copy Classification, Copy Prioritization, Copy Options, Copy Assessment). Switching to the 'Template' tab also rendered the same 5 levels plus the 'Who can see this?' visibility section. ZERO console errors and ZERO ReferenceError / 'is not defined' / 'CLONE_LEVELS' messages observed after the click. Bundle inspection on the served Expo web bundle (entry.bundle) shows 0 occurrences of 'CLONE_LEVELS' and 4 occurrences of 'COPY_LEVELS', confirming the rename is live. Source file /app/frontend/src/components/CloneTemplateModal.tsx line 256 correctly references COPY_LEVELS.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "prr.tsx clone button",
+        "issue": "testID=\"clone-decision-<id>\" and accessibilityLabel=\"Clone this decision\" are present in the source (app/(tabs)/prr.tsx:370-371) but DO NOT propagate to data-testid / aria-label in the rendered DOM. All three card action buttons render with testid=null and aria-label=null. This may be due to a stale lazy chunk from a previous metro cache, OR because the parent Card/wrapper component is stripping props, OR because the TouchableOpacity is wrapped in another View that consumes the testID. Not blocking this fix (we clicked the icon via DOM position and verified the modal works), but it will prevent future automated test scripts from selecting the clone button by testID. Reference: /app/frontend/app/(tabs)/prr.tsx:367-375. Recommend: (a) restart expo with cache clear (`sudo supervisorctl restart expo` after `rm -rf /app/frontend/.metro-cache` / `npx expo start -c`) and re-verify, or (b) confirm the Card wrapper does not strip child props."
+      }
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Optional: Clear metro cache and restart expo so the new testID 'clone-decision-<id>' and accessibilityLabel 'Clone this decision' actually appear in the served web bundle — currently neither attribute is in the DOM, which will block future Playwright tests that select the button by testID.",
+    "No other action items. The CLONE_LEVELS -> COPY_LEVELS rename fix is fully verified end-to-end."
+  ],
+  "critical_code_review_comments": [
+    "CloneTemplateModal.tsx is clean and consistent — both the Clone tab (line 256) and Template tab (line 287) iterate COPY_LEVELS. Alert text on line 147 also uses COPY_LEVELS. No remaining CLONE_LEVELS references in /app/frontend/ source.",
+    "Stale metro transform cache at /app/frontend/.metro-cache still contains compiled output with 'var CLONE_LEVELS = [...]' from before the fix. The currently served bundle does NOT use this stale chunk (verified by curling the entry bundle: 0 CLONE_LEVELS matches), but a future cold start could pick it up. Consider purging .metro-cache."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend-only request)", "frontend": "100% (1/1 critical flow verified)"},
+  "seed_data_creation": "Created a Decider via POST /api/decisions with payload {title:'TEST_clone_fix Decider', type:'decider', context:'Testing clone fix'} as the Hardening Test user. New decision id: ac8c155b-ab69-415c-ba80-926710382bd2.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Login flow: GET /auth/login -> fill 'Enter your email' + 'Enter your password' -> click text='Sign In'. On Solution Box (/prr) the Decider filter chip uses text='Decider'. Card action buttons currently have NO testID/aria propagated to the DOM; to click the clone (copy) icon programmatically, find the title text element, walk up to a container with 3 [tabindex=\"0\"] descendants, and click the 2nd one (Copy icon glyph \\uf290, color rgb(142, 36, 170)). The 1st is the card body, 3rd is the trash icon. The harden_1777921741 user already has L1 entitlements and a 'TEST_clone_fix Decider' card seeded.",
+  "rca_of_issue": "Original reported bug: clicking the clone icon on a Decider card produced a white-screen crash with 'ReferenceError: CLONE_LEVELS is not defined'. RCA: in CloneTemplateModal.tsx the array constant is named COPY_LEVELS but the JSX on line 256 inside the 'clone' tab branch referenced CLONE_LEVELS (a leftover from an earlier rename). Fix applied by main agent: changed line 256 to .map over COPY_LEVELS. Verification: (1) bundle inspection shows 0 CLONE_LEVELS / 4 COPY_LEVELS, (2) clicking the clone icon now opens the modal cleanly, (3) all 5 levels render in both Clone and Template tabs, (4) zero ReferenceError / 'is not defined' messages in console after clicking."
+}
