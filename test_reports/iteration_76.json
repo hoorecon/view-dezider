@@ -1,0 +1,27 @@
+{
+  "summary": "Verified all 3 code-fixable bugs (FIX 1+2 backend Razorpay CSP, FIX 5 frontend '+→Decider' route, FIX 3 frontend Step-5 saved-templates list, FIX 4 frontend TemplateLibrary 'Mine' visibility badges). ALL PASS. (1+2) curl against PUBLIC EXPO_PUBLIC_BACKEND_URL for GET /api/ai-wallet/refill/checkout and GET /api/subscriptions/checkout both return HTTP 200, content-type text/html, and a route-scoped 'content-security-policy' header listing `script-src 'self' 'unsafe-inline' https://checkout.razorpay.com https://*.razorpay.com` AND `frame-src https://*.razorpay.com https://api.razorpay.com` — confirmed Razorpay checkout script is no longer blocked. (5) From /prr, tapping the top-right pink '+' opens the new-menu modal showing Decider/Pros&Cons/SWOT/Test123; tapping 'Decider' navigates to /tools/new-decision?module=dezider with the 5-circle step indicator (1,2,3,4,5) and Step 1 title 'Choose Life Area' — NOT the legacy /prr/new 10-step page. (3) After completing Step-1 (Career) → Step-2 (Individual) → Step-3 (Problem) → Step-4 (no sub-area, no title) → 'Find Templates', Step-5 renders a 'Your saved templates (10)' section that lists every owned template with both a template-type cue and a visibility badge ('Public' for the 5 BadgeCheck templates, 'Private' for the 5 T-* templates). Tapping '[Private-Template] T-options' fires POST /api/templates/{id}/use 200 and navigates to /prr/04511307-f976-4894-8dc9-2f37dd18810e (the decision editor at Step 6/10 'Define Options' opened correctly). (4) Template Library modal opened from /prr header bookmark icon at (316,30) — 'Mine 10' tab shows each card with a visibility badge ('Public' or 'Private') rendered next to the template-type badge — verified for all 10 cards (5 Public + 5 Private). The 'Shared' label code path is identical to Private/Public (lines 393-395) but no shared templates exist in current seed data to render that specific label live.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": ["None — all 4 user-reported fixes verified working. The 2 Razorpay-related items not testable beyond CSP whitelist verification require live test keys to drive an end-to-end payment, which is out of scope per the agent-to-agent context note."],
+  "critical_code_review_comments": [
+    "backend/core/hardening.py L66-77: RAZORPAY_CSP constant correctly whitelists checkout.razorpay.com in script-src AND *.razorpay.com in frame-src/child-src/connect-src — covers the SDK iframe + lumberjack analytics. Good defence-in-depth (only loosens CSP for the 2 hosted /checkout pages, global stays strict via line 51-61).",
+    "backend/core/hardening.py L100-118: SecurityHeadersMiddleware uses setdefault for Content-Security-Policy AND reads `response.headers.get('Content-Security-Policy', CSP_POLICY)` as the default — this is precisely what makes the route-scoped header in ai_wallet.py:366 / subscriptions.py:527 win. Verified live via curl.",
+    "backend/routes/ai_wallet.py L351-366 and subscriptions.py L516-527: HTMLResponse(headers={'Content-Security-Policy': RAZORPAY_CSP}) — same pattern in both, consistent.",
+    "frontend/app/(tabs)/prr.tsx L507: router.push('/tools/new-decision?module=dezider') — confirmed routing to the new 5-step wizard; legacy /prr/new is no longer referenced from the Decider menu item.",
+    "frontend/app/tools/new-decision.tsx L203 + L687-714: my_templates fetched and rendered with vis-badge mapping (private=#6B7280 / shared=#3B82F6 / public=#F59E0B). Tap handler at L211 calls POST /api/templates/{id}/use and navigates via router.replace(`/prr/${decisionId}`). Clean, matches the visibility scheme used in TemplateBrowserModal.",
+    "frontend/src/components/TemplateBrowserModal.tsx L386-410: visibility badge rendered inside the 'Mine' tab card body using the same colour palette as new-decision.tsx — DRY-ish but the mapping is duplicated rather than extracted into a shared util. Minor maintenance nit, no functional bug."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (2/2 CSP endpoints)", "frontend": "100% (3/3 fixes)"},
+  "seed_data_creation": "None — the user harden_1777921741@example.com already had 10 templates from iteration_75 (5 Public + 5 Private) which is sufficient to verify both badge labels in FIX 3 + FIX 4. No 'shared' template was present so the 'Shared' label code-path was code-reviewed but not visually exercised.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Login URL is /auth/login (NOT /login). To verify Razorpay CSP quickly: `curl -sk -D - -o /dev/null \"$EXPO_PUBLIC_BACKEND_URL/api/ai-wallet/refill/checkout?order_id=x&key_id=y&amount=100\" | grep -i csp`. To reach /tools/new-decision Step-5 fastest: navigate directly to /tools/new-decision?module=dezider → tap Career (~102,473) → Next → click 'Individual' → Next → click 'Problem' → Next → click 'Find Templates'. The bookmark icon on /prr that opens the Template Library is at viewport coords (316,30) — STILL has no testID. Consider adding testID='open-template-library' for stability.",
+  "rca_of_issue": "N/A — all 3 code-fixable user reports verified resolved."
+}

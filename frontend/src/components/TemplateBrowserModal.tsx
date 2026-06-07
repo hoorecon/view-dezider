@@ -384,6 +384,22 @@ export default function TemplateBrowserModal({
                           </View>
                         );
                       })()}
+                      {/* Visibility badge — shown on the "Mine" tab so users can
+                          tell their Private / Shared / Public templates apart. */}
+                      {activeTab === 'my' && (() => {
+                        const vis = (template.visibility || 'private').toLowerCase();
+                        const vm = vis === 'public'
+                          ? { label: 'Public', color: '#F59E0B', icon: 'globe-outline' }
+                          : vis === 'shared'
+                            ? { label: 'Shared', color: '#3B82F6', icon: 'people-outline' }
+                            : { label: 'Private', color: '#6B7280', icon: 'lock-closed-outline' };
+                        return (
+                          <View style={[styles.typeBadge, { backgroundColor: vm.color + '18', marginLeft: 6 }]}>
+                            <Ionicons name={vm.icon as any} size={11} color={vm.color} />
+                            <Text style={[styles.typeBadgeText, { color: vm.color }]}>{vm.label}</Text>
+                          </View>
+                        );
+                      })()}
                       <View style={styles.templateCardActions}>
                         {/* Use template button for shared/public/authorized templates */}
                         {activeTab !== 'my' && (

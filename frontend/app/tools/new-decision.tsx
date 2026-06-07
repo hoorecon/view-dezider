@@ -129,11 +129,14 @@ export default function NewDecisionIntake() {
   const [subAreas, setSubAreas] = useState<SubArea[]>([]);
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
-
   // Loading
   const [loadingAreas, setLoadingAreas] = useState(true);
   const [loadingTypes, setLoadingTypes] = useState(true);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
+  // Personal saved templates (db.templates) surfaced in the My Dezider flow so
+  // users can start a decision from their own saved templates, not just curated.
+  const [myTemplates, setMyTemplates] = useState<any[]>([]);
+  const [usingTemplateId, setUsingTemplateId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [seeding, setSeeding] = useState(false);
 
@@ -169,6 +172,7 @@ export default function NewDecisionIntake() {
   useEffect(() => {
     if (selectedArea && selectedAskType) {
       fetchTemplates();
+      if (moduleKey === 'dezider') fetchMyTemplates();
     }
   }, [selectedArea, selectedAskType, searchText]);
 
@@ -188,6 +192,31 @@ export default function NewDecisionIntake() {
       setTemplates(r.data || []);
     } catch (_e) { setTemplates([]); }
     setLoadingTemplates(false);
+  };
+
+  // Personal saved templates (My Dezider "Save as Template"). These live in a
+  // separate collection (db.templates) from the curated HOS templates, so we
+  // surface them here and create from them via POST /api/templates/{id}/use.
+  const fetchMyTemplates = async () => {
+    try {
+      const r = await api.get('/templates');
+      setMyTemplates(r.data?.my_templates || []);
+    } catch (_e) { setMyTemplates([]); }
+  };
+
+  const handleUsePersonalTemplate = async (tpl: any) => {
+    const title = customTitle.trim() || smartDefaultTitle;
+    setUsingTemplateId(tpl.id);
+    try {
+      const r = await api.post(`/templates/${tpl.id}/use`, { title });
+      const newId = r.data?.id;
+      if (newId) router.replace(`/prr/${newId}`);
+      else showAlert('Could not use template', 'Please try again.');
+    } catch (_e) {
+      showAlert('Could not use template', 'Please try again.');
+    } finally {
+      setUsingTemplateId(null);
+    }
   };
 
   // Fetch sub-areas when life area selected
@@ -656,6 +685,51 @@ export default function NewDecisionIntake() {
         </View>
         <Ionicons name="arrow-forward" size={20} color={COLORS.primary} />
       </TouchableOpacity>
+
+      {/* Your saved templates (My Dezider personal templates) — option (a):
+          surfaced alongside curated templates so users can start from their own. */}
+      {moduleKey === 'dezider' && myTemplates.length > 0 && (
+        <View style={{ marginTop: 18 }}>
+          <Text style={[s.stepSubtitle, { marginBottom: 8, fontWeight: '700', color: COLORS.textPrimary }]}>
+            Your saved templates ({myTemplates.length})
+          </Text>
+          {myTemplates.map((tpl) => {
+            const vis = (tpl.visibility || 'private').toLowerCase();
+            const visMeta = vis === 'public'
+              ? { label: 'Public', color: '#F59E0B' }
+              : vis === 'shared'
+                ? { label: 'Shared', color: '#3B82F6' }
+                : { label: 'Private', color: '#6B7280' };
+            const nF = Array.isArray(tpl.factors) ? tpl.factors.length : 0;
+            const nO = Array.isArray(tpl.options) ? tpl.options.length : 0;
+            const busy = usingTemplateId === tpl.id;
+            return (
+              <TouchableOpacity
+                key={tpl.id}
+                style={s.templateCard}
+                onPress={() => handleUsePersonalTemplate(tpl)}
+                disabled={!!usingTemplateId}
+              >
+                <View style={s.templateHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.templateTitle} numberOfLines={2}>{tpl.name}</Text>
+                    <Text style={s.templateDesc} numberOfLines={1}>
+                      {nF} factors{nO ? ` • ${nO} options` : ''}
+                    </Text>
+                  </View>
+                  {busy && <ActivityIndicator size="small" color={COLORS.primary} />}
+                </View>
+                <View style={s.templateFooter}>
+                  <View style={[s.typeBadge, { backgroundColor: visMeta.color + '18' }]}>
+                    <Ionicons name="bookmark" size={11} color={visMeta.color} />
+                    <Text style={[s.typeBadgeText, { color: visMeta.color }]}>{visMeta.label}</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
 
       {/* Template list */}
       {loadingTemplates ? (
