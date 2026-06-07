@@ -60,6 +60,21 @@ CSP_POLICY = os.environ.get(
     "object-src 'none';",
 )
 GZIP_MIN_SIZE = int(os.environ.get("GZIP_MIN_SIZE", "1024"))
+# CSP that whitelists the Razorpay checkout script + iframe. Used only by the
+# backend-hosted /checkout payment pages (set per-route; the middleware honours
+# a route-supplied CSP and won't override it).
+RAZORPAY_CSP = (
+    "default-src 'self' https://*.razorpay.com; "
+    "script-src 'self' 'unsafe-inline' https://checkout.razorpay.com https://*.razorpay.com; "
+    "style-src 'self' 'unsafe-inline' https://*.razorpay.com https://fonts.googleapis.com; "
+    "font-src 'self' data: https://fonts.gstatic.com https://*.razorpay.com; "
+    "img-src 'self' data: https:; "
+    "frame-src https://*.razorpay.com https://api.razorpay.com; "
+    "child-src https://*.razorpay.com; "
+    "connect-src 'self' https://*.razorpay.com https://lumberjack.razorpay.com; "
+    "form-action 'self' https://*.razorpay.com; "
+    "base-uri 'self'; object-src 'none';"
+)
 SLOW_REQUEST_MS = int(os.environ.get("SLOW_REQUEST_MS", "800"))
 IDEMPOTENCY_TTL_SECONDS = int(os.environ.get("IDEMPOTENCY_TTL_SECONDS", "86400"))  # 24h
 METRICS_ENABLED = os.environ.get("METRICS_ENABLED", "true").lower() != "false"

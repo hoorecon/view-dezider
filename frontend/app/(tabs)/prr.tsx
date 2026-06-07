@@ -504,7 +504,7 @@ export default function SolutionBoxScreen() {
 
             <TouchableOpacity
               style={[styles.newMenuItem, { borderColor: TYPE_META.decider.color + '40' }]}
-              onPress={() => { setShowNewMenu(false); router.push('/prr/new'); }}
+              onPress={() => { setShowNewMenu(false); router.push('/tools/new-decision?module=dezider' as any); }}
             >
               <View style={[styles.newMenuIcon, { backgroundColor: TYPE_META.decider.bg }]}>
                 <Ionicons name={TYPE_META.decider.icon as any} size={20} color={TYPE_META.decider.color} />

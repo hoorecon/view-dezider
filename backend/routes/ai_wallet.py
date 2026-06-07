@@ -18,6 +18,7 @@ from core import ai_wallet, ai_billing
 from core.auth import get_current_user, require_admin, require_super_admin
 from core.database import db
 from core.integrations import get_razorpay_client, resolve_razorpay_creds
+from core.hardening import RAZORPAY_CSP
 
 router = APIRouter()
 log = logging.getLogger("ai_wallet_routes")
@@ -359,4 +360,7 @@ async def refill_checkout(order_id: str, key_id: str, amount: int, token: str = 
             .replace("__NAME__", esc(name))
             .replace("__EMAIL__", esc(email))
             .replace("__TOKEN__", esc(token)))
-    return HTMLResponse(content=html)
+    # Route-scoped CSP that permits the Razorpay checkout script/iframe. The global
+    # SecurityHeadersMiddleware honours a route-set CSP, so this only loosens the
+    # policy for this single payment page (not the rest of the API).
+    return HTMLResponse(content=html, headers={"Content-Security-Policy": RAZORPAY_CSP})

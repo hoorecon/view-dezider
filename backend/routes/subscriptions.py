@@ -521,4 +521,7 @@ async def subscription_checkout(order_id: str, key_id: str, amount: int, token: 
             .replace("__ORDER_ID__", esc(order_id)).replace("__KEY_ID__", esc(key_id))
             .replace("__AMOUNT__", str(int(amount))).replace("__NAME__", esc(name))
             .replace("__EMAIL__", esc(email)).replace("__TOKEN__", esc(token)))
-    return HTMLResponse(content=html)
+    # Route-scoped CSP so the Razorpay checkout script/iframe is allowed on this
+    # payment page (the global security middleware honours a route-set CSP).
+    from core.hardening import RAZORPAY_CSP
+    return HTMLResponse(content=html, headers={"Content-Security-Policy": RAZORPAY_CSP})
