@@ -1,0 +1,35 @@
+{
+  "summary": "REFACTOR REGRESSION CHECK — Decisions backend split into routes/decisions/ package + Pros & Cons wizard split into src/features/pros-cons/. Backend: 19/19 pytest passed against the public preview URL covering crud (create/list/get/update-with-worth-recompute/delete-to-trash/clone), templates (save/list/use/update/delete), admin (admin@test.com 403 on promote/demote/setup; super_admin can call /promote and lists /admin/users), test123 (full CRUD lifecycle), assessment-modes (questions+history), journal (CRUD + reminders + linkable-items), dashboard (stats+folders), sharing (received+sent + 400-on-no-valid-recipients), MPPS CSV & PDF downloads (200 with correct content-types), and assessment-template xlsx (200). Frontend: Pros & Cons wizard route renders cleanly on mobile viewport (390x844) — no 'Uncaught Error' overlay, no 'Platform is not defined' error, 8-step tab strip rendered, Step1 add-factor works, Next/Back navigation between Step1↔Step2 works, 0 page errors during interaction. The styles.ts Platform fix (Platform now imported from react-native) is verified live. Public import contract `from routes.decisions import router` continues to work — server.py untouched.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/decisions/{id}/mpps-action-plan-pdf", "issue": "Pre-existing latent bug (NOT a refactor regression): when an MPPS improvement has tepfi_layer=None (model default) the PDF crashes at routes/decisions/mpps.py:115 — `Paragraph(layer, cell_style)` with layer=None raises `AttributeError: 'NoneType' object has no attribute 'split'`. Same line existed in the monolithic file. Fix: coerce to str — `Paragraph(str(layer or ''), cell_style)`. CSV path is unaffected."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter72_decisions_refactor.py",
+    "/app/test_reports/pytest/iter72.xml"
+  ],
+  "action_items": [
+    "(Optional, out of refactor scope) Harden MPPS PDF route against None values: wrap `layer`, `improvement_plan`, `expected_value`, `expected_unit`, factor.name/category/rating in `str(... or '')` before passing to reportlab Paragraph at routes/decisions/mpps.py lines 107–115. Pre-existing bug surfaced when tepfi_layer is unset."
+  ],
+  "critical_code_review_comments": [
+    "routes/decisions/__init__.py cleanly aggregates 10 sub-routers via include_router; public `router` symbol is preserved → `from routes.decisions import router` continues to work and server.py is untouched (verified).",
+    "Shared `consume_entitlement` was correctly moved to routes/decisions/services.py and imported by both crud.py (create/clone) and templates.py (use) — entitlement-consuming side-effects are preserved across the refactor.",
+    "PRRDecisionUpdate worth-percentage recompute (4/10*50 + 6/10*100 = 80.0) executes identically post-refactor (verified by assertion).",
+    "Admin role lockdown still enforced: require_root_super_admin dependency rejects admin@test.com with 403 on /admin/promote, /admin/demote, /admin/setup. super_admin can reach /admin/promote and /admin/users (verified)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (19/19)", "frontend": "100% (wizard route renders, step navigation works, no JS errors, no red-box overlay)"},
+  "seed_data_creation": "Per-test ephemeral decisions/templates/journal entries/test123 sessions prefixed TEST_iter72_<uuid>; all soft-deleted (trash) or hard-deleted in each test. No persistent state left behind.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Reusable regression suite at /app/backend/tests/test_iter72_decisions_refactor.py. Uses EXPO_BACKEND_URL → EXPO_PUBLIC_BACKEND_URL fallback. Credentials: harden_1777921741@example.com / HardenPass2026! (regular user), admin@test.com / AdminPass2026! (admin — must 403 on promote/demote/setup), veales.vedic.decisions@gmail.com / Jelcos@Admin2026 (super_admin — only account allowed to grant roles). To re-run: `pytest backend/tests/test_iter72_decisions_refactor.py -v`. Frontend wizard testID coverage is light (route uses headings/text labels); locator strategy used was placeholder-based + get_by_text for buttons.",
+  "rca_of_issue": "N/A for refactor (zero behaviour-change regression detected). The MPPS-PDF NoneType crash is a separate pre-existing reportlab fragility surfaced by an empty tepfi_layer — caller passes None directly to reportlab.platypus.Paragraph which calls str.split on the text argument and fails. Mitigation: coerce to string at the call sites in routes/decisions/mpps.py before constructing Paragraph objects."
+}
