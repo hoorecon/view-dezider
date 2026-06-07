@@ -165,19 +165,27 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return;
       }
 
-      // Smart auto-jump to the furthest meaningful step based on data present.
+      // Smart auto-jump to the furthest *meaningful* step based on the data
+      // actually present (most-complete first). Critically, Step 5 (prioritise)
+      // is detected by real ratings — NOT by category — so a Copy-Classification
+      // template (categories set, ratings still 0) correctly lands on Step 3,
+      // and a Copy-Factors template (no category) lands on Step 2.
+      const facs = response.data.factors || [];
+      const opts = response.data.options || [];
       if (response.data.status === 'completed') {
         setCurrentStep(10);
       } else if (response.data.chosen_option_id) {
         setCurrentStep(8);
-      } else if (response.data.options.length > 0 && response.data.options[0].assessments?.length > 0) {
+      } else if (opts.length > 0 && opts[0].assessments?.length > 0) {
         setCurrentStep(7);
-      } else if (response.data.options.length > 0) {
+      } else if (opts.length > 0) {
         setCurrentStep(6);
-      } else if (response.data.factors.length > 0 && response.data.factors.some((f: Factor) => f.category === 'primary')) {
+      } else if (facs.length > 0 && facs.some((f: Factor) => (f.rating || 0) > 0)) {
         setCurrentStep(5);
-      } else if (response.data.factors.length > 0) {
+      } else if (facs.length > 0 && facs.some((f: Factor) => f.category === 'primary' || f.category === 'secondary')) {
         setCurrentStep(3);
+      } else if (facs.length > 0) {
+        setCurrentStep(2);
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to load decision');

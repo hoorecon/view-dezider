@@ -1,0 +1,29 @@
+{
+  "summary": "Iter79 — Decision Template Landing-Step bug verified FIXED end-to-end. Owner harden_1777921741 built one fully-completed source decision (2 factors w/ categories+ratings, 2 options, 4 assessments) then saved 5 templates via POST /api/decisions/{id}/save-as-template across all depths (factors/classification/prioritization/options/assessment), used each via POST /api/templates/{tid}/use, and opened /prr/{newId} in the Expo web preview (390x844). Header reads exactly 'Step 2/10', 'Step 3/10', 'Step 5/10', 'Step 6/10', 'Step 7/10' respectively — matching the spec. The original bug (Copy-Classification landing on Step 5) is gone: classification-template decisions now show 'Step 3/10' / 'Classify Factors' with category chips populated and zero ratings. Regression tests for normal decisions also pass: factors-only decision lands at Step 2/3 (not 5/7), completed decision → Step 10, options+assessments → Step 7, chosen_option_id (no completed) → Step 8. The frontend auto-jump heuristic in DecisionContext.tsx now correctly gates Step 5 on factor.rating>0 (not on category), and the backend save-as-template + clone routes both store category='' / rating=0 at the 'factors' level, adding classification then prioritization cumulatively. Pytest suite (14 tests across save-as-template, clone, and regression) → 14/14 PASSED.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter79_template_landing_steps.py",
+    "/app/test_reports/pytest/iter79_landing_steps.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "DecisionContext.tsx auto-jump (lines 168-189) reads cleanly — Step-5 gate is now `facs.some(f.rating>0)` and a separate Step-3 gate is `facs.some(f.category in (primary|secondary))`. Order of branches (status=completed → chosen → assessments → options → ratings → category → factors-only) is correct, no overlap.",
+    "templates.save_as_template + crud.clone_decision now share identical 5-tier cumulative semantics. Both initialise factors with category='' and rating=0 at the 'factors' level, then merge category in for 'classification+' and rating (+gap_multiplier in templates.py) for 'prioritization+'. Worth simplifying via a shared helper later but functionally correct.",
+    "templates.use_template (line 114) keeps `f.get('category','primary')` as the fallback when a factor record is missing the key — harmless because save_as_template always writes category (possibly ''), but if any legacy template doc lacks the key the fallback could re-introduce the bug. Consider tightening to `f.get('category','') or ''` for defensive symmetry. Not blocking."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter79_template_landing_steps.py (new)"
+  ],
+  "success_rate": {"backend": "14/14 (100%)", "frontend": "5/5 landing steps verified in Expo web preview (100%)"},
+  "seed_data_creation": "Owner harden_1777921741@example.com — created TEST_iter79_src_* (pytest) and TEST_iter79_ui_src (UI verification) source decisions, 5 TEST_iter79_tmpl_<level> templates each, and the 5 TEST_iter79_use_<level> + TEST_iter79_clone_<level>_* derived decisions. All prefixed 'TEST_' for easy admin cleanup. AI wallet was untouched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend pytest at /app/backend/tests/test_iter79_template_landing_steps.py (14 cases, ~3s) is the regression guard. It mirrors the DecisionContext.tsx auto-jump heuristic as a Python helper (_landing_step) and asserts the exact step for each of the 5 template levels + 4 normal-decision shapes + 5 clone levels. Re-run with: `python -m pytest backend/tests/test_iter79_template_landing_steps.py -v`. If the auto-jump heuristic in DecisionContext.tsx ever changes, update _landing_step() in the test file to match.",
+  "rca_of_issue": "ROOT CAUSE confirmed and fix verified. Pre-fix: a Copy-Classification template stored factors with the source decision's `category` AND `rating` already set, then the frontend auto-jump used `category in (primary, secondary)` as the Step-5 gate — so any classified factor (even with rating=0) jumped to Step 5 instead of Step 3. Fix touches 3 files: (1) DecisionContext.tsx splits the gate into a real-rating check for Step 5 and a category-only check for Step 3; (2) templates.save_as_template + (3) crud.clone_decision both bottom out at category='' / rating=0 for the 'factors' level and layer in category for 'classification+' and rating for 'prioritization+'. Verification: 14/14 backend tests pass AND the live Expo web preview shows the exact header 'Step X/10' for each level, with the Copy-Classification decision landing on Step 3 (Classify Factors) showing primary/secondary chips and no rating bars — the precise bug-fix acceptance criterion."
+}

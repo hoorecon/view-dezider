@@ -30,8 +30,11 @@ async def save_as_template(decision_id: str, data: SaveTemplateRequest, user: di
     orig_factors = original.get("factors", [])
     factors = []
     for f in orig_factors:
+        # Base = "factors only" depth: no classification (category) and no
+        # prioritization (rating) so a Copy-Factors template carries Step-2 data
+        # only and lands the user back on Step 2.
         factors.append({"id": str(uuid.uuid4()), "name": f["name"], "order": f.get("order", 0),
-                        "category": "primary", "rating": 0})
+                        "category": "", "rating": 0})
     if level in ("classification", "prioritization", "options", "assessment"):
         for i, f in enumerate(orig_factors):
             if i < len(factors):
@@ -40,6 +43,8 @@ async def save_as_template(decision_id: str, data: SaveTemplateRequest, user: di
         for i, f in enumerate(orig_factors):
             if i < len(factors):
                 factors[i]["rating"] = f.get("rating", 0)
+                if f.get("gap_multiplier") is not None:
+                    factors[i]["gap_multiplier"] = f.get("gap_multiplier")
 
     options = []
     if level in ("options", "assessment"):

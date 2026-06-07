@@ -106,7 +106,7 @@ async def clone_decision(decision_id: str, data: CloneDecisionRequest, user: dic
     clone_level = data.clone_level
     if clone_level in ("factors", "classification", "prioritization", "options", "assessment"):
         for f in original.get("factors", []):
-            cloned["factors"].append({"id": str(uuid.uuid4()), "name": f["name"], "order": f.get("order", 0), "category": "primary", "rating": 0})
+            cloned["factors"].append({"id": str(uuid.uuid4()), "name": f["name"], "order": f.get("order", 0), "category": "", "rating": 0})
     if clone_level in ("classification", "prioritization", "options", "assessment"):
         for i, f in enumerate(original.get("factors", [])):
             if i < len(cloned["factors"]):
