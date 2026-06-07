@@ -1,0 +1,38 @@
+{
+  "summary": "RETEST of FEATURE 2 ('AI Assess All' on Step 7) after showAlert migration. PRE-STEP wallet top-up worked: super_admin POST /api/admin/ai-wallet/grant {email:harden_1777921741, credits:500, mode:set} returned 200 (balance:500.0, delta:507.89). On the Expo web preview (390x844) at /prr/afa40e92-73e7-4692-87e3-477a7033ecc7?step=7, tapping testID 'ai-assess-all' now renders the AlertHost confirm modal with the exact copy 'AI Assess All — AI will assess 4 empty cells across 2 options, using your AI credits. Cells missing Expected/Actual values are skipped. Continue?' and Cancel/Assess buttons. Tapping 'Assess' fires 4 POSTs to /api/decisions/{id}/factors/{factorId}/ai-assess (fct_q1 twice + fct_q2 twice, all 200), the in-button label cycles 'Assessing 0/4 → 1/4 → 2/4 → 3/4', and the completion modal 'AI Assess All complete • Assessed 4 cells' appears with an OK button. The AI credits badge in the Assessment Legend went from 500 → 446 (≈13.5 credits/cell, matching backend metering). FEATURE 2 PASSES on web for the confirm + happy-path + completion-summary alerts via the showAlert/AlertHost path. NOTE for testing-infra: the initial test runs failed until Expo was restarted (`sudo supervisorctl restart expo`) — the previously running bundle was the iteration-77 (pre-fix) version still cached in Metro/CDN. After restart, the cross-platform showAlert dialogs render correctly. Idempotent path showed a minor secondary issue (see frontend_issues): when re-clicking AI Assess All after a fully-completed bulk run, the confirm dialog re-appears saying '3 empty cells' instead of the expected 'All set — Every option is already assessed' dialog. The backend persisted all 4 cells (wallet debited 4× and POSTs returned 200), but local React state in Step7 only reflects 1 of the 4 newly-assessed cells, so cells.length resolves to 3 not 0 and the 'All set' branch is not taken. Out-of-credits dialog was NOT exercised (optional; wallet still has 446 credits, would need a re-grant + clear to repro reliably).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Step7.tsx (assessCellSilent local-state merge during runBulkAssess)",
+        "issue": "After the bulk-assess loop completes with 4× HTTP 200 from POST /api/decisions/{id}/factors/{factorId}/ai-assess (verified via wallet debit 500→446 ≈ 4×13.5 credits and the 'Assessed 4 cells' summary), only 1 of the 4 newly-assessed cells appears in local React state. Tapping 'AI Assess All' a second time immediately after the OK-dismiss shows the confirm dialog 'AI will assess 3 empty cells across 2 options …' instead of the expected idempotent 'All set — Every option is already assessed against every factor.' branch. Likely a state-merge race in assessCellSilent (sequential setState calls within the for-loop overwriting prior keys) or a missing decision refresh after the loop. Reference: /app/frontend/src/components/steps/Step7.tsx runBulkAssess (lines 460-485) and the per-cell assessCellSilent reducer.",
+        "testID": "ai-assess-all",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/tmp/final_confirm.png",
+    "/tmp/final_complete.png",
+    "/tmp/final_idempotent.png"
+  ],
+  "action_items": [
+    "Investigate Step7.tsx runBulkAssess/assessCellSilent — after the for-loop finishes, only 1 of the 4 newly-assessed cells survives in local state, so the idempotent guard ('All set' branch) fails on the very next click. Either batch-update assessments after the loop, or refetch the decision (GET /api/decisions/{id}) on bulk completion before deciding cells.length. Backend already persisted everything (wallet 500→446 and 4× 200 OK).",
+    "(Infra reminder for main agent) After any Step7.tsx edit, restart Expo via `sudo supervisorctl restart expo` — Metro's lazy chunks were serving the pre-fix Step7 bundle until restart even though the source file was correct. The fix-applied bundle ONLY became live after restart.",
+    "(Optional) Exercise the 'Out of AI credits' branch by re-granting {credits:0,mode:set} and manually clearing one cell — wallet currently has 446 credits so the OOC summary cannot reproduce without setup."
+  ],
+  "critical_code_review_comments": [
+    "showAlert migration in Step7.tsx (lines 475, 484, 499, 503, 506) is correctly wired and renders via AlertHost on react-native-web. FEATURE 2 alerts now work as designed.",
+    "runBulkAssess updates local state sequentially per cell — recommend snapshotting+merging at end of loop or refetching the decision so the idempotent 'All set' branch can actually fire after a successful bulk run."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only retest; admin grant endpoint returned 200)", "frontend": "FEATURE 2 confirm + happy-path + completion summary 100% PASS • Idempotent 'All set' branch FAILS due to local state sync (cells.length=3 instead of 0) • Out-of-credits not exercised"},
+  "seed_data_creation": "Re-used existing decision afa40e92-73e7-4692-87e3-477a7033ecc7 ('TEST_iter77_aiAssessAll') under harden_1777921741@example.com. Granted 500 AI credits via super_admin POST /api/admin/ai-wallet/grant (mode:set). After the verified bulk run the wallet balance is 446.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "FEATURE 2 alerts (showAlert) WORKS post-fix. The remaining minor bug is in Step7 local state after runBulkAssess — only 1 of N assessed cells persists in the React state until the next decision GET. To reproduce: open /prr/afa40e92-73e7-4692-87e3-477a7033ecc7?step=7, tap 'AI Assess All', accept the dialog, wait for 'Assessed 4 cells', dismiss OK, then immediately tap 'AI Assess All' again — instead of 'All set' you'll see a fresh 'AI will assess 3 empty cells' confirm. Hard-reloading the page or navigating away+back syncs the cells correctly (so the bug is purely in the post-loop local state merge, not backend persistence). IMPORTANT for future test runs: after any Step7.tsx change, restart Expo (sudo supervisorctl restart expo) before testing — Metro's lazy chunks otherwise serve stale code.",
+  "rca_of_issue": "FEATURE 2 (showAlert migration) — Root cause RESOLVED. Step7.tsx now calls showAlert for all 5 bulk-flow alert sites (confirm, complete, nothing-to-assess, all-set, out-of-credits) and AlertHost renders them as proper in-app modals on web. Verified end-to-end. Secondary minor bug (idempotent state sync): the per-cell assessCellSilent updates the assessments map inside a tight async for-loop; sequential setState calls likely race so only the final cell's value is preserved in state. Suggested fix: collect all results into a local Map inside runBulkAssess and apply a single setAssessments(prev => ({...prev, ...batch})) at the end, OR call the existing decision-refresh function after the loop completes."
+}

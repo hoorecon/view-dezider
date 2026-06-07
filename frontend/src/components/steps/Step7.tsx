@@ -472,7 +472,7 @@ export default function Step7() {
     setBulkAssessing(false);
     refreshAiWallet();
     if (ranOut) {
-      Alert.alert('Out of AI credits', `Assessed ${done} cell(s) before credits ran out. Top up to finish the rest.`, [
+      showAlert('Out of AI credits', `Assessed ${done} cell(s) before credits ran out. Top up to finish the rest.`, [
         { text: 'Not now', style: 'cancel' },
         { text: 'View wallet', onPress: () => router.push('/ai-wallet' as any) },
       ]);
@@ -481,7 +481,7 @@ export default function Step7() {
     const parts = [`Assessed ${done} cell${done !== 1 ? 's' : ''}`];
     if (skipped) parts.push(`${skipped} skipped (add Expected/Actual values)`);
     if (errored) parts.push(`${errored} failed`);
-    Alert.alert('AI Assess All complete', parts.join(' • '));
+    showAlert('AI Assess All complete', parts.join(' • '));
   };
 
   const handleAIAssessAll = () => {
@@ -496,14 +496,14 @@ export default function Step7() {
       }
     }
     if (options.length === 0 || factors.length === 0) {
-      Alert.alert('Nothing to assess', 'Add options and factors first.');
+      showAlert('Nothing to assess', 'Add options and factors first.');
       return;
     }
     if (cells.length === 0) {
-      Alert.alert('All set', 'Every option is already assessed against every factor.');
+      showAlert('All set', 'Every option is already assessed against every factor.');
       return;
     }
-    Alert.alert(
+    showAlert(
       'AI Assess All',
       `AI will assess ${cells.length} empty cell${cells.length > 1 ? 's' : ''} across ${options.length} option${options.length > 1 ? 's' : ''}, using your AI credits. Cells missing Expected/Actual values are skipped. Continue?`,
       [
