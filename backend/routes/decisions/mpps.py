@@ -98,7 +98,7 @@ async def download_mpps_action_plan_pdf(decision_id: str, user: dict = Depends(g
     for imp in improvements:
         factor = next((f for f in factors if f.get("id") == imp.get("factor_id")), {})
         tepfi = ", ".join(imp.get("tepfi_elements", []))
-        layer = imp.get("tepfi_layer", "")
+        layer = imp.get("tepfi_layer") or ""
         action_items = imp.get("action_items", [])
         factor_title = ParagraphStyle('FTitle', parent=styles['Heading3'], fontSize=11, spaceAfter=2, spaceBefore=4)
         orig = imp.get("original_percentage", "--")
