@@ -411,6 +411,108 @@ export default function Step7() {
     }
   };
 
+  // ── "AI Assess All" — bulk metered assessment ───────────────────────────
+  // Sequentially runs the same per-cell AI assist over every un-assessed cell.
+  // Reusing the per-cell endpoint keeps each request small (no timeout risk)
+  // and meters AI credits per cell, exactly like the single "AI" button.
+  const [bulkAssessing, setBulkAssessing] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
+
+  // Silent single-cell assess used by the bulk runner (no per-cell alerts).
+  const assessCellSilent = async (
+    optionId: string, factorId: string,
+  ): Promise<'done' | 'skipped' | 'insufficient' | 'error'> => {
+    const factor = decision.factors.find(f => f.id === factorId);
+    if (!factor) return 'skipped';
+    const has = (v: any) => v !== undefined && v !== null && String(v).trim() !== '';
+    const isQual = factor?.data_type === 'text' || factor?.factor_type === 'subjective' || factor?.factor_type === 'qualitative';
+    const actual = getActualInputValue(optionId, factorId);
+    // Must be assessable: Expected required; quantitative also needs Operator + Actual.
+    if (!has(factor?.expected_value)) return 'skipped';
+    if (!isQual && (!has(factor?.operator) || !has(actual))) return 'skipped';
+    try {
+      const token = await AsyncStorage.getItem('session_token');
+      const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
+      const resp = await fetch(`${baseUrl}/api/decisions/${decision.id}/factors/${factorId}/ai-assess`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ option_id: optionId, actual_value: actual }),
+      });
+      if (resp.status === 402) return 'insufficient';
+      if (!resp.ok) return 'error';
+      const data = await resp.json();
+      const pct = Math.max(0, Math.min(100, parseInt(String(data.percentage), 10) || 0));
+      const unitStr = factor?.unit || '';
+      const effectiveActual = has(actual) ? actual : (data.actual_value != null ? String(data.actual_value) : '');
+      const numericActual = parseFloat(effectiveActual);
+      const displayValue = effectiveActual
+        ? `${effectiveActual}${unitStr && !String(effectiveActual).includes(unitStr) ? ' ' + unitStr : ''}`
+        : undefined;
+      const key = getAssessmentKey(optionId, factorId);
+      updateAssessment(optionId, factorId, pct, 'custom', displayValue, isNaN(numericActual) ? undefined : numericActual);
+      setCustomInputValues(prev => ({ ...prev, [key]: String(pct) }));
+      return 'done';
+    } catch {
+      return 'error';
+    }
+  };
+
+  const runBulkAssess = async (cells: { optionId: string; factorId: string }[]) => {
+    setBulkAssessing(true);
+    setBulkProgress({ done: 0, total: cells.length });
+    let done = 0, skipped = 0, errored = 0, ranOut = false;
+    for (let i = 0; i < cells.length; i++) {
+      const status = await assessCellSilent(cells[i].optionId, cells[i].factorId);
+      if (status === 'insufficient') { ranOut = true; break; }
+      if (status === 'done') done++;
+      else if (status === 'skipped') skipped++;
+      else errored++;
+      setBulkProgress({ done: i + 1, total: cells.length });
+    }
+    setBulkAssessing(false);
+    refreshAiWallet();
+    if (ranOut) {
+      Alert.alert('Out of AI credits', `Assessed ${done} cell(s) before credits ran out. Top up to finish the rest.`, [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'View wallet', onPress: () => router.push('/ai-wallet' as any) },
+      ]);
+      return;
+    }
+    const parts = [`Assessed ${done} cell${done !== 1 ? 's' : ''}`];
+    if (skipped) parts.push(`${skipped} skipped (add Expected/Actual values)`);
+    if (errored) parts.push(`${errored} failed`);
+    Alert.alert('AI Assess All complete', parts.join(' • '));
+  };
+
+  const handleAIAssessAll = () => {
+    if (bulkAssessing) return;
+    const options = decision.options || [];
+    const factors = decision.factors || [];
+    const cells: { optionId: string; factorId: string }[] = [];
+    for (const opt of options) {
+      for (const f of factors) {
+        const existing = getAssessmentValue(opt.id, f.id);
+        if (existing === null || existing === undefined) cells.push({ optionId: opt.id, factorId: f.id });
+      }
+    }
+    if (options.length === 0 || factors.length === 0) {
+      Alert.alert('Nothing to assess', 'Add options and factors first.');
+      return;
+    }
+    if (cells.length === 0) {
+      Alert.alert('All set', 'Every option is already assessed against every factor.');
+      return;
+    }
+    Alert.alert(
+      'AI Assess All',
+      `AI will assess ${cells.length} empty cell${cells.length > 1 ? 's' : ''} across ${options.length} option${options.length > 1 ? 's' : ''}, using your AI credits. Cells missing Expected/Actual values are skipped. Continue?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Assess', onPress: () => runBulkAssess(cells) },
+      ]
+    );
+  };
+
   const getCustomInputValue = (optionId: string, factorId: string): string => {
     const key = getAssessmentKey(optionId, factorId);
     if (customInputValues[key] !== undefined) return customInputValues[key];
@@ -603,6 +705,30 @@ export default function Step7() {
             <Text style={styles.legendText}>H = High (75%)</Text>
           </View>
         </View>
+
+        {/* One-tap metered AI assessment of every empty option×factor cell. */}
+        <TouchableOpacity
+          style={[styles.aiAssessAllBtn, bulkAssessing && styles.aiAssessAllBtnBusy]}
+          onPress={handleAIAssessAll}
+          disabled={bulkAssessing}
+          activeOpacity={0.85}
+          testID="ai-assess-all"
+        >
+          {bulkAssessing ? (
+            <>
+              <ActivityIndicator size="small" color="#FFF" />
+              <Text style={styles.aiAssessAllText}>Assessing {bulkProgress.done}/{bulkProgress.total}…</Text>
+            </>
+          ) : (
+            <>
+              <Ionicons name="sparkles" size={16} color="#FFF" />
+              <Text style={styles.aiAssessAllText}>AI Assess All</Text>
+            </>
+          )}
+        </TouchableOpacity>
+        <Text style={styles.aiAssessAllHint}>
+          Auto-rates every empty cell with AI. Uses AI credits • skips cells missing Expected/Actual values.
+        </Text>
       </Card>
 
       {decision.options.map((option) => {

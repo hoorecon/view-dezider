@@ -54,6 +54,14 @@ function PRRDecisionDetailInner() {
   const [showCLD, setShowCLD] = useState(false);
   const [showCallModal, setShowCallModal] = useState(false);
 
+  // Reset the page scroll to the top whenever the step changes, so each step
+  // (e.g. Step 7 'Assess Options') always opens from the top instead of
+  // inheriting the previous step's scroll offset.
+  const scrollRef = useRef<ScrollView>(null);
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [currentStep]);
+
   // Honour ?step=N query param coming from SWOT→Decider conversion so we
   // always land on Step 2 instead of the persisted current_step.
   // Apply once per load so navigating between steps inside the page isn't
@@ -234,6 +242,7 @@ function PRRDecisionDetailInner() {
         })()}
         {renderStepIndicator()}
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >

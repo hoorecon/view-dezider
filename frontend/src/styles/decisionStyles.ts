@@ -668,6 +668,31 @@ export const styles = StyleSheet.create({
     marginBottom: 16,
     padding: 12,
   },
+  aiAssessAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 12,
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  aiAssessAllBtnBusy: {
+    opacity: 0.85,
+  },
+  aiAssessAllText: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  aiAssessAllHint: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    marginTop: 6,
+  },
   voiceInputRow: {
     marginBottom: 12,
     paddingVertical: 4,
