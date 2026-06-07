@@ -1,0 +1,26 @@
+{
+  "summary": "Frontend-only verification of 4 UX fixes in CloneTemplateModal, TemplateBrowserModal and new-decision Step-5. ALL 4 FIXES PASS. (1) Clone→Template tab→Shared visibility: the 'Share with (comma-separated emails)' input renders INLINE between Shared (Y=635) and Public (Y=789), input at Y=716 — confirmed via bounding-box ordering and screenshot. (2) Template Library badges: visiting Mine tab shows the 5 seeded TEST_BadgeCheck_<type> templates AND the older [Private-Template] T-* templates each with a distinct badge that matches its template_type — screenshot shows 'Factors' (indigo) for T-factors, 'Classification' (violet) for T-classification, 'Prioritization' (pink) for T-prioritization, 'Options' (orange) for T-options, 'Assessment' (green) for our newly-seeded BadgeCheck_assessment card. Detail view of factors template shows 'Factors only' (detailLabel) confirming FIX 2 mapping. (3) /tools/new-decision?module=dezider Step-4 title input placeholder = 'Career — 7 Jun 2026, 20:01' (smart-default). On Step-5 the title input placeholder is the same smart-default and a 'Leave blank to use: Career — 7 Jun 2026, 20:01' hint is visible. Tapping 'Create from scratch' with title BLANK produced ZERO 'Title Required' alerts and navigated to /prr/7f9109d9-3b4d-4a50-8f82-858e43e4f699 (POST /api/hos/decisions 200). (4) On Step-5 a 'Back' button is present at the bottom-left and tapping it returns to Step-4 ('Tell us about your decision' heading reappears) with the step indicator dropping from 5 back to 4. No console errors introduced (only pre-existing expo deprecation warnings about shadow*/resizeMode/expo-notifications on web).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": ["None — all 4 fixes verified working."],
+  "critical_code_review_comments": [
+    "CloneTemplateModal.tsx (lines 318-361): Visibility options now rendered in a React.Fragment with the shared-emails block conditionally inlined inside the loop when opt.key==='shared' — correct placement guarantees the input appears between Shared and Public. Clean.",
+    "TemplateBrowserModal.tsx (lines 55-65): TEMPLATE_TYPE_META table is comprehensive (5 keys with label/detailLabel/icon/color/bg) and getTemplateTypeMeta() defaults to options if a template_type is unknown — acceptable fallback. List badge uses meta.label, detail view uses meta.detailLabel. Correct.",
+    "new-decision.tsx (lines 315-329): handleCreateDecision now falls back to smartDefaultTitle when both customTitle and searchText are empty and no template is selected, eliminating the 'Title Required' popup for the Create-from-scratch path. The early-return condition (line 322) only fires when title AND templateId are both falsy — but title can no longer be falsy on this branch because smartDefaultTitle is always populated. Defensive but harmless.",
+    "new-decision.tsx (lines 599-635): Step-4 and Step-5 both use placeholder={smartDefaultTitle} and the 'Leave blank to use: <smartDefaultTitle>' hint, so the user always sees the title they'll get. Consistent.",
+    "new-decision.tsx (lines 791-821): The nav row remains visible on Step-5 (step===4 && hasTemplatesStep) and the Back button (step>0) is correctly shown — Create-from-scratch and template cards keep their own onPress handlers so Back coexists with them. Correct."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend-only request)", "frontend": "100% (4/4 fixes + regression code-path verified)"},
+  "seed_data_creation": "Created 5 public templates via POST /api/decisions/4b07e245-…/save-as-template (template_type ∈ {factors, classification, prioritization, options, assessment}, visibility=public) named '[Public-Template] TEST_BadgeCheck_<type>' from existing decision 4b07e245-4e40-49de-8426-716e4fa3ac1a. Also created a new decision 7f9109d9-3b4d-4a50-8f82-858e43e4f699 as a side-effect of the FIX 3 happy-path test (Create-from-scratch with blank title).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Login at /auth/login (NOT /login — /login returns Unmatched Route). Use placeholders 'Enter your email' / 'Enter your password' then click text 'Sign In' exactly. The /prr Solution Box screen has 9+ clone buttons selectable via [data-testid^='clone-decision-']. The Template Library modal is opened by clicking the bookmark icon at viewport-position (316,30) in /prr — there is currently no testID on it (consider adding `testID='open-template-library'`). Inside the modal, tabs are 'Authorized', 'Mine N', 'Shared', 'Public N'. To verify Step-5 of new-decision quickly: pick 'Career' → Next → Next → 'Problem' → Next → Find Templates (sub-area chip is optional). The smartDefaultTitle format is '<area> — <D MMM YYYY, HH:MM>' (Indian locale).",
+  "rca_of_issue": "N/A — feature-add verification, no bug present. All four UX changes are wired correctly in the codebase."
+}

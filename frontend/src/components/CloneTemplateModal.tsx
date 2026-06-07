@@ -315,49 +315,51 @@ export default function CloneTemplateModal({
                 {/* Visibility Selector */}
                 <Text style={[styles.sectionLabel, { marginTop: 16 }]}>Who can see this?</Text>
                 {VISIBILITY_OPTIONS.map((opt) => (
-                  <TouchableOpacity
-                    key={opt.key}
-                    style={[
-                      styles.visibilityOption,
-                      visibility === opt.key && styles.visibilityOptionActive,
-                      visibility === opt.key && { borderColor: opt.color },
-                    ]}
-                    onPress={() => setVisibility(opt.key)}
-                  >
-                    <Ionicons name={opt.icon} size={18} color={visibility === opt.key ? opt.color : COLORS.textMuted} />
-                    <View style={styles.visibilityInfo}>
-                      <Text style={[styles.visibilityLabel, visibility === opt.key && { color: opt.color }]}>
-                        {opt.label}
-                      </Text>
-                      <Text style={styles.visibilityDesc}>{opt.description}</Text>
-                    </View>
-                    <View style={[
-                      styles.radio,
-                      visibility === opt.key && { borderColor: opt.color, backgroundColor: opt.color },
-                    ]}>
-                      {visibility === opt.key && (
-                        <Ionicons name="checkmark" size={14} color="#FFF" />
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                ))}
+                  <React.Fragment key={opt.key}>
+                    <TouchableOpacity
+                      style={[
+                        styles.visibilityOption,
+                        visibility === opt.key && styles.visibilityOptionActive,
+                        visibility === opt.key && { borderColor: opt.color },
+                      ]}
+                      onPress={() => setVisibility(opt.key)}
+                    >
+                      <Ionicons name={opt.icon} size={18} color={visibility === opt.key ? opt.color : COLORS.textMuted} />
+                      <View style={styles.visibilityInfo}>
+                        <Text style={[styles.visibilityLabel, visibility === opt.key && { color: opt.color }]}>
+                          {opt.label}
+                        </Text>
+                        <Text style={styles.visibilityDesc}>{opt.description}</Text>
+                      </View>
+                      <View style={[
+                        styles.radio,
+                        visibility === opt.key && { borderColor: opt.color, backgroundColor: opt.color },
+                      ]}>
+                        {visibility === opt.key && (
+                          <Ionicons name="checkmark" size={14} color="#FFF" />
+                        )}
+                      </View>
+                    </TouchableOpacity>
 
-                {/* Shared With Emails */}
-                {visibility === 'shared' && (
-                  <View style={styles.sharedEmailsSection}>
-                    <Text style={styles.sharedEmailsLabel}>Share with (comma-separated emails)</Text>
-                    <TextInput
-                      style={styles.sharedEmailsInput}
-                      value={sharedEmails}
-                      onChangeText={setSharedEmails}
-                      placeholder="user1@email.com, user2@email.com"
-                      placeholderTextColor={COLORS.textMuted}
-                      multiline
-                      autoCapitalize="none"
-                      keyboardType="email-address"
-                    />
-                  </View>
-                )}
+                    {/* Shared-with emails — rendered inline right below the Shared
+                        option (and above Public) so it's immediately visible. */}
+                    {opt.key === 'shared' && visibility === 'shared' && (
+                      <View style={styles.sharedEmailsSection}>
+                        <Text style={styles.sharedEmailsLabel}>Share with (comma-separated emails)</Text>
+                        <TextInput
+                          style={styles.sharedEmailsInput}
+                          value={sharedEmails}
+                          onChangeText={setSharedEmails}
+                          placeholder="user1@email.com, user2@email.com"
+                          placeholderTextColor={COLORS.textMuted}
+                          multiline
+                          autoCapitalize="none"
+                          keyboardType="email-address"
+                        />
+                      </View>
+                    )}
+                  </React.Fragment>
+                ))}
               </View>
             )}
           </ScrollView>

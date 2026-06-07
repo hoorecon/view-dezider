@@ -49,6 +49,22 @@ interface Template {
   created_at: string;
 }
 
+// Maps a template's copy-depth (`template_type`) to its badge presentation.
+// Mirrors the 5 cumulative levels used in the Save-as-Template / Clone modal so
+// a "Factors" template no longer mislabels itself as "Options".
+const TEMPLATE_TYPE_META: Record<string, { label: string; detailLabel: string; icon: any; color: string; bg: string }> = {
+  factors:        { label: 'Factors',        detailLabel: 'Factors only',        icon: 'list-outline',        color: '#6366F1', bg: 'rgba(99,102,241,0.12)' },
+  classification: { label: 'Classification', detailLabel: 'With Classification', icon: 'pricetags-outline',    color: '#8B5CF6', bg: 'rgba(139,92,246,0.12)' },
+  prioritization: { label: 'Prioritization', detailLabel: 'With Prioritization', icon: 'stats-chart-outline',  color: '#EC4899', bg: 'rgba(236,72,153,0.12)' },
+  options:        { label: 'Options',        detailLabel: 'With Options',        icon: 'layers-outline',       color: '#F59E0B', bg: 'rgba(245,158,11,0.12)' },
+  assessment:     { label: 'Assessment',     detailLabel: 'With Assessment',     icon: 'analytics-outline',    color: '#10B981', bg: 'rgba(16,185,129,0.12)' },
+};
+
+function getTemplateTypeMeta(type?: string) {
+  return TEMPLATE_TYPE_META[(type || '').toLowerCase()] || TEMPLATE_TYPE_META.options;
+}
+
+
 export default function TemplateBrowserModal({
   visible,
   onClose,
@@ -231,22 +247,17 @@ export default function TemplateBrowserModal({
             <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
               <View style={styles.templateDetail}>
                 <View style={styles.templateDetailHeader}>
-                  <View style={[
-                    styles.typeBadge,
-                    selectedTemplate.template_type === 'assessment' ? styles.typeBadgeAssessment : styles.typeBadgeOptions,
-                  ]}>
-                    <Ionicons
-                      name={selectedTemplate.template_type === 'assessment' ? 'analytics-outline' : 'layers-outline'}
-                      size={14}
-                      color={selectedTemplate.template_type === 'assessment' ? '#10B981' : '#F59E0B'}
-                    />
-                    <Text style={[
-                      styles.typeBadgeText,
-                      { color: selectedTemplate.template_type === 'assessment' ? '#10B981' : '#F59E0B' },
-                    ]}>
-                      {selectedTemplate.template_type === 'assessment' ? 'With Assessment' : 'With Options'}
-                    </Text>
-                  </View>
+                  {(() => {
+                    const meta = getTemplateTypeMeta(selectedTemplate.template_type);
+                    return (
+                      <View style={[styles.typeBadge, { backgroundColor: meta.bg }]}>
+                        <Ionicons name={meta.icon} size={14} color={meta.color} />
+                        <Text style={[styles.typeBadgeText, { color: meta.color }]}>
+                          {meta.detailLabel}
+                        </Text>
+                      </View>
+                    );
+                  })()}
                 </View>
 
                 <Text style={styles.detailName}>{selectedTemplate.name}</Text>
@@ -362,22 +373,17 @@ export default function TemplateBrowserModal({
                     style={styles.templateCard}
                   >
                     <View style={styles.templateCardHeader}>
-                      <View style={[
-                        styles.typeBadge,
-                        template.template_type === 'assessment' ? styles.typeBadgeAssessment : styles.typeBadgeOptions,
-                      ]}>
-                        <Ionicons
-                          name={template.template_type === 'assessment' ? 'analytics-outline' : 'layers-outline'}
-                          size={12}
-                          color={template.template_type === 'assessment' ? '#10B981' : '#F59E0B'}
-                        />
-                        <Text style={[
-                          styles.typeBadgeText,
-                          { color: template.template_type === 'assessment' ? '#10B981' : '#F59E0B' },
-                        ]}>
-                          {template.template_type === 'assessment' ? 'Assessment' : 'Options'}
-                        </Text>
-                      </View>
+                      {(() => {
+                        const meta = getTemplateTypeMeta(template.template_type);
+                        return (
+                          <View style={[styles.typeBadge, { backgroundColor: meta.bg }]}>
+                            <Ionicons name={meta.icon} size={12} color={meta.color} />
+                            <Text style={[styles.typeBadgeText, { color: meta.color }]}>
+                              {meta.label}
+                            </Text>
+                          </View>
+                        );
+                      })()}
                       <View style={styles.templateCardActions}>
                         {/* Use template button for shared/public/authorized templates */}
                         {activeTab !== 'my' && (

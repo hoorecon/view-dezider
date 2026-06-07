@@ -313,7 +313,12 @@ export default function NewDecisionIntake() {
 
   // ====== CREATE DECISION ======
   const handleCreateDecision = async (templateId?: string, sourceType?: string) => {
-    const title = customTitle.trim() || searchText.trim();
+    // Carry forward the Step-4 title. When the user left it blank on the
+    // "Create from scratch" path, fall back to the smart-default title (same
+    // value shown as the placeholder/hint) so we never block them with a
+    // "Title Required" prompt. For template picks we keep blank → the template's
+    // own title is used downstream.
+    const title = customTitle.trim() || searchText.trim() || (templateId ? '' : smartDefaultTitle);
     if (!title && !templateId) {
       showAlert('Title Required', 'Please enter a decision title or select a template.');
       return;
@@ -616,14 +621,18 @@ export default function NewDecisionIntake() {
           : 'No templates match — create a custom decision'}
       </Text>
 
-      {/* Custom title input */}
+      {/* Custom title input — carries the Step-4 smart-default title forward so
+          the user is never forced to retype it. */}
       <TextInput
-        style={[s.searchInput, { marginBottom: 12 }]}
-        placeholder="Decision title (or pick a template below)"
+        style={[s.searchInput, { marginBottom: 6 }]}
+        placeholder={smartDefaultTitle}
         value={customTitle}
         onChangeText={setCustomTitle}
         placeholderTextColor={COLORS.textMuted}
       />
+      <Text style={[s.hintText, { marginBottom: 12 }]}>
+        Leave blank to use: <Text style={{ fontWeight: '600' }}>{smartDefaultTitle}</Text>
+      </Text>
 
       {/* Timing — Deadline + Impact horizon. Captured here so the very first
           PRR decision record carries a deadline that downstream Action Center
@@ -779,7 +788,7 @@ export default function NewDecisionIntake() {
         {/* Navigation buttons.
             - For modules WITH templates: nav visible on steps 0-3; templates step (4) has its own actions.
             - For Pros & Cons (no templates step): nav visible on steps 0-3 and step 3 button reads "Create & Start Wizard" → createProsConsAnalysis(). */}
-        {!seeding && step < (moduleCfg.hasTemplatesStep ? 4 : 4) && (
+        {!seeding && (step < 4 || (step === 4 && moduleCfg.hasTemplatesStep)) && (
           <View style={s.navRow}>
             {step > 0 && (
               <TouchableOpacity style={s.navBtnBack} onPress={prevStep}>
@@ -787,25 +796,27 @@ export default function NewDecisionIntake() {
                 <Text style={s.navBtnBackText}>Back</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity
-              style={[s.navBtnNext, !canProceed() && s.navBtnDisabled]}
-              onPress={() => {
-                if (step === 3 && !moduleCfg.hasTemplatesStep) {
-                  createProsConsAnalysis();
-                } else {
-                  nextStep();
-                }
-              }}
-              disabled={!canProceed() || creating}
-            >
-              <Text style={s.navBtnNextText}>
-                {step === 3 ? moduleCfg.finalButtonLabel : 'Next'}
-              </Text>
-              <Ionicons
-                name={step === 3 && !moduleCfg.hasTemplatesStep ? 'checkmark' : 'arrow-forward'}
-                size={18} color="#FFF"
-              />
-            </TouchableOpacity>
+            {step < 4 && (
+              <TouchableOpacity
+                style={[s.navBtnNext, !canProceed() && s.navBtnDisabled]}
+                onPress={() => {
+                  if (step === 3 && !moduleCfg.hasTemplatesStep) {
+                    createProsConsAnalysis();
+                  } else {
+                    nextStep();
+                  }
+                }}
+                disabled={!canProceed() || creating}
+              >
+                <Text style={s.navBtnNextText}>
+                  {step === 3 ? moduleCfg.finalButtonLabel : 'Next'}
+                </Text>
+                <Ionicons
+                  name={step === 3 && !moduleCfg.hasTemplatesStep ? 'checkmark' : 'arrow-forward'}
+                  size={18} color="#FFF"
+                />
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
