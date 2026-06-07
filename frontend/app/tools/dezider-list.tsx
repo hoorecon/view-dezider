@@ -25,6 +25,7 @@ import api from '../../src/utils/api';
 import PaywallGate from '../../src/components/PaywallGate';
 import TimestampLine from '../../src/components/TimestampLine';
 import TemplateBrowserModal from '../../src/components/TemplateBrowserModal';
+import CloneTemplateModal from '../../src/components/CloneTemplateModal';
 
 interface DecisionItem {
   id: string;
@@ -63,6 +64,8 @@ export default function DeziderListScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [templateBrowserVisible, setTemplateBrowserVisible] = useState(false);
+  const [cloneModalVisible, setCloneModalVisible] = useState(false);
+  const [cloneTarget, setCloneTarget] = useState<DecisionItem | null>(null);
 
   const fetchItems = async () => {
     try {
@@ -224,6 +227,15 @@ export default function DeziderListScreen() {
                     <TimestampLine entity={d} compact />
                     <View style={{ flex: 1 }} />
                     <TouchableOpacity
+                      style={styles.cloneBtn}
+                      onPress={(e) => { e.stopPropagation(); setCloneTarget(d); setCloneModalVisible(true); }}
+                      hitSlop={10}
+                      testID={`clone-decision-${d.id}`}
+                      accessibilityLabel="Clone this decision"
+                    >
+                      <Ionicons name="copy-outline" size={16} color="#6366F1" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
                       style={styles.deleteBtn}
                       onPress={(e) => { e.stopPropagation(); handleDelete(d.id); }}
                       hitSlop={10}
@@ -243,6 +255,25 @@ export default function DeziderListScreen() {
         onClose={() => setTemplateBrowserVisible(false)}
         onUseTemplate={(newId: string) => { setTemplateBrowserVisible(false); router.push(`/prr/${newId}` as any); }}
       />
+
+      {cloneTarget && (
+        <CloneTemplateModal
+          visible={cloneModalVisible}
+          onClose={() => { setCloneModalVisible(false); setCloneTarget(null); }}
+          decision={cloneTarget}
+          onCloneSuccess={(newId: string) => {
+            setCloneModalVisible(false);
+            setCloneTarget(null);
+            fetchItems();
+            router.push(`/prr/${newId}` as any);
+          }}
+          onTemplateSuccess={() => {
+            setCloneModalVisible(false);
+            setCloneTarget(null);
+            showAlert('Template Saved', 'Decision saved as template.');
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -308,5 +339,6 @@ const styles = StyleSheet.create({
 
   listCardFooter: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   listCardDate: { fontSize: 11, color: COLORS.textMuted },
+  cloneBtn: { padding: 6 },
   deleteBtn: { padding: 6 },
 });
