@@ -471,6 +471,10 @@ export default function Step7() {
     }
     setBulkAssessing(false);
     refreshAiWallet();
+    // Re-sync local state from the backend: each per-cell update persists via the
+    // store and the in-loop snapshots can race, so a single refetch after the
+    // loop guarantees the matrix + "All set" check reflect every saved cell.
+    try { await fetchDecision(); } catch { /* non-fatal */ }
     if (ranOut) {
       showAlert('Out of AI credits', `Assessed ${done} cell(s) before credits ran out. Top up to finish the rest.`, [
         { text: 'Not now', style: 'cancel' },
