@@ -186,3 +186,24 @@ async def resolve_ultramsg_creds() -> Tuple[str, str, str]:
     if env_instance and env_token:
         return env_instance, env_token, "env"
     return "", "", "none"
+
+
+# ── ScraperAPI (JS-rendering crawl proxy) resolution ─────────────────────────
+async def resolve_scraperapi() -> Dict[str, str]:
+    """Return {api_key, country_code, source} for ScraperAPI.
+
+    Priority: Admin UI (db.integrations, enabled) → .env fallback. Optional —
+    when no key is configured, callers fall back to a direct httpx fetch.
+    source ∈ {"admin_ui", "env", "none"}.
+    """
+    admin = await get_integration("scraperapi")  # {} when disabled/missing
+    if admin.get("api_key"):
+        return {"api_key": admin["api_key"],
+                "country_code": admin.get("country_code") or "",
+                "source": "admin_ui"}
+    env_key = os.getenv("SCRAPERAPI_KEY", "")
+    if env_key:
+        return {"api_key": env_key,
+                "country_code": os.getenv("SCRAPERAPI_COUNTRY", ""),
+                "source": "env"}
+    return {"api_key": "", "country_code": "", "source": "none"}

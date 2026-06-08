@@ -103,6 +103,17 @@ PROVIDERS: Dict[str, Dict[str, Any]] = {
             {"key": "key", "label": "Universal LLM Key", "type": "password", "required": True, "secret": True},
         ],
     },
+    "scraperapi": {
+        "title": "ScraperAPI (JS rendering)",
+        "category": "Data",
+        "icon": "globe",
+        "description": "Render JavaScript & bypass bot-blocks to import comparisons from JS-heavy retail sites (Amazon, Flipkart). Optional — without a key, URL import uses direct fetch for static sites.",
+        "docs_url": "https://www.scraperapi.com/",
+        "fields": [
+            {"key": "api_key", "label": "API Key", "type": "password", "required": True, "secret": True},
+            {"key": "country_code", "label": "Default Country (optional)", "type": "text", "required": False, "secret": False, "placeholder": "in"},
+        ],
+    },
 }
 
 SECRET_MASK = "••••••••"

@@ -12,7 +12,7 @@ from core.database import db
 
 SECURITY_KEY = "security_config"
 ADMIN_ROLES = {"admin", "super_admin", "co_admin"}
-DEFAULTS = {"skip_whatsapp_otp_for_admins": True}
+DEFAULTS = {"skip_whatsapp_otp_for_admins": True, "skip_whatsapp_gate": False}
 
 
 async def get_security_config() -> Dict[str, Any]:
@@ -21,6 +21,9 @@ async def get_security_config() -> Dict[str, Any]:
         "skip_whatsapp_otp_for_admins": bool(
             doc.get("skip_whatsapp_otp_for_admins", DEFAULTS["skip_whatsapp_otp_for_admins"])
         ),
+        "skip_whatsapp_gate": bool(
+            doc.get("skip_whatsapp_gate", DEFAULTS["skip_whatsapp_gate"])
+        ),
     }
 
 
@@ -28,6 +31,8 @@ async def set_security_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
     update: Dict[str, Any] = {}
     if "skip_whatsapp_otp_for_admins" in patch:
         update["skip_whatsapp_otp_for_admins"] = bool(patch["skip_whatsapp_otp_for_admins"])
+    if "skip_whatsapp_gate" in patch:
+        update["skip_whatsapp_gate"] = bool(patch["skip_whatsapp_gate"])
     if update:
         from datetime import datetime, timezone
         update["updated_by"] = by
@@ -39,12 +44,14 @@ async def set_security_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
 
 
 async def effective_whatsapp_verified(user_doc: Dict[str, Any]) -> bool:
-    """True if the user is already verified OR is an admin and the skip flag is on."""
+    """True if the user is already verified OR is an admin and the skip flag is on,
+    OR the global `skip_whatsapp_gate` testing bypass is enabled (applies to ALL users)."""
     if bool(user_doc.get("whatsapp_verified")):
         return True
+    cfg = await get_security_config()
+    if cfg["skip_whatsapp_gate"]:          # global testing bypass — everyone
+        return True
     role = (user_doc.get("role") or "user")
-    if role in ADMIN_ROLES:
-        cfg = await get_security_config()
-        if cfg["skip_whatsapp_otp_for_admins"]:
-            return True
+    if role in ADMIN_ROLES and cfg["skip_whatsapp_otp_for_admins"]:
+        return True
     return False

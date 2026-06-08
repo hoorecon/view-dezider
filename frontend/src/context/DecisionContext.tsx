@@ -48,6 +48,12 @@ interface DecisionContextType {
   calculateDynamicWorth: (option: DecisionOption) => { worth: number; assessedCount: number; totalCount: number };
   calculateAutoPercentage: (factor: Factor, actualValue: number | string | undefined) => number | null;
 
+  // One-tap bulk AI assessment of every un-scored cell (used by imports).
+  bulkAssessAllRemaining: (forceFill?: boolean) => Promise<{ done: number; total: number; ranOut: boolean }>;
+  countUnscoredCells: () => number;
+  bulkAssessing: boolean;
+  bulkProgress: { done: number; total: number };
+
   // UI state
   showCustomInput: { [key: string]: boolean };
   setShowCustomInput: React.Dispatch<React.SetStateAction<{ [key: string]: boolean }>>;
@@ -528,6 +534,65 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return assessment?.percentage ?? null;
   };
 
+  // ── One-tap bulk AI assessment of every un-scored LEAF cell (imports) ──
+  const [bulkAssessing, setBulkAssessing] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
+
+  // Only LEAF factors are assessable (parents roll up from their sub-factors).
+  const leafFactors = (): Factor[] => {
+    const facs = decision?.factors || [];
+    const parentIds = new Set(facs.filter((f) => f.parent_id).map((f) => f.parent_id));
+    return facs.filter((f) => !parentIds.has(f.id));
+  };
+
+  const collectUnscoredCells = (): { optionId: string; factorId: string }[] => {
+    const opts = decision?.options || [];
+    const facs = leafFactors();
+    const cells: { optionId: string; factorId: string }[] = [];
+    for (const o of opts) {
+      for (const f of facs) {
+        if (getAssessmentValue(o.id, f.id) === null) cells.push({ optionId: o.id, factorId: f.id });
+      }
+    }
+    return cells;
+  };
+
+  const countUnscoredCells = (): number => collectUnscoredCells().length;
+
+  const bulkAssessAllRemaining = async (forceFill: boolean = true) => {
+    const cells = collectUnscoredCells();
+    const total = cells.length;
+    if (total === 0) return { done: 0, total: 0, ranOut: false };
+    setBulkAssessing(true);
+    setBulkProgress({ done: 0, total });
+    let done = 0, ranOut = false, processed = 0;
+    const CHUNK = 6;  // small batches avoid edge/CDN bursts + request timeouts
+    for (let i = 0; i < cells.length; i += CHUNK) {
+      const slice = cells.slice(i, i + CHUNK);
+      try {
+        const { data } = await api.post(`/decisions/${decision!.id}/ai-assess-batch`, {
+          force_fill: forceFill,
+          cells: slice.map((c) => ({ option_id: c.optionId, factor_id: c.factorId })),
+        });
+        done += (data.results || []).filter((r: any) => r.status === 'done').length;
+        if (data.out_of_credits) {
+          ranOut = true; processed += slice.length;
+          setBulkProgress({ done: Math.min(processed, total), total });
+          break;
+        }
+      } catch (e: any) {
+        if (e?.response?.status === 402) { ranOut = true; break; }
+      }
+      processed += slice.length;
+      setBulkProgress({ done: Math.min(processed, total), total });
+      // Re-fetch per chunk so worth/recommendation updates LIVE as cells fill.
+      try { await fetchDecision(); } catch { /* non-fatal */ }
+    }
+    setBulkAssessing(false);
+    try { await fetchDecision(); } catch { /* non-fatal */ }
+    return { done, total, ranOut };
+  };
+
   const calcDynamicWorth = (option: DecisionOption): { worth: number; assessedCount: number; totalCount: number } => {
     const { calculateDynamicWorth: calcWorth } = require('../utils/decisionHelpers');
     return calcWorth(option, decision?.factors || []);
@@ -684,6 +749,7 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     selectOption,
     calculateDynamicWorth: calcDynamicWorth,
     calculateAutoPercentage,
+    bulkAssessAllRemaining, countUnscoredCells, bulkAssessing, bulkProgress,
     showCustomInput, setShowCustomInput,
     unitValues, setUnitValues,
     customInputValues, setCustomInputValues,

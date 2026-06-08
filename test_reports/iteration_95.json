@@ -1,0 +1,49 @@
+{
+  "summary": "iter95 — All 3 NEW items verified end-to-end. TASK 1 (Skip WhatsApp Gate): backend GET /api/admin/security-config returns skip_whatsapp_gate=true. Regular user harden_1777921741 logs in and lands directly on / (NOT /whatsapp-verify). super_admin → /admin/settings shows BOTH security toggles ('Skip WhatsApp OTP for Admins' + 'Skip WhatsApp Gate (Testing)' with testID=toggle-skip-whatsapp-gate) and the gate toggle clearly reflects ON (red track). PUT /api/admin/security-config is super_admin-only (regular user gets 403, super_admin gets 200). TASK 2 (AI Assess All remaining): purple banner testID=ai-assess-all-remaining-btn renders on Step 2 of /prr/591116dd-d134-414c-8c33-cb46deb0b78c showing '163 un-scored cells — rank your options in one tap'. Tapping → confirm dialog 'Assess 163' appears (Cancel + Assess N). Tapping 'Assess 163' calls POST /api/decisions/{id}/ai-assess-batch → 200 with ranOut=true (server gracefully short-circuits because dev AI wallet is OVER-BUDGET). UI then displays the modal 'Out of AI credits — Scored 0 of 163 before credits ran out. Top up to finish the rest.' — EXACT graceful 402/out-of-credits handling required. No crash, no red screen. TASK 3 (ScraperAPI): GET /api/admin/integrations returns the new provider {provider:'scraperapi', title:'ScraperAPI (JS rendering)', category:'Data', configured:false} with field {key:'api_key', secret:true}. With no key configured, POST /api/url-analyze on the GSMArena compare URL still returns 200 with mode='hierarchical', category_count=15, item_count=3 — ScraperAPI's presence did NOT break the no-key direct-fetch fallback. Backend pytest: 7/7 PASS in 1.5 s.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props", "issue": "Console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' (pre-existing, not introduced by this iteration)"},
+      {"component": "props.pointerEvents", "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents' (pre-existing)"},
+      {"component": "TouchableWithoutFeedback", "issue": "Console warning: 'TouchableWithoutFeedback is deprecated. Please use Pressable.' (pre-existing, surfaced inside the Alert modal)"},
+      {"component": "Animated useNativeDriver", "issue": "Console warning: 'useNativeDriver is not supported because the native animated module is missing.' (web-preview-only; harmless)"},
+      {"component": "expo-notifications (web)", "issue": "Console warning: 'Listening to push token changes is not yet fully supported on web.' (pre-existing, harmless on web preview)"}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter95_skip_gate_assess_scraper.py (NEW — 7 tests, 7 PASS)",
+    "/app/test_reports/pytest/iter95.xml",
+    "/tmp/admin_settings2.png (BOTH security toggles visible; Gate toggle ON with red track)",
+    "/tmp/step2_banner.png (purple 'AI Assess All remaining — 163 un-scored cells' banner visible above Fetch My Best Factors)",
+    "/tmp/step2_after_assess.png ('Out of AI credits — Scored 0 of 163… Top up to finish the rest.' modal)"
+  ],
+  "action_items": [
+    "No fixes required for this iteration's scope — all 3 features verified working as specified.",
+    "(Pre-existing) Consider migrating TouchableWithoutFeedback usage inside the Alert/modal stack to Pressable to clear the runtime deprecation warning — purely cosmetic, RN 0.74+ deprecation."
+  ],
+  "critical_code_review_comments": [
+    "core/security_config.py:46-57 — effective_whatsapp_verified() correctly evaluates skip_whatsapp_gate BEFORE the admin-only branch, so the global testing bypass covers all users as designed.",
+    "routes/admin.py:127-135 — PUT /admin/security-config gates on role == 'super_admin' (not just any admin role), matching the spec; verified via the 403 test on the regular user.",
+    "frontend/app/admin/settings.tsx:234-248 — Second secCard renders unconditionally (testID toggle-skip-whatsapp-gate) and is disabled for non-super_admin. Track color #EF4444 makes the ON state visually distinct from the OTP toggle. Verified live.",
+    "components/steps/Step2.tsx:369-396 — Banner gated on (options.length>=2 && countUnscoredCells()>0); tapping triggers showAlert('AI Assess All remaining', `Assess ${n}`) and on confirm awaits bulkAssessAllRemaining(true). On ranOut it shows showAlert('Out of AI credits', `Scored ${done} of ${total} before credits ran out. Top up to finish the rest.`). Behaviour observed live with N=163 → ranOut=true → that exact modal text.",
+    "routes/integrations.py:106-117 — scraperapi provider registry entry is correct: api_key field is required+secret, optional country_code; configured=false until a key is saved. Verified via GET /api/admin/integrations.",
+    "core/integrations.py:192-209 — resolve_scraperapi() returns {api_key:'', country_code:'', source:'none'} when neither admin UI nor env has a key — callers will graceful-fallback to direct httpx fetch, which is exactly why the GSMArena import still works."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter95_skip_gate_assess_scraper.py (NEW)",
+    "/app/test_reports/iteration_95.json (NEW)",
+    "/app/test_reports/pytest/iter95.xml (NEW — JUnit results)"
+  ],
+  "success_rate": {
+    "backend": "100% — 7/7 pytest cases pass (skip_gate_on, regular_user_no_gate, super_admin_no_gate, security_config_super_admin_only, scraperapi_provider_listed, gsmarena_url_analyze_hierarchical, bulk_assess_endpoint_exists).",
+    "frontend": "100% — both security toggles render with correct testIDs, regular user bypasses gate, AI Assess banner renders+confirms+gracefully handles ranOut=true with the 'Out of AI credits' modal, no crashes."
+  },
+  "seed_data_creation": "None. Used the existing pre-built decision id=591116dd-d134-414c-8c33-cb46deb0b78c (3 options × ~55 leaf factors = 163 unscored cells) and the already-set skip_whatsapp_gate=true flag.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Re-test recipe: (1) curl GET /api/admin/security-config with super_admin token → expect {skip_whatsapp_otp_for_admins:true, skip_whatsapp_gate:true}. (2) Run pytest backend/tests/test_iter95_skip_gate_assess_scraper.py -v — all 7 must stay green. (3) Frontend: super_admin login → goto /admin/settings → assert [data-testid=toggle-skip-whatsapp-gate] exists and reflects ON; goto /prr/591116dd-d134-414c-8c33-cb46deb0b78c?step=2 → assert [data-testid=ai-assess-all-remaining-btn] exists and shows 'un-scored cells' count; tap it and tap 'Assess N' in the showAlert dialog → POST /api/decisions/{id}/ai-assess-batch should return 200 with ranOut=true (until wallet topped up) → 'Out of AI credits' modal must appear. (4) GET /api/admin/integrations → assert any provider where provider=='scraperapi'.",
+  "rca_of_issue": "Not applicable — no bug found in the requested scope. Initial frontend run before `supervisorctl restart expo` showed the new toggle and banner missing (stale Metro bundle cache); after restarting expo, both surfaces rendered correctly. Recommend documenting that Expo bundle must be restarted after frontend file changes (already standard practice)."
+}

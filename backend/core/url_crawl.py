@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 import json
 import asyncio
+import logging
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -22,6 +23,17 @@ from bs4 import BeautifulSoup
 from fastapi import HTTPException
 
 from core.ai_metering import metered_chat, has_any_llm
+from core.integrations import resolve_scraperapi
+
+logger = logging.getLogger(__name__)
+
+# Domains that render their product/comparison list with JavaScript — direct
+# httpx returns thin/empty HTML, so route these through ScraperAPI when a key
+# is configured (otherwise they simply won't yield results).
+_JS_HEAVY_DOMAINS = (
+    "amazon.", "flipkart.", "shopping.google.", "google.com/shopping",
+    "myntra.", "ajio.", "croma.", "reliancedigital.", "tatacliq.",
+)
 
 HTTP_TIMEOUT = 25.0
 MAX_CANDIDATES = 200
@@ -294,16 +306,45 @@ async def ai_extract_candidates(user_id: str, html: str) -> List[Dict[str, Any]]
         return []
 
 
+async def _scraperapi_fetch(url: str, sc: Dict[str, str]) -> Optional[str]:
+    """Fetch fully-rendered HTML via ScraperAPI (JS execution + proxy rotation).
+    Returns HTML on success, else None (caller falls back to direct httpx)."""
+    params = {"api_key": sc["api_key"], "url": url, "render": "true"}
+    if sc.get("country_code"):
+        params["country_code"] = sc["country_code"]
+    try:
+        async with httpx.AsyncClient(timeout=75.0, follow_redirects=True) as cli:
+            r = await cli.get("https://api.scraperapi.com/", params=params)
+        if r.status_code == 200 and "<html" in r.text.lower():
+            return r.text
+        logger.warning("ScraperAPI returned %s for %s", r.status_code, url[:80])
+    except Exception as e:
+        logger.warning("ScraperAPI fetch failed for %s: %s", url[:80], str(e)[:120])
+    return None
+
+
 async def _fetch_html(url: str) -> "httpx.Response":
-    """Fetch `url` with browser headers + retry on bot-block codes. Raises a
-    user-friendly HTTPException on failure. Shared by flat + hierarchical crawls."""
+    """Fetch `url` with browser headers + retry on bot-block codes. When a
+    ScraperAPI key is configured it is used for JS-heavy domains and as an
+    escalation when a direct fetch is bot-blocked. Raises a user-friendly
+    HTTPException on failure. Shared by flat + hierarchical crawls."""
     url = (url or "").strip()
     if not url or not re.match(r"^https?://", url, re.I):
         raise HTTPException(400, "Enter a valid http(s) URL.")
 
+    sc = await resolve_scraperapi()
+    js_heavy = any(d in url.lower() for d in _JS_HEAVY_DOMAINS)
+
+    # 1) JS-heavy site + key → go straight to ScraperAPI (direct fetch is useless).
+    if sc["api_key"] and js_heavy:
+        html = await _scraperapi_fetch(url, sc)
+        if html:
+            return httpx.Response(200, text=html, headers={"content-type": "text/html"})
+
+    # 2) Direct fetch with browser headers + backoff on transient throttling.
     r = None
     last_err: Optional[Exception] = None
-    for attempt in range(3):  # brief backoff helps transient 429/503 throttling
+    for attempt in range(3):
         try:
             async with httpx.AsyncClient(timeout=HTTP_TIMEOUT, follow_redirects=True,
                                          headers=_BROWSER_HEADERS) as cli:
@@ -316,6 +357,12 @@ async def _fetch_html(url: str) -> "httpx.Response":
         if attempt < 2:
             await asyncio.sleep(0.8 * (attempt + 1))
 
+    # 3) Bot-blocked (or unreachable) + key → escalate to ScraperAPI.
+    if (r is None or r.status_code in _BOT_BLOCK_CODES) and sc["api_key"]:
+        html = await _scraperapi_fetch(url, sc)
+        if html:
+            return httpx.Response(200, text=html, headers={"content-type": "text/html"})
+
     if r is None:
         raise HTTPException(
             400,
@@ -326,9 +373,9 @@ async def _fetch_html(url: str) -> "httpx.Response":
         raise HTTPException(
             422,
             f"This site blocked automated access (HTTP {r.status_code}). Large retail/JS-heavy "
-            "sites like Amazon, Flipkart or Google often reject crawlers. Try a public comparison "
-            "or listing page that shows items in a plain table (e.g. a review/aggregator site), "
-            "or the Screener (CSV upload) for retail product lists.",
+            "sites like Amazon, Flipkart or Google often reject crawlers — configure ScraperAPI in "
+            "Admin → Integrations to import from those, or try a public comparison/listing page "
+            "that shows items in a plain table, or the Screener (CSV upload).",
         )
     if r.status_code >= 400:
         raise HTTPException(422, f"URL fetch failed (HTTP {r.status_code}). The page may be private or removed.")

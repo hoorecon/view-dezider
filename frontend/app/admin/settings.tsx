@@ -70,7 +70,9 @@ export default function AdminSettings() {
   const { user } = useAuthStore();
   const isSuperAdmin = (user?.role || '').toLowerCase() === 'super_admin';
   const [skipOtpAdmins, setSkipOtpAdmins] = useState(true);
+  const [skipGate, setSkipGate] = useState(false);
   const [savingSec, setSavingSec] = useState(false);
+  const [savingGate, setSavingGate] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -80,6 +82,7 @@ export default function AdminSettings() {
       try {
         const sec = await api.get('/admin/security-config');
         setSkipOtpAdmins(sec.data?.skip_whatsapp_otp_for_admins !== false);
+        setSkipGate(sec.data?.skip_whatsapp_gate === true);
       } catch { /* ignore */ }
     } catch (e: any) {
       console.error('Load integrations failed:', e);
@@ -98,6 +101,19 @@ export default function AdminSettings() {
       showAlert('Update failed', e?.response?.data?.detail || 'Only a Super Admin can change this.');
     } finally {
       setSavingSec(false);
+    }
+  };
+
+  const toggleSkipGate = async (val: boolean) => {
+    setSkipGate(val);
+    setSavingGate(true);
+    try {
+      await api.put('/admin/security-config', { skip_whatsapp_gate: val });
+    } catch (e: any) {
+      setSkipGate(!val); // revert on failure
+      showAlert('Update failed', e?.response?.data?.detail || 'Only a Super Admin can change this.');
+    } finally {
+      setSavingGate(false);
     }
   };
 
@@ -211,7 +227,23 @@ export default function AdminSettings() {
             <ActivityIndicator color={COLORS.primary} />
           ) : (
             <Switch value={skipOtpAdmins} onValueChange={toggleSkipOtp} disabled={!isSuperAdmin}
-              trackColor={{ true: COLORS.primary }} />
+              trackColor={{ true: COLORS.primary }} testID="toggle-skip-otp-admins" />
+          )}
+        </View>
+
+        <View style={styles.secCard}>
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={styles.secTitle}>Skip WhatsApp Gate (Testing)</Text>
+            <Text style={styles.secHint}>
+              When ON, the post-login WhatsApp verification gate is bypassed for ALL users — use only
+              for QA/testing. Turn OFF in production.{!isSuperAdmin ? ' (Only a Super Admin can change this.)' : ''}
+            </Text>
+          </View>
+          {savingGate ? (
+            <ActivityIndicator color={COLORS.primary} />
+          ) : (
+            <Switch value={skipGate} onValueChange={toggleSkipGate} disabled={!isSuperAdmin}
+              trackColor={{ true: '#EF4444' }} testID="toggle-skip-whatsapp-gate" />
           )}
         </View>
 
