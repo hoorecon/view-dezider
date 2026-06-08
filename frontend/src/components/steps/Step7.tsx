@@ -15,6 +15,7 @@ import { LMH_VALUES, effectiveFactorPct } from '../../utils/decisionHelpers';
 import { downloadAssessmentTemplate, importAssessmentTemplate } from '../../utils/assessmentXlsx';
 import { createAssessmentGsheet, importAssessmentGsheet, openSheetUrl } from '../../utils/googleSheets';
 import { showAlert } from '../../utils/alert';
+import { api } from '../../utils/api';
 import type { Factor } from '../../types/decision';
 
 export default function Step7() {
@@ -418,64 +419,59 @@ export default function Step7() {
   const [bulkAssessing, setBulkAssessing] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
 
-  // Silent single-cell assess used by the bulk runner (no per-cell alerts).
-  // When `force` is true, cells missing Expected/Actual are NOT skipped — the
-  // backend AI fills standard Expected + realistic Actual (higher AI credits).
-  const assessCellSilent = async (
-    optionId: string, factorId: string, force: boolean = false,
-  ): Promise<'done' | 'skipped' | 'insufficient' | 'error'> => {
-    const factor = decision.factors.find(f => f.id === factorId);
-    if (!factor) return 'skipped';
-    const has = (v: any) => v !== undefined && v !== null && String(v).trim() !== '';
-    const isQual = factor?.data_type === 'text' || factor?.factor_type === 'subjective' || factor?.factor_type === 'qualitative';
-    const actual = getActualInputValue(optionId, factorId);
-    // Assessable now? Expected required; quantitative also needs Operator + Actual.
-    const incomplete = !has(factor?.expected_value) || (!isQual && (!has(factor?.operator) || !has(actual)));
-    if (incomplete && !force) return 'skipped';
-    try {
-      const token = await AsyncStorage.getItem('session_token');
-      const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
-      const resp = await fetch(`${baseUrl}/api/decisions/${decision.id}/factors/${factorId}/ai-assess`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ option_id: optionId, actual_value: actual, force_fill: incomplete && force }),
-      });
-      if (resp.status === 402) return 'insufficient';
-      if (!resp.ok) return 'error';
-      const data = await resp.json();
-      const pct = Math.max(0, Math.min(100, parseInt(String(data.percentage), 10) || 0));
-      const unitStr = factor?.unit || '';
-      const effectiveActual = has(actual) ? actual : (data.actual_value != null ? String(data.actual_value) : '');
-      const numericActual = parseFloat(effectiveActual);
-      const displayValue = effectiveActual
-        ? `${effectiveActual}${unitStr && !String(effectiveActual).includes(unitStr) ? ' ' + unitStr : ''}`
-        : undefined;
-      const key = getAssessmentKey(optionId, factorId);
-      updateAssessment(optionId, factorId, pct, 'custom', displayValue, isNaN(numericActual) ? undefined : numericActual);
-      setCustomInputValues(prev => ({ ...prev, [key]: String(pct) }));
-      return 'done';
-    } catch {
-      return 'error';
-    }
+  // Apply a single batch result to the local matrix state (instant UI update).
+  const applyCellResult = (r: any) => {
+    if (r.status !== 'done') return;
+    const factor = decision.factors.find(f => f.id === r.factor_id);
+    const pct = Math.max(0, Math.min(100, parseInt(String(r.percentage), 10) || 0));
+    const unitStr = factor?.unit || '';
+    const eff = r.actual_value != null ? String(r.actual_value) : '';
+    const numericActual = parseFloat(eff);
+    const displayValue = eff
+      ? `${eff}${unitStr && !eff.includes(unitStr) ? ' ' + unitStr : ''}`
+      : undefined;
+    const key = getAssessmentKey(r.option_id, r.factor_id);
+    updateAssessment(r.option_id, r.factor_id, pct, 'custom', displayValue, isNaN(numericActual) ? undefined : numericActual);
+    setCustomInputValues(prev => ({ ...prev, [key]: String(pct) }));
   };
 
+  // "AI Assess All" runs the cells in small server-side BATCHES (one request per
+  // chunk) instead of dozens of individual POSTs. A burst of many requests can
+  // be rejected by production edges/CDNs (405) and adds latency; batching keeps
+  // it to a handful of requests while staying short enough to avoid timeouts.
   const runBulkAssess = async (cells: { optionId: string; factorId: string }[], forceFill: boolean = false) => {
     setBulkAssessing(true);
     setBulkProgress({ done: 0, total: cells.length });
-    let done = 0, skipped = 0, errored = 0, ranOut = false;
-    for (let i = 0; i < cells.length; i++) {
-      const status = await assessCellSilent(cells[i].optionId, cells[i].factorId, forceFill);
-      if (status === 'insufficient') { ranOut = true; break; }
-      if (status === 'done') done++;
-      else if (status === 'skipped') skipped++;
-      else errored++;
-      setBulkProgress({ done: i + 1, total: cells.length });
+    let done = 0, skipped = 0, errored = 0, ranOut = false, processed = 0;
+    const CHUNK = 6;
+    for (let i = 0; i < cells.length; i += CHUNK) {
+      const slice = cells.slice(i, i + CHUNK);
+      try {
+        const { data } = await api.post(`/decisions/${decision.id}/ai-assess-batch`, {
+          force_fill: forceFill,
+          cells: slice.map(c => ({
+            option_id: c.optionId,
+            factor_id: c.factorId,
+            actual_value: getActualInputValue(c.optionId, c.factorId),
+          })),
+        });
+        for (const r of (data.results || [])) {
+          applyCellResult(r);
+          if (r.status === 'done') done++;
+          else if (r.status === 'skipped') skipped++;
+          else errored++;
+        }
+        if (data.out_of_credits) { ranOut = true; processed += slice.length; setBulkProgress({ done: Math.min(processed, cells.length), total: cells.length }); break; }
+      } catch (e: any) {
+        if (e?.response?.status === 402) { ranOut = true; break; }
+        errored += slice.length;
+      }
+      processed += slice.length;
+      setBulkProgress({ done: Math.min(processed, cells.length), total: cells.length });
     }
     setBulkAssessing(false);
     refreshAiWallet();
-    // Re-sync local state from the backend: each per-cell update persists via the
-    // store and the in-loop snapshots can race, so a single refetch after the
-    // loop guarantees the matrix + "All set" check reflect every saved cell.
+    // Final re-sync so the matrix + "All set" check reflect every saved cell.
     try { await fetchDecision(); } catch { /* non-fatal */ }
     if (ranOut) {
       showAlert('Out of AI credits', `Assessed ${done} cell(s) before credits ran out. Top up to finish the rest.`, [

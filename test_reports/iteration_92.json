@@ -1,0 +1,57 @@
+{
+  "summary": "iter92 RE-VERIFY (post Expo/Metro restart): the Step 6-7 'AI Assess All' bulk action NOW correctly calls the chunked BATCH endpoint, NOT the per-cell endpoint. Stale-bundle regression from iter92(prev) is GONE. Seeded a fresh decision with 4 factors x 3 options = 12 empty cells (2 factors with no expected_value to force the 3-button 'AI-fill all' dialog). Opened /prr/{id}?step=7, captured ALL /api/* network calls during the bulk action, tapped testID='ai-assess-all' and chose 'AI-fill all'. RESULT: exactly 2 POST calls to /api/decisions/{id}/ai-assess-batch (12 cells / CHUNK=6 = 2 batches), ZERO per-cell POST calls to /factors/{fid}/ai-assess, no 405s, completion banner appeared ('AI Assess All complete'). Regression check also PASSED: tapping the single-cell sparkle ✨AI button (testID='md-ai-{optionId}-{factorId}') still fires exactly ONE POST to /api/decisions/{id}/factors/{fid}/ai-assess (200 OK), no batch call — and the cell populated with 100% (Salary expected >= 100000, actual 120000). The implementation in Step7.tsx:442-488 (runBulkAssess with CHUNK=6 and api.post('/decisions/{id}/ai-assess-batch', ...)) is now actually served to the browser.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/decisions/{id}/ai-assess-batch (force_fill=true)",
+        "issue": "Secondary observation (not the network/routing fix under review): the batch endpoint itself returned 200 OK in 1624ms, but every cell inside the batch failed because the LiteLLM budget cap was reached: 'Budget has been exceeded! Current cost: 0.42548, Max budget: 0.4' (backend.err.log 15:47:11). Hence 'Assessed 0 cells • 12 failed'. The single-cell run after that ALSO went through (with the same fallback path) and produced 100% for Salary because that one cell happened to take the gemini emergent fallback path before the budget tripped again. This is a budget/quota concern unrelated to the routing fix."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "shadow* style props",
+        "issue": "Console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' (pre-existing, not introduced by this fix)"
+      },
+      {
+        "component": "TouchableWithoutFeedback",
+        "issue": "Console warning: 'TouchableWithoutFeedback is deprecated. Please use Pressable.' (pre-existing)"
+      },
+      {
+        "component": "props.pointerEvents",
+        "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents' (pre-existing)"
+      }
+    ]
+  },
+  "test_report_links": [
+    "/tmp/seed_decision.py",
+    "/tmp/04_dialog.png (3-button dialog)",
+    "/tmp/05_done.png (completion banner)",
+    "/tmp/06_single.png (single-cell AI populated cell with 100%)"
+  ],
+  "action_items": [
+    "PRIMARY FIX VERIFIED — no action needed. Bulk action now uses /ai-assess-batch exclusively; single-cell button still uses /factors/{fid}/ai-assess as designed.",
+    "(Optional, non-blocking) Investigate force_fill=true returning 'failed' for cells with missing expected_value — banner says '12 failed' even though backend was supposed to AI-fill the Expected + Actual. This is OUT OF SCOPE for this review (review asked only for the network pattern), but worth a follow-up if main agent wants the 'AI-fill all' branch to actually populate cells end-to-end.",
+    "(Optional) Migrate deprecated style props (shadow*, props.pointerEvents) and TouchableWithoutFeedback usages in shared components — these were warnings pre-dating this iteration."
+  ],
+  "critical_code_review_comments": [
+    "Step7.tsx:442-488 runBulkAssess — Correctly chunks (CHUNK=6) and calls api.post('/decisions/{id}/ai-assess-batch'). Properly handles 402 (out_of_credits), per-cell errored counts, and re-syncs via fetchDecision() at the end. Sound.",
+    "Step7.tsx:347-413 handleAIAssess (single cell) — Continues to POST /api/decisions/{id}/factors/{fid}/ai-assess; correct behaviour per design — keeps single-cell metering granular.",
+    "Step7.tsx — Only ONE Step7.tsx in the repo (confirmed via path); no duplicate file caused the prior stale-bundle issue. The restart cleared the Metro cache and now serves the batched code."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (skip-backend testing requested; backend already 5/5 in iter92 prior)",
+    "frontend": "100% — primary network-pattern criterion + regression (single-cell endpoint) both confirmed."
+  },
+  "seed_data_creation": "Created TEST_iter92_batch_assess decision (4 factors x 3 options, 2 factors w/o expected_value) under veales super-admin; DELETED after test run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "To re-test: run /tmp/seed_decision.py (gets fresh decision id + token), then in a Playwright session: localStorage.setItem('session_token', TOKEN) + 'whatsapp_verified'='true', navigate /prr/{id}?step=7, hook page.on('request') filtering /api/, click [data-testid='ai-assess-all'], then click text='AI-fill all'. Expect 2 POST calls to /ai-assess-batch and ZERO to /factors/{fid}/ai-assess. For single-cell regression, click any [data-testid^='md-ai-'] after filling Salary's Actual=120000 — expect exactly 1 POST to /factors/{fid}/ai-assess.",
+  "rca_of_issue": "Prior iter92 frontend run hit a STALE Metro/Expo bundle that still served the old per-cell-loop code. Expo was restarted between then and this run; the current bundle now serves Step7.tsx's runBulkAssess (line 442) which uses api.post('/decisions/{id}/ai-assess-batch', {force_fill, cells:[...]}). Network capture confirms the fix is live."
+}
