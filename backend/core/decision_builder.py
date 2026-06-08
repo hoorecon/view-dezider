@@ -355,3 +355,130 @@ async def create_hierarchical_mydezider(
         "option_count": len(built_options),
     }
 
+
+
+def _hier_worth_dicts(factors: List[Dict[str, Any]],
+                      assessments: List[OptionAssessment]) -> float:
+    """Worth roll-up over dict-form factors (mirrors _hier_worth / the frontend)."""
+    pct_by_fid = {a.factor_id: a.percentage for a in assessments}
+    parents = [f for f in factors if not f.get("parent_id")]
+    total_rating = sum(int(p.get("rating") or 0) for p in parents) or 1
+    weighted = 0.0
+    for p in parents:
+        subs = [f for f in factors if f.get("parent_id") == p["id"]]
+        if subs:
+            assessed = [(s, pct_by_fid[s["id"]]) for s in subs
+                        if s["id"] in pct_by_fid and pct_by_fid[s["id"]] is not None]
+            if assessed:
+                tw = sum(int(s.get("weight") or 0) for s, _ in assessed)
+                if tw > 0:
+                    eff = sum(pp * (int(s.get("weight") or 0)) / 100.0
+                              for s, pp in assessed) * (100.0 / tw)
+                else:
+                    eff = sum(pp for _, pp in assessed) / len(assessed)
+            else:
+                eff = pct_by_fid.get(p["id"])
+        else:
+            eff = pct_by_fid.get(p["id"])
+        if eff is not None:
+            weighted += int(p.get("rating") or 0) * (eff / 100.0)
+    return round(min(100.0, max(0.0, weighted / total_rating * 100.0)), 2)
+
+
+async def merge_hierarchical_into_mydezider(
+    user_id: str, decision_id: str, *,
+    items: List[str], groups: List[Dict[str, Any]],
+    row_scores: Dict[Any, List[Optional[int]]],
+    row_meta: Dict[Any, Dict[str, Any]],
+) -> Dict[str, int]:
+    """Step-2 "Import from URL" for a category-grouped comparison matrix:
+    MERGE the FULL two-level structure (parent factors + sub-factors + options
+    with leaf assessments) into an EXISTING MyDezider decision. Name-matches to
+    avoid duplicating parents / sub-factors / options on re-import."""
+    decision = await db.decisions.find_one({"id": decision_id, "user_id": user_id}, {"_id": 0})
+    if not decision:
+        raise HTTPException(status_code=404, detail="Decision not found")
+
+    ex_factors: List[Dict[str, Any]] = decision.get("factors", []) or []
+    ex_options: List[Dict[str, Any]] = decision.get("options", []) or []
+
+    parent_by_name = {str(f.get("name") or "").strip().lower(): f["id"]
+                      for f in ex_factors if not f.get("parent_id")}
+    order_base = len([f for f in ex_factors if not f.get("parent_id")])
+    factors_added = 0
+    submap: Dict[Any, str] = {}
+
+    for gi, g in enumerate(groups):
+        cat = str(g["category"]).strip()
+        pkey = cat.lower()
+        pid = parent_by_name.get(pkey)
+        if not pid:
+            pid = f"f_{uuid.uuid4().hex[:8]}"
+            ex_factors.append(Factor(
+                id=pid, name=cat, category="primary", rating=50,
+                order=order_base + gi, parent_id=None,
+            ).dict())
+            parent_by_name[pkey] = pid
+            factors_added += 1
+        sub_by_name = {str(f.get("name") or "").strip().lower(): f["id"]
+                       for f in ex_factors if f.get("parent_id") == pid}
+        subs = g.get("rows") or []
+        n_sub = len(subs)
+        base_w = round(100.0 / n_sub, 2) if n_sub else 0
+        for ri, row in enumerate(subs):
+            label = str(row["label"]).strip()
+            meta = row_meta.get((gi, ri), {})
+            is_num = bool(meta.get("is_numeric"))
+            weight = round(100.0 - base_w * (n_sub - 1), 2) if ri == n_sub - 1 else base_w
+            sid = sub_by_name.get(label.lower())
+            if not sid:
+                sid = f"f_{uuid.uuid4().hex[:8]}"
+                ex_factors.append(Factor(
+                    id=sid, name=label, category="primary",
+                    parent_id=pid, order=ri, weight=weight,
+                    data_type="numeric" if is_num else "text",
+                    expected_value=meta.get("expected"), operator=meta.get("operator"),
+                    unit=meta.get("unit"),
+                ).dict())
+                factors_added += 1
+            submap[(gi, ri)] = sid
+
+    ex_opt_names = {str(o.get("name") or "").strip().lower() for o in ex_options}
+    options_added = 0
+    for ii, item in enumerate(items):
+        nm = str(item or "Option").strip()
+        if not nm or nm.lower() in ex_opt_names:
+            continue
+        assessments: List[OptionAssessment] = []
+        for gi, g in enumerate(groups):
+            for ri, row in enumerate(g.get("rows") or []):
+                sid = submap.get((gi, ri))
+                if not sid:
+                    continue
+                vals = row.get("values") or []
+                raw = vals[ii].strip() if ii < len(vals) else ""
+                sc = row_scores.get((gi, ri))
+                pct = _pct_int(sc[ii]) if (sc and ii < len(sc)) else None
+                if pct is None and not raw:
+                    continue
+                assessments.append(OptionAssessment(
+                    factor_id=sid, percentage=pct,
+                    unit_value=(raw or None), assessment_mode="manual"))
+        worth = _hier_worth_dicts(ex_factors, assessments)
+        ex_options.append(DecisionOption(
+            name=nm, assessments=assessments,
+            worth_percentage=worth, source="manual").dict())
+        ex_opt_names.add(nm.lower())
+        options_added += 1
+
+    await db.decisions.update_one(
+        {"id": decision_id, "user_id": user_id},
+        {"$set": {"factors": ex_factors, "options": ex_options, "updated_at": _now()}},
+    )
+    parents_now = [f for f in ex_factors if not f.get("parent_id")]
+    return {
+        "factors_added": factors_added,
+        "options_added": options_added,
+        "category_count": len(parents_now),
+        "subfactor_count": len(ex_factors) - len(parents_now),
+    }

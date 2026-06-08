@@ -5,7 +5,6 @@ import { COLORS } from '../../constants/colors';
 import { Card } from '../Card';
 import { GradientButton } from '../GradientButton';
 import { useDecision } from '../../context/DecisionContext';
-import { useAiWalletStore } from '../../store/aiWalletStore';
 import { styles } from '../../styles/decisionStyles';
 import type { Factor, FactorDataSource } from '../../types/decision';
 import api from '../../utils/api';
@@ -37,35 +36,7 @@ export default function Step2() {
     customUnitInput, setCustomUnitInput,
     setCurrentStep,
     fetchDecision,
-    bulkAssessAllRemaining, countUnscoredCells, bulkAssessing, bulkProgress,
   } = useDecision();
-
-  const refreshAiWallet = useAiWalletStore((s) => s.refresh);
-
-  // One-tap: AI-score every un-scored cell, then jump to results once done.
-  const handleAssessAllRemaining = () => {
-    const n = countUnscoredCells();
-    if (n === 0) { showAlert('All assessed', 'Every option is already scored against every factor.'); return; }
-    showAlert(
-      'AI Assess All remaining',
-      `AI will score ${n} empty cell${n > 1 ? 's' : ''} across your options and fill any missing Expected/Actual values, using your AI credits. The recommendation updates live as it runs.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: `Assess ${n}`,
-          onPress: async () => {
-            const res = await bulkAssessAllRemaining(true);
-            try { refreshAiWallet(); } catch { /* non-fatal */ }
-            if (res.ranOut) {
-              showAlert('Out of AI credits', `Scored ${res.done} of ${res.total} before credits ran out. Top up to finish the rest.`);
-            } else if (res.done > 0) {
-              showAlert('Ranked!', `Scored ${res.done} cell${res.done > 1 ? 's' : ''}. Your options are now ranked — see Step 7 / results.`);
-            }
-          },
-        },
-      ]
-    );
-  };
 
   const [showDataSourceConfig, setShowDataSourceConfig] = useState<{ [key: string]: boolean }>({});
 
@@ -425,35 +396,6 @@ export default function Step2() {
       </Text>
 
       {/* One-tap: AI-score every un-scored cell (e.g. a freshly imported comparison). */}
-      {(decision?.options?.length || 0) >= 2 && countUnscoredCells() > 0 && (
-        <TouchableOpacity
-          testID="ai-assess-all-remaining-btn"
-          onPress={handleAssessAllRemaining}
-          disabled={bulkAssessing}
-          activeOpacity={0.85}
-          style={aar.banner}
-        >
-          {bulkAssessing ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Ionicons name="sparkles" size={18} color="#fff" />
-          )}
-          <View style={{ flex: 1 }}>
-            <Text style={aar.title}>
-              {bulkAssessing
-                ? `Assessing… ${bulkProgress.done}/${bulkProgress.total}`
-                : 'AI Assess All remaining'}
-            </Text>
-            <Text style={aar.sub}>
-              {bulkAssessing
-                ? 'Ranking updates live as cells fill.'
-                : `${countUnscoredCells()} un-scored cell${countUnscoredCells() > 1 ? 's' : ''} — rank your options in one tap.`}
-            </Text>
-          </View>
-          {!bulkAssessing && <Ionicons name="arrow-forward-circle" size={22} color="#fff" />}
-        </TouchableOpacity>
-      )}
-
       <TouchableOpacity
         onPress={handleFetchBestFactors}
         disabled={aiFactorsLoading}
@@ -1064,17 +1006,6 @@ const iurl = StyleSheet.create({
   dlgCancelText: { fontSize: 13.5, fontWeight: '700', color: COLORS.textMuted },
   dlgGo: { backgroundColor: '#2563EB', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, minWidth: 96, alignItems: 'center' },
   dlgGoText: { color: '#fff', fontSize: 13.5, fontWeight: '800' },
-});
-
-const aar = StyleSheet.create({
-  banner: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#7C3AED', borderRadius: 14, paddingVertical: 14, paddingHorizontal: 16,
-    marginBottom: 16,
-    shadowColor: '#7C3AED', shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 3,
-  },
-  title: { color: '#fff', fontSize: 14.5, fontWeight: '800' },
-  sub: { color: '#EDE9FE', fontSize: 11.5, lineHeight: 16, marginTop: 1 },
 });
 
 

@@ -325,6 +325,23 @@ Full plan (Phases A–D) approved by user; all 11 backend tests + frontend e2e P
 - Pending follow-up: option 3 = LLM factor refinement (done as part of this) + headless/scraping API for
   JS-rendered retail (Amazon) — NOT yet wired; needed only for non-static sites.
 
+## Step-2 URL import → hierarchical + removed redundant assess banner — 9 Jun 2026 (curl-verified)
+- **FIX (Step 2 "Import from URL" now hierarchical)**: previously it used the FLAT parser
+  (`merge_into_mydezider`, capped at 8 factors) so GSMArena gave ~8 flat factors ("Body · Weight").
+  Now `routes/url_analyze.py::import_url_into_decision` first tries `crawl_hierarchy`; for a
+  category-grouped matrix (≥2 groups & ≥2 items) it scores (`_score_hierarchy_numeric` +
+  `_ai_score_text_rows`) and calls the NEW `core/decision_builder.merge_hierarchical_into_mydezider()`
+  — merges 15 PARENT factors + sub-factors (weights split to exactly 100) + options w/ leaf
+  assessments into the EXISTING decision (name-dedup). Flat derive remains the fallback.
+  Verified via curl on the user's GSMArena compare URL: mode=hierarchical, category_count=15,
+  55 sub-factors, 3 options, per-parent weights sum=100.0.
+- **REMOVED the "AI Assess All remaining" banner from Step 2** (`Step2.tsx`) — assessment belongs on
+  Step 7 where "AI Assess All" already exists; the Step-2 banner was redundant. Dropped its handler,
+  the `aar` styles, and now-unused `useAiWalletStore`/context imports.
+- ⚠️ User tests on PROD (jelcos.ai) — these changes are in dev/preview; **redeploy required** for them
+  to appear on jelcos.ai. ⚠️ AI text-row scoring may no-op in dev if the LLM wallet is empty (structure
+  + raw values still build; run "AI Assess All" on Step 7 after top-up).
+
 ## Multi-source imports (Step 2 + Step 7 URL actuals) — 8 Jun 2026 (tested iter96)
 - **Step 2 multi-source import (3-icon layout)**: `Step2.tsx` imports a comparison matrix into a NEW
   decision via XLS/CSV (`step2-import-xls`), Google Sheet (`step2-import-sheet`), or URL

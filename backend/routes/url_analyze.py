@@ -26,6 +26,7 @@ from core.url_crawl import crawl_candidates, crawl_hierarchy, has_any_llm, meter
 from core.decision_builder import (
     create_mydezider_from_candidates, create_pros_cons_from_candidates,
     create_hierarchical_mydezider, merge_into_mydezider,
+    merge_hierarchical_into_mydezider,
 )
 
 router = APIRouter(prefix="/url-analyze", tags=["URL Analyse"])
@@ -403,6 +404,25 @@ async def import_url_into_decision(
         "user_agent": request.headers.get("user-agent"), "created_at": _now(),
     })
 
+    # ── Prefer a FULL two-level merge when the page is a category-grouped
+    # comparison matrix (e.g. GSMArena: 15 categories × sub-specs). Falls back
+    # to the flat derive when it is a simple row-per-item table. ──
+    hierarchy = await crawl_hierarchy(req.url)
+    if hierarchy and len(hierarchy.get("groups", [])) >= 2 and len(hierarchy.get("items", [])) >= 2:
+        items, groups = hierarchy["items"], hierarchy["groups"]
+        row_scores, row_meta, text_rows = _score_hierarchy_numeric(items, groups)
+        row_scores.update(await _ai_score_text_rows(user["user_id"], items, text_rows))
+        counts = await merge_hierarchical_into_mydezider(
+            user["user_id"], decision_id, items=items, groups=groups,
+            row_scores=row_scores, row_meta=row_meta)
+        return {
+            "decision_id": decision_id, "consent_id": consent_id, "mode": "hierarchical",
+            "item_count": len(items),
+            "category_count": counts["category_count"],
+            "factor_count": counts["subfactor_count"],
+            "factors_added": counts["factors_added"], "options_added": counts["options_added"],
+        }
+
     candidates = await crawl_candidates(req.url, user["user_id"])
     if len(candidates) < 2:
         raise HTTPException(422, "Need at least 2 comparable items on the page to import.")
@@ -412,7 +432,7 @@ async def import_url_into_decision(
 
     counts = await merge_into_mydezider(user["user_id"], decision_id, factors=factors, candidates=scored)
     return {
-        "decision_id": decision_id, "consent_id": consent_id,
+        "decision_id": decision_id, "consent_id": consent_id, "mode": "flat",
         "item_count": len(candidates),
         "factors_added": counts["factors_added"], "options_added": counts["options_added"],
     }
