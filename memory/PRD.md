@@ -301,6 +301,30 @@ Full plan (Phases A–D) approved by user; all 11 backend tests + frontend e2e P
   (user's key) — offered as a follow-up. JS-rendered retail (Amazon) still needs a headless/scraping API.
 - ⚠️ Prod (jelcos.ai) must REDEPLOY.
 
+## FULL HIERARCHICAL URL import (GSMArena benchmark) — 8 Jun 2026 (tested iter94)
+- Requirement: pasting a category-grouped comparison page (GSMArena phone-compare) into "Analyse a URL"
+  must import the COMPLETE two-level structure into MyDezider Step 2 — each spec CATEGORY → a main/parent
+  factor, each spec ROW → a sub-factor, compared items → options, all cells assessed.
+- `core/url_crawl.py`: extracted shared `_fetch_html()` (browser headers + retry); added
+  `parse_hierarchy()` / `crawl_hierarchy()` → {items (from <title>), groups:[{category, rows:[{label,values}]}]}.
+  GSMArena → 15 categories (Network…EU LABEL), correct sub-specs (Body→Dimensions/Weight/Build/SIM).
+- `core/decision_builder.py`: `create_hierarchical_mydezider()` builds 15 parent factors (rating 50) +
+  sub-factors (parent_id, weights split to EXACTLY 100 via last-sub remainder) + options with LEAF
+  assessments (percentage + raw value as unit_value). `_effective_pct()`/`_hier_worth()` mirror the
+  frontend's weighted sub-factor rollup so stored worth matches the UI.
+- `routes/url_analyze.py`: `_score_hierarchy_numeric()` (proportional, direction-aware) + `_ai_score_text_rows()`
+  (ONE metered LLM call scoring all text specs 0-100, best-effort — graceful no-op if wallet empty).
+  `analyze_url` auto-routes category-grouped matrices to the hierarchical builder; flat derive is the fallback.
+- Verified (iter94, testing agent): Step 2 renders 15/15 parents + 55/55 sub-factors, expand/collapse + split UI
+  working, 3 options (Oppo F9 / Find X9s Pro / Galaxy A57). Backend: `POST /api/url-analyze` → mode='hierarchical',
+  category_count=15, item_count=3. Graceful degradation confirmed when LLM wallet is empty (structure + raw
+  values still build; user can run "AI Assess All"). New tests: test_url_matrix_parse.py (incl. hierarchy),
+  test_iter94_url_hierarchy_import.py. Fixed cosmetic weight-total 100.02% float display (Step2.tsx tolerance +
+  builder exact-100 weights).
+- ⚠️ AI cell-scoring consumes Emergent-LLM credits (one batched call per import). ⚠️ Redeploy jelcos.ai.
+- Pending follow-up: option 3 = LLM factor refinement (done as part of this) + headless/scraping API for
+  JS-rendered retail (Amazon) — NOT yet wired; needed only for non-static sites.
+
 ## Remaining backlog (post-fork)
 - P1: CLD Engine Phase B & C (Rules Engine + AI Suggestions)
 - P1: PRR Enhancement #4 & #5 (configurable timing fields + decision-linking bypass)

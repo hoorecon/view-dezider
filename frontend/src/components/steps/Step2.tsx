@@ -403,7 +403,10 @@ export default function Step2() {
         const subs = getSubFactors(factor.id);
         const hasChildren = subs.length > 0;
         const isExpanded = expandedGroups[factor.id] !== false;
-        const weightTotal = getSubWeightTotal(factor.id);
+        const weightTotalRaw = getSubWeightTotal(factor.id);
+        const weightTotal = Math.round(weightTotalRaw * 10) / 10;          // tidy display
+        const weightComplete = Math.abs(weightTotalRaw - 100) < 0.5;       // float-safe "= 100"
+        const weightOver = weightTotalRaw - 100 >= 0.5;
         const hasExpected = factor.expected_value !== undefined && factor.expected_value !== null;
 
         return (
@@ -436,7 +439,7 @@ export default function Step2() {
                 </>
               )}
               {hasChildren && (
-                <View style={[styles.weightTotalBadge, weightTotal === 100 && styles.weightTotalComplete, weightTotal > 100 && styles.weightTotalOver]}>
+                <View style={[styles.weightTotalBadge, weightComplete && styles.weightTotalComplete, weightOver && styles.weightTotalOver]}>
                   <Text style={styles.weightTotalText}>{weightTotal}%</Text>
                 </View>
               )}
@@ -588,11 +591,11 @@ export default function Step2() {
                     <View style={[
                       styles.weightProgressFill,
                       { width: `${Math.min(100, weightTotal)}%` },
-                      weightTotal === 100 && { backgroundColor: '#10B981' },
-                      weightTotal > 100 && { backgroundColor: '#EF4444' },
+                      weightComplete && { backgroundColor: '#10B981' },
+                      weightOver && { backgroundColor: '#EF4444' },
                     ]} />
                   </View>
-                  <Text style={[styles.weightProgressText, weightTotal === 100 && { color: '#10B981' }, weightTotal > 100 && { color: '#EF4444' }]}>
+                  <Text style={[styles.weightProgressText, weightComplete && { color: '#10B981' }, weightOver && { color: '#EF4444' }]}>
                     {weightTotal}/100%
                   </Text>
                   {subs.length > 1 && (

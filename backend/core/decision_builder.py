@@ -299,12 +299,15 @@ async def create_hierarchical_mydezider(
             rating=50, order=gi, parent_id=None,
         ))
         subs = g.get("rows") or []
-        weight = round(100.0 / len(subs), 2) if subs else 0
+        n_sub = len(subs)
+        base_w = round(100.0 / n_sub, 2) if n_sub else 0
         for ri, row in enumerate(subs):
             sid = f"f_{uuid.uuid4().hex[:8]}"
             submap[(gi, ri)] = sid
             meta = row_meta.get((gi, ri), {})
             is_num = bool(meta.get("is_numeric"))
+            # Last sub absorbs the rounding remainder so weights sum to EXACTLY 100.
+            weight = round(100.0 - base_w * (n_sub - 1), 2) if ri == n_sub - 1 else base_w
             built_factors.append(Factor(
                 id=sid, name=str(row["label"]), category="primary",
                 parent_id=pid, order=ri, weight=weight,
