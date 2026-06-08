@@ -346,6 +346,23 @@ Full plan (Phases A–D) approved by user; all 11 backend tests + frontend e2e P
   graceful out-of-credits, scraperapi provider listed, no-key GSMArena fallback intact.
 - ⚠️ Redeploy jelcos.ai for these to go live.
 
+## ScraperAPI activated + Amazon product-grid import — 8 Jun 2026 (tested)
+- User provided a ScraperAPI key; configured via `PUT /api/admin/integrations/scraperapi` (stored in
+  db.integrations, masked). Verified: key valid (5,000 credits), ScraperAPI **renders Amazon** (1.67MB,
+  product grid + prices) — bypasses the 503 that direct httpx hit.
+- Added `core/url_crawl._product_grid_candidates()` — deterministic extractor for e-commerce SEARCH
+  grids (Amazon `[data-asin]` cards / schema.org Product) → name + Price + Rating. Wired into
+  `crawl_candidates` BEFORE the LLM fallback, so Amazon/Flipkart imports need **no AI**.
+- Fixed `_MEASURE_RE` to accept a leading currency symbol (₹ $ € £ ¥) so "₹2,498" parses as numeric →
+  Price becomes a numeric lower-better factor, Rating numeric higher-better.
+- Verified e2e: `POST /api/url-analyze {amazon search url, target:mydezider}` → decision with 24 options,
+  factors Price(<=)+Rating(>=), options ranked by worth (top ~97.5% = cheap + high-rated). New tests in
+  test_url_matrix_parse.py (currency + product grid). GSMArena (no-key) unaffected.
+- ⚠️ ScraperAPI key is in the PREVIEW db only — on PROD (jelcos.ai) after redeploy, re-enter the key in
+  Admin → Integrations → ScraperAPI (the provider only appears post-redeploy).
+- Note: 3 Screener-converter tests fail in dev solely due to a drained AI wallet (insufficient_credits),
+  not code — they pass once the Emergent LLM wallet is topped up.
+
 ## Remaining backlog (post-fork)
 - P1: CLD Engine Phase B & C (Rules Engine + AI Suggestions)
 - P1: PRR Enhancement #4 & #5 (configurable timing fields + decision-linking bypass)

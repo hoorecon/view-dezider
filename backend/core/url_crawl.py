@@ -323,6 +323,60 @@ async def _scraperapi_fetch(url: str, sc: Dict[str, str]) -> Optional[str]:
     return None
 
 
+_PRICE_RE = re.compile(r"[₹$€£]\s?[\d,]+(?:\.\d{1,2})?")
+_RATING_RE = re.compile(r"([\d.]+)\s*out of", re.I)
+
+
+def _product_grid_candidates(html: str) -> List[Dict[str, Any]]:
+    """Extract products from an e-commerce SEARCH/listing GRID (Amazon-style
+    cards, or schema.org Product items) → name + Price + Rating. Deterministic,
+    so it works without any LLM. Returns [] when the page isn't a product grid."""
+    soup = BeautifulSoup(html, "html.parser")
+    items: List[Dict[str, Any]] = []
+    seen: set = set()
+
+    # Amazon search results: each card carries a data-asin attribute.
+    cards = [c for c in soup.select("div[data-asin]") if (c.get("data-asin") or "").strip()]
+    # Generic schema.org fallback when there are no Amazon cards.
+    if len(cards) < 2:
+        cards = soup.select('[itemtype*="schema.org/Product"], li.product, div.product')
+
+    for c in cards:
+        title = ""
+        h2 = c.select_one("h2")
+        if h2:
+            title = h2.get_text(" ", strip=True)
+        if not title:
+            img = c.select_one("img[alt]")
+            title = (img.get("alt") or "").strip() if img else ""
+        title = title.strip()
+        if len(title) < 3:
+            continue
+        key = title.lower()[:80]
+        if key in seen:
+            continue
+
+        attrs: Dict[str, Any] = {}
+        price_el = c.select_one(".a-price .a-offscreen") or c.select_one(".a-price") or c.select_one('[class*="price"]')
+        if price_el:
+            pm = _PRICE_RE.search(price_el.get_text(" ", strip=True))
+            if pm:
+                attrs["Price"] = pm.group(0)
+        rating_el = c.select_one(".a-icon-alt") or c.select_one('[class*="rating"]')
+        if rating_el:
+            rm = _RATING_RE.search(rating_el.get_text(" ", strip=True))
+            if rm:
+                attrs["Rating"] = rm.group(1)
+
+        if attrs:  # only keep cards we could actually read a comparable value from
+            seen.add(key)
+            items.append({"name": title[:120], "attributes": attrs})
+        if len(items) >= 24:
+            break
+
+    return items if len(items) >= 2 else []
+
+
 async def _fetch_html(url: str) -> "httpx.Response":
     """Fetch `url` with browser headers + retry on bot-block codes. When a
     ScraperAPI key is configured it is used for JS-heavy domains and as an
@@ -409,6 +463,11 @@ async def crawl_candidates(url: str, user_id: str, name_key: Optional[str] = Non
     matrix_cands = _comparison_matrix_candidates(r.text)
     if matrix_cands:
         return matrix_cands
+
+    # E-commerce product GRID (Amazon-style cards) → name + Price + Rating. No LLM.
+    grid_cands = _product_grid_candidates(r.text)
+    if grid_cands:
+        return grid_cands
 
     # LLM fallback for table-less / irregular pages (metered).
     ai_rows = await ai_extract_candidates(user_id, r.text)

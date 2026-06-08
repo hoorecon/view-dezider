@@ -74,9 +74,9 @@ def _num(v: Any) -> Optional[float]:
 # "Android 8.1", "256GB 12GB RAM, 512GB…") so they become qualitative factors
 # instead of nonsensical numeric ones.
 _MEASURE_RE = re.compile(
-    r"^\s*[~≈]?\s*(-?\d[\d,]*\.?\d*)\s*"          # the number
-    r"(?:%|°|[a-zA-Z][a-zA-Z0-9./µ\"'-]{0,7})?\s*"  # optional short unit
-    r"(?:\([^)]*\))?\s*$"                            # optional trailing parenthetical
+    r"^\s*[~≈]?\s*[₹$€£¥]?\s*(-?\d[\d,]*\.?\d*)\s*"   # optional currency + the number
+    r"(?:%|°|[a-zA-Z][a-zA-Z0-9./µ\"'-]{0,7})?\s*"      # optional short unit
+    r"(?:\([^)]*\))?\s*$"                                # optional trailing parenthetical
 )
 
 

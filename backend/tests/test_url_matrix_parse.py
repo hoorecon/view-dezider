@@ -122,3 +122,47 @@ def test_effective_pct_and_worth():
     # Single parent worth == its effective pct.
     assert _hier_worth([parent], [parent, s1, s2], assessments) == 60.0
 
+
+# ── E-commerce product grid (Amazon-style) + currency numerics ──────────────
+from core.url_crawl import _product_grid_candidates
+from routes.url_analyze import _measure_num
+
+_AMAZON_HTML = """
+<div data-asin="A1"><h2><span>ACWO Wireless Earbuds Bold</span></h2>
+  <span class="a-price"><span class="a-offscreen">₹2,498</span></span>
+  <span class="a-icon-alt">3.6 out of 5 stars</span></div>
+<div data-asin="A2"><h2><span>Boult TWS Earbuds 42H</span></h2>
+  <span class="a-price"><span class="a-offscreen">₹899</span></span>
+  <span class="a-icon-alt">4.8 out of 5 stars</span></div>
+<div data-asin="A3"><h2><span>OnePlus Nord Buds 3r</span></h2>
+  <span class="a-price"><span class="a-offscreen">₹1,999</span></span>
+  <span class="a-icon-alt">4.3 out of 5 stars</span></div>
+"""
+
+
+def test_currency_measure_num():
+    assert _measure_num("₹2,498") == 2498.0
+    assert _measure_num("$19.99") == 19.99
+    assert _measure_num("₹899") == 899.0
+    assert _measure_num("GSM 850 / 900") is None
+
+
+def test_product_grid_extraction_and_scoring():
+    cands = _product_grid_candidates(_AMAZON_HTML)
+    assert len(cands) == 3
+    names = [c["name"] for c in cands]
+    assert any("OnePlus" in n for n in names)
+    a2 = next(c for c in cands if "Boult" in c["name"])
+    assert a2["attributes"]["Price"].startswith("₹899")
+    assert a2["attributes"]["Rating"] == "4.8"
+    # Derived: Price numeric lower-better, Rating numeric higher-better.
+    factors, scored = _derive_factors_and_scores(cands, 4)
+    price = next(f for f in factors if f["name"] == "Price")
+    rating = next(f for f in factors if f["name"] == "Rating")
+    assert price["data_type"] == "numeric" and price["operator"] == "<="
+    assert rating["data_type"] == "numeric" and rating["operator"] == ">="
+    # Cheapest (Boult ₹899) scores best on Price.
+    boult = next(s for s in scored if "Boult" in s["name"])
+    assert boult["scores"]["Price"] == 100.0
+
+
