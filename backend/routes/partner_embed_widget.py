@@ -306,6 +306,13 @@ async def embed_demo_host(slug: str, request: Request, flow: str = "mydezider"):
     root = _public_base(request)
     primary = html.escape(th["primary"]); accent = html.escape(th["accent"])
     name = html.escape(th["name"])
+    is_screener = flow == "screener"
+    headline = (
+        "Filter & compare the catalogue — then let the embedded ranking engine score and rank every pick for you."
+        if is_screener else
+        "Compare investment approaches — then let the embedded decision engine rank them for you."
+    )
+    cta_label = "Rank these for me" if is_screener else "Help me Decide"
     # Same-origin relative src — the demo host is served from our origin, so the
     # loader inherits the page's (https) scheme automatically. The loader itself
     # then derives ROOT from its own script origin for the iframe.
@@ -357,11 +364,11 @@ h2{{font-size:15px;color:#334155;margin:6px 0 12px;}}
   <span class="pill">DEMO HOST PAGE</span>
 </div>
 <main>
-  <h2>Compare investment approaches — then let the embedded decision engine rank them for you.</h2>
+  <h2>{headline}</h2>
   {cards}
 </main>
 
-<button class="decide" id="decideBtn" data-dezider-flow="{html.escape(flow)}">Help me Decide</button>
+<button class="decide" id="decideBtn" data-dezider-flow="{html.escape(flow)}">{html.escape(cta_label)}</button>
 
 <script src="{html.escape(loader_src)}" data-flow="{html.escape(flow)}"></script>
 <script>

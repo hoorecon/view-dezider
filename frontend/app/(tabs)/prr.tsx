@@ -545,6 +545,21 @@ export default function SolutionBoxScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
+              style={[styles.newMenuItem, { borderColor: '#2563EB40' }]}
+              onPress={() => { setShowNewMenu(false); router.push('/tools/analyse-url' as any); }}
+              testID="new-menu-analyse-url"
+            >
+              <View style={[styles.newMenuIcon, { backgroundColor: '#EFF6FF' }]}>
+                <Ionicons name="link" size={20} color="#2563EB" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.newMenuItemTitle}>Analyse a URL</Text>
+                <Text style={styles.newMenuItemDesc}>Paste a comparison page → auto-build a decision</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
               style={[styles.newMenuItem, { borderColor: TYPE_META.test123.color + '40' }]}
               onPress={() => { setShowNewMenu(false); router.push('/test123/new' as any); }}
             >

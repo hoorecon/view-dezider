@@ -15,7 +15,10 @@ import {
   ScrollView, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import api from '../../utils/api';
+import { showAlert } from '../../utils/alert';
+import UrlAccessConsentModal, { UrlConsentPayload } from '../../components/UrlAccessConsentModal';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
@@ -54,6 +57,9 @@ export default function ScreenerPanel({ partner, primary, accent, initialOptions
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [sending, setSending] = useState<null | 'mydezider' | 'pros_cons'>(null);
+  const [urlConsentOpen, setUrlConsentOpen] = useState(false);
+  const router = useRouter();
 
   const mkFactor = (key: string): FactorRow => ({
     id: `f_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
@@ -134,6 +140,33 @@ export default function ScreenerPanel({ partner, primary, accent, initialOptions
 
   const exportUrl = useMemo(() => runId ? `${API_URL}/api/embed/screener/run/${runId}/export.csv` : null, [runId]);
 
+  const sendTo = async (target: 'mydezider' | 'pros_cons') => {
+    if (!runId || sending) return;
+    setSending(target);
+    try {
+      const path = target === 'mydezider' ? 'to-decision' : 'to-pros-cons';
+      const { data } = await api.post(`/embed/screener/run/${runId}/${path}`, {});
+      showAlert(
+        'Sent successfully',
+        `Created a ${target === 'mydezider' ? 'MyDezider decision' : 'Pros & Cons analysis'} with ${data.finalists} option(s). Open it now?`,
+        [
+          { text: 'Later', style: 'cancel' },
+          { text: 'Open', onPress: () => {
+            if (target === 'pros_cons') router.push(`/tools/pros-cons-wizard?id=${data.id}&module=pros-cons` as any);
+            else router.push(`/prr/${data.id}` as any);
+          } },
+        ]
+      );
+    } catch (e: any) {
+      const d = e?.response?.data?.detail;
+      showAlert('Could not send', typeof d === 'string' ? d : 'Please try again.');
+    } finally {
+      setSending(null);
+    }
+  };
+
+  const onUrlConsent = (_c: UrlConsentPayload) => { setUrlConsentOpen(false); doIngest(); };
+
   // ---- render ----
   return (
     <ScrollView style={styles.wrap} keyboardShouldPersistTaps="handled">
@@ -164,8 +197,9 @@ export default function ScreenerPanel({ partner, primary, accent, initialOptions
         <Text style={styles.hint}>{initialOptions.length} option(s) carried over from the partner page.</Text>
       )}
 
-      <TouchableOpacity testID="screener-load-candidates-btn" style={[styles.btn, { backgroundColor: primary }]} onPress={doIngest} disabled={busy}>
-        {busy && !results ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Load candidates</Text>}
+      <TouchableOpacity testID="screener-load-candidates-btn" style={[styles.btn, { backgroundColor: primary }]}
+        onPress={source === 'url' ? () => setUrlConsentOpen(true) : doIngest} disabled={busy}>
+        {busy && !results ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>{source === 'url' ? 'Review consent & load' : 'Load candidates'}</Text>}
       </TouchableOpacity>
 
       {ingestId && (
@@ -265,8 +299,33 @@ export default function ScreenerPanel({ partner, primary, accent, initialOptions
               </View>
             </View>
           ))}
+
+          {/* Send the shortlist into a full decision flow */}
+          <Text style={styles.sendHint}>Take this shortlist further:</Text>
+          <View style={styles.sendRow}>
+            <TouchableOpacity testID="screener-send-mydezider" style={[styles.sendBtn, { borderColor: primary }]}
+              onPress={() => sendTo('mydezider')} disabled={!!sending}>
+              {sending === 'mydezider' ? <ActivityIndicator size="small" color={primary} /> : (
+                <><Ionicons name="git-branch" size={15} color={primary} /><Text style={[styles.sendText, { color: primary }]}>Send to MyDezider</Text></>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity testID="screener-send-proscons" style={[styles.sendBtn, { borderColor: primary }]}
+              onPress={() => sendTo('pros_cons')} disabled={!!sending}>
+              {sending === 'pros_cons' ? <ActivityIndicator size="small" color={primary} /> : (
+                <><Ionicons name="layers" size={15} color={primary} /><Text style={[styles.sendText, { color: primary }]}>Send to Pros &amp; Cons</Text></>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       )}
+
+      <UrlAccessConsentModal
+        visible={urlConsentOpen}
+        url={url.trim()}
+        primary={primary}
+        onCancel={() => setUrlConsentOpen(false)}
+        onConfirm={onUrlConsent}
+      />
     </ScrollView>
   );
 }
@@ -284,6 +343,11 @@ const styles = StyleSheet.create({
   btn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 11, marginTop: 12 },
   btnText: { color: '#fff', fontSize: 14.5, fontWeight: '800' },
   okLine: { fontSize: 12.5, color: '#16A34A', fontWeight: '700', marginTop: 10 },
+
+  sendHint: { fontSize: 12.5, fontWeight: '700', color: '#334155', marginTop: 16, marginBottom: 8 },
+  sendRow: { flexDirection: 'row', gap: 10 },
+  sendBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1.5, borderRadius: 11, paddingVertical: 11, backgroundColor: '#fff' },
+  sendText: { fontSize: 12.5, fontWeight: '800' },
 
   factorRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderRadius: 10, padding: 10, marginBottom: 8, gap: 8 },
   factorName: { fontSize: 13.5, fontWeight: '700', color: '#1F2937' },

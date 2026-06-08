@@ -137,6 +137,7 @@ from routes.org_auth import router as org_auth_router
 from routes.partner_embed import router as partner_embed_router
 from routes.partner_embed_widget import router as partner_embed_widget_router
 from routes.screener import router as screener_router
+from routes.url_analyze import router as url_analyze_router
 from routes.solutions_store import router as solutions_store_router
 from routes.store_ingestion import router as store_ingestion_router
 from routes.google_calendar import router as google_calendar_router
@@ -230,6 +231,7 @@ api_router.include_router(org_auth_router)
 api_router.include_router(partner_embed_router)
 api_router.include_router(partner_embed_widget_router)
 api_router.include_router(screener_router)
+api_router.include_router(url_analyze_router)
 api_router.include_router(solutions_store_router)
 api_router.include_router(store_ingestion_router)
 api_router.include_router(google_calendar_router)

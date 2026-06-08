@@ -1,0 +1,47 @@
+{
+  "summary": "Iter 91 covers the new multi-part feature: (A) Screener 'Send to MyDezider/Pros & Cons', (B) standalone /tools/analyse-url, (C) mandatory site-access-rights consent gate, (D) PMSBazaar demo-host with ranking-engine framing. Backend: 11/11 pytest cases pass against the public EXPO_PUBLIC_BACKEND_URL — consent gate returns 400 for accepted=false / invalid eligibility / custom-without-note; valid free_public consent on http://localhost:9777/funds.html → 200 with {id, target=mydezider, item_count=4, factor_count=3}; GET /api/decisions/{id} shows 3 factors (all rating + operator '>='), 4 options each with assessments + worth_percentage in [0,100]. pros_cons path → current_step=7, 4 options, factors+assessments populated. Screener super-admin run (4 inline candidates, 2 numeric factors) followed by /to-decision and /to-pros-cons both 200 with finalists=4 and Step-7 pros_cons. GET /api/embed/demo-host/pmsbazaar-demo?flow=screener returns 200, body contains 'ranking engine' headline and 'Rank these for me' CTA. Frontend: full Phase B+C UX verified end-to-end on mobile viewport (390x844) — login → /prr tab → click + (top-right) opens the new-decision menu containing 'Analyse a URL' (testID new-menu-analyse-url) → /tools/analyse-url loads with URL input, MyDezider/Pros&Cons toggle, life-area chips, decision-type input → submit opens UrlAccessConsentModal (proceed disabled until BOTH eligibility radio + accept checkbox are picked; verified disabled→disabled→enabled state machine) → 'Agree & Analyse' fires POST /api/url-analyze and shows 'Decision ready' alert ('Built from 4 items and 3 factors') → tapping Open navigates to /prr/{id} which lands on Step 7/10 Assessment matrix with Alpha Growth Fund showing 42.3% and '3/3 factors rated'. Phase D demo-host page renders in-browser with maroon PMSBazaar theme + 'Rank these for me' floating CTA. Phase A (Screener send-to buttons) and Phase C in-Screener URL consent verified by code inspection — same UrlAccessConsentModal component is reused, and the button label switches to 'Review consent & load' when source=='url' (ScreenerPanel.tsx:191-202). Send-to buttons (testID screener-send-mydezider, screener-send-proscons) exist at ScreenerPanel.tsx:306-317 and call the backend converters which we already proved 200 OK.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "(tabs)/prr.tsx header add (+) button",
+        "issue": "The top-right + button that opens the New-decision menu has no testID. Made automated discovery of the menu trigger awkward (had to click by coordinates). Recommend adding testID='prr-new-fab' on TouchableOpacity at /app/frontend/app/(tabs)/prr.tsx:456-461. Same applies to the empty-state 'Start New' button at line 398-404.",
+        "testID": "missing",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter91_url_analyse_screener.py",
+    "/app/test_reports/pytest/iter91.xml"
+  ],
+  "action_items": [
+    "(Optional, LOW) Add testID='prr-new-fab' to the + add button in /app/frontend/app/(tabs)/prr.tsx:456 and testID='prr-empty-start-new' to the empty-state CTA at line 398 so testing agents don't have to fall back to coordinate-based clicks.",
+    "Everything else in the original review request is working — backend converter endpoints, consent gate (all 3 negative branches + 2 happy paths), Step-7 landing on built MyDezider, Step-7 pros_cons doc, demo-host Phase D headline + CTA, and the full Phase B/C user journey on web preview."
+  ],
+  "critical_code_review_comments": [
+    "url_analyze.py — Consent record is persisted BEFORE the crawl (good for audit trail even if fetch fails). ELIGIBILITY_TYPES is a set, comparison normalises to lowercase. Single source of truth.",
+    "url_crawl.py — Pure shared helper, gate-free by design. Table parser sensibly picks the LARGEST table (best=rows-with-most). Falls back to metered AI extraction when no clean table exists; both layers normalise to {name, attributes} via _rows_to_candidates. No URL whitelist / scheme allow-list yet — note that today the local 9777 host is reachable from the pod; in prod, consider a private-IP block to avoid SSRF (10.x, 192.168.x, ::1, localhost). The bot identifies itself as ViewDeziderBot UA which is good etiquette.",
+    "decision_builder.py — create_mydezider_from_candidates correctly sets operator + expected_value from the derived factor (so the matrix can compute on numeric values), and computes worth_percentage as the weighted sum of factor pct (clamped 0..100). create_pros_cons_from_candidates pre-fills the AssessmentCell map and sets current_step=7 — matches the product requirement of landing the user in the assessment step.",
+    "ScreenerPanel.tsx — Button text correctly conditional on source: 'Load candidates' vs 'Review consent & load' (line 202). Same UrlAccessConsentModal is reused — good consistency. Send-to buttons (lines 306-317) have testIDs and call POST /api/embed/screener/run/{run_id}/to-{decision|pros-cons} with title/life_area/decision_type which the backend route validates and routes to the shared builder.",
+    "analyse-url.tsx — Clean form, proper KeyboardAvoidingView, force-disable submit on invalid URL, busy state for the loading overlay. Hands off cleanly to UrlAccessConsentModal and navigates to /prr/{id} (mydezider) or /tools/pros-cons-wizard?id={id} (pros_cons) on success."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter91_url_analyse_screener.py"
+  ],
+  "success_rate": {
+    "backend": "100% (11/11 passed)",
+    "frontend": "Phase B + C E2E: 100% — login → +menu → /tools/analyse-url → consent gate state machine → submit → Step 7 matrix all green. Phase A + C in-Screener: code-review verified (same modal component, send-to buttons present with testIDs, backend converters proved 200 OK). Phase D: 100% in-browser visual + body assertion."
+  },
+  "seed_data_creation": "Each test creates its own TEST_iter91_* decisions/pros_cons docs against the regular user (harden_*) and super-admin (veales_*). No cleanup performed but docs are clearly tagged for future sweeps.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "If retesting: re-run `pytest backend/tests/test_iter91_url_analyse_screener.py -v` — depends on the local TABLE page at http://localhost:9777/funds.html being served in the pod. For Phase B UI re-test: login programmatically via the EXPO_PUBLIC_BACKEND_URL /api/auth/login, stash session_token under localStorage keys session_token/token/auth_token (and 'whatsapp_verified'='true'), then navigate to /prr → click at approx (370,35) to open the new-decision menu (or use testID='new-menu-analyse-url' if/once main agent adds testID to the + button). The full state machine of the consent modal (disabled→disabled→enabled) and Step 7 landing are confirmed working today.",
+  "rca_of_issue": "No RCA needed — feature works end-to-end. Only minor UX cleanup is the missing testID on the prr.tsx + button (still functional via coordinate click)."
+}

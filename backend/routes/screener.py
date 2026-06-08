@@ -48,6 +48,9 @@ from core.database import db
 from core.auth import get_current_user
 from core import ai_wallet
 from core.ai_metering import metered_chat, has_any_llm
+from core.decision_builder import (
+    create_mydezider_from_candidates, create_pros_cons_from_candidates,
+)
 
 router = APIRouter(prefix="/embed/screener", tags=["Partner Screener"])
 
@@ -587,3 +590,79 @@ async def screener_export(run_id: str, user: dict = Depends(get_current_user)):
         content=buf.getvalue(), media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="screener_{run_id}.csv"'},
     )
+
+
+
+# ----------------------------------------------------------------------------
+# Send to MyDezider / Pros & Cons — turn a ranked run into a decision
+# ----------------------------------------------------------------------------
+class ToDecisionRequest(BaseModel):
+    title: Optional[str] = None
+    life_area: Optional[str] = None
+    decision_type: Optional[str] = None
+    top_n: Optional[int] = None   # only carry the top-N finalists across (default: all)
+
+
+def _run_to_builder_inputs(doc: Dict[str, Any], top_n: Optional[int]):
+    """Map a persisted screener run → (factors_spec, candidates) for the
+    shared decision builder. Scores are keyed by factor NAME."""
+    factors = []
+    for f in doc.get("factors", []):
+        direction = (f.get("direction") or "higher")
+        factors.append({
+            "id": f.get("id"),
+            "name": f.get("name"),
+            "data_type": "text" if (f.get("data_type") == "text") else "numeric",
+            "operator": ("<=" if direction == "lower" else ">=") if (f.get("data_type") != "text") else None,
+            "expected_value": None,
+            "weight": f.get("weight"),
+        })
+    results = doc.get("results", [])
+    if top_n:
+        results = results[: max(1, int(top_n))]
+    candidates = []
+    for r in results:
+        scores = {fs.get("name"): fs.get("pct") for fs in r.get("factor_scores", [])}
+        candidates.append({"name": r.get("name"), "attributes": r.get("attributes", {}), "scores": scores})
+    return factors, candidates
+
+
+async def _load_owned_run(run_id: str, user: dict) -> Dict[str, Any]:
+    doc = await db.screener_runs.find_one({"id": run_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Run not found")
+    if doc.get("user_id") != user["user_id"] and user.get("role") != "admin":
+        raise HTTPException(403, "Not allowed")
+    return doc
+
+
+@router.post("/run/{run_id}/to-decision")
+async def screener_to_decision(run_id: str, req: ToDecisionRequest, user: dict = Depends(get_current_user)):
+    doc = await _load_owned_run(run_id, user)
+    factors, candidates = _run_to_builder_inputs(doc, req.top_n)
+    if not factors or len(candidates) < 1:
+        raise HTTPException(422, "This run has no factors/finalists to convert.")
+    title = (req.title or "").strip() or f"Screener shortlist — {doc.get('partner_slug') or 'ranking'}"
+    new_id = await create_mydezider_from_candidates(
+        user["user_id"], title=title,
+        context=f"Built from a Screener run ({len(candidates)} finalists).",
+        life_area=req.life_area, decision_type=req.decision_type,
+        factors=factors, candidates=candidates, source_label="screener",
+    )
+    return {"id": new_id, "target": "mydezider", "finalists": len(candidates)}
+
+
+@router.post("/run/{run_id}/to-pros-cons")
+async def screener_to_pros_cons(run_id: str, req: ToDecisionRequest, user: dict = Depends(get_current_user)):
+    doc = await _load_owned_run(run_id, user)
+    factors, candidates = _run_to_builder_inputs(doc, req.top_n)
+    if not factors or len(candidates) < 1:
+        raise HTTPException(422, "This run has no factors/finalists to convert.")
+    title = (req.title or "").strip() or f"Screener shortlist — {doc.get('partner_slug') or 'ranking'}"
+    new_id = await create_pros_cons_from_candidates(
+        user["user_id"], title=title,
+        context=f"Built from a Screener run ({len(candidates)} finalists).",
+        life_area=req.life_area, decision_type=req.decision_type,
+        factors=factors, candidates=candidates, source_label="screener",
+    )
+    return {"id": new_id, "target": "pros_cons", "finalists": len(candidates)}
