@@ -10,6 +10,7 @@ import { useDecision } from '../../context/DecisionContext';
 import ActionItemEditor from '../ActionItemEditor';
 import { styles } from '../../styles/decisionStyles';
 import { TEPFI_ELEMENTS, TEPFI_LAYERS } from '../../utils/decisionHelpers';
+import { showAlert } from '../../utils/alert';
 
 export default function Step10() {
   const { decision, saveDecision, selectOption, calculateDynamicWorth, setCurrentStep, router } = useDecision();
@@ -296,12 +297,30 @@ export default function Step10() {
             <GradientButton
               title="Complete Decision"
               onPress={() => {
-                saveDecision({
-                  status: 'completed',
-                  final_choice_reason: reasonStr || undefined,
-                  final_choice_decided_at: decision.final_choice_decided_at || new Date().toISOString(),
-                });
-                router.back();
+                showAlert(
+                  'Complete this decision?',
+                  'This marks the decision as Completed. You can still review or edit it later.',
+                  [
+                    { text: 'Not yet', style: 'cancel' },
+                    {
+                      text: 'Complete',
+                      onPress: async () => {
+                        try {
+                          await saveDecision({
+                            status: 'completed',
+                            final_choice_reason: reasonStr || undefined,
+                            final_choice_decided_at: decision.final_choice_decided_at || new Date().toISOString(),
+                          });
+                          showAlert('Decision Completed 🎉', 'Your decision has been marked as completed.', [
+                            { text: 'Done', onPress: () => { try { router.back(); } catch { router.replace('/(tabs)' as any); } } },
+                          ]);
+                        } catch (e) {
+                          showAlert('Could not complete', 'Something went wrong. Please try again.');
+                        }
+                      },
+                    },
+                  ]
+                );
               }}
               variant="accent"
               style={styles.nextButton}

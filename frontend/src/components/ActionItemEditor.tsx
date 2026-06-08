@@ -264,15 +264,17 @@ export default function ActionItemEditor(props: Props) {
               </View>
               <View style={s.actionsRow}>
                 {it.ported_to ? (
-                  <View style={[s.portedPill, { backgroundColor: it.ported_to === 'CTT' ? '#DBEAFE' : '#FEF3C7' }]}>
+                  <TouchableOpacity
+                    style={[s.portedPill, { backgroundColor: it.ported_to === 'CTT' ? '#DBEAFE' : '#FEF3C7' }]}
+                    onPress={() => router.push((it.ported_to === 'CTT' ? '/tools/ctt' : '/tools/lifestyle') as any)}
+                    accessibilityLabel={`Open in ${it.ported_to === 'CTT' ? 'CTT' : 'LifeStyle'}`}
+                  >
                     <Ionicons name="link" size={12} color={it.ported_to === 'CTT' ? '#1D4ED8' : '#B45309'} />
                     <Text style={[s.portedText, { color: it.ported_to === 'CTT' ? '#1D4ED8' : '#B45309' }]}>
                       In {it.ported_to === 'CTT' ? 'CTT' : 'LifeStyle'}
                     </Text>
-                    <TouchableOpacity onPress={() => router.push(it.ported_to === 'CTT' ? '/tools/ctt' : '/tools/lifestyle')}>
-                      <Ionicons name="open-outline" size={12} color={it.ported_to === 'CTT' ? '#1D4ED8' : '#B45309'} />
-                    </TouchableOpacity>
-                  </View>
+                    <Ionicons name="open-outline" size={12} color={it.ported_to === 'CTT' ? '#1D4ED8' : '#B45309'} />
+                  </TouchableOpacity>
                 ) : (
                   <>
                     <TouchableOpacity style={[s.portBtn, { backgroundColor: '#DBEAFE' }]} onPress={() => portTo(it, 'CTT')} disabled={savingId === it.action_id}>
@@ -313,13 +315,13 @@ export default function ActionItemEditor(props: Props) {
             </View>
             <ScrollView style={{ maxHeight: 520 }}>
               <Text style={s.label}>What * <Text style={s.hint}>(action description)</Text></Text>
-              <TextInput style={s.input} value={fTitle} onChangeText={setFTitle} placeholder="e.g. Email vendor to negotiate price" />
+              <TextInput style={s.input} value={fTitle} onChangeText={setFTitle} placeholder="e.g. Email vendor to negotiate price" placeholderTextColor="#9CA3AF" />
 
               <Text style={s.label}>Who <Text style={s.hint}>(assignee name)</Text></Text>
-              <TextInput style={s.input} value={fWho} onChangeText={setFWho} placeholder="Self / Jane Doe / Team A" />
+              <TextInput style={s.input} value={fWho} onChangeText={setFWho} placeholder="Self / Jane Doe / Team A" placeholderTextColor="#9CA3AF" />
 
               <Text style={s.label}>By When <Text style={s.hint}>(DD-MM-YYYY)</Text></Text>
-              <TextInput style={s.input} value={fByWhen} onChangeText={t => setFByWhen(maskDMY(t))} placeholder="30-08-2026" keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'default'} />
+              <TextInput style={s.input} value={fByWhen} onChangeText={t => setFByWhen(maskDMY(t))} placeholder="30-08-2026" placeholderTextColor="#9CA3AF" keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'default'} />
 
               <Text style={s.label}>Priority</Text>
               <View style={s.chipsRow}>
@@ -345,12 +347,12 @@ export default function ActionItemEditor(props: Props) {
                     ))}
                   </View>
                   <Text style={s.label}>Time of day <Text style={s.hint}>(HH:MM, optional)</Text></Text>
-                  <TextInput style={s.input} value={fTime} onChangeText={setFTime} placeholder="07:00" />
+                  <TextInput style={s.input} value={fTime} onChangeText={setFTime} placeholder="07:00" placeholderTextColor="#9CA3AF" />
                 </>
               )}
 
               <Text style={s.label}>Notes</Text>
-              <TextInput style={[s.input, { height: 70 }]} value={fNotes} onChangeText={setFNotes} placeholder="Optional notes…" multiline />
+              <TextInput style={[s.input, { height: 70 }]} value={fNotes} onChangeText={setFNotes} placeholder="Optional notes…" placeholderTextColor="#9CA3AF" multiline />
             </ScrollView>
             <View style={s.modalFoot}>
               <TouchableOpacity style={s.cancelBtn} onPress={() => { setAddOpen(false); setEditing(null); }}>
