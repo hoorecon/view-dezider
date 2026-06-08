@@ -204,8 +204,22 @@ Multi-user Decision Making App based on a 10-step Proactive Risk Response (PRR) 
   ScreenerPanel.tsx. No logic change. Screener CSV→factors→quote→run flow re-verified.
 - NOTE: newly added testIDs needed `sudo supervisorctl restart expo` for Metro to surface them.
 
+## AI Assess gap-fill + Screener P3b — 8 Jun 2026 (tested, iteration_90)
+- ✅ Screener P3b (AI assessment for qualitative TEXT factors on finalists) was ALREADY built
+  (`screener.py::_ai_assess_finalists`, `use_ai` flag, `screener_ai_assess` meter) — verified working.
+- ✅ My Dezider "AI Assess All" gap-fill: previously skipped cells missing Expected/Actual. Now the
+  bulk dialog offers Cancel / Ready only / AI-fill all when gaps exist. AI-fill sends `force_fill=true`;
+  backend `core/ai_assess.ai_assess_factor(force_fill=True)` runs an extra metered LLM call
+  (`_forcefill_generate`, feature `ai_assess_fill`) to set a STANDARD Expected (+operator/unit) and a
+  realistic estimated Actual, then scores %. Generated Expected/Operator/Unit are PERSISTED onto the
+  factor (route `decisions/assessment.py` `$set` now writes `factors` too — bug fixed in iter90).
+  Higher credits come naturally from the heavier token usage. Files: `core/ai_assess.py`,
+  `routes/decisions/assessment.py`, `frontend/src/components/steps/Step7.tsx`.
+- NOTE: dev LiteLLM proxy has a low budget cap ($0.4) that can 502 repeated live AI calls in sandbox.
+- Test: `/app/backend/tests/test_ai_assess_force_fill.py`.
+
 ## Remaining backlog (post-fork)
 - P1: CLD Engine Phase B & C (Rules Engine + AI Suggestions)
 - P1: PRR Enhancement #4 & #5 (configurable timing fields + decision-linking bypass)
 - P1: DigiLocker eKYC Integration (needs sandbox credentials or mock-first)
-- P2: Webhook API Integration; Org-Type Master Migration; Screener P3b (AI assessment for qualitative factors)
+- P2: Webhook API Integration; Org-Type Master Migration
