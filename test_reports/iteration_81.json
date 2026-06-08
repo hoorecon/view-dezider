@@ -1,0 +1,37 @@
+{
+  "summary": "Backend-only verification of Phase 0 Partner Embed Foundation + org-login fix. Ran 17 pytest cases against the public preview URL — all 17 PASSED. Critical fix verified: org-auth login now writes to user_sessions (same shape get_current_user reads), so org-login tokens authenticate downstream — Bearer <session_token> on GET /api/auth/me returns 200 with the correct org user identity. Admin-configurable per-partner OTP toggle works: PUT /api/embed/config/pmsbazaar-demo {otp_required:true, expose_dev_code:true} flips org-login to status=otp_required + dev_code; POST /api/org-auth/verify-otp accepts the dev_code (no 500 from the prior tz-naive datetime crash) and returns a session_token that ALSO authenticates /auth/me. Public embed config (no auth) returns brand-safe payload with primary_color=#7B1E3B, branding_mode=white_label, enabled_flows=[mydezider, pros_cons, screener]; unknown slug → 404. Admin GET /api/embed/config returns 200 for admin and 403 for org-member token. Admin GET /api/embed/partners includes pmsbazaar-demo. Legal gate works (scrape_enabled=true with either ack false → 400; both acks true → 200). Enum validation works (invalid branding_mode/auth_mode/billing_mode/enabled_flows → 400). Regression smoke OK (/api/health 200; normal email/password login + /auth/me 200). pmsbazaar-demo embed config restored to frictionless baseline (otp_required=false, auth_mode=frictionless) and verified post-run.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter81_partner_embed.py",
+    "/app/test_reports/pytest/iter81_partner_embed.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "core/auth.py:get_current_user reads session_token from COOKIE first, then Authorization header. This is fine in production (cookies are scoped per-browser), but ANY API client that uses a persistent requests.Session and logs in multiple users sequentially will silently authenticate as whichever user logged in LAST. Worth a one-line comment in core/auth.py noting cookie-takes-priority semantics so future test agents don't get tripped up (we did, on the first run).",
+    "routes/org_auth.py:_issue_session inserts into user_sessions without TTL index on expires_at. Not blocking, but a TTL index would auto-purge expired tokens (most session collections in this codebase appear to use the same shape).",
+    "routes/partner_embed.py PUT /config/{slug} accepts the full PartnerEmbedConfig but does NOT enforce any caps on screener_pricing fields (negative values, absurdly large per_factor). Pydantic Field constraints (ge=0) would be a cheap hardening win.",
+    "routes/org_auth.py login path: when OTP is required but the user has no whatsapp_number, the OTP record is never created and a 400 is returned — good. But if expose_dev_code is true AND whatsapp delivery fails, dev_code is still echoed (which is the desired non-prod behaviour, just worth confirming this is gated by env in prod)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter81_partner_embed.py (new)",
+    "/app/test_reports/pytest/iter81_partner_embed.xml (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (17/17)",
+    "frontend": "not tested (backend-only request)"
+  },
+  "seed_data_creation": "None — relied on existing pmsbazaar-demo partner seeded by scripts.seed_embed_partner_demo. Test restores the embed config to frictionless baseline (otp_required=false, auth_mode=frictionless, screener flow enabled) at end of every mutating test class and again in a final teardown.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Use /app/backend/tests/test_iter81_partner_embed.py as the regression suite for Partner Embed P0. Two gotchas to remember: (1) /api/auth/me reads session_token from COOKIE before Authorization header, so DO NOT share a requests.Session across users — the test file uses a _NoCookieClient wrapper that explicitly passes cookies={} on every call. (2) Tests that mutate /api/embed/config/pmsbazaar-demo MUST restore the frictionless baseline (otp_required=false, auth_mode=frictionless, billing_mode=end_user, scrape disabled, no acks) — the test does this in finally blocks and a final test_zz_restore_baseline_final test. Org member credentials: analyst@pmsbazaar-demo.com / PmsAnalyst2026! (org_slug=pmsbazaar-demo). Admin: admin@test.com / AdminPass2026!.",
+  "rca_of_issue": "Original bug (FIXED — verified): routes/org_auth.py previously wrote `session_token` onto the user document directly. core/auth.py:get_current_user validates tokens against the `user_sessions` collection, never the user doc — so org-login bearer tokens authenticated NOTHING downstream (every authenticated endpoint returned 401). The fix in _issue_session now inserts a real row into user_sessions {user_id, session_token, expires_at, created_at}, matching exactly the shape get_current_user expects. Verified: org-login token → GET /api/auth/me → 200 with correct org user email. Secondary verify-otp 500 (tz-naive vs tz-aware datetime comparison on expires_at) is also fixed in routes/org_auth.py:verify_otp via the `if expires_at.tzinfo is None: replace(tzinfo=utc)` normalisation — confirmed no 500s under the OTP path."
+}

@@ -41,6 +41,47 @@ ULTRAMSG_INSTANCE_ID = os.environ.get("ULTRAMSG_INSTANCE_ID", "")
 ULTRAMSG_API_TOKEN = os.environ.get("ULTRAMSG_API_TOKEN", "")
 ULTRAMSG_BASE_URL = f"https://api.ultramsg.com/{ULTRAMSG_INSTANCE_ID}"
 
+# Non-production testing aid: when set, the OTP is echoed in the API response
+# so automated tests / the embed demo can complete the flow without a live
+# WhatsApp gateway. Per-partner override lives in decision_embed_config.expose_dev_code.
+EXPOSE_DEV_CODE = os.getenv("WA_OTP_EXPOSE_DEV_CODE", "false").strip().lower() == "true"
+SESSION_TTL_DAYS = 7
+
+
+async def _issue_session(user_id: str) -> str:
+    """Create a real `user_sessions` record (the SAME shape core/auth.py
+    validates) and return the bearer token.
+
+    NOTE: the previous implementation wrote `session_token` onto the user
+    document, which `get_current_user` never reads — so org-login tokens
+    authenticated nothing downstream. This is the fix.
+    """
+    session_token = f"session_{uuid.uuid4().hex}"
+    await db.user_sessions.insert_one({
+        "user_id": user_id,
+        "session_token": session_token,
+        "expires_at": datetime.now(timezone.utc) + timedelta(days=SESSION_TTL_DAYS),
+        "created_at": datetime.now(timezone.utc),
+    })
+    return session_token
+
+
+async def _resolve_otp_policy(org: dict) -> tuple[bool, bool]:
+    """Return (requires_otp, expose_dev_code) for an org.
+
+    OTP requirement is admin-configurable per-partner via
+    `decision_embed_config.otp_required`; if unset we fall back to the
+    org-type heuristic (Business / Government require OTP, NonProfit doesn't).
+    """
+    org_type = (org.get("org_type") or "BUSINESS").upper()
+    cfg = await db.decision_embed_config.find_one({"org_id": org["id"]}, {"_id": 0}) or {}
+    if "otp_required" in cfg:
+        requires_otp = bool(cfg.get("otp_required"))
+    else:
+        requires_otp = org_type in ["BUSINESS", "GOVERNMENT"]
+    expose_dev = bool(cfg.get("expose_dev_code")) or EXPOSE_DEV_CODE
+    return requires_otp, expose_dev
+
 # ========================
 # MODELS
 # ========================
@@ -129,15 +170,16 @@ async def org_login(payload: OrgLoginRequest):
     if not pwd_context.verify(payload.password, user.get("password_hash", "")):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    # Check if OTP required based on org type
-    requires_otp = org_type in ["BUSINESS", "GOVERNMENT"]
+    # OTP requirement is admin-configurable per-partner (embed config), with an
+    # org-type fallback. expose_dev surfaces the OTP for non-prod testing.
+    requires_otp, expose_dev = await _resolve_otp_policy(org)
 
     if not requires_otp:
-        # NonProfit — login immediately, generate session token
-        session_token = str(uuid.uuid4())
+        # Frictionless login — issue a real session usable across the app.
+        session_token = await _issue_session(user["user_id"])
         await db.users.update_one(
             {"user_id": user["user_id"]},
-            {"$set": {"session_token": session_token, "last_login": datetime.now(timezone.utc)}}
+            {"$set": {"last_login": datetime.now(timezone.utc)}}
         )
         return {
             "status": "authenticated",
@@ -190,7 +232,7 @@ async def org_login(payload: OrgLoginRequest):
     # Mask phone number for display
     masked_phone = whatsapp_number[:4] + "****" + whatsapp_number[-3:] if len(whatsapp_number) > 7 else "****"
 
-    return {
+    resp = {
         "status": "otp_required",
         "requires_otp": True,
         "verification_id": verification_id,
@@ -199,6 +241,10 @@ async def org_login(payload: OrgLoginRequest):
         "otp_sent": send_result.get("success", False),
         "message": f"OTP sent to WhatsApp {masked_phone}",
     }
+    # Non-prod testing / demo aid — echo the code when allowed by config/env.
+    if expose_dev:
+        resp["dev_code"] = otp_code
+    return resp
 
 
 @router.post("/verify-otp")
@@ -213,8 +259,13 @@ async def verify_otp(payload: OTPVerifyRequest):
     if record.get("verified"):
         raise HTTPException(status_code=400, detail="OTP already verified")
 
-    # Check expiry
-    if datetime.now(timezone.utc) > record["expires_at"]:
+    # Check expiry (normalise to tz-aware — Mongo may return naive datetimes)
+    expires_at = record["expires_at"]
+    if isinstance(expires_at, str):
+        expires_at = datetime.fromisoformat(expires_at)
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) > expires_at:
         raise HTTPException(status_code=400, detail="OTP expired. Please request a new one.")
 
     # Check attempts
@@ -242,10 +293,10 @@ async def verify_otp(payload: OTPVerifyRequest):
     user = await db.users.find_one({"user_id": record["org_user_id"]})
     org = await db.organizations.find_one({"id": record["org_id"]})
 
-    session_token = str(uuid.uuid4())
+    session_token = await _issue_session(user["user_id"])
     await db.users.update_one(
         {"user_id": user["user_id"]},
-        {"$set": {"session_token": session_token, "last_login": datetime.now(timezone.utc)}}
+        {"$set": {"last_login": datetime.now(timezone.utc)}}
     )
 
     return {

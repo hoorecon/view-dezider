@@ -270,6 +270,60 @@ test_plan:
 user_problem_statement: "Build View Dezider - a decision intelligence app based on Chapter 2 of 'Be Your Best-mate' book. Features include PRR (Priority Related Ratings) 10-step decision system, Test123 instant decision tool, Decision Mode Assessment, and Decision Journal. Requires both Google OAuth and email/password auth. Venture Buddha branding with purple/magenta gradient theme."
 
 backend:
+  - task: "P0 — Partner Embed Foundation + Org Login fix (Embed Initiative)"
+    implemented: true
+    working: true
+    file: "backend/routes/org_auth.py, backend/routes/partner_embed.py, backend/scripts/seed_embed_partner_demo.py, backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          P0 of the white-label "Decision Embed" initiative (pitch to comparison
+          platforms e.g. PMSBazaar). Two deliverables:
+
+          (1) FIXED the previously-broken ORG LOGIN. `org_auth.py` was writing
+              `session_token` onto the user document, but core/auth.py
+              `get_current_user` validates tokens against the `user_sessions`
+              collection — so org-login tokens authenticated NOTHING downstream.
+              Added `_issue_session()` that inserts a proper user_sessions record
+              (same 7-day shape as auth_routes). Both the frictionless login path
+              and the verify-otp path now use it. Also fixed a pre-existing
+              tz-naive/aware datetime crash (500) in verify-otp expiry check.
+
+          (2) OTP is now ADMIN-CONFIGURABLE per partner (decision_embed_config.
+              otp_required) instead of hardcoded by org_type; `expose_dev_code`
+              (config or WA_OTP_EXPOSE_DEV_CODE env) echoes the OTP for non-prod
+              testing/demo.
+
+          (3) NEW partner_embed.py: multi-tenant embed config (partner == org).
+              - GET  /api/embed/public-config/{slug}  (PUBLIC, brand-safe subset)
+              - GET  /api/embed/config/{slug}         (admin, full)
+              - PUT  /api/embed/config/{slug}         (admin, upsert; gates
+                     server-side scraping behind BOTH legal+ToS ack checkboxes)
+              - GET  /api/embed/partners              (admin list)
+              Config: allowed_origins, branding_mode (white_label|co_brand),
+              enabled_flows (mydezider|pros_cons|screener), theme (colors/logo/
+              hide_powered_by), auth_mode, otp_required, expose_dev_code,
+              screener_pricing (base/per_candidate/per_finalist/per_factor +
+              billing_mode end_user|partner|both), ingestion (api/csv_sheet/
+              scrape + legal acks).
+
+          Seeded demo partner: org slug `pmsbazaar-demo` (BUSINESS, maroon brand)
+          + member analyst@pmsbazaar-demo.com / PmsAnalyst2026! + org admin
+          admin@pmsbazaar-demo.com / PmsAdmin2026!, frictionless embed config.
+
+          MAIN-AGENT SMOKE TESTS (all PASS): frictionless org login → token works
+          on /auth/me (THE FIX); OTP path (configurable) → dev_code → verify →
+          token works downstream; public-config themed maroon + flows; unknown
+          slug 404; admin config GET 200; non-admin GET 403; legal-gate scrape-
+          without-acks 400; valid PUT 200; partners list. Needs independent
+          retest by testing_agent.
+
+metadata_embed_p0: true
+
   - task: "User Registration (Email/Password)"
     implemented: true
     working: true

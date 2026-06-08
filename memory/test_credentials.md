@@ -65,6 +65,16 @@ The response will contain `session_token` for Bearer header use.
 - Email domains using `.test`/`.example`/`.localhost` are REJECTED by Pydantic email validation. Use `@example.com`, `@test.com`, or any real-looking domain.
 - Tokens expire after 7 days; re-issue via `/api/auth/login` if `/api/auth/me` returns 401.
 
+## Embed Partner Demo (P0 — PMSBazaar pitch) — DEV
+- Tool/APIs: org login `/api/org-auth/*`, embed config `/api/embed/*`
+- **Org slug**: `pmsbazaar-demo` (BUSINESS, maroon #7B1E3B brand)
+- **Org member**: `analyst@pmsbazaar-demo.com` / `PmsAnalyst2026!` (org_member, whatsapp 919000000001)
+- **Org admin**: `admin@pmsbazaar-demo.com` / `PmsAdmin2026!` (org_super_admin, whatsapp 919000000002)
+- Embed config is **frictionless** by default (otp_required=false, expose_dev_code=true) so org login returns a session_token directly. Toggle OTP via admin `PUT /api/embed/config/pmsbazaar-demo {otp_required:true}` → org login returns `dev_code` for testing.
+- Re-seed anytime: `cd /app/backend && python -m scripts.seed_embed_partner_demo` (idempotent).
+- Public widget config (no auth): `GET /api/embed/public-config/pmsbazaar-demo`.
+- Admin config CRUD (platform admin only): `GET/PUT /api/embed/config/{slug}`, `GET /api/embed/partners`.
+
 ## WhatsApp verification gate (NEW — June 2026)
 - After login, the app routes any user with `whatsapp_verified != true` to `/whatsapp-verify` before they can use the in-app tabs.
 - To pass the gate during testing: `POST /api/auth/whatsapp/send-otp` with `{ "phone_number": "+919876543210" }`. The JSON response echoes `dev_code` (since live WhatsApp delivery may be unconfigured). Then `POST /api/auth/whatsapp/verify-otp` with `{ "code": "<dev_code>" }`.
