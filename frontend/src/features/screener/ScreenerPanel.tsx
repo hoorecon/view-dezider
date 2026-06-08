@@ -198,7 +198,7 @@ export default function ScreenerPanel({ partner, primary, accent, initialOptions
           ))}
           {attrKeys.length > 0 && (
             <View style={styles.chipRow}>
-              {attrKeys.filter(k => !factors.some(f => f.attribute_key === k)).slice(0, 8).map(k => (
+              {attrKeys.filter(k => !factors.some(f => f.attribute_key === k) && (!preview[0] || looksNumeric(preview[0].attributes?.[k]))).slice(0, 8).map(k => (
                 <TouchableOpacity key={k} style={styles.addChip} onPress={() => setFactors(fs => [...fs, mkFactor(k)])}>
                   <Ionicons name="add" size={12} color="#475569" />
                   <Text style={styles.chipText}>{k}</Text>
