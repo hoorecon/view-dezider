@@ -272,7 +272,7 @@ user_problem_statement: "Build View Dezider - a decision intelligence app based 
 backend:
   - task: "P1 — Embed Widget + JS Loader + Dynamic Partner Page (Embed Initiative)"
     implemented: true
-    working: "NA"
+    working: true
     file: "backend/routes/partner_embed_widget.py, backend/routes/partner_embed.py, frontend/app/embed/[flow].tsx, frontend/app/_layout.tsx"
     stuck_count: 0
     priority: "high"
