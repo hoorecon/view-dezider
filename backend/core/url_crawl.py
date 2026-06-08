@@ -90,6 +90,111 @@ def _html_table_rows(html: str) -> List[Dict[str, Any]]:
     return best
 
 
+_VS_SPLIT_RE = re.compile(r"\s+(?:vs\.?|versus)\s+", re.IGNORECASE)
+_GENERIC_KEY_RE = re.compile(r"^col\d+$", re.IGNORECASE)
+
+
+def _names_from_title(soup: "BeautifulSoup") -> List[str]:
+    """Extract compared item names from a 'Compare A vs. B vs. C - Site' title/h1."""
+    txt = ""
+    t = soup.find("title")
+    if t:
+        txt = t.get_text(" ", strip=True)
+    if not txt:
+        h1 = soup.find("h1")
+        txt = h1.get_text(" ", strip=True) if h1 else ""
+    if not txt:
+        return []
+    txt = re.split(r"\s[-|–—]\s", txt)[0]                 # drop " - GSMArena.com"
+    txt = re.sub(r"^\s*compare\s+", "", txt, flags=re.IGNORECASE)
+    parts = [p.strip() for p in _VS_SPLIT_RE.split(txt) if p.strip()]
+    return parts if 2 <= len(parts) <= 12 else []
+
+
+def _comparison_matrix_candidates(html: str) -> List[Dict[str, Any]]:
+    """Parse a TRANSPOSED comparison matrix where the compared items are COLUMNS
+    and the attributes are ROWS (e.g. GSMArena phone compare, versus.com).
+
+    Item names come from the page title ('Compare A vs. B vs. C'); attribute
+    rows may be split across many per-category <table>s. Each data row looks like
+    ``[<optional category>, <attr label>, value_1, value_2, ... value_N]``.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    names = _names_from_title(soup)
+
+    tables = soup.find_all("table")
+    all_rows: List[List[str]] = []
+    for table in tables:
+        for tr in table.find_all("tr"):
+            cells = [c.get_text(" ", strip=True) for c in tr.find_all(["td", "th"])]
+            if any(cells):
+                all_rows.append(cells)
+    if not all_rows:
+        return []
+
+    # Item count N: trust the title if it gave names, else infer from the most
+    # common row width (label column + N value columns).
+    from collections import Counter
+    widths = Counter(len(r) for r in all_rows if len(r) >= 3)
+    if names:
+        n = len(names)
+    elif widths:
+        n = widths.most_common(1)[0][0] - 1
+    else:
+        return []
+    if n < 2 or n > 12:
+        return []
+    if not names or len(names) != n:
+        names = [f"Item {i + 1}" for i in range(n)]
+
+    items: List[Dict[str, Any]] = [{"name": names[i], "attributes": {}} for i in range(n)]
+    seen: Dict[str, int] = {}
+    # Re-walk per table so we can prefix each attribute with its category section
+    # header (GSMArena groups specs under Body / Display / Battery / …), yielding
+    # readable factor names like "Body · Weight" instead of bare/duplicate "Type".
+    for table in tables:
+        cat_th = table.find("th")
+        category = cat_th.get_text(" ", strip=True) if cat_th else ""
+        for tr in table.find_all("tr"):
+            cells = [c.get_text(" ", strip=True) for c in tr.find_all(["td", "th"])]
+            if len(cells) < n + 1:
+                continue
+            values = cells[-n:]
+            label = (cells[-(n + 1)] or "").strip()
+            if not label or not any(v.strip() for v in values):
+                continue
+            if category and category.lower() != label.lower():
+                label = f"{category} · {label}"
+            if label in seen:
+                seen[label] += 1
+                label = f"{label} ({seen[label]})"      # disambiguate true repeats
+            else:
+                seen[label] = 1
+            for i in range(n):
+                v = values[i].strip()
+                if v:
+                    items[i]["attributes"][label] = v
+
+    items = [it for it in items if len(it["attributes"]) >= 2]
+    return items if len(items) >= 2 else []
+
+
+def _is_low_quality(cands: List[Dict[str, Any]]) -> bool:
+    """A standard table parse is 'low quality' when it found no real headers
+    (keys are generic col0/col1…) or fewer than 2 items — a strong signal the
+    page is a transposed/irregular comparison layout rather than a row-per-item
+    table."""
+    if not cands or len(cands) < 2:
+        return True
+    keys = set()
+    for c in cands:
+        keys.update((c.get("attributes") or {}).keys())
+    if not keys:
+        return True
+    real = [k for k in keys if not _GENERIC_KEY_RE.match(str(k))]
+    return len(real) < max(1, len(keys) // 2)
+
+
 async def ai_extract_candidates(user_id: str, html: str) -> List[Dict[str, Any]]:
     """LLM fallback for table-less pages. Metered to the user's wallet."""
     if not has_any_llm():
@@ -165,16 +270,26 @@ async def crawl_candidates(url: str, user_id: str, name_key: Optional[str] = Non
         raise HTTPException(422, "The JSON URL did not yield a usable list of items.")
 
     rows = _html_table_rows(r.text)
-    if rows:
-        cands = _rows_to_candidates(rows, name_key)
-        if cands:
-            return cands
+    std_cands = _rows_to_candidates(rows, name_key) if rows else []
+    # Good standard (row-per-item) table → use it directly.
+    if std_cands and not _is_low_quality(std_cands):
+        return std_cands
 
+    # Transposed comparison matrix (items as COLUMNS — e.g. GSMArena, versus.com).
+    matrix_cands = _comparison_matrix_candidates(r.text)
+    if matrix_cands:
+        return matrix_cands
+
+    # LLM fallback for table-less / irregular pages (metered).
     ai_rows = await ai_extract_candidates(user_id, r.text)
     if ai_rows:
         cands = _rows_to_candidates(ai_rows, name_key)
         if cands:
             return cands
+
+    # Last resort: a low-quality standard parse is still better than nothing.
+    if std_cands:
+        return std_cands
 
     raise HTTPException(
         422,

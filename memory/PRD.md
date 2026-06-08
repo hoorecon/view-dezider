@@ -277,6 +277,30 @@ Full plan (Phases A–D) approved by user; all 11 backend tests + frontend e2e P
 - Applies to BOTH standalone "Analyse a URL" and Step-2 "Import from URL". Verified e2e (Expense Ratio
   → `<=` 0.85, Alpha 100% / Gamma 0%) + unit test `tests/test_url_import_direction.py` (2 passed).
 
+## Comparison-MATRIX parsing fix (GSMArena etc.) — 8 Jun 2026 (tested)
+- Symptom: pasting a GSMArena phone-compare URL fetched fine (UA fix worked) but produced
+  garbage factors ("col2", "col3", Expected 850.0). Root cause: GSMArena is a TRANSPOSED matrix —
+  compared items are COLUMNS (names in the page `<title>`) and specs are ROWS split across ~15
+  per-category tables — but our parser assumed row-per-item.
+- Fix (`core/url_crawl.py`): new `_comparison_matrix_candidates()` parses transposed matrices
+  (items from `_names_from_title()` "Compare A vs. B vs. C"; attributes prefixed with their
+  category section header → readable factor names like "Body · Weight", "Battery · Capacity").
+  A `_is_low_quality()` gate (generic colN keys / <2 items) routes standard-parse misses into the
+  matrix parser, then the AI fallback. Standard row-per-item tables (fixture funds.html) still use
+  the original path.
+- Fix (`routes/url_analyze.py`): new `_measure_num()` only treats CLEAN single measurements as
+  numeric ("169 g (5.96 oz)", "3500 mAh") and REJECTS messy spec strings ("GSM 850 / 900",
+  "2018, August", "256GB 12GB RAM") — killing the fake-850 numeric factors. Derive now also drops
+  over-long columns (avg>60 chars) and tie-breaks toward tidier values; messy specs become
+  qualitative factors instead of bogus numerics.
+- Verified e2e on the live GSMArena URL: 3 phones → options; "Body · Weight" & "Battery · Capacity"
+  numeric+scored; band/date/OS columns now qualitative. Offline regression `tests/test_url_matrix_parse.py`
+  (5 passed) + iter91/direction still green (13 passed). Fixtures added: phone_compare.html, funds.html.
+- ⚠️ Heuristic ceiling: free-text spec sites yield only a few clean numeric factors (rest qualitative).
+  Truly clean factor extraction (Battery mAh, RAM, Price as numerics) would need LLM refinement
+  (user's key) — offered as a follow-up. JS-rendered retail (Amazon) still needs a headless/scraping API.
+- ⚠️ Prod (jelcos.ai) must REDEPLOY.
+
 ## Remaining backlog (post-fork)
 - P1: CLD Engine Phase B & C (Rules Engine + AI Suggestions)
 - P1: PRR Enhancement #4 & #5 (configurable timing fields + decision-linking bypass)

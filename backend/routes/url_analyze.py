@@ -66,6 +66,37 @@ def _num(v: Any) -> Optional[float]:
         return None
 
 
+# A value is a "clean measurement" only if it is essentially a single number with
+# an optional short unit / leading approx-tilde / trailing parenthetical — e.g.
+# "169 g (5.96 oz)", "3500 mAh", "2.10", "~84%". This deliberately REJECTS messy
+# spec strings that merely contain digits ("GSM 850 / 900", "2018, August",
+# "Android 8.1", "256GB 12GB RAM, 512GB…") so they become qualitative factors
+# instead of nonsensical numeric ones.
+_MEASURE_RE = re.compile(
+    r"^\s*[~≈]?\s*(-?\d[\d,]*\.?\d*)\s*"          # the number
+    r"(?:%|°|[a-zA-Z][a-zA-Z0-9./µ\"'-]{0,7})?\s*"  # optional short unit
+    r"(?:\([^)]*\))?\s*$"                            # optional trailing parenthetical
+)
+
+
+def _measure_num(v: Any) -> Optional[float]:
+    """Return a float ONLY for clean single-measurement values (see _MEASURE_RE)."""
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = str(v).strip()
+    if not s or "/" in s:                 # slashes => lists/ratios (bands, "16/12 GB")
+        return None
+    m = _MEASURE_RE.match(s)
+    if not m:
+        return None
+    try:
+        return float(m.group(1).replace(",", ""))
+    except ValueError:
+        return None
+
+
 class AnalyzeRequest(BaseModel):
     url: str
     eligibility_type: str                       # own | partner | free_public | custom
@@ -83,10 +114,11 @@ def _derive_factors_and_scores(
 ) -> (List[Dict[str, Any]], List[Dict[str, Any]]):
     """Build a factor list from the union of candidate attribute keys (most-
     populated numeric keys first), then proportionally score each item."""
-    # Collect keys in first-seen order, count numeric coverage.
+    # Collect keys in first-seen order, count clean-numeric coverage + value length.
     order: List[str] = []
     numeric_count: Dict[str, int] = {}
     total_count: Dict[str, int] = {}
+    len_sum: Dict[str, int] = {}
     name_keys = {"name", "Name", "title", "Title", "scheme", "fund", "product"}
     for c in candidates:
         for k, v in (c.get("attributes") or {}).items():
@@ -96,19 +128,31 @@ def _derive_factors_and_scores(
                 order.append(k)
                 total_count[k] = 0
                 numeric_count[k] = 0
+                len_sum[k] = 0
             total_count[k] += 1
-            if _num(v) is not None:
+            len_sum[k] += len(str(v or ""))
+            if _measure_num(v) is not None:
                 numeric_count[k] += 1
 
-    # Prefer mostly-numeric, well-populated columns.
+    def _avg_len(k: str) -> float:
+        return len_sum[k] / max(1, total_count[k])
+
+    # Drop columns whose values are too long to be a useful comparison factor
+    # (e.g. band lists, multi-line spec blobs). Keep the filter from nuking
+    # everything on terse pages.
+    usable = [k for k in order if _avg_len(k) <= 60]
+    if len(usable) < 2:
+        usable = order
+
+    # Prefer mostly clean-numeric, then well-populated, then shorter (tidier) values.
     def _key_rank(k: str):
-        return (numeric_count[k] / max(1, total_count[k]), total_count[k])
-    ranked_keys = sorted(order, key=_key_rank, reverse=True)[:max_factors]
+        return (numeric_count[k] / max(1, total_count[k]), total_count[k], -_avg_len(k))
+    ranked_keys = sorted(usable, key=_key_rank, reverse=True)[:max_factors]
 
     factors: List[Dict[str, Any]] = []
     for k in ranked_keys:
         is_numeric = numeric_count[k] >= max(1, total_count[k] // 2)
-        vals = [_num(c.get("attributes", {}).get(k)) for c in candidates]
+        vals = [_measure_num(c.get("attributes", {}).get(k)) for c in candidates]
         nums = [v for v in vals if v is not None]
         lower_better = is_numeric and _is_lower_better(k)
         if is_numeric and nums:
@@ -136,7 +180,7 @@ def _derive_factors_and_scores(
             if f["data_type"] != "numeric":
                 scores[f["name"]] = None
                 continue
-            v = _num(c.get("attributes", {}).get(f["name"]))
+            v = _measure_num(c.get("attributes", {}).get(f["name"]))
             mn, mx = f["_min"], f["_max"]
             if v is None or mn is None or mx is None:
                 scores[f["name"]] = None
