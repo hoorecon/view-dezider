@@ -396,6 +396,7 @@ export default function SolutionBoxScreen() {
         Start a new Decider, Pros &amp; Cons, 8-Step or SWOT analysis below.
       </Text>
       <TouchableOpacity
+        testID="prr-empty-start-new"
         style={styles.emptyButton}
         onPress={() => setShowNewMenu(true)}
       >
@@ -454,6 +455,7 @@ export default function SolutionBoxScreen() {
             <Ionicons name="bookmark-outline" size={20} color={COLORS.primary} />
           </TouchableOpacity>
           <TouchableOpacity
+            testID="prr-new-fab"
             style={styles.addButton}
             onPress={() => setShowNewMenu(true)}
           >

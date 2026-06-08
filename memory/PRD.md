@@ -218,6 +218,26 @@ Multi-user Decision Making App based on a 10-step Proactive Risk Response (PRR) 
 - NOTE: dev LiteLLM proxy has a low budget cap ($0.4) that can 502 repeated live AI calls in sandbox.
 - Test: `/app/backend/tests/test_ai_assess_force_fill.py`.
 
+## URL Analyse + Screener→Decision bridge + Consent gate — 8 Jun 2026 (tested, iteration_91)
+Full plan (Phases A–D) approved by user; all 11 backend tests + frontend e2e PASS.
+- **Phase A — Screener → decision bridge**: `POST /api/embed/screener/run/{run_id}/to-decision`
+  and `/to-pros-cons` convert a saved run into a MyDezider decision / Pros & Cons analysis
+  (finalists→options, factors→ratings, per-factor pct→assessments). UI: "Send to MyDezider" /
+  "Send to Pros & Cons" buttons on Screener results (`ScreenerPanel.tsx`).
+- **Phase B — Standalone "Analyse a URL"**: new screen `app/tools/analyse-url.tsx` (+ entry in the
+  prr New menu, testID `new-menu-analyse-url`). Crawls a comparison page, derives weighted factors,
+  proportionally scores items, and auto-creates a decision (lands on Step 7). Backend:
+  `routes/url_analyze.py` + shared `core/url_crawl.py` (fetch→HTML table→AI fallback) +
+  `core/decision_builder.py` (shared by screener bridge & url-analyze).
+- **Phase C — Legal/consent gate**: `UrlAccessConsentModal.tsx` — mandatory access-eligibility type
+  (Own / Partner / Free-Public / Custom) + disclaimer acceptance before ANY pasted URL is processed
+  (used by both Analyse-a-URL and the Screener paste-URL mode). Auditable consent stored in
+  `db.url_access_consents` (user, url, eligibility_type, ip, ua, disclaimer_version, ts).
+- **Phase D — PMSBazaar ranking demo**: `GET /api/embed/demo-host/pmsbazaar-demo?flow=screener`
+  now shows ranking-engine framing ("Rank these for me").
+- NOTE: dev LiteLLM budget cap can 502 the AI table-less extraction path; the HTML-table path needs
+  no AI. Test: `/app/backend/tests/test_iter91_url_analyse_screener.py`.
+
 ## Remaining backlog (post-fork)
 - P1: CLD Engine Phase B & C (Rules Engine + AI Suggestions)
 - P1: PRR Enhancement #4 & #5 (configurable timing fields + decision-linking bypass)
