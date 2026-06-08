@@ -325,6 +325,27 @@ Full plan (Phases A–D) approved by user; all 11 backend tests + frontend e2e P
 - Pending follow-up: option 3 = LLM factor refinement (done as part of this) + headless/scraping API for
   JS-rendered retail (Amazon) — NOT yet wired; needed only for non-static sites.
 
+## Skip-WhatsApp-Gate flag + one-tap AI Assess + ScraperAPI — 8 Jun 2026 (tested iter95)
+- **Skip WhatsApp Gate (testing)**: new global flag in `core/security_config.py`
+  (`skip_whatsapp_gate`, default False). `effective_whatsapp_verified()` returns True for ALL users
+  when ON, so the post-login `/whatsapp-verify` gate is bypassed (login/auth-me already return the
+  effective value → no frontend gate change). Super-Admin toggle in Admin → Settings
+  (testID `toggle-skip-whatsapp-gate`, red track). PUT `/admin/security-config` is super-admin-only.
+  ⚠️ Currently ON in dev/preview for QA — turn OFF in production.
+- **One-tap "AI Assess All remaining"**: `DecisionContext.bulkAssessAllRemaining()` + `countUnscoredCells()`
+  score every un-scored LEAF cell via chunked `/ai-assess-batch` (force_fill), re-fetching per chunk so
+  worth updates live; graceful 402/out-of-credits handling. Surfaced as a purple banner on Step 2
+  (testID `ai-assess-all-remaining-btn`) shown when ≥2 options + un-scored cells exist — turns a raw
+  import into a ranked recommendation in one tap.
+- **ScraperAPI integration (optional)**: registered provider `scraperapi` in `/admin/integrations`
+  (api_key + optional country_code). `core/integrations.resolve_scraperapi()` (Admin UI → env fallback).
+  `core/url_crawl._fetch_html` routes JS-heavy domains (amazon/flipkart/google-shopping/myntra/ajio/…)
+  through ScraperAPI render, and escalates to it when a direct fetch is bot-blocked; gracefully falls
+  back to direct httpx when no key. NEEDS the user's ScraperAPI key to activate Amazon-class imports.
+- Verified iter95 (7/7 pytest + frontend): gate bypass, admin toggle (super-admin-only), banner +
+  graceful out-of-credits, scraperapi provider listed, no-key GSMArena fallback intact.
+- ⚠️ Redeploy jelcos.ai for these to go live.
+
 ## Remaining backlog (post-fork)
 - P1: CLD Engine Phase B & C (Rules Engine + AI Suggestions)
 - P1: PRR Enhancement #4 & #5 (configurable timing fields + decision-linking bypass)

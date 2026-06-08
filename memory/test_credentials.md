@@ -11,6 +11,12 @@ testing agent and any fork agents. They are refreshed when stale.
 - **Reset path**: No SMTP gateway — `/api/auth/forgot-password` returns OTP directly in JSON.
 - ⚠️ NEVER reuse these on dev — they only work against the prod EC2.
 
+
+## 🔓 WhatsApp gate bypass for UI testing (dev/preview)
+- A Super-Admin flag `skip_whatsapp_gate` (Admin → Settings, or `PUT /api/admin/security-config {"skip_whatsapp_gate": true}`) bypasses the post-login `/whatsapp-verify` gate for ALL users.
+- It is currently **ON in dev/preview** so login lands straight in the app. Turn OFF for production.
+- Fallback if ever OFF: `POST /api/auth/whatsapp/send-otp {"phone_number":"+919876543210"}` (response echoes `dev_code`), then `POST /api/auth/whatsapp/verify-otp {"code":"<dev_code>"}`.
+
 ---
 
 ## 🧪 DEV / Emergent workspace (local backend at port 8001)
