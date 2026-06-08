@@ -1,0 +1,28 @@
+{
+  "summary": "Frontend-only verification of (1) the legacy Step10/ActionItemEditor fixes that were never tested after the embed pivot, and (2) the newly added testIDs across /admin/embed-partners and ScreenerPanel. ALL THREE legacy fixes verified working: (a) 'Complete Decision' GradientButton renders only when chosen_option_id is set, is clickable, and opens the showAlert confirm with 'Not yet'/'Complete' actions. (b) ActionItemEditor renders inside Step 10 with the '→ CTT' and '→ LifeStyle' port buttons clickable; clicking '→ CTT' fires POST /api/action-items/{id}/port-to-ctt, the row updates to the 'In CTT' pill, and tapping the pill navigates to /tools/ctt. (c) In the Add Action Item modal the What/Who/By When inputs show muted-grey placeholders ('e.g. Email vendor to negotiate price', 'Self / Jane Doe / Team A', '30-08-2026') with empty values — NOT pre-filled real text. Both reproduced & passed end-to-end against decision ceb8e6bf-5c17-4c41-86d2-cba979c7f743 (status=draft, chosen=b81809…) belonging to harden_1777921741@example.com. Embed Partner Console (/admin/embed-partners) — admin login via UI succeeded; 36 embed-* testIDs detected in DOM including embed-partner-tab-pmsbazaar-demo, embed-branding-mode-{white_label,co_brand}, embed-render-mode-{rn_web,html_widget}, embed-flow-chip-{mydezider,pros_cons,screener}, embed-otp-required, embed-expose-dev-code, embed-hide-powered-by, embed-billing-mode-{end_user,partner,both}, embed-ingest-{csv-sheet,api,scrape}, embed-save-config-btn, embed-copy-snippet-btn, embed-preview-btn, embed-stat-{runs,candidates,end-user-cr,partner-cr}. Save configuration triggers PUT /api/embed/config/pmsbazaar-demo and persists. Screener panel — embed sign-in (analyst@pmsbazaar-demo.com) succeeded, 17 screener-* testIDs rendered (screener-source-{csv,sheet_csv,api,url}, screener-csv-input, screener-load-candidates-btn, screener-factor-{weight,dir,type,remove}-*, screener-finalists-input, screener-ai-toggle, screener-run-btn). Full CSV ingest → factor auto-extraction → Run flow returns Top-3 matches (Fund Alpha, Fund Gamma, Fund Beta) with valid scores. IMPORTANT CACHE NOTE: testIDs were absent from the served bundle on first attempt — required a `sudo supervisorctl restart expo` to force Metro to rebuild and pick up the newly added testID props in embed-partners.tsx and ScreenerPanel.tsx. Main agent should be aware this can happen when testIDs are added without a touch on metro config; the bundle is correct now.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_89.json"
+  ],
+  "action_items": [
+    "None blocking. Optional: when adding testIDs to existing components, restart expo (supervisorctl restart expo) to clear Metro cache so the new attributes hit the served web bundle — testing agent encountered an initial stale bundle that masked all 53 newly added testIDs until restart."
+  ],
+  "critical_code_review_comments": [
+    "Step10.tsx — 'Complete Decision' button correctly gated on `decision.chosen_option_id` and uses showAlert with confirm/cancel actions; on confirm it saves status='completed' with final_choice_decided_at and routes back/(tabs).",
+    "ActionItemEditor.tsx — placeholder props are correctly passed as `placeholder=` (not `value=`) for the What/Who/By When/Time/Notes inputs with `placeholderTextColor=#9CA3AF` (muted grey). The In-CTT/In-LifeStyle ported pill correctly uses router.push('/tools/ctt' | '/tools/lifestyle') and the port-to-ctt/port-to-lifestyle endpoints are wired correctly.",
+    "embed-partners.tsx — Toggle, Seg, Field helper components correctly forward `testID`/`testIDPrefix` props down to the underlying TouchableOpacity/TextInput, so all 36 embed-* testIDs surface as data-testid in react-native-web.",
+    "ScreenerPanel.tsx — 17 screener-* testIDs cover all major interactions (source segmented buttons, CSV input, URL input, load button, factor controls, finalists input, AI toggle, run button, export CSV). Good test coverage."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "n/a (skipped per request)", "frontend": "100%" },
+  "seed_data_creation": "Created 1 action-item via API on decision ceb8e6bf… (title 'TEST_iter89_pill_navtest') to verify In-CTT pill navigation, then cleaned up. Also created and deleted a second action-item during the UI Add-modal smoke test. No residual state.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Step10 + ActionItemEditor legacy fixes are verified end-to-end. Embed admin console testIDs are live (use selectors like [data-testid=\"embed-flow-chip-screener\"], [data-testid=\"embed-save-config-btn\"], etc.). Screener panel testIDs require partner login first — use analyst@pmsbazaar-demo.com / PmsAnalyst2026! on /embed/screener?partner=pmsbazaar-demo. For Step 10 testing reuse decision id ceb8e6bf-5c17-4c41-86d2-cba979c7f743 on user harden_1777921741@example.com; it already has chosen_option_id set, so the Complete Decision button and Action Plan section render immediately at /prr/{id}?step=10. AsyncStorage on web maps to localStorage; injecting localStorage.session_token bypasses the login screen for testing. If testIDs ever appear missing after a code change, restart expo via supervisorctl to clear Metro cache."
+}

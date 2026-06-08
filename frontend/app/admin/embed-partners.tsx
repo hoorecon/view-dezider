@@ -36,27 +36,27 @@ const Section = ({ title, children }: { title: string; children: React.ReactNode
   </View>
 );
 
-const Toggle = ({ on, onPress, label }: { on: boolean; onPress: () => void; label: string }) => (
-  <TouchableOpacity style={styles.toggleRow} onPress={onPress} activeOpacity={0.7}>
+const Toggle = ({ on, onPress, label, testID }: { on: boolean; onPress: () => void; label: string; testID?: string }) => (
+  <TouchableOpacity testID={testID} style={styles.toggleRow} onPress={onPress} activeOpacity={0.7}>
     <Ionicons name={on ? 'checkbox' : 'square-outline'} size={20} color={on ? PRIMARY : '#94A3B8'} />
     <Text style={styles.toggleLabel}>{label}</Text>
   </TouchableOpacity>
 );
 
-const Seg = ({ options, value, onChange }: { options: { k: string; l: string }[]; value: string; onChange: (k: string) => void }) => (
+const Seg = ({ options, value, onChange, testIDPrefix }: { options: { k: string; l: string }[]; value: string; onChange: (k: string) => void; testIDPrefix?: string }) => (
   <View style={styles.seg}>
     {options.map(o => (
-      <TouchableOpacity key={o.k} style={[styles.segBtn, value === o.k && styles.segBtnOn]} onPress={() => onChange(o.k)}>
+      <TouchableOpacity key={o.k} testID={testIDPrefix ? `${testIDPrefix}-${o.k}` : undefined} style={[styles.segBtn, value === o.k && styles.segBtnOn]} onPress={() => onChange(o.k)}>
         <Text style={[styles.segText, value === o.k && styles.segTextOn]}>{o.l}</Text>
       </TouchableOpacity>
     ))}
   </View>
 );
 
-const Field = ({ label, value, onChange, keyboardType, placeholder }: any) => (
+const Field = ({ label, value, onChange, keyboardType, placeholder, testID }: any) => (
   <View style={styles.field}>
     <Text style={styles.fieldLabel}>{label}</Text>
-    <TextInput style={styles.input} value={String(value ?? '')} onChangeText={onChange}
+    <TextInput testID={testID} style={styles.input} value={String(value ?? '')} onChangeText={onChange}
       keyboardType={keyboardType} placeholder={placeholder} placeholderTextColor="#9CA3AF" autoCapitalize="none" />
   </View>
 );
@@ -177,7 +177,7 @@ export default function AdminEmbedPartnersScreen() {
       {/* partner picker */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 14 }}>
         {partners.map(p => (
-          <TouchableOpacity key={p.slug} onPress={() => selectPartner(p.slug)}
+          <TouchableOpacity key={p.slug} testID={`embed-partner-tab-${p.slug}`} onPress={() => selectPartner(p.slug)}
             style={[styles.pTab, slug === p.slug && styles.pTabOn]}>
             <Text style={[styles.pTabText, slug === p.slug && { color: '#fff' }]}>{p.name}</Text>
             {p.configured && <View style={styles.dot} />}
@@ -192,16 +192,18 @@ export default function AdminEmbedPartnersScreen() {
           <Section title="Branding">
             <Text style={styles.fieldLabel}>Branding mode</Text>
             <Seg options={[{ k: 'white_label', l: 'White-label' }, { k: 'co_brand', l: 'Co-brand' }]}
+              testIDPrefix="embed-branding-mode"
               value={cfg.branding_mode || 'white_label'} onChange={(k) => patch({ branding_mode: k })} />
             <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Render mode</Text>
             <Seg options={[{ k: 'rn_web', l: 'Real app (rn_web)' }, { k: 'html_widget', l: 'HTML widget' }]}
+              testIDPrefix="embed-render-mode"
               value={cfg.render_mode || 'rn_web'} onChange={(k) => patch({ render_mode: k })} />
             <View style={styles.row2}>
               <Field label="Primary color" value={cfg.theme?.primary_color} onChange={(t: string) => patchTheme({ primary_color: t })} placeholder="#7B1E3B" />
               <Field label="Accent color" value={cfg.theme?.accent_color} onChange={(t: string) => patchTheme({ accent_color: t })} placeholder="#C9A24B" />
             </View>
             <Field label="Logo URL (optional)" value={cfg.theme?.logo_uri} onChange={(t: string) => patchTheme({ logo_uri: t })} placeholder="https://…" />
-            <Toggle on={!!cfg.theme?.hide_powered_by} onPress={() => patchTheme({ hide_powered_by: !cfg.theme?.hide_powered_by })} label="Hide “Powered by View Dezider”" />
+            <Toggle testID="embed-hide-powered-by" on={!!cfg.theme?.hide_powered_by} onPress={() => patchTheme({ hide_powered_by: !cfg.theme?.hide_powered_by })} label="Hide “Powered by View Dezider”" />
           </Section>
 
           <Section title="Enabled flows">
@@ -209,7 +211,7 @@ export default function AdminEmbedPartnersScreen() {
               {FLOWS.map(f => {
                 const on = (cfg.enabled_flows || []).includes(f.key);
                 return (
-                  <TouchableOpacity key={f.key} onPress={() => toggleFlow(f.key)}
+                  <TouchableOpacity key={f.key} testID={`embed-flow-chip-${f.key}`} onPress={() => toggleFlow(f.key)}
                     style={[styles.flowChip, on && { backgroundColor: PRIMARY, borderColor: PRIMARY }]}>
                     <Text style={[styles.flowChipText, on && { color: '#fff' }]}>{f.label}</Text>
                   </TouchableOpacity>
@@ -219,8 +221,8 @@ export default function AdminEmbedPartnersScreen() {
           </Section>
 
           <Section title="Authentication & origins">
-            <Toggle on={!!cfg.otp_required} onPress={() => patch({ otp_required: !cfg.otp_required })} label="Require WhatsApp OTP (else frictionless)" />
-            <Toggle on={!!cfg.expose_dev_code} onPress={() => patch({ expose_dev_code: !cfg.expose_dev_code })} label="Expose dev OTP code (non-prod testing)" />
+            <Toggle testID="embed-otp-required" on={!!cfg.otp_required} onPress={() => patch({ otp_required: !cfg.otp_required })} label="Require WhatsApp OTP (else frictionless)" />
+            <Toggle testID="embed-expose-dev-code" on={!!cfg.expose_dev_code} onPress={() => patch({ expose_dev_code: !cfg.expose_dev_code })} label="Expose dev OTP code (non-prod testing)" />
             <Field label="Allowed origins (comma-separated)"
               value={Array.isArray(cfg.allowed_origins) ? cfg.allowed_origins.join(', ') : cfg.allowed_origins}
               onChange={(t: string) => patch({ allowed_origins: t })} placeholder="pmsbazaar.com, www.pmsbazaar.com" />
@@ -237,36 +239,37 @@ export default function AdminEmbedPartnersScreen() {
             </View>
             <Text style={[styles.fieldLabel, { marginTop: 6 }]}>Billing mode</Text>
             <Seg options={[{ k: 'end_user', l: 'End user' }, { k: 'partner', l: 'Partner' }, { k: 'both', l: 'Both' }]}
+              testIDPrefix="embed-billing-mode"
               value={cfg.screener_pricing?.billing_mode || 'end_user'} onChange={(k) => patchPricing({ billing_mode: k })} />
           </Section>
 
           <Section title="Catalogue ingestion">
-            <Toggle on={cfg.ingestion?.csv_sheet_enabled !== false} onPress={() => patchIngest({ csv_sheet_enabled: !(cfg.ingestion?.csv_sheet_enabled !== false) })} label="CSV / Google-Sheet upload" />
-            <Toggle on={!!cfg.ingestion?.api_enabled} onPress={() => patchIngest({ api_enabled: !cfg.ingestion?.api_enabled })} label="Partner data API" />
+            <Toggle testID="embed-ingest-csv-sheet" on={cfg.ingestion?.csv_sheet_enabled !== false} onPress={() => patchIngest({ csv_sheet_enabled: !(cfg.ingestion?.csv_sheet_enabled !== false) })} label="CSV / Google-Sheet upload" />
+            <Toggle testID="embed-ingest-api" on={!!cfg.ingestion?.api_enabled} onPress={() => patchIngest({ api_enabled: !cfg.ingestion?.api_enabled })} label="Partner data API" />
             {cfg.ingestion?.api_enabled && (
               <Field label="API endpoint" value={cfg.ingestion?.api_endpoint} onChange={(t: string) => patchIngest({ api_endpoint: t })} placeholder="https://partner.com/api/catalogue" />
             )}
-            <Toggle on={!!cfg.ingestion?.scrape_enabled} onPress={() => patchIngest({ scrape_enabled: !cfg.ingestion?.scrape_enabled })} label="Premium “paste URL” / server-side fetch" />
+            <Toggle testID="embed-ingest-scrape" on={!!cfg.ingestion?.scrape_enabled} onPress={() => patchIngest({ scrape_enabled: !cfg.ingestion?.scrape_enabled })} label="Premium “paste URL” / server-side fetch" />
             {cfg.ingestion?.scrape_enabled && (
               <View style={styles.gate}>
                 <Text style={styles.gateNote}>⚠️ Legal gate — both must be confirmed to save with scraping enabled:</Text>
-                <Toggle on={!!cfg.ingestion?.scrape_legal_ack} onPress={() => patchIngest({ scrape_legal_ack: !cfg.ingestion?.scrape_legal_ack })} label="We have legal authority / permission to fetch this data" />
-                <Toggle on={!!cfg.ingestion?.scrape_terms_ack} onPress={() => patchIngest({ scrape_terms_ack: !cfg.ingestion?.scrape_terms_ack })} label="The partner's Terms of Service permit automated access" />
+                <Toggle testID="embed-ingest-scrape-legal-ack" on={!!cfg.ingestion?.scrape_legal_ack} onPress={() => patchIngest({ scrape_legal_ack: !cfg.ingestion?.scrape_legal_ack })} label="We have legal authority / permission to fetch this data" />
+                <Toggle testID="embed-ingest-scrape-terms-ack" on={!!cfg.ingestion?.scrape_terms_ack} onPress={() => patchIngest({ scrape_terms_ack: !cfg.ingestion?.scrape_terms_ack })} label="The partner's Terms of Service permit automated access" />
               </View>
             )}
           </Section>
 
-          <TouchableOpacity style={[styles.saveBtn, saving && { opacity: 0.6 }]} onPress={save} disabled={saving}>
+          <TouchableOpacity testID="embed-save-config-btn" style={[styles.saveBtn, saving && { opacity: 0.6 }]} onPress={save} disabled={saving}>
             {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>Save configuration</Text>}
           </TouchableOpacity>
 
           <Section title="Embed snippet">
             <View style={styles.codeBox}><Text style={styles.code}>{snippet}</Text></View>
             <View style={styles.actionRow}>
-              <TouchableOpacity style={styles.outlineBtn} onPress={copySnippet}>
+              <TouchableOpacity testID="embed-copy-snippet-btn" style={styles.outlineBtn} onPress={copySnippet}>
                 <Ionicons name="copy-outline" size={15} color={PRIMARY} /><Text style={styles.outlineText}>Copy snippet</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.outlineBtn} onPress={openPreview}>
+              <TouchableOpacity testID="embed-preview-btn" style={styles.outlineBtn} onPress={openPreview}>
                 <Ionicons name="open-outline" size={15} color={PRIMARY} /><Text style={styles.outlineText}>Preview partner page</Text>
               </TouchableOpacity>
             </View>
@@ -298,7 +301,7 @@ export default function AdminEmbedPartnersScreen() {
 }
 
 const Stat = ({ label, value }: { label: string; value: any }) => (
-  <View style={styles.stat}>
+  <View testID={`embed-stat-${String(label).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/,'')}`} style={styles.stat}>
     <Text style={styles.statValue}>{value}</Text>
     <Text style={styles.statLabel}>{label}</Text>
   </View>

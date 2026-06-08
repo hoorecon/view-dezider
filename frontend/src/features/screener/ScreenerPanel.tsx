@@ -142,6 +142,7 @@ export default function ScreenerPanel({ partner, primary, accent, initialOptions
       <View style={styles.chipRow}>
         {SOURCES.filter(s => s.key !== 'inline' || initialOptions.length).map(s => (
           <TouchableOpacity key={s.key}
+            testID={`screener-source-${s.key}`}
             style={[styles.chip, source === s.key && { backgroundColor: primary, borderColor: primary }]}
             onPress={() => { setSource(s.key); setIngestId(null); setResults(null); }}>
             <Ionicons name={s.icon as any} size={13} color={source === s.key ? '#fff' : '#475569'} />
@@ -151,11 +152,11 @@ export default function ScreenerPanel({ partner, primary, accent, initialOptions
       </View>
 
       {source === 'csv' && (
-        <TextInput style={styles.area} multiline placeholder={'name,1Y Return,AUM\nFund A,44.39%,121.47\nFund B,31.9%,212.0'}
+        <TextInput testID="screener-csv-input" style={styles.area} multiline placeholder={'name,1Y Return,AUM\nFund A,44.39%,121.47\nFund B,31.9%,212.0'}
           placeholderTextColor="#9CA3AF" value={csvText} onChangeText={setCsvText} />
       )}
       {(source === 'sheet_csv' || source === 'api' || source === 'url') && (
-        <TextInput style={styles.input}
+        <TextInput testID="screener-url-input" style={styles.input}
           placeholder={source === 'sheet_csv' ? 'Published Google-Sheet CSV URL' : source === 'api' ? 'Catalogue API URL (optional if configured)' : 'Filtered page URL (premium — admin-gated)'}
           placeholderTextColor="#9CA3AF" autoCapitalize="none" value={url} onChangeText={setUrl} />
       )}
@@ -163,7 +164,7 @@ export default function ScreenerPanel({ partner, primary, accent, initialOptions
         <Text style={styles.hint}>{initialOptions.length} option(s) carried over from the partner page.</Text>
       )}
 
-      <TouchableOpacity style={[styles.btn, { backgroundColor: primary }]} onPress={doIngest} disabled={busy}>
+      <TouchableOpacity testID="screener-load-candidates-btn" style={[styles.btn, { backgroundColor: primary }]} onPress={doIngest} disabled={busy}>
         {busy && !results ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Load candidates</Text>}
       </TouchableOpacity>
 
@@ -178,20 +179,21 @@ export default function ScreenerPanel({ partner, primary, accent, initialOptions
               <View style={{ flex: 1 }}>
                 <Text style={styles.factorName}>{f.name}</Text>
                 <View style={styles.factorCtrls}>
-                  <TextInput style={styles.weightInput} keyboardType="number-pad" value={f.weight}
+                  <TextInput testID={`screener-factor-weight-${f.attribute_key}`} style={styles.weightInput} keyboardType="number-pad" value={f.weight}
                     onChangeText={(t) => updateFactor(f.id, { weight: t.replace(/[^0-9]/g, '') })} />
                   <Text style={styles.wLabel}>wt</Text>
                   <TouchableOpacity style={styles.dirToggle}
+                    testID={`screener-factor-dir-${f.attribute_key}`}
                     onPress={() => updateFactor(f.id, { direction: f.direction === 'higher' ? 'lower' : 'higher' })}>
                     <Ionicons name={f.direction === 'higher' ? 'arrow-up' : 'arrow-down'} size={12} color={primary} />
                     <Text style={[styles.dirText, { color: primary }]}>{f.direction} is better</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={() => updateFactor(f.id, { data_type: f.data_type === 'numeric' ? 'text' : 'numeric' })}>
+                  <TouchableOpacity testID={`screener-factor-type-${f.attribute_key}`} onPress={() => updateFactor(f.id, { data_type: f.data_type === 'numeric' ? 'text' : 'numeric' })}>
                     <Text style={[styles.typePill, f.data_type === 'text' && { backgroundColor: accent }]}>{f.data_type === 'text' ? 'AI' : '123'}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
-              <TouchableOpacity onPress={() => setFactors(fs => fs.filter(x => x.id !== f.id))}>
+              <TouchableOpacity testID={`screener-factor-remove-${f.attribute_key}`} onPress={() => setFactors(fs => fs.filter(x => x.id !== f.id))}>
                 <Ionicons name="close-circle" size={20} color="#CBD5E1" />
               </TouchableOpacity>
             </View>
@@ -199,7 +201,7 @@ export default function ScreenerPanel({ partner, primary, accent, initialOptions
           {attrKeys.length > 0 && (
             <View style={styles.chipRow}>
               {attrKeys.filter(k => !factors.some(f => f.attribute_key === k) && (!preview[0] || looksNumeric(preview[0].attributes?.[k]))).slice(0, 8).map(k => (
-                <TouchableOpacity key={k} style={styles.addChip} onPress={() => setFactors(fs => [...fs, mkFactor(k)])}>
+                <TouchableOpacity key={k} testID={`screener-add-factor-${k}`} style={styles.addChip} onPress={() => setFactors(fs => [...fs, mkFactor(k)])}>
                   <Ionicons name="add" size={12} color="#475569" />
                   <Text style={styles.chipText}>{k}</Text>
                 </TouchableOpacity>
@@ -211,10 +213,10 @@ export default function ScreenerPanel({ partner, primary, accent, initialOptions
           <Text style={styles.section}>3 · Rank</Text>
           <View style={styles.runRow}>
             <Text style={styles.runLabel}>Top</Text>
-            <TextInput style={styles.finInput} keyboardType="number-pad" value={finalists}
+            <TextInput testID="screener-finalists-input" style={styles.finInput} keyboardType="number-pad" value={finalists}
               onChangeText={(t) => setFinalists(t.replace(/[^0-9]/g, ''))} />
             <Text style={styles.runLabel}>finalists</Text>
-            <TouchableOpacity style={styles.aiToggle} onPress={() => setUseAi(v => !v)}>
+            <TouchableOpacity testID="screener-ai-toggle" style={styles.aiToggle} onPress={() => setUseAi(v => !v)}>
               <Ionicons name={useAi ? 'checkbox' : 'square-outline'} size={16} color={primary} />
               <Text style={styles.aiText}>AI-assess “AI” factors</Text>
             </TouchableOpacity>
@@ -227,7 +229,7 @@ export default function ScreenerPanel({ partner, primary, accent, initialOptions
             </Text>
           )}
 
-          <TouchableOpacity style={[styles.btn, { backgroundColor: primary }]} onPress={doRun} disabled={busy || !factors.length}>
+          <TouchableOpacity testID="screener-run-btn" style={[styles.btn, { backgroundColor: primary }]} onPress={doRun} disabled={busy || !factors.length}>
             {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Run Screener</Text>}
           </TouchableOpacity>
         </>
@@ -241,7 +243,7 @@ export default function ScreenerPanel({ partner, primary, accent, initialOptions
           <View style={styles.resultsHead}>
             <Text style={styles.section}>Top {results.length} matches</Text>
             {exportUrl && (
-              <TouchableOpacity onPress={() => { if (Platform.OS === 'web') window.open(exportUrl!, '_blank'); }}>
+              <TouchableOpacity testID="screener-export-csv-btn" onPress={() => { if (Platform.OS === 'web') window.open(exportUrl!, '_blank'); }}>
                 <Text style={[styles.export, { color: primary }]}><Ionicons name="download" size={13} /> CSV</Text>
               </TouchableOpacity>
             )}
