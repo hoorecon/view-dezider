@@ -1,0 +1,47 @@
+{
+  "summary": "P1 Partner Embed widget delivery: 8/8 backend pytest cases PASSED (loader.js, html_widget, demo-host themed compare, unknown-slug/unknown-flow 404s, public-config sanity, iframe-safe CSP frame-ancestors *). The RN web embed route /embed/mydezider?partner=pmsbazaar-demo RENDERS THE WHITE-LABEL SHELL CORRECTLY (NOT stuck on a spinner): maroon header with 'PMS Bazaar (Demo)', 'Make this decision with confidence' card, 'Sign in to continue' with email+password fields. Frictionless org login (analyst@pmsbazaar-demo.com / PmsAnalyst2026!) succeeds via /api/org-auth/login (200), session is stored, and the 'Start MyDezider' CTA appears as expected. Carried-over options via ?options=<json> are rendered in BOTH the html_widget and the RN web shell ('1 OPTION CARRIED OVER FROM PMS BAZAAR (DEMO)'). HOWEVER, two integration bugs surfaced that block production use: (1) CRITICAL — request.base_url returns the insecure cluster URL 'http://pros-cons-engine.cluster-12.preview.emergentcf.cloud' instead of the public HTTPS origin. This pollutes (a) the <script src=...> in /api/embed/demo-host/{slug} → Mixed-Content-blocked → window.Dezider stays undefined → 'Help me Decide' button does nothing; (b) ROOT baked into loader.js → iframe src would be HTTP on any partner HTTPS site; (c) html_widget Start CTA href is HTTP. Confirmed via curl: 'var ROOT = \"http://pros-cons-engine.cluster-12.preview.emergentcf.cloud\";' and 'href=\"http://pros-cons-engine...\"' in widget output. (2) HIGH — Clicking 'Start MyDezider' after embedded org-login navigates to /whatsapp-verify instead of /tools/new-decision because the global WhatsApp-verify gate intercepts. The /embed/ route itself is whitelisted, but /tools/new-decision is gated. This breaks the partner pitch ('users never leave the platform') because the demo org user has whatsapp_verified=false.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "/api/embed/decision/{slug}/loader.js + /api/embed/demo-host/{slug} + /api/embed/decision/{slug}/{flow}", "issue": "request.base_url returns the upstream HTTP cluster URL (http://pros-cons-engine.cluster-12.preview.emergentcf.cloud) instead of the public HTTPS origin. (a) demo-host inserts <script src='http://...'> → Mixed Content blocked → window.Dezider never defined → 'Help me Decide' button is non-functional. (b) loader.js bakes ROOT='http://...' into the JS — any partner HTTPS site that includes the loader will have its iframe blocked. (c) html_widget Start CTA href is http://.  Fix: trust X-Forwarded-Proto (add ProxyHeadersMiddleware) OR force-upgrade scheme to https when X-Forwarded-Proto=='https' OR build root from env (EXPO_PUBLIC_BACKEND_URL / a new PUBLIC_BASE_URL) OR emit relative URLs.  Reference: /app/backend/routes/partner_embed_widget.py:84,186,270 (`root = str(request.base_url).rstrip('/')`).", "priority": "CRITICAL"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "RN embed → Start CTA → /tools/new-decision", "issue": "After embedded org-login on /embed/mydezider?partner=pmsbazaar-demo, clicking 'Start MyDezider' navigates to /whatsapp-verify (NOT /tools/new-decision as required) because the global whatsapp-verify gate intercepts non-whitelisted routes for users with whatsapp_verified=false. The demo org member analyst@pmsbazaar-demo.com has no verified WhatsApp number. For embedded partner sessions the WA gate should be bypassed (e.g. mark org-login sessions as gate-exempt, or seed verified=true for embed-partner users, or whitelist /tools/* when the active session originated from /embed/*).", "affected_testIDs": []}
+    ],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "Deprecated shadow* style props", "issue": "Console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' surfaced repeatedly on the embed shell. Non-blocking but should be migrated. Reference: anywhere shadow{Offset,Opacity,Radius,Color} is used in StyleSheets."},
+      {"component": "props.pointerEvents deprecated", "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Non-blocking; affects RN web compatibility going forward."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter82_embed_widget_p1.py",
+    "/app/test_reports/pytest/iter82_embed_p1.xml"
+  ],
+  "action_items": [
+    "FIX (CRITICAL): partner_embed_widget.py should not use request.base_url directly. Either install Starlette ProxyHeadersMiddleware so X-Forwarded-Proto=https rewrites scheme, or compute root by force-replacing scheme with https when behind the ingress, or read a PUBLIC_BASE_URL env var. Verify by re-curling /api/embed/decision/pmsbazaar-demo/loader.js → 'var ROOT = \"https://...\"', and re-opening /api/embed/demo-host/pmsbazaar-demo and clicking 'Help me Decide' → window.Dezider defined → modal opens with iframe src https://...",
+    "FIX (HIGH): WhatsApp-verify gate must not hijack embedded org-login sessions launching into /tools/*. Options: (a) add /tools/* under the embed-source whitelist when a session has an embed-origin flag, (b) auto-mark whatsapp_verified=true for users that authenticated via /api/org-auth/login on frictionless embed partners, or (c) seed analyst@pmsbazaar-demo.com with whatsapp_verified=true in the demo seed script.",
+    "MIGRATE (minor): replace deprecated RN style props shadow*/pointerEvents to boxShadow/style.pointerEvents."
+  ],
+  "critical_code_review_comments": [
+    "partner_embed_widget.py builds `root = str(request.base_url).rstrip('/')` in THREE places (embed_loader_js, embed_html_widget, embed_demo_host) — extract to a single helper that respects X-Forwarded-Proto so future routes can't accidentally bake the wrong scheme.",
+    "The loader.js inline JS uses single-letter local variables (var d = e.data || {}) inside the message handler. Minor, but a comment block above each function would help maintenance — this file is 100+ lines of inline JS inside an f-string and is prone to copy/paste regressions.",
+    "frontend/app/embed/[flow].tsx already passes timeout:15000 on the public-config XHR (good). Consider showing a retry button instead of a generic 'Unable to load' so a transient ingress hiccup doesn't dead-end the partner user."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter82_embed_widget_p1.py (new)",
+    "/app/test_reports/pytest/iter82_embed_p1.xml (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (8/8 pytest)",
+    "frontend": "Shell renders + login works (CORE PASS). 2 integration bugs found: HTTP/Mixed-Content (CRITICAL) + WA-gate hijack of Start CTA (HIGH)."
+  },
+  "seed_data_creation": "None. Relied on existing pmsbazaar-demo partner (frictionless config). Tests are read-only on /api/embed/* widget routes.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "After main agent fixes the scheme/Mixed-Content bug, re-run: (1) curl https://.../api/embed/decision/pmsbazaar-demo/loader.js and grep 'var ROOT' — expect https://. (2) curl https://.../api/embed/decision/pmsbazaar-demo/pros_cons and grep 'href=' — expect https://. (3) Open the demo-host page in a real browser, click 'Help me Decide', and verify window.Dezider is defined and #dezider-modal becomes visible with iframe src https://...embed/mydezider?partner=pmsbazaar-demo. After the WA-gate fix, re-run the playwright flow that logs in on /embed/mydezider?partner=pmsbazaar-demo and clicks 'Start MyDezider' — URL should land on /tools/new-decision (not /whatsapp-verify). Existing regression file: /app/backend/tests/test_iter82_embed_widget_p1.py.",
+  "rca_of_issue": "Root cause of CRITICAL Mixed-Content bug: FastAPI/Starlette's `request.base_url` is computed from the ASGI scope's `scheme` field. Behind the Kubernetes ingress/Cloudflare proxy here, the ASGI server (uvicorn) sees the inbound connection as plain HTTP from the proxy (scheme='http') and the proxied hostname (pros-cons-engine.cluster-12.preview.emergentcf.cloud) — NOT the public TLS-terminated origin pros-cons-engine.preview.emergentagent.com. The widget routes naively use this value to build every absolute URL they emit (script src in demo-host, ROOT inside loader.js, Start-CTA href in html_widget). Result: any HTTPS partner page that embeds these artefacts will have them blocked as Mixed Content. Reproduction: GET https://pros-cons-engine.preview.emergentagent.com/api/embed/decision/pmsbazaar-demo/loader.js — body contains `var ROOT = \"http://pros-cons-engine.cluster-12.preview.emergentcf.cloud\";`. Mitigation: either (a) install starlette.middleware.proxy_headers.ProxyHeadersMiddleware with trusted_hosts='*' so X-Forwarded-Proto rewrites request.url.scheme, or (b) helper that returns `request.headers.get('x-forwarded-proto','http') + '://' + request.headers.get('host', request.base_url.netloc)`, or (c) read PUBLIC_BASE_URL from env (EXPO_PUBLIC_BACKEND_URL already exists on the frontend; mirror it as PUBLIC_BASE_URL in backend/.env)."
+}

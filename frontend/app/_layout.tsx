@@ -230,6 +230,7 @@ const PUBLIC_SEGMENTS = new Set<string>([
   'contact',
   'pricing',
   'p',               // public shared-report viewer (/p/[slug])
+  'embed',           // white-label partner embed (/embed/[flow]) — iframed on partner sites
   'admin',           // self-guarded (auth + admin role)
 ]);
 

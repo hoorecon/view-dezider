@@ -270,6 +270,63 @@ test_plan:
 user_problem_statement: "Build View Dezider - a decision intelligence app based on Chapter 2 of 'Be Your Best-mate' book. Features include PRR (Priority Related Ratings) 10-step decision system, Test123 instant decision tool, Decision Mode Assessment, and Decision Journal. Requires both Google OAuth and email/password auth. Venture Buddha branding with purple/magenta gradient theme."
 
 backend:
+  - task: "P1 — Embed Widget + JS Loader + Dynamic Partner Page (Embed Initiative)"
+    implemented: true
+    working: "NA"
+    file: "backend/routes/partner_embed_widget.py, backend/routes/partner_embed.py, frontend/app/embed/[flow].tsx, frontend/app/_layout.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          P1 of the embed initiative. Render mode is now ADMIN-CONFIGURABLE per
+          partner via decision_embed_config.render_mode:
+            • rn_web      → iframe loads the REAL React Native web app (themed),
+                            route /embed/[flow]?partner={slug}
+            • html_widget → iframe loads a self-contained themed HTML page
+                            GET /api/embed/decision/{slug}/{flow}
+
+          New backend (partner_embed_widget.py), all iframe-safe (frame-ancestors *):
+            • GET /api/embed/decision/{slug}/loader.js — drop-in <script> loader.
+              Injects a themed "Help me Decide" button + modal iframe, exposes
+              window.Dezider.open({flow, options}) and auto-wires any element
+              with [data-dezider-open]. Picks iframe src from render_mode.
+            • GET /api/embed/decision/{slug}/{flow} — self-contained HTML widget
+              (white-label/co-brand header, shows carried-over options from
+              ?options=<json>, CTA to start the flow).
+            • GET /api/embed/demo-host/{slug}?flow= — "Generate Partner Page":
+              dynamically themed mock COMPARE layout for ANY partner with the
+              loader wired in + DOM hand-off (checked compare items passed to
+              window.Dezider.open). Doubles as the pitch demo host page.
+
+          New frontend route app/embed/[flow].tsx (rn_web target): white-label
+          themed shell that resolves partner theme from /api/embed/public-config,
+          does embedded ORG sign-in (frictionless OR OTP, per config) using the
+          existing org login, shows carried-over options, and launches the flow
+          (stashes options in AsyncStorage 'embed_seed' for P2 pre-seed). Added
+          'embed' to PUBLIC_SEGMENTS in app/_layout.tsx so the global auth gate
+          doesn't hijack it.
+
+          MAIN-AGENT VERIFICATION:
+            • Backend widget routes smoke-tested (loader.js js+200, html widget
+              200 + carried option rendered, demo-host 200 themed maroon + loader
+              + 404 for unknown). PASS.
+            • Demo-host page screenshotted on preview URL — renders perfectly
+              (maroon PMS Bazaar branding, 3 compare cards, Help-me-Decide FAB).
+            • RN embed route: component MOUNTS (confirmed via console) but the
+              screenshot harness aborts the SPA's public-config XHR at its 10s
+              nav-timeout (server logs show Starlette "No response returned." on
+              client disconnect). Needs validation on a robust browser via
+              testing_agent. Added a 15s axios timeout for resilience.
+
+          NEEDS testing_agent: (1) RN embed /embed/mydezider?partner=pmsbazaar-demo
+          renders the white-label shell + sign-in; (2) frictionless org login
+          inside embed → launches flow; (3) html_widget mode renders; (4) loader
+          + demo-host DOM hand-off opens modal with carried options.
+
+
   - task: "P0 — Partner Embed Foundation + Org Login fix (Embed Initiative)"
     implemented: true
     working: true

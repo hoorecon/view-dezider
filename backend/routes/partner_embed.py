@@ -42,6 +42,7 @@ VALID_FLOWS = ["mydezider", "pros_cons", "screener"]
 BRANDING_MODES = ["white_label", "co_brand"]
 AUTH_MODES = ["otp", "frictionless"]
 BILLING_MODES = ["end_user", "partner", "both"]
+RENDER_MODES = ["rn_web", "html_widget"]   # iframe the real RN web app, or a self-contained HTML widget
 
 
 class EmbedTheme(BaseModel):
@@ -82,6 +83,7 @@ class IngestionConfig(BaseModel):
 class PartnerEmbedConfig(BaseModel):
     allowed_origins: List[str] = Field(default_factory=list)   # e.g. ["pmsbazaar.com", "www.pmsbazaar.com"]
     branding_mode: str = "white_label"
+    render_mode: str = "rn_web"             # rn_web (real RN app, themed) | html_widget (self-contained)
     enabled_flows: List[str] = Field(default_factory=lambda: ["mydezider", "pros_cons"])
     theme: EmbedTheme = Field(default_factory=EmbedTheme)
     auth_mode: str = "otp"
@@ -115,6 +117,7 @@ def _public_subset(org: Dict[str, Any], cfg: Dict[str, Any]) -> Dict[str, Any]:
         "org_id": org.get("id"),
         "display_name": org.get("name"),
         "branding_mode": branding_mode,
+        "render_mode": cfg.get("render_mode", "rn_web"),
         "enabled_flows": cfg.get("enabled_flows", ["mydezider", "pros_cons"]),
         "auth_mode": cfg.get("auth_mode", "otp"),
         "otp_required": cfg.get("otp_required", True),
@@ -194,6 +197,8 @@ async def put_embed_config(
 
     if body.branding_mode not in BRANDING_MODES:
         raise HTTPException(400, f"branding_mode must be one of {BRANDING_MODES}")
+    if body.render_mode not in RENDER_MODES:
+        raise HTTPException(400, f"render_mode must be one of {RENDER_MODES}")
     if body.auth_mode not in AUTH_MODES:
         raise HTTPException(400, f"auth_mode must be one of {AUTH_MODES}")
     if body.screener_pricing.billing_mode not in BILLING_MODES:
