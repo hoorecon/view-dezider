@@ -242,6 +242,24 @@ async def read_assessment_sheet(user_id: str, spreadsheet_id: str) -> List[List[
     return await asyncio.to_thread(_read_sheet_sync, creds, spreadsheet_id)
 
 
+def _read_first_sheet_sync(creds: Credentials, spreadsheet_id: str) -> List[List[Any]]:
+    service = build("sheets", "v4", credentials=creds, cache_discovery=False)
+    meta = service.spreadsheets().get(spreadsheetId=spreadsheet_id, fields="sheets.properties.title").execute()
+    sheets = meta.get("sheets", [])
+    title = sheets[0]["properties"]["title"] if sheets else "Sheet1"
+    res = service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id, range=title, valueRenderOption="UNFORMATTED_VALUE",
+    ).execute()
+    return res.get("values", [])
+
+
+async def read_first_sheet(user_id: str, spreadsheet_id: str) -> List[List[Any]]:
+    """Read the first/default worksheet of any spreadsheet the connected Google
+    account can access (used for arbitrary user-supplied comparison sheets)."""
+    creds = await _get_creds(user_id)
+    return await asyncio.to_thread(_read_first_sheet_sync, creds, spreadsheet_id)
+
+
 # ─────────────────────────────────────────────────────────────
 # OAuth state (CSRF) — short-lived
 # ─────────────────────────────────────────────────────────────

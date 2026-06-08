@@ -17,6 +17,7 @@ import { createAssessmentGsheet, importAssessmentGsheet, openSheetUrl } from '..
 import { showAlert } from '../../utils/alert';
 import { api } from '../../utils/api';
 import type { Factor } from '../../types/decision';
+import UrlAccessConsentModal, { UrlConsentPayload } from '../UrlAccessConsentModal';
 
 export default function Step7() {
   const {
@@ -27,7 +28,44 @@ export default function Step7() {
     actualValues, setActualValues,
     calculateDynamicWorth, calculateAutoPercentage,
     setCurrentStep, fetchDecision,
+    bulkAssessAllRemaining,
   } = useDecision();
+
+  // Import ACTUAL VALUES from a URL (consent-gated), then auto AI-assess.
+  const [urlActualsOpen, setUrlActualsOpen] = useState(false);
+  const [actualsUrl, setActualsUrl] = useState('');
+  const [actualsBusy, setActualsBusy] = useState(false);
+
+  const runImportActuals = async (consent: UrlConsentPayload) => {
+    setActualsBusy(true);
+    try {
+      const { data } = await api.post(`/decisions/${decision!.id}/import-actuals-from-url`, {
+        url: actualsUrl.trim(),
+        eligibility_type: consent.eligibility_type,
+        custom_note: consent.custom_note,
+        accepted: true,
+      });
+      setUrlActualsOpen(false);
+      await fetchDecision();
+      if ((data.filled_cells ?? 0) === 0) {
+        showAlert('No matches found', 'Could not match this page to your options/factors. Try a closer comparison page.');
+        return;
+      }
+      // Auto-run AI scoring on the freshly filled actuals.
+      const res = await bulkAssessAllRemaining(true);
+      showAlert(
+        'Actuals imported',
+        `Filled ${data.filled_cells} actual value(s) across ${data.matched_options} option(s)` +
+        (res.done > 0 ? `, then AI-scored ${res.done} cell(s).` : '.') +
+        (res.ranOut ? ' (AI credits ran out before finishing — top up to complete.)' : ''),
+      );
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || 'Could not import actual values from this URL.';
+      showAlert('Import failed', typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setActualsBusy(false);
+    }
+  };
 
   // ─── Phase C: XLS assessment template export / import ───
   const [xlsBusy, setXlsBusy] = useState(false);

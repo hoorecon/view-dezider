@@ -11,6 +11,7 @@ import type { Factor, FactorDataSource } from '../../types/decision';
 import api from '../../utils/api';
 import { showAlert } from '../../utils/alert';
 import UrlAccessConsentModal, { UrlConsentPayload } from '../UrlAccessConsentModal';
+import { downloadAssessmentTemplate, importAssessmentTemplate } from '../../utils/assessmentXlsx';
 import {
   UNIT_PRESETS,
   NUMERIC_OPERATORS,
@@ -74,14 +75,6 @@ export default function Step2() {
   const [importConsentOpen, setImportConsentOpen] = useState(false);
   const [importing, setImporting] = useState(false);
 
-  const startImport = () => {
-    if (!/^https?:\/\/.+/i.test(importUrl.trim())) {
-      showAlert('Enter a URL', 'Paste a valid http(s) link to a comparison or filter page.');
-      return;
-    }
-    setImportConsentOpen(true);
-  };
-
   const runImport = async (consent: UrlConsentPayload) => {
     setImporting(true);
     try {
@@ -104,6 +97,72 @@ export default function Step2() {
       const msg = e?.response?.data?.detail || 'Could not import from this URL. Try a page that lists items in a table.';
       showAlert('Import failed', typeof msg === 'string' ? msg : JSON.stringify(msg));
     }
+  };
+
+  // ── XLS / CSV / Google-Sheet matrix imports (Step-2) ──────────────────────
+  const [importBusy, setImportBusy] = useState<'' | 'xls' | 'sheet' | 'tmpl'>('');
+  const [urlDialogOpen, setUrlDialogOpen] = useState(false);
+  const [sheetDialogOpen, setSheetDialogOpen] = useState(false);
+  const [sheetUrl, setSheetUrl] = useState('');
+
+  const afterMatrixImport = async (data: any) => {
+    await fetchDecision();
+    showAlert(
+      'Imported',
+      `Added ${data.factors_added ?? 0} factor${(data.factors_added ?? 0) === 1 ? '' : 's'} and ` +
+      `${data.options_added ?? 0} option${(data.options_added ?? 0) === 1 ? '' : 's'}. Review below, then continue.`,
+    );
+  };
+
+  const handleDownloadTemplate = async () => {
+    setImportBusy('tmpl');
+    try {
+      await downloadAssessmentTemplate(`/decisions/${decision.id}/factor-matrix-template.xlsx`, 'decision-matrix-template.xlsx');
+    } catch (e: any) {
+      showAlert('Download failed', e?.message || 'Could not download the template.');
+    } finally {
+      setImportBusy('');
+    }
+  };
+
+  const handleUploadXls = async () => {
+    setImportBusy('xls');
+    try {
+      const data = await importAssessmentTemplate(`/decisions/${decision.id}/import-matrix-file`);
+      if (data) await afterMatrixImport(data);
+    } catch (e: any) {
+      showAlert('Import failed', e?.message || 'Could not read the file. Upload a .xlsx or .csv comparison matrix.');
+    } finally {
+      setImportBusy('');
+    }
+  };
+
+  const runSheetImport = async () => {
+    if (!/docs\.google\.com\/spreadsheets/i.test(sheetUrl.trim())) {
+      showAlert('Paste a Google Sheet link', 'Use a Google Sheets URL (docs.google.com/spreadsheets/…).');
+      return;
+    }
+    setImportBusy('sheet');
+    try {
+      const { data } = await api.post(`/decisions/${decision.id}/import-matrix-sheet`, { sheet_url: sheetUrl.trim() });
+      setSheetDialogOpen(false);
+      setSheetUrl('');
+      await afterMatrixImport(data);
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || 'Could not import this Google Sheet.';
+      showAlert('Import failed', typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setImportBusy('');
+    }
+  };
+
+  const submitUrlDialog = () => {
+    if (!/^https?:\/\/.+/i.test(importUrl.trim())) {
+      showAlert('Enter a URL', 'Paste a valid http(s) link to a comparison or filter page.');
+      return;
+    }
+    setUrlDialogOpen(false);
+    setImportConsentOpen(true);
   };
 
   // Inline rename — pencil icon next to each factor name. Critical for
@@ -420,34 +479,90 @@ export default function Step2() {
 
       <View style={iurl.box}>
         <View style={iurl.head}>
-          <Ionicons name="link" size={15} color="#2563EB" />
-          <Text style={iurl.title}>Import from a URL</Text>
+          <Ionicons name="cloud-upload-outline" size={15} color="#2563EB" />
+          <Text style={iurl.title}>Import factors & options</Text>
         </View>
         <Text style={iurl.sub}>
-          Paste a comparison / filter page — we&apos;ll add its factors (with suggested Expected values)
-          and options, and pre-fill the assessment matrix. You&apos;ll confirm your access rights first.
+          Bring in a comparison matrix from a spreadsheet or a web page — we&apos;ll add the factors
+          (with suggested Expected values) and options, and pre-fill the assessment matrix.
         </Text>
-        <View style={iurl.row}>
-          <TextInput
-            testID="step2-import-url-input"
-            style={iurl.input}
-            placeholder="https://… comparison page"
-            placeholderTextColor="#9CA3AF"
-            value={importUrl}
-            onChangeText={setImportUrl}
-            autoCapitalize="none"
-            keyboardType="url"
-          />
-          <TouchableOpacity
-            testID="step2-import-url-btn"
-            style={[iurl.btn, (!importUrl.trim() || importing) && { opacity: 0.5 }]}
-            onPress={startImport}
-            disabled={!importUrl.trim() || importing}
-          >
-            {importing ? <ActivityIndicator size="small" color="#fff" /> : <Text style={iurl.btnText}>Import</Text>}
+        <View style={iurl.iconRow}>
+          <TouchableOpacity testID="step2-import-xls" style={iurl.iconBtn} onPress={handleUploadXls} disabled={!!importBusy} activeOpacity={0.85}>
+            {importBusy === 'xls' ? <ActivityIndicator size="small" color="#16A34A" /> : <Ionicons name="document-text-outline" size={22} color="#16A34A" />}
+            <Text style={iurl.iconLabel}>XLS / CSV</Text>
+          </TouchableOpacity>
+          <TouchableOpacity testID="step2-import-sheet" style={iurl.iconBtn} onPress={() => setSheetDialogOpen(true)} disabled={!!importBusy} activeOpacity={0.85}>
+            <Ionicons name="grid-outline" size={22} color="#0F9D58" />
+            <Text style={iurl.iconLabel}>Google Sheet</Text>
+          </TouchableOpacity>
+          <TouchableOpacity testID="step2-import-url" style={iurl.iconBtn} onPress={() => setUrlDialogOpen(true)} disabled={!!importBusy || importing} activeOpacity={0.85}>
+            <Ionicons name="link" size={22} color="#2563EB" />
+            <Text style={iurl.iconLabel}>URL</Text>
           </TouchableOpacity>
         </View>
+        <TouchableOpacity testID="step2-download-template" onPress={handleDownloadTemplate} disabled={!!importBusy} style={iurl.tmplLink}>
+          <Ionicons name="download-outline" size={13} color="#2563EB" />
+          <Text style={iurl.tmplText}>{importBusy === 'tmpl' ? 'Preparing…' : 'Download a fillable template (XLS)'}</Text>
+        </TouchableOpacity>
       </View>
+
+      {/* URL dialog — collects the link, then opens the consent gate */}
+      <Modal visible={urlDialogOpen} transparent animationType="fade" onRequestClose={() => setUrlDialogOpen(false)}>
+        <View style={iurl.dlgOverlay}>
+          <View style={iurl.dlg}>
+            <Text style={iurl.dlgTitle}>Import from a URL</Text>
+            <Text style={iurl.dlgSub}>Paste a comparison / filter page. You&apos;ll confirm your access rights next.</Text>
+            <TextInput
+              testID="step2-import-url-input"
+              style={iurl.dlgInput}
+              placeholder="https://… comparison page"
+              placeholderTextColor="#9CA3AF"
+              value={importUrl}
+              onChangeText={setImportUrl}
+              autoCapitalize="none"
+              keyboardType="url"
+              autoFocus
+            />
+            <View style={iurl.dlgBtns}>
+              <TouchableOpacity style={iurl.dlgCancel} onPress={() => setUrlDialogOpen(false)}>
+                <Text style={iurl.dlgCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity testID="step2-url-continue" style={iurl.dlgGo} onPress={submitUrlDialog}>
+                <Text style={iurl.dlgGoText}>Continue</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Google Sheet dialog — paste a share link (public read, or your connected account) */}
+      <Modal visible={sheetDialogOpen} transparent animationType="fade" onRequestClose={() => setSheetDialogOpen(false)}>
+        <View style={iurl.dlgOverlay}>
+          <View style={iurl.dlg}>
+            <Text style={iurl.dlgTitle}>Import from Google Sheet</Text>
+            <Text style={iurl.dlgSub}>Paste a Google Sheets link. Public/link-shared sheets work directly; private sheets use your connected Google account.</Text>
+            <TextInput
+              testID="step2-sheet-url-input"
+              style={iurl.dlgInput}
+              placeholder="https://docs.google.com/spreadsheets/…"
+              placeholderTextColor="#9CA3AF"
+              value={sheetUrl}
+              onChangeText={setSheetUrl}
+              autoCapitalize="none"
+              keyboardType="url"
+              autoFocus
+            />
+            <View style={iurl.dlgBtns}>
+              <TouchableOpacity style={iurl.dlgCancel} onPress={() => { setSheetDialogOpen(false); setSheetUrl(''); }}>
+                <Text style={iurl.dlgCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity testID="step2-sheet-import" style={iurl.dlgGo} onPress={runSheetImport} disabled={importBusy === 'sheet'}>
+                {importBusy === 'sheet' ? <ActivityIndicator size="small" color="#fff" /> : <Text style={iurl.dlgGoText}>Import</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <UrlAccessConsentModal
         visible={importConsentOpen}
@@ -934,6 +1049,21 @@ const iurl = StyleSheet.create({
   input: { flex: 1, backgroundColor: '#fff', borderWidth: 1, borderColor: '#BFDBFE', borderRadius: 10, paddingHorizontal: 11, paddingVertical: 9, fontSize: 13, color: COLORS.textPrimary },
   btn: { backgroundColor: '#2563EB', borderRadius: 10, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center', minWidth: 80 },
   btnText: { color: '#fff', fontSize: 13.5, fontWeight: '800' },
+  iconRow: { flexDirection: 'row', gap: 8 },
+  iconBtn: { flex: 1, backgroundColor: '#fff', borderWidth: 1, borderColor: '#BFDBFE', borderRadius: 10, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', gap: 5 },
+  iconLabel: { fontSize: 11.5, fontWeight: '700', color: COLORS.textPrimary },
+  tmplLink: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 9, alignSelf: 'flex-start' },
+  tmplText: { fontSize: 11.5, fontWeight: '700', color: '#2563EB', textDecorationLine: 'underline' },
+  dlgOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  dlg: { width: '100%', maxWidth: 440, backgroundColor: '#fff', borderRadius: 16, padding: 20 },
+  dlgTitle: { fontSize: 16, fontWeight: '800', color: COLORS.textPrimary },
+  dlgSub: { fontSize: 12, lineHeight: 17, color: COLORS.textMuted, marginTop: 6, marginBottom: 12 },
+  dlgInput: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, fontSize: 14, color: COLORS.textPrimary },
+  dlgBtns: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 16 },
+  dlgCancel: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
+  dlgCancelText: { fontSize: 13.5, fontWeight: '700', color: COLORS.textMuted },
+  dlgGo: { backgroundColor: '#2563EB', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, minWidth: 96, alignItems: 'center' },
+  dlgGoText: { color: '#fff', fontSize: 13.5, fontWeight: '800' },
 });
 
 const aar = StyleSheet.create({
