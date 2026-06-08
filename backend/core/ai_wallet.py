@@ -189,6 +189,23 @@ async def charge(user_id: str, *, tokens: int, feature: str = "", provider: str 
     return {"charged": credits, "balance": round(new_balance, 2), "tokens": int(tokens)}
 
 
+async def charge_credits(user_id: str, credits: float, *, feature: str = "",
+                         note: str = "Feature usage") -> Dict[str, Any]:
+    """Deduct a FLAT credit amount (not token-derived) — used by features that
+    price by their own formula (e.g. the partner Screener). Returns
+    {charged, balance}."""
+    credits = max(0.0, round(float(credits or 0), 4))
+    w = await _get_or_create(user_id)
+    new_balance = round(float(w.get("balance", 0)) - credits, 4)
+    await db.ai_wallets.update_one(
+        {"user_id": user_id}, {"$set": {"balance": new_balance, "updated_at": _now()}},
+    )
+    await _ledger(user_id, -credits, "debit", balance_after=new_balance,
+                  feature=feature, note=note)
+    return {"charged": credits, "balance": round(new_balance, 2)}
+
+
+
 async def grant(user_id: str, credits: float, *, by: str = "admin", note: str = "Manual grant",
                 kind: str = "grant") -> Dict[str, Any]:
     """Add (or set, if kind='set') credits to a user's wallet."""

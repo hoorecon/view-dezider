@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from core.database import db
 from core.auth import get_password_hash
 from core.helpers import generate_user_id
+from core import ai_wallet
 
 ORG_SLUG = "pmsbazaar-demo"
 MAROON = "#7B1E3B"
@@ -132,6 +133,8 @@ async def main():
         org["id"], "org_super_admin", "919000000002",
     )
     await _upsert_embed_config(org["id"])
+    # Give the demo member a credit balance so the Screener demo runs out-of-the-box.
+    await ai_wallet.grant(member_id, 200, by="seed", note="Embed demo screener credits", kind="set")
     print("✅ Embed partner demo seeded")
     print(f"   org_id={org['id']} slug={ORG_SLUG}")
     print(f"   member user_id={member_id} (analyst@pmsbazaar-demo.com)")

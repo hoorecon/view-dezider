@@ -1,0 +1,38 @@
+{
+  "summary": "P3 Decision Embed Screener (ScreenerPanel UI + backend) FULLY PASSES end-to-end. Backend: 6/6 pytest cases in /app/backend/tests/test_iter87_screener_p3.py — ingest(csv) 200 count=2 attribute_keys{A,B,name}, quote 200 cost_credits>0, run 200 with X ranked #1 (A direction=higher), export.csv 200 text/csv containing 'Rank', url-mode legal-gate returns 403, and the full Money Grow/Hem/Green Portfolio CSV scenario ranks Money Grow #1 with score in 70-85 (78.7 for 70/30 weights, 61.3 for 50/50). Frontend (Playwright @ 414×900): opened /embed/screener?partner=pmsbazaar-demo, signed in frictionless as analyst@pmsbazaar-demo.com / PmsAnalyst2026!. Embed correctly renders the ScreenerPanel inline (NOT the legacy 'Start Smart Screener' button); the embed/[flow].tsx conditional `flow==='screener' ? <ScreenerPanel/> : <Start button/>` works. Selected 'Paste CSV', pasted the 3-row CSV (Money Grow/Hem/Green Portfolio), tapped 'Load candidates' → '3 candidates loaded' chip appeared and factor rows auto-seeded from numeric columns (1Y Return + AUM, both weight 50, direction higher). Live quote displayed: 'Est. cost: 2.13 credits · balance 200'. Set finalists from 10 → 2, live quote re-fetched to 'Est. cost: 1.33 credits · balance 200'. Tapped 'Run Screener': two ranked finalist cards appeared with score bars and per-factor breakdown — rank #1 'Money Grow' score 61.3 (1Y Return: 100, AUM: 22.6), rank #2 'Green Portfolio' score 50 (1Y Return: 0, AUM: 100). CSV export link visible next to 'Top 2 matches' header. URL stays on /embed/screener (no redirect to /auth/login). BILLING reflected: wallet balance dropped from 200 → 198.67, delta 1.33 exactly matches the quoted cost. No console errors, no React Native red screen. Only pre-existing deprecation warnings (shadow*, props.pointerEvents) — see iter85/86.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/embed/screener — ScreenerPanel", "issues": [
+        "Cosmetic: after Load candidates, the 'name' column appears as an extra add-chip below the factor rows (because the CSV's 'name' column is a non-numeric attribute_key that doesn't get auto-seeded as a factor but is offered as an add). Functionally correct but visually it sits alone with no group heading — consider hiding the 'name' key from the suggestion chips since it is the option identifier, not a factor."
+      ]}
+    ],
+    "react_native_issues": [
+      {"component": "shadow* style props", "issue": "Recurring console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Pre-existing app-wide, not introduced by P3. Reference: multiple StyleSheet definitions."},
+      {"component": "props.pointerEvents", "issue": "Recurring console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents.' Pre-existing app-wide."},
+      {"component": "expo-notifications (web)", "issue": "Warning: 'Listening to push token changes is not yet fully supported on web.' Informational only, no impact."}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter87_screener_p3.py", "/app/test_reports/pytest/iter87.xml"],
+  "action_items": [
+    "OPTIONAL UX: in ScreenerPanel.tsx, exclude the option name-key (typically 'name'/'Name'/'title'/...) from the attribute_keys suggestion chips at line 199-208 so it doesn't appear as an addable factor.",
+    "OPTIONAL: testIDs are missing on every interactive element in ScreenerPanel (chips, textarea, Load candidates, weight inputs, finalists input, Run Screener button, CSV export link, result cards). Add testIDs for more robust future regression testing.",
+    "OPTIONAL CLEANUP (pre-existing, not P3 specific): migrate shadow*→boxShadow, props.pointerEvents→style.pointerEvents."
+  ],
+  "critical_code_review_comments": [
+    "ScreenerPanel correctly handles the cancellation guard in the quote useEffect (cancelled flag) so rapid finalists edits don't race.",
+    "Good wallet round-trip: setBalance is updated both by the quote effect and by the run response, so the UI reflects the post-charge balance immediately.",
+    "Backend _score handles min==max gracefully (returns 100.0 instead of dividing by zero) and skips factors with no numeric data — solid.",
+    "URL-mode 403 legal-gate works as designed (scrape_enabled/legal_ack/terms_ack all required); good defense in depth.",
+    "Backend doc inserts cleanly exclude _id thanks to the explicit results building — no ObjectId serialization issues observed."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (6/6 pytest)", "frontend": "100% (ScreenerPanel renders, ingest/quote/run/results/export all working, billing decrement verified, no redirect)"},
+  "seed_data_creation": "Re-ran `python -m scripts.seed_embed_partner_demo` (idempotent — also re-grants 200 credits to analyst@pmsbazaar-demo.com). Then UI run consumed 1.33 credits, leaving 198.67. Test-pytest scenarios additionally consumed credits per run (full-UI test ran another 7.43 cost run). Re-run the seed script before any retest to restore 200 credits.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "P3 ScreenerPanel + backend is verified working end-to-end as of iter87. To retest: re-seed (`cd /app/backend && python -m scripts.seed_embed_partner_demo`), open /embed/screener?partner=pmsbazaar-demo, sign in analyst@pmsbazaar-demo.com / PmsAnalyst2026!, expect ScreenerPanel inline (not Start button). Paste-CSV → Load candidates → Run Screener flow takes ~3s of network + ~5s of waits. Backend pytest at /app/backend/tests/test_iter87_screener_p3.py covers ingest/quote/run/export/legal-gate and the full UI scenario.",
+  "rca_of_issue": "N/A — no issues. All acceptance criteria from the review request are satisfied. Note on score expectation: the prompt mentioned '~76.8' for Money Grow which corresponds to 1Y Return weight 70 + AUM weight 30; with the default auto-seeded weights of 50/50 the score is 61.3 (which the pytest verifies, and rank #1 remains Money Grow as required). When weights are explicitly set to 70/30, pytest's test_full_ui_scenario verifies the score lands in [70,85]."
+}

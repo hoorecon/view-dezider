@@ -25,6 +25,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
 import { useAuthStore } from '../../src/store/authStore';
+import ScreenerPanel from '../../src/features/screener/ScreenerPanel';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
@@ -247,6 +248,8 @@ export default function PartnerEmbed() {
                 </>
               )}
             </View>
+          ) : flow === 'screener' ? (
+            <ScreenerPanel partner={slug} primary={primary} accent={accent} initialOptions={options} />
           ) : (
             <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: primary, marginTop: 18 }]} onPress={launchFlow}>
               <Text style={styles.primaryBtnText}>Start {meta.label}</Text>

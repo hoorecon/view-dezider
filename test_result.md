@@ -270,6 +270,53 @@ test_plan:
 user_problem_statement: "Build View Dezider - a decision intelligence app based on Chapter 2 of 'Be Your Best-mate' book. Features include PRR (Priority Related Ratings) 10-step decision system, Test123 instant decision tool, Decision Mode Assessment, and Decision Journal. Requires both Google OAuth and email/password auth. Venture Buddha branding with purple/magenta gradient theme."
 
 backend:
+  - task: "P3 — Screener / Ranking Engine (Embed Initiative)"
+    implemented: true
+    working: true
+    file: "backend/routes/screener.py, backend/core/ai_wallet.py, frontend/src/features/screener/ScreenerPanel.tsx, frontend/app/embed/[flow].tsx, backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          P3 — the monetised Screener/Ranking engine. Bulk-ranks an entire partner
+          catalogue against weighted factor criteria (MyDezider Steps 1-5 logic) and
+          returns the top 10-50 finalists.
+
+          BACKEND (routes/screener.py, /api/embed/screener/*):
+            • POST /ingest — sources: inline (DOM hand-off), csv (paste), sheet_csv
+              (published Google-Sheet CSV URL), api (partner JSON API), url (premium
+              paste-URL → JSON or HTML-table parse; GATED behind scrape legal+ToS
+              acks). Returns ingest_id, count, attribute_keys, preview. Cached in
+              screener_ingests.
+            • POST /quote — dynamic price = base + per_candidate·N + per_finalist·F
+              + per_factor·K (from config.screener_pricing).
+            • POST /run — numeric proportional min-max scoring (higher/lower-is-better),
+              weighted avg 0..100, rank desc, top-N. Optional use_ai → AI-assess TEXT
+              factors on finalists (metered_chat, P3b). Dual billing: end_user (AI
+              wallet via new ai_wallet.charge_credits) and/or partner (partner_billing_
+              ledger), admin-configurable. 402 when end_user balance < cost.
+            • GET /run/{id} + GET /run/{id}/export.csv.
+
+          FRONTEND (ScreenerPanel.tsx, shown in embed when flow==='screener'):
+            source picker (carried/CSV/Sheet/API/URL) → ingest → weighted factor
+            editor (auto-seeded from numeric attribute keys; weight, higher/lower,
+            numeric/AI type) → live quote → Run → ranked finalist cards with score
+            bars + per-factor breakdown + CSV export.
+
+          MAIN-AGENT BACKEND SMOKE TESTS (ALL PASS): ingest csv (3 candidates +
+          attribute_keys); quote (1.33 cr); run → finalists ranked (Money Grow #1 @
+          76.8, matches hand-calc); end_user billing charged 1.33, balance 100→98.67;
+          get run 200; export.csv 200; url legal-gate 403; insufficient-credits 402.
+          Demo member analyst@pmsbazaar-demo.com seeded with 200 credits.
+
+          NEEDS testing_agent: the ScreenerPanel UI inside the embed
+          (/embed/screener?partner=pmsbazaar-demo) — ingest CSV, set factors, run,
+          see ranked results + export.
+
+
   - task: "P2 — Embed Data Hand-off Pre-seed (Embed Initiative)"
     implemented: true
     working: true
