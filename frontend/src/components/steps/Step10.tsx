@@ -312,7 +312,7 @@ export default function Step10() {
                             final_choice_decided_at: decision.final_choice_decided_at || new Date().toISOString(),
                           });
                           showAlert('Decision Completed 🎉', 'Your decision has been marked as completed.', [
-                            { text: 'Done', onPress: () => { try { router.back(); } catch { router.replace('/(tabs)' as any); } } },
+                            { text: 'Done', onPress: () => { if (router.canGoBack?.()) router.back(); else router.replace('/(tabs)' as any); } },
                           ]);
                         } catch (e) {
                           showAlert('Could not complete', 'Something went wrong. Please try again.');
