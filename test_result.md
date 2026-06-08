@@ -270,6 +270,42 @@ test_plan:
 user_problem_statement: "Build View Dezider - a decision intelligence app based on Chapter 2 of 'Be Your Best-mate' book. Features include PRR (Priority Related Ratings) 10-step decision system, Test123 instant decision tool, Decision Mode Assessment, and Decision Journal. Requires both Google OAuth and email/password auth. Venture Buddha branding with purple/magenta gradient theme."
 
 backend:
+  - task: "P2 — Embed Data Hand-off Pre-seed (Embed Initiative)"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/context/DecisionContext.tsx, frontend/app/tools/pros-cons-wizard.tsx, frontend/app/embed/[flow].tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          P2 wires the carried-over partner-compare options (stashed by the embed
+          screen in AsyncStorage('embed_seed') = {flow, partner, options:[{name,
+          attributes}], ts}) into the ACTUAL tool flows:
+
+          • MyDezider (DecisionContext.applyEmbedSeed): when a freshly-created
+            decision is opened in /prr/[id] with NO options and a recent (<2h)
+            embed_seed of flow 'mydezider', the carried option names are written
+            via PUT /decisions/{id} {options:[...]} and the user lands on Step 6
+            (Define Options). Seed cleared after consume; stale seeds expire.
+          • Pros & Cons (pros-cons-wizard load()): on a fresh analysis with no
+            options and a recent embed_seed of flow 'pros_cons', each carried
+            name is POSTed to /pros-cons/{id}/options, analysis reloaded, user
+            lands on Step 2 (List Options + Pros & Cons). One-shot guarded by a
+            ref; only touches pros_cons seeds (leaves mydezider seeds intact).
+
+          No backend changes — reuses existing PUT /decisions/{id} and
+          POST /pros-cons/{id}/options. Lint clean (only pre-existing advisories).
+
+          NEEDS testing_agent: (1) Pros & Cons pre-seed — as analyst@pmsbazaar-demo.com,
+          set localStorage embed_seed={flow:'pros_cons',options:[3 names],ts:now}
+          then open /tools/pros-cons-wizard → 3 options appear, step 2. (2) MyDezider
+          pre-seed — create a decision, set embed_seed flow 'mydezider', open
+          /prr/{id} → options appear at Step 6. (3) seed cleared after use.
+
+
   - task: "P1 — Embed Widget + JS Loader + Dynamic Partner Page (Embed Initiative)"
     implemented: true
     working: true

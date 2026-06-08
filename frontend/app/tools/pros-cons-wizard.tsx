@@ -14,12 +14,13 @@
  *
  *  Re-used by both Pros & Cons and SWOT through the `module` query param.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
   ActivityIndicator, KeyboardAvoidingView, Platform, Modal,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -55,6 +56,8 @@ export default function ProsConsWizard() {
   const [guidelines, setGuidelines] = useState<Guideline[]>([]);
   // Bumped to remount the Step-8 Action Plan editor after the MPPS auto-import.
   const [pcActionKey, setPcActionKey] = useState(0);
+  // One-shot guard for the partner-embed option pre-seed.
+  const embedSeededRef = useRef(false);
 
   const load = useCallback(async () => {
     // -------------------------------------------------------------
@@ -90,6 +93,43 @@ export default function ProsConsWizard() {
       const r = await api.get(`${base}/${id}`);
       setAnalysis(r.data);
       setStep(r.data?.current_step || 1);
+
+      // ── Partner-embed pre-seed (pros_cons) ──────────────────────────────
+      // Carried-over comparison options from /embed were stashed in
+      // AsyncStorage('embed_seed'). Drop them in as Options once, on a fresh
+      // analysis, then clear the seed. Only touches pros_cons seeds.
+      if (!embedSeededRef.current && module === 'pros-cons') {
+        embedSeededRef.current = true;
+        try {
+          const raw = await AsyncStorage.getItem('embed_seed');
+          if (raw) {
+            const seed = JSON.parse(raw);
+            if (seed && seed.flow === 'pros_cons') {
+              const stale = Date.now() - (seed.ts || 0) > 2 * 3600 * 1000;
+              const names: string[] = stale
+                ? []
+                : (seed.options || [])
+                    .map((o: any) => (typeof o === 'string' ? o : o?.name))
+                    .filter((n: any) => !!n && String(n).trim());
+              if (names.length && (r.data?.options || []).length === 0) {
+                const seen = new Set<string>();
+                for (const n of names) {
+                  const k = String(n).trim().toLowerCase();
+                  if (!k || seen.has(k)) continue;
+                  seen.add(k);
+                  try { await api.post(`${base}/${id}/options`, { name: String(n).trim() }); } catch { /* skip */ }
+                }
+                await AsyncStorage.removeItem('embed_seed');
+                const r2 = await api.get(`${base}/${id}`);
+                setAnalysis(r2.data);
+                setStep(2); // List Options + Pros & Cons
+              } else {
+                await AsyncStorage.removeItem('embed_seed');
+              }
+            }
+          }
+        } catch { /* non-fatal */ }
+      }
     } catch (e: any) {
       showAlert('Error', e?.response?.data?.detail || 'Failed to load analysis');
     } finally { setLoading(false); }

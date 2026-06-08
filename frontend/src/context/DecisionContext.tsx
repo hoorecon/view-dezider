@@ -127,10 +127,63 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     fetchDecision();
   }, [id]);
 
+  // ── Partner-embed pre-seed ────────────────────────────────────────────
+  // When a decision is opened right after launching from a partner embed
+  // (/embed/[flow]), the carried-over comparison options were stashed in
+  // AsyncStorage('embed_seed'). If this freshly-created decision has no options
+  // yet, pre-populate Step 6 (Define Options) with them, then clear the seed.
+  const applyEmbedSeed = async (decisionData: Decision): Promise<boolean> => {
+    try {
+      const raw = await AsyncStorage.getItem('embed_seed');
+      if (!raw) return false;
+      const seed = JSON.parse(raw);
+      if (!seed || seed.flow !== 'mydezider') return false;
+      // expire stale seeds (2h) so they never leak into an unrelated decision
+      if (Date.now() - (seed.ts || 0) > 2 * 3600 * 1000) {
+        await AsyncStorage.removeItem('embed_seed');
+        return false;
+      }
+      const names: string[] = (seed.options || [])
+        .map((o: any) => (typeof o === 'string' ? o : o?.name))
+        .filter((n: any) => !!n && String(n).trim());
+      if (!names.length || (decisionData.options || []).length > 0) {
+        await AsyncStorage.removeItem('embed_seed');
+        return false;
+      }
+      const seen = new Set<string>();
+      const additions: DecisionOption[] = [];
+      names.forEach((n, i) => {
+        const k = String(n).trim().toLowerCase();
+        if (seen.has(k)) return;
+        seen.add(k);
+        additions.push({
+          id: `option_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 5)}`,
+          name: String(n).trim(),
+          assessments: [],
+          worth_percentage: 0,
+        });
+      });
+      const resp = await api.put(`/decisions/${id}`, { options: additions });
+      setDecision(resp.data);
+      await AsyncStorage.removeItem('embed_seed');
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const fetchDecision = async () => {
     try {
       const response = await api.get(`/decisions/${id}`);
       setDecision(response.data);
+
+      // Partner-embed pre-seed: if this is a fresh decision launched from an
+      // embed, drop the carried options into Step 6 and land the user there.
+      const seeded = await applyEmbedSeed(response.data);
+      if (seeded) {
+        setCurrentStep(6);
+        return;
+      }
 
       // ── ?step=N URL override (SWOT->Decider conversion uses this to
       // force-land on Step 2 even when the doc already has factors).

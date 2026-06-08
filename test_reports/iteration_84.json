@@ -1,0 +1,57 @@
+{
+  "summary": "P2 partner-embed pre-seed validated. Pros & Cons pre-seed WORKS end-to-end: /tools/pros-cons-wizard with no id auto-creates analysis, redirects to ?id=, posts 3 options (Money Grow Asset, Hem Securities SME Stars, Green Portfolio Super 30), removes embed_seed, lands on Step 2 (List Options + Pros & Cons). Guard for pros-cons (no seed) works (lands on Step 1, no options). MyDezider pre-seed WORKS at the data layer (PUT /api/decisions/{id} with the 3 options succeeds and embed_seed is cleared — verified via REST), BUT the /prr/{id} editor crashes with a pre-existing 'TypeError: Cannot read properties of undefined (reading map) at PRRDecisionDetailInner' which then triggers a GO_BACK and redirects to /auth/login. So users never visually reach Step 6 even though their options were saved.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "PRRDecisionDetailInner (/prr/[id])",
+        "issue": "Page crashes immediately on load with TypeError: Cannot read properties of undefined (reading 'map'). This is a PRE-EXISTING crash unrelated to the embed-seed feature itself — it happens on /prr/{id} even without embed_seed. The crash causes the GO_BACK fallback in DecisionContext.fetchDecision catch to push user to /auth/login. Net effect for P2: the MyDezider pre-seed silently writes the 3 options server-side and clears embed_seed, but the user is bounced to the login page instead of landing on Step 6. Reference: console error stack points at PRRDecisionDetailInner; likely an undefined array accessed with .map() in /app/frontend/app/prr/[id].tsx or one of its child components.",
+        "testID": "n/a",
+        "priority": "CRITICAL"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "MyDezider embed pre-seed → Step 6 landing",
+        "issue": "Data layer correct (verified via API GET /decisions/{id}: the 3 carried options Money Grow Asset, Hem Securities SME Stars, Green Portfolio Super 30 are persisted; embed_seed key is cleared from localStorage). But the editor never renders Step 6 because /prr/{id} crashes. The setCurrentStep(6) inside applyEmbedSeed has no visible effect for the user. End-to-end user flow is BROKEN until the unrelated /prr crash is fixed.",
+        "affected_testIDs": []
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "shadow* style props",
+        "issue": "Console warning: 'shadow*' style props are deprecated. Use 'boxShadow'. Recurring across many screens."
+      },
+      {
+        "component": "props.pointerEvents",
+        "issue": "Console warning: props.pointerEvents is deprecated. Use style.pointerEvents."
+      }
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Fix the PRE-EXISTING crash in PRRDecisionDetailInner (/app/frontend/app/prr/[id].tsx): 'Cannot read properties of undefined (reading map)'. Inspect any .map() over decision.factors / decision.options / decision.rollups / aggregate results that may be undefined on a freshly-loaded decision. The DecisionContext default supplies factors:[] and options:[] but possibly a child component receives an undefined sub-array (e.g. rollups, action_items, or assessments). Once fixed, the MyDezider P2 pre-seed will visually land users on Step 6 as designed.",
+    "After fixing the /prr crash, re-verify: (1) /prr/{id} no longer redirects to /auth/login, (2) Step 6 (Define Options) is shown with the 3 carried options, (3) embed_seed is removed (already confirmed), (4) the 'skip if options exist' guard removes embed_seed when the decision already has options (currently short-circuited by the crash).",
+    "Consider tightening DecisionContext.fetchDecision catch: calling router.back() when API actually succeeded (because a downstream render crashed) sends users to /auth/login on hard-loaded URLs. Move the redirect into a more specific error branch (network/401 only).",
+    "Address deprecation warnings: migrate shadow* style props to boxShadow and props.pointerEvents to style.pointerEvents (low priority, console noise only)."
+  ],
+  "critical_code_review_comments": [
+    "DecisionContext.applyEmbedSeed correctly: (a) checks flow==='mydezider', (b) honors 2h staleness, (c) skips if options already exist, (d) de-dupes by lowercased name, (e) PUTs additions and clears embed_seed. Logic is sound; only blocked by the /prr render crash.",
+    "tools/pros-cons-wizard.tsx embed-seed handler is correct: one-shot ref guard, posts each option via POST /api/pros-cons/{id}/options, reloads analysis, sets step=2. Stale (>2h) seeds and non-pros_cons flows correctly skipped.",
+    "Both pre-seed code paths read AsyncStorage.getItem('embed_seed') which on web maps to localStorage — confirmed working."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "66% (2 of 3 scenarios fully pass end-to-end; MyDezider seed writes data but UI crashes downstream)"
+  },
+  "seed_data_creation": "Created 2 test decisions on analyst@pmsbazaar-demo.com (TEST_embed_seed_dezider c6a9bf7a..., TEST_embed_md_v2 019df6d0...) and 2 pros-cons analyses (one seeded with 3 options, one empty for guard test). Safe to delete.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Re-test P2 MyDezider pre-seed AFTER the /prr/[id] crash is fixed. Repro: POST /api/decisions {title:'x'} as analyst@pmsbazaar-demo.com, set localStorage embed_seed to {flow:'mydezider', partner:'pmsbazaar-demo', options:[{name:'A'},{name:'B'},{name:'C'}], ts:Date.now()}, navigate to /prr/{id}, wait ~15s, expect (a) URL stays on /prr/{id}, (b) Step 6 visible, (c) 3 options in editor, (d) embed_seed removed. Pros & Cons pre-seed already passes — no need to re-verify unless the embed/[flow] code changes.",
+  "rca_of_issue": "P2 MyDezider visual failure RCA: The pre-seed logic in /app/frontend/src/context/DecisionContext.tsx (applyEmbedSeed) executes correctly — it reads embed_seed from AsyncStorage(==localStorage on web), validates flow/freshness, PUTs options to /api/decisions/{id}, clears the seed, then calls setCurrentStep(6) and returns. However, a sibling/child component PRRDecisionDetailInner under /prr/[id].tsx crashes during render with 'TypeError: Cannot read properties of undefined (reading map)'. The crash is independent of embed_seed (reproduces on a vanilla decision too). React Navigation then triggers GO_BACK (caught: 'The action GO_BACK was not handled by any navigator'), and the app falls back to /auth/login. Backend state IS correctly updated, but UX is broken. Mitigation: fix the undefined .map() in PRRDecisionDetailInner; until then, the data-layer fix means returning to the decision from the dashboard will show the 3 options at Step 6 (auto-jump in fetchDecision lands on step 6 when options.length>0)."
+}
