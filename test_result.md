@@ -272,7 +272,7 @@ user_problem_statement: "Build View Dezider - a decision intelligence app based 
 backend:
   - task: "P4 — Admin Embed Console + Analytics (Embed Initiative)"
     implemented: true
-    working: "NA"
+    working: true
     file: "frontend/app/admin/embed-partners.tsx, frontend/app/admin/index.tsx, backend/routes/partner_embed.py"
     stuck_count: 0
     priority: "high"
