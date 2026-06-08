@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, StyleSheet, Alert, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -32,9 +32,19 @@ export default function Step7() {
   } = useDecision();
 
   // Import ACTUAL VALUES from a URL (consent-gated), then auto AI-assess.
+  const [actualsDialogOpen, setActualsDialogOpen] = useState(false);
   const [urlActualsOpen, setUrlActualsOpen] = useState(false);
   const [actualsUrl, setActualsUrl] = useState('');
   const [actualsBusy, setActualsBusy] = useState(false);
+
+  const submitActualsDialog = () => {
+    if (!/^https?:\/\/.+/i.test(actualsUrl.trim())) {
+      showAlert('Enter a URL', 'Paste a valid http(s) link to a product / comparison page.');
+      return;
+    }
+    setActualsDialogOpen(false);
+    setUrlActualsOpen(true);
+  };
 
   const runImportActuals = async (consent: UrlConsentPayload) => {
     setActualsBusy(true);
@@ -762,6 +772,10 @@ export default function Step7() {
           {xlsBusy ? <ActivityIndicator size="small" color="#0F9D58" /> : <Ionicons name="cloud-download-outline" size={15} color="#0F9D58" />}
           <Text style={[mdXls.btnText, { color: '#0F9D58' }]}>Import Sheet</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={[mdXls.btn, { borderColor: '#C7B3FF', backgroundColor: '#F5F3FF' }]} onPress={() => setActualsDialogOpen(true)} disabled={actualsBusy} testID="md-import-actuals-url">
+          {actualsBusy ? <ActivityIndicator size="small" color="#7C3AED" /> : <Ionicons name="link" size={15} color="#7C3AED" />}
+          <Text style={[mdXls.btnText, { color: '#7C3AED' }]}>Import from URL</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.voiceInputRow}>
@@ -940,6 +954,47 @@ export default function Step7() {
         </TouchableOpacity>
         <GradientButton title="View Results" onPress={() => setCurrentStep(8)} style={styles.nextButton} />
       </View>
+
+      {/* URL dialog — collects the link, then opens the consent gate */}
+      <Modal visible={actualsDialogOpen} transparent animationType="fade" onRequestClose={() => setActualsDialogOpen(false)}>
+        <View style={urlDlg.overlay}>
+          <View style={urlDlg.dlg}>
+            <Text style={urlDlg.title}>Import actual values from a URL</Text>
+            <Text style={urlDlg.sub}>
+              Paste a product or comparison page. We&apos;ll extract the actual values for your existing
+              factors, then AI-score them automatically. You&apos;ll confirm your access rights next.
+            </Text>
+            <TextInput
+              testID="md-actuals-url-input"
+              style={urlDlg.input}
+              placeholder="https://… product or comparison page"
+              placeholderTextColor="#9CA3AF"
+              value={actualsUrl}
+              onChangeText={setActualsUrl}
+              autoCapitalize="none"
+              keyboardType="url"
+              autoFocus
+            />
+            <View style={urlDlg.btns}>
+              <TouchableOpacity style={urlDlg.cancel} onPress={() => setActualsDialogOpen(false)}>
+                <Text style={urlDlg.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity testID="md-actuals-url-continue" style={urlDlg.go} onPress={submitActualsDialog}>
+                <Text style={urlDlg.goText}>Continue</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <UrlAccessConsentModal
+        visible={urlActualsOpen}
+        url={actualsUrl.trim()}
+        busy={actualsBusy}
+        primary="#7C3AED"
+        onCancel={() => { if (!actualsBusy) setUrlActualsOpen(false); }}
+        onConfirm={runImportActuals}
+      />
     </View>
   );
 }
@@ -948,4 +1003,17 @@ const mdXls = StyleSheet.create({
   bar: { flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' },
   btn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#BBD6FF', backgroundColor: '#EFF6FF' },
   btnText: { fontSize: 12.5, fontWeight: '700', color: '#1F6FEB' },
+});
+
+const urlDlg = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  dlg: { width: '100%', maxWidth: 440, backgroundColor: '#fff', borderRadius: 16, padding: 20 },
+  title: { fontSize: 16, fontWeight: '800', color: COLORS.textPrimary },
+  sub: { fontSize: 12, lineHeight: 17, color: COLORS.textMuted, marginTop: 6, marginBottom: 12 },
+  input: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, fontSize: 14, color: COLORS.textPrimary },
+  btns: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 16 },
+  cancel: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
+  cancelText: { fontSize: 13.5, fontWeight: '700', color: COLORS.textMuted },
+  go: { backgroundColor: '#7C3AED', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, minWidth: 96, alignItems: 'center' },
+  goText: { color: '#fff', fontSize: 13.5, fontWeight: '800' },
 });
