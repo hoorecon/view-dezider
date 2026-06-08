@@ -238,6 +238,21 @@ Full plan (Phases A–D) approved by user; all 11 backend tests + frontend e2e P
 - NOTE: dev LiteLLM budget cap can 502 the AI table-less extraction path; the HTML-table path needs
   no AI. Test: `/app/backend/tests/test_iter91_url_analyse_screener.py`.
 
+## PROD BUG FIX — "AI Assess All" 405 burst → chunked batch — 8 Jun 2026 (tested, iteration_92)
+- Symptom (jelcos.ai): "AI Assess All" → "Assessed 0 cells • N failed"; console showed 405 (Method
+  Not Allowed) on every `/api/decisions/{id}/factors/{fid}/ai-assess` call, while the single-cell ✨AI
+  button worked. Root cause: the bulk runner fired one POST PER CELL (47+ rapid requests) — a burst the
+  production edge/CDN rejects with 405. Dev never reproduces (returns 502 not 405). Not a rate limit
+  (0 succeeded; a limiter would let the first few through).
+- Fix: new backend `POST /api/decisions/{decision_id}/ai-assess-batch` (≤12 cells/request) sharing a
+  `_apply_assessment()` helper with the single-cell route. Frontend `Step7.tsx` `runBulkAssess` now
+  chunks all empty cells (CHUNK=6) and calls the batch endpoint via the shared axios `api` instance
+  (assessCellSilent removed). ~48 cells → ~8 requests instead of 48, on the proven single-POST path.
+- Verified: backend 5/5 (`test_iter92_ai_assess_batch.py`); frontend network shows 2× batch calls for
+  12 cells, 0 per-cell calls, no 405s; single-cell ✨AI regression intact.
+- ⚠️ ACTION: user must REDEPLOY to jelcos.ai for the fix to take effect. Dev LiteLLM has a $0.4 budget
+  cap that can still make "AI-fill all" cells fail inside the batch (not a code issue).
+
 ## Remaining backlog (post-fork)
 - P1: CLD Engine Phase B & C (Rules Engine + AI Suggestions)
 - P1: PRR Enhancement #4 & #5 (configurable timing fields + decision-linking bypass)
