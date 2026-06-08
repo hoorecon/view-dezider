@@ -1,0 +1,30 @@
+{
+  "summary": "P4 Partner Embed admin self-serve console + analytics validated end-to-end. Backend: 12/12 pytest passing (partners list, GET/PUT config, analytics admin/anon/non-admin RBAC, edit+save persistence with per_finalist=0.2 & billing_mode=both, legal gate 400 without acks, 200 with acks). UI: /admin/embed-partners loads after admin login, shows partner tab strip with 'PMS Bazaar (Demo)' selected by default, all required sections render (Branding white_label/co_brand + render mode rn_web/html_widget + Primary/Accent color + Logo URL + hide-powered-by toggle; Enabled flows chips MyDezider/Pros & Cons/Screener; Authentication & origins; Screener pricing & billing; Catalogue ingestion; Embed snippet code-box containing <script src=...api/embed/decision/pmsbazaar-demo/loader.js data-flow=...> + Copy snippet + Preview partner page buttons; Analytics card with Runs/Candidates/End-user cr./Partner cr. + recent runs). RBAC: anon visit to /admin/embed-partners is redirected by admin layout to /admin/login (Admin Portal / 'Restricted access' screen). Backend analytics endpoint returns 401 to anon and to non-admin (org-auth) tokens. pmsbazaar-demo restored to sane demo state at end (branding_mode=white_label, render_mode=rn_web, all 3 flows enabled, otp_required=false, billing_mode=both, csv_sheet_enabled=true, scrape_enabled=false).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      { "screen": "/admin/embed-partners", "issues": ["Interactive elements (partner tabs, flow chips, segmented controls, toggles, Save button, Copy snippet, Preview partner page) lack testID attributes — relied on text/innerText for verification. Adding testIDs would harden future regression tests."] }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter88_embed_p4.py",
+    "/app/test_reports/pytest/iter88_embed_p4.xml"
+  ],
+  "action_items": [
+    "(Nice-to-have) Add testID props to embed-partners UI controls: partner tab buttons, branding/render seg buttons, flow chips, toggles (otp_required/expose_dev_code/csv/api/scrape and the two legal acks), Save configuration button, Copy snippet, Preview partner page, and the analytics stat tiles. Improves future automated test stability."
+  ],
+  "critical_code_review_comments": [
+    "embed-partners.tsx uses EXPO_PUBLIC_BACKEND_URL directly (line 24) for snippet/preview URLs — this is correct. Backend partner_embed.py legal gate enforced server-side (good defence-in-depth)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter88_embed_p4.py (created)"
+  ],
+  "success_rate": { "backend": "100%", "frontend": "100%" },
+  "seed_data_creation": "None — used existing pmsbazaar-demo org. Restored to sane demo state at the end of the suite.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "P4 admin console covered by /app/backend/tests/test_iter88_embed_p4.py — reusable. The Partner Embed Console route is /admin/embed-partners (guarded by /admin/_layout.tsx). Admin login: admin@test.com / AdminPass2026!. Non-admin org member: analyst@pmsbazaar-demo.com / PmsAnalyst2026! (login via /api/org-auth/login with org_slug=pmsbazaar-demo). The PUT body in the UI sends auth_mode derived from otp_required; the backend accepts both 'otp' and 'frictionless'."
+}

@@ -33,6 +33,7 @@ const QUICK_ACTIONS: QuickAction[] = [
   { key: 'payments',        label: 'Payments & Coupons',  description: 'Skip-pay toggle · Coupon CRUD · Org-Type master', icon: 'card', color: '#0D9488', href: '/admin/payments' },
   { key: 'experts',         label: 'Experts',             description: 'Verified expert profiles · ratings · payouts', icon: 'star',            color: '#F59E0B', href: '/admin/experts' },
   { key: 'org-members',     label: 'Org Members',         description: 'Organisation users · roles · invitations',     icon: 'people',          color: '#3B82F6', href: '/admin/org-members' },
+  { key: 'embed-partners',  label: 'Partner Embed',       description: 'White-label embed · branding · render mode · Screener pricing · snippet · analytics', icon: 'extension-puzzle', color: '#7B1E3B', href: '/admin/embed-partners' },
   { key: 'acm',             label: 'Access Control',      description: '89 features × subscription plan quotas',       icon: 'shield-checkmark',color: '#6366F1', href: '/admin/acm' },
   { key: 'audit',           label: 'Audit Trail',         description: 'All admin actions · forensic timeline',        icon: 'time',            color: '#64748B', href: '/admin/audit-trail' },
   { key: 'incident',        label: 'Incident Response',   description: 'Active incidents · post-mortems · SLAs',       icon: 'alert-circle',    color: '#DC2626', href: '/admin/incident-response' },

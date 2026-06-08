@@ -161,6 +161,58 @@ async def get_public_embed_config(slug: str):
 # ------------------------------------------------------------------
 # ADMIN — full config CRUD
 # ------------------------------------------------------------------
+@router.get("/analytics/{slug}")
+async def embed_analytics(slug: str, _admin: dict = Depends(require_admin)):
+    """Admin analytics for a partner: screener run volume + billing totals."""
+    org = await _resolve_org_by_slug(slug)
+    if not org:
+        raise HTTPException(status_code=404, detail="Partner not found")
+    runs = await db.screener_runs.find(
+        {"partner_id": org["id"]}, {"_id": 0}
+    ).sort("created_at", -1).to_list(500)
+    ledger = await db.partner_billing_ledger.find(
+        {"partner_id": org["id"]}, {"_id": 0}
+    ).to_list(1000)
+
+    def _iso(v):
+        try:
+            return v.isoformat()
+        except Exception:
+            return str(v)
+
+    total_candidates = sum(int(r.get("candidate_count", 0) or 0) for r in runs)
+    end_user_credits = round(sum(
+        float(r.get("cost_credits", 0) or 0) for r in runs
+        if r.get("billing_mode") in ("end_user", "both")), 2)
+    partner_credits = round(sum(float(led.get("credits", 0) or 0) for led in ledger), 2)
+
+    recent = []
+    for r in runs[:25]:
+        results = r.get("results", []) or []
+        recent.append({
+            "id": r.get("id"),
+            "candidate_count": r.get("candidate_count"),
+            "finalists_count": r.get("finalists_count"),
+            "cost_credits": r.get("cost_credits"),
+            "billing_mode": r.get("billing_mode"),
+            "used_ai": r.get("used_ai", False),
+            "top_match": (results[0].get("name") if results else None),
+            "created_at": _iso(r.get("created_at")),
+        })
+    return {
+        "slug": org.get("slug"),
+        "partner_name": org.get("name"),
+        "totals": {
+            "runs": len(runs),
+            "candidates_ranked": total_candidates,
+            "end_user_credits": end_user_credits,
+            "partner_credits": partner_credits,
+            "ledger_entries": len(ledger),
+        },
+        "recent_runs": recent,
+    }
+
+
 @router.get("/config/{slug}")
 async def get_embed_config(slug: str, _admin: dict = Depends(require_admin)):
     """Full embed config (admin only). If none persisted yet, returns sane

@@ -270,6 +270,45 @@ test_plan:
 user_problem_statement: "Build View Dezider - a decision intelligence app based on Chapter 2 of 'Be Your Best-mate' book. Features include PRR (Priority Related Ratings) 10-step decision system, Test123 instant decision tool, Decision Mode Assessment, and Decision Journal. Requires both Google OAuth and email/password auth. Venture Buddha branding with purple/magenta gradient theme."
 
 backend:
+  - task: "P4 — Admin Embed Console + Analytics (Embed Initiative)"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/admin/embed-partners.tsx, frontend/app/admin/index.tsx, backend/routes/partner_embed.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          P4 — admin self-serve console for partner embeds. New admin screen
+          /admin/embed-partners (registered in the admin menu as 'Partner Embed').
+          Lets a platform admin, per partner:
+            • Branding: white_label/co_brand, render_mode rn_web/html_widget,
+              primary/accent colors, logo, hide "Powered by".
+            • Enabled flows (mydezider/pros_cons/screener) toggles.
+            • Auth: otp_required, expose_dev_code; allowed_origins.
+            • Screener pricing (base/per_candidate/per_finalist/per_factor) +
+              billing_mode (end_user/partner/both).
+            • Ingestion toggles (csv_sheet, api + endpoint, scrape) with the
+              scrape legal+ToS ack gate surfaced inline.
+            • Save → PUT /api/embed/config/{slug}.
+            • Copy embed snippet (loader.js + Help-me-Decide button).
+            • Preview the generated Partner Page (opens /api/embed/demo-host/{slug}).
+            • Analytics: NEW GET /api/embed/analytics/{slug} (admin) → screener
+              run count, candidates ranked, end-user + partner credits billed,
+              recent runs list.
+
+          MAIN-AGENT BACKEND CHECK: GET /api/embed/analytics/pmsbazaar-demo (admin)
+          → 200 {runs:4, candidates_ranked:11, end_user_credits, partner_credits,
+          ledger_entries}; 401 without admin. Python+JS lint clean.
+
+          NEEDS testing_agent: admin login (admin@test.com/AdminPass2026!) → open
+          /admin/embed-partners → select pmsbazaar-demo → edit a field (e.g. toggle
+          a flow or change a price) → Save → 200 & persists; snippet + preview
+          render; analytics card shows totals.
+
+
   - task: "P3 — Screener / Ranking Engine (Embed Initiative)"
     implemented: true
     working: true
