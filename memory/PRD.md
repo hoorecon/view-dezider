@@ -187,3 +187,25 @@ Multi-user Decision Making App based on a 10-step Proactive Risk Response (PRR) 
 - Self-contact (`db.contacts`, is_self=True) `country` = Profile country → timezone.
 - Report builder: `/app/backend/routes/decision_reports.py`.
 
+
+---
+
+# Decision Embed Framework (PMSBazaar pitch) — P0–P4 (built earlier this initiative)
+- Multi-tenant partner embed config CRUD (`partner_embed.py`), white-label iframe widget + JS loader
+  (`partner_embed_widget.py`), cross-origin pre-seeding, Bulk Screener engine (`screener.py`,
+  `ScreenerPanel.tsx`) with flat-credit billing, and Admin Embed Console (`app/admin/embed-partners.tsx`).
+- Demo org `pmsbazaar-demo` (frictionless). Re-seed: `python -m scripts.seed_embed_partner_demo`.
+
+## Fork session — 8 Jun 2026 (verified, testing iteration_89)
+- ✅ Issue 1 (legacy, was untested): My Dezider Step 10 "Complete Decision" button works (confirm →
+  status=completed → redirect); ActionItemEditor → CTT / → LifeStyle port buttons clickable & navigate;
+  Add Action Item modal inputs render as muted placeholders (not pre-filled). Verified end-to-end.
+- ✅ Issue 2 (P2): Added 36 `embed-*` testIDs to embed-partners.tsx and 17 `screener-*` testIDs to
+  ScreenerPanel.tsx. No logic change. Screener CSV→factors→quote→run flow re-verified.
+- NOTE: newly added testIDs needed `sudo supervisorctl restart expo` for Metro to surface them.
+
+## Remaining backlog (post-fork)
+- P1: CLD Engine Phase B & C (Rules Engine + AI Suggestions)
+- P1: PRR Enhancement #4 & #5 (configurable timing fields + decision-linking bypass)
+- P1: DigiLocker eKYC Integration (needs sandbox credentials or mock-first)
+- P2: Webhook API Integration; Org-Type Master Migration; Screener P3b (AI assessment for qualitative factors)
