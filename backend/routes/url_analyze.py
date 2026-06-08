@@ -33,6 +33,20 @@ DISCLAIMER_VERSION = "2026-06-08.v1"
 ELIGIBILITY_TYPES = {"own", "partner", "free_public", "custom"}
 _NUM_RE = re.compile(r"-?\d[\d,]*\.?\d*")
 
+# Columns whose name implies "lower is better" (cost/fee/risk/etc.). Leading word
+# boundary + prefix match → catches 'cost'→'costs', 'fee'→'fees', but NOT 'coffee'.
+_LOWER_BETTER_RE = re.compile(
+    r"\b(cost|fee|expense|expence|price|charge|premium|risk|drawdown|debt|"
+    r"loss|latency|delay|downtime|turnaround|distance|emission|pollution|"
+    r"defect|error|complaint|churn|mileage|consumption|penalty|deficit|"
+    r"overhead|spend|outflow)",
+    re.IGNORECASE,
+)
+
+
+def _is_lower_better(name: str) -> bool:
+    return bool(_LOWER_BETTER_RE.search(str(name or "")))
+
 
 def _now():
     return datetime.now(timezone.utc)
@@ -96,18 +110,25 @@ def _derive_factors_and_scores(
         is_numeric = numeric_count[k] >= max(1, total_count[k] // 2)
         vals = [_num(c.get("attributes", {}).get(k)) for c in candidates]
         nums = [v for v in vals if v is not None]
-        expected = str(max(nums)) if (is_numeric and nums) else None
+        lower_better = is_numeric and _is_lower_better(k)
+        if is_numeric and nums:
+            # "Standard" target = the best observed value for the column's direction.
+            expected = str(min(nums)) if lower_better else str(max(nums))
+        else:
+            expected = None
         factors.append({
             "name": k,
             "data_type": "numeric" if is_numeric else "text",
-            "operator": ">=" if is_numeric else None,
+            "operator": ("<=" if lower_better else ">=") if is_numeric else None,
             "expected_value": expected,
             "weight": 50,
             "_min": min(nums) if nums else None,
             "_max": max(nums) if nums else None,
+            "_lower": lower_better,
         })
 
-    # Proportional 0..100 scoring (higher = better, normalised across items).
+    # Proportional 0..100 scoring, normalised across items, respecting direction
+    # (lower-is-better columns score inversely).
     scored: List[Dict[str, Any]] = []
     for c in candidates:
         scores: Dict[str, Optional[float]] = {}
@@ -121,6 +142,8 @@ def _derive_factors_and_scores(
                 scores[f["name"]] = None
             elif mx == mn:
                 scores[f["name"]] = 100.0
+            elif f.get("_lower"):
+                scores[f["name"]] = round((mx - v) / (mx - mn) * 100.0, 1)
             else:
                 scores[f["name"]] = round((v - mn) / (mx - mn) * 100.0, 1)
         scored.append({"name": c.get("name"), "attributes": c.get("attributes"), "scores": scores})
@@ -128,6 +151,7 @@ def _derive_factors_and_scores(
     for f in factors:
         f.pop("_min", None)
         f.pop("_max", None)
+        f.pop("_lower", None)
     return factors, scored
 
 

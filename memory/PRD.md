@@ -269,6 +269,14 @@ Full plan (Phases A–D) approved by user; all 11 backend tests + frontend e2e P
 - NOTE: URL-import expected_value defaults to column max (cost-style "lower-is-better" factors may need
   the user to flip — out of scope, editable in Step 2). Dev LiteLLM budget cap still applies to AI paths.
 
+## URL-import direction-awareness — 8 Jun 2026 (tested)
+- `routes/url_analyze.py::_derive_factors_and_scores` now auto-detects "lower-is-better" columns
+  (cost/fee/expense/price/charge/premium/risk/drawdown/debt/loss/latency/.../churn) via
+  `_is_lower_better()`. Those factors get operator `<=`, Expected = column MIN, and inverted
+  proportional scores (lowest value → 100%). Higher-is-better columns keep `>=`/MAX as before.
+- Applies to BOTH standalone "Analyse a URL" and Step-2 "Import from URL". Verified e2e (Expense Ratio
+  → `<=` 0.85, Alpha 100% / Gamma 0%) + unit test `tests/test_url_import_direction.py` (2 passed).
+
 ## Remaining backlog (post-fork)
 - P1: CLD Engine Phase B & C (Rules Engine + AI Suggestions)
 - P1: PRR Enhancement #4 & #5 (configurable timing fields + decision-linking bypass)
