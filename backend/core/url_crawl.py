@@ -195,6 +195,84 @@ def _is_low_quality(cands: List[Dict[str, Any]]) -> bool:
     return len(real) < max(1, len(keys) // 2)
 
 
+def parse_hierarchy(html: str) -> Optional[Dict[str, Any]]:
+    """Parse a category-grouped comparison matrix (e.g. GSMArena) into a TWO-LEVEL
+    structure: each <table> is a category section (its <th> = category name) and
+    its rows are sub-specs. Returns::
+
+        {"items": [name, ...],            # compared items (columns, from <title>)
+         "groups": [{"category": str,     # e.g. "Body"
+                     "rows": [{"label": str,            # e.g. "Weight"
+                               "values": [v1, v2, ...]} # one per item
+                              ]}]}
+
+    Returns None when the page is not a multi-category comparison matrix.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    names = _names_from_title(soup)
+    tables = soup.find_all("table")
+    if not tables:
+        return None
+
+    # Determine item count N (columns) from the title, else the common row width.
+    from collections import Counter
+    widths = Counter(
+        len(tr.find_all(["td", "th"]))
+        for t in tables for tr in t.find_all("tr")
+        if len(tr.find_all(["td", "th"])) >= 3
+    )
+    if names:
+        n = len(names)
+    elif widths:
+        n = widths.most_common(1)[0][0] - 1
+    else:
+        return None
+    if n < 2 or n > 12:
+        return None
+    if not names or len(names) != n:
+        names = [f"Item {i + 1}" for i in range(n)]
+
+    groups: List[Dict[str, Any]] = []
+    for table in tables:
+        cat_th = table.find("th")
+        category = (cat_th.get_text(" ", strip=True) if cat_th else "").strip()
+        if not category:
+            continue
+        rows: List[Dict[str, Any]] = []
+        seen_lbl: Dict[str, int] = {}
+        for tr in table.find_all("tr"):
+            cells = [c.get_text(" ", strip=True) for c in tr.find_all(["td", "th"])]
+            if len(cells) < n + 1:
+                continue
+            values = [v.strip() for v in cells[-n:]]
+            label = (cells[-(n + 1)] or "").strip()
+            if not label or label.lower() == category.lower() or not any(values):
+                continue
+            if label in seen_lbl:
+                seen_lbl[label] += 1
+                label = f"{label} ({seen_lbl[label]})"
+            else:
+                seen_lbl[label] = 1
+            rows.append({"label": label, "values": values})
+        if rows:
+            groups.append({"category": category, "rows": rows})
+
+    if len(groups) < 2:
+        return None
+    return {"items": names, "groups": groups}
+
+
+async def crawl_hierarchy(url: str) -> Optional[Dict[str, Any]]:
+    """Fetch `url` and return its two-level comparison hierarchy, or None if the
+    page is not a category-grouped comparison matrix."""
+    r = await _fetch_html(url)
+    if "json" in r.headers.get("content-type", ""):
+        return None
+    return parse_hierarchy(r.text)
+
+
+
+
 async def ai_extract_candidates(user_id: str, html: str) -> List[Dict[str, Any]]:
     """LLM fallback for table-less pages. Metered to the user's wallet."""
     if not has_any_llm():
@@ -216,24 +294,23 @@ async def ai_extract_candidates(user_id: str, html: str) -> List[Dict[str, Any]]
         return []
 
 
-async def crawl_candidates(url: str, user_id: str, name_key: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Fetch `url` and return a normalised candidate list. Raises HTTPException
-    with a user-friendly message on failure."""
+async def _fetch_html(url: str) -> "httpx.Response":
+    """Fetch `url` with browser headers + retry on bot-block codes. Raises a
+    user-friendly HTTPException on failure. Shared by flat + hierarchical crawls."""
     url = (url or "").strip()
     if not url or not re.match(r"^https?://", url, re.I):
         raise HTTPException(400, "Enter a valid http(s) URL.")
 
     r = None
     last_err: Optional[Exception] = None
-    # Up to 3 attempts; brief backoff helps with transient 429/503 throttling.
-    for attempt in range(3):
+    for attempt in range(3):  # brief backoff helps transient 429/503 throttling
         try:
             async with httpx.AsyncClient(timeout=HTTP_TIMEOUT, follow_redirects=True,
                                          headers=_BROWSER_HEADERS) as cli:
                 r = await cli.get(url)
             if r.status_code not in _BOT_BLOCK_CODES:
                 break
-        except Exception as e:  # network/DNS/TLS errors
+        except Exception as e:
             last_err = e
             r = None
         if attempt < 2:
@@ -245,7 +322,6 @@ async def crawl_candidates(url: str, user_id: str, name_key: Optional[str] = Non
             f"Could not reach the URL ({type(last_err).__name__ if last_err else 'network error'}). "
             "Check the link is public and reachable.",
         )
-
     if r.status_code in _BOT_BLOCK_CODES:
         raise HTTPException(
             422,
@@ -256,6 +332,13 @@ async def crawl_candidates(url: str, user_id: str, name_key: Optional[str] = Non
         )
     if r.status_code >= 400:
         raise HTTPException(422, f"URL fetch failed (HTTP {r.status_code}). The page may be private or removed.")
+    return r
+
+
+async def crawl_candidates(url: str, user_id: str, name_key: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Fetch `url` and return a normalised candidate list. Raises HTTPException
+    with a user-friendly message on failure."""
+    r = await _fetch_html(url)
 
     ctype = r.headers.get("content-type", "")
     if "json" in ctype:

@@ -73,3 +73,52 @@ def test_low_quality_detection():
     # Real header keys → good quality.
     assert _is_low_quality([{"attributes": {"Returns": "10", "Fee": "1"}},
                             {"attributes": {"Returns": "20", "Fee": "2"}}]) is False
+
+
+# ── Hierarchical (two-level) parse + scoring ────────────────────────────────
+from core.url_crawl import parse_hierarchy
+from routes.url_analyze import _score_hierarchy_numeric
+from core.decision_builder import _effective_pct, _hier_worth
+from models.decisions_models import Factor, OptionAssessment
+
+
+def test_parse_hierarchy_groups_and_subs():
+    h = parse_hierarchy(_html())
+    assert h is not None
+    assert h["items"] == ["Alpha One", "Beta Max", "Gamma Pro"]
+    cats = [g["category"] for g in h["groups"]]
+    assert {"Body", "Battery", "Network"}.issubset(set(cats))
+    body = next(g for g in h["groups"] if g["category"] == "Body")
+    labels = [r["label"] for r in body["rows"]]
+    assert "Weight" in labels and "Build" in labels
+    # Each row carries one value per item.
+    weight_row = next(r for r in body["rows"] if r["label"] == "Weight")
+    assert len(weight_row["values"]) == 3 and weight_row["values"][0].startswith("169")
+
+
+def test_hierarchy_numeric_vs_text_scoring():
+    h = parse_hierarchy(_html())
+    row_scores, row_meta, text_rows = _score_hierarchy_numeric(h["items"], h["groups"])
+    # Locate Battery·Capacity (3500 / 7025 / 5000) → numeric, proportional.
+    for gi, g in enumerate(h["groups"]):
+        for ri, row in enumerate(g["rows"]):
+            if g["category"] == "Battery" and row["label"] == "Capacity":
+                assert row_meta[(gi, ri)]["is_numeric"] is True
+                assert row_scores[(gi, ri)] == [0, 100, round((5000 - 3500) / (7025 - 3500) * 100)]
+            if row["label"] == "2G bands":   # messy band list → text, needs AI
+                assert row_meta[(gi, ri)]["is_numeric"] is False
+                assert (gi, ri) in [(t[0], t[1]) for t in text_rows]
+
+
+def test_effective_pct_and_worth():
+    parent = Factor(id="p", name="Body", rating=50)
+    s1 = Factor(id="s1", name="Weight", parent_id="p", weight=50)
+    s2 = Factor(id="s2", name="Build", parent_id="p", weight=50)
+    assessments = [OptionAssessment(factor_id="s1", percentage=80),
+                   OptionAssessment(factor_id="s2", percentage=40)]
+    pct_by = {"s1": 80, "s2": 40}
+    # Equal weights → mean = 60.
+    assert _effective_pct(parent, [s1, s2], pct_by) == 60.0
+    # Single parent worth == its effective pct.
+    assert _hier_worth([parent], [parent, s1, s2], assessments) == 60.0
+

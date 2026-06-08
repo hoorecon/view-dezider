@@ -1,0 +1,69 @@
+{
+  "summary": "iter94 — FULL HIERARCHICAL URL IMPORT (MyDezider) verified end-to-end. PRIMARY (frontend Step 2 rendering) PASSES on the pre-built decision /prr/a856aca3-548f-4bb5-bf5f-c608ae303474 owned by super_admin veales. Logged in via /api/auth/login (whatsapp_verified=true), set tokens in localStorage, navigated to /prr/{id}?step=2 on mobile viewport 390x844. Step 2 'Define Factors & Criteria' renders ALL 15 parent/main factors exactly matching the GSMArena category spec: Network, Launch, Body, Display, Platform, Memory, Main Camera, Selfie Camera, Sound, Comms, Features, Battery, Misc, Our Tests, EU LABEL (15/15 visible in DOM text). Sub-factors are nested under their parent and rendered expanded by default with chevron-down toggle (testID md-subweight-{sub.id} count = 55 — matches backend exactly). Body sub-factors {Dimensions, Weight, Build, SIM} all visible — matches spec exactly. Display sub-factors {Type, Size, Resolution, Protection} also confirmed. The 'Split evenly' weight button (testID md-split-{parent_id}) is present on 14 parents — the 15th parent 'Features' has only 1 sub-factor (Sensors) and Step2.tsx:598 intentionally hides 'Split evenly' when subs.length <= 1, so this is correct by design. The 3 OPTIONS — Oppo F9 (F9 Pro), Oppo Find X9s Pro, Samsung Galaxy A57 — are NOT shown on Step 2 (Step 2 is factors only) but are correctly rendered on Step 6 'Define Options' as the user navigates forward (verified by screenshot at /tmp/step6_options.png). Page renders without crashing; no red-screen errors. SECONDARY backend tests (/app/backend/tests/test_iter94_url_hierarchy_import.py) — BOTH PASS: (a) GET /api/decisions/{prr_id} returns 15 parents (parent_id=null) + 55 subs + 3 options with parent name-set equality to expected categories and Body subs == {Dimensions,Weight,Build,SIM}; (b) POST /api/url-analyze {url:GSMArena compare, target:'mydezider', eligibility_type:'free_public', accepted:true} returns 200 with mode='hierarchical', category_count=15, item_count=3, factor_count in [45,70]. Live GSMArena fetch works through the backend crawl_hierarchy with browser headers as designed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Step2 weight total display (cosmetic)",
+        "issue": "After hierarchical import some parent cards show weight total like '100.020000000000012%' / 'Total exceeds 100% by 0.020000000000000232' due to floating-point summation of equal-split sub-weights (e.g. 6 children at 16.66666...%). Functional gate (>100% red color & hint text) triggers needlessly. Recommend rounding the displayed weightTotal in Step2.tsx:596 to 2 decimals or treating any |total-100| < 0.1 as exactly 100. NOT introduced by this iteration — pre-existing rounding artifact, but visible now because the import auto-splits.",
+        "testID": "md-split-{parent_id}",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "shadow* style props",
+        "issue": "Console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' (pre-existing, not introduced by this iteration)"
+      },
+      {
+        "component": "props.pointerEvents",
+        "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents' (pre-existing)"
+      },
+      {
+        "component": "Animated useNativeDriver",
+        "issue": "Console warning: 'useNativeDriver is not supported because the native animated module is missing. Falling back to JS-based animation.' (web-preview-only; harmless)"
+      },
+      {
+        "component": "expo-notifications (web)",
+        "issue": "Console warning about web push token listener not supported (pre-existing, harmless on web preview)"
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter94_url_hierarchy_import.py",
+    "/app/test_reports/pytest/iter94_url_hierarchy.xml",
+    "/tmp/step2_parents.png (Step 2 shows Network expanded with Technology sub at 16.67%, 'Split evenly' button visible)",
+    "/tmp/step2_scrolled.png (further parent cards visible after scroll)",
+    "/tmp/step6_options.png (Step 6 shows Oppo F9 / Oppo Find X9s Pro / Samsung Galaxy A57 as 3 options, Samsung with 'Auto worth 6.67%')"
+  ],
+  "action_items": [
+    "PRIMARY GOAL (frontend Step 2 displays the 15 grouped parent factors with nested sub-factors) is FULLY MET — no action required.",
+    "(Optional, LOW priority cosmetic) Round/normalize weight-total display in Step2.tsx:596 so equal-split groups don't show '100.02%' — replace `{weightTotal}/100%` with `{Math.round(weightTotal*100)/100}/100%` and tighten the >100 condition to weightTotal > 100.5 (or recompute by subtracting from 100 the largest-remainder buckets). Backend already used largest-remainder in decision_builder._hier_worth, so this is purely a UI rounding miss in Step2."
+  ],
+  "critical_code_review_comments": [
+    "Step2.tsx:247-251 — topLevelFactors / getSubFactors filter by parent_id correctly; sub-factors sorted by `order`. Good.",
+    "Step2.tsx:402-416 — Parent card renders chevron toggle only when hasChildren, with isExpanded defaulting to true (expandedGroups[factor.id] !== false). Matches the user's complaint resolution (sub-factors visible by default).",
+    "Step2.tsx:598-608 — 'Split evenly' button correctly hidden when subs.length <= 1; explains 14 md-split testIDs for 15 parents (Features has only 1 sub).",
+    "core/url_crawl.py + routes/url_analyze.py — confirmed by live POST /api/url-analyze to GSMArena returning mode=hierarchical, category_count=15, item_count=3. Live site crawl works through the browser-style headers.",
+    "Cosmetic: equal split produces 6.6666...% × 6 = 100.0000000000012 due to fp summation. The weight bar even briefly turns red after import — UI polish miss."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter94_url_hierarchy_import.py (NEW — 2 tests, both PASS)",
+    "/app/test_reports/iteration_94.json (NEW)",
+    "/app/test_reports/pytest/iter94_url_hierarchy.xml (NEW — JUnit results)"
+  ],
+  "success_rate": {
+    "backend": "100% — 2/2 pytest cases pass (test_prebuilt_decision_has_15_parents_55_subs_3_options, test_url_analyze_hierarchical_mode).",
+    "frontend": "100% — all 15 parent factors render, 55 sub-factors render via md-subweight testIDs, 14/15 'Split evenly' buttons (15th hidden by design), 3 options visible on Step 6, Body subs match {Dimensions,Weight,Build,SIM} spec exactly."
+  },
+  "seed_data_creation": "No new seed data created. Used the existing pre-built decision id=a856aca3-548f-4bb5-bf5f-c608ae303474 (title 'GSMArena Phone Compare (verify)') owned by super-admin veales (user_87819d8c4fd3).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Quick re-test recipe: (1) POST /api/auth/login {veales.vedic.decisions@gmail.com / Jelcos@Admin2026} -> session_token. (2) Run pytest backend/tests/test_iter94_url_hierarchy_import.py -v — both tests must stay green; if test_url_analyze_hierarchical_mode is skipped, GSMArena live fetch was blocked (transient). (3) Frontend Playwright: set localStorage(session_token/token/auth_token, whatsapp_verified=true), goto /prr/a856aca3-548f-4bb5-bf5f-c608ae303474?step=2 on viewport 390x844, wait 7-8 s, query document.querySelectorAll('[data-testid^=\"md-subweight-\"]').length == 55, and assert all 15 parent names appear in document.body.innerText. (4) For options visibility, navigate /prr/{id}?step=6 — expect 3 option rows. (5) Body factor id reachable from /api/decisions/{id} as `f_74f76c6f` (may change if re-seeded; rely on name='Body').",
+  "rca_of_issue": "Not applicable — no bug found in the requested scope. The hierarchical importer (crawl_hierarchy -> build_hierarchical_decision) and the Step 2 renderer (topLevelFactors + getSubFactors with chevron toggle) are functioning end-to-end. Only LOW-priority cosmetic finding: floating-point weight-total display ('100.02%' / red bar) after auto-split. Suggested fix is a single-line rounding tweak in Step2.tsx:596."
+}

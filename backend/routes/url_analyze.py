@@ -12,6 +12,7 @@ record (access-eligibility type + disclaimer acceptance), stored for audit.
 from __future__ import annotations
 
 import re
+import json
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -21,10 +22,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from core.database import db
 from core.auth import get_current_user
-from core.url_crawl import crawl_candidates
+from core.url_crawl import crawl_candidates, crawl_hierarchy, has_any_llm, metered_chat
 from core.decision_builder import (
     create_mydezider_from_candidates, create_pros_cons_from_candidates,
-    merge_into_mydezider,
+    create_hierarchical_mydezider, merge_into_mydezider,
 )
 
 router = APIRouter(prefix="/url-analyze", tags=["URL Analyse"])
@@ -199,6 +200,94 @@ def _derive_factors_and_scores(
     return factors, scored
 
 
+# ---------------------------------------------------------------------------
+# Hierarchical scoring: numeric rows scored deterministically (proportional,
+# direction-aware); remaining text rows scored 0-100 by the LLM (batched, one
+# metered call) relative to the compared items. Best-effort — if the LLM is
+# unavailable/over-budget, text cells stay un-scored but keep their raw value.
+# ---------------------------------------------------------------------------
+def _safe_pct(v: Any) -> Optional[int]:
+    try:
+        return max(0, min(100, int(round(float(v)))))
+    except (TypeError, ValueError):
+        return None
+
+
+def _score_hierarchy_numeric(items: List[str], groups: List[Dict[str, Any]]):
+    """Returns (row_scores, row_meta, text_rows). row_scores keyed by (gi, ri)."""
+    n = len(items)
+    row_scores: Dict[Any, List[Optional[int]]] = {}
+    row_meta: Dict[Any, Dict[str, Any]] = {}
+    text_rows: List[tuple] = []
+    for gi, g in enumerate(groups):
+        for ri, row in enumerate(g.get("rows") or []):
+            vals = row.get("values") or []
+            nums = [_measure_num(v) for v in vals]
+            present = [x for x in nums if x is not None]
+            if len(present) >= 2:
+                lower = _is_lower_better(row["label"])
+                mn, mx = min(present), max(present)
+                if mx == mn:
+                    sc = [100 if x is not None else None for x in nums]
+                else:
+                    sc = [None if x is None else
+                          round((mx - x) / (mx - mn) * 100) if lower else
+                          round((x - mn) / (mx - mn) * 100) for x in nums]
+                row_scores[(gi, ri)] = sc
+                best = mn if lower else mx
+                row_meta[(gi, ri)] = {"is_numeric": True, "expected": str(best),
+                                      "operator": "<=" if lower else ">="}
+            else:
+                row_meta[(gi, ri)] = {"is_numeric": False}
+                text_rows.append((gi, ri, row["label"], vals))
+    return row_scores, row_meta, text_rows
+
+
+async def _ai_score_text_rows(user_id: str, items: List[str], text_rows: List[tuple]):
+    """One metered LLM call to score all text rows 0-100 per item."""
+    if not has_any_llm() or not text_rows:
+        return {}
+    capped = text_rows[:80]
+    payload = [{"i": idx, "attr": label, "values": vals}
+               for idx, (gi, ri, label, vals) in enumerate(capped)]
+    sys = (
+        f"You compare {len(items)} items: {items}. For EACH attribute row, rate every item "
+        "0-100 by how good/desirable its value is for that attribute (100 = best of the set). "
+        "If higher is naturally worse (price, weight, SAR, fall height), invert so the better "
+        "value scores higher. Missing / '-' / 'No' values score low (0-20). "
+        "Reply ONLY compact JSON object mapping row index -> array of scores "
+        f"(each array length {len(items)}): {{\"0\": [..], \"1\": [..]}}. No prose."
+    )
+    try:
+        out = await metered_chat(user_id, system_message=sys, prompt=json.dumps(payload)[:6000],
+                                 feature="url_analyze_hier_score", session_prefix="urlhier")
+        m = re.search(r"\{.*\}", out, re.S)
+        data = json.loads(m.group(0)) if m else {}
+    except Exception:
+        return {}
+    result: Dict[Any, List[Optional[int]]] = {}
+    for idx, (gi, ri, label, vals) in enumerate(capped):
+        arr = data.get(str(idx))
+        if isinstance(arr, list) and len(arr) >= len(items):
+            result[(gi, ri)] = [_safe_pct(x) for x in arr[:len(items)]]
+    return result
+
+
+async def build_hierarchical_decision(user_id: str, hierarchy: Dict[str, Any], *,
+                                      title: str, context: str,
+                                      life_area: Optional[str], decision_type: Optional[str]):
+    items, groups = hierarchy["items"], hierarchy["groups"]
+    row_scores, row_meta, text_rows = _score_hierarchy_numeric(items, groups)
+    row_scores.update(await _ai_score_text_rows(user_id, items, text_rows))
+    return await create_hierarchical_mydezider(
+        user_id, title=title, context=context, life_area=life_area,
+        decision_type=decision_type, items=items, groups=groups,
+        row_scores=row_scores, row_meta=row_meta, source_label="url_analyze",
+    )
+
+
+
+
 @router.post("")
 async def analyze_url(req: AnalyzeRequest, request: Request, user: dict = Depends(get_current_user)):
     # ── Consent validation (legal gate) ──
@@ -224,7 +313,28 @@ async def analyze_url(req: AnalyzeRequest, request: Request, user: dict = Depend
         "created_at": _now(),
     })
 
-    # ── Crawl → derive → build ──
+    title = (req.title or "").strip() or f"Analyse: {req.url.strip()[:60]}"
+
+    # ── MyDezider: prefer a FULL two-level import when the page is a category-
+    # grouped comparison matrix (e.g. GSMArena: 15 categories × sub-specs). ──
+    if target == "mydezider":
+        hierarchy = await crawl_hierarchy(req.url)
+        if hierarchy and len(hierarchy.get("groups", [])) >= 2 and len(hierarchy.get("items", [])) >= 2:
+            sub_total = sum(len(g.get("rows") or []) for g in hierarchy["groups"])
+            ctx = (f"Auto-built from a {elig.replace('_', '/')} URL — {len(hierarchy['items'])} options, "
+                   f"{len(hierarchy['groups'])} categories, {sub_total} sub-factors.")
+            built = await build_hierarchical_decision(
+                user["user_id"], hierarchy, title=title, context=ctx,
+                life_area=req.life_area, decision_type=req.decision_type)
+            return {
+                "id": built["id"], "target": target, "consent_id": consent_id,
+                "mode": "hierarchical",
+                "item_count": built["option_count"],
+                "category_count": built["category_count"],
+                "factor_count": built["subfactor_count"],
+            }
+
+    # ── Flat fallback (Pros & Cons always; MyDezider when not a matrix) ──
     candidates = await crawl_candidates(req.url, user["user_id"])
     if len(candidates) < 2:
         raise HTTPException(422, "Need at least 2 comparable items on the page to build a decision.")
@@ -233,7 +343,6 @@ async def analyze_url(req: AnalyzeRequest, request: Request, user: dict = Depend
     if not factors:
         raise HTTPException(422, "Could not derive comparable factors from the page.")
 
-    title = (req.title or "").strip() or f"Analyse: {req.url.strip()[:60]}"
     context = f"Auto-built from a {elig.replace('_', '/')} URL ({len(candidates)} items)."
 
     if target == "pros_cons":

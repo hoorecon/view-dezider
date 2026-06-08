@@ -245,3 +245,110 @@ async def merge_into_mydezider(
 
 def _pct_present(v: Any) -> bool:
     return v is not None and str(v).strip() != ""
+
+
+# ---------------------------------------------------------------------------
+# Hierarchical (TWO-LEVEL) MyDezider build from a parsed comparison matrix.
+# Each category -> a primary PARENT factor; each spec row -> a SUB-factor
+# (parent_id set, weight split equally). Options carry LEAF assessments
+# (percentage + the raw spec value as unit_value). Worth mirrors the frontend's
+# effectiveFactorPct() so the stored worth matches what the UI recomputes.
+# ---------------------------------------------------------------------------
+def _effective_pct(parent: Factor, subs: List[Factor],
+                   pct_by_fid: Dict[str, Optional[int]]) -> Optional[float]:
+    if not subs:
+        return pct_by_fid.get(parent.id)
+    assessed = [(s, pct_by_fid[s.id]) for s in subs
+                if s.id in pct_by_fid and pct_by_fid[s.id] is not None]
+    if not assessed:
+        return pct_by_fid.get(parent.id)
+    tw = sum((s.weight or 0) for s, _ in assessed)
+    if tw > 0:
+        wsum = sum(p * (s.weight or 0) / 100.0 for s, p in assessed)
+        return wsum * (100.0 / tw)
+    return sum(p for _, p in assessed) / len(assessed)
+
+
+def _hier_worth(parents: List[Factor], factors: List[Factor],
+                assessments: List[OptionAssessment]) -> float:
+    pct_by_fid = {a.factor_id: a.percentage for a in assessments}
+    total_rating = sum(p.rating for p in parents) or 1
+    weighted = 0.0
+    for p in parents:
+        subs = [f for f in factors if f.parent_id == p.id]
+        eff = _effective_pct(p, subs, pct_by_fid)
+        if eff is not None:
+            weighted += p.rating * (eff / 100.0)
+    return round(min(100.0, max(0.0, weighted / total_rating * 100.0)), 2)
+
+
+async def create_hierarchical_mydezider(
+    user_id: str, *, title: str, context: str = "",
+    life_area: Optional[str] = None, decision_type: Optional[str] = None,
+    items: List[str], groups: List[Dict[str, Any]],
+    row_scores: Dict[Any, List[Optional[float]]],
+    row_meta: Dict[Any, Dict[str, Any]],
+    source_label: Optional[str] = None,
+) -> Dict[str, Any]:
+    built_factors: List[Factor] = []
+    submap: Dict[Any, str] = {}
+    for gi, g in enumerate(groups):
+        pid = f"f_{uuid.uuid4().hex[:8]}"
+        built_factors.append(Factor(
+            id=pid, name=str(g["category"]), category="primary",
+            rating=50, order=gi, parent_id=None,
+        ))
+        subs = g.get("rows") or []
+        weight = round(100.0 / len(subs), 2) if subs else 0
+        for ri, row in enumerate(subs):
+            sid = f"f_{uuid.uuid4().hex[:8]}"
+            submap[(gi, ri)] = sid
+            meta = row_meta.get((gi, ri), {})
+            is_num = bool(meta.get("is_numeric"))
+            built_factors.append(Factor(
+                id=sid, name=str(row["label"]), category="primary",
+                parent_id=pid, order=ri, weight=weight,
+                data_type="numeric" if is_num else "text",
+                expected_value=meta.get("expected"), operator=meta.get("operator"),
+                unit=meta.get("unit"),
+            ))
+
+    parents = [f for f in built_factors if f.parent_id is None]
+    built_options: List[DecisionOption] = []
+    for ii, item in enumerate(items):
+        assessments: List[OptionAssessment] = []
+        for gi, g in enumerate(groups):
+            for ri, row in enumerate(g.get("rows") or []):
+                sid = submap[(gi, ri)]
+                vals = row.get("values") or []
+                raw = vals[ii].strip() if ii < len(vals) else ""
+                sc = row_scores.get((gi, ri))
+                pct = _pct_int(sc[ii]) if (sc and ii < len(sc)) else None
+                if pct is None and not raw:
+                    continue
+                assessments.append(OptionAssessment(
+                    factor_id=sid, percentage=pct,
+                    unit_value=(raw or None), assessment_mode="manual"))
+        worth = _hier_worth(parents, built_factors, assessments)
+        built_options.append(DecisionOption(
+            name=str(item or "Option"), assessments=assessments,
+            worth_percentage=worth, source="manual"))
+
+    decision = PRRDecision(
+        user_id=user_id, title=title, context=context or (source_label or ""),
+        life_area=life_area, decision_type=decision_type,
+        factors=built_factors, options=built_options, status="draft",
+    )
+    doc = decision.dict()
+    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    doc["org_id"] = user_doc.get("org_id") if user_doc else None
+    doc["source_module"] = source_label or "url_analyze"
+    await db.decisions.insert_one(doc)
+    await consume_entitlement(user_id, decision.id, context="create")
+    return {
+        "id": decision.id,
+        "category_count": len(parents),
+        "subfactor_count": len(built_factors) - len(parents),
+        "option_count": len(built_options),
+    }
+
