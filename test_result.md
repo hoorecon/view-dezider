@@ -272,7 +272,7 @@ user_problem_statement: "Build View Dezider - a decision intelligence app based 
 backend:
   - task: "P2 — Embed Data Hand-off Pre-seed (Embed Initiative)"
     implemented: true
-    working: "NA"
+    working: true
     file: "frontend/src/context/DecisionContext.tsx, frontend/app/tools/pros-cons-wizard.tsx, frontend/app/embed/[flow].tsx"
     stuck_count: 0
     priority: "high"
