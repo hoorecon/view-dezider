@@ -163,8 +163,11 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           worth_percentage: 0,
         });
       });
-      const resp = await api.put(`/decisions/${id}`, { options: additions });
-      setDecision(resp.data);
+      await api.put(`/decisions/${id}`, { options: additions });
+      // PUT /decisions/{id} returns only {message}, NOT the decision body —
+      // so build the next state from the loaded decision + additions to keep
+      // the full shape (factors/options/etc.) intact for the Step components.
+      setDecision({ ...decisionData, options: [...(decisionData.options || []), ...additions] });
       await AsyncStorage.removeItem('embed_seed');
       return true;
     } catch {

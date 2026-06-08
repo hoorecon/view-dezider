@@ -1,0 +1,40 @@
+{
+  "summary": "P2 MyDezider pre-seed RETEST after iter85 one-line fix in DecisionContext.applyEmbedSeed. BOTH TESTS PASS. TEST 2 (MyDezider embed_seed → Step 6): logged in as analyst@pmsbazaar-demo.com, created fresh decision id=736092e7-3fd3-406e-9f33-577526bf2dfb (0 options), set localStorage session_token + embed_seed (flow=mydezider, 3 options), navigated /prr/{id}. URL stays on /prr/{id} (NO redirect to /auth/login), editor lands on Step 6/10 with title 'Step 6: Define Options', and all 3 options render visibly: Money Grow Asset, Hem Securities SME Stars, Green Portfolio Super 30. localStorage 'embed_seed' is cleared (=== null) afterwards. No page errors, no TypeError in console. TEST 1 (Regression, vanilla /prr/{id} w/o embed_seed): fresh decision id=53eded6d-affc-4145-8f76-192ebe48ea2c renders Step 2 cleanly ('Step 2: Define Factors & Criteria', step badge 2/10). The iter85 fix `setDecision({...decisionData, options: [...(decisionData.options||[]), ...additions]})` correctly preserves the decision shape and unblocks Step 6 rendering.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "PUT /api/decisions/{decision_id}",
+        "issue": "Still returns only {message: 'Decision updated successfully'} with no decision body. The frontend now works around this by merging locally in applyEmbedSeed, but the broader anti-pattern remains: PUTs that don't return the updated resource force every caller to maintain a parallel mirror. Not blocking, but worth standardising in a future pass."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props", "issue": "Console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Recurring across many screens; not blocking. Reference: web-side bundle (multiple StyleSheet definitions)."},
+      {"component": "props.pointerEvents", "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents.' Not blocking."}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "PRIMARY: No action needed — P2 MyDezider pre-seed is now fully working end-to-end. Both target acceptance criteria pass.",
+    "OPTIONAL HARDENING (not blocking): each Step component still does `decision.options.map(...)` / `decision.factors.map(...)` without `|| []` fallback. Add defensive `(decision.options || [])` guards to Step2..Step10 to prevent future regressions if a similar state-overwrite bug is reintroduced.",
+    "OPTIONAL BACKEND CLEANUP: change PUT /api/decisions/{decision_id} to return the updated decision body (not just {message}). Removes a class of mirror-state bugs going forward.",
+    "OPTIONAL: migrate shadow* → boxShadow and props.pointerEvents → style.pointerEvents to silence the deprecation console warnings (cosmetic only)."
+  ],
+  "critical_code_review_comments": [
+    "iter86 fix is minimal and correct: merges new options into the existing decision state instead of trusting the PUT response shape. Good defensive coding.",
+    "DecisionContext.fetchDecision's catch block still calls router.back() unconditionally for any thrown error. If a future bug surfaces a render error inside a Step component while on a deep-linked /prr/{id} URL, the user will again be bounced to /auth/login because the nav stack is empty. Worth restricting router.back() to network/401 errors only.",
+    "Step components reach directly into context-supplied decision.options/factors without optional chaining; latent crash sites if the decision shape ever becomes partial again."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100% (TEST 1 PASS, TEST 2 PASS)"},
+  "seed_data_creation": "Created 2 fresh decisions under analyst@pmsbazaar-demo.com / pmsbazaar-demo: id=736092e7-3fd3-406e-9f33-577526bf2dfb (TEST_iter86_mydezider_seed, now has 3 carried options) and id=53eded6d-affc-4145-8f76-192ebe48ea2c (TEST_iter86_regression_noseed, 0 options). Safe to delete.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "P2 MyDezider pre-seed (Decision Embed framework) is fully verified working. The iter85 one-line fix in DecisionContext.applyEmbedSeed (merge locally instead of using PUT response) closed the regression chain (PUT returns only {message} → setDecision(resp.data) wiped state → Step6 .map crash → GO_BACK → /auth/login). If future iters touch this flow, retest by: org-login analyst@pmsbazaar-demo.com / PmsAnalyst2026!, POST /api/decisions, set localStorage session_token + embed_seed{flow:'mydezider', options:[3 names], ts:Date.now()}, navigate /prr/{id}, expect URL stable, Step 6/10 visible with the 3 options, embed_seed cleared.",
+  "rca_of_issue": "Resolved by iter85's one-line fix. Root-cause chain (now closed): backend PUT /api/decisions/{id} returns only {message: ...} without the decision body → applyEmbedSeed previously did setDecision(resp.data) which wiped .options/.factors → Step6 .map crashed → fetchDecision catch path called router.back() which on a deep link routed to /auth/login. Fix: setDecision({...decisionData, options: [...(decisionData.options||[]), ...additions]}). Verified end-to-end via Playwright: URL stable, Step 6 with 3 options rendered, embed_seed cleared, no console TypeError."
+}
