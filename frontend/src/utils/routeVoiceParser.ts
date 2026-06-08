@@ -103,10 +103,10 @@ export const ROUTE_DICTIONARY: RouteDefinition[] = [
   {
     id: 'test123',
     path: '/(tabs)/test123',
-    label: 'Test123',
+    label: 'Instant Dezider',
     icon: 'flash',
     keywords: {
-      en: ['test123', 'test 123', 'quick decision', 'test one two three'],
+      en: ['instant dezider', 'instant decider', 'test123', 'test 123', 'quick decision', 'test one two three'],
       hi: ['टेस्ट टाइडेड टरी'],
       ta: ['டெஸ்ட் ஒன்று இரண்டு மூன்று'],
       te: ['టெச்ட் ஒன்று ತூன்று மூன்று'],

@@ -339,7 +339,7 @@ export default function RootLayout() {
           options={{ 
             presentation: 'modal',
             headerShown: true,
-            headerTitle: 'Test123 - Quick Decision',
+            headerTitle: 'Instant Dezider - Quick Decision',
             headerTintColor: COLORS.primary,
           }} 
         />

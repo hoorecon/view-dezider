@@ -47,7 +47,7 @@ export default function NewTest123() {
         <TouchableOpacity style={styles.topBtn} onPress={() => router.back()} accessibilityLabel="Back">
           <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.topTitle}>Test123 — Quick Decision</Text>
+        <Text style={styles.topTitle}>Instant Dezider — Quick Decision</Text>
         <TouchableOpacity
           style={[styles.topBtn, styles.topBtnPrimary]}
           onPress={() => router.push('/(tabs)/' as any)}
@@ -68,12 +68,12 @@ export default function NewTest123() {
             <View style={styles.iconContainer}>
               <Ionicons name="flash" size={32} color={COLORS.white} />
             </View>
-            <Text style={styles.title}>Test123</Text>
+            <Text style={styles.title}>Instant Dezider</Text>
             <Text style={styles.subtitle}>Instant Decision Making</Text>
           </View>
 
           <View style={styles.infoBox}>
-            <Text style={styles.infoTitle}>When to use Test123?</Text>
+            <Text style={styles.infoTitle}>When to use Instant Dezider?</Text>
             <Text style={styles.infoText}>
               Use this tool when you need to make an urgent decision and emotions might be clouding your judgment.
             </Text>
@@ -119,7 +119,7 @@ export default function NewTest123() {
           />
 
           <GradientButton
-            title="Start Test123"
+            title="Start Instant Dezider"
             onPress={handleCreate}
             loading={loading}
             variant="accent"

@@ -436,19 +436,19 @@ export default function HomeScreen() {
           {/* ══════════ §2 DECISION KICKSTARTERS ══════════ */}
           <Text style={styles.sectionTitle}>🔮 2 · Decision Kickstarters</Text>
           <View style={styles.quickActions}>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/test123' as any)}>
+              <LinearGradient colors={[COLORS.accent, COLORS.accentDark]} style={styles.actionIcon}>
+                <Ionicons name="flash" size={24} color={COLORS.white} />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Instant Dezider</Text>
+              <Text style={styles.actionSubtitle}>Instant decision</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/dezider-list' as any)}>
               <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.actionIcon}>
                 <Ionicons name="compass" size={24} color={COLORS.white} />
               </LinearGradient>
               <Text style={styles.actionTitle}>MyDezider</Text>
               <Text style={styles.actionSubtitle}>10-step canonical</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/test123' as any)}>
-              <LinearGradient colors={[COLORS.accent, COLORS.accentDark]} style={styles.actionIcon}>
-                <Ionicons name="flash" size={24} color={COLORS.white} />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Test123</Text>
-              <Text style={styles.actionSubtitle}>Instant decision</Text>
             </TouchableOpacity>
           </View>
           <View style={styles.quickActions}>
@@ -773,7 +773,7 @@ export default function HomeScreen() {
               <Ionicons name="flash" size={28} color={COLORS.accent} />
               <Text style={styles.statNumber}>{stats?.test123.total || 0}</Text>
               <Text style={styles.statLabel}>Quick Decisions</Text>
-              <Text style={styles.statSubtext}>Test123 sessions</Text>
+              <Text style={styles.statSubtext}>Instant Dezider sessions</Text>
             </Card>
 
             <Card style={styles.statCard}>

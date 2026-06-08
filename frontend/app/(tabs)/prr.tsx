@@ -66,7 +66,7 @@ const TYPE_CHIPS: { key: 'all' | SolutionType; label: string; icon: string; colo
   { key: 'decider',          label: 'Decider',     icon: 'analytics',      color: '#6366F1' },
   { key: 'pros_cons',        label: 'Pros & Cons', icon: 'layers',         color: '#7C3AED' },
   { key: 'swot',             label: 'SWOT',        icon: 'grid',           color: '#F59E0B' },
-  { key: 'test123',          label: 'Test123',     icon: 'flash',          color: '#EC4899' },
+  { key: 'test123',          label: 'Instant Dezider', icon: 'flash',        color: '#EC4899' },
   { key: 'solution_finder',  label: 'Solution Finder', icon: 'compass',        color: '#0EA5E9' },
 ];
 
@@ -74,7 +74,7 @@ const TYPE_META: Record<SolutionType, { label: string; short: string; icon: stri
   decider:         { label: 'Decider',     short: 'Decider',  icon: 'analytics',       color: '#6366F1', bg: '#EEF2FF' },
   pros_cons:       { label: 'Pros & Cons', short: 'P&C',      icon: 'layers',          color: '#7C3AED', bg: '#F5F3FF' },
   swot:            { label: 'SWOT',        short: 'SWOT',     icon: 'grid',            color: '#F59E0B', bg: '#FFFBEB' },
-  test123:         { label: 'Test123',     short: 'Test123',  icon: 'flash',           color: '#EC4899', bg: '#FDF2F8' },
+  test123:         { label: 'Instant Dezider', short: 'Instant',  icon: 'flash',           color: '#EC4899', bg: '#FDF2F8' },
   solution_finder: { label: 'Solution Finder', short: 'Finder',   icon: 'compass',         color: '#0EA5E9', bg: '#F0F9FF' },
 };
 
@@ -393,7 +393,7 @@ export default function SolutionBoxScreen() {
             : 'Your Solution Box is empty'}
       </Text>
       <Text style={styles.emptyText}>
-        Start a new Decider, Pros &amp; Cons, 8-Step or SWOT analysis below.
+        Start a new Instant Dezider, Decider, Pros &amp; Cons, 8-Step or SWOT analysis below.
       </Text>
       <TouchableOpacity
         testID="prr-empty-start-new"
@@ -505,6 +505,21 @@ export default function SolutionBoxScreen() {
             <Text style={styles.newMenuSubtitle}>Pick the framework that fits your problem</Text>
 
             <TouchableOpacity
+              style={[styles.newMenuItem, { borderColor: TYPE_META.test123.color + '40' }]}
+              onPress={() => { setShowNewMenu(false); router.push('/test123/new' as any); }}
+              testID="new-menu-instant-dezider"
+            >
+              <View style={[styles.newMenuIcon, { backgroundColor: TYPE_META.test123.bg }]}>
+                <Ionicons name={TYPE_META.test123.icon as any} size={20} color={TYPE_META.test123.color} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.newMenuItemTitle}>Instant Dezider</Text>
+                <Text style={styles.newMenuItemDesc}>3-step gut check: situation → worst case → real needs</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
               style={[styles.newMenuItem, { borderColor: TYPE_META.decider.color + '40' }]}
               onPress={() => { setShowNewMenu(false); router.push('/tools/new-decision?module=dezider' as any); }}
             >
@@ -557,20 +572,6 @@ export default function SolutionBoxScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.newMenuItemTitle}>Analyse a URL</Text>
                 <Text style={styles.newMenuItemDesc}>Paste a comparison page → auto-build a decision</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.newMenuItem, { borderColor: TYPE_META.test123.color + '40' }]}
-              onPress={() => { setShowNewMenu(false); router.push('/test123/new' as any); }}
-            >
-              <View style={[styles.newMenuIcon, { backgroundColor: TYPE_META.test123.bg }]}>
-                <Ionicons name={TYPE_META.test123.icon as any} size={20} color={TYPE_META.test123.color} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.newMenuItemTitle}>Test123 · Quick Decision</Text>
-                <Text style={styles.newMenuItemDesc}>3-step gut check: situation → worst case → real needs</Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
             </TouchableOpacity>

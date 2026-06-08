@@ -1,0 +1,67 @@
+{
+  "summary": "Iter 93 — Frontend-only verification of three feature changes on View Dezider. ALL THREE PASS end-to-end on the public EXPO_PUBLIC_BACKEND_URL via mobile viewport (390x844). (1) PROFILE CLEANUP: Logged in as super-admin (veales) → /profile shows the single 'Admin Console' shortcut (testID=profile-open-admin-console) with subtitle 'Experts, catalog, org, tiers, segments, ReviewNet & more'. The old long admin-module list (Experts, Templates, Catalog Manager, Tier Matrix, Customer Segments, Org Members, Pending Approvals, Decision Modes, Incident Response, Social Learning, Access Control, Admin Settings) is GONE from the profile body. AI Credits, Subscription, WhatsApp/Account, Decision Mode, Goals (GEM), TEPFI etc. are still present. Logged in as regular user (harden_*) → Admin Console shortcut is HIDDEN as required. (2) RENAME + REORDER: On /prr the top-right + opens the New menu — the FIRST card is 'Instant Dezider' (testID=new-menu-instant-dezider, subtitle '3-step gut check: situation → worst case → real needs'), followed by Decider, Pros & Cons, SWOT, Analyse a URL — confirmed via DOM testID order. Filter chips on /prr read 'Decider · Pros & Cons · SWOT · Instant Dezider · Solution Finder' (no Test123). Home dashboard §2 'Decision Kickstarters' shows Instant Dezider as the FIRST kickstarter card (before MyDezider — verified via code at app/(tabs)/index.tsx:439-453). Clicking 'Instant Dezider' in the New menu routes to /test123/new and renders 'Instant Dezider — Quick Decision' / 'Start Instant Dezider' / 'When to use Instant Dezider?'. The /test123 list page also renames correctly. (3) IMPORT FROM URL on Step 2: opened /prr/{decision_id}?step=2 → 'Import from a URL' card is visible with URL input (testID=step2-import-url-input) and Import button (testID=step2-import-url-btn). Entered http://localhost:9799/f.html, tapped Import → UrlAccessConsentModal opened with 'Agree & Analyse' (testID=url-consent-proceed) DISABLED (opacity 0.5, aria-disabled=true). Selected 'Free / public site' (testID=url-consent-elig-free_public) → still disabled. Tapped accept checkbox (testID=url-consent-accept) → button became ENABLED (opacity 1). Tapped proceed → POST /api/url-analyze/decision/{id}/import returned 200, success alert 'Imported from URL — Added 3 factors and 3 options from 3 items.' appeared, Step 2 listed the 3 factors. GET /api/decisions/{id} confirms factors=[1Y Return >=52.1, AUM >=212, Expense >=1.45] and options=[Alpha Fund, Beta Fund, Gamma Fund]. Navigated to Step 6 → all three fund options present, then Step 7 → Alpha Fund shows '29.7%' with '3/3 factors rated' and per-factor expected values displayed (e.g. '1Y Return >= 52.1'). Partial-assessment matrix is populated as required. ONE MINOR LEFTOVER FIXED: app/_layout.tsx line 342 still had headerTitle='Test123 - Quick Decision' which rendered as the modal-stack header above /test123/new — replaced with 'Instant Dezider - Quick Decision'.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "(tabs)/prr.tsx top-right + button (FAB)",
+        "issue": "Pre-existing observation from iter91 — the '+' button that opens the New-decision menu still lacks a testID (prr-new-fab); I had to click by coordinates. Doesn't break the feature but slows automation. Recommend adding testID='prr-new-fab' to /app/frontend/app/(tabs)/prr.tsx:456.",
+        "testID": "missing prr-new-fab",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "shadow* style props",
+        "issue": "Console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Pre-existing, not introduced by this iteration."
+      },
+      {
+        "component": "props.pointerEvents",
+        "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Pre-existing."
+      },
+      {
+        "component": "expo-notifications (web)",
+        "issue": "Warning: '[expo-notifications] Listening to push token changes is not yet fully supported on web.' Pre-existing, harmless on web preview."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/tmp/01_profile_admin.png",
+    "/tmp/03_new_menu.png (Instant Dezider FIRST in the menu)",
+    "/tmp/05_consent.png (consent modal — proceed disabled at first)",
+    "/tmp/07_step2_after.png",
+    "/tmp/08_step6.png (Alpha/Beta/Gamma Fund options)",
+    "/tmp/09_step7.png (Alpha Fund 29.7%, 3/3 factors rated)",
+    "/tmp/10_test123_new.png (showed stale 'Test123 - Quick Decision' header — fixed)"
+  ],
+  "action_items": [
+    "All three review items PASS. No action required for the requested scope.",
+    "(Optional, LOW) Add testID='prr-new-fab' to the + add button in /app/frontend/app/(tabs)/prr.tsx so future testing agents don't have to click by coordinates.",
+    "(Optional) Cosmetic: backend currently picks expected_value = max() of the column for every imported factor (e.g. Expense expected=1.45 = highest, even though for Expense lower is better). For numeric/cost-style columns the operator/expected derivation could be refined. Out of scope for this review."
+  ],
+  "critical_code_review_comments": [
+    "profile.tsx:644-660 — Admin Console shortcut is gated by 'userRole !== \"user\"' which correctly hides it for the regular user role and shows it for super_admin/admin. Good single-source-of-truth pattern (one shortcut → /admin).",
+    "prr.tsx:507-520 — Instant Dezider is structurally placed FIRST inside the Modal's newMenuCard, ahead of Decider/Pros&Cons/SWOT. TYPE_META.test123.label='Instant Dezider' so filter chips/cards automatically render with the new label without further changes.",
+    "Step2.tsx:42-78 — runImport posts to /url-analyze/decision/{id}/import with {url, eligibility_type, custom_note, accepted:true} and calls fetchDecision() before alerting. Clean error handling reads detail from response. Sound.",
+    "UrlAccessConsentModal.tsx:43 — canProceed = !!elig && accepted && (elig !== 'custom' || customNote.trim().length > 0). Correctly enforces the 3-stage gate that the review demanded.",
+    "_layout.tsx:342 — FIXED stale headerTitle 'Test123 - Quick Decision' → 'Instant Dezider - Quick Decision'. (single-line testing-agent fix, business-safe)."
+  ],
+  "updated_files": [
+    "/app/frontend/app/_layout.tsx (Stack.Screen headerTitle rename: Test123 → Instant Dezider)",
+    "/app/test_reports/iteration_93.json"
+  ],
+  "success_rate": {
+    "backend": "N/A — testing_type=frontend only (skip backend). Backend /api/url-analyze/decision/{id}/import was incidentally observed to respond 200 OK during the E2E.",
+    "frontend": "100% — all three review items (PROFILE CLEANUP, RENAME+REORDER, IMPORT FROM URL with consent gate + Step 6/7 effects) pass end-to-end on mobile-viewport web preview."
+  },
+  "seed_data_creation": "Created decision id=c0e65c9b-a3f7-4b54-b15f-7de5d72a8ebf titled 'TEST_iter93_import_url' under the super-admin (veales). 3 factors and 3 options were added by the URL-import flow itself; NOT cleaned up (tagged for future TEST_ sweep).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Re-test recipe: (1) POST /api/auth/login {veales.vedic.decisions@gmail.com / Jelcos@Admin2026} → session_token; (2) POST /api/decisions {title, context, life_area:'Finance'} → id; (3) Playwright: set localStorage(session_token/token/auth_token/whatsapp_verified=true), goto /prr/{id}?step=2; (4) Fill testID=step2-import-url-input with http://localhost:9799/f.html, click step2-import-url-btn; (5) In modal: click url-consent-elig-free_public, click url-consent-accept, click url-consent-proceed; (6) Wait ~8-12 s, expect alert 'Imported from URL'; (7) GET /api/decisions/{id} expect 3 factors (1Y Return >=52.1, AUM >=212, Expense >=1.45) + 3 options (Alpha/Beta/Gamma Fund); (8) Open Step 7 — Alpha Fund should show ~29.7% with '3/3 factors rated'. For Profile gating, just goto /profile under (a) super_admin → testID profile-open-admin-console must exist; (b) regular user → it must NOT exist. For New-menu reorder, goto /prr and click coordinates (370,50) (or testID prr-new-fab once added) then check that the first child with [data-testid^='new-menu-'] is new-menu-instant-dezider.",
+  "rca_of_issue": "No RCA needed — all three features behave as specified by the review request. The one minor stale string ('Test123 - Quick Decision' in _layout.tsx) was a leftover from the splice of admin blocks from profile.tsx; it has been corrected by this agent."
+}

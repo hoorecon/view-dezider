@@ -9,6 +9,7 @@ import { styles } from '../../styles/decisionStyles';
 import type { Factor, FactorDataSource } from '../../types/decision';
 import api from '../../utils/api';
 import { showAlert } from '../../utils/alert';
+import UrlAccessConsentModal, { UrlConsentPayload } from '../UrlAccessConsentModal';
 import {
   UNIT_PRESETS,
   NUMERIC_OPERATORS,
@@ -33,9 +34,48 @@ export default function Step2() {
     showUnitPicker, setShowUnitPicker,
     customUnitInput, setCustomUnitInput,
     setCurrentStep,
+    fetchDecision,
   } = useDecision();
 
   const [showDataSourceConfig, setShowDataSourceConfig] = useState<{ [key: string]: boolean }>({});
+
+  // ── "Import from URL" — crawl a comparison page → fill factors (with Expected),
+  // options (Step 6) and partial assessments (Step 7), behind the consent gate.
+  const [importUrl, setImportUrl] = useState('');
+  const [importConsentOpen, setImportConsentOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+
+  const startImport = () => {
+    if (!/^https?:\/\/.+/i.test(importUrl.trim())) {
+      showAlert('Enter a URL', 'Paste a valid http(s) link to a comparison or filter page.');
+      return;
+    }
+    setImportConsentOpen(true);
+  };
+
+  const runImport = async (consent: UrlConsentPayload) => {
+    setImporting(true);
+    try {
+      const { data } = await api.post(`/url-analyze/decision/${decision.id}/import`, {
+        url: importUrl.trim(),
+        eligibility_type: consent.eligibility_type,
+        custom_note: consent.custom_note,
+        accepted: true,
+      });
+      setImportConsentOpen(false);
+      setImporting(false);
+      setImportUrl('');
+      await fetchDecision();
+      showAlert(
+        'Imported from URL',
+        `Added ${data.factors_added} factor${data.factors_added === 1 ? '' : 's'} and ${data.options_added} option${data.options_added === 1 ? '' : 's'} from ${data.item_count} items. Review the factors & Expected values below, then continue — Options (Step 6) and actuals (Step 7) are pre-filled.`,
+      );
+    } catch (e: any) {
+      setImporting(false);
+      const msg = e?.response?.data?.detail || 'Could not import from this URL. Try a page that lists items in a table.';
+      showAlert('Import failed', typeof msg === 'string' ? msg : JSON.stringify(msg));
+    }
+  };
 
   // Inline rename — pencil icon next to each factor name. Critical for
   // SWOT-converted decisions where factors are AI-pre-filled and users
@@ -318,6 +358,46 @@ export default function Step2() {
       <Text style={{ fontSize: 11, color: COLORS.textMuted, textAlign: 'center', marginBottom: 14, lineHeight: 16, paddingHorizontal: 8 }}>
         AI suggests factors from your Life Area, decision type &amp; description. Review, reorder or remove any, then continue to Step 3.
       </Text>
+
+      <View style={iurl.box}>
+        <View style={iurl.head}>
+          <Ionicons name="link" size={15} color="#2563EB" />
+          <Text style={iurl.title}>Import from a URL</Text>
+        </View>
+        <Text style={iurl.sub}>
+          Paste a comparison / filter page — we&apos;ll add its factors (with suggested Expected values)
+          and options, and pre-fill the assessment matrix. You&apos;ll confirm your access rights first.
+        </Text>
+        <View style={iurl.row}>
+          <TextInput
+            testID="step2-import-url-input"
+            style={iurl.input}
+            placeholder="https://… comparison page"
+            placeholderTextColor="#9CA3AF"
+            value={importUrl}
+            onChangeText={setImportUrl}
+            autoCapitalize="none"
+            keyboardType="url"
+          />
+          <TouchableOpacity
+            testID="step2-import-url-btn"
+            style={[iurl.btn, (!importUrl.trim() || importing) && { opacity: 0.5 }]}
+            onPress={startImport}
+            disabled={!importUrl.trim() || importing}
+          >
+            {importing ? <ActivityIndicator size="small" color="#fff" /> : <Text style={iurl.btnText}>Import</Text>}
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <UrlAccessConsentModal
+        visible={importConsentOpen}
+        url={importUrl.trim()}
+        busy={importing}
+        primary="#2563EB"
+        onCancel={() => { if (!importing) setImportConsentOpen(false); }}
+        onConfirm={runImport}
+      />
 
       {topLevelFactors.map((factor) => {
         const subs = getSubFactors(factor.id);
@@ -776,3 +856,15 @@ const sfStyles = StyleSheet.create({
   autoSplitBtnText: { fontSize: 11, fontWeight: '700', color: '#7C3AED' },
   weightHint: { fontSize: 10.5, color: COLORS.textMuted, marginTop: 4, marginBottom: 2, lineHeight: 15 },
 });
+
+const iurl = StyleSheet.create({
+  box: { backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE', borderRadius: 12, padding: 12, marginBottom: 16 },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  title: { fontSize: 13.5, fontWeight: '800', color: '#1E40AF' },
+  sub: { fontSize: 11.5, lineHeight: 16, color: '#1E40AF', marginBottom: 10 },
+  row: { flexDirection: 'row', gap: 8 },
+  input: { flex: 1, backgroundColor: '#fff', borderWidth: 1, borderColor: '#BFDBFE', borderRadius: 10, paddingHorizontal: 11, paddingVertical: 9, fontSize: 13, color: COLORS.textPrimary },
+  btn: { backgroundColor: '#2563EB', borderRadius: 10, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center', minWidth: 80 },
+  btnText: { color: '#fff', fontSize: 13.5, fontWeight: '800' },
+});
+

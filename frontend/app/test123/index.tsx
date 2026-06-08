@@ -108,7 +108,7 @@ export default function Test123ListScreen() {
       if (window.confirm(msg)) doDelete(item.id);
       return;
     }
-    Alert.alert('Delete Test123', msg, [
+    Alert.alert('Delete Instant Dezider', msg, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => doDelete(item.id) },
     ]);
@@ -158,7 +158,7 @@ export default function Test123ListScreen() {
     <View style={styles.emptyContainer}>
       <Ionicons name="flash-outline" size={64} color={COLORS.textMuted} />
       <Text style={styles.emptyTitle}>No Quick Decisions Yet</Text>
-      <Text style={styles.emptyText}>Use Test123 for urgent decisions when you need to act fast.</Text>
+      <Text style={styles.emptyText}>Use Instant Dezider for urgent decisions when you need to act fast.</Text>
     </View>
   );
 
@@ -170,7 +170,7 @@ export default function Test123ListScreen() {
           <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={styles.title}>Test123</Text>
+          <Text style={styles.title}>Instant Dezider</Text>
           <Text style={styles.subtitle}>Instant Decision Making</Text>
         </View>
         <TouchableOpacity
@@ -196,7 +196,7 @@ export default function Test123ListScreen() {
         >
           <Ionicons name="flash" size={26} color="#FFF" />
           <View style={{ flex: 1 }}>
-            <Text style={styles.startBtnTitle}>Start Test123</Text>
+            <Text style={styles.startBtnTitle}>Start Instant Dezider</Text>
             <Text style={styles.startBtnSub}>For instant decisions when emotions cloud judgment</Text>
           </View>
           <Ionicons name="arrow-forward" size={22} color="#FFF" />
@@ -205,7 +205,7 @@ export default function Test123ListScreen() {
 
       {/* How it works */}
       <Card style={styles.infoCard}>
-        <Text style={styles.infoTitle}>How Test123 Works</Text>
+        <Text style={styles.infoTitle}>How Instant Dezider Works</Text>
         <View style={styles.infoSteps}>
           <View style={styles.infoStep}>
             <View style={[styles.stepCircle, { backgroundColor: COLORS.accent }]}>

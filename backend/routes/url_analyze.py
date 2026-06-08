@@ -24,6 +24,7 @@ from core.auth import get_current_user
 from core.url_crawl import crawl_candidates
 from core.decision_builder import (
     create_mydezider_from_candidates, create_pros_cons_from_candidates,
+    merge_into_mydezider,
 )
 
 router = APIRouter(prefix="/url-analyze", tags=["URL Analyse"])
@@ -183,4 +184,58 @@ async def analyze_url(req: AnalyzeRequest, request: Request, user: dict = Depend
     return {
         "id": new_id, "target": target, "consent_id": consent_id,
         "item_count": len(candidates), "factor_count": len(factors),
+    }
+
+
+
+class ImportRequest(BaseModel):
+    url: str
+    eligibility_type: str
+    custom_note: Optional[str] = None
+    accepted: bool = False
+    max_factors: int = Field(default=8, ge=1, le=20)
+
+
+@router.post("/decision/{decision_id}/import")
+async def import_url_into_decision(
+    decision_id: str, req: ImportRequest, request: Request,
+    user: dict = Depends(get_current_user),
+):
+    """Step-2 "Import from URL" — crawl a comparison page and MERGE the derived
+    factors (with suggested Expected values) + options (with assessment %) into
+    an EXISTING MyDezider decision, behind the same consent gate."""
+    if not req.accepted:
+        raise HTTPException(400, "You must accept the data-access disclaimer to continue.")
+    elig = (req.eligibility_type or "").strip().lower()
+    if elig not in ELIGIBILITY_TYPES:
+        raise HTTPException(400, f"Select a valid access-eligibility type ({', '.join(sorted(ELIGIBILITY_TYPES))}).")
+    if elig == "custom" and not (req.custom_note or "").strip():
+        raise HTTPException(400, "Describe your access right in the custom field.")
+
+    decision = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not decision:
+        raise HTTPException(404, "Decision not found")
+
+    consent_id = uuid.uuid4().hex
+    await db.url_access_consents.insert_one({
+        "id": consent_id, "user_id": user["user_id"], "url": req.url.strip(),
+        "eligibility_type": elig, "custom_note": (req.custom_note or "").strip() or None,
+        "disclaimer_version": DISCLAIMER_VERSION, "accepted": True, "target": "import",
+        "decision_id": decision_id,
+        "ip": (request.client.host if request.client else None),
+        "user_agent": request.headers.get("user-agent"), "created_at": _now(),
+    })
+
+    candidates = await crawl_candidates(req.url, user["user_id"])
+    if len(candidates) < 2:
+        raise HTTPException(422, "Need at least 2 comparable items on the page to import.")
+    factors, scored = _derive_factors_and_scores(candidates, req.max_factors)
+    if not factors:
+        raise HTTPException(422, "Could not derive comparable factors from the page.")
+
+    counts = await merge_into_mydezider(user["user_id"], decision_id, factors=factors, candidates=scored)
+    return {
+        "decision_id": decision_id, "consent_id": consent_id,
+        "item_count": len(candidates),
+        "factors_added": counts["factors_added"], "options_added": counts["options_added"],
     }
