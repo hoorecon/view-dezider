@@ -419,24 +419,26 @@ export default function Step7() {
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
 
   // Silent single-cell assess used by the bulk runner (no per-cell alerts).
+  // When `force` is true, cells missing Expected/Actual are NOT skipped — the
+  // backend AI fills standard Expected + realistic Actual (higher AI credits).
   const assessCellSilent = async (
-    optionId: string, factorId: string,
+    optionId: string, factorId: string, force: boolean = false,
   ): Promise<'done' | 'skipped' | 'insufficient' | 'error'> => {
     const factor = decision.factors.find(f => f.id === factorId);
     if (!factor) return 'skipped';
     const has = (v: any) => v !== undefined && v !== null && String(v).trim() !== '';
     const isQual = factor?.data_type === 'text' || factor?.factor_type === 'subjective' || factor?.factor_type === 'qualitative';
     const actual = getActualInputValue(optionId, factorId);
-    // Must be assessable: Expected required; quantitative also needs Operator + Actual.
-    if (!has(factor?.expected_value)) return 'skipped';
-    if (!isQual && (!has(factor?.operator) || !has(actual))) return 'skipped';
+    // Assessable now? Expected required; quantitative also needs Operator + Actual.
+    const incomplete = !has(factor?.expected_value) || (!isQual && (!has(factor?.operator) || !has(actual)));
+    if (incomplete && !force) return 'skipped';
     try {
       const token = await AsyncStorage.getItem('session_token');
       const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
       const resp = await fetch(`${baseUrl}/api/decisions/${decision.id}/factors/${factorId}/ai-assess`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ option_id: optionId, actual_value: actual }),
+        body: JSON.stringify({ option_id: optionId, actual_value: actual, force_fill: incomplete && force }),
       });
       if (resp.status === 402) return 'insufficient';
       if (!resp.ok) return 'error';
@@ -457,12 +459,12 @@ export default function Step7() {
     }
   };
 
-  const runBulkAssess = async (cells: { optionId: string; factorId: string }[]) => {
+  const runBulkAssess = async (cells: { optionId: string; factorId: string }[], forceFill: boolean = false) => {
     setBulkAssessing(true);
     setBulkProgress({ done: 0, total: cells.length });
     let done = 0, skipped = 0, errored = 0, ranOut = false;
     for (let i = 0; i < cells.length; i++) {
-      const status = await assessCellSilent(cells[i].optionId, cells[i].factorId);
+      const status = await assessCellSilent(cells[i].optionId, cells[i].factorId, forceFill);
       if (status === 'insufficient') { ranOut = true; break; }
       if (status === 'done') done++;
       else if (status === 'skipped') skipped++;
@@ -483,9 +485,27 @@ export default function Step7() {
       return;
     }
     const parts = [`Assessed ${done} cell${done !== 1 ? 's' : ''}`];
+    if (forceFill && done) parts[0] += ' (AI filled missing Expected/Actual)';
     if (skipped) parts.push(`${skipped} skipped (add Expected/Actual values)`);
     if (errored) parts.push(`${errored} failed`);
     showAlert('AI Assess All complete', parts.join(' • '));
+  };
+
+  // Split empty cells into those READY to assess (Expected present; quantitative
+  // also has Operator + Actual) and those INCOMPLETE (missing Expected/Actual).
+  const splitAssessCells = (cells: { optionId: string; factorId: string }[]) => {
+    const has = (v: any) => v !== undefined && v !== null && String(v).trim() !== '';
+    const ready: { optionId: string; factorId: string }[] = [];
+    const incomplete: { optionId: string; factorId: string }[] = [];
+    for (const c of cells) {
+      const factor = decision.factors.find(f => f.id === c.factorId);
+      if (!factor) continue;
+      const isQual = factor?.data_type === 'text' || factor?.factor_type === 'subjective' || factor?.factor_type === 'qualitative';
+      const actual = getActualInputValue(c.optionId, c.factorId);
+      const bad = !has(factor?.expected_value) || (!isQual && (!has(factor?.operator) || !has(actual)));
+      (bad ? incomplete : ready).push(c);
+    }
+    return { ready, incomplete };
   };
 
   const handleAIAssessAll = () => {
@@ -507,13 +527,40 @@ export default function Step7() {
       showAlert('All set', 'Every option is already assessed against every factor.');
       return;
     }
+
+    const { ready, incomplete } = splitAssessCells(cells);
+
+    // No gaps → the simple confirm (unchanged behaviour).
+    if (incomplete.length === 0) {
+      showAlert(
+        'AI Assess All',
+        `AI will assess ${ready.length} empty cell${ready.length > 1 ? 's' : ''} across ${options.length} option${options.length > 1 ? 's' : ''}, using your AI credits. Continue?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Assess', onPress: () => runBulkAssess(ready, false) },
+        ]
+      );
+      return;
+    }
+
+    // There are gaps → let the user choose how to handle them.
+    const buttons: any[] = [{ text: 'Cancel', style: 'cancel' }];
+    if (ready.length > 0) {
+      buttons.push({
+        text: 'Ready only',
+        onPress: () => runBulkAssess(ready, false),
+      });
+    }
+    buttons.push({
+      text: 'AI-fill all',
+      onPress: () => runBulkAssess(cells, true),
+    });
     showAlert(
       'AI Assess All',
-      `AI will assess ${cells.length} empty cell${cells.length > 1 ? 's' : ''} across ${options.length} option${options.length > 1 ? 's' : ''}, using your AI credits. Cells missing Expected/Actual values are skipped. Continue?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Assess', onPress: () => runBulkAssess(cells) },
-      ]
+      `${ready.length} cell${ready.length !== 1 ? 's are' : ' is'} ready to assess. ` +
+      `${incomplete.length} cell${incomplete.length !== 1 ? 's are' : ' is'} missing Expected/Actual values.\n\n` +
+      `Choose “AI-fill all” to let AI set a standard Expected value and estimate a realistic Actual for those too — this uses more AI credits.`,
+      buttons
     );
   };
 

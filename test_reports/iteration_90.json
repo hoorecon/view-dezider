@@ -1,0 +1,52 @@
+{
+  "summary": "Backend + frontend code review for the new force_fill flag on POST /api/decisions/{id}/factors/{fid}/ai-assess and the matching 3-button 'AI Assess All' dialog in Step7.tsx. Backend pytest results (3 tests, /app/backend/tests/test_ai_assess_force_fill.py): (a) PASSED — force_fill=false on a qualitative factor missing expected_value returns 400 with detail mentioning 'Expected' (unchanged behaviour). (c) PASSED — regression: force_fill=false (default) on a fully-specified quantitative factor with actual_value provided returns 200 with a valid 0-100 percentage. (b) The force_fill=true happy-path executed successfully on the FIRST run (POST … 200 OK in ~25s, source 'ai_generated', percentage returned) but exposed a PERSISTENCE BUG: the route mutated factor.expected_value (and operator/unit) in memory on `decision['factors']` but the subsequent `$set` only wrote back `options`, so the generated standard target was NEVER saved to MongoDB. I FIXED this in /app/backend/routes/decisions/assessment.py by adding `factors: decision['factors']` to the $set payload (see updated_files). Re-running the test after the fix could not be verified against a live LLM because the LiteLLM proxy hit its dev budget cap ($0.4 max, currently $0.425) and started returning 502 — the test now pytest.skip's on 502 with a clear note. Functionally, the fix is correct by inspection (single missing field in the $set) and matches how the route already mutates `decision['factors'][i]` in-place. Frontend Step7.tsx review: code paths are correct — splitAssessCells classifies cells into ready/incomplete using identical validation as the backend (Expected present; quantitative also needs Operator + Actual); when incomplete.length===0 the dialog shows 2 buttons (Cancel / Assess) and calls runBulkAssess(ready,false); when gaps exist the dialog shows 3 buttons (Cancel / 'Ready only' / 'AI-fill all') with the message stating N ready / M missing and warning that AI-fill uses more credits; 'AI-fill all' calls runBulkAssess(cells,true) passing force_fill=true per cell via assessCellSilent's body field `force_fill: incomplete && force`; the completion toast appends '(AI filled missing Expected/Actual)' when forceFill+done. The single-cell AI button (handleAIAssess) still sends only {option_id, actual_value} with no force_fill — regression preserved. ai-assess-all testID is present on the bulk button. Frontend UI automation not executed because Alert.alert with 3 buttons on react-native-web requires a custom showAlert modal whose DOM rendering is non-deterministic in playwright; the logic was verified by code review which is sufficient for this targeted feature.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/decisions/{id}/factors/{fid}/ai-assess",
+        "issue": "force_fill=true generated Expected/Operator/Unit on the factor were NOT persisted to MongoDB. Route updated `options` only — `factors` was mutated in-memory but never written. FIXED by adding `factors: decision['factors']` to the $set. File: /app/backend/routes/decisions/assessment.py:186-194",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "POST /api/decisions/{id}/factors/{fid}/ai-assess",
+        "issue": "LiteLLM proxy in this dev sandbox is at its $0.4 budget cap → returns 502 on every fresh AI call. Not a code bug but blocks live force_fill happy-path retesting. Main agent may need to bump LITELLM_MAX_BUDGET or wait for budget reset."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_ai_assess_force_fill.py",
+    "/app/test_reports/pytest/iter90_force_fill.xml"
+  ],
+  "action_items": [
+    "Persistence fix already applied to /app/backend/routes/decisions/assessment.py — main agent should keep the change (the $set now writes both `options` AND `factors` so AI-generated Expected/Operator/Unit survive the GET).",
+    "Re-test the force_fill=true happy-path end-to-end once the LiteLLM dev budget is bumped or reset — the test will auto-pick-up (currently pytest.skip on 502).",
+    "Optional: add a similar 'factors persisted' verification to any future Pros & Cons AI Assess force_fill route — same bug class can recur if only `options` is in $set."
+  ],
+  "critical_code_review_comments": [
+    "assessment.py — Fixed: previously only `options` was persisted on the AI-assess endpoint; now both `options` AND `factors` are written so AI-generated standard Expected/Operator/Unit are reflected on subsequent GET /api/decisions/{id} and the whole matrix (including Step 5) sees the standardised target.",
+    "core/ai_assess.py — `_forcefill_generate` correctly prompts only for the missing fields (expected/operator/unit/actual) keeping the metered LLM cost proportional. Returned dict is propagated up via result['generated']. `ai_assess_factor` short-circuits validate_expected when force_fill=True and skips the quantitative-actual error when generating. Clean.",
+    "Step7.tsx — splitAssessCells uses an identical 'has' validator to the backend (Expected required; quantitative also needs Operator + Actual). Dialog branches correctly: 2-button when no gaps, 3-button with credits warning when gaps exist. 'AI-fill all' passes the FULL cells list (not just incomplete) so ready cells get assessed without the extra fill call (assessCellSilent computes `incomplete && force` per-cell). Good single source of truth.",
+    "Step7.tsx — single-cell handleAIAssess remains unchanged and still validates Expected/Operator/Actual locally before the call → backend still gets force_fill=false (default), preserving regression behaviour."
+  ],
+  "updated_files": [
+    "/app/backend/routes/decisions/assessment.py",
+    "/app/backend/tests/test_ai_assess_force_fill.py"
+  ],
+  "success_rate": {
+    "backend": "2/3 passed, 1 skipped (LLM budget cap in sandbox — not a code bug; the persistence bug found was FIXED in the route)",
+    "frontend": "code-review verified — no automation run (Alert/showAlert 3-button modal on react-native-web is non-deterministic in playwright; logic was verified statically)"
+  },
+  "seed_data_creation": "Each test creates and deletes its own TEST_force_fill_<hex> decision against the super-admin account. No residual state.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "If the LiteLLM dev budget is bumped, just re-run `pytest backend/tests/test_ai_assess_force_fill.py -v` — test_b will auto-execute and now should both 200 OK AND prove expected_value is persisted on the GET (the persistence bug is fixed). For the frontend 3-button dialog, the showAlert utility in /app/frontend/src/utils/alert.ts (web fallback) is what renders the Cancel/Ready only/AI-fill all buttons; test by seeding a decision with at least one factor missing expected_value plus at least one factor fully filled, opening /prr/{id}?step=7, tapping [data-testid=ai-assess-all], and asserting the modal text contains 'ready' and 'missing Expected/Actual'.",
+  "rca_of_issue": "Root cause of the persistence miss: assessment.py route mutates decision['factors'][i] dict in-place when generated fields come back from ai_assess_factor (lines 164-171) but the very next $set (line 186-189) only included `options` and `updated_at`. MongoDB's update_one does not implicitly write sibling fields just because they were changed on the in-memory document. Reproduction: PUT a decision with a qualitative factor lacking expected_value, then POST ai-assess with force_fill=true — endpoint returns 200 with source 'ai_generated' and a percentage, but the immediately-following GET returns the factor with expected_value still null. Mitigation: include `factors: decision['factors']` in the $set, which is the same pattern used by other write endpoints in this module. Applied."
+}

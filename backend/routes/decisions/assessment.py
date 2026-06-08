@@ -15,6 +15,10 @@ from .services import ordered_factors, apply_assessment_rows
 router = APIRouter(tags=["Decisions"])
 
 
+def _hasv(v: Any) -> bool:
+    return v is not None and str(v).strip() != ""
+
+
 @router.get("/decisions/{decision_id}/assessment-template")
 async def md_download_assessment_template(decision_id: str, user: dict = Depends(get_current_user)):
     decision = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
@@ -148,11 +152,23 @@ async def md_ai_assess(
         decision_context=decision.get("context") or "",
         user_id=user["user_id"],
         provided_actual=provided_actual,
+        force_fill=bool(body.get("force_fill")),
     )
 
     pct = result["assessment_pct"]
     final_actual = result.get("actual_value")
     unit = factor.get("unit") or ""
+    # Persist any AI-generated Expected/Operator/Unit back onto the factor so the
+    # whole matrix (and Step 5) reflects the standard target going forward.
+    generated = result.get("generated") or {}
+    if generated:
+        if _hasv(generated.get("expected_value")):
+            factor["expected_value"] = generated["expected_value"]
+        if _hasv(generated.get("operator")):
+            factor["operator"] = generated["operator"]
+        if _hasv(generated.get("unit")):
+            factor["unit"] = generated["unit"]
+            unit = factor["unit"]
     unit_value = (
         f"{final_actual}{(' ' + unit) if (unit and unit not in str(final_actual)) else ''}"
         if final_actual not in (None, "") else ""
@@ -167,8 +183,15 @@ async def md_ai_assess(
     if unit_value:
         a["unit_value"] = unit_value
     a["assessment_mode"] = "custom"
+    # Persist factors too — force_fill may have mutated factor.expected_value /
+    # operator / unit in-place on decision["factors"], and those changes must
+    # reach MongoDB so a subsequent GET returns the standardised target.
     await db.decisions.update_one(
         {"id": decision_id, "user_id": user["user_id"]},
-        {"$set": {"options": decision["options"], "updated_at": datetime.now(timezone.utc)}},
+        {"$set": {
+            "options": decision["options"],
+            "factors": decision["factors"],
+            "updated_at": datetime.now(timezone.utc),
+        }},
     )
     return {"percentage": pct, "actual_value": final_actual, "source": result.get("source")}
