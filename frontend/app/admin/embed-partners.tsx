@@ -140,6 +140,7 @@ export default function AdminEmbedPartnersScreen() {
           scrape_enabled: !!cfg.ingestion?.scrape_enabled,
           scrape_legal_ack: !!cfg.ingestion?.scrape_legal_ack,
           scrape_terms_ack: !!cfg.ingestion?.scrape_terms_ack,
+          url_min_tier: cfg.ingestion?.url_min_tier || null,
         },
       };
       await api.put(`/embed/config/${slug}`, body);

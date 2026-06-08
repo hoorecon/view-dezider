@@ -54,6 +54,16 @@ router = APIRouter(prefix="/embed/screener", tags=["Partner Screener"])
 MAX_CANDIDATES = 5000
 HTTP_TIMEOUT = 20.0
 
+# Subscription tier ordering for the premium paste-URL gate (free<basic<pro<premium).
+TIER_ORDER = {"free": 0, "basic": 1, "pro": 2, "premium": 3}
+
+
+async def _user_tier_order(user_id: str) -> int:
+    """Resolve a user's subscription tier rank from their wallet.current_plan."""
+    w = await db.ai_wallets.find_one({"user_id": user_id}, {"_id": 0, "current_plan": 1})
+    plan = ((w or {}).get("current_plan") or "free").lower()
+    return TIER_ORDER.get(plan, 0)
+
 
 # ----------------------------------------------------------------------------
 # Models
@@ -279,7 +289,7 @@ async def _ai_assess_finalists(user_id: str, finalists: List[Dict[str, Any]],
 # ----------------------------------------------------------------------------
 # Ingestion
 # ----------------------------------------------------------------------------
-async def _ingest_candidates(req: IngestRequest, cfg: Dict[str, Any]) -> List[Candidate]:
+async def _ingest_candidates(req: IngestRequest, cfg: Dict[str, Any], user: dict) -> List[Candidate]:
     ing = cfg.get("ingestion") or {}
     mode = (req.mode or "inline").lower()
 
@@ -333,6 +343,19 @@ async def _ingest_candidates(req: IngestRequest, cfg: Dict[str, Any]) -> List[Ca
                 "URL fetch requires the admin to enable scraping and confirm the "
                 "legal authority + partner-ToS acknowledgements for this partner.",
             )
+        # Subscription/tier gate (admin-configured minimum plan).
+        min_tier = (ing.get("url_min_tier") or "").strip().lower()
+        if min_tier and min_tier in TIER_ORDER:
+            user_rank = await _user_tier_order(user["user_id"])
+            if user_rank < TIER_ORDER[min_tier]:
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "error": "tier_required",
+                        "required_tier": min_tier,
+                        "message": f"The paste-URL Screener requires the '{min_tier}' plan or higher. Please upgrade.",
+                    },
+                )
         if not req.url:
             raise HTTPException(400, "url is required")
         async with httpx.AsyncClient(timeout=HTTP_TIMEOUT, follow_redirects=True,
@@ -348,12 +371,38 @@ async def _ingest_candidates(req: IngestRequest, cfg: Dict[str, Any]) -> List[Ca
             raise HTTPException(400, "JSON URL did not yield a list (check items_path)")
         # HTML → parse the first reasonable <table> into rows
         rows = _html_table_rows(r.text)
-        if not rows:
-            raise HTTPException(422, "Could not extract a candidate table from the page. "
-                                     "Try CSV/API, or enable AI extraction (coming soon).")
-        return _rows_to_candidates(rows, req.name_key)
+        if rows:
+            return _rows_to_candidates(rows, req.name_key)
+        # P3b: no clean table → AI extraction fallback (metered to the user)
+        ai_rows = await _ai_extract_candidates(user["user_id"], r.text)
+        if ai_rows:
+            return _rows_to_candidates(ai_rows, req.name_key)
+        raise HTTPException(422, "Could not extract a candidate list from the page "
+                                 "(no table found and AI extraction unavailable). Try CSV/API.")
 
     raise HTTPException(400, f"Unknown ingestion mode '{mode}'")
+
+
+async def _ai_extract_candidates(user_id: str, html: str) -> List[Dict[str, Any]]:
+    """Fallback for table-less pages: LLM-extract a candidate list from the page
+    text. Metered to the user's wallet. Returns [] if no LLM is configured."""
+    if not has_any_llm():
+        return []
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "noscript", "svg"]):
+        tag.decompose()
+    text = re.sub(r"\n{2,}", "\n", soup.get_text("\n", strip=True))[:6000]
+    sys = ("Extract the list of comparable items from this page. Reply ONLY a compact "
+           "JSON array of objects: {\"name\": str, \"attributes\": {key: value}} with the "
+           "numeric/comparable attributes you can find. No prose, max 50 items.")
+    try:
+        out = await metered_chat(user_id, system_message=sys, prompt=text,
+                                 feature="screener_url_extract", session_prefix="screener")
+        m = re.search(r"\[.*\]", out, re.S)
+        data = json.loads(m.group(0)) if m else []
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
 
 
 def _html_table_rows(html: str) -> List[Dict[str, Any]]:
@@ -382,7 +431,7 @@ def _html_table_rows(html: str) -> List[Dict[str, Any]]:
 @router.post("/ingest")
 async def screener_ingest(req: IngestRequest, user: dict = Depends(get_current_user)):
     org, cfg = await _load_partner(req.partner)
-    cands = await _ingest_candidates(req, cfg)
+    cands = await _ingest_candidates(req, cfg, user)
     if not cands:
         raise HTTPException(422, "No candidates found from the supplied source.")
     ingest_id = uuid.uuid4().hex

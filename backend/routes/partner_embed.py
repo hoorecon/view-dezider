@@ -78,6 +78,9 @@ class IngestionConfig(BaseModel):
     # Legal / compliance gating — scraping cannot be enabled until BOTH acks are true.
     scrape_legal_ack: bool = False          # "We have legal authority / permission to scrape"
     scrape_terms_ack: bool = False          # "Partner ToS permits automated access"
+    # Subscription gating for the premium paste-URL fetch. None/"" = no tier gate;
+    # otherwise the requesting user's plan must be >= this tier (free<basic<pro<premium).
+    url_min_tier: Optional[str] = None
 
 
 class PartnerEmbedConfig(BaseModel):
