@@ -62,6 +62,7 @@ async def _upsert_user(email: str, name: str, password: str, org_id: str,
         "org_role": org_role,
         "auth_method": "email",
         "whatsapp_number": whatsapp,
+        "whatsapp_verified": True,
         "role": "user",
     }
     if existing:

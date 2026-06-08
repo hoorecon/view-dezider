@@ -1,0 +1,38 @@
+{
+  "summary": "RETEST of iter82 P1 bugs — BOTH FIXES VERIFIED PASSING (9/9 backend pytest + browser E2E). FIX #1 (Mixed-Content / scheme): /api/embed/decision/pmsbazaar-demo/loader.js now contains both 'document.currentScript' + 'deriveRoot' and BAKED_ROOT='https://pros-cons-engine.preview.emergentagent.com' (no http://...emergentcf.cloud). /api/embed/demo-host/pmsbazaar-demo now emits the loader as RELATIVE same-origin '<script src=\"/api/embed/decision/pmsbazaar-demo/loader.js\">' — no absolute http:// host anywhere. Browser-level confirmation: opened demo-host in Chromium, window.Dezider is defined (typeof=='object'), clicked '#decideBtn' → #dezider-modal display:flex with #dezider-frame src='https://pros-cons-engine.preview.emergentagent.com/embed/mydezider?partner=pmsbazaar-demo' (https, no cluster host). html_widget Start CTA href also https. FIX #2 (WhatsApp gate no longer hijacks embed): POST /api/org-auth/login (pmsbazaar-demo, analyst@pmsbazaar-demo.com / PmsAnalyst2026!) returns status='authenticated', requires_otp=false, session_token, AND user.whatsapp_verified=true. The returned session_token is accepted by GET /api/auth/me (200) and that endpoint also reports whatsapp_verified:true. End-to-end browser flow: signed in on /embed/mydezider?partner=pmsbazaar-demo, clicked 'Start MyDezider' → navigated to /tools/new-decision (Choose Life Area screen rendered). NO redirect to /whatsapp-verify. Regression: public-config 200, demo-host renders the maroon themed compare page with all 3 sample cards (Money Grow / Hem Securities / Green Portfolio), html_widget pros_cons 200, RN web embed shell renders white-label sign-in (no perpetual spinner).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "Deprecated shadow* style props", "issue": "Console warning persists on the embed shell and on the demo-host loader execution context: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Non-blocking. Migrate any RN StyleSheet using shadowOffset/shadowOpacity/shadowRadius/shadowColor to boxShadow."},
+      {"component": "props.pointerEvents deprecated", "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Non-blocking; affects RN web compatibility."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter83_retest_p1_fixes.py",
+    "/app/test_reports/pytest/iter83_p1_retest.xml"
+  ],
+  "action_items": [
+    "(Optional clean-up, low priority) Migrate deprecated RN style props shadow*/pointerEvents to boxShadow/style.pointerEvents to silence repeated console warnings."
+  ],
+  "critical_code_review_comments": [
+    "Good fix: _public_base(request) in partner_embed_widget.py now consolidates the scheme/host resolution in ONE place and prefers X-Forwarded-Host (always https) over request.base_url. Plus the loader.js uses document.currentScript to derive ROOT client-side — robust even if BAKED_ROOT ever regresses.",
+    "Good fix: demo-host now uses a relative '/api/embed/...' script src so the loader inherits the page's https scheme automatically (no mixed-content risk regardless of how the host is reached).",
+    "Good fix: org-auth /login frictionless branch now sets whatsapp_verified=true on the user doc AND returns it in the user object, so the global WA-gate no longer intercepts /tools/* after embed login. /verify-otp does the same for the OTP path. The seed (per agent note) also persists whatsapp_verified=true."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter83_retest_p1_fixes.py (new)",
+    "/app/test_reports/pytest/iter83_p1_retest.xml (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (9/9 pytest)",
+    "frontend": "100% on retested flows: window.Dezider defined + HTTPS iframe modal opens; org-auth login + Start MyDezider lands on /tools/new-decision (no WA-verify hijack)."
+  },
+  "seed_data_creation": "None. Re-used existing pmsbazaar-demo seed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "iter82 P1 widget bugs are fully resolved (verified via /app/backend/tests/test_iter83_retest_p1_fixes.py and browser E2E). For future regressions: the loader.js MUST always contain 'document.currentScript' + 'deriveRoot' + 'BAKED_ROOT = \"https://...\"' (no emergentcf.cloud). The demo-host script src MUST stay relative. /api/org-auth/login MUST return user.whatsapp_verified=true on frictionless logins for embed partners. Only remaining minor items are deprecated RN style warnings.",
+  "rca_of_issue": "RESOLVED. Both iter82 P1 issues were addressed at the right layer: (1) Mixed-content RCA: request.base_url returned the internal http://cluster URL because uvicorn behind ingress sees scheme='http' on the upstream socket. Fix combined a server-side helper (_public_base honoring X-Forwarded-Host → https, with PUBLIC_APP_URL env fallback) AND a client-side fallback in loader.js (deriveRoot from document.currentScript.src origin), so the iframe ROOT is always correct even on third-party HTTPS partner sites. Demo-host additionally uses a relative <script src> so it inherits the page scheme. (2) WA-gate RCA: org-auth login bypassed setting whatsapp_verified on the user document and didn't return it; the global gate then treated the org-member as unverified. Fix sets whatsapp_verified=true on both /login (frictionless) and /verify-otp paths, returns it in the user response, and the demo seed persists it — so /tools/* is no longer hijacked to /whatsapp-verify."
+}

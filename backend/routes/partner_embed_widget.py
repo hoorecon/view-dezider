@@ -19,6 +19,7 @@ partner's decision_embed_config (resolved server-side, anti-spoof).
 """
 from __future__ import annotations
 
+import os
 import html
 import json
 from typing import Dict, Any, Optional, Tuple
@@ -31,6 +32,31 @@ from core.database import db
 from routes.partner_embed import VALID_FLOWS
 
 router = APIRouter(prefix="/embed", tags=["Partner Embed Widget"])
+
+PUBLIC_APP_URL = (os.getenv("PUBLIC_APP_URL") or "").rstrip("/")
+
+
+def _public_base(request: Request) -> str:
+    """Resolve the PUBLIC, https base URL for building absolute embed links.
+
+    Priority: X-Forwarded-Host (the real public host at the ingress, always
+    https-terminated) → PUBLIC_APP_URL env → request.base_url. We never trust
+    request.base_url's scheme/host alone because behind the ingress it resolves
+    to the internal cluster URL (http://...cluster...), which would trigger
+    mixed-content blocking when the widget is embedded on an HTTPS partner site.
+    """
+    xf_host = request.headers.get("x-forwarded-host")
+    if xf_host:
+        host = xf_host.split(",")[0].strip()
+        if host:
+            return f"https://{host}"
+    if PUBLIC_APP_URL:
+        return PUBLIC_APP_URL
+    base = str(request.base_url).rstrip("/")
+    # Force https — ingress always terminates TLS publicly.
+    if base.startswith("http://"):
+        base = "https://" + base[len("http://"):]
+    return base
 
 FLOW_LABELS = {
     "mydezider": "MyDezider — Weighted Decision",
@@ -81,14 +107,27 @@ def _powered_by(th: Dict[str, Any]) -> str:
 async def embed_loader_js(slug: str, request: Request):
     org, cfg = await _load(slug)
     th = _theme(org, cfg)
-    root = str(request.base_url).rstrip("/")
+    root = _public_base(request)
     render_mode = th["render_mode"]
     primary = th["primary"]
     default_flow = (th["enabled_flows"] or ["mydezider"])[0]
 
     # src builder is computed client-side so host can override flow + pass options
     js = f"""(function(){{
-  var ROOT = {json.dumps(root)};
+  // Capture the loader script's OWN origin synchronously — this is the most
+  // robust source of truth for ROOT (correct scheme + host) regardless of the
+  // partner page's origin, avoiding any mixed-content surprises.
+  var SELF_SRC = (document.currentScript && document.currentScript.src) || '';
+  var BAKED_ROOT = {json.dumps(root)};
+  function deriveRoot(){{
+    try {{
+      var s = SELF_SRC;
+      if (!s) {{ var els = document.querySelectorAll('script[src*="/api/embed/decision/"]'); if (els.length) s = els[els.length-1].src; }}
+      if (s) return new URL(s).origin;
+    }} catch(e) {{}}
+    return BAKED_ROOT;
+  }}
+  var ROOT = deriveRoot();
   var SLUG = {json.dumps(slug)};
   var RENDER_MODE = {json.dumps(render_mode)};
   var PRIMARY = {json.dumps(primary)};
@@ -183,7 +222,7 @@ async def embed_html_widget(slug: str, flow: str, request: Request, options: Opt
         raise HTTPException(404, "Unknown flow")
     org, cfg = await _load(slug)
     th = _theme(org, cfg)
-    root = str(request.base_url).rstrip("/")
+    root = _public_base(request)
 
     parsed_opts = []
     if options:
@@ -264,10 +303,13 @@ async def embed_demo_host(slug: str, request: Request, flow: str = "mydezider"):
         flow = "mydezider"
     org, cfg = await _load(slug)
     th = _theme(org, cfg)
-    root = str(request.base_url).rstrip("/")
+    root = _public_base(request)
     primary = html.escape(th["primary"]); accent = html.escape(th["accent"])
     name = html.escape(th["name"])
-    loader_src = f"{root}/api/embed/decision/{quote(slug)}/loader.js"
+    # Same-origin relative src — the demo host is served from our origin, so the
+    # loader inherits the page's (https) scheme automatically. The loader itself
+    # then derives ROOT from its own script origin for the iframe.
+    loader_src = f"/api/embed/decision/{quote(slug)}/loader.js"
 
     cards = ""
     for i, it in enumerate(_SAMPLE_ITEMS):

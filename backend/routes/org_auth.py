@@ -179,7 +179,7 @@ async def org_login(payload: OrgLoginRequest):
         session_token = await _issue_session(user["user_id"])
         await db.users.update_one(
             {"user_id": user["user_id"]},
-            {"$set": {"last_login": datetime.now(timezone.utc)}}
+            {"$set": {"last_login": datetime.now(timezone.utc), "whatsapp_verified": True}}
         )
         return {
             "status": "authenticated",
@@ -193,6 +193,7 @@ async def org_login(payload: OrgLoginRequest):
                 "org_name": org.get("name", ""),
                 "org_type": org_type,
                 "org_role": user.get("org_role", "org_member"),
+                "whatsapp_verified": True,
             },
         }
 
@@ -296,7 +297,7 @@ async def verify_otp(payload: OTPVerifyRequest):
     session_token = await _issue_session(user["user_id"])
     await db.users.update_one(
         {"user_id": user["user_id"]},
-        {"$set": {"last_login": datetime.now(timezone.utc)}}
+        {"$set": {"last_login": datetime.now(timezone.utc), "whatsapp_verified": True}}
     )
 
     return {
@@ -310,6 +311,7 @@ async def verify_otp(payload: OTPVerifyRequest):
             "org_name": org.get("name", "") if org else "",
             "org_type": record["org_type"],
             "org_role": user.get("org_role", "org_member"),
+            "whatsapp_verified": True,
         },
     }
 
