@@ -452,37 +452,43 @@ export default function Step2() {
               </TouchableOpacity>
             </View>
 
+            {/* Factor Type Toggle: Quantitative / Qualitative — placed ABOVE the Operator/Expected/Unit criteria */}
+            {!hasChildren && (
+              <View style={dsStyles.factorTypeRow}>
+                <Text style={dsStyles.factorTypeLabel}>Type:</Text>
+                <TouchableOpacity
+                  style={[dsStyles.typeChip, (factor.factor_type || (factor.data_type === 'text' ? 'qualitative' : 'quantitative')) === 'quantitative' && dsStyles.typeChipActiveBlue]}
+                  onPress={() => updateFactor(factor.id, { factor_type: 'quantitative' })}
+                >
+                  <Ionicons name="calculator-outline" size={12} color={(factor.factor_type || (factor.data_type === 'text' ? 'qualitative' : 'quantitative')) === 'quantitative' ? '#FFF' : COLORS.textMuted} />
+                  <Text style={[dsStyles.typeChipText, (factor.factor_type || (factor.data_type === 'text' ? 'qualitative' : 'quantitative')) === 'quantitative' && dsStyles.typeChipTextActive]}>Quantitative</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[dsStyles.typeChip, (factor.factor_type || (factor.data_type === 'text' ? 'qualitative' : 'quantitative')) === 'qualitative' && dsStyles.typeChipActiveGreen]}
+                  onPress={() => updateFactor(factor.id, { factor_type: 'qualitative' })}
+                >
+                  <Ionicons name="text-outline" size={12} color={(factor.factor_type || (factor.data_type === 'text' ? 'qualitative' : 'quantitative')) === 'qualitative' ? '#FFF' : COLORS.textMuted} />
+                  <Text style={[dsStyles.typeChipText, (factor.factor_type || (factor.data_type === 'text' ? 'qualitative' : 'quantitative')) === 'qualitative' && dsStyles.typeChipTextActive]}>Qualitative</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             {!hasChildren && renderCriteria(factor)}
 
-            {/* Factor Type Toggle: Quantitative / Qualitative */}
-            <View style={dsStyles.factorTypeRow}>
-              <Text style={dsStyles.factorTypeLabel}>Type:</Text>
-              <TouchableOpacity
-                style={[dsStyles.typeChip, (factor.factor_type || (factor.data_type === 'text' ? 'qualitative' : 'quantitative')) === 'quantitative' && dsStyles.typeChipActiveBlue]}
-                onPress={() => updateFactor(factor.id, { factor_type: 'quantitative' })}
-              >
-                <Ionicons name="calculator-outline" size={12} color={(factor.factor_type || (factor.data_type === 'text' ? 'qualitative' : 'quantitative')) === 'quantitative' ? '#FFF' : COLORS.textMuted} />
-                <Text style={[dsStyles.typeChipText, (factor.factor_type || (factor.data_type === 'text' ? 'qualitative' : 'quantitative')) === 'quantitative' && dsStyles.typeChipTextActive]}>Quantitative</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[dsStyles.typeChip, (factor.factor_type || (factor.data_type === 'text' ? 'qualitative' : 'quantitative')) === 'qualitative' && dsStyles.typeChipActiveGreen]}
-                onPress={() => updateFactor(factor.id, { factor_type: 'qualitative' })}
-              >
-                <Ionicons name="text-outline" size={12} color={(factor.factor_type || (factor.data_type === 'text' ? 'qualitative' : 'quantitative')) === 'qualitative' ? '#FFF' : COLORS.textMuted} />
-                <Text style={[dsStyles.typeChipText, (factor.factor_type || (factor.data_type === 'text' ? 'qualitative' : 'quantitative')) === 'qualitative' && dsStyles.typeChipTextActive]}>Qualitative</Text>
-              </TouchableOpacity>
-
-              {/* Data Source toggle */}
-              <TouchableOpacity
-                style={[dsStyles.dsToggleBtn, factor.data_source?.type && dsStyles.dsToggleBtnActive]}
-                onPress={() => setShowDataSourceConfig({ ...showDataSourceConfig, [factor.id]: !showDataSourceConfig[factor.id] })}
-              >
-                <Ionicons name="cloud-download-outline" size={14} color={factor.data_source?.type ? '#FFF' : COLORS.primary} />
-                <Text style={[dsStyles.dsToggleBtnText, factor.data_source?.type && { color: '#FFF' }]}>
-                  {factor.data_source?.type ? DATA_SOURCE_TYPES.find(d => d.key === factor.data_source?.type)?.label : 'Data Source'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            {/* Data Source toggle — kept adjacent to its collapsible config panel below */}
+            {!hasChildren && (
+              <View style={dsStyles.factorTypeRow}>
+                <TouchableOpacity
+                  style={[dsStyles.dsToggleBtn, factor.data_source?.type && dsStyles.dsToggleBtnActive]}
+                  onPress={() => setShowDataSourceConfig({ ...showDataSourceConfig, [factor.id]: !showDataSourceConfig[factor.id] })}
+                >
+                  <Ionicons name="cloud-download-outline" size={14} color={factor.data_source?.type ? '#FFF' : COLORS.primary} />
+                  <Text style={[dsStyles.dsToggleBtnText, factor.data_source?.type && { color: '#FFF' }]}>
+                    {factor.data_source?.type ? DATA_SOURCE_TYPES.find(d => d.key === factor.data_source?.type)?.label : 'Data Source'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             {/* Data Source Configuration (collapsible) */}
             {showDataSourceConfig[factor.id] && (
