@@ -282,3 +282,21 @@ Full plan (Phases A–D) approved by user; all 11 backend tests + frontend e2e P
 - P1: PRR Enhancement #4 & #5 (configurable timing fields + decision-linking bypass)
 - P1: DigiLocker eKYC Integration (needs sandbox credentials or mock-first)
 - P2: Webhook API Integration; Org-Type Master Migration
+
+## Fork session — 8 Jun 2026 (verification + 2 fixes)
+- ✅ Regression verified on fork: URL-crawl→MyDezider/ProsCons (iter91 11/11, with a recreated
+  local fixture `tests/fixtures/funds.html` served on :9777), AI-assess-batch (iter92), URL-import
+  direction, force-fill — all green. "Instant Dezider" rename + profile admin cleanup confirmed shipped.
+- ✅ UI FIX (Step2.tsx): moved the **Type (Quantitative/Qualitative)** selector ABOVE the
+  Operator/Expected/Unit criteria (was below). Data Source toggle split into its own row to stay
+  adjacent to its collapsible config panel. Pure layout reorder, lint clean.
+- ✅ BUG FIX (`core/url_crawl.py`): "Import from URL" failed with HTTP 503 on Amazon. Root cause: the
+  crawler sent a **bot User-Agent** (`ViewDeziderBot`) → retail/CDN sites reject with 403/503. Fix:
+  realistic desktop-Chrome headers (UA + Accept/Accept-Language), 3 attempts with backoff on
+  403/429/503, and specific error copy distinguishing bot-block vs JS-rendered vs not-found. Verified:
+  Amazon no longer 503s (now 200; still JS-rendered so needs AI extraction), fixture table → 4 candidates,
+  13/13 tests pass. NOTE: removed `br` from Accept-Encoding (brotli not installed → would garble HTML).
+  ⚠️ Known limit: JS-heavy retail giants (Amazon/Flipkart/Google) load lists via JS we can't render —
+  feature works best on comparison/aggregator pages with real HTML tables or JSON, or Screener CSV upload.
+  A headless-browser/scraping-API integration would be required to reliably scrape those (not yet wired).
+  ⚠️ Prod (jelcos.ai) must REDEPLOY for this fix to take effect.

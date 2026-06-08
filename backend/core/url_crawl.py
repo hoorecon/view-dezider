@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 import json
+import asyncio
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -22,9 +23,27 @@ from fastapi import HTTPException
 
 from core.ai_metering import metered_chat, has_any_llm
 
-HTTP_TIMEOUT = 20.0
+HTTP_TIMEOUT = 25.0
 MAX_CANDIDATES = 200
-_BOT_UA = "Mozilla/5.0 (ViewDeziderBot; +https://viewdezider.com/bot)"
+
+# Realistic desktop-browser headers. Many sites reject non-browser/bot clients
+# with 403/503; a standard UA + Accept headers dramatically improves success.
+_BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+    "Upgrade-Insecure-Requests": "1",
+}
+
+# Status codes that usually mean "automated access blocked" rather than a
+# genuinely missing page. Worth a short retry, and a clearer message if persistent.
+_BOT_BLOCK_CODES = {403, 429, 503}
 
 _NAME_KEYS = ("name", "Name", "title", "Title", "scheme", "Scheme", "fund", "Fund", "product", "Product")
 
@@ -95,16 +114,43 @@ async def ai_extract_candidates(user_id: str, html: str) -> List[Dict[str, Any]]
 async def crawl_candidates(url: str, user_id: str, name_key: Optional[str] = None) -> List[Dict[str, Any]]:
     """Fetch `url` and return a normalised candidate list. Raises HTTPException
     with a user-friendly message on failure."""
-    if not url or not re.match(r"^https?://", url.strip(), re.I):
+    url = (url or "").strip()
+    if not url or not re.match(r"^https?://", url, re.I):
         raise HTTPException(400, "Enter a valid http(s) URL.")
-    try:
-        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT, follow_redirects=True,
-                                     headers={"User-Agent": _BOT_UA}) as cli:
-            r = await cli.get(url.strip())
-    except Exception as e:
-        raise HTTPException(400, f"Could not reach the URL ({type(e).__name__}).")
+
+    r = None
+    last_err: Optional[Exception] = None
+    # Up to 3 attempts; brief backoff helps with transient 429/503 throttling.
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT, follow_redirects=True,
+                                         headers=_BROWSER_HEADERS) as cli:
+                r = await cli.get(url)
+            if r.status_code not in _BOT_BLOCK_CODES:
+                break
+        except Exception as e:  # network/DNS/TLS errors
+            last_err = e
+            r = None
+        if attempt < 2:
+            await asyncio.sleep(0.8 * (attempt + 1))
+
+    if r is None:
+        raise HTTPException(
+            400,
+            f"Could not reach the URL ({type(last_err).__name__ if last_err else 'network error'}). "
+            "Check the link is public and reachable.",
+        )
+
+    if r.status_code in _BOT_BLOCK_CODES:
+        raise HTTPException(
+            422,
+            f"This site blocked automated access (HTTP {r.status_code}). Large retail/JS-heavy "
+            "sites like Amazon, Flipkart or Google often reject crawlers. Try a public comparison "
+            "or listing page that shows items in a plain table (e.g. a review/aggregator site), "
+            "or the Screener (CSV upload) for retail product lists.",
+        )
     if r.status_code >= 400:
-        raise HTTPException(400, f"URL fetch failed (HTTP {r.status_code}).")
+        raise HTTPException(422, f"URL fetch failed (HTTP {r.status_code}). The page may be private or removed.")
 
     ctype = r.headers.get("content-type", "")
     if "json" in ctype:
@@ -132,7 +178,7 @@ async def crawl_candidates(url: str, user_id: str, name_key: Optional[str] = Non
 
     raise HTTPException(
         422,
-        "Could not extract a comparable list from this page (no clean table found "
-        "and AI extraction was unavailable). Try a comparison/filter page that lists "
-        "items in a table.",
+        "Could not extract a comparable list from this page. The page may load its items "
+        "via JavaScript (which we can't render) or have no clean table. Try a comparison/filter "
+        "page that lists items in a table, a JSON/API endpoint, or use the Screener CSV upload.",
     )
