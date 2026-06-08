@@ -85,7 +85,7 @@ function PRRDecisionDetailInner() {
     gapMultipliers: { [factorId: string]: number };
   }) => {
     if (!decision) return;
-    let updatedFactors = decision.factors.map(f => {
+    let updatedFactors = (decision.factors || []).map(f => {
       const cls = results.classifications[f.id];
       const priority = results.priorities.find(p => p.factorId === f.id);
       const gapMult = results.gapMultipliers[f.id];
@@ -258,8 +258,8 @@ function PRRDecisionDetailInner() {
         {currentStep !== 5 && (
           <VoiceStepInput
             step={currentStep}
-            factors={decision.factors}
-            options={decision.options.map(o => ({ id: o.id, name: o.name }))}
+            factors={decision.factors || []}
+            options={(decision.options || []).map(o => ({ id: o.id, name: o.name }))}
             onCommand={handleUniversalVoiceCommand}
           />
         )}

@@ -1,0 +1,80 @@
+{
+  "summary": "P2 MyDezider pre-seed RETEST after iter84 crash-fix attempt. TEST 1 (PRR editor crash on a vanilla fresh decision, no embed_seed) — PASSES: /prr/{id} on a freshly-created decision renders Step 2 cleanly, no crash, no /auth/login redirect. The iter85 guards in /app/frontend/app/prr/[id].tsx (decision.factors || [] and (decision.options || []).map) successfully fix the top-level VoiceStepInput render. HOWEVER, TEST 2 (MyDezider embed_seed → Step 6) STILL FAILS with the SAME pattern as iter84: TypeError 'Cannot read properties of undefined (reading map)' now thrown from Step6 (not the parent), then GO_BACK fallback bounces user to /auth/login. Backend correctly persists the 3 options (verified GET /api/decisions/{id} returns Money Grow Asset, Hem Securities SME Stars, Green Portfolio Super 30), but the visual landing on Step 6 is still broken. The iter85 fix was incomplete — it patched the parent but not the actual crash site.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "PUT /api/decisions/{decision_id}",
+        "issue": "Returns only {message: 'Decision updated successfully'} with no decision body. This is the ROOT CAUSE of the Step6 crash because DecisionContext.applyEmbedSeed does setDecision(resp.data) and then decision becomes {message: ...} with no options/factors fields. Either return the full updated decision document, or make the frontend refetch after PUT."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Step6 (/app/frontend/src/components/steps/Step6.tsx)",
+        "issue": "Crashes with 'TypeError: Cannot read properties of undefined (reading map)' when rendered immediately after an embed-seed PUT. Direct references decision.options.some (line 60), decision.options[0] (line 96), and decision.options.map (line 207) are NOT guarded with `|| []`. After applyEmbedSeed's PUT (which returns only {message:...}), setDecision(resp.data) wipes out options/factors and the Step6 render explodes. Following GO_BACK then redirects to /auth/login.",
+        "testID": "n/a",
+        "priority": "CRITICAL"
+      },
+      {
+        "component": "DecisionContext.applyEmbedSeed (/app/frontend/src/context/DecisionContext.tsx:166-167)",
+        "issue": "After `await api.put(/decisions/{id}, {options:additions})`, code does `setDecision(resp.data)`. Backend PUT returns ONLY {message: 'Decision updated successfully'} — so decision becomes a bare {message} object with no .options/.factors/.title/etc. Then setCurrentStep(6) renders Step6 which crashes. FIX: replace `setDecision(resp.data)` with either (a) `setDecision({...decisionData, options: additions})` to merge locally, or (b) refetch via `const fresh = await api.get('/decisions/'+id); setDecision(fresh.data)`, or (c) make the backend PUT return the full updated doc.",
+        "testID": "n/a",
+        "priority": "CRITICAL"
+      },
+      {
+        "component": "Step components defensive guards (all of Step2..Step10)",
+        "issue": "iter85 only guarded the parent VoiceStepInput render but each Step component still does `decision.options.map(...)` / `decision.factors.map(...)` unguarded. Recommend adding `(decision.options || [])` / `(decision.factors || [])` defensively inside each Step component to harden against future regressions.",
+        "testID": "n/a",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "MyDezider embed_seed → /prr/{id} → Step 6 landing",
+        "issue": "Data-layer still works (3 options persisted via PUT, embed_seed cleared), but Step 6 visually never renders — Step6 crashes → GO_BACK → /auth/login. User experience is identical to iter84: silent server-side write, redirect to login. The iter85 parent-component guard does not protect this flow because the crash is INSIDE Step6 itself.",
+        "affected_testIDs": []
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "shadow* style props",
+        "issue": "Console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Recurring across many screens."
+      },
+      {
+        "component": "props.pointerEvents",
+        "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents.'"
+      },
+      {
+        "component": "useNativeDriver",
+        "issue": "Warning: 'Animated: useNativeDriver is not supported because the native animated module is missing. Falling back to JS-based animation.' on web — informational only."
+      }
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "PRIMARY FIX (one-line, recommended): in /app/frontend/src/context/DecisionContext.tsx line 167, replace `setDecision(resp.data)` with `setDecision({ ...decisionData, options: [...(decisionData.options||[]), ...additions] })`. This preserves the existing decision shape (title/factors/etc) and prevents Step6 from seeing undefined options.",
+    "ALTERNATE FIX: change backend PUT /api/decisions/{decision_id} (/app/backend/routes/decisions/crud.py:81) to return the updated decision doc instead of `{message: 'Decision updated successfully'}`. This would be a broader contract change but useful for many other call sites.",
+    "DEFENSIVE FIX (recommended additionally): inside /app/frontend/src/components/steps/Step6.tsx replace bare `decision.options.some/.map/[0]/.length` with `(decision.options || []).some/.map/[0]/.length`. Same for any other Step components using decision.factors/options directly.",
+    "After fix, re-verify the original P2 acceptance: set embed_seed (mydezider flow, 3 options), navigate /prr/{id}, expect URL stays on /prr/{id}, Step 6 visible with 3 named options, embed_seed cleared.",
+    "Low-priority cleanup: migrate shadow* → boxShadow and props.pointerEvents → style.pointerEvents to silence console warnings."
+  ],
+  "critical_code_review_comments": [
+    "iter85 fix only addressed the SYMPTOM at the parent component (VoiceStepInput) but not the data corruption upstream in applyEmbedSeed. Always trace .map crashes back to where undefined was introduced, not just where it was consumed.",
+    "Backend PUT endpoints returning only {message: ...} (no body) is a recurring anti-pattern that forces every frontend caller to do an extra GET or to manually merge state. Worth standardising backend PUTs to return the updated resource.",
+    "DecisionContext.fetchDecision's catch block still calls router.back() unconditionally — this routes hard-loaded /prr/{id} URLs to /auth/login when ANY downstream render throws. Restrict the back-navigation to genuine network/401 errors only.",
+    "Step components (Step2..Step10) directly reach into context-supplied decision.options/factors without optional chaining or `|| []` fallback. Each is a latent crash site."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (backend persists options correctly; only contract-shape concern)",
+    "frontend": "50% (TEST 1 — vanilla /prr/{id} render — PASSES. TEST 2 — MyDezider seed → Step 6 landing — STILL FAILS with same TypeError pattern, just relocated from parent to Step6.)"
+  },
+  "seed_data_creation": "Created 2 test decisions on analyst@pmsbazaar-demo.com: TEST_iter85_mydezider_seed (d49c7a93-18c1-4199-9488-13a1a3c1e249) and TEST_iter85_mydezider_seed_v2 (721c5688-3147-4303-b7c6-a9b4ffd78e86). The v2 decision has the 3 carried options persisted server-side. Safe to delete.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "After main agent applies the PRIMARY FIX in DecisionContext.applyEmbedSeed (merge locally instead of overwriting with PUT response), re-run TEST 2: login analyst@pmsbazaar-demo.com / PmsAnalyst2026!, create a fresh decision via POST /api/decisions {title, context, decision_type:'one_time', horizon_days:30, horizon_type:'days'}, set localStorage 'session_token' + 'embed_seed' (flow:mydezider, partner:pmsbazaar-demo, options: 3 names, ts:now), navigate to /prr/{id}, wait 15s, expect URL still /prr/{id}, Step 6 title 'Define Options' visible, 3 named options rendered as Cards, localStorage.embed_seed === null. Also re-confirm TEST 1 (no seed) still passes after the change.",
+  "rca_of_issue": "The iter85 attempt at fixing the /prr crash hardened the PARENT component (VoiceStepInput in /app/frontend/app/prr/[id].tsx lines 261-262 with `decision.options || []`) but did NOT address the root cause. RCA chain: (1) embed_seed flow calls applyEmbedSeed → PUT /api/decisions/{id} body={options:additions}. (2) Backend PUT /api/decisions/{decision_id} at /app/backend/routes/decisions/crud.py:81 returns ONLY `{message: 'Decision updated successfully'}` — no decision body. (3) Frontend DecisionContext.applyEmbedSeed line 167 calls `setDecision(resp.data)` — this OVERWRITES the entire decision state with `{message: 'Decision updated successfully'}`. The `.options`, `.factors`, `.title` fields all become undefined. (4) Then setCurrentStep(6) runs, Step6 mounts and immediately reads `decision.options.some(...)` (line 60) / `decision.options[0]` (line 96) / `decision.options.map(...)` (line 207). All crash with 'Cannot read properties of undefined (reading map/some/0)'. (5) React error boundary or DecisionContext.fetchDecision catch triggers router.back() / GO_BACK, then app falls back to /auth/login because navigation stack is empty for a deep-linked URL. (6) Curiously the BACKEND state is correct because the PUT succeeded BEFORE the frontend crashed — that's why iter84 reported 'options persisted but UI broken'. The fix is to STOP overwriting decision with the meaningless PUT response. Easiest one-liner: `setDecision({...decisionData, options: [...(decisionData.options||[]), ...additions]})`. Test 1 incidentally passes because no PUT is fired on a vanilla load — fetchDecision's resp.data is the full GET decision shape so decision.options/.factors are defined arrays, and the parent guard handles the brief loading window."
+}
