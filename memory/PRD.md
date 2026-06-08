@@ -325,6 +325,23 @@ Full plan (Phases A–D) approved by user; all 11 backend tests + frontend e2e P
 - Pending follow-up: option 3 = LLM factor refinement (done as part of this) + headless/scraping API for
   JS-rendered retail (Amazon) — NOT yet wired; needed only for non-static sites.
 
+## Multi-source imports (Step 2 + Step 7 URL actuals) — 8 Jun 2026 (tested iter96)
+- **Step 2 multi-source import (3-icon layout)**: `Step2.tsx` imports a comparison matrix into a NEW
+  decision via XLS/CSV (`step2-import-xls`), Google Sheet (`step2-import-sheet`), or URL
+  (`step2-import-url`) → consent gate. Adds factors (+suggested Expected), options, partial
+  assessments. Backend: `routes/matrix_import.py` (`import-matrix-file`, `import-matrix-sheet`,
+  `factor-matrix-template.xlsx`) + `core/matrix_import.py`.
+- **Step 7 "Import from URL" (actuals mapper) — COMPLETED THIS SESSION**: added the missing UI in
+  `Step7.tsx` — `md-import-actuals-url` button → URL input dialog (`md-actuals-url-input` /
+  `md-actuals-url-continue`) → `UrlAccessConsentModal` (purple) → `POST /api/decisions/{id}/import-actuals-from-url`
+  extracts ACTUAL values against the decision's EXISTING templatized factors, then AUTO-triggers
+  `bulkAssessAllRemaining()` AI scoring. Graceful out-of-credits handling.
+- Verified iter96: backend 7/7 pytest (`test_iter96_matrix_import.py`) — template/csv-import/sheet/
+  actuals-from-url all 200 on happy path, 400/422 on bad input/consent gate. Frontend: all Step 2 icons
+  render + URL→consent chain; Step 7 new button→dialog→consent→import API call all work.
+- ⚠️ Recurring: `sudo supervisorctl restart expo` needed after FE source edits (Metro cache).
+- ⚠️ AI scoring may report out-of-credits in dev (expected). ⚠️ Redeploy jelcos.ai + re-enter ScraperAPI key.
+
 ## Skip-WhatsApp-Gate flag + one-tap AI Assess + ScraperAPI — 8 Jun 2026 (tested iter95)
 - **Skip WhatsApp Gate (testing)**: new global flag in `core/security_config.py`
   (`skip_whatsapp_gate`, default False). `effective_whatsapp_verified()` returns True for ALL users
