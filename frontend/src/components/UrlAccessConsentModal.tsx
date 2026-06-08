@@ -112,17 +112,19 @@ export const UrlAccessConsentModal: React.FC<Props> = ({
                 authentication and fetches pages with a transparent, identifiable agent.
               </Text>
             </View>
-
-            <TouchableOpacity
-              testID="url-consent-accept"
-              style={styles.acceptRow}
-              activeOpacity={0.8}
-              onPress={() => setAccepted(a => !a)}
-            >
-              <Ionicons name={(accepted ? 'checkbox' : 'square-outline') as any} size={22} color={accepted ? primary : COLORS.textMuted} />
-              <Text style={styles.acceptText}>I have read and accept the above. I confirm my access rights.</Text>
-            </TouchableOpacity>
           </ScrollView>
+
+          {/* Accept row kept OUTSIDE the scroll area so the checkbox + button are
+              always visible together without hunting/scrolling. */}
+          <TouchableOpacity
+            testID="url-consent-accept"
+            style={styles.acceptRow}
+            activeOpacity={0.8}
+            onPress={() => setAccepted(a => !a)}
+          >
+            <Ionicons name={(accepted ? 'checkbox' : 'square-outline') as any} size={22} color={accepted ? primary : COLORS.textMuted} />
+            <Text style={styles.acceptText}>I have read and accept the above. I confirm my access rights.</Text>
+          </TouchableOpacity>
 
           <View style={styles.footer}>
             <TouchableOpacity testID="url-consent-cancel" style={styles.cancelBtn} onPress={handleCancel} disabled={busy}>
