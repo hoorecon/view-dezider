@@ -253,6 +253,22 @@ Full plan (Phases A–D) approved by user; all 11 backend tests + frontend e2e P
 - ⚠️ ACTION: user must REDEPLOY to jelcos.ai for the fix to take effect. Dev LiteLLM has a $0.4 budget
   cap that can still make "AI-fill all" cells fail inside the batch (not a code issue).
 
+## Three UX changes: Step-2 URL import, Instant Dezider rename, Profile admin cleanup — 8 Jun 2026 (tested, iteration_93)
+- **#1 Step 2 "Import from URL"** (MyDezider): new card in `Step2.tsx` → consent gate → `POST
+  /api/url-analyze/decision/{id}/import` crawls a comparison page and MERGES factors (with suggested
+  Expected values + operators), options (Step 6) and partial assessments (Step 7). Backend: new
+  `merge_into_mydezider()` in `core/decision_builder.py` (name-matches to avoid dup factors/options).
+  Reuses `crawl_candidates` + `_derive_factors_and_scores`. Curl + e2e verified.
+- **#2 Rename "Test 123" → "Instant Dezider"** across New menu (now FIRST, before Decider), home
+  "Decision Kickstarters" (first card), filter chips, list/new screens, voice parser, and
+  `app/_layout.tsx` headerTitle. Internal route `/test123` + backend unchanged.
+- **#3 Profile admin cleanup**: removed 387 lines (9 admin-module sections) from `app/(tabs)/profile.tsx`;
+  replaced with a single admin-only "Admin Console" shortcut (testID `profile-open-admin-console`) →
+  `/admin`. All those modules already live in the `/admin` console (ADMIN_NAV). Non-admin/user
+  settings untouched. Gating `userRole !== 'user'` (hidden for regular users).
+- NOTE: URL-import expected_value defaults to column max (cost-style "lower-is-better" factors may need
+  the user to flip — out of scope, editable in Step 2). Dev LiteLLM budget cap still applies to AI paths.
+
 ## Remaining backlog (post-fork)
 - P1: CLD Engine Phase B & C (Rules Engine + AI Suggestions)
 - P1: PRR Enhancement #4 & #5 (configurable timing fields + decision-linking bypass)
