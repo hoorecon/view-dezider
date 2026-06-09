@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, StyleSheet, Alert, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -467,6 +467,15 @@ export default function Step7() {
   const [bulkAssessing, setBulkAssessing] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
 
+  // OpenAI free-tier (data-sharing) fallback availability + the user's consent.
+  const [openaiAvailable, setOpenaiAvailable] = useState(false);
+  const [openaiConsented, setOpenaiConsented] = useState(false);
+  useEffect(() => {
+    api.get('/ai-wallet/provider-consent')
+      .then(({ data }) => { setOpenaiAvailable(!!data.openai_available); setOpenaiConsented(!!data.allow_openai); })
+      .catch(() => { /* non-fatal */ });
+  }, []);
+
   // Apply a single batch result to the local matrix state (instant UI update).
   const applyCellResult = (r: any) => {
     if (r.status !== 'done') return;
@@ -483,45 +492,48 @@ export default function Step7() {
     setCustomInputValues(prev => ({ ...prev, [key]: String(pct) }));
   };
 
-  // "AI Assess All" runs the cells in small server-side BATCHES (one request per
-  // chunk) instead of dozens of individual POSTs. A burst of many requests can
-  // be rejected by production edges/CDNs (405) and adds latency; batching keeps
-  // it to a handful of requests while staying short enough to avoid timeouts.
-  const runBulkAssess = async (cells: { optionId: string; factorId: string }[], forceFill: boolean = false) => {
+  // "AI Assess All" now scores EVERY cell in as FEW LLM calls as possible via the
+  // server-side batched endpoint (1 call per ~40 cells). The provider chain
+  // (Gemini → Groq → OpenAI [consent] → Emergent) keeps usage on free tiers.
+  const runBulkAssess = async (
+    cells: { optionId: string; factorId: string }[],
+    forceFill: boolean = false,
+    allowOpenai?: boolean,
+  ) => {
     setBulkAssessing(true);
     setBulkProgress({ done: 0, total: cells.length });
-    let done = 0, skipped = 0, errored = 0, ranOut = false, aiDown = false, processed = 0;
-    const CHUNK = 6;
-    for (let i = 0; i < cells.length; i += CHUNK) {
-      const slice = cells.slice(i, i + CHUNK);
-      try {
-        const { data } = await api.post(`/decisions/${decision.id}/ai-assess-batch`, {
-          force_fill: forceFill,
-          cells: slice.map(c => ({
-            option_id: c.optionId,
-            factor_id: c.factorId,
-            actual_value: getActualInputValue(c.optionId, c.factorId),
-          })),
-        });
-        for (const r of (data.results || [])) {
-          applyCellResult(r);
-          if (r.status === 'done') done++;
-          else if (r.status === 'skipped') skipped++;
-          else errored++;
-        }
-        if (data.out_of_credits) { ranOut = true; processed += slice.length; setBulkProgress({ done: Math.min(processed, cells.length), total: cells.length }); break; }
-        if (data.ai_unavailable) { aiDown = true; processed += slice.length; setBulkProgress({ done: Math.min(processed, cells.length), total: cells.length }); break; }
-      } catch (e: any) {
-        if (e?.response?.status === 402) { ranOut = true; break; }
-        errored += slice.length;
+    let done = 0, skipped = 0, errored = 0, ranOut = false, aiDown = false;
+    let remaining: { optionId: string; factorId: string }[] = [];
+    try {
+      const { data } = await api.post(`/decisions/${decision.id}/ai-assess-all-batched`, {
+        force_fill: forceFill,
+        ...(allowOpenai !== undefined ? { allow_openai: allowOpenai } : {}),
+        cells: cells.map(c => ({
+          option_id: c.optionId,
+          factor_id: c.factorId,
+          actual_value: getActualInputValue(c.optionId, c.factorId),
+        })),
+      });
+      const doneSet = new Set<string>();
+      for (const r of (data.results || [])) {
+        applyCellResult(r);
+        if (r.status === 'done') { done++; doneSet.add(`${r.option_id}|${r.factor_id}`); }
+        else if (r.status === 'skipped') skipped++;
+        else errored++;
       }
-      processed += slice.length;
-      setBulkProgress({ done: Math.min(processed, cells.length), total: cells.length });
+      ranOut = !!data.out_of_credits;
+      aiDown = !!data.ai_unavailable;
+      remaining = cells.filter(c => !doneSet.has(`${c.optionId}|${c.factorId}`));
+      setBulkProgress({ done, total: cells.length });
+    } catch (e: any) {
+      if (e?.response?.status === 402) ranOut = true; else aiDown = true;
+      remaining = cells;
     }
     setBulkAssessing(false);
     refreshAiWallet();
     // Final re-sync so the matrix + "All set" check reflect every saved cell.
     try { await fetchDecision(); } catch { /* non-fatal */ }
+
     if (ranOut) {
       showAlert('Out of AI credits', `Assessed ${done} cell(s) before credits ran out. Top up to finish the rest.`, [
         { text: 'Not now', style: 'cancel' },
@@ -530,10 +542,36 @@ export default function Step7() {
       return;
     }
     if (aiDown) {
+      // Offer the free OpenAI route (shares data) only if it's configured and
+      // not already in the chain (i.e. user hasn't consented / it also failed).
+      if (openaiAvailable && !openaiConsented && allowOpenai === undefined && remaining.length) {
+        showAlert(
+          'Free AI quota exhausted',
+          `Assessed ${done} cell(s). The free AI providers are momentarily exhausted. ` +
+          `You can finish the remaining ${remaining.length} for free using OpenAI — note this shares ` +
+          `this decision's data with OpenAI. Or top up your AI wallet to keep using the private providers.`,
+          [
+            { text: 'Top up', onPress: () => router.push('/ai-wallet' as any) },
+            { text: 'Use OpenAI once', onPress: () => runBulkAssess(remaining, forceFill, true) },
+            {
+              text: 'Always use OpenAI',
+              onPress: async () => {
+                try {
+                  await api.put('/ai-wallet/provider-consent', { allow_openai: true, mode: 'always' });
+                  setOpenaiConsented(true);
+                } catch { /* non-fatal */ }
+                runBulkAssess(remaining, forceFill, true);
+              },
+            },
+          ],
+        );
+        return;
+      }
       showAlert(
         'AI temporarily unavailable',
-        `Assessed ${done} cell(s), then the AI service stopped responding. This usually means the Universal LLM key balance/budget is exhausted. ` +
-        `Add balance (Profile → Universal Key → Add Balance) and try again — already-scored cells are saved.`,
+        `Assessed ${done} cell(s), then the AI providers stopped responding. ` +
+        `This usually means the free quotas and your AI wallet are both exhausted. ` +
+        `Top up (Profile → Universal Key → Add Balance) and try again — already-scored cells are saved.`,
       );
       return;
     }

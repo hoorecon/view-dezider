@@ -565,28 +565,19 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (total === 0) return { done: 0, total: 0, ranOut: false };
     setBulkAssessing(true);
     setBulkProgress({ done: 0, total });
-    let done = 0, ranOut = false, processed = 0;
-    const CHUNK = 6;  // small batches avoid edge/CDN bursts + request timeouts
-    for (let i = 0; i < cells.length; i += CHUNK) {
-      const slice = cells.slice(i, i + CHUNK);
-      try {
-        const { data } = await api.post(`/decisions/${decision!.id}/ai-assess-batch`, {
-          force_fill: forceFill,
-          cells: slice.map((c) => ({ option_id: c.optionId, factor_id: c.factorId })),
-        });
-        done += (data.results || []).filter((r: any) => r.status === 'done').length;
-        if (data.out_of_credits) {
-          ranOut = true; processed += slice.length;
-          setBulkProgress({ done: Math.min(processed, total), total });
-          break;
-        }
-      } catch (e: any) {
-        if (e?.response?.status === 402) { ranOut = true; break; }
-      }
-      processed += slice.length;
-      setBulkProgress({ done: Math.min(processed, total), total });
-      // Re-fetch per chunk so worth/recommendation updates LIVE as cells fill.
-      try { await fetchDecision(); } catch { /* non-fatal */ }
+    let done = 0, ranOut = false;
+    // Single batched call — the server scores ~40 cells per LLM request via the
+    // free-first provider chain (Gemini → Groq → OpenAI[consent] → Emergent).
+    try {
+      const { data } = await api.post(`/decisions/${decision!.id}/ai-assess-all-batched`, {
+        force_fill: forceFill,
+        cells: cells.map((c) => ({ option_id: c.optionId, factor_id: c.factorId })),
+      });
+      done = (data.results || []).filter((r: any) => r.status === 'done').length;
+      ranOut = !!data.out_of_credits || !!data.ai_unavailable;
+      setBulkProgress({ done: Math.min(done, total), total });
+    } catch (e: any) {
+      if (e?.response?.status === 402) ranOut = true;
     }
     setBulkAssessing(false);
     try { await fetchDecision(); } catch { /* non-fatal */ }

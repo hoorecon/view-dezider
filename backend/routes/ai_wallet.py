@@ -39,6 +39,35 @@ async def my_wallet_ledger(limit: int = 30, user: dict = Depends(get_current_use
     return {"items": await ai_wallet.get_ledger(user["user_id"], min(max(limit, 1), 100))}
 
 
+# ───────── AI provider consent (OpenAI free, data-sharing) ─────────
+@router.get("/ai-wallet/provider-consent")
+async def get_provider_consent(user: dict = Depends(get_current_user)):
+    """The user's consent to use OpenAI's free (data-sharing) tier as a fallback.
+    `mode`: 'ask' ⇒ prompt at each no-balance failure (default); 'always' ⇒ use
+    OpenAI automatically without prompting."""
+    u = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "ai_provider_consent": 1})
+    c = (u or {}).get("ai_provider_consent") or {}
+    openai_available = bool(os.getenv("OPENAI_API_KEY"))
+    return {
+        "allow_openai": bool(c.get("allow_openai", False)),
+        "mode": c.get("mode") or "ask",
+        "openai_available": openai_available,
+    }
+
+
+@router.put("/ai-wallet/provider-consent")
+async def set_provider_consent(body: Dict[str, Any], user: dict = Depends(get_current_user)):
+    """Save OpenAI fallback consent. Body: { allow_openai: bool, mode?: 'ask'|'always' }."""
+    allow = bool(body.get("allow_openai"))
+    mode = body.get("mode") if body.get("mode") in ("ask", "always") else "ask"
+    consent = {"allow_openai": allow, "mode": mode, "updated_at": _now_iso()}
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"ai_provider_consent": consent}},
+    )
+    return {"allow_openai": allow, "mode": mode, "openai_available": bool(os.getenv("OPENAI_API_KEY"))}
+
+
 # ───────────────────────── admin ─────────────────────────
 @router.get("/admin/ai-wallet/config")
 async def get_wallet_config(user: dict = Depends(require_super_admin)):

@@ -325,6 +325,29 @@ Full plan (Phases A–D) approved by user; all 11 backend tests + frontend e2e P
 - Pending follow-up: option 3 = LLM factor refinement (done as part of this) + headless/scraping API for
   JS-rendered retail (Amazon) — NOT yet wired; needed only for non-static sites.
 
+## Free-first multi-provider LLM chain + batched AI scoring + OpenAI consent — 9 Jun 2026 (tested iter97 + pytest)
+- **Why**: "AI Assess All" showed "0 cells • N failed" because the only LLM providers were
+  Gemini (rate-limited/timeout in some envs) and the Emergent universal key (budget exhausted). Root
+  cause confirmed in logs: `Budget has been exceeded`.
+- **Provider chain (`core/ai_metering.py`)**: `metered_chat` now runs a FREE-FIRST fallback chain —
+  **Gemini → Groq → OpenAI(consent) → Emergent** — with per-provider retry+back-off on 429 and a 30s
+  timeout so a hung provider fails over fast. Only the first provider that returns text is charged.
+  Keys: `GROQ_API_KEY`, `OPENAI_API_KEY` added to backend/.env. Models: Groq `llama-3.3-70b-versatile`,
+  OpenAI `gpt-4o-mini`. Verified in dev: Gemini times out/503 → "advancing chain" → **Groq scores 200**.
+- **Batched scoring (`core/ai_assess.batch_score_cells` + `POST /decisions/{id}/ai-assess-all-batched`)**:
+  scores ~40 cells per LLM call instead of 1-2 calls/cell — a 192-cell decision goes from ~384 calls to
+  ~5, keeping usage inside free quotas. Frontend `Step7.runBulkAssess` AND
+  `DecisionContext.bulkAssessAllRemaining` (post-URL-import auto-score) both migrated to this endpoint.
+  Old per-cell `/ai-assess-batch` retained but no longer the primary path.
+- **OpenAI data-sharing consent (3c)**: `GET/PUT /api/ai-wallet/provider-consent` stores
+  `users.ai_provider_consent {allow_openai, mode}`. AI Wallet screen has a Settings toggle + mode chips
+  (Ask each time / Always). When free quotas exhaust mid-run, Step 7 shows an in-the-moment prompt:
+  [Top up] / [Use OpenAI once] / [Always use OpenAI] (saves consent). OpenAI only enters the chain when
+  the user consents (privacy: it shares decision data with OpenAI for the free tier).
+- **Tests**: `tests/test_provider_chain_batched.py` 2/2 pass (consent round-trip + batched-via-Groq).
+  iter97 frontend: consent toggle/chips persist (200 PUT/GET), Step-2 banner confirmed removed.
+- ⚠️ Redeploy jelcos.ai + set `GROQ_API_KEY`/`OPENAI_API_KEY` in prod .env for this to take effect there.
+
 ## "AI Assess All — 0 cells • N failed" diagnosis + clearer message — 9 Jun 2026 (verified)
 - **Root cause (confirmed via backend logs, funded wallet)**: the AI assessment LLM call fails with
   `litellm.BadRequestError: Budget has been exceeded! ... Max budget: 0.4` (Emergent Universal LLM key

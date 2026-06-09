@@ -290,3 +290,61 @@ async def md_ai_assess_batch(
             }},
         )
     return {"results": results, "out_of_credits": out_of_credits, "ai_unavailable": ai_unavailable}
+
+
+@router.post("/decisions/{decision_id}/ai-assess-all-batched")
+async def md_ai_assess_all_batched(
+    decision_id: str, body: Dict[str, Any], user: dict = Depends(get_current_user),
+):
+    """Score EVERY requested cell using as FEW LLM calls as possible (~1 call per
+    40 cells via core.ai_assess.batch_score_cells). This is the primary "AI
+    Assess All" path — it keeps usage inside the free Gemini/Groq quotas instead
+    of firing 1-2 calls per cell.
+
+    Body: { cells: [{option_id, factor_id, actual_value?}], force_fill?: bool,
+            allow_openai?: bool }   (allow_openai overrides the user's stored
+            consent for THIS run, e.g. the in-the-moment "use OpenAI free" choice)
+    Returns: { results: [...], out_of_credits, ai_unavailable }
+    """
+    from core.ai_assess import batch_score_cells
+
+    decision = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not decision:
+        raise HTTPException(status_code=404, detail="Decision not found")
+
+    cells = body.get("cells") or []
+    if not isinstance(cells, list) or not cells:
+        raise HTTPException(status_code=400, detail="No cells provided")
+
+    allow_openai = body.get("allow_openai")  # None ⇒ use stored consent
+    results, out_of_credits, ai_unavailable = await batch_score_cells(
+        decision=decision, cells=cells, user_id=user["user_id"],
+        force_fill=bool(body.get("force_fill")),
+        allow_openai=(bool(allow_openai) if allow_openai is not None else None),
+    )
+
+    factors_by_id = {f["id"]: f for f in decision.get("factors", [])}
+    options_by_id = {o["id"]: o for o in decision.get("options", [])}
+    applied = []
+    for r in results:
+        if r.get("status") != "done":
+            applied.append({k: r[k] for k in ("option_id", "factor_id", "status")})
+            continue
+        factor = factors_by_id.get(r["factor_id"]); option = options_by_id.get(r["option_id"])
+        if not factor or not option:
+            applied.append({"option_id": r["option_id"], "factor_id": r["factor_id"], "status": "error"})
+            continue
+        pct, final_actual = _apply_assessment(factor, option, r["result"])
+        applied.append({"option_id": r["option_id"], "factor_id": r["factor_id"],
+                        "status": "done", "percentage": pct, "actual_value": final_actual})
+
+    if any(r["status"] == "done" for r in applied):
+        await db.decisions.update_one(
+            {"id": decision_id, "user_id": user["user_id"]},
+            {"$set": {
+                "options": decision["options"],
+                "factors": decision["factors"],
+                "updated_at": datetime.now(timezone.utc),
+            }},
+        )
+    return {"results": applied, "out_of_credits": out_of_credits, "ai_unavailable": ai_unavailable}

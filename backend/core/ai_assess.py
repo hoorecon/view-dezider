@@ -570,3 +570,124 @@ async def ai_assess_factor(
         "factor_type": ftype,
         "generated": generated,
     }
+
+
+# ─────────────────────────────────────────────────────────────
+# Batched scoring — score MANY cells in as few LLM calls as possible
+# ─────────────────────────────────────────────────────────────
+_BATCH_CHUNK = 40  # cells per LLM call (keeps prompts small + parsing reliable)
+
+
+async def batch_score_cells(
+    *, decision: dict, cells: list, user_id: str,
+    force_fill: bool = False, allow_openai: Optional[bool] = None,
+) -> Tuple[list, bool, bool]:
+    """Score many (option, factor) cells with ONE LLM call per ~40 cells instead
+    of 1-2 calls per cell. Returns (results, out_of_credits, ai_unavailable).
+
+    Each result: {option_id, factor_id, status: done|skipped|error,
+                  result: {assessment_pct, actual_value}}  (result only when done)
+    """
+    factors_by_id = {f["id"]: f for f in decision.get("factors", [])}
+    options_by_id = {o["id"]: o for o in decision.get("options", [])}
+    title = decision.get("title") or ""
+    context = decision.get("context") or ""
+
+    results: list = []
+    work: list = []  # entries: {cell, fname, ftype, expected, operator, unit, oname, actual}
+    for c in cells:
+        fid = c.get("factor_id"); oid = c.get("option_id")
+        f = factors_by_id.get(fid); o = options_by_id.get(oid)
+        if not f or not o:
+            results.append({"option_id": oid, "factor_id": fid, "status": "error"}); continue
+        ftype = resolve_factor_type(f)
+        actual = c.get("actual_value")
+        if not _has(actual):
+            ex = next((a for a in o.get("assessments", []) if a.get("factor_id") == fid), None)
+            actual = (ex or {}).get("unit_value")
+        expected = f.get("expected_value")
+        if not force_fill and (
+            not _has(expected)
+            or (ftype == "quantitative" and (not _has(f.get("operator")) or not _has(actual)))
+        ):
+            results.append({"option_id": oid, "factor_id": fid, "status": "skipped"}); continue
+        work.append({
+            "cell": c, "fname": f.get("display_name") or f.get("name") or "factor",
+            "ftype": ftype, "expected": expected if _has(expected) else None,
+            "operator": f.get("operator") or None, "unit": f.get("unit") or None,
+            "oname": o.get("name"), "actual": actual if _has(actual) else None,
+        })
+
+    if not work:
+        return results, False, False
+
+    sysmsg = (
+        "You are a careful decision-analysis assessor. For each item, return an "
+        "integer satisfaction percentage from 0 to 100 (100 = fully meets/exceeds "
+        "the expectation, 0 = not at all). If an item's expected/target is not "
+        "specified, assume a sensible domain-standard target. If an item's actual "
+        "is not given, infer the most likely real-world actual and include it. "
+        "Return ONLY valid compact JSON."
+    )
+
+    out_of_credits = False
+    ai_unavailable = False
+    for start in range(0, len(work), _BATCH_CHUNK):
+        chunk = work[start:start + _BATCH_CHUNK]
+        items = [{
+            "i": idx, "factor": w["fname"], "type": w["ftype"],
+            "expected": w["expected"], "operator": w["operator"],
+            "unit": w["unit"], "option": w["oname"], "actual": w["actual"],
+        } for idx, w in enumerate(chunk)]
+        prompt = (
+            f"Decision: {title}\nContext: {context}\n"
+            f"Score these {len(items)} items. Items (JSON):\n{_json.dumps(items, ensure_ascii=False)[:11000]}\n"
+            'Return ONLY a JSON object mapping each "i" (as a string) to '
+            '{"pct": <integer 0-100>, "actual": <short string>}. '
+            'Example: {"0": {"pct": 80, "actual": "5000 mAh"}}'
+        )
+        try:
+            txt = await ai_metering.metered_chat(
+                user_id, system_message=sysmsg, prompt=prompt,
+                feature="ai_assess_batch", session_prefix="aibatch",
+                allow_openai=allow_openai,
+            )
+        except ai_wallet.InsufficientCredits:
+            out_of_credits = True
+            break
+        except Exception as e:  # all providers exhausted / failed
+            log.warning(f"batch_score_cells LLM failed: {type(e).__name__}: {str(e)[:120]}")
+            ai_unavailable = True
+            break
+
+        txt = (txt or "").strip()
+        if txt.startswith("```"):
+            txt = txt.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+        try:
+            m = re.search(r"\{.*\}", txt, re.S)
+            parsed = _json.loads(m.group(0)) if m else _json.loads(txt)
+        except Exception as e:
+            log.warning(f"batch parse failed: {e}; marking chunk errored")
+            for w in chunk:
+                results.append({"option_id": w["cell"].get("option_id"),
+                                "factor_id": w["cell"].get("factor_id"), "status": "error"})
+            continue
+
+        for idx, w in enumerate(chunk):
+            entry = parsed.get(str(idx)) or parsed.get(idx)
+            oid = w["cell"].get("option_id"); fid = w["cell"].get("factor_id")
+            if not isinstance(entry, dict) or entry.get("pct") is None:
+                results.append({"option_id": oid, "factor_id": fid, "status": "error"}); continue
+            try:
+                pct = max(0, min(100, int(round(float(entry["pct"])))))
+            except Exception:
+                results.append({"option_id": oid, "factor_id": fid, "status": "error"}); continue
+            final_actual = w["actual"] if _has(w["actual"]) else (
+                str(entry.get("actual")) if _has(entry.get("actual")) else None
+            )
+            results.append({
+                "option_id": oid, "factor_id": fid, "status": "done",
+                "result": {"assessment_pct": pct, "actual_value": final_actual},
+            })
+
+    return results, out_of_credits, ai_unavailable

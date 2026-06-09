@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  RefreshControl, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform,
+  RefreshControl, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -55,6 +55,23 @@ export default function AiWalletScreen() {
   const [quoting, setQuoting] = useState(false);
   const [buyingId, setBuyingId] = useState<string | null>(null);
 
+  // OpenAI free-tier (data-sharing) consent
+  const [consent, setConsent] = useState<{ allow_openai: boolean; mode: string; openai_available: boolean } | null>(null);
+  const [savingConsent, setSavingConsent] = useState(false);
+
+  const saveConsent = async (next: { allow_openai: boolean; mode: string }) => {
+    setConsent((c) => (c ? { ...c, ...next } : c));
+    setSavingConsent(true);
+    try {
+      const res = await api.put('/ai-wallet/provider-consent', next);
+      setConsent(res.data);
+    } catch (e: any) {
+      showAlert('Could not save', e?.response?.data?.detail || 'Please try again.');
+    } finally {
+      setSavingConsent(false);
+    }
+  };
+
   const fetchData = async () => {
     try {
       const [wRes, lRes, pRes] = await Promise.all([
@@ -65,6 +82,10 @@ export default function AiWalletScreen() {
       setWallet(wRes.data);
       setLedger(lRes.data?.items || []);
       setPacksInfo(pRes.data);
+      try {
+        const ccRes = await api.get('/ai-wallet/provider-consent');
+        setConsent(ccRes.data);
+      } catch { /* ignore */ }
       if (isSuperAdmin) {
         try {
           const cRes = await api.get('/admin/ai-wallet/config');
@@ -216,10 +237,53 @@ export default function AiWalletScreen() {
                 <Text style={styles.infoTitle}>How AI credits work</Text>
               </View>
               <Text style={styles.infoText}>
-                AI Assist runs on Gemini first and only charges for the tokens it actually uses
-                ({tpc} tokens = 1 credit). When your balance reaches zero, AI Assist is paused until you refill.
+                AI Assist tries free providers first (Gemini → Groq), then your AI wallet
+                ({tpc} tokens = 1 credit). When all free quotas and your balance are exhausted, AI is paused until you refill.
               </Text>
             </View>
+
+            {/* OpenAI free-tier (data-sharing) consent */}
+            {consent?.openai_available && (
+              <View style={styles.infoCard} testID="openai-consent-card">
+                <View style={styles.consentRow}>
+                  <View style={{ flex: 1, paddingRight: 12 }}>
+                    <Text style={styles.infoTitle}>Use OpenAI&apos;s free tier</Text>
+                    <Text style={[styles.infoText, { marginTop: 4 }]}>
+                      When the free Gemini/Groq quotas run out, fall back to OpenAI&apos;s free
+                      data-sharing tier instead of charging your wallet.{' '}
+                      <Text style={{ fontWeight: '700', color: COLORS.textSecondary }}>
+                        This shares your decision&apos;s data with OpenAI.
+                      </Text>
+                    </Text>
+                  </View>
+                  <Switch
+                    testID="openai-consent-toggle"
+                    value={!!consent?.allow_openai}
+                    disabled={savingConsent}
+                    onValueChange={(v) => saveConsent({ allow_openai: v, mode: consent?.mode || 'ask' })}
+                    trackColor={{ true: COLORS.primary }}
+                  />
+                </View>
+                {consent?.allow_openai && (
+                  <View style={styles.consentModeRow}>
+                    {([['ask', 'Ask each time'], ['always', 'Always use automatically']] as const).map(([m, label]) => {
+                      const active = (consent?.mode || 'ask') === m;
+                      return (
+                        <TouchableOpacity
+                          key={m}
+                          testID={`openai-consent-mode-${m}`}
+                          style={[styles.consentChip, active && styles.consentChipActive]}
+                          onPress={() => saveConsent({ allow_openai: true, mode: m })}
+                          disabled={savingConsent}
+                        >
+                          <Text style={[styles.consentChipText, active && styles.consentChipTextActive]}>{label}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            )}
 
             {/* Refill — credit packs */}
             <Text style={styles.sectionTitle}>Top up credits</Text>
@@ -467,6 +531,12 @@ const styles = StyleSheet.create({
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
   infoTitle: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
   infoText: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 19 },
+  consentRow: { flexDirection: 'row', alignItems: 'center' },
+  consentModeRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  consentChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.white },
+  consentChipActive: { backgroundColor: COLORS.primary + '14', borderColor: COLORS.primary },
+  consentChipText: { fontSize: 12, fontWeight: '600', color: COLORS.textMuted },
+  consentChipTextActive: { color: COLORS.primary },
   refillNote: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 10, backgroundColor: COLORS.divider, padding: 10, borderRadius: 10 },
   refillNoteText: { flex: 1, fontSize: 12, color: COLORS.textSecondary, lineHeight: 17 },
 

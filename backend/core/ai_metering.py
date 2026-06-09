@@ -1,19 +1,25 @@
 """Metered LLM calls for the per-user AI-credits wallet.
 
 Used ONLY by the metered AI features (AI Assist, AI auto-fetch, AI subjective
-scoring). Routing for these features is **Gemini-first** using the developer's
-own GEMINI_API_KEY (free daily tier) and **falls back to Emergent** when the
-Gemini key is missing or the free quota/rate limit is exhausted. Other AI
-features are untouched (they keep using the global Emergent default).
+scoring). Routing is a FREE-FIRST fallback chain so the underlying spend stays
+as low as possible:
+
+    Gemini (free daily tier)  →  Groq (free tier)  →  OpenAI (user-key, only if
+    the user has consented to share data with OpenAI)  →  Emergent (universal key)
+
+Each provider is tried in order; on a rate-limit / quota / budget error we
+retry with a short back-off, then advance to the next provider. Only the FIRST
+provider that returns text is charged to the user's wallet.
 
 Each call:
   1. gates on the user's wallet balance (raises InsufficientCredits at 0),
-  2. runs the LLM and reads the REAL token usage (Gemini) or estimates it
-     (Emergent fallback),
+  2. runs the provider chain, reading REAL token usage when the provider
+     surfaces it (litellm) or estimating it (Emergent),
   3. charges the wallet by actual tokens (credits = tokens / tokens_per_credit).
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import uuid
@@ -24,6 +30,14 @@ from core import ai_wallet
 log = logging.getLogger("ai_metering")
 
 GEMINI_MODEL = os.getenv("METERED_GEMINI_MODEL", "gemini-2.5-flash")
+GROQ_MODEL = os.getenv("METERED_GROQ_MODEL", "llama-3.3-70b-versatile")
+OPENAI_MODEL = os.getenv("METERED_OPENAI_MODEL", "gpt-4o-mini")
+
+# Per-provider retry/back-off for transient rate limits (429). Free tiers are
+# rate-limited per-minute, so a short pause often clears the limit before we
+# give up on that (free) provider and advance to the next.
+_MAX_RETRIES = 2
+_BACKOFF_BASE = 1.2  # seconds; multiplied by (attempt + 1)
 
 
 def _estimate_tokens(*texts: str) -> int:
@@ -31,28 +45,51 @@ def _estimate_tokens(*texts: str) -> int:
     return max(1, chars // 4)  # ~4 chars/token heuristic
 
 
-async def _gemini_call(system_message: str, prompt: str) -> Tuple[str, int]:
-    """Direct Gemini via litellm using the user's own key. Returns (text, tokens).
-    Raises on quota/rate/auth errors so the caller can fall back to Emergent."""
+def _is_rate_limit(exc: Exception) -> bool:
+    """True for transient rate-limit/quota errors worth a back-off retry."""
+    try:
+        import litellm
+        if isinstance(exc, getattr(litellm, "RateLimitError", ())):
+            return True
+    except Exception:
+        pass
+    s = f"{type(exc).__name__}: {exc}".lower()
+    return "429" in s or "rate limit" in s or "ratelimit" in s or "resource_exhausted" in s
+
+
+async def _direct_call(model: str, api_key: str, system_message: str, prompt: str) -> Tuple[str, int]:
+    """Direct provider call via litellm (Gemini / Groq / OpenAI) using the given
+    key. Retries with back-off on 429, then raises so the caller can advance to
+    the next provider. Returns (text, tokens)."""
     from litellm import acompletion
 
-    api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        raise RuntimeError("GEMINI_API_KEY not set")
-    resp = await acompletion(
-        model=f"gemini/{GEMINI_MODEL}",
-        messages=[{"role": "system", "content": system_message}, {"role": "user", "content": prompt}],
-        api_key=api_key,
-        timeout=60,
-    )
-    text = (resp.choices[0].message.content or "").strip()
-    usage = getattr(resp, "usage", None)
-    tokens = 0
-    if usage is not None:
-        tokens = int(getattr(usage, "total_tokens", 0) or 0)
-    if tokens <= 0:
-        tokens = _estimate_tokens(system_message, prompt, text)
-    return text, tokens
+        raise RuntimeError(f"missing api key for {model}")
+    last: Optional[Exception] = None
+    for attempt in range(_MAX_RETRIES + 1):
+        try:
+            resp = await acompletion(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": prompt},
+                ],
+                api_key=api_key,
+                timeout=30,
+            )
+            text = (resp.choices[0].message.content or "").strip()
+            usage = getattr(resp, "usage", None)
+            tokens = int(getattr(usage, "total_tokens", 0) or 0) if usage is not None else 0
+            if tokens <= 0:
+                tokens = _estimate_tokens(system_message, prompt, text)
+            return text, tokens
+        except Exception as e:  # noqa: BLE001 — classify below
+            last = e
+            if _is_rate_limit(e) and attempt < _MAX_RETRIES:
+                await asyncio.sleep(_BACKOFF_BASE * (attempt + 1))
+                continue
+            raise
+    raise last  # pragma: no cover
 
 
 async def _emergent_call(system_message: str, prompt: str, session_prefix: str) -> Tuple[str, int]:
@@ -70,36 +107,80 @@ async def _emergent_call(system_message: str, prompt: str, session_prefix: str) 
     return (text or "").strip(), _estimate_tokens(system_message, prompt, text or "")
 
 
+async def user_allows_openai(user_id: str) -> bool:
+    """Read the user's consent to use their data with OpenAI's free tier."""
+    try:
+        from core.database import db
+        u = await db.users.find_one({"user_id": user_id}, {"_id": 0, "ai_provider_consent": 1})
+        return bool(((u or {}).get("ai_provider_consent") or {}).get("allow_openai"))
+    except Exception:
+        return False
+
+
+def _build_chain(allow_openai: bool) -> list:
+    """Ordered list of (provider_name) using only configured keys."""
+    chain: list = []
+    if os.getenv("GEMINI_API_KEY"):
+        chain.append("gemini")
+    if os.getenv("GROQ_API_KEY"):
+        chain.append("groq")
+    if allow_openai and os.getenv("OPENAI_API_KEY"):
+        chain.append("openai")
+    if os.getenv("EMERGENT_LLM_KEY"):
+        chain.append("emergent")
+    return chain
+
+
 async def metered_chat(
     user_id: str, *, system_message: str, prompt: str,
     feature: str, session_prefix: str = "metered",
+    allow_openai: Optional[bool] = None,
 ) -> str:
-    """Gate → Gemini-first → Emergent fallback → charge the wallet.
+    """Gate → free-first provider chain → charge the wallet.
+
+    `allow_openai`: None ⇒ resolve from the user's stored consent; True/False ⇒
+    explicit override (used by the in-the-moment "use OpenAI free" choice).
 
     Raises ai_wallet.InsufficientCredits when the user has no credits.
+    Raises the last provider error when EVERY provider in the chain fails
+    (caller can treat that as "AI temporarily unavailable").
     Returns the model's text response.
     """
     await ai_wallet.ensure_can_spend(user_id)
 
-    text: str
-    tokens: int
-    provider: str
-    try:
-        text, tokens = await _gemini_call(system_message, prompt)
-        provider = "gemini"
-    except ai_wallet.InsufficientCredits:
-        raise
-    except Exception as e:
-        log.warning(f"metered gemini call failed ({type(e).__name__}: {str(e)[:120]}); falling back to emergent")
-        text, tokens = await _emergent_call(system_message, prompt, session_prefix)
-        provider = "emergent"
+    if allow_openai is None:
+        allow_openai = await user_allows_openai(user_id)
 
-    try:
-        await ai_wallet.charge(user_id, tokens=tokens, feature=feature, provider=provider)
-    except Exception as e:
-        log.error(f"wallet charge failed (non-fatal): {e}")
-    return text
+    chain = _build_chain(allow_openai)
+    last_err: Optional[Exception] = None
+    for provider in chain:
+        try:
+            if provider == "gemini":
+                text, tokens = await _direct_call(f"gemini/{GEMINI_MODEL}", os.getenv("GEMINI_API_KEY"), system_message, prompt)
+            elif provider == "groq":
+                text, tokens = await _direct_call(f"groq/{GROQ_MODEL}", os.getenv("GROQ_API_KEY"), system_message, prompt)
+            elif provider == "openai":
+                text, tokens = await _direct_call(OPENAI_MODEL, os.getenv("OPENAI_API_KEY"), system_message, prompt)
+            else:
+                text, tokens = await _emergent_call(system_message, prompt, session_prefix)
+        except ai_wallet.InsufficientCredits:
+            raise
+        except Exception as e:  # noqa: BLE001
+            last_err = e
+            log.warning(f"metered {provider} call failed ({type(e).__name__}: {str(e)[:120]}); advancing chain")
+            continue
+
+        try:
+            await ai_wallet.charge(user_id, tokens=tokens, feature=feature, provider=provider)
+        except Exception as e:  # noqa: BLE001
+            log.error(f"wallet charge failed (non-fatal): {e}")
+        return text
+
+    raise last_err or RuntimeError("All LLM providers failed")
 
 
 def has_any_llm() -> bool:
-    return bool(os.getenv("GEMINI_API_KEY") or os.getenv("EMERGENT_LLM_KEY"))
+    return bool(
+        os.getenv("GEMINI_API_KEY") or os.getenv("GROQ_API_KEY")
+        or os.getenv("OPENAI_API_KEY") or os.getenv("EMERGENT_LLM_KEY")
+    )
