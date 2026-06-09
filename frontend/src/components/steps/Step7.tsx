@@ -490,7 +490,7 @@ export default function Step7() {
   const runBulkAssess = async (cells: { optionId: string; factorId: string }[], forceFill: boolean = false) => {
     setBulkAssessing(true);
     setBulkProgress({ done: 0, total: cells.length });
-    let done = 0, skipped = 0, errored = 0, ranOut = false, processed = 0;
+    let done = 0, skipped = 0, errored = 0, ranOut = false, aiDown = false, processed = 0;
     const CHUNK = 6;
     for (let i = 0; i < cells.length; i += CHUNK) {
       const slice = cells.slice(i, i + CHUNK);
@@ -510,6 +510,7 @@ export default function Step7() {
           else errored++;
         }
         if (data.out_of_credits) { ranOut = true; processed += slice.length; setBulkProgress({ done: Math.min(processed, cells.length), total: cells.length }); break; }
+        if (data.ai_unavailable) { aiDown = true; processed += slice.length; setBulkProgress({ done: Math.min(processed, cells.length), total: cells.length }); break; }
       } catch (e: any) {
         if (e?.response?.status === 402) { ranOut = true; break; }
         errored += slice.length;
@@ -526,6 +527,14 @@ export default function Step7() {
         { text: 'Not now', style: 'cancel' },
         { text: 'View wallet', onPress: () => router.push('/ai-wallet' as any) },
       ]);
+      return;
+    }
+    if (aiDown) {
+      showAlert(
+        'AI temporarily unavailable',
+        `Assessed ${done} cell(s), then the AI service stopped responding. This usually means the Universal LLM key balance/budget is exhausted. ` +
+        `Add balance (Profile → Universal Key → Add Balance) and try again — already-scored cells are saved.`,
+      );
       return;
     }
     const parts = [`Assessed ${done} cell${done !== 1 ? 's' : ''}`];

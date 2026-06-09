@@ -325,6 +325,21 @@ Full plan (Phases A–D) approved by user; all 11 backend tests + frontend e2e P
 - Pending follow-up: option 3 = LLM factor refinement (done as part of this) + headless/scraping API for
   JS-rendered retail (Amazon) — NOT yet wired; needed only for non-static sites.
 
+## "AI Assess All — 0 cells • N failed" diagnosis + clearer message — 9 Jun 2026 (verified)
+- **Root cause (confirmed via backend logs, funded wallet)**: the AI assessment LLM call fails with
+  `litellm.BadRequestError: Budget has been exceeded! ... Max budget: 0.4` (Emergent Universal LLM key
+  budget/balance exhausted). `ai_assess_factor` then raises 502 → the batch route marked each cell
+  `status:error` → the UI showed the confusing "N failed". This is NOT the app's in-app AI-wallet (that
+  path returns 402 → "Out of AI credits"); it's the underlying Universal LLM key balance.
+  → User fix: **Profile → Universal Key → Add Balance** (or enable auto-topup), then retry. In dev/preview
+  the sandbox key has a fixed $0.40 cap, so live AI calls 502 here regardless of in-app credits.
+- **UX fix**: `routes/decisions/assessment.py::md_ai_assess_batch` now returns `ai_unavailable: true` and
+  STOPS at the first 502 (no more burning through 30+ chunks with the same failure). `Step7.tsx`
+  `runBulkAssess` shows "AI temporarily unavailable — Universal LLM key balance may be exhausted; add
+  balance and retry (already-scored cells are saved)" instead of "N failed". Verified in dev: batch now
+  returns `ai_unavailable:true, results:0` and the UI message is actionable.
+- ⚠️ Redeploy jelcos.ai for the clearer message; the underlying remedy is topping up the Universal Key.
+
 ## Step-2 URL import → hierarchical + removed redundant assess banner — 9 Jun 2026 (curl-verified)
 - **FIX (Step 2 "Import from URL" now hierarchical)**: previously it used the FLAT parser
   (`merge_into_mydezider`, capped at 8 factors) so GSMArena gave ~8 flat factors ("Body · Weight").

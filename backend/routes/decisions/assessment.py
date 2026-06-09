@@ -235,6 +235,7 @@ async def md_ai_assess_batch(
 
     results: list = []
     out_of_credits = False
+    ai_unavailable = False
     for c in cells:
         oid = c.get("option_id"); fid = c.get("factor_id")
         factor = factors_by_id.get(fid); option = options_by_id.get(oid)
@@ -264,6 +265,13 @@ async def md_ai_assess_batch(
             if he.status_code == 402:
                 out_of_credits = True
                 break
+            # 502 = the underlying LLM service is unavailable (e.g. the Universal
+            # LLM key balance/budget is exhausted). It's systemic — stop here so we
+            # don't burn through the remaining chunks with the same failure, and
+            # surface a clear, actionable message to the client.
+            if he.status_code == 502:
+                ai_unavailable = True
+                break
             results.append({"option_id": oid, "factor_id": fid, "status": "error"}); continue
 
         pct, final_actual = _apply_assessment(factor, option, result)
@@ -281,4 +289,4 @@ async def md_ai_assess_batch(
                 "updated_at": datetime.now(timezone.utc),
             }},
         )
-    return {"results": results, "out_of_credits": out_of_credits}
+    return {"results": results, "out_of_credits": out_of_credits, "ai_unavailable": ai_unavailable}
