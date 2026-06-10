@@ -160,14 +160,15 @@ async def trap_voice_input(
     if not session:
         raise HTTPException(404, "Session not found")
 
-    content_type = audio.content_type or ""
+    # MediaRecorder sends e.g. "audio/webm;codecs=opus" — strip the params.
+    content_type = (audio.content_type or "").split(";")[0].strip()
     audio_format = ALLOWED_AUDIO_TYPES.get(content_type)
     if not audio_format:
         ext = (audio.filename or "").rsplit(".", 1)[-1].lower()
         ext_map = {"wav": "wav", "mp3": "mp3", "ogg": "ogg", "webm": "webm", "m4a": "m4a"}
         audio_format = ext_map.get(ext)
     if not audio_format:
-        raise HTTPException(400, "Unsupported audio format. Use WAV, MP3, OGG, or WEBM.")
+        audio_format = "webm"  # safest default for browser MediaRecorder; Whisper auto-detects
 
     audio_bytes = await audio.read()
     if len(audio_bytes) > 10 * 1024 * 1024:

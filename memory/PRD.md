@@ -325,6 +325,21 @@ Full plan (Phases A–D) approved by user; all 11 backend tests + frontend e2e P
 - Pending follow-up: option 3 = LLM factor refinement (done as part of this) + headless/scraping API for
   JS-rendered retail (Amazon) — NOT yet wired; needed only for non-static sites.
 
+## Voice transcription 500 fixed — Whisper (Groq→OpenAI) replaces Google STT — 10 Jun 2026 (tested)
+- **Bug**: EG-Trap "Voice Input" → 500 ("Transcription failed"). Root cause reproduced in dev:
+  the STT engine used Google's unofficial free STT (`SpeechRecognition`+`pydub`), which needs the
+  `flac` CLI (missing → uncaught `OSError` → **500**) and `ffmpeg` for webm. Only `ValueError` was caught.
+- **Fix** (`routes/social_learning/stt_engine.py`): `STTEngine.transcribe` now uses **litellm Whisper**
+  — `groq/whisper-large-v3-turbo` (free) PRIMARY → OpenAI `whisper-1` FALLBACK. Accepts wav/webm/mp3/m4a
+  **directly (no ffmpeg/flac/pydub)**. Raises `ValueError` (→ 400 "type instead") only when every provider
+  fails — never an uncaught 500. Benefits all callers (EG-Trap voice + social-learning upload).
+  Also hardened `trap_routes` content-type parsing to strip `;codecs=opus` and default to webm.
+- **Verified**: round-trip + `tests/test_stt_whisper.py` 2/2 pass — real harvard.wav transcribes
+  accurately via Groq free tier; no-provider → ValueError (not 500).
+- ⚠️ The user's `OPENAI_API_KEY` is currently **out of quota (429)** — OpenAI fallback (chat & Whisper)
+  won't work until they enable billing / the free data-sharing tier; Groq (free) is the working primary.
+- ⚠️ Redeploy jelcos.ai + set `GROQ_API_KEY` in prod .env for this to take effect there.
+
 ## Free-first multi-provider LLM chain + batched AI scoring + OpenAI consent — 9 Jun 2026 (tested iter97 + pytest)
 - **Why**: "AI Assess All" showed "0 cells • N failed" because the only LLM providers were
   Gemini (rate-limited/timeout in some envs) and the Emergent universal key (budget exhausted). Root
