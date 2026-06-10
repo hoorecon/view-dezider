@@ -110,10 +110,22 @@ export default function EGSessionScreen() {
   }
 
   const report = session.report?.report;
-  const trapA = session.trap_reflection?.ai_summary;
-  const loopR = session.loop_reflection?.ai_reframe_full;
-  const limR = session.limitation_reflection?.ai_summary;
-  const aimA = session.aim_reflection?.ai_analysis;
+  const trapRef = session.trap_reflection;
+  const loopRef = session.loop_reflection;
+  const limRef = session.limitation_reflection;
+  const aimRef = session.aim_reflection;
+  const trapA = trapRef?.ai_summary;
+  const loopR = loopRef?.ai_reframe_full;
+  const limR = limRef?.ai_summary;
+  const aimA = aimRef?.ai_analysis;
+  const hasContent = !!(trapRef || loopRef || limRef || aimRef || session.outlet_reflection || report);
+  const resumeRoutes: Record<string, string> = {
+    trap: `/tools/eg-trap?sessionId=${session.id}`,
+    loop: `/tools/eg-loop?sessionId=${session.id}`,
+    limitation: `/tools/eg-limitation?sessionId=${session.id}`,
+    outlet: `/tools/eg-outlet?sessionId=${session.id}`,
+    aim: `/tools/eg-aim?sessionId=${session.id}`,
+  };
 
   return (
     <SafeAreaView style={st.container} edges={['top']}>
@@ -160,6 +172,58 @@ export default function EGSessionScreen() {
                 <Text style={st.intensityNum}>{session.intensity_after || '-'}</Text>
                 <Text style={st.intensityLabel}>After</Text>
               </View>
+            </View>
+          )}
+
+          {/* What You Shared (captured inputs) */}
+          {trapRef && (trapRef.situation || trapRef.category || trapRef.looping_thought) ? (
+            <View style={st.insightCard} testID="session-trap-input">
+              <Text style={st.insightTitle}>What You Shared</Text>
+              {trapRef.situation ? (<><Text style={st.aLabel}>Situation</Text><Text style={st.aText}>{trapRef.situation}</Text></>) : null}
+              {trapRef.category ? (<><Text style={st.aLabel}>Life Area</Text><Text style={st.aText}>{trapRef.category}</Text></>) : null}
+              {typeof trapRef.intensity === 'number' ? (<><Text style={st.aLabel}>Intensity</Text><Text style={st.aText}>{trapRef.intensity}/10</Text></>) : null}
+              {trapRef.external_trigger ? (<><Text style={st.aLabel}>External Trigger</Text><Text style={st.aText}>{trapRef.external_trigger}</Text></>) : null}
+              {trapRef.internal_trigger ? (<><Text style={st.aLabel}>Internal Trigger</Text><Text style={st.aText}>{trapRef.internal_trigger}</Text></>) : null}
+              {trapRef.linking_meaning ? (<><Text style={st.aLabel}>Meaning You Linked</Text><Text style={st.aText}>{trapRef.linking_meaning}</Text></>) : null}
+              {trapRef.looping_thought ? (<><Text style={st.aLabel}>Looping Thought</Text><Text style={st.aText}>{trapRef.looping_thought}</Text></>) : null}
+            </View>
+          ) : null}
+
+          {loopRef && (loopRef.repeated_thought || loopRef.emotion || loopRef.fear) ? (
+            <View style={st.insightCard} testID="session-loop-input">
+              <Text style={st.insightTitle}>What You Shared{loopR ? ' (Loop)' : ''}</Text>
+              {loopRef.repeated_thought ? (<><Text style={st.aLabel}>Repeated Thought</Text><Text style={st.aText}>{loopRef.repeated_thought}</Text></>) : null}
+              {loopRef.emotion ? (<><Text style={st.aLabel}>Emotion</Text><Text style={st.aText}>{loopRef.emotion}</Text></>) : null}
+              {loopRef.repeat_count_today ? (<><Text style={st.aLabel}>Times Today</Text><Text style={st.aText}>{loopRef.repeat_count_today}</Text></>) : null}
+              {loopRef.fear ? (<><Text style={st.aLabel}>Underlying Fear</Text><Text style={st.aText}>{loopRef.fear}</Text></>) : null}
+              {loopRef.trying_to_solve ? (<><Text style={st.aLabel}>Trying to Solve</Text><Text style={st.aText}>{loopRef.trying_to_solve}</Text></>) : null}
+            </View>
+          ) : null}
+
+          {limRef && (limRef.limitation_statement || limRef.why_limited) ? (
+            <View style={st.insightCard} testID="session-lim-input">
+              <Text style={st.insightTitle}>What You Shared{limR ? ' (Limitation)' : ''}</Text>
+              {limRef.limitation_statement ? (<><Text style={st.aLabel}>Limitation</Text><Text style={st.aText}>{limRef.limitation_statement}</Text></>) : null}
+              {limRef.why_limited ? (<><Text style={st.aLabel}>Why You Feel Limited</Text><Text style={st.aText}>{limRef.why_limited}</Text></>) : null}
+              {limRef.origin ? (<><Text style={st.aLabel}>Origin</Text><Text style={st.aText}>{limRef.origin}</Text></>) : null}
+              {limRef.belief_duration ? (<><Text style={st.aLabel}>Belief Duration</Text><Text style={st.aText}>{limRef.belief_duration}</Text></>) : null}
+              {limRef.cost_of_limitation ? (<><Text style={st.aLabel}>Cost of This Limitation</Text><Text style={st.aText}>{limRef.cost_of_limitation}</Text></>) : null}
+            </View>
+          ) : null}
+
+          {/* Incomplete session: nothing captured yet */}
+          {!hasContent && (
+            <View style={st.emptyCard} testID="session-incomplete">
+              <Ionicons name="document-text-outline" size={40} color={COLORS.textMuted} />
+              <Text style={st.emptyTitle}>This session is incomplete</Text>
+              <Text style={st.emptySub}>You started this {session.session_type} session but did not record any reflections yet. Resume to continue where you left off.</Text>
+              <TouchableOpacity
+                style={st.resumeBtn}
+                testID="session-resume-btn"
+                onPress={() => router.push((resumeRoutes[session.session_type] || resumeRoutes.trap) as any)}>
+                <Ionicons name="play" size={16} color="#FFF" />
+                <Text style={st.resumeBtnText}>Resume Session</Text>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -261,7 +325,7 @@ export default function EGSessionScreen() {
                 </View>
               ))}
             </View>
-          ) : (
+          ) : hasContent ? (
             <TouchableOpacity style={st.generateBtn} onPress={handleGenerateReport} disabled={generatingReport}>
               {generatingReport ? (
                 <><ActivityIndicator color="#FFF" /><Text style={st.generateBtnText}>Generating Report...</Text></>
@@ -269,7 +333,7 @@ export default function EGSessionScreen() {
                 <><Ionicons name="sparkles" size={18} color="#FFF" /><Text style={st.generateBtnText}>Generate AI Breakthrough Report{reportEst ? ` · ~${reportEst} cr` : ''}</Text></>
               )}
             </TouchableOpacity>
-          )}
+          ) : null}
 
           {/* Commitments */}
           <View style={st.sectionHeader}>
@@ -407,4 +471,9 @@ const st = StyleSheet.create({
   subItem: { marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: COLORS.border },
   subHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
   subName: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary, flex: 1 },
+  emptyCard: { backgroundColor: '#FFF', borderRadius: 16, padding: 28, marginTop: 8, marginBottom: 16, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
+  emptyTitle: { fontSize: 16, fontWeight: '800', color: COLORS.textPrimary, marginTop: 12 },
+  emptySub: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center', marginTop: 8, lineHeight: 19 },
+  resumeBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F59E0B', borderRadius: 12, paddingVertical: 12, paddingHorizontal: 24, marginTop: 18 },
+  resumeBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
 });

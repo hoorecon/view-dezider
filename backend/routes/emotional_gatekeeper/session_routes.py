@@ -230,12 +230,28 @@ async def generate_report(session_id: str, user: dict = Depends(get_current_user
     trap = await db.trap_reflections.find_one({"session_id": session_id}, {"_id": 0})
     loop = await db.loop_reflections.find_one({"session_id": session_id}, {"_id": 0})
     limitation = await db.limitation_reflections.find_one({"session_id": session_id}, {"_id": 0})
+    aim = await db.aim_reflections.find_one({"session_id": session_id}, {"_id": 0})
+    outlet = await db.outlet_reflections.find_one({"session_id": session_id}, {"_id": 0})
     if trap:
         session_data["trap"] = trap
     if loop:
         session_data["loop"] = loop
     if limitation:
         session_data["limitation"] = limitation
+
+    # Guard: don't generate a (generic) report when the user hasn't recorded anything yet.
+    has_content = bool(
+        (trap and (trap.get("situation") or trap.get("ai_summary"))) or
+        (loop and (loop.get("repeated_thought") or loop.get("ai_reframe_full"))) or
+        (limitation and (limitation.get("limitation_statement") or limitation.get("ai_summary"))) or
+        (aim and (aim.get("addictions") or aim.get("irritations") or aim.get("ai_analysis"))) or
+        (outlet and outlet.get("ai_analysis"))
+    )
+    if not has_content:
+        raise HTTPException(status_code=400, detail={
+            "code": "no_reflection_data",
+            "message": "Complete at least one reflection (Trap, Loop, Limitation, or AIM) before generating a report.",
+        })
 
     try:
         report = await generate_breakthrough_report(session_data, user_id=user["user_id"], session_id=session_id)

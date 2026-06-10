@@ -141,5 +141,9 @@ async def loop_reframe(session_id: str, user: dict = Depends(get_current_user)):
             "updated_at": now,
         }}
     )
+    await db.breakthrough_sessions.update_one(
+        {"id": session_id, "user_id": user["user_id"]},
+        {"$set": {"status": "completed", "updated_at": now}}
+    )
 
     return {"session_id": session_id, "reframe": reframe}

@@ -547,3 +547,25 @@ Full plan (Phases A–D) approved by user; all 11 backend tests + frontend e2e P
   step change snaps to top. Smoke-verified screens load without errors.
 - NOTE: did NOT run full-flow testing agent to avoid spending the user's AI credits; bug 1 verified by
   direct render screenshot, bug 2 is a deterministic scroll reset.
+
+## Fork session — 10 Jun 2026 (ROOT CAUSE: empty draft sessions + generic reports)
+Investigation findings (user on PROD jelcos.ai → EC2 + separate prod Mongo; dev DB can't see prod data):
+- `POST /sessions` creates a session as **"draft"** the instant a tool opens; the CAPTURE step is what
+  creates the reflection doc + flips status to "in_progress". So a **"draft" session = opened but never
+  captured = genuinely empty** → detail page was blank. The user was clicking these empty drafts.
+- The "completed" session's report was full of generic "not yet recorded" text because the
+  **Breakthrough Report was generated on an EMPTY session**. Confirmed the report generator works:
+  on a session with real capture ("Missed a deadline / career") it returned a personalized report.
+Fixes (all verified in dev):
+- BACKEND: generate_report now returns **400 no_reflection_data** when the session has no
+  trap/loop/limitation/aim/outlet content → no more generic placeholder reports.
+- BACKEND: trap-analyze, loop-reframe, limitation-reframe now set session **status="completed"**
+  (previously only report-gen did) → analyzed flows now show "Completed" instead of draft/in_progress.
+- FRONTEND eg-session.tsx: renders **"What You Shared"** captured inputs (trap/loop/limitation) +
+  existing AI analysis cards; shows an **"incomplete session → Resume"** state (routes back into the
+  correct tool) for empty sessions; **hides** the Generate Report button when there's no content.
+- ⚠️ REQUIRES REDEPLOY to prod (Cloudflare frontend + EC2 backend). Existing old empty/generic prod
+  sessions stay as-is; new sessions behave correctly. Old generic reports can be regenerated on a
+  session that has real data.
+- FOLLOW-UP (not yet done): empty draft sessions still clutter the listing — consider lazy session
+  creation (create on first capture) or hiding empty drafts from the list.

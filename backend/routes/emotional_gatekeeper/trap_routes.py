@@ -143,6 +143,10 @@ async def trap_analyze(session_id: str, user: dict = Depends(get_current_user)):
         {"session_id": session_id, "user_id": user["user_id"]},
         {"$set": {"ai_summary": analysis, "updated_at": now}}
     )
+    await db.breakthrough_sessions.update_one(
+        {"id": session_id, "user_id": user["user_id"]},
+        {"$set": {"status": "completed", "updated_at": now}}
+    )
 
     return {"session_id": session_id, "analysis": analysis}
 
