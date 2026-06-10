@@ -41,6 +41,22 @@ export default function EGAimScreen() {
   const [irritations, setIrritations] = useState<Irritation[]>([]);
   const [analysis, setAnalysis] = useState<any>(null);
 
+  // Resume an in-progress/completed session: prefill entries and jump to insights if analyzed.
+  useEffect(() => {
+    if (!sessionId) return;
+    (async () => {
+      try {
+        const { data } = await api.get(`/emotional-gatekeeper/sessions/${sessionId}`);
+        const a = data?.aim_reflection;
+        if (!a) return;
+        if (Array.isArray(a.addictions)) setAddictions(a.addictions);
+        if (Array.isArray(a.irritations)) setIrritations(a.irritations);
+        if (a.ai_analysis) { setAnalysis(a.ai_analysis); setStep(1); }
+      } catch { /* ignore */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+
   // New addiction form
   const [addArea, setAddArea] = useState('');
   const [addName, setAddName] = useState('');

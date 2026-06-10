@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
+  TextInput, ActivityIndicator, KeyboardAvoidingView, Platform,
   Animated, Easing,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Alert } from '../../src/utils/crossAlert';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -61,6 +62,7 @@ const TIMER_DURATION = 300; // 5 minutes
 
 export default function EmotionalReceptionScreen() {
   const router = useRouter();
+  const goBack = () => { if (router.canGoBack?.()) router.back(); else router.replace('/tools/emotional-gatekeeper' as any); };
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
 
@@ -427,7 +429,7 @@ export default function EmotionalReceptionScreen() {
           <LinearGradient colors={['#0EA5E9', '#0284C7', '#0369A1']} style={s.header}>
             <TouchableOpacity style={s.backBtn} onPress={() => {
               if (timerActive) { abandonTimer(); return; }
-              router.back();
+              goBack();
             }}>
               <Ionicons name="arrow-back" size={22} color="#FFF" />
             </TouchableOpacity>

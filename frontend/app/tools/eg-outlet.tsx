@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
+  ActivityIndicator, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Alert } from '../../src/utils/crossAlert';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,6 +31,7 @@ interface Selection {
 
 export default function EGOutletScreen() {
   const router = useRouter();
+  const goBack = () => { if (router.canGoBack?.()) router.back(); else router.replace('/tools/emotional-gatekeeper' as any); };
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -37,6 +39,19 @@ export default function EGOutletScreen() {
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [selections, setSelections] = useState<Record<string, Selection>>({});
   const [analysis, setAnalysis] = useState<any>(null);
+
+  // Resume a completed session: show the saved analysis.
+  useEffect(() => {
+    if (!sessionId) return;
+    (async () => {
+      try {
+        const { data } = await api.get(`/emotional-gatekeeper/sessions/${sessionId}`);
+        const o = data?.outlet_reflection;
+        if (o?.ai_analysis) { setAnalysis(o.ai_analysis); setStep(1); }
+      } catch { /* ignore */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
 
   useEffect(() => {
     (async () => {
@@ -218,7 +233,7 @@ export default function EGOutletScreen() {
     <SafeAreaView style={s.container} edges={['top']}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <LinearGradient colors={['#10B981', '#059669']} style={s.header}>
-          <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
+          <TouchableOpacity style={s.backBtn} onPress={goBack}>
             <Ionicons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
           <Text style={s.headerTitle}>Emotional Outlet Analyzer</Text>

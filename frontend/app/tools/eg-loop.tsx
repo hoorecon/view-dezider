@@ -74,6 +74,30 @@ export default function EGLoopScreen() {
   // Step 3: Reframe
   const [reframe, setReframe] = useState<any>(null);
 
+  // Resume an in-progress/completed session: prefill inputs and jump to the right step.
+  useEffect(() => {
+    if (!sessionId) return;
+    (async () => {
+      try {
+        const { data } = await api.get(`/emotional-gatekeeper/sessions/${sessionId}`);
+        const l = data?.loop_reflection;
+        if (!l) return;
+        if (l.repeated_thought) setRepeatedThought(l.repeated_thought);
+        if (l.emotion) setEmotion(l.emotion);
+        if (typeof l.repeat_count_today === 'number') setRepeatCount(l.repeat_count_today);
+        if (l.fear) setFear(l.fear);
+        if (l.trying_to_solve) setTryingToSolve(l.trying_to_solve);
+        if (l.ai_recommended_method) setRecommendation(l.ai_recommended_method);
+        if (l.selected_method) setSelectedMethod(l.selected_method);
+        if (l.method_answers) setAnswers(l.method_answers);
+        const rf = l.ai_reframe_full;
+        if (rf && typeof rf === 'object') { setReframe(rf); setStep(2); }
+        else if (l.ai_recommended_method) setStep(1);
+      } catch { /* ignore */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+
   const loopRecEst = useAiEstimate('eg_loop_recommend');
   const loopRefEst = useAiEstimate('eg_loop_reframe');
 

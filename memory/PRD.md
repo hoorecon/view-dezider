@@ -605,3 +605,21 @@ TWO distinct issues found:
 - ⚠️ Needs frontend REDEPLOY (Cloudflare) to reach jelcos.ai.
 - FOLLOW-UP: resume-to-step + prefill is implemented for eg-limitation only. eg-trap / eg-loop / eg-aim
   still start at step 0 on re-open — replicate the same mount-load pattern there next.
+
+## Fork session — 11 Jun 2026 (PROACTIVE SWEEP: back + web-alert + resume across ALL EG screens)
+Completed the full sweep the user asked for (both items):
+1. BACK BUTTON + WEB-SAFE ALERTS on the 3 remaining screens (eg-advisor, eg-outlet,
+   eg-emotional-reception): added `goBack()` (canGoBack?back:replace dashboard) + swapped RN `Alert`
+   for the web-safe `crossAlert` shim. Now ALL 8 EG screens have both fixes (verified: no screen uses
+   raw `() => router.back()`; goBack present in all 8).
+2. RESUME-TO-STEP + PREFILL on eg-trap, eg-loop, eg-aim, eg-outlet (limitation already done): mount
+   useEffect GETs the session, prefills saved inputs, and jumps to the furthest completed step.
+   - Backend field names verified per tool (trap stores landscaping_pattern/linking_meaning/
+     looping_thought/ai_summary, not the granular scanning_* fields — fixed trap step-detection to use
+     real fields). loop: ai_recommended_method/selected_method/method_answers/ai_reframe_full. aim:
+     addictions/irritations/ai_analysis. outlet: ai_analysis.
+   - VERIFIED on web: limitation→"Classify & Explore", trap→"Looping"(step3), loop→inputs prefilled.
+   - KNOWN BACKEND GAP (pre-existing): trap landscaping endpoint stores `landscaping_pattern`=None and
+     drops the granular scanning_* inputs, so landscaping sub-answers aren't restorable on resume; step
+     detection still routes correctly via linking_meaning. Not fixed (out of scope).
+- ⚠️ Needs frontend REDEPLOY (Cloudflare) for all of the above to reach jelcos.ai.

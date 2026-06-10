@@ -58,6 +58,31 @@ export default function EGTrapScreen() {
   // Step 5: Analysis result
   const [analysis, setAnalysis] = useState<any>(null);
 
+  // Resume an in-progress/completed session: prefill inputs and jump to the furthest step.
+  useEffect(() => {
+    if (!sessionId) return;
+    (async () => {
+      try {
+        const { data } = await api.get(`/emotional-gatekeeper/sessions/${sessionId}`);
+        const t = data?.trap_reflection;
+        if (!t) return;
+        if (t.situation) setSituation(t.situation);
+        if (t.category) setCategory(t.category);
+        if (typeof t.intensity === 'number') setIntensity(t.intensity);
+        if (t.landscaping_pattern) setScanningFor(t.landscaping_pattern);
+        if (t.trigger_type) setTriggerType(t.trigger_type);
+        if (t.internal_trigger || t.external_trigger) setTriggerDesc(t.internal_trigger || t.external_trigger);
+        if (t.linking_meaning) setLinkingMeaning(t.linking_meaning);
+        if (t.looping_thought) setRepeatingThought(t.looping_thought);
+        if (t.ai_summary) { setAnalysis(t.ai_summary); setStep(4); }
+        else if (t.linking_meaning || t.looping_thought) setStep(3);
+        else if (t.landscaping_pattern) setStep(2);
+        else setStep(1);
+      } catch { /* ignore */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+
   const steps = [
     { title: 'Describe the Situation', icon: 'create' },
     { title: 'Landscaping', icon: 'search' },

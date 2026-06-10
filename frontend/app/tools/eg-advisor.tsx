@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, ActivityIndicator, Alert, Modal, Platform,
+  TextInput, ActivityIndicator, Modal, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Alert } from '../../src/utils/crossAlert';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -48,6 +49,7 @@ const CATEGORY_ICONS: Record<string, { name: string; bg: string }> = {
 
 export default function EGAdvisorScreen() {
   const router = useRouter();
+  const goBack = () => { if (router.canGoBack?.()) router.back(); else router.replace('/tools/emotional-gatekeeper' as any); };
   const [loading, setLoading] = useState(true);
   const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [affirmations, setAffirmations] = useState<AffirmationCategory[]>([]);
@@ -200,7 +202,7 @@ export default function EGAdvisorScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 60 }}>
         {/* Header */}
         <LinearGradient colors={['#10B981', '#059669', '#047857']} style={s.header}>
-          <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
+          <TouchableOpacity style={s.backBtn} onPress={goBack}>
             <Ionicons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
           <Text style={s.headerTitle}>Effective Outlets Advisor</Text>
