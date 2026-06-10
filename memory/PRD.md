@@ -494,3 +494,25 @@ Full plan (Phases A–D) approved by user; all 11 backend tests + frontend e2e P
   feature works best on comparison/aggregator pages with real HTML tables or JSON, or Screener CSV upload.
   A headless-browser/scraping-API integration would be required to reliably scrape those (not yet wired).
   ⚠️ Prod (jelcos.ai) must REDEPLOY for this fix to take effect.
+
+## Fork session — 10 Jun 2026 (EG AI credit estimate badges + >15cr confirm gate)
+- ✅ COMPLETED & TESTED (iter98 PASS): Finished wiring per-action AI credit estimate badges
+  ("· ~N cr") on every Emotional Gatekeeper AI button and the >15-credit confirmation gate.
+  Backend `GET /api/ai-wallet/estimates` (tokens_per_credit=100, confirm_threshold_credits=15)
+  and `src/utils/aiEstimates.ts` (useAiEstimate + confirmAiSpend) were pre-built; this session
+  completed the frontend rollout across all 5 screens:
+    - eg-trap: Get AI Awareness ~9cr
+    - eg-loop: Get AI Recommendation ~7cr · Generate Reframe ~10cr
+    - eg-limitation: Classify ~7cr · Generate Breakthrough ~10cr
+    - eg-aim: Analyze & Get Insights ~14cr
+    - eg-session: Generate AI Breakthrough Report ~20cr → ONLY this pops Alert.alert confirm (>15)
+  - Fixed a corrupted trailing line in eg-session.tsx (duplicate `ight: 18 },`) that broke parsing.
+  - Note: on react-native-web preview, Alert.alert is polyfilled; native iOS/Android shows real modal.
+- Backlog unchanged below.
+
+## Remaining backlog (post-fork, as of 10 Jun 2026)
+- P1: CLD Engine Phase B & C (Rules Engine + AI Suggestions)
+- P1: PRR Enhancement #4 & #5 (configurable timing fields + decision-linking bypass)
+- P1: DigiLocker eKYC Integration (needs sandbox credentials or mock-first)
+- P2: Webhook API Integration; Org-Type Master Migration
+- Refactor (P2): extract shared AI-execution/error hook from duplicated eg-*.tsx logic
