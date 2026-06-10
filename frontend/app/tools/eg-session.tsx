@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Alert, TextInput,
+  ActivityIndicator, TextInput,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,6 +13,7 @@ import { handleAiError } from '../../src/utils/aiErrors';
 import { formatAbsolute } from '../../src/utils/datetime';
 import { confirmAiSpend, useAiEstimate } from '../../src/utils/aiEstimates';
 import { AiCreditsBadge } from '../../src/components/AiCreditsBadge';
+import { Alert } from '../../src/utils/crossAlert';
 
 export default function EGSessionScreen() {
   const router = useRouter();

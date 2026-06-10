@@ -569,3 +569,23 @@ Fixes (all verified in dev):
   session that has real data.
 - FOLLOW-UP (not yet done): empty draft sessions still clutter the listing — consider lazy session
   creation (create on first capture) or hiding empty drafts from the list.
+
+## Fork session — 11 Jun 2026 ("Classify My Limitation nothing happens" → 503 + silent web alerts)
+TWO distinct issues found:
+1. ROOT of "nothing happens" on web (jelcos.ai): React Native `Alert.alert` is a NO-OP on
+   react-native-web, so the 503 error (and all validations + the >15cr confirm) were swallowed
+   silently. FIX: added `src/utils/crossAlert.ts` (window.alert/confirm on web, native Alert on
+   mobile) and repointed `Alert` imports in eg-trap/loop/limitation/aim/session + aiErrors.ts +
+   aiEstimates.ts. VERIFIED on web: clicking an AI button now fires a real browser dialog.
+2. The underlying 503 itself is a PROD CONFIG issue, NOT a code bug. classify works in dev (200):
+   the metered fallback chain Gemini→Groq→OpenAI→Emergent catches Gemini's 429 and advances to Groq.
+   The chain is built ONLY from keys present in the backend `.env`. On prod EC2 the `.env` is almost
+   certainly missing GROQ_API_KEY / OPENAI_API_KEY / EMERGENT_LLM_KEY (added this session in dev; .env
+   is not in git), so when Gemini rate-limits there's no fallback → 503 ai_unavailable.
+   ACTION FOR USER: add GEMINI_API_KEY, GROQ_API_KEY, OPENAI_API_KEY, EMERGENT_LLM_KEY to the EC2
+   backend `.env` and restart the backend. Optional model overrides: METERED_GEMINI_MODEL /
+   METERED_GROQ_MODEL / METERED_OPENAI_MODEL (defaults gemini-2.5-flash / llama-3.3-70b-versatile /
+   gpt-4o-mini).
+- Needs REDEPLOY of frontend (Cloudflare) for the alert fix + the EC2 .env keys for the 503 fix.
+- FOLLOW-UP: other EG screens (eg-outlet, eg-advisor, eg-emotional-reception) may still use RN Alert
+  directly — sweep them to crossAlert too if they show AI errors.

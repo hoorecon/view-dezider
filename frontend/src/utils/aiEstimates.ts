@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert } from './crossAlert';
 import api from './api';
 
 export type Estimates = {

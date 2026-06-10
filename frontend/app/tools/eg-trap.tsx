@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
+  TextInput, ActivityIndicator, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,6 +13,7 @@ import api from '../../src/utils/api';
 import { handleAiError } from '../../src/utils/aiErrors';
 import { confirmAiSpend, useAiEstimate } from '../../src/utils/aiEstimates';
 import { AiCreditsBadge } from '../../src/components/AiCreditsBadge';
+import { Alert } from '../../src/utils/crossAlert';
 
 const CATEGORIES = [
   'career', 'business', 'relationship', 'money', 'family',

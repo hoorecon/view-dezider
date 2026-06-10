@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
+  TextInput, ActivityIndicator, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,6 +14,7 @@ import api from '../../src/utils/api';
 import { handleAiError } from '../../src/utils/aiErrors';
 import { confirmAiSpend, useAiEstimate } from '../../src/utils/aiEstimates';
 import { AiCreditsBadge } from '../../src/components/AiCreditsBadge';
+import { Alert } from '../../src/utils/crossAlert';
 
 const LOOP_AUDIO_URL = 'https://customer-assets.emergentagent.com/job_a7a2d7ec-9ce2-470b-8ff8-d26638aa4277/artifacts/qgkdw529_Breaking%20the%20LOOP.mp3';
 
