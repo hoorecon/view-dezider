@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, KeyboardAvoidingView, Platform,
+  ActivityIndicator, KeyboardAvoidingView, Platform, Modal, TextInput, Linking,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Alert } from '../../src/utils/crossAlert';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,6 +11,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+
+const API_BASE = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
 const FREQ_OPTIONS = [
   { id: 'often', label: 'Often (6-7/wk)', color: '#EF4444' },
@@ -54,6 +57,54 @@ export default function EGOutletScreen() {
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [selections, setSelections] = useState<Record<string, Selection>>({});
   const [analysis, setAnalysis] = useState<any>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareChannel, setShareChannel] = useState<'email' | 'whatsapp'>('email');
+  const [shareTo, setShareTo] = useState('');
+  const [sharing, setSharing] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    if (!sessionId) return;
+    setDownloading(true);
+    try {
+      const token = await AsyncStorage.getItem('session_token');
+      const url = `${API_BASE}/api/emotional-gatekeeper/outlet/${sessionId}/report.pdf`;
+      if (Platform.OS === 'web' && token) {
+        const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        if (!r.ok) throw new Error(`${r.status}`);
+        const blob = await r.blob();
+        const w: any = (typeof window !== 'undefined') ? window : null;
+        if (w?.URL?.createObjectURL) {
+          const dl = w.URL.createObjectURL(blob);
+          const a = w.document.createElement('a');
+          a.href = dl; a.download = `outlet_analysis_${sessionId.slice(0, 8)}.pdf`;
+          w.document.body.appendChild(a); a.click();
+          w.document.body.removeChild(a); w.URL.revokeObjectURL(dl);
+        }
+      } else {
+        await Linking.openURL(`${url}?_=${Date.now()}`);
+      }
+    } catch { Alert.alert('Download failed', 'Please try again.'); }
+    finally { setDownloading(false); }
+  };
+
+  const handleShare = async () => {
+    const val = shareTo.trim();
+    if (!val) { Alert.alert('Required', shareChannel === 'email' ? 'Enter an email address.' : 'Enter a WhatsApp number with country code.'); return; }
+    setSharing(true);
+    try {
+      await api.post(`/emotional-gatekeeper/outlet/${sessionId}/share`, {
+        channel: shareChannel,
+        recipient_email: shareChannel === 'email' ? val : undefined,
+        recipient_phone: shareChannel === 'whatsapp' ? val : undefined,
+      });
+      setShareOpen(false); setShareTo('');
+      Alert.alert('Sent', `Your outlet report was shared via ${shareChannel === 'email' ? 'email' : 'WhatsApp'}.`);
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail?.message || 'Could not send. Please try again.';
+      Alert.alert('Share failed', msg);
+    } finally { setSharing(false); }
+  };
 
   // Resume a completed session: show the saved analysis.
   useEffect(() => {
@@ -136,16 +187,6 @@ export default function EGOutletScreen() {
         We&apos;ll reveal where your energy really goes.
       </Text>
 
-      {/* Legend */}
-      <View style={s.legendRow}>
-        {(['physical', 'mental', 'emotional', 'energy'] as const).map(n => (
-          <View key={n} style={s.legendItem}>
-            <View style={[s.legendDot, { backgroundColor: NATURE_COLORS[n] }]} />
-            <Text style={s.legendText}>{NATURE_LABELS[n]}</Text>
-          </View>
-        ))}
-      </View>
-
       {mixed.map(st => {
         const sel = selections[st.id];
         const c = NATURE_COLORS[st.nature] || '#6B7280';
@@ -163,6 +204,12 @@ export default function EGOutletScreen() {
             {sel && (
               <View style={s.selOptions}>
                 <View style={s.freqRow}>
+                  <TouchableOpacity
+                    testID={`outlet-compulsive-${st.id}`}
+                    style={[s.freqChip, sel.is_compulsive && { backgroundColor: '#DC2626', borderColor: '#DC2626' }]}
+                    onPress={() => toggleCompulsive(st.id)}>
+                    <Text style={[s.freqText, sel.is_compulsive && { color: '#FFF' }]}>Feels Compulsive</Text>
+                  </TouchableOpacity>
                   {FREQ_OPTIONS.map(f => (
                     <TouchableOpacity key={f.id}
                       testID={`outlet-freq-${st.id}-${f.id}`}
@@ -172,17 +219,20 @@ export default function EGOutletScreen() {
                     </TouchableOpacity>
                   ))}
                 </View>
-                <TouchableOpacity style={s.compRow} onPress={() => toggleCompulsive(st.id)}>
-                  <View style={[s.checkbox, sel.is_compulsive && { backgroundColor: '#EF4444', borderColor: '#EF4444' }]}>
-                    {sel.is_compulsive && <Ionicons name="checkmark" size={14} color="#FFF" />}
-                  </View>
-                  <Text style={s.compText}>Feels compulsive (can&apos;t stop easily)</Text>
-                </TouchableOpacity>
               </View>
             )}
           </View>
         );
       })}
+
+      <View style={s.legendRow}>
+        {(['physical', 'mental', 'emotional', 'energy'] as const).map(n => (
+          <View key={n} style={s.legendItem}>
+            <View style={[s.legendDot, { backgroundColor: NATURE_COLORS[n] }]} />
+            <Text style={s.legendText}>{NATURE_LABELS[n]}</Text>
+          </View>
+        ))}
+      </View>
 
       <TouchableOpacity testID="outlet-analyze-btn" style={s.nextBtn} onPress={handleAnalyze} disabled={submitting}>
         {submitting ? <ActivityIndicator color="#FFF" /> :
@@ -252,26 +302,34 @@ export default function EGOutletScreen() {
           </View>
         )}
 
-        {analysis?.replacement_activities?.length > 0 && (
-          <View style={s.swapSection}>
-            <Text style={s.swapHeader}>5 Healthier Swaps — same outlet, better effect</Text>
-            {analysis.replacement_activities.map((a: any, i: number) => {
-              const c = NATURE_COLORS[a.group] || '#6B7280';
-              return (
-                <View key={i} style={[s.swapCard, { borderLeftColor: c }]} testID={`outlet-swap-${i}`}>
+        {(['primary', 'secondary'] as const).map((tier) => {
+          const list = tier === 'primary' ? analysis?.primary_activities : analysis?.secondary_activities;
+          if (!list?.length) return null;
+          const mode = tier === 'primary' ? analysis?.primary_mode : analysis?.secondary_mode;
+          const c = NATURE_COLORS[mode] || '#6B7280';
+          return (
+            <View key={tier} style={s.swapSection} testID={`outlet-swaps-${tier}`}>
+              <Text style={s.swapHeader}>
+                {tier === 'primary' ? 'Primary' : 'Secondary'} Outlet Swaps · {NATURE_LABELS[mode] || ''}
+              </Text>
+              <Text style={s.swapSub}>
+                {list.length} constructive {NATURE_LABELS[mode]?.toLowerCase()} activities to channel this outlet better
+              </Text>
+              {list.map((a: any, i: number) => (
+                <View key={i} style={[s.swapCard, { borderLeftColor: c }]} testID={`outlet-swap-${tier}-${i}`}>
                   <View style={s.swapTopRow}>
                     <View style={[s.groupPill, { backgroundColor: c }]}>
-                      <Text style={s.groupPillText}>{NATURE_LABELS[a.group] || a.group}</Text>
+                      <Text style={s.groupPillText}>{NATURE_LABELS[a.group || mode] || mode}</Text>
                     </View>
                     <Text style={s.swapActivity}>{a.activity}</Text>
                   </View>
                   {a.replaces ? <Text style={s.swapReplaces}>Replaces: {a.replaces}</Text> : null}
                   {a.why ? <Text style={s.swapWhy}>{a.why}</Text> : null}
                 </View>
-              );
-            })}
-          </View>
-        )}
+              ))}
+            </View>
+          );
+        })}
 
         {analysis?.overall_pattern && (
           <View style={s.patternBox}>
@@ -283,9 +341,60 @@ export default function EGOutletScreen() {
         )}
       </LinearGradient>
 
+      <View style={s.actionRow}>
+        <TouchableOpacity testID="outlet-download-pdf-btn" style={[s.actionBtn, s.pdfBtn]} onPress={handleDownloadPdf} disabled={downloading}>
+          {downloading ? <ActivityIndicator color="#FFF" size="small" /> :
+            <><Ionicons name="download-outline" size={18} color="#FFF" /><Text style={s.actionBtnText}>Download PDF</Text></>}
+        </TouchableOpacity>
+        <TouchableOpacity testID="outlet-share-btn" style={[s.actionBtn, s.shareBtn]} onPress={() => setShareOpen(true)}>
+          <Ionicons name="share-social-outline" size={18} color="#FFF" /><Text style={s.actionBtnText}>Share</Text>
+        </TouchableOpacity>
+      </View>
+
       <TouchableOpacity testID="outlet-done-btn" style={s.doneBtn} onPress={() => router.push('/tools/emotional-gatekeeper' as any)}>
         <Text style={s.doneBtnText}>Back to Dashboard</Text>
       </TouchableOpacity>
+
+      <Modal visible={shareOpen} transparent animationType="fade" onRequestClose={() => setShareOpen(false)}>
+        <View style={s.modalOverlay}>
+          <View style={s.modalCard} testID="outlet-share-modal">
+            <Text style={s.modalTitle}>Share your Outlet Report</Text>
+            <Text style={s.modalSub}>Sends a JELCOS-branded PDF report.</Text>
+            <View style={s.channelRow}>
+              {(['email', 'whatsapp'] as const).map(ch => (
+                <TouchableOpacity key={ch}
+                  testID={`outlet-share-channel-${ch}`}
+                  style={[s.channelChip, shareChannel === ch && s.channelChipActive]}
+                  onPress={() => setShareChannel(ch)}>
+                  <Ionicons name={ch === 'email' ? 'mail-outline' : 'logo-whatsapp'} size={16}
+                    color={shareChannel === ch ? '#FFF' : '#059669'} />
+                  <Text style={[s.channelText, shareChannel === ch && { color: '#FFF' }]}>
+                    {ch === 'email' ? 'Email' : 'WhatsApp'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TextInput
+              testID="outlet-share-input"
+              style={s.input}
+              value={shareTo}
+              onChangeText={setShareTo}
+              placeholder={shareChannel === 'email' ? 'recipient@email.com' : '+91XXXXXXXXXX (with country code)'}
+              placeholderTextColor={COLORS.textMuted}
+              autoCapitalize="none"
+              keyboardType={shareChannel === 'email' ? 'email-address' : 'phone-pad'}
+            />
+            <View style={s.modalBtns}>
+              <TouchableOpacity testID="outlet-share-cancel" style={s.modalCancel} onPress={() => setShareOpen(false)}>
+                <Text style={s.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity testID="outlet-share-send" style={s.modalSend} onPress={handleShare} disabled={sharing}>
+                {sharing ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={s.modalSendText}>Send</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 
@@ -372,4 +481,27 @@ const s = StyleSheet.create({
 
   doneBtn: { alignItems: 'center', paddingVertical: 14, marginTop: 10 },
   doneBtnText: { fontSize: 14, fontWeight: '600', color: COLORS.textMuted },
+
+  swapSub: { fontSize: 11, color: COLORS.textMuted, marginTop: -6, marginBottom: 10 },
+
+  actionRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
+  actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, paddingVertical: 14 },
+  pdfBtn: { backgroundColor: '#1E40AF' },
+  shareBtn: { backgroundColor: '#059669' },
+  actionBtnText: { fontSize: 14, fontWeight: '700', color: '#FFF' },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 24 },
+  modalCard: { backgroundColor: '#FFF', borderRadius: 16, padding: 20 },
+  modalTitle: { fontSize: 17, fontWeight: '800', color: COLORS.textPrimary },
+  modalSub: { fontSize: 12, color: COLORS.textMuted, marginTop: 4, marginBottom: 14 },
+  channelRow: { flexDirection: 'row', gap: 10, marginBottom: 14 },
+  channelChip: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 12, paddingVertical: 10, borderWidth: 1.5, borderColor: '#059669', backgroundColor: '#FFF' },
+  channelChipActive: { backgroundColor: '#059669' },
+  channelText: { fontSize: 13, fontWeight: '700', color: '#059669' },
+  input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 12, fontSize: 14, color: COLORS.textPrimary, marginBottom: 16 },
+  modalBtns: { flexDirection: 'row', gap: 10 },
+  modalCancel: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border },
+  modalCancelText: { fontSize: 14, fontWeight: '600', color: COLORS.textSecondary },
+  modalSend: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 12, backgroundColor: '#059669' },
+  modalSendText: { fontSize: 14, fontWeight: '700', color: '#FFF' },
 });

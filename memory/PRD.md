@@ -654,3 +654,26 @@ Frontend (app/tools/eg-outlet.tsx — full rewrite):
   encouragement. Resume of completed session renders saved analysis.
 VERIFIED: curl e2e (37/37/21/5 breakdown, physical/mental modes, 5 same-group swaps) + web screenshots
 of both steps. NOTE: Metro runs in CI mode (reloads disabled) — must restart `expo` to rebundle FE edits.
+
+## Fork session — 10 Jun 2026 (Outlet Analyzer refinements + P0 session regression fix)
+P0 REGRESSION FIX: eg-session.tsx never rendered the OUTLET reflection (user saw an empty
+completed Outlet session). Added a "What You Shared (Outlets)" input card + "Your Outlet Profile"
+analysis card (modes, % breakdown, mode_insight, primary/secondary swaps, overall_pattern,
+encouragement) + an "Open Full Report (PDF & Share)" button. Trap/loop/limitation/aim sections
+untouched.
+Refinements (all tested):
+1. Color legend moved from the TOP of step 0 to just ABOVE the Reveal button (smaller font) so it
+   no longer spoils the surprise.
+2. "Feels Compulsive" is now the FIRST chip in each outlet's options row (before Often), not a
+   separate checkbox.
+3. AI suggestions split into 5 PRIMARY-group + 3 SECONDARY-group activities (no longer 5 mixed).
+   ai_engine.analyze_outlets returns primary_activities[5] + secondary_activities[3], each strictly
+   within that mode's Outlet Group. Frontend renders two grouped sections.
+4. Branded PDF + Share: new backend module outlet_report_routes.py —
+   GET /api/emotional-gatekeeper/outlet/{sid}/report.pdf (reuses decision_reports._build_pdf →
+   same JELCOS header/footer as MyDezider) and POST .../outlet/{sid}/share {channel,email/phone}
+   (email = branded HTML + PDF attachment via Resend; whatsapp = branded text via UltraMsg).
+   No L1/L2 paywall (Outlet is AI-credit metered). eg-outlet results page now has Download PDF +
+   Share buttons + a channel/recipient modal.
+VERIFIED: curl (5 physical + 3 mental swaps; PDF 200/valid 5-page; email share sent:true) + web
+screenshots (results grouped swaps, session-page inputs+analysis, compulsive-first chip).

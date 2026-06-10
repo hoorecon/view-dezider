@@ -23,6 +23,7 @@ from .trap_routes import router as trap_router
 from .loop_routes import router as loop_router
 from .limitation_routes import router as limitation_router
 from .outlet_aim_routes import router as outlet_aim_router
+from .outlet_report_routes import router as outlet_report_router
 from .advisor_routes import router as advisor_router
 
 router = APIRouter(prefix="/emotional-gatekeeper", tags=["Emotional Gatekeeper"])
@@ -32,6 +33,7 @@ router.include_router(trap_router)
 router.include_router(loop_router)
 router.include_router(limitation_router)
 router.include_router(outlet_aim_router)
+router.include_router(outlet_report_router)
 router.include_router(advisor_router)
 
 __all__ = ["router"]

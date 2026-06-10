@@ -308,16 +308,27 @@ Their UNHEALTHY/destructive selections (to be gently replaced):
 
 YOUR TASK:
 1. Write a warm, insightful interpretation of their Top-2 Outlet Modes (what it reveals about how they cope). Do NOT shame them.
-2. Suggest EXACTLY 5 constructive replacement activities. CRITICAL RULE: each suggested activity MUST stay within the SAME Outlet Group as the behavior it replaces (e.g., replace an unhealthy Physical habit with a healthy Physical activity; an unhealthy Mental habit with a healthy Mental activity). If the user has fewer than 5 unhealthy behaviors, fill the remaining slots with elevating activities inside their PRIMARY mode group.
+2. Suggest constructive replacement activities, split into TWO groups:
+   - "primary_activities": EXACTLY 5 activities, EVERY ONE inside the PRIMARY Outlet Group ({GROUP_LABEL.get(primary_mode, primary_mode or 'N/A')}). Do NOT use any other group here.
+   - "secondary_activities": EXACTLY 3 activities, EVERY ONE inside the SECONDARY Outlet Group ({GROUP_LABEL.get(secondary_mode, secondary_mode or 'N/A')}). Do NOT use any other group here.
+   For each activity, if it directly replaces one of the user's unhealthy behaviors in that same group, name it in "replaces"; otherwise set "replaces" to "Strengthens this outlet".
 
 Respond ONLY with valid JSON:
 {{
   "mode_insight": "<2-4 sentence personalized interpretation of their primary + secondary modes>",
-  "replacement_activities": [
+  "primary_activities": [
     {{
-      "activity": "<the constructive activity to adopt>",
-      "group": "<physical/mental/emotional/energy — MUST match the replaced behavior's group>",
-      "replaces": "<the user's behavior it replaces, or 'Strengthens your primary mode' if additive>",
+      "activity": "<constructive activity — MUST be in the PRIMARY group>",
+      "group": "{primary_mode}",
+      "replaces": "<user's behavior it replaces, or 'Strengthens this outlet'>",
+      "why": "<one personalized sentence on why this helps>"
+    }}
+  ],
+  "secondary_activities": [
+    {{
+      "activity": "<constructive activity — MUST be in the SECONDARY group>",
+      "group": "{secondary_mode}",
+      "replaces": "<user's behavior it replaces, or 'Strengthens this outlet'>",
       "why": "<one personalized sentence on why this helps>"
     }}
   ],

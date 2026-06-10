@@ -116,6 +116,8 @@ export default function EGSessionScreen() {
   const loopRef = session.loop_reflection;
   const limRef = session.limitation_reflection;
   const aimRef = session.aim_reflection;
+  const outletRef = session.outlet_reflection;
+  const outletA = outletRef?.ai_analysis;
   const trapA = trapRef?.ai_summary;
   const loopR = loopRef?.ai_reframe_full;
   const limR = limRef?.ai_summary;
@@ -308,6 +310,72 @@ export default function EGSessionScreen() {
                   {ir.constructive_response ? <Text style={st.aText}>Response: {ir.constructive_response}</Text> : null}
                 </View>
               ))}
+            </View>
+          )}
+
+          {/* Outlet Analyzer — inputs + AI analysis */}
+          {outletRef && outletRef.entries?.length ? (
+            <View style={st.insightCard} testID="session-outlet-input">
+              <Text style={st.insightTitle}>What You Shared (Outlets)</Text>
+              {outletRef.entries.map((e: any, i: number) => {
+                const NAT: Record<string, string> = { physical: 'Physical', mental: 'Mental', emotional: 'Emotional', energy: 'Energy' };
+                const FREQ: Record<string, string> = { often: 'Often', sometimes: 'Sometimes', rarely: 'Rarely', not_at_all: 'Not at all', prefer_not_say: 'Prefer not to say' };
+                return (
+                  <View key={i} style={st.subItem}>
+                    <Text style={[st.aText, { fontWeight: '700' }]}>{e.name}</Text>
+                    <Text style={st.aText}>
+                      {NAT[e.nature] || e.nature} · {FREQ[e.frequency] || e.frequency}{e.is_compulsive ? ' · Compulsive' : ''}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          ) : null}
+
+          {outletA && (
+            <View style={st.insightCard} testID="session-outlet-analysis">
+              <Text style={st.insightTitle}>Your Outlet Profile</Text>
+              {(outletA.primary_mode || outletA.secondary_mode) ? (() => {
+                const NAT: Record<string, string> = { physical: 'Physical', mental: 'Mental', emotional: 'Emotional', energy: 'Energy' };
+                return (
+                  <Text style={st.aText}>
+                    Primary: <Text style={{ fontWeight: '700', color: '#047857' }}>{NAT[outletA.primary_mode] || '—'}</Text>
+                    {outletA.secondary_mode ? <>  ·  Secondary: <Text style={{ fontWeight: '700', color: '#1D4ED8' }}>{NAT[outletA.secondary_mode]}</Text></> : null}
+                  </Text>
+                );
+              })() : null}
+              {outletA.group_breakdown ? (
+                <View style={{ marginTop: 6 }}>
+                  {['physical', 'mental', 'emotional', 'energy'].filter(k => k in outletA.group_breakdown).map(k => {
+                    const NAT: Record<string, string> = { physical: 'Physical', mental: 'Mental', emotional: 'Emotional', energy: 'Energy' };
+                    return <Text key={k} style={st.aText}>{NAT[k]}: {outletA.group_breakdown[k]}%</Text>;
+                  })}
+                </View>
+              ) : null}
+              {outletA.mode_insight ? (<View style={st.amberBox}><Ionicons name="bulb" size={18} color="#D97706" /><Text style={st.amberText}>{outletA.mode_insight}</Text></View>) : null}
+              {[['primary_activities', 'Primary Outlet Swaps'], ['secondary_activities', 'Secondary Outlet Swaps']].map(([key, label]) => (
+                outletA[key]?.length ? (
+                  <View key={key as string} style={{ marginTop: 8 }}>
+                    <Text style={st.aLabel}>{label as string}</Text>
+                    {outletA[key].map((a: any, i: number) => (
+                      <View key={i} style={st.subItem}>
+                        <Text style={[st.aText, { fontWeight: '700', color: '#047857' }]}>{a.activity}</Text>
+                        {a.replaces ? <Text style={st.aText}>Replaces: {a.replaces}</Text> : null}
+                        {a.why ? <Text style={st.aText}>{a.why}</Text> : null}
+                      </View>
+                    ))}
+                  </View>
+                ) : null
+              ))}
+              {outletA.overall_pattern ? (<View style={st.greenBox}><Ionicons name="leaf" size={16} color="#059669" /><Text style={st.greenText}>{outletA.overall_pattern}</Text></View>) : null}
+              {outletA.encouragement ? (<Text style={st.affirm}>&ldquo;{outletA.encouragement}&rdquo;</Text>) : null}
+              <TouchableOpacity
+                testID="session-outlet-open"
+                style={st.continueBtn}
+                onPress={() => router.push(`/tools/eg-outlet?sessionId=${session.id}` as any)}>
+                <Ionicons name="open-outline" size={16} color="#FFF" />
+                <Text style={st.continueBtnText}>Open Full Report (PDF & Share)</Text>
+              </TouchableOpacity>
             </View>
           )}
 
