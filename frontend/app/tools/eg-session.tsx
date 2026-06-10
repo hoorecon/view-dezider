@@ -110,6 +110,10 @@ export default function EGSessionScreen() {
   }
 
   const report = session.report?.report;
+  const trapA = session.trap_reflection?.ai_summary;
+  const loopR = session.loop_reflection?.ai_reframe_full;
+  const limR = session.limitation_reflection?.ai_summary;
+  const aimA = session.aim_reflection?.ai_analysis;
 
   return (
     <SafeAreaView style={st.container} edges={['top']}>
@@ -156,6 +160,88 @@ export default function EGSessionScreen() {
                 <Text style={st.intensityNum}>{session.intensity_after || '-'}</Text>
                 <Text style={st.intensityLabel}>After</Text>
               </View>
+            </View>
+          )}
+
+          {/* AI Analysis / Recommendations (captured during the session) */}
+          {trapA && (
+            <View style={st.insightCard} testID="session-trap-analysis">
+              <Text style={st.insightTitle}>AI Trap Awareness</Text>
+              {trapA.current_stage ? (
+                <View style={st.stageBadge}>
+                  <Text style={st.stageText}>Stage: {String(trapA.current_stage).toUpperCase()} ({Math.round((trapA.stage_confidence || 0) * 100)}%)</Text>
+                </View>
+              ) : null}
+              {trapA.main_trigger ? (<><Text style={st.aLabel}>Main Trigger</Text><Text style={st.aText}>{trapA.main_trigger}</Text></>) : null}
+              {trapA.repeated_thought ? (<><Text style={st.aLabel}>Repeated Thought</Text><Text style={st.aText}>{trapA.repeated_thought}</Text></>) : null}
+              {trapA.emotional_amplification_pattern ? (<><Text style={st.aLabel}>How Emotions Are Amplified</Text><Text style={st.aText}>{trapA.emotional_amplification_pattern}</Text></>) : null}
+              {trapA.false_problem_solving ? (<><Text style={st.aLabel}>False Problem-Solving</Text><Text style={st.aText}>{trapA.false_problem_solving}</Text></>) : null}
+              {trapA.awareness_statement ? (
+                <View style={st.amberBox}><Ionicons name="bulb" size={18} color="#D97706" /><Text style={st.amberText}>{trapA.awareness_statement}</Text></View>
+              ) : null}
+              {trapA.intervention ? (
+                <View style={st.greenBox}>
+                  <Ionicons name="medkit" size={18} color="#059669" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[st.greenText, { fontWeight: '700', marginBottom: 4 }]}>Recommended Intervention</Text>
+                    <Text style={st.greenText}>{trapA.intervention.description}</Text>
+                    {trapA.intervention.immediate_action ? <Text style={[st.greenText, { marginTop: 6, fontWeight: '600' }]}>→ {trapA.intervention.immediate_action}</Text> : null}
+                  </View>
+                </View>
+              ) : null}
+            </View>
+          )}
+
+          {loopR && (
+            <View style={st.insightCard} testID="session-loop-reframe">
+              <Text style={st.insightTitle}>Loop Reframe</Text>
+              {loopR.emotional_driver ? (<><Text style={st.aLabel}>Emotional Driver</Text><Text style={st.aText}>{loopR.emotional_driver}</Text></>) : null}
+              {loopR.method_applied ? (<><Text style={st.aLabel}>Method Applied</Text><Text style={st.aText}>{loopR.method_applied}</Text></>) : null}
+              {loopR.new_perspective ? (<View style={st.highlightBox}><Ionicons name="sparkles" size={18} color="#7C3AED" /><Text style={st.highlightText}>{loopR.new_perspective}</Text></View>) : null}
+              {loopR.calming_statement ? (<View style={st.greenBox}><Ionicons name="heart" size={16} color="#059669" /><Text style={st.greenText}>{loopR.calming_statement}</Text></View>) : null}
+              {loopR.immediate_action ? (<View style={st.amberBox}><Ionicons name="flash" size={16} color="#D97706" /><Text style={st.amberText}>{loopR.immediate_action}</Text></View>) : null}
+              {loopR.reflection_affirmation ? (<Text style={st.affirm}>&ldquo;{loopR.reflection_affirmation}&rdquo;</Text>) : null}
+            </View>
+          )}
+
+          {limR && (
+            <View style={st.insightCard} testID="session-limitation-breakthrough">
+              <Text style={st.insightTitle}>Limitation Breakthrough</Text>
+              {limR.old_belief ? (<><Text style={st.aLabel}>Old Belief</Text><Text style={st.oldBelief}>{limR.old_belief}</Text></>) : null}
+              {limR.new_belief ? (<><Text style={st.aLabel}>New Empowering Belief</Text><Text style={[st.aText, { color: '#047857', fontWeight: '600' }]}>{limR.new_belief}</Text></>) : null}
+              {limR.growth_evidence ? (<><Text style={st.aLabel}>Growth Evidence</Text><Text style={st.aText}>{limR.growth_evidence}</Text></>) : null}
+              {limR.reframe_statement ? (<View style={st.highlightBox}><Ionicons name="sparkles" size={18} color="#1D4ED8" /><Text style={[st.highlightText, { color: '#1E40AF' }]}>{limR.reframe_statement}</Text></View>) : null}
+              {limR.suggested_action ? (
+                <View style={st.amberBox}><Ionicons name="flash" size={16} color="#D97706" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.amberText}>{limR.suggested_action}</Text>
+                    {limR.action_timeline ? <Text style={[st.amberText, { fontSize: 11, marginTop: 2 }]}>Timeline: {limR.action_timeline}</Text> : null}
+                  </View>
+                </View>
+              ) : null}
+              {limR.affirmation ? (<Text style={[st.affirm, { color: '#1D4ED8' }]}>&ldquo;{limR.affirmation}&rdquo;</Text>) : null}
+            </View>
+          )}
+
+          {aimA && (
+            <View style={st.insightCard} testID="session-aim-analysis">
+              <Text style={st.insightTitle}>AIM Analysis</Text>
+              {aimA.self_awareness_summary ? (<View style={st.amberBox}><Ionicons name="bulb" size={18} color="#EA580C" /><Text style={st.amberText}>{aimA.self_awareness_summary}</Text></View>) : null}
+              {aimA.addictions_analysis?.map((a: any, i: number) => (
+                <View key={`a${i}`} style={st.subItem}>
+                  <View style={st.subHead}><Ionicons name="flame" size={14} color="#F97316" /><Text style={st.subName}>{a.addiction}</Text></View>
+                  {a.root_pattern ? <Text style={st.aText}>Root: {a.root_pattern}</Text> : null}
+                  {a.corrective_action ? <Text style={st.aText}>Action: {a.corrective_action}</Text> : null}
+                  {a.replacement_behavior ? <Text style={st.aText}>Replace with: {a.replacement_behavior}</Text> : null}
+                </View>
+              ))}
+              {aimA.irritations_analysis?.map((ir: any, i: number) => (
+                <View key={`i${i}`} style={st.subItem}>
+                  <View style={st.subHead}><Ionicons name="thunderstorm" size={14} color="#EF4444" /><Text style={st.subName}>{ir.irritation}</Text></View>
+                  {ir.reaction_pattern ? <Text style={st.aText}>Pattern: {ir.reaction_pattern}</Text> : null}
+                  {ir.constructive_response ? <Text style={st.aText}>Response: {ir.constructive_response}</Text> : null}
+                </View>
+              ))}
             </View>
           )}
 
@@ -304,4 +390,21 @@ const st = StyleSheet.create({
   journalForm: { backgroundColor: '#FFF', borderRadius: 12, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#FDE68A' },
   journalCard: { flexDirection: 'row', gap: 8, backgroundColor: '#FFFBEB', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#FDE68A' },
   journalText: { fontSize: 13, color: '#78350F', flex: 1, lineHeight: 18 },
+  insightCard: { backgroundColor: '#FFF', borderRadius: 16, padding: 18, marginBottom: 16, borderWidth: 1, borderColor: COLORS.border },
+  insightTitle: { fontSize: 16, fontWeight: '800', color: COLORS.textPrimary, marginBottom: 6 },
+  stageBadge: { alignSelf: 'flex-start', backgroundColor: '#D97706', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5, marginTop: 4, marginBottom: 4 },
+  stageText: { fontSize: 11, fontWeight: '700', color: '#FFF' },
+  aLabel: { fontSize: 11, fontWeight: '800', color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 12 },
+  aText: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 19, marginTop: 3 },
+  oldBelief: { fontSize: 13, color: '#DC2626', textDecorationLine: 'line-through', lineHeight: 19, marginTop: 3 },
+  highlightBox: { flexDirection: 'row', gap: 8, backgroundColor: '#F5F3FF', borderRadius: 10, padding: 12, marginTop: 12 },
+  highlightText: { flex: 1, fontSize: 13, color: '#5B21B6', lineHeight: 19, fontWeight: '600' },
+  greenBox: { flexDirection: 'row', gap: 8, backgroundColor: '#ECFDF5', borderRadius: 10, padding: 12, marginTop: 8 },
+  greenText: { flex: 1, fontSize: 13, color: '#065F46', lineHeight: 19 },
+  amberBox: { flexDirection: 'row', gap: 8, backgroundColor: '#FFFBEB', borderRadius: 10, padding: 12, marginTop: 8 },
+  amberText: { flex: 1, fontSize: 13, color: '#92400E', lineHeight: 19 },
+  affirm: { fontStyle: 'italic', textAlign: 'center', color: COLORS.primary, fontSize: 13, marginTop: 14, fontWeight: '600', lineHeight: 19 },
+  subItem: { marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: COLORS.border },
+  subHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  subName: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary, flex: 1 },
 });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
@@ -28,6 +28,8 @@ export default function EGAimScreen() {
   const router = useRouter();
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
   const [step, setStep] = useState(0);
+  const scrollRef = useRef<ScrollView>(null);
+  useEffect(() => { scrollRef.current?.scrollTo({ y: 0, animated: false }); }, [step]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [lifeAreas, setLifeAreas] = useState<{id: string; name: string}[]>([]);
@@ -292,7 +294,7 @@ export default function EGAimScreen() {
           <Text style={s.headerTitle}>AIM Manager</Text>
           <Text style={s.headerSub}>{step === 0 ? 'Log Addictions & Irritations' : 'AI Insights'}</Text>
         </LinearGradient>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+        <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
           {step === 0 && renderStep0()}
           {step === 1 && renderStep1()}
         </ScrollView>

@@ -534,3 +534,16 @@ Full plan (Phases A–D) approved by user; all 11 backend tests + frontend e2e P
   eg-session=reportEst(20). Default (no threshold) preserves prior <3cr behaviour for other screens.
   - Verified: balance 921 → plain purple pill; balance 5 (< trap cost 9) → amber "5.0 · Top up".
   - NOTE: Metro runs in CI mode (reloads disabled) — restart `expo` supervisor to serve latest bundle.
+
+## Fork session — 10 Jun 2026 (EG session-detail empty content + result scroll-to-top)
+- ✅ BUG 1 FIXED & VERIFIED: Opening a completed EG session from the listing (eg-session.tsx) showed
+  only the Generate-Report button + empty Commitments/Journal — the captured AI analysis was never
+  rendered though the backend already returns trap_reflection.ai_summary / loop_reflection.ai_reframe_full
+  / limitation_reflection.ai_summary / aim_reflection.ai_analysis. Added analysis render cards
+  (AI Trap Awareness, Loop Reframe, Limitation Breakthrough, AIM Analysis) mirroring the in-flow result
+  screens. Verified on admin-owned session EG-4B460C2111 — full Trap Awareness now displays.
+- ✅ BUG 2 FIXED: Result/step screens (eg-trap/loop/limitation/aim) didn't reset scroll position, so the
+  AI result rendered mid-page. Added a ScrollView ref + `useEffect(()=>scrollTo({y:0}),[step])` so every
+  step change snaps to top. Smoke-verified screens load without errors.
+- NOTE: did NOT run full-flow testing agent to avoid spending the user's AI credits; bug 1 verified by
+  direct render screenshot, bug 2 is a deterministic scroll reset.
