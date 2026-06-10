@@ -516,3 +516,11 @@ Full plan (Phases A–D) approved by user; all 11 backend tests + frontend e2e P
 - P1: DigiLocker eKYC Integration (needs sandbox credentials or mock-first)
 - P2: Webhook API Integration; Org-Type Master Migration
 - Refactor (P2): extract shared AI-execution/error hook from duplicated eg-*.tsx logic
+
+## Fork session — 10 Jun 2026 (EG header AI-credits balance pill)
+- ✅ COMPLETED & TESTED (iter99 PASS): Added an "AI Credits" balance pill to the header (top-right,
+  next to back button) of all 5 EG tool screens (eg-trap, eg-loop, eg-limitation, eg-aim, eg-session).
+  Reuses existing `src/components/AiCreditsBadge.tsx` (compact + autoRefresh) backed by
+  `useAiWalletStore` → GET /api/ai-wallet. Tapping opens /ai-wallet. Verified pill renders on every
+  screen with live balance, autoRefresh hits /api/ai-wallet per screen, and the "~N cr" estimate
+  badges still render (no regression). New header style `headerTop` (row, space-between) added to each.
