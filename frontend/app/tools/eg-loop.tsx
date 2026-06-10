@@ -224,7 +224,7 @@ export default function EGLoopScreen() {
       )}
       <TouchableOpacity style={s.nextBtn} onPress={handleMethodSubmit} disabled={loading || !selectedMethod}>
         {loading ? <ActivityIndicator color="#FFF" /> :
-          <><Text style={s.nextBtnText}>Generate Reframe</Text><Ionicons name="sparkles" size={18} color="#FFF" /></>}
+          <><Text style={s.nextBtnText}>Generate Reframe{loopRefEst ? ` · ~${loopRefEst} cr` : ''}</Text><Ionicons name="sparkles" size={18} color="#FFF" /></>}
       </TouchableOpacity>
     </View>
   );

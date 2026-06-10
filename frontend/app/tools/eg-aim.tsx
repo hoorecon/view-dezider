@@ -30,6 +30,7 @@ export default function EGAimScreen() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [lifeAreas, setLifeAreas] = useState<{id: string; name: string}[]>([]);
+  const aimEst = useAiEstimate('eg_aim_analyze');
 
   const [addictions, setAddictions] = useState<Addiction[]>([]);
   const [irritations, setIrritations] = useState<Irritation[]>([]);
@@ -85,6 +86,7 @@ export default function EGAimScreen() {
     if (addictions.length === 0 && irritations.length === 0) {
       Alert.alert('Required', 'Add at least one addiction or irritation.'); return;
     }
+    if (!(await confirmAiSpend('eg_aim_analyze', 'Aim analysis'))) return;
     setSubmitting(true);
     try {
       await api.post(`/emotional-gatekeeper/aim/${sessionId}/save`, { addictions, irritations });
@@ -221,7 +223,7 @@ export default function EGAimScreen() {
 
       <TouchableOpacity style={s.nextBtn} onPress={handleSaveAndAnalyze} disabled={submitting}>
         {submitting ? <ActivityIndicator color="#FFF" /> :
-          <><Text style={s.nextBtnText}>Analyze & Get Insights</Text><Ionicons name="analytics" size={18} color="#FFF" /></>}
+          <><Text style={s.nextBtnText}>Analyze & Get Insights{aimEst ? ` · ~${aimEst} cr` : ''}</Text><Ionicons name="analytics" size={18} color="#FFF" /></>}
       </TouchableOpacity>
     </View>
   );

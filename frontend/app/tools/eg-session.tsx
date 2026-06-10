@@ -11,6 +11,7 @@ import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import { handleAiError } from '../../src/utils/aiErrors';
 import { formatAbsolute } from '../../src/utils/datetime';
+import { confirmAiSpend, useAiEstimate } from '../../src/utils/aiEstimates';
 
 export default function EGSessionScreen() {
   const router = useRouter();
@@ -18,6 +19,7 @@ export default function EGSessionScreen() {
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [generatingReport, setGeneratingReport] = useState(false);
+  const reportEst = useAiEstimate('eg_breakthrough_report');
 
   // Commitment form
   const [showCommit, setShowCommit] = useState(false);
@@ -41,6 +43,7 @@ export default function EGSessionScreen() {
   useEffect(() => { fetchSession(); }, [sessionId]);
 
   const handleGenerateReport = async () => {
+    if (!(await confirmAiSpend('eg_breakthrough_report', 'Breakthrough report'))) return;
     setGeneratingReport(true);
     try {
       await api.post(`/emotional-gatekeeper/sessions/${sessionId}/report`);
@@ -173,7 +176,7 @@ export default function EGSessionScreen() {
               {generatingReport ? (
                 <><ActivityIndicator color="#FFF" /><Text style={st.generateBtnText}>Generating Report...</Text></>
               ) : (
-                <><Ionicons name="sparkles" size={18} color="#FFF" /><Text style={st.generateBtnText}>Generate AI Breakthrough Report</Text></>
+                <><Ionicons name="sparkles" size={18} color="#FFF" /><Text style={st.generateBtnText}>Generate AI Breakthrough Report{reportEst ? ` · ~${reportEst} cr` : ''}</Text></>
               )}
             </TouchableOpacity>
           )}

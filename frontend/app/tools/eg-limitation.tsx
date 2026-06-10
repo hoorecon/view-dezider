@@ -165,7 +165,7 @@ export default function EGLimitationScreen() {
         value={cost} onChangeText={setCost} placeholderTextColor={COLORS.textMuted} />
       <TouchableOpacity style={s.nextBtn} onPress={handleCapture} disabled={loading}>
         {loading ? <ActivityIndicator color="#FFF" /> :
-          <><Text style={s.nextBtnText}>Classify My Limitation</Text><Ionicons name="bulb" size={18} color="#FFF" /></>}
+          <><Text style={s.nextBtnText}>Classify My Limitation{limClsEst ? ` · ~${limClsEst} cr` : ''}</Text><Ionicons name="bulb" size={18} color="#FFF" /></>}
       </TouchableOpacity>
     </View>
   );
@@ -219,7 +219,7 @@ export default function EGLimitationScreen() {
       )}
       <TouchableOpacity style={s.nextBtn} onPress={handleFlow} disabled={loading || !selectedCat}>
         {loading ? <ActivityIndicator color="#FFF" /> :
-          <><Text style={s.nextBtnText}>Generate Breakthrough</Text><Ionicons name="sparkles" size={18} color="#FFF" /></>}
+          <><Text style={s.nextBtnText}>Generate Breakthrough{limRefEst ? ` · ~${limRefEst} cr` : ''}</Text><Ionicons name="sparkles" size={18} color="#FFF" /></>}
       </TouchableOpacity>
     </View>
   );
