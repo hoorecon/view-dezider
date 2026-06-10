@@ -11,6 +11,7 @@ import { COLORS } from '../../src/constants/colors';
 import { VoiceInput } from '../../src/components/VoiceInput';
 import { AudioGuidePlayer } from '../../src/components/AudioGuidePlayer';
 import api from '../../src/utils/api';
+import { handleAiError } from '../../src/utils/aiErrors';
 
 const LIMITATION_AUDIO_URL = 'https://customer-assets.emergentagent.com/job_a7a2d7ec-9ce2-470b-8ff8-d26638aa4277/artifacts/qrq3iqkh_Breaking%20the%20LIMITATIONS.mp3';
 
@@ -79,7 +80,7 @@ export default function EGLimitationScreen() {
         setSelectedCat(res.data.classification.category);
       }
       setStep(1);
-    } catch (err) { Alert.alert('Error', 'Failed. Try again.'); }
+    } catch (err) { await handleAiError(err, { router, retry: handleCapture }); }
     finally { setLoading(false); }
   };
 
@@ -92,7 +93,7 @@ export default function EGLimitationScreen() {
       const res = await api.post(`/emotional-gatekeeper/limitation/${sessionId}/reframe`);
       setReframe(res.data.reframe);
       setStep(2);
-    } catch (err) { Alert.alert('Error', 'Reframe failed.'); }
+    } catch (err) { await handleAiError(err, { router, retry: handleFlow }); }
     finally { setLoading(false); }
   };
 

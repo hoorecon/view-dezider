@@ -1,33 +1,68 @@
 """Emotional Gatekeeper — AI Engine
 AI analysis for trap detection, loop recommendation, limitation classification,
 outlet analysis, and breakthrough report generation.
+
+All calls are METERED per-user (and tagged per session) via core.ai_metering,
+so they: gate on the AI wallet, run the free-first provider chain
+(Gemini → Groq → OpenAI[consent] → Emergent), charge the user's wallet, and
+surface actionable errors (402 insufficient_credits / 503 ai_unavailable).
 """
 
 import os
-import uuid
 import json
 import logging
 
+from fastapi import HTTPException
+
+from core import ai_metering, ai_wallet
+
 logger = logging.getLogger(__name__)
 
+# Kept for backward-compatible imports + a soft "is anything configured" gate.
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
 
-
-async def _call_llm(prompt: str, system_msg: str = "") -> str:
-    """Call GPT-4.1-mini via Emergent LLM."""
-    from core.llm_compat import LlmChat, UserMessage  # provider-agnostic shim (Emergent | direct via litellm)
-    chat = LlmChat(
-        api_key=EMERGENT_LLM_KEY,
-        session_id=f"eg_{uuid.uuid4().hex[:8]}",
-        system_message=system_msg or "You are a compassionate decision coach and emotional intelligence assistant for View Dezider. You speak in a wise, practical, emotionally safe, direct, non-judgmental, and empowering tone. You are NOT a therapist. You are a conscious decision coach."
-    ).with_model("openai", "gpt-4.1-mini")
-    response = await chat.send_message(UserMessage(text=prompt))
-    return response.strip()
+_DEFAULT_SYS = (
+    "You are a compassionate decision coach and emotional intelligence assistant "
+    "for View Dezider. You speak in a wise, practical, emotionally safe, direct, "
+    "non-judgmental, and empowering tone. You are NOT a therapist. You are a "
+    "conscious decision coach."
+)
 
 
-async def _call_llm_json(prompt: str, system_msg: str = "") -> dict:
+async def _call_llm(prompt: str, system_msg: str = "", *,
+                    user_id: str, feature: str, session_id: str = "") -> str:
+    """Metered LLM call. Raises HTTPException(402 insufficient_credits /
+    503 ai_unavailable) so routes can surface the right prompt to the user."""
+    try:
+        text = await ai_metering.metered_chat(
+            user_id,
+            system_message=system_msg or _DEFAULT_SYS,
+            prompt=prompt,
+            feature=feature,
+            session_prefix=session_id or feature,
+            session_id=session_id,
+        )
+    except ai_wallet.InsufficientCredits:
+        raise HTTPException(status_code=402, detail={
+            "code": "insufficient_credits",
+            "message": "You're out of AI credits. Top up your AI Wallet to continue.",
+        })
+    except HTTPException:
+        raise
+    except Exception as e:  # every provider in the chain failed
+        logger.warning(f"EG AI ({feature}) unavailable: {type(e).__name__}: {str(e)[:160]}")
+        raise HTTPException(status_code=503, detail={
+            "code": "ai_unavailable",
+            "message": "AI is temporarily unavailable — the free quotas and your wallet may be "
+                       "exhausted. Top up your AI Wallet, or enable OpenAI in AI Wallet settings.",
+        })
+    return (text or "").strip()
+
+
+async def _call_llm_json(prompt: str, system_msg: str = "", *,
+                         user_id: str, feature: str, session_id: str = "") -> dict:
     """Call LLM and parse JSON response."""
-    text = await _call_llm(prompt, system_msg)
+    text = await _call_llm(prompt, system_msg, user_id=user_id, feature=feature, session_id=session_id)
     if text.startswith("```"):
         text = text.split("```")[1]
         if text.startswith("json"):
@@ -47,7 +82,7 @@ async def _call_llm_json(prompt: str, system_msg: str = "") -> dict:
 # TRAP ANALYSIS
 # ============================================================
 
-async def analyze_trap(trap_data: dict) -> dict:
+async def analyze_trap(trap_data: dict, *, user_id: str, session_id: str = "") -> dict:
     """Analyze trap data and generate awareness summary."""
     prompt = f"""Analyze this mental trap situation using the 3-stage Trap framework:
 - **Landscaping**: Mind scanning for issues/risks without urgency
@@ -88,14 +123,14 @@ Respond ONLY with valid JSON:
   }},
   "recommended_next": "<break_loop/ground/separate_trigger>"
 }}"""
-    return await _call_llm_json(prompt)
+    return await _call_llm_json(prompt, user_id=user_id, feature="eg_trap_analyze", session_id=session_id)
 
 
 # ============================================================
 # LOOP ANALYSIS
 # ============================================================
 
-async def recommend_loop_method(loop_data: dict) -> dict:
+async def recommend_loop_method(loop_data: dict, *, user_id: str, session_id: str = "") -> dict:
     """AI recommends the best loop-breaking method."""
     prompt = f"""A user is stuck in a mental loop. Based on their situation, recommend the BEST loop-breaking method.
 
@@ -119,10 +154,11 @@ Respond ONLY with valid JSON:
   "alternative_method": "<second best method>",
   "alternative_reason": "<why the alternative could also help>"
 }}"""
-    return await _call_llm_json(prompt)
+    return await _call_llm_json(prompt, user_id=user_id, feature="eg_loop_recommend", session_id=session_id)
 
 
-async def generate_loop_reframe(loop_data: dict, method_data: dict) -> dict:
+async def generate_loop_reframe(loop_data: dict, method_data: dict, *,
+                                user_id: str, session_id: str = "") -> dict:
     """Generate the loop reframe summary after method completion."""
     method_names = {
         "i_dont_know": "I Don't Know",
@@ -161,14 +197,14 @@ Respond ONLY with valid JSON:
   "deeper_limitation_detected": <true/false>,
   "limitation_hint": "<if true, what deeper limitation may exist>"
 }}"""
-    return await _call_llm_json(prompt)
+    return await _call_llm_json(prompt, user_id=user_id, feature="eg_loop_reframe", session_id=session_id)
 
 
 # ============================================================
 # LIMITATION ANALYSIS
 # ============================================================
 
-async def classify_limitation(data: dict) -> dict:
+async def classify_limitation(data: dict, *, user_id: str, session_id: str = "") -> dict:
     """AI classifies the limitation category."""
     prompt = f"""Classify this limitation into one of 4 categories:
 1. "past_self" — Old failures define present capability
@@ -190,10 +226,11 @@ Respond ONLY with valid JSON:
   "reasoning": "<why this category fits — personalized, 2-3 sentences>",
   "hidden_assumption": "<the hidden assumption driving this limitation>"
 }}"""
-    return await _call_llm_json(prompt)
+    return await _call_llm_json(prompt, user_id=user_id, feature="eg_limitation_classify", session_id=session_id)
 
 
-async def generate_limitation_reframe(data: dict, category: str, flow_answers: dict) -> dict:
+async def generate_limitation_reframe(data: dict, category: str, flow_answers: dict, *,
+                                      user_id: str, session_id: str = "") -> dict:
     """Generate reframe based on limitation category and flow answers."""
     category_prompts = {
         "past_self": "Apply the principle: 'I failed before' becomes 'I have grown since then.' Compare old vs current capability.",
@@ -225,14 +262,15 @@ Respond ONLY with valid JSON:
   "action_timeline": "<when to take this action>",
   "affirmation": "<personalized affirmation>"
 }}"""
-    return await _call_llm_json(prompt)
+    return await _call_llm_json(prompt, user_id=user_id, feature="eg_limitation_reframe", session_id=session_id)
 
 
 # ============================================================
 # OUTLET ANALYZER
 # ============================================================
 
-async def analyze_outlets(entries: list, user_context: str = "") -> dict:
+async def analyze_outlets(entries: list, user_context: str = "", *,
+                          user_id: str, session_id: str = "") -> dict:
     """Analyze emotional outlets and recommend constructive alternatives of the SAME nature type."""
     entries_text = ""
     for e in entries:
@@ -285,14 +323,15 @@ Respond ONLY with valid JSON:
     "energy": <1-10>
   }}
 }}"""
-    return await _call_llm_json(prompt)
+    return await _call_llm_json(prompt, user_id=user_id, feature="eg_outlet_analyze", session_id=session_id)
 
 
 # ============================================================
 # AIM ANALYSIS
 # ============================================================
 
-async def analyze_aim(addictions: list, irritations: list) -> dict:
+async def analyze_aim(addictions: list, irritations: list, *,
+                      user_id: str, session_id: str = "") -> dict:
     """Analyze addictions and irritations, suggest corrective actions."""
     add_text = ""
     for a in addictions:
@@ -338,14 +377,15 @@ Respond ONLY with valid JSON:
     "<priority 3>"
   ]
 }}"""
-    return await _call_llm_json(prompt)
+    return await _call_llm_json(prompt, user_id=user_id, feature="eg_aim_analyze", session_id=session_id)
 
 
 # ============================================================
 # BREAKTHROUGH REPORT
 # ============================================================
 
-async def generate_breakthrough_report(session_data: dict) -> dict:
+async def generate_breakthrough_report(session_data: dict, *,
+                                        user_id: str, session_id: str = "") -> dict:
     """Generate the full 11-section AI Breakthrough Report."""
     prompt = f"""Generate a comprehensive Breakthrough Report for this introspection session.
 
@@ -374,4 +414,4 @@ Respond ONLY with valid JSON:
   "breakthrough_score": <1-10 how significant this breakthrough is>,
   "follow_up_recommended": "<solution_finder/ctt_task/journal/none>"
 }}"""
-    return await _call_llm_json(prompt)
+    return await _call_llm_json(prompt, user_id=user_id, feature="eg_breakthrough_report", session_id=session_id)

@@ -68,10 +68,12 @@ async def loop_recommend(session_id: str, user: dict = Depends(get_current_user)
         raise HTTPException(404, "Loop reflection not found. Complete capture first.")
 
     try:
-        recommendation = await recommend_loop_method(loop)
+        recommendation = await recommend_loop_method(loop, user_id=user["user_id"], session_id=session_id)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Loop recommendation failed: {e}")
-        raise HTTPException(500, f"AI recommendation failed: {str(e)}")
+        raise HTTPException(502, detail={"code": "ai_error", "message": "AI recommendation failed. Please try again."})
 
     now = datetime.now(timezone.utc).isoformat()
     await db.loop_reflections.update_one(
@@ -120,10 +122,12 @@ async def loop_reframe(session_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(400, "Please select and complete a loop-breaking method first.")
 
     try:
-        reframe = await generate_loop_reframe(loop, loop)
+        reframe = await generate_loop_reframe(loop, loop, user_id=user["user_id"], session_id=session_id)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Loop reframe failed: {e}")
-        raise HTTPException(500, f"AI reframe generation failed: {str(e)}")
+        raise HTTPException(502, detail={"code": "ai_error", "message": "AI reframe failed. Please try again."})
 
     now = datetime.now(timezone.utc).isoformat()
     await db.loop_reflections.update_one(

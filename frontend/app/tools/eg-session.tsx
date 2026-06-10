@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import { handleAiError } from '../../src/utils/aiErrors';
 import { formatAbsolute } from '../../src/utils/datetime';
 
 export default function EGSessionScreen() {
@@ -44,7 +45,7 @@ export default function EGSessionScreen() {
     try {
       await api.post(`/emotional-gatekeeper/sessions/${sessionId}/report`);
       await fetchSession();
-    } catch (err) { Alert.alert('Error', 'Report generation failed.'); }
+    } catch (err) { await handleAiError(err, { router, retry: handleGenerateReport }); }
     finally { setGeneratingReport(false); }
   };
 
@@ -126,6 +127,16 @@ export default function EGSessionScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
         <View style={st.content}>
+          {/* Per-session AI spend */}
+          {(session.ai_cost?.credits || 0) > 0 && (
+            <View style={st.aiCostRow} testID="session-ai-cost">
+              <Ionicons name="sparkles" size={14} color="#7C3AED" />
+              <Text style={st.aiCostText}>
+                AI used this session: {session.ai_cost.credits} credit{session.ai_cost.credits === 1 ? '' : 's'}
+                {session.ai_cost.calls ? ` • ${session.ai_cost.calls} call${session.ai_cost.calls === 1 ? '' : 's'}` : ''}
+              </Text>
+            </View>
+          )}
           {/* Intensity */}
           {(session.intensity_before || session.intensity_after) && (
             <View style={st.intensityRow}>
@@ -250,6 +261,8 @@ const st = StyleSheet.create({
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   statusText: { fontSize: 10, fontWeight: '700', color: '#FFF', textTransform: 'uppercase' },
   content: { padding: 16 },
+  aiCostRow: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F5F3FF', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 12, borderWidth: 1, borderColor: '#E9D5FF' },
+  aiCostText: { fontSize: 12, fontWeight: '600', color: '#6D28D9' },
   intensityRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20, backgroundColor: '#FFF', borderRadius: 14, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: COLORS.border },
   intensityItem: { alignItems: 'center' },
   intensityNum: { fontSize: 28, fontWeight: '800', color: COLORS.textPrimary },

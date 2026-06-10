@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from core.database import db
+from core import ai_wallet
 from routes.auth_routes import get_current_user
 
 from .models import (
@@ -95,6 +96,8 @@ async def get_session(session_id: str, user: dict = Depends(get_current_user)):
     session["commitments"] = commitments
     session["journal"] = journal
     session["report"] = report
+    # Per-session AI spend (credits + call count) for the "AI used this session" UI.
+    session["ai_cost"] = await ai_wallet.session_cost(user["user_id"], session_id)
 
     return session
 
@@ -235,10 +238,12 @@ async def generate_report(session_id: str, user: dict = Depends(get_current_user
         session_data["limitation"] = limitation
 
     try:
-        report = await generate_breakthrough_report(session_data)
+        report = await generate_breakthrough_report(session_data, user_id=user["user_id"], session_id=session_id)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Report generation failed: {e}")
-        raise HTTPException(500, f"AI report generation failed: {str(e)}")
+        raise HTTPException(502, detail={"code": "ai_error", "message": "AI report generation failed. Please try again."})
 
     now = datetime.now(timezone.utc).isoformat()
     report_doc = {

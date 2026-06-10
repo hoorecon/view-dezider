@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, ActivityIndicator, Alert,
@@ -42,6 +42,28 @@ export default function EmotionalGatekeeperScreen() {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Session history filters (expand "Recent Sessions" inline).
+  const [statusFilter, setStatusFilter] = useState<'all' | 'in_progress' | 'completed'>('all');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [filtered, setFiltered] = useState<any[] | null>(null);
+  const [filterLoading, setFilterLoading] = useState(false);
+  const filtersActive = statusFilter !== 'all' || typeFilter !== 'all';
+
+  const fetchFiltered = useCallback(async () => {
+    if (statusFilter === 'all' && typeFilter === 'all') { setFiltered(null); return; }
+    setFilterLoading(true);
+    try {
+      const params: string[] = ['limit=50'];
+      if (statusFilter !== 'all') params.push(`status=${statusFilter}`);
+      if (typeFilter !== 'all') params.push(`session_type=${typeFilter}`);
+      const res = await api.get(`/emotional-gatekeeper/sessions?${params.join('&')}`);
+      setFiltered(res.data.sessions || []);
+    } catch { setFiltered([]); }
+    finally { setFilterLoading(false); }
+  }, [statusFilter, typeFilter]);
+
+  useEffect(() => { fetchFiltered(); }, [fetchFiltered]);
 
   const fetchDashboard = async () => {
     try {
@@ -224,30 +246,68 @@ export default function EmotionalGatekeeperScreen() {
             </>
           )}
 
-          {/* Recent Sessions */}
-          {(dashboard?.recent_sessions?.length || 0) > 0 && (
+          {/* Sessions (filterable history) */}
+          {((dashboard?.recent_sessions?.length || 0) > 0 || filtersActive) && (
             <>
-              <Text style={styles.sectionTitle}>Recent Sessions</Text>
-              {dashboard!.recent_sessions.map((s: any) => (
-                <TouchableOpacity
-                  key={s.id}
-                  style={styles.sessionCard}
-                  onPress={() => router.push(`/tools/eg-session?sessionId=${s.id}` as any)}
-                >
-                  <View style={[styles.sessionTypeBadge, {
-                    backgroundColor: tools.find(t => t.id === s.session_type)?.colors[0] || EG_COLORS.amber,
-                  }]}>
-                    <Text style={styles.sessionTypeTxt}>{s.session_type?.toUpperCase()}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.sessionTitle}>{s.title}</Text>
-                    <Text style={styles.sessionMeta}>
-                      {s.status} • {formatAbsolute(s.created_at)}
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
-                </TouchableOpacity>
-              ))}
+              <Text style={styles.sectionTitle}>Sessions</Text>
+
+              <View style={styles.filterRow}>
+                {([['all', 'All'], ['in_progress', 'In progress'], ['completed', 'Completed']] as const).map(([v, label]) => (
+                  <TouchableOpacity
+                    key={v}
+                    testID={`eg-filter-status-${v}`}
+                    style={[styles.filterChip, statusFilter === v && styles.filterChipActive]}
+                    onPress={() => setStatusFilter(v)}
+                  >
+                    <Text style={[styles.filterChipTxt, statusFilter === v && styles.filterChipTxtActive]}>{label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.filterRow}>
+                {[['all', 'All types'], ['trap', 'Trap'], ['loop', 'Loop'], ['limitation', 'Limitation'], ['outlet', 'Outlet'], ['aim', 'AIM']].map(([v, label]) => (
+                  <TouchableOpacity
+                    key={v}
+                    testID={`eg-filter-type-${v}`}
+                    style={[styles.filterChip, typeFilter === v && styles.filterChipActive]}
+                    onPress={() => setTypeFilter(v)}
+                  >
+                    <Text style={[styles.filterChipTxt, typeFilter === v && styles.filterChipTxtActive]}>{label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {filterLoading ? (
+                <ActivityIndicator color={EG_COLORS.amber} style={{ marginVertical: 16 }} />
+              ) : (() => {
+                const list = filtered ?? dashboard!.recent_sessions;
+                if (!list.length) {
+                  return <Text style={styles.emptyFilterTxt}>No sessions match these filters.</Text>;
+                }
+                return list.map((s: any) => (
+                  <TouchableOpacity
+                    key={s.id}
+                    testID={`eg-session-row-${s.id}`}
+                    style={styles.sessionCard}
+                    onPress={() => router.push(`/tools/eg-session?sessionId=${s.id}` as any)}
+                  >
+                    <View style={[styles.sessionTypeBadge, {
+                      backgroundColor: tools.find(t => t.id === s.session_type)?.colors[0] || EG_COLORS.amber,
+                    }]}>
+                      <Text style={styles.sessionTypeTxt}>{s.session_type?.toUpperCase()}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.sessionTitle}>{s.title}</Text>
+                      <Text style={styles.sessionMeta}>
+                        {(s.status || '').replace('_', ' ')} • {formatAbsolute(s.created_at)}
+                      </Text>
+                    </View>
+                    {s.status === 'completed' && (
+                      <Ionicons name="checkmark-circle" size={16} color="#10B981" style={{ marginRight: 4 }} />
+                    )}
+                    <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+                  </TouchableOpacity>
+                ));
+              })()}
             </>
           )}
         </View>
@@ -266,6 +326,12 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 24, fontWeight: '800', color: '#FFF' },
   headerSubtitle: { fontSize: 13, color: 'rgba(255,255,255,0.85)', marginTop: 4, fontStyle: 'italic' },
   content: { padding: 16 },
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
+  filterChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border, backgroundColor: '#FFF' },
+  filterChipActive: { backgroundColor: EG_COLORS.amber, borderColor: EG_COLORS.amber },
+  filterChipTxt: { fontSize: 12, fontWeight: '600', color: COLORS.textMuted },
+  filterChipTxtActive: { color: '#FFF' },
+  emptyFilterTxt: { fontSize: 13, color: COLORS.textMuted, fontStyle: 'italic', paddingVertical: 16, textAlign: 'center' },
   streakCard: {
     flexDirection: 'row', backgroundColor: '#FFF', borderRadius: 16, padding: 16,
     marginBottom: 20, borderWidth: 1, borderColor: '#FDE68A',

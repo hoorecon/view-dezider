@@ -66,10 +66,12 @@ async def limitation_classify(session_id: str, user: dict = Depends(get_current_
         raise HTTPException(404, "Limitation reflection not found.")
 
     try:
-        classification = await classify_limitation(lim)
+        classification = await classify_limitation(lim, user_id=user["user_id"], session_id=session_id)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Limitation classification failed: {e}")
-        raise HTTPException(500, f"AI classification failed: {str(e)}")
+        raise HTTPException(502, detail={"code": "ai_error", "message": "AI classification failed. Please try again."})
 
     now = datetime.now(timezone.utc).isoformat()
     # Update category if AI classified and user didn't already set one
@@ -115,10 +117,12 @@ async def limitation_reframe(session_id: str, user: dict = Depends(get_current_u
     flow_answers = lim.get("flow_answers", {})
 
     try:
-        reframe = await generate_limitation_reframe(lim, category, flow_answers)
+        reframe = await generate_limitation_reframe(lim, category, flow_answers, user_id=user["user_id"], session_id=session_id)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Limitation reframe failed: {e}")
-        raise HTTPException(500, f"AI reframe failed: {str(e)}")
+        raise HTTPException(502, detail={"code": "ai_error", "message": "AI reframe failed. Please try again."})
 
     now = datetime.now(timezone.utc).isoformat()
     await db.limitation_reflections.update_one(

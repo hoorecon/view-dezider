@@ -139,10 +139,11 @@ async def _get_or_create(user_id: str) -> Dict[str, Any]:
 
 async def _ledger(user_id: str, delta: float, kind: str, *, balance_after: float,
                   tokens: int = 0, provider: str = "", feature: str = "",
-                  note: str = "", by: str = "") -> None:
+                  note: str = "", by: str = "", session_id: str = "") -> None:
     await db.ai_wallet_ledger.insert_one({
         "id": uuid.uuid4().hex, "user_id": user_id, "delta": round(delta, 4),
         "kind": kind, "tokens": int(tokens), "provider": provider, "feature": feature,
+        "session_id": session_id or "",
         "balance_after": round(balance_after, 4), "note": note, "by": by,
         "created_at": _now(),
     })
@@ -175,7 +176,8 @@ def tokens_to_credits(tokens: int, tokens_per_credit: float) -> float:
     return max(0.0001, math.ceil(credits * 10000) / 10000)
 
 
-async def charge(user_id: str, *, tokens: int, feature: str = "", provider: str = "") -> Dict[str, Any]:
+async def charge(user_id: str, *, tokens: int, feature: str = "", provider: str = "",
+                 session_id: str = "") -> Dict[str, Any]:
     """Deduct credits for `tokens` used. Returns {charged, balance, tokens}."""
     cfg = await get_config()
     credits = tokens_to_credits(int(tokens or 0), float(cfg["tokens_per_credit"]))
@@ -185,8 +187,22 @@ async def charge(user_id: str, *, tokens: int, feature: str = "", provider: str 
         {"user_id": user_id}, {"$set": {"balance": new_balance, "updated_at": _now()}},
     )
     await _ledger(user_id, -credits, "debit", balance_after=new_balance,
-                  tokens=tokens, provider=provider, feature=feature, note="AI usage")
+                  tokens=tokens, provider=provider, feature=feature, note="AI usage",
+                  session_id=session_id)
     return {"charged": credits, "balance": round(new_balance, 2), "tokens": int(tokens)}
+
+
+async def session_cost(user_id: str, session_id: str) -> Dict[str, Any]:
+    """Total AI credits a user has spent within a given session (for per-session
+    cost display). Sums the debit ledger entries tagged with `session_id`."""
+    if not session_id:
+        return {"credits": 0.0, "calls": 0}
+    cur = db.ai_wallet_ledger.find(
+        {"user_id": user_id, "session_id": session_id, "kind": "debit"},
+        {"_id": 0, "delta": 1},
+    )
+    rows = await cur.to_list(2000)
+    return {"credits": round(sum(-float(r.get("delta", 0)) for r in rows), 4), "calls": len(rows)}
 
 
 async def charge_credits(user_id: str, credits: float, *, feature: str = "",

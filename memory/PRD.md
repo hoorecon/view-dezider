@@ -325,6 +325,27 @@ Full plan (Phases A–D) approved by user; all 11 backend tests + frontend e2e P
 - Pending follow-up: option 3 = LLM factor refinement (done as part of this) + headless/scraping API for
   JS-rendered retail (Amazon) — NOT yet wired; needed only for non-static sites.
 
+## Emotional Gatekeeper AI now METERED + per-session cost + session filters — 10 Jun 2026 (tested)
+- **Was unmetered**: all EG AI (`ai_engine._call_llm`) hit the Emergent key directly — no wallet gate,
+  no per-user charge, not on the free-first chain (→ hard 500s, no "charge wallet" prompt).
+- **Part A — metering**: `ai_engine._call_llm/_call_llm_json` now route through `ai_metering.metered_chat`
+  with `feature` (eg_trap_analyze / eg_loop_recommend / eg_loop_reframe / eg_limitation_classify /
+  eg_limitation_reframe / eg_outlet_analyze / eg_aim_analyze / eg_breakthrough_report) + `session_id`.
+  Threaded user_id+session_id through all 8 AI fns + their routes (trap/loop/limitation/outlet_aim/
+  session-report). Errors mapped: `402 {code:insufficient_credits}`, `503 {code:ai_unavailable}`,
+  `502 {code:ai_error}` (routes re-raise HTTPException instead of wrapping as 500).
+- **Per-session cost**: `ai_wallet._ledger`/`charge` now store `session_id`; new `ai_wallet.session_cost()`.
+  `GET /sessions/{id}` returns `ai_cost {credits, calls}`, shown as a chip on the session screen.
+- **Part B — frontend prompts**: shared `src/utils/aiErrors.ts::handleAiError` wired into eg-trap/loop/
+  limitation/aim/session — shows "Charge Wallet" (402), "Use OpenAI (share data)" consent + Top-up
+  (503 ai_unavailable), or generic retry. Each passes a `retry` callback.
+- **Part C — session history**: Recent Sessions expanded inline with filter chips (status: All/In
+  progress/Completed, type: All/Trap/Loop/Limitation/Outlet/AIM) via `GET /sessions?status=&session_type=`.
+- **Verified (curl)**: trap analyze 200 charges wallet (≈25 cr, provider gemini→groq), ledger tagged
+  session_id+feature, `ai_cost` returned; 0 credits → 402 insufficient_credits; session filters return
+  correct subsets. Frontend lint clean.
+- ⚠️ Redeploy jelcos.ai + set GROQ_API_KEY/OPENAI_API_KEY in prod .env. ⚠️ OpenAI key out of quota (429).
+
 ## Voice transcription 500 fixed — Whisper (Groq→OpenAI) replaces Google STT — 10 Jun 2026 (tested)
 - **Bug**: EG-Trap "Voice Input" → 500 ("Transcription failed"). Root cause reproduced in dev:
   the STT engine used Google's unofficial free STT (`SpeechRecognition`+`pydub`), which needs the

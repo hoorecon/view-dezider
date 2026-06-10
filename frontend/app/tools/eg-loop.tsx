@@ -11,6 +11,7 @@ import { COLORS } from '../../src/constants/colors';
 import { VoiceInput } from '../../src/components/VoiceInput';
 import { AudioGuidePlayer } from '../../src/components/AudioGuidePlayer';
 import api from '../../src/utils/api';
+import { handleAiError } from '../../src/utils/aiErrors';
 
 const LOOP_AUDIO_URL = 'https://customer-assets.emergentagent.com/job_a7a2d7ec-9ce2-470b-8ff8-d26638aa4277/artifacts/qgkdw529_Breaking%20the%20LOOP.mp3';
 
@@ -81,7 +82,7 @@ export default function EGLoopScreen() {
         setSelectedMethod(res.data.recommendation.recommended_method);
       }
       setStep(1);
-    } catch (err) { Alert.alert('Error', 'Failed. Please try again.'); }
+    } catch (err) { await handleAiError(err, { router, retry: handleCapture }); }
     finally { setLoading(false); }
   };
 
@@ -95,7 +96,7 @@ export default function EGLoopScreen() {
       const res = await api.post(`/emotional-gatekeeper/loop/${sessionId}/reframe`);
       setReframe(res.data.reframe);
       setStep(2);
-    } catch (err) { Alert.alert('Error', 'Failed to generate reframe.'); }
+    } catch (err) { await handleAiError(err, { router, retry: handleMethodSubmit }); }
     finally { setLoading(false); }
   };
 
@@ -247,7 +248,7 @@ export default function EGLoopScreen() {
               <Text style={s.actionText}>{reframe.immediate_action}</Text>
             </View>
             <View style={s.affirmBox}>
-              <Text style={s.affirmText}>"{reframe.reflection_affirmation}"</Text>
+              <Text style={s.affirmText}>&ldquo;{reframe.reflection_affirmation}&rdquo;</Text>
             </View>
             {reframe.deeper_limitation_detected && (
               <TouchableOpacity style={s.limitBtn}

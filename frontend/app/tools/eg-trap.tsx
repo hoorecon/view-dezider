@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import { VoiceInput } from '../../src/components/VoiceInput';
 import api from '../../src/utils/api';
+import { handleAiError } from '../../src/utils/aiErrors';
 
 const CATEGORIES = [
   'career', 'business', 'relationship', 'money', 'family',
@@ -107,7 +108,7 @@ export default function EGTrapScreen() {
       const res = await api.post(`/emotional-gatekeeper/trap/${sessionId}/analyze`);
       setAnalysis(res.data.analysis);
       setStep(4);
-    } catch (err) { Alert.alert('Error', 'Analysis failed. Please try again.'); }
+    } catch (err) { await handleAiError(err, { router, retry: handleLooping }); }
     finally { setLoading(false); }
   };
 

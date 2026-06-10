@@ -134,7 +134,7 @@ def _build_chain(allow_openai: bool) -> list:
 async def metered_chat(
     user_id: str, *, system_message: str, prompt: str,
     feature: str, session_prefix: str = "metered",
-    allow_openai: Optional[bool] = None,
+    allow_openai: Optional[bool] = None, session_id: str = "",
 ) -> str:
     """Gate → free-first provider chain → charge the wallet.
 
@@ -171,7 +171,8 @@ async def metered_chat(
             continue
 
         try:
-            await ai_wallet.charge(user_id, tokens=tokens, feature=feature, provider=provider)
+            await ai_wallet.charge(user_id, tokens=tokens, feature=feature,
+                                   provider=provider, session_id=session_id)
         except Exception as e:  # noqa: BLE001
             log.error(f"wallet charge failed (non-fatal): {e}")
         return text

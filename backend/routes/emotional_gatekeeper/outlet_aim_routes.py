@@ -52,10 +52,12 @@ async def outlet_analyze(session_id: str, data: OutletAnalysisRequest, user: dic
         })
 
     try:
-        analysis = await analyze_outlets(entries)
+        analysis = await analyze_outlets(entries, user_id=user["user_id"], session_id=session_id)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Outlet analysis failed: {e}")
-        raise HTTPException(500, f"AI analysis failed: {str(e)}")
+        raise HTTPException(502, detail={"code": "ai_error", "message": "AI analysis failed. Please try again."})
 
     now = datetime.now(timezone.utc).isoformat()
     doc = {
@@ -137,10 +139,12 @@ async def aim_analyze(session_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(404, "AIM data not found. Save addictions/irritations first.")
 
     try:
-        analysis = await analyze_aim(aim.get("addictions", []), aim.get("irritations", []))
+        analysis = await analyze_aim(aim.get("addictions", []), aim.get("irritations", []), user_id=user["user_id"], session_id=session_id)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"AIM analysis failed: {e}")
-        raise HTTPException(500, f"AI analysis failed: {str(e)}")
+        raise HTTPException(502, detail={"code": "ai_error", "message": "AI analysis failed. Please try again."})
 
     now = datetime.now(timezone.utc).isoformat()
     await db.aim_reflections.update_one(

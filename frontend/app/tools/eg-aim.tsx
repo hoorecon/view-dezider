@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import { VoiceInput } from '../../src/components/VoiceInput';
 import api from '../../src/utils/api';
+import { handleAiError } from '../../src/utils/aiErrors';
 
 interface Addiction {
   area_of_life: string; addiction: string; triggering_situations: string;
@@ -89,7 +90,7 @@ export default function EGAimScreen() {
       const res = await api.post(`/emotional-gatekeeper/aim/${sessionId}/analyze`);
       setAnalysis(res.data.analysis);
       setStep(1);
-    } catch (err) { Alert.alert('Error', 'Analysis failed.'); }
+    } catch (err) { await handleAiError(err, { router, retry: handleSaveAndAnalyze }); }
     finally { setSubmitting(false); }
   };
 
