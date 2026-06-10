@@ -589,3 +589,19 @@ TWO distinct issues found:
 - Needs REDEPLOY of frontend (Cloudflare) for the alert fix + the EC2 .env keys for the 503 fix.
 - FOLLOW-UP: other EG screens (eg-outlet, eg-advisor, eg-emotional-reception) may still use RN Alert
   directly — sweep them to crossAlert too if they show AI errors.
+
+## Fork session — 11 Jun 2026 (back arrow + resume in-progress session)
+- BACK ARROW: `router.back()` is a no-op on react-native-web when there's no in-app history (direct
+  URL / resume). Added a `goBack()` helper to all EG screens: `router.canGoBack?.() ? router.back() :
+  router.replace('/tools/emotional-gatekeeper')`. Verified on web: back now navigates to the dashboard.
+- RESUME: eg-limitation always started at step 0 with empty fields (no mount-load). Added a mount
+  useEffect that GETs the session, prefills capture inputs + classification + flow answers, and jumps
+  to step 1 (explore) if ai_classification exists or step 2 if ai_summary (reframe) exists. Verified:
+  resumes to "Classify & Explore" with the 90% classification + the user's data prefilled.
+- CONTINUE BUTTON: eg-session detail now shows a "Continue Session" button for non-completed sessions
+  with content (routes back into the correct tool via resumeRoutes[session_type]).
+- Backend fields used: limitation_reflection.{limitation_statement,why_limited,origin,belief_duration,
+  cost_of_limitation,ai_classification,limitation_category,flow_answers,ai_summary}.
+- ⚠️ Needs frontend REDEPLOY (Cloudflare) to reach jelcos.ai.
+- FOLLOW-UP: resume-to-step + prefill is implemented for eg-limitation only. eg-trap / eg-loop / eg-aim
+  still start at step 0 on re-open — replicate the same mount-load pattern there next.

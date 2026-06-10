@@ -17,6 +17,7 @@ import { Alert } from '../../src/utils/crossAlert';
 
 export default function EGSessionScreen() {
   const router = useRouter();
+  const goBack = () => { if (router.canGoBack?.()) router.back(); else router.replace('/tools/emotional-gatekeeper' as any); };
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -102,7 +103,7 @@ export default function EGSessionScreen() {
       <SafeAreaView style={st.container} edges={['top']}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
           <Text style={{ fontSize: 16, color: COLORS.textMuted }}>Session not found.</Text>
-          <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16 }}>
+          <TouchableOpacity onPress={goBack} style={{ marginTop: 16 }}>
             <Text style={{ color: COLORS.primary, fontWeight: '600' }}>Go Back</Text>
           </TouchableOpacity>
         </View>
@@ -132,7 +133,7 @@ export default function EGSessionScreen() {
     <SafeAreaView style={st.container} edges={['top']}>
       <LinearGradient colors={['#F59E0B', '#D97706']} style={st.header}>
         <View style={st.headerTop}>
-          <TouchableOpacity style={st.backBtn} onPress={() => router.back()}>
+          <TouchableOpacity style={st.backBtn} onPress={goBack}>
             <Ionicons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
           <AiCreditsBadge compact autoRefresh lowThreshold={reportEst ?? undefined} />
@@ -310,6 +311,17 @@ export default function EGSessionScreen() {
             </View>
           )}
 
+          {/* Continue an in-progress session back into its flow */}
+          {session.status !== 'completed' && hasContent && (
+            <TouchableOpacity
+              style={st.continueBtn}
+              testID="session-continue-btn"
+              onPress={() => router.push((resumeRoutes[session.session_type] || resumeRoutes.trap) as any)}>
+              <Ionicons name="play-forward" size={18} color="#FFF" />
+              <Text style={st.continueBtnText}>Continue Session</Text>
+            </TouchableOpacity>
+          )}
+
           {/* Report */}
           {report ? (
             <View style={st.reportCard}>
@@ -477,4 +489,6 @@ const st = StyleSheet.create({
   emptySub: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center', marginTop: 8, lineHeight: 19 },
   resumeBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F59E0B', borderRadius: 12, paddingVertical: 12, paddingHorizontal: 24, marginTop: 18 },
   resumeBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
+  continueBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#2563EB', borderRadius: 12, paddingVertical: 15, marginBottom: 12 },
+  continueBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
 });

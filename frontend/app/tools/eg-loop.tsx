@@ -49,6 +49,7 @@ const METHODS = [
 
 export default function EGLoopScreen() {
   const router = useRouter();
+  const goBack = () => { if (router.canGoBack?.()) router.back(); else router.replace('/tools/emotional-gatekeeper' as any); };
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
   const [step, setStep] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
@@ -281,7 +282,7 @@ export default function EGLoopScreen() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <LinearGradient colors={['#8B5CF6', '#7C3AED']} style={s.header}>
           <View style={s.headerTop}>
-            <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
+            <TouchableOpacity style={s.backBtn} onPress={goBack}>
               <Ionicons name="arrow-back" size={22} color="#FFF" />
             </TouchableOpacity>
             <AiCreditsBadge compact autoRefresh lowThreshold={loopRefEst ?? undefined} />

@@ -47,6 +47,7 @@ const CATEGORIES = [
 
 export default function EGLimitationScreen() {
   const router = useRouter();
+  const goBack = () => { if (router.canGoBack?.()) router.back(); else router.replace('/tools/emotional-gatekeeper' as any); };
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
   const [step, setStep] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
@@ -73,6 +74,30 @@ export default function EGLimitationScreen() {
 
   const limClsEst = useAiEstimate('eg_limitation_classify');
   const limRefEst = useAiEstimate('eg_limitation_reframe');
+
+  // Resume an existing in-progress/completed session: prefill inputs and jump to the right step.
+  useEffect(() => {
+    if (!sessionId) return;
+    (async () => {
+      try {
+        const { data } = await api.get(`/emotional-gatekeeper/sessions/${sessionId}`);
+        const lim = data?.limitation_reflection;
+        if (!lim) return;
+        setLimitStatement(lim.limitation_statement || '');
+        setWhyLimited(lim.why_limited || '');
+        setOrigin(lim.origin || '');
+        setBeliefDuration(lim.belief_duration || '');
+        setCost(lim.cost_of_limitation || '');
+        const cls = lim.ai_classification;
+        if (cls) { setClassification(cls); setSelectedCat(lim.limitation_category || cls.category || ''); }
+        if (lim.flow_answers) setFlowAnswers(lim.flow_answers);
+        const rf = lim.ai_summary;
+        if (rf && typeof rf === 'object') { setReframe(rf); setStep(2); }
+        else if (cls) { setStep(1); }
+      } catch { /* ignore resume errors — start fresh */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
 
   const handleCapture = async () => {
     if (!(await confirmAiSpend('eg_limitation_classify', 'Limitation classification'))) return;
@@ -268,7 +293,7 @@ export default function EGLimitationScreen() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <LinearGradient colors={['#3B82F6', '#1D4ED8']} style={s.header}>
           <View style={s.headerTop}>
-            <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
+            <TouchableOpacity style={s.backBtn} onPress={goBack}>
               <Ionicons name="arrow-back" size={22} color="#FFF" />
             </TouchableOpacity>
             <AiCreditsBadge compact autoRefresh lowThreshold={limRefEst ?? undefined} />

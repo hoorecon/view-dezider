@@ -27,6 +27,7 @@ interface Irritation {
 
 export default function EGAimScreen() {
   const router = useRouter();
+  const goBack = () => { if (router.canGoBack?.()) router.back(); else router.replace('/tools/emotional-gatekeeper' as any); };
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
   const [step, setStep] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
@@ -287,7 +288,7 @@ export default function EGAimScreen() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <LinearGradient colors={['#F97316', '#EA580C']} style={s.header}>
           <View style={s.headerTop}>
-            <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
+            <TouchableOpacity style={s.backBtn} onPress={goBack}>
               <Ionicons name="arrow-back" size={22} color="#FFF" />
             </TouchableOpacity>
             <AiCreditsBadge compact autoRefresh lowThreshold={aimEst ?? undefined} />
