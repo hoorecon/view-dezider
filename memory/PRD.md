@@ -635,3 +635,22 @@ Completed the full sweep the user asked for (both items):
   looping thought prefilled ("They will laugh at me"), "No, just replaying" selected, Intensity After 9/10.
 - Trap resume now fully restores all prior answers + jumps to the furthest completed step. No backend
   changes were needed.
+
+## Fork session — 10 Jun 2026 (Emotional Outlet Analyzer REVAMP — DONE & tested)
+User-approved spec ("1.a 2.b 3.b + same Outlet Group", + breakdown weighted by frequency).
+Backend (constants.py / ai_engine.py / outlet_aim_routes.py):
+- COPING_STRATEGIES expanded to 40 statements = 10 per Outlet Group (Physical 🔴 / Mental 🔵 /
+  Emotional 🟠 / Energy 🟣), each a MIX of healthy (default_constructive=True) & unhealthy (False).
+- Route now computes a deterministic frequency-weighted % breakdown (Often=7/Sometimes=4/Rarely=1/
+  Not-at-all=0) per group + Top-2 modes (primary/secondary), stored in ai_analysis so resume renders them.
+- `analyze_outlets` AI prompt rewritten to: interpret Top-2 modes (mode_insight) + return EXACTLY 5
+  constructive replacement_activities that stay in the SAME Outlet Group as the replaced behavior
+  (fills extra slots with primary-mode elevating activities), + overall_pattern + encouragement.
+Frontend (app/tools/eg-outlet.tsx — full rewrite):
+- Step 0: 40 statements shown MIXED (seeded shuffle, no category headers), color-coded left-border by
+  nature + a legend. Tap reveals frequency chips + "feels compulsive". testIDs on all interactive els.
+- Step 1 (surprise reveal): Primary + Secondary Mode chips, "Where Your Energy Goes" % bars (color-
+  coded), mode_insight, "5 Healthier Swaps" cards (group pill + Replaces + why), overall_pattern,
+  encouragement. Resume of completed session renders saved analysis.
+VERIFIED: curl e2e (37/37/21/5 breakdown, physical/mental modes, 5 same-group swaps) + web screenshots
+of both steps. NOTE: Metro runs in CI mode (reloads disabled) — must restart `expo` to rebundle FE edits.

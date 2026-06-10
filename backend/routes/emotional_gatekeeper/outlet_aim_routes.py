@@ -37,7 +37,7 @@ async def outlet_analyze(session_id: str, data: OutletAnalysisRequest, user: dic
     if not session:
         raise HTTPException(404, "Session not found")
 
-    # Build entries with full names
+    # Build entries with full names + group + healthy/unhealthy flag
     strategy_map = {s["id"]: s for s in COPING_STRATEGIES}
     entries = []
     for entry in data.entries:
@@ -46,18 +46,46 @@ async def outlet_analyze(session_id: str, data: OutletAnalysisRequest, user: dic
             "strategy_id": entry.strategy_id,
             "name": entry.custom_name or strat.get("name", entry.strategy_id),
             "nature": entry.nature_override or strat.get("nature", "other"),
+            "default_constructive": strat.get("default_constructive"),
             "frequency": entry.frequency,
             "is_compulsive": entry.is_compulsive,
             "side_effects": entry.side_effects,
         })
 
+    # Frequency-weighted Outlet-Group breakdown (deterministic)
+    freq_weight = {f["id"]: f["value"] for f in OUTLET_FREQUENCIES}
+    weights = {"physical": 0, "mental": 0, "emotional": 0, "energy": 0}
+    for e in entries:
+        nat = e["nature"]
+        if nat not in weights:
+            continue
+        w = freq_weight.get(e["frequency"], 0)
+        if w > 0:
+            weights[nat] += w
+    total_w = sum(weights.values()) or 1
+    group_breakdown = {k: round(v / total_w * 100) for k, v in weights.items()}
+    ranked = sorted(weights.items(), key=lambda kv: kv[1], reverse=True)
+    primary_mode = ranked[0][0] if ranked[0][1] > 0 else ""
+    secondary_mode = ranked[1][0] if len(ranked) > 1 and ranked[1][1] > 0 else ""
+
     try:
-        analysis = await analyze_outlets(entries, user_id=user["user_id"], session_id=session_id)
+        ai = await analyze_outlets(
+            entries, group_breakdown, primary_mode, secondary_mode,
+            user_id=user["user_id"], session_id=session_id,
+        )
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Outlet analysis failed: {e}")
         raise HTTPException(502, detail={"code": "ai_error", "message": "AI analysis failed. Please try again."})
+
+    # Merge deterministic metrics into the stored analysis so resume renders them.
+    analysis = {
+        "group_breakdown": group_breakdown,
+        "primary_mode": primary_mode,
+        "secondary_mode": secondary_mode,
+        **ai,
+    }
 
     now = datetime.now(timezone.utc).isoformat()
     doc = {

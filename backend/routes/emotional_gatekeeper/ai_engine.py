@@ -269,59 +269,60 @@ Respond ONLY with valid JSON:
 # OUTLET ANALYZER
 # ============================================================
 
-async def analyze_outlets(entries: list, user_context: str = "", *,
-                          user_id: str, session_id: str = "") -> dict:
-    """Analyze emotional outlets and recommend constructive alternatives of the SAME nature type."""
-    entries_text = ""
+async def analyze_outlets(entries: list, group_breakdown: dict, primary_mode: str,
+                          secondary_mode: str, *, user_id: str, session_id: str = "") -> dict:
+    """Analyze emotional outlets. The user's Outlet-Group % breakdown and Top-2
+    Modes are computed deterministically and passed in. The AI's job is to
+    interpret the Top-2 modes and suggest exactly 5 CONSTRUCTIVE replacement
+    activities that stay within the SAME Outlet Group as the user's behaviors
+    (prioritizing replacements for their unhealthy/destructive selections)."""
+    GROUP_LABEL = {"physical": "Physical", "mental": "Mental", "emotional": "Emotional", "energy": "Energy"}
+
+    selected_text, unhealthy_text = "", ""
     for e in entries:
-        entries_text += f"- {e.get('name', e.get('strategy_id', ''))}: Frequency={e.get('frequency', '?')}, Nature={e.get('nature', '?')}, Compulsive={e.get('is_compulsive', False)}, Side-effects={e.get('side_effects', 'None')}\n"
+        tag = "UNHEALTHY" if e.get("default_constructive") is False else ("HEALTHY" if e.get("default_constructive") else "NEUTRAL")
+        line = (f"- {e.get('name', e.get('strategy_id', ''))} "
+                f"[Group={e.get('nature', '?')}, {tag}, Frequency={e.get('frequency', '?')}, "
+                f"Compulsive={e.get('is_compulsive', False)}]\n")
+        selected_text += line
+        if e.get("default_constructive") is False:
+            unhealthy_text += line
 
-    prompt = f"""Analyze these emotional coping strategies and recommend CONSTRUCTIVE alternatives of the SAME NATURE TYPE.
+    breakdown_text = ", ".join(
+        f"{GROUP_LABEL.get(k, k)}={v}%" for k, v in group_breakdown.items() if v > 0
+    ) or "No measurable usage"
 
-Nature types: Physical, Mental, Emotional, Energy
+    prompt = f"""You are analyzing a person's emotional outlets (how they release stress/emotion).
 
-IMPORTANT: If a user has a destructive Mental habit (e.g., reading sensational news), recommend constructive Mental alternatives (e.g., reading Economic Times, industry bulletins, educational podcasts).
-If Physical is destructive, suggest constructive Physical alternatives. Same for Emotional and Energy.
+There are 4 Outlet Groups: Physical, Mental, Emotional, Energy.
 
-User's Current Outlets:
-{entries_text}
+The user's Outlet-Group breakdown (already calculated by frequency-weight): {breakdown_text}
+Their PRIMARY Outlet Mode is: {GROUP_LABEL.get(primary_mode, primary_mode or 'N/A')}
+Their SECONDARY Outlet Mode is: {GROUP_LABEL.get(secondary_mode, secondary_mode or 'N/A')}
 
-Additional context: {user_context}
+All behaviors the user selected:
+{selected_text or 'None'}
+
+Their UNHEALTHY/destructive selections (to be gently replaced):
+{unhealthy_text or 'None — their selections are mostly healthy'}
+
+YOUR TASK:
+1. Write a warm, insightful interpretation of their Top-2 Outlet Modes (what it reveals about how they cope). Do NOT shame them.
+2. Suggest EXACTLY 5 constructive replacement activities. CRITICAL RULE: each suggested activity MUST stay within the SAME Outlet Group as the behavior it replaces (e.g., replace an unhealthy Physical habit with a healthy Physical activity; an unhealthy Mental habit with a healthy Mental activity). If the user has fewer than 5 unhealthy behaviors, fill the remaining slots with elevating activities inside their PRIMARY mode group.
 
 Respond ONLY with valid JSON:
 {{
-  "summary": {{
-    "total_strategies": <number>,
-    "physical_count": <number>,
-    "mental_count": <number>,
-    "emotional_count": <number>,
-    "energy_count": <number>,
-    "compulsive_count": <number>,
-    "constructive_count": <number>,
-    "destructive_count": <number>
-  }},
-  "analysis": [
+  "mode_insight": "<2-4 sentence personalized interpretation of their primary + secondary modes>",
+  "replacement_activities": [
     {{
-      "strategy": "<strategy name>",
-      "nature": "<physical/mental/emotional/energy>",
-      "assessment": "<constructive/destructive/neutral>",
-      "explanation": "<why this is constructive or destructive — personalized>",
-      "recommended_alternative": "<constructive alternative of the SAME nature — only if destructive/neutral>",
-      "why_alternative": "<why this alternative is better — personalized>"
+      "activity": "<the constructive activity to adopt>",
+      "group": "<physical/mental/emotional/energy — MUST match the replaced behavior's group>",
+      "replaces": "<the user's behavior it replaces, or 'Strengthens your primary mode' if additive>",
+      "why": "<one personalized sentence on why this helps>"
     }}
   ],
-  "overall_pattern": "<overall emotional coping pattern — personalized summary>",
-  "top_recommendations": [
-    "<recommendation 1>",
-    "<recommendation 2>",
-    "<recommendation 3>"
-  ],
-  "balance_score": {{
-    "physical": <1-10 health score>,
-    "mental": <1-10>,
-    "emotional": <1-10>,
-    "energy": <1-10>
-  }}
+  "overall_pattern": "<2-3 sentence summary of their overall coping pattern — personalized, encouraging>",
+  "encouragement": "<one short empowering closing line>"
 }}"""
     return await _call_llm_json(prompt, user_id=user_id, feature="eg_outlet_analyze", session_id=session_id)
 
