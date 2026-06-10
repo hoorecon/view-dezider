@@ -12,6 +12,7 @@ import api from '../../src/utils/api';
 import { handleAiError } from '../../src/utils/aiErrors';
 import { formatAbsolute } from '../../src/utils/datetime';
 import { confirmAiSpend, useAiEstimate } from '../../src/utils/aiEstimates';
+import { AiCreditsBadge } from '../../src/components/AiCreditsBadge';
 
 export default function EGSessionScreen() {
   const router = useRouter();
@@ -113,9 +114,12 @@ export default function EGSessionScreen() {
   return (
     <SafeAreaView style={st.container} edges={['top']}>
       <LinearGradient colors={['#F59E0B', '#D97706']} style={st.header}>
-        <TouchableOpacity style={st.backBtn} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={22} color="#FFF" />
-        </TouchableOpacity>
+        <View style={st.headerTop}>
+          <TouchableOpacity style={st.backBtn} onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={22} color="#FFF" />
+          </TouchableOpacity>
+          <AiCreditsBadge compact autoRefresh />
+        </View>
         <Text style={st.headerTitle}>{session.title}</Text>
         <View style={st.headerMeta}>
           <View style={st.typeBadge}>
@@ -255,6 +259,7 @@ export default function EGSessionScreen() {
 const st = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   header: { padding: 20, paddingTop: 8, borderBottomLeftRadius: 20, borderBottomRightRadius: 20 },
+  headerTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   headerTitle: { fontSize: 20, fontWeight: '800', color: '#FFF' },
   headerMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },

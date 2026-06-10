@@ -12,6 +12,7 @@ import { VoiceInput } from '../../src/components/VoiceInput';
 import api from '../../src/utils/api';
 import { handleAiError } from '../../src/utils/aiErrors';
 import { confirmAiSpend, useAiEstimate } from '../../src/utils/aiEstimates';
+import { AiCreditsBadge } from '../../src/components/AiCreditsBadge';
 
 const CATEGORIES = [
   'career', 'business', 'relationship', 'money', 'family',
@@ -350,9 +351,12 @@ export default function EGTrapScreen() {
     <SafeAreaView style={s.container} edges={['top']}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <LinearGradient colors={['#EF4444', '#DC2626']} style={s.header}>
-          <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={22} color="#FFF" />
-          </TouchableOpacity>
+          <View style={s.headerTop}>
+            <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
+              <Ionicons name="arrow-back" size={22} color="#FFF" />
+            </TouchableOpacity>
+            <AiCreditsBadge compact autoRefresh />
+          </View>
           <Text style={s.headerTitle}>Breaking the Trap</Text>
           <Text style={s.headerSub}>{steps[step].title}</Text>
         </LinearGradient>
@@ -372,6 +376,7 @@ export default function EGTrapScreen() {
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   header: { padding: 20, paddingTop: 8, borderBottomLeftRadius: 20, borderBottomRightRadius: 20 },
+  headerTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   headerTitle: { fontSize: 22, fontWeight: '800', color: '#FFF' },
   headerSub: { fontSize: 13, color: 'rgba(255,255,255,0.8)', marginTop: 2 },

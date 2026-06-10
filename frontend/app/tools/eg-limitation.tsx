@@ -13,6 +13,7 @@ import { AudioGuidePlayer } from '../../src/components/AudioGuidePlayer';
 import api from '../../src/utils/api';
 import { handleAiError } from '../../src/utils/aiErrors';
 import { confirmAiSpend, useAiEstimate } from '../../src/utils/aiEstimates';
+import { AiCreditsBadge } from '../../src/components/AiCreditsBadge';
 
 const LIMITATION_AUDIO_URL = 'https://customer-assets.emergentagent.com/job_a7a2d7ec-9ce2-470b-8ff8-d26638aa4277/artifacts/qrq3iqkh_Breaking%20the%20LIMITATIONS.mp3';
 
@@ -263,9 +264,12 @@ export default function EGLimitationScreen() {
     <SafeAreaView style={s.container} edges={['top']}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <LinearGradient colors={['#3B82F6', '#1D4ED8']} style={s.header}>
-          <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={22} color="#FFF" />
-          </TouchableOpacity>
+          <View style={s.headerTop}>
+            <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
+              <Ionicons name="arrow-back" size={22} color="#FFF" />
+            </TouchableOpacity>
+            <AiCreditsBadge compact autoRefresh />
+          </View>
           <Text style={s.headerTitle}>Breaking Limitations</Text>
           <Text style={s.headerSub}>
             {step === 0 ? 'Identify the Limitation' : step === 1 ? 'Classify & Explore' : 'Your Breakthrough'}
@@ -284,6 +288,7 @@ export default function EGLimitationScreen() {
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   header: { padding: 20, paddingTop: 8, borderBottomLeftRadius: 20, borderBottomRightRadius: 20 },
+  headerTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   headerTitle: { fontSize: 22, fontWeight: '800', color: '#FFF' },
   headerSub: { fontSize: 13, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
