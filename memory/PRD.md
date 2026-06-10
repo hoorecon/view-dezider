@@ -623,3 +623,15 @@ Completed the full sweep the user asked for (both items):
      drops the granular scanning_* inputs, so landscaping sub-answers aren't restorable on resume; step
      detection still routes correctly via linking_meaning. Not fixed (out of scope).
 - ⚠️ Needs frontend REDEPLOY (Cloudflare) for all of the above to reach jelcos.ai.
+
+## Fork session — 11 Jun 2026 (trap resume field-name correction — NO backend gap)
+- CORRECTION to the earlier "trap landscaping persistence gap" note: there is NO backend gap. The
+  landscaping endpoint DOES persist scanning_for / scanning_patterns / scanning_without_urgency /
+  repeated_concern; `landscaping_pattern` is just an unused legacy field. The earlier issue was my
+  resume code reading the wrong fields. Fixed eg-trap resume to read the REAL fields:
+  scanning_*, trigger_type, trigger_description, linking_meaning, looping_thought, getting_new_solution,
+  emotion_increasing, intensity_after_loop, ai_summary — and prefill all corresponding inputs.
+- VERIFIED on web: a capture→landscaping→linking→looping session resumes to step 3 "Looping" with the
+  looping thought prefilled ("They will laugh at me"), "No, just replaying" selected, Intensity After 9/10.
+- Trap resume now fully restores all prior answers + jumps to the furthest completed step. No backend
+  changes were needed.

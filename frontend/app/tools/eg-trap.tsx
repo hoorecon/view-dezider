@@ -69,14 +69,22 @@ export default function EGTrapScreen() {
         if (t.situation) setSituation(t.situation);
         if (t.category) setCategory(t.category);
         if (typeof t.intensity === 'number') setIntensity(t.intensity);
-        if (t.landscaping_pattern) setScanningFor(t.landscaping_pattern);
+        if (t.scanning_for) setScanningFor(t.scanning_for);
+        if (Array.isArray(t.scanning_patterns)) setScanPatterns(t.scanning_patterns);
+        if (typeof t.scanning_without_urgency === 'boolean') setNoUrgency(t.scanning_without_urgency);
+        if (t.repeated_concern) setRepeatedConcern(t.repeated_concern);
         if (t.trigger_type) setTriggerType(t.trigger_type);
-        if (t.internal_trigger || t.external_trigger) setTriggerDesc(t.internal_trigger || t.external_trigger);
+        if (t.trigger_description) setTriggerDesc(t.trigger_description);
         if (t.linking_meaning) setLinkingMeaning(t.linking_meaning);
         if (t.looping_thought) setRepeatingThought(t.looping_thought);
+        if (typeof t.getting_new_solution === 'boolean') setGettingNewSolution(t.getting_new_solution);
+        if (t.emotion_increasing) setEmotionIncreasing(t.emotion_increasing);
+        if (typeof t.intensity_after_loop === 'number') setIntensityAfter(t.intensity_after_loop);
+        const landscapeDone = !!(t.scanning_for || (Array.isArray(t.scanning_patterns) && t.scanning_patterns.length) || t.repeated_concern);
+        const linkingDone = !!(t.linking_meaning || t.trigger_description);
         if (t.ai_summary) { setAnalysis(t.ai_summary); setStep(4); }
-        else if (t.linking_meaning || t.looping_thought) setStep(3);
-        else if (t.landscaping_pattern) setStep(2);
+        else if (t.looping_thought || linkingDone) setStep(3);
+        else if (landscapeDone) setStep(2);
         else setStep(1);
       } catch { /* ignore */ }
     })();
