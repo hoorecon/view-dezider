@@ -268,7 +268,7 @@ export default function EGLimitationScreen() {
             <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
               <Ionicons name="arrow-back" size={22} color="#FFF" />
             </TouchableOpacity>
-            <AiCreditsBadge compact autoRefresh />
+            <AiCreditsBadge compact autoRefresh lowThreshold={limRefEst ?? undefined} />
           </View>
           <Text style={s.headerTitle}>Breaking Limitations</Text>
           <Text style={s.headerSub}>

@@ -118,7 +118,7 @@ export default function EGSessionScreen() {
           <TouchableOpacity style={st.backBtn} onPress={() => router.back()}>
             <Ionicons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
-          <AiCreditsBadge compact autoRefresh />
+          <AiCreditsBadge compact autoRefresh lowThreshold={reportEst ?? undefined} />
         </View>
         <Text style={st.headerTitle}>{session.title}</Text>
         <View style={st.headerMeta}>

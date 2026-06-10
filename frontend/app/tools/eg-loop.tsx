@@ -281,7 +281,7 @@ export default function EGLoopScreen() {
             <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
               <Ionicons name="arrow-back" size={22} color="#FFF" />
             </TouchableOpacity>
-            <AiCreditsBadge compact autoRefresh />
+            <AiCreditsBadge compact autoRefresh lowThreshold={loopRefEst ?? undefined} />
           </View>
           <Text style={s.headerTitle}>Breaking the Loop</Text>
           <Text style={s.headerSub}>

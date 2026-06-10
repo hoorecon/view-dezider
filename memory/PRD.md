@@ -524,3 +524,13 @@ Full plan (Phases A–D) approved by user; all 11 backend tests + frontend e2e P
   `useAiWalletStore` → GET /api/ai-wallet. Tapping opens /ai-wallet. Verified pill renders on every
   screen with live balance, autoRefresh hits /api/ai-wallet per screen, and the "~N cr" estimate
   badges still render (no regression). New header style `headerTop` (row, space-between) added to each.
+
+## Fork session — 10 Jun 2026 (low-balance "Top up" nudge on EG credits pill)
+- ✅ COMPLETED & TESTED (self-test via Playwright screenshots): Enhanced `AiCreditsBadge.tsx` with an
+  optional `lowThreshold` prop. When the wallet balance drops below the cost of the next AI action on
+  the screen, the pill turns amber (or red when empty), gets a subtle tinted background, and appends a
+  "· Top up" nudge. Each EG screen passes its most-expensive action estimate as the threshold:
+  eg-trap=trapEst(9), eg-loop=loopRefEst(10), eg-limitation=limRefEst(10), eg-aim=aimEst(14),
+  eg-session=reportEst(20). Default (no threshold) preserves prior <3cr behaviour for other screens.
+  - Verified: balance 921 → plain purple pill; balance 5 (< trap cost 9) → amber "5.0 · Top up".
+  - NOTE: Metro runs in CI mode (reloads disabled) — restart `expo` supervisor to serve latest bundle.

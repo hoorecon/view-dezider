@@ -355,7 +355,7 @@ export default function EGTrapScreen() {
             <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
               <Ionicons name="arrow-back" size={22} color="#FFF" />
             </TouchableOpacity>
-            <AiCreditsBadge compact autoRefresh />
+            <AiCreditsBadge compact autoRefresh lowThreshold={trapEst ?? undefined} />
           </View>
           <Text style={s.headerTitle}>Breaking the Trap</Text>
           <Text style={s.headerSub}>{steps[step].title}</Text>

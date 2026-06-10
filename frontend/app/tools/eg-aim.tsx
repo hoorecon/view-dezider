@@ -287,7 +287,7 @@ export default function EGAimScreen() {
             <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
               <Ionicons name="arrow-back" size={22} color="#FFF" />
             </TouchableOpacity>
-            <AiCreditsBadge compact autoRefresh />
+            <AiCreditsBadge compact autoRefresh lowThreshold={aimEst ?? undefined} />
           </View>
           <Text style={s.headerTitle}>AIM Manager</Text>
           <Text style={s.headerSub}>{step === 0 ? 'Log Addictions & Irritations' : 'AI Insights'}</Text>
