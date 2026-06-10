@@ -677,3 +677,10 @@ Refinements (all tested):
    Share buttons + a channel/recipient modal.
 VERIFIED: curl (5 physical + 3 mental swaps; PDF 200/valid 5-page; email share sent:true) + web
 screenshots (results grouped swaps, session-page inputs+analysis, compulsive-first chip).
+
+## Fork session — 10 Jun 2026 (Outlet share: attach PDF on WhatsApp too)
+WhatsApp share now ATTACHES the branded PDF (previously text-only). Added
+_send_whatsapp_document() using UltraMsg POST /messages/document with the PDF as a base64
+`document` + `filename` + `caption` (branded summary). Email already attached the PDF (Resend).
+VERIFIED: curl email share sent:true (PDF attached) + WhatsApp share to owner's verified number
+sent:true (PDF document delivered).

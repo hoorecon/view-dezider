@@ -175,14 +175,24 @@ async def _send_email_with_pdf(to: str, subject: str, html: str, pdf: bytes, fna
             raise RuntimeError(f"Resend error {r.status_code}: {r.text[:300]}")
 
 
-async def _send_whatsapp_text(to: str, body: str) -> None:
+async def _send_whatsapp_document(to: str, pdf: bytes, filename: str, caption: str) -> None:
     if not (ULTRAMSG_INSTANCE and ULTRAMSG_TOKEN):
         raise RuntimeError("UltraMsg not configured")
-    url = f"https://api.ultramsg.com/{ULTRAMSG_INSTANCE}/messages/chat"
-    async with httpx.AsyncClient(timeout=20) as client:
-        r = await client.post(url, data={"token": ULTRAMSG_TOKEN, "to": to, "body": body})
+    b64 = base64.b64encode(pdf).decode("ascii")
+    url = f"https://api.ultramsg.com/{ULTRAMSG_INSTANCE}/messages/document"
+    async with httpx.AsyncClient(timeout=40) as client:
+        r = await client.post(url, data={
+            "token": ULTRAMSG_TOKEN, "to": to,
+            "document": b64, "filename": filename, "caption": caption[:1024],
+        })
     if r.status_code >= 300:
         raise RuntimeError(f"UltraMsg error {r.status_code}: {r.text[:200]}")
+    try:
+        data = r.json()
+        if isinstance(data, dict) and data.get("error"):
+            raise RuntimeError(f"UltraMsg error: {data.get('error')}")
+    except ValueError:
+        pass
 
 
 @router.post("/outlet/{session_id}/share")
@@ -205,13 +215,13 @@ async def outlet_share(session_id: str, payload: OutletShareRequest, user: dict 
             if not payload.recipient_phone:
                 raise HTTPException(400, "recipient_phone required")
             a = (await _load_outlet(session_id, user["user_id"]))[1].get("ai_analysis", {})
-            wa = (
-                f"*JELCOS AI*\n_Emotional Outlet Analysis_\n\n"
-                f"{owner} shared their outlet profile: *{title}*\n\n"
+            caption = (
+                f"*JELCOS AI* — Emotional Outlet Analysis\n"
+                f"{owner} shared *{title}* with you.\n\n"
                 f"{a.get('mode_insight', '')}\n\n"
-                f"_{a.get('encouragement', '')}_\n\nBest wishes from JELCOS AI 🙏"
+                f"_{a.get('encouragement', '')}_\n\nYour full branded report is attached. 🙏"
             )
-            await _send_whatsapp_text(payload.recipient_phone.strip(), wa)
+            await _send_whatsapp_document(payload.recipient_phone.strip(), pdf, fname, caption)
     except HTTPException:
         raise
     except Exception as e:
