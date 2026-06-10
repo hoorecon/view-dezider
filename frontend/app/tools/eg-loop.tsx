@@ -12,6 +12,7 @@ import { VoiceInput } from '../../src/components/VoiceInput';
 import { AudioGuidePlayer } from '../../src/components/AudioGuidePlayer';
 import api from '../../src/utils/api';
 import { handleAiError } from '../../src/utils/aiErrors';
+import { confirmAiSpend, useAiEstimate } from '../../src/utils/aiEstimates';
 
 const LOOP_AUDIO_URL = 'https://customer-assets.emergentagent.com/job_a7a2d7ec-9ce2-470b-8ff8-d26638aa4277/artifacts/qgkdw529_Breaking%20the%20LOOP.mp3';
 
@@ -68,7 +69,11 @@ export default function EGLoopScreen() {
   // Step 3: Reframe
   const [reframe, setReframe] = useState<any>(null);
 
+  const loopRecEst = useAiEstimate('eg_loop_recommend');
+  const loopRefEst = useAiEstimate('eg_loop_reframe');
+
   const handleCapture = async () => {
+    if (!(await confirmAiSpend('eg_loop_recommend', 'Loop recommendation'))) return;
     if (!repeatedThought.trim()) { Alert.alert('Required', 'Describe the repeating thought.'); return; }
     setLoading(true);
     try {
@@ -87,6 +92,7 @@ export default function EGLoopScreen() {
   };
 
   const handleMethodSubmit = async () => {
+    if (!(await confirmAiSpend('eg_loop_reframe', 'Loop reframe'))) return;
     if (!selectedMethod) { Alert.alert('Required', 'Select a method.'); return; }
     setLoading(true);
     try {
@@ -168,7 +174,7 @@ export default function EGLoopScreen() {
         value={tryingToSolve} onChangeText={setTryingToSolve} placeholderTextColor={COLORS.textMuted} />
       <TouchableOpacity style={s.nextBtn} onPress={handleCapture} disabled={loading}>
         {loading ? <ActivityIndicator color="#FFF" /> :
-          <><Text style={s.nextBtnText}>Get AI Recommendation</Text><Ionicons name="bulb" size={18} color="#FFF" /></>}
+          <><Text style={s.nextBtnText}>Get AI Recommendation{loopRecEst ? ` · ~${loopRecEst} cr` : ''}</Text><Ionicons name="bulb" size={18} color="#FFF" /></>}
       </TouchableOpacity>
     </View>
   );

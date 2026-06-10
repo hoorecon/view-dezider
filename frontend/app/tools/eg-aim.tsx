@@ -11,6 +11,7 @@ import { COLORS } from '../../src/constants/colors';
 import { VoiceInput } from '../../src/components/VoiceInput';
 import api from '../../src/utils/api';
 import { handleAiError } from '../../src/utils/aiErrors';
+import { confirmAiSpend, useAiEstimate } from '../../src/utils/aiEstimates';
 
 interface Addiction {
   area_of_life: string; addiction: string; triggering_situations: string;

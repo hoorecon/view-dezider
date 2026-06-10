@@ -30,6 +30,7 @@ DEFAULTS = {
     "default_user_credits": 20.0,
     "default_admin_credits": 200.0,
     "tokens_per_credit": 100.0,
+    "confirm_threshold_credits": 15.0,  # ask the user to confirm AI actions estimated above this
     # ── Phase 3 — Razorpay refill / pricing ──
     "blended_usd_per_mtok": 2.0,       # blended Gemini list rate ($ per 1M tokens)
     "usd_to_inr_fallback": 90.0,       # used when live FX fetch fails
@@ -72,6 +73,7 @@ async def update_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
     allowed = {}
     # positive-required numerics
     for k in ("default_user_credits", "default_admin_credits", "tokens_per_credit",
+              "confirm_threshold_credits",
               "blended_usd_per_mtok", "usd_to_inr_fallback", "markup_admin_pct",
               "markup_user_pct", "min_custom_credits"):
         if k in patch and patch[k] is not None:
@@ -174,6 +176,41 @@ def tokens_to_credits(tokens: int, tokens_per_credit: float) -> float:
     credits = tokens / tpc
     # round UP to 4 decimals so tiny calls still cost something
     return max(0.0001, math.ceil(credits * 10000) / 10000)
+
+
+# Typical total (prompt + response) tokens per metered feature — calibrated from
+# observed usage. Used ONLY to show a "~N credits" estimate / confirm before a
+# spend; the real charge is always by actual tokens used.
+FEATURE_TOKENS = {
+    "eg_trap_analyze": 900,
+    "eg_loop_recommend": 700,
+    "eg_loop_reframe": 1000,
+    "eg_limitation_classify": 700,
+    "eg_limitation_reframe": 1000,
+    "eg_outlet_analyze": 1400,
+    "eg_aim_analyze": 1400,
+    "eg_breakthrough_report": 2000,
+    "ai_assess": 400,          # per cell (single ✨ assess)
+    "ai_assess_batch": 1200,   # per ~40-cell batched chunk
+}
+DEFAULT_FEATURE_TOKENS = 900
+
+
+async def estimates() -> Dict[str, Any]:
+    """Per-feature estimated credit cost + the confirm threshold, for the
+    frontend "~N cr" badges and the >threshold confirmation prompt."""
+    cfg = await get_config()
+    tpc = float(cfg["tokens_per_credit"])
+    feats = {
+        f: round(tokens_to_credits(tok, tpc), 2)
+        for f, tok in FEATURE_TOKENS.items()
+    }
+    return {
+        "tokens_per_credit": tpc,
+        "confirm_threshold_credits": float(cfg.get("confirm_threshold_credits", 15.0)),
+        "features": feats,
+        "default_estimate": round(tokens_to_credits(DEFAULT_FEATURE_TOKENS, tpc), 2),
+    }
 
 
 async def charge(user_id: str, *, tokens: int, feature: str = "", provider: str = "",

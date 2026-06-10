@@ -39,6 +39,13 @@ async def my_wallet_ledger(limit: int = 30, user: dict = Depends(get_current_use
     return {"items": await ai_wallet.get_ledger(user["user_id"], min(max(limit, 1), 100))}
 
 
+@router.get("/ai-wallet/estimates")
+async def my_wallet_estimates(user: dict = Depends(get_current_user)):
+    """Per-feature estimated credit cost + the confirm threshold (for "~N cr"
+    badges and the >threshold confirmation prompt before an AI spend)."""
+    return await ai_wallet.estimates()
+
+
 # ───────── AI provider consent (OpenAI free, data-sharing) ─────────
 @router.get("/ai-wallet/provider-consent")
 async def get_provider_consent(user: dict = Depends(get_current_user)):

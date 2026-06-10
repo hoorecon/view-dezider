@@ -11,6 +11,7 @@ import { COLORS } from '../../src/constants/colors';
 import { VoiceInput } from '../../src/components/VoiceInput';
 import api from '../../src/utils/api';
 import { handleAiError } from '../../src/utils/aiErrors';
+import { confirmAiSpend, useAiEstimate } from '../../src/utils/aiEstimates';
 
 const CATEGORIES = [
   'career', 'business', 'relationship', 'money', 'family',
@@ -60,6 +61,8 @@ export default function EGTrapScreen() {
     { title: 'AI Awareness', icon: 'bulb' },
   ];
 
+  const trapEst = useAiEstimate('eg_trap_analyze');
+
   const handleCapture = async () => {
     if (!situation.trim()) { Alert.alert('Required', 'Please describe your situation.'); return; }
     setLoading(true);
@@ -97,6 +100,7 @@ export default function EGTrapScreen() {
   };
 
   const handleLooping = async () => {
+    if (!(await confirmAiSpend('eg_trap_analyze', 'Trap analysis'))) return;
     setLoading(true);
     try {
       await api.put(`/emotional-gatekeeper/trap/${sessionId}/looping`, {
@@ -288,7 +292,7 @@ export default function EGTrapScreen() {
       </View>
       <TouchableOpacity style={s.nextBtn} onPress={handleLooping} disabled={loading}>
         {loading ? <ActivityIndicator color="#FFF" /> :
-          <><Text style={s.nextBtnText}>Get AI Awareness</Text><Ionicons name="bulb" size={18} color="#FFF" /></>}
+          <><Text style={s.nextBtnText}>Get AI Awareness{trapEst ? ` · ~${trapEst} cr` : ''}</Text><Ionicons name="bulb" size={18} color="#FFF" /></>}
       </TouchableOpacity>
     </View>
   );

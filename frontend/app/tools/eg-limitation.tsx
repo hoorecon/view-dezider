@@ -12,6 +12,7 @@ import { VoiceInput } from '../../src/components/VoiceInput';
 import { AudioGuidePlayer } from '../../src/components/AudioGuidePlayer';
 import api from '../../src/utils/api';
 import { handleAiError } from '../../src/utils/aiErrors';
+import { confirmAiSpend, useAiEstimate } from '../../src/utils/aiEstimates';
 
 const LIMITATION_AUDIO_URL = 'https://customer-assets.emergentagent.com/job_a7a2d7ec-9ce2-470b-8ff8-d26638aa4277/artifacts/qrq3iqkh_Breaking%20the%20LIMITATIONS.mp3';
 
@@ -66,7 +67,11 @@ export default function EGLimitationScreen() {
   // Step 3: Reframe
   const [reframe, setReframe] = useState<any>(null);
 
+  const limClsEst = useAiEstimate('eg_limitation_classify');
+  const limRefEst = useAiEstimate('eg_limitation_reframe');
+
   const handleCapture = async () => {
+    if (!(await confirmAiSpend('eg_limitation_classify', 'Limitation classification'))) return;
     if (!limitStatement.trim()) { Alert.alert('Required', 'Describe your limitation.'); return; }
     setLoading(true);
     try {
@@ -85,6 +90,7 @@ export default function EGLimitationScreen() {
   };
 
   const handleFlow = async () => {
+    if (!(await confirmAiSpend('eg_limitation_reframe', 'Limitation reframe'))) return;
     setLoading(true);
     try {
       await api.put(`/emotional-gatekeeper/limitation/${sessionId}/flow`, {
