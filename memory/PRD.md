@@ -733,3 +733,22 @@ LIVE VERIFIED: (1) direct capture curl → {"status":"Ok"}; (2) core.posthog_cli
 (3) real signup via API fired with "PostHog server-side analytics enabled" log; (4) frontend SDK
 initialized — config fetch from eu-assets.i.posthog.com HTTP 200. User instructed to do the
 production rollout (Cloudflare Pages env + redeploy; EC2 backend .env + compose rebuild).
+
+### PostHog Session Replay — Web (fork session, 11 Jun 2026)
+Problem: events worked but PostHog showed "no recording available" — posthog-react-native
+CANNOT record sessions on web. Fix (user-approved "Option A"): installed posthog-js@1.386,
+rewrote src/utils/analytics.ts with a platform split — web uses posthog-js (replay-capable),
+native keeps posthog-react-native. Privacy-hardened replay config: maskAllInputs:true,
+capture_performance:false (no network bodies → no JWT/PII leakage), person_profiles:
+'identified_only', capture_pageview:false (manual $pageview per expo-router change keeps
+parity with old trackScreen). posthog client exposed on window.posthog for verification.
+LIVE VERIFIED in preview browser: posthog-recorder.js loaded, sessionRecordingStarted:true,
+7x POST /s/ replay snapshots + 8x event captures to eu.i.posthog.com. tsc clean.
+GOTCHAS learned: (1) posthog-js bot detection (UA + userAgentData.brands + webdriver)
+silently blocks ALL captures incl. replay in headless browsers — spoof all three when
+testing via Playwright; real users unaffected. (2) Metro runs in CI mode (no file watch)
+in this env — `sudo supervisorctl restart expo` REQUIRED after editing frontend files
+before browser-verifying changes. (3) Replay snapshots go to /s/, events to /e/ or
+/i/v0/e/, RN SDK uses /batch/ + /array/<key>/config — distinguish SDKs by endpoint.
+PROD ROLLOUT (user must do): redeploy Cloudflare Pages (posthog-js is bundled at build
+time; env vars already set). Backend unchanged.
