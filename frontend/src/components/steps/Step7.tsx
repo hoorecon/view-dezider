@@ -476,19 +476,16 @@ export default function Step7() {
       .catch(() => { /* non-fatal */ });
   }, []);
 
-  // Apply a single batch result to the local matrix state (instant UI update).
+  // Local-only echo of a batch result for instant UI feedback. Deliberately
+  // does NOT call updateAssessment/saveDecision: the batched endpoint already
+  // persisted every cell server-side, and firing one PUT per cell here raced
+  // stale `decision` snapshots (last write wins → only 1 cell survived in
+  // MongoDB — the "cells empty despite credits charged" escalation). The
+  // fetchDecision() after the loop repaints the authoritative server state.
   const applyCellResult = (r: any) => {
     if (r.status !== 'done') return;
-    const factor = decision.factors.find(f => f.id === r.factor_id);
     const pct = Math.max(0, Math.min(100, parseInt(String(r.percentage), 10) || 0));
-    const unitStr = factor?.unit || '';
-    const eff = r.actual_value != null ? String(r.actual_value) : '';
-    const numericActual = parseFloat(eff);
-    const displayValue = eff
-      ? `${eff}${unitStr && !eff.includes(unitStr) ? ' ' + unitStr : ''}`
-      : undefined;
     const key = getAssessmentKey(r.option_id, r.factor_id);
-    updateAssessment(r.option_id, r.factor_id, pct, 'custom', displayValue, isNaN(numericActual) ? undefined : numericActual);
     setCustomInputValues(prev => ({ ...prev, [key]: String(pct) }));
   };
 
