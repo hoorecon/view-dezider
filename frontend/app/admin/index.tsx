@@ -43,6 +43,8 @@ const QUICK_ACTIONS: QuickAction[] = [
   { key: 'user-lookup',     label: 'User Lookup (PII)',   description: 'Read-only user view by email + WhatsApp · NDA + audit logged', icon: 'shield-checkmark', color: '#0891B2', href: '/admin/user-lookup' },
   { key: 'catalog',         label: 'Central Catalog',     description: 'Explorer tree · LifeArea→OrgType→PNRAG→Scenario→Templates/Store · inline CRUD', icon: 'git-network', color: '#7C3AED', href: '/admin/catalog' },
   { key: 'quota-editor',    label: 'Edit Report Allocation', description: 'Correct a user\'s remaining report quota · OTP-authorized · audited', icon: 'create', color: '#059669', href: '/admin/quota-editor' },
+  { key: 'ai-wallet-cfg',   label: 'AI Wallet Config',    description: 'Markup % · Route split (markup_routed_pct) · seeds · FX · live ₹ break-even preview', icon: 'wallet', color: '#7C3AED', href: '/admin/ai-wallet-config' },
+  { key: 'recon',           label: 'Revenue Recon',       description: 'Razorpay ⟷ AI-Wallet ⟷ Google Cloud · per-txn zero-loss tally', icon: 'analytics', color: '#0EA5E9', href: '/admin/recon' },
 ];
 
 export default function AdminHomeScreen() {

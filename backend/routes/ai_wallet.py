@@ -234,10 +234,11 @@ async def refill_order(body: Dict[str, Any], user: dict = Depends(get_current_us
     }
     linked = (cfg.get("route_linked_account_id") or "").strip()
     route_applied = False
-    if linked and pr["markup_paise"] >= ai_billing.ROUTE_MIN_TRANSFER_PAISE:
+    routed_paise = int(pr.get("routed_paise", 0))
+    if linked and routed_paise >= ai_billing.ROUTE_MIN_TRANSFER_PAISE:
         order_payload["transfers"] = [{
             "account": linked,
-            "amount": pr["markup_paise"],
+            "amount": routed_paise,
             "currency": "INR",
             "notes": {"type": "ai_credits_markup", "user_id": user["user_id"]},
             "on_hold": 0,

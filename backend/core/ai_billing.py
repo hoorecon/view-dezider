@@ -51,12 +51,24 @@ def _markup_pct(cfg: Dict[str, Any], is_admin: bool) -> float:
     return float(cfg.get("markup_admin_pct" if is_admin else "markup_user_pct", 0.0))
 
 
+def _routed_pct(cfg: Dict[str, Any]) -> float:
+    """Fraction (0-100) of the markup that goes to the Razorpay Route linked
+    account. The rest stays in the primary (treasury) account to cover the
+    Razorpay gateway fee + GST and leave a tiny break-even buffer."""
+    try:
+        v = float(cfg.get("markup_routed_pct", 77.0))
+    except (TypeError, ValueError):
+        v = 77.0
+    return max(0.0, min(100.0, v))
+
+
 def price_for_credits(credits: int, is_admin: bool, cfg: Dict[str, Any], fx: float) -> Dict[str, Any]:
     """Compute the full price breakdown for `credits` at the current config + FX."""
     credits = int(credits)
     tpc = float(cfg.get("tokens_per_credit", 100.0)) or 100.0
     blended = float(cfg.get("blended_usd_per_mtok", 2.0)) or 2.0
     markup_pct = _markup_pct(cfg, is_admin)
+    routed_pct = _routed_pct(cfg)
 
     cost_usd = credits * tpc * blended / 1_000_000.0
     total_usd = cost_usd * (1.0 + markup_pct / 100.0)
@@ -67,12 +79,15 @@ def price_for_credits(credits: int, is_admin: bool, cfg: Dict[str, Any], fx: flo
     total_paise = int(round(total_inr * 100))
     markup_paise = int(round(markup_inr * 100))
     cost_paise = max(0, total_paise - markup_paise)
+    routed_paise = int(round(markup_paise * routed_pct / 100.0))
+    retained_paise = max(0, markup_paise - routed_paise)
 
     return {
         "credits": credits,
         "tokens_per_credit": tpc,
         "blended_usd_per_mtok": blended,
         "markup_pct": markup_pct,
+        "markup_routed_pct": routed_pct,
         "fx_usd_inr": round(fx, 4),
         "cost_usd": round(cost_usd, 6),
         "total_usd": round(total_usd, 6),
@@ -82,6 +97,10 @@ def price_for_credits(credits: int, is_admin: bool, cfg: Dict[str, Any], fx: flo
         "total_paise": total_paise,
         "cost_paise": cost_paise,
         "markup_paise": markup_paise,
+        "routed_paise": routed_paise,
+        "retained_markup_paise": retained_paise,
+        "routed_inr": round(routed_paise / 100.0, 2),
+        "retained_markup_inr": round(retained_paise / 100.0, 2),
         "below_min": total_paise < RAZORPAY_MIN_PAISE,
         "min_inr": RAZORPAY_MIN_PAISE / 100.0,
     }

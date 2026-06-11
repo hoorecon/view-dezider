@@ -35,7 +35,11 @@ DEFAULTS = {
     "blended_usd_per_mtok": 2.0,       # blended Gemini list rate ($ per 1M tokens)
     "usd_to_inr_fallback": 90.0,       # used when live FX fetch fails
     "markup_admin_pct": 1.0,           # hidden markup for admin-role buyers
-    "markup_user_pct": 10.0,           # hidden markup for regular users
+    "markup_user_pct": 13.0,           # hidden markup for regular users (covers RZP fee + ~10% net)
+    # % of the markup that is routed via Razorpay Route to the linked account.
+    # Default 77.0 → on a 13% markup, ~10% goes to linked, ~3% retained in primary
+    # (treasury) to cover the ~2.36% RZP fee+GST and leave a tiny break-even buffer.
+    "markup_routed_pct": 77.0,
     "route_linked_account_id": "acc_SyPciERWCkmA6R",  # Razorpay Route: markup → this linked account
     "min_custom_credits": 150.0,       # custom refill floor (keeps order >= ₹1)
     "credit_packs": [
@@ -75,7 +79,7 @@ async def update_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
     for k in ("default_user_credits", "default_admin_credits", "tokens_per_credit",
               "confirm_threshold_credits",
               "blended_usd_per_mtok", "usd_to_inr_fallback", "markup_admin_pct",
-              "markup_user_pct", "min_custom_credits"):
+              "markup_user_pct", "markup_routed_pct", "min_custom_credits"):
         if k in patch and patch[k] is not None:
             try:
                 val = float(patch[k])
@@ -83,6 +87,8 @@ async def update_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
                     raise ValueError
                 if k in ("tokens_per_credit", "blended_usd_per_mtok", "usd_to_inr_fallback",
                          "min_custom_credits") and val <= 0:
+                    raise ValueError
+                if k == "markup_routed_pct" and val > 100.0:
                     raise ValueError
                 allowed[k] = val
             except (ValueError, TypeError):
