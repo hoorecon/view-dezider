@@ -780,3 +780,44 @@ KEY INSIGHT surfaced: markup is routed AWAY to the linked account, so primary ac
 collected − fee − markup ≈ cost − fee → structurally slightly BELOW the earmarked Gemini cost
 (e.g. ₹92.71 net vs ₹95.37 cost on the ₹104.91 txn). Suggest raising markup_user_pct or keeping
 part of markup in primary account if buffer must be ≥ 0 per txn.
+
+### World-class "Import from URL" — single-listing DETAIL pages (fork session, 12 Jun 2026)
+User goal: NoBroker property-detail URL (not a comparison page) must intelligently import ALL
+factors with expected values + smart operators (Rent ≤ 18000+600, Area ≥ 650 sqft, Furnishing =
+Semi, Livability ≥ 6.2 …), main listing as Option 1, 'Similar Properties' as extra options.
+Approved choices: ScraperAPI + LLM extraction; default 'Cheap & Fast AI' (Gemini wallet-billed)
+with optional 'Costly & Precise AI' (Claude via Emergent universal key, wallet-billed at an
+admin-configurable multiplier); auto-assigned smart operators; generic for ANY site.
+BUILT:
+- backend/core/url_detail.py (NEW) — DETAIL_SYSTEM prompt + ai_extract_detail() (one metered
+  LLM call → factors w/ operators/expected/units + items w/ per-factor values+scores),
+  normalize_detail() (op coercion, whitespace dedupe, main-item synthesis, 24-factor cap),
+  _embedded_related_snippets() (mines inline SPA-state JSON for similar/related-items blocks —
+  strips photos/urls/empty fields; NoBroker's rail is JS-rendered but server-embedded).
+- backend/core/url_crawl.py — refactor: fetch_page(), fetch_rendered() (ScraperAPI render=true),
+  page_text() (visible text + JSON-LD), deterministic_candidates(), candidates_from_response()
+  (non-raising); crawl_candidates kept as raising wrapper (matrix_import still uses it).
+- backend/routes/url_analyze.py — both endpoints fetch ONCE; flow: hierarchy → deterministic
+  flat (≥2) → DETAIL extraction (rendered HTML when ScraperAPI configured, DETAIL_MAX_FACTORS=24)
+  → AI flat fallback. ai_tier param ('fast'|'precise'); 402 on InsufficientCredits; responses
+  include mode='detail', main_item, ai_provider (surfaces precise→fast fallback).
+- backend/core/ai_metering.py — metered_chat(tier=, meta=): precise ⇒ Claude (cfg precise_model,
+  default claude-sonnet-4-6) via Emergent key FIRST, charged at multiplier
+  precise_usd_per_mtok/blended_usd_per_mtok (zero-loss invariant preserved); graceful fallback.
+- backend/core/ai_wallet.py — config: precise_model, precise_usd_per_mtok (validated >0);
+  charge(credit_multiplier=); precise_multiplier() helper.
+- backend/core/decision_builder.py — merge_into_mydezider now stores unit_value (raw values) per
+  assessment for flat/detail candidates.
+- frontend Step2.tsx — Import URL dialog: 'AI engine' selector (step2-ai-tier-fast default /
+  step2-ai-tier-precise), 180s timeout, detail-mode success message + precise-fallback notice.
+- frontend admin/ai-wallet-config.tsx — 2 new fields + live 'Precise tier credit multiplier ×N'
+  row in worked example.
+TESTED: pytest 16/16 (tests/test_url_detail_import.py NEW, tests/test_iter_url_world_class_import.py
+NEW by testing agent); live curl: NoBroker import → mode=detail, 20 factors (all user-listed values
+matched), 3 options (main 100% + Dhamu/Golden Jublee w/ partial values); testing agent iteration_102
+5/5 PASS (backend + frontend dialog + admin config UI).
+KNOWN: EMERGENT_LLM_KEY budget EXHAUSTED in this workspace → precise tier currently falls back to
+fast chain (graceful, surfaced in UI note). User must top up Universal Key balance
+(Profile → Universal Key → Add Balance) to activate Claude precise tier.
+NOTE: factor count varies by provider in fast chain (Gemini ~20, Groq fallback ~10-16) — prompt
+hardened with exhaustiveness floor.

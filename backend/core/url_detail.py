@@ -80,7 +80,7 @@ Reply ONLY compact JSON (no prose, no markdown fences):
  "items":[{"name":str,"values":{"<factor name>":str|null},"scores":{"<factor name>":0-100|null}}]}
 
 RULES
-1. FACTORS — extract EVERY concrete attribute/spec of the MAIN item shown on the page: prices, rents, fees, deposits, maintenance, sizes, counts, scores, ratings, dates, categories, yes/no flags, address/locality. EXCLUDE site navigation, ads, service promos, marketing prose, breadcrumbs, nearby-locality link lists.
+1. FACTORS — be EXHAUSTIVE: extract EVERY concrete attribute/spec of the MAIN item shown on the page (a typical detail page yields 15-25 factors — do NOT summarise attributes away): prices, rents, fees, deposits, maintenance, sizes, counts, scores, ratings, dates, categories, yes/no flags, address/locality. EXCLUDE site navigation, ads, service promos, marketing prose, breadcrumbs, nearby-locality link lists.
 2. data_type "numeric" ONLY when the value is one measurable number (650, 18000, 6.2). Composite values like "0/4", "2 BHK", dates, yes/no → "text".
 3. operator expresses what a decision-maker would WANT versus this item's value:
    • "<=" for lower-is-better numerics (rent, price, deposit, fees, maintenance, distance, commute)
