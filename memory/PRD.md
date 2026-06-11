@@ -726,3 +726,10 @@ Cloudflare Pages env (EXPO_PUBLIC_POSTHOG_KEY/HOST) + redeploy; EC2 /opt/dezider
 fire frontend login{method:google} only (no backend signup event) — minor gap, note if needed.
 VERIFIED: pytest 4/4, tsc clean for changed files, signup curl OK w/ clean no-op log, app loads.
 LIVE event verification possible only after the phc_ key arrives.
+
+### PostHog activation (same session, 11 Jun 2026)
+phc_ key received, added to dev .envs (frontend EXPO_PUBLIC_POSTHOG_KEY, backend POSTHOG_API_KEY).
+LIVE VERIFIED: (1) direct capture curl → {"status":"Ok"}; (2) core.posthog_client flush OK;
+(3) real signup via API fired with "PostHog server-side analytics enabled" log; (4) frontend SDK
+initialized — config fetch from eu-assets.i.posthog.com HTTP 200. User instructed to do the
+production rollout (Cloudflare Pages env + redeploy; EC2 backend .env + compose rebuild).
