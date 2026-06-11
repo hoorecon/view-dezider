@@ -704,3 +704,25 @@ TESTS: /app/backend/tests/test_batch_assess.py (4 unit) + tests/test_ai_assess_a
 (live e2e, by testing agent) = 6/6 pass. Frontend e2e iteration_101: 8/8 cells persisted, 0 racing
 PUTs, stays on Step 7, alert OK, manual-edit regression pass.
 PENDING (user-deferred until he verifies this fix): EG dashboard "empty Draft sessions" cleanup.
+
+## Fork session — 11 Jun 2026 (PostHog Analytics integration, EU cloud)
+User requested PostHog analytics across all app flows. Choices: frontend + backend events,
+identify by user_id ONLY (no PII), named business events. Project: eu.posthog.com #199570.
+IMPLEMENTED (no-op safe — activates when keys land in env):
+- Frontend: src/utils/analytics.ts (posthog-react-native v4.46, EU host). _layout.tsx
+  AnalyticsListener → screen event on EVERY expo-router route change + auto tool_opened for
+  /tools/*. identify(user_id) on auth (authStore success paths + _layout effect), reset() on
+  logout. Named events: login{method}, signup, decision_created (prr/new), ai_assess_all_run
+  (Step7 w/ cell count).
+- Backend: core/posthog_client.py (lazy-init, no-op w/o POSTHOG_API_KEY, never raises).
+  Server-truth events: signup (auth register), payment_success (payments verify + webhook),
+  ai_credits_consumed (ai_wallet._ledger debits w/ feature+provider+balance_after),
+  otp_sent (whatsapp_otp), eg_session_completed (outlet+aim completion).
+- Env: POSTHOG_HOST / EXPO_PUBLIC_POSTHOG_HOST set to https://eu.i.posthog.com in dev .envs.
+PENDING: user must supply Project API Key (phc_..., from eu.posthog.com/project/199570/settings/project
+— they pasted a phx_ personal key by mistake, advised to revoke). PRODUCTION rollout:
+Cloudflare Pages env (EXPO_PUBLIC_POSTHOG_KEY/HOST) + redeploy; EC2 /opt/dezider/backend/.env
+(POSTHOG_API_KEY/POSTHOG_HOST) + docker compose up -d --build. Google-auth signups currently
+fire frontend login{method:google} only (no backend signup event) — minor gap, note if needed.
+VERIFIED: pytest 4/4, tsc clean for changed files, signup curl OK w/ clean no-op log, app loads.
+LIVE event verification possible only after the phc_ key arrives.

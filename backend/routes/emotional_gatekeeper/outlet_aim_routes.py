@@ -108,6 +108,9 @@ async def outlet_analyze(session_id: str, data: OutletAnalysisRequest, user: dic
         {"$set": {"status": "completed", "updated_at": now}}
     )
 
+    from core.posthog_client import track as ph_track
+    ph_track(user["user_id"], "eg_session_completed", {"final_step": "outlet"})
+
     doc.pop("_id", None)
     return doc
 
@@ -184,5 +187,8 @@ async def aim_analyze(session_id: str, user: dict = Depends(get_current_user)):
         {"id": session_id},
         {"$set": {"status": "completed", "updated_at": now}}
     )
+
+    from core.posthog_client import track as ph_track
+    ph_track(user["user_id"], "eg_session_completed", {"final_step": "aim"})
 
     return {"session_id": session_id, "analysis": analysis}

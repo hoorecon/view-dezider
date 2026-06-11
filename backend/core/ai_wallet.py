@@ -149,6 +149,12 @@ async def _ledger(user_id: str, delta: float, kind: str, *, balance_after: float
         "balance_after": round(balance_after, 4), "note": note, "by": by,
         "created_at": _now(),
     })
+    if kind == "debit":
+        from core.posthog_client import track as ph_track
+        ph_track(user_id, "ai_credits_consumed", {
+            "credits": round(abs(delta), 4), "feature": feature,
+            "provider": provider, "balance_after": round(balance_after, 4),
+        })
 
 
 async def get_balance(user_id: str) -> Dict[str, Any]:

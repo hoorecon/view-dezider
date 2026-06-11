@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { showAlert } from '../../src/utils/alert';
+import { trackEvent } from '../../src/utils/analytics';
 import {
   View,
   Text,
@@ -145,6 +146,7 @@ export default function NewPRRDecision() {
 
       const response = await api.post('/decisions', payload);
       const decisionId = response.data.id;
+      trackEvent('decision_created', { module: 'my_dezider', used_template: !!selectedTemplate });
 
       // If a template was selected, pre-load its factors
       if (selectedTemplate && selectedTemplate.factors.length > 0) {

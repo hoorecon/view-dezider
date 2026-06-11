@@ -104,6 +104,9 @@ async def register(request: Request, user_data: UserCreate, response: Response):
         httponly=True, secure=True, samesite="none", path="/", max_age=7*24*60*60
     )
 
+    from core.posthog_client import track as ph_track
+    ph_track(user_id, "signup", {"method": "email", "has_org": bool(user_data.org_id)})
+
     return {
         "user_id": user_id, "email": user_data.email, "name": user_data.name,
         "picture": None, "auth_method": "email",

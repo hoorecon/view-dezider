@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, StyleSheet, Alert, Modal } from 'react-native';
+import { trackEvent } from '../../utils/analytics';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -499,6 +500,7 @@ export default function Step7() {
   ) => {
     setBulkAssessing(true);
     setBulkProgress({ done: 0, total: cells.length });
+    trackEvent('ai_assess_all_run', { cells: cells.length, force_fill: forceFill });
     let done = 0, skipped = 0, errored = 0, ranOut = false, aiDown = false;
     let remaining: { optionId: string; factorId: string }[] = [];
     const errSet = new Set<string>();

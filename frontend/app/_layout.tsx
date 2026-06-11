@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { View, Text, Platform } from 'react-native';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, useRouter, useSegments, usePathname, useGlobalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,6 +15,21 @@ import AlertHost from '../src/components/AlertHost';
 import GlobalFontScale from '../src/components/GlobalFontScale';
 import { FontScaleProvider } from '../src/contexts/FontScaleContext';
 import { FontFamilyProvider } from '../src/contexts/FontFamilyContext';
+import { trackScreen, identifyUser } from '../src/utils/analytics';
+
+// ----------------------------------------------------------------------
+// PostHog analytics listener — captures a screen/pageview event on every
+// expo-router route change (covers ALL app flows). No-op when the
+// EXPO_PUBLIC_POSTHOG_KEY env var is absent.
+// ----------------------------------------------------------------------
+function AnalyticsListener() {
+  const pathname = usePathname();
+  const params = useGlobalSearchParams();
+  useEffect(() => {
+    trackScreen(pathname, params as Record<string, any>);
+  }, [pathname]);
+  return null;
+}
 
 // ----------------------------------------------------------------------
 // NavErrorBoundary — last line of defence against the React-Navigation
@@ -273,6 +288,11 @@ export default function RootLayout() {
     }
   }, [segments, isLoading, isAuthenticated, user, router]);
 
+  // PostHog: identify the user by non-PII user_id once authenticated.
+  useEffect(() => {
+    if (user?.user_id) identifyUser(user.user_id);
+  }, [user?.user_id]);
+
   // Native + secondary web path for icon font
   const [fontsLoaded] = useFonts({
     ...Ionicons.font,
@@ -299,6 +319,7 @@ export default function RootLayout() {
   return (
     <NavErrorBoundary>
       <StatusBar style="dark" />
+      <AnalyticsListener />
       <FontFamilyProvider>
       <FontScaleProvider>
         <WebFrame>

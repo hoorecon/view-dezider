@@ -499,6 +499,12 @@ async def verify_payment(request: Request, user: dict = Depends(get_current_user
     else:
         wallet = await get_or_create_wallet(user["user_id"])
 
+    from core.posthog_client import track as ph_track
+    ph_track(user["user_id"], "payment_success", {
+        "type": order_type, "credits": credits_to_add,
+        "amount": order_doc.get("amount"), "currency": order_doc.get("currency", "INR"),
+    })
+
     return {
         "message": "Payment verified successfully",
         "credits_added": credits_to_add,
@@ -548,6 +554,12 @@ async def razorpay_webhook(request: Request):
 
                 if user_id and credits_to_add > 0:
                     await add_credits(user_id, credits_to_add, f"Webhook: payment captured", payment_id)
+                    from core.posthog_client import track as ph_track
+                    ph_track(user_id, "payment_success", {
+                        "type": order_doc.get("type", "topup"), "credits": credits_to_add,
+                        "amount": order_doc.get("amount"), "currency": order_doc.get("currency", "INR"),
+                        "via": "webhook",
+                    })
 
         elif event == "payment.failed":
             order_id = payment_entity.get("order_id", "")

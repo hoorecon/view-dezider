@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { Platform } from 'react-native';
+import { trackEvent, identifyUser, resetAnalytics } from '../utils/analytics';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
@@ -95,6 +96,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await AsyncStorage.setItem('session_token', session_token);
       if (orgId) await AsyncStorage.setItem('org_id', orgId);
       set({ user: userData, isAuthenticated: true, sessionToken: session_token });
+      identifyUser(userData.user_id);
+      trackEvent('login', { method: 'email' });
     } catch (error: any) {
       throw new Error(error.response?.data?.detail || 'Login failed');
     }
@@ -112,6 +115,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const { session_token, ...userData } = response.data;
       await AsyncStorage.setItem('session_token', session_token);
       set({ user: userData, isAuthenticated: true, sessionToken: session_token });
+      identifyUser(userData.user_id);
+      trackEvent('signup', { method: 'email' });
     } catch (error: any) {
       throw new Error(error.response?.data?.detail || 'Registration failed');
     }
@@ -143,6 +148,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } finally {
       await AsyncStorage.removeItem('session_token');
       set({ user: null, isAuthenticated: false, sessionToken: null });
+      resetAnalytics();
     }
   },
 

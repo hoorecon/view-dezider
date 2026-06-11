@@ -198,6 +198,8 @@ async def send_otp(body: SendOtpRequest, user: dict = Depends(get_current_user))
         "phone_number": phone,
         "cooldown_seconds": RESEND_COOLDOWN_SECONDS,
     }
+    from core.posthog_client import track as ph_track
+    ph_track(user_id, "otp_sent", {"channel": "whatsapp", "delivered": delivered})
     # Security: never expose the OTP over the wire when WhatsApp delivered it.
     # Only surface it as a fallback when delivery failed, or when the debug
     # flag WA_OTP_EXPOSE_DEV_CODE=true is explicitly set (non-production only).
