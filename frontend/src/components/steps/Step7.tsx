@@ -504,6 +504,7 @@ export default function Step7() {
     setBulkProgress({ done: 0, total: cells.length });
     let done = 0, skipped = 0, errored = 0, ranOut = false, aiDown = false;
     let remaining: { optionId: string; factorId: string }[] = [];
+    const errSet = new Set<string>();
     try {
       const { data } = await api.post(`/decisions/${decision.id}/ai-assess-all-batched`, {
         force_fill: forceFill,
@@ -515,11 +516,12 @@ export default function Step7() {
         })),
       });
       const doneSet = new Set<string>();
+      const errSet = new Set<string>();
       for (const r of (data.results || [])) {
         applyCellResult(r);
         if (r.status === 'done') { done++; doneSet.add(`${r.option_id}|${r.factor_id}`); }
         else if (r.status === 'skipped') skipped++;
-        else errored++;
+        else { errored++; errSet.add(`${r.option_id}|${r.factor_id}`); }
       }
       ranOut = !!data.out_of_credits;
       aiDown = !!data.ai_unavailable;
@@ -533,6 +535,9 @@ export default function Step7() {
     refreshAiWallet();
     // Final re-sync so the matrix + "All set" check reflect every saved cell.
     try { await fetchDecision(); } catch { /* non-fatal */ }
+
+    // Cells that errored (NOT skipped) — offered for a one-tap retry below.
+    const failedCells = cells.filter(c => errSet.has(`${c.optionId}|${c.factorId}`));
 
     if (ranOut) {
       showAlert('Out of AI credits', `Assessed ${done} cell(s) before credits ran out. Top up to finish the rest.`, [
@@ -579,6 +584,17 @@ export default function Step7() {
     if (forceFill && done) parts[0] += ' (AI filled missing Expected/Actual)';
     if (skipped) parts.push(`${skipped} skipped (add Expected/Actual values)`);
     if (errored) parts.push(`${errored} failed`);
+    if (failedCells.length > 0) {
+      showAlert(
+        'AI Assess All finished with gaps',
+        parts.join(' • ') + `\n\n${failedCells.length} cell${failedCells.length !== 1 ? 's' : ''} could not be scored this round — you can retry just those now.`,
+        [
+          { text: 'Done', style: 'cancel' },
+          { text: 'Retry failed cells', onPress: () => runBulkAssess(failedCells, forceFill, allowOpenai) },
+        ],
+      );
+      return;
+    }
     showAlert('AI Assess All complete', parts.join(' • '));
   };
 

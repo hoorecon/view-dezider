@@ -1,0 +1,46 @@
+{
+  "summary": "Bug-fix verification for 'AI Assess All'. Two out of three reported issues VERIFIED FIXED: (a) backend chunking/retry-pass — pytest tests/test_batch_assess.py 4/4 PASS, plus a new live-LLM E2E (tests/test_ai_assess_all_batched_e2e.py) created a 10-cell decision and POST /api/decisions/{id}/ai-assess-all-batched returned 10/10 done with NO error/skipped statuses and assessments correctly PERSISTED in MongoDB; (b) Step-regression — drove the real frontend on mobile viewport: login → /prr/{id} → Step 7 → click testID='ai-assess-all' → confirm 'AI-fill all' → AI Assess All ran (1 POST to ai-assess-all-batched, 200), completion alert 'AI Assess All complete · Assessed 8 cells (AI filled missing Expected/Actual)' appeared, and the Step indicator REMAINED at 7/10 (autoJumpDoneRef fix works). HOWEVER, a CRITICAL NEW REGRESSION was uncovered on the same E2E run: although the backend correctly saved all 8 assessments via /ai-assess-all-batched, a subsequent GET on the decision returned only 1 of the 8 assessments. Backend access log shows 8 racing PUT /api/decisions/{id} requests fired by the frontend immediately AFTER the batched POST returned — these overwrite each other and wipe the server-saved state. Root cause: Step7.runBulkAssess loops `for (const r of data.results) applyCellResult(r)` → updateAssessment() → saveDecision({options: updatedOptions, factors}). Inside React the closure-captured `decision` is stale across the 8 synchronous calls, so each PUT only contains ONE new assessment (no batching), and the LAST PUT to land wins. End result: credits charged for 8 cells, only 1 cell survives in the DB — IDENTICAL to the user's original escalation. The backend `batch_score_cells` chunking/retry fix is correct, but the user-visible 'cells not filled' bug is now in the FRONTEND save layer, not the LLM layer.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Step 7 → AI Assess All → cells persistence",
+        "issue": "After /ai-assess-all-batched returns N done cells, Step7.runBulkAssess invokes applyCellResult → updateAssessment for each result, and updateAssessment fires an individual PUT /decisions/{id} per cell. Because updateAssessment closes over a stale `decision` snapshot (React state hasn't re-rendered between the synchronous loop iterations), each PUT body only carries that one cell's new assessment — the 8 PUTs race and the last one wins. Net effect: backend persists 1/8 cells even though POST /ai-assess-all-batched correctly returned 8 done results AND saved them. AI credits were already consumed. This is the SAME user-reported bug ('NOT all matrix cells were filled even though credits were consumed') that the recent batched-chunking fix was supposed to address — but the regression is downstream of the LLM call. Reference: /app/frontend/src/components/steps/Step7.tsx lines 480-537 + /app/frontend/src/context/DecisionContext.tsx lines 490-515 (updateAssessment → saveDecision).",
+        "affected_testIDs": ["ai-assess-all"]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_batch_assess.py",
+    "/app/backend/tests/test_ai_assess_all_batched_e2e.py",
+    "/app/test_reports/pytest/iter100_batch_assess.xml",
+    "/app/test_reports/pytest/iter100_e2e.xml"
+  ],
+  "action_items": [
+    "FIX (HIGH PRIORITY): In /app/frontend/src/components/steps/Step7.tsx runBulkAssess, do NOT call applyCellResult (which goes through updateAssessment → saveDecision PUT) for each batched result. The backend /ai-assess-all-batched ALREADY persists every done cell. Either (a) replace the per-cell PUT path with a local-only state update (a new helper like setAssessmentLocal that doesn't trigger saveDecision), and rely on the existing `await fetchDecision()` at line 537 to reflect the saved state; or (b) collect all 8 updates into a SINGLE merged options array and call saveDecision once. Without this fix the user-reported 'cells not filled' bug remains — credits get charged but only the last racing PUT survives.",
+    "(Once fix lands) Retest by repeating the E2E on the frontend: create a decision with 4-5 factors × 2 options, run AI Assess All → AI-fill all, then GET /api/decisions/{id} and verify all options[].assessments contain every factor_id."
+  ],
+  "critical_code_review_comments": [
+    "DecisionContext.updateAssessment is not safe to call N times synchronously: it reads `decision!.options` from the React state closure, which doesn't reflect prior calls in the same tick. Anywhere that needs to mutate many cells should compute the merged options array once and call saveDecision once.",
+    "Step7.runBulkAssess's `await fetchDecision()` (line 537) runs AFTER the 8 racing PUTs. Even after the fix above, this fetchDecision is required to surface server-side enriched fields (e.g. inferred actual values that the batched endpoint persisted but the local applyCellResult didn't compute).",
+    "Backend /ai-assess-all-batched correctly handles the chunking/retry/persistence concern that the new pytest tests cover. The route's $set of options + factors is atomic and idempotent — verified by the new live-LLM E2E."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_ai_assess_all_batched_e2e.py (new — live E2E against EXPO_PUBLIC_BACKEND_URL)"
+  ],
+  "success_rate": {
+    "backend": "100% (4/4 batch_assess pytest + 2/2 new live-LLM E2E pass; all 10 cells persisted via direct API call)",
+    "frontend": "67% (step-regression FIX verified, AI Assess All button + completion alert verified; cell-persistence after frontend run FAILS — 1/8 cells survive due to racing PUTs)"
+  },
+  "seed_data_creation": "Created (and trashed) one fresh decision via POST /api/decisions as harden_1777921741@example.com: TEST_FE_BatchAssess_Laptop (id=1a7e6416-bba8-449e-93d6-30598a9cbb5a, 4 factors × 2 options = 8 cells). The pytest E2E also creates+deletes its own TEST_BatchAssess_Phone decision per-run.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The backend-side AI Assess All fix (chunking + retry) is solid and covered by pytest tests/test_batch_assess.py (4 unit tests) and tests/test_ai_assess_all_batched_e2e.py (live LLM end-to-end). The step-regression fix (autoJumpDoneRef in DecisionContext.tsx lines 110/198/205) also works — Step 7 stays put after the run. The remaining bug is now FRONTEND-ONLY: Step7.runBulkAssess fires N racing PUTs that wipe the backend's saved assessments. To reproduce: login (harden_1777921741@example.com / HardenPass2026!), create decision with options+factors, navigate to /prr/{id}, click step 7, click testID='ai-assess-all', confirm 'AI-fill all', wait for completion alert, then GET /api/decisions/{id} — observe only ~1 assessment instead of N. Decision routes use /prr/{id} (NOT /decision/{id} as the original problem statement mentioned). Frontend URL: EXPO_PUBLIC_BACKEND_URL from /app/frontend/.env.",
+  "rca_of_issue": "RCA — 'NOT all matrix cells were filled even though credits were consumed' user escalation. The recent fix correctly addressed the LLM/prompt-truncation half of the bug at /app/backend/core/ai_assess.py (verified by 4 pytest tests + a live 10-cell E2E that persists 10/10 cells via direct API). But the same user-visible symptom is ALSO produced by a separate frontend race condition in /app/frontend/src/components/steps/Step7.tsx runBulkAssess (lines 498-537): after the batched endpoint returns, the code synchronously loops `data.results` and calls applyCellResult → updateAssessment(...) per cell. updateAssessment (DecisionContext.tsx:490) calls saveDecision({options: updatedOptions, factors}) which PUTs the WHOLE options array to /api/decisions/{id}. The closure captures `decision` from React state, which is NOT updated synchronously, so each of the 8 calls in the loop builds `updatedOptions` from the SAME pre-AI-Assess snapshot — each PUT carries only ONE new assessment. Backend MongoDB access log confirmed 8 sequential PUT /api/decisions/{id} requests fired immediately after POST /api/decisions/{id}/ai-assess-all-batched on this test run. The LAST PUT wins → only 1 cell survives, AND it also overwrites the 8 cells that /ai-assess-all-batched had correctly saved server-side. Reproduction: any decision with ≥2 cells; AI Assess All; GET decision afterwards shows ≤1 assessment. Mitigation (for main agent): change Step7.applyCellResult to update LOCAL state only (skip the saveDecision PUT — the backend already persisted), OR collect all results into one merged options array and call saveDecision once after the loop. The `await fetchDecision()` at line 537 will then correctly reflect the saved server state."
+}

@@ -103,6 +103,11 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // first fetchDecision() call (not on subsequent refreshes triggered by
   // save / reload). Once true, the smart auto-jump takes over.
   const overrideConsumedRef = React.useRef(false);
+  // The step auto-jump must run ONLY on the very first load. Re-fetches (after
+  // saves, imports, AI Assess All, …) must NEVER move the user off their
+  // current step — previously a refetch after "AI Assess All" could yank the
+  // user from Step 7 back to Step 6 (Define Options).
+  const autoJumpDoneRef = React.useRef(false);
   // Alias so fetchDecision() can read the latest step value without
   // re-creating the function on every render. (Closures pick this up.)
   const searchParams = params as { step?: string | string[] };
@@ -190,9 +195,15 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       // embed, drop the carried options into Step 6 and land the user there.
       const seeded = await applyEmbedSeed(response.data);
       if (seeded) {
+        autoJumpDoneRef.current = true;
         setCurrentStep(6);
         return;
       }
+
+      // Re-fetches (after saves / imports / AI Assess All) must keep the user
+      // on whatever step they're on — only the FIRST load may auto-jump below.
+      if (autoJumpDoneRef.current) return;
+      autoJumpDoneRef.current = true;
 
       // ── ?step=N URL override (SWOT->Decider conversion uses this to
       // force-land on Step 2 even when the doc already has factors).
