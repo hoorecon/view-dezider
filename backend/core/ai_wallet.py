@@ -41,6 +41,12 @@ DEFAULTS = {
     # (treasury) to cover the ~2.36% RZP fee+GST and leave a tiny break-even buffer.
     "markup_routed_pct": 77.0,
     "route_linked_account_id": "acc_SyPciERWCkmA6R",  # Razorpay Route: markup → this linked account
+    # Razorpay gateway fee + GST on the fee. Used by the admin "worked example"
+    # break-even preview so the super-admin can see the real ₹ math live. The
+    # backend doesn't deduct these itself — Razorpay does — but exposing them
+    # as config lets ops keep the preview accurate if RZP renegotiates rates.
+    "razorpay_fee_pct": 2.0,           # standard INR domestic-card rate
+    "razorpay_gst_pct": 18.0,          # GST charged ON the RZP fee
     "min_custom_credits": 150.0,       # custom refill floor (keeps order >= ₹1)
     "credit_packs": [
         {"id": "starter", "name": "Starter", "credits": 5000, "badge": "Starter"},
@@ -79,7 +85,9 @@ async def update_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
     for k in ("default_user_credits", "default_admin_credits", "tokens_per_credit",
               "confirm_threshold_credits",
               "blended_usd_per_mtok", "usd_to_inr_fallback", "markup_admin_pct",
-              "markup_user_pct", "markup_routed_pct", "min_custom_credits"):
+              "markup_user_pct", "markup_routed_pct",
+              "razorpay_fee_pct", "razorpay_gst_pct",
+              "min_custom_credits"):
         if k in patch and patch[k] is not None:
             try:
                 val = float(patch[k])
@@ -88,7 +96,7 @@ async def update_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
                 if k in ("tokens_per_credit", "blended_usd_per_mtok", "usd_to_inr_fallback",
                          "min_custom_credits") and val <= 0:
                     raise ValueError
-                if k == "markup_routed_pct" and val > 100.0:
+                if k in ("markup_routed_pct", "razorpay_fee_pct", "razorpay_gst_pct") and val > 100.0:
                     raise ValueError
                 allowed[k] = val
             except (ValueError, TypeError):

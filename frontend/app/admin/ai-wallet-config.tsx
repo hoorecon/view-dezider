@@ -47,6 +47,8 @@ interface Cfg {
   markup_admin_pct: number;
   markup_user_pct: number;
   markup_routed_pct: number;
+  razorpay_fee_pct: number;
+  razorpay_gst_pct: number;
   route_linked_account_id: string;
   min_custom_credits: number;
 }
@@ -56,7 +58,9 @@ const FIELDS: Array<{
 }> = [
   { key: 'markup_user_pct', label: 'Markup % (regular users)', hint: 'Hidden over Gemini cost · default 13% covers RZP fee + ~10% net', unit: '%', min: 0, max: 100 },
   { key: 'markup_admin_pct', label: 'Markup % (admin buyers)', hint: 'Internal staff get cost-only (default 1%)', unit: '%', min: 0, max: 100 },
-  { key: 'markup_routed_pct', label: 'Markup % routed to linked account', hint: '% of the markup transferred via Razorpay Route. The rest stays in primary to cover the ~2.36% gateway fee+GST. Default 77 → ≈10% routed, ≈3% retained on a 13% markup.', unit: '%', min: 0, max: 100 },
+  { key: 'markup_routed_pct', label: 'Markup % routed to linked account', hint: '% of the markup transferred via Razorpay Route. The rest stays in primary to cover the gateway fee+GST. Default 77 → ≈10% routed, ≈3% retained on a 13% markup.', unit: '%', min: 0, max: 100 },
+  { key: 'razorpay_fee_pct', label: 'Razorpay fee %', hint: 'Standard INR domestic-card rate (default 2.0%). Update if RZP renegotiates your gateway pricing.', unit: '%', min: 0, max: 100 },
+  { key: 'razorpay_gst_pct', label: 'GST % on Razorpay fee', hint: 'GST charged ON the gateway fee (default 18%). Effective deduction = fee × (1 + gst/100).', unit: '%', min: 0, max: 100 },
   { key: 'route_linked_account_id', label: 'Razorpay linked account id', hint: 'e.g. acc_xxxxxxxxxxxxxx · leave blank to disable Route' },
   { key: 'min_custom_credits', label: 'Min custom credits per refill', hint: 'Floor for "Custom amount" — keeps every order ≥ ₹1', min: 1 },
   { key: 'tokens_per_credit', label: 'Tokens per credit', hint: 'Lower = each credit covers fewer tokens → more revenue per credit', min: 1 },
@@ -116,16 +120,22 @@ export default function AdminAIWalletConfigScreen() {
     const cost = 100; // ₹100 LLM cost (sample)
     const markupPct = cfg.markup_user_pct || 0;
     const routedPct = cfg.markup_routed_pct || 0;
+    const feePct = cfg.razorpay_fee_pct || 0;
+    const gstPct = cfg.razorpay_gst_pct || 0;
     const charged = cost * (1 + markupPct / 100);
     const markup = charged - cost;
     const routed = markup * (routedPct / 100);
     const retainedFromMarkup = markup - routed;
-    // Razorpay fee — 2% standard for INR + 18% GST on fee = 2.36% effective
-    const rzpFeeRate = 0.02 * 1.18;
+    // RZP fee rate including GST on the fee itself.
+    // Effective = fee% × (1 + gst%/100). Default = 2 × 1.18 = 2.36%
+    const rzpFeeRate = (feePct / 100) * (1 + gstPct / 100);
     const rzpFee = charged * rzpFeeRate;
     const primaryNet = charged - routed - rzpFee;
     const surplus = primaryNet - cost;
-    return { cost, charged, markup, routed, retainedFromMarkup, rzpFee, primaryNet, surplus };
+    return {
+      cost, charged, markup, routed, retainedFromMarkup, rzpFee, primaryNet, surplus,
+      rzpFeeRatePct: rzpFeeRate * 100,
+    };
   }, [cfg]);
 
   if (loading || !cfg) {
@@ -176,7 +186,7 @@ export default function AdminAIWalletConfigScreen() {
               <ExRow label={`+ Markup (${cfg.markup_user_pct}%)`} value={inr(example.markup)} />
               <ExRow label="= Charged to user" value={inr(example.charged)} bold />
               <ExRow label={`− Routed to linked a/c (${cfg.markup_routed_pct}% of markup)`} value={`− ${inr(example.routed)}`} muted />
-              <ExRow label="− Razorpay fee (~2.36% incl. GST)" value={`− ${inr(example.rzpFee)}`} muted />
+              <ExRow label={`− Razorpay fee (${example.rzpFeeRatePct.toFixed(2)}% incl. GST)`} value={`− ${inr(example.rzpFee)}`} muted />
               <ExRow label="= Primary (treasury) net" value={inr(example.primaryNet)} bold />
               <ExRow
                 label="Surplus vs Gemini cost"
