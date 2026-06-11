@@ -221,14 +221,19 @@ async def merge_into_mydezider(
         if not nm or nm.lower() in ex_opt_names:
             continue
         scores = c.get("scores") or {}
+        unit_values = c.get("unit_values") or {}
         assessments: List[OptionAssessment] = []
         worth = 0.0
         for fname, fid in import_name_to_id.items():
             pct = _pct_int(scores.get(fname))
-            if pct is None:
+            uv = unit_values.get(fname)
+            uv = str(uv).strip() if uv not in (None, "") else None
+            if pct is None and uv is None:
                 continue
-            assessments.append(OptionAssessment(factor_id=fid, percentage=pct, assessment_mode="manual"))
-            worth += (rating_by_id.get(fid, 0) / total_rating) * pct
+            assessments.append(OptionAssessment(
+                factor_id=fid, percentage=pct, unit_value=uv, assessment_mode="manual"))
+            if pct is not None:
+                worth += (rating_by_id.get(fid, 0) / total_rating) * pct
         ex_options.append(DecisionOption(
             name=nm, assessments=assessments,
             worth_percentage=round(min(100.0, max(0.0, worth)), 2), source="manual",

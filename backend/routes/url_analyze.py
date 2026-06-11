@@ -22,7 +22,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from core.database import db
 from core.auth import get_current_user
-from core.url_crawl import crawl_candidates, crawl_hierarchy, has_any_llm, metered_chat
+from core import ai_wallet
+from core.url_crawl import (
+    has_any_llm, metered_chat,
+    fetch_page, fetch_rendered, parse_hierarchy, candidates_from_response,
+)
+from core.url_detail import ai_extract_detail
 from core.decision_builder import (
     create_mydezider_from_candidates, create_pros_cons_from_candidates,
     create_hierarchical_mydezider, merge_into_mydezider,
@@ -109,6 +114,7 @@ class AnalyzeRequest(BaseModel):
     life_area: Optional[str] = None
     decision_type: Optional[str] = None
     max_factors: int = Field(default=8, ge=1, le=20)
+    ai_tier: str = "fast"                       # fast | precise (Claude via Emergent key)
 
 
 def _derive_factors_and_scores(
@@ -315,11 +321,16 @@ async def analyze_url(req: AnalyzeRequest, request: Request, user: dict = Depend
     })
 
     title = (req.title or "").strip() or f"Analyse: {req.url.strip()[:60]}"
+    tier = _tier(req.ai_tier)
+
+    # ── Fetch ONCE; run all parse strategies against the same response. ──
+    r = await fetch_page(req.url)
+    is_json = "json" in r.headers.get("content-type", "")
 
     # ── MyDezider: prefer a FULL two-level import when the page is a category-
     # grouped comparison matrix (e.g. GSMArena: 15 categories × sub-specs). ──
-    if target == "mydezider":
-        hierarchy = await crawl_hierarchy(req.url)
+    if target == "mydezider" and not is_json:
+        hierarchy = parse_hierarchy(r.text)
         if hierarchy and len(hierarchy.get("groups", [])) >= 2 and len(hierarchy.get("items", [])) >= 2:
             sub_total = sum(len(g.get("rows") or []) for g in hierarchy["groups"])
             ctx = (f"Auto-built from a {elig.replace('_', '/')} URL — {len(hierarchy['items'])} options, "
@@ -335,17 +346,50 @@ async def analyze_url(req: AnalyzeRequest, request: Request, user: dict = Depend
                 "factor_count": built["subfactor_count"],
             }
 
-    # ── Flat fallback (Pros & Cons always; MyDezider when not a matrix) ──
-    candidates = await crawl_candidates(req.url, user["user_id"])
+    # ── Flat comparison (Pros & Cons always; MyDezider when not a matrix) ──
+    candidates = await candidates_from_response(r, user["user_id"], allow_ai=False)
+    if len(candidates) >= 2:
+        factors, scored = _derive_factors_and_scores(candidates, req.max_factors)
+        if factors:
+            return await _create_from_flat(user, req, target, title, elig, consent_id,
+                                           factors, scored, len(candidates))
+
+    # ── Single-item DETAIL page (property / product / job …): smart factors
+    # with operators + the listing as Option 1 + 'Similar items' as options. ──
+    if target == "mydezider" and not is_json:
+        detail = await _extract_detail_for_url(user["user_id"], req.url, r.text, tier)
+        if detail:
+            new_id = await create_mydezider_from_candidates(
+                user["user_id"], title=(req.title or "").strip() or detail["main_name"][:80],
+                context=f"Auto-built from a {elig.replace('_', '/')} detail page.",
+                life_area=req.life_area, decision_type=req.decision_type,
+                factors=detail["factors"], candidates=detail["candidates"],
+                source_label="url_analyze",
+            )
+            return {
+                "id": new_id, "target": target, "consent_id": consent_id,
+                "mode": "detail", "main_item": detail["main_name"],
+                "ai_provider": detail.get("provider") or "",
+                "item_count": len(detail["candidates"]),
+                "factor_count": len(detail["factors"]),
+            }
+
+    # ── LLM flat fallback for table-less / irregular comparison pages ──
+    if len(candidates) < 2:
+        candidates = await candidates_from_response(r, user["user_id"], allow_ai=True)
     if len(candidates) < 2:
         raise HTTPException(422, "Need at least 2 comparable items on the page to build a decision.")
 
     factors, scored = _derive_factors_and_scores(candidates, req.max_factors)
     if not factors:
         raise HTTPException(422, "Could not derive comparable factors from the page.")
+    return await _create_from_flat(user, req, target, title, elig, consent_id,
+                                   factors, scored, len(candidates))
 
-    context = f"Auto-built from a {elig.replace('_', '/')} URL ({len(candidates)} items)."
 
+async def _create_from_flat(user, req, target, title, elig, consent_id,
+                            factors, scored, item_count):
+    context = f"Auto-built from a {elig.replace('_', '/')} URL ({item_count} items)."
     if target == "pros_cons":
         new_id = await create_pros_cons_from_candidates(
             user["user_id"], title=title, context=context,
@@ -358,10 +402,9 @@ async def analyze_url(req: AnalyzeRequest, request: Request, user: dict = Depend
             life_area=req.life_area, decision_type=req.decision_type,
             factors=factors, candidates=scored, source_label="url_analyze",
         )
-
     return {
         "id": new_id, "target": target, "consent_id": consent_id,
-        "item_count": len(candidates), "factor_count": len(factors),
+        "item_count": item_count, "factor_count": len(factors),
     }
 
 
@@ -372,6 +415,32 @@ class ImportRequest(BaseModel):
     custom_note: Optional[str] = None
     accepted: bool = False
     max_factors: int = Field(default=8, ge=1, le=20)
+    ai_tier: str = "fast"                       # fast | precise (Claude via Emergent key)
+
+
+def _tier(v: Optional[str]) -> str:
+    return "precise" if (v or "").strip().lower() == "precise" else "fast"
+
+
+# Cap for DETAIL-page imports — a single listing legitimately yields 15-25
+# factors (specs), unlike a comparison table where 8 columns is plenty.
+DETAIL_MAX_FACTORS = 24
+
+
+async def _extract_detail_for_url(user_id: str, url: str, html: str, tier: str):
+    """Detail-page pipeline: escalate to RENDERED HTML when ScraperAPI is
+    configured (similar-items rails are usually JS-loaded), then run the
+    single-call LLM extraction. Translates InsufficientCredits → 402."""
+    rendered = await fetch_rendered(url)
+    try:
+        return await ai_extract_detail(user_id, rendered or html, tier=tier,
+                                       max_factors=DETAIL_MAX_FACTORS)
+    except ai_wallet.InsufficientCredits as e:
+        raise HTTPException(
+            402,
+            f"You're out of AI credits (balance {round(e.balance, 2)}). "
+            "Top up your AI wallet to use the URL import.",
+        )
 
 
 @router.post("/decision/{decision_id}/import")
@@ -404,10 +473,14 @@ async def import_url_into_decision(
         "user_agent": request.headers.get("user-agent"), "created_at": _now(),
     })
 
+    # ── Fetch ONCE; run all parse strategies against the same response. ──
+    tier = _tier(req.ai_tier)
+    r = await fetch_page(req.url)
+    is_json = "json" in r.headers.get("content-type", "")
+
     # ── Prefer a FULL two-level merge when the page is a category-grouped
-    # comparison matrix (e.g. GSMArena: 15 categories × sub-specs). Falls back
-    # to the flat derive when it is a simple row-per-item table. ──
-    hierarchy = await crawl_hierarchy(req.url)
+    # comparison matrix (e.g. GSMArena: 15 categories × sub-specs). ──
+    hierarchy = None if is_json else parse_hierarchy(r.text)
     if hierarchy and len(hierarchy.get("groups", [])) >= 2 and len(hierarchy.get("items", [])) >= 2:
         items, groups = hierarchy["items"], hierarchy["groups"]
         row_scores, row_meta, text_rows = _score_hierarchy_numeric(items, groups)
@@ -423,7 +496,39 @@ async def import_url_into_decision(
             "factors_added": counts["factors_added"], "options_added": counts["options_added"],
         }
 
-    candidates = await crawl_candidates(req.url, user["user_id"])
+    # ── Flat comparison table / matrix / product grid (deterministic) ──
+    candidates = await candidates_from_response(r, user["user_id"], allow_ai=False)
+    if len(candidates) >= 2:
+        factors, scored = _derive_factors_and_scores(candidates, req.max_factors)
+        if factors:
+            counts = await merge_into_mydezider(user["user_id"], decision_id,
+                                                factors=factors, candidates=scored)
+            return {
+                "decision_id": decision_id, "consent_id": consent_id, "mode": "flat",
+                "item_count": len(candidates),
+                "factors_added": counts["factors_added"], "options_added": counts["options_added"],
+            }
+
+    # ── Single-item DETAIL page (property / product / job …): every spec
+    # becomes a factor with a smart operator + Expected value; the listing
+    # becomes Option 1; 'Similar items' become extra options. ──
+    if not is_json:
+        detail = await _extract_detail_for_url(user["user_id"], req.url, r.text, tier)
+        if detail:
+            counts = await merge_into_mydezider(
+                user["user_id"], decision_id,
+                factors=detail["factors"], candidates=detail["candidates"])
+            return {
+                "decision_id": decision_id, "consent_id": consent_id, "mode": "detail",
+                "main_item": detail["main_name"],
+                "ai_provider": detail.get("provider") or "",
+                "item_count": len(detail["candidates"]),
+                "factors_added": counts["factors_added"], "options_added": counts["options_added"],
+            }
+
+    # ── LLM flat fallback for table-less / irregular comparison pages ──
+    if len(candidates) < 2:
+        candidates = await candidates_from_response(r, user["user_id"], allow_ai=True)
     if len(candidates) < 2:
         raise HTTPException(422, "Need at least 2 comparable items on the page to import.")
     factors, scored = _derive_factors_and_scores(candidates, req.max_factors)

@@ -51,6 +51,8 @@ interface Cfg {
   razorpay_gst_pct: number;
   route_linked_account_id: string;
   min_custom_credits: number;
+  precise_model: string;
+  precise_usd_per_mtok: number;
 }
 
 const FIELDS: Array<{
@@ -66,6 +68,8 @@ const FIELDS: Array<{
   { key: 'tokens_per_credit', label: 'Tokens per credit', hint: 'Lower = each credit covers fewer tokens → more revenue per credit', min: 1 },
   { key: 'confirm_threshold_credits', label: 'Confirm threshold (credits)', hint: 'Above this estimated cost, the UI asks the user to confirm before spending', min: 0 },
   { key: 'blended_usd_per_mtok', label: 'Gemini blended $/Mtok', hint: 'Single blended price ($) per 1M tokens — set from Gemini list price', unit: '$', min: 0.01 },
+  { key: 'precise_usd_per_mtok', label: 'Precise-AI blended $/Mtok', hint: '“Costly & Precise AI” tier (Claude via Emergent universal key). Credit multiplier = this ÷ Gemini $/Mtok — same markup math stays zero-loss.', unit: '$', min: 0.01 },
+  { key: 'precise_model', label: 'Precise-AI model', hint: 'Claude model used by the “Costly & Precise AI” import tier (e.g. claude-sonnet-4-6)' },
   { key: 'usd_to_inr_fallback', label: 'USD → INR fallback', hint: 'Used when live FX fetch fails', unit: '₹', min: 1 },
   { key: 'default_user_credits', label: 'New-user seed credits', hint: 'Free starting balance for non-admin signups', min: 0 },
   { key: 'default_admin_credits', label: 'New-admin seed credits', hint: 'Free starting balance for admin signups', min: 0 },
@@ -94,7 +98,7 @@ export default function AdminAIWalletConfigScreen() {
 
   const onChange = (k: keyof Cfg, v: string) => {
     if (!cfg) return;
-    if (k === 'route_linked_account_id') {
+    if (k === 'route_linked_account_id' || k === 'precise_model') {
       setCfg({ ...cfg, [k]: v } as Cfg);
     } else {
       const num = v === '' ? 0 : parseFloat(v);
@@ -194,6 +198,11 @@ export default function AdminAIWalletConfigScreen() {
                 color={example.surplus < 0 ? C.red : C.green}
                 bold
               />
+              <ExRow
+                label={`Precise tier (${cfg.precise_model || 'Claude'}) credit multiplier`}
+                value={`× ${(Math.max(1, (cfg.precise_usd_per_mtok || 0) / Math.max(0.01, cfg.blended_usd_per_mtok || 0.01))).toFixed(2)}`}
+                muted
+              />
             </View>
             {example.surplus < 0 ? (
               <Text style={[s.exHint, { color: C.red }]}>
@@ -218,8 +227,8 @@ export default function AdminAIWalletConfigScreen() {
                   style={s.input}
                   value={String((cfg as any)[f.key] ?? '')}
                   onChangeText={(t) => onChange(f.key, t)}
-                  keyboardType={f.key === 'route_linked_account_id' ? 'default' : 'decimal-pad'}
-                  placeholder={f.key === 'route_linked_account_id' ? 'acc_xxxxxxxxxxxxxx' : '0'}
+                  keyboardType={f.key === 'route_linked_account_id' || f.key === 'precise_model' ? 'default' : 'decimal-pad'}
+                  placeholder={f.key === 'route_linked_account_id' ? 'acc_xxxxxxxxxxxxxx' : f.key === 'precise_model' ? 'claude-sonnet-4-6' : '0'}
                   placeholderTextColor={C.muted}
                   testID={`awc-input-${f.key}`}
                 />

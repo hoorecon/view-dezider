@@ -43,6 +43,7 @@ export default function Step2() {
   // ── "Import from URL" — crawl a comparison page → fill factors (with Expected),
   // options (Step 6) and partial assessments (Step 7), behind the consent gate.
   const [importUrl, setImportUrl] = useState('');
+  const [importTier, setImportTier] = useState<'fast' | 'precise'>('fast');
   const [importConsentOpen, setImportConsentOpen] = useState(false);
   const [importing, setImporting] = useState(false);
 
@@ -54,18 +55,27 @@ export default function Step2() {
         eligibility_type: consent.eligibility_type,
         custom_note: consent.custom_note,
         accepted: true,
-      });
+        ai_tier: importTier,
+      }, { timeout: 180000 }); // detail pages may need a rendered fetch + LLM pass
       setImportConsentOpen(false);
       setImporting(false);
       setImportUrl('');
       await fetchDecision();
-      showAlert(
-        'Imported from URL',
-        `Added ${data.factors_added} factor${data.factors_added === 1 ? '' : 's'} and ${data.options_added} option${data.options_added === 1 ? '' : 's'} from ${data.item_count} items. Review the factors & Expected values below, then continue — Options (Step 6) and actuals (Step 7) are pre-filled.`,
-      );
+      if (data.mode === 'detail') {
+        const fellBack = importTier === 'precise' && data.ai_provider !== 'emergent_precise';
+        showAlert(
+          'Imported from URL',
+          `Detected a single-listing page — “${data.main_item}”. Added ${data.factors_added} factor${data.factors_added === 1 ? '' : 's'} with smart operators & Expected values, plus ${data.options_added} option${data.options_added === 1 ? '' : 's'} (the listing + similar items). Review below, then continue — Options (Step 6) and actuals (Step 7) are pre-filled.${fellBack ? '\n\nNote: Precise AI was unavailable (check the Universal Key balance) — the Fast AI engine was used instead, billed at the normal rate.' : ''}`,
+        );
+      } else {
+        showAlert(
+          'Imported from URL',
+          `Added ${data.factors_added} factor${data.factors_added === 1 ? '' : 's'} and ${data.options_added} option${data.options_added === 1 ? '' : 's'} from ${data.item_count} items. Review the factors & Expected values below, then continue — Options (Step 6) and actuals (Step 7) are pre-filled.`,
+        );
+      }
     } catch (e: any) {
       setImporting(false);
-      const msg = e?.response?.data?.detail || 'Could not import from this URL. Try a page that lists items in a table.';
+      const msg = e?.response?.data?.detail || 'Could not import from this URL. Try a comparison page or a single item/listing detail page.';
       showAlert('Import failed', typeof msg === 'string' ? msg : JSON.stringify(msg));
     }
   };
@@ -453,11 +463,11 @@ export default function Step2() {
         <View style={iurl.dlgOverlay}>
           <View style={iurl.dlg}>
             <Text style={iurl.dlgTitle}>Import from a URL</Text>
-            <Text style={iurl.dlgSub}>Paste a comparison / filter page. You&apos;ll confirm your access rights next.</Text>
+            <Text style={iurl.dlgSub}>Paste a comparison / filter page OR a single listing/product detail page. You&apos;ll confirm your access rights next.</Text>
             <TextInput
               testID="step2-import-url-input"
               style={iurl.dlgInput}
-              placeholder="https://… comparison page"
+              placeholder="https://… comparison or listing page"
               placeholderTextColor="#9CA3AF"
               value={importUrl}
               onChangeText={setImportUrl}
@@ -465,6 +475,35 @@ export default function Step2() {
               keyboardType="url"
               autoFocus
             />
+            <Text style={iurl.tierLabel}>AI engine</Text>
+            <View style={iurl.tierRow}>
+              <TouchableOpacity
+                testID="step2-ai-tier-fast"
+                style={[iurl.tierBtn, importTier === 'fast' && iurl.tierBtnActive]}
+                onPress={() => setImportTier('fast')}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="flash" size={15} color={importTier === 'fast' ? '#2563EB' : '#94A3B8'} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[iurl.tierTxt, importTier === 'fast' && iurl.tierTxtActive]}>Cheap &amp; Fast AI</Text>
+                  <Text style={iurl.tierHint}>Default · lowest credit cost</Text>
+                </View>
+                {importTier === 'fast' && <Ionicons name="checkmark-circle" size={16} color="#2563EB" />}
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="step2-ai-tier-precise"
+                style={[iurl.tierBtn, importTier === 'precise' && iurl.tierBtnActive]}
+                onPress={() => setImportTier('precise')}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="diamond" size={15} color={importTier === 'precise' ? '#7C3AED' : '#94A3B8'} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[iurl.tierTxt, importTier === 'precise' && { color: '#7C3AED' }]}>Costly &amp; Precise AI</Text>
+                  <Text style={iurl.tierHint}>Claude-grade extraction · more credits</Text>
+                </View>
+                {importTier === 'precise' && <Ionicons name="checkmark-circle" size={16} color="#7C3AED" />}
+              </TouchableOpacity>
+            </View>
             <View style={iurl.dlgBtns}>
               <TouchableOpacity style={iurl.dlgCancel} onPress={() => setUrlDialogOpen(false)}>
                 <Text style={iurl.dlgCancelText}>Cancel</Text>
@@ -1001,6 +1040,13 @@ const iurl = StyleSheet.create({
   dlgTitle: { fontSize: 16, fontWeight: '800', color: COLORS.textPrimary },
   dlgSub: { fontSize: 12, lineHeight: 17, color: COLORS.textMuted, marginTop: 6, marginBottom: 12 },
   dlgInput: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, fontSize: 14, color: COLORS.textPrimary },
+  tierLabel: { fontSize: 11, fontWeight: '800', color: COLORS.textMuted, marginTop: 12, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 },
+  tierRow: { gap: 8 },
+  tierBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, paddingHorizontal: 11, paddingVertical: 9, backgroundColor: '#F8FAFC' },
+  tierBtnActive: { borderColor: '#2563EB', backgroundColor: '#EFF6FF' },
+  tierTxt: { fontSize: 13, fontWeight: '800', color: COLORS.textPrimary },
+  tierTxtActive: { color: '#2563EB' },
+  tierHint: { fontSize: 10.5, color: COLORS.textMuted, marginTop: 1 },
   dlgBtns: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 16 },
   dlgCancel: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
   dlgCancelText: { fontSize: 13.5, fontWeight: '700', color: COLORS.textMuted },

@@ -92,9 +92,11 @@ async def _direct_call(model: str, api_key: str, system_message: str, prompt: st
     raise last  # pragma: no cover
 
 
-async def _emergent_call(system_message: str, prompt: str, session_prefix: str) -> Tuple[str, int]:
-    """Emergent fallback (universal key). emergentintegrations doesn't surface
-    token counts here, so we estimate from text length."""
+async def _emergent_call(system_message: str, prompt: str, session_prefix: str,
+                         provider: str = "gemini", model: str = "") -> Tuple[str, int]:
+    """Emergent universal-key call (Gemini fallback by default; Claude for the
+    precise tier). emergentintegrations doesn't surface token counts here, so
+    we estimate from text length."""
     from core.llm_compat import LlmChat, UserMessage
 
     chat = LlmChat(
@@ -102,7 +104,7 @@ async def _emergent_call(system_message: str, prompt: str, session_prefix: str) 
         session_id=f"{session_prefix}_{uuid.uuid4().hex[:8]}",
         system_message=system_message,
         provider_override="emergent",
-    ).with_model("gemini", GEMINI_MODEL)
+    ).with_model(provider, model or GEMINI_MODEL)
     text = await chat.send_message(UserMessage(text=prompt))
     return (text or "").strip(), _estimate_tokens(system_message, prompt, text or "")
 
@@ -135,11 +137,17 @@ async def metered_chat(
     user_id: str, *, system_message: str, prompt: str,
     feature: str, session_prefix: str = "metered",
     allow_openai: Optional[bool] = None, session_id: str = "",
+    tier: str = "fast", meta: Optional[dict] = None,
 ) -> str:
     """Gate → free-first provider chain → charge the wallet.
 
     `allow_openai`: None ⇒ resolve from the user's stored consent; True/False ⇒
     explicit override (used by the in-the-moment "use OpenAI free" choice).
+
+    `tier`: "fast" (default) = free-first Gemini chain. "precise" = Claude
+    (admin-configured `precise_model`) via the Emergent universal key first,
+    charged at the configured cost multiplier; falls back to the fast chain
+    when unavailable.
 
     Raises ai_wallet.InsufficientCredits when the user has no credits.
     Raises the last provider error when EVERY provider in the chain fails
@@ -147,6 +155,27 @@ async def metered_chat(
     Returns the model's text response.
     """
     await ai_wallet.ensure_can_spend(user_id)
+
+    # ── "Costly & Precise" tier — Claude via the Emergent universal key ──
+    if tier == "precise" and os.getenv("EMERGENT_LLM_KEY"):
+        cfg = await ai_wallet.get_config()
+        model = str(cfg.get("precise_model") or "claude-sonnet-4-6")
+        try:
+            text, tokens = await _emergent_call(
+                system_message, prompt, session_prefix, provider="anthropic", model=model)
+        except Exception as e:  # noqa: BLE001 — fall through to the fast chain
+            log.warning(f"precise tier ({model}) failed ({type(e).__name__}: {str(e)[:120]}); "
+                        "falling back to the standard chain")
+        else:
+            try:
+                await ai_wallet.charge(
+                    user_id, tokens=tokens, feature=feature, provider="emergent_precise",
+                    session_id=session_id, credit_multiplier=ai_wallet.precise_multiplier(cfg))
+            except Exception as e:  # noqa: BLE001
+                log.error(f"wallet charge failed (non-fatal): {e}")
+            if meta is not None:
+                meta["provider"] = "emergent_precise"
+            return text
 
     if allow_openai is None:
         allow_openai = await user_allows_openai(user_id)
@@ -175,6 +204,8 @@ async def metered_chat(
                                    provider=provider, session_id=session_id)
         except Exception as e:  # noqa: BLE001
             log.error(f"wallet charge failed (non-fatal): {e}")
+        if meta is not None:
+            meta["provider"] = provider
         return text
 
     raise last_err or RuntimeError("All LLM providers failed")

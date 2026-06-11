@@ -436,50 +436,93 @@ async def _fetch_html(url: str) -> "httpx.Response":
     return r
 
 
-async def crawl_candidates(url: str, user_id: str, name_key: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Fetch `url` and return a normalised candidate list. Raises HTTPException
-    with a user-friendly message on failure."""
-    r = await _fetch_html(url)
+async def fetch_page(url: str) -> "httpx.Response":
+    """Public alias for the shared fetch (browser headers + ScraperAPI
+    escalation) — lets routes fetch ONCE and run multiple parse strategies."""
+    return await _fetch_html(url)
 
-    ctype = r.headers.get("content-type", "")
-    if "json" in ctype:
-        try:
-            data = r.json()
-        except Exception:
-            data = None
-        if isinstance(data, list):
-            cands = _rows_to_candidates(data, name_key)
-            if cands:
-                return cands
-        raise HTTPException(422, "The JSON URL did not yield a usable list of items.")
 
-    rows = _html_table_rows(r.text)
+async def fetch_rendered(url: str) -> Optional[str]:
+    """Best-effort fully-RENDERED HTML via ScraperAPI (when configured).
+    Used for single-item DETAIL pages whose 'Similar items' rails are loaded
+    by JavaScript and therefore missing from the server-rendered HTML."""
+    sc = await resolve_scraperapi()
+    if not sc["api_key"]:
+        return None
+    return await _scraperapi_fetch(url, sc)
+
+
+def page_text(html: str, limit: int = 11000) -> str:
+    """Visible page text PLUS any JSON-LD structured-data blocks (many listing
+    sites embed rich item data there). Script/style noise stripped."""
+    soup = BeautifulSoup(html, "html.parser")
+    ld_blocks = [s.get_text() for s in soup.find_all("script", type="application/ld+json")][:3]
+    for tag in soup(["script", "style", "noscript", "svg"]):
+        tag.decompose()
+    text = re.sub(r"\n{2,}", "\n", soup.get_text("\n", strip=True))[:limit]
+    extra = "\n".join(b.strip()[:2000] for b in ld_blocks if b and len(b.strip()) > 40)
+    if extra:
+        text += "\nSTRUCTURED DATA (JSON-LD):\n" + extra[: max(0, limit + 4000 - len(text))]
+    return text
+
+
+def deterministic_candidates(html: str, name_key: Optional[str] = None) -> List[Dict[str, Any]]:
+    """All NON-LLM html parse strategies in priority order. May return a
+    low-quality (or empty) list — callers decide whether to escalate to AI."""
+    rows = _html_table_rows(html)
     std_cands = _rows_to_candidates(rows, name_key) if rows else []
     # Good standard (row-per-item) table → use it directly.
     if std_cands and not _is_low_quality(std_cands):
         return std_cands
 
     # Transposed comparison matrix (items as COLUMNS — e.g. GSMArena, versus.com).
-    matrix_cands = _comparison_matrix_candidates(r.text)
+    matrix_cands = _comparison_matrix_candidates(html)
     if matrix_cands:
         return matrix_cands
 
     # E-commerce product GRID (Amazon-style cards) → name + Price + Rating. No LLM.
-    grid_cands = _product_grid_candidates(r.text)
+    grid_cands = _product_grid_candidates(html)
     if grid_cands:
         return grid_cands
 
-    # LLM fallback for table-less / irregular pages (metered).
-    ai_rows = await ai_extract_candidates(user_id, r.text)
-    if ai_rows:
-        cands = _rows_to_candidates(ai_rows, name_key)
-        if cands:
-            return cands
+    return std_cands  # low quality or []
 
-    # Last resort: a low-quality standard parse is still better than nothing.
-    if std_cands:
-        return std_cands
 
+async def candidates_from_response(r: "httpx.Response", user_id: str,
+                                   name_key: Optional[str] = None,
+                                   allow_ai: bool = True) -> List[Dict[str, Any]]:
+    """Candidate extraction from an already-fetched response. Returns [] (never
+    raises) so callers can chain further strategies (e.g. detail-page import)."""
+    ctype = r.headers.get("content-type", "")
+    if "json" in ctype:
+        try:
+            data = r.json()
+        except Exception:
+            data = None
+        return _rows_to_candidates(data, name_key) if isinstance(data, list) else []
+
+    cands = deterministic_candidates(r.text, name_key)
+    if cands and not _is_low_quality(cands):
+        return cands
+
+    if allow_ai:
+        ai_rows = await ai_extract_candidates(user_id, r.text)
+        if ai_rows:
+            got = _rows_to_candidates(ai_rows, name_key)
+            if got:
+                return got
+    return cands  # low quality or []
+
+
+async def crawl_candidates(url: str, user_id: str, name_key: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Fetch `url` and return a normalised candidate list. Raises HTTPException
+    with a user-friendly message on failure."""
+    r = await _fetch_html(url)
+    cands = await candidates_from_response(r, user_id, name_key)
+    if cands:
+        return cands
+    if "json" in r.headers.get("content-type", ""):
+        raise HTTPException(422, "The JSON URL did not yield a usable list of items.")
     raise HTTPException(
         422,
         "Could not extract a comparable list from this page. The page may load its items "

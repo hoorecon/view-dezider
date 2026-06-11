@@ -48,6 +48,12 @@ DEFAULTS = {
     "razorpay_fee_pct": 2.0,           # standard INR domestic-card rate
     "razorpay_gst_pct": 18.0,          # GST charged ON the RZP fee
     "min_custom_credits": 150.0,       # custom refill floor (keeps order >= ₹1)
+    # ── "Costly & Precise AI" tier (Import-from-URL etc.) — Claude via the
+    # Emergent universal key, paid from the common org balance. Credits are
+    # charged at multiplier = precise_usd_per_mtok / blended_usd_per_mtok, so
+    # the SAME refill-markup math stays zero-loss for this dearer provider.
+    "precise_model": "claude-sonnet-4-6",
+    "precise_usd_per_mtok": 9.0,
     "credit_packs": [
         {"id": "starter", "name": "Starter", "credits": 5000, "badge": "Starter"},
         {"id": "pro", "name": "Pro", "credits": 20000, "badge": "Popular"},
@@ -87,14 +93,14 @@ async def update_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
               "blended_usd_per_mtok", "usd_to_inr_fallback", "markup_admin_pct",
               "markup_user_pct", "markup_routed_pct",
               "razorpay_fee_pct", "razorpay_gst_pct",
-              "min_custom_credits"):
+              "min_custom_credits", "precise_usd_per_mtok"):
         if k in patch and patch[k] is not None:
             try:
                 val = float(patch[k])
                 if val < 0:
                     raise ValueError
                 if k in ("tokens_per_credit", "blended_usd_per_mtok", "usd_to_inr_fallback",
-                         "min_custom_credits") and val <= 0:
+                         "min_custom_credits", "precise_usd_per_mtok") and val <= 0:
                     raise ValueError
                 if k in ("markup_routed_pct", "razorpay_fee_pct", "razorpay_gst_pct") and val > 100.0:
                     raise ValueError
@@ -104,6 +110,10 @@ async def update_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
     # Razorpay Route linked account id (string; empty disables Route)
     if "route_linked_account_id" in patch and patch["route_linked_account_id"] is not None:
         allowed["route_linked_account_id"] = str(patch["route_linked_account_id"]).strip()
+    # Precise-tier Claude model name (string; falls back to default when blank)
+    if "precise_model" in patch and patch["precise_model"] is not None:
+        pm = str(patch["precise_model"]).strip()
+        allowed["precise_model"] = pm or DEFAULTS["precise_model"]
     # credit packs (list of {id,name,credits,badge})
     if "credit_packs" in patch and isinstance(patch["credit_packs"], list):
         packs = []
@@ -233,18 +243,33 @@ async def estimates() -> Dict[str, Any]:
     }
 
 
+def precise_multiplier(cfg: Dict[str, Any]) -> float:
+    """Credit multiplier for the "Costly & Precise" (Claude) tier — the ratio
+    of the Claude blended rate to the Gemini blended rate, floor 1×. Keeps the
+    refill-markup zero-loss invariant intact for the dearer provider."""
+    base = float(cfg.get("blended_usd_per_mtok") or DEFAULTS["blended_usd_per_mtok"])
+    prec = float(cfg.get("precise_usd_per_mtok") or DEFAULTS["precise_usd_per_mtok"])
+    return max(1.0, prec / max(0.01, base))
+
+
 async def charge(user_id: str, *, tokens: int, feature: str = "", provider: str = "",
-                 session_id: str = "") -> Dict[str, Any]:
-    """Deduct credits for `tokens` used. Returns {charged, balance, tokens}."""
+                 session_id: str = "", credit_multiplier: float = 1.0) -> Dict[str, Any]:
+    """Deduct credits for `tokens` used. `credit_multiplier` > 1 is applied for
+    premium providers (precise tier). Returns {charged, balance, tokens}."""
     cfg = await get_config()
     credits = tokens_to_credits(int(tokens or 0), float(cfg["tokens_per_credit"]))
+    mult = max(1.0, float(credit_multiplier or 1.0))
+    note = "AI usage"
+    if mult > 1.0:
+        credits = max(0.0001, math.ceil(credits * mult * 10000) / 10000)
+        note = f"AI usage (precise ×{mult:.2f})"
     w = await _get_or_create(user_id)
     new_balance = round(float(w.get("balance", 0)) - credits, 4)
     await db.ai_wallets.update_one(
         {"user_id": user_id}, {"$set": {"balance": new_balance, "updated_at": _now()}},
     )
     await _ledger(user_id, -credits, "debit", balance_after=new_balance,
-                  tokens=tokens, provider=provider, feature=feature, note="AI usage",
+                  tokens=tokens, provider=provider, feature=feature, note=note,
                   session_id=session_id)
     return {"charged": credits, "balance": round(new_balance, 2), "tokens": int(tokens)}
 
