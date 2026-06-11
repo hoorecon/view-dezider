@@ -8,7 +8,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowDimensions,
-  Pressable, Platform,
+  Pressable, Platform, ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -87,7 +87,11 @@ export default function AdminHomeScreen() {
   const cardWidth = `${100 / cols}%` as any;
 
   return (
-    <View style={{ flex: 1, minHeight: 600, paddingHorizontal: 24, paddingTop: 20, paddingBottom: 24 }}>
+    <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 20, paddingBottom: 40 }}
+      showsVerticalScrollIndicator
+    >
       {/* Greeting */}
       <View style={s.greetingBlock}>
         <Text style={s.greeting}>Welcome back, {user?.name?.split(' ')[0] || 'Admin'} 👋</Text>
@@ -219,7 +223,7 @@ export default function AdminHomeScreen() {
           </View>
         </View>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
