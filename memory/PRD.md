@@ -684,3 +684,23 @@ _send_whatsapp_document() using UltraMsg POST /messages/document with the PDF as
 `document` + `filename` + `caption` (branded summary). Email already attached the PDF (Resend).
 VERIFIED: curl email share sent:true (PDF attached) + WhatsApp share to owner's verified number
 sent:true (PDF document delivered).
+
+## Fork session — 11 Jun 2026 (P0: "AI Assess All" escalation — empty cells + step jump)
+User escalation: after AI-Wallet top-up, "AI Assess All" consumed credits but left cells empty AND
+auto-navigated back to Step 6 (Define Options). THREE root causes found & fixed:
+1. BACKEND (core/ai_assess.py batch_score_cells): prompt was hard-truncated at 11K chars → LLM
+   silently skipped cells while the call was still charged. Replaced with size-aware chunking
+   (_chunk_work: ≤40 cells AND ≤9K-char items-JSON per call, never truncated) + ONE automatic
+   retry pass (chunks of 12) for dropped/malformed/parse-failed cells.
+2. FRONTEND (DecisionContext.tsx): the smart step auto-jump in fetchDecision() ran on EVERY
+   refetch — added autoJumpDoneRef so it runs ONLY on first load; refetches after Assess All /
+   saves / imports never move the user's step anymore.
+3. FRONTEND RACE (Step7.tsx applyCellResult) — found by testing agent: bulk path fired one PUT
+   /decisions/{id} per cell from stale React snapshots (last-write-wins → only 1/8 cells survived
+   in MongoDB). Bulk path no longer PUTs at all (backend already persisted); local echo only +
+   fetchDecision() repaint. Manual per-cell saves still PUT (regression-verified).
+Plus: completion alert now offers "Retry failed cells" when some cells errored.
+TESTS: /app/backend/tests/test_batch_assess.py (4 unit) + tests/test_ai_assess_all_batched_e2e.py
+(live e2e, by testing agent) = 6/6 pass. Frontend e2e iteration_101: 8/8 cells persisted, 0 racing
+PUTs, stays on Step 7, alert OK, manual-edit regression pass.
+PENDING (user-deferred until he verifies this fix): EG dashboard "empty Draft sessions" cleanup.
