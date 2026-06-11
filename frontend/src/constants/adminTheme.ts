@@ -119,6 +119,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
       { key: 'l4queue',  label: 'Expert Review Queue',icon: 'ribbon',              href: '/admin/expert-review-queue' },
       { key: 'segments', label: 'Customer Segments', icon: 'people-circle',        href: '/admin/customer-segments' },
       { key: 'pricing',  label: 'Pricing Page',      icon: 'pricetag',             href: '/admin/pricing' },
+      { key: 'recon',    label: 'Revenue Recon',     icon: 'calculator',           href: '/admin/recon' },
     ],
   },
   {

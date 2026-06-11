@@ -752,3 +752,31 @@ before browser-verifying changes. (3) Replay snapshots go to /s/, events to /e/ 
 /i/v0/e/, RN SDK uses /batch/ + /array/<key>/config — distinguish SDKs by endpoint.
 PROD ROLLOUT (user must do): redeploy Cloudflare Pages (posthog-js is bundled at build
 time; env vars already set). Backend unchanged.
+
+### Revenue Reconciliation — Razorpay ⟷ Ledger ⟷ Google Cloud (fork session, 11 Jun 2026)
+User goal: primary account must NEVER lose money vs Gemini postpaid invoices — granular
+per-transaction. Approved choices: BigQuery Billing Export (1a), daily auto-sync + on-demand
+(2b), all fields for zero-loss tally (3), Super-Admin report (4).
+BUILT:
+- backend/core/recon.py — engine: sync_razorpay() (payments/transfers/settlements, paginated,
+  incremental w/ 5d overlap, into recon_rzp_* collections), sync_gcp() (BigQuery billing-export
+  daily Gemini costs via service-account JSON stored b64 in recon_config, 2GB maximum_bytes_billed
+  guard), transactions_tally() (per-txn: collected − rzp fee − routed markup − earmarked cost_inr
+  = buffer; at_loss flag), daily_tally() (tokens→est ₹ vs GCP actual, variance), summary()
+  (verdict at_risk), start_daily_sync_task() (24h loop, starts in server startup).
+- backend/routes/admin_recon.py — /api/admin/recon/{summary,transactions,daily,sync,gcp-config,
+  transactions.csv} — ALL require_super_admin.
+- frontend/app/admin/recon.tsx — "Revenue Recon" in admin nav (Subscriptions & GTM): verdict
+  banner, 8 summary cards, per-txn tally table, daily tally, GCP setup form (paste SA JSON,
+  never returned to browser), Sync-now, CSV export. Full testIDs.
+- deps: google-cloud-bigquery==3.41.0 (pip freeze'd).
+TESTED: pytest tests/test_admin_recon.py 6/6 PASS; curl-verified all endpoints incl. live
+Razorpay sync (57 payments, 5 transfers, 26 settlements pulled), 403 regular user, 401 unauth,
+400 invalid SA JSON; UI screenshot-verified (all sections render, admin login works).
+PENDING (user side): on PRODUCTION — enable GCP Billing export to BigQuery, create
+service-account (BigQuery Data Viewer + Job User), paste JSON in Admin → Revenue Recon.
+Push to GitHub + redeploy backend (EC2 needs `pip install google-cloud-bigquery`).
+KEY INSIGHT surfaced: markup is routed AWAY to the linked account, so primary account nets
+collected − fee − markup ≈ cost − fee → structurally slightly BELOW the earmarked Gemini cost
+(e.g. ₹92.71 net vs ₹95.37 cost on the ₹104.91 txn). Suggest raising markup_user_pct or keeping
+part of markup in primary account if buffer must be ≥ 0 per txn.
