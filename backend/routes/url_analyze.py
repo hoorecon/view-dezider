@@ -27,7 +27,7 @@ from core.url_crawl import (
     has_any_llm, metered_chat,
     fetch_page, fetch_rendered, parse_hierarchy, candidates_from_response,
 )
-from core.url_detail import ai_extract_detail
+from core.url_detail import ai_extract_detail, deterministic_hint_issues
 from core.decision_builder import (
     create_mydezider_from_candidates, create_pros_cons_from_candidates,
     create_hierarchical_mydezider, merge_into_mydezider,
@@ -176,6 +176,7 @@ def _derive_factors_and_scores(
         factors.append({
             "name": k,
             "data_type": "numeric" if is_numeric else "text",
+            "factor_type": _factor_nature(k),
             "operator": ("<=" if lower_better else ">=") if is_numeric else None,
             "expected_value": expected,
             "weight": 50,
@@ -341,16 +342,20 @@ async def analyze_url(req: AnalyzeRequest, request: Request, user: dict = Depend
 
     title = (req.title or "").strip() or f"Analyse: {req.url.strip()[:60]}"
     tier = _tier(req.ai_tier)
+    hints = _hints_of(req)
 
     # ── Fetch ONCE; run all parse strategies against the same response. ──
     r = await fetch_page(req.url)
     is_json = "json" in r.headers.get("content-type", "")
 
     # ── MyDezider: prefer a FULL two-level import when the page is a category-
-    # grouped comparison matrix (e.g. GSMArena: 15 categories × sub-specs). ──
+    # grouped comparison matrix (e.g. GSMArena: 15 categories × sub-specs) —
+    # but ONLY when it does not contradict the user's accuracy hints. ──
     if target == "mydezider" and not is_json:
         hierarchy = parse_hierarchy(r.text)
-        if hierarchy and len(hierarchy.get("groups", [])) >= 2 and len(hierarchy.get("items", [])) >= 2:
+        if (hierarchy and len(hierarchy.get("groups", [])) >= 2
+                and len(hierarchy.get("items", [])) >= 2
+                and not deterministic_hint_issues(hints, hierarchy=hierarchy)):
             sub_total = sum(len(g.get("rows") or []) for g in hierarchy["groups"])
             ctx = (f"Auto-built from a {elig.replace('_', '/')} URL — {len(hierarchy['items'])} options, "
                    f"{len(hierarchy['groups'])} categories, {sub_total} sub-factors.")
@@ -365,19 +370,30 @@ async def analyze_url(req: AnalyzeRequest, request: Request, user: dict = Depend
                 "factor_count": built["subfactor_count"],
             }
 
-    # ── Flat comparison (Pros & Cons always; MyDezider when not a matrix) ──
+    # ── Flat comparison (Pros & Cons always; MyDezider when not a matrix).
+    # HINTS ARE LAW: a deterministic parse must MATCH any user hints, else we
+    # escalate to the hint-guided AI extraction (parse kept as fallback). ──
+    det_fallback = None
     candidates = await candidates_from_response(r, user["user_id"], allow_ai=False)
     if len(candidates) >= 2:
         factors, scored = _derive_factors_and_scores(candidates, req.max_factors)
         if factors:
-            return await _create_from_flat(user, req, target, title, elig, consent_id,
-                                           factors, scored, len(candidates))
+            det_issues = deterministic_hint_issues(hints, factors=factors, candidates=scored)
+            det_thin = tier == "precise" and len(factors) < 3
+            if not det_issues and not det_thin:
+                return await _create_from_flat(user, req, target, title, elig, consent_id,
+                                               factors, scored, len(candidates))
+            det_fallback = (factors, scored, det_issues)
 
-    # ── Single-item DETAIL page (property / product / job …): smart factors
-    # with operators + the listing as Option 1 + 'Similar items' as options. ──
+    # ── AI-guided extraction (detail OR comparison/listing pages): smart
+    # factors with operators + the listed items as options. User hints are
+    # injected as ground truth + verified with one corrective retry. ──
     if target == "mydezider" and not is_json:
         detail = await _extract_detail_for_url(user["user_id"], req.url, r.text, tier,
-                                               hints=_hints_of(req))
+                                               hints=hints)
+        if (detail and det_fallback
+                and len(detail.get("hint_warnings") or []) > len(det_fallback[2])):
+            detail = None  # deterministic parse was closer to the user's hints
         if detail:
             d_title = (req.title or "").strip() or detail["main_name"][:80]
             d_ctx = f"Auto-built from a {elig.replace('_', '/')} detail page."
@@ -413,6 +429,13 @@ async def analyze_url(req: AnalyzeRequest, request: Request, user: dict = Depend
                 "item_count": len(detail["candidates"]),
                 "factor_count": len(detail["factors"]),
             }
+
+    # ── AI couldn't produce a hint-conformant structure — fall back to the
+    # deterministic parse rather than fail. ──
+    if det_fallback:
+        factors, scored, _det_issues = det_fallback
+        return await _create_from_flat(user, req, target, title, elig, consent_id,
+                                       factors, scored, len(scored))
 
     # ── LLM flat fallback for table-less / irregular comparison pages ──
     if len(candidates) < 2:
@@ -482,16 +505,18 @@ DETAIL_MAX_FACTORS = 24
 
 async def _extract_detail_for_url(user_id: str, url: str, html: str, tier: str,
                                   hints: Optional[Dict[str, Any]] = None):
-    """Detail-page pipeline: escalate to RENDERED HTML when ScraperAPI is
-    configured (similar-items rails are usually JS-loaded), then run the
-    single-call LLM extraction (+ one corrective retry against the user's
-    accuracy hints). Translates InsufficientCredits → 402."""
+    """AI extraction pipeline (detail OR comparison/listing pages): escalate to
+    RENDERED HTML when ScraperAPI is configured (similar-items rails are usually
+    JS-loaded), then run the single-call hint-guided LLM extraction (+ one
+    corrective retry against the user's accuracy hints).
+    Translates InsufficientCredits → 402."""
     rendered = await fetch_rendered(url)
     cfg = await ai_wallet.get_config()
     threshold = int(cfg.get("import_group_threshold") or 15)
+    max_factors = max(DETAIL_MAX_FACTORS, int((hints or {}).get("expected_factor_count") or 0))
     try:
         return await ai_extract_detail(user_id, rendered or html, tier=tier,
-                                       max_factors=DETAIL_MAX_FACTORS,
+                                       max_factors=max_factors,
                                        group_threshold=threshold, hints=hints)
     except ai_wallet.InsufficientCredits as e:
         raise HTTPException(
@@ -533,13 +558,17 @@ async def import_url_into_decision(
 
     # ── Fetch ONCE; run all parse strategies against the same response. ──
     tier = _tier(req.ai_tier)
+    hints = _hints_of(req)
     r = await fetch_page(req.url)
     is_json = "json" in r.headers.get("content-type", "")
 
     # ── Prefer a FULL two-level merge when the page is a category-grouped
-    # comparison matrix (e.g. GSMArena: 15 categories × sub-specs). ──
+    # comparison matrix (e.g. GSMArena: 15 categories × sub-specs) — but ONLY
+    # when it does not contradict the user's accuracy hints. ──
     hierarchy = None if is_json else parse_hierarchy(r.text)
-    if hierarchy and len(hierarchy.get("groups", [])) >= 2 and len(hierarchy.get("items", [])) >= 2:
+    if (hierarchy and len(hierarchy.get("groups", [])) >= 2
+            and len(hierarchy.get("items", [])) >= 2
+            and not deterministic_hint_issues(hints, hierarchy=hierarchy)):
         items, groups = hierarchy["items"], hierarchy["groups"]
         row_scores, row_meta, text_rows = _score_hierarchy_numeric(items, groups)
         row_scores.update(await _ai_score_text_rows(user["user_id"], items, text_rows))
@@ -554,26 +583,42 @@ async def import_url_into_decision(
             "factors_added": counts["factors_added"], "options_added": counts["options_added"],
         }
 
-    # ── Flat comparison table / matrix / product grid (deterministic) ──
+    # ── Flat comparison table / matrix / product grid (deterministic).
+    # HINTS ARE LAW: when the user supplied accuracy hints, a deterministic
+    # parse is only trusted if it MATCHES them — otherwise we escalate to the
+    # hint-guided AI extraction below (keeping this parse as a last-resort
+    # fallback). A "precise"-tier request likewise escalates thin (<3 factor)
+    # parses: the user explicitly chose AI-grade extraction. ──
+    det_fallback = None
     candidates = await candidates_from_response(r, user["user_id"], allow_ai=False)
     if len(candidates) >= 2:
         factors, scored = _derive_factors_and_scores(candidates, req.max_factors)
         if factors:
-            counts = await merge_into_mydezider(user["user_id"], decision_id,
-                                                factors=factors, candidates=scored)
-            return {
-                "decision_id": decision_id, "consent_id": consent_id, "mode": "flat",
-                "item_count": len(candidates),
-                "factors_added": counts["factors_added"], "options_added": counts["options_added"],
-            }
+            det_issues = deterministic_hint_issues(hints, factors=factors, candidates=scored)
+            det_thin = tier == "precise" and len(factors) < 3
+            if not det_issues and not det_thin:
+                counts = await merge_into_mydezider(user["user_id"], decision_id,
+                                                    factors=factors, candidates=scored)
+                return {
+                    "decision_id": decision_id, "consent_id": consent_id, "mode": "flat",
+                    "item_count": len(candidates),
+                    "factors_added": counts["factors_added"], "options_added": counts["options_added"],
+                }
+            det_fallback = (factors, scored, det_issues)
 
-    # ── Single-item DETAIL page (property / product / job …): every spec
-    # becomes a factor (grouped → parent + sub-factors with equal weight split)
-    # with a smart operator + Expected value; the listing becomes Option 1;
-    # 'Similar items' become extra options. ──
+    # ── AI-guided extraction (detail OR comparison/listing pages): every spec/
+    # facet becomes a factor (grouped → parent + sub-factors with equal weight
+    # split) with a smart operator + Expected value; the listed items become
+    # options. User hints are injected as ground truth + verified with one
+    # corrective retry. ──
     if not is_json:
         detail = await _extract_detail_for_url(user["user_id"], req.url, r.text, tier,
                                                hints=_hints_of(req))
+        # If the deterministic parse was actually CLOSER to the user's hints
+        # than the AI output, prefer the deterministic one.
+        if (detail and det_fallback
+                and len(detail.get("hint_warnings") or []) > len(det_fallback[2])):
+            detail = None
         if detail:
             if detail["kind"] == "hier":
                 counts = await merge_hierarchical_into_mydezider(
@@ -604,6 +649,18 @@ async def import_url_into_decision(
                 "item_count": len(detail["candidates"]),
                 "factors_added": counts["factors_added"], "options_added": counts["options_added"],
             }
+
+    # ── AI couldn't produce a hint-conformant structure — fall back to the
+    # deterministic parse (with explicit accuracy warnings) rather than fail. ──
+    if det_fallback:
+        factors, scored, det_issues = det_fallback
+        counts = await merge_into_mydezider(user["user_id"], decision_id,
+                                            factors=factors, candidates=scored)
+        return {
+            "decision_id": decision_id, "consent_id": consent_id, "mode": "flat",
+            "item_count": len(scored), "hint_warnings": det_issues,
+            "factors_added": counts["factors_added"], "options_added": counts["options_added"],
+        }
 
     # ── LLM flat fallback for table-less / irregular comparison pages ──
     if len(candidates) < 2:

@@ -1,6 +1,6 @@
 # UAT Test Cases — Dezider
 
-_metadata: { "version": "3.16.0", "updated": "2026-06-12" }
+_metadata: { "version": "3.16.1", "updated": "2026-06-12" }
 
 ## How to UAT
 1. Login with a test account (see `/app/memory/test_credentials.md`). Free tier is fine for most tests.
@@ -187,3 +187,14 @@ DPDP-01..04 (export, delete-request, cancel-within-grace, admin purge).
 | PERF-IU-1 | Precise Claude import + Set Expectations on 4-option page | ≤ 25 s end-to-end |
 | PERF-RC-1 | Recon sync of 100 payments + 30-day GCP | ≤ 15 s |
 | PERF-AW-1 | AI Wallet config read + 1 update | ≤ 200 ms |
+
+---
+## v3.16.1 — Import-URL hint enforcement (2026-06-12)
+
+| ID | Scenario | Expected |
+|---|---|---|
+| IU-HINT-1 | Import carwale "best electric cars under 10 lakh" with hints (6 factors, first "All Brands", 4 options, first "Tata Tiago EV") + Costly & Precise AI | 6 facet factors (All Brands, Budget, Body Type, Fuel Type, Transmission, Seating Capacity), 4 cars with Tata Tiago EV first, `ai_provider=emergent_precise`, `hint_warnings=[]` — NOT the thin PRICE/MODEL table |
+| IU-HINT-2 | Same URL, NO hints, Cheap & Fast AI | Deterministic table parse allowed (back-compat): PRICE/MODEL accepted, no AI charge |
+| IU-HINT-3 | GSMArena 3-phone compare, NO hints | Hierarchical matrix import unchanged (15 categories, no AI extraction charge) |
+| IU-HINT-4 | Hints that the AI cannot satisfy either (deliberately wrong, e.g. 50 factors) | Import still succeeds with the best available structure + non-empty `hint_warnings` surfaced in the UI |
+| IU-HINT-5 | Precise tier + page whose only table has 2 columns, NO hints | Escalates to Claude extraction (thin-parse rule) |

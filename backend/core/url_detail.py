@@ -86,17 +86,22 @@ def _squash(name: str) -> str:
     return " ".join(str(name or "").lower().split())
 
 
-DETAIL_SYSTEM = """You convert ONE web page into a decision-comparison structure. The page shows a single MAIN item in detail (property listing, product, vehicle, job, course, service, …) and may show a "Similar/Related items" rail.
+DETAIL_SYSTEM = """You convert ONE web page into a decision-comparison structure. The page is EITHER:
+  (A) page_type="detail" — a single MAIN item shown in detail (property listing, product, vehicle, job, course, service, …), possibly with a "Similar/Related items" rail, OR
+  (B) page_type="comparison" — a comparison / listing / filter / "best-of" page presenting MULTIPLE comparable items (e.g. "Best electric cars under 10 lakh", search results, category listings).
 
 Reply ONLY compact JSON (no prose, no markdown fences):
-{"page_type":"detail",
- "main_item":{"name":"<the listing's own DISPLAY HEADING on the page, not the SEO <title> tag>"},
+{"page_type":"detail"|"comparison",
+ "main_item":{"name":"<detail: the listing's own DISPLAY HEADING on the page (not the SEO <title> tag); comparison: the FIRST listed item>"},
  "groups":[{"name":"<group name or 'General'>","source":"page"|"ai"|"none",
             "factors":[{"name":str,"data_type":"numeric"|"text","factor_type":"quantitative"|"qualitative","operator":"<="|">="|"="|"equals","expected_value":str,"unit":str|null}]}],
  "items":[{"name":str,"values":{"<group>::<factor>":str|null},"scores":{"<group>::<factor>":0-100|null}}]}
 
 RULES
-1. FACTORS — be EXHAUSTIVE: extract EVERY concrete attribute/spec of the MAIN item (a typical detail page yields 15-25 factors — do NOT summarise attributes away): prices, rents, fees, deposits, maintenance, sizes, counts, scores, ratings, dates, categories, yes/no flags, address/locality. EXCLUDE site navigation, ads, service promos, marketing prose, breadcrumbs, nearby-locality link lists.
+1. FACTORS —
+   • detail pages: be EXHAUSTIVE: extract EVERY concrete attribute/spec of the MAIN item (a typical detail page yields 15-25 factors — do NOT summarise attributes away): prices, rents, fees, deposits, maintenance, sizes, counts, scores, ratings, dates, categories, yes/no flags, address/locality.
+   • comparison/listing pages: factors = the attributes/facets by which the page compares or filters its items — use the page's OWN facet/section labels as factor names (e.g. Brand, Budget/Price, Body Type, Fuel Type, Transmission, Seating Capacity, Rating) plus per-item attributes shown on the listing cards.
+   EXCLUDE site navigation, service promos, marketing prose, breadcrumbs, nearby-locality link lists.
 2. GROUPING — three cases, in priority order:
    a. The PAGE already groups specs under section headings (e.g. BODY → Dimensions/Weight/Build/SIM): copy that grouping EXACTLY, source="page". NEVER rename, merge, split or re-assign page-defined groups.
    b. The page defines no grouping and there are MORE than {group_threshold} factors: YOU may group related factors into 3-7 sensible categories (e.g. Costs / Space & Layout / Location / Amenities), source="ai".
@@ -111,10 +116,15 @@ RULES
    • ">=" for higher-is-better numerics (area, scores, ratings, capacity, warranty) — directly proportional
    • "=" for numeric identity values (bedroom count, bathroom count)
    • "equals" for ALL text-format factors (type, furnishing, facing, tenant, possession, yes/no, NA, locality)
-6. expected_value = the MAIN item's own value, cleaned: plain numbers for numerics (no currency symbols or thousands separators), concise text otherwise. Keep "NA" when the page shows NA. Put units (sqft, INR, years, km) ONLY in "unit", never inside expected_value.
-7. ITEMS — FIRST item MUST be the main item with every factor value filled and every score 100. THEN every DIFFERENT similar/related item (sections like "Similar Properties", "Related products", "You may also like", plus any EMBEDDED RELATED-ITEMS DATA appended after the page text): its name plus whatever factor values are known. NEVER repeat the main item as a similar item. NEVER invent values you cannot see — unknown values MUST be null in BOTH maps. Score each KNOWN value 0-100 for how well it satisfies expected_value+operator (better than expected → 100; ~10% worse → ≈80).
+6. expected_value, cleaned (plain numbers for numerics — no currency symbols or thousands separators; concise text otherwise; keep "NA" when the page shows NA; units like sqft/INR/years/km go ONLY in "unit", never inside expected_value):
+   • detail pages: the MAIN item's own value.
+   • comparison pages: the most DESIRABLE value across the listed items (cheapest price, highest rating, …).
+7. ITEMS —
+   • detail pages: FIRST item MUST be the main item with every factor value filled and every score 100. THEN every DIFFERENT similar/related item (sections like "Similar Properties", "Related products", "You may also like", plus any EMBEDDED RELATED-ITEMS DATA appended after the page text): its name plus whatever factor values are known. NEVER repeat the main item as a similar item. NEVER invent values you cannot see — unknown values MUST be null in BOTH maps.
+   • comparison pages: EVERY genuinely listed/compared item, in page order (skip pure ad inserts when identifiable). Fill each item's value for every factor: prefer values shown on the page; for OBJECTIVE specs of a specific well-known product (its brand, fuel type, body type, transmission, seating capacity, …) you may fill from reliable general knowledge when the page omits them; truly unknown values stay null in BOTH maps.
+   Score each KNOWN value 0-100 for how well it satisfies expected_value+operator (better than expected → 100; ~10% worse → ≈80).
 8. ZERO-TOLERANCE MAPPING: every key inside "values" and "scores" MUST be exactly "<group name>::<factor name>" matching a declared group+factor. A value MUST stay attached to the item it belongs to on the page — never shift values between items or factors.
-9. Max {max_factors} factors total, max 12 items. If the page actually compares MULTIPLE items (a comparison/filter/listing page with no single main item), reply exactly {"page_type":"comparison"}."""
+9. Max {max_factors} factors total, max 12 items.{user_facts}"""
 
 
 def _parse_json_obj(out: str) -> Optional[Dict[str, Any]]:
@@ -164,12 +174,21 @@ def normalize_detail(data: Any, max_factors: int = 24,
       kind="hier": {"kind","main_name","items","groups","row_scores","row_meta"}
 
     (hier shapes feed merge_hierarchical_into_mydezider / create_hierarchical_
-    mydezider directly). Returns None for non-detail pages / unusable output.
+    mydezider directly). Returns None for unusable output.
+
+    Handles BOTH page kinds: "detail" (single main item + similar rail — the
+    main item gets 100% scores and its values backfilled from Expected) and
+    "comparison" (listing/filter/best-of page — every item is a peer, scored
+    purely by how its values satisfy the expectations).
     """
-    if not isinstance(data, dict) or data.get("page_type") != "detail":
+    if not isinstance(data, dict) or data.get("page_type") not in ("detail", "comparison"):
         return None
+    is_detail = data.get("page_type") == "detail"
     main_name = str((data.get("main_item") or {}).get("name") or "").strip()
     raw_groups = data.get("groups")
+    if not main_name:
+        first = next((i for i in (data.get("items") or []) if isinstance(i, dict)), None)
+        main_name = str((first or {}).get("name") or "").strip()
     if not main_name:
         return None
     # Back-compat: accept a flat "factors" list when "groups" is missing.
@@ -255,7 +274,7 @@ def normalize_detail(data: Any, max_factors: int = 24,
                     continue  # ZERO TOLERANCE: unknown keys are dropped, never guessed
                 dst[f["_path"]] = v
         item = {"name": name[:160], "_is_main": is_main, "values": vmap, "scores": smap}
-        if is_main:
+        if is_main and is_detail:
             for g in groups:
                 for f in g["factors"]:
                     item["scores"].setdefault(f["_path"], 100)
@@ -264,12 +283,18 @@ def normalize_detail(data: Any, max_factors: int = 24,
         norm_items.append(item)
 
     if not norm_items or not norm_items[0].get("_is_main"):
-        main = {"name": main_name[:160], "_is_main": True,
-                "values": {f["_path"]: f["expected_value"] for g in groups for f in g["factors"]
-                           if f["expected_value"] not in (None, "")},
-                "scores": {f["_path"]: 100 for g in groups for f in g["factors"]}}
-        norm_items = [i for i in norm_items if not i.get("_is_main")]
-        norm_items.insert(0, main)
+        if not is_detail:
+            # Comparison pages have no synthetic "main" — items are peers.
+            if not norm_items:
+                return None
+            norm_items[0]["_is_main"] = True
+        else:
+            main = {"name": main_name[:160], "_is_main": True,
+                    "values": {f["_path"]: f["expected_value"] for g in groups for f in g["factors"]
+                               if f["expected_value"] not in (None, "")},
+                    "scores": {f["_path"]: 100 for g in groups for f in g["factors"]}}
+            norm_items = [i for i in norm_items if not i.get("_is_main")]
+            norm_items.insert(0, main)
 
     # ── Emit FLAT ──
     if flatten:
@@ -374,6 +399,44 @@ def validate_against_hints(result: Dict[str, Any],
     return issues
 
 
+def deterministic_hint_issues(hints: Optional[Dict[str, Any]], *,
+                              factors: Optional[List[Dict[str, Any]]] = None,
+                              candidates: Optional[List[Dict[str, Any]]] = None,
+                              hierarchy: Optional[Dict[str, Any]] = None) -> List[str]:
+    """Validate a DETERMINISTIC (non-LLM) parse against the user's accuracy
+    hints. Routes use this to decide whether a free table/matrix parse is good
+    enough or must ESCALATE to the hint-guided AI extraction. [] = passes."""
+    if not hints:
+        return []
+    if hierarchy is not None:
+        shim: Dict[str, Any] = {"kind": "hier", "groups": hierarchy.get("groups") or [],
+                                "items": hierarchy.get("items") or []}
+    else:
+        shim = {"kind": "flat", "factors": factors or [], "candidates": candidates or []}
+    return validate_against_hints(shim, hints)
+
+
+def _user_facts_block(hints: Optional[Dict[str, Any]]) -> str:
+    """Render the user's accuracy hints as ground-truth facts for the FIRST
+    LLM attempt (not just the corrective retry) — the user is literally looking
+    at the page, so these outrank any model judgment."""
+    if not hints:
+        return ""
+    lines: List[str] = []
+    if hints.get("expected_factor_count"):
+        lines.append(f"- The page offers about {hints['expected_factor_count']} comparison factors/facets.")
+    if hints.get("first_factor_name"):
+        lines.append(f"- The FIRST factor is named '{hints['first_factor_name']}' — find that section/facet on the page and start with it.")
+    if hints.get("expected_option_count"):
+        lines.append(f"- There are about {hints['expected_option_count']} options/items to compare.")
+    if hints.get("first_option_name"):
+        lines.append(f"- The FIRST option/item is '{hints['first_option_name']}'.")
+    return ("\n\nUSER-VERIFIED PAGE FACTS (the user is LOOKING at this page; these are ground truth and your output MUST match them):\n"
+            + "\n".join(lines)
+            + "\nHonor these exactly: use the page's own facet/section labels as factor names, "
+              "begin with the named first factor, and order items starting with the named first option.")
+
+
 async def ai_extract_detail(user_id: str, html: str, *, tier: str = "fast",
                             max_factors: int = 24, group_threshold: int = 15,
                             hints: Optional[Dict[str, Any]] = None,
@@ -385,13 +448,14 @@ async def ai_extract_detail(user_id: str, html: str, *, tier: str = "fast",
     Propagates InsufficientCredits so the route can answer 402."""
     if not has_any_llm() or not (html or "").strip():
         return None
-    text = page_text(html, limit=14000 if tier == "precise" else 11000)
+    text = page_text(html, limit=30000 if tier == "precise" else 12000)
     related = _embedded_related_snippets(html)
     if related:
         text += "\nEMBEDDED RELATED-ITEMS DATA (similar/related items the page renders with JavaScript):\n" + related
     sys = (DETAIL_SYSTEM
            .replace("{max_factors}", str(max_factors))
-           .replace("{group_threshold}", str(group_threshold)))
+           .replace("{group_threshold}", str(group_threshold))
+           .replace("{user_facts}", _user_facts_block(hints)))
 
     async def _attempt(extra: str = "") -> Tuple[Optional[Dict[str, Any]], str]:
         meta: Dict[str, Any] = {}

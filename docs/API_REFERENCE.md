@@ -1,6 +1,6 @@
 # REST API Reference — Dezider
 
-_metadata: { "version": "3.16.0", "updated": "2026-06-12" }
+_metadata: { "version": "3.16.1", "updated": "2026-06-12" }
 
 Base URL: `/api`. Auth: `Authorization: Bearer <session_token>` from `/auth/login`.
 Every response carries `X-Request-ID`, `X-Response-Time-MS`, security headers.
@@ -333,3 +333,21 @@ Privacy posture: `identified_only` person profiles, `maskAllInputs:true`,
 ### v3.16 endpoint count
 **Total: 972 endpoints across 52 folders** (auto-generated Postman collection at
 `/app/docs/Postman_Collection.json`, regenerated 2026-06-12 from live OpenAPI).
+
+---
+## v3.16.1 — Import-URL behaviour change (2026-06-12)
+
+`POST /api/url-analyze` and `POST /api/url-analyze/decision/{id}/import`:
+- Accuracy hints now GATE deterministic parses: a free table/matrix/grid parse
+  that contradicts `expected_factor_count` / `expected_option_count` /
+  `first_factor_name` / `first_option_name` is no longer returned — the
+  pipeline escalates to the hint-guided AI extraction (hints embedded in the
+  prompt as USER-VERIFIED PAGE FACTS + one corrective retry).
+- The AI extractor now handles multi-item comparison/listing/filter pages
+  (previously detail-pages only) — facets become factors, listed items become
+  options.
+- `ai_tier="precise"` escalates thin (<3 factor) deterministic parses to
+  Claude even without hints.
+- Response: `mode:"flat"` deterministic-fallback responses can now include
+  `hint_warnings: string[]` (previously only `mode:"detail"` carried it).
+  Responses are otherwise backward-compatible.

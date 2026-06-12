@@ -858,3 +858,28 @@ tolerance); live precise import WITH 4 hints → emergent_precise, structure=hie
 Dhamu/Golden Jublee/Standalone partial), hint_warnings=[]; set-expectations 21/21 via Claude;
 422 gating; testing agent iteration_103 4/5 (5th = the FIELDS gap, fixed + screenshot-verified).
 DEV NOTE: admin@test.com dev AI wallet manually topped to 5000 credits (was -75.98).
+
+## Session 2026-06-12B — Import-URL "Hints are Law" hotfix (v3.16.1) — USER-REPORTED CRITICAL
+PROBLEM: carwale.com/new/best-electric-cars-under-10-lakh/ + 4 hints (6 factors, first "All Brands",
+3+1 options, first "Tata Tiago EV") + Costly & Precise AI returned 2 irrelevant factors (PRICE, MODEL).
+ROOT CAUSE (reproduced 100%): page embeds a tiny "Top 3" HTML table → FREE deterministic table parser
+matched it and returned EARLY — Claude never invoked, hints never validated (hints only wired into the
+detail-page path). Bonus: deterministic factors had no factor_type → PRICE showed "Qualitative".
+FIX:
+- routes/url_analyze.py: BOTH endpoints now gate deterministic parses (hierarchy + flat) through
+  deterministic_hint_issues(); mismatch → escalate to AI extraction; precise tier escalates thin
+  (<3 factor) parses even hint-less; AI-vs-deterministic arbitration (fewer hint issues wins);
+  deterministic fallback merged WITH hint_warnings if AI fails; _derive_factors_and_scores sets
+  factor_type=_factor_nature(k).
+- core/url_detail.py: DETAIL_SYSTEM now extracts comparison/listing/filter pages too
+  (page_type="comparison": facets→factors, listed items→options, peers NOT force-scored 100;
+  knowledge-fill allowed for objective specs of well-known products); old comparison bail-out
+  REMOVED; _user_facts_block() injects hints as ground truth into the FIRST prompt; page_text
+  limits 30000 (precise) / 12000 (fast); normalize_detail accepts detail|comparison; NEW export
+  deterministic_hint_issues().
+VERIFIED: live e2e same URL/hints/precise → 6 facet factors (All Brands, Budget, Body Type, Fuel
+Type, Transmission, Seating Capacity), 4 options Tiago-EV-first, emergent_precise, hint_warnings=[],
+57s, all values+scores filled. NEW backend/tests/test_url_import_hints.py (11 tests). Full URL-import
+suite 41 passed (GSMArena hierarchical regression intact). Stale iter94 prebuilt-decision test now
+skips on 404 (data dependency). Docs bumped v3.16.1: PRD/SRS/API_REFERENCE/UAT/REGRESSION.
+NO frontend changes needed (UI already sends hints + tier + shows hint_warnings).

@@ -1,6 +1,6 @@
 # Regression Test Catalogue — Dezider
 
-_metadata: { "version": "3.16.0", "updated": "2026-06-12" }
+_metadata: { "version": "3.16.1", "updated": "2026-06-12" }
 
 All suites live in `/app/tests/` plus the legacy `/app/backend_test_regression.py`.
 
@@ -179,3 +179,23 @@ Same 10 scenarios mirrored on `/api/swot/{id}/*` — verified manually (this for
 - Recon: 6/6 PASS + 1 live Razorpay sync (57 payments, 5 transfers, 26 settlements pulled in test env).
 - AI Wallet: manual UI walkthrough + curl PUT + read-back PASS.
 - PostHog: live web replay verified in preview browser (sessionRecordingStarted=true, snapshots to `/s/`, events to `/e/` + `/batch/`).
+
+---
+## v3.16.1 — Import-URL "Hints are Law" (2026-06-12)
+
+### New automated suite
+- `backend/tests/test_url_import_hints.py` — 11 tests:
+  deterministic hint-gate (carwale PRICE/MODEL parse MUST fail the gate; matching
+  parses pass; hierarchy-shape gating), comparison-page normalisation (facet
+  factors + peer items NOT force-scored 100), detail-page main-item backfill
+  unchanged, USER-VERIFIED-FACTS prompt injection, old comparison bail-out
+  removed from the prompt.
+
+### Smoke result (this fork)
+- Full URL-import suite: **41 passed** (test_url_detail_import, test_url_import_direction,
+  test_url_matrix_parse, test_iter94_url_hierarchy_import incl. live GSMArena
+  hierarchical import, test_url_import_hints).
+- Live e2e: carwale URL + 4 hints + precise tier → 6 facet factors / 4 options
+  (Tata Tiago EV first), `emergent_precise`, `hint_warnings=[]`, 57 s.
+- Stale iter94 pre-built-decision check now skips gracefully when the seeded
+  decision is absent (data dependency, not code).

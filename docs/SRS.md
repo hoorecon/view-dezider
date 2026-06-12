@@ -1,6 +1,6 @@
 # System Requirements Specification — Dezider
 
-_metadata: { "version": "3.16.0", "updated": "2026-06-12" }
+_metadata: { "version": "3.16.1", "updated": "2026-06-12" }
 
 ## 1. Architecture
 Expo frontend → NGINX ingress → FastAPI pods → MongoDB replica-set.
@@ -187,3 +187,30 @@ Mongo failover 5–15 s of 503s; LLM budget exhausted → 503s on AI endpoints o
 
 ### v3.16 known structural risk
 - **Markup routing**: Razorpay Route sends the entire markup to the linked account; primary account therefore nets `collected − fee − markup ≈ cost − fee`, structurally slightly BELOW the earmarked Gemini cost. Mitigation: raise `markup_user_pct` (admin → AI Wallet Config) OR retain part of markup in the primary account.
+
+---
+## v3.16.1 — Import-URL extraction routing requirements (2026-06-12)
+
+### FR-IU-10 Hint-gated routing (NEW)
+When ANY accuracy hint (`expected_factor_count`, `expected_option_count`,
+`first_factor_name`, `first_option_name`) is supplied:
+- Deterministic parses (hierarchical matrix, flat table, product grid) MUST be
+  validated against the hints BEFORE being merged; a mismatching parse MUST
+  NOT be returned while the AI path is available.
+- The AI extraction MUST receive the hints as ground-truth facts in its FIRST
+  prompt, and MUST be re-validated post-hoc (one corrective retry).
+- If the AI output matches the hints WORSE than the deterministic parse, the
+  deterministic parse wins; if the AI path fails, the deterministic parse is
+  merged with `hint_warnings` populated — the import never hard-fails when a
+  parse exists.
+
+### FR-IU-11 Comparison/listing page extraction (NEW)
+The AI extractor MUST handle multi-item comparison / listing / filter pages
+(page_type="comparison"): factors = the page's own comparison facets/filter
+labels; options = the listed items in page order; peer items are scored purely
+against expectations (NO forced 100% main item).
+
+### FR-IU-12 Precise-tier guarantee (NEW)
+A request with `ai_tier="precise"` MUST escalate thin deterministic parses
+(<3 factors) to the Claude engine even when no hints are given — the user
+explicitly chose AI-grade extraction.

@@ -1,6 +1,6 @@
 # Product Requirements Document — Dezider
 
-_metadata: { "version": "3.16.0", "updated": "2026-06-12", "author": "engineering" }
+_metadata: { "version": "3.16.1", "updated": "2026-06-12", "author": "engineering" }
 
 ## 1. Vision
 
@@ -217,3 +217,42 @@ v3.15 left four enterprise-grade gaps:
 
 ### Documentation refreshed in this release
 - `PRD.md` (this), `SRS.md`, `API_REFERENCE.md`, `POSTMAN.md`, `Postman_Collection.json` (auto-regenerated from live OpenAPI, 52 folders × 972 endpoints), `UAT.md`, `REGRESSION.md`, `SECURITY.md`, `WOWO.md`, `ACM.md`, `CLD.md`, `DEPLOYMENT.md`, `ADMIN_USER_GUIDE.md`.
+
+---
+## v3.16.1 — Import-URL: "Hints are Law" accuracy hotfix (2026-06-12)
+
+### Problem (user-reported, critical)
+Importing `carwale.com/new/best-electric-cars-under-10-lakh/` with 4 accuracy
+hints (6 factors, first "All Brands", 4 options, first "Tata Tiago EV") and the
+**Costly & Precise (Claude)** engine returned 2 irrelevant factors (PRICE,
+MODEL). Root cause: the page embeds a tiny "Top 3" HTML table; the FREE
+deterministic table parser matched it and returned immediately — **the paid AI
+engine was never invoked and the hints were never validated**. Hints were only
+wired into the single-listing "detail page" path. Bonus defect: deterministic
+factors carried no `factor_type`, so PRICE rendered as "Qualitative".
+
+### Solution
+1. **Hints are law** — both endpoints (`POST /url-analyze`, `POST
+   /url-analyze/decision/{id}/import`) now validate EVERY deterministic parse
+   (hierarchical matrix + flat table/grid) against the user's hints; on
+   mismatch the pipeline escalates to the hint-guided AI extraction.
+2. **Hints injected up-front** — the extraction prompt now carries a
+   "USER-VERIFIED PAGE FACTS" ground-truth block on the FIRST attempt (the
+   self-healing corrective retry is retained).
+3. **Comparison/listing pages extracted by AI** — the prompt no longer bails
+   out with `{"page_type":"comparison"}`; listing/filter/best-of pages yield
+   facet factors (Brand, Budget, Body Type, Fuel Type, Transmission, Seating
+   Capacity…) + listed items as options (peers NOT force-scored 100).
+4. **Precise tier honoured** — a "precise" request escalates thin (<3 factor)
+   deterministic parses to Claude even without hints.
+5. **Arbitration & fallback** — if AI output matches hints worse than the
+   deterministic parse, the parse wins; if AI fails entirely, the parse is
+   merged WITH explicit `hint_warnings` instead of failing the import.
+6. `factor_type` now defaulted via nature-regex on deterministic flat imports.
+
+### Verification
+- Live e2e (preview): same URL + hints + precise → **6/6 expected factors, 4
+  options ordered Tata Tiago EV first, `ai_provider=emergent_precise`,
+  `hint_warnings=[]`, 57 s** (values + 0-100 scores filled for every car).
+- `backend/tests/test_url_import_hints.py` — 11 new regression tests; full URL
+  import suite 41 passed.
