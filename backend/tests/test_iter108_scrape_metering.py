@@ -63,7 +63,7 @@ def test_scrape_gate_blocks_zero_balance():
         with pytest.raises(ai_wallet.InsufficientCredits):
             await scrape_meter.ensure_can_scrape(uid)
 
-    asyncio.run(run())
+    asyncio.get_event_loop().run_until_complete(run())  # persistent shared loop (repo convention)
 
 
 def test_recon_summary_scraperapi_block(super_token):

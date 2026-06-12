@@ -35,6 +35,7 @@ from core.url_crawl import fetch_page, fetch_rendered, page_text, metered_chat, 
 from core.import_verify import verify_detail
 from core.decision_builder import merge_into_mydezider
 from core import url_telemetry
+from core import url_prompt_tuning
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/deep-import", tags=["deep-import"])
@@ -204,15 +205,25 @@ def _score_candidates(factors: List[Dict[str, Any]], candidates: List[Dict[str, 
 # Stage 1 — discovery (background task)
 # ─────────────────────────────────────────────────────────────────────────────
 async def _pick_detail_links(user_id: str, context: str, max_pages: int,
-                             text: str, links: List[Dict[str, str]]) -> List[Dict[str, str]]:
-    """One metered AI call: pick the option/detail page links for the context."""
+                             text: str, links: List[Dict[str, str]],
+                             tel: Optional[Dict[str, Any]] = None,
+                             stage: str = "links_pick") -> List[Dict[str, str]]:
+    """One metered AI call: pick the option/detail page links for the context.
+    Traced onto the run (stage prompt + engine + credits) when `tel` is given."""
     link_block = "\n".join(f"{i + 1}. [{l['text']}] {l['url']}" for i, l in enumerate(links))
+    sys_msg = (LINKS_SYSTEM.replace("{max_pages}", str(max_pages))
+               + await url_prompt_tuning.get_guidance("deep_links"))
+    prompt = (f"DECISION CONTEXT: {context}\n\nBASE PAGE TEXT:\n{text}\n\n"
+              f"LINKS:\n{link_block}")
+    meta: Dict[str, Any] = {}
+    started = _now()
     out = await metered_chat(
-        user_id,
-        system_message=LINKS_SYSTEM.replace("{max_pages}", str(max_pages)),
-        prompt=(f"DECISION CONTEXT: {context}\n\nBASE PAGE TEXT:\n{text}\n\n"
-                f"LINKS:\n{link_block}"),
-        feature="deep_import_links", session_prefix="deeplinks", tier="fast")
+        user_id, system_message=sys_msg, prompt=prompt,
+        feature="deep_import_links", session_prefix="deeplinks", tier="fast", meta=meta)
+    if tel is not None:
+        url_telemetry.add_ai_call(tel, stage=stage, system_prompt=sys_msg,
+                                  prompt_text=prompt, raw_response=out,
+                                  meta=meta, started=started)
     data = _parse_json(out) or {}
     seen, options = set(), []
     for o in data.get("options") or []:
@@ -229,15 +240,23 @@ async def _pick_detail_links(user_id: str, context: str, max_pages: int,
 
 
 async def _pick_hubs(user_id: str, context: str, base_url: str,
-                     text: str, links: List[Dict[str, str]]) -> List[str]:
+                     text: str, links: List[Dict[str, str]],
+                     tel: Optional[Dict[str, Any]] = None) -> List[str]:
     """One metered AI call: locate same-domain LISTING hub pages for the context
     (used when the base page is a portal/homepage with no direct detail links)."""
     link_block = "\n".join(f"{i + 1}. [{l['text']}] {l['url']}" for i, l in enumerate(links))
+    sys_msg = HUBS_SYSTEM + await url_prompt_tuning.get_guidance("deep_hubs")
+    prompt = (f"DECISION CONTEXT: {context}\n\nBASE PAGE TEXT:\n{text}\n\n"
+              f"LINKS:\n{link_block}")
+    meta: Dict[str, Any] = {}
+    started = _now()
     out = await metered_chat(
-        user_id, system_message=HUBS_SYSTEM,
-        prompt=(f"DECISION CONTEXT: {context}\n\nBASE PAGE TEXT:\n{text}\n\n"
-                f"LINKS:\n{link_block}"),
-        feature="deep_import_hubs", session_prefix="deephubs", tier="fast")
+        user_id, system_message=sys_msg, prompt=prompt,
+        feature="deep_import_hubs", session_prefix="deephubs", tier="fast", meta=meta)
+    if tel is not None:
+        url_telemetry.add_ai_call(tel, stage="hubs_pick", system_prompt=sys_msg,
+                                  prompt_text=prompt, raw_response=out,
+                                  meta=meta, started=started)
     data = _parse_json(out) or {}
     host = urlparse(base_url).netloc.replace("www.", "")
     hubs: List[str] = []
@@ -280,7 +299,7 @@ async def _discover(job_id: str, user_id: str, base_url: str, context: str,
 
         await _prog(job_id, 18, "AI is identifying the option pages…")
         options = await _pick_detail_links(user_id, context, max_pages, base_text,
-                                           _rank_links(links, context))
+                                           _rank_links(links, context), tel=tel)
 
         if not options:
             # Hop 2 — the base page is a homepage/portal that links to LISTING
@@ -289,7 +308,7 @@ async def _discover(job_id: str, user_id: str, base_url: str, context: str,
             await _prog(job_id, 24,
                         "Base page has no option pages — locating a listing page for your context…")
             hubs = await _pick_hubs(user_id, context, base_url, base_text,
-                                    _rank_links(links, context))
+                                    _rank_links(links, context), tel=tel)
             for hi, hub in enumerate(hubs):
                 await _prog(job_id, 26 + hi * 4,
                             f"Scanning listing page {hi + 1}/{len(hubs)} for option pages…")
@@ -304,7 +323,8 @@ async def _discover(job_id: str, user_id: str, base_url: str, context: str,
                     continue
                 options = await _pick_detail_links(
                     user_id, context, max_pages, page_text(hub_html, limit=8000),
-                    _rank_links(hub_links, context))
+                    _rank_links(hub_links, context), tel=tel,
+                    stage=f"links_pick@hub{hi + 1}")
                 if len(options) >= 2:
                     break
                 options = []
@@ -341,10 +361,17 @@ async def _discover(job_id: str, user_id: str, base_url: str, context: str,
         blocks = "\n\n".join(
             f"=== OPTION: {name} ===\n{txt[:CONSOLIDATE_TEXT_LIMIT]}"
             for name, txt in page_texts.items())
+        cons_sys = CONSOLIDATE_SYSTEM + await url_prompt_tuning.get_guidance("deep_consolidate")
+        cons_prompt = f"DECISION CONTEXT: {context}\n\n{blocks}"
+        meta2: Dict[str, Any] = {}
+        started2 = _now()
         out2 = await metered_chat(
-            user_id, system_message=CONSOLIDATE_SYSTEM,
-            prompt=f"DECISION CONTEXT: {context}\n\n{blocks}",
-            feature="deep_import_consolidate", session_prefix="deepcons", tier=tier)
+            user_id, system_message=cons_sys, prompt=cons_prompt,
+            feature="deep_import_consolidate", session_prefix="deepcons", tier=tier,
+            meta=meta2)
+        url_telemetry.add_ai_call(tel, stage="consolidate", system_prompt=cons_sys,
+                                  prompt_text=cons_prompt, raw_response=out2,
+                                  meta=meta2, started=started2)
         data2 = _parse_json(out2) or {}
         factors = []
         for f in (data2.get("factors") or [])[:25]:

@@ -21,6 +21,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from routes import deep_import as di  # noqa: E402
 
+def _run(coro):
+    """Repo-wide test convention: persistent shared event loop
+    (asyncio.run would close loops and break sibling suites)."""
+    return asyncio.get_event_loop().run_until_complete(coro)
+
+
 CTX = "Choose best 2 BHK Flat for Rent in Chennai Mugappair area"
 
 
@@ -63,7 +69,7 @@ def test_pick_hubs_validates_urls():
                 '"https://www.nobroker.in/flats-for-rent-in-chennai_chennai",'
                 '"https://www.nobroker.in/"]}')
     with patch.object(di, "metered_chat", AsyncMock(return_value=ai_reply)):
-        hubs = asyncio.run(di._pick_hubs("u1", CTX, "https://www.nobroker.in/", "text", []))
+        hubs = _run(di._pick_hubs("u1", CTX, "https://www.nobroker.in/", "text", []))
     assert hubs == [
         "https://www.nobroker.in/flats-for-rent-in-chennai_chennai",
         "https://www.nobroker.in/properties-for-rent-in-mogappair-chennai",
@@ -72,10 +78,10 @@ def test_pick_hubs_validates_urls():
 
 def test_pick_hubs_accepts_dict_items_and_empty():
     with patch.object(di, "metered_chat", AsyncMock(return_value='{"hubs":[{"url":"/rent-chennai"}]}')):
-        hubs = asyncio.run(di._pick_hubs("u1", CTX, "https://www.nobroker.in/", "t", []))
+        hubs = _run(di._pick_hubs("u1", CTX, "https://www.nobroker.in/", "t", []))
     assert hubs == ["https://www.nobroker.in/rent-chennai"]
     with patch.object(di, "metered_chat", AsyncMock(return_value='{"hubs":[]}')):
-        assert asyncio.run(di._pick_hubs("u1", CTX, "https://www.nobroker.in/", "t", [])) == []
+        assert _run(di._pick_hubs("u1", CTX, "https://www.nobroker.in/", "t", [])) == []
 
 
 # ── 4. detail-link picking: dedupe + cap ─────────────────────────────────────
@@ -85,14 +91,14 @@ def test_pick_detail_links_dedupes_and_caps():
         for i in range(8)
     )
     with patch.object(di, "metered_chat", AsyncMock(return_value=f'{{"options":[{opts}]}}')):
-        out = asyncio.run(di._pick_detail_links("u1", CTX, 5, "text", []))
+        out = _run(di._pick_detail_links("u1", CTX, 5, "text", []))
     assert len(out) == 3  # 8 entries but only 3 unique urls
     assert len({o["url"] for o in out}) == 3
 
 
 def test_pick_detail_links_empty_on_garbage():
     with patch.object(di, "metered_chat", AsyncMock(return_value="no json here")):
-        assert asyncio.run(di._pick_detail_links("u1", CTX, 5, "t", [])) == []
+        assert _run(di._pick_detail_links("u1", CTX, 5, "t", [])) == []
 
 
 # ── 5. prompt contracts ──────────────────────────────────────────────────────

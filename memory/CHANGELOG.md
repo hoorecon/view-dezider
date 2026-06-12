@@ -970,3 +970,45 @@ factors (Rent 15-23k, Deposit, Area, Transit Score…) → factors_ready in 221s
 ledger, telemetry success run recorded.
 TESTED: tests/test_iter109_deep_import_hub_hop.py 9/9 + iter108 + url_detail_import regression
 = 31 pass. Smoke screenshot OK. expo restarted after tsx edit (CI=true stale-bundle rule).
+
+## Iteration 110 — Admin AI Observability + Auto-Tune over Deep Import (per user request) — 12 Jun 2026
+USER ASK: In Admin UI, track the AI engine used, the engineered prompt fed to it, and credits
+consumed per run — for R&D and AI auto-tuning. Also: auto-tune should run DAILY automatically
+AND stay available on-demand via the Generate (AI) button.
+IMPLEMENTED (P0+P1+P2, all user-approved):
+ P0 backend:
+  - core/ai_metering.py: metered_chat meta now returns provider + EXACT MODEL + tokens +
+    CREDITS charged (ai_wallet.charge return captured) on both precise & chain paths.
+  - core/url_telemetry.py: NEW add_ai_call() multi-call trace (stage, engine, tokens, credits,
+    latency, system_prompt/prompt_text/raw_response @6KB each). record_run persists ai_calls +
+    rollups: ai_calls_count, ai_tokens, ai_engines[], ai_credits (wallet-ledger debit rollup,
+    scrape_fetch excluded), total_credits (= ai + scrape). _lazy_purge strips trace bodies after
+    90d ($[] unset), keeps engine/credit metadata. summary() adds avg_credits per segment.
+    PostHog event includes ai_credits/total_credits. _LIST_PROJECTION excludes ai_calls bodies.
+  - routes/deep_import.py: all 4-6 AI stages traced (links_pick, hubs_pick, links_pick@hubN,
+    consolidate) and each stage system prompt now appends active Auto-Tune guidance via
+    url_prompt_tuning.get_guidance(deep_links|deep_hubs|deep_consolidate).
+ P1 admin UI (app/admin/import-analytics.tsx):
+  - Run rows + breakdown tables show credits (new "Avg cr" column on all 3 tables).
+  - Drill-down: Engine row lists ALL engines used; Credits row "AI x + scrape y = z cr (N
+    fetches)"; NEW expandable "AI call trace" — per call: stage · engine · tokens · credits ·
+    latency → tap to reveal engineered system prompt, input prompt, raw response.
+ P2 auto-tune:
+  - core/url_prompt_tuning.py: DEEP_KEYS {deep_links, deep_hubs, deep_consolidate} added to
+    TUNE_KEYS; _failing_runs queries endpoint=deep_import for deep keys; _evidence_text now
+    includes engines/credits + per-stage trace excerpts (stage_prefix filtered).
+  - DAILY scheduler start_daily_auto_tune_task() (24h cadence, 30min after boot; metered to
+    first super_admin; suggestions remain status=proposed → admin approval required). Wired in
+    server.py lifespan. Route validation now accepts TUNE_KEYS for generate/revert.
+VERIFIED LIVE: nobroker 3-page deep import → run doc has 6-call trace (gemini-2.5-flash, groq
+llama-3.3-70b, claude-sonnet-4-6), ai_credits 730.57 + scrape 15.70 = 746.27 cr. Admin UI
+screenshot: trace + credits + Avg cr all render; on-demand generate for deep_links produced a
+proposed suggestion from real failing-run evidence.
+R&D INSIGHT SURFACED BY THE NEW DATA: deep import costs ~730 AI credits/run — links_pick calls
+are ~7-10K tokens each (150-link prompt). Candidate optimization: cap link list ~60 + page text
+4K for pick stages → est. ~50% cost cut. PENDING USER DECISION.
+TESTS: tests/test_iter110_ai_observability.py (8) + conftest.py event-loop guard; converted
+iter108/109/110 to persistent-loop convention (asyncio.run was breaking sibling suites by
+order). Full battery 52/52 passes in both orders.
+NOTE: drill-down requires SUPER ADMIN (veales.vedic.decisions@gmail.com in dev); admin@test.com
+gets "Super Admin access required" on import-analytics data.

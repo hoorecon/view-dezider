@@ -23,6 +23,7 @@ from core import posthog_client
 logger = logging.getLogger(__name__)
 
 TRUNC = 15000          # max chars stored for prompt / raw-response bodies
+CALL_TRUNC = 6000      # per-call bodies inside the multi-call AI trace
 PURGE_DAYS = 90        # bodies older than this are unset (metadata kept)
 
 
@@ -30,11 +31,11 @@ def _now():
     return datetime.now(timezone.utc)
 
 
-def _trunc(v: Any) -> Optional[str]:
+def _trunc(v: Any, limit: int = TRUNC) -> Optional[str]:
     if v in (None, ""):
         return None
     s = str(v)
-    return s[:TRUNC] + ("…[truncated]" if len(s) > TRUNC else "")
+    return s[:limit] + ("…[truncated]" if len(s) > limit else "")
 
 
 def new_tel(user_id: str, *, endpoint: str, url: str, ai_tier: str,
@@ -49,6 +50,32 @@ def new_tel(user_id: str, *, endpoint: str, url: str, ai_tier: str,
         "page_type": None, "page_type_confidence": None, "classifier_provider": None,
         "route": None, "ai": None,
     }
+
+
+def add_ai_call(tel: Dict[str, Any], *, stage: str, system_prompt: str,
+                prompt_text: str, raw_response: str,
+                meta: Optional[Dict[str, Any]] = None,
+                started: Optional[datetime] = None) -> None:
+    """Append one AI call to the run's multi-call trace (R&D / auto-tuning gold:
+    exact engineered prompt + engine/model + tokens + credits per stage).
+    Used by multi-stage flows like Deep Import. Never raises."""
+    try:
+        m = meta or {}
+        provider, model = m.get("provider"), m.get("model")
+        tel.setdefault("ai_calls", []).append({
+            "stage": str(stage)[:60],
+            "provider": provider, "model": model,
+            "engine": "/".join(str(x) for x in (provider, model) if x) or None,
+            "tokens": int(m.get("tokens") or 0),
+            "credits": round(float(m.get("credits") or 0), 4),
+            "latency_ms": (int((_now() - started).total_seconds() * 1000)
+                           if started else None),
+            "system_prompt": _trunc(system_prompt, CALL_TRUNC),
+            "prompt_text": _trunc(prompt_text, CALL_TRUNC),
+            "raw_response": _trunc(raw_response, CALL_TRUNC),
+        })
+    except Exception as e:  # noqa: BLE001 — telemetry never breaks the flow
+        logger.warning("add_ai_call failed (non-fatal): %s", str(e)[:120])
 
 
 async def record_run(tel: Dict[str, Any], *, status: str = "success",
@@ -96,6 +123,17 @@ async def record_run(tel: Dict[str, Any], *, status: str = "success",
             # ScraperAPI scrape-fetch costs incurred during this run (metered)
             "scrape": None,
         }
+        # Multi-call AI trace (deep imports & other multi-stage flows) + rollups
+        ai_calls = list(tel.get("ai_calls") or [])
+        doc["ai_calls"] = ai_calls
+        doc["ai_calls_count"] = len(ai_calls)
+        if ai_calls:
+            doc["ai_tokens"] = sum(int(c.get("tokens") or 0) for c in ai_calls)
+            doc["ai_engines"] = sorted({c["engine"] for c in ai_calls if c.get("engine")})
+            if not doc["ai_provider"]:
+                doc["ai_provider"] = ai_calls[-1].get("provider")
+        else:
+            doc["ai_engines"] = [doc["ai_provider"]] if doc["ai_provider"] else []
         srows = await db.scrape_usage.aggregate([
             {"$match": {"user_id": tel["user_id"], "created_at": {"$gte": tel["t0"]}}},
             {"$group": {"_id": None, "fetches": {"$sum": 1},
@@ -108,6 +146,17 @@ async def record_run(tel: Dict[str, Any], *, status: str = "success",
                              "scraper_credits": g["scraper_credits"],
                              "app_credits": round(g["app_credits"], 4),
                              "usd_cost": round(g["usd"], 6)}
+        # AI credits consumed during this run (wallet-ledger debit rollup —
+        # covers every metered stage incl. flows that predate the call trace)
+        arows = await db.ai_wallet_ledger.aggregate([
+            {"$match": {"user_id": tel["user_id"], "created_at": {"$gte": tel["t0"]},
+                        "kind": "debit", "feature": {"$ne": "scrape_fetch"}}},
+            {"$group": {"_id": None,
+                        "credits": {"$sum": {"$multiply": [-1, "$delta"]}}}}]).to_list(1)
+        ai_credits = round(float(arows[0]["credits"]), 4) if arows else 0.0
+        doc["ai_credits"] = ai_credits
+        doc["total_credits"] = round(
+            ai_credits + float((doc.get("scrape") or {}).get("app_credits") or 0), 4)
         await db.url_import_runs.insert_one(doc)
         await _lazy_purge(now)
         posthog_client.track(tel["user_id"], "url_import_completed", {
@@ -118,6 +167,7 @@ async def record_run(tel: Dict[str, Any], *, status: str = "success",
             "latency_ms": doc["latency_ms"],
             "factor_count": doc["factor_count"], "option_count": doc["item_count"],
             "retry_used": doc["ai_retry_used"],
+            "ai_credits": ai_credits, "total_credits": doc["total_credits"],
         })
     except Exception as e:  # noqa: BLE001 — telemetry never breaks the import
         logger.warning("url-import telemetry record failed (non-fatal): %s", str(e)[:200])
@@ -141,6 +191,13 @@ async def _lazy_purge(now: datetime) -> None:
         {"ts": {"$lt": cutoff}, "ai_system_prompt": {"$ne": None}},
         {"$unset": {"ai_system_prompt": "", "ai_prompt_text": "", "ai_raw_response": ""},
          "$set": {"bodies_purged": True}})
+    # Multi-call trace bodies: keep stage/engine/tokens/credits, drop the texts.
+    await db.url_import_runs.update_many(
+        {"ts": {"$lt": cutoff}, "ai_calls.0": {"$exists": True},
+         "ai_calls_bodies_purged": {"$ne": True}},
+        {"$unset": {"ai_calls.$[].system_prompt": "", "ai_calls.$[].prompt_text": "",
+                    "ai_calls.$[].raw_response": ""},
+         "$set": {"ai_calls_bodies_purged": True}})
 
 
 async def set_feedback(run_id: str, user_id: str, verdict: str) -> bool:
@@ -180,6 +237,7 @@ async def summary(days: int = 30) -> Dict[str, Any]:
                         "fb_up": {"$sum": {"$cond": [{"$eq": ["$feedback", "up"]}, 1, 0]}},
                         "fb_down": {"$sum": {"$cond": [{"$eq": ["$feedback", "down"]}, 1, 0]}},
                         "avg_latency_ms": {"$avg": "$latency_ms"},
+                        "avg_credits": {"$avg": "$total_credits"},
                         "avg_factors": {"$avg": "$factor_count"}}},
             {"$sort": {"runs": -1}},
         ]
@@ -189,6 +247,7 @@ async def summary(days: int = 30) -> Dict[str, Any]:
                  "hint_pass_rate": _rate(r["hint_pass"], r["hinted"]),
                  "feedback_up": r["fb_up"], "feedback_down": r["fb_down"],
                  "avg_latency_ms": int(r["avg_latency_ms"] or 0),
+                 "avg_credits": round(r["avg_credits"] or 0, 2),
                  "avg_factors": round(r["avg_factors"] or 0, 1)} for r in rows]
 
     lat = await db.url_import_runs.aggregate([

@@ -466,6 +466,13 @@ async def startup_db_client():
     except Exception as e:
         logger.error(f"Revenue-recon sync task boot failed: {e}", exc_info=True)
 
+    # Start daily AI Auto-Tune sweep (prompt suggestions; admin approval to activate)
+    try:
+        from core.url_prompt_tuning import start_daily_auto_tune_task
+        start_daily_auto_tune_task()
+    except Exception as e:
+        logger.error(f"Auto-tune daily task boot failed: {e}", exc_info=True)
+
     # Notification Engine — seed default weekly import-analytics digest trigger
     # (idempotent) + start the 60s scheduler tick (fcntl-singleton-locked).
     try:

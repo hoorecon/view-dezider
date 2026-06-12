@@ -61,9 +61,10 @@ async def import_analytics_run_detail(run_id: str,
 async def tuning_generate(days: int = 30, page_type: Optional[str] = None,
                           admin: dict = Depends(require_super_admin)):
     """Run the AI prompt-tuning analysis (precise tier, metered to the admin).
-    Skips page types with no failing runs or a suggestion already pending."""
-    if page_type and page_type not in PAGE_TYPES:
-        raise HTTPException(400, f"page_type must be one of {PAGE_TYPES}")
+    Covers page types AND deep-import stages. Also runs automatically every
+    24h. Skips keys with no failing runs or a suggestion already pending."""
+    if page_type and page_type not in url_prompt_tuning.TUNE_KEYS:
+        raise HTTPException(400, f"page_type must be one of {url_prompt_tuning.TUNE_KEYS}")
     return await url_prompt_tuning.generate_suggestions(
         admin["user_id"], days=max(1, min(days, 365)), page_type=page_type)
 
@@ -98,9 +99,9 @@ async def tuning_reject(suggestion_id: str, admin: dict = Depends(require_super_
 
 @router.delete("/tuning/override/{page_type}")
 async def tuning_revert(page_type: str, admin: dict = Depends(require_super_admin)):
-    """Revert a page type to the built-in default guidance block."""
-    if page_type not in PAGE_TYPES:
-        raise HTTPException(400, f"page_type must be one of {PAGE_TYPES}")
+    """Revert a tunable key (page type / deep-import stage) to its built-in default."""
+    if page_type not in url_prompt_tuning.TUNE_KEYS:
+        raise HTTPException(400, f"page_type must be one of {url_prompt_tuning.TUNE_KEYS}")
     if not await url_prompt_tuning.revert_override(page_type, admin["user_id"]):
         raise HTTPException(404, "No active override for this page type")
     return {"page_type": page_type, "reverted": True}

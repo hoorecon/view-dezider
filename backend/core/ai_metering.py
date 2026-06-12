@@ -171,15 +171,17 @@ async def metered_chat(
             log.warning(f"precise tier ({model}) failed ({type(e).__name__}: {str(e)[:120]}); "
                         "falling back to the standard chain")
         else:
+            charged = 0.0
             try:
-                await ai_wallet.charge(
+                res = await ai_wallet.charge(
                     user_id, tokens=tokens, feature=feature, provider="emergent_precise",
                     session_id=session_id, credit_multiplier=ai_wallet.precise_multiplier(cfg))
+                charged = float(res.get("charged") or 0)
             except Exception as e:  # noqa: BLE001
                 log.error(f"wallet charge failed (non-fatal): {e}")
             if meta is not None:
-                meta["provider"] = "emergent_precise"
-                meta["tokens"] = tokens
+                meta.update(provider="emergent_precise", model=model,
+                            tokens=tokens, credits=charged)
             return text
 
     if allow_openai is None:
@@ -190,12 +192,16 @@ async def metered_chat(
     for provider in chain:
         try:
             if provider == "gemini":
+                model_used = GEMINI_MODEL
                 text, tokens = await _direct_call(f"gemini/{GEMINI_MODEL}", os.getenv("GEMINI_API_KEY"), system_message, prompt)
             elif provider == "groq":
+                model_used = GROQ_MODEL
                 text, tokens = await _direct_call(f"groq/{GROQ_MODEL}", os.getenv("GROQ_API_KEY"), system_message, prompt)
             elif provider == "openai":
+                model_used = OPENAI_MODEL
                 text, tokens = await _direct_call(OPENAI_MODEL, os.getenv("OPENAI_API_KEY"), system_message, prompt)
             else:
+                model_used = GEMINI_MODEL
                 text, tokens = await _emergent_call(system_message, prompt, session_prefix)
         except ai_wallet.InsufficientCredits:
             raise
@@ -204,14 +210,16 @@ async def metered_chat(
             log.warning(f"metered {provider} call failed ({type(e).__name__}: {str(e)[:120]}); advancing chain")
             continue
 
+        charged = 0.0
         try:
-            await ai_wallet.charge(user_id, tokens=tokens, feature=feature,
-                                   provider=provider, session_id=session_id)
+            res = await ai_wallet.charge(user_id, tokens=tokens, feature=feature,
+                                         provider=provider, session_id=session_id)
+            charged = float(res.get("charged") or 0)
         except Exception as e:  # noqa: BLE001
             log.error(f"wallet charge failed (non-fatal): {e}")
         if meta is not None:
-            meta["provider"] = provider
-            meta["tokens"] = tokens
+            meta.update(provider=provider, model=model_used,
+                        tokens=tokens, credits=charged)
         return text
 
     raise last_err or RuntimeError("All LLM providers failed")

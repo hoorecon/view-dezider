@@ -31,6 +31,8 @@ const PAGE_TYPES = ['comparison_matrix', 'listing_filter', 'detail', 'search_gri
 const PT_LABEL: Record<string, string> = {
   comparison_matrix: 'Comparison Matrix', listing_filter: 'Listing / Filter',
   detail: 'Detail Page', search_grid: 'Search Grid', article_roundup: 'Article Round-up',
+  deep_links: 'Deep Import · Link pick', deep_hubs: 'Deep Import · Hub locate',
+  deep_consolidate: 'Deep Import · Consolidate',
   '(none)': 'Unclassified',
 };
 const ROUTE_LABEL: Record<string, string> = {
@@ -40,6 +42,8 @@ const ROUTE_LABEL: Record<string, string> = {
 };
 
 const pct = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${v}%`);
+const cr = (v: number | null | undefined) =>
+  v === null || v === undefined || !Number(v) ? '—' : `${Number(v).toFixed(1)} cr`;
 const ms = (v: number | null | undefined) =>
   v === null || v === undefined ? '—' : v >= 1000 ? `${(v / 1000).toFixed(1)}s` : `${v}ms`;
 const when = (ts: string) => {
@@ -59,6 +63,7 @@ export default function AdminImportAnalyticsScreen() {
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<any>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [expandedCall, setExpandedCall] = useState<number | null>(null);
 
   // ── AI Auto-Tune (prompt suggestions) ──
   const [tuning, setTuning] = useState<{ suggestions: any[]; active_overrides: any[] } | null>(null);
@@ -132,6 +137,7 @@ export default function AdminImportAnalyticsScreen() {
     try {
       const r = await api.get(`/admin/import-analytics/runs/${id}`);
       setDetail(r.data);
+      setExpandedCall(null);
       setDetailOpen(true);
     } catch (e: any) {
       showAlert('Error', e?.response?.data?.detail || 'Failed to load run');
@@ -202,6 +208,7 @@ export default function AdminImportAnalyticsScreen() {
               <Text style={st.th}>Hint pass</Text>
               <Text style={st.th}>👍/👎</Text>
               <Text style={st.th}>Latency</Text>
+              <Text style={st.th}>Avg cr</Text>
             </View>
             {(summary?.[key] || []).map((row: any) => (
               <View key={row.key} style={st.tRow}>
@@ -213,6 +220,7 @@ export default function AdminImportAnalyticsScreen() {
                 <Text style={st.td}>{pct(row.hint_pass_rate)}</Text>
                 <Text style={st.td}>{row.feedback_up}↑ {row.feedback_down}↓</Text>
                 <Text style={st.td}>{ms(row.avg_latency_ms)}</Text>
+                <Text style={st.td}>{cr(row.avg_credits)}</Text>
               </View>
             ))}
             {!(summary?.[key] || []).length && <Text style={st.empty}>No runs in this window yet.</Text>}
@@ -321,6 +329,7 @@ export default function AdminImportAnalyticsScreen() {
                 <Text style={st.runMeta} numberOfLines={1}>
                   {when(r.ts)} · {PT_LABEL[r.page_type] || r.page_type || '—'} · {ROUTE_LABEL[r.route] || r.route || '—'}
                   {r.ai_provider ? ` · ${r.ai_provider}` : ''} · {ms(r.latency_ms)}
+                  {r.total_credits ? ` · ${Number(r.total_credits).toFixed(1)} cr` : ''}
                   {r.hints_given ? ` · hints${r.hint_pass === false ? ' ✗' : r.hint_pass ? ' ✓' : ''}` : ''}
                 </Text>
               </View>
@@ -357,7 +366,12 @@ export default function AdminImportAnalyticsScreen() {
                     ['Status', detail.status + (detail.error ? ` — ${detail.error}` : '')],
                     ['Page type', `${PT_LABEL[detail.page_type] || detail.page_type || '—'} (conf ${detail.page_type_confidence ?? '—'}, via ${detail.classifier_provider || '—'})`],
                     ['Route', ROUTE_LABEL[detail.route] || detail.route || '—'],
-                    ['Engine', `${detail.ai_tier} → ${detail.ai_provider || '—'}${detail.ai_retry_used ? ' · corrective retry used' : ''}${detail.ai_tokens ? ` · ~${detail.ai_tokens} tokens` : ''}`],
+                    ['Engine', (detail.ai_engines || []).length
+                      ? `${detail.ai_tier} → ${detail.ai_engines.join(', ')}${detail.ai_tokens ? ` · ~${detail.ai_tokens} tokens` : ''}`
+                      : `${detail.ai_tier} → ${detail.ai_provider || '—'}${detail.ai_retry_used ? ' · corrective retry used' : ''}${detail.ai_tokens ? ` · ~${detail.ai_tokens} tokens` : ''}`],
+                    ['Credits', detail.total_credits != null
+                      ? `AI ${(detail.ai_credits ?? 0).toFixed(2)} + scrape ${(detail.scrape?.app_credits ?? 0).toFixed(2)} = ${Number(detail.total_credits).toFixed(2)} cr${detail.scrape?.fetches ? ` (${detail.scrape.fetches} scrape fetch${detail.scrape.fetches > 1 ? 'es' : ''})` : ''}`
+                      : '—'],
                     ['Hints', detail.hints_given ? JSON.stringify(detail.hints) : '(none given)'],
                     ['Hint warnings', (detail.hint_warnings || []).join(' ') || (detail.hints_given ? 'none — passed ✓' : '—')],
                     ['Outcome', detail.status === 'success' ? `${detail.factors_added ?? detail.factor_count ?? 0} factors, ${detail.options_added ?? detail.item_count ?? 0} options, ${ms(detail.latency_ms)}` : '—'],
@@ -368,6 +382,40 @@ export default function AdminImportAnalyticsScreen() {
                       <Text style={st.dVal} selectable>{String(v)}</Text>
                     </View>
                   ))}
+                  {!!(detail.ai_calls || []).length && (
+                    <>
+                      <Text style={st.promptTitle}>
+                        AI call trace — {detail.ai_calls.length} call{detail.ai_calls.length > 1 ? 's' : ''} (engine · tokens · credits · latency)
+                      </Text>
+                      {detail.ai_calls.map((c: any, i: number) => (
+                        <View key={i} style={st.callBox} testID={`import-run-ai-call-${i}`}>
+                          <TouchableOpacity
+                            style={st.callHead}
+                            testID={`import-run-ai-call-toggle-${i}`}
+                            onPress={() => setExpandedCall(expandedCall === i ? null : i)}
+                          >
+                            <View style={{ flex: 1 }}>
+                              <Text style={st.callStage}>#{i + 1} {c.stage}</Text>
+                              <Text style={st.callMeta}>
+                                {c.engine || '—'} · ~{c.tokens || 0} tok · {(c.credits ?? 0).toFixed(2)} cr · {ms(c.latency_ms)}
+                              </Text>
+                            </View>
+                            <Ionicons name={expandedCall === i ? 'chevron-up' : 'chevron-down'} size={15} color={C.muted} />
+                          </TouchableOpacity>
+                          {expandedCall === i && (
+                            <>
+                              <Text style={st.subHead}>System prompt (engineered)</Text>
+                              <Text style={st.promptBody} selectable>{c.system_prompt || '(purged — 90-day retention)'}</Text>
+                              <Text style={st.subHead}>Input prompt</Text>
+                              <Text style={st.promptBody} selectable>{c.prompt_text || '(purged — 90-day retention)'}</Text>
+                              <Text style={st.subHead}>Raw response</Text>
+                              <Text style={st.promptBody} selectable>{c.raw_response || '(purged — 90-day retention)'}</Text>
+                            </>
+                          )}
+                        </View>
+                      ))}
+                    </>
+                  )}
                   {detail.ai_system_prompt ? (
                     <>
                       <Text style={st.promptTitle}>System prompt (exact, truncated 15KB)</Text>
@@ -375,9 +423,9 @@ export default function AdminImportAnalyticsScreen() {
                       <Text style={st.promptTitle}>Raw LLM response</Text>
                       <Text style={st.promptBody} selectable testID="import-run-raw-response">{detail.ai_raw_response || '(empty)'}</Text>
                     </>
-                  ) : (
+                  ) : !(detail.ai_calls || []).length ? (
                     <Text style={st.empty}>{detail.bodies_purged ? 'Prompt bodies purged (90-day retention).' : 'No AI call was made for this run (deterministic parse).'}</Text>
-                  )}
+                  ) : null}
                 </>
               )}
             </ScrollView>
@@ -423,6 +471,11 @@ const st = StyleSheet.create({
   dVal: { flex: 1, fontSize: 12, color: C.text },
   promptTitle: { fontSize: 12.5, fontWeight: '800', color: C.primary, marginTop: 12, marginBottom: 6 },
   promptBody: { fontSize: 11, color: C.text, backgroundColor: '#F8FAFC', borderRadius: 8, borderWidth: 1, borderColor: C.border, padding: 10, fontFamily: 'monospace' as any },
+  // AI call trace
+  callBox: { borderWidth: 1, borderColor: C.border, borderRadius: 10, padding: 10, marginBottom: 8, backgroundColor: '#FCFCFD' },
+  callHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  callStage: { fontSize: 12.5, fontWeight: '800', color: C.text },
+  callMeta: { fontSize: 11, color: C.muted, marginTop: 2 },
   // AI Auto-Tune
   genBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
   genBtnTxt: { color: '#FFF', fontSize: 12, fontWeight: '700' },
