@@ -306,21 +306,50 @@ async def ai_extract_candidates(user_id: str, html: str) -> List[Dict[str, Any]]
         return []
 
 
-async def _scraperapi_fetch(url: str, sc: Dict[str, str]) -> Optional[str]:
+def _scraperapi_reason(status: int, body: str) -> str:
+    """Map a failed ScraperAPI response to a human-readable admin-facing reason."""
+    low = (body or "").lower()
+    if status == 500 and "premium" in low:
+        return ("this domain is bot-protected and needs ScraperAPI Premium/Ultra-Premium "
+                "proxies (premium=true)")
+    if status == 403 and ("plan" in low or "upgrade" in low):
+        return ("your ScraperAPI plan does not include Premium proxies — protected domains "
+                "need a plan upgrade at scraperapi.com")
+    if status == 403:
+        return "ScraperAPI rejected the request (invalid API key or out of credits)"
+    if status == 429:
+        return "ScraperAPI rate/credit limit reached"
+    return f"ScraperAPI returned HTTP {status}"
+
+
+async def _scraperapi_fetch(url: str, sc: Dict[str, str]) -> tuple:
     """Fetch fully-rendered HTML via ScraperAPI (JS execution + proxy rotation).
-    Returns HTML on success, else None (caller falls back to direct httpx)."""
+    Auto-escalates ONCE to premium=true when ScraperAPI flags the domain as
+    protected. Returns (html, None) on success, else (None, fail_reason)."""
     params = {"api_key": sc["api_key"], "url": url, "render": "true"}
     if sc.get("country_code"):
         params["country_code"] = sc["country_code"]
-    try:
-        async with httpx.AsyncClient(timeout=75.0, follow_redirects=True) as cli:
-            r = await cli.get("https://api.scraperapi.com/", params=params)
-        if r.status_code == 200 and "<html" in r.text.lower():
-            return r.text
-        logger.warning("ScraperAPI returned %s for %s", r.status_code, url[:80])
-    except Exception as e:
-        logger.warning("ScraperAPI fetch failed for %s: %s", url[:80], str(e)[:120])
-    return None
+    reason = "unknown error"
+    for extra in ({}, {"premium": "true"}):
+        try:
+            async with httpx.AsyncClient(timeout=75.0, follow_redirects=True) as cli:
+                r = await cli.get("https://api.scraperapi.com/", params={**params, **extra})
+            if r.status_code == 200 and "<html" in r.text.lower():
+                if extra:
+                    logger.info("ScraperAPI premium=true succeeded for %s", url[:80])
+                return r.text, None
+            body = " ".join(r.text[:300].split())
+            reason = _scraperapi_reason(r.status_code, body)
+            logger.warning("ScraperAPI %s for %s%s: %s", r.status_code, url[:80],
+                           " (premium retry)" if extra else "", body[:200])
+            # Protected-domain hint → retry once with premium proxies; else stop.
+            if not (r.status_code == 500 and "premium" in r.text.lower()):
+                break
+        except Exception as e:
+            reason = f"ScraperAPI request failed ({type(e).__name__})"
+            logger.warning("ScraperAPI fetch failed for %s: %s", url[:80], str(e)[:120])
+            break
+    return None, reason
 
 
 _PRICE_RE = re.compile(r"[₹$€£]\s?[\d,]+(?:\.\d{1,2})?")
@@ -388,10 +417,11 @@ async def _fetch_html(url: str) -> "httpx.Response":
 
     sc = await resolve_scraperapi()
     js_heavy = any(d in url.lower() for d in _JS_HEAVY_DOMAINS)
+    sc_reason: Optional[str] = None  # why ScraperAPI failed (when configured)
 
     # 1) JS-heavy site + key → go straight to ScraperAPI (direct fetch is useless).
     if sc["api_key"] and js_heavy:
-        html = await _scraperapi_fetch(url, sc)
+        html, sc_reason = await _scraperapi_fetch(url, sc)
         if html:
             return httpx.Response(200, text=html, headers={"content-type": "text/html"})
 
@@ -412,8 +442,8 @@ async def _fetch_html(url: str) -> "httpx.Response":
             await asyncio.sleep(0.8 * (attempt + 1))
 
     # 3) Bot-blocked (or unreachable) + key → escalate to ScraperAPI.
-    if (r is None or r.status_code in _BOT_BLOCK_CODES) and sc["api_key"]:
-        html = await _scraperapi_fetch(url, sc)
+    if (r is None or r.status_code in _BOT_BLOCK_CODES) and sc["api_key"] and not sc_reason:
+        html, sc_reason = await _scraperapi_fetch(url, sc)
         if html:
             return httpx.Response(200, text=html, headers={"content-type": "text/html"})
 
@@ -424,6 +454,15 @@ async def _fetch_html(url: str) -> "httpx.Response":
             "Check the link is public and reachable.",
         )
     if r.status_code in _BOT_BLOCK_CODES:
+        if sc["api_key"]:
+            # ScraperAPI IS configured but it also failed — tell the admin WHY.
+            raise HTTPException(
+                422,
+                f"This site blocked automated access (HTTP {r.status_code}), and the configured "
+                f"ScraperAPI fallback also failed — {sc_reason or 'no usable HTML returned'}. "
+                "Try a public comparison/listing page that shows items in a plain table, or the "
+                "Screener (CSV upload).",
+            )
         raise HTTPException(
             422,
             f"This site blocked automated access (HTTP {r.status_code}). Large retail/JS-heavy "
@@ -449,7 +488,8 @@ async def fetch_rendered(url: str) -> Optional[str]:
     sc = await resolve_scraperapi()
     if not sc["api_key"]:
         return None
-    return await _scraperapi_fetch(url, sc)
+    html, _reason = await _scraperapi_fetch(url, sc)
+    return html
 
 
 def page_text(html: str, limit: int = 11000) -> str:

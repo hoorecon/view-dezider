@@ -894,3 +894,22 @@ testing agent frontend 4/4 PASS + regression (iteration_107.json). Agent-fixed b
 search_replace race dropped the verify_detail/page_text imports in url_analyze.py (NameError 500
 on import) — testing agent restored them; symbol-wiring pytest now guards this.
 LESSON: NEVER issue two parallel search_replace calls against the SAME file (2nd race this session).
+
+## 2026-06-12 — Deep Import "blocked site" fix (bookmyshow.com)
+BUG: Prod Deep Import of bookmyshow.com failed with the generic "configure ScraperAPI" 422 even
+though ScraperAPI WAS configured. Root cause: BMS is an Akamai-protected domain — ScraperAPI's
+standard pool intermittently returns 500 "Protected domains may require premium=true"; the old
+_scraperapi_fetch swallowed the reason and _fetch_html showed the misleading "configure it" text.
+Also confirmed: current ScraperAPI plan does NOT include Premium proxies (403 "upgrade plan").
+FIX (core/url_crawl.py):
+- _scraperapi_fetch now returns (html, fail_reason), logs status+body, and AUTO-RETRIES once with
+  premium=true when ScraperAPI flags a protected domain (works automatically once plan upgraded).
+- _scraperapi_reason() maps failures to admin-readable text (protected domain / plan upgrade
+  needed / invalid key-credits / rate limit).
+- _fetch_html 422 now branches: key configured → "ScraperAPI fallback also failed — <reason>";
+  no key → original "configure ScraperAPI" guidance. fetch_rendered unpacks the tuple.
+- tests/test_iter95: stale "configured is False" assertion relaxed (key now set in preview).
+TESTED: reproduced original failure; reason-mapping unit checks; pytest 16 passed/1 skipped
+(iter107 + iter95 suites); REAL deep-import e2e on https://www.bookmyshow.com/ → factors_ready
+(3 movie options, 4 factors). NOTE: needs DEPLOY to jelcos.ai; prod may still fail intermittently
+on protected domains until ScraperAPI plan includes Premium — error now says exactly that.
