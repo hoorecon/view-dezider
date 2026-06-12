@@ -71,6 +71,7 @@ const FIELDS: Array<{
   { key: 'blended_usd_per_mtok', label: 'Gemini blended $/Mtok', hint: 'Single blended price ($) per 1M tokens — set from Gemini list price', unit: '$', min: 0.01 },
   { key: 'precise_usd_per_mtok', label: 'Precise-AI blended $/Mtok', hint: '“Costly & Precise AI” tier (Claude via Emergent universal key). Credit multiplier = this ÷ Gemini $/Mtok — same markup math stays zero-loss.', unit: '$', min: 0.01 },
   { key: 'precise_model', label: 'Precise-AI model', hint: 'Claude model used by the “Costly & Precise AI” import tier (e.g. claude-sonnet-4-6)' },
+  { key: 'import_group_threshold', label: 'AI grouping threshold (factors)', hint: 'Import-from-URL: AI may auto-group ungrouped factors into categories only when the page defines no grouping AND the factor count exceeds this (default 15). Page-defined groups are never modified.', min: 2 },
   { key: 'usd_to_inr_fallback', label: 'USD → INR fallback', hint: 'Used when live FX fetch fails', unit: '₹', min: 1 },
   { key: 'default_user_credits', label: 'New-user seed credits', hint: 'Free starting balance for non-admin signups', min: 0 },
   { key: 'default_admin_credits', label: 'New-admin seed credits', hint: 'Free starting balance for admin signups', min: 0 },

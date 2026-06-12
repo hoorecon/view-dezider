@@ -821,3 +821,40 @@ fast chain (graceful, surfaced in UI note). User must top up Universal Key balan
 (Profile → Universal Key → Add Balance) to activate Claude precise tier.
 NOTE: factor count varies by provider in fast chain (Gemini ~20, Groq fallback ~10-16) — prompt
 hardened with exhaustiveness floor.
+
+### Import-from-URL v3 — nature doctrine, hierarchy, hints, Set Expectations (12 Jun 2026, same fork)
+User approved full scope (~35-45 cr). Clarifications honored: page-defined groups SACRED (GSMArena
+BODY example); AI-grouping only when no page groups AND factors > admin-configurable threshold
+(`import_group_threshold`, default 15, editable in Admin → AI Wallet Config); ZERO TOLERANCE on
+option↔factor-value mapping; Steps 3/4/5 remain user-owned; button named "Set Expectations - By AI";
+Claude-first (Universal Key topped up — VERIFIED WORKING, ai_provider=emergent_precise), fallback
+Claude→Gemini→OpenAI→Groq (_build_chain openai_before_groq for precise tier).
+BUILT:
+- models/decisions_models.py: Factor.factor_type persisted ('quantitative' = undisputed fact/spec
+  even when text e.g. Color=Blue, Furnishing=Semi; 'qualitative' = person-dependent judgment e.g.
+  Comfort, Luxury Feel — needs AI-assisted assessment). Root cause fixed: field previously dropped
+  by backend, frontend fell back to text⇒qualitative.
+- core/url_detail.py v2: groups-based schema {groups:[{name,source:page|ai|none,factors[]}],
+  items:[{values/scores keyed "Group::Factor"}]}; normalize emits kind=flat|hier (hier feeds
+  merge_hierarchical_into_mydezider with equal weight split); server-side guard flattens AI-grouping
+  under threshold; unknown value keys DROPPED (zero tolerance); validate_against_hints() + ONE
+  corrective self-heal retry (hints: expected_factor_count ±max(2,20%), expected_option_count ±1,
+  first_factor_name / first_option_name fuzzy).
+- routes/url_analyze.py: hints fields on Import/Analyze requests; kind-aware merging (hier→
+  hierarchical merge/create); _factor_nature keyword heuristic for deterministic comparison-page
+  rows; NEW POST /url-analyze/decision/{id}/set-expectations (gated 422: needs factors+options+
+  ≥1 unit_value; Claude-first; updates expected_value+operator on the 21 leaf factors only,
+  parents untouched; anchored to option actuals).
+- decision_builder.py: factor_type wired through all 4 create/merge paths.
+- frontend Step2.tsx: collapsible "Boost accuracy (recommended, optional)" hints UI (4 inputs,
+  testIDs step2-hint-*), 300s import timeout, hierarchical+hint-warning success messages,
+  "Set Expectations - By AI" button (step2-set-expectations-ai) gated + hint text.
+- admin/ai-wallet-config.tsx: import_group_threshold field (NOTE: parallel search_replace writes
+  silently dropped this FIELDS entry once — re-applied + verified; also required expo restart due
+  to corrupted Metro cache serving a stale bundle).
+TESTED: 47/47 pytest (17 in test_url_detail_import incl. hier preservation, zero-tolerance, hints
+tolerance); live precise import WITH 4 hints → emergent_precise, structure=hierarchical, 4 AI groups,
+21 sub-factors equal-split (33.33/33.33/33.34), ALL text-facts quantitative, 4 options (main 100% +
+Dhamu/Golden Jublee/Standalone partial), hint_warnings=[]; set-expectations 21/21 via Claude;
+422 gating; testing agent iteration_103 4/5 (5th = the FIELDS gap, fixed + screenshot-verified).
+DEV NOTE: admin@test.com dev AI wallet manually topped to 5000 credits (was -75.98).
