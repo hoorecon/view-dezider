@@ -1,6 +1,6 @@
 # Ways of Working / Out (WOWO) — Dezider
 
-_metadata: { "version": "3.5.1", "updated": "2026-05-04" }
+_metadata: { "version": "3.16.0", "updated": "2026-06-12" }
 
 ## Folder map (v3.5.1)
 
@@ -122,3 +122,60 @@ cd /app && python tests/test_<area>.py
 ### Cache & invalidation
 - `/api/pricing` is cached in-process (60s TTL)
 - Any admin write to segment, pricing, factor, or matrix cell auto-invalidates the cache
+
+---
+## v3.16.0 — Folder & route additions (2026-06-12)
+
+### Backend route → file map (v3.16 additions)
+| Module | File | Prefix |
+|---|---|---|
+| URL Analyse (Import v3) | `routes/url_analyze.py` | `/api/url-analyze` |
+| AI Wallet (user + admin) | `routes/ai_wallet.py` | `/api/ai-wallet`, `/api/admin/ai-wallet` |
+| Revenue Reconciliation (super-admin) | `routes/admin_recon.py` | `/api/admin/recon` |
+
+### Backend core additions
+| File | Role |
+|---|---|
+| `core/url_detail.py` | DETAIL-page single-fetch LLM extraction; groups-aware normalization; embedded SPA-state mining |
+| `core/url_crawl.py` | Refactored ScraperAPI-aware fetch (`fetch_page`, `fetch_rendered`, `page_text`); plain HTTP + JS-rendered modes |
+| `core/ai_metering.py` | `metered_chat(tier=, meta=)` — tier-aware LLM routing (Claude precise vs Gemini fast) with zero-loss multiplier |
+| `core/ai_wallet.py` | Wallet ledger + `charge(credit_multiplier=)`; new config fields `precise_model`, `precise_usd_per_mtok`, `import_group_threshold` |
+| `core/posthog_client.py` | Lazy server-side PostHog client; no-op without key; emits signup, payment_success, ai_credits_consumed, otp_sent, eg_session_completed |
+| `core/recon.py` | Razorpay incremental sync + BigQuery billing-export reader + per-txn tally + daily variance |
+| `core/decision_builder.py` | `factor_type` wired through all 4 create/merge paths (factors, hierarchical merge, sub-factors) |
+
+### Frontend additions / updates
+| File | Role |
+|---|---|
+| `src/utils/analytics.ts` | Platform-split PostHog: `posthog-js` on web (replay-capable), `posthog-react-native` on native (events-only) |
+| `src/components/steps/Step2.tsx` | Import URL dialog: ai_tier selector, 4 optional hints, "Set Expectations - By AI" button, 300s timeout, hierarchical merge support |
+| `app/admin/ai-wallet-config.tsx` | precise_model / precise_usd_per_mtok / import_group_threshold + live multiplier worked-example row |
+| `app/admin/recon.tsx` | "Revenue Recon" page (verdict banner, 8 KPI cards, tally table, daily variance, GCP config form, Sync-now, CSV export) |
+
+### Playbook: regenerate the Postman collection
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8001/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@test.com","password":"AdminPass2026!"}' \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)['session_token'])")
+
+curl -s -o /app/docs/Postman_Collection.json \
+  http://localhost:8001/api/admin/docs/postman-collection \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Local commands (v3.16)
+```bash
+# Backend & frontend
+sudo supervisorctl restart backend
+sudo supervisorctl restart expo
+
+# Targeted tests
+cd /app && pytest backend/tests/test_url_detail_import.py -v
+cd /app && pytest backend/tests/test_admin_recon.py -v
+
+# Live import check
+curl -X POST $BASE/api/url-analyze/decision/{id}/import \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"url":"...","ai_tier":"precise","expected_factor_count":20}'
+```

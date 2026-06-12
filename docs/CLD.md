@@ -1,6 +1,6 @@
 # Causal Loop Diagram (CLD) Engine — Dezider
 
-_metadata: { "version": "3.5.1", "updated": "2026-05-04" }
+_metadata: { "version": "3.16.0", "updated": "2026-06-12" }
 
 ## What it is
 Graph-based tool to surface feedback loops in a problem space. Each node is
@@ -64,3 +64,9 @@ evenings for lifestyle routines — do this before lunch."
 - Mixed-polarity edges split into two records.
 - Simulation results NOT persisted (recomputed on demand).
 - CLD-leverage scores live in memory (computed per Raja-Guru call).
+
+---
+## v3.16.0 — CLD status (2026-06-12)
+- Engine unchanged.
+- CLD Phase B (Rules engine) and Phase C (AI suggestions) remain in upcoming roadmap.
+- Now that the Emergent Universal Key is topped up, the **Raja Guru + AI overlay** backlog item is unblocked and queued for next sprint.

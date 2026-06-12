@@ -1,6 +1,6 @@
 # Deployment runbook — Dezider
 
-_metadata: { "version": "3.15.0", "updated": "2026-05-18" }
+_metadata: { "version": "3.16.0", "updated": "2026-06-12" }
 
 Three supported deploy targets:
 
@@ -212,3 +212,45 @@ Self-hosting only covers the web app + API + DB.
 - [ ] CDN cache rules for `/api/pricing` (60 s TTL already in app)
 - [ ] Backup cron for self-hosted Mongo (or rely on Atlas continuous backup)
 - [ ] Uptime monitoring on `/api/health/ready` (UptimeRobot / Better Stack / Datadog)
+
+---
+## v3.16.0 — Deployment notes (2026-06-12)
+
+### Env additions
+```
+# PostHog — web replay (frontend, build-time)
+EXPO_PUBLIC_POSTHOG_HOST=https://eu.i.posthog.com
+EXPO_PUBLIC_POSTHOG_KEY=phc_xxxxxxxxxxxxxxxx
+
+# PostHog — server-side events (backend)
+POSTHOG_HOST=https://eu.i.posthog.com
+POSTHOG_API_KEY=phc_xxxxxxxxxxxxxxxx
+
+# ScraperAPI (URL Import v3 rendered HTML)
+SCRAPER_API_KEY=...
+
+# Emergent Universal Key (Claude precise tier)
+EMERGENT_LLM_KEY=...
+
+# Revenue Reconciliation — GCP Billing Export (super-admin uploads in UI; no env var)
+```
+
+### Cloudflare Pages (frontend web build)
+- `EXPO_PUBLIC_POSTHOG_HOST` + `EXPO_PUBLIC_POSTHOG_KEY` must be set BEFORE `npx expo export -p web` because `posthog-js` is bundled at build time.
+- After redeploy, hard refresh the preview tab and confirm `window.posthog.__loaded === true`.
+
+### EC2 / Docker backend
+- After upgrade: `pip install -r backend/requirements.txt` (adds `google-cloud-bigquery==3.41.0`, `posthog`).
+- Restart: `sudo supervisorctl restart backend`.
+- One-time post-deploy: super-admin uploads GCP Service-Account JSON via `/admin/recon` → Configure GCP form. Validate via `POST /admin/recon/sync`.
+
+### Smoke test additions (v3.16)
+```bash
+# After login as super-admin
+curl -X POST $BASE/api/url-analyze/decision/{id}/import \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"url":"https://example.com/product","ai_tier":"fast"}'
+
+curl $BASE/api/admin/ai-wallet/config -H "Authorization: Bearer $TOKEN"
+curl $BASE/api/admin/recon/summary    -H "Authorization: Bearer $TOKEN"
+```

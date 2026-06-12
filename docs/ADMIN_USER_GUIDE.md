@@ -252,3 +252,65 @@ For deeper technical detail, see `PRODUCTION_DEPLOYMENT.md` in Handbook.
 **Need help?** Ping #admin-ops Slack channel or email support@emergent.sh. For platform-specific support, your Emergent account dashboard has a "Contact Support" button.
 
 *This guide is auto-served from the codebase. To update it, edit `/app/docs/ADMIN_USER_GUIDE.md` and push to GitHub `emergent-v3`.*
+
+---
+
+## v3.16.0 — New Admin Pages (2026-06-12)
+
+### 💳 AI Wallet Config (`/admin/ai-wallet-config`)
+
+- **Purpose:** Govern the AI cost economics — provider pricing, the **precise** (Claude) tier multiplier, the auto-grouping threshold for URL Import, and refill packs.
+- **Required role:** super_admin.
+- **How to use:**
+  1. **Pricing fields** — set `blended_usd_per_mtok` (Fast tier, Gemini/Groq) and `precise_usd_per_mtok` (Claude). The "Precise tier credit multiplier ×N" row recomputes live.
+  2. **Markup** — `markup_user_pct` is your gross margin slice on every paid AI call. ⚠️ Note the structural recon insight: with Razorpay Route sending markup to the linked account, raise this if you need per-txn `buffer ≥ 0`.
+  3. **Import group threshold** — `import_group_threshold` (default 15). Pages with `factors > threshold` and no page-defined groups get AI-grouped; smaller pages stay flat. Tune higher for verbose marketplaces.
+  4. **Refill packs** — edit price/credit ratios for the buy-credits modal users see.
+  5. Save → no restart needed; next AI call honours the new config.
+- **Linked APIs:** `GET/PUT /api/admin/ai-wallet/config`, `POST /api/admin/ai-wallet/grant`, `GET /api/admin/ai-wallet/users`.
+- **Sample config:** `blended_usd_per_mtok=2.5`, `precise_usd_per_mtok=18`, `markup_user_pct=35`, `import_group_threshold=15`.
+
+### 💰 Revenue Reconciliation (`/admin/recon`)
+
+- **Purpose:** Per-transaction tally of money we collected (Razorpay) vs money we paid the LLM provider (Gemini via BigQuery Billing Export). Surfaces `at_loss` rows so we can catch structural margin slippage before the month closes.
+- **Required role:** **super_admin only** (regular admins get 403).
+- **How to use:**
+  1. **Configure GCP** (one-time per environment) — tap "Configure GCP" → paste base64-encoded Service-Account JSON + `project_id` → Save. The JSON is stored encrypted; the UI never echoes it back.
+  2. **Sync Now** — pulls Razorpay (payments + transfers + settlements, incremental 5-day overlap) and GCP billing export. Idempotent; safe to run multiple times a day.
+  3. **Verdict banner** — green "safe" / red "at_risk" based on the latest tally. At-risk surfaces the structural fix (raise `markup_user_pct` in AI Wallet Config OR retain part of markup in primary account).
+  4. **8 KPI cards** — net collected, total markup, total LLM cost, gross buffer, etc.
+  5. **Transactions table** — per-payment tally. Red rows = `at_loss=true`.
+  6. **Daily tally** — token-derived ₹ estimate vs GCP actual ₹ variance.
+  7. **Export CSV** — pick a month → downloads `transactions-YYYY-MM.csv`.
+- **Daily auto-sync** — backend startup task runs sync every 24h.
+- **Sample workflow:**
+  - After enabling paid AI for a new region: run RC-02 (Sync Now) → RC-03 (inspect tally) → if `at_risk`, jump to AI Wallet Config and raise `markup_user_pct` → re-sync → verdict should flip to safe.
+- **Linked APIs:** `GET /api/admin/recon/summary`, `GET /api/admin/recon/transactions`, `GET /api/admin/recon/daily`, `POST /api/admin/recon/sync`, `GET/PUT /api/admin/recon/gcp-config`, `GET /api/admin/recon/transactions.csv`.
+
+### 🔍 PostHog Analytics & Replays (external)
+
+- **Purpose:** Product analytics + web session replays for usability research.
+- **Required role:** read-only — admins read on `eu.posthog.com` project 199570.
+- **Privacy posture (memorise this):** Only `user_id` is sent. No email, phone, name, Aadhaar, or PAN. Inputs are masked at the DOM level. Network bodies (payment payloads, JWTs) are NOT recorded. Replays on web only.
+- **How to use:**
+  1. Log into PostHog EU (`https://eu.i.posthog.com`).
+  2. Switch to project 199570.
+  3. Live events tab — verify `signup`, `login`, `decision_created`, `payment_success`, `ai_credits_consumed` flow in real time.
+  4. Session Replay tab — pick a recent session → scrub to inspect UX friction.
+- **Operational gotcha:** Replay does NOT work on Expo Go (native) — only on the web build. Bot/headless detection silently blocks captures; production users unaffected.
+
+### Common v3.16 workflows
+
+#### Onboarding GCP for Revenue Recon
+1. In Google Cloud Console → Billing → Export to BigQuery → enable.
+2. Create a Service Account with roles: **BigQuery Data Viewer** + **BigQuery Job User**.
+3. Download SA JSON → `base64 -i sa.json` → copy result.
+4. Admin → Revenue Recon → Configure GCP → paste base64 + project_id → Save.
+5. Tap "Sync Now". After 30s, the verdict banner + KPI cards populate.
+
+#### Setting up paid AI for a new region
+1. AI Wallet Config → tune `markup_user_pct` (≥ 35% recommended to absorb Razorpay Route).
+2. AI Wallet Config → verify `precise_usd_per_mtok` matches the current Claude pricing.
+3. Tier Matrix → unlock `url_import_precise` for Heart Chakra and above.
+4. Revenue Recon → Sync Now → confirm verdict=safe.
+5. Customer Segments → add the new region's currency + tier pricing.

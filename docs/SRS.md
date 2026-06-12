@@ -1,6 +1,6 @@
 # System Requirements Specification — Dezider
 
-_metadata: { "version": "3.15.0", "updated": "2026-05-18" }
+_metadata: { "version": "3.16.0", "updated": "2026-06-12" }
 
 ## 1. Architecture
 Expo frontend → NGINX ingress → FastAPI pods → MongoDB replica-set.
@@ -133,3 +133,57 @@ Mongo failover 5–15 s of 503s; LLM budget exhausted → 503s on AI endpoints o
 
 ### Performance target
 - p95 < 250 ms on all new endpoints (single-document upserts on user-bounded data)
+
+---
+## v3.16.0 — PostHog Replays · Revenue Recon · Import-URL v3 · AI Wallet (2026-06-12)
+
+### Functional requirements
+- F-PH-1: Web client uses `posthog-js` for session replay; native uses `posthog-react-native` (events-only).
+- F-PH-2: Replay never persists raw input bodies (`maskAllInputs:true`, `capture_performance:false`).
+- F-PH-3: Backend emits server-truth events (signup / payment_success / ai_credits_consumed / otp_sent / eg_session_completed) via `core/posthog_client.py`, no-op when key missing.
+- F-RC-1: Daily Razorpay sync, incremental with 5-day overlap, into `recon_rzp_payments / recon_rzp_transfers / recon_rzp_settlements`.
+- F-RC-2: BigQuery Billing Export (Gemini cost) pulled into `recon_gcp_daily` with 2 GB max-bytes-billed guard.
+- F-RC-3: Per-txn tally exposes `at_loss=true` when `collected − rzp_fee − routed_markup − earmarked_cost_inr < 0`.
+- F-RC-4: Daily tally compares LLM token-derived ₹ estimate vs GCP actual cost; variance surfaced.
+- F-RC-5: All `/api/admin/recon/*` routes gated by `require_super_admin`.
+- F-IU-1: `Factor.factor_type` persisted (`quantitative | qualitative`) on every Factor through all 4 create/merge paths in `core/decision_builder.py`.
+- F-IU-2: `core/url_detail.py` returns groups-based schema with `source: page | ai | none`; page-defined groups never overridden by AI.
+- F-IU-3: Server-side guard flattens AI-grouping when factor count ≤ `import_group_threshold` (default 15).
+- F-IU-4: Hints (`expected_factor_count`, `expected_option_count`, `first_factor_name`, `first_option_name`) validated; ONE corrective self-heal retry on mismatch beyond ±max(2, 20%).
+- F-IU-5: Unknown value keys DROPPED from items (zero-tolerance on option↔factor value mapping).
+- F-IU-6: `POST /url-analyze/decision/{id}/set-expectations` updates `expected_value + operator` on leaf factors only (parents untouched); 422-gated until factors + options + ≥1 unit_value present.
+- F-AW-1: AI Wallet config persists `precise_model`, `precise_usd_per_mtok`, `import_group_threshold`; validated `>0`.
+- F-AW-2: `metered_chat(tier="precise")` routes to Claude FIRST via Emergent Universal Key; falls back Claude → Gemini → OpenAI → Groq; charges at multiplier (`precise_usd_per_mtok / blended_usd_per_mtok`) preserving zero-loss invariant.
+
+### Non-functional requirements
+- NFR-PH-1: Posthog client never raises; missing key → no-op log only.
+- NFR-PH-2: `posthog-js` bundled at frontend build time (Cloudflare Pages) — no runtime fetch dependency.
+- NFR-RC-1: `/api/admin/recon/sync` is idempotent (incremental cursor with 5d overlap).
+- NFR-RC-2: BigQuery query bounded to 2 GB scan to cap GCP cost.
+- NFR-RC-3: CSV export streams via PlainTextResponse (no in-memory buffering).
+- NFR-IU-1: Import endpoints fetch the page ONCE per call (rendered HTML via ScraperAPI when configured).
+- NFR-IU-2: DETAIL_MAX_FACTORS=24 cap on extraction output.
+- NFR-IU-3: Import LLM call timeout 180s (300s with hints).
+- NFR-AW-1: Wallet ledger writes are atomic per debit; PostHog `ai_credits_consumed` emitted with feature + provider + balance_after.
+
+### Data model additions
+- `settings.ai_wallet.config` → +`precise_model`, +`precise_usd_per_mtok`, +`import_group_threshold`.
+- `decisions.factors[].factor_type` → `'quantitative' | 'qualitative'`.
+- `recon_rzp_payments`, `recon_rzp_transfers`, `recon_rzp_settlements`, `recon_gcp_daily`, `recon_config` (singleton, holds b64 GCP SA JSON), `recon_runs`.
+
+### Index plan additions (v3.16)
+- `recon_rzp_payments.payment_id` unique; `recon_rzp_payments.created_at` desc
+- `recon_rzp_transfers.transfer_id` unique; `recon_rzp_settlements.settlement_id` unique
+- `recon_gcp_daily.usage_date` desc
+
+### Performance targets (v3.16)
+| Endpoint family | Target p95 | Measured |
+|---|---|---|
+| `/url-analyze/decision/{id}/import-v2` (rendered HTML + LLM) | 12 s | 4–8 s |
+| `/url-analyze/decision/{id}/set-expectations` (Claude) | 8 s | 3–5 s |
+| `/admin/recon/summary` | 400 ms | 80–180 ms |
+| `/admin/recon/sync` (incremental, 100 payments) | 30 s | 4–12 s |
+| `/admin/ai-wallet/config` (read/write) | 200 ms | 30–60 ms |
+
+### v3.16 known structural risk
+- **Markup routing**: Razorpay Route sends the entire markup to the linked account; primary account therefore nets `collected − fee − markup ≈ cost − fee`, structurally slightly BELOW the earmarked Gemini cost. Mitigation: raise `markup_user_pct` (admin → AI Wallet Config) OR retain part of markup in the primary account.

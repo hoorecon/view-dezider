@@ -1,6 +1,6 @@
 # Access Control Matrix (ACM) — Dezider
 
-_metadata: { "version": "3.5.1", "updated": "2026-05-04", "seed_version": "2026-05-04-04" }
+_metadata: { "version": "3.16.0", "updated": "2026-06-12" }
 
 ## Concept
 Every feature gated by a row in `acm_features`. Feature has `feature_id`,
@@ -87,3 +87,17 @@ Companion to ACM/tier-matrix: defines **non-technical** target-group profiles (d
 - Optional market-research module association
 
 **Admin UI**: `/admin/customer-segments`.
+
+---
+## v3.16.0 — AI Wallet & Recon gating (2026-06-12)
+
+### Layered gating (recap, with v3.16 additions)
+| Layer | Source | v3.16 additions |
+|---|---|---|
+| Tier Matrix (marketing) | `db.tier_matrix` | URL-Import precise tier mapped to **Heart Chakra & above** (subject to admin override) |
+| ACM (technical) | `db.acm_features` | New feature_ids: `url_import_precise`, `ai_wallet_user`, `revenue_recon_dashboard`, `posthog_replay` |
+| Role gates (server) | `require_admin` / `require_super_admin` | `/admin/recon/*` + `/admin/ai-wallet/config` use **super-admin** strictly |
+
+### Emergent Universal Key — STATUS UPDATE
+- ✅ **Topped up & live (verified 2026-06-12)**. Claude (`claude-sonnet-4-6`) precise tier active. The earlier `LLM_BUDGET=exhausted → 503` graceful-degrade path is dormant; will reactivate only if balance is consumed.
+- Admins can monitor remaining balance via Profile → Universal Key, or enable auto top-up to avoid manual recharge.

@@ -457,3 +457,70 @@
 **Total Test Cases: 178**
 
 *Document generated for View Dezider UAT — covering all 23 modules across Authentication, PRR Framework, Tools, Collaboration, Organization, Task Tracking, Goal Management, Resource Matrix, Calendar, and Lifestyle Management.*
+
+---
+
+## 24. URL Import v3 — Factor-Type Doctrine, Hints, AI Tiers (v3.16)
+
+| # | Test Case | Steps | Expected Result |
+|---|-----------|-------|-----------------|
+| 24.1 | Fast tier import (generic) | Decision → Step 2 → Import URL → paste any product URL → tier=Fast → Import | Factors + options imported in <30s; toast shows mode + provider; user wallet debited at base multiplier |
+| 24.2 | Precise tier import (NoBroker) | Same as 24.1 with NoBroker URL + tier=Precise | `ai_provider=emergent_precise` (Claude); ALL user-listed values matched; 3+ options including "Main Listing"; text-facts tagged Quantitative |
+| 24.3 | AI accuracy hints | Provide `expected_factor_count=20` + `first_factor_name="Rent"` for a page that returns 10 on first pass | Server retries once; final count within ±max(2, 20%); UI shows `hint_warnings` if still off |
+| 24.4 | Page-defined groups respected | Import GSMArena phone URL | "BODY", "DISPLAY" etc. preserved as `source=page` groups; AI never regroups them |
+| 24.5 | AI-grouping above threshold | `import_group_threshold=10` → import a 12-factor page (no page groups) | `kind=hier` with AI-generated groups; same page with threshold=15 → `kind=flat` |
+| 24.6 | Zero-tolerance on values | Inspect imported items in DB | No item carries a factor key that wasn't in the groups schema (unknown keys DROPPED) |
+| 24.7 | Set Expectations — By AI | After import → tap purple "Set Expectations - By AI" button | All leaf factors get `expected_value + operator` filled via Claude; parents untouched; toast: "21/21 updated" |
+| 24.8 | Set Expectations gating | Before adding any `unit_value`, tap the button | 422 error toast: "Provide factors + options + at least one unit_value first" |
+| 24.9 | Factor-type doctrine | Open Factor Tree of imported decision | Subjective traits (Comfort, Vibe) = Qualitative; objective traits (Color=Blue, Rent=18000, Furnishing=Semi) = Quantitative regardless of data_type |
+| 24.10 | Precise fallback notice | Force exhausted budget (dev) → trigger Precise | UI surfaces "Precise tier fell back to Fast — top-up Universal Key to re-enable Claude" |
+| 24.11 | Insufficient credits | Set user balance to 0 → Precise import | 402 error toast: "Insufficient credits — add balance to continue" |
+
+## 25. AI Wallet & Admin Config (v3.16)
+
+| # | Test Case | Steps | Expected Result |
+|---|-----------|-------|-----------------|
+| 25.1 | User views balance | Profile → AI Wallet | Balance, recent ledger, providers consented all visible |
+| 25.2 | Refill flow | Add Balance → choose pack → Razorpay test mode | Order → verify → balance increases; ledger debit row inserted |
+| 25.3 | Provider consent | Toggle OpenAI off → Save | OpenAI removed from fallback chain in subsequent calls |
+| 25.4 | Admin reads config | Super-admin → `/admin/ai-wallet-config` | All fields populated; "Precise tier credit multiplier ×N" row recomputes live |
+| 25.5 | Update import_group_threshold | Change 15 → 10 → Save → re-import a 12-factor page | New imports honour the change immediately |
+| 25.6 | Update precise_usd_per_mtok | Change pricing → Save → run a Precise import | Wallet debit reflects new multiplier; PostHog `ai_credits_consumed` event fires |
+| 25.7 | Reject zero/negative price | Try to save `precise_usd_per_mtok=0` | 400 validation error |
+| 25.8 | Grant credits | Super-admin → Grant 1000 credits to test user | User's balance increases; audit log row inserted |
+
+## 26. Revenue Reconciliation (Super-Admin) (v3.16)
+
+| # | Test Case | Steps | Expected Result |
+|---|-----------|-------|-----------------|
+| 26.1 | Open dashboard | `/admin/recon` | Verdict banner (at_risk/safe), 8 KPI cards rendered |
+| 26.2 | Configure GCP | Tap "Configure GCP" → paste base64 SA JSON + project_id → Save | Form clears; JSON never echoed back; `has_gcp_config=true` |
+| 26.3 | Sync Now | Tap Sync | Razorpay + GCP synced incrementally; "Last synced: just now" |
+| 26.4 | Per-txn tally | Scroll to Transactions table | Each row shows collected/fee/markup/cost/buffer; `at_loss` rows highlighted red |
+| 26.5 | Daily variance | Scroll to Daily tally | Token-derived ₹ estimate vs GCP actual variance per day |
+| 26.6 | CSV export | Tap "Export CSV" month=2026-06 | Downloads `transactions-2026-06.csv` |
+| 26.7 | Non-super-admin blocked | Login as regular admin → hit `/admin/recon/summary` | 403 Forbidden |
+| 26.8 | Structural at_risk fix | Verdict=at_risk → raise `markup_user_pct` in AI Wallet Config → re-sync | Verdict flips to safe |
+
+## 27. PostHog Web Replay & Analytics (v3.16)
+
+| # | Test Case | Steps | Expected Result |
+|---|-----------|-------|-----------------|
+| 27.1 | Replay capture | Web → login → navigate 3 screens → logout | PostHog EU dashboard shows session with replay snapshots in `/s/` requests |
+| 27.2 | PII masking | During a recorded session, type into password / OTP field | Replay shows `***`; network bodies absent |
+| 27.3 | Anonymous identity | Visit `/pricing` without login | distinct_id ≠ user_id; identify() only fires after login |
+| 27.4 | Native = events only | Open Expo Go app | Named events fire (login / decision_created), but NO replay snapshots |
+| 27.5 | Event semantic check | Trigger signup, payment_success, ai_credits_consumed | Backend logs show "PostHog server-side analytics enabled" + PostHog Live Events tab shows all three |
+
+## 28. Emergent Universal Key — Topped Up (v3.16 status)
+
+| # | Test Case | Steps | Expected Result |
+|---|-----------|-------|-----------------|
+| 28.1 | Claude precise is live | Run any Precise URL import | `ai_provider=emergent_precise` returned; no 503 |
+| 28.2 | Balance visibility | Profile → Universal Key | Shows current balance + "Add Balance" CTA + "Auto top-up" toggle |
+| 28.3 | Auto top-up enable | Toggle Auto top-up ON | Persisted; backend honors during next debit if balance falls below threshold |
+| 28.4 | Soft-degrade still works | Drain key (dev) → next AI call | Graceful 503 with copy "AI quota exhausted — please add balance"; app UX unbroken |
+
+---
+
+**Document version:** v3.16.0 (2026-06-12) — appended sections 24–28 for URL Import v3, AI Wallet, Revenue Recon, PostHog, and Emergent LLM Key status.

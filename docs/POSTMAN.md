@@ -1,9 +1,8 @@
 # Postman / Insomnia collection — Dezider API
 
-_metadata: { "version": "3.5.1", "updated": "2026-05-04" }
+_metadata: { "version": "3.16.0", "updated": "2026-06-12" }
 
-Collection JSON: `/app/docs/Postman_Collection.json` (updated for v3.5.1 with
-Daily Time Log / Raja Guru / Time Store / DPDP folders).
+Collection JSON: `/app/docs/Postman_Collection.json` (auto-regenerated 2026-06-12 from live OpenAPI — **52 folders, 972 endpoints**). New v3.16 folders include URL Analyse, AI Wallet (+ Admin Pricing Config), Admin Revenue Recon, Analytics (PostHog server-side).
 
 ## Environments
 - **Local Dev** (`baseUrl` = http://localhost:8001)
@@ -58,3 +57,39 @@ POST /auth/logout
 - **My Tier Access** · `/api/me/tier-access`
 
 Run `GET /api/admin-docs/postman-collection` (admin-only) to download the latest auto-generated collection.
+
+---
+## v3.16.0 — Folders added (auto-generated 2026-06-12)
+- **URL Analyse** · 3 endpoints (generic analyze, decision import, set-expectations)
+- **AI Wallet** · 11 user endpoints + 4 admin endpoints (config, grant, users, packs/refill)
+- **Admin Revenue Recon** · 6 super-admin endpoints (summary, transactions, daily, sync, gcp-config, transactions.csv)
+- **Analytics** · server-side only via `core/posthog_client.py` (no REST surface; events listed in API_REFERENCE)
+
+### Regeneration
+The collection is regenerated from the live OpenAPI schema:
+```bash
+TOKEN=$(curl -s -X POST $BASE_URL/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@test.com","password":"AdminPass2026!"}' \
+  | jq -r .session_token)
+
+curl -s -o /app/docs/Postman_Collection.json \
+  "$BASE_URL/api/admin/docs/postman-collection" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Stats (2026-06-12 build)
+- 52 folders, **972 endpoints**, ~520 KB JSON.
+- All v3.16 routes verified present: `url-analyze`, `ai-wallet/*`, `admin/recon/*`, `set-expectations`.
+
+### Smoke test sequence add-ons (v3.16)
+```
+POST /url-analyze/decision/{id}/import       (ai_tier=fast)
+POST /url-analyze/decision/{id}/set-expectations
+GET  /ai-wallet                              (read balance)
+GET  /admin/ai-wallet/config                 (super-admin)
+PUT  /admin/ai-wallet/config                 (precise_usd_per_mtok, import_group_threshold)
+GET  /admin/recon/summary                    (super-admin)
+POST /admin/recon/sync                       (super-admin)
+GET  /admin/recon/transactions.csv?month=2026-06
+```

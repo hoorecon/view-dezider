@@ -1,6 +1,6 @@
 # UAT Test Cases — Dezider
 
-_metadata: { "version": "3.15.0", "updated": "2026-05-18" }
+_metadata: { "version": "3.16.0", "updated": "2026-06-12" }
 
 ## How to UAT
 1. Login with a test account (see `/app/memory/test_credentials.md`). Free tier is fine for most tests.
@@ -131,3 +131,59 @@ DPDP-01..04 (export, delete-request, cancel-within-grace, admin purge).
 ### Performance
 - PCFW-PERF-01: full wizard load on a fresh analysis < 1.5 s
 - PCFW-PERF-02: aggregate computation < 250 ms for 20 factors × 5 options
+
+---
+## v3.16.0 — UAT scenarios (2026-06-12)
+
+### UC-IU — Import-from-URL v3 (Factor-Type + Hints + Tiers)
+| ID | Scenario | Steps | Expected |
+|---|---|---|---|
+| IU-01 | Default Fast import — generic site | Decision → Step 2 → Import URL → paste any product URL → leave tier=Fast → Import | Factors+options imported within 30s; toast shows mode + provider |
+| IU-02 | Precise Claude import — NoBroker | Same as IU-01 with tier=Precise + NoBroker URL | `ai_provider=emergent_precise`; ALL user-listed values matched; 3+ options including "Main Listing"; text-facts (Color/Furnishing) tagged Quantitative |
+| IU-03 | Hint-driven self-heal | Provide hint `expected_factor_count=20` for a page that returns 10 on first try | Server retries once; final count within ±max(2, 20%); UI shows hint_warnings if any |
+| IU-04 | Page-defined groups SACRED | Import GSMArena phone URL | "BODY", "DISPLAY" etc. preserved as `source=page` groups; AI does not regroup |
+| IU-05 | AI-grouping only above threshold | Set `import_group_threshold=15` → import a 12-factor page with no page groups | Result is `kind=flat` (no AI groups); set threshold=10 → re-import → result is `kind=hier` (AI groups) |
+| IU-06 | Zero-tolerance values | Inspect imported items in DB | No item carries a factor key that wasn't in the groups schema |
+| IU-07 | Set Expectations — By AI | After import, tap "Set Expectations - By AI" button | All leaf factors get `expected_value + operator` filled; parents untouched; toast shows "21/21 updated" |
+| IU-08 | Set Expectations gating | Before adding any unit_value, tap the button | 422 error toast: "Provide factors + options + at least one unit_value before requesting AI expectations" |
+| IU-09 | Factor-type doctrine | Open a freshly imported decision's Factor Tree | Subjective traits (Comfort, Luxury Feel) = Qualitative; objective traits (Color=Blue, Furnishing=Semi, Rent=18000) = Quantitative regardless of data_type |
+| IU-10 | Tier fallback notice | Trigger Precise but force exhausted budget (dev) | UI surfaces "Precise tier fell back to Fast — top-up Universal Key to re-enable Claude" |
+
+### UC-AW — AI Wallet & Admin Config
+| ID | Scenario | Steps | Expected |
+|---|---|---|---|
+| AW-01 | User balance | User opens `/profile` → AI Wallet section | Shows balance, recent ledger entries, providers consented |
+| AW-02 | Refill quote → order → verify | Tap "Add Balance" → pick pack → checkout via Razorpay test mode | Order created → payment success → balance increases; ledger entry created |
+| AW-03 | Provider consent toggle | Toggle OpenAI off → Save | Subsequent calls skip OpenAI in fallback chain |
+| AW-04 | Admin reads config | Super-admin → `/admin/ai-wallet-config` | All fields populated; "Precise tier credit multiplier ×N" row recomputes live |
+| AW-05 | Admin updates `import_group_threshold` | Change from 15 → 10 → Save → re-import a 12-factor page | New imports honor the new threshold immediately |
+| AW-06 | Admin updates `precise_usd_per_mtok` | Change pricing → Save → run a Precise import | Wallet debit reflects new multiplier; PostHog `ai_credits_consumed` event fires |
+| AW-07 | Admin grants credits | Super-admin → Grant 1000 credits to test user | User's balance increases; audit log row inserted |
+
+### UC-RC — Revenue Reconciliation (Super-Admin)
+| ID | Scenario | Steps | Expected |
+|---|---|---|---|
+| RC-01 | Open dashboard | `/admin/recon` | Verdict banner (at_risk / safe); 8 KPI cards (net collected, total markup, total cost, buffer) |
+| RC-02 | Run sync | Tap "Sync Now" | Razorpay (payments + transfers + settlements) + GCP synced incrementally; "Last synced: just now" stamp updates |
+| RC-03 | Per-txn tally | Scroll to Transactions table | Each row shows collected / fee / markup / earmarked_cost / buffer; `at_loss=true` rows highlighted red |
+| RC-04 | Daily variance | Scroll to Daily tally | LLM-token-derived ₹ vs GCP actual ₹; variance % per day |
+| RC-05 | GCP config upload | Tap "Configure GCP" → paste base64 SA JSON + project_id → Save | Form clears (JSON never echoed); subsequent sync pulls billing-export data |
+| RC-06 | CSV export | Tap "Export CSV" with month=2026-06 | Browser downloads `transactions-2026-06.csv` |
+| RC-07 | Non-super-admin blocked | Login as regular admin → hit `/admin/recon/summary` | 403 Forbidden |
+| RC-08 | Structural at_loss alert | Run on default markup_user_pct → inspect | Verdict shows "at_risk" structurally; banner suggests raising markup_user_pct OR retaining markup in primary |
+
+### UC-PH — PostHog Web Session Replay (browser only)
+| ID | Scenario | Steps | Expected |
+|---|---|---|---|
+| PH-01 | Replay capture | Open app on web → login → navigate 3 screens → log out | PostHog EU dashboard shows session with 3+ pageview events + replay snapshots in `/s/` requests |
+| PH-02 | PII not leaked | Fill in a password / OTP field during recorded session | Replay shows masked input (`***`); network bodies absent |
+| PH-03 | Anonymous identity | Visit `/pricing` without login | Anonymous session with `distinct_id ≠ user_id`; no identify() call until login |
+| PH-04 | Native = events only | Open Expo Go app on phone | Native fires named events (login / decision_created) but no replay snapshots |
+| PH-05 | Headless bot detection | Test via vanilla Playwright (no UA spoof) | PostHog silently blocks; verify by spoofing UA + brands + webdriver to enable in tests |
+
+### Performance (v3.16)
+| ID | Scenario | Expected |
+|---|---|---|
+| PERF-IU-1 | Precise Claude import + Set Expectations on 4-option page | ≤ 25 s end-to-end |
+| PERF-RC-1 | Recon sync of 100 payments + 30-day GCP | ≤ 15 s |
+| PERF-AW-1 | AI Wallet config read + 1 update | ≤ 200 ms |

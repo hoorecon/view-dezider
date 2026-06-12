@@ -1,6 +1,6 @@
 # REST API Reference — Dezider
 
-_metadata: { "version": "3.15.0", "updated": "2026-05-18" }
+_metadata: { "version": "3.16.0", "updated": "2026-06-12" }
 
 Base URL: `/api`. Auth: `Authorization: Bearer <session_token>` from `/auth/login`.
 Every response carries `X-Request-ID`, `X-Response-Time-MS`, security headers.
@@ -232,3 +232,104 @@ Auth: Bearer. Per-user scoped data. All payloads JSON.
 | POST | `/pros-cons/{id}/step` | `{ step: 1..8 }` |
 
 > Replace `/pros-cons/` with `/swot/` for the same 18 routes on the SWOT module.
+
+---
+
+## v3.16.0 — URL Analyse · AI Wallet · Revenue Recon · Analytics (2026-06-12)
+
+### URL Analyse (auth) — Import-from-URL v3
+| Method | Path | Description |
+|---|---|---|
+| POST | `/url-analyze` | Generic page → candidate factor extraction (LLM tiered) |
+| POST | `/url-analyze/decision/{id}/import` | Import factors + options into an existing decision (groups-aware, hints supported) |
+| POST | `/url-analyze/decision/{id}/set-expectations` | Claude-powered AI to fill `expected_value + operator` on every leaf factor (422 until factors + options + ≥1 `unit_value` present) |
+
+**Request body (Import)** — all fields except `url` optional:
+```json
+{
+  "url": "https://www.nobroker.in/property/...",
+  "ai_tier": "precise",
+  "expected_factor_count": 20,
+  "expected_option_count": 4,
+  "first_factor_name": "Rent",
+  "first_option_name": "Main Listing"
+}
+```
+
+**Response (Import)**:
+```json
+{
+  "mode": "detail",
+  "kind": "hier",
+  "ai_provider": "emergent_precise",
+  "structure": "hierarchical",
+  "main_item": {...},
+  "groups": [{"name":"Rent & Costs","source":"page","factors":[...]}],
+  "items": [{"name":"Main Listing","values":{"Rent::Monthly":18000,...},"scores":{...}}],
+  "hint_warnings": []
+}
+```
+
+`ai_tier`:
+- `fast` (default) — Gemini → Groq, wallet-billed at base multiplier.
+- `precise` — Claude (claude-sonnet-4-6) via Emergent Universal Key first; fallback Claude → Gemini → OpenAI → Groq. Wallet-billed at admin-configurable multiplier.
+
+Errors: `402 InsufficientCredits`, `422 missing prerequisites for set-expectations`, `503` when LLM budget capped.
+
+### AI Wallet (auth)
+| Method | Path | Description |
+|---|---|---|
+| GET | `/ai-wallet` | Current balance + thresholds |
+| GET | `/ai-wallet/ledger?limit=` | Recent debits/credits |
+| GET | `/ai-wallet/estimates` | Token-cost estimates per supported provider |
+| GET | `/ai-wallet/provider-consent` | User's consent to use which providers |
+| PUT | `/ai-wallet/provider-consent` | Update provider opt-ins |
+| GET | `/ai-wallet/packs` | Available refill SKUs |
+| POST | `/ai-wallet/refill/quote` | Quote a refill (returns price breakdown + GST) |
+| POST | `/ai-wallet/refill/order` | Create Razorpay order |
+| POST | `/ai-wallet/refill/verify` | Verify payment signature |
+| POST | `/ai-wallet/refill/webhook` | Razorpay webhook (idempotent) |
+| GET | `/ai-wallet/refill/checkout` | HTML checkout helper |
+
+**AI Wallet — Admin (require_super_admin)**:
+| Method | Path | Description |
+|---|---|---|
+| GET | `/admin/ai-wallet/config` | Read pricing & policy config |
+| PUT | `/admin/ai-wallet/config` | Update — accepts `markup_user_pct`, `blended_usd_per_mtok`, `precise_model`, `precise_usd_per_mtok`, `import_group_threshold`, refill packs, etc. |
+| POST | `/admin/ai-wallet/grant` | Grant credits to a user (dev/promo) |
+| GET | `/admin/ai-wallet/users?limit=` | All-user wallet snapshot |
+
+### Revenue Reconciliation — Super-Admin (require_super_admin)
+| Method | Path | Description |
+|---|---|---|
+| GET | `/admin/recon/summary` | Verdict + 8 KPI cards (at_risk/safe, P&L) |
+| GET | `/admin/recon/transactions?month=&limit=&skip=` | Per-txn tally rows |
+| GET | `/admin/recon/transactions.csv?month=` | CSV export (PlainTextResponse stream) |
+| GET | `/admin/recon/daily?days=` | LLM-token-derived ₹ vs BigQuery actual variance |
+| POST | `/admin/recon/sync` | On-demand incremental Razorpay + GCP sync |
+| GET | `/admin/recon/gcp-config` | Returns presence flag only — never the SA JSON itself |
+| PUT | `/admin/recon/gcp-config` | Upload base64-encoded GCP Service-Account JSON + project_id |
+
+**Tally formula** (per Razorpay payment):
+```
+buffer_inr = collected − rzp_fee − routed_markup_inr − earmarked_cost_inr
+at_loss    = buffer_inr < 0
+```
+Structural note: Razorpay Route sends the entire markup to the linked account,
+so primary account nets `collected − fee − markup ≈ cost − fee` — slightly below
+earmarked LLM cost. Raise `markup_user_pct` in AI Wallet config if you need
+`buffer_inr ≥ 0` per transaction.
+
+### Analytics (PostHog server-side, internal)
+PostHog events are emitted server-side via `core/posthog_client.py` — there is no
+public REST surface. Frontend mirror lives in `src/utils/analytics.ts`.
+Events: `signup`, `login{method}`, `decision_created`, `ai_assess_all_run`,
+`payment_success`, `ai_credits_consumed`, `otp_sent`, `eg_session_completed`,
+`screen` (frontend, every expo-router change), `tool_opened` (frontend, /tools/*).
+
+Privacy posture: `identified_only` person profiles, `maskAllInputs:true`,
+`capture_performance:false`, `user_id` only — never email/phone/PII.
+
+### v3.16 endpoint count
+**Total: 972 endpoints across 52 folders** (auto-generated Postman collection at
+`/app/docs/Postman_Collection.json`, regenerated 2026-06-12 from live OpenAPI).

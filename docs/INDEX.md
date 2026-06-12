@@ -1,6 +1,6 @@
 # Dezider — Admin Documentation
 
-Maintained by the engineering team. Last refreshed: **2026-05-18 · v3.15.0** (8-Step Pros & Cons / SWOT framework — 736 endpoints).
+Maintained by the engineering team. Last refreshed: **2026-06-12 · v3.16.0** (PostHog Web Session Replays · Revenue Reconciliation · Import-URL v3 with Factor-Type doctrine · AI Wallet Config + Tiered Metering — 972 endpoints across 52 folders).
 
 The documents below are the source of truth for product scope, system
 behaviour, and operational posture. They are authored as plain markdown
@@ -25,3 +25,9 @@ admin team to read on mobile.
 
 Every doc has a `_metadata` section at the top with version + last-update.
 If you edit a doc, **bump the version number and add a CHANGELOG line.**
+
+## Changelog of this doc bundle (2026-06-12)
+All 12 handbook files refreshed to **v3.16.0**:
+- PRD, SRS, API_REFERENCE, POSTMAN, UAT, ACM, WOWO, CLD, SECURITY, REGRESSION, DEPLOYMENT — appendix sections added for PostHog Web Replays, Revenue Reconciliation, Import-URL v3 (Factor-Type doctrine + hints + Set Expectations), AI Wallet admin pricing/threshold config, and EMERGENT_LLM_KEY topped-up status.
+- `Postman_Collection.json` regenerated from live OpenAPI: **52 folders, 972 endpoints** (~520 KB).
+- `ADMIN_USER_GUIDE.md` adds the AI Wallet Config and Revenue Recon admin pages.

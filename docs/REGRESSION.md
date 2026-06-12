@@ -1,6 +1,6 @@
 # Regression Test Catalogue — Dezider
 
-_metadata: { "version": "3.15.0", "updated": "2026-05-18" }
+_metadata: { "version": "3.16.0", "updated": "2026-06-12" }
 
 All suites live in `/app/tests/` plus the legacy `/app/backend_test_regression.py`.
 
@@ -131,3 +131,51 @@ Same 10 scenarios mirrored on `/api/swot/{id}/*` — verified manually (this for
 - Pros & Cons: 10/10 manual PASS (curl)
 - SWOT: 10/10 manual PASS (curl)
 - No automated suite added yet — to be wrapped into `tests/test_decision_framework.py` next session.
+
+---
+## v3.16.0 — Regression scenarios (2026-06-12)
+
+### New / updated suites
+
+| File | Coverage | Last result |
+|---|---|---|
+| `tests/test_url_detail_import.py` | URL import v3: factor_type doctrine, hierarchical preservation, hints validation + self-heal, zero-tolerance, set-expectations gating | 17 / 17 |
+| `tests/test_iter_url_world_class_import.py` | NoBroker live extraction, mode=detail, ai_provider surface, fallback chain | 5 / 5 |
+| `tests/test_admin_recon.py` | Revenue Recon: super-admin auth (401 / 403), Razorpay sync, GCP config (b64 SA JSON never echoed), tally math, CSV export | 6 / 6 |
+| `tests/test_batch_assess.py` | Batched AI assess + retry-failed-cells (existing v3.15) | 4 / 4 |
+
+### URL Import v3 (IU-R-)
+- IU-R-1: Import preserves page-defined groups verbatim when `source=page`; AI never overrides them.
+- IU-R-2: When no page groups AND factors ≤ `import_group_threshold`, response `kind=flat`.
+- IU-R-3: When no page groups AND factors > threshold, response `kind=hier` with AI-generated groups.
+- IU-R-4: Hints out-of-tolerance → ONE corrective self-heal retry; `hint_warnings[]` populated if still off.
+- IU-R-5: Unknown value keys in `items[]` are DROPPED (zero tolerance).
+- IU-R-6: `Factor.factor_type` round-trips correctly through every create / merge path in `decision_builder.py`.
+- IU-R-7: Text-fact factors (Color, Furnishing) classified `quantitative` by the keyword heuristic.
+- IU-R-8: `POST /set-expectations` returns 422 if factors / options / unit_value missing.
+- IU-R-9: `POST /set-expectations` updates ONLY leaf factors (parents untouched).
+- IU-R-10: Precise tier routes Claude first; surfaces `ai_provider=emergent_precise` in response.
+
+### Revenue Recon (RC-R-)
+- RC-R-1: `GET /admin/recon/summary` returns verdict + 8 KPI fields.
+- RC-R-2: `POST /admin/recon/sync` is idempotent (run twice → same row counts in collections).
+- RC-R-3: `PUT /admin/recon/gcp-config` accepts valid b64 SA JSON, rejects garbage with 400.
+- RC-R-4: `GET /admin/recon/gcp-config` returns presence flag only (never the SA JSON itself).
+- RC-R-5: Per-txn tally math: `buffer = collected − fee − markup − cost`; `at_loss=true` when negative.
+- RC-R-6: Non-super-admin requests → 403 across all `/admin/recon/*` routes.
+
+### AI Wallet (AW-R-)
+- AW-R-1: `PUT /admin/ai-wallet/config` rejects `precise_usd_per_mtok ≤ 0` with 400.
+- AW-R-2: `import_group_threshold` change is honored on the very next import.
+- AW-R-3: `metered_chat(tier="precise")` charges at multiplier (`precise / blended`).
+
+### PostHog (PH-R-)
+- PH-R-1: Backend `posthog_client.capture()` is a no-op when `POSTHOG_API_KEY` is unset; never raises.
+- PH-R-2: Backend signup endpoint emits `signup` event server-side (verified via mock).
+- PH-R-3: Wallet debit emits `ai_credits_consumed` with `feature`, `provider`, `balance_after`.
+
+### Smoke result (manual, this fork)
+- URL Import v3: 17/17 + 5/5 (iter_world_class) PASS.
+- Recon: 6/6 PASS + 1 live Razorpay sync (57 payments, 5 transfers, 26 settlements pulled in test env).
+- AI Wallet: manual UI walkthrough + curl PUT + read-back PASS.
+- PostHog: live web replay verified in preview browser (sessionRecordingStarted=true, snapshots to `/s/`, events to `/e/` + `/batch/`).

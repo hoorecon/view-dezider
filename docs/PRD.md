@@ -1,6 +1,6 @@
 # Product Requirements Document — Dezider
 
-_metadata: { "version": "3.15.0", "updated": "2026-05-18", "author": "engineering" }
+_metadata: { "version": "3.16.0", "updated": "2026-06-12", "author": "engineering" }
 
 ## 1. Vision
 
@@ -163,3 +163,57 @@ The eight steps are:
 - Sub-factor level rating + roll-up — Step #5 enhancement
 - Step #7 dual rankings (low-to-high column)
 - Step #4 fuzzy-match similarity helper
+
+---
+## v3.16.0 — PostHog Web Replays · Revenue Recon · Import-URL v3 · AI Wallet (2026-06-12)
+
+### Problem
+v3.15 left four enterprise-grade gaps:
+1. We had backend & frontend PostHog events but **no session replays** (RN SDK can't record on web).
+2. No granular reconciliation between Razorpay collections, transfers/routes, and Gemini/Claude LLM costs — risk of structurally losing money on every paid AI call.
+3. Import-from-URL v1/v2 mapped factors but conflated `data_type` (text/number) with `factor_type` (Quantitative undisputed-fact vs Qualitative judgment), and lacked page-defined grouping support, accuracy hints, or AI-assisted operator inference.
+4. AI Wallet had no admin-facing pricing controls for the precise (Claude) tier nor a way to govern AI-grouping behaviour.
+
+### Solution
+
+**A. PostHog Web Session Replays**
+- Platform-split `src/utils/analytics.ts`: web uses `posthog-js@1.386` (replay-capable), native keeps `posthog-react-native`.
+- Privacy-hardened: `maskAllInputs: true`, `capture_performance: false` (no network bodies → zero JWT/PII leakage), `person_profiles: 'identified_only'`, manual `$pageview` per expo-router change.
+- Server-side events via `core/posthog_client.py` (lazy-init, no-op without key): signup, payment_success, ai_credits_consumed, otp_sent, eg_session_completed.
+
+**B. Revenue Reconciliation (Razorpay ⟷ BigQuery ⟷ Ledger)**
+- `core/recon.py`: incremental Razorpay sync (payments / transfers / settlements with 5-day overlap), BigQuery Billing Export reader (2GB byte-cap guard), per-txn tally (collected − rzp_fee − routed_markup − earmarked_cost = buffer; `at_loss` flag), daily LLM-token ⟷ GCP-actual variance.
+- `routes/admin_recon.py`: 7 endpoints, **super-admin gated** — `summary`, `transactions`, `daily`, `sync`, `gcp-config`, `transactions.csv`. Service-account JSON stored b64 in `recon_config`, never returned to browser.
+- Frontend `/admin/recon`: verdict banner (at_risk / safe), 8 KPI cards, per-txn tally table, GCP setup form, sync-now, CSV export.
+
+**C. Import-from-URL v3 — Factor-Type Doctrine + Hierarchy + Hints**
+- **Factor-Type doctrine** persisted: `quantitative` = undisputed fact (incl. textual: Color=Blue, Furnishing=Semi); `qualitative` = subjective judgment (Comfort, Luxury Feel). `data_type` (text|number|date) remains a separate storage/format concept.
+- **Page-defined groupings SACRED**: GSMArena BODY etc. preserved as-is. AI-grouping only when no page groups AND factor count > admin-configurable `import_group_threshold` (default 15).
+- **Accuracy hints** (Step 2 UI, optional): `expected_factor_count`, `expected_option_count`, `first_factor_name`, `first_option_name` → server validates and performs ONE corrective self-heal retry.
+- **Tiered LLMs**: Precise = Claude (claude-sonnet-4-6) via Emergent Universal Key first; fallback chain Claude → Gemini → OpenAI → Groq. Fast = Gemini → Groq.
+- **"Set Expectations — By AI"** button at Step 2: Claude-powered, fills `expected_value` + `operator` on all 21 leaf factors (parents untouched), 422-gated until factors + options + ≥1 unit_value present.
+- **Zero-tolerance** on option↔factor value mapping; unknown value keys DROPPED.
+
+**D. AI Wallet Admin Config + Tiered Metering**
+- `core/ai_wallet.py`: new fields `precise_model`, `precise_usd_per_mtok`, `import_group_threshold`. `charge(credit_multiplier=)` preserves zero-loss invariant.
+- `core/ai_metering.py`: `metered_chat(tier=)` routes "precise" to Claude FIRST, charges at multiplier = `precise_usd_per_mtok / blended_usd_per_mtok`.
+- Admin UI `/admin/ai-wallet-config`: live "Precise tier credit multiplier ×N" worked-example row.
+
+### Acceptance criteria — all met ✅
+- PostHog web replay: verified live in preview browser (sessionRecordingStarted=true, snapshots to `/s/`, events to `/e/`).
+- Reconciliation: pytest 6/6 + live Razorpay sync (57 payments, 5 transfers, 26 settlements pulled in test env). Zero-loss invariant surfaced as the structural insight: with markup routed away, primary account nets `collected − fee − markup ≈ cost − fee`, so user must raise `markup_user_pct` if buffer must be ≥ 0 per-txn.
+- Import-URL v3: 47/47 pytest; NoBroker live import → mode=detail, 20 factors with ALL user-listed values matched, 3 options (main + Dhamu + Golden Jublee), all text-facts correctly tagged `quantitative`. Set-Expectations 21/21 via Claude with `ai_provider=emergent_precise`.
+- AI Wallet UI shows `import_group_threshold` field + multiplier row; admin can edit & persist.
+
+### Out of scope (deferred)
+- Empty "Draft" sessions cleanup on dashboard (P2, paused per user request).
+- DigiLocker eKYC (BLOCKED on API Setu keys).
+- Exotel SMS OTP (BLOCKED on DLT template approval).
+- Push notifications (intentionally not built — requires user request).
+
+### Status updates from v3.15 backlog
+- ✅ **Emergent Universal Key topped up & VERIFIED working** (Profile → Universal Key → Add Balance). Claude precise tier now active. Previous backlog item "LLM budget reset" is **CLOSED**.
+- ⚠️ Razorpay/markup zero-loss tuning: surface to ops for `markup_user_pct` increase before going live with paid AI.
+
+### Documentation refreshed in this release
+- `PRD.md` (this), `SRS.md`, `API_REFERENCE.md`, `POSTMAN.md`, `Postman_Collection.json` (auto-regenerated from live OpenAPI, 52 folders × 972 endpoints), `UAT.md`, `REGRESSION.md`, `SECURITY.md`, `WOWO.md`, `ACM.md`, `CLD.md`, `DEPLOYMENT.md`, `ADMIN_USER_GUIDE.md`.

@@ -1,6 +1,6 @@
 # Security posture & threat model — Dezider
 
-_metadata: { "version": "3.4", "updated": "2026-05-04" }
+_metadata: { "version": "3.16.0", "updated": "2026-06-12" }
 
 ## Identity & sessions
 
@@ -80,3 +80,43 @@ Strict-Transport-Security: max-age=63072000; includeSubDomains; preload  (prod o
 - Quarterly: rotate `METRICS_TOKEN`, `JWT_SIGNING_KEY` (when added), DB user passwords
 - Quarterly: tabletop: "What if an admin token leaks?"
 - Annual: external pentest
+
+---
+## v3.16.0 — PostHog Privacy & Recon Hardening (2026-06-12)
+
+### PostHog (analytics + session replay)
+- **Project**: EU cloud (`https://eu.i.posthog.com`), project ID 199570 — no data leaves EU.
+- **Identity**: `identify(user_id)` only. We never send `email`, `phone`, `name`, `aadhaar`, `pan`, or any PII through PostHog properties.
+- **Session replay (web only)** uses `posthog-js@1.386` with:
+  - `maskAllInputs: true` — all form inputs masked at the DOM level.
+  - `capture_performance: false` — network request bodies are NOT recorded (no risk of JWT/OTP/payment payload leakage in replays).
+  - `person_profiles: 'identified_only'` — no anonymous-only profiles created.
+  - `capture_pageview: false` — we emit `$pageview` manually per expo-router change.
+- **Native (Android/iOS)** uses `posthog-react-native`: events-only, NO replay capability by SDK design.
+- **Bot detection caveat** (operational, not user-facing): `posthog-js` silently blocks captures when UA / `userAgentData.brands` / `webdriver` flags indicate headless automation; affects Playwright CI but not real users.
+
+### Revenue Reconciliation
+- All `/api/admin/recon/*` routes gated by `require_super_admin` (not just `require_admin`).
+- GCP Service-Account JSON stored **base64-encoded in `recon_config` collection** — never written to disk, never returned by `GET /admin/recon/gcp-config` (only a presence flag is returned).
+- BigQuery queries capped at **2 GB `maximum_bytes_billed`** to bound cost and prevent runaway scans.
+- CSV export is streamed via `PlainTextResponse` — no full in-memory materialisation.
+- Razorpay webhook (`/ai-wallet/refill/webhook`) is idempotent (dedupes on `razorpay_payment_id`).
+
+### AI Wallet
+- Wallet config writes require `require_super_admin`.
+- `precise_usd_per_mtok` validated `> 0` (prevents zero-multiplier exploit that would let users run Claude for free).
+- Provider consent stored per-user; defaults to "opt-in for all" with explicit consent on first paid call.
+
+### Threat-model additions (v3.16)
+| # | Threat | Vector | Mitigation |
+|---|---|---|---|
+| 11 | Replay disclosure | Replay snapshots leak DOM inputs | maskAllInputs + capture_performance:false + person_profiles:identified_only |
+| 12 | GCP cost runaway | Malicious admin runs unbounded BigQuery | 2 GB max-bytes-billed cap + super-admin gating |
+| 13 | SA JSON exfiltration | Browser-side reflection of GCP credentials | Never returned by GET; only `has_gcp_config=true` flag |
+| 14 | Free LLM exploit | Zero or negative price multiplier | Server-side `> 0` validation on `precise_usd_per_mtok` |
+| 15 | Recon write spoof | Non-admin attempts to backfill recon collections | `require_super_admin` on every route + `audit_log` entry on writes |
+
+### Periodic review additions (calendarised)
+- Monthly: review `recon_runs.at_risk` count; if non-zero raise `markup_user_pct`.
+- Monthly: rotate Razorpay webhook secret if any 4xx spike observed.
+- Quarterly: rotate ScraperAPI + Resend + UltraMsg keys.
