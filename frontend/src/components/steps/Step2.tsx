@@ -49,7 +49,7 @@ export default function Step2() {
 
   // ── Optional accuracy hints — verified server-side with one self-healing
   // corrective retry when the extraction mismatches them. All optional.
-  const [hintsOpen, setHintsOpen] = useState(false);
+  const [hintsOpen, setHintsOpen] = useState(true);
   const [hintFactorCount, setHintFactorCount] = useState('');
   const [hintOptionCount, setHintOptionCount] = useState('');
   const [hintFirstFactor, setHintFirstFactor] = useState('');
@@ -536,7 +536,7 @@ export default function Step2() {
             <Text style={iurl.dlgSub}>Paste a comparison / filter page OR a single listing/product detail page. You&apos;ll confirm your access rights next.</Text>
             <TextInput
               testID="step2-import-url-input"
-              style={iurl.dlgInput}
+              style={[iurl.dlgInput, iurl.dlgInputHighlight]}
               placeholder="https://… comparison or listing page"
               placeholderTextColor="#9CA3AF"
               value={importUrl}
@@ -1157,6 +1157,7 @@ const iurl = StyleSheet.create({
   dlgTitle: { fontSize: 16, fontWeight: '800', color: COLORS.textPrimary },
   dlgSub: { fontSize: 12, lineHeight: 17, color: COLORS.textMuted, marginTop: 6, marginBottom: 12 },
   dlgInput: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, fontSize: 14, color: COLORS.textPrimary },
+  dlgInputHighlight: { borderWidth: 2, borderColor: '#4F46E5', backgroundColor: '#EEF2FF', paddingHorizontal: 14, paddingVertical: 14, fontSize: 15, fontWeight: '600', color: '#111827', shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 6, elevation: 2 },
   tierLabel: { fontSize: 11, fontWeight: '800', color: COLORS.textMuted, marginTop: 12, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 },
   tierRow: { gap: 8 },
   tierBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, paddingHorizontal: 11, paddingVertical: 9, backgroundColor: '#F8FAFC' },
@@ -1166,7 +1167,7 @@ const iurl = StyleSheet.create({
   tierHint: { fontSize: 10.5, color: COLORS.textMuted, marginTop: 1 },
   hintsToggle: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 12, paddingVertical: 2 },
   hintsToggleText: { fontSize: 12, fontWeight: '800', color: '#2563EB' },
-  hintHelp: { fontSize: 11, color: COLORS.textMuted, lineHeight: 15, marginTop: 4, marginBottom: 8 },
+  hintHelp: { fontSize: 12.5, color: '#111827', fontWeight: '500', lineHeight: 18, marginTop: 6, marginBottom: 10 },
   hintRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   hintInputSm: { flex: 1, paddingVertical: 9, fontSize: 13 },
   hintInputFull: { marginBottom: 8, paddingVertical: 9, fontSize: 13 },
