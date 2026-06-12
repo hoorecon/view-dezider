@@ -913,3 +913,30 @@ TESTED: reproduced original failure; reason-mapping unit checks; pytest 16 passe
 (iter107 + iter95 suites); REAL deep-import e2e on https://www.bookmyshow.com/ → factors_ready
 (3 movie options, 4 factors). NOTE: needs DEPLOY to jelcos.ai; prod may still fail intermittently
 on protected domains until ScraperAPI plan includes Premium — error now says exactly that.
+
+## 2026-06-12 — Iter 108: Scrape metering + deep-import failure telemetry + Recon ScraperAPI
+User asked: (1) why the Deep Import failure was invisible in Admin Import Analytics, (2) per-user
+metering of ScraperAPI costs + Revenue Recon coverage so there is no unit-economics loss.
+A) FAILURE TELEMETRY (routes/deep_import.py): _discover now takes a tel ctx (new_tel endpoint=
+   "deep_import", route="deep_import_discovery"); all 5 error paths go through _fail() which sets
+   the job error AND records an error run in url_import_runs (visible in Import-URL Intel + fires
+   failure alert). Discovery success also records a symmetric success run; finalize unchanged.
+B) SCRAPE METERING (NEW core/scrape_meter.py + url_crawl.py threading): every SUCCESSFUL
+   ScraperAPI fetch charges the user's AI wallet, auto cost-derived: scraper_credits (render=10,
+   premium=25) × plan_usd/plan_credits × (1+scrape_markup_pct%) → app credits via blended rate.
+   Defaults: Business $299/3M credits, 5% markup → rendered fetch ≈ 5.23 cr. Wallet balance ≤ 0
+   BLOCKS scrape (InsufficientCredits → 402 "top up" in url_analyze/import/matrix_import; deep
+   import surfaces it on the job). Rows in scrape_usage + ai_wallet_ledger (feature=scrape_fetch).
+   fetch_page/fetch_rendered now accept user_id (all callers updated). url_telemetry.record_run
+   aggregates the run's scrape usage onto doc["scrape"]. New wallet config keys (admin-editable
+   in /admin/ai-wallet-config): scraperapi_plan_usd_month, scraperapi_plan_credits_month,
+   scrape_markup_pct.
+C) RECON (core/recon.py + app/admin/recon.tsx): summary() gains "scraperapi" block (fetches,
+   credits used, est_cost_inr at plan rate, charged credits/value incl markup, LIVE /account
+   snapshot, plan config); verdict surplus now subtracts scrape liability; daily_tally rows gain
+   scrape_fetches + scrape_cost_inr (new table columns).
+TESTED: pytest tests/test_iter108_scrape_metering.py 6/6 + iter107/95 regression 16 pass; live
+metering verified (5.23 cr debit, ledger+scrape_usage rows); zero-balance gate verified;
+example.com deep-import failure visible in admin runs; testing agent iteration_108.json ALL 5
+frontend tests PASS. LESSON: expo runs with CI=true → bundle is STALE after tsx edits; ALWAYS
+`sudo supervisorctl restart expo` after frontend changes before UI testing.
