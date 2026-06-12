@@ -1,6 +1,6 @@
 # Product Requirements Document — Dezider
 
-_metadata: { "version": "3.17.0", "updated": "2026-06-12", "author": "engineering" }
+_metadata: { "version": "3.17.1", "updated": "2026-06-12", "author": "engineering" }
 
 ## 1. Vision
 
@@ -297,3 +297,17 @@ prompt-level drill-down.
   route `ai_extraction`, 6 facet factors / 4 options, prompt+response stored,
   feedback 👍 recorded, all admin endpoints + RBAC verified.
 - Testing agent frontend run: 7/7 PASS (iteration_104.json).
+
+---
+## v3.17.1 — AI Auto-Tune for extraction prompts (2026-06-12)
+
+Closes the learning loop: the AI reads FAILING import runs per page type
+(pipeline errors, hint-pass failures, 👎 verdicts), diagnoses the pattern and
+proposes a revised PAGE-TYPE GUIDANCE prompt block. Super-admin reviews in the
+Import-Analytics dashboard ("AI Auto-Tune" panel); **Approve makes the revised
+block LIVE instantly** (db-driven override read by every subsequent extraction
+— no deploy), Reject archives it, Revert restores the built-in default.
+Guards: one pending suggestion per page type, double-decide → 409, super-admin
+only, header normalisation. Verified live: real Claude suggestion correctly
+diagnosed the original carwale failure pattern; approve→override-live→revert
+cycle + RBAC all green (pytest 24/24 incl. new test_prompt_tuning.py).

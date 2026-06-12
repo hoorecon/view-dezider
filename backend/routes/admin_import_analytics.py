@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from core.auth import require_super_admin
 from core import url_telemetry
+from core import url_prompt_tuning
 from core.url_pagetype import PAGE_TYPES
 
 router = APIRouter(prefix="/admin/import-analytics", tags=["admin-import-analytics"])
@@ -52,3 +53,54 @@ async def import_analytics_run_detail(run_id: str,
     if not run:
         raise HTTPException(404, "Run not found")
     return run
+
+
+# ── AI Auto-Tune: AI reads failing runs per page type → proposes prompt edits
+# → admin approves → override goes LIVE for all subsequent extractions. ──
+@router.post("/tuning/generate")
+async def tuning_generate(days: int = 30, page_type: Optional[str] = None,
+                          admin: dict = Depends(require_super_admin)):
+    """Run the AI prompt-tuning analysis (precise tier, metered to the admin).
+    Skips page types with no failing runs or a suggestion already pending."""
+    if page_type and page_type not in PAGE_TYPES:
+        raise HTTPException(400, f"page_type must be one of {PAGE_TYPES}")
+    return await url_prompt_tuning.generate_suggestions(
+        admin["user_id"], days=max(1, min(days, 365)), page_type=page_type)
+
+
+@router.get("/tuning")
+async def tuning_list(admin: dict = Depends(require_super_admin)):
+    """Suggestions (newest first) + the currently ACTIVE prompt overrides."""
+    return {"suggestions": await url_prompt_tuning.list_suggestions(),
+            "active_overrides": await url_prompt_tuning.list_overrides()}
+
+
+@router.post("/tuning/{suggestion_id}/approve")
+async def tuning_approve(suggestion_id: str, admin: dict = Depends(require_super_admin)):
+    """Approve → the proposed guidance becomes the LIVE extraction prompt block."""
+    try:
+        return await url_prompt_tuning.decide(suggestion_id, admin["user_id"], approve=True)
+    except KeyError:
+        raise HTTPException(404, "Suggestion not found")
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+
+
+@router.post("/tuning/{suggestion_id}/reject")
+async def tuning_reject(suggestion_id: str, admin: dict = Depends(require_super_admin)):
+    try:
+        return await url_prompt_tuning.decide(suggestion_id, admin["user_id"], approve=False)
+    except KeyError:
+        raise HTTPException(404, "Suggestion not found")
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+
+
+@router.delete("/tuning/override/{page_type}")
+async def tuning_revert(page_type: str, admin: dict = Depends(require_super_admin)):
+    """Revert a page type to the built-in default guidance block."""
+    if page_type not in PAGE_TYPES:
+        raise HTTPException(400, f"page_type must be one of {PAGE_TYPES}")
+    if not await url_prompt_tuning.revert_override(page_type, admin["user_id"]):
+        raise HTTPException(404, "No active override for this page type")
+    return {"page_type": page_type, "reverted": True}

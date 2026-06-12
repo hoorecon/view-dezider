@@ -60,6 +60,55 @@ export default function AdminImportAnalyticsScreen() {
   const [detail, setDetail] = useState<any>(null);
   const [detailOpen, setDetailOpen] = useState(false);
 
+  // ── AI Auto-Tune (prompt suggestions) ──
+  const [tuning, setTuning] = useState<{ suggestions: any[]; active_overrides: any[] } | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [expandedSug, setExpandedSug] = useState<string | null>(null);
+
+  const loadTuning = useCallback(async () => {
+    try {
+      const r = await api.get('/admin/import-analytics/tuning');
+      setTuning(r.data);
+    } catch { /* panel shows empty state */ }
+  }, []);
+
+  const generateSuggestions = async () => {
+    setGenerating(true);
+    try {
+      const r = await api.post(`/admin/import-analytics/tuning/generate?days=${days}`);
+      const created = r.data?.created?.length || 0;
+      const reasons = (r.data?.skipped || []).map((s: any) => `${PT_LABEL[s.page_type] || s.page_type}: ${s.reason}`).join('\n');
+      showAlert('Auto-Tune', created
+        ? `${created} suggestion(s) generated — review below.`
+        : `No suggestions generated.\n${reasons}`);
+      await loadTuning();
+    } catch (e: any) {
+      showAlert('Error', e?.response?.data?.detail || 'Auto-tune generation failed');
+    } finally { setGenerating(false); }
+  };
+
+  const decideSuggestion = async (id: string, action: 'approve' | 'reject') => {
+    try {
+      await api.post(`/admin/import-analytics/tuning/${id}/${action}`);
+      showAlert('Auto-Tune', action === 'approve'
+        ? 'Approved — the revised prompt block is now LIVE for this page type.'
+        : 'Suggestion rejected.');
+      await loadTuning();
+    } catch (e: any) {
+      showAlert('Error', e?.response?.data?.detail || `Failed to ${action}`);
+    }
+  };
+
+  const revertOverride = async (pt: string) => {
+    try {
+      await api.delete(`/admin/import-analytics/tuning/override/${pt}`);
+      showAlert('Auto-Tune', `${PT_LABEL[pt] || pt} reverted to the built-in default prompt.`);
+      await loadTuning();
+    } catch (e: any) {
+      showAlert('Error', e?.response?.data?.detail || 'Failed to revert');
+    }
+  };
+
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
@@ -77,6 +126,7 @@ export default function AdminImportAnalyticsScreen() {
   }, [days, ptFilter]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
+  useEffect(() => { loadTuning(); }, [loadTuning]);
 
   const openRun = async (id: string) => {
     try {
@@ -168,6 +218,86 @@ export default function AdminImportAnalyticsScreen() {
             {!(summary?.[key] || []).length && <Text style={st.empty}>No runs in this window yet.</Text>}
           </View>
         ))}
+
+        {/* AI Auto-Tune — failed runs → AI-proposed prompt edits → approve to go live */}
+        <View style={st.card} testID="import-analytics-tuning">
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={st.cardTitle}>AI Auto-Tune (prompt suggestions)</Text>
+              <Text style={{ fontSize: 11, color: C.muted, marginTop: -6, marginBottom: 4 }}>
+                AI reads failing runs (errors, hint mismatches, 👎) per page type and proposes prompt edits. Approving makes the edit LIVE instantly.
+              </Text>
+            </View>
+            <TouchableOpacity testID="import-tuning-generate" style={st.genBtn}
+              onPress={generateSuggestions} disabled={generating}>
+              {generating
+                ? <ActivityIndicator size="small" color="#FFF" />
+                : <Ionicons name="sparkles" size={14} color="#FFF" />}
+              <Text style={st.genBtnTxt}>{generating ? 'Analysing…' : 'Generate (AI)'}</Text>
+            </TouchableOpacity>
+          </View>
+
+          {!!(tuning?.active_overrides || []).length && (
+            <View style={{ marginBottom: 10 }}>
+              <Text style={st.subHead}>Active overrides</Text>
+              <View style={st.chipRow}>
+                {(tuning?.active_overrides || []).map((o: any) => (
+                  <View key={o.key} style={st.ovChip} testID={`import-tuning-override-${o.key}`}>
+                    <Ionicons name="flash" size={11} color={C.green} />
+                    <Text style={st.ovChipTxt}>{PT_LABEL[o.key] || o.key}</Text>
+                    <TouchableOpacity testID={`import-tuning-revert-${o.key}`} onPress={() => revertOverride(o.key)}>
+                      <Text style={st.ovRevert}>revert</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {(tuning?.suggestions || []).map((s: any) => (
+            <View key={s.id} style={st.sugBox} testID={`import-tuning-suggestion-${s.id}`}>
+              <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                onPress={() => setExpandedSug(expandedSug === s.id ? null : s.id)} activeOpacity={0.75}>
+                <Text style={[st.sugStatus, {
+                  color: s.status === 'approved' ? C.green : s.status === 'rejected' ? C.red : C.amber,
+                }]}>{s.status.toUpperCase()}</Text>
+                <Text style={st.sugPt}>{PT_LABEL[s.page_type] || s.page_type}</Text>
+                <Text style={st.runMeta}>{when(s.ts)} · {s.evidence?.failing_runs} failing run(s)</Text>
+                <Ionicons name={expandedSug === s.id ? 'chevron-up' : 'chevron-down'} size={14} color={C.muted} />
+              </TouchableOpacity>
+              <Text style={st.sugRationale} numberOfLines={expandedSug === s.id ? undefined : 2}>
+                {s.rationale}
+              </Text>
+              {expandedSug === s.id && (
+                <>
+                  <Text style={st.subHead}>Expected impact</Text>
+                  <Text style={st.sugRationale}>{s.expected_impact || '—'}</Text>
+                  <Text style={st.subHead}>Current prompt block</Text>
+                  <Text style={st.promptBody} selectable>{(s.current_guidance || '(empty)').trim()}</Text>
+                  <Text style={st.subHead}>Proposed prompt block</Text>
+                  <Text style={[st.promptBody, { borderColor: '#C4B5FD', backgroundColor: '#FAF5FF' }]} selectable>
+                    {(s.proposed_guidance || '').trim()}
+                  </Text>
+                </>
+              )}
+              {s.status === 'proposed' && (
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                  <TouchableOpacity testID={`import-tuning-approve-${s.id}`} style={st.approveBtn}
+                    onPress={() => decideSuggestion(s.id, 'approve')}>
+                    <Text style={st.approveTxt}>Approve & go live</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity testID={`import-tuning-reject-${s.id}`} style={st.rejectBtn}
+                    onPress={() => decideSuggestion(s.id, 'reject')}>
+                    <Text style={st.rejectTxt}>Reject</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          ))}
+          {!(tuning?.suggestions || []).length && (
+            <Text style={st.empty}>No suggestions yet — tap "Generate (AI)" once some failing runs accumulate.</Text>
+          )}
+        </View>
 
         {/* Runs list */}
         <View style={st.card} testID="import-analytics-runs">
@@ -293,4 +423,19 @@ const st = StyleSheet.create({
   dVal: { flex: 1, fontSize: 12, color: C.text },
   promptTitle: { fontSize: 12.5, fontWeight: '800', color: C.primary, marginTop: 12, marginBottom: 6 },
   promptBody: { fontSize: 11, color: C.text, backgroundColor: '#F8FAFC', borderRadius: 8, borderWidth: 1, borderColor: C.border, padding: 10, fontFamily: 'monospace' as any },
+  // AI Auto-Tune
+  genBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
+  genBtnTxt: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+  subHead: { fontSize: 11, fontWeight: '800', color: C.muted, marginTop: 8, marginBottom: 4, textTransform: 'uppercase' as any, letterSpacing: 0.4 },
+  ovChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#ECFDF5', borderColor: '#A7F3D0', borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  ovChipTxt: { fontSize: 11.5, fontWeight: '700', color: '#065F46' },
+  ovRevert: { fontSize: 11, color: C.red, fontWeight: '700', textDecorationLine: 'underline' as any },
+  sugBox: { borderWidth: 1, borderColor: C.border, borderRadius: 10, padding: 11, marginBottom: 10, backgroundColor: '#FCFCFD' },
+  sugStatus: { fontSize: 10.5, fontWeight: '900', letterSpacing: 0.5 },
+  sugPt: { fontSize: 13, fontWeight: '800', color: C.text, flex: 1 },
+  sugRationale: { fontSize: 12, color: C.text, marginTop: 5, lineHeight: 17 },
+  approveBtn: { backgroundColor: C.green, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9 },
+  approveTxt: { color: '#FFF', fontSize: 12, fontWeight: '800' },
+  rejectBtn: { backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9 },
+  rejectTxt: { color: C.red, fontSize: 12, fontWeight: '800' },
 });

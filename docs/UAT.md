@@ -1,6 +1,6 @@
 # UAT Test Cases — Dezider
 
-_metadata: { "version": "3.17.0", "updated": "2026-06-12" }
+_metadata: { "version": "3.17.1", "updated": "2026-06-12" }
 
 ## How to UAT
 1. Login with a test account (see `/app/memory/test_credentials.md`). Free tier is fine for most tests.
@@ -211,3 +211,15 @@ DPDP-01..04 (export, delete-request, cancel-within-grace, admin purge).
 | IA-5 | Regular admin (level 2) calls /api/admin/import-analytics/summary | 403 |
 | IA-6 | Deterministic (free) import run drill-down | "No AI call was made for this run" — no prompt bodies |
 | IA-7 | Run older than 90 days | Prompt bodies purged; metadata + verdict retained |
+
+---
+## v3.17.1 — AI Auto-Tune (2026-06-12)
+
+| ID | Scenario | Expected |
+|---|---|---|
+| AT-1 | Tap "Generate (AI)" with failing runs present | PROPOSED suggestion appears with rationale, expected impact, current vs proposed prompt blocks |
+| AT-2 | Tap "Generate (AI)" with no failing runs | Skip notice "no failing runs in window" |
+| AT-3 | Approve a suggestion | "Active overrides" chip appears; next AI import of that page type uses the revised block |
+| AT-4 | Approve the same suggestion again (API) | 409 |
+| AT-5 | "revert" on an active override | Built-in default restored; chip disappears |
+| AT-6 | Regular admin calls any tuning endpoint | 403 |

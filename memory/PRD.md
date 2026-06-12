@@ -916,3 +916,27 @@ TESTED: pytest 47/47 (new tests/test_import_telemetry.py 7 tests); live e2e carw
 conf 1.0, ai_extraction, 6F/4O, prompt(6583c)+raw(2480c) stored, tokens 10402, 👍 recorded; admin
 endpoints+RBAC verified; testing agent FRONTEND 7/7 PASS (/app/test_reports/iteration_104.json).
 DOCS: all bumped v3.17.0 (PRD/SRS/API_REFERENCE/UAT/REGRESSION/ADMIN_USER_GUIDE section).
+
+## Session 2026-06-12D — AI Auto-Tune for extraction prompts (v3.17.1) — TESTED
+USER REQUEST: enable the proposed "auto-tune suggestions" panel (AI reads failed runs per page type →
+proposes prompt edits → admin approval).
+BUILT:
+- core/url_prompt_tuning.py: generate_suggestions (failing runs = status error|hint_pass false|
+  feedback down, max 6 evidence runs, precise-tier Claude, one pending per page type),
+  decide(approve→upsert db.url_prompt_overrides / reject), revert_override, _normalize_guidance
+  (exactly one "PAGE-TYPE GUIDANCE —" header). Collections: prompt_tuning_suggestions,
+  url_prompt_overrides{key=page_type,guidance}.
+- core/url_detail.py: get_active_guidance(page_type) — DB override wins over built-in
+  PAGE_TYPE_GUIDANCE, fails open; ai_extract_detail now awaits it.
+- routes/admin_import_analytics.py: POST tuning/generate?days&page_type, GET tuning,
+  POST tuning/{id}/approve|reject (404/409 guards), DELETE tuning/override/{page_type}. Super-admin.
+- frontend admin/import-analytics.tsx: "AI Auto-Tune (prompt suggestions)" card — Generate (AI) btn,
+  active-override chips with revert, suggestion list (status badge, rationale, expected impact,
+  expandable current vs proposed blocks, Approve & go live / Reject). testIDs import-tuning-*.
+TESTED: pytest 24/24 (new tests/test_prompt_tuning.py 6 tests — lifecycle/reject/guards/evidence/
+normalizer); LIVE e2e: seeded failing carwale-pattern run → REAL Claude suggestion (diagnosed the
+exact original bug: "misclassified as detail, extracted PRICE/MODEL instead of facets") → approve →
+get_active_guidance returns override → 409 double-approve → 403 regular admin → revert → default.
+UI smoke screenshot green (panel + Generate button rendered). DB artifacts cleaned.
+DOCS: v3.17.1 (PRD/SRS FR-IU-18/19/API_REFERENCE/UAT AT-1..6/REGRESSION).
+NOTE: expo tunnel returns transient 502 ~60s after `supervisorctl restart expo` — wait & retry.

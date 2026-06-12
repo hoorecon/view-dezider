@@ -1,6 +1,6 @@
 # System Requirements Specification — Dezider
 
-_metadata: { "version": "3.17.0", "updated": "2026-06-12" }
+_metadata: { "version": "3.17.1", "updated": "2026-06-12" }
 
 ## 1. Architecture
 Expo frontend → NGINX ingress → FastAPI pods → MongoDB replica-set.
@@ -250,3 +250,21 @@ last vote wins; emits PostHog `url_import_feedback`. Step 2 MUST surface a
 Super-admin-only endpoints under `/api/admin/import-analytics/*` (summary,
 runs list with page_type/route/status/feedback filters + input validation,
 run detail incl. prompt bodies) powering `/admin/import-analytics`.
+
+---
+## v3.17.1 — Auto-Tune requirements (2026-06-12)
+
+### FR-IU-18 AI prompt suggestions (NEW)
+On demand, the system MUST analyse failing runs (status=error OR
+hint_pass=false OR feedback=down) per page type from `url_import_runs` and
+produce a proposed revision of that page type's guidance block (precise tier,
+metered to the requesting admin), stored as status="proposed" in
+`prompt_tuning_suggestions`. At most ONE pending suggestion per page type.
+
+### FR-IU-19 Override lifecycle (NEW)
+Approve → upsert `url_prompt_overrides[key=page_type]`; the extraction prompt
+MUST use the override over the built-in block from the next run onward
+(`get_active_guidance`). Reject → archive only. Revert → delete override,
+built-in default applies. Deciding a non-proposed suggestion → 409. All
+endpoints super-admin only. Override reads MUST fail open to the built-in
+default (guidance can never block an import).

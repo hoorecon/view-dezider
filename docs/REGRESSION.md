@@ -1,6 +1,6 @@
 # Regression Test Catalogue — Dezider
 
-_metadata: { "version": "3.17.0", "updated": "2026-06-12" }
+_metadata: { "version": "3.17.1", "updated": "2026-06-12" }
 
 All suites live in `/app/tests/` plus the legacy `/app/backend_test_regression.py`.
 
@@ -216,3 +216,14 @@ Same 10 scenarios mirrored on `/api/swot/{id}/*` — verified manually (this for
   ai_extraction, 6F/4O, prompt+raw stored, 👍 recorded; admin summary/runs/
   detail/filters/RBAC verified via curl.
 - Testing agent (frontend): 7/7 PASS — `/app/test_reports/iteration_104.json`.
+
+---
+## v3.17.1 — AI Auto-Tune (2026-06-12)
+
+- NEW `backend/tests/test_prompt_tuning.py` (6 tests): override lifecycle
+  (approve→live in get_active_guidance→revert→default), reject path,
+  double-decide guards, failing-runs evidence query, guidance header
+  normalisation (single header guaranteed).
+- Live e2e: seeded failing carwale-pattern run → real Claude suggestion
+  (correct diagnosis) → approve → override live → 409 double-approve →
+  403 regular admin → revert → default restored. Suite total 24/24.

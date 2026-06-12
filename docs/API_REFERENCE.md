@@ -1,6 +1,6 @@
 # REST API Reference — Dezider
 
-_metadata: { "version": "3.17.0", "updated": "2026-06-12" }
+_metadata: { "version": "3.17.1", "updated": "2026-06-12" }
 
 Base URL: `/api`. Auth: `Authorization: Bearer <session_token>` from `/auth/login`.
 Every response carries `X-Request-ID`, `X-Response-Time-MS`, security headers.
@@ -371,3 +371,14 @@ Privacy posture: `identified_only` person profiles, `maskAllInputs:true`,
 `page_type` ∈ comparison_matrix, listing_filter, detail, search_grid, article_roundup.
 `route` ∈ deterministic_hier, deterministic_flat, ai_extraction, deterministic_fallback, llm_flat_fallback.
 PostHog events: `url_import_completed`, `url_import_feedback`.
+
+---
+## v3.17.1 — AI Auto-Tune endpoints (2026-06-12)
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/api/admin/import-analytics/tuning/generate?days=&page_type=` | super-admin | AI analysis of failing runs → proposed prompt edits (skips page types with no failures or pending suggestion) |
+| GET | `/api/admin/import-analytics/tuning` | super-admin | `{suggestions[], active_overrides[]}` |
+| POST | `/api/admin/import-analytics/tuning/{id}/approve` | super-admin | Activate override (LIVE immediately); 409 if already decided |
+| POST | `/api/admin/import-analytics/tuning/{id}/reject` | super-admin | Archive suggestion |
+| DELETE | `/api/admin/import-analytics/tuning/override/{page_type}` | super-admin | Revert to built-in default block |

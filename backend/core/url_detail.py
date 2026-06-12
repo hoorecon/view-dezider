@@ -470,6 +470,22 @@ def _user_facts_block(hints: Optional[Dict[str, Any]]) -> str:
               "begin with the named first factor, and order items starting with the named first option.")
 
 
+async def get_active_guidance(page_type: Optional[str]) -> str:
+    """EFFECTIVE page-type guidance: an admin-approved auto-tune override
+    (db.url_prompt_overrides, written by core/url_prompt_tuning.py) wins over
+    the built-in PAGE_TYPE_GUIDANCE block. Read failures fall back silently —
+    guidance must never block an import."""
+    if not page_type:
+        return ""
+    base = PAGE_TYPE_GUIDANCE.get(page_type, "")
+    try:
+        from core.database import db
+        doc = await db.url_prompt_overrides.find_one({"key": page_type}, {"_id": 0, "guidance": 1})
+        return (doc or {}).get("guidance") or base
+    except Exception:  # noqa: BLE001
+        return base
+
+
 async def ai_extract_detail(user_id: str, html: str, *, tier: str = "fast",
                             max_factors: int = 24, group_threshold: int = 15,
                             hints: Optional[Dict[str, Any]] = None,
@@ -493,7 +509,7 @@ async def ai_extract_detail(user_id: str, html: str, *, tier: str = "fast",
     sys = (DETAIL_SYSTEM
            .replace("{max_factors}", str(max_factors))
            .replace("{group_threshold}", str(group_threshold))
-           .replace("{page_guidance}", PAGE_TYPE_GUIDANCE.get(page_type or "", ""))
+           .replace("{page_guidance}", await get_active_guidance(page_type))
            .replace("{user_facts}", _user_facts_block(hints)))
     cap = capture if capture is not None else {}
     cap.update({"system_prompt": sys, "prompt_text": text, "raw_response": "",
