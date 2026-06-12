@@ -1,6 +1,6 @@
 # Regression Test Catalogue — Dezider
 
-_metadata: { "version": "3.16.1", "updated": "2026-06-12" }
+_metadata: { "version": "3.17.0", "updated": "2026-06-12" }
 
 All suites live in `/app/tests/` plus the legacy `/app/backend_test_regression.py`.
 
@@ -199,3 +199,20 @@ Same 10 scenarios mirrored on `/api/swot/{id}/*` — verified manually (this for
   (Tata Tiago EV first), `emergent_precise`, `hint_warnings=[]`, 57 s.
 - Stale iter94 pre-built-decision check now skips gracefully when the seeded
   decision is absent (data dependency, not code).
+
+---
+## v3.17.0 — Import-URL Intelligence (2026-06-12)
+
+### New automated suite
+- `backend/tests/test_import_telemetry.py` — 7 tests: heuristic classifier
+  fallback, guidance blocks for all 5 page types + prompt injection point,
+  telemetry record (15 KB truncation, hint_pass), owner-only feedback,
+  90-day body purge with metadata retention, error-run recording, summary
+  aggregation.
+
+### Smoke result (this fork)
+- Full URL-import + telemetry suite: **47 passed**.
+- Live e2e: carwale import → page_type=listing_filter (conf 1.0), route
+  ai_extraction, 6F/4O, prompt+raw stored, 👍 recorded; admin summary/runs/
+  detail/filters/RBAC verified via curl.
+- Testing agent (frontend): 7/7 PASS — `/app/test_reports/iteration_104.json`.

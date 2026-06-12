@@ -883,3 +883,36 @@ Type, Transmission, Seating Capacity), 4 options Tiago-EV-first, emergent_precis
 suite 41 passed (GSMArena hierarchical regression intact). Stale iter94 prebuilt-decision test now
 skips on 404 (data dependency). Docs bumped v3.16.1: PRD/SRS/API_REFERENCE/UAT/REGRESSION.
 NO frontend changes needed (UI already sends hints + tier + shows hint_warnings).
+
+## Session 2026-06-12C — Import-URL Intelligence (v3.17.0) — NEW FEATURE, TESTED
+USER REQUEST: per-page-type prompt engineering + granular Import-URL accuracy tracking in Admin UI
+(PostHog-style) — URL, 4 hints, AI engine, page type, prompts. Choices: 5 page types, ALWAYS-LLM
+classification, store exact prompt+raw response (15KB/90-day purge), 👍/👎 feedback chip, MongoDB-first
++ lightweight PostHog events (default).
+BUILT:
+- core/url_pagetype.py: classify_page_type() — fast-tier LLM (gemini) → {page_type, confidence,
+  provider}; heuristic fallback (never blocks). 5 types: comparison_matrix, listing_filter, detail,
+  search_grid, article_roundup.
+- core/url_detail.py: PAGE_TYPE_GUIDANCE blocks injected via {page_guidance} into DETAIL_SYSTEM;
+  ai_extract_detail(page_type=, capture=) captures exact prompt/raw/attempts/tokens even on failure.
+- core/ai_metering.py: metered_chat now sets meta["tokens"].
+- core/url_telemetry.py: url_import_runs collection — new_tel/record_run/set_feedback/_lazy_purge
+  (90d bodies, metadata forever)/summary/list_runs/get_run; PostHog events url_import_completed +
+  url_import_feedback; telemetry NEVER raises.
+- routes/url_analyze.py: both endpoints wrapped (analyze_url→_analyze_url_inner,
+  import_url_into_decision→_import_inner); tel threaded; route labels at every exit incl. errors;
+  responses now carry run_id; POST /url-analyze/runs/{run_id}/feedback (owner, up|down).
+- routes/admin_import_analytics.py (super-admin): GET summary?days=, GET runs?days&page_type&route&
+  status&feedback&limit&skip (400 on bad enums), GET runs/{id} (full prompt bodies). Registered in
+  server.py.
+- Frontend: app/admin/import-analytics.tsx (KPIs, 3 breakdowns, filterable runs, drill-down modal w/
+  prompt+raw); admin/index.tsx tile + adminTheme.ts sidebar "Import-URL Intel" (Overview); Step2.tsx
+  feedback chip (import-feedback-row/up/down) after URL import.
+GOTCHAS FIXED: parallel search_replace on Step2.tsx raced → trailing junk + missing state (repaired,
+trimmed to first `});` of stylesheet); expo CI mode needs `sudo supervisorctl restart expo` for NEW
+route files; veales login response key is `session_token` (not access_token); admin@test.com is
+role=admin (403 on super-admin routes) — super admin is veales.vedic.decisions@gmail.com.
+TESTED: pytest 47/47 (new tests/test_import_telemetry.py 7 tests); live e2e carwale → listing_filter
+conf 1.0, ai_extraction, 6F/4O, prompt(6583c)+raw(2480c) stored, tokens 10402, 👍 recorded; admin
+endpoints+RBAC verified; testing agent FRONTEND 7/7 PASS (/app/test_reports/iteration_104.json).
+DOCS: all bumped v3.17.0 (PRD/SRS/API_REFERENCE/UAT/REGRESSION/ADMIN_USER_GUIDE section).

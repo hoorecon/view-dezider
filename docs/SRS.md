@@ -1,6 +1,6 @@
 # System Requirements Specification — Dezider
 
-_metadata: { "version": "3.16.1", "updated": "2026-06-12" }
+_metadata: { "version": "3.17.0", "updated": "2026-06-12" }
 
 ## 1. Architecture
 Expo frontend → NGINX ingress → FastAPI pods → MongoDB replica-set.
@@ -214,3 +214,39 @@ against expectations (NO forced 100% main item).
 A request with `ai_tier="precise"` MUST escalate thin deterministic parses
 (<3 factors) to the Claude engine even when no hints are given — the user
 explicitly chose AI-grade extraction.
+
+---
+## v3.17.0 — Import-URL Intelligence requirements (2026-06-12)
+
+### FR-IU-13 Page-type classification (NEW)
+Every non-JSON import/analyze run MUST be LLM-classified (fast tier) into one
+of: comparison_matrix | listing_filter | detail | search_grid | article_roundup,
+with confidence 0-1. On LLM failure a structural heuristic MUST be used —
+classification MUST NOT block or fail an import.
+
+### FR-IU-14 Prompt specialisation (NEW)
+The extraction prompt MUST embed a page-type-specific guidance block selected
+by the classifier (facet-factors for listing_filter, card-visible attributes
+only for search_grid, author-verdict factor for article_roundup, page-defined
+group preservation for comparison_matrix, exhaustive specs for detail).
+
+### FR-IU-15 Run telemetry (NEW)
+Every run (success AND error) MUST be persisted to `url_import_runs` with:
+url, hints, ai_tier, page_type(+confidence, classifier provider), route
+(deterministic_hier | deterministic_flat | ai_extraction |
+deterministic_fallback | llm_flat_fallback), outcome counts, hint_warnings,
+hint_pass, latency_ms, ai tokens/retry flag, exact system prompt + raw LLM
+response truncated to 15 KB, status/error. Prompt/response bodies MUST be
+purged after 90 days (metadata retained). A lightweight PostHog event
+`url_import_completed` MUST be emitted per run. Telemetry failures MUST be
+non-fatal to the import.
+
+### FR-IU-16 Accuracy feedback (NEW)
+`POST /api/url-analyze/runs/{run_id}/feedback {verdict: up|down}` — owner-only,
+last vote wins; emits PostHog `url_import_feedback`. Step 2 MUST surface a
+1-tap chip after each URL import.
+
+### FR-IU-17 Admin analytics (NEW)
+Super-admin-only endpoints under `/api/admin/import-analytics/*` (summary,
+runs list with page_type/route/status/feedback filters + input validation,
+run detail incl. prompt bodies) powering `/admin/import-analytics`.

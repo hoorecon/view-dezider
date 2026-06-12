@@ -1,6 +1,6 @@
 # Product Requirements Document — Dezider
 
-_metadata: { "version": "3.16.1", "updated": "2026-06-12", "author": "engineering" }
+_metadata: { "version": "3.17.0", "updated": "2026-06-12", "author": "engineering" }
 
 ## 1. Vision
 
@@ -256,3 +256,44 @@ factors carried no `factor_type`, so PRICE rendered as "Qualitative".
   `hint_warnings=[]`, 57 s** (values + 0-100 scores filled for every car).
 - `backend/tests/test_url_import_hints.py` — 11 new regression tests; full URL
   import suite 41 passed.
+
+---
+## v3.17.0 — Import-URL Intelligence: per-page-type prompts + accuracy analytics (2026-06-12)
+
+### Why
+Import-from-URL is the core accelerator of the decision flow. To keep raising
+its accuracy we need (a) prompts engineered per page SHAPE, and (b) a granular
+feedback/telemetry loop visible to admins — like PostHog, but with full
+prompt-level drill-down.
+
+### What shipped
+1. **Always-on LLM page-type classification** (tiny fast-tier call) into 5
+   types: `comparison_matrix` (GSMArena/versus), `listing_filter` (carwale
+   case), `detail` (single product/property), `search_grid` (Amazon-style
+   results), `article_roundup` ("Top 10 …" editorial). Heuristic fallback if
+   the LLM is unavailable — classification can never block an import.
+2. **Per-page-type prompt specialisation** — each type appends an engineered
+   PAGE-TYPE GUIDANCE block to the extraction prompt (facet-factor rules for
+   listing pages, card-only attributes for search grids, author-verdict factor
+   for round-ups, sacred page groups for matrices, exhaustive specs for detail).
+3. **Run telemetry (`url_import_runs`)** — every import/analyze run records:
+   URL, the 4 accuracy hints, AI tier→provider, classified page type +
+   confidence, pipeline route, factors/options added, hint warnings/pass,
+   latency, ~tokens, corrective-retry flag, EXACT system prompt + raw LLM
+   response (15 KB truncation, 90-day body purge with metadata retained), and
+   status/error. Twin lightweight PostHog events: `url_import_completed`,
+   `url_import_feedback`.
+4. **👍/👎 user verdict** — 1-tap "Was this URL import accurate?" chip appears
+   in Step 2 after an import; builds the labelled accuracy dataset.
+5. **Admin dashboard `/admin/import-analytics`** (super-admin): KPI cards
+   (runs, success, hint-pass, hint adoption, AI escalation, retry rate, 👍
+   satisfaction, avg latency), breakdowns by page type / provider / route,
+   filterable run list, drill-down modal incl. the exact prompt + raw response.
+   Sidebar: Overview → "Import-URL Intel"; dashboard tile added.
+
+### Verification
+- pytest 47/47 (incl. new `tests/test_import_telemetry.py` — 7 tests).
+- Live e2e: carwale import → classified `listing_filter` (conf 1.0, gemini),
+  route `ai_extraction`, 6 facet factors / 4 options, prompt+response stored,
+  feedback 👍 recorded, all admin endpoints + RBAC verified.
+- Testing agent frontend run: 7/7 PASS (iteration_104.json).

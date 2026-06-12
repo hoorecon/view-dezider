@@ -1,6 +1,6 @@
 # UAT Test Cases — Dezider
 
-_metadata: { "version": "3.16.1", "updated": "2026-06-12" }
+_metadata: { "version": "3.17.0", "updated": "2026-06-12" }
 
 ## How to UAT
 1. Login with a test account (see `/app/memory/test_credentials.md`). Free tier is fine for most tests.
@@ -198,3 +198,16 @@ DPDP-01..04 (export, delete-request, cancel-within-grace, admin purge).
 | IU-HINT-3 | GSMArena 3-phone compare, NO hints | Hierarchical matrix import unchanged (15 categories, no AI extraction charge) |
 | IU-HINT-4 | Hints that the AI cannot satisfy either (deliberately wrong, e.g. 50 factors) | Import still succeeds with the best available structure + non-empty `hint_warnings` surfaced in the UI |
 | IU-HINT-5 | Precise tier + page whose only table has 2 columns, NO hints | Escalates to Claude extraction (thin-parse rule) |
+
+---
+## v3.17.0 — Import-URL Intelligence (2026-06-12)
+
+| ID | Scenario | Expected |
+|---|---|---|
+| IA-1 | Import any URL from Step 2 | Response carries `run_id`; run visible in /admin/import-analytics with page type, route, engine, latency |
+| IA-2 | After import, tap 👍 on "Was this URL import accurate?" | Chip thanks the user; run's User verdict = 👍 in admin drill-down |
+| IA-3 | Super-admin opens /admin/import-analytics | 8 KPI cards + 3 breakdown tables + filterable runs list render |
+| IA-4 | Drill into an AI-extraction run | Modal shows hints JSON, hint warnings, EXACT system prompt (incl. PAGE-TYPE GUIDANCE + USER-VERIFIED PAGE FACTS) and raw LLM response |
+| IA-5 | Regular admin (level 2) calls /api/admin/import-analytics/summary | 403 |
+| IA-6 | Deterministic (free) import run drill-down | "No AI call was made for this run" — no prompt bodies |
+| IA-7 | Run older than 90 days | Prompt bodies purged; metadata + verdict retained |

@@ -314,3 +314,25 @@ For deeper technical detail, see `PRODUCTION_DEPLOYMENT.md` in Handbook.
 3. Tier Matrix → unlock `url_import_precise` for Heart Chakra and above.
 4. Revenue Recon → Sync Now → confirm verdict=safe.
 5. Customer Segments → add the new region's currency + tier pricing.
+
+---
+## Import-URL Intelligence (v3.17.0)
+
+**Where:** Sidebar → Overview → *Import-URL Intel* (`/admin/import-analytics`). Super-admin only.
+
+**What it shows:** every Import-from-URL run — the user's URL, the 4 accuracy
+hints, chosen AI engine, the LLM-classified page type (Comparison Matrix /
+Listing-Filter / Detail / Search Grid / Article Round-up), the pipeline route,
+factors/options produced, hint pass/fail, latency, ~tokens and the user's 👍/👎
+verdict.
+
+**How to use it for prompt tuning:**
+1. Watch the *Hint pass* and *👍 Satisfaction* KPIs per page type.
+2. A page type trending down? Open its runs → drill-down shows the EXACT
+   system prompt sent (incl. its PAGE-TYPE GUIDANCE block) and the raw LLM
+   response — compare against the user's hints to spot the failure pattern.
+3. Prompt bodies are kept 90 days; run metadata is kept forever for trends.
+
+**Playbook when a user reports a bad import:** Runs list → filter by page type
+or find the URL → drill-down → check `hint_warnings`, retry flag and the raw
+response before deciding whether the prompt or the page is at fault.

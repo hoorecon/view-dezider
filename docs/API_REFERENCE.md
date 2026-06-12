@@ -1,6 +1,6 @@
 # REST API Reference — Dezider
 
-_metadata: { "version": "3.16.1", "updated": "2026-06-12" }
+_metadata: { "version": "3.17.0", "updated": "2026-06-12" }
 
 Base URL: `/api`. Auth: `Authorization: Bearer <session_token>` from `/auth/login`.
 Every response carries `X-Request-ID`, `X-Response-Time-MS`, security headers.
@@ -351,3 +351,23 @@ Privacy posture: `identified_only` person profiles, `maskAllInputs:true`,
 - Response: `mode:"flat"` deterministic-fallback responses can now include
   `hint_warnings: string[]` (previously only `mode:"detail"` carried it).
   Responses are otherwise backward-compatible.
+
+---
+## v3.17.0 — Import-URL Intelligence endpoints (2026-06-12)
+
+### Changed
+- `POST /api/url-analyze` and `POST /api/url-analyze/decision/{id}/import`
+  responses now include `run_id` (telemetry run identifier for feedback).
+  Every run is LLM-classified by page type and recorded to `url_import_runs`.
+
+### New
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/api/url-analyze/runs/{run_id}/feedback` | user (owner) | 1-tap import accuracy verdict `{"verdict":"up"\|"down"}` |
+| GET | `/api/admin/import-analytics/summary?days=30` | super-admin | KPIs + breakdowns by page_type / ai_provider / route |
+| GET | `/api/admin/import-analytics/runs?days=&page_type=&route=&status=&feedback=&limit=&skip=` | super-admin | Run list (no prompt bodies); 400 on invalid page_type/route |
+| GET | `/api/admin/import-analytics/runs/{run_id}` | super-admin | Full run incl. exact system prompt + raw LLM response (15 KB trunc, purged after 90 days) |
+
+`page_type` ∈ comparison_matrix, listing_filter, detail, search_grid, article_roundup.
+`route` ∈ deterministic_hier, deterministic_flat, ai_extraction, deterministic_fallback, llm_flat_fallback.
+PostHog events: `url_import_completed`, `url_import_feedback`.
