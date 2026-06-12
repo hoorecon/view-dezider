@@ -1048,3 +1048,23 @@ GOTCHAS FOR NEXT AGENT:
    Solution Box tab instead.
  - admin@test.com is role=admin (no import-analytics data access); super admin =
    veales.vedic.decisions@gmail.com / Jelcos@Admin2026.
+
+## Iteration 112 — Deep Import hard-constraint intent guard (rent vs buy) — 12 Jun 2026
+USER BUG (prod): context "…2 BHK Flat for RENT in Chennai Mugappair…" returned SALE/new-project
+listings (Price-per-sqft options). AI treated transaction type as SOFT relevance → nondeterministic.
+FIX (routes/deep_import.py) — deterministic intent enforced at 4 layers:
+ 1. _intent_of(context): regex rent|lease|tenant|pg vs buy|sale|purchase|resale|new-projects —
+    only when unambiguous (both → None, never guess).
+ 2. _rank_links: +3 intent match / −6 contradiction → sale links sink below the 150-link cap.
+ 3. _drop_contradicting: AI-picked options AND hubs whose url+name mention the opposite type
+    (and not the requested one) are dropped post-pick. Neutral names kept (page guard decides).
+ 4. _page_matches_intent: after crawling each option page, rent-intent pages must mention
+    rent/per month/monthly/deposit in first 4K chars, else SKIPPED (logged + listed in the
+    failure message if <2 valid pages remain: "N page(s) did not match your 'rent' requirement").
+ 5. _intent_clause injected into LINKS_SYSTEM + HUBS_SYSTEM prompts: "HARD CONSTRAINT: …
+    SALE/new-project pages are INVALID".
+VERIFIED LIVE (exact user context, nobroker.in homepage, 3 pages): all 3 options now "for Rent
+in Mogappair West" with Monthly Rent (25-35k)/Deposit/Maintenance/Total Monthly Outflow factors,
+22 factors, 156s, factors_ready. TESTS: tests/test_iter112_intent_guard.py (5) — battery 62/62.
+NOTE: dev wallet topped up +2000 cr (ledger feature=dev_test_topup) for E2E. Prod jelcos.ai
+needs a DEPLOY to receive iterations 109-112.

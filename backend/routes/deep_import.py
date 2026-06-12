@@ -106,19 +106,89 @@ def _extract_links(html: str, base_url: str, cap: int = 600) -> List[Dict[str, s
 _RANK_STOP = {"the", "for", "and", "best", "good", "choose", "with", "near",
               "area", "new", "top", "buy", "get", "find", "from", "want"}
 
+# ── Hard-constraint intent guard (deterministic) ─────────────────────────────
+# The AI treats context keywords as soft relevance; transaction type must be a
+# HARD constraint (a user asking for RENT must never get SALE/new-project
+# listings). Detected by regex and enforced at ranking, post-pick and per-page.
+_RENT_RE = re.compile(r"\b(rent|rental|rented|lease|leasing|tenant|pg)\b", re.I)
+_BUY_RE = re.compile(r"\b(buy|buying|sale|sell|purchase|resale|new[- ]?projects?|ownership)\b", re.I)
+
+
+def _intent_of(context: str) -> Optional[str]:
+    """'rent' | 'buy' | None — only when the context is unambiguous."""
+    r, b = bool(_RENT_RE.search(context or "")), bool(_BUY_RE.search(context or ""))
+    if r and not b:
+        return "rent"
+    if b and not r:
+        return "buy"
+    return None
+
+
+def _intent_score(hay: str, intent: Optional[str]) -> int:
+    """+boost when a link matches the transaction intent, heavy penalty when it
+    contradicts it (e.g. a 'for sale' link under a RENT context)."""
+    if not intent:
+        return 0
+    good, bad = (_RENT_RE, _BUY_RE) if intent == "rent" else (_BUY_RE, _RENT_RE)
+    s = 0
+    if good.search(hay):
+        s += 3
+    elif bad.search(hay):
+        s -= 6
+    return s
+
+
+def _drop_contradicting(items: List[Any], intent: Optional[str]) -> List[Any]:
+    """Drop AI-picked options/hubs whose url+name clearly CONTRADICT the
+    transaction intent (mentions the opposite type and not the requested one)."""
+    if not intent:
+        return items
+    good, bad = (_RENT_RE, _BUY_RE) if intent == "rent" else (_BUY_RE, _RENT_RE)
+    out = []
+    for it in items:
+        hay = f"{it.get('name', '')} {it.get('url', '')}" if isinstance(it, dict) else str(it)
+        if bad.search(hay) and not good.search(hay):
+            continue
+        out.append(it)
+    return out
+
+
+def _page_matches_intent(txt: str, intent: Optional[str]) -> bool:
+    """Cheap page-level sanity: a RENT decision page should talk about rent /
+    per-month; a BUY page about price/sale. Checked on the first 4K chars."""
+    if not intent:
+        return True
+    head = (txt or "")[:4000].lower()
+    if intent == "rent":
+        return bool(re.search(r"\brent|per month|/month|monthly|deposit\b", head))
+    return bool(re.search(r"\bsale|buy|price|emi|booking|registration\b", head))
+
+
+def _intent_clause(intent: Optional[str]) -> str:
+    """Deterministic HARD-CONSTRAINT line injected into the AI prompts."""
+    if not intent:
+        return ""
+    if intent == "rent":
+        return ("\nHARD CONSTRAINT: the user wants items FOR RENT. Any SALE / buy / "
+                "new-project / resale page is INVALID and must NOT be returned.")
+    return ("\nHARD CONSTRAINT: the user wants items FOR SALE/PURCHASE. Any rental "
+            "listing page is INVALID and must NOT be returned.")
+
 
 def _rank_links(links: List[Dict[str, str]], context: str, cap: int = 150) -> List[Dict[str, str]]:
     """Order links by decision-context keyword overlap (text + url) so that on
     link-heavy portals (1000+ anchors) the relevant ones survive the prompt cap
-    instead of whatever happened to appear first in the HTML."""
+    instead of whatever happened to appear first in the HTML. Transaction
+    intent (rent vs buy) is boosted/penalised as a hard signal."""
     toks = {t for t in re.findall(r"[a-z0-9]+", (context or "").lower())
             if len(t) >= 3 and t not in _RANK_STOP}
-    if not toks:
+    intent = _intent_of(context)
+    if not toks and not intent:
         return links[:cap]
 
     def score(l: Dict[str, str]) -> int:
         hay = (l["text"] + " " + l["url"]).lower()
-        return sum(1 for t in toks if t in hay)
+        return sum(1 for t in toks if t in hay) + _intent_score(hay, intent)
 
     ranked = sorted(enumerate(links), key=lambda p: (-score(p[1]), p[0]))
     return [l for _, l in ranked[:cap]]
@@ -213,7 +283,9 @@ async def _pick_detail_links(user_id: str, context: str, max_pages: int,
     """One metered AI call: pick the option/detail page links for the context.
     Traced onto the run (stage prompt + engine + credits) when `tel` is given."""
     link_block = "\n".join(f"{i + 1}. [{l['text']}] {l['url']}" for i, l in enumerate(links))
+    intent = _intent_of(context)
     sys_msg = (LINKS_SYSTEM.replace("{max_pages}", str(max_pages))
+               + _intent_clause(intent)
                + await url_prompt_tuning.get_guidance("deep_links"))
     prompt = (f"DECISION CONTEXT: {context}\n\nBASE PAGE TEXT:\n{text}\n\n"
               f"LINKS:\n{link_block}")
@@ -238,7 +310,7 @@ async def _pick_detail_links(user_id: str, context: str, max_pages: int,
         options.append({"name": str(o["name"]).strip()[:120], "url": url})
         if len(options) >= max_pages:
             break
-    return options
+    return _drop_contradicting(options, intent)
 
 
 async def _pick_hubs(user_id: str, context: str, base_url: str,
@@ -248,7 +320,9 @@ async def _pick_hubs(user_id: str, context: str, base_url: str,
     """One metered AI call: locate same-domain LISTING hub pages for the context
     (used when the base page is a portal/homepage with no direct detail links)."""
     link_block = "\n".join(f"{i + 1}. [{l['text']}] {l['url']}" for i, l in enumerate(links))
-    sys_msg = HUBS_SYSTEM + await url_prompt_tuning.get_guidance("deep_hubs")
+    intent = _intent_of(context)
+    sys_msg = (HUBS_SYSTEM + _intent_clause(intent)
+               + await url_prompt_tuning.get_guidance("deep_hubs"))
     prompt = (f"DECISION CONTEXT: {context}\n\nBASE PAGE TEXT:\n{text}\n\n"
               f"LINKS:\n{link_block}")
     meta: Dict[str, Any] = {}
@@ -348,6 +422,8 @@ async def _discover(job_id: str, user_id: str, base_url: str, context: str,
             return
 
         page_texts: Dict[str, str] = {}
+        intent = _intent_of(context)
+        skipped_intent: List[str] = []
         step = max(1, int(38 / len(options)))
         for i, opt in enumerate(options):
             await _prog(job_id, 40 + i * step,
@@ -357,15 +433,29 @@ async def _discover(job_id: str, user_id: str, base_url: str, context: str,
                 if not rhtml:
                     rr = await fetch_page(opt["url"], user_id=user_id)
                     rhtml = rr.text
-                page_texts[opt["name"]] = page_text(rhtml, limit=PAGE_TEXT_LIMIT)
+                txt = page_text(rhtml, limit=PAGE_TEXT_LIMIT)
+                # Hard-constraint guard: drop pages contradicting the intent
+                # (e.g. a SALE/new-project page when the user asked for RENT).
+                if not _page_matches_intent(txt, intent):
+                    skipped_intent.append(opt["name"])
+                    logger.info("deep-import intent guard skipped %s (%s)",
+                                opt["url"][:90], intent)
+                    continue
+                page_texts[opt["name"]] = txt
             except ai_wallet.InsufficientCredits:
                 raise
             except Exception as e:  # noqa: BLE001 — skip unreachable pages
                 logger.warning("deep-import page fetch failed %s: %s", opt["url"], str(e)[:120])
         page_texts = {k: v for k, v in page_texts.items() if (v or "").strip()}
         if len(page_texts) < 2:
-            await _fail(job_id, tel,
-                        "Fewer than 2 option pages could be crawled — cannot build a comparison.")
+            msg = "Fewer than 2 option pages could be crawled — cannot build a comparison."
+            if skipped_intent:
+                msg = (f"{len(skipped_intent)} crawled page(s) did not match your context's "
+                       f"'{intent}' requirement and were rejected "
+                       f"({', '.join(skipped_intent[:3])}…) — too few valid options remain. "
+                       "Try a listing URL already filtered for "
+                       + ("rentals." if intent == "rent" else "sale listings."))
+            await _fail(job_id, tel, msg)
             return
 
         await _prog(job_id, 80, "AI is consolidating factors across the crawled pages…")
