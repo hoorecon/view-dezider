@@ -462,9 +462,12 @@ async def create_decision_from_intake(
     user: dict = Depends(get_current_user),
 ):
     """Create a new decision from the HOS intake flow"""
-    # Validate acting_as_context
-    if payload.acting_as_context.upper() not in ACTING_AS_CONTEXTS:
-        raise HTTPException(status_code=400, detail=f"Invalid acting_as_context. Must be one of: {ACTING_AS_CONTEXTS}")
+    # Validate acting_as_context against the dynamic Org-Type master
+    # (admin-managed via /api/admin/org-types) with the legacy constant as fallback.
+    org_docs = await db.org_types_master.find({"active": True}, {"_id": 0, "key": 1}).to_list(200)
+    valid_contexts = {d["key"] for d in org_docs if d.get("key")} | set(ACTING_AS_CONTEXTS)
+    if payload.acting_as_context.upper() not in valid_contexts:
+        raise HTTPException(status_code=400, detail=f"Invalid acting_as_context. Must be one of: {sorted(valid_contexts)}")
     if payload.source_type.upper() not in TEMPLATE_TYPES:
         raise HTTPException(status_code=400, detail=f"Invalid source_type. Must be one of: {TEMPLATE_TYPES}")
 

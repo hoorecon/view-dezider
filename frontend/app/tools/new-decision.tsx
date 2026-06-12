@@ -14,6 +14,7 @@ import { safeBack, goHome } from '../../src/utils/navigation';
 import api from '../../src/utils/api';
 import TimingFieldset, { TimingValue } from '../../src/components/decisions/TimingFieldset';
 import { addDaysISO } from '../../src/utils/dateLocalize';
+import { useOrgTypes } from '../../src/hooks/useOrgTypes';
 
 // ====== TYPES ======
 interface LifeArea { id: string; name: string; slug: string; icon: string; color: string; order: number; }
@@ -35,15 +36,8 @@ interface Template {
 type ModuleKey = 'dezider' | 'swot' | 'pros-cons';
 
 // ====== CONSTANTS ======
-// 6 OrgType cards. Width tuned so 2 fit per row on mobile, 3 per row on web.
-const ACTING_AS = [
-  { key: 'INDIVIDUAL',    label: 'Individual',             icon: 'person',           color: '#6366F1', desc: 'Self / family' },
-  { key: 'BUSINESS_ORG',  label: 'Business Organization',  icon: 'business',         color: '#0EA5E9', desc: 'Company / startup / SMB' },
-  { key: 'ACADEMIC_ORG',  label: 'Academic Organization',  icon: 'school',           color: '#F59E0B', desc: 'School / college / research' },
-  { key: 'NONPROFIT_ORG', label: 'Non-profit Organization',icon: 'heart',            color: '#10B981', desc: 'NGO / charity / foundation' },
-  { key: 'ASSOCIATION',   label: 'Association',            icon: 'people-circle',    color: '#F43F5E', desc: 'Society / club / housing' },
-  { key: 'GOVERNMENT',    label: 'Government',             icon: 'globe',            color: '#8B5CF6', desc: 'Public / policy / civic' },
-];
+// OrgType cards ("This decision is for…") are DYNAMIC — managed by admins
+// under Admin → Masters → Org Types and fetched via useOrgTypes().
 
 const TEMPLATE_TYPE_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
   AUTHORIZED_STANDARD: { label: 'Curated', color: '#10B981', icon: 'shield-checkmark' },
@@ -106,6 +100,8 @@ export default function NewDecisionIntake() {
 
   // Selections
   const [actingAs, setActingAs] = useState('INDIVIDUAL');
+  // Dynamic OrgType cards (Admin → Masters → Org Types)
+  const { orgTypes, loading: loadingOrgTypes } = useOrgTypes();
   const [selectedArea, setSelectedArea] = useState<LifeArea | null>(null);
   const [selectedAskType, setSelectedAskType] = useState<AskType | null>(null);
   const [searchText, setSearchText] = useState('');
@@ -432,9 +428,12 @@ export default function NewDecisionIntake() {
       <Text style={s.stepTitle}>This decision is for...</Text>
       <Text style={s.stepSubtitle}>Select the context for this decision</Text>
       <View style={s.contextCards}>
-        {ACTING_AS.map(a => (
+        {loadingOrgTypes ? (
+          <ActivityIndicator style={{ marginTop: 24 }} color={COLORS.primary} />
+        ) : orgTypes.map(a => (
           <TouchableOpacity
             key={a.key}
+            testID={`acting-as-${a.key}`}
             style={[s.contextCard, actingAs === a.key && { borderColor: a.color, backgroundColor: a.color + '10' }]}
             onPress={() => setActingAs(a.key)}
           >

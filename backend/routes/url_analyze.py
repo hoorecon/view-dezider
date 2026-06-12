@@ -11,6 +11,7 @@ record (access-eligibility type + disclaimer acceptance), stored for audit.
 """
 from __future__ import annotations
 
+import asyncio
 import re
 import json
 import uuid
@@ -517,11 +518,62 @@ class ImportRequest(BaseModel):
     accepted: bool = False
     max_factors: int = Field(default=8, ge=1, le=20)
     ai_tier: str = "fast"                       # fast | precise (Claude via Emergent key)
+    # Client-generated id the frontend polls (GET /url-analyze/progress/{id})
+    # for live stage/percentage updates while this request runs.
+    progress_id: Optional[str] = None
     # ── Optional accuracy hints (self-healing oracle) ──
     expected_factor_count: Optional[int] = Field(default=None, ge=1, le=200)
     expected_option_count: Optional[int] = Field(default=None, ge=1, le=50)
     first_factor_name: Optional[str] = None
     first_option_name: Optional[str] = None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Live import progress — the import POST can legitimately run 30-120s (rendered
+# fetch + LLM extraction + corrective retry). The backend reports real stages
+# here; the frontend polls while the request is in flight. Docs expire via a
+# TTL index (created in core.database boot indexes are heavy — do it lazily).
+# ─────────────────────────────────────────────────────────────────────────────
+_progress_ttl_ready = False
+
+
+def _progress_writer(progress_id: Optional[str], user_id: str):
+    """Returns async prog(pct, label, status='running') that upserts the
+    progress doc. No-op writer when the client didn't send a progress_id."""
+    async def _noop(pct: int, label: str, status: str = "running"):
+        return None
+
+    if not progress_id:
+        return _noop
+
+    async def _write(pct: int, label: str, status: str = "running"):
+        global _progress_ttl_ready
+        try:
+            if not _progress_ttl_ready:
+                await db.url_import_progress.create_index(
+                    "expires_at", expireAfterSeconds=0)
+                _progress_ttl_ready = True
+            from datetime import timedelta
+            await db.url_import_progress.update_one(
+                {"id": progress_id},
+                {"$set": {"id": progress_id, "user_id": user_id,
+                          "pct": int(pct), "label": label, "status": status,
+                          "updated_at": _now(),
+                          "expires_at": _now() + timedelta(hours=1)}},
+                upsert=True)
+        except Exception:  # noqa: BLE001 — progress is best-effort, never block import
+            pass
+    return _write
+
+
+@router.get("/progress/{progress_id}")
+async def get_import_progress(progress_id: str, user: dict = Depends(get_current_user)):
+    doc = await db.url_import_progress.find_one(
+        {"id": progress_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not doc:
+        return {"pct": 5, "label": "Starting…", "status": "running"}
+    return {"pct": doc.get("pct", 0), "label": doc.get("label", ""),
+            "status": doc.get("status", "running")}
 
 
 def _hints_of(req) -> Optional[Dict[str, Any]]:
@@ -544,21 +596,27 @@ DETAIL_MAX_FACTORS = 24
 async def _extract_detail_for_url(user_id: str, url: str, html: str, tier: str,
                                   hints: Optional[Dict[str, Any]] = None,
                                   page_type: Optional[str] = None,
-                                  tel: Optional[Dict[str, Any]] = None):
+                                  tel: Optional[Dict[str, Any]] = None,
+                                  rendered_task: Optional["asyncio.Task"] = None,
+                                  prog=None):
     """AI extraction pipeline (detail OR comparison/listing pages): escalate to
     RENDERED HTML when ScraperAPI is configured (similar-items rails are usually
     JS-loaded), then run the single-call hint-guided LLM extraction (+ one
     corrective retry against the user's accuracy hints) with the prompt
     specialised for the classified `page_type`. The exact prompt + raw response
     are captured into `tel["ai"]` for Import-Analytics.
+    `rendered_task` (if given) is an already-running fetch_rendered task so the
+    rendered fetch overlaps the page-type classification.
     Translates InsufficientCredits → 402."""
-    rendered = await fetch_rendered(url)
+    rendered = await rendered_task if rendered_task is not None else await fetch_rendered(url)
     cfg = await ai_wallet.get_config()
     threshold = int(cfg.get("import_group_threshold") or 15)
     max_factors = max(DETAIL_MAX_FACTORS, int((hints or {}).get("expected_factor_count") or 0))
     capture: Dict[str, Any] = {}
     if tel is not None:
         tel["ai"] = capture
+    if prog:
+        await prog(62, "AI is extracting factors & options…")
     try:
         return await ai_extract_detail(user_id, rendered or html, tier=tier,
                                        max_factors=max_factors,
@@ -582,20 +640,24 @@ async def import_url_into_decision(
     tel = url_telemetry.new_tel(user["user_id"], endpoint="import", url=req.url,
                                 ai_tier=_tier(req.ai_tier), hints=_hints_of(req),
                                 decision_id=decision_id)
+    prog = _progress_writer(req.progress_id, user["user_id"])
     try:
-        resp = await _import_inner(decision_id, req, request, user, tel)
+        resp = await _import_inner(decision_id, req, request, user, tel, prog)
     except HTTPException as e:
+        await prog(100, str(e.detail)[:200], status="error")
         await url_telemetry.record_run(tel, status="error", error=f"HTTP {e.status_code}: {e.detail}")
         raise
     except Exception as e:  # noqa: BLE001
+        await prog(100, "Import failed — see the error message.", status="error")
         await url_telemetry.record_run(tel, status="error", error=f"{type(e).__name__}: {str(e)[:300]}")
         raise
+    await prog(100, "Done — factors & options added.", status="done")
     resp["run_id"] = await url_telemetry.record_run(tel, status="success", response=resp)
     return resp
 
 
 async def _import_inner(decision_id: str, req: ImportRequest, request: Request,
-                        user: dict, tel: Dict[str, Any]) -> Dict[str, Any]:
+                        user: dict, tel: Dict[str, Any], prog) -> Dict[str, Any]:
     """Crawl a comparison page and MERGE the derived factors (with suggested
     Expected values) + options (with assessment %) into an EXISTING MyDezider
     decision, behind the same consent gate."""
@@ -624,18 +686,31 @@ async def _import_inner(decision_id: str, req: ImportRequest, request: Request,
     # ── Fetch ONCE; run all parse strategies against the same response. ──
     tier = _tier(req.ai_tier)
     hints = _hints_of(req)
+    await prog(12, "Fetching the page…")
     r = await fetch_page(req.url)
     is_json = "json" in r.headers.get("content-type", "")
 
     # ── LLM page-type classification (always-on): selects the specialised
-    # extraction prompt AND powers per-page-type accuracy analytics. ──
-    page_type = None
+    # extraction prompt AND powers per-page-type accuracy analytics. Started
+    # as a BACKGROUND task so it overlaps the deterministic parsing below
+    # (and, on the AI path, the rendered-HTML fetch) instead of blocking. ──
+    cls_task: Optional[asyncio.Task] = None
     if not is_json:
-        cls = await classify_page_type(user["user_id"], r.text, req.url)
-        page_type = cls["page_type"]
-        tel["page_type"] = cls["page_type"]
-        tel["page_type_confidence"] = cls["confidence"]
-        tel["classifier_provider"] = cls["provider"]
+        cls_task = asyncio.create_task(
+            classify_page_type(user["user_id"], r.text, req.url))
+
+    async def _page_type() -> Optional[str]:
+        """Await the classification (never raises) and fill telemetry once."""
+        if cls_task is None:
+            return None
+        cls = await cls_task
+        if "page_type" not in tel:
+            tel["page_type"] = cls["page_type"]
+            tel["page_type_confidence"] = cls["confidence"]
+            tel["classifier_provider"] = cls["provider"]
+        return cls["page_type"]
+
+    await prog(22, "Analysing the page structure…")
 
     # ── Prefer a FULL two-level merge when the page is a category-grouped
     # comparison matrix (e.g. GSMArena: 15 categories × sub-specs) — but ONLY
@@ -645,12 +720,15 @@ async def _import_inner(decision_id: str, req: ImportRequest, request: Request,
             and len(hierarchy.get("items", [])) >= 2
             and not deterministic_hint_issues(hints, hierarchy=hierarchy)):
         items, groups = hierarchy["items"], hierarchy["groups"]
+        await prog(45, "Scoring the comparison rows…")
         row_scores, row_meta, text_rows = _score_hierarchy_numeric(items, groups)
         row_scores.update(await _ai_score_text_rows(user["user_id"], items, text_rows))
+        await prog(85, "Merging factors & options into your decision…")
         counts = await merge_hierarchical_into_mydezider(
             user["user_id"], decision_id, items=items, groups=groups,
             row_scores=row_scores, row_meta=row_meta)
         tel["route"] = "deterministic_hier"
+        await _page_type()
         return {
             "decision_id": decision_id, "consent_id": consent_id, "mode": "hierarchical",
             "item_count": len(items),
@@ -673,9 +751,11 @@ async def _import_inner(decision_id: str, req: ImportRequest, request: Request,
             det_issues = deterministic_hint_issues(hints, factors=factors, candidates=scored)
             det_thin = tier == "precise" and len(factors) < 3
             if not det_issues and not det_thin:
+                await prog(85, "Merging factors & options into your decision…")
                 counts = await merge_into_mydezider(user["user_id"], decision_id,
                                                     factors=factors, candidates=scored)
                 tel["route"] = "deterministic_flat"
+                await _page_type()
                 return {
                     "decision_id": decision_id, "consent_id": consent_id, "mode": "flat",
                     "item_count": len(candidates),
@@ -687,10 +767,15 @@ async def _import_inner(decision_id: str, req: ImportRequest, request: Request,
     # facet becomes a factor (grouped → parent + sub-factors with equal weight
     # split) with a smart operator + Expected value; the listed items become
     # options. User hints are injected as ground truth + verified with one
-    # corrective retry. ──
+    # corrective retry. Rendered-HTML fetch runs CONCURRENTLY with the page-
+    # type classification to shave seconds off the slow path. ──
     if not is_json:
+        await prog(50, "Fetching the fully-rendered page…")
+        rendered_task = asyncio.create_task(fetch_rendered(req.url))
+        page_type = await _page_type()
         detail = await _extract_detail_for_url(user["user_id"], req.url, r.text, tier,
-                                               hints=hints, page_type=page_type, tel=tel)
+                                               hints=hints, page_type=page_type, tel=tel,
+                                               rendered_task=rendered_task, prog=prog)
         # If the deterministic parse was actually CLOSER to the user's hints
         # than the AI output, prefer the deterministic one.
         if (detail and det_fallback
@@ -698,6 +783,7 @@ async def _import_inner(decision_id: str, req: ImportRequest, request: Request,
             detail = None
         if detail:
             tel["route"] = "ai_extraction"
+            await prog(88, "Merging factors & options into your decision…")
             if detail["kind"] == "hier":
                 counts = await merge_hierarchical_into_mydezider(
                     user["user_id"], decision_id,
@@ -732,9 +818,11 @@ async def _import_inner(decision_id: str, req: ImportRequest, request: Request,
     # deterministic parse (with explicit accuracy warnings) rather than fail. ──
     if det_fallback:
         factors, scored, det_issues = det_fallback
+        await prog(85, "Merging factors & options into your decision…")
         counts = await merge_into_mydezider(user["user_id"], decision_id,
                                             factors=factors, candidates=scored)
         tel["route"] = "deterministic_fallback"
+        await _page_type()
         return {
             "decision_id": decision_id, "consent_id": consent_id, "mode": "flat",
             "item_count": len(scored), "hint_warnings": det_issues,
@@ -750,8 +838,10 @@ async def _import_inner(decision_id: str, req: ImportRequest, request: Request,
     if not factors:
         raise HTTPException(422, "Could not derive comparable factors from the page.")
 
+    await prog(85, "Merging factors & options into your decision…")
     counts = await merge_into_mydezider(user["user_id"], decision_id, factors=factors, candidates=scored)
     tel["route"] = "llm_flat_fallback"
+    await _page_type()
     return {
         "decision_id": decision_id, "consent_id": consent_id, "mode": "flat",
         "item_count": len(candidates),
@@ -859,6 +949,8 @@ async def set_expectations_by_ai(decision_id: str, req: SetExpectationsRequest,
     txt_ops = {"contains", "starts_with", "ends_with", "equals", "not_equals"}
     by_id = {f["id"]: f for f in factors}
     updated = 0
+    changed = 0      # value/operator actually differs from what was there before
+    confirmed = 0    # AI agreed with the pre-suggested expectation (e.g. from import)
     for row in rows:
         if not isinstance(row, dict):
             continue
@@ -874,6 +966,12 @@ async def set_expectations_by_ai(decision_id: str, req: SetExpectationsRequest,
             op = ">=" if (f.get("data_type") or "numeric") == "numeric" else "equals"
         if ev is None:
             continue
+        prev_ev = str(f.get("expected_value")).strip() if f.get("expected_value") not in (None, "") else None
+        prev_op = (f.get("operator") or "").strip()
+        if prev_ev == ev and prev_op == op:
+            confirmed += 1
+        else:
+            changed += 1
         f["expected_value"] = ev
         f["operator"] = op
         updated += 1
@@ -882,7 +980,8 @@ async def set_expectations_by_ai(decision_id: str, req: SetExpectationsRequest,
         await db.decisions.update_one(
             {"id": decision_id, "user_id": user["user_id"]},
             {"$set": {"factors": factors, "updated_at": datetime.now(timezone.utc)}})
-    return {"updated": updated, "factor_count": len(leaves),
+    return {"updated": updated, "changed": changed, "confirmed": confirmed,
+            "factor_count": len(leaves),
             "ai_provider": meta.get("provider") or ""}
 
 

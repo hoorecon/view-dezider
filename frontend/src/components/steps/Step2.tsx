@@ -67,8 +67,27 @@ export default function Step2() {
     } catch { /* non-fatal — verdict already reflected in UI */ }
   };
 
+  // ── Live import progress — backend reports real stages to
+  // /url-analyze/progress/{id}; we poll while the import POST is in flight. ──
+  const [importProgress, setImportProgress] = useState<{ pct: number; label: string; elapsed: number } | null>(null);
+
   const runImport = async (consent: UrlConsentPayload) => {
+    const progressId = `imp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    setImportConsentOpen(false);
     setImporting(true);
+    const startedAt = Date.now();
+    setImportProgress({ pct: 5, label: 'Starting…', elapsed: 0 });
+    const poll = setInterval(async () => {
+      const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+      try {
+        const { data } = await api.get(`/url-analyze/progress/${progressId}`);
+        setImportProgress(p => p
+          ? { pct: Math.max(p.pct, data?.pct || 0), label: data?.label || p.label, elapsed }
+          : p);
+      } catch {
+        setImportProgress(p => (p ? { ...p, elapsed } : p));
+      }
+    }, 1200);
     try {
       const { data } = await api.post(`/url-analyze/decision/${decision.id}/import`, {
         url: importUrl.trim(),
@@ -76,19 +95,19 @@ export default function Step2() {
         custom_note: consent.custom_note,
         accepted: true,
         ai_tier: importTier,
+        progress_id: progressId,
         expected_factor_count: parseInt(hintFactorCount, 10) || undefined,
         expected_option_count: parseInt(hintOptionCount, 10) || undefined,
         first_factor_name: hintFirstFactor.trim() || undefined,
         first_option_name: hintFirstOption.trim() || undefined,
       }, { timeout: 300000 }); // detail pages may need a rendered fetch + LLM pass (+1 retry)
-      setImportConsentOpen(false);
-      setImporting(false);
       setImportUrl('');
       await fetchDecision();
       if (data.run_id) setImportFeedback({ runId: data.run_id, voted: null });
       const warn = (data.hint_warnings || []).length
         ? `\n\n⚠ Accuracy check: ${data.hint_warnings.join(' ')} Please review carefully.`
         : '';
+      const expectedNote = '\n\nNote: Expected values are pre-suggested from the page data (best value of the set). Refine them anytime with “Set Expectations - By AI”, which re-evaluates against your decision context.';
       if (data.mode === 'detail') {
         const fellBack = importTier === 'precise' && data.ai_provider !== 'emergent_precise';
         const grouped = data.structure === 'hierarchical'
@@ -96,18 +115,21 @@ export default function Step2() {
           : '';
         showAlert(
           'Imported from URL',
-          `Detected a single-listing page — “${data.main_item}”. Added ${data.factors_added} factor${data.factors_added === 1 ? '' : 's'}${grouped} with smart operators & Expected values, plus ${data.options_added} option${data.options_added === 1 ? '' : 's'} (the listing + similar items). Review below, then continue — Options (Step 6) and actuals (Step 7) are pre-filled.${fellBack ? '\n\nNote: Precise AI was unavailable (check the Universal Key balance) — the Fast AI engine was used instead, billed at the normal rate.' : ''}${warn}`,
+          `Detected a single-listing page — “${data.main_item}”. Added ${data.factors_added} factor${data.factors_added === 1 ? '' : 's'}${grouped} with smart operators & Expected values, plus ${data.options_added} option${data.options_added === 1 ? '' : 's'} (the listing + similar items). Review below, then continue — Options (Step 6) and actuals (Step 7) are pre-filled.${fellBack ? '\n\nNote: Precise AI was unavailable (check the Universal Key balance) — the Fast AI engine was used instead, billed at the normal rate.' : ''}${expectedNote}${warn}`,
         );
       } else {
         showAlert(
           'Imported from URL',
-          `Added ${data.factors_added} factor${data.factors_added === 1 ? '' : 's'} and ${data.options_added} option${data.options_added === 1 ? '' : 's'} from ${data.item_count} items. Review the factors & Expected values below, then continue — Options (Step 6) and actuals (Step 7) are pre-filled.${warn}`,
+          `Added ${data.factors_added} factor${data.factors_added === 1 ? '' : 's'} and ${data.options_added} option${data.options_added === 1 ? '' : 's'} from ${data.item_count} items. Review the factors & Expected values below, then continue — Options (Step 6) and actuals (Step 7) are pre-filled.${expectedNote}${warn}`,
         );
       }
     } catch (e: any) {
-      setImporting(false);
       const msg = e?.response?.data?.detail || 'Could not import from this URL. Try a comparison page or a single item/listing detail page.';
       showAlert('Import failed', typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      clearInterval(poll);
+      setImportProgress(null);
+      setImporting(false);
     }
   };
 
@@ -129,9 +151,13 @@ export default function Step2() {
         `/url-analyze/decision/${decision.id}/set-expectations`,
         { ai_tier: 'precise' }, { timeout: 120000 });
       await fetchDecision();
+      const changed = data.changed ?? data.updated;
+      const confirmed = data.confirmed ?? 0;
       showAlert(
         'Expectations set by AI',
-        `Expected values & operators proposed for ${data.updated} of ${data.factor_count} factors, based on your decision context and the option values. Review and override any of them below.`,
+        changed === 0
+          ? `AI reviewed all ${data.factor_count} factors and CONFIRMED the existing Expected values — the import's page-based suggestions already match what AI recommends for your decision context.`
+          : `AI reviewed ${data.factor_count} factors: CHANGED ${changed} expectation${changed === 1 ? '' : 's'} and confirmed ${confirmed} existing value${confirmed === 1 ? '' : 's'}, based on your decision context and the option values. Review and override any of them below.`,
       );
     } catch (e: any) {
       const msg = e?.response?.data?.detail || 'Could not set expectations. Try again.';
@@ -570,7 +596,7 @@ export default function Step2() {
       </TouchableOpacity>
       <Text style={iurl.expectHint}>
         {canSetExpectations
-          ? 'AI proposes Expected values & operators for ALL factors from your context and the option values — you can override any of them.'
+          ? 'Imports pre-fill Expected values from the page (best value of the set). This button RE-EVALUATES them with AI using your decision context & the option values — results may match if the page suggestions were already ideal. You can override any value.'
           : 'Enabled after a successful import fills factors (Step 2), options (Step 6) and option values (Step 7).'}
       </Text>
 
@@ -716,6 +742,34 @@ export default function Step2() {
         onCancel={() => { if (!importing) setImportConsentOpen(false); }}
         onConfirm={runImport}
       />
+
+      {/* ── Live import progress — real backend stages + % + elapsed time ── */}
+      <Modal visible={!!importProgress} transparent animationType="fade">
+        <View style={iurl.dlgOverlay}>
+          <View style={iurl.dlg} testID="import-progress-modal">
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <ActivityIndicator size="small" color="#2563EB" />
+              <Text style={iurl.dlgTitle}>Importing from URL…</Text>
+            </View>
+            <Text testID="import-progress-stage" style={{ fontSize: 13.5, color: '#0F172A', fontWeight: '600', marginBottom: 10 }}>
+              {importProgress?.label}
+            </Text>
+            <View style={{ height: 8, borderRadius: 4, backgroundColor: '#E2E8F0', overflow: 'hidden' }}>
+              <View style={{
+                height: 8, borderRadius: 4, backgroundColor: '#2563EB',
+                width: `${Math.min(100, importProgress?.pct || 0)}%`,
+              }} />
+            </View>
+            <Text testID="import-progress-pct" style={{ fontSize: 12, color: '#475569', fontWeight: '700', marginTop: 6 }}>
+              {Math.min(100, importProgress?.pct || 0)}% · {importProgress?.elapsed || 0}s elapsed
+            </Text>
+            <Text style={{ fontSize: 11.5, color: '#64748B', marginTop: 10, lineHeight: 16 }}>
+              Pages that need AI extraction (single listings, JS-rendered pages) can take 1–2 minutes.
+              Keep this screen open — we&apos;ll fill the factors, options and assessment matrix automatically.
+            </Text>
+          </View>
+        </View>
+      </Modal>
 
       {topLevelFactors.map((factor) => {
         const subs = getSubFactors(factor.id);

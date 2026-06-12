@@ -14,8 +14,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
+import { OrgTypesManager } from '../../src/components/admin/OrgTypesManager';
 
 const TYPES = [
+  { key: 'org_type', label: 'Org Types' },
   { key: 'religion', label: 'Religions' },
   { key: 'caste', label: 'Castes' },
   { key: 'language', label: 'Languages' },
@@ -38,6 +40,7 @@ export default function AdminMastersScreen() {
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
+    if (type === 'org_type') return; // handled by OrgTypesManager
     setLoading(true);
     try {
       const res = await api.get(`/masters/${type}?include_inactive=true&limit=2000`);
@@ -92,9 +95,11 @@ export default function AdminMastersScreen() {
           <Ionicons name="arrow-back" size={22} color="#FFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Masters</Text>
-        <TouchableOpacity style={styles.addHdrBtn} onPress={openAdd}>
-          <Ionicons name="add" size={22} color="#FFF" />
-        </TouchableOpacity>
+        {type !== 'org_type' && (
+          <TouchableOpacity style={styles.addHdrBtn} onPress={openAdd}>
+            <Ionicons name="add" size={22} color="#FFF" />
+          </TouchableOpacity>
+        )}
       </LinearGradient>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typeBar} contentContainerStyle={{ paddingHorizontal: 12, gap: 8 }}>
@@ -105,36 +110,42 @@ export default function AdminMastersScreen() {
         ))}
       </ScrollView>
 
-      <View style={styles.searchRow}>
-        <Ionicons name="search" size={16} color="#94A3B8" />
-        <TextInput style={styles.searchInput} placeholder={`Search ${type}…`} value={search} onChangeText={setSearch} />
-        <Text style={styles.countText}>{filtered.length}</Text>
-      </View>
-
-      {loading ? (
-        <ActivityIndicator style={{ marginTop: 40 }} color="#6366F1" />
+      {type === 'org_type' ? (
+        <OrgTypesManager />
       ) : (
-        <FlatList
-          data={filtered}
-          keyExtractor={(i) => i.master_id}
-          contentContainerStyle={{ padding: 12, paddingBottom: 40 }}
-          renderItem={({ item }) => (
-            <View style={styles.row}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.rowText, !item.active && { color: '#94A3B8', textDecorationLine: 'line-through' }]}>{item.value}</Text>
-                {!!item.parent && <Text style={styles.rowSub}>{item.parent}{item.is_seed ? ' · seed' : ''}</Text>}
-                {!item.parent && item.is_seed && <Text style={styles.rowSub}>seed</Text>}
-              </View>
-              <TouchableOpacity style={styles.iconBtn} onPress={() => openEdit(item)}>
-                <Ionicons name="pencil" size={18} color="#6366F1" />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.iconBtn} onPress={() => remove(item)}>
-                <Ionicons name="trash" size={18} color="#EF4444" />
-              </TouchableOpacity>
-            </View>
+        <>
+          <View style={styles.searchRow}>
+            <Ionicons name="search" size={16} color="#94A3B8" />
+            <TextInput style={styles.searchInput} placeholder={`Search ${type}…`} value={search} onChangeText={setSearch} />
+            <Text style={styles.countText}>{filtered.length}</Text>
+          </View>
+
+          {loading ? (
+            <ActivityIndicator style={{ marginTop: 40 }} color="#6366F1" />
+          ) : (
+            <FlatList
+              data={filtered}
+              keyExtractor={(i) => i.master_id}
+              contentContainerStyle={{ padding: 12, paddingBottom: 40 }}
+              renderItem={({ item }) => (
+                <View style={styles.row}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.rowText, !item.active && { color: '#94A3B8', textDecorationLine: 'line-through' }]}>{item.value}</Text>
+                    {!!item.parent && <Text style={styles.rowSub}>{item.parent}{item.is_seed ? ' · seed' : ''}</Text>}
+                    {!item.parent && item.is_seed && <Text style={styles.rowSub}>seed</Text>}
+                  </View>
+                  <TouchableOpacity style={styles.iconBtn} onPress={() => openEdit(item)}>
+                    <Ionicons name="pencil" size={18} color="#6366F1" />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.iconBtn} onPress={() => remove(item)}>
+                    <Ionicons name="trash" size={18} color="#EF4444" />
+                  </TouchableOpacity>
+                </View>
+              )}
+              ListEmptyComponent={<Text style={styles.empty}>No items</Text>}
+            />
           )}
-          ListEmptyComponent={<Text style={styles.empty}>No items</Text>}
-        />
+        </>
       )}
 
       <Modal visible={editor.open} transparent animationType="fade" onRequestClose={() => setEditor({ ...editor, open: false })}>

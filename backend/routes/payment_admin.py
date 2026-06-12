@@ -48,22 +48,29 @@ router = APIRouter()
 # vocabulary stays identical to the 6 Decision-Flow cards. Admins can add more
 # at runtime via /api/admin/org-types.
 DEFAULT_ORG_TYPES: List[Dict[str, Any]] = [
-    {"key": "INDIVIDUAL",    "label": "Individual",              "icon": "person",        "color": "#6366F1", "is_org": False, "active": True, "sort_order": 1},
-    {"key": "BUSINESS_ORG",  "label": "Business Organization",   "icon": "business",      "color": "#0EA5E9", "is_org": True,  "active": True, "sort_order": 2},
-    {"key": "ACADEMIC_ORG",  "label": "Academic Organization",   "icon": "school",        "color": "#F59E0B", "is_org": True,  "active": True, "sort_order": 3},
-    {"key": "NONPROFIT_ORG", "label": "Non-profit Organization", "icon": "heart",         "color": "#10B981", "is_org": True,  "active": True, "sort_order": 4},
-    {"key": "ASSOCIATION",   "label": "Association",             "icon": "people-circle", "color": "#F43F5E", "is_org": True,  "active": True, "sort_order": 5},
-    {"key": "GOVERNMENT",    "label": "Government",              "icon": "globe",         "color": "#8B5CF6", "is_org": True,  "active": True, "sort_order": 6},
+    {"key": "INDIVIDUAL",    "label": "Individual",              "icon": "person",        "color": "#6366F1", "is_org": False, "active": True, "sort_order": 1, "description": "Self / personal"},
+    {"key": "FAMILY",        "label": "Family",                  "icon": "people",        "color": "#EC4899", "is_org": False, "active": True, "sort_order": 2, "description": "Family / household"},
+    {"key": "BUSINESS_ORG",  "label": "Business Organization",   "icon": "business",      "color": "#0EA5E9", "is_org": True,  "active": True, "sort_order": 3, "description": "Company / startup / SMB"},
+    {"key": "ACADEMIC_ORG",  "label": "Academic Organization",   "icon": "school",        "color": "#F59E0B", "is_org": True,  "active": True, "sort_order": 4, "description": "School / college / research"},
+    {"key": "NONPROFIT_ORG", "label": "Non-profit Organization", "icon": "heart",         "color": "#10B981", "is_org": True,  "active": True, "sort_order": 5, "description": "NGO / charity / foundation"},
+    {"key": "ASSOCIATION",   "label": "Association",             "icon": "people-circle", "color": "#F43F5E", "is_org": True,  "active": True, "sort_order": 6, "description": "Society / club / housing"},
+    {"key": "GOVERNMENT",    "label": "Government",              "icon": "globe",         "color": "#8B5CF6", "is_org": True,  "active": True, "sort_order": 7, "description": "Public / policy / civic"},
 ]
 
 
 async def _ensure_org_types_seed() -> None:
-    """Idempotent seeder — only inserts a key if it doesn't already exist."""
+    """Idempotent seeder — only inserts a key if it doesn't already exist.
+    Also backfills `description` (and the seed `sort_order`) on legacy rows
+    that pre-date those fields, without touching admin-edited values."""
     for item in DEFAULT_ORG_TYPES:
         await db.org_types_master.update_one(
             {"key": item["key"]},
             {"$setOnInsert": {**item, "created_at": datetime.now(timezone.utc).isoformat(), "is_system": True}},
             upsert=True,
+        )
+        await db.org_types_master.update_one(
+            {"key": item["key"], "description": {"$exists": False}},
+            {"$set": {"description": item["description"], "sort_order": item["sort_order"]}},
         )
 
 
@@ -106,6 +113,7 @@ async def create_org_type(request: Request, user: dict = Depends(get_current_use
         "label": body.get("label") or key.title().replace("_", " "),
         "icon": body.get("icon") or "ellipse",
         "color": body.get("color") or "#64748B",
+        "description": (body.get("description") or "").strip(),
         "is_org": bool(body.get("is_org", True)),
         "active": True,
         "sort_order": int(body.get("sort_order") or 99),
@@ -122,7 +130,7 @@ async def create_org_type(request: Request, user: dict = Depends(get_current_use
 async def update_org_type(key: str, request: Request, user: dict = Depends(get_current_user)):
     _require_admin(user)
     body = await request.json()
-    allowed = ["label", "icon", "color", "is_org", "active", "sort_order"]
+    allowed = ["label", "icon", "color", "description", "is_org", "active", "sort_order"]
     update = {k: body[k] for k in allowed if k in body}
     if not update:
         raise HTTPException(status_code=400, detail="No mutable fields supplied")

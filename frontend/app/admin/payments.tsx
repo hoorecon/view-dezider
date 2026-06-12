@@ -33,7 +33,7 @@ type Coupon = {
   applicable_flows?: string[]|null;
   created_at?: string;
 };
-type OrgType = { key:string; label:string; icon?:string; color?:string; is_org?:boolean; active?:boolean; sort_order?:number; is_system?:boolean };
+type OrgType = { key:string; label:string; icon?:string; color?:string; description?:string; is_org?:boolean; active?:boolean; sort_order?:number; is_system?:boolean };
 
 const FLOW_OPTS = ['DECISION_FLOW','SUBSCRIPTION','TOPUP','SKU'];
 
@@ -496,6 +496,9 @@ export default function AdminPaymentsScreen() {
 
                 <Text style={s.fieldLabel}>Label *</Text>
                 <TextInput style={s.input} value={editingOrgType.label} onChangeText={t => setEditingOrgType({ ...editingOrgType, label: t })} placeholder="Startup" />
+
+                <Text style={s.fieldLabel}>Description (shown under the Decision-Flow card)</Text>
+                <TextInput style={s.input} value={editingOrgType.description || ''} onChangeText={t => setEditingOrgType({ ...editingOrgType, description: t })} placeholder="e.g. Family / household" />
 
                 <View style={{ flexDirection: 'row', gap: 12 }}>
                   <View style={{ flex: 1 }}>

@@ -10,6 +10,7 @@ import { useRouter } from 'expo-router';
 import api from '../../src/utils/api';
 import { useAuthStore } from '../../src/store/authStore';
 import { safeBack, goHome } from '../../src/utils/navigation';
+import { useOrgTypes } from '../../src/hooks/useOrgTypes';
 
 const COLORS = {
   bg: '#0F172A', surface: '#1E293B', surfaceLight: '#334155',
@@ -26,15 +27,8 @@ const TYPES = [
   { id: 'PERSON_CONTACT', icon: 'person', label: 'Person', color: '#EC4899' },
 ];
 
-// Taxonomy v2 — keep in sync with backend `decision_intake.py::ORG_TYPES`.
-const ORG_TYPES_LIST = [
-  { id: 'INDIVIDUAL', label: 'Individual' },
-  { id: 'BUSINESS_ORG', label: 'Business' },
-  { id: 'ACADEMIC_ORG', label: 'Academic' },
-  { id: 'NONPROFIT_ORG', label: 'Nonprofit' },
-  { id: 'ASSOCIATION', label: 'Association' },
-  { id: 'GOVERNMENT', label: 'Government' },
-];
+// Taxonomy v2 — Org Types are DYNAMIC (Admin → Masters → Org Types), fetched
+// via useOrgTypes(). Keys match backend `db.org_types_master`.
 
 const DECISION_TYPES_LIST = [
   { id: 'problem', label: 'Problem', color: '#EF4444' },
@@ -57,6 +51,7 @@ export default function AddSolutionScreen() {
   const [subAreas, setSubAreas] = useState<any[]>([]);
   // Taxonomy v2 (Batch 1D/1E) — admin-targeting fields. Allow multi-select.
   const [orgTypes, setOrgTypes] = useState<string[]>([]);
+  const { orgTypes: orgTypeOptions } = useOrgTypes();
   const [decisionTypes, setDecisionTypes] = useState<string[]>([]);
   const [scenarios, setScenarios] = useState<any[]>([]);
   const [scenarioIds, setScenarioIds] = useState<string[]>([]);
@@ -269,13 +264,14 @@ export default function AddSolutionScreen() {
 
         <Text style={styles.inputLabel}>Org Types</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
-          {ORG_TYPES_LIST.map(o => {
-            const active = orgTypes.includes(o.id);
+          {orgTypeOptions.map(o => {
+            const active = orgTypes.includes(o.key);
             return (
               <TouchableOpacity
-                key={o.id}
+                key={o.key}
+                testID={`solution-org-type-${o.key}`}
                 style={[styles.chip, active && styles.chipActive]}
-                onPress={() => toggleArrayValue(orgTypes, setOrgTypes, o.id)}
+                onPress={() => toggleArrayValue(orgTypes, setOrgTypes, o.key)}
                 accessibilityLabel={`Toggle org type ${o.label}`}
                 accessibilityState={{ selected: active }}
               >
