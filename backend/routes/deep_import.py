@@ -45,7 +45,9 @@ ELIGIBILITY_TYPES = {"own", "partner", "free_public", "custom"}
 DISCLAIMER_VERSION = "2026-06-08.v1"
 MAX_PAGES_CAP = 8
 PAGE_TEXT_LIMIT = 12000          # stored per crawled option page
-CONSOLIDATE_TEXT_LIMIT = 6000    # per-option text inside the consolidation prompt
+CONSOLIDATE_TEXT_LIMIT = 4500    # per-option text inside the consolidation prompt (cost-tuned)
+PICK_TEXT_LIMIT = 3000           # page-text excerpt inside link/hub-pick prompts (cost-tuned)
+CONSTRAINT_TEXT_LIMIT = 2500     # per-option excerpt inside the constraint-gate prompt
 
 
 def _now():
@@ -175,7 +177,7 @@ def _intent_clause(intent: Optional[str]) -> str:
             "listing page is INVALID and must NOT be returned.")
 
 
-def _rank_links(links: List[Dict[str, str]], context: str, cap: int = 150) -> List[Dict[str, str]]:
+def _rank_links(links: List[Dict[str, str]], context: str, cap: int = 60) -> List[Dict[str, str]]:
     """Order links by decision-context keyword overlap (text + url) so that on
     link-heavy portals (1000+ anchors) the relevant ones survive the prompt cap
     instead of whatever happened to appear first in the HTML. Transaction
@@ -226,6 +228,7 @@ LINKS_SYSTEM = """You select the OPTION/DETAIL sub-pages a decision-maker should
 Given the user's decision context, the base page text and a numbered list of same-domain links, reply ONLY compact JSON:
 {"options":[{"name":"<short display name of the option>","url":"<absolute link url>"}]}
 Rules: pick at most {max_pages} links. A valid option link leads to the DETAIL page of exactly ONE specific item (one property, one product, one plan) relevant to the user's context — typically a link whose text/url names a single concrete item.
+First derive the HARD CONSTRAINTS from the decision context — transaction type (rent vs buy), budget caps ("under ₹30k"), size/count requirements ("2 BHK", "16GB RAM"), required attributes ("furnished", "automatic") — and NEVER pick an item whose name/url violates any of them.
 STRICTLY EXCLUDE: listing/category/search/hub pages that list MANY items (e.g. "Flats for rent in <city>", "Properties in <area>"), navigation, login, ads, news, help and policy links.
 Prefer the items most relevant to the context. If the page only links to listing/hub pages and no single-item detail pages qualify, reply {"options":[]}."""
 
@@ -236,6 +239,16 @@ Rules: return at most 3 urls, ordered most → least relevant to the context.
 1. STRONGLY prefer urls picked from the provided LINKS list — choose the most SPECIFIC listing page matching the context (right city/locality/category/budget filter).
 2. Only if no listed link matches, you MAY construct ONE url by swapping the locality/category segment of a similar listed link's pattern. Constructed urls must stay on the same domain.
 3. EXCLUDE login, help, news, blog, policy and generic navigation pages. If nothing plausible exists, reply {"hubs":[]}."""
+
+CONSTRAINT_SYSTEM = """You are a strict compliance checker for a decision-support crawler — domain-agnostic (property, vehicles, gadgets, SaaS plans, anything).
+Step 1 — derive the user's HARD CONSTRAINTS from the decision context: transaction type (rent vs buy), budget caps ("under ₹30k", "below $1200"), size/count requirements ("2 BHK", "16GB RAM", "7 seater"), required attributes ("furnished", "automatic", "5G") and location requirements. Soft preferences ("good ventilation", "preferably near metro") are NOT hard constraints.
+Step 2 — judge EVERY option page excerpt against EVERY hard constraint. Reply ONLY compact JSON:
+{"constraints":["<short constraint>", ...],
+ "options":[{"name":"<exact option name>","verdict":"pass|fail|unknown","violated":"<violated constraint + page evidence; empty when pass/unknown>"}]}
+Rules:
+- "fail" ONLY on clear page evidence of a VIOLATION (e.g. rent 35,000 against a ≤30,000 cap; 3 BHK when 2 BHK was required; a SALE page when rent was requested).
+- "unknown" when the page lacks the information — unknown is NOT a violation.
+- If the context contains no hard constraints, reply {"constraints":[],"options":[]}."""
 
 CONSOLIDATE_SYSTEM = """You consolidate factors for a decision comparison from MULTIPLE crawled option pages.
 Given the user's decision context and one text block per option page, reply ONLY compact JSON:
@@ -344,7 +357,51 @@ async def _pick_hubs(user_id: str, context: str, base_url: str,
         if (p.scheme in ("http", "https") and p.netloc.replace("www.", "") == host
                 and u.rstrip("/") != base_url.rstrip("/") and u not in hubs):
             hubs.append(u)
-    return hubs
+    return _drop_contradicting(hubs, intent)
+
+
+async def _constraint_check(user_id: str, context: str, page_texts: Dict[str, str],
+                            tel: Optional[Dict[str, Any]] = None):
+    """Generic hard-constraint gate (any domain): one cheap fast-tier AI call
+    derives the context's hard constraints (budget caps, counts like '2 BHK',
+    required attributes…) and rejects options whose crawled pages give CLEAR
+    evidence of a violation. Fail-open: any error keeps all options.
+    Returns (kept_page_texts, rejected[{name, violated}], constraints[])."""
+    blocks = "\n\n".join(f"=== OPTION: {n} ===\n{t[:CONSTRAINT_TEXT_LIMIT]}"
+                         for n, t in page_texts.items())
+    prompt = f"DECISION CONTEXT: {context}\n\n{blocks}"
+    meta: Dict[str, Any] = {}
+    started = _now()
+    try:
+        out = await metered_chat(
+            user_id, system_message=CONSTRAINT_SYSTEM, prompt=prompt,
+            feature="deep_import_constraints", session_prefix="deepconstr",
+            tier="fast", meta=meta)
+    except ai_wallet.InsufficientCredits:
+        raise
+    except Exception as e:  # noqa: BLE001 — the gate must never sink the import
+        logger.warning("constraint check failed (fail-open): %s", str(e)[:120])
+        return page_texts, [], []
+    if tel is not None:
+        url_telemetry.add_ai_call(tel, stage="constraint_check",
+                                  system_prompt=CONSTRAINT_SYSTEM, prompt_text=prompt,
+                                  raw_response=out, meta=meta, started=started)
+    data = _parse_json(out) or {}
+    constraints = [str(c).strip()[:120] for c in (data.get("constraints") or [])][:10]
+    verdicts: Dict[str, tuple] = {}
+    for o in data.get("options") or []:
+        if isinstance(o, dict) and o.get("name"):
+            verdicts[str(o["name"]).strip()] = (
+                str(o.get("verdict") or "").strip().lower(),
+                str(o.get("violated") or "").strip()[:160])
+    kept, rejected = {}, []
+    for name, txt in page_texts.items():
+        verdict, violated = verdicts.get(name, ("unknown", ""))
+        if verdict == "fail" and violated:  # evidence required — never guess
+            rejected.append({"name": name, "violated": violated})
+        else:
+            kept[name] = txt
+    return kept, rejected, constraints
 
 
 async def _set_job(job_id: str, **fields):
@@ -374,7 +431,7 @@ async def _discover(job_id: str, user_id: str, base_url: str, context: str,
 
         await _prog(job_id, 8, "Fetching the base page…")
         html, links = await _page_links(base_url, user_id)
-        base_text = page_text(html, limit=8000)
+        base_text = page_text(html, limit=PICK_TEXT_LIMIT)
         if not links:
             await _fail(job_id, tel,
                         "No crawlable same-site links found on the base page.")
@@ -407,7 +464,7 @@ async def _discover(job_id: str, user_id: str, base_url: str, context: str,
                 if not hub_links:
                     continue
                 options = await _pick_detail_links(
-                    user_id, context, max_pages, page_text(hub_html, limit=8000),
+                    user_id, context, max_pages, page_text(hub_html, limit=PICK_TEXT_LIMIT),
                     _rank_links(hub_links, context), tel=tel,
                     stage=f"links_pick@hub{hi + 1}", tier=pick_tier)
                 if len(options) >= 2:
@@ -458,6 +515,25 @@ async def _discover(job_id: str, user_id: str, base_url: str, context: str,
             await _fail(job_id, tel, msg)
             return
 
+        # ── Generic hard-constraint gate (any domain) — one cheap AI call
+        # derives the context's constraints (budget caps, counts, attributes)
+        # and rejects violating options BEFORE the expensive consolidation.
+        constraint_note = None
+        await _prog(job_id, 76, "Checking options against your hard constraints…")
+        page_texts, rejected, _constraints = await _constraint_check(
+            user_id, context, page_texts, tel)
+        if rejected:
+            rej_txt = "; ".join(f"{r['name']} — {r['violated']}" for r in rejected[:4])
+            constraint_note = (f"{len(rejected)} option(s) auto-rejected for violating your "
+                               f"hard constraints: {rej_txt}")
+            options = [o for o in options if o["name"] in page_texts]
+        if len(page_texts) < 2:
+            await _fail(job_id, tel,
+                        "After enforcing your hard constraints, fewer than 2 valid options "
+                        f"remain. {constraint_note or ''} Widen the constraint or try a "
+                        "different listing URL.")
+            return
+
         await _prog(job_id, 80, "AI is consolidating factors across the crawled pages…")
         blocks = "\n\n".join(
             f"=== OPTION: {name} ===\n{txt[:CONSOLIDATE_TEXT_LIMIT]}"
@@ -500,7 +576,8 @@ async def _discover(job_id: str, user_id: str, base_url: str, context: str,
         await _set_job(job_id, status="factors_ready",
                        progress={"pct": 100, "label": "Factors ready for your review."},
                        options=[{"name": n} for n in page_texts],
-                       factors=factors, page_texts=page_texts)
+                       factors=factors, page_texts=page_texts,
+                       constraint_note=constraint_note)
         # Discovery SUCCESS run — symmetric with the error runs above (the
         # finalize step records its own run for the actual merge).
         await url_telemetry.record_run(tel, status="success", response={

@@ -35,6 +35,7 @@ const PRIORITIES = [
 export const DeepImport: React.FC<Props> = ({ decisionId, onMerged }) => {
   const [open, setOpen] = useState(false);
   const [stage, setStage] = useState<'setup' | 'progress' | 'review' | 'merging'>('setup');
+  const [constraintNote, setConstraintNote] = useState<string | null>(null);
   const [baseUrl, setBaseUrl] = useState('');
   const [context, setContext] = useState('');
   const [maxPages, setMaxPages] = useState(5);
@@ -72,6 +73,7 @@ export const DeepImport: React.FC<Props> = ({ decisionId, onMerged }) => {
           if (job.status === 'factors_ready') {
             stopPoll();
             setOptionCount((job.options || []).length);
+            setConstraintNote(job.constraint_note || null);
             setRows((job.factors || []).map((f: JobFactor) => ({ ...f, include: true, weight: 50 })));
             setStage('review');
           } else if (job.status === 'error') {
@@ -209,6 +211,12 @@ export const DeepImport: React.FC<Props> = ({ decisionId, onMerged }) => {
                   Found {rows.length} factors across {optionCount} crawled option pages. Untick what you
                   don&apos;t need and set a priority — values are imported ONLY for approved factors.
                 </Text>
+                {!!constraintNote && (
+                  <View style={st.constraintNote} testID="deep-import-constraint-note">
+                    <Ionicons name="shield-checkmark" size={13} color="#B45309" />
+                    <Text style={st.constraintNoteTxt}>{constraintNote}</Text>
+                  </View>
+                )}
                 <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
                   {rows.map((r, i) => (
                     <View key={r.name} style={st.factorRow} testID={`deep-import-factor-row-${i}`}>
@@ -277,6 +285,8 @@ const st = StyleSheet.create({
   card: { width: '100%', maxWidth: 540, backgroundColor: '#FFF', borderRadius: 16, padding: 20 },
   title: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
   hint: { fontSize: 12, color: '#64748B', marginTop: 6, lineHeight: 17 },
+  constraintNote: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FDE68A', borderRadius: 8, padding: 9, marginTop: 8 },
+  constraintNoteTxt: { flex: 1, fontSize: 11.5, color: '#92400E', fontWeight: '600', lineHeight: 16 },
   fieldLabel: { fontSize: 12, fontWeight: '700', color: '#334155', marginTop: 12, marginBottom: 5 },
   input: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: '#0F172A' },
   pageChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0' },

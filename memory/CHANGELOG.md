@@ -1068,3 +1068,29 @@ in Mogappair West" with Monthly Rent (25-35k)/Deposit/Maintenance/Total Monthly 
 22 factors, 156s, factors_ready. TESTS: tests/test_iter112_intent_guard.py (5) — battery 62/62.
 NOTE: dev wallet topped up +2000 cr (ledger feature=dev_test_topup) for E2E. Prod jelcos.ai
 needs a DEPLOY to receive iterations 109-112.
+
+## Iteration 113 — Generic hard-constraint gate (any domain) + ~50% deep-import cost cut — 12 Jun 2026
+USER ASK: extend the rent/buy guard to a GENERIC constraint extractor (budget caps "under ₹30k",
+counts "2 BHK", attributes "furnished") enforced in ANY context, auto-rejecting violating options
+before consolidation + deliver the ~50% cost optimization.
+IMPLEMENTED (routes/deep_import.py):
+ A) CONSTRAINT_SYSTEM + _constraint_check(): ONE fast-tier AI call after page crawl derives the
+    context's hard constraints (domain-agnostic) and verdicts each option page pass|fail|unknown.
+    - "fail" requires page EVIDENCE + a violated reason (never guess); "unknown" never rejects.
+    - FAIL-OPEN: AI/parse errors keep all options. InsufficientCredits propagates.
+    - Rejected options removed before consolidate; job gets constraint_note ("N option(s)
+      auto-rejected … — <violation>"); <2 valid → honest failure naming the constraint.
+    - Traced as stage=constraint_check (engine/credits visible in Admin AI trace).
+    - LINKS_SYSTEM also derives generic hard constraints at link-pick time.
+ B) COST KNOBS: _rank_links cap 150→60; PICK_TEXT_LIMIT 8000→3000 (base+hub pick prompts);
+    CONSOLIDATE_TEXT_LIMIT 6000→4500; CONSTRAINT_TEXT_LIMIT 2500/option.
+ C) Frontend DeepImport.tsx: amber shield banner (testID deep-import-constraint-note) in the
+    factor-review stage shows the rejection note.
+VERIFIED LIVE (nobroker homepage, "…Rent in Chennai Mugappair area under ₹30000 per month"):
+gate auto-rejected "Bbcl Vajra — under ₹30,000: Rent - ₹35,000"; kept 15k+25k rent flats; 20
+factors; constraint_note populated. COST: 746.3 cr → 330.3 cr per 3-page run (−56%, including
+the new gate call): links_pick 9097→3309 tok, consolidate 6798→3724 tok.
+TESTS: tests/test_iter113_constraint_gate.py (5) — battery 67/67 PASS. Bundle smoke OK.
+GOTCHA: search_replace edits occasionally do not persist when many edits run in one batch —
+ALWAYS re-grep critical lines after batch edits (lost edits found twice: admin copy iter110,
+hub filter iter112).
