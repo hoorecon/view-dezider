@@ -45,6 +45,7 @@ const QUICK_ACTIONS: QuickAction[] = [
   { key: 'quota-editor',    label: 'Edit Report Allocation', description: 'Correct a user\'s remaining report quota · OTP-authorized · audited', icon: 'create', color: '#059669', href: '/admin/quota-editor' },
   { key: 'ai-wallet-cfg',   label: 'AI Wallet Config',    description: 'Markup % · Route split (markup_routed_pct) · seeds · FX · live ₹ break-even preview', icon: 'wallet', color: '#7C3AED', href: '/admin/ai-wallet-config' },
   { key: 'recon',           label: 'Revenue Recon',       description: 'Razorpay ⟷ AI-Wallet ⟷ Google Cloud · per-txn zero-loss tally', icon: 'analytics', color: '#0EA5E9', href: '/admin/recon' },
+  { key: 'import-analytics', label: 'Import-URL Intelligence', description: 'Per-page-type accuracy, hints, prompts & 👍/👎 verdicts · learning loop', icon: 'pulse', color: '#7C3AED', href: '/admin/import-analytics' },
 ];
 
 export default function AdminHomeScreen() {

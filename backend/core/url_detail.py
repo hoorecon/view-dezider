@@ -124,7 +124,40 @@ RULES
    • comparison pages: EVERY genuinely listed/compared item, in page order (skip pure ad inserts when identifiable). Fill each item's value for every factor: prefer values shown on the page; for OBJECTIVE specs of a specific well-known product (its brand, fuel type, body type, transmission, seating capacity, …) you may fill from reliable general knowledge when the page omits them; truly unknown values stay null in BOTH maps.
    Score each KNOWN value 0-100 for how well it satisfies expected_value+operator (better than expected → 100; ~10% worse → ≈80).
 8. ZERO-TOLERANCE MAPPING: every key inside "values" and "scores" MUST be exactly "<group name>::<factor name>" matching a declared group+factor. A value MUST stay attached to the item it belongs to on the page — never shift values between items or factors.
-9. Max {max_factors} factors total, max 12 items.{user_facts}"""
+9. Max {max_factors} factors total, max 12 items.{page_guidance}{user_facts}"""
+
+
+# ── Per-page-type prompt specialisation (selected by the LLM classifier) ─────
+PAGE_TYPE_GUIDANCE = {
+    "comparison_matrix": """
+
+PAGE-TYPE GUIDANCE — this page was classified as a COMPARISON MATRIX (side-by-side spec compare):
+- page_type MUST be "comparison". Items = the compared items (usually COLUMNS, named in the title/header like "A vs B vs C").
+- The page's category sections (BODY, DISPLAY, BATTERY, …) are SACRED page-defined groups — copy them exactly, source="page"; their rows are the factors.
+- Extract EVERY spec row; values map strictly column-to-item (zero tolerance).""",
+    "listing_filter": """
+
+PAGE-TYPE GUIDANCE — this page was classified as a LISTING/FILTER page (category list with filter facets):
+- page_type MUST be "comparison". FACTORS = the page's own filter facets / section labels (e.g. Brand, Budget/Price, Body Type, Fuel Type, Transmission, Seating Capacity, Locality, Rating) PLUS attributes shown on the listing cards. Use the page's facet wording as factor names.
+- OPTIONS = the genuinely listed items in page order; SKIP sponsored/ad inserts when identifiable.
+- For OBJECTIVE specs of specific well-known products that the page omits per-item (fuel type, body type, transmission, seats…), fill from reliable general knowledge; truly unknown → null.""",
+    "search_grid": """
+
+PAGE-TYPE GUIDANCE — this page was classified as a SEARCH-RESULTS GRID (e-commerce cards):
+- page_type MUST be "comparison". OPTIONS = the result cards in page order (max 12, skip "Sponsored" cards).
+- FACTORS = ONLY card-visible attributes: Price, Rating, Review count, Brand, Discount, Delivery promise. Do NOT invent hidden specs that the cards don't show.""",
+    "detail": """
+
+PAGE-TYPE GUIDANCE — this page was classified as a single-item DETAIL page:
+- page_type MUST be "detail". Be EXHAUSTIVE on the MAIN item's specs (15-25 factors typical).
+- Main item = first option, every value filled, every score 100; "Similar/Related items" rail = extra options with partial values.""",
+    "article_roundup": """
+
+PAGE-TYPE GUIDANCE — this page was classified as an editorial ARTICLE/ROUND-UP ("Top 10 …", "Best … of the year"):
+- page_type MUST be "comparison". OPTIONS = the products/services the ARTICLE ranks or reviews, in the author's order.
+- FACTORS = the attributes the AUTHOR uses to compare them (price, key specs, standout pros/cons themes) — and when the article gives a rank, verdict or score, include it as a factor (e.g. "Author Rank" numeric, lower is better).
+- Use the author's STATED values/claims; ignore unrelated promo blocks and inline ads.""",
+}
 
 
 def _parse_json_obj(out: str) -> Optional[Dict[str, Any]]:
@@ -440,11 +473,16 @@ def _user_facts_block(hints: Optional[Dict[str, Any]]) -> str:
 async def ai_extract_detail(user_id: str, html: str, *, tier: str = "fast",
                             max_factors: int = 24, group_threshold: int = 15,
                             hints: Optional[Dict[str, Any]] = None,
+                            page_type: Optional[str] = None,
+                            capture: Optional[Dict[str, Any]] = None,
                             ) -> Optional[Dict[str, Any]]:
-    """Metered LLM extraction → normalised detail structure (flat or hier),
-    or None when the page isn't a single-item detail page / output unusable.
-    When `hints` are given and the first attempt mismatches them, ONE corrective
-    retry is made and the better attempt wins (self-healing).
+    """Metered LLM extraction → normalised structure (flat or hier), or None
+    when output is unusable. `page_type` (from the LLM classifier) selects a
+    specialised prompt block. When `hints` are given they are injected into the
+    FIRST prompt as ground truth AND verified post-hoc with ONE corrective
+    retry (self-healing). `capture` (if provided) is filled with the exact
+    prompt + raw response + attempt metadata for the Import-Analytics
+    telemetry, even when extraction fails.
     Propagates InsufficientCredits so the route can answer 402."""
     if not has_any_llm() or not (html or "").strip():
         return None
@@ -455,10 +493,15 @@ async def ai_extract_detail(user_id: str, html: str, *, tier: str = "fast",
     sys = (DETAIL_SYSTEM
            .replace("{max_factors}", str(max_factors))
            .replace("{group_threshold}", str(group_threshold))
+           .replace("{page_guidance}", PAGE_TYPE_GUIDANCE.get(page_type or "", ""))
            .replace("{user_facts}", _user_facts_block(hints)))
+    cap = capture if capture is not None else {}
+    cap.update({"system_prompt": sys, "prompt_text": text, "raw_response": "",
+                "attempts": 0, "retry_used": False, "tokens": 0, "provider": ""})
 
     async def _attempt(extra: str = "") -> Tuple[Optional[Dict[str, Any]], str]:
         meta: Dict[str, Any] = {}
+        cap["attempts"] += 1
         try:
             out = await metered_chat(user_id, system_message=sys + extra, prompt=text,
                                      feature="url_import_detail", session_prefix="urldetail",
@@ -469,6 +512,9 @@ async def ai_extract_detail(user_id: str, html: str, *, tier: str = "fast",
             logger.warning("detail extraction LLM call failed: %s: %s",
                            type(e).__name__, str(e)[:150])
             return None, ""
+        cap["raw_response"] = out or ""
+        cap["tokens"] += int(meta.get("tokens") or 0)
+        cap["provider"] = meta.get("provider") or cap["provider"]
         return (normalize_detail(_parse_json_obj(out), max_factors=max_factors,
                                  group_threshold=group_threshold),
                 meta.get("provider") or "")
@@ -476,6 +522,7 @@ async def ai_extract_detail(user_id: str, html: str, *, tier: str = "fast",
     result, provider = await _attempt()
     issues = validate_against_hints(result, hints) if result else []
     if hints and (result is None or issues):
+        cap["retry_used"] = True
         feedback = ("\n\nPREVIOUS ATTEMPT FAILED USER VERIFICATION:\n- "
                     + "\n- ".join(issues or ["Output was not parseable detail JSON."])
                     + "\nRe-extract the ENTIRE structure from scratch, fixing every issue above. "

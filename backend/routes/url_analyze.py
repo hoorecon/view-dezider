@@ -28,6 +28,8 @@ from core.url_crawl import (
     fetch_page, fetch_rendered, parse_hierarchy, candidates_from_response,
 )
 from core.url_detail import ai_extract_detail, deterministic_hint_issues
+from core.url_pagetype import classify_page_type
+from core import url_telemetry
 from core.decision_builder import (
     create_mydezider_from_candidates, create_pros_cons_from_candidates,
     create_hierarchical_mydezider, merge_into_mydezider,
@@ -317,6 +319,25 @@ async def build_hierarchical_decision(user_id: str, hierarchy: Dict[str, Any], *
 
 @router.post("")
 async def analyze_url(req: AnalyzeRequest, request: Request, user: dict = Depends(get_current_user)):
+    """Telemetry-wrapped entry — EVERY run (success or error) is recorded to
+    `url_import_runs` + PostHog for the admin Import-Analytics dashboard."""
+    tel = url_telemetry.new_tel(user["user_id"], endpoint="analyze", url=req.url,
+                                ai_tier=_tier(req.ai_tier), hints=_hints_of(req))
+    try:
+        resp = await _analyze_url_inner(req, request, user, tel)
+    except HTTPException as e:
+        await url_telemetry.record_run(tel, status="error", error=f"HTTP {e.status_code}: {e.detail}")
+        raise
+    except Exception as e:  # noqa: BLE001
+        await url_telemetry.record_run(tel, status="error", error=f"{type(e).__name__}: {str(e)[:300]}")
+        raise
+    tel["decision_id"] = resp.get("id")
+    resp["run_id"] = await url_telemetry.record_run(tel, status="success", response=resp)
+    return resp
+
+
+async def _analyze_url_inner(req: AnalyzeRequest, request: Request, user: dict,
+                             tel: Dict[str, Any]) -> Dict[str, Any]:
     # ── Consent validation (legal gate) ──
     if not req.accepted:
         raise HTTPException(400, "You must accept the data-access disclaimer to continue.")
@@ -348,6 +369,16 @@ async def analyze_url(req: AnalyzeRequest, request: Request, user: dict = Depend
     r = await fetch_page(req.url)
     is_json = "json" in r.headers.get("content-type", "")
 
+    # ── LLM page-type classification (always-on): selects the specialised
+    # extraction prompt AND powers per-page-type accuracy analytics. ──
+    page_type = None
+    if not is_json:
+        cls = await classify_page_type(user["user_id"], r.text, req.url)
+        page_type = cls["page_type"]
+        tel["page_type"] = cls["page_type"]
+        tel["page_type_confidence"] = cls["confidence"]
+        tel["classifier_provider"] = cls["provider"]
+
     # ── MyDezider: prefer a FULL two-level import when the page is a category-
     # grouped comparison matrix (e.g. GSMArena: 15 categories × sub-specs) —
     # but ONLY when it does not contradict the user's accuracy hints. ──
@@ -362,6 +393,7 @@ async def analyze_url(req: AnalyzeRequest, request: Request, user: dict = Depend
             built = await build_hierarchical_decision(
                 user["user_id"], hierarchy, title=title, context=ctx,
                 life_area=req.life_area, decision_type=req.decision_type)
+            tel["route"] = "deterministic_hier"
             return {
                 "id": built["id"], "target": target, "consent_id": consent_id,
                 "mode": "hierarchical",
@@ -381,6 +413,7 @@ async def analyze_url(req: AnalyzeRequest, request: Request, user: dict = Depend
             det_issues = deterministic_hint_issues(hints, factors=factors, candidates=scored)
             det_thin = tier == "precise" and len(factors) < 3
             if not det_issues and not det_thin:
+                tel["route"] = "deterministic_flat"
                 return await _create_from_flat(user, req, target, title, elig, consent_id,
                                                factors, scored, len(candidates))
             det_fallback = (factors, scored, det_issues)
@@ -390,11 +423,12 @@ async def analyze_url(req: AnalyzeRequest, request: Request, user: dict = Depend
     # injected as ground truth + verified with one corrective retry. ──
     if target == "mydezider" and not is_json:
         detail = await _extract_detail_for_url(user["user_id"], req.url, r.text, tier,
-                                               hints=hints)
+                                               hints=hints, page_type=page_type, tel=tel)
         if (detail and det_fallback
                 and len(detail.get("hint_warnings") or []) > len(det_fallback[2])):
             detail = None  # deterministic parse was closer to the user's hints
         if detail:
+            tel["route"] = "ai_extraction"
             d_title = (req.title or "").strip() or detail["main_name"][:80]
             d_ctx = f"Auto-built from a {elig.replace('_', '/')} detail page."
             if detail["kind"] == "hier":
@@ -434,8 +468,11 @@ async def analyze_url(req: AnalyzeRequest, request: Request, user: dict = Depend
     # deterministic parse rather than fail. ──
     if det_fallback:
         factors, scored, _det_issues = det_fallback
-        return await _create_from_flat(user, req, target, title, elig, consent_id,
+        tel["route"] = "deterministic_fallback"
+        resp = await _create_from_flat(user, req, target, title, elig, consent_id,
                                        factors, scored, len(scored))
+        resp["hint_warnings"] = _det_issues
+        return resp
 
     # ── LLM flat fallback for table-less / irregular comparison pages ──
     if len(candidates) < 2:
@@ -446,6 +483,7 @@ async def analyze_url(req: AnalyzeRequest, request: Request, user: dict = Depend
     factors, scored = _derive_factors_and_scores(candidates, req.max_factors)
     if not factors:
         raise HTTPException(422, "Could not derive comparable factors from the page.")
+    tel["route"] = "llm_flat_fallback"
     return await _create_from_flat(user, req, target, title, elig, consent_id,
                                    factors, scored, len(candidates))
 
@@ -504,20 +542,28 @@ DETAIL_MAX_FACTORS = 24
 
 
 async def _extract_detail_for_url(user_id: str, url: str, html: str, tier: str,
-                                  hints: Optional[Dict[str, Any]] = None):
+                                  hints: Optional[Dict[str, Any]] = None,
+                                  page_type: Optional[str] = None,
+                                  tel: Optional[Dict[str, Any]] = None):
     """AI extraction pipeline (detail OR comparison/listing pages): escalate to
     RENDERED HTML when ScraperAPI is configured (similar-items rails are usually
     JS-loaded), then run the single-call hint-guided LLM extraction (+ one
-    corrective retry against the user's accuracy hints).
+    corrective retry against the user's accuracy hints) with the prompt
+    specialised for the classified `page_type`. The exact prompt + raw response
+    are captured into `tel["ai"]` for Import-Analytics.
     Translates InsufficientCredits → 402."""
     rendered = await fetch_rendered(url)
     cfg = await ai_wallet.get_config()
     threshold = int(cfg.get("import_group_threshold") or 15)
     max_factors = max(DETAIL_MAX_FACTORS, int((hints or {}).get("expected_factor_count") or 0))
+    capture: Dict[str, Any] = {}
+    if tel is not None:
+        tel["ai"] = capture
     try:
         return await ai_extract_detail(user_id, rendered or html, tier=tier,
                                        max_factors=max_factors,
-                                       group_threshold=threshold, hints=hints)
+                                       group_threshold=threshold, hints=hints,
+                                       page_type=page_type, capture=capture)
     except ai_wallet.InsufficientCredits as e:
         raise HTTPException(
             402,
@@ -531,9 +577,28 @@ async def import_url_into_decision(
     decision_id: str, req: ImportRequest, request: Request,
     user: dict = Depends(get_current_user),
 ):
-    """Step-2 "Import from URL" — crawl a comparison page and MERGE the derived
-    factors (with suggested Expected values) + options (with assessment %) into
-    an EXISTING MyDezider decision, behind the same consent gate."""
+    """Step-2 "Import from URL" — telemetry-wrapped entry. EVERY run (success
+    or error) is recorded to `url_import_runs` + PostHog for Import-Analytics."""
+    tel = url_telemetry.new_tel(user["user_id"], endpoint="import", url=req.url,
+                                ai_tier=_tier(req.ai_tier), hints=_hints_of(req),
+                                decision_id=decision_id)
+    try:
+        resp = await _import_inner(decision_id, req, request, user, tel)
+    except HTTPException as e:
+        await url_telemetry.record_run(tel, status="error", error=f"HTTP {e.status_code}: {e.detail}")
+        raise
+    except Exception as e:  # noqa: BLE001
+        await url_telemetry.record_run(tel, status="error", error=f"{type(e).__name__}: {str(e)[:300]}")
+        raise
+    resp["run_id"] = await url_telemetry.record_run(tel, status="success", response=resp)
+    return resp
+
+
+async def _import_inner(decision_id: str, req: ImportRequest, request: Request,
+                        user: dict, tel: Dict[str, Any]) -> Dict[str, Any]:
+    """Crawl a comparison page and MERGE the derived factors (with suggested
+    Expected values) + options (with assessment %) into an EXISTING MyDezider
+    decision, behind the same consent gate."""
     if not req.accepted:
         raise HTTPException(400, "You must accept the data-access disclaimer to continue.")
     elig = (req.eligibility_type or "").strip().lower()
@@ -562,6 +627,16 @@ async def import_url_into_decision(
     r = await fetch_page(req.url)
     is_json = "json" in r.headers.get("content-type", "")
 
+    # ── LLM page-type classification (always-on): selects the specialised
+    # extraction prompt AND powers per-page-type accuracy analytics. ──
+    page_type = None
+    if not is_json:
+        cls = await classify_page_type(user["user_id"], r.text, req.url)
+        page_type = cls["page_type"]
+        tel["page_type"] = cls["page_type"]
+        tel["page_type_confidence"] = cls["confidence"]
+        tel["classifier_provider"] = cls["provider"]
+
     # ── Prefer a FULL two-level merge when the page is a category-grouped
     # comparison matrix (e.g. GSMArena: 15 categories × sub-specs) — but ONLY
     # when it does not contradict the user's accuracy hints. ──
@@ -575,6 +650,7 @@ async def import_url_into_decision(
         counts = await merge_hierarchical_into_mydezider(
             user["user_id"], decision_id, items=items, groups=groups,
             row_scores=row_scores, row_meta=row_meta)
+        tel["route"] = "deterministic_hier"
         return {
             "decision_id": decision_id, "consent_id": consent_id, "mode": "hierarchical",
             "item_count": len(items),
@@ -599,6 +675,7 @@ async def import_url_into_decision(
             if not det_issues and not det_thin:
                 counts = await merge_into_mydezider(user["user_id"], decision_id,
                                                     factors=factors, candidates=scored)
+                tel["route"] = "deterministic_flat"
                 return {
                     "decision_id": decision_id, "consent_id": consent_id, "mode": "flat",
                     "item_count": len(candidates),
@@ -613,13 +690,14 @@ async def import_url_into_decision(
     # corrective retry. ──
     if not is_json:
         detail = await _extract_detail_for_url(user["user_id"], req.url, r.text, tier,
-                                               hints=_hints_of(req))
+                                               hints=hints, page_type=page_type, tel=tel)
         # If the deterministic parse was actually CLOSER to the user's hints
         # than the AI output, prefer the deterministic one.
         if (detail and det_fallback
                 and len(detail.get("hint_warnings") or []) > len(det_fallback[2])):
             detail = None
         if detail:
+            tel["route"] = "ai_extraction"
             if detail["kind"] == "hier":
                 counts = await merge_hierarchical_into_mydezider(
                     user["user_id"], decision_id,
@@ -656,6 +734,7 @@ async def import_url_into_decision(
         factors, scored, det_issues = det_fallback
         counts = await merge_into_mydezider(user["user_id"], decision_id,
                                             factors=factors, candidates=scored)
+        tel["route"] = "deterministic_fallback"
         return {
             "decision_id": decision_id, "consent_id": consent_id, "mode": "flat",
             "item_count": len(scored), "hint_warnings": det_issues,
@@ -672,6 +751,7 @@ async def import_url_into_decision(
         raise HTTPException(422, "Could not derive comparable factors from the page.")
 
     counts = await merge_into_mydezider(user["user_id"], decision_id, factors=factors, candidates=scored)
+    tel["route"] = "llm_flat_fallback"
     return {
         "decision_id": decision_id, "consent_id": consent_id, "mode": "flat",
         "item_count": len(candidates),
@@ -804,3 +884,21 @@ async def set_expectations_by_ai(decision_id: str, req: SetExpectationsRequest,
             {"$set": {"factors": factors, "updated_at": datetime.now(timezone.utc)}})
     return {"updated": updated, "factor_count": len(leaves),
             "ai_provider": meta.get("provider") or ""}
+
+
+# ── Import accuracy feedback (👍/👎) — labels telemetry runs for the admin
+# Import-Analytics learning loop. Owner-only, idempotent (last vote wins). ──
+class ImportFeedbackRequest(BaseModel):
+    verdict: str  # "up" | "down"
+
+
+@router.post("/runs/{run_id}/feedback")
+async def import_run_feedback(run_id: str, req: ImportFeedbackRequest,
+                              user: dict = Depends(get_current_user)):
+    verdict = (req.verdict or "").strip().lower()
+    if verdict not in ("up", "down"):
+        raise HTTPException(400, "verdict must be 'up' or 'down'.")
+    found = await url_telemetry.set_feedback(run_id, user["user_id"], verdict)
+    if not found:
+        raise HTTPException(404, "Import run not found")
+    return {"run_id": run_id, "verdict": verdict}

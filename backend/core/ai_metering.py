@@ -179,6 +179,7 @@ async def metered_chat(
                 log.error(f"wallet charge failed (non-fatal): {e}")
             if meta is not None:
                 meta["provider"] = "emergent_precise"
+                meta["tokens"] = tokens
             return text
 
     if allow_openai is None:
@@ -210,6 +211,7 @@ async def metered_chat(
             log.error(f"wallet charge failed (non-fatal): {e}")
         if meta is not None:
             meta["provider"] = provider
+            meta["tokens"] = tokens
         return text
 
     raise last_err or RuntimeError("All LLM providers failed")

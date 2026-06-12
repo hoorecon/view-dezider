@@ -203,6 +203,7 @@ from routes.decision_linking import router as decision_linking_router
 from routes.integrations import router as integrations_router
 from routes.ai_wallet import router as ai_wallet_router
 from routes.admin_recon import router as admin_recon_router
+from routes.admin_import_analytics import router as admin_import_analytics_router
 from routes.subscriptions import router as subscriptions_router
 
 
@@ -297,6 +298,7 @@ api_router.include_router(decision_linking_router)
 api_router.include_router(integrations_router)
 api_router.include_router(ai_wallet_router)
 api_router.include_router(admin_recon_router)
+api_router.include_router(admin_import_analytics_router)
 api_router.include_router(subscriptions_router)
 api_router.include_router(payment_admin_router)
 api_router.include_router(action_items_router)

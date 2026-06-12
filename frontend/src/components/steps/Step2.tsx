@@ -55,6 +55,18 @@ export default function Step2() {
   const [hintFirstFactor, setHintFirstFactor] = useState('');
   const [hintFirstOption, setHintFirstOption] = useState('');
 
+  // ── 1-tap import accuracy feedback (👍/👎) — labels the telemetry run that
+  // powers the admin Import-Analytics learning loop. ──
+  const [importFeedback, setImportFeedback] = useState<{ runId: string; voted: 'up' | 'down' | null } | null>(null);
+
+  const sendImportFeedback = async (verdict: 'up' | 'down') => {
+    if (!importFeedback) return;
+    setImportFeedback({ ...importFeedback, voted: verdict });
+    try {
+      await api.post(`/url-analyze/runs/${importFeedback.runId}/feedback`, { verdict });
+    } catch { /* non-fatal — verdict already reflected in UI */ }
+  };
+
   const runImport = async (consent: UrlConsentPayload) => {
     setImporting(true);
     try {
@@ -73,6 +85,7 @@ export default function Step2() {
       setImporting(false);
       setImportUrl('');
       await fetchDecision();
+      if (data.run_id) setImportFeedback({ runId: data.run_id, voted: null });
       const warn = (data.hint_warnings || []).length
         ? `\n\n⚠ Accuracy check: ${data.hint_warnings.join(' ')} Please review carefully.`
         : '';
@@ -505,6 +518,39 @@ export default function Step2() {
           <Text style={iurl.tmplText}>{importBusy === 'tmpl' ? 'Preparing…' : 'Download a fillable template (XLS)'}</Text>
         </TouchableOpacity>
       </View>
+
+      {/* 1-tap import accuracy verdict — appears after a URL import completes */}
+      {importFeedback && (
+        <View testID="import-feedback-row" style={{
+          flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+          marginBottom: 14, paddingVertical: 9, paddingHorizontal: 14,
+          backgroundColor: '#F0F9FF', borderRadius: 10, borderWidth: 1, borderColor: '#BAE6FD',
+        }}>
+          <Text style={{ fontSize: 12.5, color: '#0C4A6E', fontWeight: '600', flexShrink: 1 }}>
+            {importFeedback.voted
+              ? (importFeedback.voted === 'up'
+                ? 'Thanks! Glad the import nailed it.'
+                : 'Thanks — logged. We use this to tune extraction accuracy.')
+              : 'Was this URL import accurate?'}
+          </Text>
+          {!importFeedback.voted && (
+            <>
+              <TouchableOpacity
+                testID="import-feedback-up" activeOpacity={0.8}
+                onPress={() => sendImportFeedback('up')}
+                style={{ padding: 7, borderRadius: 8, backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0' }}>
+                <Ionicons name="thumbs-up" size={15} color="#059669" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="import-feedback-down" activeOpacity={0.8}
+                onPress={() => sendImportFeedback('down')}
+                style={{ padding: 7, borderRadius: 8, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' }}>
+                <Ionicons name="thumbs-down" size={15} color="#DC2626" />
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      )}
 
       {/* "Set Expectations - By AI" — gated until import filled factors (Step 2),
           options (Step 6) and option values (Step 7). Always user-overridable. */}
@@ -1185,5 +1231,3 @@ const iurl = StyleSheet.create({
   dlgGo: { backgroundColor: '#2563EB', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, minWidth: 96, alignItems: 'center' },
   dlgGoText: { color: '#fff', fontSize: 13.5, fontWeight: '800' },
 });
-
-
