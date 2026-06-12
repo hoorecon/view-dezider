@@ -119,6 +119,7 @@ function PRRDecisionDetailInner() {
         {[2, 3, 4, 5, 6, 7, 8, 9, 10].map((step) => (
           <TouchableOpacity
             key={step}
+            testID={`step-dot-${step}`}
             onPress={() => setCurrentStep(step)}
             style={[
               styles.stepDot,

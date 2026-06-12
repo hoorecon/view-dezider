@@ -46,6 +46,47 @@ async def my_wallet_estimates(user: dict = Depends(get_current_user)):
     return await ai_wallet.estimates()
 
 
+@router.get("/ai-wallet/import-estimate")
+async def import_estimate(endpoint: str = "import", pages: int = 1, tier: str = "fast",
+                          user: dict = Depends(get_current_user)):
+    """Upfront cost preview for the URL-import flows ("≈ N cr needed · M cr
+    available"). Estimate is HISTORY-based — the avg total_credits of recent
+    successful runs of the same endpoint/tier (per crawled page for deep
+    imports) — falling back to static defaults until history accumulates."""
+    endpoint = endpoint if endpoint in ("import", "analyze", "deep_import") else "import"
+    tier = tier if tier in ("fast", "precise") else "fast"
+    pages = max(1, min(int(pages), 10))
+    q: Dict[str, Any] = {"status": "success", "total_credits": {"$gt": 0},
+                         "endpoint": ("deep_import" if endpoint == "deep_import"
+                                      else {"$in": ["import", "analyze"]})}
+    rows = await (db.url_import_runs
+                  .find(q, {"_id": 0, "total_credits": 1, "item_count": 1, "ai_tier": 1})
+                  .sort("ts", -1).limit(20).to_list(20))
+    tier_rows = [r for r in rows if r.get("ai_tier") == tier] or rows
+    basis, sampled = "default", 0
+    if endpoint == "deep_import":
+        if tier_rows:
+            per_page = (sum(float(r["total_credits"]) / max(int(r.get("item_count") or 1), 1)
+                            for r in tier_rows) / len(tier_rows))
+            estimate, basis, sampled = per_page * pages, "history", len(tier_rows)
+        else:
+            estimate = 250.0 * pages
+    else:
+        if tier_rows:
+            estimate = sum(float(r["total_credits"]) for r in tier_rows) / len(tier_rows)
+            basis, sampled = "history", len(tier_rows)
+        else:
+            estimate = 90.0 if tier == "fast" else 350.0
+    bal = await ai_wallet.get_balance(user["user_id"])
+    balance = float(bal.get("balance") or 0)
+    estimate = round(estimate, 1)
+    return {"endpoint": endpoint, "pages": pages, "tier": tier,
+            "estimate": estimate, "balance": round(balance, 1),
+            "sufficient": balance >= estimate,
+            "shortfall": round(max(0.0, estimate - balance), 1),
+            "basis": basis, "runs_sampled": sampled}
+
+
 # ───────── AI provider consent (OpenAI free, data-sharing) ─────────
 @router.get("/ai-wallet/provider-consent")
 async def get_provider_consent(user: dict = Depends(get_current_user)):

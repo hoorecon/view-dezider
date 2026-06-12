@@ -1012,3 +1012,39 @@ iter108/109/110 to persistent-loop convention (asyncio.run was breaking sibling 
 order). Full battery 52/52 passes in both orders.
 NOTE: drill-down requires SUPER ADMIN (veales.vedic.decisions@gmail.com in dev); admin@test.com
 gets "Super Admin access required" on import-analytics data.
+
+## Iteration 111 — Engine tiering (margin protection) + upfront credits UX in import dialogs — 12 Jun 2026
+USER ASK: (1) complete the proposed "engine downgrade" improvement; (2) explicitly & elegantly
+show credits required + credits available (with top-up option) in Import URL AND Deep Import —
+both flows confirmed metered.
+IMPLEMENTED:
+ A) Engine tiering (margin protection):
+  - NEW core/engine_recos.py: per-stage tier config (links_pick/hubs_pick/consolidate →
+    fast|precise|job; 'job'=user's chosen tier; stored app_config key=deep_stage_tiers) +
+    compute_recos(): per-stage success% + avg credits per tier from ai_calls trace, with
+    conservative recommendations (downgrade_to_fast ≥90% over ≥3 fast calls; upgrade_to_precise
+    <60%; try_fast for consolidate when no fast sample).
+  - routes/deep_import.py honors stage tiers at runtime (pick_tier/hub_tier/cons_tier).
+  - Admin API: GET /api/admin/import-analytics/engine-recos, PUT .../engine-tiers (super admin,
+    validated). Admin UI: "Engine tiering — Deep Import" card with per-stage stats, reco text,
+    and fast/precise/job chips (apply = instant).
+ B) Credits preview strips (user-facing):
+  - NEW GET /api/ai-wallet/import-estimate?endpoint=import|deep_import&pages&tier — history-based
+    estimate (avg total_credits of recent successful runs; per-page for deep) with static
+    fallback (url fast 90 / precise 350; deep 250/page) + balance + sufficient/shortfall.
+  - NEW src/components/ImportCreditsStrip.tsx: "≈ N cr needed · M cr available" green when
+    sufficient; red + "⚡ Top up" button (→ /ai-wallet) when short; re-fetches on pages/tier change.
+  - Mounted in DeepImport.tsx (below pages chips) and Step2.tsx URL dialog (below AI ENGINE tier
+    selector). Added testID step-dot-N to PRR wizard step circles.
+VERIFIED LIVE (screenshots + curl): Deep Import 5 pages → RED "≈ 1244 cr needed · 931 cr
+available" + Top up; switch to 3 pages → GREEN "≈ 746 cr needed · 931 cr"; URL dialog → GREEN
+"≈ 90 cr needed (est.)". Admin card shows Link pick fast 100% @86.8 cr, Consolidate precise
+@305.9 cr. engine-tiers PUT 200 + invalid tier 400. TESTS: tests/test_iter111_*.py — battery
+57/57 PASS. Stage-tier defaults intact (fast/fast/job).
+GOTCHAS FOR NEXT AGENT:
+ - Login API returns `session_token` (NOT access_token) — use it for Bearer curl tests.
+ - Playwright login can bounce once back to /auth/login (expo-router getRehydratedState race on
+   dev bundle) — retry login in same context; hard goto /prr/{id} loses session, click through
+   Solution Box tab instead.
+ - admin@test.com is role=admin (no import-analytics data access); super admin =
+   veales.vedic.decisions@gmail.com / Jelcos@Admin2026.

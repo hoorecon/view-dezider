@@ -70,6 +70,26 @@ export default function AdminImportAnalyticsScreen() {
   const [generating, setGenerating] = useState(false);
   const [expandedSug, setExpandedSug] = useState<string | null>(null);
 
+  // ── Engine tiering (margin protection) ──
+  const [engineRecos, setEngineRecos] = useState<any>(null);
+
+  const loadEngineRecos = useCallback(async () => {
+    try {
+      const r = await api.get('/admin/import-analytics/engine-recos');
+      setEngineRecos(r.data);
+    } catch { /* card shows loading state */ }
+  }, []);
+
+  const applyTier = async (stage: string, tier: string) => {
+    try {
+      await api.put('/admin/import-analytics/engine-tiers', { stage, tier });
+      showAlert('Engine tiering', `${stage} now runs on the "${tier}" tier for every deep import.`);
+      await loadEngineRecos();
+    } catch (e: any) {
+      showAlert('Error', e?.response?.data?.detail || 'Failed to set tier');
+    }
+  };
+
   const loadTuning = useCallback(async () => {
     try {
       const r = await api.get('/admin/import-analytics/tuning');
@@ -132,6 +152,7 @@ export default function AdminImportAnalyticsScreen() {
 
   useEffect(() => { loadAll(); }, [loadAll]);
   useEffect(() => { loadTuning(); }, [loadTuning]);
+  useEffect(() => { loadEngineRecos(); }, [loadEngineRecos]);
 
   const openRun = async (id: string) => {
     try {
@@ -307,6 +328,44 @@ export default function AdminImportAnalyticsScreen() {
           )}
         </View>
 
+        {/* Engine tiering — per deep-import stage: success/cost stats → tier control */}
+        <View style={st.card} testID="import-analytics-engine-tiers">
+          <Text style={st.cardTitle}>Engine tiering — Deep Import (margin protection)</Text>
+          <Text style={{ fontSize: 11, color: C.muted, marginTop: -6, marginBottom: 8 }}>
+            Per-stage success % and avg credits per engine tier (from the AI call trace). Set each
+            stage to fast / precise / job (&quot;job&quot; = follow the tier the user picked).
+          </Text>
+          {(engineRecos?.stages || []).map((sg: any) => (
+            <View key={sg.stage} style={st.engRow} testID={`engine-tier-row-${sg.stage}`}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={st.engStage}>{sg.label}</Text>
+                <Text style={st.runMeta} numberOfLines={2}>
+                  {Object.entries(sg.tiers || {}).map(([t, v]: any) =>
+                    `${t}: ${v.success_rate ?? '—'}% over ${v.runs} · ${v.avg_credits ?? '—'} cr`).join('   ') || 'No call data yet'}
+                </Text>
+                {sg.recommendation !== 'keep' && (
+                  <Text style={st.engReco} testID={`engine-tier-reco-${sg.stage}`}>
+                    ⚙ {sg.recommendation === 'downgrade_to_fast' ? 'Recommend: switch to FAST'
+                      : sg.recommendation === 'upgrade_to_precise' ? 'Recommend: switch to PRECISE'
+                      : 'Recommend: trial FAST'}
+                    {sg.projected_saving ? ` (~${sg.projected_saving} cr/call saved)` : ''} — {sg.reason}
+                  </Text>
+                )}
+              </View>
+              <View style={{ flexDirection: 'row', gap: 4 }}>
+                {['fast', 'precise', 'job'].map(t => (
+                  <TouchableOpacity key={t} testID={`engine-tier-set-${sg.stage}-${t}`}
+                    style={[st.engChip, sg.current_tier === t && st.engChipOn]}
+                    onPress={() => applyTier(sg.stage, t)}>
+                    <Text style={[st.engChipTxt, sg.current_tier === t && st.engChipTxtOn]}>{t}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          ))}
+          {!engineRecos && <Text style={st.empty}>Loading engine stats…</Text>}
+        </View>
+
         {/* Runs list */}
         <View style={st.card} testID="import-analytics-runs">
           <Text style={st.cardTitle}>Runs ({runsTotal})</Text>
@@ -476,6 +535,14 @@ const st = StyleSheet.create({
   callHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   callStage: { fontSize: 12.5, fontWeight: '800', color: C.text },
   callMeta: { fontSize: 11, color: C.muted, marginTop: 2 },
+  // Engine tiering
+  engRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  engStage: { fontSize: 13, fontWeight: '800', color: C.text },
+  engReco: { fontSize: 11, color: '#B45309', fontWeight: '700', marginTop: 3 },
+  engChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, borderWidth: 1, borderColor: C.border },
+  engChipOn: { backgroundColor: C.primary, borderColor: C.primary },
+  engChipTxt: { fontSize: 11, fontWeight: '700', color: C.muted },
+  engChipTxtOn: { color: '#FFF' },
   // AI Auto-Tune
   genBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
   genBtnTxt: { color: '#FFF', fontSize: 12, fontWeight: '700' },

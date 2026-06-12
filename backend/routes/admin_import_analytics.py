@@ -6,13 +6,14 @@ AI engine + classified page type + route taken + extraction outcome + the
 EXACT prompt/raw LLM response + 👍/👎 user feedback). These endpoints power the
 /admin/import-analytics dashboard.
 """
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from core.auth import require_super_admin
 from core import url_telemetry
 from core import url_prompt_tuning
+from core import engine_recos
 from core.url_pagetype import PAGE_TYPES
 
 router = APIRouter(prefix="/admin/import-analytics", tags=["admin-import-analytics"])
@@ -105,3 +106,25 @@ async def tuning_revert(page_type: str, admin: dict = Depends(require_super_admi
     if not await url_prompt_tuning.revert_override(page_type, admin["user_id"]):
         raise HTTPException(404, "No active override for this page type")
     return {"page_type": page_type, "reverted": True}
+
+
+# ── Engine tiering (margin protection) ──────────────────────────────────────
+@router.get("/engine-recos")
+async def engine_recommendations(days: int = 30,
+                                 admin: dict = Depends(require_super_admin)):
+    """Per-deep-import-stage engine stats (success % + avg credits per tier,
+    from the AI call trace) + a conservative tier recommendation."""
+    return await engine_recos.compute_recos(days=max(1, min(days, 365)))
+
+
+@router.put("/engine-tiers")
+async def set_engine_tier(body: Dict[str, Any],
+                          admin: dict = Depends(require_super_admin)):
+    """Set a deep-import stage's AI tier. Body: { stage, tier } where tier is
+    fast | precise | job ('job' = follow the tier the user picked)."""
+    try:
+        tiers = await engine_recos.set_stage_tier(
+            str(body.get("stage") or ""), str(body.get("tier") or ""), admin["user_id"])
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"tiers": tiers}

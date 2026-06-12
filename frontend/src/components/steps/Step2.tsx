@@ -10,6 +10,7 @@ import type { Factor, FactorDataSource } from '../../types/decision';
 import api from '../../utils/api';
 import { showAlert } from '../../utils/alert';
 import UrlAccessConsentModal, { UrlConsentPayload } from '../UrlAccessConsentModal';
+import ImportCreditsStrip from '../ImportCreditsStrip';
 import DeepImport from './DeepImport';
 import { downloadAssessmentTemplate, importAssessmentTemplate } from '../../utils/assessmentXlsx';
 import {
@@ -681,6 +682,7 @@ export default function Step2() {
                 {importTier === 'precise' && <Ionicons name="checkmark-circle" size={16} color="#7C3AED" />}
               </TouchableOpacity>
             </View>
+            <ImportCreditsStrip endpoint="import" tier={importTier} />
 
             {/* Optional accuracy hints — validated server-side with a corrective retry */}
             <TouchableOpacity testID="step2-import-hints-toggle" style={iurl.hintsToggle} onPress={() => setHintsOpen(!hintsOpen)} activeOpacity={0.8}>

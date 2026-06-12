@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import api from '../../utils/api';
 import { showAlert } from '../../utils/alert';
 import UrlAccessConsentModal, { UrlConsentPayload } from '../UrlAccessConsentModal';
+import ImportCreditsStrip from '../ImportCreditsStrip';
 
 interface JobFactor {
   name: string; group: string; data_type: string; unit?: string | null;
@@ -165,6 +166,7 @@ export const DeepImport: React.FC<Props> = ({ decisionId, onMerged }) => {
                     </TouchableOpacity>
                   ))}
                 </View>
+                <ImportCreditsStrip endpoint="deep_import" pages={maxPages} tier="precise" />
                 <View style={st.actions}>
                   <TouchableOpacity testID="deep-import-cancel-btn" style={st.cancelBtn}
                     onPress={() => { setOpen(false); reset(); }}>

@@ -36,6 +36,7 @@ from core.import_verify import verify_detail
 from core.decision_builder import merge_into_mydezider
 from core import url_telemetry
 from core import url_prompt_tuning
+from core import engine_recos
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/deep-import", tags=["deep-import"])
@@ -207,7 +208,8 @@ def _score_candidates(factors: List[Dict[str, Any]], candidates: List[Dict[str, 
 async def _pick_detail_links(user_id: str, context: str, max_pages: int,
                              text: str, links: List[Dict[str, str]],
                              tel: Optional[Dict[str, Any]] = None,
-                             stage: str = "links_pick") -> List[Dict[str, str]]:
+                             stage: str = "links_pick",
+                             tier: str = "fast") -> List[Dict[str, str]]:
     """One metered AI call: pick the option/detail page links for the context.
     Traced onto the run (stage prompt + engine + credits) when `tel` is given."""
     link_block = "\n".join(f"{i + 1}. [{l['text']}] {l['url']}" for i, l in enumerate(links))
@@ -219,7 +221,7 @@ async def _pick_detail_links(user_id: str, context: str, max_pages: int,
     started = _now()
     out = await metered_chat(
         user_id, system_message=sys_msg, prompt=prompt,
-        feature="deep_import_links", session_prefix="deeplinks", tier="fast", meta=meta)
+        feature="deep_import_links", session_prefix="deeplinks", tier=tier, meta=meta)
     if tel is not None:
         url_telemetry.add_ai_call(tel, stage=stage, system_prompt=sys_msg,
                                   prompt_text=prompt, raw_response=out,
@@ -241,7 +243,8 @@ async def _pick_detail_links(user_id: str, context: str, max_pages: int,
 
 async def _pick_hubs(user_id: str, context: str, base_url: str,
                      text: str, links: List[Dict[str, str]],
-                     tel: Optional[Dict[str, Any]] = None) -> List[str]:
+                     tel: Optional[Dict[str, Any]] = None,
+                     tier: str = "fast") -> List[str]:
     """One metered AI call: locate same-domain LISTING hub pages for the context
     (used when the base page is a portal/homepage with no direct detail links)."""
     link_block = "\n".join(f"{i + 1}. [{l['text']}] {l['url']}" for i, l in enumerate(links))
@@ -252,7 +255,7 @@ async def _pick_hubs(user_id: str, context: str, base_url: str,
     started = _now()
     out = await metered_chat(
         user_id, system_message=sys_msg, prompt=prompt,
-        feature="deep_import_hubs", session_prefix="deephubs", tier="fast", meta=meta)
+        feature="deep_import_hubs", session_prefix="deephubs", tier=tier, meta=meta)
     if tel is not None:
         url_telemetry.add_ai_call(tel, stage="hubs_pick", system_prompt=sys_msg,
                                   prompt_text=prompt, raw_response=out,
@@ -289,6 +292,12 @@ async def _fail(job_id: str, tel: Dict[str, Any], error: str):
 async def _discover(job_id: str, user_id: str, base_url: str, context: str,
                     max_pages: int, tier: str, tel: Dict[str, Any]):
     try:
+        # Admin-tunable engine tiering per stage ("job" = the user's chosen tier)
+        stage_tiers = await engine_recos.get_stage_tiers()
+        pick_tier = tier if stage_tiers["links_pick"] == "job" else stage_tiers["links_pick"]
+        hub_tier = tier if stage_tiers["hubs_pick"] == "job" else stage_tiers["hubs_pick"]
+        cons_tier = tier if stage_tiers["consolidate"] == "job" else stage_tiers["consolidate"]
+
         await _prog(job_id, 8, "Fetching the base page…")
         html, links = await _page_links(base_url, user_id)
         base_text = page_text(html, limit=8000)
@@ -299,7 +308,8 @@ async def _discover(job_id: str, user_id: str, base_url: str, context: str,
 
         await _prog(job_id, 18, "AI is identifying the option pages…")
         options = await _pick_detail_links(user_id, context, max_pages, base_text,
-                                           _rank_links(links, context), tel=tel)
+                                           _rank_links(links, context), tel=tel,
+                                           tier=pick_tier)
 
         if not options:
             # Hop 2 — the base page is a homepage/portal that links to LISTING
@@ -308,7 +318,8 @@ async def _discover(job_id: str, user_id: str, base_url: str, context: str,
             await _prog(job_id, 24,
                         "Base page has no option pages — locating a listing page for your context…")
             hubs = await _pick_hubs(user_id, context, base_url, base_text,
-                                    _rank_links(links, context), tel=tel)
+                                    _rank_links(links, context), tel=tel,
+                                    tier=hub_tier)
             for hi, hub in enumerate(hubs):
                 await _prog(job_id, 26 + hi * 4,
                             f"Scanning listing page {hi + 1}/{len(hubs)} for option pages…")
@@ -324,7 +335,7 @@ async def _discover(job_id: str, user_id: str, base_url: str, context: str,
                 options = await _pick_detail_links(
                     user_id, context, max_pages, page_text(hub_html, limit=8000),
                     _rank_links(hub_links, context), tel=tel,
-                    stage=f"links_pick@hub{hi + 1}")
+                    stage=f"links_pick@hub{hi + 1}", tier=pick_tier)
                 if len(options) >= 2:
                     break
                 options = []
@@ -367,7 +378,7 @@ async def _discover(job_id: str, user_id: str, base_url: str, context: str,
         started2 = _now()
         out2 = await metered_chat(
             user_id, system_message=cons_sys, prompt=cons_prompt,
-            feature="deep_import_consolidate", session_prefix="deepcons", tier=tier,
+            feature="deep_import_consolidate", session_prefix="deepcons", tier=cons_tier,
             meta=meta2)
         url_telemetry.add_ai_call(tel, stage="consolidate", system_prompt=cons_sys,
                                   prompt_text=cons_prompt, raw_response=out2,
