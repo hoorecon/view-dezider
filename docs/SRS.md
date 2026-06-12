@@ -1,6 +1,6 @@
 # System Requirements Specification — Dezider
 
-_metadata: { "version": "3.17.1", "updated": "2026-06-12" }
+_metadata: { "version": "3.18.0", "updated": "2026-06-12" }
 
 ## 1. Architecture
 Expo frontend → NGINX ingress → FastAPI pods → MongoDB replica-set.
@@ -268,3 +268,45 @@ MUST use the override over the built-in block from the next run onward
 built-in default applies. Deciding a non-proposed suggestion → 409. All
 endpoints super-admin only. Override reads MUST fail open to the built-in
 default (guidance can never block an import).
+
+---
+## v3.18.0 — Notification Engine requirements (2026-06-12)
+
+### FR-NE-1 Trigger-event registry (NEW)
+The system MUST expose a fixed registry of trigger-event keys (initial:
+`import-analytics` scheduled, `import-run-failed` event), each declaring kind,
+description, default schedule and a payload-builder. Admins MUST only be able
+to create triggers for registered keys (400 otherwise).
+
+### FR-NE-2 Trigger CRUD (NEW)
+Super-admin-only CRUD over `notification_triggers` documents. Channel lists
+MUST be validated (email regex; WhatsApp 10–15 digits, normalised) and
+de-duplicated. Schedules MUST validate frequency/day/time/IANA timezone.
+Event-kind triggers MUST NOT accept a schedule (400).
+
+### FR-NE-3 Scheduling (NEW)
+A 60-second scheduler tick MUST fire every enabled scheduled trigger whose
+`next_run_at <= now`, then recompute `next_run_at` from the trigger's
+timezone-aware schedule. Exactly one scheduler MUST run across uvicorn
+workers (fcntl singleton lock; `NOTIFICATION_SCHEDULER_DISABLED` opt-out).
+Boot MUST idempotently seed the default weekly import-analytics digest
+(Mon 09:00 Asia/Kolkata, email channel ON with empty recipients).
+
+### FR-NE-4 Event emission + throttling (NEW)
+`emit_event(key, payload)` MUST dispatch all enabled event-kind triggers for
+that key unless the trigger ran within its `throttle_minutes` window. Emission
+MUST be fire-and-forget and MUST NEVER break the calling flow (import runs).
+`url_telemetry.record_run` MUST emit `import-run-failed` on non-success runs.
+
+### FR-NE-5 Channel dispatch + run log (NEW)
+Each dispatch MUST attempt every recipient on every ENABLED channel
+(email→Resend, whatsapp→UltraMsg), record per-recipient outcomes to
+`notification_runs` (statuses: sent / failed / skipped_no_recipients / error),
+update the trigger's `last_run_at`/`last_status`, and lazily prune the log to
+the newest ~500 entries. Test sends MUST NOT mutate schedule/throttle state.
+
+### FR-NE-6 Admin UI (NEW)
+`/admin/notification-engine` MUST list triggers (kind badge, schedule label,
+next/last run), allow inline enable + per-channel toggles, full create/edit
+modal (event picker, schedule, recipients chips, throttle), instant "Test now"
+with per-channel delivery report, and show the recent dispatch log.

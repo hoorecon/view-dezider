@@ -336,3 +336,37 @@ verdict.
 **Playbook when a user reports a bad import:** Runs list → filter by page type
 or find the URL → drill-down → check `hint_warnings`, retry flag and the raw
 response before deciding whether the prompt or the page is at fault.
+
+---
+## Notification Engine (v3.18.0)
+
+**Where:** Admin home → *Notification Engine* tile (`/admin/notification-engine`). Super-admin only.
+
+**What it is:** a generic, reusable alerting hub. You create *triggers* from a
+catalogue of trigger events; each trigger sends to **Email** (Resend, branded
+HTML) and/or **WhatsApp** (UltraMsg, short text + deep link) — both channels
+have independent ON/OFF toggles and their own recipient lists.
+
+**Trigger kinds:**
+- **Scheduled** — daily / weekly / monthly at HH:MM in any timezone. The
+  built-in *Weekly Import Analytics Digest* (`import-analytics`) is seeded at
+  **Monday 09:00 IST**: last-7-days runs, success %, hint pass, per-page-type
+  table, top failures and 👍/👎 feedback.
+- **Event** — fires instantly from inside the product. *Import Run Failure
+  Alert* (`import-run-failed`) pings you when a URL import errors; the
+  per-trigger **throttle** (default 60 min) prevents alert storms.
+
+**How to use:**
+1. Open the trigger card → toggle Email/WhatsApp pills, or Edit to manage
+   recipients (email chips) and numbers (country code + number, e.g.
+   `919876543210`).
+2. Tap **Test now** to send immediately — you get a per-channel delivery
+   report (e.g. ✉ 1/1 · 💬 1/1) and the run shows in *Recent dispatches*.
+3. **New Trigger** lets you bind any registered event again with a different
+   schedule/recipient set (e.g. a second digest for the leadership list).
+4. Master ON/OFF switch pauses a trigger without losing its configuration.
+
+**Ops notes:** dispatches are logged (newest ~500 kept); the scheduler ticks
+every 60 s and survives restarts (next-run times are stored in MongoDB);
+new trigger events only need a backend builder function — the UI picks them
+up automatically from the registry.

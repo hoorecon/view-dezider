@@ -1,6 +1,6 @@
 # Regression Test Catalogue — Dezider
 
-_metadata: { "version": "3.17.1", "updated": "2026-06-12" }
+_metadata: { "version": "3.18.0", "updated": "2026-06-12" }
 
 All suites live in `/app/tests/` plus the legacy `/app/backend_test_regression.py`.
 
@@ -227,3 +227,20 @@ Same 10 scenarios mirrored on `/api/swot/{id}/*` — verified manually (this for
 - Live e2e: seeded failing carwale-pattern run → real Claude suggestion
   (correct diagnosis) → approve → override live → 409 double-approve →
   403 regular admin → revert → default restored. Suite total 24/24.
+
+---
+## v3.18.0 — Notification Engine (2026-06-12)
+
+### New automated suite
+- `backend/tests/test_notification_engine.py` — 14 tests: registry sanity
+  (import-analytics scheduled + import-run-failed event, no callables leaked),
+  schedule math (weekly Mon 09:00 IST → 03:30 UTC, same-day rollover, daily,
+  monthly clamp, labels), idempotent boot seed, dispatch statuses
+  (skipped_no_recipients, unknown-event error), emit_event throttling /
+  disabled-trigger / kind guards, digest + failure-alert builder contents.
+
+### Smoke result (this fork)
+- Live e2e via curl: registry → seeded trigger (next_run 2026-06-15 03:30 UTC
+  = Mon 09:00 IST) → PUT validation (invalid email 400) → recipients update →
+  event-trigger create → test-send BOTH channels delivered (Resend 200 OK,
+  UltraMsg 200 OK) → run log → delete → 60s scheduler tick running in logs.

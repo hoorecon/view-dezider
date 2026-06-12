@@ -1,6 +1,6 @@
 # UAT Test Cases — Dezider
 
-_metadata: { "version": "3.17.1", "updated": "2026-06-12" }
+_metadata: { "version": "3.18.0", "updated": "2026-06-12" }
 
 ## How to UAT
 1. Login with a test account (see `/app/memory/test_credentials.md`). Free tier is fine for most tests.
@@ -223,3 +223,21 @@ DPDP-01..04 (export, delete-request, cancel-within-grace, admin purge).
 | AT-4 | Approve the same suggestion again (API) | 409 |
 | AT-5 | "revert" on an active override | Built-in default restored; chip disappears |
 | AT-6 | Regular admin calls any tuning endpoint | 403 |
+
+---
+## v3.18.0 — Notification Engine (2026-06-12)
+
+| ID | Scenario | Expected |
+|---|---|---|
+| NE-1 | Super-admin opens /admin/notification-engine | Seeded "Weekly Import Analytics Digest" card (SCHEDULED · Weekly · Monday 09:00 Asia/Kolkata · next run shown) + recent-dispatch log |
+| NE-2 | Add email via Edit → recipients chip input → Save | Chip persists; trigger card shows ✉ count; PUT returns normalised lowercase email |
+| NE-3 | Enter an invalid email ("foo bar") and Save | 400 "Invalid email address" surfaced; nothing saved |
+| NE-4 | Toggle WhatsApp ON + add `+91 98765 43210` | Number normalised to `919876543210`; WhatsApp pill shows ON (1) |
+| NE-5 | Tap "Test now" with ≥1 recipient | Alert shows per-channel result (e.g. Email 1/1, WhatsApp 1/1); run appears in dispatch log with SENT |
+| NE-6 | Tap "Test now" with all channels empty/off | Status NO RECIPIENTS; run logged as skipped_no_recipients |
+| NE-7 | Create "Import Run Failure Alert" (event kind) | No schedule fields shown; throttle minutes editable; card badge EVENT |
+| NE-8 | Import run fails twice within throttle window | Only ONE alert dispatched (second emit throttled) |
+| NE-9 | Master toggle OFF on a trigger | Scheduler/emits skip it; card shows OFF |
+| NE-10 | Regular admin (level 2) calls any /api/admin/notification-engine/* | 403 |
+| NE-11 | Delete a trigger | Card disappears; DELETE again → 404 |
+| NE-12 | Wait for Monday 09:00 IST (or set next_run_at past) | Digest email/WhatsApp delivered; next_run_at advances one week; run logged kind=scheduled |

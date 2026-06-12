@@ -1,6 +1,6 @@
 # REST API Reference — Dezider
 
-_metadata: { "version": "3.17.1", "updated": "2026-06-12" }
+_metadata: { "version": "3.18.0", "updated": "2026-06-12" }
 
 Base URL: `/api`. Auth: `Authorization: Bearer <session_token>` from `/auth/login`.
 Every response carries `X-Request-ID`, `X-Response-Time-MS`, security headers.
@@ -382,3 +382,24 @@ PostHog events: `url_import_completed`, `url_import_feedback`.
 | POST | `/api/admin/import-analytics/tuning/{id}/approve` | super-admin | Activate override (LIVE immediately); 409 if already decided |
 | POST | `/api/admin/import-analytics/tuning/{id}/reject` | super-admin | Archive suggestion |
 | DELETE | `/api/admin/import-analytics/tuning/override/{page_type}` | super-admin | Revert to built-in default block |
+
+---
+## v3.18.0 — Notification Engine endpoints (2026-06-12)
+
+Generic CRUD-able notification triggers (scheduled digests + event alerts) →
+Email (Resend) + WhatsApp (UltraMsg) with per-channel on/off toggles.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/api/admin/notification-engine/registry` | super-admin | Catalogue of registered trigger-event keys (`import-analytics` scheduled, `import-run-failed` event) with kind + default schedule |
+| GET | `/api/admin/notification-engine/triggers` | super-admin | All triggers incl. computed `schedule_label`, `next_run_at`, `last_status` |
+| POST | `/api/admin/notification-engine/triggers` | super-admin | Create trigger `{event_key, name, schedule?, channels, throttle_minutes?}`; kind derived from registry; 400 on unknown event_key / invalid email / invalid phone / bad timezone |
+| PUT | `/api/admin/notification-engine/triggers/{id}` | super-admin | Partial update (name, enabled, schedule, channels, throttle); recomputes `next_run_at` on schedule change; 400 if schedule set on event-kind |
+| DELETE | `/api/admin/notification-engine/triggers/{id}` | super-admin | Remove trigger; 404 if missing |
+| POST | `/api/admin/notification-engine/triggers/{id}/test` | super-admin | Send NOW to configured recipients (event-kind uses sample payload); returns per-channel delivery report; does NOT mutate schedule/throttle state |
+| GET | `/api/admin/notification-engine/runs?trigger_id=&limit=50` | super-admin | Dispatch log (newest first, max 200) |
+
+Trigger document: `{id, event_key, name, kind: scheduled|event, enabled, schedule:{frequency: daily|weekly|monthly, day_of_week, day_of_month(1-28), hour, minute, timezone}, channels:{email:{enabled, recipients[]}, whatsapp:{enabled, numbers[]}}, throttle_minutes (event-kind), next_run_at, last_run_at, last_status}`.
+Run statuses: `sent` (≥1 delivery ok), `failed` (all attempted failed), `skipped_no_recipients`, `error` (builder/registry failure).
+Scheduler: 60-second APScheduler tick (fcntl-singleton across workers, `NOTIFICATION_SCHEDULER_DISABLED=true` to disable). Boot seeds the default **Weekly Import Analytics Digest** (Mon 09:00 IST, email ON/empty, WhatsApp OFF) idempotently.
+Event emission: `core.url_telemetry.record_run` fires `import-run-failed` (fire-and-forget, per-trigger `throttle_minutes` guard) whenever an import run errors.

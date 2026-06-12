@@ -1,6 +1,6 @@
 # Product Requirements Document — Dezider
 
-_metadata: { "version": "3.17.1", "updated": "2026-06-12", "author": "engineering" }
+_metadata: { "version": "3.18.0", "updated": "2026-06-12", "author": "engineering" }
 
 ## 1. Vision
 
@@ -311,3 +311,33 @@ Guards: one pending suggestion per page type, double-decide → 409, super-admin
 only, header normalisation. Verified live: real Claude suggestion correctly
 diagnosed the original carwale failure pattern; approve→override-live→revert
 cycle + RBAC all green (pytest 24/24 incl. new test_prompt_tuning.py).
+
+---
+## v3.18.0 — Generic Notification Engine (Email + WhatsApp) (2026-06-12)
+
+Instead of a single-purpose weekly digest email, v3.18.0 ships a **reusable
+Notification Engine**: a CRUD-able list of *triggers*, each binding a
+registered trigger-event key to channels. Two kinds:
+
+1. **Scheduled** — daily/weekly/monthly at HH:MM in any IANA timezone.
+   First registered event: `import-analytics` — the Import-URL Intelligence
+   digest (last-7-days runs, success %, hint pass, per-page-type breakdown,
+   top failures, 👍/👎 feedback) seeded by default at **Monday 09:00 IST**.
+2. **Event** — fired in-code; first registered: `import-run-failed` (instant
+   alert when an Import-from-URL run errors), throttled per trigger
+   (default 60 min) to avoid spam.
+
+Channels per trigger with independent on/off toggles: **Email (Resend)** —
+branded HTML digest with KPI cards + tables; **WhatsApp (UltraMsg)** — short
+text summary with key numbers + deep link to /admin/import-analytics.
+Admin UI: new **/admin/notification-engine** screen (admin home tile) — trigger
+cards with enable/channel toggles, recipient & number chips, schedule editor
+(frequency/day/time/timezone), throttle editor, **Test now** instant send with
+per-channel delivery report, and the recent-dispatch log.
+New trigger events later = register one builder function — zero schema work.
+
+### Verification
+- Live e2e: test-send delivered BOTH channels (Resend 200, UltraMsg 200) with
+  digest built from real telemetry; CRUD + validation (bad email 400) verified.
+- pytest `tests/test_notification_engine.py` — registry, schedule math
+  (IST→UTC), idempotent seed, dispatch statuses, event throttling, builders.

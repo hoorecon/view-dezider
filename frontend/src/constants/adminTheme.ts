@@ -99,6 +99,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
     items: [
       { key: 'home',     label: 'Dashboard',         icon: 'grid',                 href: '/admin' },
       { key: 'importai', label: 'Import-URL Intel',  icon: 'pulse',                href: '/admin/import-analytics' },
+      { key: 'notifyeng',label: 'Notification Engine', icon: 'notifications',      href: '/admin/notification-engine' },
       { key: 'audit',    label: 'Audit Trail',       icon: 'time',                 href: '/admin/audit-trail' },
       { key: 'incident', label: 'Incident Response', icon: 'alert-circle',         href: '/admin/incident-response' },
     ],

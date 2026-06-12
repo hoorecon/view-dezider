@@ -1,8 +1,8 @@
 # Postman / Insomnia collection — Dezider API
 
-_metadata: { "version": "3.16.0", "updated": "2026-06-12" }
+_metadata: { "version": "3.18.0", "updated": "2026-06-12" }
 
-Collection JSON: `/app/docs/Postman_Collection.json` (auto-regenerated 2026-06-12 from live OpenAPI — **52 folders, 972 endpoints**). New v3.16 folders include URL Analyse, AI Wallet (+ Admin Pricing Config), Admin Revenue Recon, Analytics (PostHog server-side).
+Collection JSON: `/app/docs/Postman_Collection.json` (auto-regenerated 2026-06-12 from live OpenAPI — **53 folders, 979 endpoints**). New v3.16 folders include URL Analyse, AI Wallet (+ Admin Pricing Config), Admin Revenue Recon, Analytics (PostHog server-side). v3.18 adds the **Notification Engine (Admin)** folder (7 requests: registry, trigger CRUD, test-send, dispatch log — use a `{{triggerId}}` env var).
 
 ## Environments
 - **Local Dev** (`baseUrl` = http://localhost:8001)

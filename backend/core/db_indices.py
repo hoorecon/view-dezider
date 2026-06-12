@@ -172,6 +172,12 @@ INDEX_SPECS: dict[str, list] = {
         [("user_id", 1), ("created_at", -1)],
     ],
     "user_notifications": [("user_id", 1), [("user_id", 1), ("created_at", -1)]],
+    "notification_triggers": [
+        {"keys": [("id", 1)], "unique": True},
+        ("event_key", 1),
+        [("kind", 1), ("enabled", 1), ("next_run_at", 1)],
+    ],
+    "notification_runs": [("trigger_id", 1), [("ts", -1)]],
     "audit_trail": [("user_id", 1), [("user_id", 1), ("created_at", -1)]],
     "incidents": [("user_id", 1), ("status", 1)],
 

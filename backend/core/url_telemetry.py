@@ -104,6 +104,16 @@ async def record_run(tel: Dict[str, Any], *, status: str = "success",
         })
     except Exception as e:  # noqa: BLE001 — telemetry never breaks the import
         logger.warning("url-import telemetry record failed (non-fatal): %s", str(e)[:200])
+    if status != "success":
+        # Notification Engine — fire-and-forget failure alert (throttled per trigger)
+        try:
+            from core.notification_engine import emit_event_bg
+            emit_event_bg("import-run-failed", {
+                "url": tel["url"], "error": error, "page_type": tel.get("page_type"),
+                "endpoint": tel["endpoint"], "user_id": tel["user_id"], "run_id": tel["run_id"],
+            })
+        except Exception:  # noqa: BLE001
+            pass
     return tel["run_id"]
 
 
