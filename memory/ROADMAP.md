@@ -8,11 +8,12 @@ _Split out of PRD.md on 12 Jun 2026. Cross-check CHANGELOG.md before picking up 
 
 ## P2 — Future
 - Webhook API Integration
-- Org-Type Master Migration
 - Dashboard cluttered with empty "Draft" sessions — lazy session creation or filter
   `status="draft"` from Recent Sessions (user paused this; resume only on explicit ask)
 - Notification Engine: register additional trigger events as needs emerge
   (e.g. wallet-low-balance, weekly revenue digest) — one builder function each
+- Import progress for the standalone /tools/analyse-url screen (Step-2 import done 12 Jun 2026;
+  same progress_id plumbing can be reused for the analyze endpoint)
 
 ## Refactoring
 - `Step2.tsx` (>1200 lines) — component breakdown

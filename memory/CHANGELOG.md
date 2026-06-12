@@ -828,3 +828,35 @@ Postman_Collection.json folder "Notification Engine (Admin)" (53 folders, 979 en
 ADMIN_USER_GUIDE + INDEX.
 NOTE: new expo-router route files need `sudo supervisorctl restart expo` (Metro CI mode, no watch);
 tunnel 502s ~60s after restart — wait & retry.
+
+## v3.19.0 — 12 Jun 2026 (Iteration 106): Org-Type Master + URL-Import live progress
+USER CHOICES: 1a separate "Family" card · 2b searchable icon picker · 3 login org types untouched.
+- ORG-TYPE MASTER: discovered an EXISTING master (db.org_types_master, payment_admin.py — public
+  GET /api/org-types + admin CRUD /api/admin/org-types) built earlier for coupon filters; EXTENDED
+  it instead of duplicating: + FAMILY seed row (people / #EC4899 / "Family / household", sort 2),
+  + `description` field (seeder backfills legacy rows, allowed in POST/PUT), INDIVIDUAL desc now
+  "Self / personal". decision_intake.py validates acting_as_context against ACTIVE master keys
+  (dynamic) ∪ legacy constant.
+- ADMIN UI: new "Org Types" tab (default tab) under /admin/masters →
+  src/components/admin/OrgTypesManager.tsx (320L): CRUD modal w/ label, auto-key, description,
+  SEARCHABLE Ionicons picker (~900 icons, glyphMap), 12 color presets + hex, is_org/active
+  switches, sort order; system rows soft-disable on delete; custom rows hard-delete (409 if used
+  by decisions). payments.tsx org-type modal gained Description field (same API).
+- DYNAMIC INTAKE: new src/hooks/useOrgTypes.ts (fetch /org-types, bundled-defaults fallback);
+  new-decision.tsx (My Dezider/SWOT/Pros-Cons shared intake — hardcoded ACTING_AS removed) and
+  add-solution.tsx (ORG_TYPES_LIST removed) now render the 7 dynamic cards/chips incl. Family.
+- IMPORT PROGRESS UX: url_analyze.py writes REAL stages (5 consent → 12 fetch → 22 structure →
+  45/50 scoring/rendered → 62 AI extract → 85-88 merge → 100 done/error) to db.url_import_progress
+  (TTL 1h); new GET /api/url-analyze/progress/{id}; Step2.tsx generates progress_id, polls 1.2s,
+  shows modal (import-progress-modal) w/ stage label, % bar, elapsed seconds. Consent modal now
+  closes when import starts.
+- IMPORT SPEED: classify_page_type now an asyncio task running CONCURRENTLY with deterministic
+  parsing/scoring and with fetch_rendered on the AI path (~5-15s saved); telemetry page_type still
+  recorded on every route via await-before-return.
+- SET-EXPECTATIONS CLARITY (answered user Q "is it auto-called?" — NO): import pre-fills Expected
+  values deterministically (best-of-set heuristic); the button is a separate AI pass. Endpoint now
+  returns {changed, confirmed}; alerts say "CHANGED x / confirmed y"; import popup + button hint
+  explain the pre-suggestion. ACTING_AS removed from new-decision.tsx.
+TESTED: pytest 9/9 (tests/test_iter106_org_types_master.py) + testing agent full frontend pass
+(iteration_106.json): Masters CRUD incl. icon search, 7/7 cards dezider+swot, 7/7 add-solution
+chips, FAMILY decision creation, regression on other master tabs + payments screen.

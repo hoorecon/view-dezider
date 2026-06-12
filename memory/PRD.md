@@ -154,6 +154,18 @@ Multi-user Decision Making App based on a 10-step Proactive Risk Response (PRR) 
 - Admin screen /admin/notification-engine + home tile + sidebar nav
 - Extensible: new trigger events = one backend builder function, UI auto-discovers via registry
 
+### 14. Org-Type Master + Import Progress UX (v3.19.0 — 12 Jun 2026)
+- "Acting As / This decision is for…" org types are DYNAMIC from `db.org_types_master`
+  (single source of truth — also powers coupon org-filters & Solution targeting)
+- 7 seed types incl. new **FAMILY** (pink, "Family / household"); admin CRUD under
+  Admin → Masters → Org Types (default tab): label, key, description, searchable
+  Ionicons picker, color presets, is_org/active, sort order; system rows soft-disable
+- Intake validation (`/api/hos/decisions`) accepts any ACTIVE master key; login page
+  org types intentionally static (user choice)
+- URL-Import shows LIVE progress modal (real backend stages, % bar, elapsed seconds)
+  via `GET /api/url-analyze/progress/{id}`; classification runs concurrent with
+  rendered fetch (~5-15s faster); Set-Expectations returns changed/confirmed counts
+
 ---
 ## Memory file map (split 12 Jun 2026 — PRD.md exceeded 700 lines)
 - **PRD.md** (this file): static product requirements & architecture

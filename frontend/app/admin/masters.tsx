@@ -29,7 +29,7 @@ const TYPES = [
 
 export default function AdminMastersScreen() {
   const router = useRouter();
-  const [type, setType] = useState('religion');
+  const [type, setType] = useState('org_type');
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
