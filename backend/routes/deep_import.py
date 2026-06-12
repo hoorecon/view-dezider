@@ -80,7 +80,7 @@ _A_RE = re.compile(r'<a\s[^>]*href=["\']([^"\'#]+)["\'][^>]*>(.*?)</a>', re.I | 
 _TAG_RE = re.compile(r"<[^>]+>")
 
 
-def _extract_links(html: str, base_url: str, cap: int = 150) -> List[Dict[str, str]]:
+def _extract_links(html: str, base_url: str, cap: int = 600) -> List[Dict[str, str]]:
     """Same-domain anchors with human-readable text — candidates for option pages."""
     host = urlparse(base_url).netloc.replace("www.", "")
     seen, out = set(), []
@@ -101,6 +101,43 @@ def _extract_links(html: str, base_url: str, cap: int = 150) -> List[Dict[str, s
     return out
 
 
+_RANK_STOP = {"the", "for", "and", "best", "good", "choose", "with", "near",
+              "area", "new", "top", "buy", "get", "find", "from", "want"}
+
+
+def _rank_links(links: List[Dict[str, str]], context: str, cap: int = 150) -> List[Dict[str, str]]:
+    """Order links by decision-context keyword overlap (text + url) so that on
+    link-heavy portals (1000+ anchors) the relevant ones survive the prompt cap
+    instead of whatever happened to appear first in the HTML."""
+    toks = {t for t in re.findall(r"[a-z0-9]+", (context or "").lower())
+            if len(t) >= 3 and t not in _RANK_STOP}
+    if not toks:
+        return links[:cap]
+
+    def score(l: Dict[str, str]) -> int:
+        hay = (l["text"] + " " + l["url"]).lower()
+        return sum(1 for t in toks if t in hay)
+
+    ranked = sorted(enumerate(links), key=lambda p: (-score(p[1]), p[0]))
+    return [l for _, l in ranked[:cap]]
+
+
+async def _page_links(url: str, user_id: str):
+    """Fetch `url` and return (html, links). Direct fetch first; only falls back
+    to a rendered (ScraperAPI-metered) fetch when the direct HTML is link-thin —
+    saves the user's scrape credits on server-rendered portals."""
+    r = await fetch_page(url, user_id=user_id)
+    html = r.text
+    links = _extract_links(html, url)
+    if len(links) < 10:
+        rendered = await fetch_rendered(url, user_id=user_id)
+        if rendered:
+            rlinks = _extract_links(rendered, url)
+            if len(rlinks) > len(links):
+                html, links = rendered, rlinks
+    return html, links
+
+
 def _parse_json(out: str) -> Optional[dict]:
     import json
     m = re.search(r"\{.*\}", out or "", re.S)
@@ -116,8 +153,17 @@ def _parse_json(out: str) -> Optional[dict]:
 LINKS_SYSTEM = """You select the OPTION/DETAIL sub-pages a decision-maker should crawl from a website's listing/base page.
 Given the user's decision context, the base page text and a numbered list of same-domain links, reply ONLY compact JSON:
 {"options":[{"name":"<short display name of the option>","url":"<absolute link url>"}]}
-Rules: pick at most {max_pages} links that each lead to ONE comparable option/product/listing DETAIL page relevant to the user's context.
-EXCLUDE navigation, category, login, ads, news, help and policy links. Prefer the items most relevant to the context. If genuinely none qualify, reply {"options":[]}."""
+Rules: pick at most {max_pages} links. A valid option link leads to the DETAIL page of exactly ONE specific item (one property, one product, one plan) relevant to the user's context — typically a link whose text/url names a single concrete item.
+STRICTLY EXCLUDE: listing/category/search/hub pages that list MANY items (e.g. "Flats for rent in <city>", "Properties in <area>"), navigation, login, ads, news, help and policy links.
+Prefer the items most relevant to the context. If the page only links to listing/hub pages and no single-item detail pages qualify, reply {"options":[]}."""
+
+HUBS_SYSTEM = """You locate LISTING/SEARCH hub pages on a website — pages that themselves list many option/detail pages relevant to a user's decision context. This is used when the given base page is a homepage/portal with no direct option links.
+Given the decision context, the base page text and a numbered list of same-domain links, reply ONLY compact JSON:
+{"hubs":["<absolute url>", ...]}
+Rules: return at most 3 urls, ordered most → least relevant to the context.
+1. STRONGLY prefer urls picked from the provided LINKS list — choose the most SPECIFIC listing page matching the context (right city/locality/category/budget filter).
+2. Only if no listed link matches, you MAY construct ONE url by swapping the locality/category segment of a similar listed link's pattern. Constructed urls must stay on the same domain.
+3. EXCLUDE login, help, news, blog, policy and generic navigation pages. If nothing plausible exists, reply {"hubs":[]}."""
 
 CONSOLIDATE_SYSTEM = """You consolidate factors for a decision comparison from MULTIPLE crawled option pages.
 Given the user's decision context and one text block per option page, reply ONLY compact JSON:
@@ -157,6 +203,54 @@ def _score_candidates(factors: List[Dict[str, Any]], candidates: List[Dict[str, 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 1 — discovery (background task)
 # ─────────────────────────────────────────────────────────────────────────────
+async def _pick_detail_links(user_id: str, context: str, max_pages: int,
+                             text: str, links: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    """One metered AI call: pick the option/detail page links for the context."""
+    link_block = "\n".join(f"{i + 1}. [{l['text']}] {l['url']}" for i, l in enumerate(links))
+    out = await metered_chat(
+        user_id,
+        system_message=LINKS_SYSTEM.replace("{max_pages}", str(max_pages)),
+        prompt=(f"DECISION CONTEXT: {context}\n\nBASE PAGE TEXT:\n{text}\n\n"
+                f"LINKS:\n{link_block}"),
+        feature="deep_import_links", session_prefix="deeplinks", tier="fast")
+    data = _parse_json(out) or {}
+    seen, options = set(), []
+    for o in data.get("options") or []:
+        if not isinstance(o, dict) or not o.get("url") or not o.get("name"):
+            continue
+        url = str(o["url"]).strip()
+        if url in seen:
+            continue
+        seen.add(url)
+        options.append({"name": str(o["name"]).strip()[:120], "url": url})
+        if len(options) >= max_pages:
+            break
+    return options
+
+
+async def _pick_hubs(user_id: str, context: str, base_url: str,
+                     text: str, links: List[Dict[str, str]]) -> List[str]:
+    """One metered AI call: locate same-domain LISTING hub pages for the context
+    (used when the base page is a portal/homepage with no direct detail links)."""
+    link_block = "\n".join(f"{i + 1}. [{l['text']}] {l['url']}" for i, l in enumerate(links))
+    out = await metered_chat(
+        user_id, system_message=HUBS_SYSTEM,
+        prompt=(f"DECISION CONTEXT: {context}\n\nBASE PAGE TEXT:\n{text}\n\n"
+                f"LINKS:\n{link_block}"),
+        feature="deep_import_hubs", session_prefix="deephubs", tier="fast")
+    data = _parse_json(out) or {}
+    host = urlparse(base_url).netloc.replace("www.", "")
+    hubs: List[str] = []
+    for h in (data.get("hubs") or [])[:3]:
+        raw = (h.get("url") if isinstance(h, dict) else h) or ""
+        u = urljoin(base_url, str(raw).strip())
+        p = urlparse(u)
+        if (p.scheme in ("http", "https") and p.netloc.replace("www.", "") == host
+                and u.rstrip("/") != base_url.rstrip("/") and u not in hubs):
+            hubs.append(u)
+    return hubs
+
+
 async def _set_job(job_id: str, **fields):
     fields["updated_at"] = _now()
     await db.deep_import_jobs.update_one({"id": job_id}, {"$set": fields})
@@ -177,39 +271,55 @@ async def _discover(job_id: str, user_id: str, base_url: str, context: str,
                     max_pages: int, tier: str, tel: Dict[str, Any]):
     try:
         await _prog(job_id, 8, "Fetching the base page…")
-        r = await fetch_page(base_url, user_id=user_id)
-        rendered = await fetch_rendered(base_url, user_id=user_id)
-        html = rendered or r.text
+        html, links = await _page_links(base_url, user_id)
         base_text = page_text(html, limit=8000)
-        links = _extract_links(html, base_url)
         if not links:
             await _fail(job_id, tel,
                         "No crawlable same-site links found on the base page.")
             return
 
-        await _prog(job_id, 22, "AI is identifying the option pages…")
-        link_block = "\n".join(f"{i + 1}. [{l['text']}] {l['url']}" for i, l in enumerate(links))
-        out = await metered_chat(
-            user_id,
-            system_message=LINKS_SYSTEM.replace("{max_pages}", str(max_pages)),
-            prompt=(f"DECISION CONTEXT: {context}\n\nBASE PAGE TEXT:\n{base_text}\n\n"
-                    f"LINKS:\n{link_block}"),
-            feature="deep_import_links", session_prefix="deeplinks", tier="fast")
-        data = _parse_json(out) or {}
-        options = [{"name": str(o.get("name") or "").strip()[:120],
-                    "url": str(o.get("url") or "").strip()}
-                   for o in (data.get("options") or [])
-                   if isinstance(o, dict) and o.get("url") and o.get("name")][:max_pages]
+        await _prog(job_id, 18, "AI is identifying the option pages…")
+        options = await _pick_detail_links(user_id, context, max_pages, base_text,
+                                           _rank_links(links, context))
+
+        if not options:
+            # Hop 2 — the base page is a homepage/portal that links to LISTING
+            # hub pages rather than option detail pages (e.g. nobroker.in/).
+            # Locate the listing page(s) for the context and pick details there.
+            await _prog(job_id, 24,
+                        "Base page has no option pages — locating a listing page for your context…")
+            hubs = await _pick_hubs(user_id, context, base_url, base_text,
+                                    _rank_links(links, context))
+            for hi, hub in enumerate(hubs):
+                await _prog(job_id, 26 + hi * 4,
+                            f"Scanning listing page {hi + 1}/{len(hubs)} for option pages…")
+                try:
+                    hub_html, hub_links = await _page_links(hub, user_id)
+                except ai_wallet.InsufficientCredits:
+                    raise
+                except Exception as e:  # noqa: BLE001 — a constructed hub may 404/410
+                    logger.warning("deep-import hub fetch failed %s: %s", hub[:90], str(e)[:120])
+                    continue
+                if not hub_links:
+                    continue
+                options = await _pick_detail_links(
+                    user_id, context, max_pages, page_text(hub_html, limit=8000),
+                    _rank_links(hub_links, context))
+                if len(options) >= 2:
+                    break
+                options = []
         if not options:
             await _fail(job_id, tel,
-                        "AI could not identify option detail pages for your context — "
-                        "try a more specific listing URL or refine the context line.")
+                        "Could not find option detail pages from this URL — paste the "
+                        "LISTING/SEARCH-results page that shows the items you want to compare "
+                        "(e.g. your filtered search results) as the base URL, or refine the "
+                        "context line.")
             return
 
         page_texts: Dict[str, str] = {}
-        step = max(1, int(48 / len(options)))
+        step = max(1, int(38 / len(options)))
         for i, opt in enumerate(options):
-            await _prog(job_id, 28 + i * step,
+            await _prog(job_id, 40 + i * step,
                         f"Crawling option {i + 1}/{len(options)} — {opt['name']}…")
             try:
                 rhtml = await fetch_rendered(opt["url"], user_id=user_id)

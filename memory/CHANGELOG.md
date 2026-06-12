@@ -940,3 +940,33 @@ metering verified (5.23 cr debit, ledger+scrape_usage rows); zero-balance gate v
 example.com deep-import failure visible in admin runs; testing agent iteration_108.json ALL 5
 frontend tests PASS. LESSON: expo runs with CI=true → bundle is STALE after tsx edits; ALWAYS
 `sudo supervisorctl restart expo` after frontend changes before UI testing.
+
+## Iteration 109 — Deep Import two-hop discovery (homepage/portal base URLs) — 12 Jun 2026
+USER BUG (angry): Deep Import failed on base URL https://www.nobroker.in/ + context "Choose best
+2 BHK Flat for Rent in Chennai Mugappair area" → "AI could not identify option detail pages".
+ROOT CAUSE (2 compounding bugs in routes/deep_import.py):
+ 1) _extract_links capped at the FIRST 150 anchors — nobroker homepage has 1,910 links and the
+    first 150 are Bangalore/Mumbai SALE footer links; the 67 Chennai-rent links never reached AI.
+ 2) ONE-HOP discovery only: portals/homepages link to LISTING HUB pages ("Flats for Rent in
+    Chennai"), never to individual property detail pages → AI correctly returned 0 options.
+FIX (routes/deep_import.py):
+ A) _rank_links(): context-keyword relevance ranking (text+url, stopword-filtered) applied
+    BEFORE the 150-link prompt cap; _extract_links cap raised 150→600.
+ B) TWO-HOP discovery: hop-1 detail-pick (LINKS_SYSTEM now STRICTLY excludes hub/listing pages —
+    a detail page = exactly ONE item) → if 0 options, NEW _pick_hubs() AI call (HUBS_SYSTEM,
+    metered feature=deep_import_hubs) returns ≤3 same-domain listing-hub urls (validated:
+    same-domain only, relative resolved, dupes/base dropped; construction allowed but 404/410
+    tolerated) → fetch each hub → detail-pick on hub links → need ≥2 options.
+ C) CREDIT SAVER: _page_links() fetches direct FIRST and only escalates to ScraperAPI render
+    when the page is link-thin (<10 anchors) — base+hub fetches on nobroker are now FREE
+    (previously every base page burned a rendered fetch unconditionally).
+ D) Clearer failure copy (paste a listing/search-results URL) + DeepImport.tsx dialog copy now
+    says homepage URLs work. Progress labels: "locating a listing page…", "Scanning listing
+    page N…"; crawl loop re-based to pct 40.
+E2E VERIFIED (real nobroker.in, exact user inputs): hop-1 → [] → hub-hop found
+properties-for-rent-in-mogappair-chennai → 5 REAL 2BHK Mogappair flats crawled → 19 grounded
+factors (Rent 15-23k, Deposit, Area, Transit Score…) → factors_ready in 221s. Metering intact:
+5 rendered option fetches charged (5.23 cr each), hub+base direct = free, deep_import_hubs in
+ledger, telemetry success run recorded.
+TESTED: tests/test_iter109_deep_import_hub_hop.py 9/9 + iter108 + url_detail_import regression
+= 31 pass. Smoke screenshot OK. expo restarted after tsx edit (CI=true stale-bundle rule).

@@ -127,8 +127,9 @@ export const DeepImport: React.FC<Props> = ({ decisionId, onMerged }) => {
         <View style={{ flex: 1 }}>
           <Text style={st.openBtnTitle}>Deep Import (multi-page)</Text>
           <Text style={st.openBtnSub}>
-            Give a base URL + your context — we crawl the option detail pages, you approve &amp;
-            prioritise the factors, then values fill in. Uses more AI credits than a normal import.
+            Give a base URL (homepage or listing page) + your context — we find &amp; crawl the option
+            detail pages, you approve &amp; prioritise the factors, then values fill in. Uses more AI
+            credits than a normal import.
           </Text>
         </View>
         <Ionicons name="chevron-forward" size={16} color="#94A3B8" />
@@ -142,8 +143,9 @@ export const DeepImport: React.FC<Props> = ({ decisionId, onMerged }) => {
               <>
                 <Text style={st.title}>Deep Import</Text>
                 <Text style={st.hint}>
-                  We crawl up to {maxPages} option/detail pages linked from your base URL, consolidate
-                  the FACTORS first for your review, and only then fill the option values.
+                  We crawl up to {maxPages} option/detail pages from your base URL — even a homepage
+                  works: we auto-locate the listing page matching your context. Factors come first
+                  for your review; values fill in after.
                 </Text>
                 <Text style={st.fieldLabel}>Base URL *</Text>
                 <TextInput testID="deep-import-url-input" style={st.input} autoCapitalize="none"
