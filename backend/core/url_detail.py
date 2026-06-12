@@ -3,26 +3,38 @@
 When a pasted URL is a single listing/product/detail page (NOT a comparison
 table), ONE metered LLM call turns the page into a decision-ready structure:
 
-  • every concrete attribute of the main item becomes a FACTOR with a smart
-    operator (Rent ≤ 18,000 · Area ≥ 650 sqft · Furnishing = Semi …) and the
-    item's own value as the suggested Expected value,
+  • every concrete attribute of the main item becomes a FACTOR (optionally
+    grouped into parent factors with SUB-factors, equal weight split) with a
+    smart direction-aware operator (Rent ≤ 18,000 · Area ≥ 650 sqft ·
+    Furnishing = Semi …) and the item's own value as the suggested Expected,
+  • each factor carries BOTH data_type (numeric/text — the VALUE format) and
+    factor_type (quantitative/qualitative — the NATURE: undisputed fact/spec
+    vs person-dependent judgment),
   • the main item becomes Option 1 (it satisfies its own expectations → 100%),
   • "Similar / Related items" sections become extra options with whatever
     partial values + relative scores are visible on the page.
 
-Site-agnostic: property listings, e-commerce products, vehicles, jobs,
-courses — anything with a spec sheet and (optionally) a related-items rail.
+GROUPING GUIDELINES (user-mandated):
+  1. Page-defined groups (e.g. GSMArena's BODY → Dimensions/Weight/Build/SIM)
+     are SACRED — never modified or overridden.
+  2. AI may invent groups ONLY when the page defines none AND the factor count
+     exceeds the admin-configurable threshold (`import_group_threshold`).
+  3. ZERO TOLERANCE on value mapping: values/scores are keyed by the FULL
+     "Group::Factor" path so regrouping can never shuffle an option's values.
 
-Tiers: "fast" (default) routes through the free-first Gemini chain;
-"precise" routes through Claude (admin-configured `precise_model`) via the
-Emergent universal key at the configured credit multiplier.
+ACCURACY HINTS (optional, user-supplied): expected factor/option counts and
+first factor/option names. When provided, the extraction is validated against
+them and retried ONCE with corrective feedback on mismatch (self-healing).
+
+Tiers: "fast" = free-first Gemini chain; "precise" = Claude (admin-configured
+`precise_model`) via the Emergent universal key at the configured multiplier.
 """
 from __future__ import annotations
 
 import json
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from core import ai_wallet
 from core.ai_metering import has_any_llm, metered_chat
@@ -32,6 +44,7 @@ logger = logging.getLogger(__name__)
 
 _NUMERIC_OPS = {"<=", ">=", "=", "<", ">", "!="}
 _TEXT_OPS = {"contains", "starts_with", "ends_with", "equals", "not_equals"}
+SEP = "::"
 
 # Keys inside embedded SPA-state JSON that hold "similar / related items" data
 # (e.g. NoBroker's similarPropertiesInfo, generic relatedProducts, recommendations).
@@ -44,7 +57,8 @@ def _embedded_related_snippets(html: str, max_snippets: int = 2,
     """Mine the raw HTML's inline-script JSON state for similar/related-items
     blocks. Many listing sites server-embed the 'Similar items' rail data but
     only render it with JavaScript — so it is invisible to plain text
-    extraction. Heavy media sub-objects are stripped to keep signal density."""
+    extraction. Heavy media/description sub-objects are stripped to keep
+    signal density high."""
     out: list = []
     for m in _RELATED_KEY_RE.finditer(html or ""):
         tail = html[m.end(): m.end() + 30]
@@ -68,30 +82,39 @@ def _embedded_related_snippets(html: str, max_snippets: int = 2,
 
 
 def _squash(name: str) -> str:
-    """Whitespace-insensitive dedupe key."""
+    """Whitespace-insensitive dedupe / fuzzy-match key."""
     return " ".join(str(name or "").lower().split())
+
 
 DETAIL_SYSTEM = """You convert ONE web page into a decision-comparison structure. The page shows a single MAIN item in detail (property listing, product, vehicle, job, course, service, …) and may show a "Similar/Related items" rail.
 
 Reply ONLY compact JSON (no prose, no markdown fences):
 {"page_type":"detail",
- "main_item":{"name":"<full display title of the main item>"},
- "factors":[{"name":str,"data_type":"numeric"|"text","operator":"<="|">="|"="|"equals","expected_value":str,"unit":str|null}],
- "items":[{"name":str,"values":{"<factor name>":str|null},"scores":{"<factor name>":0-100|null}}]}
+ "main_item":{"name":"<the listing's own DISPLAY HEADING on the page, not the SEO <title> tag>"},
+ "groups":[{"name":"<group name or 'General'>","source":"page"|"ai"|"none",
+            "factors":[{"name":str,"data_type":"numeric"|"text","factor_type":"quantitative"|"qualitative","operator":"<="|">="|"="|"equals","expected_value":str,"unit":str|null}]}],
+ "items":[{"name":str,"values":{"<group>::<factor>":str|null},"scores":{"<group>::<factor>":0-100|null}}]}
 
 RULES
-1. FACTORS — be EXHAUSTIVE: extract EVERY concrete attribute/spec of the MAIN item shown on the page (a typical detail page yields 15-25 factors — do NOT summarise attributes away): prices, rents, fees, deposits, maintenance, sizes, counts, scores, ratings, dates, categories, yes/no flags, address/locality. EXCLUDE site navigation, ads, service promos, marketing prose, breadcrumbs, nearby-locality link lists.
-2. data_type "numeric" ONLY when the value is one measurable number (650, 18000, 6.2). Composite values like "0/4", "2 BHK", dates, yes/no → "text".
-3. operator expresses what a decision-maker would WANT versus this item's value:
-   • "<=" for lower-is-better numerics (rent, price, deposit, fees, maintenance, distance, commute)
-   • ">=" for higher-is-better numerics (area, livability/transit scores, ratings, capacity, warranty)
+1. FACTORS — be EXHAUSTIVE: extract EVERY concrete attribute/spec of the MAIN item (a typical detail page yields 15-25 factors — do NOT summarise attributes away): prices, rents, fees, deposits, maintenance, sizes, counts, scores, ratings, dates, categories, yes/no flags, address/locality. EXCLUDE site navigation, ads, service promos, marketing prose, breadcrumbs, nearby-locality link lists.
+2. GROUPING — three cases, in priority order:
+   a. The PAGE already groups specs under section headings (e.g. BODY → Dimensions/Weight/Build/SIM): copy that grouping EXACTLY, source="page". NEVER rename, merge, split or re-assign page-defined groups.
+   b. The page defines no grouping and there are MORE than {group_threshold} factors: YOU may group related factors into 3-7 sensible categories (e.g. Costs / Space & Layout / Location / Amenities), source="ai".
+   c. Otherwise: a single group {"name":"General","source":"none"} holding all factors flat.
+3. data_type describes the VALUE FORMAT only: "numeric" when the value is one measurable number (650, 18000, 6.2); composite values like "0/4", "2 BHK", dates, yes/no → "text".
+4. factor_type describes the NATURE — INDEPENDENT of data_type:
+   • "quantitative" = an UNDISPUTED fact/spec that is identical for every observer — even when the value is text. Color=Blue, Furnishing=Semi, Facing=South, SIM=Nano, Brand, Address, Yes/No flags are ALL quantitative (measurable & claimable, no debate).
+   • "qualitative" = person-dependent judgment that can differ between people for the SAME item: Comfort, Luxury Feel, Design Appeal, Neighbourhood Vibe, Build Quality impression, Ease of Use. These need AI/judgment-based assessment later.
+   Most spec-sheet factors are quantitative. Only judgment factors are qualitative.
+5. operator expresses the DIRECTION a decision-maker wants versus this item's value:
+   • "<=" for lower-is-better numerics (rent, price, deposit, fees, maintenance, distance, commute) — inversely proportional to satisfaction
+   • ">=" for higher-is-better numerics (area, scores, ratings, capacity, warranty) — directly proportional
    • "=" for numeric identity values (bedroom count, bathroom count)
-   • "equals" for ALL text factors (type, furnishing, facing, tenant, possession, yes/no, NA, locality)
-4. expected_value = the MAIN item's own value, cleaned: plain numbers for numerics (no currency symbols or thousands separators), concise text otherwise. Keep "NA" when the page shows NA. Put units (sqft, INR, years, km) in "unit".
-5. main_item.name = the listing's own DISPLAY HEADING on the page (e.g. "2 BHK Flat In Metro Flats for Rent In Kodambakkam"), NOT the SEO <title> tag.
-6. ITEMS — FIRST item MUST be the main item with every factor value filled and every score 100. THEN every DIFFERENT similar/related item (sections like "Similar Properties", "Related products", "You may also like", plus any EMBEDDED RELATED-ITEMS DATA appended after the page text): its name plus whatever factor values are known (rent/price, area, locality, …). NEVER repeat the main item as a similar item. Score each KNOWN value 0-100 for how well it satisfies expected_value+operator (better than expected → 100; ~10% worse → ≈80). Unknown values → null in BOTH maps.
-7. Keys inside "values" and "scores" MUST exactly match the factor names.
-8. Max {max_factors} factors, max 12 items. If the page actually compares MULTIPLE items (a comparison/filter/listing page with no single main item), reply exactly {"page_type":"comparison"}."""
+   • "equals" for ALL text-format factors (type, furnishing, facing, tenant, possession, yes/no, NA, locality)
+6. expected_value = the MAIN item's own value, cleaned: plain numbers for numerics (no currency symbols or thousands separators), concise text otherwise. Keep "NA" when the page shows NA. Put units (sqft, INR, years, km) ONLY in "unit", never inside expected_value.
+7. ITEMS — FIRST item MUST be the main item with every factor value filled and every score 100. THEN every DIFFERENT similar/related item (sections like "Similar Properties", "Related products", "You may also like", plus any EMBEDDED RELATED-ITEMS DATA appended after the page text): its name plus whatever factor values are known. NEVER repeat the main item as a similar item. NEVER invent values you cannot see — unknown values MUST be null in BOTH maps. Score each KNOWN value 0-100 for how well it satisfies expected_value+operator (better than expected → 100; ~10% worse → ≈80).
+8. ZERO-TOLERANCE MAPPING: every key inside "values" and "scores" MUST be exactly "<group name>::<factor name>" matching a declared group+factor. A value MUST stay attached to the item it belongs to on the page — never shift values between items or factors.
+9. Max {max_factors} factors total, max 12 items. If the page actually compares MULTIPLE items (a comparison/filter/listing page with no single main item), reply exactly {"page_type":"comparison"}."""
 
 
 def _parse_json_obj(out: str) -> Optional[Dict[str, Any]]:
@@ -112,50 +135,102 @@ def _pct(v: Any) -> Optional[int]:
         return None
 
 
-def normalize_detail(data: Any, max_factors: int = 24) -> Optional[Dict[str, Any]]:
-    """Validate + normalise the LLM's detail JSON into the shapes expected by
-    `merge_into_mydezider` / `create_mydezider_from_candidates`:
+def _norm_factor(f: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(f, dict):
+        return None
+    name = str(f.get("name") or "").strip()
+    if not name:
+        return None
+    dt = "numeric" if str(f.get("data_type") or "").lower() == "numeric" else "text"
+    ft = "qualitative" if str(f.get("factor_type") or "").lower() == "qualitative" else "quantitative"
+    op = str(f.get("operator") or "").strip()
+    if dt == "numeric":
+        op = op if op in _NUMERIC_OPS else ">="
+    else:
+        op = op if op in _TEXT_OPS else "equals"
+    ev = f.get("expected_value")
+    ev = str(ev).strip() if ev not in (None, "") else None
+    unit = f.get("unit")
+    unit = str(unit).strip() if unit not in (None, "") else None
+    return {"name": name, "data_type": dt, "factor_type": ft, "operator": op,
+            "expected_value": ev, "unit": unit, "weight": 50}
 
-        {"main_name": str,
-         "factors":    [{name, data_type, operator, expected_value, unit, weight}],
-         "candidates": [{name, scores: {factor: pct|None}, unit_values: {factor: str}}]}
 
-    Returns None when the payload isn't a usable detail extraction (including
-    the explicit {"page_type": "comparison"} signal).
+def normalize_detail(data: Any, max_factors: int = 24,
+                     group_threshold: int = 15) -> Optional[Dict[str, Any]]:
+    """Validate + normalise the LLM's detail JSON. Returns either
+
+      kind="flat": {"kind","main_name","factors","candidates"}            or
+      kind="hier": {"kind","main_name","items","groups","row_scores","row_meta"}
+
+    (hier shapes feed merge_hierarchical_into_mydezider / create_hierarchical_
+    mydezider directly). Returns None for non-detail pages / unusable output.
     """
     if not isinstance(data, dict) or data.get("page_type") != "detail":
         return None
     main_name = str((data.get("main_item") or {}).get("name") or "").strip()
-    raw_factors = data.get("factors") or []
-    if not main_name or not isinstance(raw_factors, list) or not raw_factors:
+    raw_groups = data.get("groups")
+    if not main_name:
+        return None
+    # Back-compat: accept a flat "factors" list when "groups" is missing.
+    if not isinstance(raw_groups, list) or not raw_groups:
+        flat = data.get("factors")
+        if not isinstance(flat, list) or not flat:
+            return None
+        raw_groups = [{"name": "General", "source": "none", "factors": flat}]
+
+    # ── Normalise groups + factors; enforce grouping guidelines server-side ──
+    groups: List[Dict[str, Any]] = []
+    seen_paths: set = set()
+    total = 0
+    for g in raw_groups[:10]:
+        if not isinstance(g, dict):
+            continue
+        gname = str(g.get("name") or "General").strip() or "General"
+        source = str(g.get("source") or "none").lower()
+        facs: List[Dict[str, Any]] = []
+        for rf in (g.get("factors") or []):
+            if total >= max_factors:
+                break
+            nf = _norm_factor(rf)
+            if not nf:
+                continue
+            path = _squash(gname) + SEP + _squash(nf["name"])
+            if path in seen_paths:
+                continue
+            seen_paths.add(path)
+            nf["_path"] = f"{gname}{SEP}{nf['name']}"
+            facs.append(nf)
+            total += 1
+        if facs:
+            groups.append({"name": gname, "source": source, "factors": facs})
+    if total == 0:
         return None
 
-    factors: List[Dict[str, Any]] = []
-    seen: set = set()
-    for f in raw_factors[: max(1, max_factors)]:
-        if not isinstance(f, dict):
-            continue
-        name = str(f.get("name") or "").strip()
-        if not name or name.lower() in seen:
-            continue
-        seen.add(name.lower())
-        dt = "numeric" if str(f.get("data_type") or "").lower() == "numeric" else "text"
-        op = str(f.get("operator") or "").strip()
-        if dt == "numeric":
-            op = op if op in _NUMERIC_OPS else ">="
-        else:
-            op = op if op in _TEXT_OPS else "equals"
-        ev = f.get("expected_value")
-        ev = str(ev).strip() if ev not in (None, "") else None
-        unit = f.get("unit")
-        unit = str(unit).strip() if unit not in (None, "") else None
-        factors.append({"name": name, "data_type": dt, "operator": op,
-                        "expected_value": ev, "unit": unit, "weight": 50})
-    if not factors:
-        return None
-    fnames = {f["name"] for f in factors}
+    # AI grouping is allowed ONLY above the threshold; page grouping is sacred.
+    page_grouped = any(g["source"] == "page" for g in groups)
+    ai_grouped = any(g["source"] == "ai" for g in groups)
+    flatten = (len(groups) == 1) or (not page_grouped and ai_grouped and total <= group_threshold)
 
-    candidates: List[Dict[str, Any]] = []
+    # Path → factor lookup tolerant to bare-factor-name keys (zero ambiguity:
+    # bare names resolve only when unique across all groups).
+    by_path: Dict[str, Dict[str, Any]] = {}
+    name_counts: Dict[str, int] = {}
+    for g in groups:
+        for f in g["factors"]:
+            by_path[_squash(g["name"]) + SEP + _squash(f["name"])] = f
+            name_counts[_squash(f["name"])] = name_counts.get(_squash(f["name"]), 0) + 1
+    bare_ok = {n for n, c in name_counts.items() if c == 1}
+
+    def _resolve(key: str) -> Optional[Dict[str, Any]]:
+        k = _squash(key)
+        if SEP in key:
+            gpart, _, fpart = key.partition(SEP)
+            return by_path.get(_squash(gpart) + SEP + _squash(fpart))
+        return by_path.get(next((p for p in by_path if p.endswith(SEP + k) and k in bare_ok), ""))
+
+    # ── Items (main first; whitespace-insensitive dedupe; main never repeats) ──
+    norm_items: List[Dict[str, Any]] = []
     seen_items: set = set()
     main_key = _squash(main_name)
     for idx, it in enumerate((data.get("items") or [])[:12]):
@@ -166,41 +241,147 @@ def normalize_detail(data: Any, max_factors: int = 24) -> Optional[Dict[str, Any
         if not name or key in seen_items:
             continue
         is_main = idx == 0 or key == main_key
-        if is_main and any(_squash(c["name"]) == main_key or c.get("_is_main")
-                           for c in candidates):
-            continue  # LLM repeated the main item under a slightly different name
+        if is_main and any(i.get("_is_main") for i in norm_items):
+            continue
         seen_items.add(key)
         values = it.get("values") if isinstance(it.get("values"), dict) else {}
         raw_scores = it.get("scores") if isinstance(it.get("scores"), dict) else {}
-        scores: Dict[str, Optional[int]] = {}
-        unit_values: Dict[str, str] = {}
-        for fn in fnames:
-            v = values.get(fn)
-            if v not in (None, ""):
-                unit_values[fn] = str(v).strip()
-            p = _pct(raw_scores.get(fn))
-            # The main item DEFINES the expectations → it satisfies them (100).
-            if p is None and is_main:
-                p = 100
-            scores[fn] = p
-        candidates.append({"name": name[:160], "scores": scores, "unit_values": unit_values})
+        vmap: Dict[str, Any] = {}
+        smap: Dict[str, Optional[int]] = {}
+        for src, dst in ((values, vmap), (raw_scores, smap)):
+            for k, v in src.items():
+                f = _resolve(str(k))
+                if f is None:
+                    continue  # ZERO TOLERANCE: unknown keys are dropped, never guessed
+                dst[f["_path"]] = v
+        item = {"name": name[:160], "_is_main": is_main, "values": vmap, "scores": smap}
+        if is_main:
+            for g in groups:
+                for f in g["factors"]:
+                    item["scores"].setdefault(f["_path"], 100)
+                    if f["expected_value"] not in (None, ""):
+                        item["values"].setdefault(f["_path"], f["expected_value"])
+        norm_items.append(item)
 
-    # Guarantee the main item exists as Option 1 even if the LLM omitted `items`.
-    if not candidates or candidates[0]["name"].lower() != main_name.lower():
-        main = {"name": main_name[:160],
-                "scores": {f["name"]: 100 for f in factors},
-                "unit_values": {f["name"]: f["expected_value"] for f in factors
-                                if f["expected_value"] not in (None, "")}}
-        candidates = [c for c in candidates if c["name"].lower() != main_name.lower()]
-        candidates.insert(0, main)
+    if not norm_items or not norm_items[0].get("_is_main"):
+        main = {"name": main_name[:160], "_is_main": True,
+                "values": {f["_path"]: f["expected_value"] for g in groups for f in g["factors"]
+                           if f["expected_value"] not in (None, "")},
+                "scores": {f["_path"]: 100 for g in groups for f in g["factors"]}}
+        norm_items = [i for i in norm_items if not i.get("_is_main")]
+        norm_items.insert(0, main)
 
-    return {"main_name": main_name, "factors": factors, "candidates": candidates}
+    # ── Emit FLAT ──
+    if flatten:
+        factors = []
+        for g in groups:
+            for f in g["factors"]:
+                factors.append({k: f[k] for k in
+                                ("name", "data_type", "factor_type", "operator",
+                                 "expected_value", "unit", "weight")} | {"_path": f["_path"]})
+        candidates = []
+        for it in norm_items:
+            scores = {f["name"]: _pct(it["scores"].get(f["_path"])) for f in factors}
+            uvals = {f["name"]: str(it["values"][f["_path"]]).strip()
+                     for f in factors if it["values"].get(f["_path"]) not in (None, "")}
+            candidates.append({"name": it["name"], "scores": scores, "unit_values": uvals})
+        for f in factors:
+            f.pop("_path", None)
+        return {"kind": "flat", "main_name": main_name,
+                "factors": factors, "candidates": candidates}
+
+    # ── Emit HIERARCHICAL (groups → parent factors, factors → sub-factors) ──
+    item_names = [it["name"] for it in norm_items]
+    out_groups: List[Dict[str, Any]] = []
+    row_scores: Dict[Any, List[Optional[int]]] = {}
+    row_meta: Dict[Any, Dict[str, Any]] = {}
+    for gi, g in enumerate(groups):
+        rows = []
+        for ri, f in enumerate(g["factors"]):
+            vals = [str(it["values"].get(f["_path"], "") or "").strip() for it in norm_items]
+            rows.append({"label": f["name"], "values": vals})
+            row_scores[(gi, ri)] = [_pct(it["scores"].get(f["_path"])) for it in norm_items]
+            row_meta[(gi, ri)] = {
+                "is_numeric": f["data_type"] == "numeric",
+                "expected": f["expected_value"], "operator": f["operator"],
+                "unit": f["unit"], "factor_type": f["factor_type"],
+            }
+        out_groups.append({"category": g["name"], "rows": rows})
+    return {"kind": "hier", "main_name": main_name, "items": item_names,
+            "groups": out_groups, "row_scores": row_scores, "row_meta": row_meta}
+
+
+# ── Accuracy-hint validation (self-healing oracle) ──────────────────────────
+def _count_leaf_factors(result: Dict[str, Any]) -> int:
+    if result["kind"] == "flat":
+        return len(result["factors"])
+    return sum(len(g["rows"]) for g in result["groups"])
+
+
+def _first_factor_name(result: Dict[str, Any]) -> str:
+    if result["kind"] == "flat":
+        return result["factors"][0]["name"] if result["factors"] else ""
+    for g in result["groups"]:
+        if g["rows"]:
+            return g["rows"][0]["label"]
+    return ""
+
+
+def _option_names(result: Dict[str, Any]) -> List[str]:
+    if result["kind"] == "flat":
+        return [c["name"] for c in result["candidates"]]
+    return list(result["items"])
+
+
+def _fuzzy_match(a: str, b: str) -> bool:
+    sa, sb = _squash(a), _squash(b)
+    return bool(sa and sb) and (sa in sb or sb in sa)
+
+
+def validate_against_hints(result: Dict[str, Any],
+                           hints: Optional[Dict[str, Any]]) -> List[str]:
+    """Compare the extraction against the user's optional accuracy hints.
+    Returns a list of human-readable discrepancies ([] = passes)."""
+    issues: List[str] = []
+    if not result or not hints:
+        return issues
+    efc = hints.get("expected_factor_count")
+    if efc:
+        got = _count_leaf_factors(result)
+        tol = max(2, round(int(efc) * 0.2))
+        if abs(got - int(efc)) > tol:
+            issues.append(f"You extracted {got} factors but the user expects about {efc}. "
+                          "Re-scan the page for missed or over-extracted attributes.")
+    eoc = hints.get("expected_option_count")
+    if eoc:
+        got = len(_option_names(result))
+        if abs(got - int(eoc)) > 1:
+            issues.append(f"You extracted {got} options/items but the user expects about {eoc} "
+                          "(the main item plus the similar/related items shown on the page).")
+    ffn = (hints.get("first_factor_name") or "").strip()
+    if ffn:
+        got = _first_factor_name(result)
+        if not _fuzzy_match(ffn, got):
+            issues.append(f"The FIRST factor should be '{ffn}' (user-confirmed) but you produced "
+                          f"'{got}'. Follow the page's own top-to-bottom factor order.")
+    fon = (hints.get("first_option_name") or "").strip()
+    if fon:
+        names = _option_names(result)
+        got = names[0] if names else ""
+        if not _fuzzy_match(fon, got):
+            issues.append(f"The FIRST option should be '{fon}' (user-confirmed, the main item) "
+                          f"but you produced '{got}'.")
+    return issues
 
 
 async def ai_extract_detail(user_id: str, html: str, *, tier: str = "fast",
-                            max_factors: int = 24) -> Optional[Dict[str, Any]]:
-    """One metered LLM call → normalised detail structure, or None when the
-    page isn't a single-item detail page / the model output is unusable.
+                            max_factors: int = 24, group_threshold: int = 15,
+                            hints: Optional[Dict[str, Any]] = None,
+                            ) -> Optional[Dict[str, Any]]:
+    """Metered LLM extraction → normalised detail structure (flat or hier),
+    or None when the page isn't a single-item detail page / output unusable.
+    When `hints` are given and the first attempt mismatches them, ONE corrective
+    retry is made and the better attempt wins (self-healing).
     Propagates InsufficientCredits so the route can answer 402."""
     if not has_any_llm() or not (html or "").strip():
         return None
@@ -208,19 +389,39 @@ async def ai_extract_detail(user_id: str, html: str, *, tier: str = "fast",
     related = _embedded_related_snippets(html)
     if related:
         text += "\nEMBEDDED RELATED-ITEMS DATA (similar/related items the page renders with JavaScript):\n" + related
-    sys = DETAIL_SYSTEM.replace("{max_factors}", str(max_factors))
-    meta: Dict[str, Any] = {}
-    try:
-        out = await metered_chat(user_id, system_message=sys, prompt=text,
-                                 feature="url_import_detail", session_prefix="urldetail",
-                                 tier=tier, meta=meta)
-    except ai_wallet.InsufficientCredits:
-        raise
-    except Exception as e:  # noqa: BLE001 — extraction is best-effort
-        logger.warning("detail extraction LLM call failed: %s: %s",
-                       type(e).__name__, str(e)[:150])
-        return None
-    result = normalize_detail(_parse_json_obj(out), max_factors=max_factors)
+    sys = (DETAIL_SYSTEM
+           .replace("{max_factors}", str(max_factors))
+           .replace("{group_threshold}", str(group_threshold)))
+
+    async def _attempt(extra: str = "") -> Tuple[Optional[Dict[str, Any]], str]:
+        meta: Dict[str, Any] = {}
+        try:
+            out = await metered_chat(user_id, system_message=sys + extra, prompt=text,
+                                     feature="url_import_detail", session_prefix="urldetail",
+                                     tier=tier, meta=meta)
+        except ai_wallet.InsufficientCredits:
+            raise
+        except Exception as e:  # noqa: BLE001 — extraction is best-effort
+            logger.warning("detail extraction LLM call failed: %s: %s",
+                           type(e).__name__, str(e)[:150])
+            return None, ""
+        return (normalize_detail(_parse_json_obj(out), max_factors=max_factors,
+                                 group_threshold=group_threshold),
+                meta.get("provider") or "")
+
+    result, provider = await _attempt()
+    issues = validate_against_hints(result, hints) if result else []
+    if hints and (result is None or issues):
+        feedback = ("\n\nPREVIOUS ATTEMPT FAILED USER VERIFICATION:\n- "
+                    + "\n- ".join(issues or ["Output was not parseable detail JSON."])
+                    + "\nRe-extract the ENTIRE structure from scratch, fixing every issue above. "
+                      "Keep the zero-tolerance value↔item mapping rule.")
+        retry, p2 = await _attempt(feedback)
+        if retry is not None:
+            retry_issues = validate_against_hints(retry, hints)
+            if result is None or len(retry_issues) < len(issues):
+                result, provider, issues = retry, p2, retry_issues
     if result is not None:
-        result["provider"] = meta.get("provider") or ""
+        result["provider"] = provider
+        result["hint_warnings"] = issues
     return result

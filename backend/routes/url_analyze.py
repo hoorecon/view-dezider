@@ -115,6 +115,11 @@ class AnalyzeRequest(BaseModel):
     decision_type: Optional[str] = None
     max_factors: int = Field(default=8, ge=1, le=20)
     ai_tier: str = "fast"                       # fast | precise (Claude via Emergent key)
+    # ── Optional accuracy hints (self-healing oracle) ──
+    expected_factor_count: Optional[int] = Field(default=None, ge=1, le=200)
+    expected_option_count: Optional[int] = Field(default=None, ge=1, le=50)
+    first_factor_name: Optional[str] = None
+    first_option_name: Optional[str] = None
 
 
 def _derive_factors_and_scores(
@@ -220,6 +225,18 @@ def _safe_pct(v: Any) -> Optional[int]:
         return None
 
 
+# Person-dependent judgment factors (Comfort, Luxury Feel, Design Appeal …).
+# Everything else on a spec sheet is an undisputed FACT → "quantitative",
+# even when its value is text (Color=Blue, SIM=Nano, Furnishing=Semi).
+_QUALITATIVE_RE = re.compile(
+    r"comfort|feel|luxur|design|aesthet|style|appeal|vibe|impression|experience|"
+    r"ease\s*of|user.?friendl|build\s*quality|ambien|premium|elegan", re.I)
+
+
+def _factor_nature(label: str) -> str:
+    return "qualitative" if _QUALITATIVE_RE.search(label or "") else "quantitative"
+
+
 def _score_hierarchy_numeric(items: List[str], groups: List[Dict[str, Any]]):
     """Returns (row_scores, row_meta, text_rows). row_scores keyed by (gi, ri)."""
     n = len(items)
@@ -243,9 +260,11 @@ def _score_hierarchy_numeric(items: List[str], groups: List[Dict[str, Any]]):
                 row_scores[(gi, ri)] = sc
                 best = mn if lower else mx
                 row_meta[(gi, ri)] = {"is_numeric": True, "expected": str(best),
-                                      "operator": "<=" if lower else ">="}
+                                      "operator": "<=" if lower else ">=",
+                                      "factor_type": _factor_nature(row["label"])}
             else:
-                row_meta[(gi, ri)] = {"is_numeric": False}
+                row_meta[(gi, ri)] = {"is_numeric": False,
+                                      "factor_type": _factor_nature(row["label"])}
                 text_rows.append((gi, ri, row["label"], vals))
     return row_scores, row_meta, text_rows
 
@@ -357,19 +376,40 @@ async def analyze_url(req: AnalyzeRequest, request: Request, user: dict = Depend
     # ── Single-item DETAIL page (property / product / job …): smart factors
     # with operators + the listing as Option 1 + 'Similar items' as options. ──
     if target == "mydezider" and not is_json:
-        detail = await _extract_detail_for_url(user["user_id"], req.url, r.text, tier)
+        detail = await _extract_detail_for_url(user["user_id"], req.url, r.text, tier,
+                                               hints=_hints_of(req))
         if detail:
+            d_title = (req.title or "").strip() or detail["main_name"][:80]
+            d_ctx = f"Auto-built from a {elig.replace('_', '/')} detail page."
+            if detail["kind"] == "hier":
+                built = await create_hierarchical_mydezider(
+                    user["user_id"], title=d_title, context=d_ctx,
+                    life_area=req.life_area, decision_type=req.decision_type,
+                    items=detail["items"], groups=detail["groups"],
+                    row_scores=detail["row_scores"], row_meta=detail["row_meta"],
+                    source_label="url_analyze")
+                return {
+                    "id": built["id"], "target": target, "consent_id": consent_id,
+                    "mode": "detail", "structure": "hierarchical",
+                    "main_item": detail["main_name"],
+                    "ai_provider": detail.get("provider") or "",
+                    "hint_warnings": detail.get("hint_warnings") or [],
+                    "item_count": built["option_count"],
+                    "category_count": built["category_count"],
+                    "factor_count": built["subfactor_count"],
+                }
             new_id = await create_mydezider_from_candidates(
-                user["user_id"], title=(req.title or "").strip() or detail["main_name"][:80],
-                context=f"Auto-built from a {elig.replace('_', '/')} detail page.",
+                user["user_id"], title=d_title, context=d_ctx,
                 life_area=req.life_area, decision_type=req.decision_type,
                 factors=detail["factors"], candidates=detail["candidates"],
                 source_label="url_analyze",
             )
             return {
                 "id": new_id, "target": target, "consent_id": consent_id,
-                "mode": "detail", "main_item": detail["main_name"],
+                "mode": "detail", "structure": "flat",
+                "main_item": detail["main_name"],
                 "ai_provider": detail.get("provider") or "",
+                "hint_warnings": detail.get("hint_warnings") or [],
                 "item_count": len(detail["candidates"]),
                 "factor_count": len(detail["factors"]),
             }
@@ -416,6 +456,19 @@ class ImportRequest(BaseModel):
     accepted: bool = False
     max_factors: int = Field(default=8, ge=1, le=20)
     ai_tier: str = "fast"                       # fast | precise (Claude via Emergent key)
+    # ── Optional accuracy hints (self-healing oracle) ──
+    expected_factor_count: Optional[int] = Field(default=None, ge=1, le=200)
+    expected_option_count: Optional[int] = Field(default=None, ge=1, le=50)
+    first_factor_name: Optional[str] = None
+    first_option_name: Optional[str] = None
+
+
+def _hints_of(req) -> Optional[Dict[str, Any]]:
+    h = {k: getattr(req, k, None) for k in
+         ("expected_factor_count", "expected_option_count",
+          "first_factor_name", "first_option_name")}
+    h = {k: v for k, v in h.items() if v not in (None, "", 0)}
+    return h or None
 
 
 def _tier(v: Optional[str]) -> str:
@@ -427,14 +480,19 @@ def _tier(v: Optional[str]) -> str:
 DETAIL_MAX_FACTORS = 24
 
 
-async def _extract_detail_for_url(user_id: str, url: str, html: str, tier: str):
+async def _extract_detail_for_url(user_id: str, url: str, html: str, tier: str,
+                                  hints: Optional[Dict[str, Any]] = None):
     """Detail-page pipeline: escalate to RENDERED HTML when ScraperAPI is
     configured (similar-items rails are usually JS-loaded), then run the
-    single-call LLM extraction. Translates InsufficientCredits → 402."""
+    single-call LLM extraction (+ one corrective retry against the user's
+    accuracy hints). Translates InsufficientCredits → 402."""
     rendered = await fetch_rendered(url)
+    cfg = await ai_wallet.get_config()
+    threshold = int(cfg.get("import_group_threshold") or 15)
     try:
         return await ai_extract_detail(user_id, rendered or html, tier=tier,
-                                       max_factors=DETAIL_MAX_FACTORS)
+                                       max_factors=DETAIL_MAX_FACTORS,
+                                       group_threshold=threshold, hints=hints)
     except ai_wallet.InsufficientCredits as e:
         raise HTTPException(
             402,
@@ -510,18 +568,39 @@ async def import_url_into_decision(
             }
 
     # ── Single-item DETAIL page (property / product / job …): every spec
-    # becomes a factor with a smart operator + Expected value; the listing
-    # becomes Option 1; 'Similar items' become extra options. ──
+    # becomes a factor (grouped → parent + sub-factors with equal weight split)
+    # with a smart operator + Expected value; the listing becomes Option 1;
+    # 'Similar items' become extra options. ──
     if not is_json:
-        detail = await _extract_detail_for_url(user["user_id"], req.url, r.text, tier)
+        detail = await _extract_detail_for_url(user["user_id"], req.url, r.text, tier,
+                                               hints=_hints_of(req))
         if detail:
+            if detail["kind"] == "hier":
+                counts = await merge_hierarchical_into_mydezider(
+                    user["user_id"], decision_id,
+                    items=detail["items"], groups=detail["groups"],
+                    row_scores=detail["row_scores"], row_meta=detail["row_meta"])
+                return {
+                    "decision_id": decision_id, "consent_id": consent_id, "mode": "detail",
+                    "structure": "hierarchical",
+                    "main_item": detail["main_name"],
+                    "ai_provider": detail.get("provider") or "",
+                    "hint_warnings": detail.get("hint_warnings") or [],
+                    "item_count": len(detail["items"]),
+                    "category_count": counts["category_count"],
+                    "factor_count": counts["subfactor_count"],
+                    "factors_added": counts["factors_added"],
+                    "options_added": counts["options_added"],
+                }
             counts = await merge_into_mydezider(
                 user["user_id"], decision_id,
                 factors=detail["factors"], candidates=detail["candidates"])
             return {
                 "decision_id": decision_id, "consent_id": consent_id, "mode": "detail",
+                "structure": "flat",
                 "main_item": detail["main_name"],
                 "ai_provider": detail.get("provider") or "",
+                "hint_warnings": detail.get("hint_warnings") or [],
                 "item_count": len(detail["candidates"]),
                 "factors_added": counts["factors_added"], "options_added": counts["options_added"],
             }
@@ -541,3 +620,130 @@ async def import_url_into_decision(
         "item_count": len(candidates),
         "factors_added": counts["factors_added"], "options_added": counts["options_added"],
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# "Set Expectations - By AI" (Step 2 button): one metered LLM call proposes an
+# Expected value + direction operator for EVERY leaf factor/sub-factor based on
+# the decision context AND the ACTUAL values already on the options (Step 7).
+# Gated: factors (Step 2) + options (Step 6) + ≥1 option value (Step 7) must
+# exist. The user can override every value afterwards — this only pre-fills.
+# ─────────────────────────────────────────────────────────────────────────────
+class SetExpectationsRequest(BaseModel):
+    ai_tier: str = "precise"        # Claude-first by default; falls back gracefully
+
+
+EXPECTATIONS_SYSTEM = """You set decision EXPECTATIONS. Given a decision (title/context), its factors (each with an index id, data format, nature, unit) and the ACTUAL values each option holds, propose for EVERY factor the Expected value + operator a sensible decision-maker would set in this context.
+
+RULES
+1. operator conveys DIRECTION of satisfaction:
+   • "<=" lower-is-better numerics (price, rent, fees, distance, weight) — inversely proportional
+   • ">=" higher-is-better numerics (area, scores, ratings, battery, warranty) — directly proportional
+   • "=" numeric identity (bedroom count)
+   • "equals" for text-format factors (categories, yes/no, names)
+2. expected_value must be REALISTIC versus the actual option values supplied: anchor near the best actual value (e.g. cheapest rent seen → "<=" that rent; largest area seen → ">=" that area). For text factors pick the most desirable actual value in context. Plain numbers only (no currency symbols/commas); keep units out of the value.
+3. QUALITATIVE factors (Comfort, Luxury Feel …) still get an expectation — phrase a concise desirable level (e.g. "High", "Premium feel") with operator "equals".
+4. Cover EVERY factor id given. Do not invent new factors.
+Reply ONLY compact JSON: {"expectations":[{"id":"F1","operator":"<=","expected_value":"18000"}]}"""
+
+
+@router.post("/decision/{decision_id}/set-expectations")
+async def set_expectations_by_ai(decision_id: str, req: SetExpectationsRequest,
+                                 user: dict = Depends(get_current_user)):
+    decision = await db.decisions.find_one(
+        {"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not decision:
+        raise HTTPException(404, "Decision not found")
+    factors = decision.get("factors") or []
+    options = decision.get("options") or []
+
+    parent_ids = {f.get("parent_id") for f in factors if f.get("parent_id")}
+    leaves = [f for f in factors if f["id"] not in parent_ids]
+    if not leaves:
+        raise HTTPException(422, "No factors yet — import or add factors in Step 2 first.")
+    if not options:
+        raise HTTPException(422, "No options yet — import or add options (Step 6) first.")
+    has_values = any((a.get("unit_value") not in (None, ""))
+                     for o in options for a in (o.get("assessments") or []))
+    if not has_values:
+        raise HTTPException(
+            422, "No factor values found on the options yet (Step 7). "
+                 "Import from a URL or fill option values first.")
+
+    parent_name = {f["id"]: f.get("name") for f in factors}
+    fid_by_key: Dict[str, str] = {}
+    lines: List[str] = []
+    for i, f in enumerate(leaves):
+        key = f"F{i + 1}"
+        fid_by_key[key] = f["id"]
+        label = f.get("name") or ""
+        if f.get("parent_id"):
+            label = f"{parent_name.get(f['parent_id'], '')} > {label}"
+        vals = []
+        for o in options[:10]:
+            a = next((a for a in (o.get("assessments") or [])
+                      if a.get("factor_id") == f["id"]), None)
+            v = (a or {}).get("unit_value")
+            if v not in (None, ""):
+                vals.append(f"{str(o.get('name') or '')[:40]}={v}")
+        lines.append(
+            f"{key} | {label} | format={f.get('data_type') or 'numeric'} | "
+            f"nature={f.get('factor_type') or 'quantitative'} | unit={f.get('unit') or '-'} | "
+            f"current_expected={f.get('expected_value') if f.get('expected_value') not in (None, '') else '-'} | "
+            f"actuals: {'; '.join(vals) if vals else '(none)'}")
+
+    prompt = (f"DECISION: {decision.get('title') or ''}\n"
+              f"CONTEXT: {(decision.get('context') or '')[:500]}\n"
+              f"OPTIONS: {[str(o.get('name') or '')[:50] for o in options[:10]]}\n"
+              "FACTORS:\n" + "\n".join(lines))
+
+    tier = "precise" if (req.ai_tier or "").strip().lower() != "fast" else "fast"
+    meta: Dict[str, Any] = {}
+    try:
+        out = await metered_chat(user["user_id"], system_message=EXPECTATIONS_SYSTEM,
+                                 prompt=prompt[:14000], feature="ai_set_expectations",
+                                 session_prefix="aiexpect", tier=tier, meta=meta)
+    except ai_wallet.InsufficientCredits as e:
+        raise HTTPException(402, f"You're out of AI credits (balance {round(e.balance, 2)}). "
+                                 "Top up your AI wallet to use AI expectations.")
+    except Exception:
+        raise HTTPException(503, "AI is temporarily unavailable — try again shortly.")
+
+    m = re.search(r"\{.*\}", out or "", re.S)
+    try:
+        data = json.loads(m.group(0)) if m else {}
+    except Exception:
+        data = {}
+    rows = data.get("expectations") if isinstance(data, dict) else None
+    if not isinstance(rows, list) or not rows:
+        raise HTTPException(502, "AI returned an unusable response — try again.")
+
+    num_ops = {"<=", ">=", "=", "<", ">", "!="}
+    txt_ops = {"contains", "starts_with", "ends_with", "equals", "not_equals"}
+    by_id = {f["id"]: f for f in factors}
+    updated = 0
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        fid = fid_by_key.get(str(row.get("id") or "").strip())
+        f = by_id.get(fid)
+        if not f:
+            continue
+        ev = row.get("expected_value")
+        ev = str(ev).strip() if ev not in (None, "") else None
+        op = str(row.get("operator") or "").strip()
+        ok_ops = num_ops if (f.get("data_type") or "numeric") == "numeric" else txt_ops
+        if op not in ok_ops:
+            op = ">=" if (f.get("data_type") or "numeric") == "numeric" else "equals"
+        if ev is None:
+            continue
+        f["expected_value"] = ev
+        f["operator"] = op
+        updated += 1
+
+    if updated:
+        await db.decisions.update_one(
+            {"id": decision_id, "user_id": user["user_id"]},
+            {"$set": {"factors": factors, "updated_at": datetime.now(timezone.utc)}})
+    return {"updated": updated, "factor_count": len(leaves),
+            "ai_provider": meta.get("provider") or ""}

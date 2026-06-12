@@ -53,6 +53,7 @@ interface Cfg {
   min_custom_credits: number;
   precise_model: string;
   precise_usd_per_mtok: number;
+  import_group_threshold: number;
 }
 
 const FIELDS: Array<{

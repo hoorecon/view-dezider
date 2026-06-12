@@ -23,6 +23,11 @@ class Factor(BaseModel):
     unit: Optional[str] = None
     expected_value: Optional[Any] = None
     data_type: Optional[str] = None
+    # Nature of the factor — INDEPENDENT of data_type. "quantitative" = an
+    # undisputed fact/spec (even text values like Color=Blue, Furnishing=Semi);
+    # "qualitative" = person-dependent judgment (Comfort, Luxury Feel) that
+    # benefits from AI-assisted assessment.
+    factor_type: Optional[str] = None
     operator: Optional[str] = None
     gap_multiplier: Optional[float] = 1.0
     parent_id: Optional[str] = None

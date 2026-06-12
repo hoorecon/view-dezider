@@ -1,0 +1,46 @@
+{
+  "summary": "Major-accuracy URL import upgrade — 4/5 acceptance criteria PASS, 1 GAP found. (B) Backend regression: cd /app/backend && python -m pytest tests/test_url_detail_import.py tests/test_ai_wallet_markup.py tests/test_url_matrix_parse.py tests/test_url_import_direction.py tests/test_iter_url_world_class_import.py -q → 47/47 PASS in 3.34s. Negative gating re-verified: POST /api/url-analyze/decision/{fresh_id}/set-expectations with body {} returns HTTP 422 and detail 'No factors yet — import or add factors in Step 2 first.' (F1 PASS) /tools/dezider → existing decision /prr/{id}?step=2 → 'Import factors & options' card → URL tile opens the new dialog. All testIDs present and functional: step2-import-url-input, step2-ai-tier-fast (default-selected), step2-ai-tier-precise (toggle works visually), step2-import-hints-toggle (collapsible reveals all 4 hint inputs), step2-hint-factor-count, step2-hint-option-count, step2-hint-first-factor, step2-hint-first-option (all accept typed values), Cancel + step2-url-continue. Hint typing works, Cancel closes dialog. (F2 PASS) Fresh decision (no factors): step2-set-expectations-ai is VISUALLY DISABLED — aria-disabled='true', backgroundColor=rgb(148,163,184) grey, opacity=0.7, pointer-events=none, tabindex=-1 — and the hint text reads 'Enabled after a successful import fills factors (Step 2), options (Step 6) and option values (Step 7).' On decision b89a6583-c1b0-4d4c-bf31-154e249ce5f0 the button is ENABLED (bg=rgb(14,116,144), opacity=1, aria-disabled=null, pointer-events=auto). LIVE click was performed ONCE — button entered 'Setting expectations…' loading state, call completed cleanly (no failure alert), and a follow-up GET /api/decisions/{id} confirms 21 of 25 factors now carry expected_value (the 4 parent groups stay untouched). Sample: Rent <= 18000, Maintenance <= 600, Deposit <= 100000 — Claude returned real numeric criteria for all leaf sub-factors. (F3 PASS) The 4 parent group headers render verbatim on the decision: Costs, Space & Layout, Property Details, Preferences & Amenities — confirmed via document.body.innerText. Sub-factors render with editable weights and the 'Split evenly' chip; equal-split is visible (33.33/33.33/33.34). Code review of Step2.tsx lines 730-746 confirms the Quantitative/Qualitative chip toggle exists, falls back to data_type when factor_type is null, and the backend API confirms all 21 sub-factors carry factor_type='quantitative'. The chip only renders inside the EXPANDED factor card — the collapsed-row screenshot does not contain the labels (not a bug, just a render-when-expanded design). (F4 FAIL — UI GAP) /admin/ai-wallet-config as super-admin DOES NOT show the new 'AI grouping threshold (factors)' input. Root cause: /app/frontend/app/admin/ai-wallet-config.tsx declares `import_group_threshold: number` on the Cfg interface (line 56) BUT it is MISSING from the FIELDS array (lines 59-77) that drives the rendered controls. Backend supports the field (core/ai_wallet.py:59 default=15, validation at line 99-108; url_analyze.py:491 reads it as the AI-grouping threshold), so PUT /api/admin/ai-wallet/config would persist it — but the super-admin has no UI to change it. No deprecated Expo packages or SafeAreaView issues spotted in the touched files.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "admin/ai-wallet-config.tsx", "issue": "Missing 'AI grouping threshold (factors)' input. The Cfg interface declares `import_group_threshold: number` (line 56) but the FIELDS array (lines 59-77) never references it, so no TextInput is rendered. Backend already supports the field (default=15) via /api/admin/ai-wallet/config GET/PUT. Add an entry like { key: 'import_group_threshold', label: 'AI grouping threshold (factors)', hint: 'When a page has no native groups and exposes more than this many factors, the AI auto-groups them. Default 15.', min: 1 } to FIELDS.", "testID": "(none — needs to be added)", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_url_detail_import.py",
+    "/app/backend/tests/test_ai_wallet_markup.py",
+    "/app/backend/tests/test_url_matrix_parse.py",
+    "/app/backend/tests/test_url_import_direction.py",
+    "/app/backend/tests/test_iter_url_world_class_import.py",
+    "/app/test_reports/pytest/iter103_url_regression.xml"
+  ],
+  "action_items": [
+    "(HIGH) Add `import_group_threshold` to the FIELDS array in /app/frontend/app/admin/ai-wallet-config.tsx so the super-admin can edit the AI grouping threshold from the UI. Backend GET/PUT already returns/accepts the field — purely a UI render gap.",
+    "(LOW) Consider auto-expanding the first factor card on Step 2 (or surfacing the Quant/Qual chip on the collapsed row) so the type classification is visible at a glance — today users must open the card to see it. Not a blocker."
+  ],
+  "critical_code_review_comments": [
+    "/app/frontend/src/components/steps/Step2.tsx lines 105-110 — canSetExpectations correctly demands factors AND options AND at least one option carrying a non-empty unit_value, matching the backend 422 gates. Confirmed by Playwright computed-style check (fresh: aria-disabled=true / pointer-events=none / opacity 0.7 / grey bg; existing: aria-disabled=null / pointer-events=auto / opacity 1 / teal bg).",
+    "/app/frontend/src/components/steps/Step2.tsx lines 730-746 — Quant/Qual chip falls back to (data_type==='text' ? 'qualitative' : 'quantitative') when factor_type is null, so legacy decisions imported before factor_type existed still render a sensible default.",
+    "/app/backend/core/ai_wallet.py — `import_group_threshold` is included in the editable allow-list (line 99) with int coercion + `<1 → ValueError` validation (line 108) AND a sane default of 15 (line 59); the wiring is clean, only the front-end input is missing.",
+    "/app/backend/routes/url_analyze.py line 491 — threshold is read from wallet config with a 15 fallback, so removing/setting the doc to null in Mongo cannot crash the importer."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_103.json (this report)",
+    "/app/test_reports/pytest/iter103_url_regression.xml (47/47 pass)"
+  ],
+  "success_rate": {
+    "backend": "100% (47/47 unit/integration tests pass; negative gating 422 verified live)",
+    "frontend": "80% (4/5 — URL dialog + AI tier selector + hints toggle + 4 hint inputs OK; Set Expectations disabled-on-fresh / enabled-on-imported OK; live Claude call OK with 21/21 leaf factors populated; group headers + weights OK; ONLY GAP: admin AI grouping threshold input missing from FIELDS array)"
+  },
+  "seed_data_creation": "Created and then DELETED two fresh decisions (TEST_iter103_gating, TEST_iter103_fresh*) under admin@test.com for the gating + disabled-button tests. The existing imported decision b89a6583-c1b0-4d4c-bf31-154e249ce5f0 now has expected_value + operator populated on its 21 leaf sub-factors after the single live Set-Expectations click — this is the intended outcome of the user-triggered feature.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "URL-import upgrade is GREEN except for one UI gap. To regress without burning credits: cd /app/backend && python -m pytest tests/test_url_detail_import.py tests/test_ai_wallet_markup.py tests/test_url_matrix_parse.py tests/test_url_import_direction.py tests/test_iter_url_world_class_import.py -q (47 tests, no live LLM). UI selectors (Step 2): step2-import-url, step2-import-url-input, step2-ai-tier-fast (default), step2-ai-tier-precise, step2-import-hints-toggle, step2-hint-factor-count, step2-hint-option-count, step2-hint-first-factor, step2-hint-first-option, step2-url-continue, step2-set-expectations-ai. To verify disabled state on TouchableOpacity, do NOT use Playwright is_disabled() (always returns false on RN-Web divs) — instead read aria-disabled via document.querySelector(...).getAttribute('aria-disabled') OR check computed backgroundColor / opacity. Admin AI-wallet config lives at /admin/ai-wallet-config (super-admin only, veales.vedic.decisions@gmail.com). Once main agent adds import_group_threshold to FIELDS, re-test by visiting /admin/ai-wallet-config → look for 'AI grouping threshold' label → type 20 → click 'Save changes' → reload → value should persist (GET /api/admin/ai-wallet/config). Decision /prr/{id}?step=2 routes via expo-router; older /decision/{id} route returns 'Unmatched Route' — use /prr/.",
+  "rca_of_issue": "F4 RCA: /app/frontend/app/admin/ai-wallet-config.tsx is a metadata-driven form — the FIELDS array on lines 59-77 is the single source of truth for which Cfg keys get an editable TextInput. When import_group_threshold was added to the backend + the TypeScript Cfg interface, the corresponding FIELDS entry was forgotten. Mitigation: append `{ key: 'import_group_threshold', label: 'AI grouping threshold (factors)', hint: 'When a page exposes more than this many factors AND has no native group headers, the AI auto-groups them. Default 15.', min: 1 }` to the FIELDS array. No backend change required."
+}

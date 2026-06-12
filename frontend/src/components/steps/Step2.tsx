@@ -47,6 +47,14 @@ export default function Step2() {
   const [importConsentOpen, setImportConsentOpen] = useState(false);
   const [importing, setImporting] = useState(false);
 
+  // ── Optional accuracy hints — verified server-side with one self-healing
+  // corrective retry when the extraction mismatches them. All optional.
+  const [hintsOpen, setHintsOpen] = useState(false);
+  const [hintFactorCount, setHintFactorCount] = useState('');
+  const [hintOptionCount, setHintOptionCount] = useState('');
+  const [hintFirstFactor, setHintFirstFactor] = useState('');
+  const [hintFirstOption, setHintFirstOption] = useState('');
+
   const runImport = async (consent: UrlConsentPayload) => {
     setImporting(true);
     try {
@@ -56,27 +64,67 @@ export default function Step2() {
         custom_note: consent.custom_note,
         accepted: true,
         ai_tier: importTier,
-      }, { timeout: 180000 }); // detail pages may need a rendered fetch + LLM pass
+        expected_factor_count: parseInt(hintFactorCount, 10) || undefined,
+        expected_option_count: parseInt(hintOptionCount, 10) || undefined,
+        first_factor_name: hintFirstFactor.trim() || undefined,
+        first_option_name: hintFirstOption.trim() || undefined,
+      }, { timeout: 300000 }); // detail pages may need a rendered fetch + LLM pass (+1 retry)
       setImportConsentOpen(false);
       setImporting(false);
       setImportUrl('');
       await fetchDecision();
+      const warn = (data.hint_warnings || []).length
+        ? `\n\n⚠ Accuracy check: ${data.hint_warnings.join(' ')} Please review carefully.`
+        : '';
       if (data.mode === 'detail') {
         const fellBack = importTier === 'precise' && data.ai_provider !== 'emergent_precise';
+        const grouped = data.structure === 'hierarchical'
+          ? ` grouped into ${data.category_count} categories (sub-factor weights split equally — editable)`
+          : '';
         showAlert(
           'Imported from URL',
-          `Detected a single-listing page — “${data.main_item}”. Added ${data.factors_added} factor${data.factors_added === 1 ? '' : 's'} with smart operators & Expected values, plus ${data.options_added} option${data.options_added === 1 ? '' : 's'} (the listing + similar items). Review below, then continue — Options (Step 6) and actuals (Step 7) are pre-filled.${fellBack ? '\n\nNote: Precise AI was unavailable (check the Universal Key balance) — the Fast AI engine was used instead, billed at the normal rate.' : ''}`,
+          `Detected a single-listing page — “${data.main_item}”. Added ${data.factors_added} factor${data.factors_added === 1 ? '' : 's'}${grouped} with smart operators & Expected values, plus ${data.options_added} option${data.options_added === 1 ? '' : 's'} (the listing + similar items). Review below, then continue — Options (Step 6) and actuals (Step 7) are pre-filled.${fellBack ? '\n\nNote: Precise AI was unavailable (check the Universal Key balance) — the Fast AI engine was used instead, billed at the normal rate.' : ''}${warn}`,
         );
       } else {
         showAlert(
           'Imported from URL',
-          `Added ${data.factors_added} factor${data.factors_added === 1 ? '' : 's'} and ${data.options_added} option${data.options_added === 1 ? '' : 's'} from ${data.item_count} items. Review the factors & Expected values below, then continue — Options (Step 6) and actuals (Step 7) are pre-filled.`,
+          `Added ${data.factors_added} factor${data.factors_added === 1 ? '' : 's'} and ${data.options_added} option${data.options_added === 1 ? '' : 's'} from ${data.item_count} items. Review the factors & Expected values below, then continue — Options (Step 6) and actuals (Step 7) are pre-filled.${warn}`,
         );
       }
     } catch (e: any) {
       setImporting(false);
       const msg = e?.response?.data?.detail || 'Could not import from this URL. Try a comparison page or a single item/listing detail page.';
       showAlert('Import failed', typeof msg === 'string' ? msg : JSON.stringify(msg));
+    }
+  };
+
+  // ── "Set Expectations - By AI" — enabled ONLY after a successful import has
+  // filled factors (Step 2), options (Step 6) AND option values (Step 7).
+  // One Claude-first call proposes Expected value + operator for every leaf
+  // factor; everything stays user-overridable.
+  const [settingExpectations, setSettingExpectations] = useState(false);
+  const expFactorsOk = (decision.factors || []).length > 0;
+  const expOptionsOk = (decision.options || []).length > 0;
+  const expValuesOk = (decision.options || []).some((o: any) =>
+    (o.assessments || []).some((a: any) => a.unit_value != null && a.unit_value !== ''));
+  const canSetExpectations = expFactorsOk && expOptionsOk && expValuesOk;
+
+  const runSetExpectations = async () => {
+    setSettingExpectations(true);
+    try {
+      const { data } = await api.post(
+        `/url-analyze/decision/${decision.id}/set-expectations`,
+        { ai_tier: 'precise' }, { timeout: 120000 });
+      await fetchDecision();
+      showAlert(
+        'Expectations set by AI',
+        `Expected values & operators proposed for ${data.updated} of ${data.factor_count} factors, based on your decision context and the option values. Review and override any of them below.`,
+      );
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || 'Could not set expectations. Try again.';
+      showAlert('Set Expectations failed', typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setSettingExpectations(false);
     }
   };
 
@@ -458,6 +506,28 @@ export default function Step2() {
         </TouchableOpacity>
       </View>
 
+      {/* "Set Expectations - By AI" — gated until import filled factors (Step 2),
+          options (Step 6) and option values (Step 7). Always user-overridable. */}
+      <TouchableOpacity
+        testID="step2-set-expectations-ai"
+        onPress={runSetExpectations}
+        disabled={!canSetExpectations || settingExpectations}
+        activeOpacity={0.85}
+        style={[iurl.expectBtn, (!canSetExpectations || settingExpectations) && iurl.expectBtnDisabled]}
+      >
+        {settingExpectations
+          ? <ActivityIndicator size="small" color="#FFF" />
+          : <Ionicons name="options" size={17} color="#FFF" />}
+        <Text style={iurl.expectBtnText}>
+          {settingExpectations ? 'Setting expectations…' : 'Set Expectations - By AI'}
+        </Text>
+      </TouchableOpacity>
+      <Text style={iurl.expectHint}>
+        {canSetExpectations
+          ? 'AI proposes Expected values & operators for ALL factors from your context and the option values — you can override any of them.'
+          : 'Enabled after a successful import fills factors (Step 2), options (Step 6) and option values (Step 7).'}
+      </Text>
+
       {/* URL dialog — collects the link, then opens the consent gate */}
       <Modal visible={urlDialogOpen} transparent animationType="fade" onRequestClose={() => setUrlDialogOpen(false)}>
         <View style={iurl.dlgOverlay}>
@@ -504,6 +574,53 @@ export default function Step2() {
                 {importTier === 'precise' && <Ionicons name="checkmark-circle" size={16} color="#7C3AED" />}
               </TouchableOpacity>
             </View>
+
+            {/* Optional accuracy hints — validated server-side with a corrective retry */}
+            <TouchableOpacity testID="step2-import-hints-toggle" style={iurl.hintsToggle} onPress={() => setHintsOpen(!hintsOpen)} activeOpacity={0.8}>
+              <Ionicons name={hintsOpen ? 'chevron-down' : 'chevron-forward'} size={14} color="#2563EB" />
+              <Text style={iurl.hintsToggleText}>Boost accuracy (recommended, optional)</Text>
+            </TouchableOpacity>
+            {hintsOpen && (
+              <View>
+                <Text style={iurl.hintHelp}>Tell us what you see on the page — we verify the AI extraction against it and auto-correct mismatches.</Text>
+                <View style={iurl.hintRow}>
+                  <TextInput
+                    testID="step2-hint-factor-count"
+                    style={[iurl.dlgInput, iurl.hintInputSm]}
+                    placeholder="# of factors"
+                    placeholderTextColor="#9CA3AF"
+                    value={hintFactorCount}
+                    onChangeText={setHintFactorCount}
+                    keyboardType="number-pad"
+                  />
+                  <TextInput
+                    testID="step2-hint-option-count"
+                    style={[iurl.dlgInput, iurl.hintInputSm]}
+                    placeholder="# of options (main + similar)"
+                    placeholderTextColor="#9CA3AF"
+                    value={hintOptionCount}
+                    onChangeText={setHintOptionCount}
+                    keyboardType="number-pad"
+                  />
+                </View>
+                <TextInput
+                  testID="step2-hint-first-factor"
+                  style={[iurl.dlgInput, iurl.hintInputFull]}
+                  placeholder="First factor name, e.g. Rent (optional)"
+                  placeholderTextColor="#9CA3AF"
+                  value={hintFirstFactor}
+                  onChangeText={setHintFirstFactor}
+                />
+                <TextInput
+                  testID="step2-hint-first-option"
+                  style={[iurl.dlgInput, iurl.hintInputFull]}
+                  placeholder="First / main option name (optional)"
+                  placeholderTextColor="#9CA3AF"
+                  value={hintFirstOption}
+                  onChangeText={setHintFirstOption}
+                />
+              </View>
+            )}
             <View style={iurl.dlgBtns}>
               <TouchableOpacity style={iurl.dlgCancel} onPress={() => setUrlDialogOpen(false)}>
                 <Text style={iurl.dlgCancelText}>Cancel</Text>
@@ -1047,6 +1164,20 @@ const iurl = StyleSheet.create({
   tierTxt: { fontSize: 13, fontWeight: '800', color: COLORS.textPrimary },
   tierTxtActive: { color: '#2563EB' },
   tierHint: { fontSize: 10.5, color: COLORS.textMuted, marginTop: 1 },
+  hintsToggle: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 12, paddingVertical: 2 },
+  hintsToggleText: { fontSize: 12, fontWeight: '800', color: '#2563EB' },
+  hintHelp: { fontSize: 11, color: COLORS.textMuted, lineHeight: 15, marginTop: 4, marginBottom: 8 },
+  hintRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  hintInputSm: { flex: 1, paddingVertical: 9, fontSize: 13 },
+  hintInputFull: { marginBottom: 8, paddingVertical: 9, fontSize: 13 },
+  expectBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#0E7490', borderRadius: 12, paddingVertical: 12, paddingHorizontal: 16,
+    marginTop: 12,
+  },
+  expectBtnDisabled: { backgroundColor: '#94A3B8', opacity: 0.7 },
+  expectBtnText: { color: '#FFF', fontSize: 14.5, fontWeight: '800' },
+  expectHint: { fontSize: 11, color: COLORS.textMuted, textAlign: 'center', marginTop: 6, marginBottom: 12, lineHeight: 15, paddingHorizontal: 8 },
   dlgBtns: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 16 },
   dlgCancel: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
   dlgCancelText: { fontSize: 13.5, fontWeight: '700', color: COLORS.textMuted },

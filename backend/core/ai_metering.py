@@ -119,14 +119,18 @@ async def user_allows_openai(user_id: str) -> bool:
         return False
 
 
-def _build_chain(allow_openai: bool) -> list:
-    """Ordered list of (provider_name) using only configured keys."""
+def _build_chain(allow_openai: bool, openai_before_groq: bool = False) -> list:
+    """Ordered list of (provider_name) using only configured keys.
+    `openai_before_groq=True` is used by the precise tier's fallback path
+    (user-mandated order: Claude → Gemini → OpenAI → Groq)."""
     chain: list = []
     if os.getenv("GEMINI_API_KEY"):
         chain.append("gemini")
+    if allow_openai and os.getenv("OPENAI_API_KEY") and openai_before_groq:
+        chain.append("openai")
     if os.getenv("GROQ_API_KEY"):
         chain.append("groq")
-    if allow_openai and os.getenv("OPENAI_API_KEY"):
+    if allow_openai and os.getenv("OPENAI_API_KEY") and not openai_before_groq:
         chain.append("openai")
     if os.getenv("EMERGENT_LLM_KEY"):
         chain.append("emergent")
@@ -180,7 +184,7 @@ async def metered_chat(
     if allow_openai is None:
         allow_openai = await user_allows_openai(user_id)
 
-    chain = _build_chain(allow_openai)
+    chain = _build_chain(allow_openai, openai_before_groq=(tier == "precise"))
     last_err: Optional[Exception] = None
     for provider in chain:
         try:

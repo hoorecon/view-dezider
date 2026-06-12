@@ -64,6 +64,7 @@ async def create_mydezider_from_candidates(
             id=fid, name=f["name"], category="primary", rating=_rating(f.get("weight")),
             order=i, unit=f.get("unit"), expected_value=f.get("expected_value"),
             data_type=("text" if (f.get("data_type") == "text") else "numeric"),
+            factor_type=f.get("factor_type"),
             operator=f.get("operator"),
         ))
 
@@ -205,6 +206,7 @@ async def merge_into_mydezider(
                 order=order_base + factors_added, unit=f.get("unit"),
                 expected_value=f.get("expected_value"),
                 data_type=("text" if (f.get("data_type") == "text") else "numeric"),
+                factor_type=f.get("factor_type"),
                 operator=f.get("operator"),
             ).dict())
             name_to_id[key] = fid
@@ -317,6 +319,7 @@ async def create_hierarchical_mydezider(
                 id=sid, name=str(row["label"]), category="primary",
                 parent_id=pid, order=ri, weight=weight,
                 data_type="numeric" if is_num else "text",
+                factor_type=meta.get("factor_type"),
                 expected_value=meta.get("expected"), operator=meta.get("operator"),
                 unit=meta.get("unit"),
             ))
@@ -442,6 +445,7 @@ async def merge_hierarchical_into_mydezider(
                     id=sid, name=label, category="primary",
                     parent_id=pid, order=ri, weight=weight,
                     data_type="numeric" if is_num else "text",
+                    factor_type=meta.get("factor_type"),
                     expected_value=meta.get("expected"), operator=meta.get("operator"),
                     unit=meta.get("unit"),
                 ).dict())

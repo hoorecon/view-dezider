@@ -54,6 +54,9 @@ DEFAULTS = {
     # the SAME refill-markup math stays zero-loss for this dearer provider.
     "precise_model": "claude-sonnet-4-6",
     "precise_usd_per_mtok": 9.0,
+    # Import-from-URL: AI may auto-GROUP ungrouped factors into categories only
+    # when the page defines no grouping AND the factor count exceeds this.
+    "import_group_threshold": 15,
     "credit_packs": [
         {"id": "starter", "name": "Starter", "credits": 5000, "badge": "Starter"},
         {"id": "pro", "name": "Pro", "credits": 20000, "badge": "Popular"},
@@ -93,7 +96,7 @@ async def update_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
               "blended_usd_per_mtok", "usd_to_inr_fallback", "markup_admin_pct",
               "markup_user_pct", "markup_routed_pct",
               "razorpay_fee_pct", "razorpay_gst_pct",
-              "min_custom_credits", "precise_usd_per_mtok"):
+              "min_custom_credits", "precise_usd_per_mtok", "import_group_threshold"):
         if k in patch and patch[k] is not None:
             try:
                 val = float(patch[k])
@@ -102,6 +105,10 @@ async def update_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
                 if k in ("tokens_per_credit", "blended_usd_per_mtok", "usd_to_inr_fallback",
                          "min_custom_credits", "precise_usd_per_mtok") and val <= 0:
                     raise ValueError
+                if k == "import_group_threshold":
+                    if val < 2:
+                        raise ValueError
+                    val = int(val)
                 if k in ("markup_routed_pct", "razorpay_fee_pct", "razorpay_gst_pct") and val > 100.0:
                     raise ValueError
                 allowed[k] = val

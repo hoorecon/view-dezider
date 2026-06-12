@@ -136,3 +136,113 @@ def test_precise_multiplier_floor_is_one():
 def test_precise_multiplier_tracks_config():
     cfg = {"blended_usd_per_mtok": 2.0, "precise_usd_per_mtok": 12.0}
     assert precise_multiplier(cfg) == pytest.approx(6.0)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# v2: hierarchical groups, factor-NATURE doctrine, zero-tolerance mapping,
+# accuracy-hint validation (self-healing oracle)
+# ═════════════════════════════════════════════════════════════════════════════
+from core.url_detail import validate_against_hints
+
+HIER_SAMPLE = {
+    "page_type": "detail",
+    "main_item": {"name": "Oppo F9"},
+    "groups": [
+        {"name": "BODY", "source": "page", "factors": [
+            {"name": "Weight", "data_type": "numeric", "factor_type": "quantitative",
+             "operator": "<=", "expected_value": "169", "unit": "g"},
+            {"name": "Build", "data_type": "text", "factor_type": "quantitative",
+             "operator": "equals", "expected_value": "Glass front, aluminum back"},
+        ]},
+        {"name": "DISPLAY", "source": "page", "factors": [
+            {"name": "Size", "data_type": "numeric", "factor_type": "quantitative",
+             "operator": ">=", "expected_value": "6.3", "unit": "inches"},
+            {"name": "Comfort", "data_type": "text", "factor_type": "qualitative",
+             "operator": "equals", "expected_value": "High"},
+        ]},
+    ],
+    "items": [
+        {"name": "Oppo F9",
+         "values": {"BODY::Weight": "169", "BODY::Build": "Glass front, aluminum back",
+                    "DISPLAY::Size": "6.3", "DISPLAY::Comfort": "High"},
+         "scores": {"BODY::Weight": 100, "BODY::Build": 100,
+                    "DISPLAY::Size": 100, "DISPLAY::Comfort": 100}},
+        {"name": "Galaxy A57",
+         "values": {"BODY::Weight": "179", "DISPLAY::Size": "6.7",
+                    "Bogus::Key": "evil"},          # unknown path → must be DROPPED
+         "scores": {"BODY::Weight": 90, "DISPLAY::Size": 100}},
+    ],
+}
+
+
+def test_hier_page_groups_preserved():
+    out = normalize_detail(HIER_SAMPLE, group_threshold=15)
+    assert out["kind"] == "hier"                       # page groups are sacred (≤ threshold!)
+    assert [g["category"] for g in out["groups"]] == ["BODY", "DISPLAY"]
+    assert [r["label"] for r in out["groups"][0]["rows"]] == ["Weight", "Build"]
+
+
+def test_hier_factor_type_in_row_meta():
+    out = normalize_detail(HIER_SAMPLE)
+    assert out["row_meta"][(0, 0)]["factor_type"] == "quantitative"
+    assert out["row_meta"][(1, 1)]["factor_type"] == "qualitative"
+    # text-format FACT stays quantitative (Build = undisputed spec)
+    assert out["row_meta"][(0, 1)]["factor_type"] == "quantitative"
+    assert out["row_meta"][(0, 1)]["is_numeric"] is False
+
+
+def test_hier_zero_tolerance_value_mapping():
+    out = normalize_detail(HIER_SAMPLE)
+    assert out["items"] == ["Oppo F9", "Galaxy A57"]
+    # values are positional per item, mapped only via exact Group::Factor paths
+    weight_row = out["groups"][0]["rows"][0]
+    assert weight_row["values"] == ["169", "179"]
+    # unknown "Bogus::Key" must never leak into any row
+    all_vals = [v for g in out["groups"] for r in g["rows"] for v in r["values"]]
+    assert "evil" not in all_vals
+    assert out["row_scores"][(0, 0)] == [100, 90]
+
+
+def test_ai_grouping_flattened_under_threshold():
+    data = {
+        "page_type": "detail", "main_item": {"name": "X"},
+        "groups": [
+            {"name": "Costs", "source": "ai", "factors": [
+                {"name": "Rent", "data_type": "numeric", "operator": "<=", "expected_value": "10"}]},
+            {"name": "Space", "source": "ai", "factors": [
+                {"name": "Area", "data_type": "numeric", "operator": ">=", "expected_value": "500"}]},
+        ],
+        "items": [],
+    }
+    # 2 factors ≤ threshold 15 and NO page-defined groups → AI grouping rejected, flat
+    out = normalize_detail(data, group_threshold=15)
+    assert out["kind"] == "flat"
+    assert {f["name"] for f in out["factors"]} == {"Rent", "Area"}
+    # …but with threshold 1 the AI grouping is allowed
+    out2 = normalize_detail(data, group_threshold=1)
+    assert out2["kind"] == "hier"
+
+
+def test_flat_factor_type_defaults_quantitative():
+    out = normalize_detail(SAMPLE)               # v1 back-compat payload (flat "factors")
+    assert out["kind"] == "flat"
+    assert all(f["factor_type"] == "quantitative" for f in out["factors"])
+
+
+def test_hints_validation_passes_and_fails():
+    out = normalize_detail(HIER_SAMPLE)
+    assert validate_against_hints(out, {"expected_factor_count": 4,
+                                        "expected_option_count": 2,
+                                        "first_factor_name": "Weight",
+                                        "first_option_name": "Oppo F9"}) == []
+    issues = validate_against_hints(out, {"expected_factor_count": 20,
+                                          "first_factor_name": "Rent",
+                                          "first_option_name": "Some Other"})
+    assert len(issues) == 3
+    assert validate_against_hints(out, None) == []
+
+
+def test_hints_factor_count_tolerance():
+    out = normalize_detail(HIER_SAMPLE)          # 4 leaf factors
+    assert validate_against_hints(out, {"expected_factor_count": 6}) == []   # |4-6| ≤ max(2, 20%)
+    assert len(validate_against_hints(out, {"expected_factor_count": 7})) == 1
