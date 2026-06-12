@@ -125,3 +125,14 @@ def test_score_candidates_direction_aware():
     assert cands[1]["scores"]["Price"] == 50
     assert cands[1]["scores"]["Rating"] == 100     # highest rating wins
     assert cands[0]["scores"]["Rating"] == 80
+
+
+# ── wiring regression: the import endpoint module must expose the verification
+# symbols it calls (catches lost-import NameError class of bugs loudly) ──
+def test_url_analyze_verification_symbols_wired():
+    import routes.url_analyze as ua
+    assert callable(ua.verify_detail)
+    assert callable(ua.page_text)
+    import routes.deep_import as di
+    assert callable(di.verify_detail)
+    assert callable(di.merge_into_mydezider)

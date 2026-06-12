@@ -860,3 +860,37 @@ USER CHOICES: 1a separate "Family" card · 2b searchable icon picker · 3 login 
 TESTED: pytest 9/9 (tests/test_iter106_org_types_master.py) + testing agent full frontend pass
 (iteration_106.json): Masters CRUD incl. icon search, 7/7 cards dezider+swot, 7/7 add-solution
 chips, FAMILY decision creation, regression on other master tabs + payments screen.
+
+## v3.20.0 — 12 Jun 2026 (Iteration 107): Import trust (P0) + Org-type templates (P1) + Deep Import (P2)
+ROOT-CAUSE of user's "584000 wrong Budget" complaint (carwale import): NOT an AI hallucination —
+the crawler fetched the page's DEFAULT geo variant ("Rs. 5.84 - 9.99 Lakh · Avg. Ex-Showroom")
+while the user's browser showed Chennai on-road prices (7.58-10.69L). Value was page-faithful but
+had zero provenance visibility. Diagnosed from stored ai_prompt_text/ai_raw_response telemetry.
+- P0 PAGE-GROUNDING: new core/import_verify.py — every imported NUMERIC value must trace to an
+  explicit page number (Lakh/Crore/Indian-comma/range-endpoint expansion); unverified numerics
+  BLANKED + scores nulled + reported; text values flagged-but-kept; evidence quote (source line)
+  captured per verified value. Hooked into _extract_detail_for_url (both import+analyze AI paths);
+  response carries {verification, geo_note}; record_run persists verification+evidence; new GET
+  /api/url-analyze/runs/{run_id}/provenance. Prompt rule 9 added (grounding + range min/max);
+  ScraperAPI country_code now defaults to "in". Step2 popup shows "✓/⚠ Page-grounding check" +
+  geo note; feedback row gained "Source quotes" button → provenance modal (import-provenance-modal).
+- P1 ORG-TYPE TEMPLATES: /hos/scenarios now accepts acting_as (wildcard = untagged); new admin
+  CRUD GET/POST/PUT /api/hos/admin/templates (org_types tagging, mirrors acting_as_contexts);
+  5 FAMILY starter templates seeded (vacation/school/home/health-insurance/budget, v-gated
+  family_templates_seed); new Admin → Intake Scenarios screen (app/admin/scenarios.tsx) with
+  org-type filter chips + editor (org/life-area/ask-type/modules/tags/active); registered in
+  admin sidebar + home tile; new-decision passes acting_as to scenarios fetch.
+- P2 DEEP IMPORT (opt-in, NOT automatic — 5-10x credits): routes/deep_import.py — POST
+  /api/deep-import/decision/{id}/start (consent + background asyncio job, deep_import_jobs TTL
+  24h) → AI link-picker (fast) → crawls ≤8 rendered pages → ONE consolidation AI call (factors +
+  per-option values) → status factors_ready; GET /jobs/{id} (poll, page_texts excluded); POST
+  /jobs/{id}/finalize merges ONLY approved factors (zero extra AI), deterministic direction-aware
+  scoring, P0 verification vs combined page text, telemetry run w/ provenance. Frontend
+  src/components/steps/DeepImport.tsx (setup → progress → factor review w/ include + H/M/L
+  priority → merge) mounted in Step2 import card.
+TESTED: pytest 10/10 (tests/test_iter107_import_trust.py incl. symbol-wiring regression);
+REAL deep-import e2e on books.toscrape.com (3 pages, 6 factors, 13/13 verified, provenance OK);
+testing agent frontend 4/4 PASS + regression (iteration_107.json). Agent-fixed bug: my parallel
+search_replace race dropped the verify_detail/page_text imports in url_analyze.py (NameError 500
+on import) — testing agent restored them; symbol-wiring pytest now guards this.
+LESSON: NEVER issue two parallel search_replace calls against the SAME file (2nd race this session).

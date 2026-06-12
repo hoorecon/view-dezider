@@ -166,6 +166,20 @@ Multi-user Decision Making App based on a 10-step Proactive Risk Response (PRR) 
   via `GET /api/url-analyze/progress/{id}`; classification runs concurrent with
   rendered fetch (~5-15s faster); Set-Expectations returns changed/confirmed counts
 
+### 15. Import Trust + Org-Type Templates + Deep Import (v3.20.0 — 12 Jun 2026)
+- **Page-grounding contract**: every numeric value a URL import writes must trace to an
+  explicit page number (Lakh/Crore/comma/range aware); unverified → blanked + reported;
+  every verified value carries a source quote ("Source quotes" modal) — makes geo price
+  variants (ex-showroom vs on-road) self-evident. Geo note for money values; ScraperAPI
+  defaults to India region.
+- **Org-type-aware intake content**: Admin → Intake Scenarios manager with org-type
+  tagging; 5 FAMILY starter templates; intake scenario suggestions filtered by the
+  selected "This decision is for…" card (untagged = generic).
+- **Deep Import (opt-in)**: base URL + 1-2 line context → bounded multi-page crawl →
+  factor-first review (include + H/M/L priority) → merge approved factors with values
+  already captured (no second AI pass). Explicit mode by design (5-10x credit cost vs
+  normal import).
+
 ---
 ## Memory file map (split 12 Jun 2026 — PRD.md exceeded 700 lines)
 - **PRD.md** (this file): static product requirements & architecture

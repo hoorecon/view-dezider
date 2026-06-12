@@ -14,6 +14,10 @@ _Split out of PRD.md on 12 Jun 2026. Cross-check CHANGELOG.md before picking up 
   (e.g. wallet-low-balance, weekly revenue digest) — one builder function each
 - Import progress for the standalone /tools/analyse-url screen (Step-2 import done 12 Jun 2026;
   same progress_id plumbing can be reused for the analyze endpoint)
+- Deep Import niceties: cancel-job endpoint, editable factor names/units in the review screen,
+  per-page crawl concurrency (currently sequential)
+- Surface per-value provenance inline in Step 7 actuals (quotes currently in the
+  "Source quotes" modal only)
 
 ## Refactoring
 - `Step2.tsx` (>1200 lines) — component breakdown
