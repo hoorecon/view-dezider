@@ -1,0 +1,47 @@
+{
+  "summary": "Frontend-only review of iteration 107 (Import trust & provenance + Org-type intake scenarios + Deep Import UI). All four primary frontend flows verified end-to-end on the public preview URL with admin@test.com. Tests 1 (Admin Intake Scenarios CRUD), 2 (Family-only intake), 3 (Deep Import UI without real crawl) and the regression checks all PASSED. Test 4 (real URL import on books.toscrape.com) initially returned HTTP 500 due to a missing import in url_analyze.py; after a one-line import fix it ran end-to-end successfully (22 values page-grounded, success popup carries Page-grounding text, import-view-sources button rendered).",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/url-analyze/decision/{id}/import",
+        "issue": "NameError: name 'verify_detail' is not defined at /app/backend/routes/url_analyze.py:652. Module core.import_verify (and page_text from core.url_crawl) were never imported. EVERY normal Step-2 URL import returned 500 Internal Server Error until fixed. Fixed by adding the missing imports (see updated_files).",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/tmp/04_scenarios_all.png",
+    "/tmp/05_family_filter.png",
+    "/tmp/06_create_modal.png",
+    "/tmp/t2b_FAMILY_scenarios.png",
+    "/tmp/t2b_INDIVIDUAL_scenarios.png",
+    "/tmp/t3_deep_modal.png",
+    "/tmp/t3_consent.png",
+    "/tmp/t4c_after.png",
+    "/tmp/reg_masters.png"
+  ],
+  "action_items": [
+    "Main agent: please review the import fix in /app/backend/routes/url_analyze.py (added `page_text` to core.url_crawl import block + `from core.import_verify import verify_detail`). Confirm this matches your intended source-of-truth wiring and add a smoke test so it doesn't regress (the existing iter107 pytest covered the verify_detail unit-level behaviour but did NOT exercise the wired-up /api/url-analyze/decision/{id}/import endpoint).",
+    "Main agent: consider adding a backend smoke test for the actual import endpoint (single-URL Fast tier on books.toscrape) since the deep-import e2e you mentioned uses a different code path (routes/deep_import.py) and missed this NameError."
+  ],
+  "critical_code_review_comments": [
+    "/app/backend/routes/url_analyze.py was missing two imports (`verify_detail`, `page_text`) yet referenced them in _extract_detail_for_url. This is a classic 'wrote-the-call-forgot-the-import' miss that ANY first invocation of the new code-path would have caught. Suggest the main agent always run one curl against each new endpoint after wiring new helpers.",
+    "Frontend testIDs are well-placed (scenario-add-btn, scenario-org-FAMILY, scenario-save-btn, scenario-edit-{id}, scenario-delete-{id}, scenario-filter-*, acting-as-{KEY}, deep-import-*, import-progress-modal, import-view-sources, import-provenance-modal etc.) — testing was smooth, no missing identifiers."
+  ],
+  "updated_files": [
+    "/app/backend/routes/url_analyze.py (added `page_text` to the `from core.url_crawl import (...)` block and added `from core.import_verify import verify_detail`)"
+  ],
+  "success_rate": {"backend": "n/a (only fixed import; backend not retested by request)", "frontend": "100% (4/4 frontend test cases + regression passed after the import fix)"},
+  "seed_data_creation": "Temp scenario 'TEST_AutoScenario_iter107' was created → edited → deleted as part of CRUD test; no residual data left in db.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All Step-2 import flows depend on core.import_verify.verify_detail + core.url_crawl.page_text being imported into routes/url_analyze.py. If you see another NameError there, check this import block first. Family-only intake works correctly: /api/hos/scenarios?acting_as=FAMILY returns FAMILY-tagged + GENERIC; INDIVIDUAL returns only GENERIC + INDIVIDUAL-tagged. Decision used for Step-2 tests: 1cd4dc3b-df0d-4166-a29f-8026d38b75b1 (admin@test.com).",
+  "rca_of_issue": "ROOT CAUSE: /app/backend/routes/url_analyze.py line 652 called `verify_detail(detail, page_text(rendered or html, limit=200000))` but the file never imported either symbol. REPRODUCTION: login admin → open any decision Step 2 → URL import → fill any public URL → Fast AI → consent Free/public + accept → Agree & Analyse → backend returns 500 with `NameError: name 'verify_detail' is not defined`. MITIGATION (applied): added `page_text` to the `from core.url_crawl import (...)` line and a new line `from core.import_verify import verify_detail`. After backend restart, end-to-end URL import on https://books.toscrape.com/catalogue/category/books/travel_2/index.html on Fast AI succeeded with 22/22 values page-grounded and the success popup carrying the '✓ Page-grounding check' text — confirming the P0 'Import trust & provenance' feature works once the missing imports are present."
+}

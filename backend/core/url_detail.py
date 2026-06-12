@@ -124,7 +124,8 @@ RULES
    • comparison pages: EVERY genuinely listed/compared item, in page order (skip pure ad inserts when identifiable). Fill each item's value for every factor: prefer values shown on the page; for OBJECTIVE specs of a specific well-known product (its brand, fuel type, body type, transmission, seating capacity, …) you may fill from reliable general knowledge when the page omits them; truly unknown values stay null in BOTH maps.
    Score each KNOWN value 0-100 for how well it satisfies expected_value+operator (better than expected → 100; ~10% worse → ≈80).
 8. ZERO-TOLERANCE MAPPING: every key inside "values" and "scores" MUST be exactly "<group name>::<factor name>" matching a declared group+factor. A value MUST stay attached to the item it belongs to on the page — never shift values between items or factors.
-9. Max {max_factors} factors total, max 12 items.{page_guidance}{user_facts}"""
+9. GROUNDING — NUMERIC values (prices, rents, fees, deposits, sizes, distances, capacities, scores) MUST be derived from an explicit number in the PAGE TEXT (unit conversion allowed: "Rs. 5.84 Lakh" → 584000). If the page does not state a numeric value for a cell, output null — NEVER estimate numbers from memory (rule 7's general-knowledge allowance covers CATEGORICAL facts only). When the page shows a RANGE ("Rs. 5.84 - 9.99 Lakh"), use the range MINIMUM for lower-is-better factors and the MAXIMUM for higher-is-better factors — never a number outside the stated range.
+10. Max {max_factors} factors total, max 12 items.{page_guidance}{user_facts}"""
 
 
 # ── Per-page-type prompt specialisation (selected by the LLM classifier) ─────

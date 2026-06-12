@@ -227,7 +227,8 @@ export default function NewDecisionIntake() {
     }
   }, [selectedArea]);
 
-  // Fetch scenarios when life area / sub area changes
+  // Fetch scenarios when life area / sub area changes (org-type aware:
+  // FAMILY-tagged scenarios only appear when the Family card was picked, etc.)
   useEffect(() => {
     if (!selectedArea) { setScenarios([]); return; }
     const p = new URLSearchParams({
@@ -236,10 +237,11 @@ export default function NewDecisionIntake() {
       limit: '50',
     });
     if (selectedSubArea) p.append('sub_area_id', selectedSubArea.id);
+    if (actingAs) p.append('acting_as', actingAs);
     api.get(`/hos/scenarios?${p}`)
       .then(r => setScenarios(r.data || []))
       .catch(() => setScenarios([]));
-  }, [selectedArea, selectedSubArea, moduleKey]);
+  }, [selectedArea, selectedSubArea, moduleKey, actingAs]);
 
   // AI-parse: when user types in the free-text box, attempt to match a
   // Sub-area and Scenario via lightweight keyword scoring (no LLM call —

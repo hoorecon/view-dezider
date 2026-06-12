@@ -18,7 +18,7 @@ import re
 
 # Import shared dependencies
 from core.database import db
-from core.auth import get_current_user
+from core.auth import get_current_user, require_admin
 
 router = APIRouter(prefix="/hos", tags=["HOS Decision Intake"])
 
@@ -241,6 +241,7 @@ async def list_scenarios(
     life_area_id: Optional[str] = None,
     sub_area_id: Optional[str] = None,
     module: str = Query("dezider"),
+    acting_as: Optional[str] = None,
     limit: int = 50,
 ):
     """
@@ -249,6 +250,9 @@ async def list_scenarios(
     info for the Step-4 dropdown:
         {id, title, sub_area_id, life_area_id, template_id (representative)}
     Used by the new structured Step-4 UI.
+    `acting_as` (org-type key, e.g. FAMILY) narrows to templates tagged for
+    that org type — templates with an EMPTY/missing org_types array are
+    wildcards and always included.
     """
     module_lc = (module or "dezider").strip().lower()
     if module_lc not in APPLIES_TO_MODULES:
@@ -260,13 +264,25 @@ async def list_scenarios(
     if sub_area_id:
         query["sub_area_id"] = sub_area_id
 
+    and_clauses: List[Dict[str, Any]] = []
     if module_lc == "dezider":
-        query["$or"] = [
+        and_clauses.append({"$or": [
             {"applies_to_modules": "dezider"},
             {"applies_to_modules": {"$exists": False}},
-        ]
+        ]})
     else:
         query["applies_to_modules"] = "swot"
+
+    # Org-type filter: empty/missing org_types = wildcard (shown to everyone);
+    # tagged templates only for the matching acting_as org type.
+    if acting_as:
+        and_clauses.append({"$or": [
+            {"org_types": {"$size": 0}},
+            {"org_types": {"$exists": False}},
+            {"org_types": acting_as.strip().upper()},
+        ]})
+    if and_clauses:
+        query["$and"] = and_clauses
 
     cursor = db.hos_decision_templates.find(
         query,
@@ -456,6 +472,143 @@ async def admin_bulk_delete_templates(
 # DECISION CREATION
 # ========================
 
+# ========================
+# ADMIN: Intake-template CRUD (Admin → Templates / Scenarios manager)
+# ========================
+
+_TEMPLATE_EDIT_FIELDS = [
+    "title", "description", "life_area_id", "ask_type_id", "sub_area_id",
+    "category_id", "tags", "org_types", "acting_as_contexts",
+    "applies_to_modules", "decision_types", "popularity", "order", "status",
+]
+
+
+@router.get("/admin/templates")
+async def admin_list_templates(
+    q: Optional[str] = None,
+    org_type: Optional[str] = None,
+    limit: int = 300,
+    admin: dict = Depends(require_admin),
+):
+    """ALL intake templates (any status) for the admin Scenarios manager.
+    org_type filter: a key like FAMILY, or 'GENERIC' for wildcard templates."""
+    query: Dict[str, Any] = {}
+    if q:
+        query["title"] = {"$regex": re.escape(q.strip()), "$options": "i"}
+    if org_type:
+        if org_type.strip().upper() == "GENERIC":
+            query["$or"] = [{"org_types": {"$size": 0}}, {"org_types": {"$exists": False}}]
+        else:
+            query["org_types"] = org_type.strip().upper()
+    items = await db.hos_decision_templates.find(query, {"_id": 0}) \
+        .sort([("popularity", -1), ("order", 1)]).to_list(limit)
+    return {"items": items, "count": len(items)}
+
+
+@router.post("/admin/templates")
+async def admin_create_template(payload: Dict[str, Any], admin: dict = Depends(require_admin)):
+    title = str(payload.get("title") or "").strip()
+    if not title:
+        raise HTTPException(400, "title is required")
+    doc: Dict[str, Any] = {
+        "id": f"tpl_{uuid.uuid4().hex[:12]}",
+        "template_type": "AUTHORIZED_STANDARD",
+        "status": "active",
+        "popularity": 50, "order": 99,
+        "tags": [], "org_types": [], "acting_as_contexts": [],
+        "applies_to_modules": ["dezider"], "decision_types": [],
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    for f in _TEMPLATE_EDIT_FIELDS:
+        if f in payload and payload[f] is not None:
+            doc[f] = payload[f]
+    doc["title"] = title
+    doc["org_types"] = [str(x).upper() for x in (doc.get("org_types") or [])]
+    # keep legacy acting_as_contexts mirrored for old filters
+    doc["acting_as_contexts"] = doc["org_types"] or doc.get("acting_as_contexts") or []
+    await db.hos_decision_templates.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@router.put("/admin/templates/{template_id}")
+async def admin_update_template(template_id: str, payload: Dict[str, Any],
+                                admin: dict = Depends(require_admin)):
+    existing = await db.hos_decision_templates.find_one({"id": template_id})
+    if not existing:
+        raise HTTPException(404, "Template not found")
+    updates: Dict[str, Any] = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    for f in _TEMPLATE_EDIT_FIELDS:
+        if f in payload:
+            updates[f] = payload[f]
+    if "title" in updates and not str(updates["title"] or "").strip():
+        raise HTTPException(400, "title cannot be empty")
+    if "org_types" in updates:
+        updates["org_types"] = [str(x).upper() for x in (updates["org_types"] or [])]
+        updates["acting_as_contexts"] = updates["org_types"]
+    await db.hos_decision_templates.update_one({"id": template_id}, {"$set": updates})
+    out = await db.hos_decision_templates.find_one({"id": template_id}, {"_id": 0})
+    return out
+
+
+# ── FAMILY starter templates (org-type-aware content; v-gated, idempotent) ──
+FAMILY_TEMPLATES_SEED_VERSION = "2026-06-12-01"
+FAMILY_TEMPLATES = [
+    {"id": "tpl_fam_vacation", "life_area_id": "la_hobbies", "ask_type_id": "at_need",
+     "title": "Where should we go for our family vacation?",
+     "description": "Compare destinations on budget, travel time, kid-friendliness, season and activities for the whole family.",
+     "tags": ["vacation", "holiday", "travel", "family trip", "destination"],
+     "popularity": 90, "order": 1, "decision_types": ["need"]},
+    {"id": "tpl_fam_school", "life_area_id": "la_knowledge", "ask_type_id": "at_problem",
+     "title": "Which school should we choose for our child?",
+     "description": "Evaluate schools on curriculum, distance, fees, teacher quality, safety and extracurriculars.",
+     "tags": ["school", "education", "admission", "child", "curriculum"],
+     "popularity": 88, "order": 2, "decision_types": ["problem"]},
+    {"id": "tpl_fam_home", "life_area_id": "la_assets", "ask_type_id": "at_need",
+     "title": "Which home should our family buy or rent?",
+     "description": "Compare homes on budget, locality, commute, schools nearby, space and amenities.",
+     "tags": ["home", "house", "buy", "rent", "property", "flat"],
+     "popularity": 86, "order": 3, "decision_types": ["need"]},
+    {"id": "tpl_fam_health", "life_area_id": "la_health", "ask_type_id": "at_need",
+     "title": "Which health insurance plan fits our family?",
+     "description": "Compare family-floater plans on premium, coverage, network hospitals, claim ratio and exclusions.",
+     "tags": ["health insurance", "family floater", "hospital", "premium", "coverage"],
+     "popularity": 84, "order": 4, "decision_types": ["need"]},
+    {"id": "tpl_fam_budget", "life_area_id": "la_finance", "ask_type_id": "at_problem",
+     "title": "How should we allocate our family budget?",
+     "description": "Decide allocation across essentials, education, savings, investments and lifestyle for the household.",
+     "tags": ["budget", "savings", "expenses", "planning", "household"],
+     "popularity": 82, "order": 5, "decision_types": ["problem"]},
+]
+
+
+async def ensure_family_templates_seeded() -> int:
+    """Insert FAMILY-tagged starter templates once per version (admin edits/
+    deletes preserved — identity = id)."""
+    meta = await db.app_config.find_one({"key": "family_templates_seed"})
+    if meta and (meta.get("value") or {}).get("version") == FAMILY_TEMPLATES_SEED_VERSION:
+        return 0
+    inserted = 0
+    for t in FAMILY_TEMPLATES:
+        if await db.hos_decision_templates.find_one({"id": t["id"]}):
+            continue
+        await db.hos_decision_templates.insert_one({
+            **t, "sub_area_id": None, "category_id": None,
+            "template_type": "AUTHORIZED_STANDARD", "status": "active",
+            "applies_to_modules": ["dezider", "swot"],
+            "org_types": ["FAMILY"], "acting_as_contexts": ["FAMILY"],
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        })
+        inserted += 1
+    await db.app_config.update_one(
+        {"key": "family_templates_seed"},
+        {"$set": {"key": "family_templates_seed",
+                  "value": {"version": FAMILY_TEMPLATES_SEED_VERSION,
+                            "updated_at": datetime.now(timezone.utc).isoformat()}}},
+        upsert=True)
+    return inserted
+
+
 @router.post("/decisions")
 async def create_decision_from_intake(
     payload: DecisionCreateFromTemplate,
@@ -565,6 +718,7 @@ async def seed_master_data(force: bool = False):
 
     # Check if already seeded (skip if force)
     existing = await db.hos_life_areas.count_documents({})
+    await ensure_family_templates_seeded()
     if existing > 0 and not force:
         counts = {
             "life_areas": await db.hos_life_areas.count_documents({}),

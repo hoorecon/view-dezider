@@ -10,6 +10,7 @@ import type { Factor, FactorDataSource } from '../../types/decision';
 import api from '../../utils/api';
 import { showAlert } from '../../utils/alert';
 import UrlAccessConsentModal, { UrlConsentPayload } from '../UrlAccessConsentModal';
+import DeepImport from './DeepImport';
 import { downloadAssessmentTemplate, importAssessmentTemplate } from '../../utils/assessmentXlsx';
 import {
   UNIT_PRESETS,
@@ -67,6 +68,21 @@ export default function Step2() {
     } catch { /* non-fatal — verdict already reflected in UI */ }
   };
 
+  // ── Provenance ("Source quotes"): the exact page line each imported value
+  // came from — page-grounding transparency (ex-showroom vs on-road etc.). ──
+  const [provenance, setProvenance] = useState<{ open: boolean; loading: boolean; items: any[]; verification: any } | null>(null);
+
+  const openProvenance = async () => {
+    if (!importFeedback) return;
+    setProvenance({ open: true, loading: true, items: [], verification: {} });
+    try {
+      const { data } = await api.get(`/url-analyze/runs/${importFeedback.runId}/provenance`);
+      setProvenance({ open: true, loading: false, items: data.evidence || [], verification: data.verification || {} });
+    } catch {
+      setProvenance({ open: true, loading: false, items: [], verification: {} });
+    }
+  };
+
   // ── Live import progress — backend reports real stages to
   // /url-analyze/progress/{id}; we poll while the import POST is in flight. ──
   const [importProgress, setImportProgress] = useState<{ pct: number; label: string; elapsed: number } | null>(null);
@@ -107,6 +123,15 @@ export default function Step2() {
       const warn = (data.hint_warnings || []).length
         ? `\n\n⚠ Accuracy check: ${data.hint_warnings.join(' ')} Please review carefully.`
         : '';
+      const ver = data.verification || {};
+      const verNote = (ver.blanked || 0) > 0
+        ? `\n\n⚠ Page-grounding check: ${ver.blanked} value(s) could NOT be verified on the page text and were left BLANK${(ver.unverified || []).length ? ` — ${(ver.unverified || []).slice(0, 5).join('; ')}` : ''}. Fill them manually in Step 7.`
+        : (ver.verified || 0) > 0
+          ? `\n\n✓ Page-grounding check: all ${ver.verified} extracted values are traceable to the page text. Tap “Source quotes” under the import card to see the exact page line behind every value.`
+          : '';
+      const geoNote = data.geo_note
+        ? '\n\nℹ Money values were read from the page\u2019s DEFAULT (non-localised) view — e.g. national ex-showroom prices can differ from your city\u2019s on-road prices. The source quotes show exactly which page line each number came from.'
+        : '';
       const expectedNote = '\n\nNote: Expected values are pre-suggested from the page data (best value of the set). Refine them anytime with “Set Expectations - By AI”, which re-evaluates against your decision context.';
       if (data.mode === 'detail') {
         const fellBack = importTier === 'precise' && data.ai_provider !== 'emergent_precise';
@@ -115,12 +140,12 @@ export default function Step2() {
           : '';
         showAlert(
           'Imported from URL',
-          `Detected a single-listing page — “${data.main_item}”. Added ${data.factors_added} factor${data.factors_added === 1 ? '' : 's'}${grouped} with smart operators & Expected values, plus ${data.options_added} option${data.options_added === 1 ? '' : 's'} (the listing + similar items). Review below, then continue — Options (Step 6) and actuals (Step 7) are pre-filled.${fellBack ? '\n\nNote: Precise AI was unavailable (check the Universal Key balance) — the Fast AI engine was used instead, billed at the normal rate.' : ''}${expectedNote}${warn}`,
+          `Detected a single-listing page — “${data.main_item}”. Added ${data.factors_added} factor${data.factors_added === 1 ? '' : 's'}${grouped} with smart operators & Expected values, plus ${data.options_added} option${data.options_added === 1 ? '' : 's'} (the listing + similar items). Review below, then continue — Options (Step 6) and actuals (Step 7) are pre-filled.${fellBack ? '\n\nNote: Precise AI was unavailable (check the Universal Key balance) — the Fast AI engine was used instead, billed at the normal rate.' : ''}${expectedNote}${verNote}${geoNote}${warn}`,
         );
       } else {
         showAlert(
           'Imported from URL',
-          `Added ${data.factors_added} factor${data.factors_added === 1 ? '' : 's'} and ${data.options_added} option${data.options_added === 1 ? '' : 's'} from ${data.item_count} items. Review the factors & Expected values below, then continue — Options (Step 6) and actuals (Step 7) are pre-filled.${expectedNote}${warn}`,
+          `Added ${data.factors_added} factor${data.factors_added === 1 ? '' : 's'} and ${data.options_added} option${data.options_added === 1 ? '' : 's'} from ${data.item_count} items. Review the factors & Expected values below, then continue — Options (Step 6) and actuals (Step 7) are pre-filled.${expectedNote}${verNote}${geoNote}${warn}`,
         );
       }
     } catch (e: any) {
@@ -543,6 +568,9 @@ export default function Step2() {
           <Ionicons name="download-outline" size={13} color="#2563EB" />
           <Text style={iurl.tmplText}>{importBusy === 'tmpl' ? 'Preparing…' : 'Download a fillable template (XLS)'}</Text>
         </TouchableOpacity>
+
+        {/* Deep Import — opt-in multi-page crawl with factor-first review */}
+        <DeepImport decisionId={decision.id} onMerged={fetchDecision} />
       </View>
 
       {/* 1-tap import accuracy verdict — appears after a URL import completes */}
@@ -575,6 +603,13 @@ export default function Step2() {
               </TouchableOpacity>
             </>
           )}
+          <TouchableOpacity
+            testID="import-view-sources" activeOpacity={0.8}
+            onPress={openProvenance}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, padding: 7, borderRadius: 8, backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE' }}>
+            <Ionicons name="document-text-outline" size={14} color="#2563EB" />
+            <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#2563EB' }}>Source quotes</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -767,6 +802,46 @@ export default function Step2() {
               Pages that need AI extraction (single listings, JS-rendered pages) can take 1–2 minutes.
               Keep this screen open — we&apos;ll fill the factors, options and assessment matrix automatically.
             </Text>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Source quotes (provenance): the exact page line behind every value ── */}
+      <Modal visible={!!provenance?.open} transparent animationType="fade" onRequestClose={() => setProvenance(null)}>
+        <View style={iurl.dlgOverlay}>
+          <View style={[iurl.dlg, { maxWidth: 560 }]} testID="import-provenance-modal">
+            <Text style={iurl.dlgTitle}>Source quotes — where each value came from</Text>
+            {provenance?.loading ? (
+              <ActivityIndicator color="#2563EB" style={{ marginVertical: 18 }} />
+            ) : (
+              <>
+                <Text testID="import-provenance-summary" style={{ fontSize: 12, color: '#475569', marginBottom: 8 }}>
+                  {(provenance?.verification?.verified || 0)} value{(provenance?.verification?.verified || 0) === 1 ? '' : 's'} verified on the page
+                  {(provenance?.verification?.blanked || 0) > 0 ? ` · ${provenance?.verification?.blanked} left blank (not found on the page)` : ''}
+                </Text>
+                <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+                  {(provenance?.items || []).map((e: any, i: number) => (
+                    <View key={i} style={{ paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
+                      <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#0F172A' }}>
+                        {e.factor} · {e.option}: {e.value}
+                      </Text>
+                      <Text style={{ fontSize: 11.5, color: '#64748B', fontStyle: 'italic', marginTop: 2 }}>
+                        “{e.quote}”
+                      </Text>
+                    </View>
+                  ))}
+                  {!(provenance?.items || []).length && (
+                    <Text style={{ fontSize: 12, color: '#94A3B8', marginVertical: 12 }}>
+                      No source quotes recorded for this run (older imports don&apos;t have them — re-import to get provenance).
+                    </Text>
+                  )}
+                </ScrollView>
+              </>
+            )}
+            <TouchableOpacity testID="import-provenance-close" onPress={() => setProvenance(null)}
+              style={{ marginTop: 12, paddingVertical: 11, borderRadius: 10, backgroundColor: '#F1F5F9', alignItems: 'center' }}>
+              <Text style={{ fontSize: 13.5, fontWeight: '700', color: '#475569' }}>Close</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>

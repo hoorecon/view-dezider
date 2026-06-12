@@ -129,6 +129,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
     items: [
       { key: 'modes',    label: 'Decision Modes',    icon: 'options',              href: '/admin/decision-modes' },
       { key: 'tmpl',     label: 'Templates',         icon: 'document-text',        href: '/admin/templates' },
+      { key: 'scenarios', label: 'Intake Scenarios',  icon: 'bulb',                 href: '/admin/scenarios' },
       { key: 'social',   label: 'Social Learning',   icon: 'school',               href: '/admin/social-learning-admin' },
       { key: 'review',   label: 'ReviewNet',         icon: 'thumbs-up',            href: '/admin/review-net' },
     ],

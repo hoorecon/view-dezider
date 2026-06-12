@@ -27,9 +27,11 @@ from core import ai_wallet
 from core.url_crawl import (
     has_any_llm, metered_chat,
     fetch_page, fetch_rendered, parse_hierarchy, candidates_from_response,
+    page_text,
 )
 from core.url_detail import ai_extract_detail, deterministic_hint_issues
 from core.url_pagetype import classify_page_type
+from core.import_verify import verify_detail
 from core import url_telemetry
 from core.decision_builder import (
     create_mydezider_from_candidates, create_pros_cons_from_candidates,
@@ -576,6 +578,20 @@ async def get_import_progress(progress_id: str, user: dict = Depends(get_current
             "status": doc.get("status", "running")}
 
 
+@router.get("/runs/{run_id}/provenance")
+async def get_run_provenance(run_id: str, user: dict = Depends(get_current_user)):
+    """Source quotes for every verified value of one import run — lets the
+    user see EXACTLY which page line each number came from (e.g. ex-showroom
+    vs on-road pricing variants)."""
+    doc = await db.url_import_runs.find_one(
+        {"id": run_id, "user_id": user["user_id"]},
+        {"_id": 0, "url": 1, "verification": 1, "evidence": 1})
+    if not doc:
+        raise HTTPException(404, "Import run not found")
+    return {"url": doc.get("url"), "verification": doc.get("verification") or {},
+            "evidence": doc.get("evidence") or []}
+
+
 def _hints_of(req) -> Optional[Dict[str, Any]]:
     h = {k: getattr(req, k, None) for k in
          ("expected_factor_count", "expected_option_count",
@@ -618,16 +634,31 @@ async def _extract_detail_for_url(user_id: str, url: str, html: str, tier: str,
     if prog:
         await prog(62, "AI is extracting factors & options…")
     try:
-        return await ai_extract_detail(user_id, rendered or html, tier=tier,
-                                       max_factors=max_factors,
-                                       group_threshold=threshold, hints=hints,
-                                       page_type=page_type, capture=capture)
+        detail = await ai_extract_detail(user_id, rendered or html, tier=tier,
+                                         max_factors=max_factors,
+                                         group_threshold=threshold, hints=hints,
+                                         page_type=page_type, capture=capture)
     except ai_wallet.InsufficientCredits as e:
         raise HTTPException(
             402,
             f"You're out of AI credits (balance {round(e.balance, 2)}). "
             "Top up your AI wallet to use the URL import.",
         )
+    # ── Page-grounding verification (P0 trust contract): every NUMERIC value
+    # must be traceable to an explicit number on the page (Lakh/Crore/range
+    # aware). Unverifiable numerics are BLANKED + reported; verified values get
+    # a provenance quote ("Rs. 5.84 - 9.99 Lakh · Avg. Ex-Showroom price"). ──
+    if detail:
+        if prog:
+            await prog(80, "Verifying every value against the page text…")
+        ver = verify_detail(detail, page_text(rendered or html, limit=200000))
+        detail["verification"] = {k: ver[k] for k in
+                                  ("verified", "blanked", "flagged_text",
+                                   "unverified", "has_currency")}
+        if tel is not None:
+            tel["evidence"] = ver["evidence"]
+            tel["verification"] = detail["verification"]
+    return detail
 
 
 @router.post("/decision/{decision_id}/import")
@@ -783,6 +814,8 @@ async def _import_inner(decision_id: str, req: ImportRequest, request: Request,
             detail = None
         if detail:
             tel["route"] = "ai_extraction"
+            ver = detail.get("verification") or {}
+            ver_fields = {"verification": ver, "geo_note": bool(ver.get("has_currency"))}
             await prog(88, "Merging factors & options into your decision…")
             if detail["kind"] == "hier":
                 counts = await merge_hierarchical_into_mydezider(
@@ -800,6 +833,7 @@ async def _import_inner(decision_id: str, req: ImportRequest, request: Request,
                     "factor_count": counts["subfactor_count"],
                     "factors_added": counts["factors_added"],
                     "options_added": counts["options_added"],
+                    **ver_fields,
                 }
             counts = await merge_into_mydezider(
                 user["user_id"], decision_id,
@@ -812,6 +846,7 @@ async def _import_inner(decision_id: str, req: ImportRequest, request: Request,
                 "hint_warnings": detail.get("hint_warnings") or [],
                 "item_count": len(detail["candidates"]),
                 "factors_added": counts["factors_added"], "options_added": counts["options_added"],
+                **ver_fields,
             }
 
     # ── AI couldn't produce a hint-conformant structure — fall back to the

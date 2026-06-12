@@ -306,6 +306,8 @@ api_router.include_router(payment_admin_router)
 api_router.include_router(action_items_router)
 from routes.masters import router as masters_router  # noqa: E402
 api_router.include_router(masters_router)
+from routes.deep_import import router as deep_import_router  # noqa: E402
+api_router.include_router(deep_import_router)
 from routes.regression import router as regression_router  # noqa: E402
 api_router.include_router(regression_router)
 

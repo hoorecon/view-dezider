@@ -88,6 +88,9 @@ async def record_run(tel: Dict[str, Any], *, status: str = "success",
             "ai_system_prompt": _trunc(ai.get("system_prompt")),
             "ai_prompt_text": _trunc(ai.get("prompt_text")),
             "ai_raw_response": _trunc(ai.get("raw_response")),
+            # page-grounding verification + provenance quotes (P0 trust)
+            "verification": tel.get("verification"),
+            "evidence": (tel.get("evidence") or [])[:80],
             # user accuracy verdict (👍/👎) — set later via feedback endpoint
             "feedback": None, "feedback_at": None,
         }

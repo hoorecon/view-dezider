@@ -199,11 +199,11 @@ async def resolve_scraperapi() -> Dict[str, str]:
     admin = await get_integration("scraperapi")  # {} when disabled/missing
     if admin.get("api_key"):
         return {"api_key": admin["api_key"],
-                "country_code": admin.get("country_code") or "",
+                "country_code": admin.get("country_code") or "in",
                 "source": "admin_ui"}
     env_key = os.getenv("SCRAPERAPI_KEY", "")
     if env_key:
         return {"api_key": env_key,
-                "country_code": os.getenv("SCRAPERAPI_COUNTRY", ""),
+                "country_code": os.getenv("SCRAPERAPI_COUNTRY", "") or "in",
                 "source": "env"}
     return {"api_key": "", "country_code": "", "source": "none"}
