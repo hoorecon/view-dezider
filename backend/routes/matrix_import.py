@@ -15,6 +15,7 @@ from core.database import db
 from core.auth import get_current_user
 from core import google_sheets as gs
 from core import matrix_import as mx
+from core import ai_wallet
 from core.url_crawl import crawl_candidates
 from core.decision_builder import merge_into_mydezider
 from routes.url_analyze import (
@@ -205,7 +206,14 @@ async def import_actuals_from_url(decision_id: str, req: ActualsFromUrlRequest, 
         "user_agent": request.headers.get("user-agent"), "created_at": _now(),
     })
 
-    candidates = await crawl_candidates(req.url, user["user_id"])
+    try:
+        candidates = await crawl_candidates(req.url, user["user_id"])
+    except ai_wallet.InsufficientCredits as e:
+        raise HTTPException(
+            402,
+            f"You're out of AI credits (balance {round(e.balance, 2)}) — "
+            "top up your wallet to fetch this page.",
+        )
     if not candidates:
         raise HTTPException(422, "Could not extract comparable items from this URL.")
 

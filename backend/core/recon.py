@@ -361,18 +361,71 @@ async def daily_tally(days: int = 31) -> Dict[str, Any]:
         inr = amt * fx if (r.get("currency") or "USD").upper() == "USD" else amt
         gcp_by_day[r["usage_date"]] = round(gcp_by_day.get(r["usage_date"], 0.0) + inr, 2)
 
-    all_days = sorted(set(est_by_day) | set(gcp_by_day))
+    # ScraperAPI scrape costs per day (plan-rate, what we owe ScraperAPI)
+    scrape_by_day: Dict[str, Dict[str, Any]] = {}
+    async for g in db.scrape_usage.aggregate([
+        {"$match": {"created_at": {"$gte": since}}},
+        {"$group": {"_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}},
+                    "fetches": {"$sum": 1}, "usd_base": {"$sum": "$usd_base_cost"}}},
+    ]):
+        scrape_by_day[g["_id"]] = {"fetches": g["fetches"],
+                                   "cost_inr": round(g["usd_base"] * fx, 2)}
+
+    all_days = sorted(set(est_by_day) | set(gcp_by_day) | set(scrape_by_day))
     rows = []
     for d in all_days:
         est = est_by_day.get(d, {"date": d, "tokens": 0, "credits": 0, "calls": 0, "est_cost_inr": 0.0})
         actual = gcp_by_day.get(d)
+        scr = scrape_by_day.get(d, {"fetches": 0, "cost_inr": 0.0})
         rows.append({
             **est,
             "gcp_actual_inr": actual,
             "variance_inr": round((actual - est["est_cost_inr"]), 2) if actual is not None else None,
+            "scrape_fetches": scr["fetches"],
+            "scrape_cost_inr": scr["cost_inr"],
         })
     return {"items": rows, "fx_usd_inr": round(fx, 4), "fx_source": fx_src,
             "blended_usd_per_mtok": blended}
+
+
+# ─────────────────────── ScraperAPI (scrape metering) ───────────────────────
+async def scraperapi_account() -> Optional[Dict[str, Any]]:
+    """Live usage snapshot from ScraperAPI's /account endpoint (best-effort)."""
+    from core.integrations import resolve_scraperapi
+    import httpx
+    sc = await resolve_scraperapi()
+    if not sc.get("api_key"):
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=10) as cli:
+            r = await cli.get("https://api.scraperapi.com/account",
+                              params={"api_key": sc["api_key"]})
+        if r.status_code == 200:
+            j = r.json()
+            return {
+                "request_count": j.get("requestCount"),
+                "request_limit": j.get("requestLimit"),
+                "failed_count": j.get("failedRequestCount"),
+                "concurrency_limit": j.get("concurrencyLimit"),
+            }
+    except Exception as e:  # noqa: BLE001 — snapshot is best-effort
+        log.warning(f"ScraperAPI account fetch failed: {str(e)[:120]}")
+    return None
+
+
+async def _scrape_totals() -> Dict[str, float]:
+    rows = await db.scrape_usage.aggregate([
+        {"$group": {"_id": None, "fetches": {"$sum": 1},
+                    "scraper_credits": {"$sum": "$scraper_credits"},
+                    "app_credits": {"$sum": "$app_credits"},
+                    "usd_base": {"$sum": "$usd_base_cost"},
+                    "usd_charged": {"$sum": "$usd_cost"}}}]).to_list(1)
+    g = rows[0] if rows else {}
+    return {"fetches": int(g.get("fetches") or 0),
+            "scraper_credits": int(g.get("scraper_credits") or 0),
+            "app_credits": round(float(g.get("app_credits") or 0), 2),
+            "usd_base": float(g.get("usd_base") or 0),
+            "usd_charged": float(g.get("usd_charged") or 0)}
 
 
 # ─────────────────────── summary ───────────────────────
@@ -420,9 +473,15 @@ async def summary() -> Dict[str, Any]:
         gcp_total += amt * fx if (r.get("currency") or "USD").upper() == "USD" else amt
         gcp_rows += 1
 
+    # ScraperAPI scrape consumption (per-user metered) + live account snapshot
+    scrape = await _scrape_totals()
+    scrape_cost_inr = round(scrape["usd_base"] * fx, 2)
+    scrape_charged_inr = round(scrape["usd_charged"] * fx, 2)
+    sc_account = await scraperapi_account()
+
     net_treasury = round(sales["collected"] - rzp_fees - routed, 2)
-    surplus_vs_est = round(net_treasury - est_liability, 2)
-    surplus_vs_gcp = round(net_treasury - gcp_total, 2) if gcp_rows else None
+    surplus_vs_est = round(net_treasury - est_liability - scrape_cost_inr, 2)
+    surplus_vs_gcp = round(net_treasury - gcp_total - scrape_cost_inr, 2) if gcp_rows else None
 
     recon_cfg = await get_config()
     return {
@@ -448,6 +507,19 @@ async def summary() -> Dict[str, Any]:
             "actual_cost_inr": round(gcp_total, 2) if gcp_rows else None,
             "rows_synced": gcp_rows,
             "configured": recon_cfg["gcp"]["configured"],
+        },
+        "scraperapi": {
+            "fetches": scrape["fetches"],
+            "scraper_credits_used": scrape["scraper_credits"],
+            "est_cost_inr": scrape_cost_inr,          # what we owe ScraperAPI (plan-rate)
+            "charged_credits": scrape["app_credits"],  # app credits debited from users
+            "charged_value_inr": scrape_charged_inr,   # incl. scrape markup
+            "account": sc_account,                     # live /account snapshot (None when unavailable)
+            "plan": {
+                "usd_month": float(cfg_w.get("scraperapi_plan_usd_month") or 0),
+                "credits_month": float(cfg_w.get("scraperapi_plan_credits_month") or 0),
+                "markup_pct": float(cfg_w.get("scrape_markup_pct") or 0),
+            },
         },
         "verdict": {
             "surplus_vs_estimate_inr": surplus_vs_est,

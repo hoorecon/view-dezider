@@ -57,6 +57,12 @@ DEFAULTS = {
     # Import-from-URL: AI may auto-GROUP ungrouped factors into categories only
     # when the page defines no grouping AND the factor count exceeds this.
     "import_group_threshold": 15,
+    # ── ScraperAPI (web-scrape) metering — auto cost-derived per fetch ──
+    # $/credit = plan_usd / plan_credits; each rendered fetch = 10 credits,
+    # premium = 25. Charged to the user's wallet with `scrape_markup_pct` on top.
+    "scraperapi_plan_usd_month": 299.0,        # ScraperAPI Business plan
+    "scraperapi_plan_credits_month": 3000000.0,
+    "scrape_markup_pct": 5.0,
     "credit_packs": [
         {"id": "starter", "name": "Starter", "credits": 5000, "badge": "Starter"},
         {"id": "pro", "name": "Pro", "credits": 20000, "badge": "Popular"},
@@ -96,14 +102,16 @@ async def update_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
               "blended_usd_per_mtok", "usd_to_inr_fallback", "markup_admin_pct",
               "markup_user_pct", "markup_routed_pct",
               "razorpay_fee_pct", "razorpay_gst_pct",
-              "min_custom_credits", "precise_usd_per_mtok", "import_group_threshold"):
+              "min_custom_credits", "precise_usd_per_mtok", "import_group_threshold",
+              "scraperapi_plan_usd_month", "scraperapi_plan_credits_month", "scrape_markup_pct"):
         if k in patch and patch[k] is not None:
             try:
                 val = float(patch[k])
                 if val < 0:
                     raise ValueError
                 if k in ("tokens_per_credit", "blended_usd_per_mtok", "usd_to_inr_fallback",
-                         "min_custom_credits", "precise_usd_per_mtok") and val <= 0:
+                         "min_custom_credits", "precise_usd_per_mtok",
+                         "scraperapi_plan_credits_month") and val <= 0:
                     raise ValueError
                 if k == "import_group_threshold":
                     if val < 2:

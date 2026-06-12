@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 108 frontend-only review (Scrape Metering + Recon ScraperAPI + Deep-import error runs visibility). All 4 admin screens verified end-to-end on the public preview URL as Root Super Admin. Test 1 (Recon ScraperAPI cards) — PASS after expo restart (4/4 cards render with real live numbers: 2 fetches / 20 scraper credits / ₹0.19 est cost / 10.46 cr charged / live account 350/5000). Test 2 (Daily Scrapes/Scrape cost columns) — PASS visually (2026-06-12 row shows scrape_fetches=2, scrape_cost_inr=₹0.19). Test 3 (AI Wallet 3 new fields) — PASS, all three render with correct defaults (299 / 3,000,000 / 5); edit 5→6→save→reload persisted; reverted back to 5. Test 4 (Import Analytics error runs) — PASS, ERROR badge rendered, https://example.com/ deep_import_discovery error run visible in Runs list with 41.6s latency. Test 5 (User-app regression) — landing page + /auth/login renders cleanly with no fatal errors; one benign console warning from expo-router rehydration (unrelated to wallet-config changes). IMPORTANT: stale Metro bundle initially hid all iteration-108 frontend changes — a `sudo supervisorctl restart expo` was required to clear the cache, after which everything rendered correctly. Main agent should be aware: Metro is running in CI mode (reloads disabled), so any future iteration may need an expo restart for the bundle to pick up new TSX code.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/tmp/02_recon_cards.png",
+    "/tmp/03_recon_full.png",
+    "/tmp/04_wallet_cfg.png",
+    "/tmp/05_import_analytics.png",
+    "/tmp/07b_signin.png"
+  ],
+  "action_items": [
+    "Main agent: Metro is running in CI mode (`reloads are disabled`) so frontend .tsx edits do NOT hot-reload into the served web bundle. After any frontend code change, run `sudo supervisorctl restart expo` (and possibly wait ~10s) to force a fresh Metro bundle. Without this restart, /admin/recon would have shown ZERO ScraperAPI cards even though the backend returns the `scraperapi` block — exactly the symptom seen on the first run.",
+    "Main agent: A benign console warning shows up on /auth/login — `TypeError: Cannot read properties of undefined (reading 'stale')` inside expo-router's `getRehydratedState`. It does not break the screen but it pollutes the console — consider auditing expo-router state-hydration if it persists across iterations."
+  ],
+  "critical_code_review_comments": [
+    "recon.tsx daily table renders 9 columns (Date, AI calls, Tokens, Credits used, Est. cost, GCP actual, Variance, Scrapes, Scrape cost) but the surrounding ScrollView is horizontal — on a 1280px viewport the last two columns are partially below-the-fold. Consider adding a visual indicator that the table scrolls, or widening the screen breakpoint.",
+    "ai-wallet-config.tsx — the 3 new ScraperAPI fields (scraperapi_plan_usd_month, scraperapi_plan_credits_month, scrape_markup_pct) sit between unrelated fields. Consider grouping them under a dedicated 'Scrape metering' sub-heading for visual hierarchy.",
+    "All testIDs on the relevant screens are present and well-named — admin-recon-screen, recon-scrape-cards, recon-card-scrape-{fetches,cost,charged,account}, recon-daily-row-{date}, awc-field-*, awc-input-*, awc-save-btn, admin-import-analytics-screen, import-run-{id}, etc. Smooth test selection — no missing identifiers."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100% (5/5 frontend test cases passed after the Metro bundle was refreshed)"},
+  "seed_data_creation": "None — only flipped scrape_markup_pct 5→6→5 (via UI) as part of Test 3 persistence check; final value restored.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Public preview URL: https://pros-cons-engine.preview.emergentagent.com. Super-admin login is via /admin/login (NOT /login or /auth/login — those are the user-app routes). Credentials: veales.vedic.decisions@gmail.com / Jelcos@Admin2026. Login form on /admin/login has NO testIDs — use placeholder selectors `input[placeholder=\"admin@example.com\"]` and `input[placeholder=\"Enter your password\"]` plus `page.get_by_text(\"Sign in to Admin\")`. Once authenticated, /admin/recon, /admin/ai-wallet-config and /admin/import-analytics all have proper testIDs starting with `admin-*-screen`, `recon-*`, `awc-*`, `import-*`. Metro CI-mode caveat: restart expo after any frontend tsx change.",
+  "rca_of_issue": "No bugs found in iteration-108 code. The only operational issue was a stale Metro bundle masking the new TSX (recon.tsx scrape cards/columns + ai-wallet-config.tsx 3 new fields). REPRODUCTION: hit /admin/recon — scrape cards absent, daily table missing Scrapes/Scrape cost columns even though /api/admin/recon/summary returns `scraperapi:{...}` and /api/admin/recon/daily items contain `scrape_fetches`/`scrape_cost_inr`. ROOT CAUSE: Metro bundler is launched with CI=true (`Metro is running in CI mode, reloads are disabled`) — it serves a cached bundle from before the iteration-108 frontend edits at 19:26 UTC. MITIGATION (applied during this test run): `sudo supervisorctl restart expo` forced Metro to rebuild; after restart, all new UI elements rendered and all 5 acceptance tests passed."
+}

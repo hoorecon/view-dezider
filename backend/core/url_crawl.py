@@ -24,6 +24,7 @@ from fastapi import HTTPException
 
 from core.ai_metering import metered_chat, has_any_llm
 from core.integrations import resolve_scraperapi
+from core import scrape_meter
 
 logger = logging.getLogger(__name__)
 
@@ -322,10 +323,12 @@ def _scraperapi_reason(status: int, body: str) -> str:
     return f"ScraperAPI returned HTTP {status}"
 
 
-async def _scraperapi_fetch(url: str, sc: Dict[str, str]) -> tuple:
+async def _scraperapi_fetch(url: str, sc: Dict[str, str],
+                            user_id: Optional[str] = None) -> tuple:
     """Fetch fully-rendered HTML via ScraperAPI (JS execution + proxy rotation).
     Auto-escalates ONCE to premium=true when ScraperAPI flags the domain as
-    protected. Returns (html, None) on success, else (None, fail_reason)."""
+    protected. Successful fetches are METERED to the user's wallet when
+    `user_id` is given. Returns (html, None) on success, else (None, fail_reason)."""
     params = {"api_key": sc["api_key"], "url": url, "render": "true"}
     if sc.get("country_code"):
         params["country_code"] = sc["country_code"]
@@ -337,6 +340,9 @@ async def _scraperapi_fetch(url: str, sc: Dict[str, str]) -> tuple:
             if r.status_code == 200 and "<html" in r.text.lower():
                 if extra:
                     logger.info("ScraperAPI premium=true succeeded for %s", url[:80])
+                if user_id:
+                    await scrape_meter.charge_scrape(
+                        user_id, url, "premium_render" if extra else "render")
                 return r.text, None
             body = " ".join(r.text[:300].split())
             reason = _scraperapi_reason(r.status_code, body)
@@ -406,11 +412,12 @@ def _product_grid_candidates(html: str) -> List[Dict[str, Any]]:
     return items if len(items) >= 2 else []
 
 
-async def _fetch_html(url: str) -> "httpx.Response":
+async def _fetch_html(url: str, user_id: Optional[str] = None) -> "httpx.Response":
     """Fetch `url` with browser headers + retry on bot-block codes. When a
     ScraperAPI key is configured it is used for JS-heavy domains and as an
-    escalation when a direct fetch is bot-blocked. Raises a user-friendly
-    HTTPException on failure. Shared by flat + hierarchical crawls."""
+    escalation when a direct fetch is bot-blocked. ScraperAPI fetches are
+    gated + metered to the user's wallet when `user_id` is given. Raises a
+    user-friendly HTTPException on failure. Shared by flat + hierarchical crawls."""
     url = (url or "").strip()
     if not url or not re.match(r"^https?://", url, re.I):
         raise HTTPException(400, "Enter a valid http(s) URL.")
@@ -421,7 +428,9 @@ async def _fetch_html(url: str) -> "httpx.Response":
 
     # 1) JS-heavy site + key → go straight to ScraperAPI (direct fetch is useless).
     if sc["api_key"] and js_heavy:
-        html, sc_reason = await _scraperapi_fetch(url, sc)
+        if user_id:
+            await scrape_meter.ensure_can_scrape(user_id)  # raises InsufficientCredits
+        html, sc_reason = await _scraperapi_fetch(url, sc, user_id=user_id)
         if html:
             return httpx.Response(200, text=html, headers={"content-type": "text/html"})
 
@@ -443,7 +452,9 @@ async def _fetch_html(url: str) -> "httpx.Response":
 
     # 3) Bot-blocked (or unreachable) + key → escalate to ScraperAPI.
     if (r is None or r.status_code in _BOT_BLOCK_CODES) and sc["api_key"] and not sc_reason:
-        html, sc_reason = await _scraperapi_fetch(url, sc)
+        if user_id:
+            await scrape_meter.ensure_can_scrape(user_id)  # raises InsufficientCredits
+        html, sc_reason = await _scraperapi_fetch(url, sc, user_id=user_id)
         if html:
             return httpx.Response(200, text=html, headers={"content-type": "text/html"})
 
@@ -475,20 +486,24 @@ async def _fetch_html(url: str) -> "httpx.Response":
     return r
 
 
-async def fetch_page(url: str) -> "httpx.Response":
+async def fetch_page(url: str, user_id: Optional[str] = None) -> "httpx.Response":
     """Public alias for the shared fetch (browser headers + ScraperAPI
-    escalation) — lets routes fetch ONCE and run multiple parse strategies."""
-    return await _fetch_html(url)
+    escalation) — lets routes fetch ONCE and run multiple parse strategies.
+    Pass `user_id` so any ScraperAPI fetch is gated + metered to the wallet."""
+    return await _fetch_html(url, user_id=user_id)
 
 
-async def fetch_rendered(url: str) -> Optional[str]:
+async def fetch_rendered(url: str, user_id: Optional[str] = None) -> Optional[str]:
     """Best-effort fully-RENDERED HTML via ScraperAPI (when configured).
     Used for single-item DETAIL pages whose 'Similar items' rails are loaded
-    by JavaScript and therefore missing from the server-rendered HTML."""
+    by JavaScript and therefore missing from the server-rendered HTML.
+    Gated + metered to the user's wallet when `user_id` is given."""
     sc = await resolve_scraperapi()
     if not sc["api_key"]:
         return None
-    html, _reason = await _scraperapi_fetch(url, sc)
+    if user_id:
+        await scrape_meter.ensure_can_scrape(user_id)  # raises InsufficientCredits
+    html, _reason = await _scraperapi_fetch(url, sc, user_id=user_id)
     return html
 
 
@@ -557,7 +572,7 @@ async def candidates_from_response(r: "httpx.Response", user_id: str,
 async def crawl_candidates(url: str, user_id: str, name_key: Optional[str] = None) -> List[Dict[str, Any]]:
     """Fetch `url` and return a normalised candidate list. Raises HTTPException
     with a user-friendly message on failure."""
-    r = await _fetch_html(url)
+    r = await _fetch_html(url, user_id=user_id)
     cands = await candidates_from_response(r, user_id, name_key)
     if cands:
         return cands

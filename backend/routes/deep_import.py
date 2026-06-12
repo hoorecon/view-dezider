@@ -166,18 +166,25 @@ async def _prog(job_id: str, pct: int, label: str):
     await _set_job(job_id, progress={"pct": pct, "label": label})
 
 
+async def _fail(job_id: str, tel: Dict[str, Any], error: str):
+    """Surface a discovery failure on the job AND record it as a telemetry run
+    so Admin → Import Analytics sees deep-import failures (+ failure alert)."""
+    await _set_job(job_id, status="error", error=error)
+    await url_telemetry.record_run(tel, status="error", error=error)
+
+
 async def _discover(job_id: str, user_id: str, base_url: str, context: str,
-                    max_pages: int, tier: str):
+                    max_pages: int, tier: str, tel: Dict[str, Any]):
     try:
         await _prog(job_id, 8, "Fetching the base page…")
-        r = await fetch_page(base_url)
-        rendered = await fetch_rendered(base_url)
+        r = await fetch_page(base_url, user_id=user_id)
+        rendered = await fetch_rendered(base_url, user_id=user_id)
         html = rendered or r.text
         base_text = page_text(html, limit=8000)
         links = _extract_links(html, base_url)
         if not links:
-            await _set_job(job_id, status="error",
-                           error="No crawlable same-site links found on the base page.")
+            await _fail(job_id, tel,
+                        "No crawlable same-site links found on the base page.")
             return
 
         await _prog(job_id, 22, "AI is identifying the option pages…")
@@ -194,9 +201,9 @@ async def _discover(job_id: str, user_id: str, base_url: str, context: str,
                    for o in (data.get("options") or [])
                    if isinstance(o, dict) and o.get("url") and o.get("name")][:max_pages]
         if not options:
-            await _set_job(job_id, status="error",
-                           error="AI could not identify option detail pages for your context — "
-                                 "try a more specific listing URL or refine the context line.")
+            await _fail(job_id, tel,
+                        "AI could not identify option detail pages for your context — "
+                        "try a more specific listing URL or refine the context line.")
             return
 
         page_texts: Dict[str, str] = {}
@@ -205,17 +212,19 @@ async def _discover(job_id: str, user_id: str, base_url: str, context: str,
             await _prog(job_id, 28 + i * step,
                         f"Crawling option {i + 1}/{len(options)} — {opt['name']}…")
             try:
-                rhtml = await fetch_rendered(opt["url"])
+                rhtml = await fetch_rendered(opt["url"], user_id=user_id)
                 if not rhtml:
-                    rr = await fetch_page(opt["url"])
+                    rr = await fetch_page(opt["url"], user_id=user_id)
                     rhtml = rr.text
                 page_texts[opt["name"]] = page_text(rhtml, limit=PAGE_TEXT_LIMIT)
+            except ai_wallet.InsufficientCredits:
+                raise
             except Exception as e:  # noqa: BLE001 — skip unreachable pages
                 logger.warning("deep-import page fetch failed %s: %s", opt["url"], str(e)[:120])
         page_texts = {k: v for k, v in page_texts.items() if (v or "").strip()}
         if len(page_texts) < 2:
-            await _set_job(job_id, status="error",
-                           error="Fewer than 2 option pages could be crawled — cannot build a comparison.")
+            await _fail(job_id, tel,
+                        "Fewer than 2 option pages could be crawled — cannot build a comparison.")
             return
 
         await _prog(job_id, 80, "AI is consolidating factors across the crawled pages…")
@@ -246,20 +255,25 @@ async def _discover(job_id: str, user_id: str, base_url: str, context: str,
                 "coverage": coverage,
             })
         if not factors:
-            await _set_job(job_id, status="error",
-                           error="AI could not consolidate comparable factors from the crawled pages.")
+            await _fail(job_id, tel,
+                        "AI could not consolidate comparable factors from the crawled pages.")
             return
 
         await _set_job(job_id, status="factors_ready",
                        progress={"pct": 100, "label": "Factors ready for your review."},
                        options=[{"name": n} for n in page_texts],
                        factors=factors, page_texts=page_texts)
+        # Discovery SUCCESS run — symmetric with the error runs above (the
+        # finalize step records its own run for the actual merge).
+        await url_telemetry.record_run(tel, status="success", response={
+            "mode": "deep_discovery", "item_count": len(page_texts),
+            "factor_count": len(factors)})
     except ai_wallet.InsufficientCredits as e:
-        await _set_job(job_id, status="error",
-                       error=f"Out of AI credits (balance {round(e.balance, 2)}) — top up to use Deep Import.")
+        await _fail(job_id, tel,
+                    f"Out of AI credits (balance {round(e.balance, 2)}) — top up to use Deep Import.")
     except Exception as e:  # noqa: BLE001 — job must surface, never hang
         logger.exception("deep-import discovery failed")
-        await _set_job(job_id, status="error", error=f"{type(e).__name__}: {str(e)[:200]}")
+        await _fail(job_id, tel, f"{type(e).__name__}: {str(e)[:200]}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -291,6 +305,13 @@ async def start_deep_import(decision_id: str, req: DeepImportStart, request: Req
     })
 
     job_id = f"dij_{uuid.uuid4().hex[:12]}"
+    # Telemetry context for the DISCOVERY phase — failures are recorded as
+    # error runs so Admin → Import Analytics sees them (finalize records the
+    # merge run separately).
+    tel = url_telemetry.new_tel(user["user_id"], endpoint="deep_import",
+                                url=req.base_url.strip(), ai_tier=req.ai_tier,
+                                hints=None, decision_id=decision_id)
+    tel["route"] = "deep_import_discovery"
     await db.deep_import_jobs.insert_one({
         "id": job_id, "user_id": user["user_id"], "decision_id": decision_id,
         "base_url": req.base_url.strip(), "context": req.context.strip(),
@@ -305,7 +326,8 @@ async def start_deep_import(decision_id: str, req: DeepImportStart, request: Req
         pass
     asyncio.create_task(_discover(job_id, user["user_id"], req.base_url.strip(),
                                   req.context.strip(), req.max_pages,
-                                  "precise" if req.ai_tier == "precise" else "fast"))
+                                  "precise" if req.ai_tier == "precise" else "fast",
+                                  tel))
     return {"job_id": job_id}
 
 

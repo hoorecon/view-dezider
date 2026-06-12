@@ -93,7 +93,21 @@ async def record_run(tel: Dict[str, Any], *, status: str = "success",
             "evidence": (tel.get("evidence") or [])[:80],
             # user accuracy verdict (👍/👎) — set later via feedback endpoint
             "feedback": None, "feedback_at": None,
+            # ScraperAPI scrape-fetch costs incurred during this run (metered)
+            "scrape": None,
         }
+        srows = await db.scrape_usage.aggregate([
+            {"$match": {"user_id": tel["user_id"], "created_at": {"$gte": tel["t0"]}}},
+            {"$group": {"_id": None, "fetches": {"$sum": 1},
+                        "scraper_credits": {"$sum": "$scraper_credits"},
+                        "app_credits": {"$sum": "$app_credits"},
+                        "usd": {"$sum": "$usd_cost"}}}]).to_list(1)
+        if srows:
+            g = srows[0]
+            doc["scrape"] = {"fetches": g["fetches"],
+                             "scraper_credits": g["scraper_credits"],
+                             "app_credits": round(g["app_credits"], 4),
+                             "usd_cost": round(g["usd"], 6)}
         await db.url_import_runs.insert_one(doc)
         await _lazy_purge(now)
         posthog_client.track(tel["user_id"], "url_import_completed", {

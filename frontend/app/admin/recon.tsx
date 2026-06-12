@@ -185,6 +185,45 @@ export default function AdminReconScreen() {
           <Card testID="recon-card-gcp" icon="logo-google" label="GCP actual (synced window)" value={gcp.actual_cost_inr === null ? (gcp.configured ? 'No data yet' : 'Not connected') : inr(gcp.actual_cost_inr)} sub={gcp.configured ? `${gcp.rows_synced} cost rows` : 'Configure below'} />
           <Card testID="recon-card-surplus" icon={v.at_risk ? 'trending-down' : 'trending-up'} label="Surplus / (Deficit)" value={inr(v.surplus_vs_estimate_inr)} color={v.at_risk ? C.red : C.green} />
         </View>
+        {/* ScraperAPI scrape metering */}
+        {summary?.scraperapi && (
+          <View style={[s.cards, !isWide && { flexDirection: 'column' }]} testID="recon-scrape-cards">
+            <Card
+              testID="recon-card-scrape-fetches"
+              icon="globe"
+              label="Scrape fetches (metered)"
+              value={String(summary.scraperapi.fetches)}
+              sub={`${Number(summary.scraperapi.scraper_credits_used || 0).toLocaleString()} ScraperAPI credits used`}
+            />
+            <Card
+              testID="recon-card-scrape-cost"
+              icon="cloud-download"
+              label="ScraperAPI est. cost"
+              value={inr(summary.scraperapi.est_cost_inr)}
+              color={C.amber}
+              sub={`$${summary.scraperapi.plan?.usd_month}/mo ÷ ${Number(summary.scraperapi.plan?.credits_month || 0).toLocaleString()} credits`}
+            />
+            <Card
+              testID="recon-card-scrape-charged"
+              icon="wallet"
+              label="Charged to users (scrapes)"
+              value={`${Number(summary.scraperapi.charged_credits || 0).toLocaleString()} cr`}
+              color={C.green}
+              sub={`≈ ${inr(summary.scraperapi.charged_value_inr)} incl. ${summary.scraperapi.plan?.markup_pct}% markup`}
+            />
+            <Card
+              testID="recon-card-scrape-account"
+              icon="speedometer"
+              label="ScraperAPI account (live)"
+              value={summary.scraperapi.account
+                ? `${Number(summary.scraperapi.account.request_count || 0).toLocaleString()} / ${Number(summary.scraperapi.account.request_limit || 0).toLocaleString()}`
+                : 'unavailable'}
+              sub={summary.scraperapi.account
+                ? `credits this cycle · ${summary.scraperapi.account.concurrency_limit} threads`
+                : 'key missing or API unreachable'}
+            />
+          </View>
+        )}
 
         {/* Per-transaction tally */}
         <View style={s.section} testID="recon-txn-section">
@@ -243,7 +282,7 @@ export default function AdminReconScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator style={s.tableWrap}>
             <View>
               <View style={s.tr}>
-                {['Date', 'AI calls', 'Tokens', 'Credits used', 'Est. cost', 'GCP actual', 'Variance']
+                {['Date', 'AI calls', 'Tokens', 'Credits used', 'Est. cost', 'GCP actual', 'Variance', 'Scrapes', 'Scrape cost']
                   .map((h) => <Text key={h} style={s.th}>{h}</Text>)}
               </View>
               {(daily?.items || []).length === 0 && (
@@ -260,6 +299,8 @@ export default function AdminReconScreen() {
                   <Text style={[s.td, { fontWeight: '700', color: (d.variance_inr ?? 0) > 0 ? C.red : C.green }]}>
                     {d.variance_inr === null || d.variance_inr === undefined ? '—' : inr(d.variance_inr)}
                   </Text>
+                  <Text style={s.td}>{d.scrape_fetches || 0}</Text>
+                  <Text style={s.td}>{d.scrape_cost_inr ? inr(d.scrape_cost_inr) : '—'}</Text>
                 </View>
               ))}
             </View>

@@ -328,6 +328,11 @@ async def analyze_url(req: AnalyzeRequest, request: Request, user: dict = Depend
                                 ai_tier=_tier(req.ai_tier), hints=_hints_of(req))
     try:
         resp = await _analyze_url_inner(req, request, user, tel)
+    except ai_wallet.InsufficientCredits as e:
+        msg = (f"You're out of AI credits (balance {round(e.balance, 2)}) — "
+               "top up your wallet to fetch & analyse this page.")
+        await url_telemetry.record_run(tel, status="error", error=msg)
+        raise HTTPException(402, msg)
     except HTTPException as e:
         await url_telemetry.record_run(tel, status="error", error=f"HTTP {e.status_code}: {e.detail}")
         raise
@@ -369,7 +374,7 @@ async def _analyze_url_inner(req: AnalyzeRequest, request: Request, user: dict,
     hints = _hints_of(req)
 
     # ── Fetch ONCE; run all parse strategies against the same response. ──
-    r = await fetch_page(req.url)
+    r = await fetch_page(req.url, user_id=user["user_id"])
     is_json = "json" in r.headers.get("content-type", "")
 
     # ── LLM page-type classification (always-on): selects the specialised
@@ -624,7 +629,7 @@ async def _extract_detail_for_url(user_id: str, url: str, html: str, tier: str,
     `rendered_task` (if given) is an already-running fetch_rendered task so the
     rendered fetch overlaps the page-type classification.
     Translates InsufficientCredits → 402."""
-    rendered = await rendered_task if rendered_task is not None else await fetch_rendered(url)
+    rendered = await rendered_task if rendered_task is not None else await fetch_rendered(url, user_id=user_id)
     cfg = await ai_wallet.get_config()
     threshold = int(cfg.get("import_group_threshold") or 15)
     max_factors = max(DETAIL_MAX_FACTORS, int((hints or {}).get("expected_factor_count") or 0))
@@ -674,6 +679,12 @@ async def import_url_into_decision(
     prog = _progress_writer(req.progress_id, user["user_id"])
     try:
         resp = await _import_inner(decision_id, req, request, user, tel, prog)
+    except ai_wallet.InsufficientCredits as e:
+        msg = (f"You're out of AI credits (balance {round(e.balance, 2)}) — "
+               "top up your wallet to fetch & import this page.")
+        await prog(100, msg[:200], status="error")
+        await url_telemetry.record_run(tel, status="error", error=msg)
+        raise HTTPException(402, msg)
     except HTTPException as e:
         await prog(100, str(e.detail)[:200], status="error")
         await url_telemetry.record_run(tel, status="error", error=f"HTTP {e.status_code}: {e.detail}")
@@ -718,7 +729,7 @@ async def _import_inner(decision_id: str, req: ImportRequest, request: Request,
     tier = _tier(req.ai_tier)
     hints = _hints_of(req)
     await prog(12, "Fetching the page…")
-    r = await fetch_page(req.url)
+    r = await fetch_page(req.url, user_id=user["user_id"])
     is_json = "json" in r.headers.get("content-type", "")
 
     # ── LLM page-type classification (always-on): selects the specialised
@@ -802,7 +813,7 @@ async def _import_inner(decision_id: str, req: ImportRequest, request: Request,
     # type classification to shave seconds off the slow path. ──
     if not is_json:
         await prog(50, "Fetching the fully-rendered page…")
-        rendered_task = asyncio.create_task(fetch_rendered(req.url))
+        rendered_task = asyncio.create_task(fetch_rendered(req.url, user_id=user["user_id"]))
         page_type = await _page_type()
         detail = await _extract_detail_for_url(user["user_id"], req.url, r.text, tier,
                                                hints=hints, page_type=page_type, tel=tel,

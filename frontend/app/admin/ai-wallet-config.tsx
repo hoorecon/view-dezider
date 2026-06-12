@@ -54,6 +54,9 @@ interface Cfg {
   precise_model: string;
   precise_usd_per_mtok: number;
   import_group_threshold: number;
+  scraperapi_plan_usd_month: number;
+  scraperapi_plan_credits_month: number;
+  scrape_markup_pct: number;
 }
 
 const FIELDS: Array<{
@@ -72,6 +75,9 @@ const FIELDS: Array<{
   { key: 'precise_usd_per_mtok', label: 'Precise-AI blended $/Mtok', hint: '“Costly & Precise AI” tier (Claude via Emergent universal key). Credit multiplier = this ÷ Gemini $/Mtok — same markup math stays zero-loss.', unit: '$', min: 0.01 },
   { key: 'precise_model', label: 'Precise-AI model', hint: 'Claude model used by the “Costly & Precise AI” import tier (e.g. claude-sonnet-4-6)' },
   { key: 'import_group_threshold', label: 'AI grouping threshold (factors)', hint: 'Import-from-URL: AI may auto-group ungrouped factors into categories only when the page defines no grouping AND the factor count exceeds this (default 15). Page-defined groups are never modified.', min: 2 },
+  { key: 'scraperapi_plan_usd_month', label: 'ScraperAPI plan $/month', hint: 'Monthly price of the company ScraperAPI plan (default $299 Business). $/credit = plan $ ÷ included credits — drives the per-fetch user charge.', unit: '$', min: 0 },
+  { key: 'scraperapi_plan_credits_month', label: 'ScraperAPI credits/month', hint: 'API credits included in the plan (Business = 3,000,000). Rendered fetch = 10 credits, premium = 25.', min: 1 },
+  { key: 'scrape_markup_pct', label: 'Scrape markup %', hint: 'Markup over the derived ScraperAPI cost charged to users per scrape fetch (default 5%). Charged in app credits via the user\u2019s AI wallet.', unit: '%', min: 0, max: 100 },
   { key: 'usd_to_inr_fallback', label: 'USD → INR fallback', hint: 'Used when live FX fetch fails', unit: '₹', min: 1 },
   { key: 'default_user_credits', label: 'New-user seed credits', hint: 'Free starting balance for non-admin signups', min: 0 },
   { key: 'default_admin_credits', label: 'New-admin seed credits', hint: 'Free starting balance for admin signups', min: 0 },
