@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput, Modal, ScrollView,
-  ActivityIndicator, Platform,
+  ActivityIndicator, Platform, useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/colors';
@@ -40,6 +40,15 @@ export const UrlAccessConsentModal: React.FC<Props> = ({
   const [customNote, setCustomNote] = useState('');
   const [accepted, setAccepted] = useState(false);
 
+  // Responsive sizing — make the scroll area fill the viewport (capped at
+  // ~70% of available height) so the yellow disclaimer block is fully
+  // visible without users having to scroll & without spilling off small
+  // screens. Card itself is capped at 92% viewport so the footer (accept
+  // checkbox + Agree/Cancel) stays in view too.
+  const { height: vh } = useWindowDimensions();
+  const scrollMaxHeight = Math.max(360, Math.min(720, vh * 0.7));
+  const cardMaxHeight = Math.min(vh - 32, vh * 0.92);
+
   const canProceed = !!elig && accepted && (elig !== 'custom' || customNote.trim().length > 0);
 
   const reset = () => { setElig(null); setCustomNote(''); setAccepted(false); };
@@ -52,7 +61,7 @@ export const UrlAccessConsentModal: React.FC<Props> = ({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={handleCancel}>
       <View style={styles.overlay}>
-        <View style={styles.card}>
+        <View style={[styles.card, { maxHeight: cardMaxHeight }]}>
           <View style={styles.header}>
             <Ionicons name="shield-checkmark" size={22} color={primary} />
             <Text style={styles.title}>Data-access consent</Text>
@@ -61,7 +70,7 @@ export const UrlAccessConsentModal: React.FC<Props> = ({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+          <ScrollView style={{ maxHeight: scrollMaxHeight }} showsVerticalScrollIndicator={false}>
             {!!url && (
               <View style={styles.urlBox}>
                 <Ionicons name="link" size={14} color={COLORS.textSecondary} />
