@@ -26,6 +26,7 @@ import { COLORS } from '../constants/colors';
 import api from '../utils/api';
 import { showAlert } from '../utils/alert';
 import { useDecision } from '../context/DecisionContext';
+import { useLoaderMusic } from '../hooks/useLoaderMusic';
 
 interface BudgetEstimate {
   total_options: number;
@@ -59,6 +60,13 @@ export const DeepImportBudgetPicker: React.FC<Props> = ({ disabled, onRanked }) 
   const [budget, setBudget] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
+
+  // Top-5 reveal soundtrack — plays the `results_reveal` slot (fallback:
+  // `default`) while the auto-assess-rank loop is in flight, so the user
+  // hears the celebratory music BEFORE Step 8 lands. Per-user mute applies
+  // globally (same AsyncStorage key as every other LoaderMusicChip).
+  const { available: musicAvailable, playing: musicPlaying, muted: musicMuted, toggleMute: toggleMusicMute } =
+    useLoaderMusic(running, 'results_reveal');
 
   // Auto-open when the decision flips into "pending rank" — but only once
   // per decision; the user can re-trigger by manually re-running deep import.
@@ -262,6 +270,28 @@ export const DeepImportBudgetPicker: React.FC<Props> = ({ disabled, onRanked }) 
                 <Text style={s.warnLine}>
                   Top up your AI Wallet — Profile → AI Wallet — or lower the option budget.
                 </Text>
+              )}
+              {running && musicAvailable && (
+                <TouchableOpacity
+                  testID="deep-import-budget-music"
+                  onPress={toggleMusicMute}
+                  activeOpacity={0.7}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 6,
+                    alignSelf: 'center', marginTop: 10,
+                    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14,
+                    backgroundColor: musicMuted ? '#F1F5F9' : '#FAF5FF',
+                    borderWidth: 1, borderColor: musicMuted ? '#CBD5E1' : '#E9D5FF',
+                  }}>
+                  <Ionicons
+                    name={musicMuted ? 'volume-mute-outline' : (musicPlaying ? 'musical-notes' : 'musical-notes-outline')}
+                    size={11}
+                    color={musicMuted ? '#64748B' : '#7C3AED'}
+                  />
+                  <Text style={{ fontSize: 10.5, fontWeight: '700', color: musicMuted ? '#64748B' : '#7C3AED' }}>
+                    {musicMuted ? 'Reveal music muted — tap to unmute' : 'Reveal music playing — tap to mute'}
+                  </Text>
+                </TouchableOpacity>
               )}
             </>
           ) : null}

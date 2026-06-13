@@ -390,115 +390,26 @@ export default function AiWalletScreen() {
               )}
             </View>
 
-            {/* Admin: config (super admin only) */}
-            {isSuperAdmin && cfg && (
-              <View style={styles.adminCard}>
-                <Text style={styles.sectionTitle}>Default starting balances</Text>
-                <Text style={styles.fieldHint}>New users & admins are seeded with these credits on first AI use.</Text>
-
-                <Text style={styles.fieldLabel}>New user credits</Text>
-                <TextInput
-                  style={styles.input}
-                  keyboardType="numeric"
-                  value={String(cfg.default_user_credits)}
-                  onChangeText={(t) => setCfg({ ...cfg, default_user_credits: t })}
-                  placeholder="20"
-                />
-                <Text style={styles.fieldLabel}>New admin credits</Text>
-                <TextInput
-                  style={styles.input}
-                  keyboardType="numeric"
-                  value={String(cfg.default_admin_credits)}
-                  onChangeText={(t) => setCfg({ ...cfg, default_admin_credits: t })}
-                  placeholder="200"
-                />
-                <Text style={styles.fieldLabel}>Tokens per credit</Text>
-                <TextInput
-                  style={styles.input}
-                  keyboardType="numeric"
-                  value={String(cfg.tokens_per_credit)}
-                  onChangeText={(t) => setCfg({ ...cfg, tokens_per_credit: t })}
-                  placeholder="100"
-                />
-
-                <View style={styles.cfgDivider} />
-                <Text style={[styles.sectionTitle, { marginTop: 4 }]}>Refill pricing</Text>
-                <Text style={styles.fieldHint}>Credits are priced at Gemini&apos;s blended rate × (1 + markup). Markup is hidden from buyers.</Text>
-
-                <Text style={styles.fieldLabel}>Blended Gemini rate (USD / 1M tokens)</Text>
-                <TextInput
-                  style={styles.input} keyboardType="numeric"
-                  value={String(cfg.blended_usd_per_mtok ?? '')}
-                  onChangeText={(t) => setCfg({ ...cfg, blended_usd_per_mtok: t })}
-                  placeholder="2.0"
-                />
-                <Text style={styles.fieldLabel}>Markup % — admin buyers</Text>
-                <TextInput
-                  style={styles.input} keyboardType="numeric"
-                  value={String(cfg.markup_admin_pct ?? '')}
-                  onChangeText={(t) => setCfg({ ...cfg, markup_admin_pct: t })}
-                  placeholder="1"
-                />
-                <Text style={styles.fieldLabel}>Markup % — regular users</Text>
-                <TextInput
-                  style={styles.input} keyboardType="numeric"
-                  value={String(cfg.markup_user_pct ?? '')}
-                  onChangeText={(t) => setCfg({ ...cfg, markup_user_pct: t })}
-                  placeholder="10"
-                />
-                <Text style={styles.fieldLabel}>USD→INR fallback rate</Text>
-                <TextInput
-                  style={styles.input} keyboardType="numeric"
-                  value={String(cfg.usd_to_inr_fallback ?? '')}
-                  onChangeText={(t) => setCfg({ ...cfg, usd_to_inr_fallback: t })}
-                  placeholder="90"
-                />
-                <Text style={styles.fieldLabel}>Minimum custom credits</Text>
-                <TextInput
-                  style={styles.input} keyboardType="numeric"
-                  value={String(cfg.min_custom_credits ?? '')}
-                  onChangeText={(t) => setCfg({ ...cfg, min_custom_credits: t })}
-                  placeholder="150"
-                />
-                <Text style={styles.fieldLabel}>Razorpay Route — markup linked account</Text>
-                <TextInput
-                  style={styles.input} autoCapitalize="none"
-                  value={String(cfg.route_linked_account_id ?? '')}
-                  onChangeText={(t) => setCfg({ ...cfg, route_linked_account_id: t })}
-                  placeholder="acc_XXXXXXXX (blank = no Route)"
-                />
-
-                <TouchableOpacity style={styles.primaryBtn} onPress={saveConfig} disabled={savingCfg}>
-                  {savingCfg ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.primaryBtnText}>Save defaults</Text>}
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* Admin: grant credits */}
-            {isAdmin && (
-              <View style={styles.adminCard}>
-                <Text style={styles.sectionTitle}>Grant credits to a user</Text>
-                <Text style={styles.fieldLabel}>User email</Text>
-                <TextInput
-                  style={styles.input}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                  value={grantEmail}
-                  onChangeText={setGrantEmail}
-                  placeholder="user@example.com"
-                />
-                <Text style={styles.fieldLabel}>Credits to add</Text>
-                <TextInput
-                  style={styles.input}
-                  keyboardType="numeric"
-                  value={grantAmount}
-                  onChangeText={setGrantAmount}
-                  placeholder="50"
-                />
-                <TouchableOpacity style={styles.primaryBtn} onPress={grant} disabled={granting}>
-                  {granting ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.primaryBtnText}>Grant credits</Text>}
-                </TouchableOpacity>
-              </View>
+            {/* Admin config & grant-credits sections have moved to the
+                dedicated Admin pages — kept OUT of the user-facing wallet
+                to avoid leaking pricing/markup/Razorpay account internals.
+                See: /admin/ai-wallet-config (config + grant credits card). */}
+            {isSuperAdmin && (
+              <TouchableOpacity
+                testID="ai-wallet-admin-link"
+                onPress={() => router.push('/admin/ai-wallet-config' as any)}
+                activeOpacity={0.85}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 8,
+                  paddingHorizontal: 14, paddingVertical: 10, marginBottom: 12,
+                  backgroundColor: '#EDE9FE', borderRadius: 10,
+                  borderWidth: 1, borderColor: COLORS.primary,
+                }}>
+                <Ionicons name="settings-outline" size={14} color={COLORS.primary} />
+                <Text style={{ flex: 1, fontSize: 12, fontWeight: '700', color: COLORS.primary }}>
+                  Admin: edit wallet defaults / pricing / Route / grant credits →
+                </Text>
+              </TouchableOpacity>
             )}
 
             {/* Ledger */}
