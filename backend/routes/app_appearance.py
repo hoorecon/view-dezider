@@ -38,6 +38,10 @@ DEFAULT_WEBSITE = "www.hoorecon.com"
 DEFAULT_SUPPORT_HOURS = "Monday–Friday, 10:00 AM – 6:00 PM IST"
 MAX_LOGO_BYTES = 1024 * 1024  # 1 MB
 ALLOWED_LOGO_MIME = {"image/png", "image/jpeg", "image/jpg"}
+# Loader music — keep small so it streams instantly even on slow links.
+MAX_MUSIC_BYTES = 3 * 1024 * 1024  # 3 MB
+ALLOWED_MUSIC_MIME = {"audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav",
+                      "audio/ogg", "audio/webm", "audio/mp4", "audio/aac"}
 
 # Allow-list of selectable fonts (Google Fonts + System). Keep in sync with the
 # frontend FONT_OPTIONS list in src/constants/fonts.ts.
@@ -94,6 +98,12 @@ async def get_appearance():
         "has_logo": bool(doc.get("logo_base64")),
         "logo_url": "/api/appearance/logo" if doc.get("logo_base64") else None,
         "logo_version": int(doc.get("logo_version") or 0),
+        # Loader music — played during long-running UI loaders (Deep Import,
+        # multi-page crawl). Optional; falls back to silence when not set.
+        "has_loader_music": bool(doc.get("loader_music_base64")),
+        "loader_music_url": "/api/appearance/loader-music" if doc.get("loader_music_base64") else None,
+        "loader_music_version": int(doc.get("loader_music_version") or 0),
+        "loader_music_filename": doc.get("loader_music_filename"),
     }
 
 
@@ -249,4 +259,105 @@ async def serve_logo():
         BytesIO(raw),
         media_type=mime,
         headers={"Cache-Control": "public, max-age=300"},
+    )
+
+
+# ───────────────────────── Loader music (Deep Import & long crawls) ─────
+class LoaderMusicUpdate(BaseModel):
+    music_base64: str = Field(..., min_length=10)
+    filename: Optional[str] = Field(None, max_length=120)
+
+
+def _parse_music(data_url: str):
+    """Return (raw_bytes, mime) from an audio data URL or raise HTTPException."""
+    s = (data_url or "").strip()
+    mime = "audio/mpeg"
+    if s.startswith("data:"):
+        try:
+            header, b64 = s.split(",", 1)
+            mime = header.split(";")[0].replace("data:", "").lower() or "audio/mpeg"
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid audio data.")
+    else:
+        b64 = s
+    if mime == "audio/mp3":
+        mime = "audio/mpeg"
+    if mime not in ALLOWED_MUSIC_MIME:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Audio must be MP3 / WAV / OGG / M4A. Got {mime}.",
+        )
+    try:
+        raw = base64.b64decode(b64, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid audio encoding.")
+    if len(raw) > MAX_MUSIC_BYTES:
+        raise HTTPException(status_code=400,
+                            detail=f"Audio must be {MAX_MUSIC_BYTES // (1024 * 1024)} MB or smaller.")
+    if len(raw) < 1024:
+        raise HTTPException(status_code=400, detail="Audio file is empty or corrupt.")
+    return raw, mime
+
+
+@router.put("/admin/loader-music")
+async def update_loader_music(body: LoaderMusicUpdate, user: dict = Depends(get_current_user)):
+    if user.get("role") not in ("admin", "super_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    raw, mime = _parse_music(body.music_base64)
+    data_url = f"data:{mime};base64,{base64.b64encode(raw).decode()}"
+    await db.app_settings.update_one(
+        {"key": APPEARANCE_KEY},
+        {"$set": {
+            "key": APPEARANCE_KEY,
+            "loader_music_base64": data_url,
+            "loader_music_mime": mime,
+            "loader_music_filename": (body.filename or "loader-music").strip()[:120],
+            "loader_music_version": int(time.time()),
+        }},
+        upsert=True,
+    )
+    logger.info("Loader music updated (%d bytes, %s) by %s", len(raw), mime, user.get("email"))
+    return {"success": True, "has_loader_music": True,
+            "loader_music_url": "/api/appearance/loader-music",
+            "loader_music_filename": body.filename}
+
+
+@router.delete("/admin/loader-music")
+async def delete_loader_music(user: dict = Depends(get_current_user)):
+    if user.get("role") not in ("admin", "super_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    await db.app_settings.update_one(
+        {"key": APPEARANCE_KEY},
+        {"$unset": {"loader_music_base64": "", "loader_music_mime": "",
+                    "loader_music_filename": ""},
+         "$set": {"loader_music_version": int(time.time())}},
+        upsert=True,
+    )
+    return {"success": True, "has_loader_music": False}
+
+
+@router.get("/appearance/loader-music")
+async def serve_loader_music():
+    """Stream the raw loader audio (cacheable). 404 when none is configured.
+    Uses `Cache-Control: public, max-age=300` so the browser doesn't re-fetch
+    the file on every Deep-Import loader open, which would burn cold-start
+    time and bandwidth."""
+    doc = await _get_doc()
+    data_url = doc.get("loader_music_base64")
+    if not data_url:
+        return Response(status_code=404)
+    mime = doc.get("loader_music_mime") or "audio/mpeg"
+    try:
+        b64 = data_url.split(",", 1)[1] if "," in data_url else data_url
+        raw = base64.b64decode(b64)
+    except Exception:
+        return Response(status_code=404)
+    return StreamingResponse(
+        BytesIO(raw),
+        media_type=mime,
+        headers={
+            "Cache-Control": "public, max-age=300",
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(len(raw)),
+        },
     )

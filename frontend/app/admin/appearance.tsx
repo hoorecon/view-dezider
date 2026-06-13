@@ -11,12 +11,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
 import { COLORS } from '../../src/constants/colors';
 import { FONT_OPTIONS, getFontOption } from '../../src/constants/fonts';
 import { useFontFamily, useAppLogo } from '../../src/contexts/FontFamilyContext';
 import { useAuthStore } from '../../src/store/authStore';
+import { invalidateLoaderMusicCache } from '../../src/hooks/useLoaderMusic';
 
 export default function AdminAppearance() {
   const router = useRouter();
@@ -32,6 +35,9 @@ export default function AdminAppearance() {
   const setField = (k: string, v: string) => setProfile((prev) => ({ ...prev, [k]: v }));
   const [savingCompany, setSavingCompany] = useState(false);
   const [logoBusy, setLogoBusy] = useState(false);
+  // Loader music (Deep Import & long crawls)
+  const [musicInfo, setMusicInfo] = useState<{ has: boolean; url?: string | null; filename?: string | null; version?: number }>({ has: false });
+  const [musicBusy, setMusicBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
 
@@ -46,6 +52,12 @@ export default function AdminAppearance() {
         legal_name: d.legal_name || d.company_name || '', address: d.address || '',
         phone: d.phone || '', email: d.email || '', website: d.website || '',
         support_hours: d.support_hours || '',
+      });
+      setMusicInfo({
+        has: !!d.has_loader_music,
+        url: d.loader_music_url || null,
+        filename: d.loader_music_filename || null,
+        version: d.loader_music_version || 0,
       });
     } catch (e: any) {
       showAlert('Load failed', e?.response?.data?.detail || 'Could not fetch appearance settings');
@@ -132,6 +144,70 @@ export default function AdminAppearance() {
       showAlert('Failed', e?.response?.data?.detail || 'Could not remove the logo.');
     } finally { setLogoBusy(false); }
   }, [refreshAppearance]);
+
+  // ── Loader music handlers ───────────────────────────────────────────
+  const pickLoaderMusic = useCallback(async () => {
+    try {
+      const res = await DocumentPicker.getDocumentAsync({
+        type: ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav',
+               'audio/ogg', 'audio/webm', 'audio/mp4', 'audio/aac', 'audio/*'],
+        multiple: false,
+        copyToCacheDirectory: true,
+      });
+      if (res.canceled || !res.assets?.length) return;
+      const a = res.assets[0];
+      // 3 MB guard (base64 length ≈ 1.37 × bytes).
+      if (a.size && a.size > 3 * 1024 * 1024) {
+        showAlert('Too large', 'Audio file must be 3 MB or smaller. Compress to a lower bitrate (e.g. 128 kbps MP3).');
+        return;
+      }
+      let base64: string | null = null;
+      let mime = (a.mimeType || 'audio/mpeg').toLowerCase();
+      if (Platform.OS === 'web' && (a as any).file) {
+        // Web path — DocumentPicker exposes the underlying File.
+        const file: File = (a as any).file;
+        base64 = await new Promise<string>((resolve, reject) => {
+          const fr = new FileReader();
+          fr.onload = () => {
+            const r = String(fr.result || '');
+            const idx = r.indexOf(',');
+            resolve(idx >= 0 ? r.slice(idx + 1) : r);
+          };
+          fr.onerror = () => reject(fr.error);
+          fr.readAsDataURL(file);
+        });
+        if (file.type) mime = file.type;
+      } else if (a.uri) {
+        base64 = await FileSystem.readAsStringAsync(a.uri, { encoding: FileSystem.EncodingType.Base64 });
+      }
+      if (!base64) { showAlert('Unsupported', 'Could not read the audio file.'); return; }
+      const dataUrl = `data:${mime};base64,${base64}`;
+      setMusicBusy(true);
+      await api.put('/admin/loader-music', {
+        music_base64: dataUrl, filename: a.name || 'loader-music',
+      });
+      invalidateLoaderMusicCache();
+      await load();
+      showAlert('Loader music saved',
+        `"${a.name}" will play during Deep Import & long crawls. Stops automatically when the loader finishes.`);
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || e?.message || 'Could not save the audio.';
+      showAlert('Upload failed', typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setMusicBusy(false);
+    }
+  }, [load]);
+
+  const removeLoaderMusic = useCallback(async () => {
+    setMusicBusy(true);
+    try {
+      await api.delete('/admin/loader-music');
+      invalidateLoaderMusicCache();
+      await load();
+    } catch (e: any) {
+      showAlert('Failed', e?.response?.data?.detail || 'Could not remove the audio.');
+    } finally { setMusicBusy(false); }
+  }, [load]);
 
   const choose = useCallback(async (key: string) => {
     setSaving(key);
@@ -234,7 +310,69 @@ export default function AdminAppearance() {
             </View>
           </View>
 
-          <Text style={s.sectionTitle}>App Font</Text>
+          {/* Loader music — plays during Deep Import & long crawl progress
+              loaders. Optional (silent loader is the default). Admin + Super
+              Admin can edit. */}
+          <View style={s.companyCard}>
+            <Text style={s.sectionTitle}>Loader music (Deep Import &amp; long crawls)</Text>
+            <Text style={s.companyHint}>
+              Plays in a loop while a long progress loader is on screen (e.g. Deep Import crawls 5–10 pages).
+              MP3, WAV, OGG or M4A — up to 3 MB. Tip: trim to ~30s for best looping. Users with
+              <Text style={{ fontStyle: 'italic' }}> prefers-reduced-motion</Text> get silence automatically.
+            </Text>
+            <View style={s.logoRow}>
+              <View style={[s.logoPreview, { backgroundColor: musicInfo.has ? '#FAF5FF' : '#F8FAFC' }]}>
+                <Ionicons
+                  name={musicInfo.has ? 'musical-notes' : 'musical-notes-outline'}
+                  size={28}
+                  color={musicInfo.has ? '#7C3AED' : COLORS.textMuted}
+                />
+              </View>
+              <View style={{ flex: 1, gap: 8 }}>
+                {musicInfo.has && (
+                  <Text style={[s.companyHint, { color: '#0F172A', fontWeight: '600' }]} numberOfLines={1}>
+                    Current: {musicInfo.filename || 'loader-music'}
+                  </Text>
+                )}
+                <TouchableOpacity
+                  testID="admin-loader-music-upload"
+                  style={[s.logoBtn, musicBusy && { opacity: 0.6 }]}
+                  onPress={pickLoaderMusic}
+                  disabled={musicBusy}
+                >
+                  {musicBusy ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <>
+                      <Ionicons name="cloud-upload-outline" size={16} color="#FFF" />
+                      <Text style={s.logoBtnText}>{musicInfo.has ? 'Replace music' : 'Upload music'}</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                {musicInfo.has && (
+                  <TouchableOpacity
+                    testID="admin-loader-music-remove"
+                    style={s.logoResetBtn}
+                    onPress={removeLoaderMusic}
+                    disabled={musicBusy}
+                  >
+                    <Text style={s.logoResetText}>Remove (silent loader)</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+            {/* Quick browser preview on web — instant sanity check. */}
+            {Platform.OS === 'web' && musicInfo.has && musicInfo.url && (
+              <View style={{ marginTop: 12 }} testID="admin-loader-music-preview">
+                {/* eslint-disable-next-line react/no-unknown-property */}
+                {React.createElement('audio', {
+                  src: `${(api.defaults.baseURL || '').replace(/\/api\/?$/, '')}${musicInfo.url}?v=${musicInfo.version || 0}`,
+                  controls: true,
+                  style: { width: '100%', maxWidth: 360 },
+                })}
+              </View>
+            )}
+          </View>
 
           {FONT_OPTIONS.map((opt) => {
             const isSel = selected === opt.key;

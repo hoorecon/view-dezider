@@ -14,6 +14,7 @@ import api from '../../utils/api';
 import { showAlert } from '../../utils/alert';
 import UrlAccessConsentModal, { UrlConsentPayload } from '../UrlAccessConsentModal';
 import ImportCreditsStrip from '../ImportCreditsStrip';
+import { useLoaderMusic } from '../../hooks/useLoaderMusic';
 
 interface JobFactor {
   name: string; group: string; data_type: string; unit?: string | null;
@@ -29,6 +30,12 @@ interface Props {
 export const DeepImport: React.FC<Props> = ({ decisionId, onMerged }) => {
   const [open, setOpen] = useState(false);
   const [stage, setStage] = useState<'setup' | 'progress' | 'review' | 'merging'>('setup');
+
+  // Loader music — plays the admin-uploaded audio (Admin → Appearance · Font
+  // → Loader music) in a loop while the crawl is in-flight. No-ops silently
+  // when no music has been uploaded.
+  const { available: musicAvailable, playing: musicPlaying } =
+    useLoaderMusic(stage === 'progress' || stage === 'merging');
   const [constraintNote, setConstraintNote] = useState<string | null>(null);
   const [baseUrl, setBaseUrl] = useState('');
   const [context, setContext] = useState('');
@@ -255,6 +262,26 @@ export const DeepImport: React.FC<Props> = ({ decisionId, onMerged }) => {
                 <Text style={st.hint}>
                   Crawling {maxPages} pages + 2 AI passes can take 2–4 minutes. Keep this open.
                 </Text>
+                {musicAvailable && (
+                  <View
+                    testID="deep-import-music-hint"
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 6,
+                      alignSelf: 'flex-start', marginTop: 8,
+                      paddingHorizontal: 10, paddingVertical: 5,
+                      backgroundColor: '#FAF5FF', borderRadius: 14,
+                      borderWidth: 1, borderColor: '#E9D5FF',
+                    }}>
+                    <Ionicons
+                      name={musicPlaying ? 'musical-notes' : 'musical-notes-outline'}
+                      size={11}
+                      color="#7C3AED"
+                    />
+                    <Text style={{ fontSize: 10.5, fontWeight: '700', color: '#7C3AED' }}>
+                      {musicPlaying ? 'Loader music playing — relax, this won\u2019t cost a paisa' : 'Loader music ready'}
+                    </Text>
+                  </View>
+                )}
               </>
             )}
 
