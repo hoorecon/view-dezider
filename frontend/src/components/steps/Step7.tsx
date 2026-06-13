@@ -315,9 +315,35 @@ export default function Step7() {
 
   const handleCustomSelect = (optionId: string, factorId: string) => {
     const key = getAssessmentKey(optionId, factorId);
+    const isAlreadyCustom = !!showCustomInput[key];
+    // Mutex: opening the % input must immediately clear any L/M/H selection
+    // (the old behaviour left H + % both highlighted because mode only
+    // flipped on blur). Re-clicking the % button when it's already active
+    // toggles the input off and clears the mode entirely (cell becomes
+    // "unscored"), matching the user's mental model of a self-deselecting
+    // chip group.
+    if (isAlreadyCustom) {
+      setShowCustomInput({ ...showCustomInput, [key]: false });
+      setCustomInputValues({ ...customInputValues, [key]: '' });
+      const currentActual = getActualValue(optionId, factorId);
+      const factor = decision.factors.find(f => f.id === factorId);
+      const unitStr = factor?.unit || '';
+      const displayValue = currentActual !== undefined ? `${currentActual}${unitStr ? ' ' + unitStr : ''}` : '';
+      // Clear: mode = null, pct = 0 — the visual treats this as "no selection"
+      updateAssessment(optionId, factorId, 0, null as any, displayValue, currentActual);
+      return;
+    }
     const currentValue = getAssessmentValue(optionId, factorId);
     setShowCustomInput({ ...showCustomInput, [key]: true });
     setCustomInputValues({ ...customInputValues, [key]: String(currentValue) });
+    // Immediately flip the mode to 'custom' so the previously-active L/M/H
+    // chip deselects on the SAME tap (previously it only deselected once
+    // the user blurred the % input).
+    const currentActual = getActualValue(optionId, factorId);
+    const factor = decision.factors.find(f => f.id === factorId);
+    const unitStr = factor?.unit || '';
+    const displayValue = currentActual !== undefined ? `${currentActual}${unitStr ? ' ' + unitStr : ''}` : '';
+    updateAssessment(optionId, factorId, currentValue, 'custom', displayValue, currentActual);
   };
 
   const handleCustomInputChange = (optionId: string, factorId: string, value: string) => {
@@ -413,13 +439,13 @@ export default function Step7() {
         Alert.alert('Set an Operator', 'Add an Operator (e.g. ≥) for this quantitative factor before AI Assist.');
         return;
       }
-      if (!has(actual)) {
-        Alert.alert(
-          'Add an Actual value',
-          'Quantitative factors need an Actual value. Enter it, set a Data Source, or link this option to a Solution Store item.'
-        );
-        return;
-      }
+      // Previously this returned an alert if Actual was empty — which left
+      // the per-cell ✨ AI button doing nothing visible for the user. We now
+      // pass `force_fill=true` so the backend infers a plausible Actual from
+      // world-knowledge (brand/model/spec) — the same behaviour the batch
+      // "AI Assess All" already had. This explains the customer's earlier
+      // observation that AI Assess All returned 100% on a Torque cell with
+      // no value: batch infers; per-cell didn't. They are now consistent.
     }
     setAiAssessBusy(prev => ({ ...prev, [key]: true }));
     try {
@@ -428,7 +454,13 @@ export default function Step7() {
       const resp = await fetch(`${baseUrl}/api/decisions/${decision.id}/factors/${factorId}/ai-assess`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ option_id: optionId, actual_value: actual }),
+        body: JSON.stringify({
+          option_id: optionId,
+          actual_value: actual,
+          // Force the backend to infer an actual when the cell is blank so
+          // the user gets a real % + value back rather than a no-op.
+          force_fill: !has(actual),
+        }),
       });
       if (!resp.ok) {
         const e = await resp.json().catch(() => ({}));
@@ -764,7 +796,16 @@ export default function Step7() {
                 placeholderTextColor="rgba(255,255,255,0.6)"
                 placeholder="0"
               />
-              <Text style={[styles.customPercentSign, { color: COLORS.white }]}>%</Text>
+              {/* The % glyph itself is now tappable — re-clicking the active
+                  % button toggles the input off and clears the cell (matches
+                  the user's mental model of a self-deselecting chip). */}
+              <TouchableOpacity
+                onPress={() => handleCustomSelect(option.id, f.id)}
+                hitSlop={{ top: 6, bottom: 6, left: 4, right: 6 }}
+                testID={`md-pct-close-${option.id}-${f.id}`}
+              >
+                <Text style={[styles.customPercentSign, { color: COLORS.white }]}>%</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <TouchableOpacity
