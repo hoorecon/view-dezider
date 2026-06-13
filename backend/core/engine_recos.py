@@ -24,9 +24,36 @@ STAGE_LABEL = {"links_pick": "Link pick", "hubs_pick": "Hub locate",
 
 _CFG_KEY = "deep_stage_tiers"
 
+# ── Import quality floor (admin-tunable) ─────────────────────────────────────
+# A URL-import run is only stamped `success` when the merged factor count is
+# at least this many. Anything below the floor is recorded as `partial` — the
+# user still got a result, but the run is flagged in Admin Intel + fed into
+# the Auto-Tune candidate pool because it's silently under-extracted.
+# Carwale "best Electric cars under 10 lakh" regression (2 factors only) is
+# the canonical example this floor catches.
+_QF_KEY = "import_quality_floor"
+DEFAULT_QUALITY_FLOOR = 4
+
 
 def _now():
     return datetime.now(timezone.utc)
+
+
+async def get_quality_floor() -> int:
+    doc = await db.app_config.find_one({"key": _QF_KEY}, {"_id": 0}) or {}
+    v = doc.get("min_factors")
+    return v if isinstance(v, int) and 1 <= v <= 50 else DEFAULT_QUALITY_FLOOR
+
+
+async def set_quality_floor(min_factors: int, admin_id: str) -> int:
+    if not isinstance(min_factors, int) or not (1 <= min_factors <= 50):
+        raise ValueError("min_factors must be an integer between 1 and 50")
+    await db.app_config.update_one(
+        {"key": _QF_KEY},
+        {"$set": {"min_factors": min_factors, "updated_by": admin_id, "updated_at": _now()}},
+        upsert=True)
+    logger.info("import quality floor set to %d by %s", min_factors, admin_id)
+    return await get_quality_floor()
 
 
 def _norm_stage(stage: str) -> str:

@@ -33,6 +33,7 @@ from core.url_detail import ai_extract_detail, deterministic_hint_issues
 from core.url_pagetype import classify_page_type
 from core.import_verify import verify_detail
 from core import url_telemetry
+from core import engine_recos
 from core.decision_builder import (
     create_mydezider_from_candidates, create_pros_cons_from_candidates,
     create_hierarchical_mydezider, merge_into_mydezider,
@@ -58,6 +59,22 @@ _LOWER_BETTER_RE = re.compile(
 
 def _is_lower_better(name: str) -> bool:
     return bool(_LOWER_BETTER_RE.search(str(name or "")))
+
+
+async def _quality_status(resp: Dict[str, Any]) -> tuple:
+    """Decide success-vs-partial based on the admin-tunable factor quality
+    floor. A "thin" extraction (≪ floor) is `partial` — the user gets the
+    result, but the run is flagged in Admin Intel and fed into Auto-Tune.
+    Returns (status, partial_reason_or_None)."""
+    fc = int(resp.get("factors_added") or resp.get("factor_count") or 0)
+    oc = int(resp.get("options_added") or resp.get("item_count") or 0)
+    qf = await engine_recos.get_quality_floor()
+    if fc and fc < qf:
+        return ("partial",
+                f"Extracted {fc} factor(s) across {oc} option(s) — below the "
+                f"configured quality floor of {qf}. Likely a thin parse "
+                "(e.g. Name + Price). Review or re-import on the precise tier.")
+    return ("success", None)
 
 
 def _now():
@@ -245,7 +262,6 @@ def _factor_nature(label: str) -> str:
 
 def _score_hierarchy_numeric(items: List[str], groups: List[Dict[str, Any]]):
     """Returns (row_scores, row_meta, text_rows). row_scores keyed by (gi, ri)."""
-    n = len(items)
     row_scores: Dict[Any, List[Optional[int]]] = {}
     row_meta: Dict[Any, Dict[str, Any]] = {}
     text_rows: List[tuple] = []
@@ -340,7 +356,12 @@ async def analyze_url(req: AnalyzeRequest, request: Request, user: dict = Depend
         await url_telemetry.record_run(tel, status="error", error=f"{type(e).__name__}: {str(e)[:300]}")
         raise
     tel["decision_id"] = resp.get("id")
-    resp["run_id"] = await url_telemetry.record_run(tel, status="success", response=resp)
+    final_status, partial_reason = await _quality_status(resp)
+    if partial_reason:
+        tel["partial_reason"] = partial_reason
+    resp["run_id"] = await url_telemetry.record_run(
+        tel, status=final_status, response=resp,
+        error=partial_reason if final_status == "partial" else None)
     return resp
 
 
@@ -694,7 +715,14 @@ async def import_url_into_decision(
         await url_telemetry.record_run(tel, status="error", error=f"{type(e).__name__}: {str(e)[:300]}")
         raise
     await prog(100, "Done — factors & options added.", status="done")
-    resp["run_id"] = await url_telemetry.record_run(tel, status="success", response=resp)
+    final_status, partial_reason = await _quality_status(resp)
+    if partial_reason:
+        tel["partial_reason"] = partial_reason
+    resp["run_id"] = await url_telemetry.record_run(
+        tel, status=final_status, response=resp,
+        error=partial_reason if final_status == "partial" else None)
+    if final_status == "partial":
+        resp["partial_reason"] = partial_reason
     return resp
 
 
@@ -783,15 +811,19 @@ async def _import_inner(decision_id: str, req: ImportRequest, request: Request,
     # HINTS ARE LAW: when the user supplied accuracy hints, a deterministic
     # parse is only trusted if it MATCHES them — otherwise we escalate to the
     # hint-guided AI extraction below (keeping this parse as a last-resort
-    # fallback). A "precise"-tier request likewise escalates thin (<3 factor)
-    # parses: the user explicitly chose AI-grade extraction. ──
+    # fallback). Quality floor: a deterministic parse that gathered fewer than
+    # the admin-tunable minimum factors (default 4) is treated as thin on ANY
+    # tier — the carwale "best Electric cars under 10 lakh" regression came in
+    # as 2 factors (Name + Price) and was silently stamped success on the fast
+    # tier. Escalation now applies symmetrically. ──
     det_fallback = None
+    qf = await engine_recos.get_quality_floor()
     candidates = await candidates_from_response(r, user["user_id"], allow_ai=False)
     if len(candidates) >= 2:
         factors, scored = _derive_factors_and_scores(candidates, req.max_factors)
         if factors:
             det_issues = deterministic_hint_issues(hints, factors=factors, candidates=scored)
-            det_thin = tier == "precise" and len(factors) < 3
+            det_thin = len(factors) < qf
             if not det_issues and not det_thin:
                 await prog(85, "Merging factors & options into your decision…")
                 counts = await merge_into_mydezider(user["user_id"], decision_id,

@@ -13,7 +13,7 @@
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
   ActivityIndicator, Modal, useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -72,6 +72,36 @@ export default function AdminImportAnalyticsScreen() {
 
   // ── Engine tiering (margin protection) ──
   const [engineRecos, setEngineRecos] = useState<any>(null);
+
+  // ── Import quality floor (silent under-extraction guard) ──
+  const [qFloor, setQFloor] = useState<number | null>(null);
+  const [qFloorDraft, setQFloorDraft] = useState<string>('');
+  const [qFloorSaving, setQFloorSaving] = useState(false);
+
+  const loadQualityFloor = useCallback(async () => {
+    try {
+      const r = await api.get('/admin/import-analytics/quality-floor');
+      setQFloor(r.data?.min_factors ?? null);
+      setQFloorDraft(String(r.data?.min_factors ?? ''));
+    } catch { /* card shows loading state */ }
+  }, []);
+
+  const saveQualityFloor = async () => {
+    const n = Number(qFloorDraft);
+    if (!Number.isInteger(n) || n < 1 || n > 50) {
+      showAlert('Quality floor', 'Enter an integer between 1 and 50.');
+      return;
+    }
+    setQFloorSaving(true);
+    try {
+      await api.put('/admin/import-analytics/quality-floor', { min_factors: n });
+      showAlert('Quality floor', `Runs with fewer than ${n} factors will now be stamped PARTIAL.`);
+      await loadQualityFloor();
+      await loadAll();
+    } catch (e: any) {
+      showAlert('Error', e?.response?.data?.detail || 'Failed to save quality floor');
+    } finally { setQFloorSaving(false); }
+  };
 
   const loadEngineRecos = useCallback(async () => {
     try {
@@ -153,6 +183,7 @@ export default function AdminImportAnalyticsScreen() {
   useEffect(() => { loadAll(); }, [loadAll]);
   useEffect(() => { loadTuning(); }, [loadTuning]);
   useEffect(() => { loadEngineRecos(); }, [loadEngineRecos]);
+  useEffect(() => { loadQualityFloor(); }, [loadQualityFloor]);
 
   const openRun = async (id: string) => {
     try {
@@ -177,6 +208,7 @@ export default function AdminImportAnalyticsScreen() {
   const kpis = [
     { label: 'Runs', value: String(summary?.total_runs ?? 0), color: C.text },
     { label: 'Success', value: pct(summary?.success_rate), color: C.green },
+    { label: 'Partial (below quality floor)', value: summary?.partial_count != null ? `${summary.partial_count} (${pct(summary?.partial_rate)})` : '—', color: C.amber },
     { label: 'Hint pass', value: pct(summary?.hint_pass_rate), color: C.blue },
     { label: 'Hint adoption', value: pct(summary?.hint_adoption_rate), color: C.muted },
     { label: 'AI escalation', value: pct(summary?.ai_escalation_rate), color: C.primary },
@@ -324,9 +356,38 @@ export default function AdminImportAnalyticsScreen() {
             </View>
           ))}
           {!(tuning?.suggestions || []).length && (
-            <Text style={st.empty}>No suggestions yet — tap "Generate (AI)" once some failing runs accumulate.</Text>
+            <Text style={st.empty}>No suggestions yet — tap &quot;Generate (AI)&quot; once some failing runs accumulate.</Text>
           )}
         </View>
+
+        {/* Quality floor — silent under-extraction guard */}
+        <View style={st.card} testID="import-analytics-quality-floor">
+          <Text style={st.cardTitle}>Quality floor — silent under-extraction guard</Text>
+          <Text style={{ fontSize: 11, color: C.muted, marginTop: -6, marginBottom: 8 }}>
+            Runs that return FEWER than this many factors are stamped <Text style={{ fontWeight: '800', color: C.amber }}>PARTIAL</Text> instead of success — they
+            appear amber in the runs list, are fed into Auto-Tune as failing candidates, and do
+            NOT trigger the failure-alert. Set higher to catch more thin parses; lower to tolerate
+            sparse pages.
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <Text style={st.runMeta}>Min factors:</Text>
+            <TextInput
+              testID="import-quality-floor-input"
+              keyboardType="number-pad" maxLength={2}
+              value={qFloorDraft} onChangeText={setQFloorDraft}
+              style={st.qfInput} placeholder="4" placeholderTextColor={C.muted}
+            />
+            <TouchableOpacity testID="import-quality-floor-save"
+              style={[st.approveBtn, qFloorSaving && { opacity: 0.6 }]}
+              onPress={saveQualityFloor} disabled={qFloorSaving}>
+              <Text style={st.approveTxt}>{qFloorSaving ? 'Saving…' : 'Save'}</Text>
+            </TouchableOpacity>
+            {qFloor != null && (
+              <Text style={st.runMeta}>currently: {qFloor}</Text>
+            )}
+          </View>
+        </View>
+
 
         {/* Engine tiering — per deep-import stage: success/cost stats → tier control */}
         <View style={st.card} testID="import-analytics-engine-tiers">
@@ -393,9 +454,20 @@ export default function AdminImportAnalyticsScreen() {
                 </Text>
               </View>
               <View style={{ alignItems: 'flex-end', gap: 3 }}>
-                <Text style={[st.runBadge, { color: r.status === 'success' ? C.green : C.red }]}>
-                  {r.status === 'success' ? `${r.factors_added ?? r.factor_count ?? 0}F / ${r.options_added ?? r.item_count ?? 0}O` : 'ERROR'}
-                </Text>
+                {r.status === 'success' ? (
+                  <Text style={[st.runBadge, { color: C.green }]}>
+                    {`${r.factors_added ?? r.factor_count ?? 0}F / ${r.options_added ?? r.item_count ?? 0}O`}
+                  </Text>
+                ) : r.status === 'partial' ? (
+                  <>
+                    <Text style={[st.runBadge, { color: C.amber }]}>
+                      {`${r.factors_added ?? r.factor_count ?? 0}F / ${r.options_added ?? r.item_count ?? 0}O`}
+                    </Text>
+                    <Text style={[st.runMeta, { color: C.amber, fontWeight: '700' }]}>PARTIAL</Text>
+                  </>
+                ) : (
+                  <Text style={[st.runBadge, { color: C.red }]}>ERROR</Text>
+                )}
                 {r.feedback && (
                   <Ionicons name={r.feedback === 'up' ? 'thumbs-up' : 'thumbs-down'} size={13}
                     color={r.feedback === 'up' ? C.green : C.red} />
@@ -423,6 +495,7 @@ export default function AdminImportAnalyticsScreen() {
                   {[
                     ['URL', detail.url], ['When', when(detail.ts)], ['Endpoint', detail.endpoint],
                     ['Status', detail.status + (detail.error ? ` — ${detail.error}` : '')],
+                    ...(detail.partial_reason ? [['Partial reason', detail.partial_reason]] : []),
                     ['Page type', `${PT_LABEL[detail.page_type] || detail.page_type || '—'} (conf ${detail.page_type_confidence ?? '—'}, via ${detail.classifier_provider || '—'})`],
                     ['Route', ROUTE_LABEL[detail.route] || detail.route || '—'],
                     ['Engine', (detail.ai_engines || []).length
@@ -433,7 +506,7 @@ export default function AdminImportAnalyticsScreen() {
                       : '—'],
                     ['Hints', detail.hints_given ? JSON.stringify(detail.hints) : '(none given)'],
                     ['Hint warnings', (detail.hint_warnings || []).join(' ') || (detail.hints_given ? 'none — passed ✓' : '—')],
-                    ['Outcome', detail.status === 'success' ? `${detail.factors_added ?? detail.factor_count ?? 0} factors, ${detail.options_added ?? detail.item_count ?? 0} options, ${ms(detail.latency_ms)}` : '—'],
+                    ['Outcome', detail.status === 'error' ? '—' : `${detail.factors_added ?? detail.factor_count ?? 0} factors, ${detail.options_added ?? detail.item_count ?? 0} options, ${ms(detail.latency_ms)}`],
                     ['User verdict', detail.feedback ? (detail.feedback === 'up' ? '👍 accurate' : '👎 inaccurate') : '(not given)'],
                   ].map(([k, v]: any) => (
                     <View key={k} style={st.dRow}>
@@ -558,4 +631,5 @@ const st = StyleSheet.create({
   approveTxt: { color: '#FFF', fontSize: 12, fontWeight: '800' },
   rejectBtn: { backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9 },
   rejectTxt: { color: C.red, fontSize: 12, fontWeight: '800' },
+  qfInput: { borderWidth: 1, borderColor: C.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, width: 70, fontSize: 13, color: C.text, backgroundColor: '#FFF' },
 });

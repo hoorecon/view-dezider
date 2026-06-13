@@ -109,6 +109,26 @@ async def tuning_revert(page_type: str, admin: dict = Depends(require_super_admi
 
 
 # ── Engine tiering (margin protection) ──────────────────────────────────────
+@router.get("/quality-floor")
+async def get_quality_floor(admin: dict = Depends(require_super_admin)):
+    """Read the current import quality floor — the min factor count below
+    which a run is stamped `partial` instead of `success`."""
+    return {"min_factors": await engine_recos.get_quality_floor(),
+            "default": engine_recos.DEFAULT_QUALITY_FLOOR}
+
+
+@router.put("/quality-floor")
+async def set_quality_floor(body: Dict[str, Any],
+                            admin: dict = Depends(require_super_admin)):
+    """Tune the import quality floor. Body: { min_factors: int 1..50 }."""
+    try:
+        mf = int(body.get("min_factors") or 0)
+        val = await engine_recos.set_quality_floor(mf, admin["user_id"])
+    except (ValueError, TypeError) as e:
+        raise HTTPException(400, str(e))
+    return {"min_factors": val}
+
+
 @router.get("/engine-recos")
 async def engine_recommendations(days: int = 30,
                                  admin: dict = Depends(require_super_admin)):

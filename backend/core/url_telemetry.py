@@ -98,6 +98,7 @@ async def record_run(tel: Dict[str, Any], *, status: str = "success",
             "classifier_provider": tel.get("classifier_provider"),
             "route": tel.get("route"),
             "status": status, "error": (error or None),
+            "partial_reason": (error if status == "partial" else None),
             "latency_ms": int((now - tel["t0"]).total_seconds() * 1000),
             # outcome
             "mode": resp.get("mode"), "structure": resp.get("structure"),
@@ -107,7 +108,10 @@ async def record_run(tel: Dict[str, Any], *, status: str = "success",
             "factors_added": resp.get("factors_added"),
             "options_added": resp.get("options_added"),
             "hint_warnings": hint_warnings,
-            "hint_pass": (not hint_warnings) if (status == "success" and tel["hints"]) else None,
+            # `hint_pass` is only meaningful when the user supplied hints AND the
+            # run actually succeeded. For `partial` runs we still surface it (the
+            # parse may have matched the hints but fell below the quality floor).
+            "hint_pass": (not hint_warnings) if (status in ("success", "partial") and tel["hints"]) else None,
             # AI internals (prompt-tuning gold)
             "ai_retry_used": bool(ai.get("retry_used")),
             "ai_attempts": ai.get("attempts") or 0,
@@ -171,8 +175,10 @@ async def record_run(tel: Dict[str, Any], *, status: str = "success",
         })
     except Exception as e:  # noqa: BLE001 — telemetry never breaks the import
         logger.warning("url-import telemetry record failed (non-fatal): %s", str(e)[:200])
-    if status != "success":
-        # Notification Engine — fire-and-forget failure alert (throttled per trigger)
+    if status == "error":
+        # Notification Engine — fire-and-forget failure alert (throttled per trigger).
+        # `partial` runs do NOT trigger the alert: the user got a result, the run
+        # is flagged in Admin Intel + fed into Auto-Tune for prompt refinement.
         try:
             from core.notification_engine import emit_event_bg
             emit_event_bg("import-run-failed", {
@@ -220,6 +226,7 @@ async def summary(days: int = 30) -> Dict[str, Any]:
     match = {"ts": {"$gte": since}}
     total = await db.url_import_runs.count_documents(match)
     ok = await db.url_import_runs.count_documents({**match, "status": "success"})
+    partial = await db.url_import_runs.count_documents({**match, "status": "partial"})
     hinted = await db.url_import_runs.count_documents({**match, "hints_given": True, "status": "success"})
     hint_pass = await db.url_import_runs.count_documents({**match, "hint_pass": True})
     ai_routes = await db.url_import_runs.count_documents({**match, "route": "ai_extraction"})
@@ -256,6 +263,8 @@ async def summary(days: int = 30) -> Dict[str, Any]:
     return {
         "days": days, "total_runs": total,
         "success_rate": _rate(ok, total),
+        "partial_count": partial,
+        "partial_rate": _rate(partial, total),
         "hint_adoption_rate": _rate(hinted, ok),
         "hint_pass_rate": _rate(hint_pass, hinted),
         "ai_escalation_rate": _rate(ai_routes, total),

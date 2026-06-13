@@ -93,7 +93,13 @@ async def get_guidance(key: str) -> str:
 
 
 async def _failing_runs(key: str, days: int) -> List[Dict[str, Any]]:
-    fail_or = [{"status": "error"}, {"hint_pass": False}, {"feedback": "down"}]
+    # A run is a "failing candidate" if any of these are true:
+    #   - hard error
+    #   - partial (extracted below the quality floor — silent under-extraction)
+    #   - the user's accuracy hints did not pass
+    #   - user gave a 👎 verdict
+    fail_or = [{"status": "error"}, {"status": "partial"},
+               {"hint_pass": False}, {"feedback": "down"}]
     q: Dict[str, Any] = {"ts": {"$gte": _now() - timedelta(days=days)}, "$or": fail_or}
     if key in DEEP_KEYS:
         q["endpoint"] = "deep_import"
@@ -101,6 +107,7 @@ async def _failing_runs(key: str, days: int) -> List[Dict[str, Any]]:
         q["page_type"] = key
     return await (db.url_import_runs
                   .find(q, {"_id": 0, "id": 1, "url": 1, "status": 1, "error": 1,
+                            "partial_reason": 1,
                             "hints": 1, "hint_warnings": 1, "feedback": 1,
                             "ai_retry_used": 1, "route": 1, "factors_added": 1,
                             "options_added": 1, "ai_raw_response": 1,
