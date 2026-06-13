@@ -26,12 +26,6 @@ interface Props {
   onMerged: () => Promise<void> | void;
 }
 
-const PRIORITIES = [
-  { label: 'H', weight: 80, color: '#059669' },
-  { label: 'M', weight: 50, color: '#D97706' },
-  { label: 'L', weight: 20, color: '#DC2626' },
-];
-
 export const DeepImport: React.FC<Props> = ({ decisionId, onMerged }) => {
   const [open, setOpen] = useState(false);
   const [stage, setStage] = useState<'setup' | 'progress' | 'review' | 'merging'>('setup');
@@ -242,8 +236,9 @@ export const DeepImport: React.FC<Props> = ({ decisionId, onMerged }) => {
               <>
                 <Text style={st.title}>Review the discovered factors</Text>
                 <Text style={st.hint}>
-                  Found {rows.length} factors across {optionCount} crawled option pages. Untick what you
-                  don&apos;t need and set a priority — values are imported ONLY for approved factors.
+                  Found {rows.length} factor{rows.length === 1 ? '' : 's'} across {optionCount} crawled option pages.
+                  Untick anything you don&apos;t need — values are imported ONLY for approved factors.
+                  You&apos;ll classify (Mandatory / Optional) and prioritise these in Steps 3-5.
                 </Text>
                 {!!constraintNote && (
                   <View style={st.constraintNote} testID="deep-import-constraint-note">
@@ -269,16 +264,12 @@ export const DeepImport: React.FC<Props> = ({ decisionId, onMerged }) => {
                           {r.expected_value ? ` · expected ${r.operator || ''} ${r.expected_value}` : ''}
                         </Text>
                       </View>
-                      <View style={{ flexDirection: 'row', gap: 4 }}>
-                        {PRIORITIES.map(p => (
-                          <TouchableOpacity key={p.label}
-                            testID={`deep-import-priority-${p.label}-${i}`}
-                            style={[st.prioBtn, r.weight === p.weight && { backgroundColor: p.color }]}
-                            onPress={() => setRows(rs => rs.map((x, xi) => xi === i ? { ...x, weight: p.weight } : x))}>
-                            <Text style={[st.prioText, r.weight === p.weight && { color: '#FFF' }]}>{p.label}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
+                      {/* Priority chips were removed (Jun 2026) — classification
+                          (Mandatory / Optional) and prioritisation belong to the
+                          user's manual Steps 3-5 and must NOT be pre-empted by
+                          the discovery review. Factors land in Step 2 with the
+                          decision's standard default weight; the user adjusts
+                          them later in the proper steps. */}
                     </View>
                   ))}
                 </ScrollView>
@@ -353,7 +344,7 @@ const st = StyleSheet.create({
   factorName: { fontSize: 13, fontWeight: '600', color: '#0F172A' },
   factorOff: { color: '#94A3B8', textDecorationLine: 'line-through' },
   factorMeta: { fontSize: 10.5, color: '#94A3B8', marginTop: 1 },
-  prioBtn: { width: 26, height: 26, borderRadius: 7, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center' },
+  prioBtn: { width: 26, height: 26, borderRadius: 7, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center' },  // (deprecated — left in case future re-introduction; no longer referenced)
   prioText: { fontSize: 11, fontWeight: '800', color: '#64748B' },
 });
 
