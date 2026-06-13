@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/colors';
@@ -6,9 +6,18 @@ import { Card } from '../Card';
 import { GradientButton } from '../GradientButton';
 import { useDecision } from '../../context/DecisionContext';
 import { styles } from '../../styles/decisionStyles';
+import LoaderMusicChip from '../LoaderMusicChip';
 
 export default function Step8() {
   const { decision, calculateDynamicWorth, setCurrentStep } = useDecision();
+  // Reveal soundtrack — play for the first ~25 s the user lands on Step 8,
+  // then auto-stop. The chip stays interactive (mute / un-mute) for the
+  // entire visit.
+  const [revealEnabled, setRevealEnabled] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setRevealEnabled(false), 25000);
+    return () => clearTimeout(t);
+  }, []);
 
   const optionsWithDynamicWorth = decision.options.map(option => ({
     ...option,

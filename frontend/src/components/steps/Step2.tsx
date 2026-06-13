@@ -21,6 +21,7 @@ import {
   senseDataType,
   parseCountInput,
 } from '../../utils/decisionHelpers';
+import LoaderMusicChip from '../LoaderMusicChip';
 
 const DATA_SOURCE_TYPES = [
   { key: 'webhook', label: 'Webhook/API', icon: 'link-outline', color: '#3B82F6' },
@@ -847,6 +848,10 @@ export default function Step2() {
               Pages that need AI extraction (single listings, JS-rendered pages) can take 1–2 minutes.
               Keep this screen open — we&apos;ll fill the factors, options and assessment matrix automatically.
             </Text>
+            {/* Per-workflow loader music — admin slot `url_import` (falls back to default). */}
+            <View style={{ marginTop: 10 }}>
+              <LoaderMusicChip slot="url_import" enabled={!!importProgress} />
+            </View>
           </View>
         </View>
       </Modal>

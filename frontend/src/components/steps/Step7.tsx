@@ -19,6 +19,7 @@ import { showAlert } from '../../utils/alert';
 import { api } from '../../utils/api';
 import type { Factor } from '../../types/decision';
 import UrlAccessConsentModal, { UrlConsentPayload } from '../UrlAccessConsentModal';
+import LoaderMusicChip from '../LoaderMusicChip';
 
 export default function Step7() {
   const {
@@ -1013,6 +1014,9 @@ export default function Step7() {
         <Text style={styles.aiAssessAllHint}>
           Auto-rates every empty cell with AI. Uses AI credits • skips cells missing Expected/Actual values.
         </Text>
+        {/* Per-workflow loader music — admin slot `ai_assess_all`. */}
+        <LoaderMusicChip slot="ai_assess_all" enabled={bulkAssessing}
+          style={{ marginTop: 6 }} />
       </Card>
 
       {decision.options.map((option) => {

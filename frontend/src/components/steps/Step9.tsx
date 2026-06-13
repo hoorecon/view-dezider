@@ -11,10 +11,15 @@ import { useDecision } from '../../context/DecisionContext';
 import { styles } from '../../styles/decisionStyles';
 import { TEPFI_ELEMENTS, TEPFI_LAYERS } from '../../utils/decisionHelpers';
 import type { Factor, MPPSImprovement, MPPSActionItem } from '../../types/decision';
+import LoaderMusicChip from '../LoaderMusicChip';
 
 export default function Step9() {
   const { decision, saveDecision, calculateDynamicWorth, setCurrentStep } = useDecision();
   const router = useRouter();
+  // MPPS PDF generation — sets `pdfBusy` while the backend renders the PDF
+  // and the browser downloads it; plays the `mpps_pdf` slot during that
+  // window (falls back to the default soundtrack when the slot is empty).
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   const topLevelFactors = decision.factors.filter(f => !f.parent_id);
   const mppsTimeframe = decision.mpps_timeframe || '';
@@ -546,6 +551,7 @@ export default function Step9() {
         </TouchableOpacity>
         <TouchableOpacity
           onPress={async () => {
+            setPdfBusy(true);
             try {
               const token = await AsyncStorage.getItem('session_token');
               const baseUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || '';
@@ -563,6 +569,8 @@ export default function Step9() {
               Alert.alert('Success', 'PDF downloaded');
             } catch (err) {
               Alert.alert('Error', 'Failed to download PDF');
+            } finally {
+              setPdfBusy(false);
             }
           }}
           style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, backgroundColor: '#EDE9FE', borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary }}
@@ -571,6 +579,11 @@ export default function Step9() {
           <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.primary }}>PDF</Text>
         </TouchableOpacity>
       </View>
+
+      {/* MPPS PDF generation loader music — admin slot `mpps_pdf`. */}
+      <LoaderMusicChip slot="mpps_pdf" enabled={pdfBusy}
+        readyLabel="MPPS PDF music ready — tap to mute"
+        style={{ marginTop: 8 }} />
 
       {/* ─── Action Center bridge (Phase B) ──────────────────────────
           Push the inline MPPS action items into the universal Action
