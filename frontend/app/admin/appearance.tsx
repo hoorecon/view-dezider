@@ -20,6 +20,7 @@ import { FONT_OPTIONS, getFontOption } from '../../src/constants/fonts';
 import { useFontFamily, useAppLogo } from '../../src/contexts/FontFamilyContext';
 import { useAuthStore } from '../../src/store/authStore';
 import { invalidateLoaderMusicCache } from '../../src/hooks/useLoaderMusic';
+import Slider from '@react-native-community/slider';
 
 export default function AdminAppearance() {
   const router = useRouter();
@@ -40,6 +41,13 @@ export default function AdminAppearance() {
                     filename: string | null; version: number };
   const [musicSlots, setMusicSlots] = useState<Record<string, SlotInfo>>({});
   const [musicBusySlot, setMusicBusySlot] = useState<string | null>(null);
+  // Per-platform default loader-music volumes (0..1). Super-admin only.
+  // Persisted in ai_wallet config so the change applies globally without
+  // a redeploy. Defaults: web 0.55, ios 0.65, android 0.75.
+  const [vols, setVols] = useState<{ web: number; ios: number; android: number }>(
+    { web: 0.55, ios: 0.65, android: 0.75 });
+  const [volsDirty, setVolsDirty] = useState(false);
+  const [savingVols, setSavingVols] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
 
@@ -56,11 +64,39 @@ export default function AdminAppearance() {
         support_hours: d.support_hours || '',
       });
       setMusicSlots(d.loader_music_slots || {});
+      if (user?.role === 'super_admin') {
+        try {
+          const cfg = await api.get('/admin/ai-wallet/config');
+          const c = cfg.data || {};
+          setVols({
+            web: Number.isFinite(c.loader_music_volume_web) ? Number(c.loader_music_volume_web) : 0.55,
+            ios: Number.isFinite(c.loader_music_volume_ios) ? Number(c.loader_music_volume_ios) : 0.65,
+            android: Number.isFinite(c.loader_music_volume_android) ? Number(c.loader_music_volume_android) : 0.75,
+          });
+          setVolsDirty(false);
+        } catch { /* non-super-admin or transient — keep defaults */ }
+      }
     } catch (e: any) {
       showAlert('Load failed', e?.response?.data?.detail || 'Could not fetch appearance settings');
     } finally { setLoading(false); }
-  }, []);
+  }, [user?.role]);
   useEffect(() => { load(); }, [load]);
+
+  const saveVolumes = useCallback(async () => {
+    setSavingVols(true);
+    try {
+      await api.put('/admin/ai-wallet/config', {
+        loader_music_volume_web: vols.web,
+        loader_music_volume_ios: vols.ios,
+        loader_music_volume_android: vols.android,
+      });
+      setVolsDirty(false);
+      invalidateLoaderMusicCache();
+      showAlert('Saved', 'Per-platform default loader-music volumes updated.');
+    } catch (e: any) {
+      showAlert('Save failed', e?.response?.data?.detail || 'Could not save volumes.');
+    } finally { setSavingVols(false); }
+  }, [vols]);
 
   const saveCompany = useCallback(async () => {
     if ((profile.legal_name || '').trim().length < 2) { showAlert('Invalid', 'Legal name is too short.'); return; }
@@ -408,6 +444,67 @@ export default function AdminAppearance() {
                 </View>
               );
             })}
+
+            {/* Per-platform default volume sliders. Only super-admin can
+                edit; non-super-admins see the values disabled so they
+                still understand what's set globally. */}
+            <View style={s.volPanel}>
+              <Text style={s.volTitle}>Default volume by platform</Text>
+              <Text style={s.volHint}>
+                Applies the first time a user loads each platform. Users can still mute
+                or set their own volume locally via the speaker chip on each loader.
+              </Text>
+              {([
+                { k: 'web', icon: 'desktop-outline', label: 'Web' },
+                { k: 'ios', icon: 'logo-apple', label: 'iOS' },
+                { k: 'android', icon: 'logo-android', label: 'Android' },
+              ] as const).map(row => {
+                const v = vols[row.k];
+                const pct = Math.round(v * 100);
+                return (
+                  <View key={row.k} style={s.volRow} testID={`admin-loader-vol-${row.k}`}>
+                    <View style={s.volLabelWrap}>
+                      <Ionicons name={row.icon as any} size={16} color={COLORS.textSecondary} />
+                      <Text style={s.volLabel}>{row.label}</Text>
+                    </View>
+                    <Slider
+                      testID={`admin-loader-vol-slider-${row.k}`}
+                      style={{ flex: 1, height: 36 }}
+                      minimumValue={0}
+                      maximumValue={1}
+                      step={0.05}
+                      value={v}
+                      disabled={!isSuperAdmin || savingVols}
+                      minimumTrackTintColor={COLORS.primary}
+                      maximumTrackTintColor="#E5E7EB"
+                      thumbTintColor={COLORS.primary}
+                      onValueChange={(nv) => {
+                        setVols((p) => ({ ...p, [row.k]: nv }));
+                        setVolsDirty(true);
+                      }}
+                    />
+                    <Text style={s.volPct}>{pct}%</Text>
+                  </View>
+                );
+              })}
+              {isSuperAdmin && (
+                <TouchableOpacity
+                  testID="admin-loader-vol-save"
+                  disabled={!volsDirty || savingVols}
+                  onPress={saveVolumes}
+                  style={[s.volSaveBtn, (!volsDirty || savingVols) && { opacity: 0.5 }]}>
+                  {savingVols
+                    ? <ActivityIndicator size="small" color="#FFF" />
+                    : <><Ionicons name="save-outline" size={14} color="#FFF" />
+                        <Text style={s.volSaveText}>{volsDirty ? 'Save volumes' : 'Saved'}</Text></>}
+                </TouchableOpacity>
+              )}
+              {!isSuperAdmin && (
+                <Text style={[s.companyLocked, { marginTop: 6 }]}>
+                  Only a Super Admin can change default volumes.
+                </Text>
+              )}
+            </View>
           </View>
 
           {FONT_OPTIONS.map((opt) => {
@@ -478,4 +575,13 @@ const s = StyleSheet.create({
   cardLabel: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary },
   previewText: { fontSize: 14, color: COLORS.textSecondary, marginTop: 4 },
   note: { fontSize: 12, color: COLORS.textMuted, marginTop: 12, lineHeight: 18 },
+  volPanel: { marginTop: 14, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#F8FAFC' },
+  volTitle: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 4 },
+  volHint: { fontSize: 11.5, color: COLORS.textMuted, lineHeight: 16, marginBottom: 8 },
+  volRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
+  volLabelWrap: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 84 },
+  volLabel: { fontSize: 12.5, fontWeight: '700', color: COLORS.textSecondary },
+  volPct: { width: 44, textAlign: 'right', fontSize: 12, fontWeight: '700', color: COLORS.textPrimary, fontVariant: ['tabular-nums'] },
+  volSaveBtn: { marginTop: 8, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
+  volSaveText: { color: '#FFF', fontWeight: '700', fontSize: 12.5 },
 });

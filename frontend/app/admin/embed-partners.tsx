@@ -18,6 +18,7 @@ import {
   ActivityIndicator, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
 
@@ -62,21 +63,28 @@ const Field = ({ label, value, onChange, keyboardType, placeholder, testID }: an
 );
 
 export default function AdminEmbedPartnersScreen() {
+  const router = useRouter();
   const [partners, setPartners] = useState<any[]>([]);
   const [slug, setSlug] = useState<string | null>(null);
   const [cfg, setCfg] = useState<any | null>(null);
   const [analytics, setAnalytics] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const loadPartners = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const r = await api.get('/embed/partners');
-      setPartners(r.data.partners || []);
-      if (!slug && r.data.partners?.length) selectPartner(r.data.partners[0].slug);
+      const list = r.data?.partners || [];
+      setPartners(list);
+      if (!slug && list.length) selectPartner(list[0].slug);
     } catch (e: any) {
-      showAlert('Error', e?.response?.data?.detail || 'Failed to load partners');
+      const msg = e?.response?.data?.detail || e?.message || 'Failed to load partners';
+      setLoadError(msg);
+      // Keep the page usable — admin can still open the embed script docs even
+      // when /embed/partners fails (e.g. network blip, RBAC restriction).
     } finally { setLoading(false); }
   }, []);
 
@@ -171,23 +179,86 @@ export default function AdminEmbedPartnersScreen() {
 
   return (
     <ScrollView style={styles.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 60 }}>
-      <Text style={styles.h1}>Partner Embed Console</Text>
-      <Text style={styles.sub}>White-label embed config, pricing, snippet & analytics per partner.</Text>
+      <View style={styles.headerRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.h1}>Partner Embed Console</Text>
+          <Text style={styles.sub}>White-label embed config, pricing, snippet & analytics per partner.</Text>
+        </View>
+        {/* Quick link to the crawler embed scripts + Admin/Partner docs.
+            Always visible so admins can hand the snippet to a partner even
+            before that partner exists in the system. */}
+        <TouchableOpacity
+          testID="embed-open-crawler-docs-btn"
+          style={styles.docsBtn}
+          activeOpacity={0.85}
+          onPress={() => router.push('/admin/crawler-embed-docs' as any)}>
+          <Ionicons name="code-slash" size={15} color="#FFF" />
+          <Text style={styles.docsBtnText}>Crawler scripts & guidelines</Text>
+        </TouchableOpacity>
+      </View>
+
+      {!!loadError && (
+        <View style={styles.errBox} testID="embed-load-error">
+          <Ionicons name="alert-circle" size={16} color="#B91C1C" />
+          <Text style={styles.errText}>Couldn't load partners — {loadError}</Text>
+          <TouchableOpacity onPress={loadPartners} style={styles.retryBtn} activeOpacity={0.85}>
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Empty-state — no partners yet. Don't dead-end the admin with a forever spinner. */}
+      {!loadError && partners.length === 0 && (
+        <View style={styles.emptyState} testID="embed-empty-state">
+          <Ionicons name="people-outline" size={36} color="#94A3B8" />
+          <Text style={styles.emptyTitle}>No embed partners yet</Text>
+          <Text style={styles.emptyBody}>
+            Partners are created from <Text style={{ fontWeight: '700' }}>Admin → Org Members</Text> (or via
+            the partner-org API). Once a partner exists, return here to configure their white-label embed,
+            pricing, and ingestion settings.
+          </Text>
+          <View style={styles.emptyActions}>
+            <TouchableOpacity
+              testID="embed-empty-goto-org-members"
+              style={styles.emptyPrimary}
+              activeOpacity={0.85}
+              onPress={() => router.push('/admin/org-members' as any)}>
+              <Ionicons name="people" size={14} color="#FFF" />
+              <Text style={styles.emptyPrimaryText}>Open Org Members</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              testID="embed-empty-goto-docs"
+              style={styles.emptySecondary}
+              activeOpacity={0.85}
+              onPress={() => router.push('/admin/crawler-embed-docs' as any)}>
+              <Ionicons name="code-slash" size={14} color={PRIMARY} />
+              <Text style={styles.emptySecondaryText}>View crawler scripts</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       {/* partner picker */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 14 }}>
-        {partners.map(p => (
-          <TouchableOpacity key={p.slug} testID={`embed-partner-tab-${p.slug}`} onPress={() => selectPartner(p.slug)}
-            style={[styles.pTab, slug === p.slug && styles.pTabOn]}>
-            <Text style={[styles.pTabText, slug === p.slug && { color: '#fff' }]}>{p.name}</Text>
-            {p.configured && <View style={styles.dot} />}
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      {partners.length > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 14 }}>
+          {partners.map(p => (
+            <TouchableOpacity key={p.slug} testID={`embed-partner-tab-${p.slug}`} onPress={() => selectPartner(p.slug)}
+              style={[styles.pTab, slug === p.slug && styles.pTabOn]}>
+              <Text style={[styles.pTabText, slug === p.slug && { color: '#fff' }]}>{p.name}</Text>
+              {p.configured && <View style={styles.dot} />}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
 
-      {!cfg ? (
-        <View style={styles.center}><ActivityIndicator color={PRIMARY} /></View>
-      ) : (
+      {partners.length > 0 && !cfg ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={PRIMARY} />
+          <Text style={{ fontSize: 12, color: '#94A3B8', marginTop: 8 }}>Loading partner config…</Text>
+        </View>
+      ) : null}
+
+      {cfg ? (
         <>
           <Section title="Branding">
             <Text style={styles.fieldLabel}>Branding mode</Text>
@@ -295,7 +366,7 @@ export default function AdminEmbedPartnersScreen() {
             </Section>
           )}
         </>
-      )}
+      ) : null}
     </ScrollView>
   );
 }
@@ -349,4 +420,22 @@ const styles = StyleSheet.create({
   runTop: { fontSize: 13, fontWeight: '700', color: '#1F2937', flex: 1, marginRight: 8 },
   runMeta: { fontSize: 11.5, color: '#64748B' },
   empty: { fontSize: 12.5, color: '#94A3B8', fontStyle: 'italic', marginTop: 4 },
+
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' },
+  docsBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: PRIMARY, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
+  docsBtnText: { color: '#FFF', fontSize: 12.5, fontWeight: '800' },
+
+  errBox: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FEF2F2', borderColor: '#FECACA', borderWidth: 1, borderRadius: 10, padding: 12, marginTop: 14 },
+  errText: { flex: 1, fontSize: 12.5, color: '#991B1B', fontWeight: '600' },
+  retryBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: '#DC2626' },
+  retryText: { color: '#FFF', fontSize: 12, fontWeight: '800' },
+
+  emptyState: { alignItems: 'center', backgroundColor: '#FFF', borderColor: '#E2E8F0', borderWidth: 1, borderRadius: 12, padding: 24, marginTop: 16 },
+  emptyTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A', marginTop: 10 },
+  emptyBody: { fontSize: 12.5, color: '#475569', textAlign: 'center', lineHeight: 18, marginTop: 6, maxWidth: 520 },
+  emptyActions: { flexDirection: 'row', gap: 10, marginTop: 14, flexWrap: 'wrap', justifyContent: 'center' },
+  emptyPrimary: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: PRIMARY, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10 },
+  emptyPrimaryText: { color: '#FFF', fontSize: 12.5, fontWeight: '800' },
+  emptySecondary: { flexDirection: 'row', alignItems: 'center', gap: 6, borderColor: PRIMARY, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, backgroundColor: '#FFF' },
+  emptySecondaryText: { color: PRIMARY, fontSize: 12.5, fontWeight: '800' },
 });
