@@ -51,6 +51,9 @@ export default function Step8() {
           <Text style={{ flex: 1, fontSize: 12.5, color: '#4C1D95', fontWeight: '600', lineHeight: 17 }}>
             {topByAi.size} option{topByAi.size === 1 ? '' : 's'} highlighted below were auto-ranked by AI from the Deep-Import crawl (using your Step 5 weightages). The full list still shows for comparison.
           </Text>
+          {/* Pre-mute icon — user can silence the upcoming reveal soundtrack
+              BEFORE the chip below auto-plays. */}
+          <LoaderMusicChip slot="results_reveal" enabled={false} iconOnly />
         </View>
       )}
 

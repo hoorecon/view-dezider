@@ -578,6 +578,9 @@ export default function Step9() {
           <Ionicons name="download-outline" size={16} color={COLORS.primary} />
           <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.primary }}>PDF</Text>
         </TouchableOpacity>
+        {/* Pre-mute icon — user can silence the PDF-render music BEFORE
+            tapping the download button. */}
+        <LoaderMusicChip slot="mpps_pdf" enabled={false} iconOnly />
       </View>
 
       {/* MPPS PDF generation loader music — admin slot `mpps_pdf`. */}

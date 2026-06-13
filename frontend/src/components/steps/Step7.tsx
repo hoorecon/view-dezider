@@ -1014,9 +1014,14 @@ export default function Step7() {
         <Text style={styles.aiAssessAllHint}>
           Auto-rates every empty cell with AI. Uses AI credits • skips cells missing Expected/Actual values.
         </Text>
-        {/* Per-workflow loader music — admin slot `ai_assess_all`. */}
-        <LoaderMusicChip slot="ai_assess_all" enabled={bulkAssessing}
-          style={{ marginTop: 6 }} />
+        {/* Per-workflow loader music — admin slot `ai_assess_all`. The
+            full chip (label + icon) is shown while the loader runs; a
+            compact pre-mute icon is mirrored on the AI-Assess-All button
+            itself so the user can silence it BEFORE the run. */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
+          <LoaderMusicChip slot="ai_assess_all" enabled={bulkAssessing} />
+          {!bulkAssessing && <LoaderMusicChip slot="ai_assess_all" enabled={false} iconOnly />}
+        </View>
       </Card>
 
       {decision.options.map((option) => {

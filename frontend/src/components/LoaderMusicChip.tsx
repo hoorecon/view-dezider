@@ -28,12 +28,43 @@ interface Props {
   enabled: boolean;
   /** Override the label shown when audio is *ready but not playing*. */
   readyLabel?: string;
+  /** Render only the speaker / notes icon — no surrounding pill / label.
+   *  Use this when mirroring the mute control inline next to a banner /
+   *  button so the user can pre-mute BEFORE the loader fires. */
+  iconOnly?: boolean;
   style?: ViewStyle;
 }
 
-export const LoaderMusicChip: React.FC<Props> = ({ slot, enabled, readyLabel, style }) => {
+export const LoaderMusicChip: React.FC<Props> = ({ slot, enabled, readyLabel, iconOnly, style }) => {
   const { available, playing, muted, toggleMute } = useLoaderMusic(enabled, slot);
   if (!available) return null; // no audio uploaded AND no default fallback
+
+  const iconName = muted
+    ? 'volume-mute-outline'
+    : (playing ? 'musical-notes' : 'musical-notes-outline');
+  const iconColor = muted ? '#64748B' : '#7C3AED';
+
+  if (iconOnly) {
+    return (
+      <TouchableOpacity
+        testID={`loader-music-icon-${slot}`}
+        onPress={toggleMute}
+        activeOpacity={0.7}
+        accessibilityLabel={muted ? 'Unmute loader music' : 'Mute loader music'}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        style={[
+          {
+            width: 28, height: 28, borderRadius: 14,
+            alignItems: 'center', justifyContent: 'center',
+            backgroundColor: muted ? '#F1F5F9' : '#FAF5FF',
+            borderWidth: 1, borderColor: muted ? '#CBD5E1' : '#E9D5FF',
+          },
+          style,
+        ]}>
+        <Ionicons name={iconName} size={14} color={iconColor} />
+      </TouchableOpacity>
+    );
+  }
 
   const label = muted
     ? 'Music muted — tap to unmute'
@@ -45,16 +76,8 @@ export const LoaderMusicChip: React.FC<Props> = ({ slot, enabled, readyLabel, st
       testID={`loader-music-chip-${slot}`}
       onPress={toggleMute}
       activeOpacity={0.7}
-      style={[
-        s.chip,
-        muted ? s.chipMuted : s.chipOn,
-        style,
-      ]}>
-      <Ionicons
-        name={muted ? 'volume-mute-outline' : (playing ? 'musical-notes' : 'musical-notes-outline')}
-        size={11}
-        color={muted ? '#64748B' : '#7C3AED'}
-      />
+      style={[s.chip, muted ? s.chipMuted : s.chipOn, style]}>
+      <Ionicons name={iconName} size={11} color={iconColor} />
       <Text style={[s.txt, muted && { color: '#64748B' }]}>{label}</Text>
     </TouchableOpacity>
   );
