@@ -202,6 +202,12 @@ export default function Step5() {
           style={styles.nextButton}
         />
       </View>
+
+      {/* Wave 2 (#8b) — Deep-Import auto-rank prompt. Renders nothing
+          unless `decision.deep_import_pending_rank` is true, in which case
+          it auto-opens a modal that lets the user pick a budget and jumps
+          straight to Step 8 with the top-N options. */}
+      <DeepImportBudgetPicker />
     </View>
   );
 }

@@ -57,6 +57,14 @@ DEFAULTS = {
     # Import-from-URL: AI may auto-GROUP ungrouped factors into categories only
     # when the page defines no grouping AND the factor count exceeds this.
     "import_group_threshold": 15,
+    # ── Deep Import (Wave 2 #8b) — auto-assess & rank top options ──
+    # `deep_import_max_options`: max options to FULLY assess per deep-import
+    # job. Higher = more AI credits, more thorough rankings. User can pick a
+    # smaller budget (≥2) inside this cap before the run.
+    # `deep_import_top_n`: how many of the assessed options to surface in
+    # Step 8 (Decision Comparison). Default 5.
+    "deep_import_max_options": 10,
+    "deep_import_top_n": 5,
     # ── ScraperAPI (web-scrape) metering — auto cost-derived per fetch ──
     # $/credit = plan_usd / plan_credits; each rendered fetch = 10 credits,
     # premium = 25. Charged to the user's wallet with `scrape_markup_pct` on top.
@@ -115,6 +123,14 @@ async def update_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
                     raise ValueError
                 if k == "import_group_threshold":
                     if val < 2:
+                        raise ValueError
+                    val = int(val)
+                if k == "deep_import_max_options":
+                    if val < 2 or val > 50:
+                        raise ValueError
+                    val = int(val)
+                if k == "deep_import_top_n":
+                    if val < 1 or val > 20:
                         raise ValueError
                     val = int(val)
                 if k in ("markup_routed_pct", "razorpay_fee_pct", "razorpay_gst_pct") and val > 100.0:

@@ -732,6 +732,19 @@ async def finalize_deep_import(job_id: str, req: DeepImportFinalize,
     counts = await merge_into_mydezider(user["user_id"], job["decision_id"],
                                         factors=factors_out, candidates=candidates)
 
+    # Wave 2 (#8b) — Set the "pending rank" flag so the frontend prompts the
+    # user (after Step 5 weightages are saved) to choose how many options to
+    # fully auto-assess + rank for Step 8 comparison. Stored as a simple
+    # boolean — wiped to False once the auto-assess endpoint completes.
+    try:
+        await db.decisions.update_one(
+            {"id": job["decision_id"], "user_id": user["user_id"]},
+            {"$set": {"deep_import_pending_rank": True,
+                      "deep_import_top_n_ids": []}},
+        )
+    except Exception:  # noqa: BLE001 — best-effort flag
+        pass
+
     verification = {k: ver[k] for k in ("verified", "blanked", "flagged_text",
                                         "unverified", "has_currency")}
     resp = {

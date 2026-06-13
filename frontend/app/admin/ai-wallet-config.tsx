@@ -54,6 +54,8 @@ interface Cfg {
   precise_model: string;
   precise_usd_per_mtok: number;
   import_group_threshold: number;
+  deep_import_max_options: number;
+  deep_import_top_n: number;
   scraperapi_plan_usd_month: number;
   scraperapi_plan_credits_month: number;
   scrape_markup_pct: number;
@@ -75,6 +77,8 @@ const FIELDS: Array<{
   { key: 'precise_usd_per_mtok', label: 'Precise-AI blended $/Mtok', hint: '“Costly & Precise AI” tier (Claude via Emergent universal key). Credit multiplier = this ÷ Gemini $/Mtok — same markup math stays zero-loss.', unit: '$', min: 0.01 },
   { key: 'precise_model', label: 'Precise-AI model', hint: 'Claude model used by the “Costly & Precise AI” import tier (e.g. claude-sonnet-4-6)' },
   { key: 'import_group_threshold', label: 'AI grouping threshold (factors)', hint: 'Import-from-URL: AI may auto-group ungrouped factors into categories only when the page defines no grouping AND the factor count exceeds this (default 15). Page-defined groups are never modified.', min: 2 },
+  { key: 'deep_import_max_options', label: 'Deep-Import: max options to assess', hint: 'Upper cap on the "process N options" budget picker after Deep Import. Higher = more thorough Top-N rank but burns more AI credits. Default 10. Allowed range: 2–50.', min: 2, max: 50 },
+  { key: 'deep_import_top_n', label: 'Deep-Import: top N for Step 8', hint: 'Of the fully-assessed options, how many to surface as the Top-N comparison in Step 8 (Decision Comparison). Default 5. Allowed range: 1–20.', min: 1, max: 20 },
   { key: 'scraperapi_plan_usd_month', label: 'ScraperAPI plan $/month', hint: 'Monthly price of the company ScraperAPI plan (default $299 Business). $/credit = plan $ ÷ included credits — drives the per-fetch user charge.', unit: '$', min: 0 },
   { key: 'scraperapi_plan_credits_month', label: 'ScraperAPI credits/month', hint: 'API credits included in the plan (Business = 3,000,000). Rendered fetch = 10 credits, premium = 25.', min: 1 },
   { key: 'scrape_markup_pct', label: 'Scrape markup %', hint: 'Markup over the derived ScraperAPI cost charged to users per scrape fetch (default 5%). Charged in app credits via the user\u2019s AI wallet.', unit: '%', min: 0, max: 100 },

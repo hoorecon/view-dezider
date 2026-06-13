@@ -310,6 +310,9 @@ from routes.masters import router as masters_router  # noqa: E402
 api_router.include_router(masters_router)
 from routes.deep_import import router as deep_import_router  # noqa: E402
 api_router.include_router(deep_import_router)
+# Wave 2 (#8b) — Deep-Import auto-assess & rank top-N options endpoint.
+from routes.deep_import_rank import router as deep_import_rank_router  # noqa: E402
+api_router.include_router(deep_import_rank_router)
 from routes.regression import router as regression_router  # noqa: E402
 api_router.include_router(regression_router)
 

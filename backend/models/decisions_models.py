@@ -112,13 +112,15 @@ class PRRDecision(BaseModel):
     # ── Single-option assessment mode (Enhancement #5b) ──
     allow_single_option: bool = False
     # ── AI assess defaults (Wave 2, June 2026) ──
-    # When AI cannot extract / score a cell (status="error"), we still write a
-    # PERCENTAGE so the option's overall worth doesn't silently drop to 0 just
-    # because a single cell was missing. The default is 5% — overridable
-    # per-decision in Step 7 ("Blank cells default") AND globally via the
-    # user's profile preference. Set to 0 to keep the legacy "fully blank"
-    # behaviour for this decision.
     blank_default_pct: Optional[int] = None
+    # ── Deep-Import auto-rank (Wave 2 #8b, June 2026) ──
+    # `deep_import_pending_rank`: True once a Deep-Import job has finalised
+    # and is waiting for the user to choose a "process N options" budget
+    # (the prompt fires automatically after Step 5 weightages are saved).
+    # `deep_import_top_n_ids`: ranked option-ids returned by the auto-assess
+    # endpoint — Step 8 pre-selects these for the comparison view.
+    deep_import_pending_rank: bool = False
+    deep_import_top_n_ids: List[str] = []
     status: str = "draft"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -175,6 +177,8 @@ class PRRDecisionUpdate(BaseModel):
     linked_from_score_pct: Optional[float] = None
     allow_single_option: Optional[bool] = None
     blank_default_pct: Optional[int] = None  # 0..100, overrides user preference for THIS decision
+    deep_import_pending_rank: Optional[bool] = None
+    deep_import_top_n_ids: Optional[List[str]] = None
     status: Optional[str] = None
 
 
