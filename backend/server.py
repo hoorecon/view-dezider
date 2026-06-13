@@ -167,7 +167,7 @@ from routes.face_auth import router as face_auth_router
 from routes.social_learning import router as social_learning_router
 from routes.acm import router as acm_router
 from routes.emotional_gatekeeper import router as emotional_gatekeeper_router
-from routes.aala import router as aala_router
+from routes.aala import router as aala_router  # noqa: F811 — re-imported below near related routers
 from routes.lifestyle_eval import router as lee_router
 from routes.goal_setter import router as goal_setter_router
 from routes.goal_manifestation import router as goal_manifestation_router
@@ -204,6 +204,7 @@ from routes.integrations import router as integrations_router
 from routes.ai_wallet import router as ai_wallet_router
 from routes.admin_recon import router as admin_recon_router
 from routes.admin_import_analytics import router as admin_import_analytics_router
+from routes.admin_url_training import router as admin_url_training_router
 from routes.admin_notifications import router as admin_notifications_router
 from routes.subscriptions import router as subscriptions_router
 
@@ -300,6 +301,7 @@ api_router.include_router(integrations_router)
 api_router.include_router(ai_wallet_router)
 api_router.include_router(admin_recon_router)
 api_router.include_router(admin_import_analytics_router)
+api_router.include_router(admin_url_training_router)
 api_router.include_router(admin_notifications_router)
 api_router.include_router(subscriptions_router)
 api_router.include_router(payment_admin_router)
@@ -472,6 +474,13 @@ async def startup_db_client():
         start_daily_auto_tune_task()
     except Exception as e:
         logger.error(f"Auto-tune daily task boot failed: {e}", exc_info=True)
+
+    # Weekly URL-Training regression suite (Sun 03:00 UTC)
+    try:
+        from core.url_training import start_weekly_scheduler
+        start_weekly_scheduler()
+    except Exception as e:
+        logger.error(f"URL Training weekly scheduler boot failed: {e}", exc_info=True)
 
     # Notification Engine — seed default weekly import-analytics digest trigger
     # (idempotent) + start the 60s scheduler tick (fcntl-singleton-locked).

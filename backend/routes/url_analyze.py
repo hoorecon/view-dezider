@@ -1079,3 +1079,83 @@ async def import_run_feedback(run_id: str, req: ImportFeedbackRequest,
     if not found:
         raise HTTPException(404, "Import run not found")
     return {"run_id": run_id, "verdict": verdict}
+
+
+# ── Train-AI feedback ────────────────────────────────────────────────────────
+# Rich, structured user feedback on a URL import — captures the exact factor/
+# option/cell-level mistakes the user spotted. Stored on the run document so
+# Admin Intel can drill in AND Auto-Tune can prioritise prompts that produced
+# user-reported failures (even when the run was technically `success`).
+class CellCorrection(BaseModel):
+    option_id: Optional[str] = None
+    option_name: Optional[str] = None
+    factor_id: Optional[str] = None
+    factor_name: Optional[str] = None
+    was: Optional[str] = None         # value the AI returned (may be empty)
+    should_be: Optional[str] = None   # value the user says is correct
+    issue: Optional[str] = None       # 'wrong' | 'missing' | other tag
+    note: Optional[str] = None
+
+
+class TrainAIRequest(BaseModel):
+    missed_factors_count: Optional[int] = None
+    wrong_factors: List[str] = []      # factor names or ids
+    missed_options_count: Optional[int] = None
+    wrong_options: List[str] = []      # option names or ids
+    cell_corrections: List[CellCorrection] = []
+    notes: Optional[str] = None
+    decision_id: Optional[str] = None
+
+
+@router.post("/runs/{run_id}/training")
+async def import_run_training(run_id: str, req: TrainAIRequest,
+                              user: dict = Depends(get_current_user)):
+    """Store user-reported import-accuracy feedback on the run. Idempotent:
+    overwrites the existing training block (user can revise their feedback).
+    """
+    # Sanitize / clamp inputs
+    payload = req.model_dump(exclude_none=True)
+    for k in ("missed_factors_count", "missed_options_count"):
+        v = payload.get(k)
+        if v is not None:
+            try:
+                payload[k] = max(0, min(999, int(v)))
+            except (TypeError, ValueError):
+                payload.pop(k, None)
+    payload["wrong_factors"] = [str(x).strip() for x in (payload.get("wrong_factors") or []) if str(x).strip()][:50]
+    payload["wrong_options"] = [str(x).strip() for x in (payload.get("wrong_options") or []) if str(x).strip()][:50]
+    payload["cell_corrections"] = (payload.get("cell_corrections") or [])[:200]
+
+    # Quick reportable score: any signal at all → flag run as user-failure
+    nonzero = any([
+        payload.get("missed_factors_count"),
+        payload.get("missed_options_count"),
+        payload.get("wrong_factors"),
+        payload.get("wrong_options"),
+        payload.get("cell_corrections"),
+        payload.get("notes"),
+    ])
+    payload["has_signal"] = bool(nonzero)
+    payload["user_id"] = user["user_id"]
+    payload["updated_at"] = datetime.now(timezone.utc)
+
+    res = await db.url_import_runs.update_one(
+        {"id": run_id},
+        {"$set": {"user_training": payload,
+                  "user_reported_failure": bool(nonzero)}})
+    if not res.matched_count:
+        raise HTTPException(404, "Import run not found")
+    return {"run_id": run_id, "saved": True, "has_signal": bool(nonzero)}
+
+
+@router.get("/runs/{run_id}/training")
+async def get_import_run_training(run_id: str,
+                                  user: dict = Depends(get_current_user)):
+    """Read back the user's training feedback for a run — used by the Train AI
+    panel to restore prior input on revisit."""
+    doc = await db.url_import_runs.find_one(
+        {"id": run_id}, {"_id": 0, "user_training": 1, "user_reported_failure": 1})
+    if not doc:
+        raise HTTPException(404, "Import run not found")
+    return {"user_training": doc.get("user_training") or None,
+            "user_reported_failure": bool(doc.get("user_reported_failure"))}

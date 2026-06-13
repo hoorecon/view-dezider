@@ -98,8 +98,10 @@ async def _failing_runs(key: str, days: int) -> List[Dict[str, Any]]:
     #   - partial (extracted below the quality floor — silent under-extraction)
     #   - the user's accuracy hints did not pass
     #   - user gave a 👎 verdict
+    #   - user submitted Train AI feedback flagging mistakes (highest priority)
     fail_or = [{"status": "error"}, {"status": "partial"},
-               {"hint_pass": False}, {"feedback": "down"}]
+               {"hint_pass": False}, {"feedback": "down"},
+               {"user_reported_failure": True}]
     q: Dict[str, Any] = {"ts": {"$gte": _now() - timedelta(days=days)}, "$or": fail_or}
     if key in DEEP_KEYS:
         q["endpoint"] = "deep_import"
@@ -109,6 +111,7 @@ async def _failing_runs(key: str, days: int) -> List[Dict[str, Any]]:
                   .find(q, {"_id": 0, "id": 1, "url": 1, "status": 1, "error": 1,
                             "partial_reason": 1,
                             "hints": 1, "hint_warnings": 1, "feedback": 1,
+                            "user_training": 1, "user_reported_failure": 1,
                             "ai_retry_used": 1, "route": 1, "factors_added": 1,
                             "options_added": 1, "ai_raw_response": 1,
                             "ai_calls": 1, "ai_engines": 1, "total_credits": 1})

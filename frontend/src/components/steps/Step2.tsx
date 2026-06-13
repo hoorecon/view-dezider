@@ -12,6 +12,7 @@ import { showAlert } from '../../utils/alert';
 import UrlAccessConsentModal, { UrlConsentPayload } from '../UrlAccessConsentModal';
 import ImportCreditsStrip from '../ImportCreditsStrip';
 import DeepImport from './DeepImport';
+import TrainAIPanel from '../TrainAIPanel';
 import { downloadAssessmentTemplate, importAssessmentTemplate } from '../../utils/assessmentXlsx';
 import {
   UNIT_PRESETS,
@@ -60,10 +61,14 @@ export default function Step2() {
   // ── 1-tap import accuracy feedback (👍/👎) — labels the telemetry run that
   // powers the admin Import-Analytics learning loop. ──
   const [importFeedback, setImportFeedback] = useState<{ runId: string; voted: 'up' | 'down' | null } | null>(null);
+  const [trainPanelOpen, setTrainPanelOpen] = useState(false);
 
   const sendImportFeedback = async (verdict: 'up' | 'down') => {
     if (!importFeedback) return;
     setImportFeedback({ ...importFeedback, voted: verdict });
+    // Auto-open the Train AI panel on 👎 so the user can pinpoint the exact
+    // factor / option / cell-level issue while still looking at Step 2.
+    if (verdict === 'down') setTrainPanelOpen(true);
     try {
       await api.post(`/url-analyze/runs/${importFeedback.runId}/feedback`, { verdict });
     } catch { /* non-fatal — verdict already reflected in UI */ }
@@ -611,7 +616,32 @@ export default function Step2() {
             <Ionicons name="document-text-outline" size={14} color="#2563EB" />
             <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#2563EB' }}>Source quotes</Text>
           </TouchableOpacity>
+          {/* Train AI — opens an inline panel where the user can pinpoint the
+              exact factor / option / option-factor cell with wrong/missing
+              values. Always available, even after 👍 (so a user who's mostly
+              happy but spotted one bad cell can still teach the AI). */}
+          <TouchableOpacity
+            testID="import-train-ai" activeOpacity={0.8}
+            onPress={() => setTrainPanelOpen(v => !v)}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, padding: 7, borderRadius: 8, backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FCD34D' }}>
+            <Ionicons name={trainPanelOpen ? 'chevron-up' : 'school-outline'} size={14} color="#92400E" />
+            <Text style={{ fontSize: 11.5, fontWeight: '800', color: '#92400E' }}>
+              {trainPanelOpen ? 'Hide Train AI' : 'Train AI'}
+            </Text>
+          </TouchableOpacity>
         </View>
+      )}
+
+      {/* Train AI — inline collapsible panel for structured user feedback */}
+      {importFeedback && trainPanelOpen && (
+        <TrainAIPanel
+          runId={importFeedback.runId}
+          decisionId={decision.id}
+          factors={(decision.factors || []) as any}
+          options={(decision.options || []) as any}
+          onSaved={() => { /* keep open so user can confirm; allow re-edit */ }}
+          onClose={() => setTrainPanelOpen(false)}
+        />
       )}
 
       {/* "Set Expectations - By AI" — gated until import filled factors (Step 2),

@@ -47,6 +47,7 @@ const QUICK_ACTIONS: QuickAction[] = [
   { key: 'ai-wallet-cfg',   label: 'AI Wallet Config',    description: 'Markup % · Route split (markup_routed_pct) · seeds · FX · live ₹ break-even preview', icon: 'wallet', color: '#7C3AED', href: '/admin/ai-wallet-config' },
   { key: 'recon',           label: 'Revenue Recon',       description: 'Razorpay ⟷ AI-Wallet ⟷ Google Cloud · per-txn zero-loss tally', icon: 'analytics', color: '#0EA5E9', href: '/admin/recon' },
   { key: 'import-analytics', label: 'Import-URL Intelligence', description: 'Per-page-type accuracy, hints, prompts & 👍/👎 verdicts · learning loop', icon: 'pulse', color: '#7C3AED', href: '/admin/import-analytics' },
+  { key: 'url-training', label: 'URL Training Console', description: 'Curate ground-truth URLs · pin up to 15 as weekly regression suite · run any anytime · grade vs expectations', icon: 'school', color: '#D97706', href: '/admin/url-training' },
   { key: 'notification-engine', label: 'Notification Engine', description: 'CRUD trigger events · weekly digests & instant alerts · Email + WhatsApp toggles', icon: 'notifications', color: '#D97706', href: '/admin/notification-engine' },
 ];
 

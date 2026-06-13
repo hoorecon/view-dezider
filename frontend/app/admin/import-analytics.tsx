@@ -472,6 +472,10 @@ export default function AdminImportAnalyticsScreen() {
                   <Ionicons name={r.feedback === 'up' ? 'thumbs-up' : 'thumbs-down'} size={13}
                     color={r.feedback === 'up' ? C.green : C.red} />
                 )}
+                {r.user_reported_failure && (
+                  <Ionicons name="school" size={13} color="#92400E"
+                    testID={`import-run-${r.id}-train-flag`} />
+                )}
               </View>
             </TouchableOpacity>
           ))}
@@ -508,12 +512,47 @@ export default function AdminImportAnalyticsScreen() {
                     ['Hint warnings', (detail.hint_warnings || []).join(' ') || (detail.hints_given ? 'none — passed ✓' : '—')],
                     ['Outcome', detail.status === 'error' ? '—' : `${detail.factors_added ?? detail.factor_count ?? 0} factors, ${detail.options_added ?? detail.item_count ?? 0} options, ${ms(detail.latency_ms)}`],
                     ['User verdict', detail.feedback ? (detail.feedback === 'up' ? '👍 accurate' : '👎 inaccurate') : '(not given)'],
+                    ...(detail.user_reported_failure
+                      ? [['🚨 User-reported failure', 'Train AI feedback received — prioritised by Auto-Tune.']]
+                      : []),
                   ].map(([k, v]: any) => (
                     <View key={k} style={st.dRow}>
                       <Text style={st.dKey}>{k}</Text>
                       <Text style={st.dVal} selectable>{String(v)}</Text>
                     </View>
                   ))}
+                  {detail.user_training && (
+                    <View style={[st.callBox, { borderColor: '#FCD34D', backgroundColor: '#FFFBEB' }]} testID="import-run-user-training">
+                      <Text style={[st.callStage, { color: '#92400E' }]}>🎓 User Train AI feedback</Text>
+                      {detail.user_training.missed_factors_count != null && (
+                        <Text style={st.dVal}>• Missed factors: <Text style={{ fontWeight: '800' }}>{detail.user_training.missed_factors_count}</Text></Text>
+                      )}
+                      {detail.user_training.missed_options_count != null && (
+                        <Text style={st.dVal}>• Missed options: <Text style={{ fontWeight: '800' }}>{detail.user_training.missed_options_count}</Text></Text>
+                      )}
+                      {(detail.user_training.wrong_factors || []).length > 0 && (
+                        <Text style={st.dVal}>• Wrong factors: {detail.user_training.wrong_factors.join(', ')}</Text>
+                      )}
+                      {(detail.user_training.wrong_options || []).length > 0 && (
+                        <Text style={st.dVal}>• Wrong options: {detail.user_training.wrong_options.join(', ')}</Text>
+                      )}
+                      {(detail.user_training.cell_corrections || []).length > 0 && (
+                        <>
+                          <Text style={[st.dVal, { marginTop: 4, fontWeight: '700' }]}>• Cell-level corrections ({detail.user_training.cell_corrections.length}):</Text>
+                          {detail.user_training.cell_corrections.slice(0, 25).map((c: any, i: number) => (
+                            <Text key={i} style={[st.dVal, { paddingLeft: 12, fontSize: 11.5 }]} selectable>
+                              {c.issue === 'wrong' ? '✗ WRONG' : '? MISSING'}: {c.option_name || c.option_id} → {c.factor_name || c.factor_id}
+                              {c.was ? ` (was: "${c.was}")` : ''}
+                              {c.should_be ? ` → should be: "${c.should_be}"` : ''}
+                            </Text>
+                          ))}
+                        </>
+                      )}
+                      {detail.user_training.notes && (
+                        <Text style={[st.dVal, { marginTop: 4, fontStyle: 'italic' }]}>📝 {detail.user_training.notes}</Text>
+                      )}
+                    </View>
+                  )}
                   {!!(detail.ai_calls || []).length && (
                     <>
                       <Text style={st.promptTitle}>

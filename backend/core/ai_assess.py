@@ -585,9 +585,31 @@ _BATCH_SYSMSG = (
     "integer satisfaction percentage from 0 to 100 (100 = fully meets/exceeds "
     "the expectation, 0 = not at all). If an item's expected/target is not "
     "specified, assume a sensible domain-standard target. If an item's actual "
-    "is not given, infer the most likely real-world actual and include it. "
-    "Return ONLY valid compact JSON."
+    "is not given, you MUST infer the most likely real-world actual from your "
+    "knowledge of the option (brand/model/spec/typical market value) and "
+    "include it as a concrete value with units — NEVER reply with placeholders "
+    "like 'not available', 'N/A', 'unknown', or 'not specified'. If you "
+    "genuinely cannot infer, return null for that item's pct and actual so "
+    "the system can retry. Return ONLY valid compact JSON."
 )
+
+# Placeholder strings the AI sometimes returns when it gives up on inference —
+# treated as a failed cell (retried; if still placeholder after retry, the
+# actual is dropped so the user sees no value rather than a fake one).
+_PLACEHOLDER_ACTUALS = {
+    "not available", "n/a", "na", "unavailable", "unknown", "not specified",
+    "not given", "—", "-", "tbd", "to be determined", "not provided",
+    "no data", "no info", "no information", "none", "null",
+}
+
+
+def _is_placeholder_actual(v) -> bool:
+    if v is None:
+        return True
+    s = str(v).strip().lower()
+    if not s:
+        return True
+    return s in _PLACEHOLDER_ACTUALS
 
 
 def _work_item(idx: int, w: dict) -> dict:
@@ -667,10 +689,13 @@ async def batch_score_cells(
     results: list = []
     work: list = []  # entries: {cell, fname, ftype, expected, operator, unit, oname, actual}
     for c in cells:
-        fid = c.get("factor_id"); oid = c.get("option_id")
-        f = factors_by_id.get(fid); o = options_by_id.get(oid)
+        fid = c.get("factor_id")
+        oid = c.get("option_id")
+        f = factors_by_id.get(fid)
+        o = options_by_id.get(oid)
         if not f or not o:
-            results.append({"option_id": oid, "factor_id": fid, "status": "error"}); continue
+            results.append({"option_id": oid, "factor_id": fid, "status": "error"})
+            continue
         ftype = resolve_factor_type(f)
         actual = c.get("actual_value")
         if not _has(actual):
@@ -681,7 +706,8 @@ async def batch_score_cells(
             not _has(expected)
             or (ftype == "quantitative" and (not _has(f.get("operator")) or not _has(actual)))
         ):
-            results.append({"option_id": oid, "factor_id": fid, "status": "skipped"}); continue
+            results.append({"option_id": oid, "factor_id": fid, "status": "skipped"})
+            continue
         work.append({
             "cell": c, "fname": f.get("display_name") or f.get("name") or "factor",
             "ftype": ftype, "expected": expected if _has(expected) else None,
@@ -723,19 +749,37 @@ async def batch_score_cells(
             for idx, w in enumerate(chunk):
                 entry = parsed.get(str(idx)) or parsed.get(idx)
                 if not isinstance(entry, dict) or entry.get("pct") is None:
-                    next_pending.append(w); continue
+                    next_pending.append(w)
+                    continue
                 try:
                     pct = max(0, min(100, int(round(float(entry["pct"])))))
                 except Exception:
-                    next_pending.append(w); continue
-                final_actual = w["actual"] if _has(w["actual"]) else (
-                    str(entry.get("actual")) if _has(entry.get("actual")) else None
+                    next_pending.append(w)
+                    continue
+                # Mixed-source regression (Jun 2026): the AI sometimes returns
+                # `actual="not available"` for an option whose actual was not
+                # pre-populated (typical for Google-Sheet-imported options).
+                # The cell was stamped done with the placeholder. Detect and
+                # RETRY (smaller chunk, stricter prompt). If still placeholder
+                # after retry, DROP the actual so the user sees no value
+                # instead of a fake one.
+                raw_actual = entry.get("actual")
+                has_user_actual = _has(w["actual"])
+                placeholder = (not has_user_actual) and _is_placeholder_actual(raw_actual)
+                if placeholder and attempt == 0:
+                    next_pending.append(w)
+                    continue
+                if placeholder:
+                    raw_actual = None
+                final_actual = w["actual"] if has_user_actual else (
+                    str(raw_actual) if _has(raw_actual) else None
                 )
                 w["_result"] = {"assessment_pct": pct, "actual_value": final_actual}
         pending = next_pending
 
     for w in work:
-        oid = w["cell"].get("option_id"); fid = w["cell"].get("factor_id")
+        oid = w["cell"].get("option_id")
+        fid = w["cell"].get("factor_id")
         res = w.get("_result")
         if res:
             results.append({"option_id": oid, "factor_id": fid, "status": "done", "result": res})
