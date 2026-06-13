@@ -96,7 +96,12 @@ export const ImportCreditsStrip: React.FC<Props> = ({ endpoint, pages = 1, tier 
   const isScaled = data.basis === 'history_scaled';
   const isDefault = data.basis === 'default';
 
-  const showFreeTierPanel = !ok && consent && consent.openai_available && !consent.openai_free_tier;
+  // Always offer the free-tier opt-in when the user is short on credits.
+  // We deliberately DON'T gate on `consent.openai_available` — the server
+  // may or may not yet have OPENAI_API_KEY set, but the user-side consent
+  // still needs to be captured. Once both align, AI calls route to OpenAI
+  // free credits automatically.
+  const showFreeTierPanel = !ok && consent && !consent.openai_free_tier;
   const freeTierAlreadyOn = !ok && consent && consent.openai_free_tier;
 
   return (
