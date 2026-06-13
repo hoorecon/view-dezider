@@ -1,132 +1,140 @@
 /**
- * useLoaderMusic — plays an admin-uploaded audio file in a loop while a UI
- * loader is running (Deep Import, long crawls). Resolves the URL once from
- * `/api/appearance` and starts/stops based on the `enabled` flag.
+ * useLoaderMusic — slot-aware audio playback for long-running loaders.
  *
- * Cross-platform: uses `expo-audio` (which wraps the Web Audio API on web).
+ *   useLoaderMusic(enabled, slot?)  // slot defaults to 'default'
  *
- * Caller usage:
- *   useLoaderMusic(stage === 'crawling' || stage === 'merging');
+ * Slots map to admin-uploaded audio files (Admin → Appearance → Loader music).
+ * A slot with no upload falls back to the `default` slot automatically (the
+ * server handles this). Admins can also mark a slot as explicitly silent.
  *
- * Caveats:
- *  - On web, browsers BLOCK autoplay until the user has interacted with the
- *    page. Since the Deep-Import flow starts with the user CLICKING "Run
- *    crawl", that interaction unblocks audio — calling `player.play()` from
- *    inside the click handler is enough.
- *  - When no music is uploaded the hook silently no-ops; users get the same
- *    progress experience minus the soundtrack.
- *  - Honours `prefers-reduced-motion` / `reduced-motion` on web by NOT
- *    auto-starting; the user can still enable manually via the loader's
- *    speaker icon if we surface one in future.
+ * Per-user mute is persisted to AsyncStorage under `loaderMusicMuted` and
+ * applies globally across every slot — the speaker icon on any loader can
+ * flip it.
  */
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAudioPlayer, useAudioPlayerStatus, setAudioModeAsync } from 'expo-audio';
 import api from '../utils/api';
 
-let cachedUrl: string | null | undefined = undefined;  // first-fetch memo
-let cachedPromise: Promise<string | null> | null = null;
+export type LoaderSlot = 'default' | 'deep_import' | 'url_import' | 'ai_assess_all' | 'mpps_pdf' | 'results_reveal';
 
-async function resolveLoaderMusicUrl(): Promise<string | null> {
-  if (cachedUrl !== undefined) return cachedUrl;
-  if (cachedPromise) return cachedPromise;
-  cachedPromise = (async () => {
+const MUTE_KEY = 'loaderMusicMuted';
+
+// Cached `/appearance` slots payload so 5 loaders don't all re-fetch.
+let slotsCache: any = undefined;
+let slotsPromise: Promise<any> | null = null;
+async function getSlots(): Promise<any> {
+  if (slotsCache !== undefined) return slotsCache;
+  if (slotsPromise) return slotsPromise;
+  slotsPromise = (async () => {
     try {
       const { data } = await api.get('/appearance');
-      if (data?.loader_music_url) {
-        // Absolute URL: appearance returns a path; resolve against API base.
-        const base = (api.defaults.baseURL || '').replace(/\/api\/?$/, '');
-        // cache-bust on version so removing + re-uploading flushes the buffer
-        const v = data.loader_music_version || 0;
-        const u = `${base}${data.loader_music_url}?v=${v}`;
-        cachedUrl = u;
-      } else {
-        cachedUrl = null;
-      }
-    } catch {
-      cachedUrl = null;
-    }
-    return cachedUrl ?? null;
+      slotsCache = data?.loader_music_slots || {};
+    } catch { slotsCache = {}; }
+    return slotsCache;
   })();
-  return cachedPromise;
+  return slotsPromise;
 }
-
-/** Call once with a URL to manually invalidate the cache (e.g. after a new
- *  upload from /admin/appearance). */
 export function invalidateLoaderMusicCache() {
-  cachedUrl = undefined;
-  cachedPromise = null;
+  slotsCache = undefined; slotsPromise = null;
 }
 
-export function useLoaderMusic(enabled: boolean) {
-  const urlRef = useRef<string | null>(null);
-  // Resolve once on first mount (kept in module-level cache).
+// Module-level mute pubsub so toggling on any loader updates every mounted one.
+let mutedFlag = false;
+const muteSubs = new Set<(v: boolean) => void>();
+function setMuted(v: boolean) {
+  mutedFlag = v;
+  muteSubs.forEach((cb) => cb(v));
+  AsyncStorage.setItem(MUTE_KEY, v ? '1' : '0').catch(() => { /* noop */ });
+}
+async function hydrateMute() {
+  try {
+    const v = await AsyncStorage.getItem(MUTE_KEY);
+    if (v === '1') { mutedFlag = true; muteSubs.forEach((cb) => cb(true)); }
+  } catch { /* noop */ }
+}
+hydrateMute();
+
+export function useLoaderMusic(enabled: boolean, slot: LoaderSlot = 'default') {
+  const [available, setAvailable] = useState(false);
+  const [resolvedUrl, setResolvedUrl] = useState<string | null>(null);
+  const [muted, setMutedState] = useState<boolean>(mutedFlag);
+
+  // Subscribe to module-level mute changes.
   useEffect(() => {
-    let cancelled = false;
-    resolveLoaderMusicUrl().then((u) => { if (!cancelled) urlRef.current = u; });
-    return () => { cancelled = true; };
+    const cb = (v: boolean) => setMutedState(v);
+    muteSubs.add(cb);
+    return () => { muteSubs.delete(cb); };
   }, []);
 
-  // Setup the player with the URL when available. `useAudioPlayer` accepts
-  // a stable ref-style argument; we re-evaluate cheaply on each render to
-  // keep the hook order constant.
-  const source = useMemo(() => {
-    const u = urlRef.current;
-    return u ? { uri: u } : null;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [urlRef.current]);
+  // Resolve slot URL (with auto-fallback to default on the server). The
+  // hook checks the slots map locally too: if the slot is silenced AND
+  // empty, we just no-op without even attempting to load.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const slots = await getSlots();
+      if (cancelled) return;
+      const entry = slots?.[slot];
+      const def = slots?.default;
+      const slotSilent = entry?.silent === true;
+      const hasAny = !!entry?.has || (!slotSilent && !!def?.has);
+      if (!hasAny) {
+        setAvailable(false); setResolvedUrl(null); return;
+      }
+      const base = (api.defaults.baseURL || '').replace(/\/api\/?$/, '');
+      const v = entry?.has ? entry.version : (def?.version || 0);
+      setResolvedUrl(`${base}/api/appearance/loader-music/${slot}?v=${v}`);
+      setAvailable(true);
+    })();
+    return () => { cancelled = true; };
+  }, [slot]);
+
+  const source = useMemo(() => (resolvedUrl ? { uri: resolvedUrl } : null), [resolvedUrl]);
   const player = useAudioPlayer(source);
   const status = useAudioPlayerStatus(player);
 
-  // Loop on completion — Deep Import crawls can run 20–60s; the music must
-  // outlast the loader.
+  // Loop on completion.
   useEffect(() => {
     if (status?.didJustFinish && player) {
       try { player.seekTo(0); player.play(); } catch { /* noop */ }
     }
   }, [status?.didJustFinish, player]);
 
-  // Respect prefers-reduced-motion on web — silent loader for users who
-  // opted out of motion/audio fanfare.
+  // Respect prefers-reduced-motion on web.
   const reducedMotion =
-    Platform.OS === 'web' &&
-    typeof window !== 'undefined' &&
+    Platform.OS === 'web' && typeof window !== 'undefined' &&
     typeof window.matchMedia === 'function' &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  // Start/stop based on `enabled`. The user CLICK that opens Deep Import
-  // satisfies the web autoplay policy — `.play()` therefore succeeds inside
-  // this effect tick.
+  const effective = enabled && !muted && !reducedMotion;
   useEffect(() => {
     if (!player) return;
-    if (reducedMotion) return;
     let mounted = true;
-    const run = async () => {
+    (async () => {
       try { await setAudioModeAsync({ playsInSilentMode: true }); } catch { /* noop */ }
       if (!mounted) return;
-      if (enabled) {
-        try { player.volume = 0.55; } catch { /* volume not supported on this platform */ }
+      if (effective) {
+        try { player.volume = 0.55; } catch { /* noop */ }
         try { player.play(); } catch { /* autoplay blocked */ }
       } else {
         try { player.pause(); } catch { /* noop */ }
-        try { player.seekTo(0); } catch { /* noop */ }
       }
-    };
-    void run();
+    })();
     return () => { mounted = false; };
-  }, [enabled, player, reducedMotion]);
+  }, [effective, player]);
 
-  // On unmount: stop hard so we don't leave audio playing in the background
-  // when the screen is torn down (modal close, route change).
-  useEffect(() => {
-    return () => {
-      try { player?.pause(); } catch { /* noop */ }
-    };
-  }, [player]);
+  // Hard-stop on unmount.
+  useEffect(() => () => { try { player?.pause(); } catch { /* noop */ } }, [player]);
+
+  const toggleMute = useCallback(() => setMuted(!mutedFlag), []);
 
   return {
-    available: !!urlRef.current,
+    available,
     playing: !!status?.playing,
+    muted,
+    toggleMute,
   };
 }
 

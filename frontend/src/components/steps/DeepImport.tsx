@@ -34,8 +34,8 @@ export const DeepImport: React.FC<Props> = ({ decisionId, onMerged }) => {
   // Loader music — plays the admin-uploaded audio (Admin → Appearance · Font
   // → Loader music) in a loop while the crawl is in-flight. No-ops silently
   // when no music has been uploaded.
-  const { available: musicAvailable, playing: musicPlaying } =
-    useLoaderMusic(stage === 'progress' || stage === 'merging');
+  const { available: musicAvailable, playing: musicPlaying, muted: musicMuted, toggleMute: toggleMusicMute } =
+    useLoaderMusic(stage === 'progress' || stage === 'merging', 'deep_import');
   const [constraintNote, setConstraintNote] = useState<string | null>(null);
   const [baseUrl, setBaseUrl] = useState('');
   const [context, setContext] = useState('');
@@ -263,24 +263,36 @@ export const DeepImport: React.FC<Props> = ({ decisionId, onMerged }) => {
                   Crawling {maxPages} pages + 2 AI passes can take 2–4 minutes. Keep this open.
                 </Text>
                 {musicAvailable && (
-                  <View
-                    testID="deep-import-music-hint"
+                  <TouchableOpacity
+                    testID="deep-import-music-toggle"
+                    onPress={toggleMusicMute}
+                    activeOpacity={0.7}
                     style={{
                       flexDirection: 'row', alignItems: 'center', gap: 6,
                       alignSelf: 'flex-start', marginTop: 8,
                       paddingHorizontal: 10, paddingVertical: 5,
-                      backgroundColor: '#FAF5FF', borderRadius: 14,
-                      borderWidth: 1, borderColor: '#E9D5FF',
+                      backgroundColor: musicMuted ? '#F1F5F9' : '#FAF5FF',
+                      borderRadius: 14,
+                      borderWidth: 1, borderColor: musicMuted ? '#CBD5E1' : '#E9D5FF',
                     }}>
                     <Ionicons
-                      name={musicPlaying ? 'musical-notes' : 'musical-notes-outline'}
+                      name={musicMuted
+                        ? 'volume-mute-outline'
+                        : (musicPlaying ? 'musical-notes' : 'musical-notes-outline')}
                       size={11}
-                      color="#7C3AED"
+                      color={musicMuted ? '#64748B' : '#7C3AED'}
                     />
-                    <Text style={{ fontSize: 10.5, fontWeight: '700', color: '#7C3AED' }}>
-                      {musicPlaying ? 'Loader music playing — relax, this won\u2019t cost a paisa' : 'Loader music ready'}
+                    <Text style={{
+                      fontSize: 10.5, fontWeight: '700',
+                      color: musicMuted ? '#64748B' : '#7C3AED',
+                    }}>
+                      {musicMuted
+                        ? 'Music muted — tap to unmute'
+                        : (musicPlaying
+                            ? 'Loader music playing — tap to mute'
+                            : 'Loader music ready — tap to mute')}
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                 )}
               </>
             )}

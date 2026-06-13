@@ -38,10 +38,24 @@ DEFAULT_WEBSITE = "www.hoorecon.com"
 DEFAULT_SUPPORT_HOURS = "Monday–Friday, 10:00 AM – 6:00 PM IST"
 MAX_LOGO_BYTES = 1024 * 1024  # 1 MB
 ALLOWED_LOGO_MIME = {"image/png", "image/jpeg", "image/jpg"}
-# Loader music — keep small so it streams instantly even on slow links.
+# Loader music — kept small so it streams instantly even on slow links.
+# Per-slot storage in a SEPARATE collection (`app_loader_music`) so multiple
+# audio files don't blow past Mongo's 16 MB doc cap when stored on the
+# shared `app_settings` doc.
 MAX_MUSIC_BYTES = 3 * 1024 * 1024  # 3 MB
 ALLOWED_MUSIC_MIME = {"audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav",
                       "audio/ogg", "audio/webm", "audio/mp4", "audio/aac"}
+# Recognised loader slots. `default` is the fallback every other slot falls
+# back to when empty (unless the slot is explicitly silent). Keep this list
+# in sync with the frontend constant (`src/constants/loaderMusicSlots.ts`).
+LOADER_SLOTS = {
+    "default": "Default (fallback for any loader)",
+    "deep_import": "Deep Import (multi-page crawl)",
+    "url_import": "URL Import (single-page)",
+    "ai_assess_all": "AI Assess All (Step 7)",
+    "mpps_pdf": "MPPS PDF generation (Step 9)",
+    "results_reveal": "Final Decision reveal (Step 8 / 10)",
+}
 
 # Allow-list of selectable fonts (Google Fonts + System). Keep in sync with the
 # frontend FONT_OPTIONS list in src/constants/fonts.ts.
@@ -98,12 +112,13 @@ async def get_appearance():
         "has_logo": bool(doc.get("logo_base64")),
         "logo_url": "/api/appearance/logo" if doc.get("logo_base64") else None,
         "logo_version": int(doc.get("logo_version") or 0),
-        # Loader music — played during long-running UI loaders (Deep Import,
-        # multi-page crawl). Optional; falls back to silence when not set.
-        "has_loader_music": bool(doc.get("loader_music_base64")),
-        "loader_music_url": "/api/appearance/loader-music" if doc.get("loader_music_base64") else None,
-        "loader_music_version": int(doc.get("loader_music_version") or 0),
-        "loader_music_filename": doc.get("loader_music_filename"),
+        # Loader music — multi-slot map. `default` is the fallback for any
+        # slot that has no audio uploaded AND is not explicitly silenced.
+        # Backward-compat single-slot fields (`has_loader_music`,
+        # `loader_music_url`, ...) still point at the `default` slot so older
+        # clients keep working.
+        "loader_music_slots": await _loader_music_slots_summary(),
+        **(await _legacy_loader_music_compat()),
     }
 
 
@@ -262,10 +277,53 @@ async def serve_logo():
     )
 
 
+async def _loader_music_slots_summary() -> dict:
+    """Return a dict of slot_name → {has, url, filename, version, silent}.
+    Always includes every key in LOADER_SLOTS so the client can render the
+    full Admin UI even before any audio has been uploaded."""
+    out: dict = {}
+    docs = await db.app_loader_music.find({}, {"_id": 1, "filename": 1,
+                                               "version": 1, "silent": 1}).to_list(50)
+    by_slot = {d["_id"]: d for d in docs}
+    for slot, label in LOADER_SLOTS.items():
+        d = by_slot.get(slot) or {}
+        # An "uploaded" doc exists when the slot has audio bytes; the row
+        # might also exist with just `silent: true` and no audio.
+        has_audio = bool(d) and not d.get("silent")
+        out[slot] = {
+            "label": label,
+            "has": has_audio,
+            "silent": bool(d.get("silent")),
+            "url": f"/api/appearance/loader-music/{slot}" if has_audio else None,
+            "filename": d.get("filename") if has_audio else None,
+            "version": int(d.get("version") or 0),
+        }
+    return out
+
+
+async def _legacy_loader_music_compat() -> dict:
+    """Keep the older `has_loader_music` / `loader_music_url` fields working
+    for callers that haven't been migrated to the slot-aware payload yet.
+    Always points at the `default` slot."""
+    default = await db.app_loader_music.find_one({"_id": "default"},
+                                                  {"_id": 0, "filename": 1, "version": 1, "silent": 1}) or {}
+    has = bool(default) and not default.get("silent")
+    return {
+        "has_loader_music": has,
+        "loader_music_url": "/api/appearance/loader-music/default" if has else None,
+        "loader_music_version": int(default.get("version") or 0),
+        "loader_music_filename": default.get("filename") if has else None,
+    }
+
+
 # ───────────────────────── Loader music (Deep Import & long crawls) ─────
 class LoaderMusicUpdate(BaseModel):
     music_base64: str = Field(..., min_length=10)
     filename: Optional[str] = Field(None, max_length=120)
+
+
+class LoaderMusicSilent(BaseModel):
+    silent: bool = True
 
 
 def _parse_music(data_url: str):
@@ -299,55 +357,82 @@ def _parse_music(data_url: str):
     return raw, mime
 
 
-@router.put("/admin/loader-music")
-async def update_loader_music(body: LoaderMusicUpdate, user: dict = Depends(get_current_user)):
+def _check_slot(slot: str) -> str:
+    if slot not in LOADER_SLOTS:
+        raise HTTPException(status_code=404, detail=f"Unknown loader slot '{slot}'.")
+    return slot
+
+
+@router.put("/admin/loader-music/{slot}")
+async def update_loader_music(slot: str, body: LoaderMusicUpdate,
+                              user: dict = Depends(get_current_user)):
     if user.get("role") not in ("admin", "super_admin"):
         raise HTTPException(status_code=403, detail="Admin access required.")
+    _check_slot(slot)
     raw, mime = _parse_music(body.music_base64)
     data_url = f"data:{mime};base64,{base64.b64encode(raw).decode()}"
-    await db.app_settings.update_one(
-        {"key": APPEARANCE_KEY},
+    await db.app_loader_music.update_one(
+        {"_id": slot},
         {"$set": {
-            "key": APPEARANCE_KEY,
-            "loader_music_base64": data_url,
-            "loader_music_mime": mime,
-            "loader_music_filename": (body.filename or "loader-music").strip()[:120],
-            "loader_music_version": int(time.time()),
+            "base64": data_url, "mime": mime,
+            "filename": (body.filename or f"{slot}-music").strip()[:120],
+            "version": int(time.time()),
+            "silent": False,
         }},
         upsert=True,
     )
-    logger.info("Loader music updated (%d bytes, %s) by %s", len(raw), mime, user.get("email"))
-    return {"success": True, "has_loader_music": True,
-            "loader_music_url": "/api/appearance/loader-music",
-            "loader_music_filename": body.filename}
+    logger.info("Loader music updated [%s] (%d bytes, %s) by %s",
+                slot, len(raw), mime, user.get("email"))
+    return {"success": True, "slot": slot, "has": True,
+            "url": f"/api/appearance/loader-music/{slot}",
+            "filename": body.filename}
 
 
-@router.delete("/admin/loader-music")
-async def delete_loader_music(user: dict = Depends(get_current_user)):
+@router.delete("/admin/loader-music/{slot}")
+async def delete_loader_music(slot: str, user: dict = Depends(get_current_user)):
     if user.get("role") not in ("admin", "super_admin"):
         raise HTTPException(status_code=403, detail="Admin access required.")
-    await db.app_settings.update_one(
-        {"key": APPEARANCE_KEY},
-        {"$unset": {"loader_music_base64": "", "loader_music_mime": "",
-                    "loader_music_filename": ""},
-         "$set": {"loader_music_version": int(time.time())}},
+    _check_slot(slot)
+    await db.app_loader_music.delete_one({"_id": slot})
+    return {"success": True, "slot": slot, "has": False}
+
+
+@router.put("/admin/loader-music/{slot}/silent")
+async def set_loader_music_silent(slot: str, body: LoaderMusicSilent,
+                                  user: dict = Depends(get_current_user)):
+    """Mark a slot as EXPLICITLY silent — no fallback to `default`. Useful
+    when the user wants Deep Import muted but other loaders to keep using
+    the default soundtrack."""
+    if user.get("role") not in ("admin", "super_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    _check_slot(slot)
+    await db.app_loader_music.update_one(
+        {"_id": slot},
+        {"$set": {"silent": bool(body.silent), "version": int(time.time())}},
         upsert=True,
     )
-    return {"success": True, "has_loader_music": False}
+    return {"success": True, "slot": slot, "silent": bool(body.silent)}
 
 
-@router.get("/appearance/loader-music")
-async def serve_loader_music():
-    """Stream the raw loader audio (cacheable). 404 when none is configured.
-    Uses `Cache-Control: public, max-age=300` so the browser doesn't re-fetch
-    the file on every Deep-Import loader open, which would burn cold-start
-    time and bandwidth."""
-    doc = await _get_doc()
-    data_url = doc.get("loader_music_base64")
-    if not data_url:
+@router.get("/appearance/loader-music/{slot}")
+async def serve_loader_music(slot: str):
+    """Stream a slot's audio with auto-fallback to `default` when empty.
+    A slot flagged `silent:true` returns 404 INSTEAD of falling back so the
+    admin can explicitly mute one workflow."""
+    _check_slot(slot)
+    doc = await db.app_loader_music.find_one({"_id": slot})
+    if doc and doc.get("silent"):
         return Response(status_code=404)
-    mime = doc.get("loader_music_mime") or "audio/mpeg"
+    if not doc or not doc.get("base64"):
+        if slot == "default":
+            return Response(status_code=404)
+        # Fall back to default audio.
+        doc = await db.app_loader_music.find_one({"_id": "default"})
+        if not doc or doc.get("silent") or not doc.get("base64"):
+            return Response(status_code=404)
+    mime = doc.get("mime") or "audio/mpeg"
     try:
+        data_url = doc["base64"]
         b64 = data_url.split(",", 1)[1] if "," in data_url else data_url
         raw = base64.b64decode(b64)
     except Exception:

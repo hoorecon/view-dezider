@@ -35,9 +35,11 @@ export default function AdminAppearance() {
   const setField = (k: string, v: string) => setProfile((prev) => ({ ...prev, [k]: v }));
   const [savingCompany, setSavingCompany] = useState(false);
   const [logoBusy, setLogoBusy] = useState(false);
-  // Loader music (Deep Import & long crawls)
-  const [musicInfo, setMusicInfo] = useState<{ has: boolean; url?: string | null; filename?: string | null; version?: number }>({ has: false });
-  const [musicBusy, setMusicBusy] = useState(false);
+  // Loader music — multi-slot, keyed by slot id from the backend.
+  type SlotInfo = { label: string; has: boolean; silent: boolean; url: string | null;
+                    filename: string | null; version: number };
+  const [musicSlots, setMusicSlots] = useState<Record<string, SlotInfo>>({});
+  const [musicBusySlot, setMusicBusySlot] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
 
@@ -53,12 +55,7 @@ export default function AdminAppearance() {
         phone: d.phone || '', email: d.email || '', website: d.website || '',
         support_hours: d.support_hours || '',
       });
-      setMusicInfo({
-        has: !!d.has_loader_music,
-        url: d.loader_music_url || null,
-        filename: d.loader_music_filename || null,
-        version: d.loader_music_version || 0,
-      });
+      setMusicSlots(d.loader_music_slots || {});
     } catch (e: any) {
       showAlert('Load failed', e?.response?.data?.detail || 'Could not fetch appearance settings');
     } finally { setLoading(false); }
@@ -145,8 +142,8 @@ export default function AdminAppearance() {
     } finally { setLogoBusy(false); }
   }, [refreshAppearance]);
 
-  // ── Loader music handlers ───────────────────────────────────────────
-  const pickLoaderMusic = useCallback(async () => {
+  // ── Loader music handlers (multi-slot) ──────────────────────────────
+  const pickLoaderMusic = useCallback(async (slot: string) => {
     try {
       const res = await DocumentPicker.getDocumentAsync({
         type: ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav',
@@ -156,7 +153,6 @@ export default function AdminAppearance() {
       });
       if (res.canceled || !res.assets?.length) return;
       const a = res.assets[0];
-      // 3 MB guard (base64 length ≈ 1.37 × bytes).
       if (a.size && a.size > 3 * 1024 * 1024) {
         showAlert('Too large', 'Audio file must be 3 MB or smaller. Compress to a lower bitrate (e.g. 128 kbps MP3).');
         return;
@@ -164,7 +160,6 @@ export default function AdminAppearance() {
       let base64: string | null = null;
       let mime = (a.mimeType || 'audio/mpeg').toLowerCase();
       if (Platform.OS === 'web' && (a as any).file) {
-        // Web path — DocumentPicker exposes the underlying File.
         const file: File = (a as any).file;
         base64 = await new Promise<string>((resolve, reject) => {
           const fr = new FileReader();
@@ -182,31 +177,40 @@ export default function AdminAppearance() {
       }
       if (!base64) { showAlert('Unsupported', 'Could not read the audio file.'); return; }
       const dataUrl = `data:${mime};base64,${base64}`;
-      setMusicBusy(true);
-      await api.put('/admin/loader-music', {
-        music_base64: dataUrl, filename: a.name || 'loader-music',
+      setMusicBusySlot(slot);
+      await api.put(`/admin/loader-music/${slot}`, {
+        music_base64: dataUrl, filename: a.name || `${slot}-music`,
       });
       invalidateLoaderMusicCache();
       await load();
-      showAlert('Loader music saved',
-        `"${a.name}" will play during Deep Import & long crawls. Stops automatically when the loader finishes.`);
     } catch (e: any) {
       const msg = e?.response?.data?.detail || e?.message || 'Could not save the audio.';
       showAlert('Upload failed', typeof msg === 'string' ? msg : JSON.stringify(msg));
     } finally {
-      setMusicBusy(false);
+      setMusicBusySlot(null);
     }
   }, [load]);
 
-  const removeLoaderMusic = useCallback(async () => {
-    setMusicBusy(true);
+  const removeLoaderMusic = useCallback(async (slot: string) => {
+    setMusicBusySlot(slot);
     try {
-      await api.delete('/admin/loader-music');
+      await api.delete(`/admin/loader-music/${slot}`);
       invalidateLoaderMusicCache();
       await load();
     } catch (e: any) {
       showAlert('Failed', e?.response?.data?.detail || 'Could not remove the audio.');
-    } finally { setMusicBusy(false); }
+    } finally { setMusicBusySlot(null); }
+  }, [load]);
+
+  const toggleSilent = useCallback(async (slot: string, silent: boolean) => {
+    setMusicBusySlot(slot);
+    try {
+      await api.put(`/admin/loader-music/${slot}/silent`, { silent });
+      invalidateLoaderMusicCache();
+      await load();
+    } catch (e: any) {
+      showAlert('Failed', e?.response?.data?.detail || 'Could not update the slot.');
+    } finally { setMusicBusySlot(null); }
   }, [load]);
 
   const choose = useCallback(async (key: string) => {
@@ -310,68 +314,100 @@ export default function AdminAppearance() {
             </View>
           </View>
 
-          {/* Loader music — plays during Deep Import & long crawl progress
-              loaders. Optional (silent loader is the default). Admin + Super
-              Admin can edit. */}
+          {/* Loader music — multi-slot. The `default` slot is the fallback
+              every other slot inherits from when empty. An admin can also
+              mark any slot silent to opt one specific workflow OUT of music
+              without removing the default. Users can per-user mute via the
+              speaker icon shown next to each loader. */}
           <View style={s.companyCard}>
-            <Text style={s.sectionTitle}>Loader music (Deep Import &amp; long crawls)</Text>
+            <Text style={s.sectionTitle}>Loader music (per-workflow)</Text>
             <Text style={s.companyHint}>
-              Plays in a loop while a long progress loader is on screen (e.g. Deep Import crawls 5–10 pages).
-              MP3, WAV, OGG or M4A — up to 3 MB. Tip: trim to ~30s for best looping. Users with
-              <Text style={{ fontStyle: 'italic' }}> prefers-reduced-motion</Text> get silence automatically.
+              Pick a different MP3 / WAV / OGG / M4A (≤ 3 MB, trim to ~30s for clean looping) for each major
+              progress loader. Empty slots fall back to the <Text style={{ fontWeight: '700' }}>default</Text> slot.
+              Mark a slot <Text style={{ fontWeight: '700' }}>silent</Text> to opt only that workflow out of music
+              while keeping the default soundtrack elsewhere.
             </Text>
-            <View style={s.logoRow}>
-              <View style={[s.logoPreview, { backgroundColor: musicInfo.has ? '#FAF5FF' : '#F8FAFC' }]}>
-                <Ionicons
-                  name={musicInfo.has ? 'musical-notes' : 'musical-notes-outline'}
-                  size={28}
-                  color={musicInfo.has ? '#7C3AED' : COLORS.textMuted}
-                />
-              </View>
-              <View style={{ flex: 1, gap: 8 }}>
-                {musicInfo.has && (
-                  <Text style={[s.companyHint, { color: '#0F172A', fontWeight: '600' }]} numberOfLines={1}>
-                    Current: {musicInfo.filename || 'loader-music'}
-                  </Text>
-                )}
-                <TouchableOpacity
-                  testID="admin-loader-music-upload"
-                  style={[s.logoBtn, musicBusy && { opacity: 0.6 }]}
-                  onPress={pickLoaderMusic}
-                  disabled={musicBusy}
-                >
-                  {musicBusy ? (
-                    <ActivityIndicator size="small" color="#FFF" />
-                  ) : (
-                    <>
-                      <Ionicons name="cloud-upload-outline" size={16} color="#FFF" />
-                      <Text style={s.logoBtnText}>{musicInfo.has ? 'Replace music' : 'Upload music'}</Text>
-                    </>
+            {(Object.entries(musicSlots) as [string, SlotInfo][]).map(([slot, info]) => {
+              const busy = musicBusySlot === slot;
+              const fallback = !info.has && !info.silent && slot !== 'default' && !!musicSlots.default?.has;
+              const previewUrl = info.has && info.url
+                ? `${(api.defaults.baseURL || '').replace(/\/api\/?$/, '')}${info.url}?v=${info.version || 0}`
+                : null;
+              return (
+                <View
+                  key={slot}
+                  testID={`admin-loader-music-slot-${slot}`}
+                  style={{
+                    paddingVertical: 12, paddingHorizontal: 12, marginTop: 10,
+                    borderRadius: 10, borderWidth: 1,
+                    borderColor: info.silent ? '#FCA5A5' : (info.has ? '#C4B5FD' : '#E5E7EB'),
+                    backgroundColor: info.silent ? '#FEF2F2' : (info.has ? '#FAF5FF' : '#F8FAFC'),
+                  }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <Ionicons
+                      name={info.silent ? 'volume-mute' : (info.has ? 'musical-notes' : 'musical-notes-outline')}
+                      size={20}
+                      color={info.silent ? '#DC2626' : (info.has ? '#7C3AED' : COLORS.textMuted)}
+                    />
+                    <View style={{ flex: 1, minWidth: 220 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.textPrimary }}>
+                        {info.label}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }} numberOfLines={1}>
+                        {info.silent
+                          ? '🔇 Silent — no music for this workflow.'
+                          : info.has
+                            ? `Audio: ${info.filename || `${slot}-music`}`
+                            : (fallback
+                                ? 'Empty — falls back to the default slot\u2019s music.'
+                                : 'Empty — silent loader.')}
+                      </Text>
+                    </View>
+                    {isSuperAdmin && (
+                      <View style={{ flexDirection: 'row', gap: 6 }}>
+                        <TouchableOpacity
+                          testID={`admin-music-upload-${slot}`}
+                          disabled={busy}
+                          onPress={() => pickLoaderMusic(slot)}
+                          style={[s.logoBtn, busy && { opacity: 0.6 }, { paddingHorizontal: 12 }]}>
+                          {busy ? <ActivityIndicator size="small" color="#FFF" /> :
+                            <><Ionicons name="cloud-upload-outline" size={14} color="#FFF" />
+                              <Text style={[s.logoBtnText, { fontSize: 12 }]}>{info.has ? 'Replace' : 'Upload'}</Text></>}
+                        </TouchableOpacity>
+                        {info.has && (
+                          <TouchableOpacity
+                            testID={`admin-music-remove-${slot}`}
+                            disabled={busy}
+                            onPress={() => removeLoaderMusic(slot)}
+                            style={[s.logoResetBtn, { paddingHorizontal: 10 }]}>
+                            <Text style={[s.logoResetText, { fontSize: 11 }]}>Remove</Text>
+                          </TouchableOpacity>
+                        )}
+                        {slot !== 'default' && (
+                          <TouchableOpacity
+                            testID={`admin-music-silent-${slot}`}
+                            disabled={busy}
+                            onPress={() => toggleSilent(slot, !info.silent)}
+                            style={[s.logoResetBtn, { paddingHorizontal: 10,
+                              backgroundColor: info.silent ? '#FEE2E2' : undefined }]}>
+                            <Text style={[s.logoResetText, { fontSize: 11,
+                              color: info.silent ? '#991B1B' : s.logoResetText.color }]}>
+                              {info.silent ? 'Un-silence' : 'Silent'}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    )}
+                  </View>
+                  {Platform.OS === 'web' && previewUrl && (
+                    <View style={{ marginTop: 8 }}>
+                      {React.createElement('audio', { src: previewUrl, controls: true,
+                        style: { width: '100%', maxWidth: 360 } })}
+                    </View>
                   )}
-                </TouchableOpacity>
-                {musicInfo.has && (
-                  <TouchableOpacity
-                    testID="admin-loader-music-remove"
-                    style={s.logoResetBtn}
-                    onPress={removeLoaderMusic}
-                    disabled={musicBusy}
-                  >
-                    <Text style={s.logoResetText}>Remove (silent loader)</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-            {/* Quick browser preview on web — instant sanity check. */}
-            {Platform.OS === 'web' && musicInfo.has && musicInfo.url && (
-              <View style={{ marginTop: 12 }} testID="admin-loader-music-preview">
-                {/* eslint-disable-next-line react/no-unknown-property */}
-                {React.createElement('audio', {
-                  src: `${(api.defaults.baseURL || '').replace(/\/api\/?$/, '')}${musicInfo.url}?v=${musicInfo.version || 0}`,
-                  controls: true,
-                  style: { width: '100%', maxWidth: 360 },
-                })}
-              </View>
-            )}
+                </View>
+              );
+            })}
           </View>
 
           {FONT_OPTIONS.map((opt) => {
