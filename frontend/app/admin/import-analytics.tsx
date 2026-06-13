@@ -67,6 +67,8 @@ export default function AdminImportAnalyticsScreen() {
 
   // ── AI Auto-Tune (prompt suggestions) ──
   const [tuning, setTuning] = useState<{ suggestions: any[]; active_overrides: any[] } | null>(null);
+  const [autoApprove, setAutoApprove] = useState<{ enabled: boolean; grace_hours: number; min_evidence: number } | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [expandedSug, setExpandedSug] = useState<string | null>(null);
 
@@ -122,10 +124,55 @@ export default function AdminImportAnalyticsScreen() {
 
   const loadTuning = useCallback(async () => {
     try {
-      const r = await api.get('/admin/import-analytics/tuning');
-      setTuning(r.data);
+      const [t, aa] = await Promise.all([
+        api.get('/admin/import-analytics/tuning'),
+        api.get('/admin/import-analytics/tuning/autoapprove'),
+      ]);
+      setTuning(t.data);
+      setAutoApprove(aa.data);
     } catch { /* panel shows empty state */ }
   }, []);
+
+  const saveAutoApprove = async (next: Partial<{ enabled: boolean; grace_hours: number; min_evidence: number }>) => {
+    try {
+      const r = await api.put('/admin/import-analytics/tuning/autoapprove', next);
+      setAutoApprove(r.data);
+    } catch (e: any) {
+      showAlert('Auto-approve', e?.response?.data?.detail || 'Could not save setting');
+    }
+  };
+
+  const runAutoApproveNow = async () => {
+    try {
+      const r = await api.post('/admin/import-analytics/tuning/autoapprove/run');
+      showAlert('Auto-approve',
+        r.data.enabled
+          ? `Approved ${r.data.approved}, deduped ${r.data.deduped}, deferred ${r.data.deferred?.length || 0}.`
+          : 'Auto-approve is currently OFF.');
+      await loadTuning();
+    } catch (e: any) {
+      showAlert('Auto-approve', e?.response?.data?.detail || 'Run failed');
+    }
+  };
+
+  const bulkDecide = async (action: 'approve' | 'reject') => {
+    const confirmFn = (typeof window !== 'undefined' && (window as any).confirm) || (() => true);
+    const ok = confirmFn(action === 'approve'
+      ? 'Approve ALL pending suggestions? Older duplicates per page-type will be auto-rejected; the latest of each goes LIVE.'
+      : 'Reject ALL pending suggestions? They will be archived.');
+    if (!ok) return;
+    setBulkBusy(true);
+    try {
+      const r = await api.post('/admin/import-analytics/tuning/bulk', { action });
+      showAlert(action === 'approve' ? 'Approved' : 'Rejected',
+        `${r.data.approved || 0} approved · ${r.data.rejected || 0} rejected · ${r.data.deduped || 0} deduped.`);
+      await loadTuning();
+    } catch (e: any) {
+      showAlert('Bulk action', e?.response?.data?.detail || 'Failed');
+    } finally {
+      setBulkBusy(false);
+    }
+  };
 
   const generateSuggestions = async () => {
     setGenerating(true);
@@ -297,6 +344,98 @@ export default function AdminImportAnalyticsScreen() {
               <Text style={st.genBtnTxt}>{generating ? 'Analysing…' : 'Generate (AI)'}</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Auto-approve banner — explains "you don't have to triage if you
+              don't want to" and shows when the next sweep will pick up the
+              pending list. Bulk approve/reject for one-click decisions. */}
+          {autoApprove && (
+            <View style={[st.autoBanner, !autoApprove.enabled && { borderColor: '#FECACA', backgroundColor: '#FEF2F2' }]} testID="import-tuning-autoapprove-banner">
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                <Ionicons name={autoApprove.enabled ? 'shield-checkmark' : 'shield-outline'} size={18}
+                  color={autoApprove.enabled ? '#059669' : '#DC2626'} style={{ marginTop: 1 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={st.autoBannerTitle}>
+                    {autoApprove.enabled
+                      ? `🤖 Auto-approve is ON — pending suggestions will go LIVE in ${autoApprove.grace_hours}h`
+                      : '🤖 Auto-approve is OFF — every suggestion needs your manual decision'}
+                  </Text>
+                  <Text style={st.autoBannerHint}>
+                    {autoApprove.enabled
+                      ? `For each page-type, the LATEST suggestion (with ≥ ${autoApprove.min_evidence} failing runs of evidence) is auto-approved; older duplicates are auto-rejected. Manual approve / reject below always wins.`
+                      : 'Turn it on to skip manual review. The system will keep only the latest per page-type and require min-evidence before activating.'}
+                  </Text>
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                <TouchableOpacity
+                  testID="import-tuning-autoapprove-toggle"
+                  onPress={() => saveAutoApprove({ enabled: !autoApprove.enabled })}
+                  style={[st.autoToggle, { backgroundColor: autoApprove.enabled ? '#10B981' : '#EF4444' }]}>
+                  <Ionicons name={autoApprove.enabled ? 'toggle' : 'toggle-outline'} size={14} color="#FFF" />
+                  <Text style={st.autoToggleTxt}>{autoApprove.enabled ? 'ON' : 'OFF'}</Text>
+                </TouchableOpacity>
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Text style={st.autoLbl}>Grace</Text>
+                  <TextInput
+                    testID="import-tuning-autoapprove-grace"
+                    keyboardType="number-pad" maxLength={3}
+                    value={String(autoApprove.grace_hours)}
+                    onChangeText={(t) => {
+                      const n = parseInt(t, 10);
+                      if (Number.isFinite(n) && n >= 1 && n <= 168) {
+                        saveAutoApprove({ grace_hours: n });
+                      }
+                    }}
+                    style={st.autoNumInput} />
+                  <Text style={st.autoLbl}>h</Text>
+                </View>
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Text style={st.autoLbl}>Min evidence</Text>
+                  <TextInput
+                    testID="import-tuning-autoapprove-evidence"
+                    keyboardType="number-pad" maxLength={2}
+                    value={String(autoApprove.min_evidence)}
+                    onChangeText={(t) => {
+                      const n = parseInt(t, 10);
+                      if (Number.isFinite(n) && n >= 1 && n <= 20) {
+                        saveAutoApprove({ min_evidence: n });
+                      }
+                    }}
+                    style={st.autoNumInput} />
+                  <Text style={st.autoLbl}>runs</Text>
+                </View>
+
+                <View style={{ flex: 1 }} />
+
+                <TouchableOpacity testID="import-tuning-autoapprove-run"
+                  style={st.autoRunBtn} onPress={runAutoApproveNow}>
+                  <Ionicons name="play-circle" size={14} color="#1D4ED8" />
+                  <Text style={st.autoRunTxt}>Run now</Text>
+                </TouchableOpacity>
+
+                {(tuning?.suggestions || []).some((s: any) => s.status === 'proposed') && (
+                  <>
+                    <TouchableOpacity testID="import-tuning-bulk-approve"
+                      disabled={bulkBusy}
+                      style={[st.autoRunBtn, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }, bulkBusy && { opacity: 0.5 }]}
+                      onPress={() => bulkDecide('approve')}>
+                      <Ionicons name="checkmark-done" size={14} color="#059669" />
+                      <Text style={[st.autoRunTxt, { color: '#059669' }]}>Approve all</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity testID="import-tuning-bulk-reject"
+                      disabled={bulkBusy}
+                      style={[st.autoRunBtn, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }, bulkBusy && { opacity: 0.5 }]}
+                      onPress={() => bulkDecide('reject')}>
+                      <Ionicons name="close-circle" size={14} color="#DC2626" />
+                      <Text style={[st.autoRunTxt, { color: '#DC2626' }]}>Reject all</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            </View>
+          )}
 
           {!!(tuning?.active_overrides || []).length && (
             <View style={{ marginBottom: 10 }}>
@@ -671,4 +810,28 @@ const st = StyleSheet.create({
   rejectBtn: { backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 9 },
   rejectTxt: { color: C.red, fontSize: 12, fontWeight: '800' },
   qfInput: { borderWidth: 1, borderColor: C.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, width: 70, fontSize: 13, color: C.text, backgroundColor: '#FFF' },
+  // ── Auto-approve banner ──
+  autoBanner: {
+    borderWidth: 1, borderColor: '#A7F3D0', backgroundColor: '#ECFDF5',
+    borderRadius: 10, padding: 10, marginBottom: 10,
+  },
+  autoBannerTitle: { fontSize: 12.5, fontWeight: '800', color: C.text },
+  autoBannerHint: { fontSize: 11, color: C.sub, marginTop: 2, lineHeight: 15 },
+  autoToggle: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8,
+  },
+  autoToggleTxt: { fontSize: 11, color: '#FFF', fontWeight: '800' },
+  autoLbl: { fontSize: 11.5, color: C.sub, fontWeight: '600' },
+  autoNumInput: {
+    borderWidth: 1, borderColor: C.border, borderRadius: 6,
+    paddingHorizontal: 7, paddingVertical: 4, width: 48,
+    fontSize: 12, color: C.text, backgroundColor: '#FFF', textAlign: 'center',
+  },
+  autoRunBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#DBEAFE', borderWidth: 1, borderColor: '#93C5FD',
+    paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8,
+  },
+  autoRunTxt: { fontSize: 11, color: '#1D4ED8', fontWeight: '800' },
 });

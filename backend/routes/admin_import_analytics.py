@@ -108,6 +108,39 @@ async def tuning_revert(page_type: str, admin: dict = Depends(require_super_admi
     return {"page_type": page_type, "reverted": True}
 
 
+# ── Auto-Approve config + actions ───────────────────────────────────────────
+@router.get("/tuning/autoapprove")
+async def autoapprove_get(_admin: dict = Depends(require_super_admin)):
+    return await url_prompt_tuning.get_auto_approve_config()
+
+
+@router.put("/tuning/autoapprove")
+async def autoapprove_set(body: Dict[str, Any],
+                          admin: dict = Depends(require_super_admin)):
+    try:
+        return await url_prompt_tuning.set_auto_approve_config(body, admin["user_id"])
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.post("/tuning/autoapprove/run")
+async def autoapprove_run_now(_admin: dict = Depends(require_super_admin)):
+    """Run the auto-approve pass on demand (admin tap on the dashboard)."""
+    return await url_prompt_tuning.auto_approve_pass()
+
+
+@router.post("/tuning/bulk")
+async def tuning_bulk(body: Dict[str, Any],
+                      admin: dict = Depends(require_super_admin)):
+    """One-click bulk approve / reject of all pending suggestions.
+    Dedupes per page-type before applying so only the latest survives.
+    Body: { action: 'approve' | 'reject' }."""
+    action = (body or {}).get("action")
+    if action not in ("approve", "reject"):
+        raise HTTPException(400, "action must be 'approve' or 'reject'")
+    return await url_prompt_tuning.bulk_decide(admin["user_id"], approve=(action == "approve"))
+
+
 # ── Engine tiering (margin protection) ──────────────────────────────────────
 @router.get("/quality-floor")
 async def get_quality_floor(admin: dict = Depends(require_super_admin)):

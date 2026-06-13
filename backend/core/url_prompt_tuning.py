@@ -236,6 +236,191 @@ async def revert_override(page_type: str, admin_id: str) -> bool:
     return bool(r.deleted_count)
 
 
+# ── Auto-approve config ─────────────────────────────────────────────────────
+# Stored in app_config so an admin can tune without a redeploy. Default policy:
+#   • Auto-approve ENABLED — non-techie admins shouldn't have to triage prompts.
+#   • Grace 24h — admins still have a full day to override any proposal before
+#     it goes live.
+#   • Min evidence 2 — never auto-approve a proposal backed by only one bad run.
+#   • Per page-type / deep-key the LATEST proposal wins; older proposals for
+#     the same key get auto-rejected (they're stale duplicates).
+_AUTO_KEY = "auto_tune_autoapprove"
+AUTO_DEFAULT = {"enabled": True, "grace_hours": 24, "min_evidence": 2}
+
+
+async def get_auto_approve_config() -> Dict[str, Any]:
+    doc = await db.app_config.find_one({"key": _AUTO_KEY}, {"_id": 0}) or {}
+    cfg = {**AUTO_DEFAULT, **{k: doc.get(k) for k in AUTO_DEFAULT if k in doc}}
+    cfg["enabled"] = bool(cfg["enabled"])
+    cfg["grace_hours"] = max(1, min(168, int(cfg["grace_hours"])))     # 1h … 7d
+    cfg["min_evidence"] = max(1, min(20, int(cfg["min_evidence"])))
+    return cfg
+
+
+async def set_auto_approve_config(payload: Dict[str, Any], admin_id: str) -> Dict[str, Any]:
+    update: Dict[str, Any] = {"updated_by": admin_id, "updated_at": _now()}
+    if "enabled" in payload:
+        update["enabled"] = bool(payload["enabled"])
+    if "grace_hours" in payload:
+        gh = int(payload["grace_hours"])
+        if not (1 <= gh <= 168):
+            raise ValueError("grace_hours must be 1..168")
+        update["grace_hours"] = gh
+    if "min_evidence" in payload:
+        me = int(payload["min_evidence"])
+        if not (1 <= me <= 20):
+            raise ValueError("min_evidence must be 1..20")
+        update["min_evidence"] = me
+    await db.app_config.update_one({"key": _AUTO_KEY}, {"$set": update}, upsert=True)
+    return await get_auto_approve_config()
+
+
+async def _last_admin_touch_at(key: str) -> Optional[datetime]:
+    """Returns the most-recent timestamp at which a HUMAN admin decided on this
+    key's suggestions. Used to defer auto-approve when the admin recently
+    expressed a manual preference (their voice wins for `grace_hours`)."""
+    row = await db.prompt_tuning_suggestions.find_one(
+        {"page_type": key,
+         "status": {"$in": ["approved", "rejected"]},
+         "decided_by": {"$nin": [None, "__auto_approve__"]}},
+        {"_id": 0, "decided_at": 1}, sort=[("decided_at", -1)])
+    return (row or {}).get("decided_at")
+
+
+async def auto_approve_pass() -> Dict[str, Any]:
+    """For each page-type / deep-key:
+      1. Pick the LATEST proposed suggestion (older than grace_hours).
+      2. Auto-reject every other proposed suggestion for the same key.
+      3. If the picked one has ≥ min_evidence failing runs AND no recent
+         manual admin decision (within grace_hours), auto-approve it.
+
+    Idempotent: a second call within the same grace window is a no-op.
+    Always recorded in audit fields so admins can revert.
+    """
+    cfg = await get_auto_approve_config()
+    if not cfg["enabled"]:
+        return {"enabled": False, "approved": 0, "deduped": 0, "deferred": 0}
+
+    grace = timedelta(hours=cfg["grace_hours"])
+    threshold = _now() - grace
+
+    approved = 0
+    deduped = 0
+    deferred: List[str] = []
+    audit: List[Dict[str, Any]] = []
+
+    # Group all PROPOSED suggestions by their key (page_type stores deep_keys too)
+    pending = await (db.prompt_tuning_suggestions
+                     .find({"status": "proposed"}, {"_id": 0})
+                     .sort("ts", -1).to_list(500))
+    by_key: Dict[str, List[Dict[str, Any]]] = {}
+    for s in pending:
+        by_key.setdefault(s["page_type"], []).append(s)
+
+    for key, items in by_key.items():
+        # Latest first (already sorted by ts desc above)
+        latest = items[0]
+        # Mongo can return naive datetimes — normalise to UTC-aware so the
+        # comparison with `threshold` (always aware) doesn't TypeError.
+        def _aware(dt):
+            if dt is None:
+                return None
+            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        # 1. Dedupe — auto-reject EVERY older proposal for the same key
+        for old in items[1:]:
+            await db.prompt_tuning_suggestions.update_one(
+                {"id": old["id"]},
+                {"$set": {"status": "rejected",
+                          "decided_by": "__auto_approve__",
+                          "decided_at": _now(),
+                          "auto_reason": "stale duplicate — newer proposal for this key"}})
+            deduped += 1
+
+        # 2. Skip the latest if it's still within grace
+        latest_ts = _aware(latest.get("ts"))
+        if latest_ts and latest_ts > threshold:
+            deferred.append(key)
+            continue
+        # 3. Respect a recent manual admin decision (their voice wins)
+        last_touch = _aware(await _last_admin_touch_at(key))
+        if last_touch and last_touch > threshold:
+            deferred.append(key)
+            continue
+        # 4. Evidence floor — never auto-approve a flimsy proposal
+        failing = int(((latest.get("evidence") or {}).get("failing_runs")) or 0)
+        if failing < cfg["min_evidence"]:
+            deferred.append(key)
+            continue
+
+        # All gates passed — auto-approve
+        try:
+            await db.prompt_tuning_suggestions.update_one(
+                {"id": latest["id"]},
+                {"$set": {"status": "approved",
+                          "decided_by": "__auto_approve__",
+                          "decided_at": _now(),
+                          "auto_reason": f"auto-approved after {cfg['grace_hours']}h grace "
+                                         f"(evidence: {failing} failing runs)"}})
+            await db.url_prompt_overrides.update_one(
+                {"key": latest["page_type"]},
+                {"$set": {"key": latest["page_type"],
+                          "guidance": latest["proposed_guidance"],
+                          "suggestion_id": latest["id"],
+                          "updated_by": "__auto_approve__",
+                          "updated_at": _now()}},
+                upsert=True)
+            approved += 1
+            audit.append({"key": key, "suggestion_id": latest["id"], "failing_runs": failing})
+        except Exception as e:  # noqa: BLE001 — never break the loop
+            logger.warning("auto-approve failed for %s: %s", key, str(e)[:160])
+
+    if approved or deduped:
+        logger.info("auto-tune auto-approve: %d approved, %d deduped, %d deferred",
+                    approved, deduped, len(deferred))
+    return {"enabled": True, "approved": approved, "deduped": deduped,
+            "deferred": deferred, "audit": audit,
+            "grace_hours": cfg["grace_hours"], "min_evidence": cfg["min_evidence"]}
+
+
+async def bulk_decide(admin_id: str, *, approve: bool) -> Dict[str, Any]:
+    """Admin one-click bulk approve / reject of ALL pending suggestions —
+    used by the dashboard "Approve all" / "Reject all" buttons. Dedupes
+    per-key first (only the latest proposal survives), then applies the
+    same activation logic as `decide()`."""
+    pending = await (db.prompt_tuning_suggestions
+                     .find({"status": "proposed"}, {"_id": 0})
+                     .sort("ts", -1).to_list(500))
+    if not pending:
+        return {"approved": 0, "rejected": 0, "deduped": 0}
+
+    # Dedupe by key — only the latest is the candidate
+    seen: Dict[str, Dict[str, Any]] = {}
+    deduped = 0
+    for s in pending:
+        if s["page_type"] not in seen:
+            seen[s["page_type"]] = s
+        else:
+            await db.prompt_tuning_suggestions.update_one(
+                {"id": s["id"]},
+                {"$set": {"status": "rejected", "decided_by": admin_id,
+                          "decided_at": _now(),
+                          "auto_reason": "stale duplicate — bulk action picked latest"}})
+            deduped += 1
+
+    approved = 0
+    rejected = 0
+    for s in seen.values():
+        try:
+            await decide(s["id"], admin_id, approve=approve)
+            if approve:
+                approved += 1
+            else:
+                rejected += 1
+        except Exception as e:  # noqa: BLE001 — keep going
+            logger.warning("bulk_decide failed for %s: %s", s["id"], str(e)[:160])
+    return {"approved": approved, "rejected": rejected, "deduped": deduped}
+
+
 # ── Daily automatic Auto-Tune sweep ──────────────────────────────────────────
 def start_daily_auto_tune_task() -> None:
     """Run the Auto-Tune analysis automatically every 24h (in addition to the
@@ -254,6 +439,12 @@ def start_daily_auto_tune_task() -> None:
                     res = await generate_suggestions(admin["user_id"], days=7)
                     logger.info("daily auto-tune sweep: %d proposed, %d skipped",
                                 len(res["created"]), len(res["skipped"]))
+                # Auto-approve pass — runs ALWAYS (even when generation produced
+                # nothing) so older pending proposals graduate after their grace
+                # window. Idempotent: re-runs the same day are no-ops.
+                ap = await auto_approve_pass()
+                if ap.get("approved") or ap.get("deduped"):
+                    logger.info("auto-tune auto-approve summary: %s", ap)
             except Exception as e:  # noqa: BLE001 — sweep must never crash the loop
                 logger.warning("daily auto-tune sweep failed: %s", str(e)[:160])
             await asyncio.sleep(24 * 3600)
