@@ -110,18 +110,24 @@ export const UrlAccessConsentModal: React.FC<Props> = ({
                 multiline
               />
             )}
-
-            <View style={styles.disclaimer}>
-              <Text style={styles.disclaimerText}>
-                By proceeding you confirm that you have the legal right to access and analyse the
-                content at this URL, that doing so does not violate the site&apos;s Terms of Service,
-                applicable laws, robots/anti-scraping rules, copyright or data-protection
-                regulations, and that View Dezider acts solely as a tool on your behalf. You accept
-                full responsibility for this use. View Dezider does not bypass paywalls or
-                authentication and fetches pages with a transparent, identifiable agent.
-              </Text>
-            </View>
           </ScrollView>
+
+          {/* Disclaimer is intentionally OUTSIDE the ScrollView. Earlier it
+              lived inside and got truncated mid-paragraph (the yellow box
+              ended at "…data-protection" with nothing visible below). It now
+              sits between the option list and the accept row so the user
+              sees the full terms WITHOUT scrolling — which is also the legal
+              expectation for a meaningful consent. */}
+          <View style={styles.disclaimer}>
+            <Text style={styles.disclaimerText}>
+              By proceeding you confirm that you have the legal right to access and analyse the
+              content at this URL, that doing so does not violate the site&apos;s Terms of Service,
+              applicable laws, robots/anti-scraping rules, copyright or data-protection
+              regulations, and that View Dezider acts solely as a tool on your behalf. You accept
+              full responsibility for this use. View Dezider does not bypass paywalls or
+              authentication and fetches pages with a transparent, identifiable agent.
+            </Text>
+          </View>
 
           {/* Accept row kept OUTSIDE the scroll area so the checkbox + button are
               always visible together without hunting/scrolling. */}
