@@ -98,10 +98,29 @@ async def _send_whatsapp(to: str, body: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 class SendOtpRequest(BaseModel):
     phone_number: Optional[str] = None  # required if user has none on file
+    # Wave 3 (#3b) — soft de-dup. When `acknowledge_duplicate=False` (default)
+    # the API REFUSES to send if another verified account already owns this
+    # number, returning a 409 with a hint of the linked email so the client
+    # can prompt "This WhatsApp is already linked to another email — continue?".
+    # Setting True bypasses the warning and proceeds (and clears the verified
+    # flag on the conflicting account, since one phone shouldn't claim to
+    # verify two emails simultaneously).
+    acknowledge_duplicate: bool = False
 
 
 class VerifyOtpRequest(BaseModel):
     code: str = Field(..., min_length=4, max_length=8)
+
+
+def _mask_email(e: Optional[str]) -> str:
+    if not e or "@" not in e:
+        return "another account"
+    local, _, dom = e.partition("@")
+    if len(local) <= 2:
+        masked = local[:1] + "•"
+    else:
+        masked = local[:1] + ("•" * (len(local) - 2)) + local[-1]
+    return f"{masked}@{dom}"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -128,6 +147,29 @@ async def send_otp(body: SendOtpRequest, user: dict = Depends(get_current_user))
     # Already-verified short-circuit applies only when NOT changing the number.
     if u.get("whatsapp_verified") and phone == _norm_phone(u.get("whatsapp_number")):
         return {"success": True, "already_verified": True}
+
+    # Wave 3 (#3b) — Soft de-dup. If any OTHER user already has this number
+    # VERIFIED, surface the conflict so the UI can prompt "continue?". The
+    # block is opt-in via `acknowledge_duplicate=True` (frontend sets this
+    # after the user clicks "Continue anyway"). When acknowledged, we
+    # un-verify the duplicate on the other account so the same number doesn't
+    # claim two identities simultaneously.
+    dup = await db.users.find_one(
+        {"user_id": {"$ne": user_id},
+         "whatsapp_number": phone,
+         "whatsapp_verified": True},
+        {"_id": 0, "user_id": 1, "email": 1, "whatsapp_number": 1},
+    )
+    if dup and not body.acknowledge_duplicate:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "whatsapp_already_linked",
+                "message": ("This WhatsApp number is already linked to "
+                            "another email. Continue?"),
+                "linked_email_hint": _mask_email(dup.get("email")),
+            },
+        )
 
     now = _now()
     today = date.today().isoformat()
@@ -239,12 +281,24 @@ async def verify_otp(body: VerifyOtpRequest, user: dict = Depends(get_current_us
     await db.whatsapp_otps.update_one(
         {"_id": otp["_id"]}, {"$set": {"verified": True, "verified_at": now}}
     )
+    # Wave 3 (#3b) soft de-dup — when this number was previously verified on
+    # another account and the user confirmed "continue", strip the verified
+    # flag from the other account so the number only authenticates ONE email.
+    phone_no = otp.get("phone_number")
+    if phone_no:
+        await db.users.update_many(
+            {"user_id": {"$ne": user_id},
+             "whatsapp_number": phone_no,
+             "whatsapp_verified": True},
+            {"$set": {"whatsapp_verified": False,
+                      "whatsapp_relinked_at": now}},
+        )
     await db.users.update_one(
         {"user_id": user_id},
         {"$set": {
             "whatsapp_verified": True,
-            "whatsapp_number": otp.get("phone_number"),
+            "whatsapp_number": phone_no,
             "whatsapp_verified_at": now,
         }},
     )
-    return {"success": True, "whatsapp_verified": True, "whatsapp_number": otp.get("phone_number")}
+    return {"success": True, "whatsapp_verified": True, "whatsapp_number": phone_no}

@@ -454,6 +454,17 @@ export default function AdminImportAnalyticsScreen() {
             </View>
           )}
 
+          {!!(tuning?.suggestions || []).length && (
+            <Text style={[st.subHead, { marginBottom: 4 }]}>
+              Suggestions ({(tuning?.suggestions || []).length}) — newest first
+            </Text>
+          )}
+          <ScrollView
+            testID="import-tuning-suggestions-list"
+            style={st.sugScroll}
+            nestedScrollEnabled
+            showsVerticalScrollIndicator
+          >
           {(tuning?.suggestions || []).map((s: any) => (
             <View key={s.id} style={st.sugBox} testID={`import-tuning-suggestion-${s.id}`}>
               <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
@@ -497,6 +508,7 @@ export default function AdminImportAnalyticsScreen() {
           {!(tuning?.suggestions || []).length && (
             <Text style={st.empty}>No suggestions yet — tap &quot;Generate (AI)&quot; once some failing runs accumulate.</Text>
           )}
+          </ScrollView>
         </View>
 
         {/* Quality floor — silent under-extraction guard */}
@@ -802,6 +814,10 @@ const st = StyleSheet.create({
   ovChipTxt: { fontSize: 11.5, fontWeight: '700', color: '#065F46' },
   ovRevert: { fontSize: 11, color: C.red, fontWeight: '700', textDecorationLine: 'underline' as any },
   sugBox: { borderWidth: 1, borderColor: C.border, borderRadius: 10, padding: 11, marginBottom: 10, backgroundColor: '#FCFCFD' },
+  // Cap the auto-tune suggestions list height — newest first (backend sorts
+  // ts -1) — and let the user scroll within the card instead of bloating
+  // the whole Import Analytics page. Inner ScrollView is nestedScroll-aware.
+  sugScroll: { maxHeight: 480, borderWidth: 1, borderColor: '#EEF2F6', borderRadius: 10, padding: 8, backgroundColor: '#FAFBFC' },
   sugStatus: { fontSize: 10.5, fontWeight: '900', letterSpacing: 0.5 },
   sugPt: { fontSize: 13, fontWeight: '800', color: C.text, flex: 1 },
   sugRationale: { fontSize: 12, color: C.text, marginTop: 5, lineHeight: 17 },

@@ -49,7 +49,7 @@ export default function WhatsAppVerifyScreen() {
     return () => clearInterval(timerRef.current);
   }, [cooldown]);
 
-  const sendOtp = useCallback(async () => {
+  const sendOtp = useCallback(async (acknowledgeDuplicate: boolean = false) => {
     const digits = phone.replace(/\D/g, '');
     if (digits.length < 10) {
       showAlert('Invalid number', 'Enter a valid WhatsApp number with country code.');
@@ -57,7 +57,10 @@ export default function WhatsAppVerifyScreen() {
     }
     setSending(true);
     try {
-      const r = await api.post('/auth/whatsapp/send-otp', { phone_number: phone });
+      const r = await api.post('/auth/whatsapp/send-otp', {
+        phone_number: phone,
+        acknowledge_duplicate: acknowledgeDuplicate,
+      });
       if (r.data?.already_verified) {
         await checkAuth();
         router.replace((isChange ? '/(tabs)/profile' : '/(tabs)') as any);
@@ -73,11 +76,27 @@ export default function WhatsAppVerifyScreen() {
         showAlert('Code generated', 'WhatsApp delivery is being set up. Use the code shown on screen to continue.');
       }
     } catch (e: any) {
-      showAlert('Could not send code', e?.response?.data?.detail || 'Please try again.');
+      // Wave 3 (#3b) — soft de-dup. Server returns 409 when the number is
+      // already verified on another email. Surface a Continue / Cancel prompt
+      // INSTEAD of a generic error, then retry with acknowledge_duplicate=true.
+      const detail = e?.response?.data?.detail;
+      if (e?.response?.status === 409 && detail && typeof detail === 'object' && detail.code === 'whatsapp_already_linked') {
+        showAlert(
+          'WhatsApp already linked',
+          `${detail.message}\n\n(linked to ${detail.linked_email_hint || 'another account'})\n\nUse it for this account instead?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Continue', style: 'destructive', onPress: () => { void sendOtp(true); } },
+          ],
+        );
+        return;
+      }
+      const msg = typeof detail === 'string' ? detail : 'Please try again.';
+      showAlert('Could not send code', msg);
     } finally {
       setSending(false);
     }
-  }, [phone, checkAuth, router]);
+  }, [phone, checkAuth, router, isChange]);
 
   const verifyOtp = useCallback(async () => {
     if (code.trim().length < 4) {
@@ -119,7 +138,7 @@ export default function WhatsAppVerifyScreen() {
               autoComplete="tel"
             />
             <Text style={s.hint}>Include country code. A 10-digit number is treated as India (+91).</Text>
-            <TouchableOpacity style={[s.primaryBtn, sending && { opacity: 0.6 }]} onPress={sendOtp} disabled={sending}>
+            <TouchableOpacity style={[s.primaryBtn, sending && { opacity: 0.6 }]} onPress={() => sendOtp()} disabled={sending}>
               {sending ? <ActivityIndicator color="#FFF" /> : <Text style={s.primaryText}>Send code on WhatsApp</Text>}
             </TouchableOpacity>
           </View>
@@ -147,7 +166,7 @@ export default function WhatsAppVerifyScreen() {
 
             <View style={s.resendRow}>
               <Text style={s.resendLabel}>Didn't get it?</Text>
-              <TouchableOpacity onPress={sendOtp} disabled={cooldown > 0 || sending}>
+              <TouchableOpacity onPress={() => sendOtp()} disabled={cooldown > 0 || sending}>
                 <Text style={[s.resendLink, (cooldown > 0 || sending) && s.resendDisabled]}>
                   {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}
                 </Text>

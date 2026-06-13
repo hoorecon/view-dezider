@@ -111,6 +111,14 @@ class PRRDecision(BaseModel):
     linked_from_score_pct: Optional[float] = None
     # ── Single-option assessment mode (Enhancement #5b) ──
     allow_single_option: bool = False
+    # ── AI assess defaults (Wave 2, June 2026) ──
+    # When AI cannot extract / score a cell (status="error"), we still write a
+    # PERCENTAGE so the option's overall worth doesn't silently drop to 0 just
+    # because a single cell was missing. The default is 5% — overridable
+    # per-decision in Step 7 ("Blank cells default") AND globally via the
+    # user's profile preference. Set to 0 to keep the legacy "fully blank"
+    # behaviour for this decision.
+    blank_default_pct: Optional[int] = None
     status: str = "draft"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -166,6 +174,7 @@ class PRRDecisionUpdate(BaseModel):
     linked_from_option_label: Optional[str] = None
     linked_from_score_pct: Optional[float] = None
     allow_single_option: Optional[bool] = None
+    blank_default_pct: Optional[int] = None  # 0..100, overrides user preference for THIS decision
     status: Optional[str] = None
 
 

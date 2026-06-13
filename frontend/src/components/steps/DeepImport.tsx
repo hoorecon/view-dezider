@@ -103,16 +103,43 @@ export const DeepImport: React.FC<Props> = ({ decisionId, onMerged }) => {
       setOpen(false);
       reset();
       const ver = data.verification || {};
+      // Page-grounding check — counts are CELL-level (one cell = a single
+      // factor × option combination, e.g. Range for Tata Tiago EV). Make
+      // that explicit so users don't read "29 values verified" as "29
+      // distinct numbers / factors verified".
+      const factorN = data.factors_added || 0;
+      const optionN = data.options_added || 0;
       const verNote = (ver.blanked || 0) > 0
-        ? `\n\n⚠ Page-grounding check: ${ver.blanked} value(s) could not be verified on the crawled pages and were left blank${(ver.unverified || []).length ? `: ${(ver.unverified || []).slice(0, 4).join('; ')}` : ''}.`
+        ? `\n\n⚠ Page-grounding check: ${ver.blanked} cell value${ver.blanked === 1 ? '' : 's'} (factor × option) could not be verified on the crawled pages and ${ver.blanked === 1 ? 'was' : 'were'} left blank${(ver.unverified || []).length ? `: ${(ver.unverified || []).slice(0, 4).join('; ')}` : ''}.`
         : (ver.verified || 0) > 0
-          ? `\n\n✓ Page-grounding check: all ${ver.verified} values verified against the crawled pages.`
+          ? `\n\n✓ Page-grounding check: all ${ver.verified} cell values (factor × option, across ${factorN} factor${factorN === 1 ? '' : 's'} × ${optionN} option${optionN === 1 ? '' : 's'}) verified against the crawled pages.`
           : '';
-      const geoNote = data.geo_note
-        ? '\n\nℹ Money values come from the pages\u2019 DEFAULT (non-localised) view — they can differ from prices personalised to your city/account.'
-        : '';
-      showAlert('Deep Import complete',
-        `Added ${data.factors_added} factor${data.factors_added === 1 ? '' : 's'} and ${data.options_added} option${data.options_added === 1 ? '' : 's'} from ${data.item_count} crawled pages. Options (Step 6) and actuals (Step 7) are pre-filled.${verNote}${geoNote}`);
+      // Localised-pricing warning is shown as its OWN bright follow-up
+      // alert (destructive style → red icon + accent) so it stands out
+      // instead of being buried in the success message — money values
+      // are the #1 source of confusion when the page shows national /
+      // ex-showroom prices that differ from the user's city/account.
+      showAlert(
+        'Deep Import complete',
+        `Added ${factorN} factor${factorN === 1 ? '' : 's'} and ${optionN} option${optionN === 1 ? '' : 's'} from ${data.item_count} crawled pages. Options (Step 6) and actuals (Step 7) are pre-filled.${verNote}`,
+        [
+          {
+            text: 'OK',
+            style: 'default',
+            onPress: () => {
+              if (data.geo_note) {
+                setTimeout(() => {
+                  showAlert(
+                    '💰 Heads up — prices may differ in your city',
+                    'Money values were read from the pages\u2019 DEFAULT (non-localised) view — e.g. national / ex-showroom amounts. They CAN differ from prices personalised to your city or account. Review the cash factors in Step 7 before deciding.',
+                    [{ text: 'Got it', style: 'destructive' }],
+                  );
+                }, 250);
+              }
+            },
+          },
+        ],
+      );
     } catch (e: any) {
       setStage('review');
       const msg = e?.response?.data?.detail || 'Merge failed.';

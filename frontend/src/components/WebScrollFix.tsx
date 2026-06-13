@@ -140,8 +140,16 @@ export default function WebScrollFix() {
       if (!SCROLL_KEYS.has(e.key)) return;
       // Don't hijack typing or in-field navigation
       if (isTextEntry(e.target) || isTextEntry(document.activeElement)) return;
-      // Let modifier combos (Ctrl/Cmd/Alt) fall through to the browser
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      // Allow Ctrl/Cmd + Home/End site-wide as conventional jump-to-top /
+      // jump-to-bottom shortcuts (especially useful for long PDF / Share /
+      // Step-7 / admin runs pages where the inner RN ScrollView owns the
+      // scroll and the browser's own Ctrl+Home/End hits the body instead).
+      // Every other modifier combo still falls through to the browser.
+      const isJumpKey = e.key === 'Home' || e.key === 'End';
+      if ((e.ctrlKey || e.metaKey || e.altKey) && !isJumpKey) return;
+      // Plain Alt/Ctrl+ArrowKeys etc. → let the browser handle.
+      if (e.altKey && isJumpKey) return;
 
       const scroller = pickScroller();
       if (!scroller) return;
@@ -167,10 +175,19 @@ export default function WebScrollFix() {
           scroller.scrollBy({ top: -line, behavior: 'auto' });
           break;
         case 'Home':
-          scroller.scrollTop = 0;
+          scroller.scrollTo({ top: 0, behavior: 'smooth' });
+          // Also reset document scroll so headers/footers come into view
+          if (e.ctrlKey || e.metaKey) {
+            try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { /* ignore */ }
+          }
           break;
         case 'End':
-          scroller.scrollTop = scroller.scrollHeight;
+          scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' });
+          if (e.ctrlKey || e.metaKey) {
+            try {
+              window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+            } catch { /* ignore */ }
+          }
           break;
         default:
           return;

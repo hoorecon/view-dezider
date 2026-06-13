@@ -10,6 +10,9 @@ from core.database import db
 from core.assessment_xlsx import build_template, parse_template, build_value_matrix, parse_rows
 from core import google_sheets as gs
 from core.auth import get_current_user
+from core.blank_default import (
+    get_user_blank_default, resolve_decision_blank_pct,
+)
 from .services import ordered_factors, apply_assessment_rows
 
 router = APIRouter(tags=["Decisions"])
@@ -17,6 +20,43 @@ router = APIRouter(tags=["Decisions"])
 
 def _hasv(v: Any) -> bool:
     return v is not None and str(v).strip() != ""
+
+
+def _apply_blank_default(decision: Dict[str, Any], results: list, blank_pct: int) -> int:
+    """For each cell marked status='error' (AI couldn't extract / score), write
+    a default percentage onto the decision's option assessment so the option's
+    overall worth isn't silently dragged to 0 by one missing cell. The default
+    is `blank_pct` (0..100); pass 0 to opt OUT entirely (keep legacy behaviour).
+    Returns the count of cells that received the default.
+    """
+    if not blank_pct:
+        return 0
+    options_by_id = {o["id"]: o for o in decision.get("options", [])}
+    factors_by_id = {f["id"]: f for f in decision.get("factors", [])}
+    n_applied = 0
+    for r in results:
+        if r.get("status") != "error":
+            continue
+        oid = r.get("option_id"); fid = r.get("factor_id")
+        option = options_by_id.get(oid)
+        factor = factors_by_id.get(fid)
+        if not option or not factor:
+            continue
+        assessments = option.setdefault("assessments", [])
+        a = next((x for x in assessments if x.get("factor_id") == fid), None)
+        if not a:
+            a = {"factor_id": fid}
+            assessments.append(a)
+        # Only fill if the user / earlier passes haven't already set a value
+        if a.get("percentage") is not None and a.get("percentage") != 0:
+            continue
+        a["percentage"] = int(blank_pct)
+        a["assessment_mode"] = "blank_default"
+        # Mark the result so the client can render it differently
+        r["status"] = "blank_default"
+        r["percentage"] = int(blank_pct)
+        n_applied += 1
+    return n_applied
 
 
 def _apply_assessment(factor: dict, option: dict, result: dict):
@@ -280,7 +320,23 @@ async def md_ai_assess_batch(
             "percentage": pct, "actual_value": final_actual,
         })
 
-    if any(r["status"] == "done" for r in results):
+    # Default-fill any cell the AI flat-out couldn't score (status='error') so
+    # one missing data-point doesn't silently drag the option's overall worth
+    # to 0. Per-decision override > per-user preference > 5% global default.
+    user_blank = await get_user_blank_default(user["user_id"])
+    blank_pct = resolve_decision_blank_pct(decision, user_blank)
+    # Allow a per-request override (the Step 7 "Blank cells default" knob)
+    body_blank = body.get("blank_default_pct")
+    if body_blank is not None:
+        try:
+            n = int(body_blank)
+            if 0 <= n <= 100:
+                blank_pct = n
+        except (TypeError, ValueError):
+            pass
+    blanks_applied = _apply_blank_default(decision, results, blank_pct)
+
+    if any(r["status"] == "done" for r in results) or blanks_applied:
         await db.decisions.update_one(
             {"id": decision_id, "user_id": user["user_id"]},
             {"$set": {
@@ -289,7 +345,8 @@ async def md_ai_assess_batch(
                 "updated_at": datetime.now(timezone.utc),
             }},
         )
-    return {"results": results, "out_of_credits": out_of_credits, "ai_unavailable": ai_unavailable}
+    return {"results": results, "out_of_credits": out_of_credits, "ai_unavailable": ai_unavailable,
+            "blank_default_pct": blank_pct, "blanks_applied": blanks_applied}
 
 
 @router.post("/decisions/{decision_id}/ai-assess-all-batched")
@@ -347,4 +404,46 @@ async def md_ai_assess_all_batched(
                 "updated_at": datetime.now(timezone.utc),
             }},
         )
-    return {"results": applied, "out_of_credits": out_of_credits, "ai_unavailable": ai_unavailable}
+    # Default-fill any AI-error cells (see _apply_blank_default for details).
+    user_blank = await get_user_blank_default(user["user_id"])
+    blank_pct = resolve_decision_blank_pct(decision, user_blank)
+    body_blank = body.get("blank_default_pct")
+    if body_blank is not None:
+        try:
+            n = int(body_blank)
+            if 0 <= n <= 100:
+                blank_pct = n
+        except (TypeError, ValueError):
+            pass
+    blanks_applied = _apply_blank_default(decision, applied, blank_pct)
+    if blanks_applied:
+        await db.decisions.update_one(
+            {"id": decision_id, "user_id": user["user_id"]},
+            {"$set": {"options": decision["options"],
+                      "updated_at": datetime.now(timezone.utc)}},
+        )
+    return {"results": applied, "out_of_credits": out_of_credits, "ai_unavailable": ai_unavailable,
+            "blank_default_pct": blank_pct, "blanks_applied": blanks_applied}
+
+
+# ── User-profile preference: default % to write for AI-blank cells ─────────
+# Lives on the Decisions router because that's the only consumer today.
+# Per-decision override = `decision.blank_default_pct`. Per-user default =
+# this endpoint. Global fallback = 5% (constants.DEFAULT_BLANK_PCT).
+from core.blank_default import set_user_blank_default  # noqa: E402
+
+
+@router.get("/decisions/preferences/blank-default-pct")
+async def get_blank_default_pct(user: dict = Depends(get_current_user)):
+    pct = await get_user_blank_default(user["user_id"])
+    return {"blank_default_pct": pct, "fallback": 5}
+
+
+@router.put("/decisions/preferences/blank-default-pct")
+async def set_blank_default_pct(body: Dict[str, Any], user: dict = Depends(get_current_user)):
+    raw = body.get("blank_default_pct")
+    try:
+        pct = await set_user_blank_default(user["user_id"], int(raw))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="blank_default_pct must be an integer 0-100")
+    return {"blank_default_pct": pct}

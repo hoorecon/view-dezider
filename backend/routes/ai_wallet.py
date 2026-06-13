@@ -52,7 +52,16 @@ async def import_estimate(endpoint: str = "import", pages: int = 1, tier: str = 
     """Upfront cost preview for the URL-import flows ("≈ N cr needed · M cr
     available"). Estimate is HISTORY-based — the avg total_credits of recent
     successful runs of the same endpoint/tier (per crawled page for deep
-    imports) — falling back to static defaults until history accumulates."""
+    imports) — falling back to static defaults until history accumulates.
+
+    Engine tiering: when there is no tier-SPECIFIC history yet, we scale
+    the blended average by `precise_usd_per_mtok / blended_usd_per_mtok`
+    from the AI Wallet config (≈4.5× by default) so Precise estimates do
+    not show the cheap Fast-tier price and Fast estimates do not show the
+    expensive Precise-tier price. The user-side 13% wallet markup is
+    already baked into `total_credits` (it's the post-markup wallet debit)
+    so the displayed number IS the real credit charge the user will see.
+    """
     endpoint = endpoint if endpoint in ("import", "analyze", "deep_import") else "import"
     tier = tier if tier in ("fast", "precise") else "fast"
     pages = max(1, min(int(pages), 10))
@@ -62,21 +71,43 @@ async def import_estimate(endpoint: str = "import", pages: int = 1, tier: str = 
     rows = await (db.url_import_runs
                   .find(q, {"_id": 0, "total_credits": 1, "item_count": 1, "ai_tier": 1})
                   .sort("ts", -1).limit(20).to_list(20))
-    tier_rows = [r for r in rows if r.get("ai_tier") == tier] or rows
-    basis, sampled = "default", 0
+    tier_specific = [r for r in rows if r.get("ai_tier") == tier]
+    # Tier-cost multiplier (Precise/Fast) — used to scale blended history
+    # when a tier-specific sample isn't yet available, and to differentiate
+    # the static fallback when there is no history at all.
+    try:
+        cfg = await ai_wallet.get_config()
+        mult = float(cfg.get("precise_usd_per_mtok") or 9.0) / max(float(cfg.get("blended_usd_per_mtok") or 2.0), 0.1)
+        mult = max(1.5, min(mult, 8.0))  # safety clamp
+    except Exception:
+        mult = 4.5
+    basis, sampled, scaled_by = "default", 0, 1.0
+    if tier_specific:
+        tier_rows = tier_specific
+    elif rows:
+        # No tier-specific history → use the blended average and scale by the
+        # tier vs blended cost ratio. Fast runs dominate today, so for Precise
+        # we scale UP; for Fast we scale DOWN.
+        tier_rows = rows
+        scaled_by = mult if tier == "precise" else (1.0 / mult)
+    else:
+        tier_rows = []
     if endpoint == "deep_import":
         if tier_rows:
             per_page = (sum(float(r["total_credits"]) / max(int(r.get("item_count") or 1), 1)
                             for r in tier_rows) / len(tier_rows))
-            estimate, basis, sampled = per_page * pages, "history", len(tier_rows)
+            estimate, basis, sampled = per_page * pages * scaled_by, ("history" if tier_specific else "history_scaled"), len(tier_rows)
         else:
-            estimate = 250.0 * pages
+            # Static fallback — Fast ≈ 150 cr/page, Precise scaled by mult.
+            base_per_page = 150.0
+            estimate = base_per_page * pages * (mult if tier == "precise" else 1.0)
     else:
         if tier_rows:
-            estimate = sum(float(r["total_credits"]) for r in tier_rows) / len(tier_rows)
-            basis, sampled = "history", len(tier_rows)
+            estimate = (sum(float(r["total_credits"]) for r in tier_rows) / len(tier_rows)) * scaled_by
+            basis, sampled = ("history" if tier_specific else "history_scaled"), len(tier_rows)
         else:
-            estimate = 90.0 if tier == "fast" else 350.0
+            # Fast / Precise static fallbacks (already differentiated below).
+            estimate = 90.0 if tier == "fast" else 90.0 * mult
     bal = await ai_wallet.get_balance(user["user_id"])
     balance = float(bal.get("balance") or 0)
     estimate = round(estimate, 1)
@@ -84,7 +115,8 @@ async def import_estimate(endpoint: str = "import", pages: int = 1, tier: str = 
             "estimate": estimate, "balance": round(balance, 1),
             "sufficient": balance >= estimate,
             "shortfall": round(max(0.0, estimate - balance), 1),
-            "basis": basis, "runs_sampled": sampled}
+            "basis": basis, "runs_sampled": sampled,
+            "tier_multiplier": round(mult, 2)}
 
 
 # ───────── AI provider consent (OpenAI free, data-sharing) ─────────

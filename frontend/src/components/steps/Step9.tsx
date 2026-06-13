@@ -173,11 +173,28 @@ export default function Step9() {
     }
   };
 
-  const sortedFactors = [...topLevelFactors].sort((a, b) => {
-    const aPct = getFactorAssessmentPctLocal(a) ?? 0;
-    const bPct = getFactorAssessmentPctLocal(b) ?? 0;
-    return aPct - bPct;
-  });
+  // Wave 2 (#10) — MPPS reorder by Step-4 priority + Primary/Secondary
+  // grouping. Step 4 classifies each factor as `primary` (mandatory) or
+  // `secondary` (nice-to-have) and Step 5 turns that into a per-factor
+  // `rating` (higher = more important). The MPPS plan should therefore
+  // tackle the HIGHEST-priority factors first, grouped by category — not
+  // just weakest cells indiscriminately. Within each priority tier we
+  // keep weakest-first so the easiest wins stay at the top of each group.
+  const sortedFactors = (() => {
+    const cmp = (a: Factor, b: Factor) => {
+      const ar = a.rating ?? 0;
+      const br = b.rating ?? 0;
+      if (ar !== br) return br - ar; // higher rating first
+      const aPct = getFactorAssessmentPctLocal(a) ?? 0;
+      const bPct = getFactorAssessmentPctLocal(b) ?? 0;
+      return aPct - bPct; // weakest first within same priority tier
+    };
+    const primary = topLevelFactors.filter(f => f.category === 'primary').sort(cmp);
+    const secondary = topLevelFactors.filter(f => f.category !== 'primary').sort(cmp);
+    return [...primary, ...secondary];
+  })();
+  const primaryCount = sortedFactors.filter(f => f.category === 'primary').length;
+  const secondaryCount = sortedFactors.length - primaryCount;
 
   return (
     <View style={styles.stepContent}>
@@ -309,7 +326,14 @@ export default function Step9() {
         </TouchableOpacity>
       </View>
 
-      {sortedFactors.map((factor) => {
+      {sortedFactors.map((factor, idx) => {
+        // Wave 2 (#10) — Section header when entering Primary or Secondary block.
+        const isFirstInGroup =
+          idx === 0 ||
+          (sortedFactors[idx - 1].category === 'primary' && factor.category !== 'primary');
+        const sectionLabel = factor.category === 'primary'
+          ? `Primary factors (${primaryCount}) — mandatory, tackle these first`
+          : `Secondary factors (${secondaryCount}) — nice-to-have, optional`;
         const currentPct = getFactorAssessmentPctLocal(factor);
         const imp = improvements.find(i => i.factor_id === factor.id);
         const projPct = imp?.projected_percentage;
@@ -317,7 +341,7 @@ export default function Step9() {
         const pctColor = (currentPct ?? 0) < 40 ? '#EF4444' : (currentPct ?? 0) < 70 ? '#F59E0B' : '#10B981';
         const actionItems = imp?.action_items || [];
 
-        return (
+        const factorCard = (
           <Card key={factor.id} style={[styles.factorCard, imp?.improvement_plan ? { borderLeftWidth: 3, borderLeftColor: '#16A34A' } : {}]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
               <View style={{ flex: 1 }}>
@@ -486,6 +510,29 @@ export default function Step9() {
             </View>
           </Card>
         );
+        if (isFirstInGroup) {
+          return (
+            <React.Fragment key={`grp-${factor.id}`}>
+              <View
+                testID={`step9-section-${factor.category}`}
+                style={{
+                  marginTop: idx === 0 ? 4 : 14, marginBottom: 6,
+                  paddingHorizontal: 10, paddingVertical: 6,
+                  backgroundColor: factor.category === 'primary' ? '#FEF3C7' : '#E0F2FE',
+                  borderRadius: 8, alignSelf: 'flex-start',
+                }}>
+                <Text style={{
+                  fontSize: 11, fontWeight: '800', letterSpacing: 0.4,
+                  color: factor.category === 'primary' ? '#92400E' : '#075985',
+                }}>
+                  {sectionLabel.toUpperCase()}
+                </Text>
+              </View>
+              {factorCard}
+            </React.Fragment>
+          );
+        }
+        return factorCard;
       })}
 
       {/* Download buttons */}

@@ -77,6 +77,37 @@ export const senseDataType = (value: string): 'numeric' | 'text' => {
   return /^-?\d+(\.\d+)?$/.test(trimmed) ? 'numeric' : 'text';
 };
 
+/**
+ * Parse a positive-integer count input that may also contain a simple
+ * arithmetic expression — e.g. user types `1+3` meaning "1 main option +
+ * 3 similar" → returns 4. Falls back to plain parseInt for normal numbers.
+ * Returns `undefined` for blank / invalid / non-positive inputs.
+ *
+ * Accepted: digits, + - * / ( ) and whitespace only. Anything else returns
+ * `undefined` (never executes arbitrary code).
+ */
+export const parseCountInput = (raw: string | undefined | null): number | undefined => {
+  if (raw === undefined || raw === null) return undefined;
+  const t = String(raw).trim();
+  if (!t) return undefined;
+  // Pure positive integer fast-path.
+  if (/^\d+$/.test(t)) {
+    const n = parseInt(t, 10);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  }
+  // Whitelist arithmetic only — never run anything else through eval.
+  if (/^[\d+\-*/()\s.]+$/.test(t) && /[+\-*/]/.test(t)) {
+    try {
+      // eslint-disable-next-line no-new-func
+      const v = Function(`"use strict"; return (${t});`)();
+      if (typeof v === 'number' && Number.isFinite(v) && v > 0) {
+        return Math.round(v);
+      }
+    } catch { /* invalid — fall through */ }
+  }
+  return undefined;
+};
+
 // Standard gap for rating calculation
 export const STANDARD_GAP = 10;
 

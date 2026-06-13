@@ -246,6 +246,14 @@ export default function AdminAIWalletConfigScreen() {
           ))}
         </View>
 
+        {/* ── Wave 3 (#3a) Admin credit-grant card ─────────────────────
+            Lets a super-admin add or set credits on a specific user wallet
+            on the spot — e.g. apology credits, beta-tester top-ups, manual
+            partner-reseller refills. Hits the existing POST /admin/ai-wallet/grant
+            endpoint which writes a `grant`/`set` ledger row so the audit
+            trail and Recon dashboard stay accurate. */}
+        <AdminGrantCard isWide={isWide} />
+
         {/* Footer */}
         <View style={s.footerNote}>
           <Ionicons name="information-circle" size={14} color={C.muted} />
@@ -267,6 +275,160 @@ const ExRow = ({ label, value, bold, muted, color }: any) => (
     </Text>
   </View>
 );
+
+
+// ── Wave 3 (#3a) Admin credit-grant card ──────────────────────────────
+// Self-contained card so it can also be reused in other admin pages later
+// without dragging the wallet-config state along with it.
+const AdminGrantCard: React.FC<{ isWide: boolean }> = ({ isWide }) => {
+  const [identifier, setIdentifier] = useState('');
+  const [creditsStr, setCreditsStr] = useState('');
+  const [mode, setMode] = useState<'add' | 'set'>('add');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [lastResult, setLastResult] = useState<{
+    user_id: string; email?: string; balance: number; granted: number; mode: string;
+  } | null>(null);
+
+  const submit = async () => {
+    const n = parseFloat(creditsStr);
+    if (!identifier.trim() || !Number.isFinite(n)) {
+      showAlert('Missing details', 'Enter an email or user-id and a numeric credit amount.');
+      return;
+    }
+    if (n < 0 && mode === 'set') {
+      showAlert('Invalid', 'Cannot SET a wallet to a negative balance.');
+      return;
+    }
+    setBusy(true);
+    try {
+      // Backend accepts both `user_id` and `email`. Use email if it contains '@'.
+      const body: any = { credits: n, mode, note: note.trim() || undefined };
+      if (identifier.includes('@')) body.email = identifier.trim();
+      else body.user_id = identifier.trim();
+      const { data } = await api.post('/admin/ai-wallet/grant', body);
+      setLastResult({
+        user_id: data.user_id,
+        email: identifier.includes('@') ? identifier.trim() : undefined,
+        balance: data.balance,
+        granted: n,
+        mode,
+      });
+      setCreditsStr('');
+      showAlert('Credits granted',
+        `${mode === 'set' ? 'Set' : 'Added'} ${n} credits → new balance ${data.balance}.`);
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || 'Could not grant credits.';
+      showAlert('Failed', typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View style={[s.example, { borderColor: '#C4B5FD', marginTop: 16 }]} testID="admin-grant-card">
+      <View style={s.exampleHead}>
+        <Ionicons name="gift" size={16} color={C.primary} />
+        <Text style={s.exampleTitle}>Grant credits to a user</Text>
+      </View>
+      <Text style={[s.exHint, { color: C.muted, marginBottom: 12 }]}>
+        Add or set a user&apos;s AI-credit balance instantly. Use cases: apology credits,
+        beta-tester top-up, partner-reseller refill. Every grant writes a ledger row
+        (kind = grant / set) so audit + Recon dashboard stay accurate.
+      </Text>
+
+      {/* Identifier (email or user-id) */}
+      <View style={{ flexDirection: isWide ? 'row' : 'column', gap: 10 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.fieldLabel}>User (email or user-id)</Text>
+          <View style={s.inputWrap}>
+            <Ionicons name="person-outline" size={14} color={C.muted} style={{ marginRight: 6 }} />
+            <TextInput
+              testID="admin-grant-identifier"
+              style={s.input}
+              value={identifier}
+              onChangeText={setIdentifier}
+              placeholder="alice@example.com  or  user_abc123"
+              placeholderTextColor={C.muted}
+              autoCapitalize="none"
+            />
+          </View>
+        </View>
+        <View style={{ width: isWide ? 200 : '100%' }}>
+          <Text style={s.fieldLabel}>Credits ({mode === 'set' ? 'set TO' : 'add'})</Text>
+          <View style={s.inputWrap}>
+            <Text style={s.unit}>cr</Text>
+            <TextInput
+              testID="admin-grant-credits"
+              style={s.input}
+              value={creditsStr}
+              onChangeText={setCreditsStr}
+              keyboardType="decimal-pad"
+              placeholder={mode === 'set' ? 'e.g. 1000' : 'e.g. 250'}
+              placeholderTextColor={C.muted}
+            />
+          </View>
+        </View>
+      </View>
+
+      {/* Mode + Note */}
+      <View style={{ flexDirection: isWide ? 'row' : 'column', gap: 10, marginTop: 12 }}>
+        <View style={{ width: isWide ? 240 : '100%' }}>
+          <Text style={s.fieldLabel}>Mode</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              testID="admin-grant-mode-add"
+              onPress={() => setMode('add')}
+              style={[s.modeBtn, mode === 'add' && s.modeBtnActive]}
+            >
+              <Text style={[s.modeBtnTxt, mode === 'add' && s.modeBtnTxtActive]}>Add</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              testID="admin-grant-mode-set"
+              onPress={() => setMode('set')}
+              style={[s.modeBtn, mode === 'set' && s.modeBtnActive]}
+            >
+              <Text style={[s.modeBtnTxt, mode === 'set' && s.modeBtnTxtActive]}>Set</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.fieldLabel}>Note (audit trail)</Text>
+          <View style={s.inputWrap}>
+            <TextInput
+              testID="admin-grant-note"
+              style={s.input}
+              value={note}
+              onChangeText={setNote}
+              placeholder="e.g. Apology for 2026-06-13 incident; beta-tester top-up"
+              placeholderTextColor={C.muted}
+            />
+          </View>
+        </View>
+      </View>
+
+      <TouchableOpacity
+        testID="admin-grant-submit"
+        onPress={submit}
+        disabled={busy}
+        activeOpacity={0.85}
+        style={[s.saveBtn, { marginTop: 14, alignSelf: 'flex-start' }, busy && { opacity: 0.6 }]}
+      >
+        {busy ? <ActivityIndicator color="#fff" /> : <Ionicons name="flash" size={14} color="#fff" />}
+        <Text style={s.saveBtnTxt}>{mode === 'set' ? 'Set balance' : 'Add credits'}</Text>
+      </TouchableOpacity>
+
+      {lastResult && (
+        <View testID="admin-grant-last" style={{ marginTop: 14, padding: 10, backgroundColor: '#F0FDF4', borderRadius: 8, borderWidth: 1, borderColor: '#86EFAC' }}>
+          <Text style={{ fontSize: 12, color: '#065F46', fontWeight: '700' }}>
+            ✓ {lastResult.mode === 'set' ? 'Set' : 'Added'} {lastResult.granted} cr
+            {lastResult.email ? ` to ${lastResult.email}` : ''} (uid {lastResult.user_id.slice(0, 12)}…) — balance now {lastResult.balance} cr.
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+};
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
@@ -315,4 +477,13 @@ const s = StyleSheet.create({
     paddingHorizontal: 4,
   },
   footerTxt: { flex: 1, fontSize: 11, color: C.muted, lineHeight: 16 },
+
+  // Wave 3 (#3a) Admin credit-grant card mode toggle.
+  modeBtn: {
+    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8,
+    backgroundColor: C.chipBg, borderWidth: 1, borderColor: C.border,
+  },
+  modeBtnActive: { backgroundColor: '#EDE9FE', borderColor: C.primary },
+  modeBtnTxt: { fontSize: 13, fontWeight: '700', color: C.muted },
+  modeBtnTxtActive: { color: C.primary },
 });

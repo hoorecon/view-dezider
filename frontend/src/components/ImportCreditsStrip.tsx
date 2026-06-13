@@ -43,13 +43,20 @@ export const ImportCreditsStrip: React.FC<Props> = ({ endpoint, pages = 1, tier 
   if (!data) return null;
 
   const ok = !!data.sufficient;
+  // Mark when the figure is a tier-scaled estimate (no tier-specific
+  // history yet) — so users understand it's an extrapolation, not the
+  // user's own historical average.
+  const isScaled = data.basis === 'history_scaled';
+  const isDefault = data.basis === 'default';
   return (
     <View style={[s.strip, ok ? s.ok : s.bad]} testID="import-credits-strip">
       <Ionicons name={ok ? 'checkmark-circle' : 'alert-circle'} size={15}
         color={ok ? '#059669' : '#DC2626'} />
       <Text style={[s.txt, { color: ok ? '#065F46' : '#991B1B' }]} testID="import-credits-text">
         ≈ {fmt(data.estimate)} cr needed · {fmt(data.balance)} cr available
-        {data.basis !== 'history' ? ' (est.)' : ''}
+        {tier === 'precise' ? ' · Precise' : ' · Fast'}
+        {isDefault ? ' (est.)' : ''}
+        {isScaled ? ` (~${(data.tier_multiplier ?? 4.5).toFixed(1)}× scaled)` : ''}
       </Text>
       {!ok && (
         <TouchableOpacity testID="import-credits-topup-btn" style={s.topup}

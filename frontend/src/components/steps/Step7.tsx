@@ -500,6 +500,42 @@ export default function Step7() {
   const [bulkAssessing, setBulkAssessing] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
 
+  // ── Blank cells default % (Wave 2, June 2026) ───────────────────────────
+  // When AI can't score a cell, write this default instead of leaving it
+  // 0% so one missing data point doesn't silently kill the option. Per
+  // decision (decision.blank_default_pct) overrides the user's profile
+  // preference; we hydrate from /preferences/blank-default-pct on mount.
+  const initialBlankPct = (decision as any)?.blank_default_pct;
+  const [blankDefaultPct, setBlankDefaultPct] = useState<number>(
+    typeof initialBlankPct === 'number' ? initialBlankPct : 5);
+  const [blankDefaultDirty, setBlankDefaultDirty] = useState(false);
+  useEffect(() => {
+    // Profile fallback when the decision itself doesn't set one yet.
+    if (typeof initialBlankPct === 'number') return;
+    api.get('/decisions/preferences/blank-default-pct')
+      .then(({ data }) => {
+        if (typeof data?.blank_default_pct === 'number') setBlankDefaultPct(data.blank_default_pct);
+      })
+      .catch(() => { /* fall back to 5 */ });
+  }, [initialBlankPct]);
+  const saveBlankDefaultPct = async (alsoSaveProfile: boolean) => {
+    if (!blankDefaultDirty) return;
+    const n = Math.max(0, Math.min(100, Math.round(blankDefaultPct || 0)));
+    try {
+      // Decision-level override
+      await api.put(`/decisions/${decision.id}`, { blank_default_pct: n });
+      if (alsoSaveProfile) {
+        await api.put('/decisions/preferences/blank-default-pct', { blank_default_pct: n });
+      }
+      setBlankDefaultDirty(false);
+      try { await fetchDecision(); } catch { /* non-fatal */ }
+      showAlert('Saved', `Blank-cell default set to ${n}%${alsoSaveProfile ? ' (and made your profile default)' : ''}.`);
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || 'Could not save default %.';
+      showAlert('Save failed', typeof msg === 'string' ? msg : JSON.stringify(msg));
+    }
+  };
+
   // OpenAI free-tier (data-sharing) fallback availability + the user's consent.
   const [openaiAvailable, setOpenaiAvailable] = useState(false);
   const [openaiConsented, setOpenaiConsented] = useState(false);
@@ -539,6 +575,7 @@ export default function Step7() {
     try {
       const { data } = await api.post(`/decisions/${decision.id}/ai-assess-all-batched`, {
         force_fill: forceFill,
+        blank_default_pct: blankDefaultPct,
         ...(allowOpenai !== undefined ? { allow_openai: allowOpenai } : {}),
         cells: cells.map(c => ({
           option_id: c.optionId,
@@ -552,6 +589,13 @@ export default function Step7() {
         applyCellResult(r);
         if (r.status === 'done') { done++; doneSet.add(`${r.option_id}|${r.factor_id}`); }
         else if (r.status === 'skipped') skipped++;
+        else if (r.status === 'blank_default') {
+          // Server filled the cell with the default % because AI couldn't
+          // score it — count as "done" for progress and remove from retry.
+          done++; doneSet.add(`${r.option_id}|${r.factor_id}`);
+          // Echo the default into the UI so the cell isn't shown blank.
+          applyCellResult({ ...r, status: 'done' });
+        }
         else { errored++; errSet.add(`${r.option_id}|${r.factor_id}`); }
       }
       ranOut = !!data.out_of_credits;
@@ -908,6 +952,44 @@ export default function Step7() {
           </View>
         </View>
 
+        {/* Blank-cell default — Wave 2, June 2026.
+            What % to write when AI can't score a cell (no useful match found).
+            Default 5; user can change here per-decision and optionally save
+            it as the profile default for future decisions. */}
+        <View style={localSt.blankRow} testID="step7-blank-default-row">
+          <Ionicons name="layers-outline" size={14} color="#7C3AED" />
+          <Text style={localSt.blankLbl}>Blank cells default:</Text>
+          <TextInput
+            testID="step7-blank-default-input"
+            value={String(blankDefaultPct)}
+            onChangeText={(v) => {
+              const n = parseInt(v.replace(/[^\d]/g, ''), 10);
+              setBlankDefaultPct(Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0);
+              setBlankDefaultDirty(true);
+            }}
+            keyboardType="number-pad"
+            style={localSt.blankInput}
+            maxLength={3}
+          />
+          <Text style={localSt.blankLbl}>%</Text>
+          {blankDefaultDirty ? (
+            <>
+              <TouchableOpacity testID="step7-blank-default-save"
+                style={localSt.blankSaveBtn}
+                onPress={() => saveBlankDefaultPct(false)} activeOpacity={0.85}>
+                <Text style={localSt.blankSaveTxt}>Save</Text>
+              </TouchableOpacity>
+              <TouchableOpacity testID="step7-blank-default-save-profile"
+                style={[localSt.blankSaveBtn, { backgroundColor: '#0F172A' }]}
+                onPress={() => saveBlankDefaultPct(true)} activeOpacity={0.85}>
+                <Text style={localSt.blankSaveTxt}>Save + default</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <Text style={localSt.blankHint}>Used when AI can&apos;t score a cell — keeps a missing data-point from dragging the option&apos;s worth to 0%.</Text>
+          )}
+        </View>
+
         {/* One-tap metered AI assessment of every empty option×factor cell. */}
         <TouchableOpacity
           style={[styles.aiAssessAllBtn, bulkAssessing && styles.aiAssessAllBtnBusy]}
@@ -1119,4 +1201,23 @@ const urlDlg = StyleSheet.create({
   cancelText: { fontSize: 13.5, fontWeight: '700', color: COLORS.textMuted },
   go: { backgroundColor: '#7C3AED', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, minWidth: 96, alignItems: 'center' },
   goText: { color: '#fff', fontSize: 13.5, fontWeight: '800' },
+});
+
+const localSt = StyleSheet.create({
+  blankRow: {
+    flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6,
+    paddingHorizontal: 10, paddingVertical: 9, marginBottom: 8,
+    backgroundColor: '#FAF5FF', borderWidth: 1, borderColor: '#E9D5FF', borderRadius: 10,
+  },
+  blankLbl: { fontSize: 12, fontWeight: '700', color: '#4C1D95' },
+  blankInput: {
+    minWidth: 44, paddingHorizontal: 8, paddingVertical: 5,
+    backgroundColor: '#FFF', borderWidth: 1, borderColor: '#C4B5FD',
+    borderRadius: 7, fontSize: 13, fontWeight: '700', color: '#0F172A', textAlign: 'center',
+  },
+  blankHint: { flexBasis: '100%', fontSize: 11, color: '#7C3AED', marginTop: 4, lineHeight: 15 },
+  blankSaveBtn: {
+    backgroundColor: '#7C3AED', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, marginLeft: 4,
+  },
+  blankSaveTxt: { fontSize: 11.5, fontWeight: '800', color: '#FFF' },
 });

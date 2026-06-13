@@ -19,6 +19,7 @@ import {
   NUMERIC_OPERATORS,
   TEXT_OPERATORS,
   senseDataType,
+  parseCountInput,
 } from '../../utils/decisionHelpers';
 
 const DATA_SOURCE_TYPES = [
@@ -118,8 +119,8 @@ export default function Step2() {
         accepted: true,
         ai_tier: importTier,
         progress_id: progressId,
-        expected_factor_count: parseInt(hintFactorCount, 10) || undefined,
-        expected_option_count: parseInt(hintOptionCount, 10) || undefined,
+        expected_factor_count: parseCountInput(hintFactorCount),
+        expected_option_count: parseCountInput(hintOptionCount),
         first_factor_name: hintFirstFactor.trim() || undefined,
         first_option_name: hintFirstOption.trim() || undefined,
       }, { timeout: 300000 }); // detail pages may need a rendered fetch + LLM pass (+1 retry)
@@ -131,13 +132,25 @@ export default function Step2() {
         : '';
       const ver = data.verification || {};
       const verNote = (ver.blanked || 0) > 0
-        ? `\n\n⚠ Page-grounding check: ${ver.blanked} value(s) could NOT be verified on the page text and were left BLANK${(ver.unverified || []).length ? ` — ${(ver.unverified || []).slice(0, 5).join('; ')}` : ''}. Fill them manually in Step 7.`
+        ? `\n\n⚠ Page-grounding check: ${ver.blanked} cell value${ver.blanked === 1 ? '' : 's'} (factor × option) could NOT be verified on the page text and ${ver.blanked === 1 ? 'was' : 'were'} left BLANK${(ver.unverified || []).length ? ` — ${(ver.unverified || []).slice(0, 5).join('; ')}` : ''}. Fill them manually in Step 7.`
         : (ver.verified || 0) > 0
-          ? `\n\n✓ Page-grounding check: all ${ver.verified} extracted values are traceable to the page text. Tap “Source quotes” under the import card to see the exact page line behind every value.`
+          ? `\n\n✓ Page-grounding check: all ${ver.verified} cell values (factor × option) are traceable to the page text. Tap “Source quotes” under the import card to see the exact page line behind every value.`
           : '';
-      const geoNote = data.geo_note
-        ? '\n\nℹ Money values were read from the page\u2019s DEFAULT (non-localised) view — e.g. national ex-showroom prices can differ from your city\u2019s on-road prices. The source quotes show exactly which page line each number came from.'
-        : '';
+      // Localised-pricing note is now its OWN loud follow-up alert
+      // (destructive style → red icon + accent) — money values are the
+      // #1 source of confusion. We fire it immediately AFTER the success
+      // alert is dismissed.
+      const showGeoAlert = () => {
+        if (!data.geo_note) return;
+        setTimeout(() => {
+          showAlert(
+            '💰 Heads up — prices may differ in your city',
+            'Money values were read from the page\u2019s DEFAULT (non-localised) view — e.g. national ex-showroom prices can differ from your city\u2019s on-road prices. Tap “Source quotes” under the import card to see the exact page line behind each number, then refine cash factors in Step 7.',
+            [{ text: 'Got it', style: 'destructive' }],
+          );
+        }, 250);
+      };
+      const dismissBtns = [{ text: 'OK', style: 'default' as const, onPress: showGeoAlert }];
       const expectedNote = '\n\nNote: Expected values are pre-suggested from the page data (best value of the set). Refine them anytime with “Set Expectations - By AI”, which re-evaluates against your decision context.';
       if (data.mode === 'detail') {
         const fellBack = importTier === 'precise' && data.ai_provider !== 'emergent_precise';
@@ -146,12 +159,14 @@ export default function Step2() {
           : '';
         showAlert(
           'Imported from URL',
-          `Detected a single-listing page — “${data.main_item}”. Added ${data.factors_added} factor${data.factors_added === 1 ? '' : 's'}${grouped} with smart operators & Expected values, plus ${data.options_added} option${data.options_added === 1 ? '' : 's'} (the listing + similar items). Review below, then continue — Options (Step 6) and actuals (Step 7) are pre-filled.${fellBack ? '\n\nNote: Precise AI was unavailable (check the Universal Key balance) — the Fast AI engine was used instead, billed at the normal rate.' : ''}${expectedNote}${verNote}${geoNote}${warn}`,
+          `Detected a single-listing page — “${data.main_item}”. Added ${data.factors_added} factor${data.factors_added === 1 ? '' : 's'}${grouped} with smart operators & Expected values, plus ${data.options_added} option${data.options_added === 1 ? '' : 's'} (the listing + similar items). Review below, then continue — Options (Step 6) and actuals (Step 7) are pre-filled.${fellBack ? '\n\nNote: Precise AI was unavailable (check the Universal Key balance) — the Fast AI engine was used instead, billed at the normal rate.' : ''}${expectedNote}${verNote}${warn}`,
+          dismissBtns,
         );
       } else {
         showAlert(
           'Imported from URL',
-          `Added ${data.factors_added} factor${data.factors_added === 1 ? '' : 's'} and ${data.options_added} option${data.options_added === 1 ? '' : 's'} from ${data.item_count} items. Review the factors & Expected values below, then continue — Options (Step 6) and actuals (Step 7) are pre-filled.${expectedNote}${verNote}${geoNote}${warn}`,
+          `Added ${data.factors_added} factor${data.factors_added === 1 ? '' : 's'} and ${data.options_added} option${data.options_added === 1 ? '' : 's'} from ${data.item_count} items. Review the factors & Expected values below, then continue — Options (Step 6) and actuals (Step 7) are pre-filled.${expectedNote}${verNote}${warn}`,
+          dismissBtns,
         );
       }
     } catch (e: any) {
@@ -721,25 +736,23 @@ export default function Step2() {
             </TouchableOpacity>
             {hintsOpen && (
               <View>
-                <Text style={iurl.hintHelp}>Tell us what you see on the page — we verify the AI extraction against it and auto-correct mismatches.</Text>
+                <Text style={iurl.hintHelp}>Tell us what you see on the page — we verify the AI extraction against it and auto-correct mismatches. You can type a simple sum like <Text style={{ fontWeight: '700' }}>1+3</Text> (e.g. 1 main option + 3 similar) and it&apos;s evaluated for you.</Text>
                 <View style={iurl.hintRow}>
                   <TextInput
                     testID="step2-hint-factor-count"
                     style={[iurl.dlgInput, iurl.hintInputSm]}
-                    placeholder="# of factors"
+                    placeholder="Total # of factors (e.g. 8 or 2+6)"
                     placeholderTextColor="#9CA3AF"
                     value={hintFactorCount}
                     onChangeText={setHintFactorCount}
-                    keyboardType="number-pad"
                   />
                   <TextInput
                     testID="step2-hint-option-count"
                     style={[iurl.dlgInput, iurl.hintInputSm]}
-                    placeholder="# of options (main + similar)"
+                    placeholder="Total # of options visible (main + similar)"
                     placeholderTextColor="#9CA3AF"
                     value={hintOptionCount}
                     onChangeText={setHintOptionCount}
-                    keyboardType="number-pad"
                   />
                 </View>
                 <TextInput

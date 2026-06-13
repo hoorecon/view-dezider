@@ -769,29 +769,37 @@ export const styles = StyleSheet.create({
     color: COLORS.textMuted,
     minWidth: 30,
   },
-  // Expected value & operator styles (Step 2)
+  // Expected value & operator styles (Step 2) — Wave 2 (#5b) UX polish:
+  // bumped contrast + size so the editor is unmistakably visible at the
+  // bottom of every factor card (previous look was easy to miss inside
+  // the dense factor row).
   expectedRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
-    gap: 6,
+    marginTop: 12,
+    gap: 8,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
   },
   expectedLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: COLORS.textMuted,
-    minWidth: 55,
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: COLORS.primary,
+    minWidth: 64,
+    letterSpacing: 0.2,
   },
   expectedInput: {
     flex: 1,
-    height: 36,
-    backgroundColor: COLORS.background,
-    borderRadius: 8,
+    height: 40,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 9,
     paddingHorizontal: 12,
     fontSize: 14,
+    fontWeight: '600',
     color: COLORS.textPrimary,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    borderWidth: 1.5,
+    borderColor: '#C4B5FD',
   },
   dataTypeBadge: {
     backgroundColor: 'rgba(99,102,241,0.12)',
