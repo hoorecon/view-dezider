@@ -62,6 +62,12 @@ class DeepImportStart(BaseModel):
     eligibility_type: str
     custom_note: Optional[str] = None
     accepted: bool = False
+    # Generic constraint-gate escape hatch. UI checkbox defaults to CHECKED
+    # (= constraints disabled) so users don't lose options to the silent
+    # auto-rejection that bit users on edge cases like "best EVs under 10L"
+    # rejecting MG Comet (₹7.63–10L) for "price < 10 Lakhs". Untick the box
+    # to re-enable the cost-saving constraint gate (≈ 56% fewer AI calls).
+    disable_hard_constraints: bool = True
 
 
 class FinalizeFactor(BaseModel):
@@ -188,12 +194,12 @@ def _rank_links(links: List[Dict[str, str]], context: str, cap: int = 60) -> Lis
     if not toks and not intent:
         return links[:cap]
 
-    def score(l: Dict[str, str]) -> int:
-        hay = (l["text"] + " " + l["url"]).lower()
+    def score(lk: Dict[str, str]) -> int:
+        hay = (lk["text"] + " " + lk["url"]).lower()
         return sum(1 for t in toks if t in hay) + _intent_score(hay, intent)
 
     ranked = sorted(enumerate(links), key=lambda p: (-score(p[1]), p[0]))
-    return [l for _, l in ranked[:cap]]
+    return [lk for _, lk in ranked[:cap]]
 
 
 async def _page_links(url: str, user_id: str):
@@ -295,7 +301,7 @@ async def _pick_detail_links(user_id: str, context: str, max_pages: int,
                              tier: str = "fast") -> List[Dict[str, str]]:
     """One metered AI call: pick the option/detail page links for the context.
     Traced onto the run (stage prompt + engine + credits) when `tel` is given."""
-    link_block = "\n".join(f"{i + 1}. [{l['text']}] {l['url']}" for i, l in enumerate(links))
+    link_block = "\n".join(f"{i + 1}. [{lk['text']}] {lk['url']}" for i, lk in enumerate(links))
     intent = _intent_of(context)
     sys_msg = (LINKS_SYSTEM.replace("{max_pages}", str(max_pages))
                + _intent_clause(intent)
@@ -332,7 +338,7 @@ async def _pick_hubs(user_id: str, context: str, base_url: str,
                      tier: str = "fast") -> List[str]:
     """One metered AI call: locate same-domain LISTING hub pages for the context
     (used when the base page is a portal/homepage with no direct detail links)."""
-    link_block = "\n".join(f"{i + 1}. [{l['text']}] {l['url']}" for i, l in enumerate(links))
+    link_block = "\n".join(f"{i + 1}. [{lk['text']}] {lk['url']}" for i, lk in enumerate(links))
     intent = _intent_of(context)
     sys_msg = (HUBS_SYSTEM + _intent_clause(intent)
                + await url_prompt_tuning.get_guidance("deep_hubs"))
@@ -421,7 +427,8 @@ async def _fail(job_id: str, tel: Dict[str, Any], error: str):
 
 
 async def _discover(job_id: str, user_id: str, base_url: str, context: str,
-                    max_pages: int, tier: str, tel: Dict[str, Any]):
+                    max_pages: int, tier: str, tel: Dict[str, Any],
+                    disable_hard_constraints: bool = False):
     try:
         # Admin-tunable engine tiering per stage ("job" = the user's chosen tier)
         stage_tiers = await engine_recos.get_stage_tiers()
@@ -518,21 +525,31 @@ async def _discover(job_id: str, user_id: str, base_url: str, context: str,
         # ── Generic hard-constraint gate (any domain) — one cheap AI call
         # derives the context's constraints (budget caps, counts, attributes)
         # and rejects violating options BEFORE the expensive consolidation.
+        # SKIPPED when the user ticked "Disable hard constraints" — they
+        # accept the cost trade-off in exchange for keeping all crawled
+        # options. Telemetry records the skip so admins can see when users
+        # opt out (Auto-Tune may use this signal later).
         constraint_note = None
-        await _prog(job_id, 76, "Checking options against your hard constraints…")
-        page_texts, rejected, _constraints = await _constraint_check(
-            user_id, context, page_texts, tel)
-        if rejected:
-            rej_txt = "; ".join(f"{r['name']} — {r['violated']}" for r in rejected[:4])
-            constraint_note = (f"{len(rejected)} option(s) auto-rejected for violating your "
-                               f"hard constraints: {rej_txt}")
-            options = [o for o in options if o["name"] in page_texts]
-        if len(page_texts) < 2:
-            await _fail(job_id, tel,
-                        "After enforcing your hard constraints, fewer than 2 valid options "
-                        f"remain. {constraint_note or ''} Widen the constraint or try a "
-                        "different listing URL.")
-            return
+        if disable_hard_constraints:
+            await _prog(job_id, 76,
+                        "Skipping constraint gate (user opted to disable hard constraints).")
+            tel["constraint_gate"] = "disabled_by_user"
+        else:
+            await _prog(job_id, 76, "Checking options against your hard constraints…")
+            page_texts, rejected, _constraints = await _constraint_check(
+                user_id, context, page_texts, tel)
+            if rejected:
+                rej_txt = "; ".join(f"{r['name']} — {r['violated']}" for r in rejected[:4])
+                constraint_note = (f"{len(rejected)} option(s) auto-rejected for violating your "
+                                   f"hard constraints: {rej_txt}")
+                options = [o for o in options if o["name"] in page_texts]
+            if len(page_texts) < 2:
+                await _fail(job_id, tel,
+                            "After enforcing your hard constraints, fewer than 2 valid options "
+                            f"remain. {constraint_note or ''} Re-run with "
+                            "'Disable hard constraints' ticked to keep all crawled options, "
+                            "or widen the constraint / try a different listing URL.")
+                return
 
         await _prog(job_id, 80, "AI is consolidating factors across the crawled pages…")
         blocks = "\n\n".join(
@@ -631,6 +648,7 @@ async def start_deep_import(decision_id: str, req: DeepImportStart, request: Req
         "id": job_id, "user_id": user["user_id"], "decision_id": decision_id,
         "base_url": req.base_url.strip(), "context": req.context.strip(),
         "max_pages": req.max_pages, "ai_tier": req.ai_tier,
+        "disable_hard_constraints": bool(req.disable_hard_constraints),
         "status": "discovering", "progress": {"pct": 5, "label": "Starting…"},
         "error": None, "created_at": _now(),
         "expires_at": _now() + timedelta(hours=24),
@@ -642,7 +660,8 @@ async def start_deep_import(decision_id: str, req: DeepImportStart, request: Req
     asyncio.create_task(_discover(job_id, user["user_id"], req.base_url.strip(),
                                   req.context.strip(), req.max_pages,
                                   "precise" if req.ai_tier == "precise" else "fast",
-                                  tel))
+                                  tel,
+                                  disable_hard_constraints=bool(req.disable_hard_constraints)))
     return {"job_id": job_id}
 
 

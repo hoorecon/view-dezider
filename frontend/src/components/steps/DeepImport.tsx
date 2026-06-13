@@ -39,6 +39,11 @@ export const DeepImport: React.FC<Props> = ({ decisionId, onMerged }) => {
   const [baseUrl, setBaseUrl] = useState('');
   const [context, setContext] = useState('');
   const [maxPages, setMaxPages] = useState(5);
+  // Constraint-gate escape hatch. Default CHECKED (= constraints disabled)
+  // so a small import isn't silently axed by the gate. Uncheck to re-enable
+  // the gate when the user has tight hard constraints in their context and
+  // wants to save AI credits (~56% fewer constraint-related AI calls).
+  const [disableHardConstraints, setDisableHardConstraints] = useState(true);
   const [consentOpen, setConsentOpen] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ pct: number; label: string }>({ pct: 5, label: 'Starting…' });
@@ -63,6 +68,7 @@ export const DeepImport: React.FC<Props> = ({ decisionId, onMerged }) => {
         eligibility_type: consent.eligibility_type,
         custom_note: consent.custom_note,
         accepted: true,
+        disable_hard_constraints: disableHardConstraints,
       });
       setJobId(data.job_id);
       pollRef.current = setInterval(async () => {
@@ -169,6 +175,34 @@ export const DeepImport: React.FC<Props> = ({ decisionId, onMerged }) => {
                   ))}
                 </View>
                 <ImportCreditsStrip endpoint="deep_import" pages={maxPages} tier="precise" />
+
+                {/* Hard-constraint escape hatch — keeps users from getting
+                    silently bitten by the constraint gate. Default CHECKED
+                    so all crawled options reach the merge step. Uncheck to
+                    re-enable the cost-saving gate (drops options that
+                    contradict your hard constraints like budget caps, BHK
+                    counts, 'rent vs buy', furnished/automatic, etc.). */}
+                <TouchableOpacity
+                  testID="deep-import-disable-constraints"
+                  activeOpacity={0.8}
+                  onPress={() => setDisableHardConstraints(v => !v)}
+                  style={st.constraintRow}>
+                  <Ionicons
+                    name={disableHardConstraints ? 'checkbox' : 'square-outline'}
+                    size={20}
+                    color={disableHardConstraints ? '#7C3AED' : '#94A3B8'} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.constraintTitle}>
+                      Disable hard constraints — fetch more options
+                    </Text>
+                    <Text style={st.constraintHint}>
+                      {disableHardConstraints
+                        ? '✓ All crawled options will reach the merge step (e.g. ₹7.63–10L items kept for an "under ₹10L" context). Slightly higher AI spend.'
+                        : 'Strict mode — options contradicting your context (budget caps, BHK counts, furnishing…) are auto-rejected before consolidation. Cheaper but can fail with "fewer than 2 valid options".'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+
                 <View style={st.actions}>
                   <TouchableOpacity testID="deep-import-cancel-btn" style={st.cancelBtn}
                     onPress={() => { setOpen(false); reset(); }}>
@@ -299,6 +333,16 @@ const st = StyleSheet.create({
   primaryBtn: { flex: 2, paddingVertical: 12, borderRadius: 10, backgroundColor: '#7C3AED', alignItems: 'center' },
   primaryText: { fontSize: 14, fontWeight: '700', color: '#FFF' },
   btnDisabled: { opacity: 0.5 },
+  // Hard-constraint escape hatch row — visually prominent so users notice
+  // it BEFORE hitting Start, and read the explanation that toggles with the
+  // checkbox state.
+  constraintRow: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+    padding: 12, borderRadius: 12, marginTop: 10,
+    backgroundColor: '#F5F3FF', borderWidth: 1, borderColor: '#DDD6FE',
+  },
+  constraintTitle: { fontSize: 13, fontWeight: '800', color: '#4C1D95' },
+  constraintHint: { fontSize: 11.5, color: '#5B21B6', marginTop: 2, lineHeight: 16 },
   progressLabel: { fontSize: 13.5, fontWeight: '600', color: '#0F172A', marginTop: 10, marginBottom: 8 },
   track: { height: 8, borderRadius: 4, backgroundColor: '#EDE9FE', overflow: 'hidden' },
   fill: { height: 8, borderRadius: 4, backgroundColor: '#7C3AED' },
