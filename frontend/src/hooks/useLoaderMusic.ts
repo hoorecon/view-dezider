@@ -23,6 +23,7 @@ const MUTE_KEY = 'loaderMusicMuted';
 
 // Cached `/appearance` slots payload so 5 loaders don't all re-fetch.
 let slotsCache: any = undefined;
+let volumesCache: Record<string, number> | null = null;
 let slotsPromise: Promise<any> | null = null;
 async function getSlots(): Promise<any> {
   if (slotsCache !== undefined) return slotsCache;
@@ -31,13 +32,14 @@ async function getSlots(): Promise<any> {
     try {
       const { data } = await api.get('/appearance');
       slotsCache = data?.loader_music_slots || {};
+      volumesCache = data?.loader_music_volume || null;
     } catch { slotsCache = {}; }
     return slotsCache;
   })();
   return slotsPromise;
 }
 export function invalidateLoaderMusicCache() {
-  slotsCache = undefined; slotsPromise = null;
+  slotsCache = undefined; slotsPromise = null; volumesCache = null;
 }
 
 // Module-level mute pubsub so toggling on any loader updates every mounted one.
@@ -94,6 +96,8 @@ export function useLoaderMusic(enabled: boolean, slot: LoaderSlot = 'default') {
   const source = useMemo(() => (resolvedUrl ? { uri: resolvedUrl } : null), [resolvedUrl]);
   const player = useAudioPlayer(source);
   const status = useAudioPlayerStatus(player);
+  // Per-platform volume from admin config (hydrated by `getSlots`).
+  const volumes = volumesCache;
 
   // Loop on completion.
   useEffect(() => {
@@ -116,7 +120,13 @@ export function useLoaderMusic(enabled: boolean, slot: LoaderSlot = 'default') {
       try { await setAudioModeAsync({ playsInSilentMode: true }); } catch { /* noop */ }
       if (!mounted) return;
       if (effective) {
-        try { player.volume = 0.55; } catch { /* noop */ }
+        try {
+          const platformKey = Platform.OS === 'android' ? 'android'
+                            : Platform.OS === 'ios' ? 'ios' : 'web';
+          const vol = (volumes && typeof volumes[platformKey] === 'number')
+            ? volumes[platformKey] : 0.55;
+          player.volume = Math.max(0, Math.min(1, vol));
+        } catch { /* noop */ }
         try { player.play(); } catch { /* autoplay blocked */ }
       } else {
         try { player.pause(); } catch { /* noop */ }

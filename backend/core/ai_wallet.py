@@ -56,6 +56,9 @@ DEFAULTS = {
     "precise_usd_per_mtok": 9.0,
     # Import-from-URL: AI may auto-GROUP ungrouped factors into categories only
     # when the page defines no grouping AND the factor count exceeds this.
+    "loader_music_volume_web": 0.55,
+    "loader_music_volume_android": 0.75,
+    "loader_music_volume_ios": 0.65,
     "import_group_threshold": 15,
     # ── Deep Import (Wave 2 #8b) — auto-assess & rank top options ──
     # `deep_import_max_options`: max options to FULLY assess per deep-import
@@ -111,6 +114,8 @@ async def update_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
               "markup_user_pct", "markup_routed_pct",
               "razorpay_fee_pct", "razorpay_gst_pct",
               "min_custom_credits", "precise_usd_per_mtok", "import_group_threshold",
+              "deep_import_max_options", "deep_import_top_n",
+              "loader_music_volume_web", "loader_music_volume_android", "loader_music_volume_ios",
               "scraperapi_plan_usd_month", "scraperapi_plan_credits_month", "scrape_markup_pct"):
         if k in patch and patch[k] is not None:
             try:
@@ -133,6 +138,10 @@ async def update_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
                     if val < 1 or val > 20:
                         raise ValueError
                     val = int(val)
+                if k in ("loader_music_volume_web", "loader_music_volume_android", "loader_music_volume_ios"):
+                    val = float(val)
+                    if val < 0 or val > 1:
+                        raise ValueError
                 if k in ("markup_routed_pct", "razorpay_fee_pct", "razorpay_gst_pct") and val > 100.0:
                     raise ValueError
                 allowed[k] = val

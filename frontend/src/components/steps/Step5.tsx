@@ -9,6 +9,7 @@ import { styles } from '../../styles/decisionStyles';
 import { GAP_PRESETS, STANDARD_GAP, calculateRatingsFromOrder } from '../../utils/decisionHelpers';
 import api from '../../utils/api';
 import { showAlert } from '../../utils/alert';
+import { DeepImportBudgetPicker } from '../DeepImportBudgetPicker';
 
 export default function Step5() {
   const { decision, saveDecision, applyRatingsAndContinue, setCurrentStep, prefillBestOptions } = useDecision();

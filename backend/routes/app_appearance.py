@@ -42,7 +42,7 @@ ALLOWED_LOGO_MIME = {"image/png", "image/jpeg", "image/jpg"}
 # Per-slot storage in a SEPARATE collection (`app_loader_music`) so multiple
 # audio files don't blow past Mongo's 16 MB doc cap when stored on the
 # shared `app_settings` doc.
-MAX_MUSIC_BYTES = 3 * 1024 * 1024  # 3 MB
+MAX_MUSIC_BYTES = 30 * 1024 * 1024  # 30 MB
 ALLOWED_MUSIC_MIME = {"audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav",
                       "audio/ogg", "audio/webm", "audio/mp4", "audio/aac"}
 # Recognised loader slots. `default` is the fallback every other slot falls
@@ -118,6 +118,7 @@ async def get_appearance():
         # `loader_music_url`, ...) still point at the `default` slot so older
         # clients keep working.
         "loader_music_slots": await _loader_music_slots_summary(),
+        "loader_music_volume": await _loader_music_volume_map(),
         **(await _legacy_loader_music_compat()),
     }
 
@@ -275,6 +276,28 @@ async def serve_logo():
         media_type=mime,
         headers={"Cache-Control": "public, max-age=300"},
     )
+
+
+async def _loader_music_volume_map() -> dict:
+    """Read per-platform default volume (0..1) from the AI Wallet config so
+    admins can tune them without redeploying the app. Falls back to safe
+    defaults when the key is missing."""
+    try:
+        from core import ai_wallet
+        cfg = await ai_wallet.get_config()
+    except Exception:
+        cfg = {}
+    def clamp(v, default):
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            return default
+        return max(0.0, min(1.0, v))
+    return {
+        "web": clamp(cfg.get("loader_music_volume_web"), 0.55),
+        "android": clamp(cfg.get("loader_music_volume_android"), 0.75),
+        "ios": clamp(cfg.get("loader_music_volume_ios"), 0.65),
+    }
 
 
 async def _loader_music_slots_summary() -> dict:
