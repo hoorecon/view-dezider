@@ -56,10 +56,13 @@ export default function AiWalletScreen() {
   const [buyingId, setBuyingId] = useState<string | null>(null);
 
   // OpenAI free-tier (data-sharing) consent
-  const [consent, setConsent] = useState<{ allow_openai: boolean; mode: string; openai_available: boolean } | null>(null);
+  const [consent, setConsent] = useState<{
+    allow_openai: boolean; mode: string;
+    openai_free_tier?: boolean; openai_available: boolean;
+  } | null>(null);
   const [savingConsent, setSavingConsent] = useState(false);
 
-  const saveConsent = async (next: { allow_openai: boolean; mode: string }) => {
+  const saveConsent = async (next: { allow_openai: boolean; mode: string; openai_free_tier?: boolean }) => {
     setConsent((c) => (c ? { ...c, ...next } : c));
     setSavingConsent(true);
     try {
@@ -260,7 +263,11 @@ export default function AiWalletScreen() {
                     testID="openai-consent-toggle"
                     value={!!consent?.allow_openai}
                     disabled={savingConsent}
-                    onValueChange={(v) => saveConsent({ allow_openai: v, mode: consent?.mode || 'ask' })}
+                    onValueChange={(v) => saveConsent({
+                      allow_openai: v,
+                      mode: consent?.mode || 'ask',
+                      openai_free_tier: v ? !!consent?.openai_free_tier : false,
+                    })}
                     trackColor={{ true: COLORS.primary }}
                   />
                 </View>
@@ -273,13 +280,44 @@ export default function AiWalletScreen() {
                           key={m}
                           testID={`openai-consent-mode-${m}`}
                           style={[styles.consentChip, active && styles.consentChipActive]}
-                          onPress={() => saveConsent({ allow_openai: true, mode: m })}
+                          onPress={() => saveConsent({
+                            allow_openai: true, mode: m,
+                            openai_free_tier: !!consent?.openai_free_tier,
+                          })}
                           disabled={savingConsent}
                         >
                           <Text style={[styles.consentChipText, active && styles.consentChipTextActive]}>{label}</Text>
                         </TouchableOpacity>
                       );
                     })}
+                  </View>
+                )}
+                {/* Free-tier (data-sharing) sub-toggle. When ON, OpenAI is moved
+                    to the FRONT of the chain AND wallet charges are zeroed
+                    for those calls — assuming the user has enabled the
+                    org-level data-sharing toggle on platform.openai.com. */}
+                {consent?.allow_openai && (
+                  <View style={[styles.consentRow, { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#EEF2F6' }]} testID="openai-free-tier-card">
+                    <View style={{ flex: 1, paddingRight: 12 }}>
+                      <Text style={[styles.infoTitle, { fontSize: 13 }]}>I&apos;ve enabled OpenAI Free Tier sharing — use it as PRIMARY (free for me)</Text>
+                      <Text style={[styles.infoText, { marginTop: 4, fontSize: 11.5 }]}>
+                        Turn this on ONLY after toggling{' '}
+                        <Text style={{ fontWeight: '700' }}>Share inputs and outputs with OpenAI</Text>{' '}
+                        at platform.openai.com → Settings → Organization → Data Controls.
+                        We&apos;ll then route OpenAI first AND skip your wallet for those calls (OpenAI bills $0).
+                      </Text>
+                    </View>
+                    <Switch
+                      testID="openai-free-tier-toggle"
+                      value={!!consent?.openai_free_tier}
+                      disabled={savingConsent}
+                      onValueChange={(v) => saveConsent({
+                        allow_openai: true,
+                        mode: consent?.mode || 'always',
+                        openai_free_tier: v,
+                      })}
+                      trackColor={{ true: '#16A34A' }}
+                    />
                   </View>
                 )}
               </View>

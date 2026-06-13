@@ -109,28 +109,41 @@ async def _emergent_call(system_message: str, prompt: str, session_prefix: str,
     return (text or "").strip(), _estimate_tokens(system_message, prompt, text or "")
 
 
-async def user_allows_openai(user_id: str) -> bool:
-    """Read the user's consent to use their data with OpenAI's free tier."""
+async def user_consent(user_id: str) -> dict:
+    """Full AI-provider consent doc (allow_openai + openai_free_tier).
+    Keeps a single round-trip even when callers need both flags."""
     try:
         from core.database import db
         u = await db.users.find_one({"user_id": user_id}, {"_id": 0, "ai_provider_consent": 1})
-        return bool(((u or {}).get("ai_provider_consent") or {}).get("allow_openai"))
+        return (u or {}).get("ai_provider_consent") or {}
     except Exception:
-        return False
+        return {}
 
 
-def _build_chain(allow_openai: bool, openai_before_groq: bool = False) -> list:
+async def user_allows_openai(user_id: str) -> bool:
+    """Read the user's consent to use their data with OpenAI's free tier."""
+    return bool((await user_consent(user_id)).get("allow_openai"))
+
+
+def _build_chain(allow_openai: bool, openai_before_groq: bool = False,
+                 openai_first: bool = False) -> list:
     """Ordered list of (provider_name) using only configured keys.
     `openai_before_groq=True` is used by the precise tier's fallback path
-    (user-mandated order: Claude → Gemini → OpenAI → Groq)."""
+    (user-mandated order: Claude → Gemini → OpenAI → Groq).
+    `openai_first=True` (set when the user has confirmed OpenAI free-tier
+    data-sharing is enabled) puts OpenAI at the FRONT of the chain — so
+    every call goes through their FREE OpenAI bucket before touching the
+    paid wallet at all."""
     chain: list = []
+    if allow_openai and os.getenv("OPENAI_API_KEY") and openai_first:
+        chain.append("openai")
     if os.getenv("GEMINI_API_KEY"):
         chain.append("gemini")
-    if allow_openai and os.getenv("OPENAI_API_KEY") and openai_before_groq:
+    if allow_openai and os.getenv("OPENAI_API_KEY") and openai_before_groq and not openai_first:
         chain.append("openai")
     if os.getenv("GROQ_API_KEY"):
         chain.append("groq")
-    if allow_openai and os.getenv("OPENAI_API_KEY") and not openai_before_groq:
+    if allow_openai and os.getenv("OPENAI_API_KEY") and not openai_before_groq and not openai_first:
         chain.append("openai")
     if os.getenv("EMERGENT_LLM_KEY"):
         chain.append("emergent")
@@ -186,8 +199,17 @@ async def metered_chat(
 
     if allow_openai is None:
         allow_openai = await user_allows_openai(user_id)
+    # When the user has confirmed they enabled OpenAI's data-sharing free tier
+    # on their org (`openai_free_tier=true`), route OpenAI FIRST and zero out
+    # the wallet charge for those calls (OpenAI bills $0 — passing on the
+    # saving is the entire point of the toggle).
+    consent = await user_consent(user_id)
+    openai_first = bool(consent.get("openai_free_tier")) and bool(os.getenv("OPENAI_API_KEY"))
+    if openai_first:
+        allow_openai = True  # implied — we can't route OpenAI without consent
 
-    chain = _build_chain(allow_openai, openai_before_groq=(tier == "precise"))
+    chain = _build_chain(allow_openai, openai_first=openai_first,
+                         openai_before_groq=(tier == "precise"))
     last_err: Optional[Exception] = None
     for provider in chain:
         try:
@@ -212,9 +234,27 @@ async def metered_chat(
 
         charged = 0.0
         try:
-            res = await ai_wallet.charge(user_id, tokens=tokens, feature=feature,
-                                         provider=provider, session_id=session_id)
-            charged = float(res.get("charged") or 0)
+            # Free-tier short-circuit — OpenAI bills $0 on the data-sharing
+            # programme, so we don't charge the user wallet either. The ledger
+            # still gets a zero-credit "audit" row so admin Recon shows the
+            # provider hit & token count.
+            if provider == "openai" and openai_first:
+                from core.database import db as _db
+                from datetime import datetime, timezone
+                try:
+                    await _db.ai_wallet_ledger.insert_one({
+                        "user_id": user_id, "kind": "debit",
+                        "credits": 0.0, "tokens": int(tokens or 0),
+                        "feature": feature, "provider": "openai_free_tier",
+                        "session_id": session_id, "ts": datetime.now(timezone.utc),
+                        "meta": {"note": "free-tier data-sharing"},
+                    })
+                except Exception:  # noqa: BLE001 — audit row is best-effort
+                    pass
+            else:
+                res = await ai_wallet.charge(user_id, tokens=tokens, feature=feature,
+                                             provider=provider, session_id=session_id)
+                charged = float(res.get("charged") or 0)
         except Exception as e:  # noqa: BLE001
             log.error(f"wallet charge failed (non-fatal): {e}")
         if meta is not None:

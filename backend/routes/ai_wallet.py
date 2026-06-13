@@ -124,28 +124,49 @@ async def import_estimate(endpoint: str = "import", pages: int = 1, tier: str = 
 async def get_provider_consent(user: dict = Depends(get_current_user)):
     """The user's consent to use OpenAI's free (data-sharing) tier as a fallback.
     `mode`: 'ask' ⇒ prompt at each no-balance failure (default); 'always' ⇒ use
-    OpenAI automatically without prompting."""
+    OpenAI automatically without prompting.
+    `openai_free_tier`: TRUE once the user has confirmed they enabled data-
+    sharing on their OpenAI org (platform.openai.com/settings/organization/
+    data-controls) and want OpenAI used as the PRIMARY provider — wallet
+    charges for those calls are skipped (OpenAI bills $0)."""
     u = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "ai_provider_consent": 1})
     c = (u or {}).get("ai_provider_consent") or {}
     openai_available = bool(os.getenv("OPENAI_API_KEY"))
     return {
         "allow_openai": bool(c.get("allow_openai", False)),
         "mode": c.get("mode") or "ask",
+        "openai_free_tier": bool(c.get("openai_free_tier", False)),
         "openai_available": openai_available,
     }
 
 
 @router.put("/ai-wallet/provider-consent")
 async def set_provider_consent(body: Dict[str, Any], user: dict = Depends(get_current_user)):
-    """Save OpenAI fallback consent. Body: { allow_openai: bool, mode?: 'ask'|'always' }."""
+    """Save OpenAI fallback consent. Body: {
+        allow_openai: bool,
+        mode?: 'ask'|'always',
+        openai_free_tier?: bool   # user has enabled data-sharing on OpenAI → calls are FREE
+    }."""
     allow = bool(body.get("allow_openai"))
     mode = body.get("mode") if body.get("mode") in ("ask", "always") else "ask"
-    consent = {"allow_openai": allow, "mode": mode, "updated_at": _now_iso()}
+    free_tier = bool(body.get("openai_free_tier"))
+    # Free-tier ON implies allow_openai must be ON too (otherwise OpenAI is never
+    # called, free or not). Auto-enforce to spare the UI a coupled-toggle bug.
+    if free_tier and not allow:
+        allow = True
+    consent = {
+        "allow_openai": allow, "mode": mode,
+        "openai_free_tier": free_tier, "updated_at": _now_iso(),
+    }
     await db.users.update_one(
         {"user_id": user["user_id"]},
         {"$set": {"ai_provider_consent": consent}},
     )
-    return {"allow_openai": allow, "mode": mode, "openai_available": bool(os.getenv("OPENAI_API_KEY"))}
+    return {
+        "allow_openai": allow, "mode": mode,
+        "openai_free_tier": free_tier,
+        "openai_available": bool(os.getenv("OPENAI_API_KEY")),
+    }
 
 
 # ───────────────────────── admin ─────────────────────────
