@@ -12,7 +12,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
 import { COLORS } from '../../src/constants/colors';
@@ -179,6 +178,13 @@ export default function AdminAppearance() {
   }, [refreshAppearance]);
 
   // ── Loader music handlers (multi-slot) ──────────────────────────────
+  // Chunked upload — splits the file into ≤1.5 MB raw chunks so each
+  // POST body stays well below the ~3 MB hard cap that some proxies
+  // enforce on production. Without this, anything over ~3 MB on the
+  // wire is dropped by the ingress with no CORS headers (which the
+  // browser then mis-reports as a CORS failure).
+  const CHUNK_SIZE = 1_400_000; // ≈1.4 MB raw → ~1.9 MB multipart on the wire
+
   const pickLoaderMusic = useCallback(async (slot: string) => {
     try {
       const res = await DocumentPicker.getDocumentAsync({
@@ -193,30 +199,63 @@ export default function AdminAppearance() {
         showAlert('Too large', 'Audio file must be 30 MB or smaller. Compress to a lower bitrate (e.g. 128 kbps MP3).');
         return;
       }
-      let base64: string | null = null;
+
+      // Resolve a Blob/ArrayBuffer we can slice. On web the DocumentPicker
+      // asset exposes the underlying File directly; on native we read the
+      // file URI into a Blob via fetch().
+      let blob: Blob | null = null;
       let mime = (a.mimeType || 'audio/mpeg').toLowerCase();
       if (Platform.OS === 'web' && (a as any).file) {
         const file: File = (a as any).file;
-        base64 = await new Promise<string>((resolve, reject) => {
-          const fr = new FileReader();
-          fr.onload = () => {
-            const r = String(fr.result || '');
-            const idx = r.indexOf(',');
-            resolve(idx >= 0 ? r.slice(idx + 1) : r);
-          };
-          fr.onerror = () => reject(fr.error);
-          fr.readAsDataURL(file);
-        });
+        blob = file;
         if (file.type) mime = file.type;
       } else if (a.uri) {
-        base64 = await FileSystem.readAsStringAsync(a.uri, { encoding: FileSystem.EncodingType.Base64 });
+        const r = await fetch(a.uri);
+        blob = await r.blob();
+        if (blob.type) mime = blob.type || mime;
       }
-      if (!base64) { showAlert('Unsupported', 'Could not read the audio file.'); return; }
-      const dataUrl = `data:${mime};base64,${base64}`;
+      if (!blob) { showAlert('Unsupported', 'Could not read the audio file.'); return; }
+      if (blob.size < 1024) { showAlert('Too small', 'Audio file is empty or corrupt.'); return; }
+      if (blob.size > 30 * 1024 * 1024) {
+        showAlert('Too large', 'Audio file must be 30 MB or smaller.');
+        return;
+      }
+
+      // Stable per-attempt upload id — used by the backend to group the
+      // staged chunks together until commit.
+      const uploadId = (
+        (globalThis as any).crypto?.randomUUID?.() ||
+        `${Date.now()}-${Math.random().toString(36).slice(2)}`
+      ) + '-' + slot;
+      const totalChunks = Math.max(1, Math.ceil(blob.size / CHUNK_SIZE));
+
       setMusicBusySlot(slot);
-      await api.put(`/admin/loader-music/${slot}`, {
-        music_base64: dataUrl, filename: a.name || `${slot}-music`,
+
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(blob.size, start + CHUNK_SIZE);
+        const slice = blob.slice(start, end, blob.type || mime);
+        const form = new FormData();
+        form.append('upload_id', uploadId);
+        form.append('idx', String(i));
+        form.append('total', String(totalChunks));
+        // The filename hint helps the server log; the actual audio bytes
+        // are what we care about. Casting to `any` because RN FormData
+        // typings don't include the 3-arg overload on native.
+        form.append('audio', slice as any, `${a.name || slot}.part${i}`);
+        await api.post(`/admin/loader-music/${slot}/upload-chunk`, form, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          timeout: 60_000,
+        });
+      }
+
+      await api.post(`/admin/loader-music/${slot}/upload-commit`, {
+        upload_id: uploadId,
+        mime,
+        filename: a.name || `${slot}-music`,
+        total_chunks: totalChunks,
       });
+
       invalidateLoaderMusicCache();
       await load();
     } catch (e: any) {

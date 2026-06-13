@@ -11,7 +11,7 @@ import binascii
 import time
 from io import BytesIO
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel, Field
 
@@ -307,13 +307,16 @@ async def _loader_music_slots_summary() -> dict:
     full Admin UI even before any audio has been uploaded."""
     out: dict = {}
     docs = await db.app_loader_music.find({}, {"_id": 1, "filename": 1,
-                                               "version": 1, "silent": 1}).to_list(50)
+                                               "version": 1, "silent": 1,
+                                               "base64": 1, "chunk_count": 1}).to_list(50)
     by_slot = {d["_id"]: d for d in docs}
     for slot, label in LOADER_SLOTS.items():
         d = by_slot.get(slot) or {}
-        # An "uploaded" doc exists when the slot has audio bytes; the row
-        # might also exist with just `silent: true` and no audio.
-        has_audio = bool(d) and not d.get("silent")
+        # A slot HAS audio when:
+        #  • not flagged silent, AND
+        #  • either the legacy `base64` field is set, OR `chunk_count > 0`.
+        has_bytes = bool(d.get("base64")) or int(d.get("chunk_count") or 0) > 0
+        has_audio = has_bytes and not d.get("silent")
         out[slot] = {
             "label": label,
             "has": has_audio,
@@ -412,13 +415,245 @@ async def update_loader_music(slot: str, body: LoaderMusicUpdate,
             "filename": body.filename}
 
 
+@router.post("/admin/loader-music/{slot}/upload")
+async def upload_loader_music_multipart(
+    slot: str,
+    audio: UploadFile = File(..., description="MP3 / WAV / OGG / M4A ≤ 30 MB"),
+    filename: Optional[str] = Form(None),
+    user: dict = Depends(get_current_user),
+):
+    """Multipart variant of PUT /admin/loader-music/{slot}.
+
+    Why we have BOTH:
+    * The JSON+base64 PUT is convenient but inflates payloads by ~33% and
+      keeps the entire body in memory before parsing — production proxies
+      (nginx / ALB / CloudFront) tend to reject the resulting ~40 MB JSON
+      with no CORS headers, which the browser then mis-reports as a CORS
+      error. Multipart streams cleanly through every proxy we've seen.
+    * Use this endpoint for the Admin UI uploader; the JSON PUT stays for
+      tests / scripted seeding.
+    """
+    if user.get("role") not in ("admin", "super_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    _check_slot(slot)
+    mime = (audio.content_type or "audio/mpeg").lower()
+    if mime == "audio/mp3":
+        mime = "audio/mpeg"
+    if mime not in ALLOWED_MUSIC_MIME:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Audio must be MP3 / WAV / OGG / M4A. Got {mime}.",
+        )
+    # Stream-read with a hard cap so a hostile upload can't exhaust memory.
+    raw = bytearray()
+    chunk_size = 1024 * 1024  # 1 MB
+    while True:
+        chunk = await audio.read(chunk_size)
+        if not chunk:
+            break
+        raw.extend(chunk)
+        if len(raw) > MAX_MUSIC_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Audio must be {MAX_MUSIC_BYTES // (1024 * 1024)} MB or smaller.",
+            )
+    if len(raw) < 1024:
+        raise HTTPException(status_code=400, detail="Audio file is empty or corrupt.")
+    raw_bytes = bytes(raw)
+    data_url = f"data:{mime};base64,{base64.b64encode(raw_bytes).decode()}"
+    chosen_name = (filename or audio.filename or f"{slot}-music").strip()[:120]
+    await db.app_loader_music.update_one(
+        {"_id": slot},
+        {"$set": {
+            "base64": data_url, "mime": mime,
+            "filename": chosen_name,
+            "version": int(time.time()),
+            "silent": False,
+        }},
+        upsert=True,
+    )
+    logger.info("Loader music uploaded (multipart) [%s] (%d bytes, %s) by %s",
+                slot, len(raw_bytes), mime, user.get("email"))
+    return {"success": True, "slot": slot, "has": True,
+            "url": f"/api/appearance/loader-music/{slot}",
+            "filename": chosen_name, "bytes": len(raw_bytes)}
+
+
 @router.delete("/admin/loader-music/{slot}")
 async def delete_loader_music(slot: str, user: dict = Depends(get_current_user)):
     if user.get("role") not in ("admin", "super_admin"):
         raise HTTPException(status_code=403, detail="Admin access required.")
     _check_slot(slot)
     await db.app_loader_music.delete_one({"_id": slot})
+    # Also drop the live binary chunks for this slot (chunked-upload format).
+    await db.app_loader_music_blob.delete_many({"slot": slot})
     return {"success": True, "slot": slot, "has": False}
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Chunked upload — bypasses the ~3 MB reverse-proxy body cap that some
+# ingress configurations enforce on api.jelcos.ai. The client slices the
+# audio into ≤1 MB chunks and POSTs each chunk separately; the final
+# `commit` call atomically replaces the slot's live audio.
+#
+# Storage layout:
+#   • app_loader_music_staging — temp docs per upload_id, one per chunk
+#       { _id: ObjectId, upload_id, slot, idx, total, data (Binary), created_at }
+#   • app_loader_music_blob — LIVE audio chunks per slot
+#       { _id: ObjectId, slot, version, idx, data (Binary) }
+#   • app_loader_music — metadata only for chunked uploads
+#       { _id: slot, mime, filename, version, silent, chunk_count, total_bytes }
+# Raw Binary storage (no base64) keeps each chunk well under the 16 MB
+# BSON doc cap, so total file size is bounded only by MAX_MUSIC_BYTES (30 MB).
+# ──────────────────────────────────────────────────────────────────────
+MAX_UPLOAD_CHUNK_BYTES = 1_500_000   # ≈1.5 MB raw → ~2 MB multipart on the wire
+STAGING_TTL_SECONDS = 60 * 30        # auto-clean abandoned uploads after 30m
+
+
+class LoaderMusicCommitBody(BaseModel):
+    upload_id: str = Field(..., min_length=8, max_length=120)
+    mime: str = Field(..., min_length=3, max_length=80)
+    filename: Optional[str] = Field(None, max_length=120)
+    total_chunks: int = Field(..., ge=1, le=128)
+
+
+@router.post("/admin/loader-music/{slot}/upload-chunk")
+async def upload_loader_music_chunk(
+    slot: str,
+    upload_id: str = Form(..., min_length=8, max_length=120),
+    idx: int = Form(..., ge=0, le=127),
+    total: int = Form(..., ge=1, le=128),
+    audio: UploadFile = File(..., description="One chunk of the audio file (≤1.5 MB raw)"),
+    user: dict = Depends(get_current_user),
+):
+    """Stage a single chunk for a chunked audio upload. Bypasses the
+    proxy's ~3 MB body cap by keeping each chunk small."""
+    if user.get("role") not in ("admin", "super_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    _check_slot(slot)
+    if idx >= total:
+        raise HTTPException(status_code=400, detail="idx must be < total.")
+    # Read with a strict cap so a hostile client can't break the proxy budget.
+    raw = bytearray()
+    while True:
+        chunk = await audio.read(256 * 1024)  # 256 KB sub-reads
+        if not chunk:
+            break
+        raw.extend(chunk)
+        if len(raw) > MAX_UPLOAD_CHUNK_BYTES + 65536:  # tiny headroom for multipart noise
+            raise HTTPException(
+                status_code=413,
+                detail=f"Each chunk must be ≤ {MAX_UPLOAD_CHUNK_BYTES // 1024} KB.",
+            )
+    if len(raw) == 0:
+        raise HTTPException(status_code=400, detail="Empty chunk rejected.")
+    from bson import Binary  # local import — bson ships with motor/pymongo
+    from datetime import datetime, timezone
+    await db.app_loader_music_staging.update_one(
+        {"upload_id": upload_id, "slot": slot, "idx": int(idx)},
+        {"$set": {
+            "upload_id": upload_id,
+            "slot": slot,
+            "idx": int(idx),
+            "total": int(total),
+            "data": Binary(bytes(raw)),
+            "user_id": user.get("user_id"),
+            "created_at": datetime.now(timezone.utc),
+        }},
+        upsert=True,
+    )
+    return {"success": True, "slot": slot, "upload_id": upload_id,
+            "idx": int(idx), "total": int(total), "bytes": len(raw)}
+
+
+@router.post("/admin/loader-music/{slot}/upload-commit")
+async def upload_loader_music_commit(
+    slot: str,
+    body: LoaderMusicCommitBody,
+    user: dict = Depends(get_current_user),
+):
+    """Finalise a chunked upload. Reads every staged chunk in order,
+    validates the total size + mime, then atomically replaces the slot's
+    live audio chunks. Stale staging docs are cleaned up afterwards."""
+    if user.get("role") not in ("admin", "super_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    _check_slot(slot)
+    mime = (body.mime or "audio/mpeg").lower()
+    if mime == "audio/mp3":
+        mime = "audio/mpeg"
+    if mime not in ALLOWED_MUSIC_MIME:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Audio must be MP3 / WAV / OGG / M4A. Got {mime}.",
+        )
+    cursor = db.app_loader_music_staging.find(
+        {"upload_id": body.upload_id, "slot": slot}
+    ).sort("idx", 1)
+    staged = await cursor.to_list(length=body.total_chunks + 8)
+    if len(staged) != body.total_chunks:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Missing chunks: expected {body.total_chunks}, got {len(staged)}. Re-upload the missing chunks.",
+        )
+    # Validate the sequence and tally size.
+    total_bytes = 0
+    for i, doc in enumerate(staged):
+        if doc.get("idx") != i:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Chunk {i} is missing or out of order.",
+            )
+        total_bytes += len(doc.get("data") or b"")
+        if total_bytes > MAX_MUSIC_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Total audio must be ≤ {MAX_MUSIC_BYTES // (1024 * 1024)} MB.",
+            )
+    if total_bytes < 1024:
+        raise HTTPException(status_code=400, detail="Assembled audio is too small / corrupt.")
+    chosen_name = (body.filename or f"{slot}-music").strip()[:120]
+    version = int(time.time())
+    # Atomic replace: clear old chunks first, then insert new ones, then
+    # update the metadata doc. If anything fails mid-way the metadata
+    # still points to the old version (which we haven't deleted), so the
+    # admin can retry without breaking the live audio.
+    from bson import Binary  # noqa: F401 (already imported above in chunk endpoint)
+    await db.app_loader_music_blob.delete_many({"slot": slot})
+    new_chunks = [{
+        "slot": slot, "version": version, "idx": d["idx"],
+        "data": d["data"],
+    } for d in staged]
+    if new_chunks:
+        await db.app_loader_music_blob.insert_many(new_chunks)
+    await db.app_loader_music.update_one(
+        {"_id": slot},
+        {"$set": {
+            "mime": mime,
+            "filename": chosen_name,
+            "version": version,
+            "silent": False,
+            "chunk_count": len(new_chunks),
+            "total_bytes": total_bytes,
+        }, "$unset": {"base64": ""}},  # drop the legacy inline field
+        upsert=True,
+    )
+    # Sweep this upload + any abandoned uploads older than the TTL.
+    from datetime import datetime, timedelta, timezone
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=STAGING_TTL_SECONDS)
+    await db.app_loader_music_staging.delete_many(
+        {"$or": [
+            {"upload_id": body.upload_id},
+            {"created_at": {"$lt": cutoff}},
+        ]}
+    )
+    logger.info("Loader music committed (chunked) [%s] %d chunks · %d bytes · %s · by %s",
+                slot, len(new_chunks), total_bytes, mime, user.get("email"))
+    return {
+        "success": True, "slot": slot, "has": True,
+        "url": f"/api/appearance/loader-music/{slot}",
+        "filename": chosen_name, "bytes": total_bytes,
+        "chunks": len(new_chunks), "version": version,
+    }
 
 
 @router.put("/admin/loader-music/{slot}/silent")
@@ -441,29 +676,48 @@ async def set_loader_music_silent(slot: str, body: LoaderMusicSilent,
 @router.get("/appearance/loader-music/{slot}")
 async def serve_loader_music(slot: str):
     """Stream a slot's audio with auto-fallback to `default` when empty.
+    Supports BOTH storage formats:
+      • New chunked format (raw Binary, multiple docs in `app_loader_music_blob`)
+      • Legacy inline base64 (single doc, `base64` field)
     A slot flagged `silent:true` returns 404 INSTEAD of falling back so the
     admin can explicitly mute one workflow."""
     _check_slot(slot)
     doc = await db.app_loader_music.find_one({"_id": slot})
     if doc and doc.get("silent"):
         return Response(status_code=404)
-    if not doc or not doc.get("base64"):
-        if slot == "default":
-            return Response(status_code=404)
-        # Fall back to default audio.
-        doc = await db.app_loader_music.find_one({"_id": "default"})
-        if not doc or doc.get("silent") or not doc.get("base64"):
-            return Response(status_code=404)
-    mime = doc.get("mime") or "audio/mpeg"
-    try:
-        data_url = doc["base64"]
-        b64 = data_url.split(",", 1)[1] if "," in data_url else data_url
-        raw = base64.b64decode(b64)
-    except Exception:
+
+    async def _load(target_slot: str):
+        """Return (raw_bytes, mime) for the given slot, or (None, None)."""
+        d = await db.app_loader_music.find_one({"_id": target_slot})
+        if not d or d.get("silent"):
+            return None, None
+        mime_local = d.get("mime") or "audio/mpeg"
+        # New chunked format takes priority.
+        if int(d.get("chunk_count") or 0) > 0:
+            cur = db.app_loader_music_blob.find({"slot": target_slot}).sort("idx", 1)
+            parts = await cur.to_list(length=int(d["chunk_count"]) + 4)
+            if not parts:
+                return None, None
+            buf = b"".join((p.get("data") or b"") for p in parts)
+            return buf, mime_local
+        # Legacy inline base64.
+        if d.get("base64"):
+            try:
+                data_url = d["base64"]
+                b64 = data_url.split(",", 1)[1] if "," in data_url else data_url
+                return base64.b64decode(b64), mime_local
+            except Exception:
+                return None, None
+        return None, None
+
+    raw, mime = await _load(slot)
+    if raw is None and slot != "default":
+        raw, mime = await _load("default")
+    if raw is None:
         return Response(status_code=404)
     return StreamingResponse(
         BytesIO(raw),
-        media_type=mime,
+        media_type=mime or "audio/mpeg",
         headers={
             "Cache-Control": "public, max-age=300",
             "Accept-Ranges": "bytes",
