@@ -339,7 +339,11 @@ export default function NewDecisionIntake() {
   };
 
   // ====== CREATE DECISION ======
-  const handleCreateDecision = async (templateId?: string, sourceType?: string) => {
+  const handleCreateDecision = async (
+    templateId?: string,
+    sourceType?: string,
+    landOnStep?: number,
+  ) => {
     // Carry forward the Step-4 title. When the user left it blank on the
     // "Create from scratch" path, fall back to the smart-default title (same
     // value shown as the placeholder/hint) so we never block them with a
@@ -375,15 +379,22 @@ export default function NewDecisionIntake() {
       const r = await api.post('/hos/decisions', payload);
       const decisionId = r.data.id;
       const factorsLoaded = r.data.factors_loaded || 0;
+      // ?step=2 lands the user on Step 2 (Factors) of the decision builder
+      // — used by the "Fresh Decision" path so new users skip template
+      // hunting and start composing factors immediately. Default flow (no
+      // landOnStep) keeps the page at the decision's persisted step.
+      const dest = landOnStep
+        ? `/prr/${decisionId}?step=${landOnStep}`
+        : `/prr/${decisionId}`;
 
       if (factorsLoaded > 0) {
         showAlert(
           'Template Loaded',
           `${factorsLoaded} pre-configured factors loaded with classifications, priorities & ratings. You can review and modify them in the PRR flow.`,
-          [{ text: 'Start Analysis', onPress: () => router.replace(`/prr/${decisionId}`) }]
+          [{ text: 'Start Analysis', onPress: () => router.replace(dest as any) }]
         );
       } else {
-        router.replace(`/prr/${decisionId}`);
+        router.replace(dest as any);
       }
     } catch (e: any) {
       showAlert('Error', e.response?.data?.detail || 'Failed to create decision');
@@ -872,25 +883,44 @@ export default function NewDecisionIntake() {
               </TouchableOpacity>
             )}
             {step < 4 && (
-              <TouchableOpacity
-                style={[s.navBtnNext, !canProceed() && s.navBtnDisabled]}
-                onPress={() => {
-                  if (step === 3 && !moduleCfg.hasTemplatesStep) {
-                    createProsConsAnalysis();
-                  } else {
-                    nextStep();
-                  }
-                }}
-                disabled={!canProceed() || creating}
-              >
-                <Text style={s.navBtnNextText}>
-                  {step === 3 ? moduleCfg.finalButtonLabel : 'Next'}
-                </Text>
-                <Ionicons
-                  name={step === 3 && !moduleCfg.hasTemplatesStep ? 'checkmark' : 'arrow-forward'}
-                  size={18} color="#FFF"
-                />
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: 8 }}>
+                {/* "Fresh Decision" — visible only on the final step of modules
+                    that have a templates step. Skips template fetching and
+                    lands the user directly on Step 2 (Factors) of the
+                    decision builder with the already-typed-or-default title.
+                    Saves new users from the "Find Templates → empty list"
+                    detour and keeps server-side template-search calls down. */}
+                {step === 3 && moduleCfg.hasTemplatesStep && (
+                  <TouchableOpacity
+                    testID="new-decision-fresh-btn"
+                    style={[s.navBtnFresh, !canProceed() && s.navBtnDisabled]}
+                    onPress={() => handleCreateDecision(undefined, 'CUSTOM_BLANK', 2)}
+                    disabled={!canProceed() || creating}
+                  >
+                    <Ionicons name="document-text-outline" size={18} color={COLORS.primary} />
+                    <Text style={s.navBtnFreshText}>Fresh Decision</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  style={[s.navBtnNext, !canProceed() && s.navBtnDisabled]}
+                  onPress={() => {
+                    if (step === 3 && !moduleCfg.hasTemplatesStep) {
+                      createProsConsAnalysis();
+                    } else {
+                      nextStep();
+                    }
+                  }}
+                  disabled={!canProceed() || creating}
+                >
+                  <Text style={s.navBtnNextText}>
+                    {step === 3 ? moduleCfg.finalButtonLabel : 'Next'}
+                  </Text>
+                  <Ionicons
+                    name={step === 3 && !moduleCfg.hasTemplatesStep ? 'checkmark' : 'arrow-forward'}
+                    size={18} color="#FFF"
+                  />
+                </TouchableOpacity>
+              </View>
             )}
           </View>
         )}
@@ -1056,6 +1086,15 @@ const s = StyleSheet.create({
   },
   navBtnDisabled: { opacity: 0.4 },
   navBtnNextText: { fontSize: 15, color: '#FFF', fontWeight: '700' },
+  // Fresh Decision — secondary outline button, sits left of the primary
+  // "Find Templates" CTA. Same height/border-radius as the primary so the
+  // pair looks visually balanced.
+  navBtnFresh: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: 12, paddingHorizontal: 18, borderRadius: 12,
+    backgroundColor: '#FFFFFF', borderWidth: 1.5, borderColor: COLORS.primary,
+  },
+  navBtnFreshText: { fontSize: 15, color: COLORS.primary, fontWeight: '700' },
 
   // Overlay
   overlay: {

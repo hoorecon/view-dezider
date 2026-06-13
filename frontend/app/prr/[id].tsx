@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
+  TextInput,
   ScrollView,
   TouchableOpacity,
   KeyboardAvoidingView,
@@ -53,6 +54,32 @@ function PRRDecisionDetailInner() {
 
   const [showCLD, setShowCLD] = useState(false);
   const [showCallModal, setShowCallModal] = useState(false);
+
+  // Inline title editor — pencil icon toggles a TextInput in place of the
+  // static title. Used heavily by the "Fresh Decision" path where the title
+  // starts as a smart default (e.g. "Assets (Movable & Immovable) — 13 Jun
+  // 2026, 16:22") and the user wants to overwrite it without leaving Step 2.
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
+  const titleInputRef = useRef<TextInput>(null);
+
+  const beginTitleEdit = () => {
+    setTitleDraft(decision?.title || '');
+    setEditingTitle(true);
+    setTimeout(() => titleInputRef.current?.focus(), 60);
+  };
+  const commitTitleEdit = async () => {
+    const next = titleDraft.trim();
+    setEditingTitle(false);
+    if (!next || next === decision?.title) return;
+    try {
+      await saveDecision({ title: next });
+    } catch { /* saveDecision surfaces its own error UI */ }
+  };
+  const cancelTitleEdit = () => {
+    setEditingTitle(false);
+    setTitleDraft('');
+  };
 
   // Reset the page scroll to the top whenever the step changes, so each step
   // (e.g. Step 7 'Assess Options') always opens from the top instead of
@@ -198,7 +225,51 @@ function PRRDecisionDetailInner() {
           >
             <Ionicons name="chevron-back" size={22} color={COLORS.textPrimary} />
           </TouchableOpacity>
-          <Text style={styles.decisionTitle} numberOfLines={1}>{decision.title}</Text>
+          {editingTitle ? (
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <TextInput
+                ref={titleInputRef}
+                value={titleDraft}
+                onChangeText={setTitleDraft}
+                onSubmitEditing={commitTitleEdit}
+                onBlur={commitTitleEdit}
+                returnKeyType="done"
+                maxLength={120}
+                testID="prr-title-input"
+                style={[styles.decisionTitle, {
+                  borderWidth: 1, borderColor: COLORS.primary, borderRadius: 8,
+                  paddingHorizontal: 8, paddingVertical: 4,
+                  backgroundColor: '#FFF',
+                }]}
+              />
+              <TouchableOpacity
+                onPress={commitTitleEdit}
+                testID="prr-title-save"
+                style={{ paddingHorizontal: 6, paddingVertical: 4 }}
+                accessibilityLabel="Save title"
+              >
+                <Ionicons name="checkmark" size={22} color={COLORS.primary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={cancelTitleEdit}
+                testID="prr-title-cancel"
+                style={{ paddingHorizontal: 6, paddingVertical: 4 }}
+                accessibilityLabel="Cancel title edit"
+              >
+                <Ionicons name="close" size={20} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
+              onPress={beginTitleEdit}
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+              testID="prr-title-edit"
+              accessibilityLabel="Edit decision title"
+            >
+              <Text style={styles.decisionTitle} numberOfLines={1}>{decision.title}</Text>
+              <Ionicons name="pencil" size={14} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          )}
           <View style={styles.headerStatusBadge}>
             <Text style={styles.headerStatusText}>
               Step {currentStep}/10
