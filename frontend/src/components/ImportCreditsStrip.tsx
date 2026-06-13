@@ -52,13 +52,23 @@ export const ImportCreditsStrip: React.FC<Props> = ({ endpoint, pages = 1, tier 
   }, [endpoint, pages, tier]);
 
   // Lazy-load consent only when the user is short (sufficient === false).
+  // ⚠ Important: if the consent endpoint fails (404 / 401 / network) we MUST
+  // still render the opt-in panel with a safe default — otherwise the panel
+  // stays hidden forever and the user thinks the feature is missing.
   useEffect(() => {
     if (!data || data.sufficient || consent || consentLoading) return;
     let on = true;
     setConsentLoading(true);
     api.get('/ai-wallet/provider-consent')
       .then(r => { if (on) setConsent(r.data); })
-      .catch(() => { /* leave null — section silently hidden */ })
+      .catch(() => {
+        // Fallback default — assumes nothing is set yet. The PUT below
+        // will create the real consent doc if the user clicks "Enable".
+        if (on) setConsent({
+          allow_openai: false, mode: 'ask',
+          openai_free_tier: false, openai_available: true,
+        });
+      })
       .finally(() => { if (on) setConsentLoading(false); });
     return () => { on = false; };
   }, [data, consent, consentLoading]);
