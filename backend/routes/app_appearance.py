@@ -53,6 +53,7 @@ LOADER_SLOTS = {
     "deep_import": "Deep Import (multi-page crawl)",
     "url_import": "URL Import (single-page)",
     "ai_assess_all": "AI Assess All (Step 7)",
+    "top5_picker": "Top-5 fetch loader (Step 5 → Step 8)",
     "mpps_pdf": "MPPS PDF generation (Step 9)",
     "results_reveal": "Final Decision reveal (Step 8 / 10)",
 }

@@ -13,7 +13,6 @@ import Constants from 'expo-constants';
 import { COLORS } from '../src/constants/colors';
 import api from '../src/utils/api';
 import { showAlert } from '../src/utils/alert';
-import { useAuthStore } from '../src/store/authStore';
 import { useAiWalletStore } from '../src/store/aiWalletStore';
 
 const BASE_URL = (Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL as string) || process.env.EXPO_PUBLIC_BACKEND_URL || '';
@@ -28,25 +27,17 @@ const KIND_META: Record<string, { icon: any; color: string; label: string }> = {
 
 export default function AiWalletScreen() {
   const router = useRouter();
-  const { user } = useAuthStore();
   const refreshBadge = useAiWalletStore((s) => s.refresh);
 
-  const role = (user?.role || '').toLowerCase();
-  const isSuperAdmin = role === 'super_admin';
-  const isAdmin = isSuperAdmin || role === 'admin' || role === 'co_admin' || !!user?.is_admin;
+  // /ai-wallet is strictly the END-USER wallet view. All Admin controls
+  // (defaults, pricing, routing, grant-credits, ledger search) live in
+  // /admin/ai-wallet-config and MUST NOT leak here — even when an admin
+  // happens to be the logged-in user.
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [wallet, setWallet] = useState<any>(null);
   const [ledger, setLedger] = useState<any[]>([]);
-
-  // admin config
-  const [cfg, setCfg] = useState<any>(null);
-  const [savingCfg, setSavingCfg] = useState(false);
-  // admin grant
-  const [grantEmail, setGrantEmail] = useState('');
-  const [grantAmount, setGrantAmount] = useState('');
-  const [granting, setGranting] = useState(false);
 
   // refill
   const [packsInfo, setPacksInfo] = useState<any>(null);
@@ -89,12 +80,6 @@ export default function AiWalletScreen() {
         const ccRes = await api.get('/ai-wallet/provider-consent');
         setConsent(ccRes.data);
       } catch { /* ignore */ }
-      if (isSuperAdmin) {
-        try {
-          const cRes = await api.get('/admin/ai-wallet/config');
-          setCfg(cRes.data);
-        } catch { /* ignore */ }
-      }
       refreshBadge();
     } catch (err) {
       // silent
@@ -150,47 +135,6 @@ export default function AiWalletScreen() {
   const tpc = Number(wallet?.tokens_per_credit ?? 100);
   const empty = balance <= 0;
   const low = balance > 0 && balance < 3;
-
-  const saveConfig = async () => {
-    if (!cfg) return;
-    setSavingCfg(true);
-    try {
-      const body = {
-        default_user_credits: Number(cfg.default_user_credits),
-        default_admin_credits: Number(cfg.default_admin_credits),
-        tokens_per_credit: Number(cfg.tokens_per_credit),
-      };
-      const res = await api.put('/admin/ai-wallet/config', body);
-      setCfg(res.data);
-      showAlert('Saved', 'AI wallet defaults updated.');
-    } catch (e: any) {
-      showAlert('Save failed', e?.response?.data?.detail || 'Could not update config.');
-    } finally {
-      setSavingCfg(false);
-    }
-  };
-
-  const grant = async () => {
-    const amt = parseFloat(grantAmount);
-    if (!grantEmail.trim() || isNaN(amt)) {
-      showAlert('Missing info', 'Enter a user email and a numeric credit amount.');
-      return;
-    }
-    setGranting(true);
-    try {
-      const res = await api.post('/admin/ai-wallet/grant', {
-        email: grantEmail.trim(), credits: amt, mode: 'add',
-      });
-      showAlert('Credits granted', `New balance: ${res.data?.balance} credits.`);
-      setGrantEmail('');
-      setGrantAmount('');
-      fetchData();
-    } catch (e: any) {
-      showAlert('Grant failed', e?.response?.data?.detail || 'Could not grant credits.');
-    } finally {
-      setGranting(false);
-    }
-  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -390,27 +334,10 @@ export default function AiWalletScreen() {
               )}
             </View>
 
-            {/* Admin config & grant-credits sections have moved to the
-                dedicated Admin pages — kept OUT of the user-facing wallet
-                to avoid leaking pricing/markup/Razorpay account internals.
-                See: /admin/ai-wallet-config (config + grant credits card). */}
-            {isSuperAdmin && (
-              <TouchableOpacity
-                testID="ai-wallet-admin-link"
-                onPress={() => router.push('/admin/ai-wallet-config' as any)}
-                activeOpacity={0.85}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 8,
-                  paddingHorizontal: 14, paddingVertical: 10, marginBottom: 12,
-                  backgroundColor: '#EDE9FE', borderRadius: 10,
-                  borderWidth: 1, borderColor: COLORS.primary,
-                }}>
-                <Ionicons name="settings-outline" size={14} color={COLORS.primary} />
-                <Text style={{ flex: 1, fontSize: 12, fontWeight: '700', color: COLORS.primary }}>
-                  Admin: edit wallet defaults / pricing / Route / grant credits →
-                </Text>
-              </TouchableOpacity>
-            )}
+            {/* Admin controls (defaults, pricing, routing, grant credits,
+                ledger search) deliberately live ONLY in /admin/ai-wallet-config.
+                Do NOT add admin shortcuts here — even for super_admin —
+                so the user-facing wallet stays a clean end-user surface. */}
 
             {/* Ledger */}
             <Text style={styles.sectionTitle}>Recent activity</Text>

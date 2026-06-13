@@ -17,7 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAudioPlayer, useAudioPlayerStatus, setAudioModeAsync } from 'expo-audio';
 import api from '../utils/api';
 
-export type LoaderSlot = 'default' | 'deep_import' | 'url_import' | 'ai_assess_all' | 'mpps_pdf' | 'results_reveal';
+export type LoaderSlot = 'default' | 'deep_import' | 'url_import' | 'ai_assess_all' | 'top5_picker' | 'mpps_pdf' | 'results_reveal';
 
 const MUTE_KEY = 'loaderMusicMuted';
 

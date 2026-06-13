@@ -66,7 +66,7 @@ export const DeepImportBudgetPicker: React.FC<Props> = ({ disabled, onRanked }) 
   // hears the celebratory music BEFORE Step 8 lands. Per-user mute applies
   // globally (same AsyncStorage key as every other LoaderMusicChip).
   const { available: musicAvailable, playing: musicPlaying, muted: musicMuted, toggleMute: toggleMusicMute } =
-    useLoaderMusic(running, 'results_reveal');
+    useLoaderMusic(running, 'top5_picker');
 
   // Auto-open when the decision flips into "pending rank" — but only once
   // per decision; the user can re-trigger by manually re-running deep import.

@@ -153,8 +153,8 @@ export default function AdminAppearance() {
       });
       if (res.canceled || !res.assets?.length) return;
       const a = res.assets[0];
-      if (a.size && a.size > 3 * 1024 * 1024) {
-        showAlert('Too large', 'Audio file must be 3 MB or smaller. Compress to a lower bitrate (e.g. 128 kbps MP3).');
+      if (a.size && a.size > 30 * 1024 * 1024) {
+        showAlert('Too large', 'Audio file must be 30 MB or smaller. Compress to a lower bitrate (e.g. 128 kbps MP3).');
         return;
       }
       let base64: string | null = null;
@@ -322,7 +322,7 @@ export default function AdminAppearance() {
           <View style={s.companyCard}>
             <Text style={s.sectionTitle}>Loader music (per-workflow)</Text>
             <Text style={s.companyHint}>
-              Pick a different MP3 / WAV / OGG / M4A (≤ 3 MB, trim to ~30s for clean looping) for each major
+              Pick a different MP3 / WAV / OGG / M4A (≤ 30 MB, trim to ~30s for clean looping) for each major
               progress loader. Empty slots fall back to the <Text style={{ fontWeight: '700' }}>default</Text> slot.
               Mark a slot <Text style={{ fontWeight: '700' }}>silent</Text> to opt only that workflow out of music
               while keeping the default soundtrack elsewhere.
