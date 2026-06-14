@@ -20,7 +20,7 @@ Subscription Plans (for paid): starter, pro, enterprise, api
 # Bump this version whenever ACM_MODULES / USER_TYPES / SUBSCRIPTION_PLANS change.
 # Boot-time auto-seed (core/acm_engine.py) reseeds DB iff stored version < this one.
 # Format: "YYYY-MM-DD-N" — human-readable, monotonically sortable.
-ACM_SEED_VERSION = "2026-06-02-05"
+ACM_SEED_VERSION = "2026-06-14-01"
 
 # Release stages (ordered by visibility)
 RELEASE_STAGES = [
@@ -1737,6 +1737,83 @@ ACM_MODULES = [
                     "paid_api": _hidden(),
                 },
             },
+        ],
+    },
+
+    # ────────────────────────────────────────────────────
+    # MODULE: Dashboard Tiles — controls visibility of each
+    # tile on the Home / Dashboard screen (the "direct entry"
+    # point only). Wiring off a tile here HIDES it from Home
+    # but does NOT block the same module from being reached
+    # via inter-module navigation (e.g. Goal Setter can still
+    # be opened from GEM even if dash_goal_setter is locked).
+    # Each feature is a single-tile toggle. Default = full
+    # (all tiles ON); admin can lock individual tiles in
+    # /admin/acm without touching the underlying module
+    # features.
+    # ────────────────────────────────────────────────────
+    {
+        "module_id": "dashboard_tiles",
+        "module_name": "Dashboard Tiles (Home Screen)",
+        "module_icon": "grid",
+        "module_description": "Per-tile visibility toggles for the Home dashboard. Wiring off a tile only hides the direct dashboard entry — inter-module links still work.",
+        "order": 99,
+        "features": [
+            {"feature_id": f"dash_{tile_id}", "feature_name": f"Dashboard tile · {tile_label}",
+             "release_stage": "ga_free", "quota_unit": "toggle", "quota_resets": "none",
+             "access": {
+                "unit_tester": _full(), "integration_tester": _full(),
+                "alpha": _full(), "beta": _full(),
+                "free": _full(), "trial": _full(),
+                "paid_starter": _full(), "paid_pro": _full(),
+                "paid_enterprise": _full(), "paid_api": _full(),
+             }}
+            for tile_id, tile_label in [
+                # Section 1 — Decision foundations
+                ("my_dezider",            "My Dezider"),
+                ("instant_dezider",       "Instant Dezider (Test123)"),
+                ("pros_cons",             "Pros & Cons"),
+                ("swot",                  "SWOT Analysis"),
+                ("pna",                   "My 360° Life (PNA)"),
+                # Section 2 — Solutions
+                ("solution_finder",       "Solution Finder"),
+                ("solution_store",        "Solution Store"),
+                ("review_net",            "Review Net"),
+                # Section 3 — Emotional & conflict
+                ("emotional_gatekeeper",  "Emotional Gatekeeper"),
+                ("conflict_breaker",      "Conflict Breaker"),
+                # Section 4 — Goals & execution
+                ("gem",                   "GEM"),
+                ("goal_setter",           "Goal Setter"),
+                ("goal_manifestation",    "Manifestation"),
+                ("gem_flight",            "GEM Flight Model"),
+                # Section 5 — Action & tasks
+                ("action_tracker",        "Action Tracker"),
+                ("ctt",                   "Centralized Task Tracker (CTT)"),
+                # Section 6 — Lifestyle
+                ("lifestyle_dezider",     "Lifestyle Dezider"),
+                ("lifestyle_designer",    "Lifestyle Designer"),
+                ("lifestyle_analyzer",    "Lifestyle Analyzer"),
+                ("consciousness_diary",   "Consciousness Diary"),
+                ("unconditional_happiness", "Unconditional Happiness"),
+                # Section 7 — Collaboration & advisors
+                ("collaboration_hub",     "Collaboration Hub"),
+                ("aala",                  "AALA"),
+                ("contacts",              "Contacts"),
+                ("ai_assistant",          "AI Assistant"),
+                ("public_pulse",          "Public Pulse"),
+                # Section 8 — Time & calendar
+                ("time_dezider",          "Time Intelligence"),
+                ("calendar",              "Calendar"),
+                ("time_store",            "Time Store"),
+                # Section 9 — Knowledge & systems
+                ("social_learning",       "Social Learning"),
+                ("capabilities_index",    "Capabilities & Resources Index"),
+                ("deo",                   "DEO"),
+                ("cld_engine",            "CLD Engine"),
+                # Section 10 — Billing
+                ("subscription",          "Subscription"),
+            ]
         ],
     },
 ]

@@ -1,0 +1,40 @@
+{
+  "summary": "WOWO dashboard-tile gating tested end-to-end. Backend pytest 5/5 PASS — `/api/acm/matrix` includes `dashboard_tiles` module (34 features), `/api/acm/my-access` returns all 34 dash_* keys, totals=33 modules/123 features, PUT lock+restore on dash_swot works, multi-toggle isolation (locking dash_swot/dash_aala/dash_review_net leaves the other 31 dash_* keys unaffected). Frontend: found and FIXED a critical key-mismatch bug in /app/frontend/src/utils/useDashboardTiles.ts that hid ALL 34 tiles because the hook read `a.level` while backend returns `access_level`. After the 1-line fix + Expo restart: all 22 sampled tiles render by default; locking dash_swot makes the SWOT Analysis tile disappear while AALA/GEM/Pros&Cons/others remain; admin /admin/acm page shows the 'Dashboard Tiles (Home Screen)' module with '34 features'. Regression: with dash_goal_setter locked, /tools/gem still loads and renders the in-module 'Create Goal' link — inter-module nav independent from dashboard tile visibility, as designed. All ACM features restored to `full` post-test.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "useDashboardTiles hook",
+        "issue": "Hook read `a.level` but /api/acm/my-access returns `access_level`. Result: ALL 34 dashboard tiles were hidden because `a.level === undefined` → returned false. Fixed by reading `a.access_level ?? a.level` (kept legacy fallback). Reference: /app/frontend/src/utils/useDashboardTiles.ts:64-70",
+        "testID": "",
+        "priority": "CRITICAL"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_dashboard_tiles_acm.py",
+    "/app/test_reports/pytest/iter123_dashboard_tiles.xml"
+  ],
+  "action_items": [
+    "Verify the hook fix in /app/frontend/src/utils/useDashboardTiles.ts (now uses `a.access_level ?? a.level`). Consider also updating the local Record<string, TileAccess> typing to match the actual backend payload so this can't regress.",
+    "Optional: add testID attributes to each dashboard tile (e.g. testID=`dash-tile-swot`) to make future selector-based tests deterministic without text matching."
+  ],
+  "critical_code_review_comments": [
+    "BUG (now patched): /app/frontend/src/utils/useDashboardTiles.ts:64 — `a.level === 'full' || a.level === 'read'` never matched because backend returns `access_level`. The graceful default `if (!a) return true` masks the issue only when the key is missing entirely. As soon as the dash_* feature exists, the function returns false → tile hidden. This regressed the WHOLE dashboard on first paint after seed. Patched to read `a.access_level ?? a.level`.",
+    "Suggest aligning frontend TileAccess interface with the backend payload (`access_level`, `quota_limit`, `quota_used`, `quota_remaining`, `quota_unit`) so TS catches future drift.",
+    "Backend seed for dashboard_tiles is clean (acm_seed_data.py:1755-1818): 34 features, order=99, all user_types=full. ACM_SEED_VERSION=2026-06-14-01 forced full reseed → confirmed 123 features in cache (logs)."
+  ],
+  "updated_files": [
+    "/app/frontend/src/utils/useDashboardTiles.ts (CRITICAL FIX: read access_level from backend payload; expanded TileAccess interface to include both `access_level` and legacy `level`)",
+    "/app/backend/tests/test_dashboard_tiles_acm.py (NEW pytest module — 5 tests, all green)"
+  ],
+  "success_rate": {"backend": "100% (5/5)", "frontend": "100% post-fix"},
+  "seed_data_creation": "No persistent test data created. Tests temporarily flip dash_swot / dash_aala / dash_review_net / dash_goal_setter between locked↔full and always restore to full in the finally block / explicit restore call.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "After editing files under /app/frontend/src/utils/, an Expo restart is REQUIRED — Metro CI mode disables hot-reload (`Metro is running in CI mode, reloads are disabled`). `sudo supervisorctl restart expo` + ~8s warmup picks up the change. The DOM-text harness used here is reliable: scroll the page from y=0 → y=8000 step=500 to force RN-Web ScrollView to render off-viewport children, then collect document.body innerText/textContent. Login via direct API call + localStorage.setItem('session_token', tok) bypasses the flaky on-page sign-in and the WhatsApp gate (skip_whatsapp_gate is ON in dev).",
+  "rca_of_issue": "ROOT CAUSE: Payload key mismatch — backend `core/acm_engine.get_all_feature_access` returns each feature as `{access_level, quota_limit, quota_used, quota_remaining, quota_unit}`, but the new useDashboardTiles hook checked `a.level`. Because every dash_* key is present in the response (admin gets full access), the graceful `if (!a) return true` fallback didn't trigger; instead `a.level === undefined` evaluated to `false` → `isTileOn()` returned false for every tile → all 34 tiles hidden. REPRO: login admin, GET /api/acm/my-access, observe `features.dash_swot.access_level == 'full'` (no `level` field); load Home — sections render but no tiles. MITIGATION: One-line fix `const lvl = a.access_level ?? a.level;` in useDashboardTiles.ts plus expanding TileAccess interface. Verified post-fix: 22/22 sampled tiles visible by default; locking dash_swot removes only the SWOT tile while siblings remain; /tools/gem still loads Goal Setter sub-link even when dash_goal_setter is locked at the tile level."
+}
