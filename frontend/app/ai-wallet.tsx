@@ -13,6 +13,7 @@ import Constants from 'expo-constants';
 import { COLORS } from '../src/constants/colors';
 import api from '../src/utils/api';
 import { showAlert } from '../src/utils/alert';
+import { AI_FEATURE_LABELS, labelForFeature } from '../src/utils/aiFeatureLabels';
 import { useAiWalletStore } from '../src/store/aiWalletStore';
 import AiConsumptionPie from '../src/components/AiConsumptionPie';
 
@@ -39,29 +40,25 @@ export default function AiWalletScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [wallet, setWallet] = useState<any>(null);
   const [ledger, setLedger] = useState<any[]>([]);
-  // Recent-activity filter bar — drives /ai-wallet/ledger queries. Date
-  // range is owned by the pie's selector and pushed down via onRangeChange.
+  // Recent-activity filter bar — feature dropdown + own date range chips.
+  // Activity range is INDEPENDENT of the pie's range so users can drill
+  // into a different period than the pie's high-level view.
   const [activityFeature, setActivityFeature] = useState('');
   const [activitySince, setActivitySince] = useState('');
-  // Pretty labels for known ai_metering feature keys. Anything missing
-  // falls back to the raw key (snake_case).
-  const featureLabelMap: Record<string, string> = {
-    import: 'Step 2 · Import URL',
-    deep_import: 'Step 2 · Deep Import',
-    prompt_autotune: 'Step 4 · Prompt Auto-Tune',
-    factor_suggestions: 'Step 5 · AI suggestions',
-    assist_cell: 'Step 7 · AI Assist',
-    assess_all: 'Step 7 · Assess All',
-    mpps_plan: 'Step 9 · MPPS plan',
-    aim_analyze: 'AIM · Analyze',
-    aim_report: 'AIM · Breakthrough Report',
-    eg_breakthrough_report: 'EG · Breakthrough Report',
-    outlet_analyze: 'Outlet · Analyze',
-    outlet_report: 'Outlet · Breakthrough Report',
-    pros_cons_wizard: 'Pros & Cons · AI',
-    solution_finder: 'Solution Finder · AI',
-    cld_ai: 'CLD · AI Suggestions',
-  };
+  const [activityRangeKey, setActivityRangeKey] = useState('all');
+
+  // Date-range chips for Recent activity. `days=null` → no `since` filter
+  // (= all-time).
+  const ACTIVITY_RANGES: { key: string; label: string; days: number | null }[] = [
+    { key: '7d',  label: 'Last 7d',   days: 7 },
+    { key: '30d', label: 'Last 30d',  days: 30 },
+    { key: '90d', label: 'Last 90d',  days: 90 },
+    { key: 'all', label: 'All-time',  days: null },
+  ];
+
+  // Shared label map — keep recent-activity rows and filter chips in sync
+  // with the pie legend & /admin/ai-touchpoints catalog.
+  const featureLabelMap = AI_FEATURE_LABELS;
   const uniqueFeatures = Array.from(new Set(ledger.map((r: any) => r.feature).filter(Boolean)));
 
   const fetchLedger = async (feature: string, since: string) => {
@@ -378,30 +375,40 @@ export default function AiWalletScreen() {
                 Do NOT add admin shortcuts here — even for super_admin —
                 so the user-facing wallet stays a clean end-user surface. */}
 
-            {/* AI Meter Consumption — donut chart with own date-range
-                selector, mounted just above 'Recent activity'. The pie
-                fires onRangeChange so we can keep the activity feed in
-                sync with whatever window the user picks above. */}
-            <AiConsumptionPie
-              labelMap={featureLabelMap}
-              onRangeChange={(since) => {
-                setActivitySince(since || '');
-                fetchLedger(activityFeature, since || '');
-              }}
-            />
+            {/* AI Meter Consumption — donut chart with its OWN date-range
+                selector (independent of the Recent activity range). */}
+            <AiConsumptionPie labelMap={featureLabelMap} />
 
-            {/* Recent-activity filter bar — feature dropdown + date range
-                (date range is driven by the pie's own selector unless the
-                user clears it via the 'All' chip here). */}
+            {/* Recent-activity filter bar — feature dropdown + own date
+                range chips. Independent from the pie's selector. */}
             <View style={styles.sectionHead}>
               <Text style={styles.sectionTitle}>Recent activity</Text>
+              <View style={styles.filterRow}>
+                {ACTIVITY_RANGES.map(r => (
+                  <TouchableOpacity key={`act-range-${r.key}`}
+                    testID={`activity-range-${r.key}`}
+                    style={[styles.rangeChip, activityRangeKey === r.key && styles.rangeChipActive]}
+                    onPress={() => {
+                      setActivityRangeKey(r.key);
+                      const sinceIso = r.days
+                        ? new Date(Date.now() - r.days * 86400000).toISOString()
+                        : '';
+                      setActivitySince(sinceIso);
+                      fetchLedger(activityFeature, sinceIso);
+                    }}>
+                    <Text style={[styles.rangeChipText, activityRangeKey === r.key && styles.rangeChipTextActive]}>
+                      {r.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
               <View style={styles.filterRow}>
                 {(['', ...uniqueFeatures] as string[]).map(f => (
                   <TouchableOpacity key={f || 'all'}
                     style={[styles.filterChip, activityFeature === f && styles.filterChipActive]}
                     onPress={() => { setActivityFeature(f); fetchLedger(f, activitySince); }}>
                     <Text style={[styles.filterChipText, activityFeature === f && styles.filterChipTextActive]}>
-                      {f ? (featureLabelMap[f] || f) : 'All touchpoints'}
+                      {f ? labelForFeature(f) : 'All touchpoints'}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -424,7 +431,7 @@ export default function AiWalletScreen() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.ledgerLabel}>
-                        {item.feature ? `${meta.label} · ${item.feature}` : (item.note || meta.label)}
+                        {item.feature ? labelForFeature(item.feature) : (item.note || meta.label)}
                       </Text>
                       <Text style={styles.ledgerMeta}>
                         {item.provider ? `${item.provider} · ` : ''}{item.tokens ? `${item.tokens} tokens · ` : ''}
@@ -481,6 +488,15 @@ const styles = StyleSheet.create({
   filterChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   filterChipText: { fontSize: 11, fontWeight: '700', color: COLORS.textMuted },
   filterChipTextActive: { color: '#FFF' },
+  // Recent-activity date-range chips (Last 7d / 30d / 90d / All-time).
+  // Distinct shape from the feature-filter chips: light violet pill.
+  rangeChip: {
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
+    borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#F8FAFC',
+  },
+  rangeChipActive: { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
+  rangeChipText: { fontSize: 11, fontWeight: '700', color: '#64748B' },
+  rangeChipTextActive: { color: '#FFF' },
   freeTierBanner: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 10,
     backgroundColor: '#F5F3FF', borderColor: '#DDD6FE', borderWidth: 1,

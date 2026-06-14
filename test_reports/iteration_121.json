@@ -1,0 +1,38 @@
+{
+  "summary": "Verified the 3 /ai-wallet fixes AND uncovered + fixed a related 500 in /api/ai-wallet/ledger when the new activity-range chips pass a `since` ISO string. Backend: 4/4 pytest cases PASS on /api/ai-wallet/consumption (all-time, since-filter no-error, new test-debit increases total, positive delta rows excluded). Live admin call total_credits=5336.38 across 9 buckets — matches expected. Bug fix: /api/ai-wallet/ledger threw TypeError comparing datetime to str — fixed by coercing created_at to ISO via _ts_str. After fix the same query returns 200 with items. Frontend: pretty labels render in legend, filter chips, AND ledger rows; raw keys (deep_import_consolidate, url_import_detail, scrape_fetch, url_import_classify, ai_set_expectations) NOT leaking; old 'AI usage ·' label gone. activity-range-{7d,30d,90d,all} testIDs present + correctly fire /ai-wallet/ledger with/without `since`. ai-pie-range-7d still fires /ai-wallet/consumption?since=... independently — decoupling confirmed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/ai-wallet/ledger?since=<ISO>", "issue": "Returned 500 TypeError comparing datetime vs str in _in_range — FIXED by normalising created_at to ISO before comparison (see /app/backend/routes/ai_wallet.py:50-62)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_ai_wallet_consumption.py",
+    "/app/test_reports/pytest/iter121_ai_wallet_consumption.xml"
+  ],
+  "action_items": [
+    "(Optional) Add a pytest case for /ai-wallet/ledger?since=<ISO> to lock in the datetime-vs-str fix; current suite focuses on /consumption."
+  ],
+  "critical_code_review_comments": [
+    "Defensive `delta: {$lt: 0}` match-filter in my_wallet_consumption guards against any stray kind='debit' rows with delta>=0 — verified in test 1d.",
+    "labelForFeature snake_case→Title Case fallback is solid; unknown keys never leak as raw to the UI.",
+    "Pie ai-pie-range and activity-range are now properly decoupled — confirmed via separate API requests in playwright capture (activity tap → /ai-wallet/ledger only; pie tap → /ai-wallet/consumption only).",
+    "Pre-existing bug in /ai-wallet/ledger _in_range was only exposed by the new activity-range chips (no prior caller passed `since`). Fix is type-safe and minimal."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_ai_wallet_consumption.py (NEW)",
+    "/app/backend/routes/ai_wallet.py (FIX: _in_range now coerces created_at via _ts_str)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "No persistent seed. Tests insert + cleanup ledger rows tagged note:'TEST_*' via fixture teardown; mongosh confirmed 0 leftover rows.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "If you need to revisit: login admin@test.com/AdminPass2026!. /api/ai-wallet/consumption returns total_credits=5336.38 across 9 buckets (until new spend lands). /api/ai-wallet/ledger?since=<ISO> now correctly returns 200 thanks to _ts_str coercion. labelForFeature lives in /app/frontend/src/utils/aiFeatureLabels.ts; consumed by AiConsumptionPie (labelMap prop) and ai-wallet.tsx (Recent activity rows + filter chips). TestIDs: activity-range-{7d,30d,90d,all} (independent) and ai-pie-range-{key}.",
+  "rca_of_issue": "Root cause of 500: ai_wallet.get_ledger() returns some rows with created_at as a Python datetime object (older debits) while the new activity-range chip passes since as an ISO string from Date.now() — JS toISOString. Python refuses `datetime < str`. Fix: helper _ts_str() coerces datetime→ISO before comparison."
+}

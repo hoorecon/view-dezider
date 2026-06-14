@@ -48,10 +48,18 @@ async def my_wallet_ledger(
        * since/until — ISO date range; rows OUTSIDE the range are excluded.
     Returns up to `limit` rows (capped at 200 for date-range exports)."""
     rows = await ai_wallet.get_ledger(user["user_id"], min(max(limit, 1), 200))
+    def _ts_str(v):
+        # `created_at` may be stored as either an ISO string OR a datetime
+        # (older debit rows persisted via the metering helper). Coerce to
+        # ISO string so lexicographic comparison against the `since`/`until`
+        # ISO query params is always type-safe.
+        if isinstance(v, datetime):
+            return v.isoformat()
+        return v or ""
     def _in_range(r):
         if feature and r.get("feature") != feature:
             return False
-        ts = r.get("created_at") or ""
+        ts = _ts_str(r.get("created_at"))
         if since and ts < since:
             return False
         if until and ts > until:
@@ -68,8 +76,16 @@ async def my_wallet_consumption(
 ):
     """Aggregate AI debits grouped by touchpoint feature for the given date
     range. Powers the AI Meter pie chart on /ai-wallet. Refunds and grants
-    are excluded — we only count actual spend."""
-    match: Dict[str, Any] = {"user_id": user["user_id"], "kind": "debit"}
+    are excluded — we only count actual spend.
+
+    NOTE: the ledger column is `delta` (negative for debits), NOT `amount`.
+    We use $abs over the delta so the pie shows positive credit values.
+    Empty / null feature keys are bucketed as 'other'."""
+    match: Dict[str, Any] = {
+        "user_id": user["user_id"],
+        "kind": "debit",
+        "delta": {"$lt": 0},  # belt-and-braces: ignore stray zero/positive debits
+    }
     ts_range: Dict[str, Any] = {}
     if since: ts_range["$gte"] = since
     if until: ts_range["$lte"] = until
@@ -77,8 +93,14 @@ async def my_wallet_consumption(
     pipeline = [
         {"$match": match},
         {"$group": {
-            "_id": {"$ifNull": ["$feature", "other"]},
-            "credits": {"$sum": {"$abs": "$amount"}},
+            "_id": {
+                "$cond": [
+                    {"$in": [{"$ifNull": ["$feature", ""]}, ["", None]]},
+                    "other",
+                    "$feature",
+                ]
+            },
+            "credits": {"$sum": {"$abs": "$delta"}},
             "runs": {"$sum": 1},
         }},
         {"$sort": {"credits": -1}},
