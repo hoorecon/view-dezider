@@ -101,8 +101,10 @@ export default function ActionCenter() {
           });
         }
         // Pre-filter to AIM so the user immediately sees what was seeded.
+        // The dependency on `fSource` in `load`'s useCallback will trigger
+        // a refetch via useFocusEffect — no need to call load() here with
+        // the stale 'all' filter.
         setFSource('AIM');
-        load();
       } catch (e: any) {
         showAlert('Import failed', e?.response?.data?.detail || 'Could not import from AIM');
       }
