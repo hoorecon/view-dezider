@@ -18,6 +18,16 @@ import { router } from 'expo-router';
 import api from '../utils/api';
 import { showAlert } from '../utils/alert';
 
+type ProviderConsent = {
+  allow_openai: boolean; mode: string;
+  openai_free_tier: boolean; openai_available: boolean;
+};
+
+const DEFAULT_CONSENT: ProviderConsent = {
+  allow_openai: false, mode: 'ask',
+  openai_free_tier: false, openai_available: true,
+};
+
 interface Props {
   endpoint: 'import' | 'deep_import';
   pages?: number;
@@ -34,10 +44,7 @@ export const ImportCreditsStrip: React.FC<Props> = ({ endpoint, pages = 1, tier 
   // OpenAI free-tier consent — shown inline when the user is short on credits
   // so they can opt into 0-credit AI calls without leaving the Deep Import /
   // Import URL flow. Lazily loaded the first time the strip flips to "short".
-  const [consent, setConsent] = useState<{
-    allow_openai: boolean; mode: string;
-    openai_free_tier: boolean; openai_available: boolean;
-  } | null>(null);
+  const [consent, setConsent] = useState<ProviderConsent | null>(null);
   const [consentLoading, setConsentLoading] = useState(false);
   const [savingConsent, setSavingConsent] = useState(false);
 
@@ -64,21 +71,17 @@ export const ImportCreditsStrip: React.FC<Props> = ({ endpoint, pages = 1, tier 
       .catch(() => {
         // Fallback default — assumes nothing is set yet. The PUT below
         // will create the real consent doc if the user clicks "Enable".
-        if (on) setConsent({
-          allow_openai: false, mode: 'ask',
-          openai_free_tier: false, openai_available: true,
-        });
+        if (on) setConsent(DEFAULT_CONSENT);
       })
       .finally(() => { if (on) setConsentLoading(false); });
     return () => { on = false; };
   }, [data, consent, consentLoading]);
 
   const enableFreeTier = async () => {
-    if (!consent) return;
     setSavingConsent(true);
     try {
       const res = await api.put('/ai-wallet/provider-consent', {
-        allow_openai: true, mode: consent.mode || 'always', openai_free_tier: true,
+        allow_openai: true, mode: consent?.mode || 'always', openai_free_tier: true,
       });
       setConsent(res.data);
       showAlert(
@@ -110,9 +113,14 @@ export const ImportCreditsStrip: React.FC<Props> = ({ endpoint, pages = 1, tier 
   // We deliberately DON'T gate on `consent.openai_available` — the server
   // may or may not yet have OPENAI_API_KEY set, but the user-side consent
   // still needs to be captured. Once both align, AI calls route to OpenAI
-  // free credits automatically.
-  const showFreeTierPanel = !ok && consent && !consent.openai_free_tier;
-  const freeTierAlreadyOn = !ok && consent && consent.openai_free_tier;
+  // free credits automatically. Using `consent?.openai_free_tier` (optional
+  // chaining) means the panel appears IMMEDIATELY when `data.sufficient`
+  // is false, even before the consent GET resolves — `consent` is just
+  // null at first and the optional-chain evaluates to undefined → falsy
+  // → panel shows. Once the GET (or its fallback) completes we re-render
+  // with the real value.
+  const showFreeTierPanel = !ok && !consent?.openai_free_tier;
+  const freeTierAlreadyOn = !ok && !!consent?.openai_free_tier;
 
   return (
     <View testID="import-credits-strip-wrap">
