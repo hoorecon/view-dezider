@@ -1,5 +1,6 @@
 """CTT (Centralized Task Tracker) + GEM (Goals Execution Manager) + TEPFI Resource Matrix + Calendar endpoints."""
 import uuid
+from typing import Any, Dict
 from datetime import datetime, timezone, timedelta
 from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Request, Depends
@@ -747,13 +748,27 @@ async def delete_tepfi_entry(entry_id: str, user: dict = Depends(get_current_use
 
 
 @router.get("/tepfi/dashboard")
-async def tepfi_dashboard(user: dict = Depends(get_current_user)):
-    """TEPFI overview: aggregated scores across life areas."""
-    entries = await db.tepfi_entries.find(
-        {"user_id": user["user_id"]}, {"_id": 0}
-    ).to_list(200)
+async def tepfi_dashboard(request: Request, user: dict = Depends(get_current_user)):
+    """
+    Overall / per-life-area average matrix for the Capabilities & Resources
+    Index. Optional `?life_area=<id>` scopes the avg to that area only.
 
-    by_area = {}
+    Returns each cell as an enriched object:
+        { auto: float, score: float, overridden: bool, note: str }
+    `auto` is the average computed from saved assessments.
+    `score` is the effective value the UI should render — the user's
+    per-cell override (if any), else `auto`. Scope key:
+        - 'all' (no filter) → applies overrides where scope=='all'
+        - '<life_area_id>'   → applies overrides where scope==<id>
+    """
+    life_area = request.query_params.get("life_area")
+    q: Dict[str, Any] = {"user_id": user["user_id"]}
+    if life_area:
+        q["life_area"] = life_area
+
+    entries = await db.tepfi_entries.find(q, {"_id": 0}).to_list(200)
+
+    by_area: Dict[str, Any] = {}
     overall_scores = {dim: {layer: [] for layer in TEPFI_LAYERS} for dim in TEPFI_DIMENSIONS}
 
     for e in entries:
@@ -770,19 +785,93 @@ async def tepfi_dashboard(user: dict = Depends(get_current_user)):
                 if score:
                     overall_scores[dim][layer].append(score)
 
-    # Calculate averages
-    avg_matrix = {}
+    # Look up per-cell overrides for this scope
+    scope = life_area or "all"
+    overrides_cursor = db.tepfi_overrides.find(
+        {"user_id": user["user_id"], "scope": scope}, {"_id": 0}
+    )
+    overrides: Dict[str, Dict[str, Any]] = {}
+    async for ov in overrides_cursor:
+        ck = ov.get("cell_key", "")
+        if ck:
+            overrides[ck] = ov
+
+    # Enriched avg_matrix
+    avg_matrix: Dict[str, Dict[str, Any]] = {}
     for dim in TEPFI_DIMENSIONS:
         avg_matrix[dim] = {}
         for layer in TEPFI_LAYERS:
             scores = overall_scores[dim][layer]
-            avg_matrix[dim][layer] = round(sum(scores) / max(len(scores), 1), 1) if scores else 0
+            auto = round(sum(scores) / max(len(scores), 1), 1) if scores else 0.0
+            cell_key = f"{dim}_{layer}"
+            ov = overrides.get(cell_key)
+            if ov is not None:
+                avg_matrix[dim][layer] = {
+                    "auto": auto,
+                    "score": float(ov.get("score", auto)),
+                    "overridden": True,
+                    "note": ov.get("note", ""),
+                }
+            else:
+                avg_matrix[dim][layer] = {
+                    "auto": auto, "score": auto,
+                    "overridden": False, "note": "",
+                }
 
     return {
         "total_entries": len(entries),
+        "scope": scope,
         "by_area": by_area,
         "avg_matrix": avg_matrix,
     }
+
+
+# ───── Per-cell overrides (axis × dim × scope) ───────────────────────────
+
+@router.get("/tepfi/overrides")
+async def list_tepfi_overrides(request: Request, user: dict = Depends(get_current_user)):
+    scope = request.query_params.get("scope") or "all"
+    rows = await db.tepfi_overrides.find(
+        {"user_id": user["user_id"], "scope": scope}, {"_id": 0}
+    ).to_list(100)
+    return {"scope": scope, "overrides": rows}
+
+
+@router.put("/tepfi/overrides/{scope}")
+async def upsert_tepfi_override(scope: str, request: Request, user: dict = Depends(get_current_user)):
+    """
+    Override a single cell (axis × dim) for the given scope ('all' or a
+    life_area id). Body: { cell_key, score, note? }.  cell_key is the
+    concatenation '<dim>_<layer>' (e.g. 'effort_self').
+    """
+    body = await request.json()
+    cell_key = (body.get("cell_key") or "").strip()
+    if not cell_key:
+        raise HTTPException(400, "cell_key required")
+    try:
+        score = float(body.get("score", 0))
+    except Exception:
+        raise HTTPException(400, "score must be numeric")
+    note = (body.get("note") or "").strip()
+    now = datetime.now(timezone.utc).isoformat()
+    await db.tepfi_overrides.update_one(
+        {"user_id": user["user_id"], "scope": scope, "cell_key": cell_key},
+        {"$set": {
+            "user_id": user["user_id"], "scope": scope,
+            "cell_key": cell_key, "score": score, "note": note,
+            "overridden": True, "updated_at": now,
+        }},
+        upsert=True,
+    )
+    return {"ok": True, "scope": scope, "cell_key": cell_key, "score": score, "note": note}
+
+
+@router.delete("/tepfi/overrides/{scope}/{cell_key}")
+async def delete_tepfi_override(scope: str, cell_key: str, user: dict = Depends(get_current_user)):
+    res = await db.tepfi_overrides.delete_one(
+        {"user_id": user["user_id"], "scope": scope, "cell_key": cell_key}
+    )
+    return {"ok": True, "deleted": res.deleted_count}
 
 
 @router.get("/tepfi/metadata")

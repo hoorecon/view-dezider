@@ -59,7 +59,7 @@ const MODULE_TYPES_META = [
   { id: 'solutions_store', name: 'Solutions Store', icon: 'storefront-outline', color: '#0D9488', desc: 'Solutions & DEO' },
   { id: 'unconditional_happiness', name: 'Happiness', icon: 'happy-outline', color: '#F59E0B', desc: 'UH tracker' },
   { id: 'time_dezider', name: 'Time Dezider', icon: 'time-outline', color: '#6366F1', desc: 'Time management' },
-  { id: 'tepfi', name: 'TEPFI Matrix', icon: 'grid-outline', color: '#0F766E', desc: 'Resource analysis' },
+  { id: 'tepfi', name: 'Capabilities & Resources Index', icon: 'grid-outline', color: '#0F766E', desc: 'Resource analysis' },
   { id: 'consciousness', name: 'Consciousness', icon: 'eye-outline', color: '#7C3AED', desc: 'Diary insights' },
   { id: 'ai_assistant', name: 'AI Assistant', icon: 'chatbubbles-outline', color: '#2563EB', desc: 'Conversation patterns' },
   { id: 'meditation', name: 'Meditation', icon: 'leaf-outline', color: '#059669', desc: 'KalphaVriksha sessions' },

@@ -9,6 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
+import { LIFE_AREAS as CATALOG_LIFE_AREAS } from '../../src/constants/lifeAreas';
 import api from '../../src/utils/api';
 import Slider from '@react-native-community/slider';
 
@@ -37,18 +38,9 @@ const LAYERS = [
   { id: 'macro', name: 'Macro', icon: 'globe', color: '#8B5CF6', desc: 'Broader network & society' },
 ];
 
-const LIFE_AREAS = [
-  { id: 'career', name: 'Career', icon: 'briefcase' },
-  { id: 'finance', name: 'Finance', icon: 'cash' },
-  { id: 'relationships', name: 'Relationships', icon: 'heart' },
-  { id: 'holistic_health', name: 'Health', icon: 'fitness' },
-  { id: 'assets', name: 'Assets', icon: 'home' },
-  { id: 'knowledge_skills', name: 'Knowledge', icon: 'school' },
-  { id: 'social_image', name: 'Social Image', icon: 'people' },
-  { id: 'social_contributions', name: 'Contributions', icon: 'hand-left' },
-  { id: 'hobbies_entertainment', name: 'Hobbies', icon: 'game-controller' },
-  { id: 'spirituality_religion', name: 'Spirituality', icon: 'leaf' },
-];
+// Canonical L0 life areas — single source of truth from Catalog Manager.
+// Aligned with Lifestyle Designer / AIM / Outlets so chip labels never drift.
+const LIFE_AREAS = CATALOG_LIFE_AREAS.map(a => ({ id: a.id, name: a.short, icon: a.icon }));
 
 type Matrix = Record<string, Record<string, { description: string; score: number; notes: string }>>;
 
@@ -175,7 +167,7 @@ export default function TEPFIEntryScreen() {
           <TouchableOpacity onPress={() => router.back()} style={st.backBtn}>
             <Ionicons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
-          <Text style={st.headerTitle}>{editId ? 'Edit Assessment' : 'New TEPFI Assessment'}</Text>
+          <Text style={st.headerTitle}>{editId ? 'Edit Assessment' : 'New Capabilities Assessment'}</Text>
         </LinearGradient>
 
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
@@ -191,20 +183,19 @@ export default function TEPFIEntryScreen() {
             />
 
             <Text style={st.label}>Life Area</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={st.chipRow}>
-                {LIFE_AREAS.map(a => (
-                  <TouchableOpacity
-                    key={a.id}
-                    style={[st.chip, lifeArea === a.id && st.chipActive]}
-                    onPress={() => setLifeArea(lifeArea === a.id ? '' : a.id)}
-                  >
-                    <Ionicons name={a.icon as any} size={12} color={lifeArea === a.id ? '#FFF' : COLORS.primary} />
-                    <Text style={[st.chipText, lifeArea === a.id && { color: '#FFF' }]}>{a.name}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
+            {/* Flex-wrap chips so all 10 L0 areas are visible at-a-glance (no h-scroll). */}
+            <View style={st.chipRow}>
+              {LIFE_AREAS.map(a => (
+                <TouchableOpacity
+                  key={a.id}
+                  style={[st.chip, lifeArea === a.id && st.chipActive]}
+                  onPress={() => setLifeArea(lifeArea === a.id ? '' : a.id)}
+                >
+                  <Ionicons name={a.icon as any} size={12} color={lifeArea === a.id ? '#FFF' : COLORS.primary} />
+                  <Text style={[st.chipText, lifeArea === a.id && { color: '#FFF' }]}>{a.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
 
           {/* TEPFI Dimensions */}
@@ -254,7 +245,7 @@ export default function TEPFIEntryScreen() {
                                 <Ionicons name={layer.icon as any} size={12} color={layer.color} />
                                 <Text style={{ fontSize: 11, fontWeight: '600', color: layer.color }}>{layer.name}</Text>
                                 <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.textPrimary, marginLeft: 'auto' }}>
-                                  {matrix[dim.id]?.[cellKey]?.score || 0}/10
+                                  {matrix[dim.id]?.[cellKey]?.score || 0}/10 · {(matrix[dim.id]?.[cellKey]?.score || 0) * 10}%
                                 </Text>
                               </View>
                               <Slider
@@ -290,7 +281,9 @@ export default function TEPFIEntryScreen() {
                         <Text style={st.layerDesc}>{layer.desc}</Text>
                       </View>
 
-                      <Text style={st.cellLabel}>Score (0-10): {matrix[dim.id]?.[layer.id]?.score || 0}</Text>
+                      <Text style={st.cellLabel}>
+                        Score: {matrix[dim.id]?.[layer.id]?.score || 0}/10 · {(matrix[dim.id]?.[layer.id]?.score || 0) * 10}%
+                      </Text>
                       <Slider
                         style={{ height: 40 }}
                         minimumValue={0}
@@ -375,7 +368,7 @@ const st = StyleSheet.create({
   label: { fontSize: 13, fontWeight: '600', color: COLORS.textPrimary, marginTop: 12, marginBottom: 6 },
   input: { backgroundColor: COLORS.white, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: COLORS.textPrimary },
 
-  chipRow: { flexDirection: 'row', gap: 6 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, rowGap: 6 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.white },
   chipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   chipText: { fontSize: 11, fontWeight: '600', color: COLORS.textMuted },

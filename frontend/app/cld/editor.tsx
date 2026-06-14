@@ -55,7 +55,7 @@ interface CLDLink {
 
 const MODULE_LABEL: Record<string, string> = {
   master: 'Master',
-  tepfi: 'TEPFI Resource Matrix',
+  tepfi: 'Capabilities & Resources Index',
   time_dezider: 'Time Dezider',
   decision: 'Decisions',
   pna: 'PNA',

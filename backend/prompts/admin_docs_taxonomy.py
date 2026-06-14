@@ -98,7 +98,7 @@ CATEGORY_MAP = {
     "/org-auth": "Organization Auth",
     "/video-calls": "Video Call Sessions",
     "/experts": "Expert Management",
-    "/tepfi": "TEPFI Matrix",
+    "/tepfi": "Capabilities & Resources Index",
     "/factor-data": "Factor Data Sources",
     "/reviews": "Solution Reviews",
     "/contacts": "Contact List Management",

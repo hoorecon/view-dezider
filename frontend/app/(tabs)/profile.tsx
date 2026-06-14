@@ -683,7 +683,7 @@ export default function ProfileScreen() {
           <Ionicons name="cube" size={18} color="#FFF" />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>TEPFI Matrix</Text>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>Capabilities & Resources Index</Text>
           <Text style={{ fontSize: 12, color: COLORS.textMuted }}>Resource tracking across Self/Micro/Macro</Text>
         </View>
         <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />

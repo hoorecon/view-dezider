@@ -720,7 +720,7 @@ export default function HomeScreen() {
               <LinearGradient colors={['#7C3AED', '#A855F7']} style={styles.actionIcon}>
                 <Ionicons name="cube" size={24} color="#FFF" />
               </LinearGradient>
-              <Text style={styles.actionTitle}>TEPFI Matrix</Text>
+              <Text style={styles.actionTitle}>Capabilities & Resources Index</Text>
               <Text style={styles.actionSubtitle}>Resource tracking</Text>
             </TouchableOpacity>
           </View>

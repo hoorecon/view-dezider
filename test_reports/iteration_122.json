@@ -1,0 +1,30 @@
+{
+  "summary": "TEPFI → Capabilities & Resources Index rename + per-cell overrides verified end-to-end. Backend: 10/10 pytest pass — dashboard enrichment (auto/score/overridden/note), PUT/DELETE overrides, all-vs-life-area scope isolation, per-user permission boundary, 400 on empty cell_key + non-numeric score, /tepfi/entries CRUD regression, /tepfi/metadata returns the 8 effort sub-dimensions. Frontend: /tools/tepfi header reads 'Capabilities & Resources Index' (NOT old name); matrix title 'Avg Scores · Overall Life' renders and flips to 'Avg Scores · Career' on chip tap; all 10 life-area chips + 'All' visible in 2 rows on 1280×800 (no horizontal scroll); tapping testID avg-cell-time-self opens the modal with 'Your value: N/10 · M%' + 'Computed avg from assessments: N/10 · M%' lines; override-save-btn click adds the OVR pill (override-pill-time-self appears); re-tap shows override-reset-btn which clears the pill. /tools/tepfi-entry header reads 'New Capabilities Assessment'; chips wrap; Effort row expands into all 8 sub-aspects (Attitude/Knowledge/Skills/Physical Health/Mental State/Emotional Wellness/Energy Level/Action) and the 'N/10 · M%' score labels render (24 occurrences captured). Code review verified the rename hit all 7 files listed in the spec. No issues found.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_tepfi_overrides.py",
+    "/app/test_reports/pytest/iter122_tepfi.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Both tepfi.tsx and tepfi-entry.tsx remap CATALOG_LIFE_AREAS using `a.short` for the local `name` field (line 34 / line 43). That keeps chips compact (Health/Knowledge/Career/Social Image…) so all 10 fit in 2 rows. Effective behavior matches the spec which asked for 'all 10 visible at first glance on phones' — confirmed visually.",
+    "Backend override scoping (ctt_gem.py:788-826) cleanly separates scope='all' from scope='<life_area>' via the {user_id, scope, cell_key} composite key; no bleed-through observed in test 1c.",
+    "DELETE /tepfi/overrides/{scope}/{cell_key} is idempotent — returns {ok:true, deleted:0} when nothing matched; current tests assert deleted==1 only for the seeded case.",
+    "Validation order: cell_key check happens BEFORE score float() — empty cell_key + non-numeric score both return 400 with clear detail."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_tepfi_overrides.py (NEW)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Module-scoped TEPFI entry titled 'TEST_TEPFI_overrides' (life_area=career) created+deleted via fixture. Override rows cleaned via autouse fixture before/after each test on cell_keys [effort_self, effort_micro, time_self, people_macro] for scopes [all, career]. mongosh-free, no leftover rows.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Frontend auth on the preview URL was bypassed for this test by minting a token via local backend (POST http://localhost:8001/api/auth/login admin@test.com / AdminPass2026!) and injecting it into window.localStorage.setItem('session_token', '<tok>') before navigation — same JWT works against both ingress (preview) and 8001 since they share the DB. The on-page Sign In flow was flaky due to a transient 'getRehydratedState' rehydration error (storybook persist), but it did NOT block the test path. If future tests need a real-login flow, retry the Sign In click after a 4-5s settle. TestIDs verified live: avg-cell-<dim>-<layer>, override-pill-<dim>-<layer>, override-save-btn, override-reset-btn. The OVR pill renders only when cell.overridden===true after dashboard refetch — confirm by checking pill count post-Save.",
+  "rca_of_issue": "N/A — no bugs found this iteration."
+}
