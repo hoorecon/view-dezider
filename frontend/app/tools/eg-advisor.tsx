@@ -231,7 +231,17 @@ export default function EGAdvisorScreen() {
             </View>
           )}
 
-          {/* Outlet Cards by Category */}
+          {/* Sequential numbering counter — increments across category
+              groups so users see 1, 2, 3 ... in reading order regardless
+              of how the backend grouped them. */}
+          {(() => { /* reset counter on every render */ return null; })()}
+          {(() => {
+            // We rebuild the grouped list here so we can hand a sequential
+            // number to each outlet card below. The counter is a closure
+            // local to this render pass.
+            (globalThis as any).__outletNum = 0;
+            return null;
+          })()}
           {Object.entries(grouped).map(([cat, items]) => {
             const catInfo = CATEGORY_ICONS[cat] || { name: 'ellipse', bg: '#F3F4F6' };
             return (
@@ -246,6 +256,32 @@ export default function EGAdvisorScreen() {
                   const isExpanded = expanded === outlet.id;
                   const practiceCount = practices?.stats?.outlet_counts?.[outlet.id] || 0;
                   const isPlayingThis = audioPlaying === outlet.id;
+                  // Assign sequential number 1..N across all groups.
+                  const seqNum = (++(globalThis as any).__outletNum);
+
+                  // Push-to-lifestyle deep-links. Regular routine →
+                  // /tools/lifestyle-designer; on-demand CTT →
+                  // /tools/action-center. The receiving screens read these
+                  // params on mount and pre-fill their add-form.
+                  const pushToDesigner = () => router.push({
+                    pathname: '/tools/lifestyle-designer' as any,
+                    params: {
+                      bootstrap: '1',
+                      title: outlet.name,
+                      duration: outlet.duration,
+                      category: cat,
+                      cadence: 'daily',
+                    },
+                  });
+                  const pushToAction = () => router.push({
+                    pathname: '/tools/action-center' as any,
+                    params: {
+                      bootstrap: '1',
+                      title: outlet.name,
+                      notes: `${outlet.relief_type} • ${outlet.duration}`,
+                      source: 'eg_outlet',
+                    },
+                  });
 
                   return (
                     <View key={outlet.id}>
@@ -255,12 +291,31 @@ export default function EGAdvisorScreen() {
                         activeOpacity={0.7}
                       >
                         <View style={[s.outletNum, { backgroundColor: outlet.color }]}>
-                          <Text style={s.outletNumText}>{outlet.number}</Text>
+                          <Text style={s.outletNumText}>{seqNum}</Text>
                         </View>
                         <View style={{ flex: 1 }}>
                           <Text style={s.outletName}>{outlet.name}</Text>
                           <Text style={s.outletRelief}>{outlet.relief_type} • {outlet.duration}</Text>
                         </View>
+                        {/* Push-to-Lifestyle icons (right-aligned, before
+                            the chevron). Each opens the target planner
+                            pre-filled with this outlet. */}
+                        <TouchableOpacity
+                          testID={`outlet-${outlet.id}-to-designer`}
+                          onPress={(e) => { e.stopPropagation?.(); pushToDesigner(); }}
+                          style={s.pushIconBtn}
+                          accessibilityLabel="Add to Lifestyle Designer (regular routine)"
+                        >
+                          <Ionicons name="calendar" size={16} color="#7C3AED" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          testID={`outlet-${outlet.id}-to-action`}
+                          onPress={(e) => { e.stopPropagation?.(); pushToAction(); }}
+                          style={s.pushIconBtn}
+                          accessibilityLabel="Add to Action Center (on-demand CTT)"
+                        >
+                          <Ionicons name="flash" size={16} color="#F97316" />
+                        </TouchableOpacity>
                         {practiceCount > 0 && (
                           <View style={s.pracBadge}>
                             <Text style={s.pracBadgeText}>{practiceCount}×</Text>
@@ -593,6 +648,10 @@ const s = StyleSheet.create({
   outletName: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
   outletRelief: { fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
   pracBadge: { backgroundColor: '#ECFDF5', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  pushIconBtn: {
+    padding: 6, marginHorizontal: 2, borderRadius: 8,
+    backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0',
+  },
   pracBadgeText: { fontSize: 11, fontWeight: '700', color: '#059669' },
   expandedCard: {
     backgroundColor: '#FAFAFA', borderRadius: 12, padding: 14, marginBottom: 8,
