@@ -238,20 +238,45 @@ export default function AdminAIWalletConfigScreen() {
           <Text style={s.flagsTitle}>Feature flags</Text>
           <View style={s.flagRow}>
             <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={s.flagLabel}>OpenAI free-tier opt-in</Text>
+              <Text style={s.flagLabel}>OpenAI free-tier routing (platform-wide)</Text>
               <Text style={s.flagHint}>
-                When ON, users see the “Skip the top-up — use OpenAI free-tier” option in both
-                /ai-wallet and the Deep Import / Import URL credit strips. Once a user opts in
-                AND the server has OPENAI_API_KEY, their AI calls route to OpenAI free credits
-                (0 wallet credits charged). When OFF, the option is hidden everywhere and
-                existing consents are IGNORED by the router (users go back to normal wallet billing).
+                When ON, every user&apos;s AI calls route through our shared OpenAI organisation
+                where data-sharing is enabled for the free tier — so{' '}
+                <Text style={{ fontWeight: '700' }}>0 wallet credits are charged</Text> for
+                AI Assist, Deep Import and Import URL flows. Requires{' '}
+                <Text style={{ fontWeight: '700' }}>OPENAI_API_KEY</Text> in the backend env AND
+                the data-sharing toggle to be ON at{' '}
+                <Text style={{ fontWeight: '700' }}>platform.openai.com → Settings → Organization → Data Controls</Text>{' '}
+                (one-time admin step). When OFF, AI calls fall back to normal wallet billing.
+                Users see a purple banner in /ai-wallet explaining the current state.
               </Text>
             </View>
             <Switch
               testID="awc-free-tier-feature-toggle"
               value={cfg.openai_free_tier_feature_enabled !== false}
               disabled={saving}
-              onValueChange={(v) => setCfg({ ...cfg, openai_free_tier_feature_enabled: v } as Cfg)}
+              onValueChange={async (v) => {
+                // Autosave the flag immediately — admins expect a
+                // platform-wide flag to take effect on flip, not after
+                // they hunt for the form's Save button further down.
+                const prev = cfg.openai_free_tier_feature_enabled !== false;
+                setCfg({ ...cfg, openai_free_tier_feature_enabled: v } as Cfg);
+                setSaving(true);
+                try {
+                  const res = await api.put('/admin/ai-wallet/config',
+                    { openai_free_tier_feature_enabled: v });
+                  setCfg(res.data);
+                  showAlert(
+                    v ? 'Free-tier ON' : 'Free-tier OFF',
+                    v
+                      ? 'All users\u2019 AI calls will now route to OpenAI free-tier (0 wallet credits charged).'
+                      : 'OpenAI free-tier routing is now disabled. AI calls fall back to normal wallet billing.',
+                  );
+                } catch (e: any) {
+                  setCfg({ ...cfg, openai_free_tier_feature_enabled: prev } as Cfg);
+                  showAlert('Save failed', e?.response?.data?.detail || 'Could not update the flag.');
+                } finally { setSaving(false); }
+              }}
               trackColor={{ true: C.primary }}
             />
           </View>
