@@ -814,7 +814,10 @@ export default function SimpleSolutionFinder() {
       {concerns.length === 0 && <Text style={s.empty}>No concerns yet. Add one below.</Text>}
       {concerns.map(c => (
         <View key={c.id} style={s.concernRow}>
-          <TouchableOpacity onPress={() => togglePrimary(c.id)} hitSlop={8}>
+          <TouchableOpacity
+            testID={`concern-star-${c.id}`}
+            onPress={() => togglePrimary(c.id)}
+            hitSlop={8}>
             <Ionicons
               name={c.is_primary ? 'star' : 'star-outline'}
               size={22}
