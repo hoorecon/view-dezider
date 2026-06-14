@@ -35,8 +35,67 @@ async def my_wallet(user: dict = Depends(get_current_user)):
 
 
 @router.get("/ai-wallet/ledger")
-async def my_wallet_ledger(limit: int = 30, user: dict = Depends(get_current_user)):
-    return {"items": await ai_wallet.get_ledger(user["user_id"], min(max(limit, 1), 100))}
+async def my_wallet_ledger(
+    limit: int = 30,
+    feature: Optional[str] = None,
+    since: Optional[str] = None,   # ISO date (YYYY-MM-DD) or full ISO timestamp
+    until: Optional[str] = None,
+    user: dict = Depends(get_current_user),
+):
+    """User-facing ledger with optional filters used by /ai-wallet:
+       * feature  — touchpoint key (e.g. 'deep_import', 'aim_report'). Matches
+                    the `feature` field on each ledger row.
+       * since/until — ISO date range; rows OUTSIDE the range are excluded.
+    Returns up to `limit` rows (capped at 200 for date-range exports)."""
+    rows = await ai_wallet.get_ledger(user["user_id"], min(max(limit, 1), 200))
+    def _in_range(r):
+        if feature and r.get("feature") != feature:
+            return False
+        ts = r.get("created_at") or ""
+        if since and ts < since:
+            return False
+        if until and ts > until:
+            return False
+        return True
+    return {"items": [r for r in rows if _in_range(r)]}
+
+
+@router.get("/ai-wallet/consumption")
+async def my_wallet_consumption(
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+    user: dict = Depends(get_current_user),
+):
+    """Aggregate AI debits grouped by touchpoint feature for the given date
+    range. Powers the AI Meter pie chart on /ai-wallet. Refunds and grants
+    are excluded — we only count actual spend."""
+    match: Dict[str, Any] = {"user_id": user["user_id"], "kind": "debit"}
+    ts_range: Dict[str, Any] = {}
+    if since: ts_range["$gte"] = since
+    if until: ts_range["$lte"] = until
+    if ts_range: match["created_at"] = ts_range
+    pipeline = [
+        {"$match": match},
+        {"$group": {
+            "_id": {"$ifNull": ["$feature", "other"]},
+            "credits": {"$sum": {"$abs": "$amount"}},
+            "runs": {"$sum": 1},
+        }},
+        {"$sort": {"credits": -1}},
+        {"$limit": 30},
+    ]
+    cur = db.ai_wallet_ledger.aggregate(pipeline)
+    rows = await cur.to_list(50)
+    total = sum(float(r["credits"]) for r in rows) or 0.0
+    return {
+        "since": since, "until": until,
+        "total_credits": round(total, 2),
+        "buckets": [{
+            "feature": r["_id"], "credits": round(float(r["credits"]), 2),
+            "runs": int(r["runs"]),
+            "pct": round((float(r["credits"]) / total * 100), 1) if total else 0.0,
+        } for r in rows],
+    }
 
 
 @router.get("/ai-wallet/estimates")

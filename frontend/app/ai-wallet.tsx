@@ -14,6 +14,7 @@ import { COLORS } from '../src/constants/colors';
 import api from '../src/utils/api';
 import { showAlert } from '../src/utils/alert';
 import { useAiWalletStore } from '../src/store/aiWalletStore';
+import AiConsumptionPie from '../src/components/AiConsumptionPie';
 
 const BASE_URL = (Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL as string) || process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
@@ -38,6 +39,40 @@ export default function AiWalletScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [wallet, setWallet] = useState<any>(null);
   const [ledger, setLedger] = useState<any[]>([]);
+  // Recent-activity filter bar — drives /ai-wallet/ledger queries. Date
+  // range is owned by the pie's selector and pushed down via onRangeChange.
+  const [activityFeature, setActivityFeature] = useState('');
+  const [activitySince, setActivitySince] = useState('');
+  // Pretty labels for known ai_metering feature keys. Anything missing
+  // falls back to the raw key (snake_case).
+  const featureLabelMap: Record<string, string> = {
+    import: 'Step 2 · Import URL',
+    deep_import: 'Step 2 · Deep Import',
+    prompt_autotune: 'Step 4 · Prompt Auto-Tune',
+    factor_suggestions: 'Step 5 · AI suggestions',
+    assist_cell: 'Step 7 · AI Assist',
+    assess_all: 'Step 7 · Assess All',
+    mpps_plan: 'Step 9 · MPPS plan',
+    aim_analyze: 'AIM · Analyze',
+    aim_report: 'AIM · Breakthrough Report',
+    eg_breakthrough_report: 'EG · Breakthrough Report',
+    outlet_analyze: 'Outlet · Analyze',
+    outlet_report: 'Outlet · Breakthrough Report',
+    pros_cons_wizard: 'Pros & Cons · AI',
+    solution_finder: 'Solution Finder · AI',
+    cld_ai: 'CLD · AI Suggestions',
+  };
+  const uniqueFeatures = Array.from(new Set(ledger.map((r: any) => r.feature).filter(Boolean)));
+
+  const fetchLedger = async (feature: string, since: string) => {
+    try {
+      const params: any = { limit: 30 };
+      if (feature) params.feature = feature;
+      if (since) params.since = since;
+      const lRes = await api.get('/ai-wallet/ledger', { params });
+      setLedger(lRes.data?.items || []);
+    } catch { /* keep prior ledger */ }
+  };
 
   // refill
   const [packsInfo, setPacksInfo] = useState<any>(null);
@@ -343,8 +378,35 @@ export default function AiWalletScreen() {
                 Do NOT add admin shortcuts here — even for super_admin —
                 so the user-facing wallet stays a clean end-user surface. */}
 
-            {/* Ledger */}
-            <Text style={styles.sectionTitle}>Recent activity</Text>
+            {/* AI Meter Consumption — donut chart with own date-range
+                selector, mounted just above 'Recent activity'. The pie
+                fires onRangeChange so we can keep the activity feed in
+                sync with whatever window the user picks above. */}
+            <AiConsumptionPie
+              labelMap={featureLabelMap}
+              onRangeChange={(since) => {
+                setActivitySince(since || '');
+                fetchLedger(activityFeature, since || '');
+              }}
+            />
+
+            {/* Recent-activity filter bar — feature dropdown + date range
+                (date range is driven by the pie's own selector unless the
+                user clears it via the 'All' chip here). */}
+            <View style={styles.sectionHead}>
+              <Text style={styles.sectionTitle}>Recent activity</Text>
+              <View style={styles.filterRow}>
+                {(['', ...uniqueFeatures] as string[]).map(f => (
+                  <TouchableOpacity key={f || 'all'}
+                    style={[styles.filterChip, activityFeature === f && styles.filterChipActive]}
+                    onPress={() => { setActivityFeature(f); fetchLedger(f, activitySince); }}>
+                    <Text style={[styles.filterChipText, activityFeature === f && styles.filterChipTextActive]}>
+                      {f ? (featureLabelMap[f] || f) : 'All touchpoints'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
             {ledger.length === 0 ? (
               <View style={styles.emptyLedger}>
                 <Ionicons name="receipt-outline" size={28} color={COLORS.textMuted} />
@@ -412,6 +474,13 @@ const styles = StyleSheet.create({
   infoTitle: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
   infoText: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 19 },
   consentRow: { flexDirection: 'row', alignItems: 'center' },
+  // Recent Activity filter bar (Wave-5 addition)
+  sectionHead: { marginBottom: 8 },
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
+  filterChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface },
+  filterChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  filterChipText: { fontSize: 11, fontWeight: '700', color: COLORS.textMuted },
+  filterChipTextActive: { color: '#FFF' },
   freeTierBanner: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 10,
     backgroundColor: '#F5F3FF', borderColor: '#DDD6FE', borderWidth: 1,
