@@ -195,15 +195,65 @@ export default function AiWalletScreen() {
             {/* OpenAI free-tier (data-sharing) consent.
                 Visibility rules:
                   • Hidden if server has no OPENAI_API_KEY (`openai_available=false`)
-                  • Hidden if admin has disabled the feature (`feature_enabled=false`) */}
+                  • Hidden if admin has disabled the feature (`feature_enabled=false`)
+
+                LAYOUT (swapped per user feedback):
+                  ┌────────────────────────────────────────────┐
+                  │ 1. PRIMARY (FREE) — route OpenAI first,    │
+                  │    skip wallet entirely. Recommended.      │
+                  │    [Switch]                                │
+                  ├────────────────────────────────────────────┤
+                  │ 2. FALLBACK — allow OpenAI as fallback     │
+                  │    when free Gemini/Groq quotas exhaust.   │
+                  │    [Switch] [Ask/Always chips]             │
+                  └────────────────────────────────────────────┘
+
+                Note: PRIMARY implies FALLBACK. Toggling PRIMARY ON
+                automatically sets allow_openai=true; toggling PRIMARY
+                OFF leaves allow_openai untouched. */}
             {consent?.openai_available && consent?.feature_enabled !== false && (
               <View style={styles.infoCard} testID="openai-consent-card">
+                {/* 1. PRIMARY (FREE FOR ME) — first, recommended */}
+                <View style={styles.consentRow} testID="openai-free-tier-card">
+                  <View style={{ flex: 1, paddingRight: 12 }}>
+                    <Text style={styles.infoTitle}>Route OpenAI first — free for me</Text>
+                    <Text style={[styles.infoText, { marginTop: 4 }]}>
+                      When ON, your AI calls run through our shared{' '}
+                      <Text style={{ fontWeight: '700' }}>OpenAI organisation</Text>{' '}
+                      where data-sharing is enabled for the free tier — so{' '}
+                      <Text style={{ fontWeight: '700', color: COLORS.textSecondary }}>
+                        your wallet is NOT charged (₹0)
+                      </Text>
+                      . OpenAI may use your decision data to improve their models.
+                      You do not need your own OpenAI account.
+                    </Text>
+                  </View>
+                  <Switch
+                    testID="openai-free-tier-toggle"
+                    value={!!consent?.openai_free_tier}
+                    disabled={savingConsent}
+                    onValueChange={(v) => saveConsent({
+                      // PRIMARY implies allow_openai — flip both ON together.
+                      allow_openai: v ? true : !!consent?.allow_openai,
+                      mode: consent?.mode || 'always',
+                      openai_free_tier: v,
+                    })}
+                    trackColor={{ true: '#16A34A' }}
+                  />
+                </View>
+
+                {/* Divider */}
+                <View style={{ height: 1, backgroundColor: '#EEF2F6', marginVertical: 12 }} />
+
+                {/* 2. FALLBACK — use OpenAI when Gemini/Groq free quotas exhaust */}
                 <View style={styles.consentRow}>
                   <View style={{ flex: 1, paddingRight: 12 }}>
-                    <Text style={styles.infoTitle}>Use OpenAI&apos;s free tier</Text>
-                    <Text style={[styles.infoText, { marginTop: 4 }]}>
-                      When the free Gemini/Groq quotas run out, fall back to OpenAI&apos;s free
-                      data-sharing tier instead of charging your wallet.{' '}
+                    <Text style={[styles.infoTitle, { fontSize: 13 }]}>
+                      Use OpenAI as fallback (paid)
+                    </Text>
+                    <Text style={[styles.infoText, { marginTop: 4, fontSize: 11.5 }]}>
+                      When the free Gemini/Groq quotas run out and PRIMARY (above) is OFF,
+                      fall back to OpenAI and charge your wallet.{' '}
                       <Text style={{ fontWeight: '700', color: COLORS.textSecondary }}>
                         This shares your decision&apos;s data with OpenAI.
                       </Text>
@@ -212,16 +262,18 @@ export default function AiWalletScreen() {
                   <Switch
                     testID="openai-consent-toggle"
                     value={!!consent?.allow_openai}
-                    disabled={savingConsent}
+                    disabled={savingConsent || !!consent?.openai_free_tier}
                     onValueChange={(v) => saveConsent({
                       allow_openai: v,
                       mode: consent?.mode || 'ask',
+                      // Turning fallback OFF must also turn PRIMARY off,
+                      // otherwise PRIMARY would have no allow gate.
                       openai_free_tier: v ? !!consent?.openai_free_tier : false,
                     })}
                     trackColor={{ true: COLORS.primary }}
                   />
                 </View>
-                {consent?.allow_openai && (
+                {consent?.allow_openai && !consent?.openai_free_tier && (
                   <View style={styles.consentModeRow}>
                     {([['ask', 'Ask each time'], ['always', 'Always use automatically']] as const).map(([m, label]) => {
                       const active = (consent?.mode || 'ask') === m;
@@ -242,33 +294,10 @@ export default function AiWalletScreen() {
                     })}
                   </View>
                 )}
-                {/* Free-tier (data-sharing) sub-toggle. When ON, OpenAI is moved
-                    to the FRONT of the chain AND wallet charges are zeroed
-                    for those calls — assuming the user has enabled the
-                    org-level data-sharing toggle on platform.openai.com. */}
-                {consent?.allow_openai && (
-                  <View style={[styles.consentRow, { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#EEF2F6' }]} testID="openai-free-tier-card">
-                    <View style={{ flex: 1, paddingRight: 12 }}>
-                      <Text style={[styles.infoTitle, { fontSize: 13 }]}>I&apos;ve enabled OpenAI Free Tier sharing — use it as PRIMARY (free for me)</Text>
-                      <Text style={[styles.infoText, { marginTop: 4, fontSize: 11.5 }]}>
-                        Turn this on ONLY after toggling{' '}
-                        <Text style={{ fontWeight: '700' }}>Share inputs and outputs with OpenAI</Text>{' '}
-                        at platform.openai.com → Settings → Organization → Data Controls.
-                        We&apos;ll then route OpenAI first AND skip your wallet for those calls (OpenAI bills $0).
-                      </Text>
-                    </View>
-                    <Switch
-                      testID="openai-free-tier-toggle"
-                      value={!!consent?.openai_free_tier}
-                      disabled={savingConsent}
-                      onValueChange={(v) => saveConsent({
-                        allow_openai: true,
-                        mode: consent?.mode || 'always',
-                        openai_free_tier: v,
-                      })}
-                      trackColor={{ true: '#16A34A' }}
-                    />
-                  </View>
+                {consent?.openai_free_tier && (
+                  <Text style={[styles.fieldHint, { marginTop: 8, fontStyle: 'italic' }]}>
+                    Fallback toggle is locked while PRIMARY (free-tier) is ON — PRIMARY already implies fallback.
+                  </Text>
                 )}
               </View>
             )}

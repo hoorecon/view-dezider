@@ -11,7 +11,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Linking,
+  View, Text, TouchableOpacity, ActivityIndicator, StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -178,7 +178,9 @@ export const ImportCreditsStrip: React.FC<Props> = ({ endpoint, pages = 1, tier 
 
       {/* Inline OpenAI free-tier opt-in — only when user is short on credits
           AND the server has an OpenAI key configured AND they haven't already
-          opted in. Lets them skip the top-up entirely. */}
+          opted in. Lets them skip the top-up entirely. The free tier is
+          provided through OUR shared OpenAI org — the user does NOT need
+          their own OpenAI account or to do anything on platform.openai.com. */}
       {showFreeTierPanel && (
         <View style={s.ftPanel} testID="import-credits-freetier-panel">
           <View style={s.ftHeader}>
@@ -186,15 +188,11 @@ export const ImportCreditsStrip: React.FC<Props> = ({ endpoint, pages = 1, tier 
             <Text style={s.ftTitle}>Skip the top-up — use OpenAI free-tier</Text>
           </View>
           <Text style={s.ftBody}>
-            Enable data-sharing on your OpenAI organisation (
-            <Text
-              testID="import-credits-openai-link"
-              style={s.ftLink}
-              onPress={() => Linking.openURL('https://platform.openai.com/settings/organization/data-controls')}>
-              platform.openai.com/settings/organization/data-controls
-            </Text>
-            ) and we'll route this Import / Deep Import to OpenAI free credits — your AI Wallet is{' '}
-            <Text style={{ fontWeight: '800' }}>not charged</Text>. Your prompts may be used by OpenAI to improve models.
+            We&apos;ll route this Import / Deep Import through our shared{' '}
+            <Text style={{ fontWeight: '800' }}>OpenAI organisation</Text>{' '}
+            (data-sharing is enabled there for the free tier) and your AI Wallet is{' '}
+            <Text style={{ fontWeight: '800' }}>not charged</Text>. Your decision data may be
+            used by OpenAI to improve their models. You do not need your own OpenAI account.
           </Text>
           <TouchableOpacity
             testID="import-credits-enable-freetier-btn"
@@ -205,7 +203,7 @@ export const ImportCreditsStrip: React.FC<Props> = ({ endpoint, pages = 1, tier 
             {savingConsent
               ? <ActivityIndicator size="small" color="#FFF" />
               : <><Ionicons name="checkmark-circle" size={13} color="#FFF" />
-                  <Text style={s.ftBtnText}>I've enabled it — use free-tier</Text></>}
+                  <Text style={s.ftBtnText}>Enable free-tier &amp; continue</Text></>}
           </TouchableOpacity>
         </View>
       )}
