@@ -137,8 +137,8 @@ export const DeepImport: React.FC<Props> = ({ decisionId, onMerged }) => {
               if (data.geo_note) {
                 setTimeout(() => {
                   showAlert(
-                    '💰 Heads up — prices may differ in your city',
-                    'Money values were read from the pages\u2019 DEFAULT (non-localised) view — e.g. national / ex-showroom amounts. They CAN differ from prices personalised to your city or account. Review the cash factors in Step 7 before deciding.',
+                    '💰 Heads up — prices may differ in your case',
+                    'Money values were read from the page\u2019s DEFAULT (non-localised) view. The amounts you see can differ based on your city, account, plan, taxes or any active offer (e.g. on-road vs ex-showroom, taxable vs after-tax salary, listed rent vs final negotiated rent). Review the cash factors in Step 7 before deciding.',
                     [{ text: 'Got it', style: 'destructive' }],
                   );
                 }, 250);

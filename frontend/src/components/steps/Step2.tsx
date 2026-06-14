@@ -140,13 +140,16 @@ export default function Step2() {
       // Localised-pricing note is now its OWN loud follow-up alert
       // (destructive style → red icon + accent) — money values are the
       // #1 source of confusion. We fire it immediately AFTER the success
-      // alert is dismissed.
+      // alert is dismissed. Backend only sets `geo_note` when the import
+      // actually contains money cells (factor implies money OR cell carries
+      // a currency symbol), so non-monetary use cases (property specs,
+      // gadget tables, education comparisons) won't see this alert.
       const showGeoAlert = () => {
         if (!data.geo_note) return;
         setTimeout(() => {
           showAlert(
-            '💰 Heads up — prices may differ in your city',
-            'Money values were read from the page\u2019s DEFAULT (non-localised) view — e.g. national ex-showroom prices can differ from your city\u2019s on-road prices. Tap “Source quotes” under the import card to see the exact page line behind each number, then refine cash factors in Step 7.',
+            '💰 Heads up — prices may differ in your case',
+            'Money values were read from the page\u2019s DEFAULT (non-localised) view. The amounts you see can differ based on your city, account, plan, taxes or any active offer (e.g. on-road vs ex-showroom, taxable vs after-tax salary, listed rent vs final negotiated rent). Tap “Source quotes” under the import card to see the exact page line behind each number, then refine cash factors in Step 7.',
             [{ text: 'Got it', style: 'destructive' }],
           );
         }, 250);

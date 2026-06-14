@@ -33,7 +33,19 @@ _NUM = r"\d[\d,]*(?:\.\d+)?"
 _RANGE_MULT_RE = re.compile(rf"({_NUM})\s*[-–—~]\s*({_NUM})\s*({_MULT_PAT})\b", re.I)
 _NUM_MULT_RE = re.compile(rf"({_NUM})\s*({_MULT_PAT})\b", re.I)
 _NUM_RE = re.compile(_NUM)
-_CURRENCY_RE = re.compile(r"₹|\bRs\.?\s?\d|\bINR\b|\bUSD\b|\$\s?\d", re.I)
+_CURRENCY_RE = re.compile(r"₹|\bRs\.?\s?\d|\bINR\b|\bUSD\b|\$\s?\d|€|£|¥", re.I)
+
+# Factor names that strongly imply money values. Used to set `has_currency`
+# only when the imported decision actually deals with prices — so we don't
+# pop the "prices may differ in your city" alert on non-monetary imports
+# (gadget spec comparisons, ratings, capacity tables, etc.). Substring match,
+# case-insensitive.
+_MONEY_FACTOR_HINTS = (
+    "price", "cost", "fee", "rent", "salary", "budget", "amount",
+    "premium", "emi", "deposit", "tuition", "fare", "wage", "income",
+    "expense", "charge", "tariff", "subscription", "interest rate",
+    "downpayment", "down payment",
+)
 
 MAX_EVIDENCE = 80
 QUOTE_LEN = 140
@@ -114,13 +126,31 @@ def verify_detail(detail: Dict[str, Any], page_text: str) -> Dict[str, Any]:
 
     Returns {verified, blanked, flagged_text, unverified: [str],
              evidence: [{factor, option, value, quote}], has_currency}.
+
+    `has_currency` is True ONLY when the IMPORT itself deals with money —
+    either a factor name implies money ("price", "rent", "fee", …) OR an
+    imported cell value contains a currency symbol. We deliberately do NOT
+    just check the page text, because comparison pages often have unrelated
+    money mentions (EMI calculators, ads, footer) that would falsely fire
+    the "prices may differ in your city" alert on non-monetary imports
+    (e.g. property pages, gadget spec tables, education comparisons).
     """
     summary = {"verified": 0, "blanked": 0, "flagged_text": 0,
                "unverified": [], "evidence": [], "has_currency": False}
+
+    def _is_money_factor(name: str) -> bool:
+        n = (name or "").lower()
+        return any(h in n for h in _MONEY_FACTOR_HINTS)
+
+    def _value_has_currency(value: str) -> bool:
+        return bool(_CURRENCY_RE.search(str(value or "")))
+
     try:
         idx = build_value_index(page_text)
         lines = [ln for ln in (page_text or "").splitlines() if ln.strip()]
-        summary["has_currency"] = bool(_CURRENCY_RE.search(page_text or ""))
+        # Track whether ANY imported cell looks like money. Page-wide check
+        # is now only a fallback signal — see final assignment below.
+        imported_has_money = False
 
         def _evidence(factor: str, option: str, value: str, quote: str):
             summary["verified"] += 1
@@ -141,6 +171,11 @@ def verify_detail(detail: Dict[str, Any], page_text: str) -> Dict[str, Any]:
                     val = str(uvals[fname]).strip()
                     if not val:
                         continue
+                    # Detect money INSIDE the imported cells — either the
+                    # factor name implies money OR the value carries a
+                    # currency symbol.
+                    if not imported_has_money and (_is_money_factor(fname) or _value_has_currency(val)):
+                        imported_has_money = True
                     if fname in numeric:
                         q = _match_number(val, idx)
                         if q:
@@ -168,10 +203,14 @@ def verify_detail(detail: Dict[str, Any], page_text: str) -> Dict[str, Any]:
                     meta = (detail.get("row_meta") or {}).get((gi, ri)) or {}
                     is_num = bool(meta.get("is_numeric"))
                     vals = row.get("values") or []
+                    if not imported_has_money and _is_money_factor(row.get("label") or ""):
+                        imported_has_money = True
                     for ii, val in enumerate(vals):
                         val = str(val or "").strip()
                         if not val:
                             continue
+                        if not imported_has_money and _value_has_currency(val):
+                            imported_has_money = True
                         opt = items[ii] if ii < len(items) else f"option {ii + 1}"
                         if is_num:
                             q = _match_number(val, idx)
@@ -192,6 +231,11 @@ def verify_detail(detail: Dict[str, Any], page_text: str) -> Dict[str, Any]:
                     if is_num and meta.get("expected") not in (None, "") \
                             and not _match_number(str(meta["expected"]), idx):
                         meta["expected"] = None
+        # Final assignment: only fire the "prices may differ" alert when
+        # the import itself is money-bearing. Page-wide currency mentions
+        # alone are NOT sufficient (too many false positives on property,
+        # gadget-spec and education comparison pages).
+        summary["has_currency"] = bool(imported_has_money)
     except Exception:  # noqa: BLE001 — verification must never break an import
         pass
     return summary
