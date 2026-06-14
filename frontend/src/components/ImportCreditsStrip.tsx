@@ -132,18 +132,42 @@ export const ImportCreditsStrip: React.FC<Props> = ({ endpoint, pages = 1, tier 
   const showFreeTierPanel = featureEnabled && !ok && !consent?.openai_free_tier;
   const freeTierAlreadyOn = featureEnabled && !ok && !!consent?.openai_free_tier;
 
+  // "Free-tier active" means the BACKEND has decided this call will route
+  // to OpenAI's free tier (0 wallet credits). The /import-estimate response
+  // carries `free_tier_active` for this. When true we show a distinctive
+  // purple strip instead of the green "you have enough credits" strip,
+  // because the green-with-negative-balance combo is alarming and the
+  // user shouldn't see "≈ 370 cr needed · -42 cr available" when the call
+  // is actually FREE for them. Falls back to the consent-side flag if the
+  // server-side flag isn't present yet (older bundle).
+  const freeTierActive = !!data.free_tier_active
+    || (!!consent?.openai_free_tier && consent?.feature_enabled !== false);
+
   return (
     <View testID="import-credits-strip-wrap">
-      <View style={[s.strip, ok ? s.ok : s.bad]} testID="import-credits-strip">
-        <Ionicons name={ok ? 'checkmark-circle' : 'alert-circle'} size={15}
-          color={ok ? '#059669' : '#DC2626'} />
-        <Text style={[s.txt, { color: ok ? '#065F46' : '#991B1B' }]} testID="import-credits-text">
-          ≈ {fmt(data.estimate)} cr needed · {fmt(data.balance)} cr available
-          {tier === 'precise' ? ' · Precise' : ' · Fast'}
-          {isDefault ? ' (est.)' : ''}
-          {isScaled ? ` (~${(data.tier_multiplier ?? 4.5).toFixed(1)}× scaled)` : ''}
+      <View
+        style={[s.strip, freeTierActive ? s.freeTier : (ok ? s.ok : s.bad)]}
+        testID="import-credits-strip"
+      >
+        <Ionicons
+          name={freeTierActive ? 'sparkles' : (ok ? 'checkmark-circle' : 'alert-circle')}
+          size={15}
+          color={freeTierActive ? '#7C3AED' : (ok ? '#059669' : '#DC2626')} />
+        <Text
+          style={[s.txt, { color: freeTierActive ? '#5B21B6' : (ok ? '#065F46' : '#991B1B') }]}
+          testID="import-credits-text"
+        >
+          {freeTierActive
+            ? `Using OpenAI free-tier · 0 cr charged · would otherwise cost ≈ ${fmt(data.estimate)} cr${tier === 'precise' ? ' (Precise)' : ' (Fast)'}`
+            : (
+              `≈ ${fmt(data.estimate)} cr needed · ${fmt(data.balance)} cr available`
+              + (tier === 'precise' ? ' · Precise' : ' · Fast')
+              + (isDefault ? ' (est.)' : '')
+              + (isScaled ? ` (~${(data.tier_multiplier ?? 4.5).toFixed(1)}× scaled)` : '')
+            )
+          }
         </Text>
-        {!ok && (
+        {!ok && !freeTierActive && (
           <TouchableOpacity testID="import-credits-topup-btn" style={s.topup}
             activeOpacity={0.85} onPress={() => router.push('/ai-wallet')}>
             <Ionicons name="flash" size={11} color="#FFF" />
@@ -203,6 +227,7 @@ const s = StyleSheet.create({
   neutral: { backgroundColor: '#F8FAFC', borderColor: '#E2E8F0' },
   ok: { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' },
   bad: { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
+  freeTier: { backgroundColor: '#F5F3FF', borderColor: '#DDD6FE' },
   txt: { flex: 1, fontSize: 12, fontWeight: '700' },
   mutedTxt: { fontSize: 12, color: '#94A3B8', fontWeight: '600' },
   topup: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#DC2626', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14 },
