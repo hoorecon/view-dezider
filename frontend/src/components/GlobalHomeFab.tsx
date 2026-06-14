@@ -60,8 +60,13 @@ export default function GlobalHomeFab() {
 const styles = StyleSheet.create({
   wrap: {
     position: 'absolute',
-    left: 16,
-    bottom: Platform.select({ web: 20, default: 28 }),
+    // Top-right placement, sitting just below the safe-area / status bar
+    // and offset enough on the right to clear the existing A-A font-size
+    // accessibility chip (`right: 16`, ~44px wide). The Home FAB itself
+    // is ~84px wide so we land it at right: 70 to give a comfortable
+    // gap on desktop; on mobile the safe-area still keeps both visible.
+    top: Platform.select({ web: 12, default: 44 }),
+    right: 70,
     zIndex: 9999,
     elevation: 12,
   },

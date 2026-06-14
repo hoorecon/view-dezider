@@ -193,40 +193,33 @@ export default function AiWalletScreen() {
             </View>
 
             {/* OpenAI integration card.
-                Architecture (post-Wave 4 refactor):
-                  • PRIMARY routing (use OpenAI free-tier for all calls)
-                    is an ADMIN-LEVEL decision — controlled from
-                    /admin/ai-wallet-config → Feature flags. We don't expose
-                    a per-user toggle for it because the data-sharing toggle
-                    must be enabled on the admin's OpenAI org, not the user's
-                    own account.
-                  • The USER can still opt-in to OpenAI as a FALLBACK (paid)
-                    when the free Gemini/Groq quotas run out. This protects
-                    privacy-conscious users from accidentally being routed
-                    to OpenAI when free providers fail.
-                  • Visibility: hidden if the server has no OPENAI_API_KEY. */}
-            {consent?.openai_available && (
+                Visibility rules (after the latest admin-master-switch fix):
+                  • Hidden if server has no OPENAI_API_KEY (openai_available=false)
+                  • Hidden if admin has disabled the platform flag
+                    (feature_enabled=false) — when admin turns OFF the
+                    free-tier routing globally, the entire OpenAI surface
+                    disappears from /ai-wallet (banner AND paid-fallback
+                    toggle). This way, what the user can see/control matches
+                    the policy in /admin/ai-wallet-config. */}
+            {consent?.openai_available && consent?.feature_enabled !== false && (
               <View style={styles.infoCard} testID="openai-consent-card">
-                {/* Info banner — explains the current platform-wide routing.
-                    Shown ONLY when admin has free-tier routing turned on. */}
-                {consent?.feature_enabled !== false && (
-                  <View style={styles.freeTierBanner} testID="openai-free-tier-banner">
-                    <Ionicons name="sparkles" size={16} color="#7C3AED" />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.freeTierBannerTitle}>
-                        Your AI calls are FREE (admin policy)
-                      </Text>
-                      <Text style={styles.freeTierBannerBody}>
-                        We route your decisions through our shared{' '}
-                        <Text style={{ fontWeight: '700' }}>OpenAI organisation</Text> where
-                        data-sharing is enabled for the free tier — so your wallet is{' '}
-                        <Text style={{ fontWeight: '700' }}>not charged</Text>. Your decision
-                        data may be used by OpenAI to improve their models. You do not need
-                        your own OpenAI account.
-                      </Text>
-                    </View>
+                {/* Info banner — explains the current platform-wide routing. */}
+                <View style={styles.freeTierBanner} testID="openai-free-tier-banner">
+                  <Ionicons name="sparkles" size={16} color="#7C3AED" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.freeTierBannerTitle}>
+                      Your AI calls are FREE (admin policy)
+                    </Text>
+                    <Text style={styles.freeTierBannerBody}>
+                      We route your decisions through our shared{' '}
+                      <Text style={{ fontWeight: '700' }}>OpenAI organisation</Text> where
+                      data-sharing is enabled for the free tier — so your wallet is{' '}
+                      <Text style={{ fontWeight: '700' }}>not charged</Text>. Your decision
+                      data may be used by OpenAI to improve their models. You do not need
+                      your own OpenAI account.
+                    </Text>
                   </View>
-                )}
+                </View>
 
                 {/* FALLBACK toggle — user-controlled. Decides whether the
                     user's wallet is OK with paid OpenAI when free providers
@@ -237,8 +230,7 @@ export default function AiWalletScreen() {
                       Use OpenAI as paid fallback
                     </Text>
                     <Text style={[styles.infoText, { marginTop: 4, fontSize: 11.5 }]}>
-                      When the free Gemini/Groq quotas run out
-                      {consent?.feature_enabled !== false ? ' AND the free-tier route fails' : ''},
+                      When the free Gemini/Groq quotas run out AND the free-tier route fails,
                       fall back to OpenAI and charge your wallet.{' '}
                       <Text style={{ fontWeight: '700', color: COLORS.textSecondary }}>
                         Shares your decision data with OpenAI.
