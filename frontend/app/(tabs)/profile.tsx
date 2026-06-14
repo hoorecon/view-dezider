@@ -641,23 +641,9 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Admin Console — single entry point. All admin modules live under /admin. */}
-      {userRole !== 'user' && (
-        <TouchableOpacity
-          testID="profile-open-admin-console"
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#6366F140', marginBottom: 12 }}
-          onPress={() => { if (Platform.OS === 'web') { window.location.href = '/admin'; } else { router.push('/admin' as any); } }}
-        >
-          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#6366F1', alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name="shield-checkmark" size={18} color="#FFF" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>Admin Console</Text>
-            <Text style={{ fontSize: 12, color: COLORS.textMuted }}>Experts, catalog, org, tiers, segments, ReviewNet & more</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
-        </TouchableOpacity>
-      )}
+      {/* Admin Console removed from User App — admin access is via the
+          dedicated /admin route only. Super-admins still navigate there
+          directly; we don't surface it as a profile section. */}
 
       {/* Goals Execution Manager */}
       <TouchableOpacity

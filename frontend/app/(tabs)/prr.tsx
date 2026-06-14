@@ -19,6 +19,7 @@ import { Card } from '../../src/components/Card';
 import CloneTemplateModal from '../../src/components/CloneTemplateModal';
 import TemplateBrowserModal from '../../src/components/TemplateBrowserModal';
 import api from '../../src/utils/api';
+import { useDashboardTiles } from '../../src/utils/useDashboardTiles';
 import { formatAbsolute } from '../../src/utils/datetime';
 import { LIFE_AREAS, getLifeArea } from '../../src/constants/lifeAreas';
 import ListFilterBar, { DateRangeKey, withinDateRange } from '../../src/components/ListFilterBar';
@@ -86,6 +87,8 @@ const STATUS_META: Record<SolutionStatus, { label: string; color: string; bg: st
 
 export default function SolutionBoxScreen() {
   const router = useRouter();
+  // WOWO — gates SWOT in the "+" menu when admin wires it off.
+  const { isTileOn } = useDashboardTiles();
   const [items, setItems] = useState<SolutionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -547,6 +550,7 @@ export default function SolutionBoxScreen() {
               <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
             </TouchableOpacity>
 
+            {isTileOn('swot') && (
             <TouchableOpacity
               style={[styles.newMenuItem, { borderColor: TYPE_META.swot.color + '40' }]}
               onPress={() => { setShowNewMenu(false); router.push('/tools/swot'); }}
@@ -560,21 +564,32 @@ export default function SolutionBoxScreen() {
               </View>
               <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
             </TouchableOpacity>
+            )}
 
+            {/* Solution Finder — the headline framework. Moved into the
+                "+" menu so users can launch it from Solution Box without
+                going home first. Also gated by WOWO `dash_solution_finder`. */}
+            {isTileOn('solution_finder') && (
             <TouchableOpacity
-              style={[styles.newMenuItem, { borderColor: '#2563EB40' }]}
-              onPress={() => { setShowNewMenu(false); router.push('/tools/analyse-url' as any); }}
-              testID="new-menu-analyse-url"
+              style={[styles.newMenuItem, { borderColor: '#7C3AED40' }]}
+              onPress={() => { setShowNewMenu(false); router.push('/tools/solution-finder' as any); }}
+              testID="new-menu-solution-finder"
             >
-              <View style={[styles.newMenuIcon, { backgroundColor: '#EFF6FF' }]}>
-                <Ionicons name="link" size={20} color="#2563EB" />
+              <View style={[styles.newMenuIcon, { backgroundColor: '#F5F3FF' }]}>
+                <Ionicons name="bulb" size={20} color="#7C3AED" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.newMenuItemTitle}>Analyse a URL</Text>
-                <Text style={styles.newMenuItemDesc}>Paste a comparison page → auto-build a decision</Text>
+                <Text style={styles.newMenuItemTitle}>Solution Finder</Text>
+                <Text style={styles.newMenuItemDesc}>Concerns → RCA → Plan · ASM</Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
             </TouchableOpacity>
+            )}
+
+            {/* "Analyse a URL" intentionally removed — it's a MyDezider
+                sub-flow (Step 2 import) and should not be a top-level
+                Solution Box entry. Reach it via /tools/dezider-list → new
+                decision → Import URL. */}
 
             <TouchableOpacity
               style={styles.newMenuCancel}
