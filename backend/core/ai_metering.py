@@ -177,8 +177,19 @@ async def metered_chat(
     # the call costs $0 → wallet balance is irrelevant and we MUST NOT gate
     # on it. Previously `ensure_can_spend()` ran first and rejected users
     # with a negative balance even after they opted into the free tier.
+    # Admin can globally kill-switch the feature via the
+    # `openai_free_tier_feature_enabled` config flag — when False, consent
+    # is IGNORED everywhere (routing AND gating) so the wallet behaves as
+    # if no user had ever opted in.
     consent = await user_consent(user_id)
-    openai_first = bool(consent.get("openai_free_tier")) and bool(os.getenv("OPENAI_API_KEY"))
+    try:
+        _cfg = await ai_wallet.get_config()
+        _feature_enabled = bool(_cfg.get("openai_free_tier_feature_enabled", True))
+    except Exception:
+        _feature_enabled = True
+    openai_first = (_feature_enabled
+                    and bool(consent.get("openai_free_tier"))
+                    and bool(os.getenv("OPENAI_API_KEY")))
     if not openai_first:
         await ai_wallet.ensure_can_spend(user_id)
 

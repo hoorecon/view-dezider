@@ -17,7 +17,7 @@
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Switch,
   ActivityIndicator, useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -59,6 +59,11 @@ interface Cfg {
   scraperapi_plan_usd_month: number;
   scraperapi_plan_credits_month: number;
   scrape_markup_pct: number;
+  /** Admin master switch for the OpenAI free-tier opt-in surfaces. When
+   * false, the user-facing toggle in /ai-wallet AND the inline panel in
+   * Deep Import / Import URL credit strips are HIDDEN, and the routing
+   * layer ignores any prior user consent. Defaults to true. */
+  openai_free_tier_feature_enabled?: boolean;
 }
 
 const FIELDS: Array<{
@@ -227,6 +232,30 @@ export default function AdminAIWalletConfigScreen() {
             )}
           </View>
         )}
+
+        {/* Feature flags — admin master switches for opt-in surfaces */}
+        <View style={s.flagsCard} testID="awc-feature-flags">
+          <Text style={s.flagsTitle}>Feature flags</Text>
+          <View style={s.flagRow}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <Text style={s.flagLabel}>OpenAI free-tier opt-in</Text>
+              <Text style={s.flagHint}>
+                When ON, users see the “Skip the top-up — use OpenAI free-tier” option in both
+                /ai-wallet and the Deep Import / Import URL credit strips. Once a user opts in
+                AND the server has OPENAI_API_KEY, their AI calls route to OpenAI free credits
+                (0 wallet credits charged). When OFF, the option is hidden everywhere and
+                existing consents are IGNORED by the router (users go back to normal wallet billing).
+              </Text>
+            </View>
+            <Switch
+              testID="awc-free-tier-feature-toggle"
+              value={cfg.openai_free_tier_feature_enabled !== false}
+              disabled={saving}
+              onValueChange={(v) => setCfg({ ...cfg, openai_free_tier_feature_enabled: v } as Cfg)}
+              trackColor={{ true: C.primary }}
+            />
+          </View>
+        </View>
 
         {/* Fields */}
         <View style={s.fieldsGrid}>
@@ -490,4 +519,14 @@ const s = StyleSheet.create({
   modeBtnActive: { backgroundColor: '#EDE9FE', borderColor: C.primary },
   modeBtnTxt: { fontSize: 13, fontWeight: '700', color: C.muted },
   modeBtnTxtActive: { color: C.primary },
+
+  // Feature flags card (admin master switches for opt-in surfaces).
+  flagsCard: {
+    backgroundColor: C.card, borderRadius: 10, borderWidth: 1, borderColor: C.border,
+    padding: 14, marginBottom: 14,
+  },
+  flagsTitle: { fontSize: 13, fontWeight: '800', color: C.text, marginBottom: 8 },
+  flagRow: { flexDirection: 'row', alignItems: 'center' },
+  flagLabel: { fontSize: 13, fontWeight: '700', color: C.text, marginBottom: 4 },
+  flagHint: { fontSize: 11.5, color: C.muted, lineHeight: 16 },
 });

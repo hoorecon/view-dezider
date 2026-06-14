@@ -46,10 +46,13 @@ export default function AiWalletScreen() {
   const [quoting, setQuoting] = useState(false);
   const [buyingId, setBuyingId] = useState<string | null>(null);
 
-  // OpenAI free-tier (data-sharing) consent
+  // OpenAI free-tier (data-sharing) consent. `feature_enabled` is the
+  // ADMIN master switch — when false the entire opt-in UI is hidden,
+  // regardless of what the user has previously chosen.
   const [consent, setConsent] = useState<{
     allow_openai: boolean; mode: string;
     openai_free_tier?: boolean; openai_available: boolean;
+    feature_enabled?: boolean;
   } | null>(null);
   const [savingConsent, setSavingConsent] = useState(false);
 
@@ -189,8 +192,11 @@ export default function AiWalletScreen() {
               </Text>
             </View>
 
-            {/* OpenAI free-tier (data-sharing) consent */}
-            {consent?.openai_available && (
+            {/* OpenAI free-tier (data-sharing) consent.
+                Visibility rules:
+                  • Hidden if server has no OPENAI_API_KEY (`openai_available=false`)
+                  • Hidden if admin has disabled the feature (`feature_enabled=false`) */}
+            {consent?.openai_available && consent?.feature_enabled !== false && (
               <View style={styles.infoCard} testID="openai-consent-card">
                 <View style={styles.consentRow}>
                   <View style={{ flex: 1, paddingRight: 12 }}>

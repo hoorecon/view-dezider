@@ -116,12 +116,20 @@ async def import_estimate(endpoint: str = "import", pages: int = 1, tier: str = 
     # will route to OpenAI's free tier (0 wallet credits charged) so the
     # wallet balance is IRRELEVANT. We still return the cost estimate so
     # the user knows what they'd pay otherwise, but flip `sufficient=true`
-    # so the gate doesn't block them.
+    # so the gate doesn't block them. Admin can globally kill-switch this
+    # via the `openai_free_tier_feature_enabled` flag.
     import os as _os
+    try:
+        _cfg = await ai_wallet.get_config()
+        feature_enabled = bool(_cfg.get("openai_free_tier_feature_enabled", True))
+    except Exception:
+        feature_enabled = True
     try:
         u = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "ai_provider_consent": 1})
         c = (u or {}).get("ai_provider_consent") or {}
-        free_tier_active = bool(c.get("openai_free_tier")) and bool(_os.getenv("OPENAI_API_KEY"))
+        free_tier_active = (feature_enabled
+                            and bool(c.get("openai_free_tier"))
+                            and bool(_os.getenv("OPENAI_API_KEY")))
     except Exception:
         free_tier_active = False
     sufficient = (balance >= estimate) or free_tier_active
@@ -131,6 +139,7 @@ async def import_estimate(endpoint: str = "import", pages: int = 1, tier: str = 
             "sufficient": sufficient,
             "shortfall": shortfall,
             "free_tier_active": free_tier_active,
+            "free_tier_feature_enabled": feature_enabled,
             "basis": basis, "runs_sampled": sampled,
             "tier_multiplier": round(mult, 2)}
 
@@ -148,11 +157,19 @@ async def get_provider_consent(user: dict = Depends(get_current_user)):
     u = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "ai_provider_consent": 1})
     c = (u or {}).get("ai_provider_consent") or {}
     openai_available = bool(os.getenv("OPENAI_API_KEY"))
+    try:
+        cfg = await ai_wallet.get_config()
+        feature_enabled = bool(cfg.get("openai_free_tier_feature_enabled", True))
+    except Exception:
+        feature_enabled = True
     return {
         "allow_openai": bool(c.get("allow_openai", False)),
         "mode": c.get("mode") or "ask",
         "openai_free_tier": bool(c.get("openai_free_tier", False)),
         "openai_available": openai_available,
+        # Admin master switch — when false, the UI MUST hide the opt-in
+        # everywhere even if the user has previously consented.
+        "feature_enabled": feature_enabled,
     }
 
 

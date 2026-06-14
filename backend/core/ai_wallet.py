@@ -54,6 +54,14 @@ DEFAULTS = {
     # the SAME refill-markup math stays zero-loss for this dearer provider.
     "precise_model": "claude-sonnet-4-6",
     "precise_usd_per_mtok": 9.0,
+    # ── OpenAI free-tier opt-in (Wave 3) ──
+    # When TRUE: the "Skip the top-up — use OpenAI free-tier" panel appears
+    # in /ai-wallet and in the Deep Import / Import URL credit strips. Users
+    # who tick it have their AI calls routed to OpenAI free credits when the
+    # server has OPENAI_API_KEY set. When FALSE: feature is hidden everywhere
+    # and existing consents are NOT auto-revoked (so an admin can toggle this
+    # off temporarily without nuking the user setting).
+    "openai_free_tier_feature_enabled": True,
     # Import-from-URL: AI may auto-GROUP ungrouped factors into categories only
     # when the page defines no grouping AND the factor count exceeds this.
     "loader_music_volume_web": 0.55,
@@ -171,6 +179,9 @@ async def update_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
             except (ValueError, TypeError, AttributeError):
                 raise ValueError("Invalid credit pack entry")
         allowed["credit_packs"] = packs
+    # Feature flag — admin toggle for the OpenAI free-tier opt-in.
+    if "openai_free_tier_feature_enabled" in patch and patch["openai_free_tier_feature_enabled"] is not None:
+        allowed["openai_free_tier_feature_enabled"] = bool(patch["openai_free_tier_feature_enabled"])
     if not allowed:
         return await get_config()
     allowed["updated_at"] = _now()

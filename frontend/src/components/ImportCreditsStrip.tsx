@@ -21,11 +21,15 @@ import { showAlert } from '../utils/alert';
 type ProviderConsent = {
   allow_openai: boolean; mode: string;
   openai_free_tier: boolean; openai_available: boolean;
+  /** Admin master switch — when false the UI MUST hide the opt-in panel
+   * everywhere, regardless of what the user has previously chosen. */
+  feature_enabled?: boolean;
 };
 
 const DEFAULT_CONSENT: ProviderConsent = {
   allow_openai: false, mode: 'ask',
   openai_free_tier: false, openai_available: true,
+  feature_enabled: true,
 };
 
 interface Props {
@@ -119,8 +123,14 @@ export const ImportCreditsStrip: React.FC<Props> = ({ endpoint, pages = 1, tier 
   // null at first and the optional-chain evaluates to undefined → falsy
   // → panel shows. Once the GET (or its fallback) completes we re-render
   // with the real value.
-  const showFreeTierPanel = !ok && !consent?.openai_free_tier;
-  const freeTierAlreadyOn = !ok && !!consent?.openai_free_tier;
+  //
+  // ⚠ Admin master switch — `feature_enabled === false` HARD-HIDES the
+  // panel for everyone (existing opt-ins are ignored at runtime too).
+  // We default-true on undefined so the panel still shows during the
+  // first render before the consent fetch resolves.
+  const featureEnabled = consent?.feature_enabled !== false;
+  const showFreeTierPanel = featureEnabled && !ok && !consent?.openai_free_tier;
+  const freeTierAlreadyOn = featureEnabled && !ok && !!consent?.openai_free_tier;
 
   return (
     <View testID="import-credits-strip-wrap">
