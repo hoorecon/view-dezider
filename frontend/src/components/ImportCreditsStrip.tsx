@@ -4,10 +4,11 @@
  * Shows "≈ N cr needed · M cr available" (history-based estimate from the
  * user's recent runs) with a Top-up shortcut when the balance falls short.
  *
- * When the user is short on credits, ALSO surfaces the OpenAI free-tier
- * opt-in inline — if the user enables data-sharing on their OpenAI org,
- * Deep Import / Import URL calls route to OpenAI's free tier (0 wallet
- * credits) and they may not need to top up at all.
+ * PRIMARY OpenAI free-tier routing is now an ADMIN-LEVEL decision —
+ * controlled from /admin/ai-wallet-config → Feature flags. When admin has
+ * it ON AND the server has OPENAI_API_KEY, the backend returns
+ * `free_tier_active=true` and we render a purple "Using OpenAI free-tier"
+ * strip. Users no longer have a per-user toggle for this here.
  */
 import React, { useEffect, useState } from 'react';
 import {
@@ -16,21 +17,6 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import api from '../utils/api';
-import { showAlert } from '../utils/alert';
-
-type ProviderConsent = {
-  allow_openai: boolean; mode: string;
-  openai_free_tier: boolean; openai_available: boolean;
-  /** Admin master switch — when false the UI MUST hide the opt-in panel
-   * everywhere, regardless of what the user has previously chosen. */
-  feature_enabled?: boolean;
-};
-
-const DEFAULT_CONSENT: ProviderConsent = {
-  allow_openai: false, mode: 'ask',
-  openai_free_tier: false, openai_available: true,
-  feature_enabled: true,
-};
 
 interface Props {
   endpoint: 'import' | 'deep_import';
@@ -45,13 +31,6 @@ export const ImportCreditsStrip: React.FC<Props> = ({ endpoint, pages = 1, tier 
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // OpenAI free-tier consent — shown inline when the user is short on credits
-  // so they can opt into 0-credit AI calls without leaving the Deep Import /
-  // Import URL flow. Lazily loaded the first time the strip flips to "short".
-  const [consent, setConsent] = useState<ProviderConsent | null>(null);
-  const [consentLoading, setConsentLoading] = useState(false);
-  const [savingConsent, setSavingConsent] = useState(false);
-
   useEffect(() => {
     let on = true;
     setLoading(true);
@@ -61,43 +40,6 @@ export const ImportCreditsStrip: React.FC<Props> = ({ endpoint, pages = 1, tier 
       .finally(() => { if (on) setLoading(false); });
     return () => { on = false; };
   }, [endpoint, pages, tier]);
-
-  // Lazy-load consent only when the user is short (sufficient === false).
-  // ⚠ Important: if the consent endpoint fails (404 / 401 / network) we MUST
-  // still render the opt-in panel with a safe default — otherwise the panel
-  // stays hidden forever and the user thinks the feature is missing.
-  useEffect(() => {
-    if (!data || data.sufficient || consent || consentLoading) return;
-    let on = true;
-    setConsentLoading(true);
-    api.get('/ai-wallet/provider-consent')
-      .then(r => { if (on) setConsent(r.data); })
-      .catch(() => {
-        // Fallback default — assumes nothing is set yet. The PUT below
-        // will create the real consent doc if the user clicks "Enable".
-        if (on) setConsent(DEFAULT_CONSENT);
-      })
-      .finally(() => { if (on) setConsentLoading(false); });
-    return () => { on = false; };
-  }, [data, consent, consentLoading]);
-
-  const enableFreeTier = async () => {
-    setSavingConsent(true);
-    try {
-      const res = await api.put('/ai-wallet/provider-consent', {
-        allow_openai: true, mode: consent?.mode || 'always', openai_free_tier: true,
-      });
-      setConsent(res.data);
-      showAlert(
-        'Free-tier ON',
-        'Your AI calls will now route to OpenAI free-tier first. You can change this anytime in AI Wallet → Provider settings.',
-      );
-    } catch (e: any) {
-      showAlert('Could not enable', e?.response?.data?.detail || 'Please try again.');
-    } finally {
-      setSavingConsent(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -112,36 +54,7 @@ export const ImportCreditsStrip: React.FC<Props> = ({ endpoint, pages = 1, tier 
   const ok = !!data.sufficient;
   const isScaled = data.basis === 'history_scaled';
   const isDefault = data.basis === 'default';
-
-  // Always offer the free-tier opt-in when the user is short on credits.
-  // We deliberately DON'T gate on `consent.openai_available` — the server
-  // may or may not yet have OPENAI_API_KEY set, but the user-side consent
-  // still needs to be captured. Once both align, AI calls route to OpenAI
-  // free credits automatically. Using `consent?.openai_free_tier` (optional
-  // chaining) means the panel appears IMMEDIATELY when `data.sufficient`
-  // is false, even before the consent GET resolves — `consent` is just
-  // null at first and the optional-chain evaluates to undefined → falsy
-  // → panel shows. Once the GET (or its fallback) completes we re-render
-  // with the real value.
-  //
-  // ⚠ Admin master switch — `feature_enabled === false` HARD-HIDES the
-  // panel for everyone (existing opt-ins are ignored at runtime too).
-  // We default-true on undefined so the panel still shows during the
-  // first render before the consent fetch resolves.
-  const featureEnabled = consent?.feature_enabled !== false;
-  const showFreeTierPanel = featureEnabled && !ok && !consent?.openai_free_tier;
-  const freeTierAlreadyOn = featureEnabled && !ok && !!consent?.openai_free_tier;
-
-  // "Free-tier active" means the BACKEND has decided this call will route
-  // to OpenAI's free tier (0 wallet credits). The /import-estimate response
-  // carries `free_tier_active` for this. When true we show a distinctive
-  // purple strip instead of the green "you have enough credits" strip,
-  // because the green-with-negative-balance combo is alarming and the
-  // user shouldn't see "≈ 370 cr needed · -42 cr available" when the call
-  // is actually FREE for them. Falls back to the consent-side flag if the
-  // server-side flag isn't present yet (older bundle).
-  const freeTierActive = !!data.free_tier_active
-    || (!!consent?.openai_free_tier && consent?.feature_enabled !== false);
+  const freeTierActive = !!data.free_tier_active;
 
   return (
     <View testID="import-credits-strip-wrap">
@@ -175,47 +88,6 @@ export const ImportCreditsStrip: React.FC<Props> = ({ endpoint, pages = 1, tier 
           </TouchableOpacity>
         )}
       </View>
-
-      {/* Inline OpenAI free-tier opt-in — only when user is short on credits
-          AND the server has an OpenAI key configured AND they haven't already
-          opted in. Lets them skip the top-up entirely. The free tier is
-          provided through OUR shared OpenAI org — the user does NOT need
-          their own OpenAI account or to do anything on platform.openai.com. */}
-      {showFreeTierPanel && (
-        <View style={s.ftPanel} testID="import-credits-freetier-panel">
-          <View style={s.ftHeader}>
-            <Ionicons name="sparkles" size={14} color="#7C3AED" />
-            <Text style={s.ftTitle}>Skip the top-up — use OpenAI free-tier</Text>
-          </View>
-          <Text style={s.ftBody}>
-            We&apos;ll route this Import / Deep Import through our shared{' '}
-            <Text style={{ fontWeight: '800' }}>OpenAI organisation</Text>{' '}
-            (data-sharing is enabled there for the free tier) and your AI Wallet is{' '}
-            <Text style={{ fontWeight: '800' }}>not charged</Text>. Your decision data may be
-            used by OpenAI to improve their models. You do not need your own OpenAI account.
-          </Text>
-          <TouchableOpacity
-            testID="import-credits-enable-freetier-btn"
-            style={[s.ftBtn, savingConsent && { opacity: 0.6 }]}
-            disabled={savingConsent}
-            activeOpacity={0.85}
-            onPress={enableFreeTier}>
-            {savingConsent
-              ? <ActivityIndicator size="small" color="#FFF" />
-              : <><Ionicons name="checkmark-circle" size={13} color="#FFF" />
-                  <Text style={s.ftBtnText}>Enable free-tier &amp; continue</Text></>}
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {freeTierAlreadyOn && (
-        <View style={s.ftOnPanel} testID="import-credits-freetier-on-panel">
-          <Ionicons name="checkmark-circle" size={13} color="#059669" />
-          <Text style={s.ftOnText}>
-            OpenAI free-tier is <Text style={{ fontWeight: '800' }}>ON</Text> — this run will use OpenAI free credits (0 cr charged) when available.
-          </Text>
-        </View>
-      )}
     </View>
   );
 };
@@ -230,17 +102,6 @@ const s = StyleSheet.create({
   mutedTxt: { fontSize: 12, color: '#94A3B8', fontWeight: '600' },
   topup: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#DC2626', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14 },
   topupTxt: { fontSize: 11.5, fontWeight: '800', color: '#FFF' },
-
-  ftPanel: { marginTop: 8, padding: 10, borderRadius: 9, borderWidth: 1, borderColor: '#DDD6FE', backgroundColor: '#F5F3FF' },
-  ftHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
-  ftTitle: { fontSize: 12.5, fontWeight: '800', color: '#5B21B6' },
-  ftBody: { fontSize: 11.5, color: '#4C1D95', lineHeight: 16, marginBottom: 8 },
-  ftLink: { color: '#7C3AED', textDecorationLine: 'underline', fontWeight: '700' },
-  ftBtn: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#7C3AED', paddingHorizontal: 11, paddingVertical: 6, borderRadius: 14 },
-  ftBtnText: { color: '#FFF', fontSize: 11.5, fontWeight: '800' },
-
-  ftOnPanel: { marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8, borderRadius: 8, backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0' },
-  ftOnText: { flex: 1, fontSize: 11.5, color: '#065F46', fontWeight: '600', lineHeight: 16 },
 });
 
 export default ImportCreditsStrip;

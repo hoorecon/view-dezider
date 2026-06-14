@@ -187,9 +187,15 @@ async def metered_chat(
         _feature_enabled = bool(_cfg.get("openai_free_tier_feature_enabled", True))
     except Exception:
         _feature_enabled = True
-    openai_first = (_feature_enabled
-                    and bool(consent.get("openai_free_tier"))
-                    and bool(os.getenv("OPENAI_API_KEY")))
+    # OpenAI free-tier routing is an ADMIN-LEVEL decision: when the feature
+    # flag is on AND the server has an OPENAI_API_KEY, every call routes
+    # through the admin's data-sharing-enabled OpenAI org → 0 wallet credits
+    # charged. We deliberately do NOT require per-user consent for PRIMARY
+    # routing — the org-level data-sharing toggle is the admin's
+    # responsibility (legal disclosure goes in the platform ToS). Users
+    # still control whether their wallet is charged for non-free-tier
+    # OpenAI fallback via the `allow_openai` consent.
+    openai_first = _feature_enabled and bool(os.getenv("OPENAI_API_KEY"))
     if not openai_first:
         await ai_wallet.ensure_can_spend(user_id)
 

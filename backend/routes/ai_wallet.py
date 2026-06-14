@@ -111,27 +111,19 @@ async def import_estimate(endpoint: str = "import", pages: int = 1, tier: str = 
     bal = await ai_wallet.get_balance(user["user_id"])
     balance = float(bal.get("balance") or 0)
     estimate = round(estimate, 1)
-    # Free-tier consent override — if the user has confirmed they enabled
-    # OpenAI data-sharing AND the server has an OPENAI_API_KEY, the AI call
-    # will route to OpenAI's free tier (0 wallet credits charged) so the
-    # wallet balance is IRRELEVANT. We still return the cost estimate so
-    # the user knows what they'd pay otherwise, but flip `sufficient=true`
-    # so the gate doesn't block them. Admin can globally kill-switch this
-    # via the `openai_free_tier_feature_enabled` flag.
+    # Free-tier routing is an ADMIN-LEVEL decision now. When the platform
+    # flag `openai_free_tier_feature_enabled` is on AND the server has an
+    # OPENAI_API_KEY, every call routes through the admin's OpenAI org
+    # (data-sharing enabled there → 0 wallet credits charged). No per-user
+    # consent is needed for PRIMARY routing — the org-level data-sharing
+    # toggle is the admin's responsibility (documented in platform ToS).
     import os as _os
     try:
         _cfg = await ai_wallet.get_config()
         feature_enabled = bool(_cfg.get("openai_free_tier_feature_enabled", True))
     except Exception:
         feature_enabled = True
-    try:
-        u = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "ai_provider_consent": 1})
-        c = (u or {}).get("ai_provider_consent") or {}
-        free_tier_active = (feature_enabled
-                            and bool(c.get("openai_free_tier"))
-                            and bool(_os.getenv("OPENAI_API_KEY")))
-    except Exception:
-        free_tier_active = False
+    free_tier_active = feature_enabled and bool(_os.getenv("OPENAI_API_KEY"))
     sufficient = (balance >= estimate) or free_tier_active
     shortfall = 0.0 if free_tier_active else round(max(0.0, estimate - balance), 1)
     return {"endpoint": endpoint, "pages": pages, "tier": tier,
