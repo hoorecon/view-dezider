@@ -147,16 +147,16 @@ export default function EGAimScreen() {
       ))}
       <View style={s.formCard}>
         <Text style={s.formLabel}>Life Area</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-          <View style={s.chipRow}>
-            {lifeAreas.map(la => (
-              <TouchableOpacity key={la.id} style={[s.chip, addArea === la.id && s.chipActive]}
-                onPress={() => setAddArea(la.id)}>
-                <Text style={[s.chipText, addArea === la.id && s.chipTextActive]}>{la.name.split('(')[0].trim()}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </ScrollView>
+        {/* Wrap to multiple rows so users see all life-area pills at a
+            glance — horizontal scroll hid pills off-screen. */}
+        <View style={[s.chipRow, { marginBottom: 8 }]}>
+          {lifeAreas.map(la => (
+            <TouchableOpacity key={la.id} style={[s.chip, addArea === la.id && s.chipActive]}
+              onPress={() => setAddArea(la.id)}>
+              <Text style={[s.chipText, addArea === la.id && s.chipTextActive]}>{la.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
         <Text style={s.formLabel}>Addiction / Behavior</Text>
         <View style={s.inputRow}>
           <TextInput style={s.input} placeholder="e.g., Scrolling social media, Overeating..."
@@ -216,16 +216,15 @@ export default function EGAimScreen() {
       ))}
       <View style={s.formCard}>
         <Text style={s.formLabel}>Life Area</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-          <View style={s.chipRow}>
-            {lifeAreas.map(la => (
-              <TouchableOpacity key={la.id} style={[s.chip, irrArea === la.id && s.chipActive]}
-                onPress={() => setIrrArea(la.id)}>
-                <Text style={[s.chipText, irrArea === la.id && s.chipTextActive]}>{la.name.split('(')[0].trim()}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </ScrollView>
+        {/* Wrap to multiple rows — see comment above. */}
+        <View style={[s.chipRow, { marginBottom: 8 }]}>
+          {lifeAreas.map(la => (
+            <TouchableOpacity key={la.id} style={[s.chip, irrArea === la.id && s.chipActive]}
+              onPress={() => setIrrArea(la.id)}>
+              <Text style={[s.chipText, irrArea === la.id && s.chipTextActive]}>{la.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
         <Text style={s.formLabel}>Irritation</Text>
         <View style={s.inputRow}>
           <TextInput style={s.input} placeholder="e.g., Being interrupted, Traffic..."
@@ -339,7 +338,7 @@ const s = StyleSheet.create({
   formLabel: { fontSize: 13, fontWeight: '600', color: COLORS.textPrimary, marginTop: 8, marginBottom: 4 },
   input: { backgroundColor: '#F9FAFB', borderRadius: 10, padding: 12, fontSize: 14, color: COLORS.textPrimary, borderWidth: 1, borderColor: COLORS.border, flex: 1 },
   inputRow: { gap: 6 },
-  chipRow: { flexDirection: 'row', gap: 6 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, rowGap: 8 },
   chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: COLORS.border },
   chipActive: { backgroundColor: '#F97316', borderColor: '#F97316' },
   chipText: { fontSize: 11, fontWeight: '600', color: COLORS.textSecondary },

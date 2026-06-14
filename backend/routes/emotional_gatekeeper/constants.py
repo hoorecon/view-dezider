@@ -11,17 +11,21 @@ LIFE_AREAS = [
 ]
 
 LIFE_AREA_LABELS = {
-    "holistic_health": "Holistic Health (Physical, Mental, Emotional)",
+    # Labels MUST match the Central Catalog L0 names from
+    # frontend/src/constants/lifeAreas.ts. Do NOT add parentheticals,
+    # marketing copy, or rename anything here — drift causes the AIM /
+    # Outlet UIs to show different words than the rest of Jelcos.ai.
+    "holistic_health": "Holistic Health",
     "knowledge_skills": "Knowledge & Skills",
-    "emotional_relationships": "Emotional Relationships",
+    "emotional_relationships": "Relationships",
     "finance": "Finance",
-    "assets": "Assets (Moveable, Immovable & Intellectual)",
+    "assets": "Assets",
     "career": "Career",
     "personal_dreams": "Personal Dreams Fulfillment",
     "hobbies_entertainment": "Hobbies & Entertainment",
     "social_image": "Social Image & Influence",
     "social_contributions": "Social Contributions",
-    "spirituality": "Spirituality",
+    "spirituality": "Spirituality & Religion",
 }
 
 # ============================================================
