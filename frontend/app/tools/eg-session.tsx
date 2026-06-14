@@ -406,6 +406,63 @@ export default function EGSessionScreen() {
                 </View>
               ))}
 
+              {/* AI-advised items — each rendered as an actionable card with a
+                  "Find a solution" deep-link that bootstraps Solution Finder
+                  pre-filled with the AI's suggested title + life-area. */}
+              {Array.isArray(report.advised_items) && report.advised_items.length > 0 && (
+                <View style={st.advisedBlock}>
+                  <Text style={st.advisedHeader}>🎯 AI-Advised — work on these</Text>
+                  {report.advised_items.map((it: any, idx: number) => {
+                    const kind = (it?.kind || 'addiction').toLowerCase();
+                    const label = it?.label || (kind === 'irritation' ? 'this irritation' : 'this addiction');
+                    const why = it?.why || '';
+                    const area = it?.life_area || 'other';
+                    const sfTitle = kind === 'irritation'
+                      ? `Solve my irritation: ${label}`
+                      : `Solve my addiction: ${label}`;
+                    const sfDesc = why
+                      ? `${kind === 'irritation' ? 'Irritation' : 'Addiction'}: ${label}. Why it matters: ${why}`
+                      : `${kind === 'irritation' ? 'Irritation' : 'Addiction'}: ${label}.`;
+                    return (
+                      <View key={`adv-${idx}`} style={st.advisedCard} testID={`advised-item-${idx}`}>
+                        <View style={st.advisedHead}>
+                          <View style={[
+                            st.advisedKindBadge,
+                            { backgroundColor: kind === 'irritation' ? '#FEE2E2' : '#FEF3C7' },
+                          ]}>
+                            <Text style={[
+                              st.advisedKindText,
+                              { color: kind === 'irritation' ? '#B91C1C' : '#92400E' },
+                            ]}>
+                              {kind === 'irritation' ? 'IRRITATION' : 'ADDICTION'}
+                            </Text>
+                          </View>
+                          <Text style={st.advisedLabel} numberOfLines={2}>{label}</Text>
+                        </View>
+                        {!!why && <Text style={st.advisedWhy}>{why}</Text>}
+                        <TouchableOpacity
+                          testID={`advised-solve-${idx}`}
+                          style={st.advisedSolveBtn}
+                          onPress={() => router.push({
+                            pathname: '/tools/solution-finder' as any,
+                            params: {
+                              bootstrap: '1',
+                              profile: 'individual',
+                              kind: 'problem',
+                              life_area: area,
+                              title: sfTitle,
+                              description: sfDesc,
+                            },
+                          })}>
+                          <Ionicons name="bulb" size={13} color="#FFF" />
+                          <Text style={st.advisedSolveText}>Find a solution</Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+
               {/* Legal disclaimer — surfaced INSIDE the report card so it's
                   also captured by any 'Download PDF' / 'Print' workflow. */}
               <Text style={st.disclaimer}>
@@ -595,6 +652,27 @@ const st = StyleSheet.create({
     backgroundColor: '#F5F3FF', borderWidth: 1, borderColor: '#DDD6FE',
   },
   reportActionText: { fontSize: 12, fontWeight: '700', color: '#5B21B6' },
+  // AI-advised action cards (inside Breakthrough Report)
+  advisedBlock: {
+    marginTop: 14, paddingTop: 12,
+    borderTopWidth: 1, borderTopColor: '#FDE68A',
+  },
+  advisedHeader: { fontSize: 13, fontWeight: '800', color: '#92400E', marginBottom: 8 },
+  advisedCard: {
+    backgroundColor: '#FFF', borderRadius: 12, padding: 12, marginBottom: 8,
+    borderWidth: 1, borderColor: '#FDE68A',
+  },
+  advisedHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  advisedKindBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  advisedKindText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
+  advisedLabel: { flex: 1, fontSize: 13, fontWeight: '700', color: '#0F172A' },
+  advisedWhy: { fontSize: 12, color: '#475569', lineHeight: 17, marginBottom: 8 },
+  advisedSolveBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9,
+    backgroundColor: '#7C3AED', alignSelf: 'flex-start',
+  },
+  advisedSolveText: { fontSize: 12, fontWeight: '700', color: '#FFF' },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, marginBottom: 8 },
   sectionHeaderTitle: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
   commitForm: { backgroundColor: '#FFF', borderRadius: 12, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#FDE68A' },

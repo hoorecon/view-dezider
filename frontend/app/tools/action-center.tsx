@@ -2,12 +2,12 @@
  * Action Center — central tracker for all Action Items captured across modules.
  * Filter by status / source module / ported_to. Tap to view & port to CTT or LifeStyle.
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
@@ -24,7 +24,7 @@ type ActionItem = {
 };
 
 const STATUS_FILTERS = ['all','pending','in_progress','done','blocked'];
-const SOURCE_FILTERS = ['all','MYDEZIDER_MPPS','PROS_CONS','SWOT','PNA','CONFLICT_BREAKER','MANUAL'];
+const SOURCE_FILTERS = ['all','MYDEZIDER_MPPS','PROS_CONS','SWOT','PNA','CONFLICT_BREAKER','AIM','MANUAL'];
 const PORTED_FILTERS = ['all','not_ported','CTT','LIFESTYLE'];
 
 const PRIORITY_COLOR: Record<string,string> = { low:'#94A3B8', medium:'#3B82F6', high:'#F59E0B', urgent:'#EF4444' };
@@ -32,11 +32,12 @@ const STATUS_COLOR:   Record<string,string> = { pending:'#94A3B8', in_progress:'
 const SOURCE_LABEL:   Record<string,string> = {
   MYDEZIDER_MPPS:'My Dezider · MPPS', PROS_CONS:'Pros & Cons', SWOT:'SWOT',
   PNA:'PNA', CONFLICT_BREAKER:'Conflict Breaker', CLD:'CLD', GEM:'GEM',
-  GOAL_SETTER:'Goal Setter', AALA:'AALA', MANUAL:'Manual',
+  GOAL_SETTER:'Goal Setter', AALA:'AALA', AIM:'AIM · Emotional Gatekeeper', MANUAL:'Manual',
 };
 
 export default function ActionCenter() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ source?: string; session_id?: string }>();
   const [items, setItems] = useState<ActionItem[]>([]);
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -44,6 +45,13 @@ export default function ActionCenter() {
   const [fStatus, setFStatus] = useState('all');
   const [fSource, setFSource] = useState('all');
   const [fPorted, setFPorted] = useState('all');
+
+  // Auto-import banner shown after seeding from an upstream source
+  // (e.g. AIM session → Action Items Planner deep-link).
+  const [importBanner, setImportBanner] = useState<
+    { msg: string; ctt: number; life: number } | null
+  >(null);
+  const importedRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -65,6 +73,41 @@ export default function ActionCenter() {
   }, [fStatus, fSource, fPorted]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  // Auto-import on deep-link from upstream sources (currently AIM).
+  // Idempotent on the backend — safe to call multiple times.
+  useEffect(() => {
+    const src = String(params?.source || '');
+    const sid = String(params?.session_id || '');
+    if (src !== 'aim_session' || !sid) return;
+    const key = `aim:${sid}`;
+    if (importedRef.current === key) return;
+    importedRef.current = key;
+    (async () => {
+      try {
+        const r = await api.post(`/action-items/import-from-aim/${sid}`);
+        const n = Number(r.data?.imported_count || 0);
+        const c = Number(r.data?.ctt_count || 0);
+        const l = Number(r.data?.lifestyle_count || 0);
+        if (n > 0) {
+          setImportBanner({
+            msg: `Imported ${n} new items from your AIM session.`,
+            ctt: c, life: l,
+          });
+        } else {
+          setImportBanner({
+            msg: 'AIM items are already in your planner (nothing new to import).',
+            ctt: 0, life: 0,
+          });
+        }
+        // Pre-filter to AIM so the user immediately sees what was seeded.
+        setFSource('AIM');
+        load();
+      } catch (e: any) {
+        showAlert('Import failed', e?.response?.data?.detail || 'Could not import from AIM');
+      }
+    })();
+  }, [params?.source, params?.session_id, load]);
 
   const port = async (it: ActionItem, target: 'CTT'|'LIFESTYLE') => {
     if (it.ported_to) return showAlert('Already ported', `In ${it.ported_to}`);
@@ -98,6 +141,27 @@ export default function ActionCenter() {
             <View style={s.statCard}><Text style={[s.statN,{color:'#10B981'}]}>{summary.by_status?.done || 0}</Text><Text style={s.statL}>Done</Text></View>
             <View style={s.statCard}><Text style={[s.statN,{color:'#1D4ED8'}]}>{summary.by_ported?.CTT || 0}</Text><Text style={s.statL}>In CTT</Text></View>
             <View style={s.statCard}><Text style={[s.statN,{color:'#B45309'}]}>{summary.by_ported?.LIFESTYLE || 0}</Text><Text style={s.statL}>LifeStyle</Text></View>
+          </View>
+        )}
+
+        {/* AIM import banner — shown after deep-linking from an AIM session. */}
+        {importBanner && (
+          <View style={s.banner} testID="aim-import-banner">
+            <View style={s.bannerIconWrap}>
+              <Ionicons name="sparkles" size={18} color="#7C3AED" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.bannerTitle}>{importBanner.msg}</Text>
+              {(importBanner.ctt + importBanner.life) > 0 && (
+                <Text style={s.bannerSub}>
+                  Grouped: {importBanner.ctt} one-time → CTT · {importBanner.life} recurring → LifeStyle.
+                  Tap → CTT / → LifeStyle on each row to confirm.
+                </Text>
+              )}
+            </View>
+            <TouchableOpacity onPress={() => setImportBanner(null)} testID="aim-import-banner-close">
+              <Ionicons name="close" size={18} color="#7C3AED" />
+            </TouchableOpacity>
           </View>
         )}
 
@@ -218,4 +282,12 @@ const s = StyleSheet.create({
   tagText: { fontSize: 10, fontWeight: '700' },
   smallBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   smallBtnText: { fontSize: 10, fontWeight: '700' },
+  banner: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#F5F3FF', borderRadius: 12, padding: 12, marginBottom: 12,
+    borderWidth: 1, borderColor: '#DDD6FE',
+  },
+  bannerIconWrap: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#EDE9FE', alignItems: 'center', justifyContent: 'center' },
+  bannerTitle: { fontSize: 13, fontWeight: '700', color: '#5B21B6' },
+  bannerSub: { fontSize: 11, color: '#6D28D9', marginTop: 2, lineHeight: 15 },
 });

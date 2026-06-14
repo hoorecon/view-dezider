@@ -56,6 +56,7 @@ router = APIRouter()
 SOURCE_MODULES = {
     "MYDEZIDER_MPPS", "PROS_CONS", "SWOT", "PNA",
     "CONFLICT_BREAKER", "CLD", "GEM", "GOAL_SETTER", "AALA", "MANUAL",
+    "AIM",
 }
 RECURRENCE_TYPES = {"one_time", "recurring"}
 FREQUENCIES = {"daily", "weekly", "biweekly", "monthly", "quarterly", "yearly", "custom"}
@@ -565,6 +566,211 @@ async def import_from_pros_cons(analysis_id: str, user: dict = Depends(get_curre
         inserted.append(doc_ai)
 
     return {"imported_count": len(inserted), "imported": inserted}
+
+
+
+# ───── AIM (Emotional Gatekeeper) import ─────────────────────────────────
+
+@router.post("/action-items/import-from-aim/{session_id}")
+async def import_from_aim(session_id: str, user: dict = Depends(get_current_user)):
+    """
+    Pre-fill the Action Items Planner from an AIM (Addictions/Irritations/
+    Management) session with *intelligent grouping*:
+
+      • Commitments  → one-time (CTT-bound). 'immediate'=urgent/today,
+                       '7_day'=high/+7d, '30_day'=medium/+30d.
+      • Addictions   → 2 items each:
+                         a) one-time corrective action  (CTT)  – if user
+                            captured `corrective_actions`.
+                         b) recurring daily check-in    (LifeStyle).
+                       Priority: -neg_pct ≥70 urgent | ≥50 high | else medium.
+      • Irritations  → recurring weekly reaction-management  (LifeStyle).
+      • Advised items from breakthrough_reports.advised_items → one-time (CTT).
+
+    Idempotent — keyed on `aim_key` (session_id|kind|text|cadence).
+    """
+    sess = await db.breakthrough_sessions.find_one(
+        {"id": session_id, "user_id": user.get("user_id")}
+    )
+    if not sess:
+        raise HTTPException(404, "AIM session not found")
+
+    aim = await db.aim_reflections.find_one({"session_id": session_id}) or {}
+    commitments = await db.breakthrough_commitments.find(
+        {"session_id": session_id, "user_id": user.get("user_id")}
+    ).to_list(50)
+    report = await db.breakthrough_reports.find_one({"session_id": session_id}) or {}
+
+    label = f"AIM · {sess.get('title', 'Introspection Session')}"
+    now = datetime.now(timezone.utc)
+
+    def _today() -> str:
+        return now.date().isoformat()
+
+    def _plus_days(d: int) -> str:
+        from datetime import timedelta
+        return (now + timedelta(days=d)).date().isoformat()
+
+    def _pri_from_pct(pct) -> str:
+        try:
+            p = int(pct or 0)
+        except Exception:
+            p = 0
+        if p >= 70:
+            return "urgent"
+        if p >= 50:
+            return "high"
+        return "medium"
+
+    inserted: List[Dict[str, Any]] = []
+
+    async def _insert(payload: Dict[str, Any], aim_key: str, source_subref: str):
+        existing = await db.action_items.find_one({
+            "user_id": user.get("user_id"),
+            "source_module": "AIM",
+            "source_id": session_id,
+            "aim_key": aim_key,
+        })
+        if existing:
+            new_title = (payload.get("title") or "").strip()
+            if new_title and existing.get("title") != new_title:
+                await db.action_items.update_one(
+                    {"action_id": existing["action_id"]},
+                    {"$set": {"title": new_title, "updated_at": _now_iso()}},
+                )
+            return
+        body = {
+            "source_module": "AIM",
+            "source_id": session_id,
+            "source_label": label,
+            "source_subref": source_subref,
+            **payload,
+        }
+        norm = _normalise(body, user)
+        if not norm["title"]:
+            return
+        doc = {
+            "action_id": str(uuid.uuid4()),
+            **norm,
+            "aim_key": aim_key,
+            "ported_to": None, "ported_ref_id": None, "ported_at": None,
+            "created_at": _now_iso(), "updated_at": _now_iso(),
+        }
+        await db.action_items.insert_one(doc)
+        doc.pop("_id", None)
+        inserted.append(doc)
+
+    # ── Commitments → one-time (CTT-bound)
+    for c in commitments:
+        c_id = c.get("id") or ""
+        c_text = (c.get("commitment_text") or "").strip()
+        if not c_text:
+            continue
+        c_type = (c.get("commitment_type") or "immediate").lower()
+        if c_type == "30_day":
+            pri, by = "medium", _plus_days(30)
+        elif c_type == "7_day":
+            pri, by = "high", _plus_days(7)
+        else:
+            pri, by = "urgent", (c.get("due_date") or _today())
+        await _insert({
+            "title": f"[Commitment · {c_type.replace('_', '-')}] {c_text}",
+            "description": c_text,
+            "recurrence_type": "one_time",
+            "priority": pri,
+            "by_when": by,
+        }, aim_key=f"commit|{c_id or c_text[:40]}", source_subref=c_id)
+
+    # ── Addictions → corrective (one_time) + daily routine (recurring)
+    for a in (aim.get("addictions") or []):
+        if not isinstance(a, dict):
+            continue
+        text = (a.get("addiction") or "").strip()
+        if not text:
+            continue
+        area = a.get("area_of_life") or None
+        neg = a.get("negative_impact_pct")
+        pri = _pri_from_pct(neg)
+        corrective = (a.get("corrective_actions") or "").strip()
+        owner_timeline = (a.get("task_owner_timeline") or "").strip()
+        # (a) one-time corrective action — only if the user captured one
+        if corrective:
+            await _insert({
+                "title": f"[Addiction · Action] {corrective[:90]}",
+                "description": (
+                    f"Addiction: {text}.\nCorrective action: {corrective}."
+                    + (f"\nOwner / timeline: {owner_timeline}" if owner_timeline else "")
+                ),
+                "recurrence_type": "one_time",
+                "priority": pri,
+                "life_area": area,
+                "by_when": _plus_days(7),
+            }, aim_key=f"add_act|{text[:60]}", source_subref=text[:60])
+        # (b) daily routine — habit-breaking check-in
+        await _insert({
+            "title": f"[Addiction · Routine] Stay free of: {text}",
+            "description": (
+                f"Daily check-in to avoid the addictive pattern: {text}."
+                + (f"\nTriggers: {a.get('triggering_situations') or '—'}.")
+                + (f"\nNegative impact: {a.get('negative_impact') or '—'} ({neg or 0}%).")
+            ),
+            "recurrence_type": "recurring",
+            "recurrence_frequency": "daily",
+            "priority": pri,
+            "life_area": area,
+        }, aim_key=f"add_routine|{text[:60]}", source_subref=text[:60])
+
+    # ── Irritations → weekly reaction-management (recurring routine)
+    for ir in (aim.get("irritations") or []):
+        if not isinstance(ir, dict):
+            continue
+        text = (ir.get("irritation") or "").strip()
+        if not text:
+            continue
+        area = ir.get("area_of_life") or None
+        pct = ir.get("irritation_pct")
+        pri = _pri_from_pct(pct)
+        await _insert({
+            "title": f"[Irritation · Routine] Manage reaction to: {text}",
+            "description": (
+                f"Weekly reflection on reactions to: {text}."
+                + (f"\nProbable reaction: {ir.get('probable_reaction') or '—'}.")
+                + (f"\nNegative impact: {ir.get('negative_impact') or '—'} ({pct or 0}%).")
+            ),
+            "recurrence_type": "recurring",
+            "recurrence_frequency": "weekly",
+            "priority": pri,
+            "life_area": area,
+        }, aim_key=f"irr_routine|{text[:60]}", source_subref=text[:60])
+
+    # ── Advised items from the AI Breakthrough Report → one_time (CTT)
+    for adv in (report.get("advised_items") or []):
+        if not isinstance(adv, dict):
+            continue
+        lbl = (adv.get("label") or "").strip()
+        if not lbl:
+            continue
+        kind = (adv.get("kind") or "addiction").lower()
+        why = (adv.get("why") or "").strip()
+        area = adv.get("life_area") or None
+        await _insert({
+            "title": f"[AI Advised · {kind.capitalize()}] {lbl}",
+            "description": (f"AI suggests focusing on: {lbl}." + (f"\nWhy: {why}" if why else "")),
+            "recurrence_type": "one_time",
+            "priority": "high",
+            "life_area": area,
+            "by_when": _plus_days(7),
+        }, aim_key=f"adv|{kind}|{lbl[:60]}", source_subref=f"adv:{kind}")
+
+    # Tally for the UI banner
+    ctt_n = sum(1 for x in inserted if x.get("recurrence_type") == "one_time")
+    life_n = sum(1 for x in inserted if x.get("recurrence_type") == "recurring")
+    return {
+        "imported_count": len(inserted),
+        "ctt_count": ctt_n,
+        "lifestyle_count": life_n,
+        "imported": inserted,
+    }
 
 
 

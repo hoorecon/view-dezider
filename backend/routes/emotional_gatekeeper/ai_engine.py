@@ -424,6 +424,11 @@ Respond ONLY with valid JSON:
     {{"title": "Reflection Affirmation", "content": "<personalized affirmation>"}}
   ],
   "breakthrough_score": <1-10 how significant this breakthrough is>,
-  "follow_up_recommended": "<solution_finder/ctt_task/journal/none>"
+  "follow_up_recommended": "<solution_finder/ctt_task/journal/none>",
+  "advised_items": [
+    {{"kind": "addiction|irritation", "label": "<short name e.g. YouTube 1.5 hrs daily>",
+      "why": "<one-sentence reason>",
+      "life_area": "<one of: holistic_health|knowledge_skills|relationships|finance|assets|career|hobbies_entertainment|social_image|social_contributions|spirituality_religion|other>"}}
+  ]
 }}"""
     return await _call_llm_json(prompt, user_id=user_id, feature="eg_breakthrough_report", session_id=session_id)
