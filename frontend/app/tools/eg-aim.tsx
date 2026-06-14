@@ -87,6 +87,24 @@ export default function EGAimScreen() {
   const toggleIn = (arr: string[], id: string) =>
     arr.includes(id) ? arr.filter(x => x !== id) : [...arr, id];
 
+  // P0 — auto-save addictions/irritations as the user adds them, so
+  // 'Resume Session' restores everything even if AI analysis hasn't run
+  // yet. Previously the lists lived only in local state until Analyze,
+  // so leaving the flow lost all entered rows. We debounce by 600ms and
+  // skip the very first render where the resume-effect (above) has just
+  // hydrated the lists from the server.
+  const initialHydrateRef = useRef(true);
+  useEffect(() => {
+    if (!sessionId) return;
+    if (initialHydrateRef.current) { initialHydrateRef.current = false; return; }
+    const t = setTimeout(() => {
+      api.post(`/emotional-gatekeeper/aim/${sessionId}/save`, {
+        addictions, irritations,
+      }).catch(() => { /* network blip — next add will retry */ });
+    }, 600);
+    return () => clearTimeout(t);
+  }, [addictions, irritations, sessionId]);
+
   useEffect(() => {
     (async () => {
       try {
@@ -160,6 +178,25 @@ export default function EGAimScreen() {
             </TouchableOpacity>
           </View>
           <Text style={s.entryMeta}>{a.area_of_life} • +{a.positive_impact_pct}% / -{a.negative_impact_pct}%</Text>
+          {/* Solution Finder deep-link — opens a new SF session pre-filled
+              with this addiction as the problem. User can still edit. */}
+          <TouchableOpacity
+            testID={`addiction-solve-${i}`}
+            style={s.solveBtn}
+            onPress={() => router.push({
+              pathname: '/tools/solution-finder' as any,
+              params: {
+                bootstrap: '1',
+                profile: 'individual',
+                kind: 'problem',
+                life_area: 'hobbies_entertainment',
+                title: `Solve my addiction: ${a.addiction}`,
+                description: `Addiction: ${a.addiction}. Triggers: ${a.triggering_situations || '—'}. Negative impact (${a.negative_impact_pct}%): ${a.negative_impact || '—'}`,
+              },
+            })}>
+            <Ionicons name="bulb" size={13} color="#7C3AED" />
+            <Text style={s.solveBtnText}>Find a solution</Text>
+          </TouchableOpacity>
         </View>
       ))}
       <View style={s.formCard}>
@@ -258,6 +295,23 @@ export default function EGAimScreen() {
             </TouchableOpacity>
           </View>
           <Text style={s.entryMeta}>{ir.area_of_life} • Reaction: {ir.probable_reaction || 'Not specified'}</Text>
+          <TouchableOpacity
+            testID={`irritation-solve-${i}`}
+            style={s.solveBtn}
+            onPress={() => router.push({
+              pathname: '/tools/solution-finder' as any,
+              params: {
+                bootstrap: '1',
+                profile: 'individual',
+                kind: 'problem',
+                life_area: 'hobbies_entertainment',
+                title: `Solve my irritation: ${ir.irritation}`,
+                description: `Irritation (${ir.irritation_pct ?? 50}%): ${ir.irritation}. My probable reaction: ${ir.probable_reaction || '—'}. Negative impact: ${ir.negative_impact || '—'}`,
+              },
+            })}>
+            <Ionicons name="bulb" size={13} color="#7C3AED" />
+            <Text style={s.solveBtnText}>Find a solution</Text>
+          </TouchableOpacity>
         </View>
       ))}
       <View style={s.formCard}>
@@ -403,6 +457,13 @@ const s = StyleSheet.create({
   entryHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   entryTitle: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary, flex: 1 },
   entryMeta: { fontSize: 11, color: COLORS.textMuted, marginTop: 4, marginLeft: 24 },
+  solveBtn: {
+    marginTop: 8, alignSelf: 'flex-start',
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8,
+    backgroundColor: '#F5F3FF', borderWidth: 1, borderColor: '#DDD6FE',
+  },
+  solveBtnText: { fontSize: 11.5, fontWeight: '700', color: '#7C3AED' },
   formCard: { backgroundColor: '#FFF', borderRadius: 14, padding: 14, marginTop: 8, borderWidth: 1, borderColor: '#FED7AA' },
   formLabel: { fontSize: 13, fontWeight: '600', color: COLORS.textPrimary, marginTop: 8, marginBottom: 4 },
   input: { backgroundColor: '#F9FAFB', borderRadius: 10, padding: 12, fontSize: 14, color: COLORS.textPrimary, borderWidth: 1, borderColor: COLORS.border, flex: 1 },
