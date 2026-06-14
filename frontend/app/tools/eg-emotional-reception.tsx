@@ -5,6 +5,8 @@ import {
   Animated, Easing,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
+import VentToOutletsBanner from '../../src/components/VentToOutletsBanner';
 import { Alert } from '../../src/utils/crossAlert';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -61,6 +63,7 @@ const DONTS = [
 const TIMER_DURATION = 300; // 5 minutes
 
 export default function EmotionalReceptionScreen() {
+  const params = useLocalSearchParams<{ return_to?: string; return_id?: string }>();
   const router = useRouter();
   const goBack = () => { if (router.canGoBack?.()) router.back(); else router.replace('/tools/emotional-gatekeeper' as any); };
   const [step, setStep] = useState(0);
@@ -443,6 +446,7 @@ export default function EmotionalReceptionScreen() {
           </LinearGradient>
         ) : (
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+            <VentToOutletsBanner returnTo={(params as any).return_to} returnId={(params as any).return_id} />
             {step === 0 && renderStep0()}
             {step === 1 && renderStep1()}
             {step === 4 && renderStep4()}

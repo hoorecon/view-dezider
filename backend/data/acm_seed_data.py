@@ -20,7 +20,7 @@ Subscription Plans (for paid): starter, pro, enterprise, api
 # Bump this version whenever ACM_MODULES / USER_TYPES / SUBSCRIPTION_PLANS change.
 # Boot-time auto-seed (core/acm_engine.py) reseeds DB iff stored version < this one.
 # Format: "YYYY-MM-DD-N" — human-readable, monotonically sortable.
-ACM_SEED_VERSION = "2026-06-14-01"
+ACM_SEED_VERSION = "2026-06-14-02"
 
 # Release stages (ordered by visibility)
 RELEASE_STAGES = [
@@ -1813,6 +1813,9 @@ ACM_MODULES = [
                 ("cld_engine",            "CLD Engine"),
                 # Section 10 — Billing
                 ("subscription",          "Subscription"),
+                # Reflection & Awareness — moved from EG sub-modules
+                ("outlet_analyzer",       "Outlet Analyzer"),
+                ("aim_manager",           "AIM Manager"),
             ]
         ],
     },

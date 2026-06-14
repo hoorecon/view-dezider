@@ -94,6 +94,13 @@ export default function EmotionalGatekeeperScreen() {
       router.push('/tools/eg-emotional-reception' as any);
       return;
     }
+    if (type === 'solution_finder') {
+      // Hand-off card #5 — leaves the EG flow. Solution Finder runs its
+      // own list of sessions independently (visible in /tools/solution-
+      // finder-list and the Solution Box). EG history listed under EG.
+      router.push('/tools/solution-finder' as any);
+      return;
+    }
     try {
       const res = await api.post('/emotional-gatekeeper/sessions', { session_type: type });
       const sid = res.data.id;
@@ -111,40 +118,35 @@ export default function EmotionalGatekeeperScreen() {
   };
 
   const tools = [
+    // Canonical EG flow order: 1. Reception → 2. Trap → 3. Loop → 4.
+    // Limitations → 5. Solution Finder hand-off. Effective Outlets Advisor
+    // is NO LONGER a hub card — it's a per-screen "Need to vent first?"
+    // bypass-rider available from inside #1-#4. "Outlet Analyzer" and "AIM
+    // Manager" are moved to the Dashboard's Reflection & Awareness section.
     {
-      id: 'trap', title: 'Breaking the Trap', icon: 'alert-circle' as const,
+      id: 'emotional_reception', title: '1 · Emotional Reception', icon: 'water' as const,
+      desc: 'Just Be in the Here and Now — 5 min EQ builder', colors: ['#0EA5E9', '#0369A1'],
+      stat: 0, label: 'Sessions', isDirectNav: true,
+    },
+    {
+      id: 'trap', title: '2 · Breaking the Trap', icon: 'alert-circle' as const,
       desc: 'Landscaping → Linking → Looping', colors: [EG_COLORS.trap, '#DC2626'],
       stat: dashboard?.traps_identified || 0, label: 'Traps Found',
     },
     {
-      id: 'loop', title: 'Breaking the Loop', icon: 'sync-circle' as const,
+      id: 'loop', title: '3 · Breaking the Loop', icon: 'sync-circle' as const,
       desc: '4 methods to break mental loops', colors: [EG_COLORS.loop, '#7C3AED'],
       stat: dashboard?.loops_broken || 0, label: 'Loops Broken',
     },
     {
-      id: 'limitation', title: 'Breaking Limitations', icon: 'lock-open' as const,
+      id: 'limitation', title: '4 · Breaking Limitations', icon: 'lock-open' as const,
       desc: 'Transform limiting beliefs', colors: [EG_COLORS.limitation, '#1D4ED8'],
       stat: dashboard?.limitations_identified || 0, label: 'Limits Broken',
     },
     {
-      id: 'outlet', title: 'Outlet Analyzer', icon: 'heart-circle' as const,
-      desc: 'Analyze emotional coping strategies', colors: [EG_COLORS.outlet, '#059669'],
-      stat: dashboard?.outlets_analyzed || 0, label: 'Analyzed',
-    },
-    {
-      id: 'aim', title: 'AIM Manager', icon: 'flame' as const,
-      desc: 'Addictions & Irritations Manager', colors: [EG_COLORS.aim, '#EA580C'],
-      stat: dashboard?.aim_sessions || 0, label: 'Sessions',
-    },
-    {
-      id: 'advisor', title: 'Effective Outlets Advisor', icon: 'leaf' as const,
-      desc: '10 constructive techniques with guided practice', colors: ['#10B981', '#047857'],
-      stat: 0, label: 'Practices', isDirectNav: true,
-    },
-    {
-      id: 'emotional_reception', title: 'Emotional Reception', icon: 'water' as const,
-      desc: 'Just Be in the Here and Now — 5 min EQ builder', colors: ['#0EA5E9', '#0369A1'],
-      stat: 0, label: 'Sessions', isDirectNav: true,
+      id: 'solution_finder', title: '5 · Solution Finder', icon: 'bulb' as const,
+      desc: 'Apply your clarity to a real-world decision', colors: ['#7C3AED', '#A855F7'],
+      stat: 0, label: 'Continue', isDirectNav: true,
     },
   ];
 

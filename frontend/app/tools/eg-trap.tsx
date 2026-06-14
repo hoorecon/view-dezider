@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import { VoiceInput } from '../../src/components/VoiceInput';
+import VentToOutletsBanner from '../../src/components/VentToOutletsBanner';
 import api from '../../src/utils/api';
 import { handleAiError } from '../../src/utils/aiErrors';
 import { confirmAiSpend, useAiEstimate } from '../../src/utils/aiEstimates';
@@ -27,7 +28,8 @@ const SCAN_PATTERNS = [
 export default function EGTrapScreen() {
   const router = useRouter();
   const goBack = () => { if (router.canGoBack?.()) router.back(); else router.replace('/tools/emotional-gatekeeper' as any); };
-  const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
+  const params = useLocalSearchParams<{ sessionId: string; return_to?: string; return_id?: string }>();
+  const sessionId = params.sessionId;
   const [step, setStep] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
   useEffect(() => { scrollRef.current?.scrollTo({ y: 0, animated: false }); }, [step]);
@@ -399,6 +401,7 @@ export default function EGTrapScreen() {
         </LinearGradient>
         {renderProgress()}
         <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+          <VentToOutletsBanner returnTo={(params as any).return_to} returnId={(params as any).return_id} />
           {step === 0 && renderStep0()}
           {step === 1 && renderStep1()}
           {step === 2 && renderStep2()}

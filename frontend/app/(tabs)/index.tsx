@@ -647,6 +647,26 @@ export default function HomeScreen() {
               <Text style={styles.actionSubtitle}>Celebrate · Streaks</Text>
             </TouchableOpacity>
             )}
+            {isTileOn('outlet_analyzer') && (
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/eg-outlet' as any)}>
+              <LinearGradient colors={['#10B981', '#059669']} style={styles.actionIcon}>
+                <Ionicons name="heart-circle" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Outlet Analyzer</Text>
+              <Text style={styles.actionSubtitle}>Coping strategies</Text>
+            </TouchableOpacity>
+            )}
+          </View>
+          <View style={styles.quickActions}>
+            {isTileOn('aim_manager') && (
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/eg-aim' as any)}>
+              <LinearGradient colors={['#F97316', '#EA580C']} style={styles.actionIcon}>
+                <Ionicons name="flame" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>AIM Manager</Text>
+              <Text style={styles.actionSubtitle}>Addictions · Irritations</Text>
+            </TouchableOpacity>
+            )}
             <View style={[styles.actionCard, { opacity: 0 }]} pointerEvents="none" />
           </View>
 
