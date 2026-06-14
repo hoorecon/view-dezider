@@ -18,11 +18,15 @@ import { Alert } from '../../src/utils/crossAlert';
 interface Addiction {
   area_of_life: string; addiction: string; triggering_situations: string;
   positive_impact: string; positive_impact_pct: number;
+  positive_impact_areas?: string[];
   negative_impact: string; negative_impact_pct: number;
+  negative_impact_areas?: string[];
 }
 interface Irritation {
   area_of_life: string; irritation: string; probable_reaction: string;
   positive_impact: string; negative_impact: string;
+  irritation_pct?: number;
+  negative_impact_areas?: string[];
 }
 
 export default function EGAimScreen() {
@@ -63,15 +67,25 @@ export default function EGAimScreen() {
   const [addTrigger, setAddTrigger] = useState('');
   const [addPosImpact, setAddPosImpact] = useState('');
   const [addPosPct, setAddPosPct] = useState(50);
+  const [addPosAreas, setAddPosAreas] = useState<string[]>([]);
   const [addNegImpact, setAddNegImpact] = useState('');
   const [addNegPct, setAddNegPct] = useState(50);
+  const [addNegAreas, setAddNegAreas] = useState<string[]>([]);
 
-  // New irritation form
+  // New irritation form. `irrPct` is MANDATORY (pre-filled at 50% so the
+  // user has a working baseline). `irrNegAreas` is the multi-select of
+  // life areas this irritation harms.
   const [irrArea, setIrrArea] = useState('');
   const [irrName, setIrrName] = useState('');
+  const [irrPct, setIrrPct] = useState(50);
   const [irrReaction, setIrrReaction] = useState('');
   const [irrPosImpact, setIrrPosImpact] = useState('');
   const [irrNegImpact, setIrrNegImpact] = useState('');
+  const [irrNegAreas, setIrrNegAreas] = useState<string[]>([]);
+
+  // Toggle helper for multi-select chips.
+  const toggleIn = (arr: string[], id: string) =>
+    arr.includes(id) ? arr.filter(x => x !== id) : [...arr, id];
 
   useEffect(() => {
     (async () => {
@@ -87,20 +101,23 @@ export default function EGAimScreen() {
     if (!addName.trim()) { Alert.alert('Required', 'Name the addiction.'); return; }
     setAddictions(prev => [...prev, {
       area_of_life: addArea || 'other', addiction: addName, triggering_situations: addTrigger,
-      positive_impact: addPosImpact, positive_impact_pct: addPosPct,
-      negative_impact: addNegImpact, negative_impact_pct: addNegPct,
+      positive_impact: addPosImpact, positive_impact_pct: addPosPct, positive_impact_areas: addPosAreas,
+      negative_impact: addNegImpact, negative_impact_pct: addNegPct, negative_impact_areas: addNegAreas,
     }]);
     setAddName(''); setAddTrigger(''); setAddPosImpact(''); setAddNegImpact('');
     setAddPosPct(50); setAddNegPct(50); setAddArea('');
+    setAddPosAreas([]); setAddNegAreas([]);
   };
 
   const addIrritation = () => {
     if (!irrName.trim()) { Alert.alert('Required', 'Name the irritation.'); return; }
     setIrritations(prev => [...prev, {
-      area_of_life: irrArea || 'other', irritation: irrName,
+      area_of_life: irrArea || 'other', irritation: irrName, irritation_pct: irrPct,
       probable_reaction: irrReaction, positive_impact: irrPosImpact, negative_impact: irrNegImpact,
+      negative_impact_areas: irrNegAreas,
     }]);
-    setIrrName(''); setIrrReaction(''); setIrrPosImpact(''); setIrrNegImpact(''); setIrrArea('');
+    setIrrName(''); setIrrReaction(''); setIrrPosImpact(''); setIrrNegImpact('');
+    setIrrArea(''); setIrrPct(50); setIrrNegAreas([]);
   };
 
   const handleSaveAndAnalyze = async () => {
@@ -193,6 +210,35 @@ export default function EGAimScreen() {
             </View>
           </View>
         </View>
+
+        {/* Item 3 — describe the positive impact in free text + mark which
+            life areas benefit (multi-select). All optional. */}
+        <Text style={s.formLabel}>What kind of positive impact? (optional)</Text>
+        <TextInput style={s.input} placeholder="e.g., stress relief, social connection..."
+          value={addPosImpact} onChangeText={setAddPosImpact} placeholderTextColor={COLORS.textMuted} />
+        <Text style={s.formLabel}>Positively affected life areas (optional)</Text>
+        <View style={[s.chipRow, { marginBottom: 8 }]}>
+          {lifeAreas.map(la => (
+            <TouchableOpacity key={`pa-${la.id}`} style={[s.chip, addPosAreas.includes(la.id) && s.chipActive]}
+              onPress={() => setAddPosAreas(prev => toggleIn(prev, la.id))}>
+              <Text style={[s.chipText, addPosAreas.includes(la.id) && s.chipTextActive]}>{la.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={s.formLabel}>What kind of negative impact? (optional)</Text>
+        <TextInput style={s.input} placeholder="e.g., lost productivity, weight gain..."
+          value={addNegImpact} onChangeText={setAddNegImpact} placeholderTextColor={COLORS.textMuted} />
+        <Text style={s.formLabel}>Negatively affected life areas (optional)</Text>
+        <View style={[s.chipRow, { marginBottom: 8 }]}>
+          {lifeAreas.map(la => (
+            <TouchableOpacity key={`na-${la.id}`} style={[s.chip, addNegAreas.includes(la.id) && s.chipActive]}
+              onPress={() => setAddNegAreas(prev => toggleIn(prev, la.id))}>
+              <Text style={[s.chipText, addNegAreas.includes(la.id) && s.chipTextActive]}>{la.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         <TouchableOpacity style={s.addBtn} onPress={addAddiction}>
           <Ionicons name="add" size={18} color="#F97316" />
           <Text style={s.addBtnText}>Add Addiction</Text>
@@ -235,6 +281,29 @@ export default function EGAimScreen() {
         <Text style={s.formLabel}>Your Probable Reaction</Text>
         <TextInput style={s.input} placeholder="I usually react by..."
           value={irrReaction} onChangeText={setIrrReaction} placeholderTextColor={COLORS.textMuted} />
+
+        {/* Item 3 — Irritation % (mandatory, defaults 50%) + negatively-affected
+            life areas (multi-select, optional). */}
+        <Text style={s.formLabel}>Irritation strength · <Text style={{ color: '#EF4444' }}>required</Text></Text>
+        <View style={s.pctRow}>
+          <TouchableOpacity onPress={() => setIrrPct(Math.max(0, irrPct - 10))}>
+            <Ionicons name="remove-circle" size={24} color="#EF4444" />
+          </TouchableOpacity>
+          <Text style={s.pctNum}>{irrPct}%</Text>
+          <TouchableOpacity onPress={() => setIrrPct(Math.min(100, irrPct + 10))}>
+            <Ionicons name="add-circle" size={24} color="#EF4444" />
+          </TouchableOpacity>
+        </View>
+        <Text style={s.formLabel}>Negatively affected life areas (optional)</Text>
+        <View style={[s.chipRow, { marginBottom: 8 }]}>
+          {lifeAreas.map(la => (
+            <TouchableOpacity key={`irrn-${la.id}`} style={[s.chip, irrNegAreas.includes(la.id) && s.chipActive]}
+              onPress={() => setIrrNegAreas(prev => toggleIn(prev, la.id))}>
+              <Text style={[s.chipText, irrNegAreas.includes(la.id) && s.chipTextActive]}>{la.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         <TouchableOpacity style={s.addBtn} onPress={addIrritation}>
           <Ionicons name="add" size={18} color="#F97316" />
           <Text style={s.addBtnText}>Add Irritation</Text>

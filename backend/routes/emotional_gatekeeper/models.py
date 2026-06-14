@@ -118,9 +118,15 @@ class IrritationEntry(BaseModel):
     area_of_life: str
     occurrence: Optional[str] = None
     irritation: str
+    # Irritation strength as a 0-100 percent. Frontend defaults to 50 so
+    # users have a working baseline without forcing a slider drag.
+    irritation_pct: Optional[int] = 50
     probable_reaction: Optional[str] = None
     positive_impact: Optional[str] = None
     negative_impact: Optional[str] = None
+    # Life areas this irritation negatively affects (multi-select). Stored
+    # as canonical IDs from frontend/src/constants/lifeAreas.ts.
+    negative_impact_areas: Optional[List[str]] = []
     remarks: Optional[str] = None
 
 
