@@ -148,6 +148,14 @@ export default function EmotionalGatekeeperScreen() {
       desc: 'Apply your clarity to a real-world decision', colors: ['#7C3AED', '#A855F7'],
       stat: 0, label: 'Continue', isDirectNav: true,
     },
+    // Effective Outlets Advisor — kept as the last independent card.
+    // It's also accessible from inside #1-#4 as the "Need to vent first?"
+    // bypass-rider via <VentToOutletsBanner>.
+    {
+      id: 'advisor', title: 'Effective Outlets Advisor', icon: 'leaf' as const,
+      desc: '10 constructive techniques with guided practice', colors: ['#10B981', '#047857'],
+      stat: 0, label: 'Practices', isDirectNav: true,
+    },
   ];
 
   if (loading) {

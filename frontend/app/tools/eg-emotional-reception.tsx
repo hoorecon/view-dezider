@@ -65,7 +65,14 @@ const TIMER_DURATION = 300; // 5 minutes
 export default function EmotionalReceptionScreen() {
   const params = useLocalSearchParams<{ return_to?: string; return_id?: string }>();
   const router = useRouter();
-  const goBack = () => { if (router.canGoBack?.()) router.back(); else router.replace('/tools/emotional-gatekeeper' as any); };
+  const goBack = () => {
+    if (params.return_to === 'solution-finder' && params.return_id) {
+      router.replace(`/tools/solution-finder?id=${params.return_id}&step=2` as any);
+      return;
+    }
+    if (router.canGoBack?.()) router.back();
+    else router.replace('/tools/emotional-gatekeeper' as any);
+  };
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
 

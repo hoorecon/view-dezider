@@ -488,40 +488,8 @@ export default function HomeScreen() {
             )}
           </View>
 
-          {/* ══════════ §3 SOLUTION SPACE ══════════ */}
-          <Text style={styles.sectionTitle}>🧩 3 · Solution Space</Text>
-          <View style={styles.quickActions}>
-            {isTileOn('solution_finder') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/solution-finder-list' as any)}>
-              <LinearGradient colors={['#7C3AED', '#C084FC']} style={styles.actionIcon}>
-                <Ionicons name="bulb" size={24} color={COLORS.white} />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Solution Finder</Text>
-              <Text style={styles.actionSubtitle}>Concerns → RCA → Plan · ASM</Text>
-            </TouchableOpacity>
-            )}
-            {isTileOn('solution_store') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/solutions-store' as any)}>
-              <LinearGradient colors={['#7C3AED', '#A855F7']} style={styles.actionIcon}>
-                <Ionicons name="storefront" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Solution Store</Text>
-              <Text style={styles.actionSubtitle}>Products & services</Text>
-            </TouchableOpacity>
-            )}
-          </View>
-          <View style={styles.quickActions}>
-            {isTileOn('review_net') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/review-net' as any)}>
-              <LinearGradient colors={['#F59E0B', '#FBBF24']} style={styles.actionIcon}>
-                <Ionicons name="star" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Review Net</Text>
-              <Text style={styles.actionSubtitle}>Factor-wise ratings</Text>
-            </TouchableOpacity>
-            )}
-            <View style={[styles.actionCard, { opacity: 0 }]} pointerEvents="none" />
-          </View>
+          {/* ══════════ §3 SOLUTION SPACE — MOVED to position §9.5 ══════════
+              See below: rendered after Collaboration & Management. */}
 
           {/* ══════════ §4 INNER STATE ══════════ */}
           <Text style={styles.sectionTitle}>❤️ 4 · Inner State</Text>
@@ -713,6 +681,63 @@ export default function HomeScreen() {
             )}
           </View>
 
+          {/* ══════════ §10 SOLUTION SPACE (moved here from §3) ══════════
+              Now placed after Collaboration & Management and above More
+              Tools. DEO + Time Store relocated here from More Tools. */}
+          <Text style={styles.sectionTitle}>🧩 10 · Solution Space</Text>
+          <View style={styles.quickActions}>
+            {isTileOn('solution_finder') && (
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/solution-finder-list' as any)}>
+              <LinearGradient colors={['#7C3AED', '#C084FC']} style={styles.actionIcon}>
+                <Ionicons name="bulb" size={24} color={COLORS.white} />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Solution Finder</Text>
+              <Text style={styles.actionSubtitle}>Concerns → RCA → Plan · ASM</Text>
+            </TouchableOpacity>
+            )}
+            {isTileOn('solution_store') && (
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/solutions-store' as any)}>
+              <LinearGradient colors={['#7C3AED', '#A855F7']} style={styles.actionIcon}>
+                <Ionicons name="storefront" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Solution Store</Text>
+              <Text style={styles.actionSubtitle}>Products & services</Text>
+            </TouchableOpacity>
+            )}
+          </View>
+          <View style={styles.quickActions}>
+            {isTileOn('review_net') && (
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/review-net' as any)}>
+              <LinearGradient colors={['#F59E0B', '#FBBF24']} style={styles.actionIcon}>
+                <Ionicons name="star" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Review Net</Text>
+              <Text style={styles.actionSubtitle}>Factor-wise ratings</Text>
+            </TouchableOpacity>
+            )}
+            {isTileOn('deo') && (
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/deo' as any)}>
+              <LinearGradient colors={['#059669', '#10B981']} style={styles.actionIcon}>
+                <Ionicons name="git-network" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>DEO</Text>
+              <Text style={styles.actionSubtitle}>Import & API</Text>
+            </TouchableOpacity>
+            )}
+          </View>
+          <View style={styles.quickActions}>
+            {isTileOn('time_store') && (
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/time-store' as any)}>
+              <LinearGradient colors={['#DC2626', '#EF4444']} style={styles.actionIcon}>
+                <Ionicons name="cart-outline" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Time Store</Text>
+              <Text style={styles.actionSubtitle}>Buy back time</Text>
+            </TouchableOpacity>
+            )}
+            <View style={[styles.actionCard, { opacity: 0 }]} pointerEvents="none" />
+          </View>
+
           {/* ══════════ MORE TOOLS (secondary utilities) ══════════ */}
           <Text style={styles.sectionTitle}>More Tools</Text>
           <View style={styles.colabRow}>
@@ -813,15 +838,6 @@ export default function HomeScreen() {
             )}
           </View>
           <View style={styles.quickActions}>
-            {isTileOn('deo') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/deo' as any)}>
-              <LinearGradient colors={['#059669', '#10B981']} style={styles.actionIcon}>
-                <Ionicons name="git-network" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>DEO</Text>
-              <Text style={styles.actionSubtitle}>Import & API</Text>
-            </TouchableOpacity>
-            )}
             {isTileOn('cld_engine') && (
             <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/cld-engine' as any)}>
               <LinearGradient colors={['#1E40AF', '#3B82F6']} style={styles.actionIcon}>
@@ -829,17 +845,6 @@ export default function HomeScreen() {
               </LinearGradient>
               <Text style={styles.actionTitle}>CLD Engine</Text>
               <Text style={styles.actionSubtitle}>Systems thinking</Text>
-            </TouchableOpacity>
-            )}
-          </View>
-          <View style={styles.quickActions}>
-            {isTileOn('time_store') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/time-store' as any)}>
-              <LinearGradient colors={['#DC2626', '#EF4444']} style={styles.actionIcon}>
-                <Ionicons name="cart-outline" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Time Store</Text>
-              <Text style={styles.actionSubtitle}>Buy back time</Text>
             </TouchableOpacity>
             )}
             {isTileOn('subscription') && (

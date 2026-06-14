@@ -111,7 +111,13 @@ export default function SimpleSolutionFinder() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedId, setSavedId] = useState<string | null>(editId || null);
-  const [step, setStep] = useState(0);
+  // Honor `?step=<N>` deep-link so the EG chain-back lands the user on
+  // the correct step (Step 3 / RCA = index 2).
+  const initialStep = (() => {
+    const s = parseInt(String(params.step || ''), 10);
+    return Number.isFinite(s) && s >= 0 && s <= 5 ? s : 0;
+  })();
+  const [step, setStep] = useState(initialStep);
 
   // Step 0 — Goal
   const [areaOfLife, setAreaOfLife] = useState('');
@@ -699,6 +705,23 @@ export default function SimpleSolutionFinder() {
     }
   };
 
+  // ── Emotional Stability gate (Step 2 → Step 3 transition) ──────────
+  // Before diving into Root Cause Analysis, give the user an off-ramp
+  // to settle emotions. "Yes proceed" → continue. "No, settle first" →
+  // Emotional Reception (#1 of EG) with return-link back to SF Step 3.
+  const [emoGateVisible, setEmoGateVisible] = useState(false);
+
+  const goToEmotionalReception = () => {
+    setEmoGateVisible(false);
+    // Persist before leaving so return is seamless.
+    handleSave(true).then((sid) => {
+      const rid = sid || savedId || '';
+      router.push(
+        `/tools/eg-emotional-reception?return_to=solution-finder&return_id=${rid}` as any
+      );
+    });
+  };
+
   // ============ NAVIGATION GUARDS ============
   const canProceed = () => {
     if (step === 0) return !!areaOfLife && !!smartGoal.trim();
@@ -718,6 +741,14 @@ export default function SimpleSolutionFinder() {
         : step === 3 ? 'Add at least one Solution.'
         : 'Cannot proceed.';
       return showAlert('Step incomplete', msg);
+    }
+    // Emotional Stability gate — only when crossing from Step 2 (concerns
+    // + primary stars) into Step 3 (RCA). Skipped on previously-visited
+    // sessions where the user already passed this gate.
+    if (step === 1) {
+      // Show modal; actual advance happens on "Yes" inside the modal.
+      setEmoGateVisible(true);
+      return;
     }
     // Auto-save on each transition (silent).
     await handleSave(true);
@@ -1293,10 +1324,50 @@ export default function SimpleSolutionFinder() {
           <Text style={[s.backBtnText, step === 0 && { color: '#CBD5E1' }]}>Back</Text>
         </TouchableOpacity>
         {step < 5 ? (
+          <>
           <TouchableOpacity style={s.nextBtn} onPress={onNext}>
             <Text style={s.nextBtnText}>{step === 4 ? 'Build Action Plan' : 'Next'}</Text>
             <Ionicons name="arrow-forward" size={16} color="#FFF" />
           </TouchableOpacity>
+
+          {/* Emotional Stability gate — modal shown when crossing
+              concerns→RCA. Yes proceeds. "Settle first" deep-links to
+              EG Emotional Reception with a return-to-Step-3 chain-back. */}
+          <Modal
+            visible={emoGateVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setEmoGateVisible(false)}>
+            <View style={s.emoBackdrop}>
+              <View style={s.emoCard} testID="sf-emo-gate">
+                <Text style={s.emoTitle}>Feeling settled to dive deeper?</Text>
+                <Text style={s.emoSub}>
+                  Root Cause Analysis works best from a steady mind. Take 5 minutes
+                  with Emotional Reception if you need to settle first — you'll come
+                  right back here.
+                </Text>
+                <TouchableOpacity
+                  style={s.emoPrimaryBtn}
+                  testID="sf-emo-proceed"
+                  onPress={async () => {
+                    setEmoGateVisible(false);
+                    await handleSave(true);
+                    setStep(s => Math.min(5, s + 1));
+                  }}>
+                  <Ionicons name="checkmark-circle" size={16} color="#FFF" />
+                  <Text style={s.emoPrimaryText}>Yes, proceed to RCA</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={s.emoSecondaryBtn}
+                  testID="sf-emo-vent"
+                  onPress={goToEmotionalReception}>
+                  <Ionicons name="water" size={16} color="#0369A1" />
+                  <Text style={s.emoSecondaryText}>No — Emotional Reception first</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+          </>
         ) : (
           <TouchableOpacity style={s.nextBtn} onPress={() => handleSave(false, 'completed').then(() => goBack())}>
             <Ionicons name="checkmark" size={16} color="#FFF" />
@@ -1474,4 +1545,13 @@ const s = StyleSheet.create({
   backBtnText: { fontSize: 12, fontWeight: '700', color: '#475569' },
   nextBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 10, backgroundColor: '#7C3AED' },
   nextBtnText: { color: '#FFF', fontSize: 13, fontWeight: '800' },
+  // Emotional Stability gate
+  emoBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 18 },
+  emoCard: { width: '100%', maxWidth: 460, backgroundColor: '#FFF', borderRadius: 16, padding: 20, gap: 12 },
+  emoTitle: { fontSize: 17, fontWeight: '800', color: '#0F172A' },
+  emoSub: { fontSize: 13, color: '#475569', lineHeight: 18 },
+  emoPrimaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 10, backgroundColor: '#7C3AED' },
+  emoPrimaryText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
+  emoSecondaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 11, borderRadius: 10, borderWidth: 1, borderColor: '#BAE6FD', backgroundColor: '#F0F9FF' },
+  emoSecondaryText: { color: '#0369A1', fontSize: 13, fontWeight: '700' },
 });

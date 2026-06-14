@@ -50,7 +50,14 @@ const METHODS = [
 
 export default function EGLoopScreen() {
   const router = useRouter();
-  const goBack = () => { if (router.canGoBack?.()) router.back(); else router.replace('/tools/emotional-gatekeeper' as any); };
+  const goBack = () => {
+    if (params.return_to === 'solution-finder' && params.return_id) {
+      router.replace(`/tools/solution-finder?id=${params.return_id}&step=2` as any);
+      return;
+    }
+    if (router.canGoBack?.()) router.back();
+    else router.replace('/tools/emotional-gatekeeper' as any);
+  };
   const params = useLocalSearchParams<{ sessionId: string; return_to?: string; return_id?: string }>();
   const sessionId = params.sessionId;
   const [step, setStep] = useState(0);
