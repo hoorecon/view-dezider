@@ -496,7 +496,7 @@ export default function ProfileScreen() {
                     ]}
                   />
                 </View>
-                <Text style={styles.scoreValue}>{((score as number) * 20).toFixed(1)}%</Text>
+                <Text style={styles.scoreValue} numberOfLines={1}>{((score as number) * 20).toFixed(1)}%</Text>
               </View>
             ))}
           </View>
@@ -958,7 +958,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: COLORS.textPrimary,
-    width: 24,
+    minWidth: 54,
     textAlign: 'right',
   },
   retakeButton: {
