@@ -421,6 +421,15 @@ async def startup_db_client():
         await migrate_template_taxonomy_v2()
     except Exception as e:
         logger.error(f"Template-taxonomy v2 migration failed: {e}")
+
+    # Idempotent — rename legacy decision-mode enum `awareness` → `consciousness`.
+    try:
+        from core.migrations.decision_mode_awareness_to_consciousness import (
+            migrate_decision_mode_awareness_to_consciousness,
+        )
+        await migrate_decision_mode_awareness_to_consciousness()
+    except Exception as e:
+        logger.error(f"Decision-mode awareness→consciousness migration failed: {e}")
     try:
         # If tier_matrix smart-seed was previously applied with stale module ids
         # (where root tier ended up with < 5 modules), auto-reset to apply the

@@ -141,6 +141,9 @@ async def download_mpps_action_plan_pdf(decision_id: str, user: dict = Depends(g
             ]))
             story.append(ai_table)
         story.append(Spacer(1, 4*mm))
+    # Legal disclaimer footer — shared with other PDF exports.
+    from utils.pdf_disclaimer import legal_disclaimer_flowables
+    story.extend(legal_disclaimer_flowables(top_gap_mm=6))
     doc.build(story)
     buffer.seek(0)
     return StreamingResponse(buffer, media_type="application/pdf",

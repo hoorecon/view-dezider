@@ -38,7 +38,7 @@ export const COLORS = {
   emotional: '#E91E63',
   logical: '#3B82F6',
   intuitive: '#8E24AA',
-  awareness: '#00BCD4',
+  consciousness: '#00BCD4',
 };
 
 export const GRADIENTS = {

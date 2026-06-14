@@ -256,5 +256,9 @@ def render_matrix_pdf(entry: Dict) -> bytes:
     story.append(Paragraph("Action Plan (Q5)", s["H1"]))
     story.append(_action_items_table(entry.get("action_items") or [], s))
 
+    # Legal disclaimer footer — shared with other PDF exports.
+    from utils.pdf_disclaimer import legal_disclaimer_flowables
+    story.extend(legal_disclaimer_flowables(top_gap_mm=6))
+
     doc.build(story)
     return buf.getvalue()

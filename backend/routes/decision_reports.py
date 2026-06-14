@@ -321,8 +321,13 @@ def _build_pdf(payload: Dict[str, Any], logo_data_url=None) -> bytes:
             story.append(tbl)
             story.append(Spacer(1, 4 * mm))
 
-    # Footer — branding + lead magnet
-    story.append(Spacer(1, 8 * mm))
+    # Footer — branding + lead magnet + legal disclaimer
+    # Disclaimer wording is shared with the on-screen Breakthrough Report
+    # card so paper and pixel match. Single source: utils.pdf_disclaimer.
+    from utils.pdf_disclaimer import legal_disclaimer_flowables
+    story.append(Spacer(1, 6 * mm))
+    story.extend(legal_disclaimer_flowables(top_gap_mm=0))
+    story.append(Spacer(1, 4 * mm))
     story.append(Paragraph(f"Best Wishes from {_BRAND_LINK}", brand_footer))
     story.append(Paragraph(
         "Joyful Executive's Life Choices Operating System · Powered by AI", brand_footer))

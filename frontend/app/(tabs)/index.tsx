@@ -185,7 +185,7 @@ export default function HomeScreen() {
       case 'emotional': return COLORS.emotional;
       case 'logical': return COLORS.logical;
       case 'intuitive': return COLORS.intuitive;
-      case 'awareness': return COLORS.awareness;
+      case 'consciousness': return COLORS.consciousness;
       default: return COLORS.primary;
     }
   };
@@ -835,9 +835,9 @@ export default function HomeScreen() {
               </View>
             </View>
             <View style={styles.modeRow}>
-              <View style={[styles.modeDot, { backgroundColor: COLORS.awareness }]} />
+              <View style={[styles.modeDot, { backgroundColor: COLORS.consciousness }]} />
               <View style={styles.modeInfo}>
-                <Text style={styles.modeName}>Awareness</Text>
+                <Text style={styles.modeName}>Consciousness</Text>
                 <Text style={styles.modeDesc}>~100% accuracy, detached clarity</Text>
               </View>
             </View>
@@ -845,7 +845,7 @@ export default function HomeScreen() {
               style={styles.takeQuizButton}
               onPress={() => router.push('/(tabs)/profile')}
             >
-              <Text style={styles.takeQuizText}>Take Assessment Quiz</Text>
+              <Text style={styles.takeQuizText}>Take Quiz & Know your Decision Style</Text>
               <Ionicons name="arrow-forward" size={16} color={COLORS.primary} />
             </TouchableOpacity>
           </Card>

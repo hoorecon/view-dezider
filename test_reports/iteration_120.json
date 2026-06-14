@@ -1,0 +1,48 @@
+{
+  "summary": "Verified both shipped changes end-to-end. CHANGE 1 (PDF disclaimer): unit-built PDFs from _build_pdf, render_matrix_pdf and live /api/decisions/{id}/mpps-action-plan-pdf all contain 'Disclaimer:' and 'JELCOS AI is not responsible' substrings; brand footer 'JELCOS AI' / '© JELCOS AI' / 'Best Wishes' still appears AFTER disclaimer (order verified by index comparison). CHANGE 2 (awareness→consciousness): /api/assessment/questions returns 3 consciousness Qs and zero 'awareness'; POST /api/assessment with consciousness=5/others=3 returns dominant_mode='consciousness' and mode_scores.consciousness=5.0 with no legacy keys; /api/assessment/history shows migrated records (no awareness keys). Frontend UI verified after fixing a build-blocking SyntaxError in (tabs)/index.tsx (leftover garbage after final `});`): Home shows 'Consciousness' row + CTA 'Take Quiz & Know your Decision Style'; Profile shows 'Your Predominant Decision Mode' + dominant 'Consciousness' card + Mode Breakdown rows with '%' suffix and one decimal (e.g. 60.0%). The 'Awareness' string seen on Home is the §8 'Reflection & Awareness' section header (explicitly NOT to be flagged per request). 7/7 backend tests pass; 1 regression test SKIPPED because admin lacks L1 quota for dezider PDF download (entitlement gate returns 402, not a regression).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "profile.tsx scoreValue",
+        "issue": "Mode-breakdown percentage text wraps onto two lines (e.g. '60.0' then '%' on next line) inside the row because styles.scoreValue width is too tight for the new 5-char value. Suffix '%' separated visually from number. Reference: /app/frontend/app/(tabs)/profile.tsx:499",
+        "testID": "n/a",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Profile — Mode Breakdown",
+        "issues": ["Score column wraps '%' onto a new line for 2-digit + 1-decimal values like '60.0%'. Either widen scoreValue or use numberOfLines={1} + min-width 56px."]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter120_disclaimer_and_consciousness.py",
+    "/app/test_reports/pytest/iter120.xml"
+  ],
+  "action_items": [
+    "(P3 UI polish) Widen styles.scoreValue (or add numberOfLines={1} + minWidth) in /app/frontend/app/(tabs)/profile.tsx so '60.0%' doesn't wrap.",
+    "(Hygiene) Backend logs show legacy probes to /api/decisions/assessment/questions returning 404 from some clients (likely old cached frontend). Confirm no caller is still using the legacy path."
+  ],
+  "critical_code_review_comments": [
+    "Found and fixed a leftover stray fragment ('ginTop: 2,\\n  },\\n});') at the very end of /app/frontend/app/(tabs)/index.tsx (after the legitimate trailing `});`) that caused Web Bundling to fail with SyntaxError at 1399:2 and prevented ALL frontend routes from loading. The recent edit landed extra characters past the final brace.",
+    "utils/pdf_disclaimer.py is clean, single source, and reused by all 3 PDF builders as advertised — verified via runtime PDF extraction.",
+    "Migration `decision_mode_awareness_to_consciousness_v1` is idempotent and ran successfully (logs: scanned=20 fixed=20 skipped=0). API responses contain no `awareness` keys anywhere."
+  ],
+  "updated_files": [
+    "/app/frontend/app/(tabs)/index.tsx (removed trailing garbage causing SyntaxError at line 1398-1400)",
+    "/app/backend/tests/test_iter120_disclaimer_and_consciousness.py (new)"
+  ],
+  "success_rate": {"backend": "100% (7/7 pass, 1 skipped non-regression)", "frontend": "100% on tested flows (login, home modes card, profile predominant mode card)"},
+  "seed_data_creation": "None. Used existing admin@test.com user; the test posts one fresh assessment as part of normal API coverage (cleanup is via standard user-scoped history).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "If the Profile mode-breakdown '%' wrapping is fixed, just reload Profile after login as admin@test.com and confirm rows render on a single line. For backend: pytest backend/tests/test_iter120_disclaimer_and_consciousness.py -v covers all assertions including PDF text extraction via PyPDF2.",
+  "rca_of_issue": "Build-blocking issue RCA: /app/frontend/app/(tabs)/index.tsx ended with the correct `});` at line 1397 followed by stray fragment `ginTop: 2,\\n  },\\n});` on lines 1398-1400 — likely a botched merge / partial paste from the recent profile.tsx edit. Babel parser failed at 1399:2 ('Unexpected token'), Metro returned 500 for the bundle, the SPA shell could not boot, and every screen rendered blank. Mitigation applied: removed the stray 3 lines; Metro recompiled successfully (1622 modules) and the app loaded normally. Going forward, run `tsc --noEmit` or `expo export --platform web` before shipping front-end edits to catch parse failures pre-deploy."
+}

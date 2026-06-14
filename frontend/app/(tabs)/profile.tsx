@@ -175,7 +175,7 @@ export default function ProfileScreen() {
       case 'emotional': return COLORS.emotional;
       case 'logical': return COLORS.logical;
       case 'intuitive': return COLORS.intuitive;
-      case 'awareness': return COLORS.awareness;
+      case 'consciousness': return COLORS.consciousness;
       default: return COLORS.primary;
     }
   };
@@ -188,7 +188,7 @@ export default function ProfileScreen() {
         return 'You prefer rational analysis. Your decisions are well-thought-out but might benefit from incorporating emotional intelligence.';
       case 'intuitive':
         return 'You trust your instincts and inner knowing. Your decisions often come from deep insights that are hard to explain logically.';
-      case 'awareness':
+      case 'consciousness':
         return 'You can observe situations with clarity and detachment. This is the highest form of decision-making with near-perfect accuracy.';
       default:
         return '';
@@ -446,7 +446,7 @@ export default function ProfileScreen() {
       </Modal>
 
       {/* Assessment Result */}
-      <Text style={styles.sectionTitle}>Your Decision Mode</Text>
+      <Text style={styles.sectionTitle}>Your Predominant Decision Mode</Text>
       {assessmentResult ? (
         <Card style={styles.resultCard}>
           <View style={styles.resultHeader}>
@@ -496,7 +496,7 @@ export default function ProfileScreen() {
                     ]}
                   />
                 </View>
-                <Text style={styles.scoreValue}>{(score as number).toFixed(1)}</Text>
+                <Text style={styles.scoreValue}>{((score as number) * 20).toFixed(1)}%</Text>
               </View>
             ))}
           </View>
