@@ -171,10 +171,19 @@ async def metered_chat(
     (caller can treat that as "AI temporarily unavailable").
     Returns the model's text response.
     """
-    await ai_wallet.ensure_can_spend(user_id)
+    # Resolve consent UP-FRONT so we can decide whether the wallet matters.
+    # When the user has confirmed they enabled OpenAI's data-sharing free
+    # tier (`openai_free_tier=true`) AND the server has an OPENAI_API_KEY,
+    # the call costs $0 → wallet balance is irrelevant and we MUST NOT gate
+    # on it. Previously `ensure_can_spend()` ran first and rejected users
+    # with a negative balance even after they opted into the free tier.
+    consent = await user_consent(user_id)
+    openai_first = bool(consent.get("openai_free_tier")) and bool(os.getenv("OPENAI_API_KEY"))
+    if not openai_first:
+        await ai_wallet.ensure_can_spend(user_id)
 
     # ── "Costly & Precise" tier — Claude via the Emergent universal key ──
-    if tier == "precise" and os.getenv("EMERGENT_LLM_KEY"):
+    if tier == "precise" and os.getenv("EMERGENT_LLM_KEY") and not openai_first:
         cfg = await ai_wallet.get_config()
         model = str(cfg.get("precise_model") or "claude-sonnet-4-6")
         try:
