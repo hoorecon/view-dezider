@@ -9,6 +9,7 @@ import { useBrandingStore } from '../src/store/brandingStore';
 import { COLORS } from '../src/constants/colors';
 import { registerForPushNotifications, addNotificationResponseListener } from '../src/utils/pushNotifications';
 import GlobalVoiceNav from '../src/components/GlobalVoiceNav';
+import GlobalHomeFab from '../src/components/GlobalHomeFab';
 import WebFrame from '../src/components/WebFrame';
 import WebScrollFix from '../src/components/WebScrollFix';
 import AlertHost from '../src/components/AlertHost';
@@ -481,6 +482,7 @@ export default function RootLayout() {
       <WebScrollFix />
       </FontScaleProvider>
       <GlobalVoiceNav />
+      <GlobalHomeFab />
       </FontFamilyProvider>
     </NavErrorBoundary>
   );
