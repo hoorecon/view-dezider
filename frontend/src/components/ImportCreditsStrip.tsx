@@ -30,16 +30,31 @@ const fmt = (v: number) =>
 export const ImportCreditsStrip: React.FC<Props> = ({ endpoint, pages = 1, tier = 'fast' }) => {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [optingIn, setOptingIn] = useState(false);
 
-  useEffect(() => {
-    let on = true;
+  const fetchEstimate = React.useCallback(() => {
     setLoading(true);
-    api.get('/ai-wallet/import-estimate', { params: { endpoint, pages, tier } })
-      .then(r => { if (on) setData(r.data); })
-      .catch(() => { if (on) setData(null); })
-      .finally(() => { if (on) setLoading(false); });
-    return () => { on = false; };
+    return api.get('/ai-wallet/import-estimate', { params: { endpoint, pages, tier } })
+      .then(r => setData(r.data))
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
   }, [endpoint, pages, tier]);
+
+  useEffect(() => { fetchEstimate(); }, [fetchEstimate]);
+
+  const useFreeTierThisTime = async () => {
+    setOptingIn(true);
+    try {
+      await api.post('/ai-wallet/free-tier-one-shot');
+      // Re-fetch the estimate; backend now reports free_tier_active=true
+      // because the one-shot flag is set on the user.
+      await fetchEstimate();
+    } catch (e: any) {
+      // Fall through silently — the strip just stays in its previous state.
+    } finally {
+      setOptingIn(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -55,6 +70,9 @@ export const ImportCreditsStrip: React.FC<Props> = ({ endpoint, pages = 1, tier 
   const isScaled = data.basis === 'history_scaled';
   const isDefault = data.basis === 'default';
   const freeTierActive = !!data.free_tier_active;
+  // Admin policy on, server has OPENAI key, user mode='ask' → backend
+  // surfaces free_tier_available so we can offer per-run opt-in here.
+  const freeTierAvailable = !!data.free_tier_available && !freeTierActive;
 
   return (
     <View testID="import-credits-strip-wrap">
@@ -88,6 +106,28 @@ export const ImportCreditsStrip: React.FC<Props> = ({ endpoint, pages = 1, tier 
           </TouchableOpacity>
         )}
       </View>
+
+      {/* Per-run opt-in button — only when admin allows free-tier AND the
+          user has 'Ask each time' mode AND credits are short. Pressing it
+          sets a one-shot flag on the backend; the next AI call will use
+          OpenAI free-tier for free, then the flag auto-resets so the user
+          is prompted again on the NEXT run. */}
+      {freeTierAvailable && !ok && (
+        <TouchableOpacity
+          testID="import-credits-use-freetier-btn"
+          style={[s.skipBtn, optingIn && { opacity: 0.6 }]}
+          disabled={optingIn}
+          activeOpacity={0.85}
+          onPress={useFreeTierThisTime}
+        >
+          {optingIn
+            ? <ActivityIndicator size="small" color="#FFF" />
+            : <>
+                <Ionicons name="sparkles" size={13} color="#FFF" />
+                <Text style={s.skipBtnText}>Use OpenAI free-tier this time · 0 cr</Text>
+              </>}
+        </TouchableOpacity>
+      )}
     </View>
   );
 };
@@ -102,6 +142,14 @@ const s = StyleSheet.create({
   mutedTxt: { fontSize: 12, color: '#94A3B8', fontWeight: '600' },
   topup: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#DC2626', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14 },
   topupTxt: { fontSize: 11.5, fontWeight: '800', color: '#FFF' },
+  skipBtn: {
+    marginTop: 6, alignSelf: 'stretch',
+    flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6,
+    backgroundColor: '#7C3AED',
+    paddingHorizontal: 14, paddingVertical: 9,
+    borderRadius: 9,
+  },
+  skipBtnText: { color: '#FFF', fontSize: 12.5, fontWeight: '800' },
 });
 
 export default ImportCreditsStrip;

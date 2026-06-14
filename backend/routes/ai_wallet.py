@@ -111,19 +111,33 @@ async def import_estimate(endpoint: str = "import", pages: int = 1, tier: str = 
     bal = await ai_wallet.get_balance(user["user_id"])
     balance = float(bal.get("balance") or 0)
     estimate = round(estimate, 1)
-    # Free-tier routing is an ADMIN-LEVEL decision now. When the platform
-    # flag `openai_free_tier_feature_enabled` is on AND the server has an
-    # OPENAI_API_KEY, every call routes through the admin's OpenAI org
-    # (data-sharing enabled there → 0 wallet credits charged). No per-user
-    # consent is needed for PRIMARY routing — the org-level data-sharing
-    # toggle is the admin's responsibility (documented in platform ToS).
+    # Free-tier routing decisions:
+    #   • Admin flag OFF → free-tier disabled platform-wide.
+    #   • Admin flag ON + mode='always'   → auto-route every call (purple strip).
+    #   • Admin flag ON + mode='ask'/null → DON'T auto-route; surface both
+    #     "Skip the top-up" and "Top up" options to the user. The user opts
+    #     in per-run via the one-shot flag below.
+    #   • Admin flag ON + openai_free_tier_one_shot=true → one-shot opt-in
+    #     for the next call (consumed by _metered_call).
     import os as _os
     try:
         _cfg = await ai_wallet.get_config()
         feature_enabled = bool(_cfg.get("openai_free_tier_feature_enabled", True))
     except Exception:
         feature_enabled = True
-    free_tier_active = feature_enabled and bool(_os.getenv("OPENAI_API_KEY"))
+    user_mode = "ask"
+    one_shot = False
+    try:
+        u = await db.users.find_one({"user_id": user["user_id"]},
+                                    {"_id": 0, "ai_provider_consent": 1})
+        c = (u or {}).get("ai_provider_consent") or {}
+        user_mode = (c.get("mode") or "ask").lower()
+        one_shot = bool(c.get("openai_free_tier_one_shot"))
+    except Exception:
+        pass
+    server_ready = feature_enabled and bool(_os.getenv("OPENAI_API_KEY"))
+    free_tier_active = server_ready and (user_mode == "always" or one_shot)
+    free_tier_available = server_ready and not free_tier_active
     sufficient = (balance >= estimate) or free_tier_active
     shortfall = 0.0 if free_tier_active else round(max(0.0, estimate - balance), 1)
     return {"endpoint": endpoint, "pages": pages, "tier": tier,
@@ -131,6 +145,7 @@ async def import_estimate(endpoint: str = "import", pages: int = 1, tier: str = 
             "sufficient": sufficient,
             "shortfall": shortfall,
             "free_tier_active": free_tier_active,
+            "free_tier_available": free_tier_available,
             "free_tier_feature_enabled": feature_enabled,
             "basis": basis, "runs_sampled": sampled,
             "tier_multiplier": round(mult, 2)}
@@ -165,8 +180,21 @@ async def get_provider_consent(user: dict = Depends(get_current_user)):
     }
 
 
-@router.put("/ai-wallet/provider-consent")
-async def set_provider_consent(body: Dict[str, Any], user: dict = Depends(get_current_user)):
+@router.post("/ai-wallet/free-tier-one-shot")
+async def set_free_tier_one_shot(user: dict = Depends(get_current_user)):
+    """Mark the user's NEXT AI call to route via OpenAI free-tier without
+    permanently changing their mode. Used by the 'Use free-tier this time'
+    button in the Deep Import / Import URL credit strips. _metered_call
+    consumes (resets) the flag after a single use."""
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"ai_provider_consent.openai_free_tier_one_shot": True,
+                  "ai_provider_consent.updated_at": _now_iso()}},
+    )
+    return {"success": True, "one_shot": True}
+
+
+
     """Save OpenAI fallback consent. Body: {
         allow_openai: bool,
         mode?: 'ask'|'always',

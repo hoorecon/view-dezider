@@ -187,15 +187,26 @@ async def metered_chat(
         _feature_enabled = bool(_cfg.get("openai_free_tier_feature_enabled", True))
     except Exception:
         _feature_enabled = True
-    # OpenAI free-tier routing is an ADMIN-LEVEL decision: when the feature
-    # flag is on AND the server has an OPENAI_API_KEY, every call routes
-    # through the admin's data-sharing-enabled OpenAI org → 0 wallet credits
-    # charged. We deliberately do NOT require per-user consent for PRIMARY
-    # routing — the org-level data-sharing toggle is the admin's
-    # responsibility (legal disclosure goes in the platform ToS). Users
-    # still control whether their wallet is charged for non-free-tier
-    # OpenAI fallback via the `allow_openai` consent.
-    openai_first = _feature_enabled and bool(os.getenv("OPENAI_API_KEY"))
+    # Routing decision now respects the user's `mode` from /ai-wallet:
+    #   • mode='always' → auto-route via OpenAI free-tier on EVERY call.
+    #   • mode='ask' (or unset) → only route when the user has set the
+    #     one-shot flag for THIS run (via the "Use free-tier this time"
+    #     button in the Deep Import / Import URL strip). The flag is
+    #     consumed (reset) here so subsequent runs return to "ask".
+    user_mode = (consent.get("mode") or "ask").lower()
+    one_shot = bool(consent.get("openai_free_tier_one_shot"))
+    server_ready = _feature_enabled and bool(os.getenv("OPENAI_API_KEY"))
+    openai_first = server_ready and (user_mode == "always" or one_shot)
+    if one_shot:
+        # Consume the one-shot flag so the next run goes back to "ask".
+        try:
+            from core.database import db as _db
+            await _db.users.update_one(
+                {"user_id": user_id},
+                {"$unset": {"ai_provider_consent.openai_free_tier_one_shot": ""}},
+            )
+        except Exception:
+            pass
     if not openai_first:
         await ai_wallet.ensure_can_spend(user_id)
 
