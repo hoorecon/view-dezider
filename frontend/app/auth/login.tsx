@@ -164,7 +164,13 @@ export default function LoginScreen() {
 
     try {
       await login(email, password, orgBranding?.id);
-      router.replace('/(tabs)');
+      // NOTE: navigation is handled by the `useEffect` watching
+      // `isAuthenticated` + `user` (line ~58). Calling `router.replace`
+      // here in addition raced with the effect and — combined with the
+      // async hydration of the auth store — caused the well-known
+      // "first attempt fails, second works" bug. It ALSO sent admins
+      // to /(tabs) instead of /admin. Removing the duplicate call
+      // fixes both issues. Do not re-add a router call here.
     } catch (err: any) {
       setError(err.message || 'Login failed');
     } finally {
@@ -355,7 +361,7 @@ export default function LoginScreen() {
           </View>
 
           <View style={styles.footer}>
-            <Text style={styles.footerText}>Don't have an account? </Text>
+            <Text style={styles.footerText}>Don&apos;t have an account? </Text>
             <TouchableOpacity onPress={() => router.push('/auth/register')}>
               <Text style={styles.footerLink}>Sign Up</Text>
             </TouchableOpacity>
