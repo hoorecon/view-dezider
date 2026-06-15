@@ -33,14 +33,32 @@ from typing import Any, Dict, List, Tuple
 #   cd /opt/dezider/backend && python3 -m scripts.migrate_life_area_slugs
 #   cd /app/backend && python -m scripts.migrate_life_area_slugs
 #   /any/path/python3 /full/path/to/migrate_life_area_slugs.py
-# by computing the backend dir from this file's own location, not a
-# hardcoded container path.
+# Self-contained: connects to MongoDB DIRECTLY via motor + MONGO_URL env so
+# we do NOT need fastapi / starlette / the full backend stack installed on
+# the host Python (the deploy host runs the backend in Docker — its host
+# Python has only the standard libs + motor + python-dotenv).
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _BACKEND_DIR = os.path.dirname(_HERE)  # parent of scripts/
 if _BACKEND_DIR not in sys.path:
     sys.path.insert(0, _BACKEND_DIR)
 
-from core.database import db  # noqa: E402
+# Load .env from the backend dir if present (so MONGO_URL is picked up
+# the same way `core.database` does it).
+try:
+    from dotenv import load_dotenv
+    _env_path = os.path.join(_BACKEND_DIR, ".env")
+    if os.path.exists(_env_path):
+        load_dotenv(_env_path)
+except ImportError:
+    pass  # python-dotenv is optional; MONGO_URL may already be exported
+
+from motor.motor_asyncio import AsyncIOMotorClient  # noqa: E402
+
+_MONGO_URL = os.getenv("MONGO_URL") or os.getenv("MONGODB_URL") \
+    or "mongodb://localhost:27017"
+_DB_NAME = os.getenv("DB_NAME") or os.getenv("MONGO_DB_NAME") or "dezider"
+_client = AsyncIOMotorClient(_MONGO_URL)
+db = _client[_DB_NAME]
 
 logger = logging.getLogger("migrate_life_area_slugs")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
