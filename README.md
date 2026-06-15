@@ -4,11 +4,14 @@
 ═══════════════════════════════════════════════════════════════════════
 BUILD STAMP — DO NOT EDIT BY HAND; bumped automatically every Save-to-
 GitHub. Used by `deploy/sync.sh` to verify the running build matches
-the latest pushed commit. Format: BUILD_VERSION=YYYY.MM.DD.SEQ
+the latest pushed commit. Version format: year.month.day.seq3 (e.g. the
+line below). The three keys must each start at column 1 — sync.sh looks
+for ^BUILD_VERSION=, ^BUILD_TIMESTAMP=, ^BUILD_TAG= anchored to a line
+start so this descriptive paragraph CANNOT trip the extractor.
 ═══════════════════════════════════════════════════════════════════════
-BUILD_VERSION=2026.06.15.002
-BUILD_TIMESTAMP=2026-06-15T19:57:27Z
-BUILD_TAG=v3.19.2-build-stamp+version-endpoint+migration-standalone
+BUILD_VERSION=2026.06.15.003
+BUILD_TIMESTAMP=2026-06-15T20:15:00Z
+BUILD_TAG=v3.19.3-extractor-fix
 -->
 
 > The Decision OS — codebase powering **JELCOS AI** (live), **GeoDezider AI** (next), and **Earth Dezider Consumer** (year 3) — under master brand **Earth Dezider**.

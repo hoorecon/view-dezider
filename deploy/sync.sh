@@ -78,7 +78,10 @@ log "Repo dir:      ${YELLOW}$(pwd)${NC}"
 # dropped my files" failure mode we hit on 2026-06-14 and 2026-06-15.
 extract_build() {
   # $1 = key, e.g. BUILD_VERSION
-  grep -oE "$1=[A-Za-z0-9._+-]+" README.md 2>/dev/null | head -1 | cut -d= -f2 || echo "MISSING"
+  # Use ^ANCHOR so we only match lines that START with the key (the real
+  # value lines), NOT the documentation line "Format: BUILD_VERSION=..."
+  # which appears inside the marker comment.
+  grep -E "^$1=" README.md 2>/dev/null | head -1 | cut -d= -f2- || echo "MISSING"
 }
 OLD_BUILD_VERSION="$(extract_build BUILD_VERSION)"
 OLD_BUILD_TAG="$(extract_build BUILD_TAG)"

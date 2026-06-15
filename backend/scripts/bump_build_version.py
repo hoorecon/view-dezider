@@ -97,7 +97,7 @@ def main() -> None:
         return
 
     readme.write_text(out, encoding="utf-8")
-    print(f"\n✓ README.md updated. Next: Save to GitHub on emergent-v3, then on EC2:")
+    print("\n✓ README.md updated. Next: Save to GitHub on emergent-v3, then on EC2:")
     print(f"    cd /opt/dezider && EXPECT_BUILD={new_version} ./deploy/sync.sh emergent-v3")
 
 
