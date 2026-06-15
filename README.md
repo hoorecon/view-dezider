@@ -1,5 +1,16 @@
 # View Dezider
 
+<!--
+═══════════════════════════════════════════════════════════════════════
+BUILD STAMP — DO NOT EDIT BY HAND; bumped automatically every Save-to-
+GitHub. Used by `deploy/sync.sh` to verify the running build matches
+the latest pushed commit. Format: BUILD_VERSION=YYYY.MM.DD.SEQ
+═══════════════════════════════════════════════════════════════════════
+BUILD_VERSION=2026.06.15.002
+BUILD_TIMESTAMP=2026-06-15T19:57:27Z
+BUILD_TAG=v3.19.2-build-stamp+version-endpoint+migration-standalone
+-->
+
 > The Decision OS — codebase powering **JELCOS AI** (live), **GeoDezider AI** (next), and **Earth Dezider Consumer** (year 3) — under master brand **Earth Dezider**.
 
 [![Status](https://img.shields.io/badge/status-active-success)]() [![Edition](https://img.shields.io/badge/active%20edition-JELCOS%20AI-7C3AED)]() [![Stack](https://img.shields.io/badge/stack-Expo%20%2B%20FastAPI%20%2B%20MongoDB-blue)]()

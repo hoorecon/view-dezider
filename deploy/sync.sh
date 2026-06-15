@@ -70,6 +70,20 @@ SELF_HASH="$(sha256sum "$SELF_PATH" 2>/dev/null | awk '{print $1}')"
 log "Branch target: ${YELLOW}${BRANCH}${NC}"
 log "Repo dir:      ${YELLOW}$(pwd)${NC}"
 
+# ── BUILD STAMP VERIFICATION ─────────────────────────────────────────────────
+# Capture the OLD build stamp from README.md BEFORE the pull, so we can
+# compare it against the NEW one after the pull. If they're identical AND
+# this isn't the first deploy, that's a STRONG signal the latest changes
+# never reached this branch on GitHub — the exact "Save-to-GitHub silently
+# dropped my files" failure mode we hit on 2026-06-14 and 2026-06-15.
+extract_build() {
+  # $1 = key, e.g. BUILD_VERSION
+  grep -oE "$1=[A-Za-z0-9._+-]+" README.md 2>/dev/null | head -1 | cut -d= -f2 || echo "MISSING"
+}
+OLD_BUILD_VERSION="$(extract_build BUILD_VERSION)"
+OLD_BUILD_TAG="$(extract_build BUILD_TAG)"
+log "Pre-pull build stamp: ${YELLOW}${OLD_BUILD_VERSION}${NC}  (${OLD_BUILD_TAG})"
+
 # ── Loud reminder: this script is BACKEND-ONLY ──────────────────────────────
 echo -e "${YELLOW}┌──────────────────────────────────────────────────────────────┐${NC}"
 echo -e "${YELLOW}│  NOTE: sync.sh deploys the BACKEND (API) only.                 │${NC}"
@@ -133,6 +147,36 @@ if [ "${SYNC_REEXECED:-0}" != "1" ]; then
     ok "deploy/sync.sh was updated by the pull — re-executing the fresh script"
     exec env SYNC_REEXECED=1 bash "$SELF_PATH" "$@"
   fi
+fi
+
+# ── 1c. Post-pull build-stamp verification ───────────────────────────────────
+# Read README.md's BUILD_VERSION/BUILD_TAG AFTER the pull. If you provided
+# an expected value via env (EXPECT_BUILD=2026.06.15.001), we fail-fast if
+# the remote doesn't match — proves the "Save-to-GitHub" actually pushed
+# what you intended before we touch the running container.
+NEW_BUILD_VERSION="$(extract_build BUILD_VERSION)"
+NEW_BUILD_TAG="$(extract_build BUILD_TAG)"
+NEW_BUILD_TS="$(extract_build BUILD_TIMESTAMP)"
+log "Post-pull build stamp: ${YELLOW}${NEW_BUILD_VERSION}${NC}  (${NEW_BUILD_TAG})  @  ${NEW_BUILD_TS}"
+
+if [ -n "${EXPECT_BUILD:-}" ]; then
+  if [ "$NEW_BUILD_VERSION" = "$EXPECT_BUILD" ]; then
+    ok "Remote BUILD_VERSION matches expected: ${EXPECT_BUILD}"
+  else
+    fail "Remote BUILD_VERSION is '${NEW_BUILD_VERSION}' but EXPECT_BUILD='${EXPECT_BUILD}'. The Save-to-GitHub push almost certainly DROPPED your changes. Re-push from Emergent and re-run."
+  fi
+fi
+
+# Even without EXPECT_BUILD, warn if the version DIDN'T change after a pull
+# that DID change HEAD — suggests a partial push (the README bump was lost
+# even though other files landed). This is the early-warning signal we
+# needed during the 2026-06-14/15 incidents.
+if [ "$OLD_HEAD" != "$NEW_HEAD" ] && [ "$OLD_BUILD_VERSION" = "$NEW_BUILD_VERSION" ]; then
+  warn "HEAD moved (${OLD_HEAD} → ${NEW_HEAD}) but BUILD_VERSION did NOT change."
+  warn "  Possible causes:"
+  warn "    1. The agent forgot to bump README BUILD_VERSION before Save-to-GitHub."
+  warn "    2. The Save-to-GitHub partially dropped README.md from the commit."
+  warn "  Inspect:  git log -1 --stat | head -30"
 fi
 
 # ── 2. Rebuild backend image (this is the step that was being skipped) ──────
