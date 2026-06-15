@@ -1,6 +1,6 @@
 # Product Requirements Document — Dezider
 
-_metadata: { "version": "3.18.0", "updated": "2026-06-12", "author": "engineering" }
+_metadata: { "version": "3.19.0", "updated": "2026-06-15", "author": "engineering" }
 
 ## 1. Vision
 
@@ -341,3 +341,97 @@ New trigger events later = register one builder function — zero schema work.
   digest built from real telemetry; CRUD + validation (bad email 400) verified.
 - pytest `tests/test_notification_engine.py` — registry, schedule math
   (IST→UTC), idempotent seed, dispatch statuses, event throttling, builders.
+
+
+---
+## v3.19.0 — Conflict Breaker Voice Input · Audio-Storage Metering · Dashboard 9-Section Cleanup (2026-06-15)
+
+### Why
+Two product gaps:
+1. **The Conflict Breaker** flow is emotionally loaded — many users prefer
+   speaking over typing, AND some users want to keep the *raw* clip (tone,
+   inflection) as evidence to revisit rather than just an English transcript.
+2. The dashboard had drifted to nine numbered sections with **two duplicate
+   §6 numberings** (`Execute & Track` and `Lifestyle Architecture`) and
+   another duplicate §9 (`Collaboration & Management` and `Solution Space`),
+   making the IA feel ad-hoc. `Inner State` also read like a state, not a
+   benefit.
+
+### What shipped
+
+**A. Conflict Breaker Voice Input (raw audio + transcription)**
+- Every text input across the 9-stage wizard now sports an inline **Voice**
+  chip. Tap mic → record → tap stop → the user picks one of:
+  - 📝 **Transcribe to Text** — Whisper (Groq → OpenAI fallback) returns
+    English text and APPENDS it to the field. Billed as flat AI credits.
+  - 💾 **Save as Audio** — the raw clip is persisted to disk under
+    `/app/backend/uploads/conflict_audio/{user_id}/{audio_id}.{ext}`,
+    indexed in `conflict_audio_files` MongoDB collection, and shown as a
+    playable chip below the text input with play/pause + size + retention
+    + delete. Storage fee charged up-front.
+- Existing EG-Trap voice (auto-transcribe legacy) is preserved via
+  `module="eg-trap"` opt-in; new module value `module="conflict-breaker"`
+  switches to the dual-action UI.
+- Endpoints (all auth-gated, scoped to session owner):
+  - `POST /api/conflict-breaker/sessions/{id}/audio/upload`
+  - `POST /api/conflict-breaker/sessions/{id}/audio/transcribe`
+  - `GET  /api/conflict-breaker/sessions/{id}/audio` (list per session)
+  - `GET  /api/conflict-breaker/audio/{audio_id}` (stream playback)
+  - `DELETE /api/conflict-breaker/audio/{audio_id}`
+  - `GET  /api/conflict-breaker/audio/estimate?bytes=N` (pre-commit cost)
+
+**B. Audio-Storage Metering — zero-loss against the LLM credit baseline**
+- `core/ai_wallet.py` gains 4 admin-configurable knobs (live-editable in
+  `/admin/ai-wallet-config`):
+  - `audio_storage_usd_per_gb_month` — base cloud-storage rate
+    (default **$0.023** = AWS S3 Standard).
+  - `audio_storage_retention_days` — period the clip is kept on disk
+    (default **90 d**).
+  - `audio_storage_markup_pct` — markup over raw storage cost
+    (default **30 %**).
+  - `audio_max_upload_mb` — per-clip upload cap (default **10 MB**).
+- Math (charged up-front, same USD→credit conversion as LLM tokens):
+  `usd = bytes × (usd_per_gb_month / 1024³) × (retention_days/30) ×
+         (1 + markup_pct/100)`
+  `credits = usd ÷ ((tokens_per_credit / 1 000 000) × blended_usd_per_mtok)`
+- New ledger feature key `conflict_breaker_audio` (storage) and
+  `cb_voice_transcribe` (Whisper) so revenue-recon can split them out.
+
+**C. Dashboard — clean 9-section IA (10 incl. Quick Links pinned)**
+- Sections renumbered with zero duplicates:
+  §1 Self Discovery · §2 Decision Kickstarters · **§3 Inner Wellbeing**
+  (renamed from "Inner State") · §4 Goals & Manifestation · §5 Execute &
+  Track · §6 Reflection & Awareness · §7 Collaboration & Management ·
+  §8 Solution Space · §9 More Tools.
+- **§5 Execute & Track** gains **Lifestyle Dezider** as its 3rd tile
+  (Action Tracker · CTT · Lifestyle Dezider).
+- **§6 Reflection & Awareness** consolidated to 8 tiles in user-curated
+  order: **Life Mirror** (renamed from "Public Pulse") · Outlet Analyzer
+  · AIM Manager · Capabilities & Resources Index · Lifestyle Designer ·
+  Lifestyle Analyzer · Consciousness Diary · Unconditional Happiness.
+- **§ Lifestyle Architecture removed entirely** — both its cards moved
+  out (Lifestyle Dezider → §5; Lifestyle Designer → §6).
+- **More Tools** decluttered: `Public Pulse` and
+  `Capabilities & Resources Index` duplicates removed (now live in §6).
+- Route paths unchanged → no broken deep-links from notifications, ACM,
+  or external sources.
+
+### Acceptance criteria — all met ✅
+- Voice Input renders on all 80 Conflict-Breaker text fields; legacy
+  EG-Trap voice flows unchanged.
+- Upload → storage charge → playback → delete round-trips end-to-end.
+- Cost estimate appears inline on the "Save Audio" button BEFORE commit.
+- Admin can edit all 4 audio-storage knobs in
+  `/admin/ai-wallet-config`; values persist via the existing
+  `update_config` allow-list (positive numerics + range gating).
+- Dashboard now shows exactly 9 numbered sections + Quick Links pinned;
+  no duplicate numbering anywhere; "Inner Wellbeing" replaces "Inner
+  State"; "Life Mirror" replaces "Public Pulse" label.
+
+### Out of scope (deferred)
+- Translating raw audio to non-English (kept raw on purpose — user
+  explicitly wants tone/inflection preserved).
+- Per-clip retention extension (auto-purge at retention end is itself
+  deferred — purge cron will be added in v3.20).
+- Browser-mic E2E test (headless browser cannot grant mic permission;
+  flagged for manual device QA).

@@ -1,6 +1,6 @@
 # System Requirements Specification — Dezider
 
-_metadata: { "version": "3.18.0", "updated": "2026-06-12" }
+_metadata: { "version": "3.19.0", "updated": "2026-06-15" }
 
 ## 1. Architecture
 Expo frontend → NGINX ingress → FastAPI pods → MongoDB replica-set.
@@ -37,6 +37,10 @@ Public Pulse: `pp_consents, pp_demographic_profiles, pp_tool_sessions, pp_feedba
 Auditing: `audit_log, idempotency_keys`
 
 Solutions Store: `solutions_store` (NEW optional fields: `time_save_per_day_min`, `time_save_per_week_min`)
+
+**Voice / audio (NEW v3.19)**: `conflict_audio_files` — one row per saved voice clip in The Conflict Breaker. Schema: `audio_id` (uuid), `session_id`, `user_id`, `module="conflict-breaker"`, `field` (e.g. "about", "emotions_strong"), `ext` (webm|wav|mp3|m4a|ogg), `content_type`, `size_bytes`, `duration_sec`, `rel_path` (relative to `/app/backend/uploads/conflict_audio/`), `credits_charged`, `retention_days`, `created_at`. Index: `(user_id, audio_id)` unique, `(session_id, field)`.
+
+**AI Wallet config additions (v3.19)** — within the existing `ai_wallet_config` doc, four new fields whitelisted in `update_config`: `audio_storage_usd_per_gb_month` (default 0.023), `audio_storage_retention_days` (90), `audio_storage_markup_pct` (30.0), `audio_max_upload_mb` (10.0). Ledger features for revenue-recon split: `conflict_breaker_audio` (storage, provider=`storage`) and `cb_voice_transcribe` (provider=`whisper`).
 
 ## 4. Index plan
 210+ indexes installed at boot. New in v3.5:

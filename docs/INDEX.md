@@ -1,6 +1,6 @@
 # Dezider — Admin Documentation
 
-Maintained by the engineering team. Last refreshed: **2026-06-12 · v3.18.0** (Generic Notification Engine — CRUD trigger events → Email + WhatsApp · Import-URL Intelligence + AI Auto-Tune · PostHog Web Session Replays · Revenue Reconciliation · AI Wallet Config — 979 endpoints across 53 folders).
+Maintained by the engineering team. Last refreshed: **2026-06-15 · v3.19.0** (Conflict Breaker Voice Input — raw audio storage + Whisper transcription + 4 new admin-tunable audio-storage knobs in AI Wallet Config · Dashboard 9-section IA cleanup with "Inner Wellbeing" rename + "Life Mirror" rename · Generic Notification Engine · Import-URL Intelligence + AI Auto-Tune · PostHog Web Session Replays · Revenue Reconciliation · AI Wallet Config).
 
 The documents below are the source of truth for product scope, system
 behaviour, and operational posture. They are authored as plain markdown

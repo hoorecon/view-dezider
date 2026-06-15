@@ -1,6 +1,6 @@
 # Admin User Guide
 
-**Version:** 1.0 (2026-05-19)
+**Version:** 3.19.0 (2026-06-15)
 **Audience:** Anyone with admin/super_admin/co_admin role
 **Purpose:** Explain every Admin Panel menu item — what it does, when to use it, and a sample workflow.
 
@@ -370,3 +370,60 @@ have independent ON/OFF toggles and their own recipient lists.
 every 60 s and survives restarts (next-run times are stored in MongoDB);
 new trigger events only need a backend builder function — the UI picks them
 up automatically from the registry.
+
+
+---
+## v3.19.0 — Conflict Breaker Voice Input + Audio-Storage Knobs (2026-06-15)
+
+### Dashboard reshuffle you'll see in the app
+Sections are now cleanly numbered §1-§9 with **Quick Links** pinned on top:
+1. Self Discovery · 2. Decision Kickstarters · 3. **Inner Wellbeing** (renamed from "Inner State") · 4. Goals & Manifestation · 5. **Execute & Track** (now includes Lifestyle Dezider) · 6. **Reflection & Awareness** (consolidated 8-tile section) · 7. Collaboration & Management · 8. Solution Space · 9. More Tools.
+"Public Pulse" has been renamed **"Life Mirror"** to better invite first-time users into the self-discovery quiz. The legacy "Lifestyle Architecture" section is gone — its two tiles moved to §5 and §6. Route paths are unchanged so existing deep links / WOWO entries still work.
+
+### 🎙️ Voice Input in The Conflict Breaker
+Every text field across the 9-stage wizard now has an inline mic chip. After recording, the user picks one of two intuitive actions:
+- 📝 **Transcribe to Text** — Whisper turns speech into English text and appends it to the field (cost: per-second AI credit, ~0.5 cr/sec at default config).
+- 💾 **Save as Audio** — the raw clip is persisted to disk and listed below the field as a playable chip (play/pause + size + retention + delete). Cost: storage-credit charge shown inline BEFORE the user commits.
+
+The cost-estimate chip on the "Save Audio" button reads live config — change the rates below and the next click reflects them instantly.
+
+### 💳 AI Wallet Config — 4 new audio-storage knobs (`/admin/ai-wallet-config`)
+
+| Field | Default | Range | What it controls |
+|---|---|---|---|
+| **Audio storage $/GB-month** | `$0.023` | ≥ 0 | Base cloud-storage cost basis. The default is AWS S3 Standard; change if you move to S3-IA, GCS Coldline, etc. |
+| **Audio retention (days)** | `90` | 1-365 | How long a clip is kept on disk. Users are billed for the FULL retention up-front (zero-loss). |
+| **Audio storage markup %** | `30%` | 0-500 | Hidden margin layered over the raw storage cost. |
+| **Audio max upload size (MB)** | `10` | 1-100 | Per-clip upload cap. Larger files rejected up-front so users are never surprise-charged for an oversized clip. |
+
+**Math (same zero-loss invariant as LLM tokens):**
+```
+usd     = bytes × (usd_per_gb_month / 1024³) × (retention_days / 30)
+          × (1 + markup_pct / 100)
+credits = usd ÷ ((tokens_per_credit / 1_000_000) × blended_usd_per_mtok)
+```
+
+**Worked example at defaults** — a 30-sec opus clip (~200 KB) at 90-day retention, 30% markup, `blended_usd_per_mtok=2.0`, `tokens_per_credit=100`:
+- raw storage = 200×1024 × (0.023/1024³) × 3 = **$1.32e-5**
+- with markup = $1.72e-5
+- credits = $1.72e-5 ÷ $0.0002/cr = **≈ 0.09 cr** (rounded up to 4 dp)
+
+A 5-MB clip at the same settings = ~2.2 credits. A user with a fresh 20-credit wallet can save ~225 short clips before needing a top-up.
+
+**How to use:**
+1. Open `/admin/ai-wallet-config` → scroll past the ScraperAPI block → the four `Audio …` fields are at the bottom of the Pricing block.
+2. Change a value (e.g. drop retention to 30 days for a freemium tier) → Save.
+3. No restart needed; the next `Save Audio` press in Conflict Breaker reflects the new rate, and the cost-estimate chip on the button updates instantly.
+
+**Linked APIs:**
+- `GET/PUT /api/admin/ai-wallet/config` (the same endpoint that powers all other AI Wallet fields; the new 4 keys are now whitelisted)
+- `GET /api/conflict-breaker/audio/estimate?bytes=N` (read-only preview)
+- `POST /api/conflict-breaker/sessions/{id}/audio/upload` (charges storage)
+- `POST /api/conflict-breaker/sessions/{id}/audio/transcribe` (charges AI credits)
+- `GET /api/conflict-breaker/audio/{audio_id}` (auth-gated playback)
+- `DELETE /api/conflict-breaker/audio/{audio_id}` (no credit refund — clip already stored)
+
+**Operational notes:**
+- Ledger key for the charge: `feature="conflict_breaker_audio"` (storage) and `feature="cb_voice_transcribe"` (Whisper). Revenue-recon will split these cleanly.
+- Files live under `/app/backend/uploads/conflict_audio/{user_id}/{audio_id}.{ext}`. Plan disk-pressure alerts accordingly. (Auto-purge cron deferred to v3.20.)
+- The user-facing wallet panel does NOT itemise "audio storage" separately yet — show users the running balance as a single number for now.
