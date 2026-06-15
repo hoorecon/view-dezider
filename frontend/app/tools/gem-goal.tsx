@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { showAlert } from '../../src/utils/alert';
+import { useLifeAreas } from '../../src/utils/useLifeAreas';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Platform, KeyboardAvoidingView, Modal,
@@ -13,18 +14,30 @@ import api from '../../src/utils/api';
 import Slider from '@react-native-community/slider';
 import LinkedGoalMilestonesView from '../../src/components/LinkedGoalMilestonesView';
 
-const LIFE_AREAS = [
-  {id:'career',name:'Career',icon:'briefcase'},{id:'finance',name:'Finance',icon:'cash'},
-  {id:'relationships',name:'Relationships',icon:'heart'},{id:'holistic_health',name:'Health',icon:'fitness'},
-  {id:'assets',name:'Assets',icon:'home'},{id:'knowledge_skills',name:'Knowledge',icon:'school'},
-  {id:'social_image',name:'Social Image',icon:'people'},{id:'social_contributions',name:'Social',icon:'globe'},
-  {id:'hobbies_entertainment',name:'Hobbies',icon:'game-controller'},{id:'spirituality_religion',name:'Spirituality',icon:'leaf'},
-];
+// LIFE_AREAS array moved into the component (catalog-driven).
 const GOAL_TYPES = [{id:'problem',label:'Problem',icon:'alert-circle',c:'#EF4444'},{id:'need',label:'Need',icon:'bulb',c:'#F59E0B'},{id:'aspiration',label:'Aspiration',icon:'rocket',c:'#10B981'}];
 const PRIORITIES = [{id:'critical',c:'#EF4444'},{id:'high',c:'#F59E0B'},{id:'medium',c:'#3B82F6'},{id:'low',c:'#6B7280'}];
 const STATUSES = ['active','completed','on_hold','cancelled'];
 
 export default function GEMGoalScreen() {
+  // LIFE_AREAS now flows from the Admin Central Catalog via the
+  // useLifeAreas() hook (single source of truth across the app).
+  // Adapter preserves both old (`c`, `name`) and new (`color`,
+  // `label`, `slug`, `node_id`) field names so the rest of this file
+  // continues to compile without ripple-effect edits.
+  const { items: _laItems } = useLifeAreas();
+  const LIFE_AREAS = _laItems.map(a => ({
+    id: a.id,
+    node_id: a.node_id,
+    slug: a.slug,
+    name: a.name,
+    label: a.name,
+    short: a.name,
+    icon: a.icon,
+    color: a.color,
+    c: a.color,
+  }));
+
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const editId = id as string|undefined;
@@ -266,7 +279,7 @@ export default function GEMGoalScreen() {
                 </TouchableOpacity>
               </View>
               <Text style={st.modalHelp}>
-                Linking surfaces the goal's milestones inside this GEM card. Structure stays read-only; status & progress remain editable.
+                Linking surfaces the goal&apos;s milestones inside this GEM card. Structure stays read-only; status &amp; progress remain editable.
               </Text>
               {smartGoalsLoading ? (
                 <ActivityIndicator color={COLORS.primary} style={{ padding: 20 }} />

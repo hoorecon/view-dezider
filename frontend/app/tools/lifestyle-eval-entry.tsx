@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { showAlert } from '../../src/utils/alert';
+import { useLifeAreas } from '../../src/utils/useLifeAreas';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, ActivityIndicator, Platform, KeyboardAvoidingView, Modal,
@@ -22,19 +23,7 @@ interface Activity {
   remarks: string;
 }
 
-const LIFE_AREAS = [
-  { id: 'holistic_health', name: 'Holistic Health', icon: 'fitness', color: '#10B981' },
-  { id: 'knowledge_skills', name: 'Knowledge & Skills', icon: 'school', color: '#3B82F6' },
-  { id: 'relationships', name: 'Relationships', icon: 'heart', color: '#EC4899' },
-  { id: 'finance', name: 'Finance', icon: 'cash', color: '#8B5CF6' },
-  { id: 'assets', name: 'Assets', icon: 'home', color: '#F97316' },
-  { id: 'career', name: 'Career', icon: 'briefcase', color: '#0EA5E9' },
-  { id: 'personal_dreams', name: 'Personal Dreams', icon: 'star', color: '#F59E0B' },
-  { id: 'social_image', name: 'Social Image', icon: 'people', color: '#6366F1' },
-  { id: 'social_contributions', name: 'Social Contributions', icon: 'hand-left', color: '#14B8A6' },
-  { id: 'spirituality', name: 'Spirituality', icon: 'leaf', color: '#A855F7' },
-];
-
+// LIFE_AREAS array moved into the component (catalog-driven).
 const CATEGORIES = [
   { id: 'problem', name: 'Problem', color: '#EF4444', icon: 'alert-circle' },
   { id: 'need', name: 'Need', color: '#F59E0B', icon: 'ellipse' },
@@ -61,6 +50,24 @@ function formatMins(m: number) {
 }
 
 export default function LifestyleEvalEntryScreen() {
+  // LIFE_AREAS flows from the Admin Central Catalog via the useLifeAreas()
+  // hook (single source of truth across the app). Adapter preserves both
+  // old (`c`, `name`) and new (`color`, `label`, `slug`, `node_id`) field
+  // names so the rest of this file continues to compile without
+  // ripple-effect edits.
+  const { items: _laItems } = useLifeAreas();
+  const LIFE_AREAS = _laItems.map(a => ({
+    id: a.id,
+    node_id: a.node_id,
+    slug: a.slug,
+    name: a.name,
+    label: a.name,
+    short: a.name,
+    icon: a.icon,
+    color: a.color,
+    c: a.color,
+  }));
+
   const router = useRouter();
   const params = useLocalSearchParams();
   const dateParam = (params.date as string) || new Date().toISOString().split('T')[0];

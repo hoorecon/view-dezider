@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { showAlert } from '../../src/utils/alert';
+import { getLifeAreaShort, getLifeAreaIcon } from '../../src/constants/lifeAreas';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, Alert, ActivityIndicator, Dimensions,
@@ -20,18 +21,8 @@ const FREQ_COLORS: Record<string, string> = {
   hourly: '#EF4444', daily: '#3B82F6', weekly: '#10B981',
   fortnightly: '#F59E0B', monthly: '#8B5CF6',
 };
-const AREA_LABELS: Record<string, string> = {
-  career: 'Career', finance: 'Finance', relationships: 'Relationships',
-  holistic_health: 'Health', assets: 'Assets', knowledge_skills: 'Knowledge',
-  social_image: 'Social', social_contributions: 'Contributions',
-  hobbies_entertainment: 'Hobbies', spirituality_religion: 'Spirituality',
-};
-const AREA_ICONS: Record<string, string> = {
-  career: 'briefcase', finance: 'cash', relationships: 'heart',
-  holistic_health: 'fitness', assets: 'home', knowledge_skills: 'school',
-  social_image: 'people', social_contributions: 'hand-left',
-  hobbies_entertainment: 'game-controller', spirituality_religion: 'leaf',
-};
+// life-area inline map replaced — see getLifeAreaShort()/getLifeAreaIcon()
+// life-area inline map replaced — see getLifeAreaShort()/getLifeAreaIcon()
 const PRIORITY_COLORS: Record<string, string> = {
   critical: '#EF4444', high: '#F59E0B', medium: '#3B82F6', low: '#6B7280',
 };
@@ -257,7 +248,7 @@ export default function LifestyleScreen() {
       <View style={s.todayCard}>
         <View style={s.todayHeader}>
           <Ionicons name="today" size={20} color={COLORS.primary} />
-          <Text style={s.todayTitle}>Today's Routines</Text>
+          <Text style={s.todayTitle}>Today&apos;s Routines</Text>
           <View style={[s.todayBadge, { backgroundColor: progressColor + '20' }]}>
             <Text style={[s.todayBadgeText, { color: progressColor }]}>
               {todayStatus.completed}/{todayStatus.total_due}
@@ -317,8 +308,8 @@ export default function LifestyleScreen() {
         </View>
         {routine.life_area ? (
           <View style={s.areaPill}>
-            <Ionicons name={(AREA_ICONS[routine.life_area] || 'ellipse') as any} size={10} color={COLORS.primary} />
-            <Text style={s.areaPillText}>{AREA_LABELS[routine.life_area] || routine.life_area}</Text>
+            <Ionicons name={(getLifeAreaIcon(routine.life_area) || 'ellipse') as any} size={10} color={COLORS.primary} />
+            <Text style={s.areaPillText}>{getLifeAreaShort(routine.life_area) || routine.life_area}</Text>
           </View>
         ) : null}
         {!routine.is_active && (

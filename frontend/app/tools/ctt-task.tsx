@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { showAlert } from '../../src/utils/alert';
+import { useLifeAreas } from '../../src/utils/useLifeAreas';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Platform, KeyboardAvoidingView, Switch,
@@ -14,19 +15,7 @@ import api from '../../src/utils/api';
 import { useAuthStore } from '../../src/store/authStore';
 import { LinkedFreedomsPicker } from '../../src/components/LinkedFreedomsPicker';
 
-const LIFE_AREAS = [
-  { id: 'career', name: 'Career', icon: 'briefcase' },
-  { id: 'finance', name: 'Finance', icon: 'cash' },
-  { id: 'relationships', name: 'Relationships', icon: 'heart' },
-  { id: 'holistic_health', name: 'Holistic Health', icon: 'fitness' },
-  { id: 'assets', name: 'Assets', icon: 'home' },
-  { id: 'knowledge_skills', name: 'Knowledge & Skills', icon: 'school' },
-  { id: 'social_image', name: 'Social Image', icon: 'people' },
-  { id: 'social_contributions', name: 'Social Contributions', icon: 'hand-left' },
-  { id: 'hobbies_entertainment', name: 'Hobbies', icon: 'game-controller' },
-  { id: 'spirituality_religion', name: 'Spirituality', icon: 'leaf' },
-];
-
+// LIFE_AREAS array moved into the component (catalog-driven).
 const PRIORITIES = [
   { id: 'critical', label: 'Critical', color: '#EF4444', icon: 'alert-circle' },
   { id: 'high', label: 'High', color: '#F59E0B', icon: 'warning' },
@@ -57,6 +46,24 @@ const DECISION_TYPES = [
 ];
 
 export default function CTTTaskScreen() {
+  // LIFE_AREAS now flows from the Admin Central Catalog via the
+  // useLifeAreas() hook (single source of truth across the app).
+  // Adapter preserves both old (`c`, `name`) and new (`color`,
+  // `label`, `slug`, `node_id`) field names so the rest of this file
+  // continues to compile without ripple-effect edits.
+  const { items: _laItems } = useLifeAreas();
+  const LIFE_AREAS = _laItems.map(a => ({
+    id: a.id,
+    node_id: a.node_id,
+    slug: a.slug,
+    name: a.name,
+    label: a.name,
+    short: a.name,
+    icon: a.icon,
+    color: a.color,
+    c: a.color,
+  }));
+
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const { session } = useAuthStore();

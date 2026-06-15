@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, GRADIENTS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import { getLifeAreaName } from '../../src/constants/lifeAreas';
 
 export default function SolutionFinderListScreen() {
   const router = useRouter();
@@ -73,16 +74,7 @@ export default function SolutionFinderListScreen() {
     ]);
   };
 
-  const getAreaName = (id: string) => {
-    const areas: Record<string, string> = {
-      career: 'Career', finance: 'Finance', relationships: 'Relationships',
-      holistic_health: 'Holistic Health', assets: 'Assets',
-      knowledge_skills: 'Knowledge & Skills', social_image: 'Social Image',
-      social_contributions: 'Social Contributions',
-      hobbies_entertainment: 'Hobbies', spirituality_religion: 'Spirituality',
-    };
-    return areas[id] || id;
-  };
+  const getAreaName = (id: string) => getLifeAreaName(id, id);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>

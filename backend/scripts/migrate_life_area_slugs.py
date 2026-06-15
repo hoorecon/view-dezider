@@ -25,11 +25,20 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import sys
 from typing import Any, Dict, List, Tuple
 
-# Allow `python -m scripts.migrate_life_area_slugs` from /app/backend
-sys.path.insert(0, "/app/backend")
+# Make this script runnable from either:
+#   cd /opt/dezider/backend && python3 -m scripts.migrate_life_area_slugs
+#   cd /app/backend && python -m scripts.migrate_life_area_slugs
+#   /any/path/python3 /full/path/to/migrate_life_area_slugs.py
+# by computing the backend dir from this file's own location, not a
+# hardcoded container path.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_BACKEND_DIR = os.path.dirname(_HERE)  # parent of scripts/
+if _BACKEND_DIR not in sys.path:
+    sys.path.insert(0, _BACKEND_DIR)
 
 from core.database import db  # noqa: E402
 

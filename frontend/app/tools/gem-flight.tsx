@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { showAlert } from '../../src/utils/alert';
+import { useLifeAreas } from '../../src/utils/useLifeAreas';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, Alert, ActivityIndicator, TextInput, Modal,
@@ -12,17 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 
-const LIFE_AREAS = [
-  { id: 'career', label: 'Career', icon: 'briefcase', color: '#3B82F6' },
-  { id: 'finance', label: 'Finance', icon: 'cash', color: '#10B981' },
-  { id: 'relationships', label: 'Relationships', icon: 'heart', color: '#EF4444' },
-  { id: 'holistic_health', label: 'Health', icon: 'fitness', color: '#F59E0B' },
-  { id: 'assets', label: 'Assets', icon: 'home', color: '#8B5CF6' },
-  { id: 'knowledge_skills', label: 'Knowledge', icon: 'school', color: '#06B6D4' },
-  { id: 'social_image', label: 'Social', icon: 'people', color: '#EC4899' },
-  { id: 'spirituality', label: 'Spirituality', icon: 'leaf', color: '#84CC16' },
-];
-
+// LIFE_AREAS array moved into the component (catalog-driven).
 const STATUS_COLORS: Record<string, string> = {
   active: '#10B981',
   paused: '#F59E0B',
@@ -54,6 +45,24 @@ interface FlightProject {
 }
 
 export default function GemFlightScreen() {
+  // LIFE_AREAS now flows from the Admin Central Catalog via the
+  // useLifeAreas() hook (single source of truth across the app).
+  // Adapter preserves both old (`c`, `name`) and new (`color`,
+  // `label`, `slug`, `node_id`) field names so the rest of this file
+  // continues to compile without ripple-effect edits.
+  const { items: _laItems } = useLifeAreas();
+  const LIFE_AREAS = _laItems.map(a => ({
+    id: a.id,
+    node_id: a.node_id,
+    slug: a.slug,
+    name: a.name,
+    label: a.name,
+    short: a.name,
+    icon: a.icon,
+    color: a.color,
+    c: a.color,
+  }));
+
   const router = useRouter();
   const [projects, setProjects] = useState<FlightProject[]>([]);
   const [loading, setLoading] = useState(true);

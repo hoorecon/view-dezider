@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { showAlert } from '../../src/utils/alert';
+import { getLifeAreaShort, getLifeAreaIcon } from '../../src/constants/lifeAreas';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, Alert, ActivityIndicator, Linking, Dimensions,
@@ -34,18 +35,8 @@ const SOURCE_ICONS: Record<string, string> = {
   manual: 'create', decision: 'analytics', solution_finder: 'search',
   solution_matrix: 'grid', gem: 'flag',
 };
-const LIFE_AREA_LABELS: Record<string, string> = {
-  career: 'Career', finance: 'Finance', relationships: 'Relationships',
-  holistic_health: 'Health', assets: 'Assets', knowledge_skills: 'Knowledge',
-  social_image: 'Social Image', social_contributions: 'Contributions',
-  hobbies_entertainment: 'Hobbies', spirituality_religion: 'Spirituality',
-};
-const LIFE_AREA_ICONS: Record<string, string> = {
-  career: 'briefcase', finance: 'cash', relationships: 'heart',
-  holistic_health: 'fitness', assets: 'home', knowledge_skills: 'school',
-  social_image: 'people', social_contributions: 'hand-left',
-  hobbies_entertainment: 'game-controller', spirituality_religion: 'leaf',
-};
+// inline life-area maps replaced — use getLifeAreaShort()/getLifeAreaIcon() from src/constants/lifeAreas
+// inline life-area maps replaced — use getLifeAreaShort()/getLifeAreaIcon() from src/constants/lifeAreas
 
 const STATUS_FILTERS = [
   { key: 'all', label: 'All' },
@@ -282,7 +273,7 @@ export default function CTTScreen() {
               onPress={() => setLifeAreaFilter(lifeAreaFilter === key ? '' : key)}
             >
               <Ionicons
-                name={(LIFE_AREA_ICONS[key] || 'ellipse') as any}
+                name={(getLifeAreaIcon(key) || 'ellipse') as any}
                 size={12}
                 color={lifeAreaFilter === key ? COLORS.primary : COLORS.textMuted}
               />
@@ -373,8 +364,8 @@ export default function CTTScreen() {
       <View style={s.taskMeta}>
         {task.life_area ? (
           <View style={s.metaTag}>
-            <Ionicons name={(LIFE_AREA_ICONS[task.life_area] || 'ellipse') as any} size={10} color={COLORS.primary} />
-            <Text style={s.metaTagText}>{LIFE_AREA_LABELS[task.life_area] || task.life_area}</Text>
+            <Ionicons name={(getLifeAreaIcon(task.life_area) || 'ellipse') as any} size={10} color={COLORS.primary} />
+            <Text style={s.metaTagText}>{getLifeAreaShort(task.life_area) || task.life_area}</Text>
           </View>
         ) : null}
         {task.decision_type ? (
@@ -461,8 +452,8 @@ export default function CTTScreen() {
         {Object.entries(groupedByArea).map(([area, areaTasks]) => (
           <View key={area} style={s.boardColumn}>
             <View style={s.boardColumnHeader}>
-              <Ionicons name={(LIFE_AREA_ICONS[area] || 'ellipse') as any} size={16} color={COLORS.primary} />
-              <Text style={s.boardColumnTitle}>{LIFE_AREA_LABELS[area] || 'Unassigned'}</Text>
+              <Ionicons name={(getLifeAreaIcon(area) || 'ellipse') as any} size={16} color={COLORS.primary} />
+              <Text style={s.boardColumnTitle}>{getLifeAreaShort(area) || 'Unassigned'}</Text>
               <View style={s.boardCount}>
                 <Text style={s.boardCountText}>{(areaTasks as any[]).length}</Text>
               </View>

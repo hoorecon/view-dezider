@@ -51,10 +51,29 @@ export const LIFE_AREA_BY_ID: Record<string, LifeArea> = LIFE_AREAS.reduce(
   {} as Record<string, LifeArea>,
 );
 
-/** Safe lookup — returns undefined if id is missing/unknown */
+// Canonical → legacy slug map. Lets callers pass EITHER form to the helpers
+// below. Backend rows that have been migrated to canonical IDs (la_career,
+// la_finance, …) still resolve to the same display label/icon/color.
+const CANONICAL_TO_LEGACY: Record<string, string> = {
+  la_career:        'career',
+  la_finance:       'finance',
+  la_relationships: 'relationships',
+  la_health:        'holistic_health',
+  la_assets:        'assets',
+  la_knowledge:     'knowledge_skills',
+  la_social_image:  'social_image',
+  la_contribution:  'social_contributions',
+  la_hobbies:       'hobbies_entertainment',
+  la_spirituality:  'spirituality_religion',
+};
+
+/** Safe lookup — accepts both legacy slug (`career`) and canonical id
+ *  (`la_career`). Returns undefined if id is missing/unknown. */
 export function getLifeArea(id?: string | null): LifeArea | undefined {
   if (!id) return undefined;
-  return LIFE_AREA_BY_ID[id];
+  if (LIFE_AREA_BY_ID[id]) return LIFE_AREA_BY_ID[id];
+  const legacy = CANONICAL_TO_LEGACY[id];
+  return legacy ? LIFE_AREA_BY_ID[legacy] : undefined;
 }
 
 /** Safe display name — falls back to id-as-string or empty */
@@ -65,4 +84,14 @@ export function getLifeAreaName(id?: string | null, fallback: string = ''): stri
 /** Safe short label — for compact UIs */
 export function getLifeAreaShort(id?: string | null, fallback: string = ''): string {
   return getLifeArea(id)?.short ?? fallback;
+}
+
+/** Safe icon name — falls back to a generic glyph */
+export function getLifeAreaIcon(id?: string | null, fallback: string = 'ellipse'): string {
+  return getLifeArea(id)?.icon ?? fallback;
+}
+
+/** Safe color hex — falls back to neutral grey */
+export function getLifeAreaColor(id?: string | null, fallback: string = '#8B5CF6'): string {
+  return getLifeArea(id)?.color ?? fallback;
 }

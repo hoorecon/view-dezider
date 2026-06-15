@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { showAlert } from '../../src/utils/alert';
+import { useLifeAreas } from '../../src/utils/useLifeAreas';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, Alert, ActivityIndicator,
@@ -13,18 +14,7 @@ import api from '../../src/utils/api';
 import ProjectStatusPicker from '../../src/components/decisions/ProjectStatusPicker';
 import TimestampLine from '../../src/components/TimestampLine';
 
-const LIFE_AREAS = [
-  {id:'career',name:'Career',icon:'briefcase',c:'#3B82F6'},
-  {id:'finance',name:'Finance',icon:'cash',c:'#10B981'},
-  {id:'relationships',name:'Relationships',icon:'heart',c:'#EF4444'},
-  {id:'holistic_health',name:'Health',icon:'fitness',c:'#F59E0B'},
-  {id:'assets',name:'Assets',icon:'home',c:'#8B5CF6'},
-  {id:'knowledge_skills',name:'Knowledge',icon:'school',c:'#06B6D4'},
-  {id:'social_image',name:'Social Image',icon:'people',c:'#EC4899'},
-  {id:'social_contributions',name:'Social',icon:'globe',c:'#14B8A6'},
-  {id:'hobbies_entertainment',name:'Hobbies',icon:'game-controller',c:'#F97316'},
-  {id:'spirituality_religion',name:'Spirituality',icon:'leaf',c:'#84CC16'},
-];
+// LIFE_AREAS array moved into the component (catalog-driven).
 const GOAL_TYPES = [
   {id:'problem',label:'Problems',icon:'alert-circle',c:'#EF4444'},
   {id:'need',label:'Needs',icon:'bulb',c:'#F59E0B'},
@@ -32,6 +22,24 @@ const GOAL_TYPES = [
 ];
 
 export default function GEMScreen() {
+  // LIFE_AREAS now flows from the Admin Central Catalog via the
+  // useLifeAreas() hook (single source of truth across the app).
+  // Adapter preserves both old (`c`, `name`) and new (`color`,
+  // `label`, `slug`, `node_id`) field names so the rest of this file
+  // continues to compile without ripple-effect edits.
+  const { items: _laItems } = useLifeAreas();
+  const LIFE_AREAS = _laItems.map(a => ({
+    id: a.id,
+    node_id: a.node_id,
+    slug: a.slug,
+    name: a.name,
+    label: a.name,
+    short: a.name,
+    icon: a.icon,
+    color: a.color,
+    c: a.color,
+  }));
+
   const router = useRouter();
   const [dashboard, setDashboard] = useState<any>(null);
   const [goals, setGoals] = useState<any[]>([]);

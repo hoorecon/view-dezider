@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { showAlert } from '../../src/utils/alert';
+import { useLifeAreas } from '../../src/utils/useLifeAreas';
 import {
   View,
   Text,
@@ -27,19 +28,7 @@ const API_BASE = (Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL
   || process.env.EXPO_PUBLIC_BACKEND_URL
   || '') as string;
 
-const LIFE_AREAS = [
-  { id: 'career', name: 'Career', icon: 'briefcase' },
-  { id: 'finance', name: 'Finance', icon: 'cash' },
-  { id: 'relationships', name: 'Relationships', icon: 'heart' },
-  { id: 'holistic_health', name: 'Holistic Health', icon: 'fitness' },
-  { id: 'assets', name: 'Assets', icon: 'home' },
-  { id: 'knowledge_skills', name: 'Knowledge & Skills', icon: 'school' },
-  { id: 'social_image', name: 'Social Image', icon: 'people' },
-  { id: 'social_contributions', name: 'Social Contributions', icon: 'globe' },
-  { id: 'hobbies_entertainment', name: 'Hobbies & Entertainment', icon: 'game-controller' },
-  { id: 'spirituality_religion', name: 'Spirituality', icon: 'leaf' },
-];
-
+// LIFE_AREAS array moved into the component (catalog-driven).
 // 5 canonical TEPFI fields (shown in the matrix input grid)
 const TEPFI_FIELDS = [
   { key: 'time', label: 'Time', icon: 'time' },
@@ -173,6 +162,24 @@ interface TemplateMeta {
 }
 
 export default function SolutionMatrixScreen() {
+  // LIFE_AREAS now flows from the Admin Central Catalog via the
+  // useLifeAreas() hook (single source of truth across the app).
+  // Adapter preserves both old (`c`, `name`) and new (`color`,
+  // `label`, `slug`, `node_id`) field names so the rest of this file
+  // continues to compile without ripple-effect edits.
+  const { items: _laItems } = useLifeAreas();
+  const LIFE_AREAS = _laItems.map(a => ({
+    id: a.id,
+    node_id: a.node_id,
+    slug: a.slug,
+    name: a.name,
+    label: a.name,
+    short: a.name,
+    icon: a.icon,
+    color: a.color,
+    c: a.color,
+  }));
+
   const router = useRouter();
   const params = useLocalSearchParams();
   const editId = params.id as string | undefined;

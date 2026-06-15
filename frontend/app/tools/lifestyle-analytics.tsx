@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { getLifeAreaShort, getLifeAreaIcon } from '../../src/constants/lifeAreas';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, ActivityIndicator,
@@ -10,18 +11,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 
-const AREA_LABELS: Record<string, string> = {
-  career: 'Career', finance: 'Finance', relationships: 'Relationships',
-  holistic_health: 'Health', assets: 'Assets', knowledge_skills: 'Knowledge',
-  social_image: 'Social', social_contributions: 'Contributions',
-  hobbies_entertainment: 'Hobbies', spirituality_religion: 'Spirituality',
-};
-const AREA_ICONS: Record<string, string> = {
-  career: 'briefcase', finance: 'cash', relationships: 'heart',
-  holistic_health: 'fitness', assets: 'home', knowledge_skills: 'school',
-  social_image: 'people', social_contributions: 'hand-left',
-  hobbies_entertainment: 'game-controller', spirituality_religion: 'leaf',
-};
+// life-area inline map replaced — see getLifeAreaShort()/getLifeAreaIcon()
+// life-area inline map replaced — see getLifeAreaShort()/getLifeAreaIcon()
 
 function getColor(pct: number): string {
   if (pct >= 80) return '#10B981';
@@ -129,8 +120,8 @@ export default function LifestyleAnalyticsScreen() {
           return (
             <View key={area} style={s.areaRow}>
               <View style={s.areaLeft}>
-                <Ionicons name={(AREA_ICONS[area] || 'ellipse') as any} size={16} color={color} />
-                <Text style={s.areaName}>{AREA_LABELS[area] || area}</Text>
+                <Ionicons name={(getLifeAreaIcon(area) || 'ellipse') as any} size={16} color={color} />
+                <Text style={s.areaName}>{getLifeAreaShort(area) || area}</Text>
               </View>
               <View style={s.areaBarWrap}>
                 <View style={[s.areaBar, { width: `${Math.min(pct, 100)}%`, backgroundColor: color }]} />

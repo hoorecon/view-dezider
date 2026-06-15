@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { showAlert } from '../../src/utils/alert';
+import { getLifeAreaName } from '../../src/constants/lifeAreas';
 import {
   View,
   Text,
@@ -64,16 +65,7 @@ export default function SolutionMatrixListScreen() {
     ]);
   };
 
-  const getAreaName = (id: string) => {
-    const areas: Record<string, string> = {
-      career: 'Career', finance: 'Finance', relationships: 'Relationships',
-      holistic_health: 'Holistic Health', assets: 'Assets',
-      knowledge_skills: 'Knowledge & Skills', social_image: 'Social Image',
-      social_contributions: 'Social Contributions',
-      hobbies_entertainment: 'Hobbies', spirituality_religion: 'Spirituality',
-    };
-    return areas[id] || id;
-  };
+  const getAreaName = (id: string) => getLifeAreaName(id, id);
 
   const getSelectedCategories = (cat: Record<string, boolean>) => {
     return Object.entries(cat || {}).filter(([_, v]) => v).map(([k]) =>
