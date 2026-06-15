@@ -32,20 +32,15 @@ import { useAuthStore } from '../../src/store/authStore';
 import api from '../../src/utils/api';
 import TimingFieldset, { TimingValue } from '../../src/components/decisions/TimingFieldset';
 import { addDaysISO } from '../../src/utils/dateLocalize';
+import { useLifeAreas } from '../../src/utils/useLifeAreas';
 
 // ============== CONSTANTS ==============
-const LIFE_AREAS = [
-  { id: 'career', name: 'Career', icon: 'briefcase' },
-  { id: 'finance', name: 'Finance', icon: 'cash' },
-  { id: 'relationships', name: 'Relationships', icon: 'heart' },
-  { id: 'holistic_health', name: 'Holistic Health', icon: 'fitness' },
-  { id: 'assets', name: 'Assets', icon: 'home' },
-  { id: 'knowledge_skills', name: 'Knowledge & Skills', icon: 'school' },
-  { id: 'social_image', name: 'Social Image', icon: 'people' },
-  { id: 'social_contributions', name: 'Social Contributions', icon: 'globe' },
-  { id: 'hobbies_entertainment', name: 'Hobbies', icon: 'game-controller' },
-  { id: 'spirituality_religion', name: 'Spirituality', icon: 'leaf' },
-];
+// NOTE: Life-area list is no longer hardcoded — it now flows from the
+// Admin Central Catalog via the `useLifeAreas` hook so the IDs / names /
+// order stay in lockstep with AIM Manager, Capabilities Index, Goal Setter,
+// etc. The legacy `slug` (career, finance, …) is still accepted by the
+// backend for backward-compat with older sessions; new sessions write the
+// canonical `id` (la_career, la_finance, …).
 
 const STEPS = [
   { title: 'Goal',         icon: 'flag' },
@@ -95,6 +90,9 @@ export default function SimpleSolutionFinder() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const editId = params.id as string | undefined;
+  // Single source of truth for the L0 life-area list — flows from the
+  // Admin Central Catalog so order/names match every other module.
+  const { items: lifeAreas } = useLifeAreas();
   // Robust back: pop history when navigated in-app, else go to the dashboard
   // (fixes a dead back button on direct/deep-linked loads where there is no
   // history to pop).
@@ -785,7 +783,7 @@ export default function SimpleSolutionFinder() {
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 80 }}>
       <Text style={s.sectionLabel}>Life Area</Text>
       <View style={s.areaGrid}>
-        {LIFE_AREAS.map(a => (
+        {lifeAreas.map(a => (
           <TouchableOpacity
             key={a.id}
             style={[s.areaChip, areaOfLife === a.id && s.areaChipActive]}
@@ -1346,7 +1344,7 @@ export default function SimpleSolutionFinder() {
                 <Text style={s.emoTitle}>Feeling settled to dive deeper?</Text>
                 <Text style={s.emoSub}>
                   Root Cause Analysis works best from a steady mind. Take 5 minutes
-                  with Emotional Reception if you need to settle first — you'll come
+                  with Emotional Reception if you need to settle first — you&apos;ll come
                   right back here.
                 </Text>
                 <TouchableOpacity

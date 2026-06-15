@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   ActivityIndicator, Alert, RefreshControl, Platform,
+  Modal, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -88,6 +89,14 @@ export default function ACMAdminScreen() {
   const [selectedFeature, setSelectedFeature] = useState<Feature | null>(null);
   const [error, setError] = useState('');
 
+  // Cell editor modal state
+  const [editing, setEditing] = useState<{
+    feature: Feature; audienceKey: string;
+  } | null>(null);
+  const [editLevel, setEditLevel] = useState<'full' | 'read' | 'locked' | 'hidden'>('full');
+  const [editQuota, setEditQuota] = useState<string>('-1');
+  const [saving, setSaving] = useState(false);
+
   const accessKeys = [
     'unit_tester', 'integration_tester', 'alpha', 'beta',
     'free', 'trial', 'paid_starter', 'paid_pro', 'paid_enterprise', 'paid_api',
@@ -153,6 +162,63 @@ export default function ACMAdminScreen() {
       else next.add(moduleId);
       return next;
     });
+  };
+
+  // ─── Cell editor handlers ──────────────────────────────────────
+  const openEditor = (feature: Feature, audienceKey: string) => {
+    const cur = feature.access[audienceKey] || { level: 'hidden', quota: 0 };
+    setEditing({ feature, audienceKey });
+    setEditLevel((cur.level as any) || 'full');
+    setEditQuota(String(cur.quota ?? -1));
+  };
+
+  const closeEditor = () => {
+    setEditing(null);
+    setSaving(false);
+  };
+
+  const saveEditor = async () => {
+    if (!editing) return;
+    setSaving(true);
+    try {
+      const headers = await getHeaders();
+      // Merge the existing access map with the single-cell change, so the
+      // backend PUT (which replaces `access` wholesale) doesn't drop the
+      // other 9 columns.
+      const nextAccess: Record<string, { level: string; quota: number }> = {};
+      for (const k of accessKeys) {
+        nextAccess[k] = editing.feature.access[k] || { level: 'hidden', quota: 0 };
+      }
+      const qNum = parseInt(editQuota, 10);
+      nextAccess[editing.audienceKey] = {
+        level: editLevel,
+        quota: Number.isFinite(qNum) ? qNum : (editLevel === 'hidden' ? 0 : -1),
+      };
+      const resp = await fetch(
+        `${API}/api/acm/feature/${editing.feature.feature_id}`,
+        {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({ access: nextAccess }),
+        },
+      );
+      if (resp.ok) {
+        await fetchMatrix();
+        // keep the detail panel open with refreshed data
+        const fresh = matrix?.modules
+          .flatMap((m) => m.features)
+          .find((f) => f.feature_id === editing.feature.feature_id);
+        if (fresh) setSelectedFeature(fresh);
+        closeEditor();
+      } else {
+        const err = await resp.json().catch(() => ({}));
+        Alert.alert('Save failed', err.detail || `HTTP ${resp.status}`);
+        setSaving(false);
+      }
+    } catch (e: any) {
+      Alert.alert('Save failed', e.message || 'Network error');
+      setSaving(false);
+    }
   };
 
   const renderAccessCell = (access: { level: string; quota: number } | undefined) => {
@@ -224,7 +290,11 @@ export default function ACMAdminScreen() {
             const cfg = ACCESS_ICONS[rule.level] || ACCESS_ICONS.hidden;
             const label = USER_TYPE_LABELS[key] || { short: key, color: '#999' };
             return (
-              <View key={key} style={styles.detailCell}>
+              <TouchableOpacity
+                key={key}
+                style={styles.detailCell}
+                onPress={() => openEditor(feature, key)}
+                activeOpacity={0.7}>
                 <View style={[styles.typeBadge, { backgroundColor: label.color + '20', borderColor: label.color + '60' }]}>
                   <Text style={[styles.typeBadgeText, { color: label.color }]}>{label.short}</Text>
                 </View>
@@ -233,10 +303,12 @@ export default function ACMAdminScreen() {
                 <Text style={styles.detailQuota}>
                   {rule.quota === -1 ? '∞' : rule.quota === 0 ? '—' : rule.quota}
                 </Text>
-              </View>
+                <Ionicons name="pencil" size={10} color={COLORS.textMuted} style={{ marginLeft: 'auto' }} />
+              </TouchableOpacity>
             );
           })}
         </View>
+        <Text style={styles.detailHint}>Tap any cell above to edit its access level and quota.</Text>
       </View>
     );
   };
@@ -362,6 +434,95 @@ export default function ACMAdminScreen() {
 
         <View style={{ height: 100 }} />
       </ScrollView>
+
+      {/* ─── Cell Editor Modal ─────────────────────────────────────── */}
+      <Modal
+        visible={!!editing}
+        transparent
+        animationType="slide"
+        onRequestClose={closeEditor}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>
+                  {editing?.feature.feature_name}
+                </Text>
+                <Text style={styles.modalSubtitle}>
+                  Audience:{' '}
+                  <Text style={{ color: USER_TYPE_LABELS[editing?.audienceKey || '']?.color || COLORS.accent, fontWeight: '700' }}>
+                    {USER_TYPE_LABELS[editing?.audienceKey || '']?.short || editing?.audienceKey}
+                  </Text>
+                  {'  ·  '}
+                  <Text style={{ color: COLORS.textMuted }}>
+                    {editing?.feature.quota_unit} ({editing?.feature.quota_resets})
+                  </Text>
+                </Text>
+              </View>
+              <TouchableOpacity onPress={closeEditor} disabled={saving}>
+                <Ionicons name="close" size={24} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalLabel}>Access level</Text>
+            <View style={styles.levelRow}>
+              {(['full', 'read', 'locked', 'hidden'] as const).map((lvl) => {
+                const cfg = ACCESS_ICONS[lvl];
+                const active = editLevel === lvl;
+                return (
+                  <TouchableOpacity
+                    key={lvl}
+                    style={[
+                      styles.levelBtn,
+                      { borderColor: cfg.color },
+                      active && { backgroundColor: cfg.color + '20' },
+                    ]}
+                    onPress={() => {
+                      setEditLevel(lvl);
+                      // Auto-set sensible quota defaults when switching level
+                      if (lvl === 'hidden' || lvl === 'locked') setEditQuota('0');
+                      else if (parseInt(editQuota, 10) === 0) setEditQuota('-1');
+                    }}
+                    activeOpacity={0.75}>
+                    <Ionicons name={cfg.icon as any} size={18} color={cfg.color} />
+                    <Text style={[styles.levelBtnText, { color: cfg.color }]}>{cfg.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={styles.modalLabel}>Quota</Text>
+            <Text style={styles.modalHint}>
+              -1 = unlimited (∞){'  ·  '}0 = no allowance (use for Hidden/Locked){'  ·  '}any positive number = cap per {editing?.feature.quota_resets}
+            </Text>
+            <TextInput
+              style={styles.quotaInput}
+              value={editQuota}
+              onChangeText={setEditQuota}
+              keyboardType="numbers-and-punctuation"
+              placeholder="-1"
+              placeholderTextColor={COLORS.textMuted}
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnCancel]}
+                onPress={closeEditor}
+                disabled={saving}>
+                <Text style={styles.modalBtnCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnSave, saving && { opacity: 0.6 }]}
+                onPress={saveEditor}
+                disabled={saving}>
+                {saving
+                  ? <ActivityIndicator size="small" color="#FFF" />
+                  : <Text style={styles.modalBtnSaveText}>Save</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -478,4 +639,73 @@ const styles = StyleSheet.create({
   typeBadgeText: { fontSize: 8, fontWeight: '800' },
   detailLevel: { fontSize: 10, fontWeight: '600' },
   detailQuota: { fontSize: 10, color: COLORS.textMuted, fontWeight: '700' },
+  detailHint: {
+    fontSize: 11, color: COLORS.textMuted, fontStyle: 'italic',
+    marginTop: 8, paddingHorizontal: 4,
+  },
+  // ─── Editor modal ───
+  modalBackdrop: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: COLORS.card,
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: 20,
+    borderTopWidth: 2, borderColor: COLORS.accent,
+  },
+  modalHeaderRow: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+    marginBottom: 16,
+  },
+  modalTitle: {
+    color: COLORS.textPrimary, fontSize: 16, fontWeight: '800',
+  },
+  modalSubtitle: {
+    color: COLORS.textSecondary, fontSize: 12, marginTop: 4,
+  },
+  modalLabel: {
+    color: COLORS.textSecondary, fontSize: 12, fontWeight: '700',
+    marginTop: 8, marginBottom: 8, textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  modalHint: {
+    color: COLORS.textMuted, fontSize: 11,
+    marginBottom: 8, lineHeight: 16,
+  },
+  levelRow: {
+    flexDirection: 'row', gap: 8, marginBottom: 6,
+  },
+  levelBtn: {
+    flex: 1, paddingVertical: 10, paddingHorizontal: 6,
+    borderRadius: 10, borderWidth: 1.5,
+    backgroundColor: COLORS.bg,
+    alignItems: 'center', gap: 4,
+  },
+  levelBtnText: { fontSize: 11, fontWeight: '700' },
+  quotaInput: {
+    backgroundColor: COLORS.bg,
+    borderRadius: 10, borderWidth: 1, borderColor: COLORS.border,
+    color: COLORS.textPrimary, fontSize: 16, fontWeight: '700',
+    paddingHorizontal: 14, paddingVertical: 12,
+    marginBottom: 18,
+  },
+  modalActions: {
+    flexDirection: 'row', gap: 10, marginTop: 4,
+  },
+  modalBtn: {
+    flex: 1, paddingVertical: 12, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  modalBtnCancel: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5, borderColor: COLORS.border,
+  },
+  modalBtnCancelText: {
+    color: COLORS.textSecondary, fontWeight: '700', fontSize: 14,
+  },
+  modalBtnSave: { backgroundColor: COLORS.accent },
+  modalBtnSaveText: {
+    color: '#FFF', fontWeight: '800', fontSize: 14,
+  },
 });
