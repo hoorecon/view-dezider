@@ -59,6 +59,11 @@ interface Cfg {
   scraperapi_plan_usd_month: number;
   scraperapi_plan_credits_month: number;
   scrape_markup_pct: number;
+  /** Raw-audio file storage metering — Conflict Breaker voice clips. */
+  audio_storage_usd_per_gb_month: number;
+  audio_storage_retention_days: number;
+  audio_storage_markup_pct: number;
+  audio_max_upload_mb: number;
   /** Admin master switch for the OpenAI free-tier opt-in surfaces. When
    * false, the user-facing toggle in /ai-wallet AND the inline panel in
    * Deep Import / Import URL credit strips are HIDDEN, and the routing
@@ -87,6 +92,10 @@ const FIELDS: Array<{
   { key: 'scraperapi_plan_usd_month', label: 'ScraperAPI plan $/month', hint: 'Monthly price of the company ScraperAPI plan (default $299 Business). $/credit = plan $ ÷ included credits — drives the per-fetch user charge.', unit: '$', min: 0 },
   { key: 'scraperapi_plan_credits_month', label: 'ScraperAPI credits/month', hint: 'API credits included in the plan (Business = 3,000,000). Rendered fetch = 10 credits, premium = 25.', min: 1 },
   { key: 'scrape_markup_pct', label: 'Scrape markup %', hint: 'Markup over the derived ScraperAPI cost charged to users per scrape fetch (default 5%). Charged in app credits via the user\u2019s AI wallet.', unit: '%', min: 0, max: 100 },
+  { key: 'audio_storage_usd_per_gb_month', label: 'Audio storage $/GB-month', hint: 'Cloud storage cost basis for raw voice clips (Conflict Breaker, etc.). Default $0.023 = AWS S3 Standard. The user wallet is charged: bytes × this × (retention/30) × (1 + audio markup %), converted to credits via the same USD→credit math as LLM tokens.', unit: '$', min: 0 },
+  { key: 'audio_storage_retention_days', label: 'Audio retention (days)', hint: 'How long raw voice clips are kept on disk. Users are billed for this full retention upfront (zero-loss). Default 90 days.', min: 1, max: 365 },
+  { key: 'audio_storage_markup_pct', label: 'Audio storage markup %', hint: 'Markup over raw storage cost charged to users when they save a voice clip as audio (default 30%). Higher = more cushion for ops + spikes; lower = thinner margin.', unit: '%', min: 0, max: 500 },
+  { key: 'audio_max_upload_mb', label: 'Audio max upload size (MB)', hint: 'Per-clip upload size cap. Larger files are rejected up-front so users do not get billed for an over-budget clip. Default 10 MB ≈ 15-20 min of opus.', unit: 'MB', min: 1, max: 100 },
   { key: 'usd_to_inr_fallback', label: 'USD → INR fallback', hint: 'Used when live FX fetch fails', unit: '₹', min: 1 },
   { key: 'default_user_credits', label: 'New-user seed credits', hint: 'Free starting balance for non-admin signups', min: 0 },
   { key: 'default_admin_credits', label: 'New-admin seed credits', hint: 'Free starting balance for admin signups', min: 0 },
