@@ -15,22 +15,23 @@ const API = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL
   || '';
 
 const COLORS = {
-  bg: '#0F172A',
-  card: '#1E293B',
-  cardAlt: '#1A2332',
-  accent: '#8B5CF6',
-  accentLight: '#A78BFA',
-  border: '#334155',
-  textPrimary: '#F1F5F9',
-  textSecondary: '#94A3B8',
-  textMuted: '#64748B',
-  full: '#22C55E',
-  read: '#3B82F6',
-  locked: '#F59E0B',
-  hidden: '#6B7280',
-  quotaExceeded: '#EF4444',
-  success: '#10B981',
-  error: '#EF4444',
+  // Google Workspace blue-white palette
+  bg: '#F8F9FA',           // page bg (Google grey-50)
+  card: '#FFFFFF',         // surface
+  cardAlt: '#F1F3F4',      // alt surface (Google grey-100)
+  accent: '#1A73E8',       // Google blue
+  accentLight: '#4285F4',
+  border: '#DADCE0',       // Google grey-300
+  textPrimary: '#202124',  // Google grey-900
+  textSecondary: '#5F6368',// Google grey-700
+  textMuted: '#80868B',    // Google grey-500
+  full: '#1E8E3E',         // Google green
+  read: '#1A73E8',         // Google blue
+  locked: '#F29900',       // Google yellow
+  hidden: '#9AA0A6',
+  quotaExceeded: '#D93025',// Google red
+  success: '#1E8E3E',
+  error: '#D93025',
 };
 
 const ACCESS_ICONS: Record<string, { icon: string; color: string; label: string }> = {

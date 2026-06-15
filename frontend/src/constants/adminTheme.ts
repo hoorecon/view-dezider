@@ -3,16 +3,16 @@
  * Inspired by Tata Neu (super-app shell) + Groww (clarity) + Linear (density).
  */
 export const ADMIN_THEME = {
-  // Sidebar (slate-950 → cool dark with subtle warmth)
+  // Sidebar — Google Workspace style (white with blue accents)
   sidebar: {
-    bg: '#0B1220',
-    bgHover: '#111A2E',
-    bgActive: '#1E293B',
-    border: '#1E293B',
-    text: '#94A3B8',
-    textActive: '#F8FAFC',
-    accent: '#7C3AED',
-    sectionLabel: '#475569',
+    bg: '#FFFFFF',
+    bgHover: '#F1F3F4',
+    bgActive: '#E8F0FE',
+    border: '#DADCE0',
+    text: '#5F6368',
+    textActive: '#1A73E8',
+    accent: '#1A73E8',
+    sectionLabel: '#80868B',
     width: 240,
     widthCollapsed: 64,
   },

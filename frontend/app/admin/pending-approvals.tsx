@@ -11,10 +11,11 @@ import api from '../../src/utils/api';
 import { useAuthStore } from '../../src/store/authStore';
 
 const COLORS = {
-  bg: '#0F172A', surface: '#1E293B', surfaceLight: '#334155',
-  primary: '#3B82F6', secondary: '#8B5CF6', accent: '#10B981',
-  text: '#F8FAFC', textSecondary: '#94A3B8', textMuted: '#64748B',
-  border: '#334155', danger: '#EF4444', warning: '#F59E0B',
+  // Google Workspace blue-white palette (matches /admin/acm)
+  bg: '#F8F9FA', surface: '#FFFFFF', surfaceLight: '#F1F3F4',
+  primary: '#1A73E8', secondary: '#1A73E8', accent: '#1E8E3E',
+  text: '#202124', textSecondary: '#5F6368', textMuted: '#80868B',
+  border: '#DADCE0', danger: '#D93025', warning: '#F29900',
 };
 
 const TYPE_COLORS: Record<string, string> = {
