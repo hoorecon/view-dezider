@@ -82,6 +82,18 @@ DEFAULTS = {
     "scraperapi_plan_usd_month": 299.0,        # ScraperAPI Business plan
     "scraperapi_plan_credits_month": 3000000.0,
     "scrape_markup_pct": 5.0,
+    # ── Raw-audio file storage metering (Conflict Breaker etc.) ──
+    # Users can attach raw voice clips to text fields. Storage cost is charged
+    # one-time at upload using the SAME zero-loss markup math as LLM tokens:
+    #   USD = bytes × (audio_storage_usd_per_gb_month / 1024³)
+    #         × (audio_storage_retention_days / 30)
+    #         × (1 + audio_storage_markup_pct/100)
+    #   credits = USD / (tokens_per_credit / 1_000_000 × blended_usd_per_mtok)
+    # Default $0.023/GB-month is AWS S3 Standard. Default retention 90 days.
+    "audio_storage_usd_per_gb_month": 0.023,
+    "audio_storage_retention_days": 90,
+    "audio_storage_markup_pct": 30.0,
+    "audio_max_upload_mb": 10.0,
     "credit_packs": [
         {"id": "starter", "name": "Starter", "credits": 5000, "badge": "Starter"},
         {"id": "pro", "name": "Pro", "credits": 20000, "badge": "Popular"},
@@ -124,7 +136,9 @@ async def update_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
               "min_custom_credits", "precise_usd_per_mtok", "import_group_threshold",
               "deep_import_max_options", "deep_import_top_n",
               "loader_music_volume_web", "loader_music_volume_android", "loader_music_volume_ios",
-              "scraperapi_plan_usd_month", "scraperapi_plan_credits_month", "scrape_markup_pct"):
+              "scraperapi_plan_usd_month", "scraperapi_plan_credits_month", "scrape_markup_pct",
+              "audio_storage_usd_per_gb_month", "audio_storage_retention_days",
+              "audio_storage_markup_pct", "audio_max_upload_mb"):
         if k in patch and patch[k] is not None:
             try:
                 val = float(patch[k])
@@ -375,3 +389,75 @@ async def grant(user_id: str, credits: float, *, by: str = "admin", note: str = 
 async def get_ledger(user_id: str, limit: int = 30) -> List[Dict[str, Any]]:
     cur = db.ai_wallet_ledger.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1).limit(limit)
     return await cur.to_list(limit)
+
+
+# ─────────────────────────── audio-storage metering ───────────────────────────
+def audio_credits_for_bytes(num_bytes: int, cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """Compute the credit cost of storing `num_bytes` of raw audio for the
+    configured retention period, with the configured markup.
+
+    Math (zero-loss against the LLM USD→credit baseline):
+        usd_per_credit = (tokens_per_credit / 1_000_000) × blended_usd_per_mtok
+        storage_usd    = bytes × (usd_per_gb_month / 1024³) × (retention_days/30)
+        credits        = storage_usd × (1 + markup_pct/100) / usd_per_credit
+    """
+    num_bytes = max(0, int(num_bytes or 0))
+    if num_bytes <= 0:
+        return {"credits": 0.0, "usd": 0.0, "bytes": 0,
+                "retention_days": int(cfg.get("audio_storage_retention_days", 90))}
+    gb_month_usd = float(cfg.get("audio_storage_usd_per_gb_month",
+                                 DEFAULTS["audio_storage_usd_per_gb_month"]))
+    retention_days = max(1, int(cfg.get("audio_storage_retention_days",
+                                        DEFAULTS["audio_storage_retention_days"])))
+    markup_pct = max(0.0, float(cfg.get("audio_storage_markup_pct",
+                                        DEFAULTS["audio_storage_markup_pct"])))
+    tpc = float(cfg.get("tokens_per_credit", DEFAULTS["tokens_per_credit"])) or 100.0
+    usd_per_mtok = float(cfg.get("blended_usd_per_mtok",
+                                 DEFAULTS["blended_usd_per_mtok"])) or 2.0
+    usd_per_credit = (tpc / 1_000_000.0) * usd_per_mtok
+    if usd_per_credit <= 0:
+        usd_per_credit = 0.0002  # safety floor
+
+    storage_usd = num_bytes * (gb_month_usd / (1024 ** 3)) * (retention_days / 30.0)
+    total_usd = storage_usd * (1.0 + markup_pct / 100.0)
+    credits = max(0.0001, math.ceil(total_usd / usd_per_credit * 10000) / 10000)
+    return {
+        "credits": round(credits, 4),
+        "usd": round(total_usd, 6),
+        "bytes": num_bytes,
+        "retention_days": retention_days,
+        "markup_pct": round(markup_pct, 2),
+    }
+
+
+async def estimate_audio_storage(num_bytes: int) -> Dict[str, Any]:
+    cfg = await get_config()
+    out = audio_credits_for_bytes(num_bytes, cfg)
+    out["max_upload_mb"] = float(cfg.get("audio_max_upload_mb",
+                                         DEFAULTS["audio_max_upload_mb"]))
+    return out
+
+
+async def charge_audio_storage(user_id: str, num_bytes: int, *,
+                               feature: str = "audio_storage",
+                               session_id: str = "",
+                               audio_id: str = "") -> Dict[str, Any]:
+    """Deduct credits for storing `num_bytes` of raw audio. Returns
+    {charged, balance, bytes, retention_days}. Caller MUST have called
+    `ensure_can_spend` before persisting the file."""
+    cfg = await get_config()
+    est = audio_credits_for_bytes(num_bytes, cfg)
+    credits = float(est["credits"])
+    w = await _get_or_create(user_id)
+    new_balance = round(float(w.get("balance", 0)) - credits, 4)
+    await db.ai_wallets.update_one(
+        {"user_id": user_id}, {"$set": {"balance": new_balance, "updated_at": _now()}},
+    )
+    mb = round(num_bytes / (1024 * 1024), 3)
+    await _ledger(
+        user_id, -credits, "debit", balance_after=new_balance,
+        provider="storage", feature=feature, session_id=session_id,
+        note=f"Audio storage {mb}MB × {est['retention_days']}d (audio={audio_id})",
+    )
+    return {"charged": credits, "balance": round(new_balance, 2),
+            "bytes": num_bytes, "retention_days": est["retention_days"]}

@@ -14,11 +14,16 @@ Stages:
 9. Follow-Up and Closure
 """
 import uuid
+import os
+import re
+from pathlib import Path
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, HTTPException, Request, Depends, UploadFile, File, Form
+from fastapi.responses import FileResponse
 from core.database import db
 from core.auth import get_current_user
 from core.rate_limiting import limiter, AI_LIMIT
+from core import ai_wallet
 
 router = APIRouter(prefix="/conflict-breaker", tags=["Conflict Breaker"])
 
@@ -646,7 +651,6 @@ async def get_full_session(session_id: str, user: dict = Depends(get_current_use
 
 async def _ai_generate(prompt: str, session_id: str = "") -> str:
     """Helper to call LLM for Conflict Breaker AI features."""
-    import os
     from core.llm_compat import LlmChat, UserMessage  # provider-agnostic shim (Emergent | direct via litellm)
     api_key = os.getenv("EMERGENT_LLM_KEY")
     if not api_key:
@@ -869,3 +873,214 @@ async def cb_dashboard(user: dict = Depends(get_current_user)):
         "recent": sessions[:5],
         "pending_reminders": reminders,
     }
+
+
+# ═══════════════════════════════════════════════════════════════
+# VOICE INPUT — Raw Audio Upload + Transcription
+# ═══════════════════════════════════════════════════════════════
+# Two modes for any text field in the 9-stage wizard:
+#   (a) Transcribe-to-text  → uses Groq/OpenAI Whisper, charged via AI credits
+#       (token-based, same as existing trap voice flow). No file is kept.
+#   (b) Save-as-audio       → file is persisted under
+#       /app/backend/uploads/conflict_audio/{user_id}/{audio_id}.{ext}
+#       and metered against the user's wallet using the configured
+#       audio_storage_*  knobs in the AI Wallet admin config.
+
+AUDIO_ROOT = Path("/app/backend/uploads/conflict_audio")
+ALLOWED_AUDIO_EXTS = {"webm", "wav", "mp3", "ogg", "m4a", "mp4", "aac"}
+_EXT_FROM_CT = {
+    "audio/webm": "webm", "audio/wav": "wav", "audio/x-wav": "wav",
+    "audio/mpeg": "mp3", "audio/mp3": "mp3", "audio/ogg": "ogg",
+    "audio/m4a": "m4a", "audio/x-m4a": "m4a", "audio/mp4": "m4a",
+    "audio/aac": "aac",
+}
+
+_SAFE_FIELD_RE = re.compile(r"[^a-zA-Z0-9_\-]")
+
+
+def _safe(s: str, fallback: str = "field") -> str:
+    s = (s or "").strip()
+    s = _SAFE_FIELD_RE.sub("_", s)[:64]
+    return s or fallback
+
+
+def _detect_ext(content_type: str | None, filename: str | None) -> str:
+    ct = (content_type or "").split(";")[0].strip().lower()
+    if ct in _EXT_FROM_CT:
+        return _EXT_FROM_CT[ct]
+    if filename and "." in filename:
+        ext = filename.rsplit(".", 1)[-1].lower()
+        if ext in ALLOWED_AUDIO_EXTS:
+            return ext
+    return "webm"  # safe default for browser MediaRecorder
+
+
+async def _own_session(session_id: str, user_id: str) -> dict:
+    sess = await db.conflict_breaker_sessions.find_one(
+        {"session_id": session_id, "user_id": user_id}, {"_id": 0},
+    )
+    if not sess:
+        raise HTTPException(404, "Session not found")
+    return sess
+
+
+@router.get("/audio/estimate")
+async def cb_audio_estimate(bytes: int = 0, user: dict = Depends(get_current_user)):
+    """Estimate the credit cost of saving a raw audio clip of `bytes` bytes."""
+    return await ai_wallet.estimate_audio_storage(int(bytes or 0))
+
+
+@router.post("/sessions/{session_id}/audio/upload")
+async def cb_audio_upload(
+    session_id: str,
+    audio: UploadFile = File(...),
+    field: str = Form(...),
+    duration_sec: float = Form(0.0),
+    user: dict = Depends(get_current_user),
+):
+    """Persist a raw audio clip for a Conflict Breaker text field.
+
+    Charges storage credits up front (zero-loss markup per AI Wallet config)
+    and writes the file to disk under /app/backend/uploads/conflict_audio/.
+    """
+    await _own_session(session_id, user["user_id"])
+
+    # Gate: refuse if wallet empty (no surprise overdraft).
+    try:
+        await ai_wallet.ensure_can_spend(user["user_id"])
+    except ai_wallet.InsufficientCredits:
+        raise HTTPException(402, "Insufficient AI credits. Top up your wallet to save raw audio.")
+
+    cfg = await ai_wallet.get_config()
+    max_mb = float(cfg.get("audio_max_upload_mb", 10.0))
+
+    audio_bytes = await audio.read()
+    size = len(audio_bytes)
+    if size <= 0:
+        raise HTTPException(400, "Empty audio upload")
+    if size > max_mb * 1024 * 1024:
+        raise HTTPException(400, f"Audio file too large (max {max_mb:.0f}MB)")
+
+    ext = _detect_ext(audio.content_type, audio.filename)
+    audio_id = uuid.uuid4().hex
+    user_dir = AUDIO_ROOT / user["user_id"]
+    user_dir.mkdir(parents=True, exist_ok=True)
+    rel_path = f"{user['user_id']}/{audio_id}.{ext}"
+    abs_path = user_dir / f"{audio_id}.{ext}"
+    abs_path.write_bytes(audio_bytes)
+
+    # Charge storage credits AFTER successful write (refund-able by delete).
+    charge = await ai_wallet.charge_audio_storage(
+        user["user_id"], size, feature="conflict_breaker_audio",
+        session_id=session_id, audio_id=audio_id,
+    )
+
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "audio_id": audio_id,
+        "session_id": session_id,
+        "user_id": user["user_id"],
+        "module": "conflict-breaker",
+        "field": _safe(field),
+        "ext": ext,
+        "content_type": (audio.content_type or "").split(";")[0],
+        "size_bytes": size,
+        "duration_sec": float(duration_sec or 0.0),
+        "rel_path": rel_path,
+        "credits_charged": float(charge["charged"]),
+        "retention_days": int(charge["retention_days"]),
+        "created_at": now,
+    }
+    await db.conflict_audio_files.insert_one(doc)
+    doc.pop("_id", None)
+    doc["balance"] = charge["balance"]
+    return doc
+
+
+@router.get("/sessions/{session_id}/audio")
+async def cb_audio_list(session_id: str, user: dict = Depends(get_current_user)):
+    """List all raw-audio attachments for a session (by field)."""
+    await _own_session(session_id, user["user_id"])
+    rows = await db.conflict_audio_files.find(
+        {"session_id": session_id, "user_id": user["user_id"]}, {"_id": 0},
+    ).sort("created_at", 1).to_list(500)
+    return {"session_id": session_id, "items": rows}
+
+
+@router.get("/audio/{audio_id}")
+async def cb_audio_download(audio_id: str, user: dict = Depends(get_current_user)):
+    """Stream/playback a saved audio file (auth-gated to the owner)."""
+    doc = await db.conflict_audio_files.find_one(
+        {"audio_id": audio_id, "user_id": user["user_id"]}, {"_id": 0},
+    )
+    if not doc:
+        raise HTTPException(404, "Audio not found")
+    abs_path = AUDIO_ROOT / doc["rel_path"]
+    if not abs_path.exists():
+        raise HTTPException(410, "Audio file is no longer available")
+    media_type = doc.get("content_type") or f"audio/{doc.get('ext','webm')}"
+    return FileResponse(str(abs_path), media_type=media_type,
+                        filename=f"{audio_id}.{doc.get('ext','webm')}")
+
+
+@router.delete("/audio/{audio_id}")
+async def cb_audio_delete(audio_id: str, user: dict = Depends(get_current_user)):
+    """Delete a saved audio file. (No credit refund — clip was already stored.)"""
+    doc = await db.conflict_audio_files.find_one(
+        {"audio_id": audio_id, "user_id": user["user_id"]}, {"_id": 0},
+    )
+    if not doc:
+        raise HTTPException(404, "Audio not found")
+    abs_path = AUDIO_ROOT / doc["rel_path"]
+    try:
+        if abs_path.exists():
+            abs_path.unlink()
+    except OSError:
+        pass
+    await db.conflict_audio_files.delete_one({"audio_id": audio_id, "user_id": user["user_id"]})
+    return {"deleted": True, "audio_id": audio_id}
+
+
+@router.post("/sessions/{session_id}/audio/transcribe")
+async def cb_audio_transcribe(
+    session_id: str,
+    audio: UploadFile = File(...),
+    field: str = Form(...),
+    language: str = Form("en-US"),
+    user: dict = Depends(get_current_user),
+):
+    """Transcribe a voice clip to text (English by default) WITHOUT persisting
+    the file. Charges AI credits via the standard token meter (Whisper)."""
+    from routes.social_learning.stt_engine import stt_engine
+
+    await _own_session(session_id, user["user_id"])
+
+    try:
+        await ai_wallet.ensure_can_spend(user["user_id"])
+    except ai_wallet.InsufficientCredits:
+        raise HTTPException(402, "Insufficient AI credits. Top up your wallet to transcribe.")
+
+    audio_bytes = await audio.read()
+    if not audio_bytes:
+        raise HTTPException(400, "Empty audio upload")
+    if len(audio_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(400, "Audio file too large (max 10MB)")
+
+    ext = _detect_ext(audio.content_type, audio.filename)
+    try:
+        text = stt_engine.transcribe(audio_bytes, audio_format=ext, language=language or "en-US")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    # Charge a flat-rate credit for the transcription (≈ Whisper-1 minute cost).
+    # 1 min Whisper ≈ $0.006 → ~30 credits at default config. Use the size-based
+    # heuristic (60KB/sec for opus) capped at 60s to keep it predictable.
+    seconds = max(1.0, min(180.0, len(audio_bytes) / 60_000.0))
+    credits = round(seconds * 0.5, 4)  # 0.5 cr/sec ≈ Whisper @ default wallet config
+    await ai_wallet.charge_credits(
+        user["user_id"], credits, feature="cb_voice_transcribe",
+        note=f"Voice → text ({seconds:.0f}s)",
+    )
+
+    return {"field": _safe(field), "transcribed_text": text,
+            "credits_charged": credits, "duration_sec": round(seconds, 2)}
