@@ -1,3 +1,4 @@
+// v3.19.0-VERIFY-2026-06-15 — Life Mirror · Inner Wellbeing · 9-section IA
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
