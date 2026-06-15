@@ -42,13 +42,23 @@ _BACKEND_DIR = os.path.dirname(_HERE)  # parent of scripts/
 if _BACKEND_DIR not in sys.path:
     sys.path.insert(0, _BACKEND_DIR)
 
-# Load .env from the backend dir if present (so MONGO_URL is picked up
-# the same way `core.database` does it).
+# Load env files matching the EXACT priority docker-compose uses:
+#   1. backend/.env   (sample/dev config)
+#   2. deploy/.env    (ops-managed prod secrets — Atlas MONGO_URL lives here)
+# This is critical: on EC2 the real MONGO_URL/MONGODB_URL is in deploy/.env,
+# NOT backend/.env. Without loading both, the script connects to localhost
+# instead of Atlas and reports `collections_with_data=0`.
 try:
     from dotenv import load_dotenv
-    _env_path = os.path.join(_BACKEND_DIR, ".env")
-    if os.path.exists(_env_path):
-        load_dotenv(_env_path)
+    _candidates = [
+        os.path.join(_BACKEND_DIR, ".env"),
+        os.path.join(os.path.dirname(_BACKEND_DIR), "deploy", ".env"),
+    ]
+    for _p in _candidates:
+        if os.path.exists(_p):
+            # override=True so later files (deploy/.env) win — matches
+            # docker-compose's env_file: ordering semantics.
+            load_dotenv(_p, override=True)
 except ImportError:
     pass  # python-dotenv is optional; MONGO_URL may already be exported
 
@@ -162,7 +172,23 @@ async def _migrate_one(coll_name: str, fields: List[str], dry_run: bool) -> Dict
 
 async def main(dry_run: bool) -> None:
     mode = "DRY-RUN" if dry_run else "APPLY"
+    # Mask the password in the URL when logging — useful for diagnosing the
+    # "0 collections found" symptom which is almost always a wrong MONGO_URL.
+    safe_url = _MONGO_URL
+    if "@" in safe_url:
+        safe_url = safe_url.split("@", 1)[1]
     logger.info("Starting life-area slug migration [%s]", mode)
+    logger.info("  MongoDB host:  %s", safe_url)
+    logger.info("  Database:      %s", _DB_NAME)
+    # Sanity-poll: list collection names so the operator sees IMMEDIATELY if
+    # we connected to the right cluster.
+    try:
+        names = await db.list_collection_names()
+        logger.info("  Collections found: %d (first 6: %s)",
+                    len(names), ", ".join(sorted(names)[:6]) or "<none>")
+    except Exception as e:
+        logger.error("  Cannot list collections: %s — wrong MONGO_URL?", e)
+        return
 
     grand_scanned = 0
     grand_updated = 0

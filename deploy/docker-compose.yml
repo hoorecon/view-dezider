@@ -33,6 +33,11 @@ services:
       # admin_docs_viewer endpoint can read PRD.md / SRS.md / etc.
       # Without this mount the markdown viewer returns 404 for every doc.
       - ../docs:/app/docs:ro
+      # Mount README.md from the repo root so /api/version can read the
+      # BUILD_VERSION / BUILD_TAG / BUILD_TIMESTAMP markers. Without this
+      # mount the endpoint returns "unknown" for everything because the
+      # docker build context is `../backend` only (no repo-root files).
+      - ../README.md:/app/README.md:ro
     ports:
       - "8001:8001"
     healthcheck:
