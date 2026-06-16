@@ -687,20 +687,18 @@ export default function ConflictBreakerScreen() {
 
       <Text style={s.ackText}>{ACKNOWLEDGMENT}</Text>
 
-      {/* Action Buttons */}
+      {/* Single CTA — the previous 3-button bucket (Prepare/Repair/Reflect)
+          was visual-only; all paths went through the same 9-step wizard.
+          Conversation type is now selected inside the create modal. */}
       <View style={s.actBtnRow}>
-        {[
-          { type: 'prepare', label: 'Prepare for a Conversation', icon: 'shield-checkmark', color: '#6366F1' },
-          { type: 'repair', label: 'Repair a Conversation', icon: 'build', color: '#F59E0B' },
-          { type: 'reflect', label: 'Reflect After a Conversation', icon: 'journal', color: '#10B981' },
-        ].map(btn => (
-          <TouchableOpacity key={btn.type} style={[s.actCard, { borderLeftColor: btn.color }]}
-            onPress={() => { setCreateForm({ ...createForm, conversation_type: btn.type }); setShowCreate(true); }}>
-            <Ionicons name={btn.icon as any} size={22} color={btn.color} />
-            <Text style={s.actCardText}>{btn.label}</Text>
-            <Ionicons name="chevron-forward" size={16} color="#6B7280" />
-          </TouchableOpacity>
-        ))}
+        <TouchableOpacity
+          style={[s.actCard, { borderLeftColor: '#6366F1' }]}
+          onPress={() => { setCreateForm({ ...createForm, conversation_type: 'prepare' }); setShowCreate(true); }}
+        >
+          <Ionicons name="chatbubbles" size={22} color="#6366F1" />
+          <Text style={s.actCardText}>Start a Crucial Conversation</Text>
+          <Ionicons name="chevron-forward" size={16} color="#6B7280" />
+        </TouchableOpacity>
       </View>
 
       {/* Sessions */}
@@ -878,6 +876,37 @@ export default function ConflictBreakerScreen() {
               value={createForm.title} onChangeText={t => setCreateForm({ ...createForm, title: t })} voiceField="title" />
             <QField label="Other party" helper='"Co-founder, spouse, manager, client"'
               value={createForm.other_party_role} onChangeText={t => setCreateForm({ ...createForm, other_party_role: t })} voiceField="other_party_role" />
+            {/* Conversation type (formerly the 3 entry buckets) */}
+            <View style={s.qField}>
+              <Text style={s.qLabel}>Conversation context</Text>
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                {[
+                  { type: 'prepare', label: 'Prepare ahead', color: '#6366F1' },
+                  { type: 'repair', label: 'Repair after', color: '#F59E0B' },
+                  { type: 'reflect', label: 'Reflect & learn', color: '#10B981' },
+                ].map(o => {
+                  const active = createForm.conversation_type === o.type;
+                  return (
+                    <TouchableOpacity
+                      key={o.type}
+                      onPress={() => setCreateForm({ ...createForm, conversation_type: o.type })}
+                      style={{
+                        borderWidth: 1.5,
+                        borderColor: active ? o.color : '#CBD5E1',
+                        backgroundColor: active ? o.color : '#FFFFFF',
+                        borderRadius: 10,
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                      }}
+                    >
+                      <Text style={{ color: active ? '#FFF' : '#475569', fontSize: 12, fontWeight: '700' }}>
+                        {o.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
             <TimingFieldset value={timing} onChange={setTiming} />
             {linkedSource ? (
               <LinkedSourcePill
@@ -895,7 +924,7 @@ export default function ConflictBreakerScreen() {
               </TouchableOpacity>
             )}
             <TouchableOpacity style={s.saveBtn} onPress={createSession}>
-              <Text style={s.saveBtnText}>Start Preparation</Text>
+              <Text style={s.saveBtnText}>Start Conversation</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -918,29 +947,29 @@ const s = StyleSheet.create({
   actCard: { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, borderLeftWidth: 3, borderWidth: 1, borderColor: '#E2E8F0' },
   actCardText: { color: '#E2E8F0', fontSize: 14, fontWeight: '600', flex: 1 },
 
-  sectionTitle: { color: '#FFF', fontSize: 16, fontWeight: '700', marginBottom: 12 },
+  sectionTitle: { color: '#0F172A', fontSize: 16, fontWeight: '700', marginBottom: 12 },
 
   emptyState: { alignItems: 'center', paddingVertical: 40 },
-  emptyText: { color: '#6B7280', fontSize: 14, marginTop: 12, textAlign: 'center' },
+  emptyText: { color: '#64748B', fontSize: 14, marginTop: 12, textAlign: 'center' },
 
   sessCard: { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0' },
   sessIcon: { width: 40, height: 40, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  sessTitle: { color: '#FFF', fontSize: 14, fontWeight: '600' },
-  sessSub: { color: '#94A3B8', fontSize: 12, marginTop: 2 },
+  sessTitle: { color: '#0F172A', fontSize: 14, fontWeight: '600' },
+  sessSub: { color: '#475569', fontSize: 12, marginTop: 2 },
   sessMetaRow: { flexDirection: 'row', gap: 8, marginTop: 4, alignItems: 'center' },
   sessBadge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 },
   sessBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
-  sessType: { color: '#6B7280', fontSize: 11, textTransform: 'capitalize' },
+  sessType: { color: '#64748B', fontSize: 11, textTransform: 'capitalize' },
 
   // Progress
   progressRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
   progressDot: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#E2E8F0', justifyContent: 'center', alignItems: 'center' },
-  progressNum: { color: '#6B7280', fontSize: 12, fontWeight: '700' },
+  progressNum: { color: '#475569', fontSize: 12, fontWeight: '700' },
 
   // Stage header
   stageHeader: { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', marginBottom: 16, borderLeftWidth: 3, borderWidth: 1, borderColor: '#E2E8F0' },
-  stageName: { color: '#FFF', fontSize: 16, fontWeight: '700' },
-  stageNum: { color: '#94A3B8', fontSize: 12 },
+  stageName: { color: '#0F172A', fontSize: 16, fontWeight: '700' },
+  stageNum: { color: '#475569', fontSize: 12 },
 
   warnBanner: { backgroundColor: '#DC2626', borderRadius: 10, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   warnText: { color: '#FFF', fontSize: 12, fontWeight: '600', flex: 1 },
@@ -948,39 +977,39 @@ const s = StyleSheet.create({
   // Question fields
   qField: { marginBottom: 14 },
   qLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4, gap: 8 },
-  qLabel: { color: '#E2E8F0', fontSize: 13, fontWeight: '600', marginBottom: 4 },
-  qHelper: { color: '#6B7280', fontSize: 11, marginBottom: 6, fontStyle: 'italic' },
+  qLabel: { color: '#0F172A', fontSize: 14, fontWeight: '700', marginBottom: 4 },
+  qHelper: { color: '#64748B', fontSize: 11, marginBottom: 6, fontStyle: 'italic' },
   qInput: { backgroundColor: '#FFFFFF', borderRadius: 10, borderWidth: 1, borderColor: '#CBD5E1', color: '#0F172A', paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
 
-  subHeader: { color: '#A78BFA', fontSize: 14, fontWeight: '700', marginTop: 16, marginBottom: 8 },
+  subHeader: { color: '#6366F1', fontSize: 14, fontWeight: '700', marginTop: 16, marginBottom: 8 },
 
   // Slider
   sliderRow: { flexDirection: 'row', gap: 4, justifyContent: 'space-between' },
   sliderDot: { width: (SW - 80) / 10, height: 32, borderRadius: 6, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#E2E8F0' },
-  sliderNum: { color: '#6B7280', fontSize: 11, fontWeight: '700' },
+  sliderNum: { color: '#475569', fontSize: 11, fontWeight: '700' },
 
   // Pattern
   patternGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  patternChip: { borderRadius: 8, borderWidth: 1, borderColor: '#334155', paddingHorizontal: 10, paddingVertical: 6 },
+  patternChip: { borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#FFFFFF' },
   patternChipActive: { backgroundColor: '#003087', borderColor: '#003087' },
-  patternText: { color: '#94A3B8', fontSize: 12, fontWeight: '500' },
+  patternText: { color: '#475569', fontSize: 12, fontWeight: '600' },
 
   // Repair methods
   repairRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  repairBtn: { flex: 1, borderRadius: 10, borderWidth: 1.5, borderColor: '#334155', paddingVertical: 10, alignItems: 'center', gap: 4 },
-  repairText: { color: '#94A3B8', fontSize: 12, fontWeight: '600' },
+  repairBtn: { flex: 1, borderRadius: 10, borderWidth: 1.5, borderColor: '#CBD5E1', paddingVertical: 10, alignItems: 'center', gap: 4, backgroundColor: '#FFFFFF' },
+  repairText: { color: '#475569', fontSize: 12, fontWeight: '600' },
 
   // Story types
   storyTypeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  storyTypeBtn: { borderRadius: 8, borderWidth: 1, borderColor: '#334155', paddingHorizontal: 12, paddingVertical: 6 },
+  storyTypeBtn: { borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#FFFFFF' },
   storyTypeBtnActive: { backgroundColor: '#003087', borderColor: '#003087' },
-  storyTypeText: { color: '#94A3B8', fontSize: 12, fontWeight: '600' },
+  storyTypeText: { color: '#475569', fontSize: 12, fontWeight: '600' },
 
   // AI output
   aiBox: { backgroundColor: '#EEF4FF', borderRadius: 14, padding: 16, marginTop: 16, borderWidth: 1, borderColor: '#BFD7FF' },
   aiHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  aiTitle: { color: '#A78BFA', fontSize: 14, fontWeight: '700' },
-  aiText: { color: '#E2E8F0', fontSize: 13, lineHeight: 20 },
+  aiTitle: { color: '#3730A3', fontSize: 14, fontWeight: '700' },
+  aiText: { color: '#0F172A', fontSize: 13, lineHeight: 20 },
 
   // Navigation
   navBtnRow: { flexDirection: 'row', gap: 8, marginTop: 20 },
@@ -988,10 +1017,10 @@ const s = StyleSheet.create({
   navBtnText: { color: '#FFF', fontSize: 13, fontWeight: '600' },
 
   // Modal
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#1E293B', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  modalTitle: { color: '#FFF', fontSize: 18, fontWeight: '700' },
-  saveBtn: { backgroundColor: '#6366F1', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 16 },
+  modalTitle: { color: '#0F172A', fontSize: 18, fontWeight: '700' },
+  saveBtn: { backgroundColor: '#003087', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 16 },
   saveBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
 });

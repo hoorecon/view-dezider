@@ -413,13 +413,13 @@ export default function HomeScreen() {
 
             <TouchableOpacity
               style={styles.colabCard}
-              onPress={() => router.push('/tools/lifestyle-designer' as any)}
+              onPress={() => router.push('/tools/lifestyle' as any)}
             >
               <View style={[styles.colabIconWrap, { backgroundColor: 'rgba(234,88,12,0.1)' }]}>
                 <Ionicons name="color-palette" size={22} color="#EA580C" />
               </View>
               <Text style={styles.colabTitle}>Today&apos;s Routine</Text>
-              <Text style={styles.colabSubtitle}>Lifestyle plan</Text>
+              <Text style={styles.colabSubtitle}>Lifestyle Dezider</Text>
             </TouchableOpacity>
           </View>
 
