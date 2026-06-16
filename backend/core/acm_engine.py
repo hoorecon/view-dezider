@@ -75,7 +75,21 @@ async def seed_acm_defaults(force: bool = False):
         logger.info(f"ACM seed version changed ({stored_version} → {ACM_SEED_VERSION}); auto-reseeding")
 
     # Clear on explicit force OR on version bump (safer: remove stale modules/features)
+    # PRESERVE admin's custom per-feature `access` maps + `tile_overrides`
+    # across version bumps — otherwise every seed bump silently destroys the
+    # admin's WOWO customizations (the exact bug Sabba hit on 2026-06-16).
+    preserved_access: dict[str, dict] = {}  # feature_id → preserved fields
     if force or version_changed:
+        existing_mods = await db.acm_modules.find({}, {"features": 1}).to_list(None)
+        for em in existing_mods:
+            for f in em.get("features") or []:
+                fid = f.get("feature_id")
+                if not fid:
+                    continue
+                preserved_access[fid] = {
+                    "access": f.get("access"),
+                    "tile_overrides": f.get("tile_overrides"),
+                }
         await db.acm_modules.delete_many({})
         await db.acm_user_types.delete_many({})
         await db.acm_subscription_plans.delete_many({})
@@ -88,11 +102,29 @@ async def seed_acm_defaults(force: bool = False):
     for sp in SUBSCRIPTION_PLANS:
         await db.acm_subscription_plans.update_one({"id": sp["id"]}, {"$set": sp}, upsert=True)
 
-    # Seed modules with features
+    # Seed modules with features — merging preserved admin overrides
     for mod in ACM_MODULES:
+        merged = dict(mod)
+        if preserved_access:
+            new_features = []
+            for f in mod.get("features") or []:
+                fid = f.get("feature_id")
+                saved = preserved_access.get(fid) if fid else None
+                if saved and saved.get("access"):
+                    # admin had customized this feature → keep their access map
+                    # but inherit any new metadata (parent_feature_id,
+                    # is_section, section_order, quota_unit, etc.) from seed.
+                    nf = dict(f)
+                    nf["access"] = saved["access"]
+                    if saved.get("tile_overrides"):
+                        nf["tile_overrides"] = saved["tile_overrides"]
+                    new_features.append(nf)
+                else:
+                    new_features.append(f)
+            merged["features"] = new_features
         await db.acm_modules.update_one(
             {"module_id": mod["module_id"]},
-            {"$set": mod},
+            {"$set": merged},
             upsert=True,
         )
 

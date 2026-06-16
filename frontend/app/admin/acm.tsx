@@ -529,7 +529,8 @@ export default function ACMAdminScreen() {
                     style={[
                       styles.levelBtn,
                       { borderColor: cfg.color },
-                      active && { backgroundColor: cfg.color + '20' },
+                      active && styles.levelBtnActive,
+                      active && { backgroundColor: cfg.color, borderColor: cfg.color },
                     ]}
                     onPress={() => {
                       setEditLevel(lvl);
@@ -538,8 +539,13 @@ export default function ACMAdminScreen() {
                       else if (parseInt(editQuota, 10) === 0) setEditQuota('-1');
                     }}
                     activeOpacity={0.75}>
-                    <Ionicons name={cfg.icon as any} size={18} color={cfg.color} />
-                    <Text style={[styles.levelBtnText, { color: cfg.color }]}>{cfg.label}</Text>
+                    {active && (
+                      <View style={styles.levelBtnCheck}>
+                        <Ionicons name="checkmark-circle" size={14} color="#FFF" />
+                      </View>
+                    )}
+                    <Ionicons name={cfg.icon as any} size={18} color={active ? '#FFF' : cfg.color} />
+                    <Text style={[styles.levelBtnText, { color: active ? '#FFF' : cfg.color }]}>{cfg.label}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -726,6 +732,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20, borderTopRightRadius: 20,
     padding: 20,
     borderTopWidth: 2, borderColor: COLORS.accent,
+    width: '100%', maxWidth: 560, alignSelf: 'center',
   },
   modalHeaderRow: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 12,
@@ -754,6 +761,16 @@ const styles = StyleSheet.create({
     borderRadius: 10, borderWidth: 1.5,
     backgroundColor: COLORS.bg,
     alignItems: 'center', gap: 4,
+  },
+  // Stronger visual cue when a level chip is selected — fixes the
+  // "Hidden chip looks identical whether selected or not" complaint.
+  levelBtnActive: {
+    borderWidth: 2.5,
+    shadowColor: '#000', shadowOpacity: 0.12,
+    shadowRadius: 4, shadowOffset: { width: 0, height: 2 },
+  },
+  levelBtnCheck: {
+    position: 'absolute', top: 4, right: 4,
   },
   levelBtnText: { fontSize: 11, fontWeight: '700' },
   quotaInput: {
