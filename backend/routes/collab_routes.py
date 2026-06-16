@@ -135,9 +135,25 @@ async def _resolve_user_to_invite(phone: str) -> Optional[dict]:
 
 
 def _public_link(invite_id: str) -> str:
+    """Build the user-facing URL for an invite or appointment.
+
+    Resolution order:
+      1. `PUBLIC_APP_URL` env var (set this on each env's backend/.env)
+      2. `EXPO_PUBLIC_BACKEND_URL` with `:8001` stripped (best-effort dev fallback)
+      3. `https://jelcos.ai` (prod default)
+    """
     import os
-    base = (os.getenv("PUBLIC_APP_URL") or "https://jelcos.ai").rstrip("/")
-    return f"{base}/share/invite/{invite_id}"
+    base = os.getenv("PUBLIC_APP_URL")
+    if not base:
+        be = os.getenv("EXPO_PUBLIC_BACKEND_URL") or ""
+        if be:
+            # Strip an optional :PORT and a trailing /api to get the app origin.
+            base = be.rstrip("/").replace(":8001", "")
+            if base.endswith("/api"):
+                base = base[:-4]
+    if not base:
+        base = "https://jelcos.ai"
+    return f"{base.rstrip('/')}/share/invite/{invite_id}"
 
 
 # ============================================================

@@ -34,13 +34,13 @@ export const CollabBar: React.FC<CollabBarProps> = ({
     <>
       <View style={s.row}>
         {!hideShare && (
-          <TouchableOpacity style={[s.btn, { borderColor: '#0EA5E9' }]} onPress={() => setShowShare(true)}>
+          <TouchableOpacity testID="collab-share-btn" style={[s.btn, { borderColor: '#0EA5E9' }]} onPress={() => setShowShare(true)}>
             <Ionicons name="share-social" size={14} color="#0EA5E9" />
             <Text style={[s.btnText, { color: '#0EA5E9' }]}>Share this step</Text>
           </TouchableOpacity>
         )}
         {!hideCall && (
-          <TouchableOpacity style={[s.btn, { borderColor: '#10B981' }]} onPress={() => setShowCall(true)}>
+          <TouchableOpacity testID="collab-call-btn" style={[s.btn, { borderColor: '#10B981' }]} onPress={() => setShowCall(true)}>
             <Ionicons name="videocam" size={14} color="#10B981" />
             <Text style={[s.btnText, { color: '#10B981' }]}>Schedule call</Text>
           </TouchableOpacity>
