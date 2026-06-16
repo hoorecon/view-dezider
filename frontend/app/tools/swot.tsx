@@ -17,6 +17,8 @@ import api from '../../src/utils/api';
 import { formatAbsolute } from '../../src/utils/datetime';
 import PaywallGate from '../../src/components/PaywallGate';
 import ModuleStoreActions from '../../src/components/ModuleStoreActions';
+import { CollabBar } from '../../src/components/CollabBar';
+import { DecisionContinuePanel } from '../../src/components/DecisionContinuePanel';
 import ActionItemEditor from '../../src/components/ActionItemEditor';
 
 interface SwotItem {
@@ -363,6 +365,15 @@ export default function SwotScreen() {
               ))}
             </View>
 
+            {/* Collab — share this SWOT or schedule discussion call */}
+            <CollabBar
+              module="swot"
+              decisionId={selectedAnalysis.id}
+              stepId="s_synthesis"
+              stepLabel={`SWOT — ${selectedAnalysis.title || 'analysis'}`}
+              decisionTitle={selectedAnalysis.title}
+            />
+
             {/* SWOT flow leads ONLY to the Dezider (Decider). The legacy
                 "Open 8-Step Framework" CTA was removed per UX feedback —
                 users found it confusing alongside "Open My Dezider".
@@ -455,6 +466,14 @@ export default function SwotScreen() {
                 When you convert: Strengths & Opportunities → My Dezider factors as-is. Weaknesses & Threats are prefixed with "NOT" (e.g., "High cost" → "NOT High cost") and become My Dezider factors. AI generates expected values for all.
               </Text>
             </View>
+
+            {/* End-of-flow CTA panel — continue this SWOT in another module */}
+            <DecisionContinuePanel
+              sourceModule="swot"
+              sourceDecisionId={selectedAnalysis.id}
+              title={selectedAnalysis.title}
+              contextSummary={`From a SWOT analysis on ${(selectedAnalysis as any).created_at?.slice?.(0, 10) || 'today'}.`}
+            />
           </ScrollView>
 
           {/* Add Item Modal */}

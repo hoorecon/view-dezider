@@ -16,6 +16,8 @@ import SkillsetPicker from '../../src/components/SkillsetPicker';
 import ResourcePicker, { type PickedResource } from '../../src/components/ResourcePicker';
 import MilestoneEditor, { type SmartMilestone } from '../../src/components/MilestoneEditor';
 import TimestampLine from '../../src/components/TimestampLine';
+import { CollabBar } from '../../src/components/CollabBar';
+import { DecisionContinuePanel } from '../../src/components/DecisionContinuePanel';
 import api from '../../src/utils/api';
 
 const AUDIO_URL = 'https://customer-assets.emergentagent.com/job_a7a2d7ec-9ce2-470b-8ff8-d26638aa4277/artifacts/unvj7j0c_Goal%20Setter.mp3';
@@ -285,7 +287,27 @@ export default function GoalSetterScreen() {
         ) : (
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: mode === 'create' ? 100 : 32 }}
             refreshControl={mode === 'list' ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} /> : undefined}>
+            {/* Collab affordance — share goal definition or schedule a call.
+                Only meaningful in edit mode (we have an editingGoalId). */}
+            {mode === 'create' && editingGoalId && (
+              <CollabBar
+                module="goal-setter"
+                decisionId={editingGoalId}
+                stepId="s_define"
+                stepLabel="SMART Goal"
+                decisionTitle={undefined}
+              />
+            )}
             {mode === 'list' ? renderList() : renderForm()}
+            {/* End-of-flow CTA — show only after saving (editingGoalId present). */}
+            {mode === 'create' && editingGoalId && (
+              <DecisionContinuePanel
+                sourceModule="goal-setter"
+                sourceDecisionId={editingGoalId}
+                title="SMART goal"
+                contextSummary="From your SMART goal definition."
+              />
+            )}
           </ScrollView>
         )}
 

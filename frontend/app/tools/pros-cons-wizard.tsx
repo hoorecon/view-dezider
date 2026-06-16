@@ -37,6 +37,8 @@ import { useAiWalletStore } from '../../src/store/aiWalletStore';
 import { Factor, OptionT, Rollup, Guideline, Analysis } from '../../src/features/pros-cons/types';
 import { STEPS, LIFE_AREAS, COLORS } from '../../src/features/pros-cons/constants';
 import { styles, pcAssess } from '../../src/features/pros-cons/styles';
+import { CollabBar } from '../../src/components/CollabBar';
+import { DecisionContinuePanel } from '../../src/components/DecisionContinuePanel';
 import {
   DebouncedInput, NextBack, FactorGroupRow, DataSourceModal, FactorTreeNode,
   FactorAssessmentCard, MainFactorWithSubs, SubFactorEditableList, LmhAiButtons,
@@ -786,6 +788,17 @@ export default function ProsConsWizard() {
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.body}>
+
+          {/* Collab affordance — share this step or schedule discussion. */}
+          {id && analysis && (
+            <CollabBar
+              module="pros-cons"
+              decisionId={id}
+              stepId={`s${step}`}
+              stepLabel={`P&C Step ${step}`}
+              decisionTitle={analysis.title || 'Pros & Cons analysis'}
+            />
+          )}
 
           {/* ────── STEP 1 ────── */}
           {step === 1 && (
@@ -1685,6 +1698,8 @@ export default function ProsConsWizard() {
 
           {/* ────── STEP 8 ────── */}
           {step === 8 && (() => {
+            // Collab affordances + continue-elsewhere CTA panel render after
+            // the step 8 body. Both are conditional on a saved analysis id.
             // ── Case-1 max possible score = sum of std_ratings of all main factors.
             // Used internally as the denominator for % computation; not displayed
             // (per UX feedback — keep the math implicit).

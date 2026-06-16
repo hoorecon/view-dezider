@@ -33,6 +33,8 @@ import api from '../../src/utils/api';
 import TimingFieldset, { TimingValue } from '../../src/components/decisions/TimingFieldset';
 import { addDaysISO } from '../../src/utils/dateLocalize';
 import { useLifeAreas } from '../../src/utils/useLifeAreas';
+import { CollabBar } from '../../src/components/CollabBar';
+import { DecisionContinuePanel } from '../../src/components/DecisionContinuePanel';
 
 // ============== CONSTANTS ==============
 // NOTE: Life-area list is no longer hardcoded — it now flows from the
@@ -1211,6 +1213,15 @@ export default function SimpleSolutionFinder() {
       <Text style={s.qHint}>
         Auto-aggregated from Solutions, Mitigations & Contingencies. Edit owners / dates, tick CTT or Lifestyle if applicable, then push everything to your universal Action Center.
       </Text>
+      {editId && (
+        <CollabBar
+          module="solution-finder"
+          decisionId={editId}
+          stepId="s_action_plan"
+          stepLabel="Solution Finder — Action Plan"
+          decisionTitle={smartGoal || 'Solution Finder'}
+        />
+      )}
       <TouchableOpacity onPress={recomputePlan} style={s.regenBtn}>
         <Ionicons name="refresh" size={14} color="#0F172A" />
         <Text style={s.regenText}>Re-aggregate from Q3 + Q4b + Q4c</Text>
@@ -1285,6 +1296,14 @@ export default function SimpleSolutionFinder() {
           <Ionicons name="rocket" size={16} color="#FFF" />
           <Text style={s.pushBtnText}>Push pending items to Action Center</Text>
         </TouchableOpacity>
+      )}
+      {editId && (
+        <DecisionContinuePanel
+          sourceModule="solution-finder"
+          sourceDecisionId={editId}
+          title={smartGoal || 'Solution Finder'}
+          contextSummary="From your Solution Finder analysis."
+        />
       )}
     </ScrollView>
   );
