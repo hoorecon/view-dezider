@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, ActivityIndicator, KeyboardAvoidingView, Platform,
-  Animated, Easing,
+  Animated, Easing, Modal, Pressable,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useLocalSearchParams } from 'expo-router';
@@ -13,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import { VoiceTextInput } from '../../src/components/VoiceTextInput';
+import { ConfirmDialog } from '../../src/components/ConfirmDialog';
 import api from '../../src/utils/api';
 
 const DONTS = [
@@ -88,12 +89,16 @@ export default function EmotionalReceptionScreen() {
   const [timerActive, setTimerActive] = useState(false);
   const [timerSeconds, setTimerSeconds] = useState(TIMER_DURATION);
   const [timerCompleted, setTimerCompleted] = useState(false);
+  // Themed in-app confirm dialog for the "I need to stop" abandon flow
+  // (replaces the harsh `window.confirm` shown by browser-native Alert).
+  const [showAbandonConfirm, setShowAbandonConfirm] = useState(false);
   const timerRef = useRef<any>(null);
 
   // Step 4: Completion
   const [intensityAfter, setIntensityAfter] = useState(3);
   const [reflection, setReflection] = useState('');
   const [eqStats, setEqStats] = useState<any>(null);
+  const [showEqBreakdown, setShowEqBreakdown] = useState(false);
 
   // Animations
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -141,21 +146,15 @@ export default function EmotionalReceptionScreen() {
   };
 
   const abandonTimer = () => {
-    Alert.alert(
-      'Leave Practice?',
-      "It's OK if you can't complete it this time. Would you like to stop?",
-      [
-        { text: 'Continue Practice', style: 'cancel' },
-        {
-          text: 'Stop', style: 'destructive', onPress: () => {
-            if (timerRef.current) clearInterval(timerRef.current);
-            setTimerActive(false);
-            setTimerCompleted(false);
-            setStep(4);
-          },
-        },
-      ]
-    );
+    setShowAbandonConfirm(true);
+  };
+
+  const confirmAbandon = () => {
+    setShowAbandonConfirm(false);
+    if (timerRef.current) clearInterval(timerRef.current);
+    setTimerActive(false);
+    setTimerCompleted(false);
+    setStep(4);
   };
 
   const handleFinish = async () => {
@@ -398,7 +397,17 @@ export default function EmotionalReceptionScreen() {
   const renderStep5 = () => (
     <View style={[s.stepContent, { alignItems: 'center' }]}>
       <LinearGradient colors={['#0EA5E9', '#0284C7']} style={s.eqCard}>
-        <Text style={s.eqTitle}>Your EQ Growth</Text>
+        <View style={s.eqTitleRow}>
+          <Text style={s.eqTitle}>Your EQ Growth</Text>
+          <TouchableOpacity
+            onPress={() => setShowEqBreakdown(true)}
+            hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel="How is this score calculated?"
+          >
+            <Ionicons name="information-circle-outline" size={22} color="rgba(255,255,255,0.85)" />
+          </TouchableOpacity>
+        </View>
         {eqStats && (
           <>
             <View style={s.eqRow}>
@@ -423,9 +432,17 @@ export default function EmotionalReceptionScreen() {
 
       <TouchableOpacity
         style={[s.nextBtn, { width: '100%' }]}
+        onPress={() => router.push('/tools/eg-trap' as any)}
+      >
+        <Ionicons name="flash" size={18} color="#FFF" />
+        <Text style={s.nextBtnText}>Breaking the Trap</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[s.secondaryBtn, { width: '100%' }]}
         onPress={() => router.push('/tools/eg-advisor' as any)}
       >
-        <Text style={s.nextBtnText}>Back to Advisor</Text>
+        <Ionicons name="leaf-outline" size={16} color="#0EA5E9" />
+        <Text style={s.secondaryBtnText}>Effective Outlets Advisor</Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={s.doneBtn}
@@ -465,7 +482,75 @@ export default function EmotionalReceptionScreen() {
           </ScrollView>
         )}
       </KeyboardAvoidingView>
+      <ConfirmDialog
+        visible={showAbandonConfirm}
+        theme="dark"
+        title="Leave Practice?"
+        message={"It's OK if you can't complete it this time.\nWould you like to stop?"}
+        confirmLabel="Stop"
+        cancelLabel="Continue"
+        destructive
+        onCancel={() => setShowAbandonConfirm(false)}
+        onConfirm={confirmAbandon}
+      />
+      {/* EQ formula breakdown — opens from the (i) icon on the EQ card */}
+      <Modal
+        visible={showEqBreakdown}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowEqBreakdown(false)}
+      >
+        <Pressable style={s.eqInfoOverlay} onPress={() => setShowEqBreakdown(false)}>
+          <Pressable style={s.eqInfoCard} onPress={(e) => e.stopPropagation()}>
+            <View style={s.eqInfoHeaderRow}>
+              <Text style={s.eqInfoTitle}>How EQ Score is calculated</Text>
+              <TouchableOpacity onPress={() => setShowEqBreakdown(false)} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}>
+                <Ionicons name="close" size={22} color="#475569" />
+              </TouchableOpacity>
+            </View>
+            <Text style={s.eqInfoIntro}>
+              Out of 10 — built from five reinforcing axes so daily practice
+              earns more than one-off attempts.
+            </Text>
+            {eqStats?.eq_breakdown && (
+              <View style={{ gap: 8 }}>
+                <EqBreakdownRow label="Base" value={eqStats.eq_breakdown.base} cap={1.0} hint="Anyone who ever attempts starts here." />
+                <EqBreakdownRow label="Completion bonus" value={eqStats.eq_breakdown.completion_bonus} cap={5.0} hint={`+0.5 per completed 5-min session · you have ${eqStats.successful_completions}`} />
+                <EqBreakdownRow label="Attempt engagement" value={eqStats.eq_breakdown.attempt_engagement} cap={1.0} hint={`+0.1 per attempt (showing up matters) · you have ${eqStats.total_attempts}`} />
+                <EqBreakdownRow label="Streak bonus" value={eqStats.eq_breakdown.streak_bonus} cap={2.0} hint={`+0.25 per consecutive day · current streak: ${eqStats.current_streak_days ?? 0} day(s)`} />
+                <EqBreakdownRow label="Recent consistency (7d)" value={eqStats.eq_breakdown.recent_consistency_bonus} cap={1.0} hint={`+0.25 per completion in last 7 days · ${eqStats.completions_last_7d ?? 0} so far`} />
+                <View style={s.eqInfoTotalRow}>
+                  <Text style={s.eqInfoTotalLabel}>Total (capped at 10)</Text>
+                  <Text style={s.eqInfoTotalValue}>{eqStats.eq_score}/10</Text>
+                </View>
+              </View>
+            )}
+            <Text style={s.eqInfoFooter}>
+              Practicing daily — even short attempts — earns you 10/10 in about
+              3 weeks. Lapses gradually reduce streak & recency components.
+            </Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
+  );
+}
+
+/** Single-row renderer for the EQ breakdown modal. Kept inline to avoid a
+ *  cross-file dependency for a screen-local UI affordance. */
+function EqBreakdownRow({ label, value, cap, hint }: { label: string; value: number; cap: number; hint: string }) {
+  const pct = Math.max(0, Math.min(1, value / cap));
+  return (
+    <View>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>{label}</Text>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: '#0EA5E9' }}>{value.toFixed(2)} / {cap.toFixed(1)}</Text>
+      </View>
+      <View style={{ height: 6, borderRadius: 3, backgroundColor: '#E2E8F0', marginTop: 4, overflow: 'hidden' }}>
+        <View style={{ width: `${pct * 100}%`, height: '100%', backgroundColor: '#0EA5E9' }} />
+      </View>
+      <Text style={{ fontSize: 11, color: '#64748B', marginTop: 3 }}>{hint}</Text>
+    </View>
   );
 }
 
@@ -524,8 +609,15 @@ const s = StyleSheet.create({
   timerSubMessage: { fontSize: 14, color: 'rgba(255,255,255,0.7)', textAlign: 'center', lineHeight: 20, marginTop: 8 },
   breatheGuide: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10, marginTop: 24 },
   breatheText: { fontSize: 13, color: 'rgba(255,255,255,0.8)' },
-  abandonBtn: { marginTop: 32, paddingVertical: 12, paddingHorizontal: 20 },
-  abandonText: { fontSize: 13, color: 'rgba(255,255,255,0.5)', fontWeight: '600' },
+  abandonBtn: { marginTop: 32, paddingVertical: 14, paddingHorizontal: 20, alignItems: 'center' },
+  abandonText: {
+    fontSize: 17,
+    color: 'rgba(255,255,255,0.92)',
+    fontWeight: '700',
+    textDecorationLine: 'underline',
+    textDecorationColor: 'rgba(255,255,255,0.92)',
+    letterSpacing: 0.2,
+  },
 
   // Completion
   completionCard: { borderRadius: 20, padding: 24, alignItems: 'center', marginBottom: 16 },
@@ -540,12 +632,36 @@ const s = StyleSheet.create({
 
   // EQ Summary
   eqCard: { borderRadius: 20, padding: 24, width: '100%', alignItems: 'center', marginBottom: 20 },
-  eqTitle: { fontSize: 20, fontWeight: '800', color: '#FFF', marginBottom: 16 },
+  eqTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 16 },
+  eqTitle: { fontSize: 20, fontWeight: '800', color: '#FFF' },
   eqRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', width: '100%' },
+  // ─── EQ breakdown info modal ───
+  eqInfoOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  eqInfoCard: { width: '100%', maxWidth: 460, backgroundColor: '#FFFFFF', borderRadius: 18, padding: 22, gap: 14 },
+  eqInfoHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  eqInfoTitle: { fontSize: 17, fontWeight: '800', color: '#0F172A' },
+  eqInfoIntro: { fontSize: 13, color: '#475569', lineHeight: 19 },
+  eqInfoTotalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 10, marginTop: 6 },
+  eqInfoTotalLabel: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  eqInfoTotalValue: { fontSize: 18, fontWeight: '800', color: '#0EA5E9' },
+  eqInfoFooter: { fontSize: 11, color: '#64748B', lineHeight: 16, fontStyle: 'italic', marginTop: 4 },
   eqItem: { alignItems: 'center' },
   eqNum: { fontSize: 26, fontWeight: '800', color: '#FFF' },
   eqLabel: { fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
   eqDivider: { width: 1, height: 30, backgroundColor: 'rgba(255,255,255,0.3)' },
   doneBtn: { alignItems: 'center', paddingVertical: 14, marginTop: 8 },
   doneBtnText: { fontSize: 14, fontWeight: '600', color: COLORS.textMuted },
+  secondaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#FFFFFF',
+    borderColor: '#0EA5E9',
+    borderWidth: 1.5,
+    borderRadius: 14,
+    paddingVertical: 14,
+    marginTop: 10,
+  },
+  secondaryBtnText: { fontSize: 15, fontWeight: '700', color: '#0EA5E9' },
 });

@@ -7,7 +7,7 @@ templates, practice logging, and AI-personalised recommendations.
 
 import uuid
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException, Depends
@@ -18,6 +18,127 @@ from .ai_engine import EMERGENT_LLM_KEY
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+# ============================================================
+# EQ SCORE — Lifetime mindfulness growth metric
+# ============================================================
+#
+# Why this formula?
+# -----------------
+# The previous formula `min(10, completed * 0.5 + 1)` had real problems:
+#   - rewarded only completions (no credit for showing up & trying)
+#   - had no streak / consistency factor (a daily practitioner scored same
+#     as someone who completed once a year)
+#   - had no recency factor (someone who quit 6 months ago kept their score)
+#   - took ~18 completions to reach 10/10 (felt impossibly slow)
+#
+# v2 formula breaks the 0-10 budget into five reinforcing axes so that
+# regular daily practice can realistically reach a perfect score in
+# ~3-4 weeks, while one-off practitioners plateau ~3/10.
+#
+#   base                       1.0
+#   completion_bonus           up to 5.0   (0.5 per completed 5-min session)
+#   attempt_engagement         up to 1.0   (0.1 per attempt — rewards showing up)
+#   streak_bonus               up to 2.0   (0.25 per consecutive day of practice)
+#   recent_consistency_bonus   up to 1.0   (0.25 per completion in last 7 days)
+#                              ─────
+#   TOTAL CAP                 10.0
+#
+# The breakdown is returned to the client so the UI can show *why* the
+# score is what it is via an info-tap, removing the "feels arbitrary"
+# complaint from the previous version.
+# ============================================================
+
+
+async def _compute_eq_score(user_id: str) -> dict:
+    """Compute the v2 EQ score + breakdown for a user.
+
+    Returns a dict ready to embed inside the `eq_stats` payload so callers
+    can spread it (`{**stats, **breakdown}`). All keys are deterministic
+    and safe to render directly in the UI.
+    """
+    # --- Pull the user's full reception log (small collection per user) ---
+    logs = await db.emotional_reception_logs.find(
+        {"user_id": user_id},
+        {"_id": 0, "created_at": 1, "completed_5_min": 1},
+    ).sort("created_at", -1).to_list(1000)
+
+    total_attempts = len(logs)
+    completed_count = sum(1 for log in logs if log.get("completed_5_min"))
+
+    # --- Recency window: completions in last 7 days ---
+    now = datetime.now(timezone.utc)
+    seven_days_ago = now - timedelta(days=7)
+    completions_last_7d = sum(
+        1 for log in logs
+        if log.get("completed_5_min") and _to_dt(log.get("created_at")) >= seven_days_ago
+    )
+
+    # --- Streak: consecutive days (UTC-day granularity) with ≥1 completion,
+    #     anchored to today OR yesterday so missing today doesn't break it. ---
+    completed_days = {
+        _to_dt(log.get("created_at")).date()
+        for log in logs if log.get("completed_5_min")
+    }
+    streak = 0
+    today = now.date()
+    if today in completed_days:
+        anchor = today
+    elif (today - timedelta(days=1)) in completed_days:
+        anchor = today - timedelta(days=1)
+    else:
+        anchor = None
+    if anchor is not None:
+        cursor = anchor
+        while cursor in completed_days:
+            streak += 1
+            cursor = cursor - timedelta(days=1)
+
+    # --- Axis bonuses (each capped to its budget) ---
+    base = 1.0
+    completion_bonus = min(5.0, completed_count * 0.5)
+    attempt_engagement = min(1.0, total_attempts * 0.1)
+    streak_bonus = min(2.0, streak * 0.25)
+    recent_consistency_bonus = min(1.0, completions_last_7d * 0.25)
+
+    eq_score = round(
+        min(10.0, base + completion_bonus + attempt_engagement
+            + streak_bonus + recent_consistency_bonus),
+        1,
+    )
+
+    return {
+        "total_attempts": total_attempts,
+        "successful_completions": completed_count,
+        "completion_rate": round(completed_count / total_attempts * 100, 1) if total_attempts > 0 else 0,
+        "current_streak_days": streak,
+        "completions_last_7d": completions_last_7d,
+        "eq_score": eq_score,
+        "eq_breakdown": {
+            "base": base,
+            "completion_bonus": round(completion_bonus, 2),
+            "attempt_engagement": round(attempt_engagement, 2),
+            "streak_bonus": round(streak_bonus, 2),
+            "recent_consistency_bonus": round(recent_consistency_bonus, 2),
+            "cap": 10.0,
+            "formula_version": "v2",
+        },
+    }
+
+
+def _to_dt(value) -> datetime:
+    """Normalize a Mongo `created_at` (string or datetime) → tz-aware datetime."""
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, str):
+        try:
+            v = value.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(v)
+            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        except ValueError:
+            pass
+    return datetime.now(timezone.utc)
 
 
 # ============================================================
@@ -473,8 +594,6 @@ async def log_practice(data: PracticeLogEntry, user: dict = Depends(get_current_
 
     await db.advisor_practice_logs.insert_one(log)
 
-    # Update streak
-    yesterday = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     existing_today = await db.advisor_practice_logs.count_documents({
         "user_id": user["user_id"], "date": today,
     })
@@ -669,42 +788,27 @@ async def log_emotional_reception(data: EmotionalReceptionLog, user: dict = Depe
     }
     await db.advisor_practice_logs.insert_one(practice)
 
-    # Compute EQ growth
-    completed_count = await db.emotional_reception_logs.count_documents({
-        "user_id": user["user_id"], "completed_5_min": True,
-    })
-    total_count = await db.emotional_reception_logs.count_documents({
-        "user_id": user["user_id"],
-    })
+    # Compute EQ growth via the v2 multi-axis formula (see _compute_eq_score docs).
+    eq_stats = await _compute_eq_score(user["user_id"])
 
     doc.pop("_id", None)
     return {
         "logged": doc,
-        "eq_stats": {
-            "total_attempts": total_count,
-            "successful_completions": completed_count,
-            "eq_score": min(10, round(completed_count * 0.5 + 1, 1)),  # Simple EQ growth metric
-        },
+        "eq_stats": eq_stats,
     }
 
 
 @router.get("/advisor/emotional-reception/history")
 async def get_emotional_reception_history(user: dict = Depends(get_current_user)):
-    """Get Emotional Reception practice history with EQ growth."""
+    """Get Emotional Reception practice history with EQ growth (v2 formula)."""
     logs = await db.emotional_reception_logs.find(
         {"user_id": user["user_id"]},
         {"_id": 0},
     ).sort("created_at", -1).to_list(100)
 
-    completed = sum(1 for l in logs if l.get("completed_5_min"))
-    total = len(logs)
+    eq_stats = await _compute_eq_score(user["user_id"])
 
     return {
         "logs": logs,
-        "eq_stats": {
-            "total_attempts": total,
-            "successful_completions": completed,
-            "completion_rate": round(completed / total * 100, 1) if total > 0 else 0,
-            "eq_score": min(10, round(completed * 0.5 + 1, 1)),
-        },
+        "eq_stats": eq_stats,
     }
