@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import { VoiceInput } from '../../src/components/VoiceInput';
+import { VoiceTextInput } from '../../src/components/VoiceTextInput';
 import api from '../../src/utils/api';
 import { handleAiError } from '../../src/utils/aiErrors';
 import { confirmAiSpend, useAiEstimate } from '../../src/utils/aiEstimates';
@@ -213,14 +214,14 @@ export default function EGAimScreen() {
         </View>
         <Text style={s.formLabel}>Addiction / Behavior</Text>
         <View style={s.inputRow}>
-          <TextInput style={s.input} placeholder="e.g., Scrolling social media, Overeating..."
-            value={addName} onChangeText={setAddName} placeholderTextColor={COLORS.textMuted} />
-          <VoiceInput sessionId={sessionId || ''} field="addiction" color="#F97316"
-            onTranscribed={(t) => setAddName(prev => prev ? prev + ' ' + t : t)} />
+          <VoiceTextInput inputStyle={s.input} placeholder="e.g., Scrolling social media, Overeating..."
+            value={addName} onChangeText={setAddName} placeholderTextColor={COLORS.textMuted}
+            sessionId={sessionId || ''} field="addiction" color="#F97316" />
         </View>
         <Text style={s.formLabel}>Triggering Situations</Text>
-        <TextInput style={s.input} placeholder="When bored, after conflict..."
-          value={addTrigger} onChangeText={setAddTrigger} placeholderTextColor={COLORS.textMuted} />
+        <VoiceTextInput inputStyle={s.input} placeholder="When bored, after conflict..."
+          value={addTrigger} onChangeText={setAddTrigger} placeholderTextColor={COLORS.textMuted}
+          sessionId={sessionId || ''} field="add_trigger" color="#F97316" />
         <View style={s.impactRow}>
           <View style={{ flex: 1 }}>
             <Text style={s.formLabel}>Positive Impact (%)</Text>
@@ -251,8 +252,9 @@ export default function EGAimScreen() {
         {/* Item 3 — describe the positive impact in free text + mark which
             life areas benefit (multi-select). All optional. */}
         <Text style={s.formLabel}>What kind of positive impact? (optional)</Text>
-        <TextInput style={s.input} placeholder="e.g., stress relief, social connection..."
-          value={addPosImpact} onChangeText={setAddPosImpact} placeholderTextColor={COLORS.textMuted} />
+        <VoiceTextInput inputStyle={s.input} placeholder="e.g., stress relief, social connection..."
+          value={addPosImpact} onChangeText={setAddPosImpact} placeholderTextColor={COLORS.textMuted}
+          sessionId={sessionId || ''} field="add_pos_impact" color="#F97316" />
         <Text style={s.formLabel}>Positively affected life areas (optional)</Text>
         <View style={[s.chipRow, { marginBottom: 8 }]}>
           {lifeAreas.map(la => (
@@ -264,8 +266,9 @@ export default function EGAimScreen() {
         </View>
 
         <Text style={s.formLabel}>What kind of negative impact? (optional)</Text>
-        <TextInput style={s.input} placeholder="e.g., lost productivity, weight gain..."
-          value={addNegImpact} onChangeText={setAddNegImpact} placeholderTextColor={COLORS.textMuted} />
+        <VoiceTextInput inputStyle={s.input} placeholder="e.g., lost productivity, weight gain..."
+          value={addNegImpact} onChangeText={setAddNegImpact} placeholderTextColor={COLORS.textMuted}
+          sessionId={sessionId || ''} field="add_neg_impact" color="#F97316" />
         <Text style={s.formLabel}>Negatively affected life areas (optional)</Text>
         <View style={[s.chipRow, { marginBottom: 8 }]}>
           {lifeAreas.map(la => (
@@ -327,14 +330,14 @@ export default function EGAimScreen() {
         </View>
         <Text style={s.formLabel}>Irritation</Text>
         <View style={s.inputRow}>
-          <TextInput style={s.input} placeholder="e.g., Being interrupted, Traffic..."
-            value={irrName} onChangeText={setIrrName} placeholderTextColor={COLORS.textMuted} />
-          <VoiceInput sessionId={sessionId || ''} field="irritation" color="#F97316"
-            onTranscribed={(t) => setIrrName(prev => prev ? prev + ' ' + t : t)} />
+          <VoiceTextInput inputStyle={s.input} placeholder="e.g., Being interrupted, Traffic..."
+            value={irrName} onChangeText={setIrrName} placeholderTextColor={COLORS.textMuted}
+            sessionId={sessionId || ''} field="irritation" color="#F97316" />
         </View>
         <Text style={s.formLabel}>Your Probable Reaction</Text>
-        <TextInput style={s.input} placeholder="I usually react by..."
-          value={irrReaction} onChangeText={setIrrReaction} placeholderTextColor={COLORS.textMuted} />
+        <VoiceTextInput inputStyle={s.input} placeholder="I usually react by..."
+          value={irrReaction} onChangeText={setIrrReaction} placeholderTextColor={COLORS.textMuted}
+          sessionId={sessionId || ''} field="irr_reaction" color="#F97316" />
 
         {/* Item 3 — Irritation % (mandatory, defaults 50%) + negatively-affected
             life areas (multi-select, optional). */}

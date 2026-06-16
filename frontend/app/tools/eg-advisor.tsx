@@ -10,7 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import { AudioGuidePlayer } from '../../src/components/AudioGuidePlayer';
-import { VoiceInput } from '../../src/components/VoiceInput';
+import { VoiceTextInput } from '../../src/components/VoiceTextInput';
 import api from '../../src/utils/api';
 
 interface Outlet {
@@ -535,8 +535,8 @@ export default function EGAdvisorScreen() {
               <View key={i} style={s.gratInputRow}>
                 <Text style={s.gratNum}>{i + 1}.</Text>
                 <View style={{ flex: 1 }}>
-                  <TextInput
-                    style={s.gratInput}
+                  <VoiceTextInput
+                    inputStyle={s.gratInput}
                     placeholder={`I'm grateful for...`}
                     value={entry}
                     onChangeText={(t) => {
@@ -545,20 +545,11 @@ export default function EGAdvisorScreen() {
                       setGratitudeEntries(newEntries);
                     }}
                     placeholderTextColor={COLORS.textMuted}
+                    sessionId=""
+                    field={`gratitude_${i + 1}`}
+                    color="#059669"
+                    module="eg-generic"
                   />
-                  <View style={{ marginTop: 4, alignItems: 'flex-start' }}>
-                    <VoiceInput
-                      sessionId=""
-                      field={`gratitude_${i + 1}`}
-                      color="#059669"
-                      module="eg-generic"
-                      onTranscribed={(t) => {
-                        const newEntries = [...gratitudeEntries];
-                        newEntries[i] = newEntries[i] ? newEntries[i] + ' ' + t : t;
-                        setGratitudeEntries(newEntries);
-                      }}
-                    />
-                  </View>
                 </View>
               </View>
             ))}

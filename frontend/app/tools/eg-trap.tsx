@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import { VoiceInput } from '../../src/components/VoiceInput';
+import { VoiceTextInput } from '../../src/components/VoiceTextInput';
 import VentToOutletsBanner from '../../src/components/VentToOutletsBanner';
 import api from '../../src/utils/api';
 import { handleAiError } from '../../src/utils/aiErrors';
@@ -182,10 +183,9 @@ export default function EGTrapScreen() {
       <Text style={s.stepTitle}>What's the situation that's been occupying your mind?</Text>
       <Text style={s.stepHint}>Describe it honestly. No one else will see this.</Text>
       <View style={s.inputRow}>
-        <TextInput style={s.textArea} multiline placeholder="Describe your situation..."
-          value={situation} onChangeText={setSituation} placeholderTextColor={COLORS.textMuted} />
-        <VoiceInput sessionId={sessionId || ''} field="situation" color="#EF4444"
-          onTranscribed={(t) => setSituation(prev => prev ? prev + ' ' + t : t)} />
+        <VoiceTextInput inputStyle={s.textArea} multiline placeholder="Describe your situation..."
+          value={situation} onChangeText={setSituation} placeholderTextColor={COLORS.textMuted}
+          sessionId={sessionId || ''} field="situation" color="#EF4444" />
       </View>
       <Text style={s.label}>Life Area</Text>
       <View style={s.chipRow}>
@@ -221,10 +221,9 @@ export default function EGTrapScreen() {
       <Text style={s.stepHint}>The mind often searches for issues without urgency — just habit.</Text>
       <Text style={s.label}>What is your mind scanning for?</Text>
       <View style={s.inputRow}>
-        <TextInput style={s.textArea} multiline placeholder="What keeps coming up..."
-          value={scanningFor} onChangeText={setScanningFor} placeholderTextColor={COLORS.textMuted} />
-        <VoiceInput sessionId={sessionId || ''} field="scanning_for" color="#EF4444"
-          onTranscribed={(t) => setScanningFor(prev => prev ? prev + ' ' + t : t)} />
+        <VoiceTextInput inputStyle={s.textArea} multiline placeholder="What keeps coming up..."
+          value={scanningFor} onChangeText={setScanningFor} placeholderTextColor={COLORS.textMuted}
+          sessionId={sessionId || ''} field="scanning_for" color="#EF4444" />
       </View>
       <Text style={s.label}>Scanning Patterns (select all that apply)</Text>
       <View style={s.chipRow}>
@@ -249,8 +248,9 @@ export default function EGTrapScreen() {
         </TouchableOpacity>
       </View>
       <Text style={s.label}>Repeated concern that keeps coming back</Text>
-      <TextInput style={s.input} placeholder="The thought that keeps returning..."
-        value={repeatedConcern} onChangeText={setRepeatedConcern} placeholderTextColor={COLORS.textMuted} />
+      <VoiceTextInput inputStyle={s.input} placeholder="The thought that keeps returning..."
+        value={repeatedConcern} onChangeText={setRepeatedConcern} placeholderTextColor={COLORS.textMuted}
+        sessionId={sessionId || ''} field="repeated_concern" color="#EF4444" />
       <TouchableOpacity style={s.nextBtn} onPress={handleLandscaping} disabled={loading}>
         {loading ? <ActivityIndicator color="#FFF" /> :
           <><Text style={s.nextBtnText}>Next: Linking</Text><Ionicons name="arrow-forward" size={18} color="#FFF" /></>}
@@ -275,14 +275,14 @@ export default function EGTrapScreen() {
       </View>
       <Text style={s.label}>Describe the trigger</Text>
       <View style={s.inputRow}>
-        <TextInput style={s.textArea} multiline placeholder="What happened or what thought came..."
-          value={triggerDesc} onChangeText={setTriggerDesc} placeholderTextColor={COLORS.textMuted} />
-        <VoiceInput sessionId={sessionId || ''} field="trigger" color="#EF4444"
-          onTranscribed={(t) => setTriggerDesc(prev => prev ? prev + ' ' + t : t)} />
+        <VoiceTextInput inputStyle={s.textArea} multiline placeholder="What happened or what thought came..."
+          value={triggerDesc} onChangeText={setTriggerDesc} placeholderTextColor={COLORS.textMuted}
+          sessionId={sessionId || ''} field="trigger" color="#EF4444" />
       </View>
       <Text style={s.label}>What meaning did your mind attach to this?</Text>
-      <TextInput style={s.textArea} multiline placeholder="My mind concluded that..."
-        value={linkingMeaning} onChangeText={setLinkingMeaning} placeholderTextColor={COLORS.textMuted} />
+      <VoiceTextInput inputStyle={s.textArea} multiline placeholder="My mind concluded that..."
+        value={linkingMeaning} onChangeText={setLinkingMeaning} placeholderTextColor={COLORS.textMuted}
+        sessionId={sessionId || ''} field="linking_meaning" color="#EF4444" />
       <TouchableOpacity style={s.nextBtn} onPress={handleLinking} disabled={loading}>
         {loading ? <ActivityIndicator color="#FFF" /> :
           <><Text style={s.nextBtnText}>Next: Looping</Text><Ionicons name="arrow-forward" size={18} color="#FFF" /></>}
@@ -296,10 +296,9 @@ export default function EGTrapScreen() {
       <Text style={s.stepHint}>The mind replays issues, creating a false feeling of problem-solving.</Text>
       <Text style={s.label}>The thought that keeps repeating</Text>
       <View style={s.inputRow}>
-        <TextInput style={s.textArea} multiline placeholder="I keep thinking about..."
-          value={repeatingThought} onChangeText={setRepeatingThought} placeholderTextColor={COLORS.textMuted} />
-        <VoiceInput sessionId={sessionId || ''} field="looping" color="#EF4444"
-          onTranscribed={(t) => setRepeatingThought(prev => prev ? prev + ' ' + t : t)} />
+        <VoiceTextInput inputStyle={s.textArea} multiline placeholder="I keep thinking about..."
+          value={repeatingThought} onChangeText={setRepeatingThought} placeholderTextColor={COLORS.textMuted}
+          sessionId={sessionId || ''} field="looping" color="#EF4444" />
       </View>
       <Text style={s.label}>Are you getting any new solutions from this replay?</Text>
       <View style={s.boolRow}>
@@ -471,5 +470,8 @@ const s = StyleSheet.create({
   interventionTitle: { fontSize: 14, fontWeight: '700', color: '#065F46' },
   interventionText: { fontSize: 13, color: '#047857', marginTop: 4, lineHeight: 18 },
   actionBox: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#D1FAE5', borderRadius: 8, padding: 10, marginTop: 10 },
+  actionBoxText: { fontSize: 13, fontWeight: '600', color: '#065F46', flex: 1 },
+});
+
   actionBoxText: { fontSize: 13, fontWeight: '600', color: '#065F46', flex: 1 },
 });

@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import { VoiceInput } from '../../src/components/VoiceInput';
+import { VoiceTextInput } from '../../src/components/VoiceTextInput';
 import VentToOutletsBanner from '../../src/components/VentToOutletsBanner';
 import { AudioGuidePlayer } from '../../src/components/AudioGuidePlayer';
 import api from '../../src/utils/api';
@@ -186,14 +187,14 @@ export default function EGLoopScreen() {
       {renderAudioGuide()}
       <Text style={s.stepTitle}>What thought keeps repeating in your mind?</Text>
       <View style={s.inputRow}>
-        <TextInput style={s.textArea} multiline placeholder="The thought I keep having..."
-          value={repeatedThought} onChangeText={setRepeatedThought} placeholderTextColor={COLORS.textMuted} />
-        <VoiceInput sessionId={sessionId || ''} field="repeated_thought" color="#8B5CF6"
-          onTranscribed={(t) => setRepeatedThought(prev => prev ? prev + ' ' + t : t)} />
+        <VoiceTextInput inputStyle={s.textArea} multiline placeholder="The thought I keep having..."
+          value={repeatedThought} onChangeText={setRepeatedThought} placeholderTextColor={COLORS.textMuted}
+          sessionId={sessionId || ''} field="repeated_thought" color="#8B5CF6" />
       </View>
       <Text style={s.label}>What emotion comes with it?</Text>
-      <TextInput style={s.input} placeholder="e.g., anxiety, frustration, fear..."
-        value={emotion} onChangeText={setEmotion} placeholderTextColor={COLORS.textMuted} />
+      <VoiceTextInput inputStyle={s.input} placeholder="e.g., anxiety, frustration, fear..."
+        value={emotion} onChangeText={setEmotion} placeholderTextColor={COLORS.textMuted}
+        sessionId={sessionId || ''} field="emotion" color="#8B5CF6" />
       <Text style={s.label}>Times repeated today: {repeatCount}</Text>
       <View style={s.countRow}>
         <TouchableOpacity style={s.countBtn} onPress={() => setRepeatCount(Math.max(1, repeatCount - 1))}>
@@ -205,11 +206,13 @@ export default function EGLoopScreen() {
         </TouchableOpacity>
       </View>
       <Text style={s.label}>What fear is behind this?</Text>
-      <TextInput style={s.input} placeholder="I'm afraid that..."
-        value={fear} onChangeText={setFear} placeholderTextColor={COLORS.textMuted} />
+      <VoiceTextInput inputStyle={s.input} placeholder="I'm afraid that..."
+        value={fear} onChangeText={setFear} placeholderTextColor={COLORS.textMuted}
+        sessionId={sessionId || ''} field="fear" color="#8B5CF6" />
       <Text style={s.label}>What are you trying to solve by replaying?</Text>
-      <TextInput style={s.input} placeholder="I keep thinking because..."
-        value={tryingToSolve} onChangeText={setTryingToSolve} placeholderTextColor={COLORS.textMuted} />
+      <VoiceTextInput inputStyle={s.input} placeholder="I keep thinking because..."
+        value={tryingToSolve} onChangeText={setTryingToSolve} placeholderTextColor={COLORS.textMuted}
+        sessionId={sessionId || ''} field="trying_to_solve" color="#8B5CF6" />
       <TouchableOpacity style={s.nextBtn} onPress={handleCapture} disabled={loading}>
         {loading ? <ActivityIndicator color="#FFF" /> :
           <><Text style={s.nextBtnText}>Get AI Recommendation{loopRecEst ? ` · ~${loopRecEst} cr` : ''}</Text><Ionicons name="bulb" size={18} color="#FFF" /></>}
@@ -249,12 +252,11 @@ export default function EGLoopScreen() {
             <View key={i}>
               <Text style={s.label}>{q}</Text>
               <View style={s.inputRow}>
-                <TextInput style={s.textArea} multiline placeholder="Your reflection..."
+                <VoiceTextInput inputStyle={s.textArea} multiline placeholder="Your reflection..."
                   value={answers[`q${i}`] || ''}
                   onChangeText={(t) => setAnswers(prev => ({ ...prev, [`q${i}`]: t }))}
-                  placeholderTextColor={COLORS.textMuted} />
-                <VoiceInput sessionId={sessionId || ''} field={`q${i}`} color="#8B5CF6"
-                  onTranscribed={(t) => setAnswers(prev => ({ ...prev, [`q${i}`]: (prev[`q${i}`] || '') + ' ' + t }))} />
+                  placeholderTextColor={COLORS.textMuted}
+                  sessionId={sessionId || ''} field={`q${i}`} color="#8B5CF6" />
               </View>
             </View>
           ))}

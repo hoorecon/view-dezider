@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import { VoiceInput } from '../../src/components/VoiceInput';
+import { VoiceTextInput } from '../../src/components/VoiceTextInput';
 import VentToOutletsBanner from '../../src/components/VentToOutletsBanner';
 import { AudioGuidePlayer } from '../../src/components/AudioGuidePlayer';
 import api from '../../src/utils/api';
@@ -186,23 +187,26 @@ export default function EGLimitationScreen() {
       <Text style={s.stepTitle}>What belief is limiting you?</Text>
       <Text style={s.stepHint}>Name the limitation honestly. Awareness is the first step.</Text>
       <View style={s.inputRow}>
-        <TextInput style={s.textArea} multiline placeholder="I believe I can't / I'm not able to..."
-          value={limitStatement} onChangeText={setLimitStatement} placeholderTextColor={COLORS.textMuted} />
-        <VoiceInput sessionId={sessionId || ''} field="limitation" color="#3B82F6"
-          onTranscribed={(t) => setLimitStatement(prev => prev ? prev + ' ' + t : t)} />
+        <VoiceTextInput inputStyle={s.textArea} multiline placeholder="I believe I can't / I'm not able to..."
+          value={limitStatement} onChangeText={setLimitStatement} placeholderTextColor={COLORS.textMuted}
+          sessionId={sessionId || ''} field="limitation" color="#3B82F6" />
       </View>
       <Text style={s.label}>Why do you feel limited?</Text>
-      <TextInput style={s.textArea} multiline placeholder="Because..."
-        value={whyLimited} onChangeText={setWhyLimited} placeholderTextColor={COLORS.textMuted} />
+      <VoiceTextInput inputStyle={s.textArea} multiline placeholder="Because..."
+        value={whyLimited} onChangeText={setWhyLimited} placeholderTextColor={COLORS.textMuted}
+        sessionId={sessionId || ''} field="why_limited" color="#3B82F6" />
       <Text style={s.label}>Where did this belief originate?</Text>
-      <TextInput style={s.input} placeholder="Childhood, failure, someone told me..."
-        value={origin} onChangeText={setOrigin} placeholderTextColor={COLORS.textMuted} />
+      <VoiceTextInput inputStyle={s.input} placeholder="Childhood, failure, someone told me..."
+        value={origin} onChangeText={setOrigin} placeholderTextColor={COLORS.textMuted}
+        sessionId={sessionId || ''} field="origin" color="#3B82F6" />
       <Text style={s.label}>How long have you held this belief?</Text>
-      <TextInput style={s.input} placeholder="e.g., 5 years, since childhood..."
-        value={beliefDuration} onChangeText={setBeliefDuration} placeholderTextColor={COLORS.textMuted} />
+      <VoiceTextInput inputStyle={s.input} placeholder="e.g., 5 years, since childhood..."
+        value={beliefDuration} onChangeText={setBeliefDuration} placeholderTextColor={COLORS.textMuted}
+        sessionId={sessionId || ''} field="belief_duration" color="#3B82F6" />
       <Text style={s.label}>What has this limitation cost you?</Text>
-      <TextInput style={s.textArea} multiline placeholder="Missed opportunities, relationships..."
-        value={cost} onChangeText={setCost} placeholderTextColor={COLORS.textMuted} />
+      <VoiceTextInput inputStyle={s.textArea} multiline placeholder="Missed opportunities, relationships..."
+        value={cost} onChangeText={setCost} placeholderTextColor={COLORS.textMuted}
+        sessionId={sessionId || ''} field="cost" color="#3B82F6" />
       <TouchableOpacity style={s.nextBtn} onPress={handleCapture} disabled={loading}>
         {loading ? <ActivityIndicator color="#FFF" /> :
           <><Text style={s.nextBtnText}>Classify My Limitation{limClsEst ? ` · ~${limClsEst} cr` : ''}</Text><Ionicons name="bulb" size={18} color="#FFF" /></>}
@@ -246,12 +250,11 @@ export default function EGLimitationScreen() {
             <View key={i}>
               <Text style={s.label}>{q}</Text>
               <View style={s.inputRow}>
-                <TextInput style={s.textArea} multiline placeholder="Your reflection..."
+                <VoiceTextInput inputStyle={s.textArea} multiline placeholder="Your reflection..."
                   value={flowAnswers[`q${i}`] || ''}
                   onChangeText={(t) => setFlowAnswers(prev => ({ ...prev, [`q${i}`]: t }))}
-                  placeholderTextColor={COLORS.textMuted} />
-                <VoiceInput sessionId={sessionId || ''} field={`q${i}`} color="#3B82F6"
-                  onTranscribed={(t) => setFlowAnswers(prev => ({ ...prev, [`q${i}`]: (prev[`q${i}`] || '') + ' ' + t }))} />
+                  placeholderTextColor={COLORS.textMuted}
+                  sessionId={sessionId || ''} field={`q${i}`} color="#3B82F6" />
               </View>
             </View>
           ))}

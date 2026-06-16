@@ -13,7 +13,7 @@ import { handleAiError } from '../../src/utils/aiErrors';
 import { formatAbsolute } from '../../src/utils/datetime';
 import { confirmAiSpend, useAiEstimate } from '../../src/utils/aiEstimates';
 import { AiCreditsBadge } from '../../src/components/AiCreditsBadge';
-import { VoiceInput } from '../../src/components/VoiceInput';
+import { VoiceTextInput } from '../../src/components/VoiceTextInput';
 import { Alert } from '../../src/utils/crossAlert';
 
 export default function EGSessionScreen() {
@@ -549,16 +549,9 @@ export default function EGSessionScreen() {
           </View>
           {showCommit && (
             <View style={st.commitForm}>
-              <TextInput style={st.input} placeholder="What will you commit to?"
-                value={commitText} onChangeText={setCommitText} placeholderTextColor={COLORS.textMuted} />
-              <View style={{ marginTop: 6, alignItems: 'flex-start' }}>
-                <VoiceInput
-                  sessionId={sessionId || ''}
-                  field="commitment_text"
-                  color="#F59E0B"
-                  onTranscribed={(t) => setCommitText(prev => prev ? prev + ' ' + t : t)}
-                />
-              </View>
+              <VoiceTextInput inputStyle={st.input} placeholder="What will you commit to?"
+                value={commitText} onChangeText={setCommitText} placeholderTextColor={COLORS.textMuted}
+                sessionId={sessionId || ''} field="commitment_text" color="#F59E0B" />
               <View style={st.commitTypes}>
                 {['immediate', '7_day', '30_day'].map(t => (
                   <TouchableOpacity key={t} style={[st.commitTypeBtn, commitType === t && st.commitTypeBtnActive]}
@@ -598,17 +591,10 @@ export default function EGSessionScreen() {
           </View>
           {showJournal && (
             <View style={st.journalForm}>
-              <TextInput style={[st.input, { minHeight: 100, textAlignVertical: 'top' }]} multiline
+              <VoiceTextInput inputStyle={[st.input, { minHeight: 100, textAlignVertical: 'top' }]} multiline
                 placeholder="Write your reflections..." value={journalContent}
-                onChangeText={setJournalContent} placeholderTextColor={COLORS.textMuted} />
-              <View style={{ marginTop: 6, alignItems: 'flex-start' }}>
-                <VoiceInput
-                  sessionId={sessionId || ''}
-                  field="journal_content"
-                  color="#F59E0B"
-                  onTranscribed={(t) => setJournalContent(prev => prev ? prev + ' ' + t : t)}
-                />
-              </View>
+                onChangeText={setJournalContent} placeholderTextColor={COLORS.textMuted}
+                sessionId={sessionId || ''} field="journal_content" color="#F59E0B" />
               <TouchableOpacity style={st.saveBtn} onPress={handleSaveJournal} disabled={savingJournal}>
                 {savingJournal ? <ActivityIndicator color="#FFF" /> :
                   <Text style={st.saveBtnText}>Save Journal Entry</Text>}

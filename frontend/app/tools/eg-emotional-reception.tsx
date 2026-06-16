@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
-import { VoiceInput } from '../../src/components/VoiceInput';
+import { VoiceTextInput } from '../../src/components/VoiceTextInput';
 import api from '../../src/utils/api';
 
 const DONTS = [
@@ -196,18 +196,18 @@ export default function EmotionalReceptionScreen() {
     <View style={s.stepContent}>
       <Text style={s.scriptQ}>What burdens are you carrying now?</Text>
       <Text style={s.scriptHint}>Acknowledge it honestly. No judgement.</Text>
-      <View style={s.inputRow}>
-        <TextInput
-          style={s.textArea}
-          multiline
-          placeholder="What's weighing on your mind right now..."
-          value={burden}
-          onChangeText={setBurden}
-          placeholderTextColor={COLORS.textMuted}
-        />
-        <VoiceInput sessionId="er" field="burden" color="#0EA5E9"
-          onTranscribed={(t) => setBurden(prev => prev ? prev + ' ' + t : t)} />
-      </View>
+      <VoiceTextInput
+        inputStyle={s.textArea}
+        multiline
+        placeholder="What's weighing on your mind right now..."
+        value={burden}
+        onChangeText={setBurden}
+        placeholderTextColor={COLORS.textMuted}
+        sessionId=""
+        field="burden"
+        color="#0EA5E9"
+        module="eg-generic"
+      />
       <Text style={s.label}>How intense is this feeling? ({intensityBefore}/10)</Text>
       <View style={s.sliderRow}>
         {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
@@ -374,13 +374,17 @@ export default function EmotionalReceptionScreen() {
       )}
 
       <Text style={s.label}>Any reflection? (optional)</Text>
-      <TextInput
-        style={[s.textArea, { minHeight: 60 }]}
+      <VoiceTextInput
+        inputStyle={[s.textArea, { minHeight: 60 }]}
         multiline
         placeholder="What did you notice during the practice..."
         value={reflection}
         onChangeText={setReflection}
         placeholderTextColor={COLORS.textMuted}
+        sessionId=""
+        field="reflection"
+        color="#0EA5E9"
+        module="eg-generic"
       />
 
       <TouchableOpacity style={s.nextBtn} onPress={handleFinish} disabled={loading}>
