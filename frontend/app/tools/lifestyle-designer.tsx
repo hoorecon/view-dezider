@@ -24,11 +24,15 @@ const DAY_TYPES = [
 type Allocation = { hours: number; priority: string; notes: string };
 type Allocations = Record<string, Record<string, Allocation>>;
 
-const emptyAllocations = (): Allocations => {
+// `emptyAllocations` is parameterised because LIFE_AREAS is catalog-driven
+// (lives inside the component, sourced from `useLifeAreas()`). Module-level
+// access to LIFE_AREAS would crash at bundle eval time with
+// `ReferenceError: LIFE_AREAS is not defined`.
+const emptyAllocations = (lifeAreas: { id: string }[]): Allocations => {
   const allocs: Allocations = {};
   DAY_TYPES.forEach(dt => {
     allocs[dt.id] = {};
-    LIFE_AREAS.forEach(la => {
+    lifeAreas.forEach(la => {
       allocs[dt.id][la.id] = { hours: 0, priority: 'medium', notes: '' };
     });
   });
@@ -69,7 +73,7 @@ export default function LifestyleDesignerScreen() {
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [editPlan, setEditPlan] = useState<any>(null);
   const [planForm, setPlanForm] = useState({ name: '', description: '' });
-  const [allocations, setAllocations] = useState<Allocations>(emptyAllocations());
+  const [allocations, setAllocations] = useState<Allocations>(() => emptyAllocations(LIFE_AREAS));
   const [activeDayType, setActiveDayType] = useState('weekday');
   const [saving, setSaving] = useState(false);
 
@@ -110,7 +114,7 @@ export default function LifestyleDesignerScreen() {
   const openCreateModal = () => {
     setEditPlan(null);
     setPlanForm({ name: '', description: '' });
-    setAllocations(emptyAllocations());
+    setAllocations(emptyAllocations(LIFE_AREAS));
     setActiveDayType('weekday');
     setShowPlanModal(true);
   };
@@ -118,7 +122,7 @@ export default function LifestyleDesignerScreen() {
   const openEditModal = async (plan: any) => {
     setEditPlan(plan);
     setPlanForm({ name: plan.name || '', description: plan.description || '' });
-    setAllocations(plan.allocations || emptyAllocations());
+    setAllocations(plan.allocations || emptyAllocations(LIFE_AREAS));
     setActiveDayType('weekday');
     setShowPlanModal(true);
   };
