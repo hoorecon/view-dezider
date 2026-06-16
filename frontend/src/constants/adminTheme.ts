@@ -3,25 +3,25 @@
  * Inspired by Tata Neu (super-app shell) + Groww (clarity) + Linear (density).
  */
 export const ADMIN_THEME = {
-  // Sidebar — Google Workspace style (white with blue accents)
+  // Sidebar — Google Workspace style with navy text (improved readability)
   sidebar: {
     bg: '#FFFFFF',
     bgHover: '#F1F3F4',
     bgActive: '#E8F0FE',
     border: '#DADCE0',
-    text: '#5F6368',
-    textActive: '#1A73E8',
-    accent: '#1A73E8',
-    sectionLabel: '#80868B',
+    text: '#1E3A5F',           // navy blue (was grey #5F6368)
+    textActive: '#0B3D91',     // deeper navy on active
+    accent: '#1A73E8',         // Google blue accent
+    sectionLabel: '#1E3A5F',   // navy (was muted grey #80868B)
     width: 240,
     widthCollapsed: 64,
   },
   // Topbar
   topbar: {
     bg: '#FFFFFF',
-    border: '#E2E8F0',
-    text: '#0F172A',
-    textMuted: '#64748B',
+    border: '#DADCE0',
+    text: '#1E3A5F',         // navy (was very-dark slate #0F172A)
+    textMuted: '#1E3A5F',    // navy (was grey #64748B) — improved readability
     height: 60,
   },
   // Content area

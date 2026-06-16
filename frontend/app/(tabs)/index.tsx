@@ -750,8 +750,6 @@ export default function HomeScreen() {
               <Text style={styles.actionSubtitle}>Import & API</Text>
             </TouchableOpacity>
             )}
-          </View>
-          <View style={styles.quickActions}>
             {isTileOn('time_store') && (
             <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/time-store' as any)}>
               <LinearGradient colors={['#DC2626', '#EF4444']} style={styles.actionIcon}>
@@ -761,7 +759,6 @@ export default function HomeScreen() {
               <Text style={styles.actionSubtitle}>Buy back time</Text>
             </TouchableOpacity>
             )}
-            <View style={[styles.actionCard, { opacity: 0 }]} pointerEvents="none" />
           </View>
 
           {/* ══════════ §9 MORE TOOLS (secondary utilities) ══════════ */}
