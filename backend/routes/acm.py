@@ -117,9 +117,84 @@ async def update_feature_access(feature_id: str, request: Request, user: dict = 
     update_ops["updated_by"] = user["user_id"]
 
     await db.acm_modules.update_one({"module_id": module["module_id"]}, {"$set": update_ops})
+
+    # ─── SECTION ↔ TILE CASCADE (dashboard_tiles module only) ─────────────
+    # Three rules, applied in this order:
+    #   R1. If a SECTION row was edited → for each audience set to Hidden,
+    #       push the same level to every child tile that does NOT carry an
+    #       override flag for that audience (i.e. only "untouched" tiles).
+    #       For Full/Read/Locked, do the same (so enabling a section turns
+    #       its un-overridden tiles back on).
+    #   R2. When a single TILE row is edited → record its
+    #       `tile_overrides[audience] = true` so future section cascades
+    #       skip those audiences. Also clear the override when a user
+    #       resets a tile back to match the parent.
+    #   R3. If a TILE is set to Full/Read while its parent SECTION is
+    #       Hidden for the SAME audience → auto-flip the section to Full
+    #       for that audience (because at least one child is visible now).
+    cascade_log: list[str] = []
+    if module["module_id"] == "dashboard_tiles" and new_access:
+        edited_feat = next((f for f in module["features"] if f["feature_id"] == feature_id), None)
+        is_section = bool(edited_feat and edited_feat.get("is_section"))
+        parent_id = edited_feat.get("parent_feature_id") if edited_feat else None
+        mod_now = await db.acm_modules.find_one({"module_id": "dashboard_tiles"})
+
+        if is_section:
+            # R1 — cascade to children that aren't overridden for that audience
+            for j, feat in enumerate(mod_now["features"]):
+                if feat.get("parent_feature_id") != feature_id:
+                    continue
+                overrides = feat.get("tile_overrides", {}) or {}
+                child_access = dict(feat.get("access") or {})
+                changed = False
+                for aud, rule in new_access.items():
+                    if overrides.get(aud):
+                        continue  # respect per-tile override
+                    child_access[aud] = rule
+                    changed = True
+                if changed:
+                    await db.acm_modules.update_one(
+                        {"module_id": "dashboard_tiles"},
+                        {"$set": {f"features.{j}.access": child_access,
+                                  f"features.{j}.updated_at": datetime.now(timezone.utc).isoformat()}},
+                    )
+                    cascade_log.append(f"cascaded → {feat['feature_id']}")
+
+        elif parent_id:
+            # R2 — mark every audience touched by this tile edit as overridden
+            tile_idx = next(i for i, f in enumerate(mod_now["features"]) if f["feature_id"] == feature_id)
+            current_overrides = mod_now["features"][tile_idx].get("tile_overrides", {}) or {}
+            for aud in new_access.keys():
+                current_overrides[aud] = True
+            await db.acm_modules.update_one(
+                {"module_id": "dashboard_tiles"},
+                {"$set": {f"features.{tile_idx}.tile_overrides": current_overrides}},
+            )
+
+            # R3 — auto-unhide parent section if this tile is Full/Read for a
+            # currently-hidden audience.
+            parent_idx = next((i for i, f in enumerate(mod_now["features"]) if f["feature_id"] == parent_id), -1)
+            if parent_idx >= 0:
+                parent_access = dict(mod_now["features"][parent_idx].get("access") or {})
+                changed_parent = False
+                for aud, rule in new_access.items():
+                    if rule.get("level") in ("full", "read") \
+                       and (parent_access.get(aud) or {}).get("level") == "hidden":
+                        parent_access[aud] = {"level": "full", "quota": -1}
+                        changed_parent = True
+                if changed_parent:
+                    await db.acm_modules.update_one(
+                        {"module_id": "dashboard_tiles"},
+                        {"$set": {f"features.{parent_idx}.access": parent_access}},
+                    )
+                    cascade_log.append(f"auto-unhid parent → {parent_id}")
+
     await refresh_acm_cache()
 
-    return {"message": f"Feature '{feature_id}' updated", "updates": list(update_ops.keys())}
+    resp = {"message": f"Feature '{feature_id}' updated", "updates": list(update_ops.keys())}
+    if cascade_log:
+        resp["cascade"] = cascade_log
+    return resp
 
 
 # ============================================================

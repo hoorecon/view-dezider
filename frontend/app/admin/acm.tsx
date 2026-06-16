@@ -61,6 +61,11 @@ interface Feature {
   quota_unit: string;
   quota_resets: string;
   access: Record<string, { level: string; quota: number }>;
+  // NEW (v3.19.7) — section grouping support
+  is_section?: boolean;
+  section_order?: number;
+  parent_feature_id?: string;
+  tile_overrides?: Record<string, boolean>;
 }
 
 interface Module {
@@ -422,12 +427,60 @@ export default function ACMAdminScreen() {
 
             {expandedModules.has(mod.module_id) && (
               <View style={styles.featuresContainer}>
-                {mod.features.map((feat) => (
-                  <View key={feat.feature_id}>
-                    {renderFeatureRow(feat)}
-                    {renderFeatureDetail(feat)}
-                  </View>
-                ))}
+                {(() => {
+                  // ─── SECTION GROUPING (dashboard_tiles only) ───────────
+                  // If this module declares sections (rows with is_section)
+                  // render them as parent rows with children indented below.
+                  // Other modules render the flat list as before.
+                  const sectionRows = mod.features.filter(f => f.is_section)
+                    .sort((a, b) => (a.section_order || 0) - (b.section_order || 0));
+                  const childByParent: Record<string, Feature[]> = {};
+                  for (const f of mod.features) {
+                    if (f.parent_feature_id) {
+                      (childByParent[f.parent_feature_id] = childByParent[f.parent_feature_id] || []).push(f);
+                    }
+                  }
+                  const orphans = mod.features.filter(f => !f.is_section && !f.parent_feature_id);
+
+                  if (sectionRows.length === 0) {
+                    return mod.features.map((feat) => (
+                      <View key={feat.feature_id}>
+                        {renderFeatureRow(feat)}
+                        {renderFeatureDetail(feat)}
+                      </View>
+                    ));
+                  }
+
+                  return (
+                    <>
+                      {sectionRows.map((section) => (
+                        <View key={section.feature_id}>
+                          <View style={styles.sectionRowBg}>
+                            {renderFeatureRow(section)}
+                          </View>
+                          {renderFeatureDetail(section)}
+                          {(childByParent[section.feature_id] || []).map((child) => (
+                            <View key={child.feature_id} style={styles.tileRowIndent}>
+                              {renderFeatureRow(child)}
+                              {renderFeatureDetail(child)}
+                            </View>
+                          ))}
+                        </View>
+                      ))}
+                      {orphans.length > 0 && (
+                        <View style={{ marginTop: 12 }}>
+                          <Text style={styles.orphanLabel}>Other / un-sectioned</Text>
+                          {orphans.map((feat) => (
+                            <View key={feat.feature_id}>
+                              {renderFeatureRow(feat)}
+                              {renderFeatureDetail(feat)}
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                    </>
+                  );
+                })()}
               </View>
             )}
           </View>
@@ -643,6 +696,25 @@ const styles = StyleSheet.create({
   detailHint: {
     fontSize: 11, color: COLORS.textMuted, fontStyle: 'italic',
     marginTop: 8, paddingHorizontal: 4,
+  },
+  // ─── Section grouping (dashboard_tiles) ───
+  sectionRowBg: {
+    backgroundColor: COLORS.cardAlt,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.accent,
+    marginTop: 10,
+  },
+  tileRowIndent: {
+    marginLeft: 24,
+    borderLeftWidth: 2,
+    borderLeftColor: COLORS.border,
+    paddingLeft: 8,
+  },
+  orphanLabel: {
+    fontSize: 11, fontWeight: '700', color: COLORS.textMuted,
+    textTransform: 'uppercase', letterSpacing: 0.5,
+    marginBottom: 4, marginLeft: 4,
   },
   // ─── Editor modal ───
   modalBackdrop: {

@@ -20,7 +20,7 @@ Subscription Plans (for paid): starter, pro, enterprise, api
 # Bump this version whenever ACM_MODULES / USER_TYPES / SUBSCRIPTION_PLANS change.
 # Boot-time auto-seed (core/acm_engine.py) reseeds DB iff stored version < this one.
 # Format: "YYYY-MM-DD-N" — human-readable, monotonically sortable.
-ACM_SEED_VERSION = "2026-06-14-02"
+ACM_SEED_VERSION = "2026-06-16-01"  # +section parents + cascade-ready
 
 # Release stages (ordered by visibility)
 RELEASE_STAGES = [
@@ -1756,67 +1756,92 @@ ACM_MODULES = [
         "module_id": "dashboard_tiles",
         "module_name": "Dashboard Tiles (Home Screen)",
         "module_icon": "grid",
-        "module_description": "Per-tile visibility toggles for the Home dashboard. Wiring off a tile only hides the direct dashboard entry — inter-module links still work.",
+        "module_description": "Per-tile visibility toggles for the Home dashboard. Tiles are grouped under their parent SECTION; setting the section to Hidden cascades to all child tiles (unless a tile already has a per-audience override). Setting any tile to Full/Read while the section is Hidden auto-flips the section back to Full for that audience.",
         "order": 99,
-        "features": [
-            {"feature_id": f"dash_{tile_id}", "feature_name": f"Dashboard tile · {tile_label}",
-             "release_stage": "ga_free", "quota_unit": "toggle", "quota_resets": "none",
-             "access": {
-                "unit_tester": _full(), "integration_tester": _full(),
-                "alpha": _full(), "beta": _full(),
-                "free": _full(), "trial": _full(),
-                "paid_starter": _full(), "paid_pro": _full(),
-                "paid_enterprise": _full(), "paid_api": _full(),
-             }}
-            for tile_id, tile_label in [
-                # Section 1 — Decision foundations
-                ("my_dezider",            "My Dezider"),
-                ("instant_dezider",       "Instant Dezider (Test123)"),
-                ("pros_cons",             "Pros & Cons"),
-                ("swot",                  "SWOT Analysis"),
-                ("pna",                   "My 360° Life (PNA)"),
-                # Section 2 — Solutions
-                ("solution_finder",       "Solution Finder"),
-                ("solution_store",        "Solution Store"),
-                ("review_net",            "Review Net"),
-                # Section 3 — Emotional & conflict
-                ("emotional_gatekeeper",  "Emotional Gatekeeper"),
-                ("conflict_breaker",      "Conflict Breaker"),
-                # Section 4 — Goals & execution
-                ("gem",                   "GEM"),
-                ("goal_setter",           "Goal Setter"),
-                ("goal_manifestation",    "Manifestation"),
-                ("gem_flight",            "GEM Flight Model"),
-                # Section 5 — Action & tasks
-                ("action_tracker",        "Action Tracker"),
-                ("ctt",                   "Centralized Task Tracker (CTT)"),
-                # Section 6 — Lifestyle
-                ("lifestyle_dezider",     "Lifestyle Dezider"),
-                ("lifestyle_designer",    "Lifestyle Designer"),
-                ("lifestyle_analyzer",    "Lifestyle Analyzer"),
-                ("consciousness_diary",   "Consciousness Diary"),
-                ("unconditional_happiness", "Unconditional Happiness"),
-                # Section 7 — Collaboration & advisors
-                ("collaboration_hub",     "Collaboration Hub"),
-                ("aala",                  "AALA"),
-                ("contacts",              "Contacts"),
-                ("ai_assistant",          "AI Assistant"),
-                ("public_pulse",          "Public Pulse"),
-                # Section 8 — Time & calendar
-                ("time_dezider",          "Time Intelligence"),
-                ("calendar",              "Calendar"),
-                ("time_store",            "Time Store"),
-                # Section 9 — Knowledge & systems
-                ("social_learning",       "Social Learning"),
-                ("capabilities_index",    "Capabilities & Resources Index"),
-                ("deo",                   "DEO"),
-                ("cld_engine",            "CLD Engine"),
-                # Section 10 — Billing
-                ("subscription",          "Subscription"),
-                # Reflection & Awareness — moved from EG sub-modules
-                ("outlet_analyzer",       "Outlet Analyzer"),
-                ("aim_manager",           "AIM Manager"),
+        "features": (
+            # ── 9 SECTION FEATURES (parents) ────────────────────────────────
+            [
+                {"feature_id": f"dash_section_{sid}", "feature_name": f"§{order} · {sname}",
+                 "release_stage": "ga_free", "quota_unit": "section_toggle", "quota_resets": "none",
+                 "is_section": True, "section_order": order,
+                 "access": {k: _full() for k in [
+                    "unit_tester", "integration_tester", "alpha", "beta",
+                    "free", "trial", "paid_starter", "paid_pro",
+                    "paid_enterprise", "paid_api",
+                 ]}}
+                for order, sid, sname in [
+                    (1, "self_discovery",          "Self Discovery"),
+                    (2, "decision_kickstarters",   "Decision Kickstarters"),
+                    (3, "inner_wellbeing",         "Inner Wellbeing"),
+                    (4, "goals_manifestation",     "Goals & Manifestation"),
+                    (5, "execute_track",           "Execute & Track"),
+                    (6, "reflection_awareness",    "Reflection & Awareness"),
+                    (7, "collaboration_mgmt",      "Collaboration & Management"),
+                    (8, "solution_space",          "Solution Space"),
+                    (9, "more_tools",              "More Tools"),
+                ]
             ]
-        ],
+            +
+            # ── INDIVIDUAL TILES (children) ─────────────────────────────────
+            [
+                {"feature_id": f"dash_{tile_id}", "feature_name": f"Dashboard tile · {tile_label}",
+                 "release_stage": "ga_free", "quota_unit": "toggle", "quota_resets": "none",
+                 "parent_feature_id": f"dash_section_{parent_section}",
+                 "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _full(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _full(),
+                 }}
+                for tile_id, tile_label, parent_section in [
+                    # §1 Self Discovery
+                    ("pna",                   "My 360° Life",                   "self_discovery"),
+                    ("gem",                   "GEM",                            "self_discovery"),
+                    # §2 Decision Kickstarters
+                    ("my_dezider",            "My Dezider",                     "decision_kickstarters"),
+                    ("instant_dezider",       "Instant Dezider (Test123)",      "decision_kickstarters"),
+                    ("pros_cons",             "Pros & Cons",                    "decision_kickstarters"),
+                    ("solution_finder",       "Solution Finder",                "decision_kickstarters"),
+                    # §3 Inner Wellbeing
+                    ("emotional_gatekeeper",  "Emotional Gatekeeper",           "inner_wellbeing"),
+                    ("conflict_breaker",      "Conflict Breaker",               "inner_wellbeing"),
+                    # §4 Goals & Manifestation
+                    ("goal_setter",           "Goal Setter",                    "goals_manifestation"),
+                    ("goal_manifestation",    "Manifestation",                  "goals_manifestation"),
+                    # §5 Execute & Track
+                    ("action_tracker",        "Action Tracker",                 "execute_track"),
+                    ("ctt",                   "Centralized Task Tracker (CTT)", "execute_track"),
+                    ("lifestyle_dezider",     "Lifestyle Dezider",              "execute_track"),
+                    # §6 Reflection & Awareness
+                    ("public_pulse",          "Life Mirror (Public Pulse)",     "reflection_awareness"),
+                    ("outlet_analyzer",       "Outlet Analyzer",                "reflection_awareness"),
+                    ("aim_manager",           "AIM Manager",                    "reflection_awareness"),
+                    ("capabilities_index",    "Capabilities & Resources Index", "reflection_awareness"),
+                    ("lifestyle_designer",    "Lifestyle Designer",             "reflection_awareness"),
+                    ("lifestyle_analyzer",    "Lifestyle Analyzer",             "reflection_awareness"),
+                    ("consciousness_diary",   "Consciousness Diary",            "reflection_awareness"),
+                    ("unconditional_happiness", "Unconditional Happiness",      "reflection_awareness"),
+                    # §7 Collaboration & Management
+                    ("collaboration_hub",     "Collaboration Hub",              "collaboration_mgmt"),
+                    ("aala",                  "AALA",                           "collaboration_mgmt"),
+                    ("time_dezider",          "Time Intelligence",              "collaboration_mgmt"),
+                    ("gem_flight",            "GEM Flight Model",               "collaboration_mgmt"),
+                    # §8 Solution Space
+                    ("solution_store",        "Solution Store",                 "solution_space"),
+                    ("review_net",            "Review Net",                     "solution_space"),
+                    ("deo",                   "DEO",                            "solution_space"),
+                    ("time_store",            "Time Store",                     "solution_space"),
+                    # §9 More Tools
+                    ("ai_assistant",          "AI Assistant",                   "more_tools"),
+                    ("social_learning",       "Social Learning",                "more_tools"),
+                    ("swot",                  "SWOT Analysis",                  "more_tools"),
+                    ("contacts",              "Contacts",                       "more_tools"),
+                    ("calendar",              "Calendar",                       "more_tools"),
+                    ("subscription",          "Subscription",                   "more_tools"),
+                    ("cld_engine",            "CLD Engine",                     "more_tools"),
+                ]
+            ]
+        ),
     },
 ]
