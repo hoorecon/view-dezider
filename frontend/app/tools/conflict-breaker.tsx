@@ -20,6 +20,7 @@ import VoiceInput, { VoiceSavedAudio } from '../../src/components/VoiceInput';
 import AudioAttachment, { AudioAttachmentMeta } from '../../src/components/AudioAttachment';
 import { CollabBar } from '../../src/components/CollabBar';
 import { DecisionContinuePanel } from '../../src/components/DecisionContinuePanel';
+import { PartyTabs, defaultPartyColor, type Party } from '../../src/components/PartyTabs';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -769,6 +770,30 @@ export default function ConflictBreakerScreen() {
           </View>
         </View>
 
+        {/* Slice C — Parties manager + collab share/AV call.
+            Parties (up to 7) define whose perspectives this session captures.
+            CollabBar exposes share-this-step + schedule A/V call. */}
+        {activeSession?.session_id && (
+          <>
+            <CollabBar
+              module="conflict-breaker"
+              decisionId={activeSession.session_id}
+              stepId={stage.id}
+              stepLabel={stage.name}
+              decisionTitle={activeSession.title}
+            />
+            <PartiesManager
+              parties={(activeSession.parties as Party[]) || []}
+              onChange={async (newParties) => {
+                try {
+                  await api.put(`/conflict-breaker/sessions/${activeSession.session_id}`, { parties: newParties });
+                  setActiveSession({ ...activeSession, parties: newParties });
+                } catch (e) { /* non-fatal */ }
+              }}
+            />
+          </>
+        )}
+
         {/* Emotional intensity warning */}
         {s1.emotion_score >= 8 && currentStage <= 6 && (
           <View style={s.warnBanner}>
@@ -1036,3 +1061,63 @@ const s = StyleSheet.create({
   saveBtn: { backgroundColor: '#003087', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 16 },
   saveBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
 });
+
+/**
+ * PartiesManager — Slice C inline component.
+ *
+ * Renders the list of parties (up to 7) involved in this conflict with
+ * inline rename (long-press a chip) + add / remove controls. Color-codes
+ * each party. Persists on every change via the parent's `onChange`.
+ *
+ * Why inline? — kept here to avoid an extra round-trip import for a
+ * highly-CB-specific affordance. The underlying chip-row is the reusable
+ * `<PartyTabs>` component, which is reused in step 8's side-by-side view
+ * (next iteration).
+ */
+function PartiesManager({ parties, onChange }: { parties: Party[]; onChange: (p: Party[]) => void }) {
+  // Local active-party state is purely cosmetic here (used to show which
+  // chip is "selected" while you long-press to rename it). The real
+  // per-party state for question answers lives in step renderers using
+  // the flat-keyed `field__party_<id>` storage convention.
+  const [active, setActive] = React.useState<string>(parties[0]?.id || 'p1');
+  React.useEffect(() => {
+    if (parties.length && !parties.find(p => p.id === active)) setActive(parties[0].id);
+  }, [parties, active]);
+
+  const addParty = () => {
+    if (parties.length >= 7) return;
+    const idx = parties.length;
+    const next: Party = {
+      id: `p${Date.now().toString(36)}`,
+      name: `Party ${String.fromCharCode(65 + idx)}`,
+      color: defaultPartyColor(idx),
+    };
+    onChange([...parties, next]);
+    setActive(next.id);
+  };
+  const renameParty = (id: string, name: string) => onChange(parties.map(p => p.id === id ? { ...p, name } : p));
+  const removeParty = (id: string) => {
+    if (parties.length <= 2) return; // always keep at least 2
+    onChange(parties.filter(p => p.id !== id));
+  };
+
+  return (
+    <View style={{ backgroundColor: '#F8FAFC', borderRadius: 12, padding: 10, marginBottom: 12, borderWidth: 1, borderColor: '#E2E8F0' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+        <Ionicons name="people-circle" size={16} color="#475569" />
+        <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>Parties in this conversation</Text>
+        <Text style={{ fontSize: 11, color: '#64748B', marginLeft: 4 }}>(long-press a chip to rename · max 7)</Text>
+      </View>
+      <PartyTabs
+        parties={parties}
+        activePartyId={active}
+        onChange={setActive}
+        onAddParty={addParty}
+        onRenameParty={renameParty}
+        onRemoveParty={removeParty}
+        showManageControls
+        maxParties={7}
+      />
+    </View>
+  );
+}

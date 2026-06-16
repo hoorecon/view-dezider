@@ -82,12 +82,21 @@ async def create_session(request: Request, user: dict = Depends(get_current_user
     body = await request.json()
     session_id = f"CB-{uuid.uuid4().hex[:10].upper()}"
     now = datetime.now(timezone.utc).isoformat()
+    # ── Multi-party (Slice C) ──
+    # Default: 2 unnamed parties (caller is Party A, other party = Party B).
+    # The caller can rename / add up to 7 parties via PUT /sessions/{id}/parties.
+    user_display = (user.get("name") or user.get("display_name") or "Party A").strip()
+    parties = body.get("parties") or [
+        {"id": "p1", "name": user_display, "color": "#6366F1"},
+        {"id": "p2", "name": body.get("other_party_role") or "Party B", "color": "#F59E0B"},
+    ]
     doc = {
         "session_id": session_id,
         "user_id": user["user_id"],
         "title": body.get("title", ""),
         "conversation_type": body.get("conversation_type", "prepare"),
         "other_party_role": body.get("other_party_role", ""),
+        "parties": parties,
         "current_stage": body.get("current_stage", 1),
         "status": body.get("status", "draft"),
         # ── Timing (Enhancement #4) ──
@@ -133,6 +142,7 @@ async def update_session(session_id: str, request: Request, user: dict = Depends
     now = datetime.now(timezone.utc).isoformat()
     upd = {"updated_at": now}
     for f in ["title", "conversation_type", "other_party_role", "current_stage", "status",
+              "parties",
               "deadline_date", "impact_horizon_value", "impact_horizon_unit",
               "linked_from_decision_id", "linked_from_module",
               "linked_from_option_label", "linked_from_score_pct", "allow_single_option"]:

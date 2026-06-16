@@ -2068,6 +2068,14 @@ export default function ProsConsWizard() {
                 );
               })()}
               <NextBack onBack={() => persistStep(7)} onNext={null} />
+              {id && (
+                <DecisionContinuePanel
+                  sourceModule="pros-cons"
+                  sourceDecisionId={id}
+                  title={analysis?.title || 'Pros & Cons'}
+                  contextSummary={`From your 8-Step Pros & Cons analysis.`}
+                />
+              )}
             </View>
             );
           })()}

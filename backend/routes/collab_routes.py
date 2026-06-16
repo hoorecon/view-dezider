@@ -105,6 +105,15 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _as_aware(dt):
+    """Mongo returns naive UTC datetimes; coerce to tz-aware UTC for safe compare."""
+    if dt is None:
+        return None
+    if getattr(dt, "tzinfo", None) is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 def _ensure_module(module: str) -> None:
     if module not in MODULES:
         raise HTTPException(400, f"Unknown module '{module}'")
@@ -232,7 +241,7 @@ async def get_invite(invite_id: str, user: dict = Depends(get_current_user)):
         else:
             raise HTTPException(403, "Not authorized to view this invite")
     # Expiry refresh
-    if inv["status"] == "pending" and _now() > inv["expires_at"]:
+    if inv["status"] == "pending" and _now() > _as_aware(inv["expires_at"]):
         await db.collab_invites.update_one({"invite_id": invite_id}, {"$set": {"status": "expired"}})
         inv["status"] = "expired"
     return {"invite": inv, "is_owner": is_owner, "is_invitee": is_invitee_linked}
@@ -247,7 +256,7 @@ async def submit_invite(invite_id: str, payload: InviteSubmitPayload, user: dict
         raise HTTPException(403, "This invite is bound to another user")
     if inv["status"] in ("cancelled",):
         raise HTTPException(409, f"Invite is {inv['status']}")
-    late = _now() > inv["expires_at"]
+    late = _now() > _as_aware(inv["expires_at"])
     await db.collab_invites.update_one(
         {"invite_id": invite_id},
         {"$set": {
@@ -419,8 +428,7 @@ async def _av_appointment_tick():
             scheduled_at: datetime = a.get("scheduled_at")
             if not scheduled_at:
                 continue
-            if scheduled_at.tzinfo is None:
-                scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
+            scheduled_at = _as_aware(scheduled_at)
             offsets = a.get("reminder_offsets_minutes") or list(DEFAULT_REMINDER_OFFSETS_MIN)
             sent = set(a.get("reminders_sent") or [])
             for offset in offsets:
