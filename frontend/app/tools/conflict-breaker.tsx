@@ -18,6 +18,8 @@ import LinkedSourcePill from '../../src/components/decisions/LinkedSourcePill';
 import { addDaysISO } from '../../src/utils/dateLocalize';
 import VoiceInput, { VoiceSavedAudio } from '../../src/components/VoiceInput';
 import AudioAttachment, { AudioAttachmentMeta } from '../../src/components/AudioAttachment';
+import { CollabBar } from '../../src/components/CollabBar';
+import { DecisionContinuePanel } from '../../src/components/DecisionContinuePanel';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -788,6 +790,16 @@ export default function ConflictBreakerScreen() {
             <Text style={s.aiText}>{aiOutput}</Text>
           </View>
         ) : null}
+
+        {/* End-of-flow CTAs — only on the final stage. */}
+        {currentStage === 9 && activeSession?.session_id && (
+          <DecisionContinuePanel
+            sourceModule="conflict-breaker"
+            sourceDecisionId={activeSession.session_id}
+            title={activeSession.title}
+            contextSummary={`From a crucial conversation${activeSession.other_party_role ? ' with ' + activeSession.other_party_role : ''}.`}
+          />
+        )}
 
         {/* Action Buttons */}
         <View style={s.navBtnRow}>

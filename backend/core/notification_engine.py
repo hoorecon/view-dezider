@@ -386,6 +386,14 @@ async def tick() -> int:
                 ran += 1
     except Exception as e:  # noqa: BLE001
         logger.warning("notification tick failed: %s", str(e)[:200])
+    # ── A/V appointment reminder dispatcher (slice E) ─────────────
+    # Piggy-backs on the same 60s heartbeat so we don't spin a second
+    # scheduler. Failures are best-effort and never block notifications.
+    try:
+        from routes.collab_routes import _av_appointment_tick
+        await _av_appointment_tick()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("av appointment tick failed: %s", str(e)[:200])
     return ran
 
 
