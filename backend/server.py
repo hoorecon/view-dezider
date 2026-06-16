@@ -321,6 +321,9 @@ api_router.include_router(regression_router)
 from routes.collab_routes import router as collab_router  # noqa: E402
 api_router.include_router(collab_router)
 
+from routes.values_routes import router as values_router  # noqa: E402
+api_router.include_router(values_router)
+
 
 # ========================
 # HEALTH CHECK + INFRA STATUS
