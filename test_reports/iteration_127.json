@@ -1,0 +1,69 @@
+{
+  "summary": "Iter127 frontend-only sweep of v3.24 Collab + Multi-party UI affordances. 8/10 items VERIFIED PASS via live UI on http://localhost:3000 with admin@test.com. Items 6 & 7 VERIFIED-BY-CODE-REVIEW (gating conditions correct, components imported & rendered conditionally) but live UI navigation was blocked by environmental factors (admin user has 0 SMART goals; SF progress dots are icons not labeled with numbers — could not click to step 5 via text selector in 3 attempts). NOTE: A stale Metro bundle cache was serving the OLD 3-CTA Conflict Breaker landing on the first visit; restarting expo (`sudo supervisorctl restart expo`) resolved it. After restart, all CB UI matched the new single 'Start a Crucial Conversation' code.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "CollabBar / Share-and-Schedule pill buttons",
+        "issue": "No testID attributes on 'Share this step' / 'Schedule call' buttons in CollabBar.tsx; modals also lack testID. Slows down automated testing. Reference: /app/frontend/src/components/CollabBar.tsx:37,43; StepShareModal.tsx; AppointmentSchedulerModal.tsx.",
+        "testID": "missing",
+        "priority": "MEDIUM"
+      },
+      {
+        "component": "Solution Finder progress stepper",
+        "issue": "Step icons in the progress bar render as Ionicons only — no numeric label and no testID. There is no easy way to programmatically (or for a user) jump directly to step 5; only Next/Back. Reference: /app/frontend/app/tools/solution-finder.tsx (progressRow component).",
+        "testID": "missing",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Conflict Breaker — Step view qLabel",
+        "issues": ["VERIFIED FIX: qLabel now uses #0F172A (dark slate) on white card background — clearly readable, no more old #E2E8F0 light grey. /app/frontend/app/tools/conflict-breaker.tsx:1017."]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/screenshots/06_session_step.png",
+    "/app/test_reports/screenshots/08_share_modal.png",
+    "/app/test_reports/screenshots/10_schedule_modal_only.png",
+    "/app/test_reports/screenshots/12_stage9.png",
+    "/app/test_reports/screenshots/15_swot_detail.png",
+    "/app/test_reports/screenshots/17_today_routine.png",
+    "/app/test_reports/screenshots/26_pc_wizard.png",
+    "/app/test_reports/screenshots/35_pc_step8.png"
+  ],
+  "per_item_results": {
+    "1_cb_parties_and_collabbar":       {"status": "PASS", "evidence": "PartiesManager renders 'Parties in this conversation' panel with chips 'Regular Admin' (Party A = your display name) + 'Boss' (Party B), 'Add party' button, and '(long-press a chip to rename · max 7)' hint. CollabBar pills 'Share this step' + 'Schedule call' render right above the step content. Screenshot 06_session_step.png."},
+    "2_cb_share_modal":                 {"status": "PASS", "evidence": "Modal 'Share & invite' slides up with: WhatsApp number field (+91 9XXXXXXXXX), Email (optional), Their display name (optional), Expires in (hours)=72 default, Personal note (optional), 'Send invite' button, X close button. Screenshot 08_share_modal.png. No submit performed."},
+    "3_cb_schedule_modal":              {"status": "PASS", "evidence": "Modal 'Schedule A/V call' opens with: Title (pre-filled), When (datetime-local), Duration (minutes)=30, Reminders chips (24h/1h/30m/15m/5m, defaults 1h+15m selected), Participant 1 row (Name, WhatsApp, Email), Add participant button, 'Schedule call' submit, X close. Screenshot 10_schedule_modal_only.png."},
+    "4_cb_step9_decision_continue":     {"status": "PASS", "evidence": "Tapping progress dot 9 lands on 'Follow-Up and Closure · Stage 9 of 9'. After scroll, DecisionContinuePanel header 'Continue this decision in another module' visible, and all 8 cards detected by text: Instant Dezider, MyDezider, Pros & Cons, Solution Finder, SWOT, My Life 360, GEM, Goal Setter. Screenshot 12_stage9.png."},
+    "5_swot_collab_and_continue":       {"status": "PASS", "evidence": "Opened existing SWOT 'TEST_LA_NORM_holistic_health_f7b93e' — CollabBar pills 'Share this step' + 'Schedule call' visible at the top, and 'Continue this decision' panel visible after scroll. Screenshots 15/16."},
+    "6_goal_setter_edit_mode":          {"status": "PASS-BY-CODE-REVIEW", "evidence": "Live UI navigation could not be completed because admin@test.com has 0 SMART goals (empty list) AND clicking the + button did not open the create form via text selector in 3 attempts. CODE PATH IS CORRECT: /app/frontend/app/tools/goal-setter.tsx lines 292-300 render CollabBar gated by `mode === 'create' && editingGoalId`, and lines 303-310 render DecisionContinuePanel under the same gate. Imports at lines 19-20 confirm. E1 should self-verify by creating a fresh goal and confirming the bar/panel render after Save."},
+    "7_solfind_step5_collab":           {"status": "PASS-BY-CODE-REVIEW", "evidence": "Live UI could not advance to step 5 because the progress stepper uses icons (no numbered text) and the existing IN-PROGRESS analysis sits on step 2 (Q1a Concerns). Three attempts to navigate via Next/text=5 failed. CODE PATH IS CORRECT: /app/frontend/app/tools/solution-finder.tsx lines 1216-1224 render CollabBar inside renderStep5 gated by `editId`, and lines 1301-… render DecisionContinuePanel at the end of step 5. Imports at lines 36-37 confirm. E1 should self-verify."},
+    "8_pros_cons_wizard_collab":        {"status": "PASS", "evidence": "Opened wizard analysis 'TEST_iter63_pc_64a78e72' — CollabBar pills 'Share this step' + 'Schedule call' visible at top of step body on step 1 (Factors). On step 8 (Assess) the same CollabBar + DecisionContinuePanel 'Continue this decision' are both visible. Screenshots 25/26/35/36."},
+    "9_today_routine_route":            {"status": "PASS", "evidence": "Dashboard Quick Action 'Today's Routine' → router.push('/tools/lifestyle') confirmed in (tabs)/index.tsx:416 and live click landed on http://localhost:3000/tools/lifestyle showing the 'Lifestyle Dezider' aggregated routine board (5 routines, Daily/Weekly/Monthly tabs, 'Today's Routines 0/1 — Morning workout 07:00'). NOT /tools/lifestyle-designer. Screenshot 17_today_routine.png."},
+    "10_cb_readability":                {"status": "PASS", "evidence": "qLabel style at conflict-breaker.tsx:1017 = `color: '#0F172A', fontSize: 14, fontWeight: '700'` rendered on white card background — high contrast, clearly readable. Verified visually in screenshots 06/12 ('What is the conversation about?', 'Who is involved?', etc all dark text on white)."}
+  },
+  "action_items": [
+    "1. Add testID attributes to CollabBar share/schedule pill buttons + the two modals' Send/Schedule/Close buttons (e.g. testID=\"collab-share-step-btn\", \"collab-schedule-call-btn\", \"share-modal-send\", \"share-modal-close\", \"appt-modal-schedule\", \"appt-modal-close\") to make iter128+ UI automation faster and more robust. Currently we rely on visible text which is fragile.",
+    "2. (Optional UX) Number the Solution Finder progress dots (1–6) like Conflict Breaker does (1–9) so users can jump steps and so testing can locate them via text.",
+    "3. E1 self-test items 6 (Goal Setter create→save→verify CollabBar+DCP appear) and 7 (Solution Finder advance via Next to Q5 Action Plan and confirm CollabBar+DCP) — code paths verified, but a live screenshot would be definitive.",
+    "4. Investigate why the first browser session loaded a STALE Conflict Breaker bundle (showed old 3-CTA Prepare/Repair/Reflect tiles). Restarting expo cleared it. May indicate Metro cache invalidation issue when source switched from 3 CTAs to 1 CTA — could affect users on slow networks."
+  ],
+  "critical_code_review_comments": [
+    "CollabBar.tsx (70 lines) and StepShareModal/AppointmentSchedulerModal contain NO testID props — all selectors must use visible text, which is fragile and i18n-unfriendly. Add testIDs.",
+    "PartiesManager (inlined in conflict-breaker.tsx ~line 1077) — long-press to rename is a touch-only gesture; on web there's no equivalent affordance shown in the chip UI. Consider adding a small ✎ pencil icon on hover/tap for web users.",
+    "DecisionContinuePanel: 8 cards in a horizontal ScrollView — on a 414px-wide mobile viewport only ~2.5 cards are visible at once; cards farther right require horizontal scroll. Confirmed all 8 are present in DOM via JS evaluation, but the user may not realise more exist. Consider adding a chevron/affordance hint or wrapping to 2 rows.",
+    "_public_link in collab_routes.py still defaults to https://jelcos.ai (carried over from iter126) — invites generated in preview will email a link to PROD, not preview. Set PUBLIC_APP_URL env var in /app/backend/.env for accurate preview-link generation."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only sweep)", "frontend": "8/10 live UI PASS, 2/10 PASS-by-code-review (admin had no goal + SF stepper has no numeric labels — gating code verified correct)"},
+  "seed_data_creation": "Created 1 CB session 'TEST_iter127_collab' (other_party=Boss, conversation_type=prepare) for items 1-4. Safe to leave; TEST_ prefix.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All 4 Conflict Breaker affordances (PartiesManager, CollabBar share/schedule modals, Step-9 DecisionContinuePanel) PASS live UI tests. SWOT + Pros & Cons Wizard CollabBar+DCP also PASS live. Goal Setter & Solution Finder Step 5 code verified but not live-clicked — E1 should self-verify by creating a goal / advancing SF to Q5. NOTE: if the rendered UI ever still shows the old 3-CTA CB landing ('Prepare for a Conversation'/'Repair'/'Reflect'), run `sudo supervisorctl restart expo` to clear Metro cache. 'Today's Routine' Quick Action correctly routes to /tools/lifestyle (Lifestyle Dezider) per dashboard fix.",
+  "rca_of_issue": "No new RCAs — this iteration confirmed the v3.24 frontend changes are wired correctly. The only observed environmental quirk was a stale Metro bundle on first visit (resolved by `sudo supervisorctl restart expo`)."
+}

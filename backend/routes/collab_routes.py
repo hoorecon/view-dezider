@@ -244,6 +244,9 @@ async def get_invite(invite_id: str, user: dict = Depends(get_current_user)):
     if inv["status"] == "pending" and _now() > _as_aware(inv["expires_at"]):
         await db.collab_invites.update_one({"invite_id": invite_id}, {"$set": {"status": "expired"}})
         inv["status"] = "expired"
+    # Privacy: don't leak owner phone/email to invitee. Owner sees full doc.
+    if not is_owner:
+        inv = {k: v for k, v in inv.items() if k not in ("owner_phone", "owner_email")}
     return {"invite": inv, "is_owner": is_owner, "is_invitee": is_invitee_linked}
 
 
@@ -315,6 +318,8 @@ async def cancel_invite(invite_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(404, "Invite not found")
     if inv["owner_user_id"] != user["user_id"]:
         raise HTTPException(403, "Only the owner can cancel")
+    if inv.get("status") in ("merged", "cancelled"):
+        raise HTTPException(409, f"Invite is already {inv['status']}")
     await db.collab_invites.update_one({"invite_id": invite_id}, {"$set": {"status": "cancelled"}})
     return {"ok": True}
 
