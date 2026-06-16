@@ -472,6 +472,3 @@ const s = StyleSheet.create({
   actionBox: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#D1FAE5', borderRadius: 8, padding: 10, marginTop: 10 },
   actionBoxText: { fontSize: 13, fontWeight: '600', color: '#065F46', flex: 1 },
 });
-
-  actionBoxText: { fontSize: 13, fontWeight: '600', color: '#065F46', flex: 1 },
-});
