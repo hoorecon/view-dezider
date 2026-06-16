@@ -43,12 +43,14 @@ interface VoiceInputProps {
   /**
    * Endpoint scheme:
    *   - 'eg-trap'         : /emotional-gatekeeper/trap/{sessionId}/voice
-   *                          (legacy transcribe-only flow)
+   *                          (legacy transcribe-only flow, requires session)
+   *   - 'eg-generic'      : /emotional-gatekeeper/voice/transcribe
+   *                          (session-less transcribe; for Gratitude etc.)
    *   - 'conflict-breaker': /conflict-breaker/sessions/{sessionId}/audio/...
    *                          (offers BOTH transcribe & save-audio)
    * Default: 'eg-trap' (legacy auto-transcribe — used by Emotional Gatekeeper).
    */
-  module?: 'eg-trap' | 'conflict-breaker';
+  module?: 'eg-trap' | 'eg-generic' | 'conflict-breaker';
 }
 
 type Phase = 'idle' | 'recording' | 'review' | 'transcribing' | 'saving';
@@ -137,6 +139,12 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
         return;
       }
 
+      // 'eg-generic' = session-less auto-transcribe (Gratitude etc.)
+      if (module === 'eg-generic') {
+        await transcribeViaGeneric(uri);
+        return;
+      }
+
       // Inspect blob size for estimate (web). On native we approximate via
       // duration × 8KB/sec.
       let bytes = 0;
@@ -189,6 +197,39 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
       formData.append('field', field);
       const result = await api.post(
         `/emotional-gatekeeper/trap/${sessionId}/voice`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 45000 },
+      );
+      if (result.data?.transcribed_text && onTranscribed) {
+        onTranscribed(result.data.transcribed_text);
+      } else {
+        alert('Could not transcribe audio. Please type instead.');
+      }
+    } catch {
+      alert('Transcription failed. Please type instead.');
+    } finally {
+      setPhase('idle');
+    }
+  };
+
+  // ─── EG Generic (session-less) transcribe flow ──────────────────────────
+  const transcribeViaGeneric = async (uri: string) => {
+    setPhase('transcribing');
+    try {
+      const formData = new FormData();
+      if (Platform.OS === 'web') {
+        const blob = await (await fetch(uri)).blob();
+        formData.append('audio', blob, 'recording.webm');
+      } else {
+        formData.append('audio', {
+          uri,
+          type: 'audio/webm',
+          name: 'recording.webm',
+        } as any);
+      }
+      formData.append('field', field);
+      const result = await api.post(
+        `/emotional-gatekeeper/voice/transcribe`,
         formData,
         { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 45000 },
       );

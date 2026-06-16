@@ -10,6 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import { AudioGuidePlayer } from '../../src/components/AudioGuidePlayer';
+import { VoiceInput } from '../../src/components/VoiceInput';
 import api from '../../src/utils/api';
 
 interface Outlet {
@@ -533,17 +534,32 @@ export default function EGAdvisorScreen() {
             {gratitudeEntries.map((entry, i) => (
               <View key={i} style={s.gratInputRow}>
                 <Text style={s.gratNum}>{i + 1}.</Text>
-                <TextInput
-                  style={s.gratInput}
-                  placeholder={`I'm grateful for...`}
-                  value={entry}
-                  onChangeText={(t) => {
-                    const newEntries = [...gratitudeEntries];
-                    newEntries[i] = t;
-                    setGratitudeEntries(newEntries);
-                  }}
-                  placeholderTextColor={COLORS.textMuted}
-                />
+                <View style={{ flex: 1 }}>
+                  <TextInput
+                    style={s.gratInput}
+                    placeholder={`I'm grateful for...`}
+                    value={entry}
+                    onChangeText={(t) => {
+                      const newEntries = [...gratitudeEntries];
+                      newEntries[i] = t;
+                      setGratitudeEntries(newEntries);
+                    }}
+                    placeholderTextColor={COLORS.textMuted}
+                  />
+                  <View style={{ marginTop: 4, alignItems: 'flex-start' }}>
+                    <VoiceInput
+                      sessionId=""
+                      field={`gratitude_${i + 1}`}
+                      color="#059669"
+                      module="eg-generic"
+                      onTranscribed={(t) => {
+                        const newEntries = [...gratitudeEntries];
+                        newEntries[i] = newEntries[i] ? newEntries[i] + ' ' + t : t;
+                        setGratitudeEntries(newEntries);
+                      }}
+                    />
+                  </View>
+                </View>
               </View>
             ))}
             <TouchableOpacity
