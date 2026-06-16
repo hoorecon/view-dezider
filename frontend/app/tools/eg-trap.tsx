@@ -386,6 +386,15 @@ export default function EGTrapScreen() {
           <Ionicons name="sync" size={16} color="#FFF" />
         </TouchableOpacity>
       </View>
+      {/* Secondary CTA: Effective Outlets Advisor — for users who'd rather
+          process the surfaced emotion via outlets than chain into Loop. */}
+      <TouchableOpacity
+        style={s.altBtn}
+        onPress={() => router.push(`/tools/eg-advisor?sessionId=${sessionId}` as any)}
+      >
+        <Ionicons name="leaf-outline" size={16} color="#0EA5E9" />
+        <Text style={s.altBtnText}>Effective Outlets Advisor</Text>
+      </TouchableOpacity>
       <TouchableOpacity style={s.doneBtn} onPress={() => router.push('/tools/emotional-gatekeeper' as any)}>
         <Text style={s.doneBtnText}>Back to Dashboard</Text>
       </TouchableOpacity>
@@ -458,6 +467,12 @@ const s = StyleSheet.create({
   btnRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
   doneBtn: { alignItems: 'center', paddingVertical: 14, marginTop: 10 },
   doneBtnText: { fontSize: 14, fontWeight: '600', color: COLORS.textMuted },
+  altBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#FFFFFF', borderColor: '#0EA5E9', borderWidth: 1.5,
+    borderRadius: 14, paddingVertical: 12, marginTop: 10,
+  },
+  altBtnText: { fontSize: 14, fontWeight: '700', color: '#0EA5E9' },
   analysisCard: { borderRadius: 16, padding: 20, marginBottom: 8 },
   analysisTitle: { fontSize: 20, fontWeight: '800', color: '#92400E', marginBottom: 12 },
   analysisBadge: { backgroundColor: '#D97706', alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, marginBottom: 16 },

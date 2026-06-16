@@ -296,6 +296,14 @@ export default function EGLimitationScreen() {
           </>
         )}
       </LinearGradient>
+      {/* Secondary CTA — for users who want to process via outlets too. */}
+      <TouchableOpacity
+        style={s.altBtn}
+        onPress={() => router.push(`/tools/eg-advisor?sessionId=${sessionId}` as any)}
+      >
+        <Ionicons name="leaf-outline" size={16} color="#0EA5E9" />
+        <Text style={s.altBtnText}>Effective Outlets Advisor</Text>
+      </TouchableOpacity>
       <TouchableOpacity style={s.doneBtn} onPress={() => router.push('/tools/emotional-gatekeeper' as any)}>
         <Text style={s.doneBtnText}>Back to Dashboard</Text>
       </TouchableOpacity>
@@ -368,6 +376,8 @@ const s = StyleSheet.create({
   affirmText: { fontSize: 14, fontWeight: '600', color: '#1D4ED8', fontStyle: 'italic', textAlign: 'center' },
   doneBtn: { alignItems: 'center', paddingVertical: 14, marginTop: 10 },
   doneBtnText: { fontSize: 14, fontWeight: '600', color: COLORS.textMuted },
+  altBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#FFFFFF', borderColor: '#0EA5E9', borderWidth: 1.5, borderRadius: 14, paddingVertical: 12, marginTop: 14, marginHorizontal: 16 },
+  altBtnText: { fontSize: 14, fontWeight: '700', color: '#0EA5E9' },
 
   // Audio Guide
   audioGuideContainer: { backgroundColor: '#FFF', borderRadius: 14, marginBottom: 16, borderWidth: 1, borderColor: '#DBEAFE', overflow: 'hidden' },

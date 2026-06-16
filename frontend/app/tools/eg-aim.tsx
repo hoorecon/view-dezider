@@ -418,6 +418,13 @@ export default function EGAimScreen() {
           </View>
         ))}
       </LinearGradient>
+      <TouchableOpacity
+        style={s.altBtn}
+        onPress={() => router.push(`/tools/eg-advisor?sessionId=${sessionId}` as any)}
+      >
+        <Ionicons name="leaf-outline" size={16} color="#0EA5E9" />
+        <Text style={s.altBtnText}>Effective Outlets Advisor</Text>
+      </TouchableOpacity>
       <TouchableOpacity style={s.doneBtn} onPress={() => router.push('/tools/emotional-gatekeeper' as any)}>
         <Text style={s.doneBtnText}>Back to Dashboard</Text>
       </TouchableOpacity>
@@ -499,4 +506,6 @@ const s = StyleSheet.create({
   prioText: { fontSize: 13, color: '#9A3412', flex: 1, lineHeight: 18 },
   doneBtn: { alignItems: 'center', paddingVertical: 14, marginTop: 10 },
   doneBtnText: { fontSize: 14, fontWeight: '600', color: COLORS.textMuted },
+  altBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#FFFFFF', borderColor: '#0EA5E9', borderWidth: 1.5, borderRadius: 14, paddingVertical: 12, marginTop: 14, marginHorizontal: 16 },
+  altBtnText: { fontSize: 14, fontWeight: '700', color: '#0EA5E9' },
 });
