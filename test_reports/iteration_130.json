@@ -1,0 +1,75 @@
+{
+  "summary": "Iter 130 FRONTEND sweep for iter-128/129 UI surfaces. Logged in via dev login (auth/login). 19 of 22 user-visible flows verified via Playwright on mobile viewport (390x844) against the public preview URL. PASS: (1) Dashboard renders all 3 new tiles under §5 — 'Effort Estimation' (purple/calculator), 'My Organizations' (indigo/business), 'Values Tracker' (sky-blue/shield) — and all 3 route correctly. (2) /tools/atex page loads with task title, priority (P0-P3), SCC textarea, sub-tasks, risks, scheduling, 'Save as Template' toggle and 'Calculate Final Timeline' button rendered. (3) /tools/orgs Create Organization modal opens with Name + Org Type chips (Individual/Business/Ngo/Association/Govt) + Life Area; saved 'TEST_TestCorp_iter130' BUSINESS/Career and card appeared in list. (4) /tools/org-detail renders with two tabs '7×7 MATRIX' + '6 LeGs GOALS', 7 divisions w/ color pills (Solution Delivery, Market Leadership, Profit Maximization, Cost Effective Operations, Consistent CashFlows, Corporate Governance, Chief Growth Accelerator), each with 7 drivers (Capability/Commitment/Quantity/Simple/Scalable/Profitable/Irresistible) tagged TEAM/SYSTEMS/STRATEGY. (5) 7×7 scoring modal opens with 'Up-to-the-mark' / 'Moderate' / 'Inadequate' buttons + Remarks textarea + Close — tapping 'Up-to-the-mark' commits the score and the cell now shows a green 'Up-to-the-mark' pill (persisted across modal close). (6) /admin loads with Values Tracker, 7×7 and Referral cards present. (7) /admin/values shows 8 platform-default principles with 'Default' lock badge + 'Add Custom Principle' opens a modal with Code/Name/Short summary/Body/Bullets fields + Save/Cancel. (8) /admin/seven-seven has 3 tabs (DIVISIONS / DRIVERS / SCALE), 7 seeded divisions with colored pips and department labels. (9) /admin/referral shows L1=20, L2=10, L3=5, ALOS=365, KP=100 + Save All Config + Simulate. (10) /tools/contacts → open contact → Professional tab reveals 'Roles & Organizations' panel with count 0, 'Add' button and empty state. (11) /tools/ctt-task — 'Estimate effort (ATEX)' purple button renders after Sub-Task field. (12) /tools/lifestyle — compact 'ATEX' purple chip in header next to '+ add routine'. (13) /tools/lifestyle-designer — 'ATEX' chip in hero banner. (14) /tools/gem header has 2 icons (+ and checkbox) on the right. (15) /tools/solution-finder loads. (16) /tools/values, /tools/conflict-breaker, /tools/eg-trap, /tools/pros-cons-wizard, /tools/swot regression — all render without errors. **FAIL/BUG**: Alert.alert on the web preview is a NO-OP for the ATEX screen — clicking 'AI' without a task title produced no alert, no inline modal, no window.alert (verified by pre-injecting a window.alert override BEFORE navigation, captured 0 calls), and clicking 'Calculate Final Timeline' with empty SCC also produced no alert/modal/feedback. This means ATEX validation errors are silently swallowed on web; users have no idea why the button 'did nothing'. **NOT-FULLY-TESTED**: GEM checkbox-icon header button does not have a testID, so the route-to-/tools/action-center on tap could not be programmatically verified (icon is visible, but not clickable via reliable selector). Convert-to-Action button on Solution Finder + Values Alignment panel inside SF Q5 not exercised end-to-end (requires a saved SF entry; deferred — see Action Items).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "/tools/atex — Alert.alert validation",
+        "issue": "Alert.alert from 'react-native' is silently no-op on the web preview. Clicking 'AI' with an empty task title and 'Calculate Final Timeline' with an empty SCC both produce zero user-visible feedback (no native window.alert, no RN-web modal, no inline error text). Verified by injecting a window.alert override before navigation — 0 calls captured. This breaks the required UX: spec says 'expect inline alert SCC required'.",
+        "testID": "(none — calculate button has no testID)",
+        "priority": "HIGH"
+      },
+      {
+        "component": "/tools/atex — calculate button no testID",
+        "issue": "The 'Calculate Final Timeline' button, the 'AI' button, the 'Add sub-task' button, 'Add risk' button, the SCC TextInput and the Task Title TextInput have no testID. Test agents must rely on placeholder/text which is brittle.",
+        "testID": "missing",
+        "priority": "MEDIUM"
+      },
+      {
+        "component": "/tools/gem — header icons no testID",
+        "issue": "The '+' (add goal) and checkbox (Action Tracker shortcut) icon buttons in the GEM header do not expose testID attributes, so the new GEM → Action Tracker bridge cannot be reliably automated. The icons are visible in the header but not selectable by text.",
+        "testID": "missing (need gem-add-goal-btn and gem-action-center-btn)",
+        "priority": "MEDIUM"
+      },
+      {
+        "component": "/tools/org-detail — driver cells no testID",
+        "issue": "Driver cells in the 7×7 Matrix (Capability/Commitment/Quantity/etc.) have no testID. Currently selectable only by text (e.g., page.get_by_text('Capability')) which matches all 7 divisions — using .first() is brittle. Add testID like 'org-cell-{division_code}-{driver_code}'.",
+        "testID": "missing",
+        "priority": "LOW"
+      },
+      {
+        "component": "ATEX spec mismatch — button text",
+        "issue": "Spec says '3 buttons (Up-to-mark / Moderate / Inadequate)' but actual scoring modal button text is 'Up-to-the-mark'. Confirm canonical wording with main agent and align spec OR rename label.",
+        "testID": "(scoring modal buttons)",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "ATEX validation feedback",
+        "issue": "Without visible alerts on web, the user cannot tell whether SCC is required, sub-tasks are required, or AI failed. They will perceive the buttons as broken. Recommended fix: wrap Alert.alert in a Platform.OS === 'web' branch that renders a small <View>/<Text> inline error, OR use react-native-paper / custom modal.",
+        "affected_testIDs": ["atex-calculate-btn", "atex-ai-btn"]
+      }
+    ],
+    "design_issues": [
+      {
+        "screen": "/tools/contacts edit modal",
+        "issues": ["The tab labels 'Profes...' and 'Resour...' are truncated on a 390px mobile width; consider shorter labels (e.g., 'Pro', 'Res') or making the tab strip horizontally scrollable so the full label is visible on tap."]
+      },
+      {
+        "screen": "/tools/lifestyle header",
+        "issues": ["The 'ATEX' purple chip sits inline with the kebab/menu and routines header — on 390px width it is readable but the chip occupies ~45px of right gutter; verify it doesn't collide with notification dots on devices with safe-area insets."]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Add a Platform.OS === 'web' shim for Alert.alert in /app/frontend/app/tools/atex.tsx (and ideally a global helper) so validation messages ('Task title required', 'SCC required', 'Sub-tasks required', 'Estimate failed', 'AI failed') are actually visible on the web preview. Today they are silently no-op which breaks the user-visible spec for the SCC alert.",
+    "Add testID attributes to: atex-task-title, atex-scc, atex-ai-btn, atex-calculate-btn, atex-save-template-toggle, gem-add-goal-btn, gem-action-center-btn, org-cell-{division}-{driver}, contact-add-role-btn, sf-convert-to-action-btn, sf-values-alignment-panel-toggle. This will let regression suites run reliably.",
+    "Convert-to-Action button on Solution Finder + the inline Values Alignment panel (Q5) was not exercised end-to-end in this iteration because it requires walking the SF wizard from Q1→Q5. Recommend the main agent provide a seed SF entry (or a 'Skip to Q5' dev shortcut) so the next testing iteration can verify: (a) Values Alignment collapsible card renders 8 principles, (b) applied/violated mutual exclusion, (c) Convert-to-Action modal + 'Run as CTT' / 'Run as Lifestyle Dezider' port routing.",
+    "/admin/values: Add Custom Principle modal opens and exposes the right fields (Code/Name/Short summary/Body/Bullets), but the end-to-end save + delete-protected-default flow was not fully run to assertion (admin testing user authenticated cleanly). Re-test once the Alert.alert shim above is in place — currently any validation failures (e.g. duplicate code) would be invisible on web.",
+    "/tools/gem header checkbox-icon routing to /tools/action-center: visible in DOM but not testID-selectable; either add testID or expose accessibilityLabel='gem-action-center'. After that, automate the route assertion."
+  ],
+  "critical_code_review_comments": [
+    "/app/frontend/app/tools/atex.tsx imports Alert from 'react-native' and uses Alert.alert(...) for all validation surfaces. react-native-web 0.21 does NOT reliably wire Alert.alert to window.alert in this project (verified empirically — 0 alerts fire on click). The same anti-pattern likely exists across many tools/* screens (ATEX, ctt-task, lifestyle, contacts, solution-finder all use Alert.alert) so ALL their validation feedback is invisible on the web preview. A central web-safe Alert utility is required.",
+    "Tab strip in the Contact Edit modal truncates 'Professional' to 'Profes...' on 390px width, which is misleading because clicking the truncated tab is what reveals the Roles & Organizations panel. Use shorter labels or horizontal scroll."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "not_tested (frontend-only scope)", "frontend": "approx 85% (19/22 flows fully verified; 1 critical bug; 2 deferred for fixture reasons)" },
+  "seed_data_creation": "Created one custom org 'TEST_TestCorp_iter130' (BUSINESS · Career) under user harden_1777921741@example.com via the Create Organization modal. One 7×7 score (Solution Delivery · Capability = Up-to-the-mark) was committed on that org. No cleanup performed — leave for next iteration to validate persistence + delete.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "PRIMARY ISSUE TO FIX FIRST: Alert.alert is a no-op on the web preview (verified with a window.alert pre-injection — 0 captured calls). Until this is fixed, every Alert.alert-driven validation message across the iter-128/iter-129 tool surfaces is silently invisible on web. After the fix, re-run: (a) ATEX SCC-required + Task-title-required + Sub-tasks-required, (b) Admin/values duplicate-code attempt + Protected-delete attempt, (c) Solution Finder mutual-exclusion violation reason flow, (d) Contacts multi-org primary toggling. Also: please add testIDs listed in 'action_items' so the next sweep can use stable selectors. Seed user 'harden_1777921741@example.com' now has 1 custom org 'TEST_TestCorp_iter130' with one 7×7 score applied — re-use it for Org Detail · 6 LeGs goal-create flow next iteration. Admin login admin@test.com / AdminPass2026! works cleanly and lands on /admin with all new cards visible.",
+  "rca_of_issue": "ATEX no-alert RCA: /app/frontend/app/tools/atex.tsx line 7 imports Alert from 'react-native'. On the web target this resolves to react-native-web's Alert which in v0.21 has been observed to not always delegate to window.alert (likely depending on app shell / wrapper config). Reproduction: open /tools/atex on web preview, fill nothing, click 'Calculate Final Timeline' → expected pop-up 'SCC required' → observed nothing in DOM, no window.alert, no [role=alertdialog]. Mitigation: introduce a tiny helper, e.g., `const showAlert = (t,m) => Platform.OS==='web' ? setInlineError({t,m}) : Alert.alert(t,m)` with a banner View rendered conditionally; OR use a global ToastContext."
+}
