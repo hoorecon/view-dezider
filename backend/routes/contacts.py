@@ -75,6 +75,57 @@ def _normalize_resources(r):
     }
 
 
+def _normalize_professional_role(r):
+    """One element in `professional_roles[]` (Iter 129 multi-org refactor).
+
+    {
+      role_id: stable uuid,
+      organization: str,           # company / org name
+      designation: str,            # title
+      org_type: str,
+      org_subtype: str,
+      department: str,
+      reporting_to: str,
+      start_date: str,
+      end_date: str,
+      is_current: bool,
+      is_primary: bool,            # ★ — only one true; UI enforces single ★
+      notes: str,
+    }
+    """
+    if not isinstance(r, dict):
+        r = {}
+    return {
+        "role_id": (r.get("role_id") or f"role_{uuid.uuid4().hex[:10]}"),
+        "organization": (r.get("organization") or "").strip(),
+        "designation": (r.get("designation") or "").strip(),
+        "org_type": (r.get("org_type") or "").strip(),
+        "org_subtype": (r.get("org_subtype") or "").strip(),
+        "department": (r.get("department") or "").strip(),
+        "reporting_to": (r.get("reporting_to") or "").strip(),
+        "start_date": (r.get("start_date") or "").strip(),
+        "end_date": (r.get("end_date") or "").strip(),
+        "is_current": bool(r.get("is_current", False)),
+        "is_primary": bool(r.get("is_primary", False)),
+        "notes": (r.get("notes") or "").strip(),
+    }
+
+
+def _normalize_professional_roles(arr):
+    if not isinstance(arr, list):
+        arr = []
+    rows = [_normalize_professional_role(r) for r in arr if isinstance(r, dict) and (r.get("organization") or "").strip()]
+    # Enforce: at most ONE primary; if none flagged but rows exist, mark first as primary.
+    primaries = [i for i, r in enumerate(rows) if r["is_primary"]]
+    if len(primaries) > 1:
+        # keep only the first primary
+        for j in primaries[1:]:
+            rows[j]["is_primary"] = False
+    elif not primaries and rows:
+        rows[0]["is_primary"] = True
+    return rows
+
+
 def _normalize_social_links(s):
     if not isinstance(s, dict):
         s = {}
@@ -123,6 +174,8 @@ async def create_contact(request: Request, user: dict = Depends(get_current_user
         # Organization classification
         "org_type": body.get("org_type", ""),
         "org_subtype": body.get("org_subtype", ""),
+        # Iter 129 — Multi-organization roles
+        "professional_roles": _normalize_professional_roles(body.get("professional_roles", [])),
         # Social
         "social_status": body.get("social_status", ""),
         "relationship_status": body.get("relationship_status", ""),
@@ -283,6 +336,8 @@ async def update_contact(contact_id: str, request: Request, user: dict = Depends
         "time_bandwidth_hours_per_month", "resources", "social_links",
         # ── Phase-2 additions (masters-backed) ──
         "languages", "occupation", "drives", "traits",
+        # ── Iter 129 — multi-organization ──
+        "professional_roles",
     ]
     update = {}
     for field in allowed:
@@ -293,6 +348,8 @@ async def update_contact(contact_id: str, request: Request, user: dict = Depends
                 update[field] = _normalize_resources(body[field])
             elif field == "social_links":
                 update[field] = _normalize_social_links(body[field])
+            elif field == "professional_roles":
+                update[field] = _normalize_professional_roles(body[field])
             else:
                 update[field] = body[field]
     update["updated_at"] = datetime.now(timezone.utc).isoformat()

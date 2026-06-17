@@ -162,6 +162,27 @@ async def submit_cell_score(p: CellScoreIn, user: dict = Depends(get_current_use
     if org.get("owner_user_id") != user["user_id"] and get_user_role(user) not in ADMIN_ROLES:
         raise HTTPException(403, "Not your org")
 
+    # Iter 129 — master-existence validation
+    await _ensure_seeded()
+    div = await db.ss_divisions.find_one({"code": p.division_code, "active": True})
+    if not div:
+        raise HTTPException(400, f"Unknown division_code '{p.division_code}'")
+    drv = await db.ss_drivers.find_one({"code": p.driver_code, "active": True})
+    if not drv:
+        raise HTTPException(400, f"Unknown driver_code '{p.driver_code}'")
+    sc = await db.ss_scale.find_one({"code": p.scale_code, "active": True})
+    if not sc:
+        raise HTTPException(400, f"Unknown scale_code '{p.scale_code}'")
+    if p.sub_team_code:
+        sub_codes = []
+        def _flat(items):
+            for it in items or []:
+                sub_codes.append(it.get("code"))
+                _flat(it.get("children"))
+        _flat(div.get("sub_teams"))
+        if p.sub_team_code not in sub_codes:
+            raise HTTPException(400, f"sub_team_code '{p.sub_team_code}' not under division '{p.division_code}'")
+
     doc = {
         "id": str(uuid.uuid4()),
         "user_org_id": p.user_org_id,

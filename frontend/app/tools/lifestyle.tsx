@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import TimestampLine from '../../src/components/TimestampLine';
+import ATEXEstimateButton from '../../src/components/ATEXEstimateButton';
 
 const FREQ_LABELS: Record<string, string> = {
   hourly: 'Hourly', daily: 'Daily', weekly: 'Weekly',
@@ -413,6 +414,8 @@ export default function LifestyleScreen() {
           <TouchableOpacity onPress={() => router.push('/tools/lifestyle-routine')} style={s.addBtn}>
             <Ionicons name="add" size={22} color="#FFF" />
           </TouchableOpacity>
+          {/* Iter 129 — ATEX shortcut */}
+          <ATEXEstimateButton source="lifestyle_dezider" compact />
         </View>
       </LinearGradient>
 

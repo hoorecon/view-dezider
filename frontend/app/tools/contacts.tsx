@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import MasterSelect from '../../src/components/MasterSelect';
+import ProfessionalRolesPanel from '../../src/components/ProfessionalRolesPanel';
 import * as ImagePicker from 'expo-image-picker';
 
 const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'JPY', 'CNY', 'AUD', 'CAD', 'CHF', 'AED', 'SGD'];
@@ -306,6 +307,13 @@ export default function ContactsScreen() {
           <TextInput style={styles.textInput} placeholder="e.g., CTO" value={form.designation || ''} onChangeText={v => setForm({...form, designation: v})} />
           <Text style={styles.inputLabel}>Business Network</Text>
           <TextInput style={styles.textInput} placeholder="e.g., TiE, BNI" value={form.business_network || ''} onChangeText={v => setForm({...form, business_network: v})} />
+          {/* Iter 129 — Multi-organization roles */}
+          <View style={{ marginTop: 12, marginBottom: 8 }}>
+            <ProfessionalRolesPanel
+              roles={form.professional_roles || []}
+              onChange={(next) => setForm({ ...form, professional_roles: next })}
+            />
+          </View>
           <Text style={styles.inputLabel}>Skills</Text>
           <MasterSelect type="skill" mode="multi" value={form.skills || []} onChange={(v) => setForm({ ...form, skills: v })} placeholder="Search or add a skill…" />
           <Text style={styles.inputLabel}>Drives (motivations)</Text>

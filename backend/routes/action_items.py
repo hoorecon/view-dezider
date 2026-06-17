@@ -57,6 +57,8 @@ SOURCE_MODULES = {
     "MYDEZIDER_MPPS", "PROS_CONS", "SWOT", "PNA",
     "CONFLICT_BREAKER", "CLD", "GEM", "GOAL_SETTER", "AALA", "MANUAL",
     "AIM",
+    # Iter 129 — universal sink hooks
+    "SOLUTION_FINDER", "INSTANT_DEZIDER", "ATEX",
 }
 RECURRENCE_TYPES = {"one_time", "recurring"}
 FREQUENCIES = {"daily", "weekly", "biweekly", "monthly", "quarterly", "yearly", "custom"}

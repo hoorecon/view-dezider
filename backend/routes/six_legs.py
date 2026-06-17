@@ -185,8 +185,8 @@ async def convert_goal_to_action(goal_id: str, body: Dict[str, Any], user: dict 
         "life_area": None,
         "notes": g.get("notes") or "",
         "ported_to": None, "ported_ref_id": None, "ported_at": None,
-        "created_at": _now().isoformat(),
-        "updated_at": _now().isoformat(),
+        "created_at": _now(),
+        "updated_at": _now(),
     }
     await db.action_items.insert_one(doc)
     doc.pop("_id", None)

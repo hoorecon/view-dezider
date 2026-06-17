@@ -14,6 +14,7 @@ import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import { useAuthStore } from '../../src/store/authStore';
 import { LinkedFreedomsPicker } from '../../src/components/LinkedFreedomsPicker';
+import ATEXEstimateButton from '../../src/components/ATEXEstimateButton';
 
 // LIFE_AREAS array moved into the component (catalog-driven).
 const PRIORITIES = [
@@ -271,6 +272,11 @@ export default function CTTTaskScreen() {
               placeholder="Break it down further..."
               placeholderTextColor={COLORS.textMuted}
             />
+
+            {/* Iter 129 — ATEX Effort Estimation invocation */}
+            <View style={{ marginTop: 8, marginBottom: 4 }}>
+              <ATEXEstimateButton source="ctt" title={task} ref_id={undefined} />
+            </View>
 
             {/* Priority */}
             <Text style={st.label}>Priority</Text>

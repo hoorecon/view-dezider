@@ -96,6 +96,10 @@ async def create_solution_finder(request: Request, user: dict = Depends(get_curr
             "linked_from_option_label": body.get("linked_from_option_label"),
             "linked_from_score_pct": body.get("linked_from_score_pct"),
             "allow_single_option": body.get("allow_single_option", False),
+            # Iter 129 — Values alignment surface
+            "values_applied": body.get("values_applied", []),
+            "values_violated": body.get("values_violated", []),
+            "linked_role_ids": body.get("linked_role_ids", []),
         }},
     )
     doc.update({
@@ -107,6 +111,9 @@ async def create_solution_finder(request: Request, user: dict = Depends(get_curr
         "linked_from_option_label": body.get("linked_from_option_label"),
         "linked_from_score_pct": body.get("linked_from_score_pct"),
         "allow_single_option": body.get("allow_single_option", False),
+        "values_applied": body.get("values_applied", []),
+        "values_violated": body.get("values_violated", []),
+        "linked_role_ids": body.get("linked_role_ids", []),
     })
     return doc
 

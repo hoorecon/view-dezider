@@ -33,6 +33,8 @@ import api from '../../src/utils/api';
 import TimingFieldset, { TimingValue } from '../../src/components/decisions/TimingFieldset';
 import { addDaysISO } from '../../src/utils/dateLocalize';
 import { useLifeAreas } from '../../src/utils/useLifeAreas';
+import ValuesAlignmentPanel from '../../src/components/ValuesAlignmentPanel';
+import ConvertToActionButton from '../../src/components/ConvertToActionButton';
 import { CollabBar } from '../../src/components/CollabBar';
 import { DecisionContinuePanel } from '../../src/components/DecisionContinuePanel';
 
@@ -136,6 +138,9 @@ export default function SimpleSolutionFinder() {
   const [mitigations, setMitigations] = useState<Mitigation[]>([]);
   const [contingencies, setContingencies] = useState<Contingency[]>([]);
   const [actionPlan, setActionPlan] = useState<APItem[]>([]);
+  // Iter 129 — Values alignment
+  const [valuesApplied, setValuesApplied] = useState<any[]>([]);
+  const [valuesViolated, setValuesViolated] = useState<any[]>([]);
   // Reverse hook — counts of ASM deep-dives per Q3/Q4b/Q4c row keyed by source_id.
   const [asmCounts, setAsmCounts] = useState<Record<string, number>>({});
   // AI auto-fill (metered AI-credits wallet, Gemini-first). On-demand only.
@@ -188,6 +193,8 @@ export default function SimpleSolutionFinder() {
       setMitigations(withId(d.mitigations));
       setContingencies(withId(d.contingencies));
       setActionPlan(d.action_plan_items || []);
+      setValuesApplied(d.values_applied || []);
+      setValuesViolated(d.values_violated || []);
     } catch (e) {
       showAlert('Error', 'Failed to load entry');
     } finally { setLoading(false); }
@@ -229,6 +236,8 @@ export default function SimpleSolutionFinder() {
     mitigations,
     contingencies,
     action_plan_items: actionPlan,
+    values_applied: valuesApplied,
+    values_violated: valuesViolated,
     schema_version: 2,
     ...(statusOverride ? { status: statusOverride } : {}),
   });
@@ -1213,6 +1222,28 @@ export default function SimpleSolutionFinder() {
       <Text style={s.qHint}>
         Auto-aggregated from Solutions, Mitigations & Contingencies. Edit owners / dates, tick CTT or Lifestyle if applicable, then push everything to your universal Action Center.
       </Text>
+      {/* Iter 129 — Values alignment panel */}
+      <View style={{ marginTop: 8, marginBottom: 8 }}>
+        <ValuesAlignmentPanel
+          values_applied={valuesApplied}
+          values_violated={valuesViolated}
+          onChange={(next) => { setValuesApplied(next.values_applied); setValuesViolated(next.values_violated); }}
+          compact
+        />
+      </View>
+      {/* Universal "Convert to Action" — ports the smart_goal as a single action item */}
+      {savedId && smartGoal ? (
+        <View style={{ marginBottom: 10 }}>
+          <ConvertToActionButton
+            source_module="SOLUTION_FINDER"
+            source_id={savedId}
+            source_label={`SF · ${smartGoal.slice(0,60)}`}
+            default_title={smartGoal}
+            default_description={`Generated from Solution Finder. ${valuesViolated.length ? `⚠ ${valuesViolated.length} value(s) violated.` : ''}`}
+            life_area={areaOfLife}
+          />
+        </View>
+      ) : null}
       {editId && (
         <CollabBar
           module="solution-finder"

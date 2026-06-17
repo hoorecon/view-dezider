@@ -1,0 +1,30 @@
+{
+  "summary": "Iter 129 backend hardening + 8 deferred wires — all 16 backend tests PASSED (100% success rate). Verified: (1) Contacts professional_roles[] multi-org array persists on POST with role_id stamping, single-primary enforcement on PUT, and auto-flagging first role as primary when none flagged. (2) Solution Finder values_applied/values_violated/linked_role_ids arrays persist correctly on POST. (3) /referral/config PUT now blocks role=admin with 403 and only allows role=super_admin (200). (4) /seven-seven/assess validates division_code, driver_code, and scale_code against masters → returns 400 on unknown codes; valid masters return 200. (5) /six-legs/goals/{id}/convert-to-action returns created_at/updated_at as JSON-serialisable ISO strings (not raw datetime). (6) /referral/credit returns 403 when caller is non-admin without HMAC headers (REFERRAL_WEBHOOK_SECRET not configured in dev → HMAC verification path also fails as expected) and 200 when called by super_admin. (7) action_items SOURCE_MODULES now accepts SOLUTION_FINDER and INSTANT_DEZIDER (and still rejects bogus modules with 400).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter129_deferred_and_hardening.py",
+    "/app/test_reports/pytest/iter129.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/referral.py: _verify_hmac returns 'REFERRAL_WEBHOOK_SECRET not configured' early — in dev where the secret is unset, EVERY non-super_admin webhook call will be rejected. That is the intended behavior for now per the iter-129 note, but main agent should set REFERRAL_WEBHOOK_SECRET in backend/.env before any real payment-gateway webhook integration goes live, otherwise webhooks will all 403.",
+    "routes/contacts.py _normalize_professional_roles: silently drops any role row without an 'organization' value. If the frontend sends a partially-filled new row (e.g., only designation) it will vanish without an error — consider returning a 400 or surfacing a warning so UX doesn't appear to 'lose' the user's input.",
+    "routes/six_legs.py convert_to_action: only writes created_at/updated_at as datetimes; serialization to ISO strings happens through FastAPI's default jsonable encoder. Works correctly today, but using _now_iso() (string) directly would be more defensive and consistent with action_items.py."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "not_tested"},
+  "seed_data_creation": "Throwaway user iter129_*@example.com auto-registered per test module. Test contacts/solution-finders/user_orgs/six_legs_goals/action_items all prefixed with 'TEST_iter129_' for easy identification. No cleanup script run — items are owned by ephemeral throwaway accounts.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iter 129 backend ship is GREEN end-to-end. Test suite at /app/backend/tests/test_iter129_deferred_and_hardening.py covers all 14 items the main agent listed in features_or_bugs_to_test plus two negatives (single-primary enforcement on PUT; bogus action_items source rejection). Re-run: `pytest /app/backend/tests/test_iter129_deferred_and_hardening.py -v`. Frontend wiring (multi-org Contacts UI, SF inline Values panel, ATEX embed buttons, Convert-to-Action chips, GEM→Action Tracker bridge) was scoped 'backend only' for this iteration and not exercised — main agent should request a frontend-only follow-up iteration for those UI surfaces.",
+  "rca_of_issue": "N/A — no failures observed."
+}

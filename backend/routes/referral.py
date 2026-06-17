@@ -14,16 +14,26 @@ Defaults:
   AI re-balances per-user every 30 days based on redemption history.
   Cash payout requires UPI / bank details + 7-day refund window.
 """
+import hashlib
+import hmac
 import logging
+import os
+import time
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 
-from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi import APIRouter, HTTPException, Depends, Request, Header
 from pydantic import BaseModel, Field
 
 from core.database import db
 from core.auth import get_current_user, ADMIN_ROLES, get_user_role
+
+
+# Iter 129 — HMAC secret used to sign webhook → /credit calls.
+# Set REFERRAL_WEBHOOK_SECRET in backend/.env for production.
+REFERRAL_WEBHOOK_SECRET = os.getenv("REFERRAL_WEBHOOK_SECRET", "").strip()
+HMAC_SKEW_SECONDS = 300  # 5-minute clock skew tolerance
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/referral", tags=["Referral Bonus"])
@@ -80,8 +90,9 @@ async def get_config(user: dict = Depends(get_current_user)):
 
 @router.put("/config")
 async def update_config(payload: Dict[str, Any], user: dict = Depends(get_current_user)):
-    if get_user_role(user) not in ADMIN_ROLES:
-        raise HTTPException(403, "SuperAdmin only")
+    # Iter 129 — tightened to super_admin role only
+    if get_user_role(user) != "super_admin":
+        raise HTTPException(403, "Super-admin only")
     await _ensure_config()
     payload = {k: v for k, v in payload.items() if k in DEFAULT_CONFIG and k != "_id"}
     payload["updated_at"] = _now()
@@ -212,11 +223,55 @@ class CreditIn(BaseModel):
     user_on_highest_tier: bool = False
 
 
+def _verify_hmac(raw_body: bytes, sig_header: Optional[str], ts_header: Optional[str]) -> Optional[str]:
+    """Verify ed `X-Referral-Timestamp` and `X-Referral-Signature` headers.
+
+    Returns None on success, error reason str on failure. The signature is
+    `hex(hmac_sha256(secret, f"{ts}.{raw_body}"))`. Skew tolerance: 5 min.
+    """
+    if not REFERRAL_WEBHOOK_SECRET:
+        return "REFERRAL_WEBHOOK_SECRET not configured"
+    if not sig_header or not ts_header:
+        return "Missing X-Referral-Timestamp / X-Referral-Signature headers"
+    try:
+        ts = int(ts_header)
+    except ValueError:
+        return "Bad timestamp"
+    if abs(int(time.time()) - ts) > HMAC_SKEW_SECONDS:
+        return "Timestamp skew exceeded"
+    mac = hmac.new(
+        REFERRAL_WEBHOOK_SECRET.encode("utf-8"),
+        f"{ts}.".encode("utf-8") + raw_body,
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(mac, sig_header):
+        return "Signature mismatch"
+    return None
+
+
 @router.post("/credit")
-async def credit(payload: CreditIn, user: dict = Depends(get_current_user)):
-    # In real prod this would be system-internal; restrict to admins for now.
-    if get_user_role(user) not in ADMIN_ROLES:
-        raise HTTPException(403, "Admin only — typically invoked by webhook")
+async def credit(
+    payload: CreditIn,
+    request: Request,
+    user: dict = Depends(get_current_user),
+    x_referral_signature: Optional[str] = Header(default=None),
+    x_referral_timestamp: Optional[str] = Header(default=None),
+):
+    """Credit a referral payout.
+
+    Authorization paths (either is sufficient):
+      1. SUPER_ADMIN role (manual/admin trigger) — for ops/CRM workflows
+      2. Valid HMAC signature header (X-Referral-Signature + X-Referral-Timestamp)
+         — for production payment-gateway webhook deliveries.
+    """
+    is_admin_path = get_user_role(user) == "super_admin"
+    hmac_err: Optional[str] = None
+    if not is_admin_path:
+        raw = await request.body()
+        hmac_err = _verify_hmac(raw, x_referral_signature, x_referral_timestamp)
+        if hmac_err is not None:
+            raise HTTPException(403, f"HMAC verification failed: {hmac_err}")
+
     sim = await simulate(SimulateIn(
         purchase_amount_inr=payload.purchase_amount_inr,
         level=payload.level,

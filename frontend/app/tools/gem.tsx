@@ -89,6 +89,10 @@ export default function GEMScreen() {
         <TouchableOpacity onPress={()=>router.push('/tools/gem-goal')} style={s.addBtn}>
           <Ionicons name="add" size={24} color="#FFF" />
         </TouchableOpacity>
+        {/* Iter 129 — GEM → Action Tracker bridge */}
+        <TouchableOpacity onPress={()=>router.push('/tools/action-center')} style={[s.addBtn, { marginLeft: 6 }]}>
+          <Ionicons name="checkbox" size={22} color="#FFF" />
+        </TouchableOpacity>
       </LinearGradient>
 
       {/* Summary Cards */}

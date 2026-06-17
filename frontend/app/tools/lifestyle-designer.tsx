@@ -13,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import TimestampLine from '../../src/components/TimestampLine';
+import ATEXEstimateButton from '../../src/components/ATEXEstimateButton';
 
 // LIFE_AREAS array moved into the component (catalog-driven).
 const DAY_TYPES = [
@@ -512,6 +513,8 @@ export default function LifestyleDesignerScreen() {
             <Text style={s.heroTitle}>Design Your Ideal Lifestyle</Text>
             <Text style={s.heroSub}>Allocate hours per life area. Compare planned vs actual.</Text>
           </View>
+          {/* Iter 129 — ATEX shortcut */}
+          <ATEXEstimateButton source="lifestyle_designer" compact />
         </LinearGradient>
 
         {/* Tab Switcher */}
