@@ -48,6 +48,63 @@
 ##   run_ui: false
 ##
 backend:
+  - task: "Iter 129 — Backend hardening + 5 deferred wires"
+    implemented: true
+    working: true
+    file: "backend/routes/contacts.py, tools.py, referral.py, seven_seven.py, six_legs.py, action_items.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          16/16 PASS (test_iter129_deferred_and_hardening.py).
+          • Contacts professional_roles[] persists + enforces single primary
+          • SF values_applied/violated/linked_role_ids persist
+          • /referral/config tightened to super_admin only (403 for admin/co_admin)
+          • /seven-seven/assess validates division/driver/scale masters (400 on unknown)
+          • /six-legs/convert-to-action returns ISO-string datetimes
+          • /referral/credit HMAC required when not super_admin
+          • action_items SOURCE_MODULES adds SOLUTION_FINDER + INSTANT_DEZIDER
+
+frontend:
+  - task: "Iter 129 — 4 new reusable components + 6 page wires"
+    implemented: true
+    working: "NA"
+    file: "src/components/ConvertToActionButton.tsx, ValuesAlignmentPanel.tsx, ATEXEstimateButton.tsx, ProfessionalRolesPanel.tsx; app/tools/{solution-finder, contacts, ctt-task, lifestyle, lifestyle-designer, gem}.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          New reusable components:
+            • ConvertToActionButton — universal CTA with one-time/recurring + port to CTT/Lifestyle
+            • ValuesAlignmentPanel — applied vs violated (reason required) with mutual exclusion
+            • ATEXEstimateButton — deep-links into /tools/atex with source+ref_id params
+            • ProfessionalRolesPanel — multi-org roles with star-primary + add/edit/delete
+          Page wirings:
+            • solution-finder.tsx — Values panel + Convert-to-Action in Q5 step
+            • contacts.tsx — ProfessionalRolesPanel below Business Network field
+            • ctt-task.tsx — ATEX button after Sub-Task field
+            • lifestyle.tsx — ATEX compact button in headerActions
+            • lifestyle-designer.tsx — ATEX compact button in hero banner
+            • gem.tsx — Action Tracker shortcut button in header
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Iter 129 ships all 8 deferred items + backend hardening.
+      • 16/16 backend tests GREEN
+      • All lint scans clean
+      • Web bundle compiles + landing renders
+      Frontend UI verification deferred (requires user/testing-agent UI walkthrough).
+      Note: REFERRAL_WEBHOOK_SECRET intentionally unset in dev — set in backend/.env before wiring real payment webhooks.
+
+
+backend:
   - task: "Iter 128 — Values+7×7+ATEX+6LeGs+Referral new APIs"
     implemented: true
     working: "NA"
