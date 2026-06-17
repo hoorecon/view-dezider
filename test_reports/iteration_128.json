@@ -1,0 +1,45 @@
+{
+  "summary": "Iteration 128 backend testing for the v3.25.128 mega-feature build complete. 17/17 pytest cases PASSED across 7×7 Org Matrix, ATEX Estimation, 6 LeGs Goal Setting, and Referral Bonus Designer routes. Validated request validation (life_area required, SCC mandatory, L3 division_code required), business logic (ATEX EE+MB+PB+RM=TT math with priority-based RC filtering, end_date with holidays_per_week, referral 20/10/5% commissions, 0.5× subsequent multiplier, 40/30/20/10 split, 2× karma fallback, UPI/bank validation for cash opt-in, 100 KP = ₹10), tree hierarchies & cascade delete, conversion to action_items, and ledger schema. Fixed one P1 backend bug: GET /api/seven-seven/assess/{org_id}/due returned 500 due to offset-naive MongoDB datetime vs offset-aware _now() subtraction.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/referral/config", "issue": "Docstring says 'SuperAdmin only' but actual check uses ADMIN_ROLES = ['admin','co_admin','super_admin']. Either tighten check to super_admin only OR update docstring to match. Current behaviour: any admin can edit global referral config."},
+      {"endpoint": "POST /api/referral/credit", "issue": "Docstring says 'In real prod this would be system-internal' but only restricted to ADMIN_ROLES. No webhook signature/HMAC verification — any admin token can synthetically credit any user. Worth gating to super_admin + signed webhook header for prod."},
+      {"endpoint": "POST /api/seven-seven/assess", "issue": "No validation that division_code / driver_code / scale_code actually exist in masters. A typo silently writes a junk row that the matrix endpoint will then return."},
+      {"endpoint": "POST /api/six-legs/goals/{id}/convert-to-action", "issue": "Stores datetimes as ISO strings (created_at/updated_at) while six_legs_goals uses native datetimes. Inconsistent serialization across the same module — mostly cosmetic but breaks any downstream date math without parsing."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter128_mega_apis.py",
+    "/app/test_reports/pytest/iter128_mega.xml"
+  ],
+  "action_items": [
+    "Decide whether PUT /api/referral/config should be super_admin only (current behaviour: any admin). If yes, switch the check to compare against ['super_admin'] instead of ADMIN_ROLES.",
+    "Add master-table existence checks in POST /api/seven-seven/assess for division_code/driver_code/scale_code to prevent silent typos polluting the matrix.",
+    "Normalize datetime storage in six_legs_goals.convert_to_action (use _now() instead of _now().isoformat()) for consistency with the rest of the schema.",
+    "Consider HMAC/webhook signature on POST /api/referral/credit before exposing it to a real payment webhook flow."
+  ],
+  "critical_code_review_comments": [
+    "BUG FIXED: routes/seven_seven.py assessment_due_status — _now() (tz-aware UTC) was subtracted from MongoDB-loaded naive datetime causing TypeError 500. Patched to coerce to UTC tz-aware before subtraction.",
+    "routes/six_legs.py: cascade delete is recursive in Python via N+1 queries (one find + one delete per node) — fine for small trees but consider $graphLookup or marking-then-deleteMany for trees > 100 nodes.",
+    "routes/atex.py working_days_needed computation uses an awkward ceil-with-floor-and-zero-add formula; equivalent to math.ceil(hrs_needed / wpd) — readability improvement only.",
+    "routes/referral.py simulate normalizes split to sum 100 even when caller's split already sums to 100 — fine, but custom-split round-off can shift a paisa across modes.",
+    "All four new routers correctly exclude MongoDB _id via projections / pop. Good."
+  ],
+  "updated_files": [
+    "/app/backend/routes/seven_seven.py (fixed naive vs aware datetime subtraction in /assess/{org_id}/due)",
+    "/app/backend/tests/test_iter128_mega_apis.py (new pytest suite, 17 cases)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "not tested (backend-only request)"},
+  "seed_data_creation": "Each test run registers a fresh user iter128_<epoch>@example.com (one per session) and creates TEST_ prefixed user_orgs / six_legs goals / atex estimations / referral profile. Goals are cascade-deleted within the test. Other rows remain for inspection but are namespaced under the throwaway user and won't affect prod data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Suite lives at /app/backend/tests/test_iter128_mega_apis.py and is fully self-contained (creates its own user via /api/auth/register). Re-run with: pytest /app/backend/tests/test_iter128_mega_apis.py -v --junitxml=/app/test_reports/pytest/iter128_mega.xml. The naive-vs-aware datetime fix in seven_seven.py is needed for the /due endpoint after the very first assessment is created — without it that endpoint 500s.",
+  "rca_of_issue": "RCA — GET /api/seven-seven/assess/{org_id}/due returned 500 once the org had at least one assessment. Reason: _now() returns datetime.now(timezone.utc) (offset-aware) but Motor/PyMongo returns BSON datetimes as offset-naive Python datetimes by default. The string-coercion branch handled the str case but not the naive-datetime case. Reproduction: POST /api/seven-seven/orgs → POST /api/seven-seven/assess → GET /api/seven-seven/assess/{id}/due. Fix: coerce last.tzinfo to UTC if None before subtracting. Now 200 with due_now=false and days_since_last=0."
+}

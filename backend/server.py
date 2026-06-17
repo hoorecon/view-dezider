@@ -324,6 +324,18 @@ api_router.include_router(collab_router)
 from routes.values_routes import router as values_router  # noqa: E402
 api_router.include_router(values_router)
 
+from routes.seven_seven import router as seven_seven_router  # noqa: E402
+api_router.include_router(seven_seven_router)
+
+from routes.atex import router as atex_router  # noqa: E402
+api_router.include_router(atex_router)
+
+from routes.six_legs import router as six_legs_router  # noqa: E402
+api_router.include_router(six_legs_router)
+
+from routes.referral import router as referral_router  # noqa: E402
+api_router.include_router(referral_router)
+
 
 # ========================
 # HEALTH CHECK + INFRA STATUS

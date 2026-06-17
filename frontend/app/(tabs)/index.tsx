@@ -582,7 +582,29 @@ export default function HomeScreen() {
               <Text style={styles.actionSubtitle}>Decide a change</Text>
             </TouchableOpacity>
             )}
-            <View style={[styles.actionCard, { opacity: 0 }]} pointerEvents="none" />
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/atex' as any)}>
+              <LinearGradient colors={['#7C3AED', '#A855F7']} style={styles.actionIcon}>
+                <Ionicons name="calculator" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Effort Estimation</Text>
+              <Text style={styles.actionSubtitle}>ATEX · EE+MB+PB+RM=TT</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.quickActions}>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/orgs' as any)}>
+              <LinearGradient colors={['#4338CA', '#6366F1']} style={styles.actionIcon}>
+                <Ionicons name="business" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>My Organizations</Text>
+              <Text style={styles.actionSubtitle}>7×7 matrix · 6 LeGs goals</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/values' as any)}>
+              <LinearGradient colors={['#0EA5E9', '#0284C7']} style={styles.actionIcon}>
+                <Ionicons name="shield-checkmark" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Values Tracker</Text>
+              <Text style={styles.actionSubtitle}>8 VEALES Collaboration Principles</Text>
+            </TouchableOpacity>
           </View>
 
           {/* ══════════ §6 REFLECTION & AWARENESS (8 tiles, consolidated) ══════════

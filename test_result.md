@@ -48,6 +48,213 @@
 ##   run_ui: false
 ##
 backend:
+  - task: "Iter 128 — Values+7×7+ATEX+6LeGs+Referral new APIs"
+    implemented: true
+    working: "NA"
+    file: "backend/routes/seven_seven.py, backend/routes/atex.py, backend/routes/six_legs.py, backend/routes/referral.py, backend/data/seven_seven_seed.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Built four new API surfaces for the overnight v3.25 mega-feature.
+
+          1) /api/seven-seven/*
+             - GET divisions / drivers / scale (idempotently seeded)
+             - POST + DELETE divisions / drivers (admin-only, protect platform_default)
+             - User-Org CRUD: POST /orgs (life-area gated), GET, PUT, DELETE
+             - 7×7 cell-level scoring: POST /assess, GET /assess/{org_id} (latest per cell),
+               GET /assess/{org_id}/history, GET /assess/{org_id}/due (fortnightly cadence)
+
+          2) /api/atex/*
+             - POST /estimate — requires SCC + ≥1 sub-task. Calculates EE+MB+PB+RM=TT,
+               applies risks per priority allow-list (P0=RC1+2+3, P1=RC1+2, P2=RC1, P3=none),
+               auto end_date from start_date+work_hours+holidays_per_week.
+             - GET /estimations, /estimations/{id}
+             - Template save+load: GET/DELETE /templates, save_as_template flag
+             - POST /ai-suggest — Emergent LLM-powered ST/SCC/risk suggestions with fallback.
+
+          3) /api/six-legs/*
+             - Goal CRUD per Custom Org with L1..L6 + parent_goal_id tree linkage
+             - GET /goals/tree/{org_id} returns nested children for tree drill-down UI
+             - L3 enforces division_code
+             - DELETE cascades to children
+             - POST /goals/{id}/convert-to-action ports to universal action_items collection
+               so existing CTT/Lifestyle porting (ported_to_ctt etc.) is reused.
+
+          4) /api/referral/*
+             - Config CRUD (SuperAdmin): L1/L2/L3 % first, subsequent_multiplier, ALOS days,
+               KP rate, coupon range/validity, AI auto-split (40/30/20/10), refund window.
+             - POST /simulate — applies first/subsequent rules, splits across 4 modes,
+               handles 'user_on_highest_tier' fallback (2× KP in place of Special Access).
+             - POST /credit (admin gated) — credits KP immediately, issues coupons +
+               special-access entitlements, holds cash for refund window.
+             - GET /me/profile + PUT — UPI / Bank details collection for cash opt-in,
+               validates UPI OR full bank trio.
+             - GET /me/ledger — Karma + coupons + special-access + cash + credits history.
+
+          All endpoints registered under /api in server.py.
+          Pending: needs testing_agent verification of all 26 new endpoints, especially:
+            • ATEX SCC required → 400 path
+            • 6 LeGs cascade-delete
+            • Referral simulate math (verify 40/30/20/10 + 2x karma fallback)
+            • 7×7 fortnightly due_now flag transitions
+            • RBAC: non-admin attempting to PUT /referral/config gets 403
+
+  - task: "Iter 128 — Server.py wiring for 4 new routers"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Wired seven_seven_router, atex_router, six_legs_router, referral_router. Backend reloaded cleanly per supervisor logs. 26 new endpoints live in /openapi.json (verified)."
+
+frontend:
+  - task: "Iter 128 — 3 new dashboard tiles (ATEX, My Orgs, Values Tracker)"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/(tabs)/index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Added 3 tiles under §5 Execute & Track:
+            • Effort Estimation → /tools/atex
+            • My Organizations → /tools/orgs
+            • Values Tracker → /tools/values  (existing page)
+          Replaced an empty placeholder card to use real tiles. ACM gating
+          NOT applied — these are universally visible (consistent with
+          user's "no further gating questions, default all" instruction).
+
+  - task: "Iter 128 — 3 new admin pages (Values · 7×7 Masters · Referral Designer)"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/admin/values.tsx, frontend/app/admin/seven-seven.tsx, frontend/app/admin/referral.tsx, frontend/app/admin/index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          • /admin/values — CRUD over 8 default + custom principles, settings card
+            for AI alignment block threshold.
+          • /admin/seven-seven — 3 tabs: Divisions / Drivers / Scale; protect
+            platform_default; add custom rows with category picker for drivers.
+          • /admin/referral — SuperAdmin config form for all DEFAULT_CONFIG keys
+            grouped into Commissions / Karma / Coupons / Split / Cash; live
+            Simulate Payout block with all 4 mode rows + cash hold note.
+          Admin index card grid extended with 3 new entries.
+
+  - task: "Iter 128 — ATEX Effort Estimation tool page"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/tools/atex.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Full ATEX UX:
+            • Task title + AI suggest button → calls POST /atex/ai-suggest, populates ST/SCC/risks
+            • Priority picker (P0..P3)
+            • QC card: SCC * mandatory + self-satisfaction optional
+            • Sub-tasks list with effort/IP/support-needs (IH/ID/EH/ED chips)
+            • Risks list with RC1/RC2/RC3 picker + mitigation/contingency minutes
+            • Scheduling card with PB, MB%, start_date, work_hours, holidays/week
+            • Save-as-template toggle + load-existing-template horizontal chips
+            • Calculate button → POST /atex/estimate → green result card with
+              EE / MB / PB / RM / TT + computed end_date + skipped-risk rationale.
+          Accepts URL params source, ref_id, title for invocation from other modules.
+
+  - task: "Iter 128 — Custom Orgs (My Organizations) listing page"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/tools/orgs.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Lists all user-created Orgs (POST /seven-seven/orgs).
+          Create modal with Life Area + Sub-Area + OrgType + Name + Description.
+          Tap card → routes to /tools/org-detail?id={id}. Soft-delete (active=false).
+
+  - task: "Iter 128 — Org Detail (7×7 matrix + 6 LeGs tree)"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/tools/org-detail.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Two-tab interface on a single Org:
+            • 7×7 MATRIX tab — horizontal scrollable driver cells per division,
+              tap any cell to open scoring sheet (Up-to-mark / Moderate / Inadequate)
+              + remarks. Shows fortnightly-due banner when 14+ days since last score.
+            • 6 LeGs GOALS tab — tree drill-down. "New L1 Financial Goal" root button.
+              Each row has icons to: convert-to-one-time-action, convert-to-recurring,
+              add child (next level), delete. L3 enforces a Division picker chip-row.
+              Legend card at bottom shows all 6 levels with colors + hints.
+          Tree-like expand/collapse via chevron icons. Children indent by 14px per depth.
+
+metadata:
+  created_by: "main_agent"
+  version: "3.25.128"
+  test_sequence: 128
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "Iter 128 — All 4 new /api routes (seven-seven, atex, six-legs, referral)"
+    - "Iter 128 — Frontend page render + happy-path flows"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: |
+      MEGA-FEATURE DELIVERY (overnight): v3.25.128
+        ✔ 5 new backend files (26 endpoints)
+        ✔ 3 new admin pages
+        ✔ 3 new user-facing pages
+        ✔ Dashboard tiles wired
+        ✔ Server reload clean · all routes appear in /openapi.json
+        ✔ Both lint scans (Python + JS) returned no blocking issues
+      DEFERRED to next sprint by main_agent for time/risk reasons:
+        ⌛ Contacts multi-org refactor (`professional_roles[]`)
+        ⌛ Solution Finder Values-Applied / Values-Violated inline panels
+        ⌛ ATEX "Estimate" buttons inside CTT / Lifestyle Dezider / Lifestyle Designer create forms
+        ⌛ GEM → Action Tracker bridge
+        ⌛ "Convert to Action" buttons on Decision Kickstarters' last step
+      USER VERIFY:
+        ⏳ EG Trap Resume blank data — please click Back to steps 1–4 and confirm
+        ⏳ WOWO ACM mapping — paused awaiting your unified user_type_resolver decision
+      TEST AGENT — please verify:
+        1. /api/seven-seven full CRUD + scoring + due-now flag
+        2. /api/atex/estimate (400 on missing SCC) + math sanity
+        3. /api/six-legs tree + cascade delete + convert-to-action
+        4. /api/referral simulate (40/30/20/10 split + 2x-karma fallback) + RBAC on PUT /config
+        5. New pages /tools/atex, /tools/orgs, /tools/org-detail, /admin/{values,seven-seven,referral} render OK after login
+
+backend:
   - task: "Tier Matrix smart-seed mapping fix + AdminShell layout fix"
     implemented: true
     working: true

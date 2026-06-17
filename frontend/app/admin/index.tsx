@@ -49,6 +49,9 @@ const QUICK_ACTIONS: QuickAction[] = [
   { key: 'import-analytics', label: 'Import-URL Intelligence', description: 'Per-page-type accuracy, hints, prompts & 👍/👎 verdicts · learning loop', icon: 'pulse', color: '#7C3AED', href: '/admin/import-analytics' },
   { key: 'url-training', label: 'URL Training Console', description: 'Curate ground-truth URLs · pin up to 15 as weekly regression suite · run any anytime · grade vs expectations', icon: 'school', color: '#D97706', href: '/admin/url-training' },
   { key: 'notification-engine', label: 'Notification Engine', description: 'CRUD trigger events · weekly digests & instant alerts · Email + WhatsApp toggles', icon: 'notifications', color: '#D97706', href: '/admin/notification-engine' },
+  { key: 'values',          label: 'Values Tracker',      description: '8 VEALES Collaboration Principles + org-custom add-ons · AI alignment threshold', icon: 'shield-checkmark', color: '#0EA5E9', href: '/admin/values' },
+  { key: 'seven-seven',     label: '7×7 Org Matrix',      description: '7 Divisions (Chakras) × 7 Drivers (Team/Systems/Strategy) · master seed + custom', icon: 'grid', color: '#8B5CF6', href: '/admin/seven-seven' },
+  { key: 'referral',        label: 'Referral Bonus Designer', description: 'L1/L2/L3 commissions · Karma rate · Coupons · AI auto-split · ALOS', icon: 'gift', color: '#EC4899', href: '/admin/referral' },
 ];
 
 export default function AdminHomeScreen() {
