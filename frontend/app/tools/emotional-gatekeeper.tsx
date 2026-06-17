@@ -90,6 +90,14 @@ export default function EmotionalGatekeeperScreen() {
       router.push('/tools/eg-advisor' as any);
       return;
     }
+    if (type === 'tenses_feels') {
+      router.push('/tools/tenses-feels' as any);
+      return;
+    }
+    if (type === 'goals_feels') {
+      router.push('/tools/goals-feels' as any);
+      return;
+    }
     if (type === 'emotional_reception') {
       router.push('/tools/eg-emotional-reception' as any);
       return;
@@ -155,6 +163,16 @@ export default function EmotionalGatekeeperScreen() {
       id: 'advisor', title: 'Effective Outlets Advisor', icon: 'leaf' as const,
       desc: '10 constructive techniques with guided practice', colors: ['#10B981', '#047857'],
       stat: 0, label: 'Practices', isDirectNav: true,
+    },
+    {
+      id: 'tenses_feels', title: 'Tenses & Feels', icon: 'time' as const,
+      desc: '12-emotion framework · Past · Present · Future + AI guidance', colors: ['#F59E0B', '#D97706'],
+      stat: 0, label: 'Reflect', isDirectNav: true,
+    },
+    {
+      id: 'goals_feels', title: 'Goals & Feels', icon: 'compass' as const,
+      desc: 'Goal Setter × Tenses & Feels — replace negative emotions in your goals', colors: ['#8B5CF6', '#6D28D9'],
+      stat: 0, label: 'Apply', isDirectNav: true,
     },
   ];
 

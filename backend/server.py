@@ -339,6 +339,9 @@ api_router.include_router(referral_router)
 from routes.webhooks_razorpay import router as webhooks_razorpay_router  # noqa: E402
 api_router.include_router(webhooks_razorpay_router)
 
+from routes.tenses_feels import router as tenses_feels_router  # noqa: E402
+api_router.include_router(tenses_feels_router)
+
 
 # ========================
 # HEALTH CHECK + INFRA STATUS

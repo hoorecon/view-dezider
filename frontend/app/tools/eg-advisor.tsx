@@ -210,6 +210,25 @@ export default function EGAdvisorScreen() {
           <Text style={s.headerSub}>9 constructive techniques to replace destructive habits</Text>
         </LinearGradient>
 
+        {/* Iter 133 — cross-nav strip: jump to any other EG sub-flow */}
+        <View style={egNavStrip.wrap}>
+          <Text style={egNavStrip.head}>Jump to another EG flow:</Text>
+          <View style={egNavStrip.row}>
+            {[
+              { label: 'Reception', href: '/tools/eg-emotional-reception', color: '#0EA5E9' },
+              { label: 'Trap', href: '/tools/eg-trap', color: '#EF4444' },
+              { label: 'Loop', href: '/tools/eg-loop', color: '#8B5CF6' },
+              { label: 'Limitations', href: '/tools/eg-limitation', color: '#3B82F6' },
+              { label: 'Tenses & Feels', href: '/tools/tenses-feels', color: '#F59E0B' },
+              { label: 'Goals & Feels', href: '/tools/goals-feels', color: '#8B5CF6' },
+            ].map(x => (
+              <TouchableOpacity key={x.label} style={[egNavStrip.chip, { borderColor: x.color }]} onPress={() => router.push(x.href as any)}>
+                <Text style={[egNavStrip.chipText, { color: x.color }]}>{x.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
         <View style={s.content}>
           {/* Streak Card */}
           {practices?.stats && (
@@ -740,4 +759,13 @@ const s = StyleSheet.create({
   smsTo: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
   smsToText: { fontSize: 13, fontWeight: '700', color: '#065F46' },
   smsWhy: { fontSize: 11, color: '#047857', marginTop: 2 },
+});
+
+
+const egNavStrip = StyleSheet.create({
+  wrap: { margin: 14, marginBottom: 0, padding: 10, backgroundColor: '#FFF', borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0' },
+  head: { fontSize: 11, color: '#64748B', fontWeight: '700' },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
+  chip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, borderWidth: 1.5, backgroundColor: '#FFF' },
+  chipText: { fontSize: 11, fontWeight: '700' },
 });
