@@ -336,6 +336,9 @@ api_router.include_router(six_legs_router)
 from routes.referral import router as referral_router  # noqa: E402
 api_router.include_router(referral_router)
 
+from routes.webhooks_razorpay import router as webhooks_razorpay_router  # noqa: E402
+api_router.include_router(webhooks_razorpay_router)
+
 
 # ========================
 # HEALTH CHECK + INFRA STATUS
