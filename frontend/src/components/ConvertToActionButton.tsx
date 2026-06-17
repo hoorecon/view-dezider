@@ -4,9 +4,10 @@
  * Wraps POST /api/action-items with the universal source_module / source_id schema.
  */
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, Modal, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Modal, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { showAlert } from '../utils/alert';
 import api from '../utils/api';
 
 export type DecisionSource = 'MYDEZIDER_MPPS' | 'PROS_CONS' | 'SWOT' | 'PNA' | 'CONFLICT_BREAKER' | 'CLD' | 'GEM' | 'SOLUTION_FINDER' | 'INSTANT_DEZIDER' | 'GOAL_SETTER' | 'AALA' | 'ATEX';
@@ -50,7 +51,7 @@ export default function ConvertToActionButton({
   };
 
   const create = async () => {
-    if (!title.trim()) { Alert.alert('Title required'); return; }
+    if (!title.trim()) { showAlert('Title required'); return; }
     setBusy(true);
     try {
       const body: any = {
@@ -71,7 +72,7 @@ export default function ConvertToActionButton({
       setCreatedId(newId);
       onCreated?.(data);
     } catch (e: any) {
-      Alert.alert('Failed', e?.response?.data?.detail || e.message);
+      showAlert('Failed', e?.response?.data?.detail || e.message);
     } finally { setBusy(false); }
   };
 
@@ -79,10 +80,10 @@ export default function ConvertToActionButton({
     if (!createdId) return;
     try {
       await api.post(`/action-items/${createdId}/port`, { target });
-      Alert.alert('Ported', `Action sent to ${target === 'CTT' ? 'CTT' : 'Lifestyle Dezider'}.`);
+      showAlert('Ported', `Action sent to ${target === 'CTT' ? 'CTT' : 'Lifestyle Dezider'}.`);
       setModalOpen(false);
       router.push(target === 'CTT' ? '/tools/ctt' as any : '/tools/lifestyle' as any);
-    } catch (e: any) { Alert.alert('Port failed', e?.response?.data?.detail || e.message); }
+    } catch (e: any) { showAlert('Port failed', e?.response?.data?.detail || e.message); }
   };
 
   return (

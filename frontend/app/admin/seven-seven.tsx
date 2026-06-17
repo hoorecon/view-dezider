@@ -3,10 +3,11 @@
  * Manage 7 Divisions + 7 Drivers (grouped under Team/Systems/Strategy) + Scoring Scale.
  */
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { showAlert } from '../../src/utils/alert';
 import api from '../../src/utils/api';
 
 export default function AdminSevenSeven() {
@@ -47,14 +48,14 @@ export default function AdminSevenSeven() {
         await api.post('/seven-seven/drivers', editing);
       }
       setEditing(null); await load();
-    } catch (e: any) { Alert.alert('Save failed', e?.response?.data?.detail || e.message); }
+    } catch (e: any) { showAlert('Save failed', e?.response?.data?.detail || e.message); }
   };
 
   const remove = async (kind: 'division'|'driver', code: string, isDefault: boolean) => {
-    if (isDefault) { Alert.alert('Protected', 'Platform-default items cannot be deleted.'); return; }
+    if (isDefault) { showAlert('Protected', 'Platform-default items cannot be deleted.'); return; }
     if (!confirm('Delete?')) return;
     try { await api.delete(`/seven-seven/${kind}s/${code}`); await load(); }
-    catch(e:any){ Alert.alert('Delete failed', e?.response?.data?.detail || e.message); }
+    catch(e:any){ showAlert('Delete failed', e?.response?.data?.detail || e.message); }
   };
 
   return (

@@ -1,0 +1,72 @@
+{
+  "summary": "Iter 131 RE-TEST of the P0 web-safe alert fix from iter 130. RESULT: The fix DID NOT WORK on the web preview. showAlert / AlertHost combination is still producing zero user-visible feedback for the 4 P0 cases. Verified empirically: (a) /tools/atex Calculate Final Timeline with empty SCC -> no [role=dialog] in DOM, no 'SCC required' text rendered, no window.alert call (hook captured 0). (b) /tools/atex AI with empty title -> same: no modal, no alert. (c) /tools/orgs Create with empty name -> same: no modal, no alert. The AlertHost listener appears to be subscribed (otherwise the showAlert fallbackToBrowser would have called window.alert(title) and the hook would have captured it) but the Modal component never renders queued alerts. PASS items: DEFERRED FLOW 3 (GEM header checkbox icon -> routes to /tools/action-center, confirmed by coordinate-based tap (360,50) since testID is still missing). REGRESSION: ATEX happy-path calculation still works end-to-end (Final Timeline + EE Effort cards rendered after a valid POST /api/atex/estimate). DEFERRED FLOWS 1 + 2 (Solution Finder Values Alignment + Convert-to-Action) were NOT walked end-to-end because validation alerts are still invisible on web, which makes wizard step-error feedback silent and unreliable; the SF Step 1 page renders cleanly with 6-step indicator + life-area chips + smart-goal field + timing block. Login flow works (user dropdown -> harden_1777921741@example.com / HardenPass2026!). All other UI surfaces from iter-130 sweep still load (gem, orgs, atex, solution-finder, action-center).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "AlertHost / showAlert — STILL BROKEN ON WEB",
+        "issue": "The new src/utils/alert.ts + src/components/AlertHost.tsx fix did NOT resolve the P0. Tapping 'Calculate Final Timeline' (empty SCC), tapping 'AI' (empty task title) on /tools/atex, and tapping 'Create' (empty name) on /tools/orgs all produce zero user-visible feedback on the web preview. Empirical proof: (1) No [role='dialog'] / [aria-modal='true'] node appears in DOM after the tap. (2) document.body.innerText does NOT contain 'SCC required', 'Task title required', 'Name required', 'Information', or the message strings. (3) A window.alert hook captures ZERO calls (so the fallbackToBrowser path is NOT firing either, which means listeners.size > 0, so AlertHost IS subscribed — but its <Modal transparent visible> never renders the queued item). (4) No console errors / page errors fire. Likely RCA: react-native-web Modal with transparent+visible flag combined with FontScaleProvider / SafeAreaProvider wrapping may be swallowing the portal mount, OR the setQueue state update is being lost. Suggested debug: add console.log('alertHost queued', req.title) inside _subscribeAlert callback in AlertHost to confirm receipt; if it fires but modal still doesn't show, the issue is the RN-Web Modal portal — switch to a plain <View style={{position:'fixed', zIndex: 99999}}> overlay instead of <Modal>.",
+        "testID": "n/a (no modal renders)",
+        "priority": "CRITICAL"
+      },
+      {
+        "component": "/tools/atex — testIDs still missing",
+        "issue": "Calculate Final Timeline button, AI button, SCC TextInput, Task Title TextInput, Save-as-Template toggle, sub-task title TextInput still have no testID. Test agents continue to rely on placeholder/text selectors which are brittle.",
+        "testID": "missing — needs atex-task-title, atex-scc, atex-ai-btn, atex-calculate-btn, atex-save-template-toggle, atex-subtask-title-{i}",
+        "priority": "MEDIUM"
+      },
+      {
+        "component": "/tools/gem — header icons still missing testID",
+        "issue": "The + (add goal) and checkbox (Action Tracker) header icons still lack testID / accessibilityLabel. The route to /tools/action-center works (verified by tapping coordinates 360,50 on a 390x844 viewport) but it cannot be automated reliably.",
+        "testID": "missing — needs gem-add-goal-btn and gem-action-center-btn",
+        "priority": "MEDIUM"
+      },
+      {
+        "component": "/tools/orgs — Save button labelled 'Create'",
+        "issue": "The modal submit button in the New Organization modal is labelled 'Create' (not 'Save' as the spec suggested). This causes a 'Create' text to collide with the page header's 'Create Organization' button — selectors using get_by_text('Create') return 2 hits. Add a testID like 'orgs-modal-submit-btn'.",
+        "testID": "missing",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "All validation feedback on web",
+        "issue": "Every showAlert call across atex.tsx, orgs.tsx, solution-finder.tsx, gem.tsx, org-detail.tsx, admin/values.tsx, admin/seven-seven.tsx, admin/referral.tsx is silently swallowed on the web preview. Users see no feedback whatsoever when validation fails. This blocks: ATEX SCC/title/sub-task validations, Org name validation, SF step incomplete prompts, GEM delete confirm, admin custom-principle save errors. The deferred flows (SF Values Alignment + Convert-to-Action) cannot be walked end-to-end until the AlertHost actually renders.",
+        "affected_testIDs": ["all showAlert call sites"]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "AlertHost Modal rendering",
+        "issue": "react-native-web 0.21 + <Modal transparent visible> in src/components/AlertHost.tsx does not render the modal in the DOM portal when triggered via setQueue. Reference: /app/frontend/src/components/AlertHost.tsx:81-91. Suggested fix: replace <Modal> with a plain absolute/fixed <View> overlay for the web target (or split into Platform.OS === 'web' branch using a simple position:fixed div with inline styles)."
+      },
+      {
+        "component": "shadow* style props deprecated",
+        "issue": "Multiple console warnings: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Likely in several screens/components. Low priority but worth a sweep."
+      }
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "FIX P0 CRITICAL: AlertHost.tsx's <Modal transparent visible> does not render queued alerts on the web preview. Add console.log inside the _subscribeAlert callback in AlertHost.useEffect to confirm whether setQueue fires; if it does but no DOM appears, replace the <Modal> with a Platform.OS === 'web' branch that renders a fixed-position <View> overlay (using inline styles {position:'fixed', top:0,left:0,right:0,bottom:0, zIndex:99999, backgroundColor:'rgba(15,23,42,0.55)'}). The current Modal-based implementation is invisible after the iter-130 fix.",
+    "Add testIDs as previously requested (still missing): atex-task-title, atex-scc, atex-ai-btn, atex-calculate-btn, atex-save-template-toggle, atex-subtask-title-0, gem-add-goal-btn, gem-action-center-btn, orgs-modal-submit-btn, orgs-modal-name-input, sf-convert-to-action-btn, sf-values-alignment-toggle.",
+    "After AlertHost is actually rendering, re-run the 4 P0 cases + the 2 deferred SF flows (Values Alignment mutual exclusion + Convert-to-Action -> Run as CTT) which were blocked this iteration by the broken alert UX.",
+    "Sweep deprecated style props: 'shadow*' style props deprecated — migrate to boxShadow per RN-Web 0.21 guidance.",
+    "Consider a manual smoke test by main agent at the URL https://pros-cons-engine.preview.emergentagent.com/tools/atex: tap 'Calculate Final Timeline' with the empty form -> if nothing appears (as observed), the fix has regressed and needs the Modal -> fixed-overlay swap described above."
+  ],
+  "critical_code_review_comments": [
+    "/app/frontend/src/components/AlertHost.tsx uses <Modal transparent visible animationType=\"fade\"> (line 82-91). Empirically this Modal does not render the queued AlertRequest on the web preview — verified by DOM inspection (zero [role='dialog'] nodes after triggering showAlert via Calculate/AI/Create buttons). The fix is incomplete; either the Modal isn't mounting due to a portal/parent z-index issue, or setQueue isn't being called. Add a console.log inside _subscribeAlert and inside the Modal component body to triangulate, then swap to a fixed-position <View> overlay for web.",
+    "/app/frontend/src/utils/alert.ts fallbackToBrowser() is correctly only called when listeners.size === 0 — but since 0 window.alert calls were captured, the listener IS registered. So the bug is downstream in AlertHost's Modal rendering rather than the alert.ts pub/sub layer."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "not_tested (frontend-only scope)",
+    "frontend": "approx 30% of P0 retests (P0 1,2,4 FAIL; P0 3 partial; Deferred 3 PASS; Deferred 1,2 blocked by broken alert UX; ATEX happy-path regression PASS)"
+  },
+  "seed_data_creation": "No new data created; reused existing 'TEST_TestCorp_iter130' org from iter-130 and the harden_1777921741 user.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The web-safe alert fix from iter 130 is STILL NOT WORKING on the web preview despite the AlertHost + showAlert helper being mounted. Concrete proof points: (a) document.body.innerText does NOT contain 'SCC required' / 'Name required' / 'Task title required' after the corresponding button taps. (b) A window.alert hook installed before the click captures ZERO calls — meaning the fallbackToBrowser path is NOT firing — meaning listeners.size > 0 — meaning AlertHost IS subscribed but its Modal isn't rendering. (c) No page errors, no console errors. Likely fix: in src/components/AlertHost.tsx, replace the react-native <Modal transparent visible> with a Platform.OS==='web' branch that renders a plain fixed-position <View> overlay (since RN-Web 0.21 Modal portal seems to swallow the render). Once the fix is applied, re-run all 4 P0 cases + the 3 deferred flows; the GEM->Action-Center route already works (PASS this iter). Login flow: select 'Organization Login' dropdown is the default state but the regular email/password fields are visible below — fill them and tap 'Sign In' (exact label). For dropdown to close (organization login is the OPEN/expanded state), tapping 'Organization Login' will collapse the org-slug section but the regular email/password form is always visible.",
+  "rca_of_issue": "Iter 130 fix attempted to route all Alert.alert calls through a cross-platform showAlert helper which emits to AlertHost (mounted in app/_layout.tsx). Empirical evidence proves the listener IS subscribed (no window.alert fallback fires) but the AlertHost <Modal transparent visible> never renders queued items in the web DOM. Reproduction: open https://pros-cons-engine.preview.emergentagent.com/tools/atex (logged in), tap 'Calculate Final Timeline' on the empty form -> expected the 'SCC required' modal to appear -> observed nothing in DOM, no [role='dialog'], no window.alert, no console error. Mitigation: in /app/frontend/src/components/AlertHost.tsx, branch the rendering for Platform.OS === 'web' to a plain fixed-overlay <View> instead of <Modal> — this bypasses the react-native-web Modal portal which appears to be the root cause."
+}

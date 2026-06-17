@@ -4,8 +4,9 @@
  * Add / edit / delete / set primary (★) role.
  */
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Modal, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { showAlert } from '../utils/alert';
 
 export interface ProfessionalRole {
   role_id?: string;
@@ -48,7 +49,7 @@ export default function ProfessionalRolesPanel({ roles = [], onChange }: Props) 
     onChange(next);
   };
   const save = () => {
-    if (!draft.organization.trim()) { Alert.alert('Org required', 'Enter an organization name.'); return; }
+    if (!draft.organization.trim()) { showAlert('Org required', 'Enter an organization name.'); return; }
     let next = [...roles];
     if (editing === -1) {
       next.push({ ...draft });

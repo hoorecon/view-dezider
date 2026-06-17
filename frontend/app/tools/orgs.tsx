@@ -4,10 +4,11 @@
  * From an Org, jump into the 7×7 assessment and 6 LeGs hierarchy.
  */
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { showAlert } from '../../src/utils/alert';
 import api from '../../src/utils/api';
 
 const LIFE_AREAS = ['Career','Business','Finance','Family','Health','Relationships','Personal','Social','Spiritual','Recreation'];
@@ -29,15 +30,15 @@ export default function OrgsScreen() {
   const create = () => setEditing({ name: '', org_type: 'BUSINESS', life_area: LIFE_AREAS[0], sub_area: '', description: '', icon: 'business', color: '#4338CA' });
 
   const save = async () => {
-    if (!editing.name?.trim()) { Alert.alert('Name required'); return; }
+    if (!editing.name?.trim()) { showAlert('Name required'); return; }
     try { await api.post('/seven-seven/orgs', editing); setEditing(null); await load(); }
-    catch(e:any){ Alert.alert('Save failed', e?.response?.data?.detail || e.message); }
+    catch(e:any){ showAlert('Save failed', e?.response?.data?.detail || e.message); }
   };
 
   const remove = async (org: any) => {
     if (!confirm(`Archive '${org.name}'?`)) return;
     try { await api.delete(`/seven-seven/orgs/${org.id}`); await load(); }
-    catch(e:any){ Alert.alert('Delete failed', e?.response?.data?.detail || e.message); }
+    catch(e:any){ showAlert('Delete failed', e?.response?.data?.detail || e.message); }
   };
 
   return (

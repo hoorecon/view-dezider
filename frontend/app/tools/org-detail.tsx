@@ -3,10 +3,11 @@
  * Fortnightly cadence assessment + tree-like drill-down for goals.
  */
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { showAlert } from '../../src/utils/alert';
 import api from '../../src/utils/api';
 
 const LEVEL_ORDER = ['L1','L2','L3','L4','L5','L6'] as const;
@@ -75,13 +76,13 @@ export default function OrgDetail() {
       });
       setScoring(null); setScoreRemarks('');
       await reload();
-    } catch (e: any) { Alert.alert('Save failed', e?.response?.data?.detail || e.message); }
+    } catch (e: any) { showAlert('Save failed', e?.response?.data?.detail || e.message); }
   };
 
   const createGoal = async () => {
     if (!adding) return;
-    if (!newGoal.title?.trim()) { Alert.alert('Title required'); return; }
-    if (adding.level === 'L3' && !newGoal.division_code) { Alert.alert('Division required', 'L3 goals must be linked to one of the 7 Divisions.'); return; }
+    if (!newGoal.title?.trim()) { showAlert('Title required'); return; }
+    if (adding.level === 'L3' && !newGoal.division_code) { showAlert('Division required', 'L3 goals must be linked to one of the 7 Divisions.'); return; }
     try {
       await api.post('/six-legs/goals', {
         user_org_id: orgId,
@@ -99,20 +100,20 @@ export default function OrgDetail() {
       });
       setAdding(null); setNewGoal({});
       await reload();
-    } catch (e: any) { Alert.alert('Save failed', e?.response?.data?.detail || e.message); }
+    } catch (e: any) { showAlert('Save failed', e?.response?.data?.detail || e.message); }
   };
 
   const deleteGoal = async (gid: string) => {
     if (!confirm('Delete this goal and all its children?')) return;
     try { await api.delete(`/six-legs/goals/${gid}`); await reload(); }
-    catch(e:any){ Alert.alert('Delete failed', e?.response?.data?.detail || e.message); }
+    catch(e:any){ showAlert('Delete failed', e?.response?.data?.detail || e.message); }
   };
 
   const convertToAction = async (gid: string, recurring: boolean) => {
     try {
       await api.post(`/six-legs/goals/${gid}/convert-to-action`, { recurrence_type: recurring ? 'recurring' : 'one_time', recurrence_frequency: recurring ? 'weekly' : null, priority: 'medium' });
-      Alert.alert('Converted', `Goal pushed to Action Tracker as ${recurring ? 'a recurring routine' : 'a one-time task'}.`);
-    } catch(e:any){ Alert.alert('Convert failed', e?.response?.data?.detail || e.message); }
+      showAlert('Converted', `Goal pushed to Action Tracker as ${recurring ? 'a recurring routine' : 'a one-time task'}.`);
+    } catch(e:any){ showAlert('Convert failed', e?.response?.data?.detail || e.message); }
   };
 
   const findScale = (sc?: string) => scale.find(x => x.code === sc);

@@ -4,10 +4,11 @@
  * Start-date + holidays per week → auto end-date.
  */
 import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { showAlert } from '../../src/utils/alert';
 import api from '../../src/utils/api';
 
 interface SubTask { title: string; effort_minutes: number; ip_level: string; support_needs: string[]; notes?: string; }
@@ -52,20 +53,20 @@ export default function ATEXScreen() {
   const delRisk = (i: number) => setRisks(arr => arr.filter((_, j) => j !== i));
 
   const aiSuggest = async () => {
-    if (!taskTitle.trim()) { Alert.alert('Task title required', 'Enter the task title first.'); return; }
+    if (!taskTitle.trim()) { showAlert('Task title required', 'Enter the task title first.'); return; }
     setAiBusy(true);
     try {
       const { data } = await api.post('/atex/ai-suggest', { task_title: taskTitle.trim() });
       if (data?.sub_tasks?.length) setSubTasks(data.sub_tasks.map((st: any) => ({ title: st.title || '', effort_minutes: Number(st.effort_minutes)||30, ip_level: st.ip_level || 'high', support_needs: st.support_needs || [] })));
       if (data?.scc) setScc(data.scc);
       if (data?.risks?.length) setRisks(data.risks.map((r: any) => ({ category: r.category||'RC1', description: r.description||'', mitigation_minutes: Number(r.mitigation_minutes)||0, contingency_minutes: Number(r.contingency_minutes)||0 })));
-    } catch (e: any) { Alert.alert('AI failed', e?.response?.data?.detail || e.message); }
+    } catch (e: any) { showAlert('AI failed', e?.response?.data?.detail || e.message); }
     finally { setAiBusy(false); }
   };
 
   const estimate = async () => {
-    if (!scc.trim()) { Alert.alert('SCC required', 'Synchronized Completion Criteria (SCC) is mandatory.'); return; }
-    if (!subTasks.length || !subTasks.every(t => t.title.trim())) { Alert.alert('Sub-tasks required', 'At least one sub-task with a title.'); return; }
+    if (!scc.trim()) { showAlert('SCC required', 'Synchronized Completion Criteria (SCC) is mandatory.'); return; }
+    if (!subTasks.length || !subTasks.every(t => t.title.trim())) { showAlert('Sub-tasks required', 'At least one sub-task with a title.'); return; }
     setBusy(true);
     try {
       const { data } = await api.post('/atex/estimate', {
@@ -85,7 +86,7 @@ export default function ATEXScreen() {
         save_as_template: saveTpl.on, template_name: saveTpl.name,
       });
       setCalc(data?.calc);
-    } catch (e: any) { Alert.alert('Estimate failed', e?.response?.data?.detail || e.message); }
+    } catch (e: any) { showAlert('Estimate failed', e?.response?.data?.detail || e.message); }
     finally { setBusy(false); }
   };
 

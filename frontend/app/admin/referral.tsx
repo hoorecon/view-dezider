@@ -3,10 +3,11 @@
  * SuperAdmin-configurable commissions, KP rate, coupons, AI split, ALOS.
  */
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { showAlert } from '../../src/utils/alert';
 import api from '../../src/utils/api';
 
 export default function AdminReferral() {
@@ -24,8 +25,8 @@ export default function AdminReferral() {
   useEffect(() => { load(); }, []);
 
   const save = async () => {
-    try { await api.put('/referral/config', cfg); Alert.alert('Saved', 'Referral config updated.'); }
-    catch(e:any){ Alert.alert('Save failed', e?.response?.data?.detail || e.message); }
+    try { await api.put('/referral/config', cfg); showAlert('Saved', 'Referral config updated.'); }
+    catch(e:any){ showAlert('Save failed', e?.response?.data?.detail || e.message); }
   };
 
   const simulate = async () => {
@@ -37,7 +38,7 @@ export default function AdminReferral() {
         user_on_highest_tier: simInput.topTier,
       });
       setSim(data);
-    } catch (e: any) { Alert.alert('Simulate failed', e?.response?.data?.detail || e.message); }
+    } catch (e: any) { showAlert('Simulate failed', e?.response?.data?.detail || e.message); }
   };
 
   const num = (k: string, label: string, suffix?: string) => (

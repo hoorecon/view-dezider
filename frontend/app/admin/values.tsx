@@ -3,10 +3,11 @@
  * Manage 8 platform-default + custom org principles.
  */
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { showAlert } from '../../src/utils/alert';
 import api from '../../src/utils/api';
 
 interface P { id: string; code: string; name: string; short?: string; body: string; bullets?: string[]; order: number; platform_default?: boolean; org_id?: string|null; active?: boolean; }
@@ -33,23 +34,23 @@ export default function AdminValues() {
 
   const save = async () => {
     if (!editing) return;
-    if (!editing.code || !editing.name || !editing.body) { Alert.alert('Missing fields', 'code, name and body are required'); return; }
+    if (!editing.code || !editing.name || !editing.body) { showAlert('Missing fields', 'code, name and body are required'); return; }
     try {
       if (editing.id) { await api.put(`/values/principles/${editing.id}`, editing); }
       else { await api.post('/values/principles', editing); }
       setEditing(null); await load();
-    } catch (e: any) { Alert.alert('Save failed', e?.response?.data?.detail || e.message); }
+    } catch (e: any) { showAlert('Save failed', e?.response?.data?.detail || e.message); }
   };
 
   const remove = async (p: P) => {
-    if (p.platform_default) { Alert.alert('Protected', 'Platform-default principles cannot be deleted.'); return; }
+    if (p.platform_default) { showAlert('Protected', 'Platform-default principles cannot be deleted.'); return; }
     if (!confirm(`Delete '${p.name}'?`)) return;
-    try { await api.delete(`/values/principles/${p.id}`); await load(); } catch(e:any){ Alert.alert('Delete failed', e?.response?.data?.detail || e.message); }
+    try { await api.delete(`/values/principles/${p.id}`); await load(); } catch(e:any){ showAlert('Delete failed', e?.response?.data?.detail || e.message); }
   };
 
   const saveSettings = async () => {
-    try { await api.put('/values/settings', settings); Alert.alert('Saved', 'Threshold updated.'); }
-    catch(e:any){ Alert.alert('Save failed', e?.response?.data?.detail || e.message); }
+    try { await api.put('/values/settings', settings); showAlert('Saved', 'Threshold updated.'); }
+    catch(e:any){ showAlert('Save failed', e?.response?.data?.detail || e.message); }
   };
 
   return (
