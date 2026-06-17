@@ -78,7 +78,61 @@ export default function AlertHost() {
       ? 'help-circle'
       : 'information-circle';
 
-  return (
+  return Platform.OS === 'web' ? (
+    // ── Web branch — react-native-web 0.21's <Modal> portal is unreliable, so
+    //    we render a plain fixed-position overlay using web-style `position`.
+    <View
+      // @ts-ignore — `position: 'fixed'` is web-only and not in RN types.
+      style={[styles.backdrop, { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999999 }]}
+      // @ts-ignore web-only DOM event
+      onClick={() => {
+        const cancel = buttons.find((b) => b.style === 'cancel');
+        if (cancel) dismissAndRun(cancel);
+      }}
+    >
+      <TouchableWithoutFeedback onPress={(e: any) => e.stopPropagation?.()}>
+        <View style={styles.card} accessibilityRole="alert" accessibilityLiveRegion="assertive">
+          <View style={[styles.iconCircle, { backgroundColor: accent + '15' }]}>
+            <Ionicons name={iconName as any} size={26} color={accent} />
+          </View>
+          <Text style={styles.title}>{current.title}</Text>
+          {!!current.message && <Text style={styles.message}>{current.message}</Text>}
+          <View style={[styles.row, buttons.length === 1 && styles.rowSingle]}>
+            {buttons.map((b, i) => {
+              const isDanger = b.style === 'destructive';
+              const isCancel = b.style === 'cancel';
+              const isPrimary = !isCancel && !isDanger;
+              return (
+                <TouchableOpacity
+                  key={`${b.text}-${i}`}
+                  onPress={() => dismissAndRun(b)}
+                  style={[
+                    styles.btn,
+                    isPrimary && { backgroundColor: COLORS.primary },
+                    isDanger && { backgroundColor: COLORS.error },
+                    isCancel && styles.btnCancel,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={b.text}
+                >
+                  <Text
+                    style={[
+                      styles.btnText,
+                      isPrimary && styles.btnTextPrimary,
+                      isDanger && styles.btnTextPrimary,
+                      isCancel && styles.btnTextCancel,
+                    ]}
+                  >
+                    {b.text}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      </TouchableWithoutFeedback>
+    </View>
+  ) : (
     <Modal
       transparent
       visible

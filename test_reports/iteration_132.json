@@ -1,0 +1,62 @@
+{
+  "summary": "Iter 132 RE-VERIFICATION of the web-safe alert refactor (AlertHost.tsx now branches on Platform.OS==='web' and renders a fixed-position <View> overlay with zIndex:999999 instead of <Modal>). RESULT: THE FIX WORKS — alerts are now visible in the DOM on the web preview. Evidence: P0-1 (/tools/atex → Calculate Final Timeline with empty SCC) → modal with title 'SCC required' + message 'Synchronized Completion Criteria (SCC) is mandatory.' + 'OK' button is rendered. role=alert node count = 1. P0-2 (/tools/atex → AI button with empty title) → 'Task title required' alert is visible with 'Enter the task title first.' message + OK button. P0-4 (/tools/orgs → Create modal → leave Name empty → tap inner 'Create') → 'Name required' alert is visible OVER the New Organization modal, with role=alert. Bonus: 'Sub-tasks required' (At least one sub-task with a title) also rendered correctly when title + SCC were filled but no sub-task title. All alerts use the polished UI (icon-circle, 18pt title, 14pt message, 44pt+ primary OK button). The Platform.OS==='web' branch with position:'fixed' + zIndex:999999 successfully bypasses the previously broken react-native-web Modal portal. P0-3 happy path PARTIAL: AI button does respond and populates sub-tasks (Σ effort = 350 min observed) but does NOT auto-populate the SCC field — when Calculate was tapped right after AI completion, the 'SCC required' modal re-appeared. Manually filling SCC and tapping Calculate without any sub-task title produced 'Sub-tasks required' (alert visible), so the validation cascade is working. The full happy-path → green result card with EE/MB/PB/RM rows + Save-as-Template + 'TplA' chip was NOT executed end-to-end this iteration because the AI auto-population of SCC appears to be either intentional (out of AI scope) or a separate bug. DEFERRED-1 (Solution Finder Values Alignment mutual-exclusion) and DEFERRED-2 (Convert-to-Action → Run as CTT) NOT exercised this iteration; budget was prioritised on validating the alert fix per main agent's primary goal. REGRESSION: dashboard tiles, orgs custom-create, atex form render, login flow all still load and work cleanly (verified during navigation). Deprecated package warnings observed: TouchableWithoutFeedback (used in AlertHost itself + many other screens), props.pointerEvents (multiple screens), Image style.resizeMode (login screen). 'shadow*' style props still warn — should sweep to boxShadow.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "/tools/atex — AI does not auto-populate SCC",
+        "issue": "After filling task title 'Build webhook adapter' and tapping AI, sub-tasks were populated (Σ effort jumped from 30 → 350 min with multiple sub-task rows + IP knowledge tags filled). However the SCC textarea remained EMPTY, so the subsequent Calculate tap re-raised the 'SCC required' alert. Spec (P0-3) expects 'SCC field auto-populated' after AI. Either expand the AI prompt to also fill SCC, or update the spec to say AI fills sub-tasks only. Reference: /app/frontend/app/tools/atex.tsx (AI handler).",
+        "testID": "missing",
+        "priority": "MEDIUM"
+      },
+      {
+        "component": "/tools/atex / /tools/orgs — testIDs still missing",
+        "issue": "Calculate Final Timeline button, AI button, SCC TextInput, Task Title TextInput, Save-as-Template toggle, sub-task title TextInput, orgs modal Name input, orgs modal submit (Create) button still lack testID. Validation alert OK button also lacks testID (currently selectable only via text 'OK'). Selectors continue to rely on visible text and are brittle.",
+        "testID": "missing — needs atex-task-title, atex-scc, atex-ai-btn, atex-calculate-btn, atex-save-template-toggle, atex-subtask-title-{i}, orgs-modal-name-input, orgs-modal-submit-btn, alert-ok-btn, alert-cancel-btn",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "TouchableWithoutFeedback deprecated",
+        "issue": "Console warning: 'TouchableWithoutFeedback is deprecated. Please use Pressable.' This warning fires every time the AlertHost overlay renders on web (and likely in other screens too). Reference: /app/frontend/src/components/AlertHost.tsx:93 + :146 + :154. Migrate to Pressable to remove the noise."
+      },
+      {
+        "component": "shadow* style props deprecated",
+        "issue": "Multiple console warnings: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Likely in several screens/components. Should sweep to boxShadow per RN-Web 0.21 guidance."
+      },
+      {
+        "component": "props.pointerEvents deprecated",
+        "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents.' Likely in the login screen or layout. Low priority."
+      },
+      {
+        "component": "Image style.resizeMode deprecated",
+        "issue": "Console warning on /auth/login: 'Image: style.resizeMode is deprecated. Please use props.resizeMode.' Reference: login screen logo image."
+      }
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "PRIMARY GOAL ACHIEVED — alert UX is fixed on web preview. The P0-1 / P0-2 / P0-4 cases all show the polished AlertHost overlay with the correct title + message + OK button. No further fix required on AlertHost.",
+    "Investigate why AI on /tools/atex populates sub-tasks but NOT the SCC textarea (P0-3 happy path was blocked because SCC stayed empty after AI). Either extend the AI prompt to also produce an SCC string, or revise the spec.",
+    "Add the still-missing testIDs (atex-*, orgs-modal-*, alert-ok-btn) so subsequent automated regression suites can stop relying on visible-text selectors.",
+    "Sweep deprecated React-Native warnings: migrate TouchableWithoutFeedback → Pressable in AlertHost (and the rest of the app); migrate shadow* style props to boxShadow; fix props.pointerEvents → style.pointerEvents; fix Image style.resizeMode → props.resizeMode (login screen logo).",
+    "Re-run the DEFERRED-1 (Solution Finder Values Alignment mutual-exclusion) and DEFERRED-2 (Convert-to-Action → Run as CTT) flows in the next testing pass — they were skipped this iteration to focus on alert verification. Now that validation alerts render correctly, walking the SF wizard Q1→Q5 should be reliable."
+  ],
+  "critical_code_review_comments": [
+    "The Platform.OS==='web' branch in /app/frontend/src/components/AlertHost.tsx:81-134 successfully renders a fixed-position overlay (position:'fixed', zIndex:999999) instead of the unreliable react-native-web Modal. The implementation correctly: (a) stops propagation on the card via TouchableWithoutFeedback, (b) treats outer-overlay onClick as cancel when a cancel button exists, (c) supports ESC dismiss for cancel buttons on web. Good fix.",
+    "Minor: AlertHost still uses TouchableWithoutFeedback (deprecated in RN). Should migrate to Pressable to silence the recurring console warning that fires every time an alert opens."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "not_tested (frontend-only scope)",
+    "frontend": "Alert UX fix: 100% (3/3 P0 validation alerts verified visible). Overall iter-132 spec: ~60% (P0-1 PASS, P0-2 PASS, P0-3 PARTIAL — AI doesn't fill SCC, P0-4 PASS, DEFERRED-1/2 not exercised, REGRESSION PASS)"
+  },
+  "seed_data_creation": "No new data created; reused 'TEST_TestCorp_iter130' org and harden_1777921741 user from iter-130.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "The web-safe AlertHost refactor (iter 132) is WORKING. All four validation alerts (SCC required, Task title required, Name required, Sub-tasks required) render visibly on the web preview as a fixed-position overlay with the polished card UI (icon, title, message, 44pt OK button). The Platform.OS==='web' branch in /app/frontend/src/components/AlertHost.tsx:81-134 uses position:'fixed' + zIndex:999999 which correctly bypasses the previously broken react-native-web <Modal> portal. NEXT: (a) Decide whether AI on /tools/atex should also auto-populate the SCC textarea (currently it fills sub-tasks only — this is what blocked the P0-3 happy-path full-walk in this iteration). (b) Walk DEFERRED-1 (Solution Finder Values Alignment mutual-exclusion) and DEFERRED-2 (Convert-to-Action → Run as CTT) end-to-end. (c) Add the missing testIDs. (d) Sweep deprecated RN warnings (TouchableWithoutFeedback, shadow*, pointerEvents, Image resizeMode). Login flow: /auth/login → fill input[0]=email, input[1]=password → tap 'Sign In' button (text). Lands on home; sessions persist within a Playwright run.",
+  "rca_of_issue": "Iter 131 RCA: the AlertHost was using react-native-web's <Modal transparent visible> which silently swallowed the portal mount on web. Iter 132 fix: branch on Platform.OS==='web' and render a plain <View> with inline web-only style {position:'fixed', top:0, left:0, right:0, bottom:0, zIndex:999999}. Verification (this iteration): tapping Calculate/AI/Create on empty forms now produces visible AlertHost cards with role='alert' and the correct title/message/OK button DOM nodes. The fix is correct and complete."
+}
