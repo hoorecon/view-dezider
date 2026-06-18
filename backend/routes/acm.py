@@ -12,6 +12,7 @@ from core.acm_engine import (
     seed_acm_defaults, refresh_acm_cache,
     check_feature_access, check_and_consume,
     get_all_feature_access, get_user_acm_profile,
+    resolve_user_acm_profile,
     _acm_cache,
 )
 
@@ -205,17 +206,22 @@ async def update_feature_access(feature_id: str, request: Request, user: dict = 
 async def get_my_access(user: dict = Depends(get_current_user)):
     """
     Get the current user's access levels for ALL features.
-    Returns a map of feature_id → {access_level, quota_limit, quota_used, quota_remaining, quota_unit}
-    Used by the frontend to render the entire UI conditionally.
+    Uses the 5-axis resolver (core.user_type_resolver) to compute the
+    effective access key, persists it on the user doc, then evaluates
+    every feature in one shot.
     """
-    profile = get_user_acm_profile(user)
-    features = await get_all_feature_access(user)
+    profile = await resolve_user_acm_profile(user)
+    # Re-fetch user with the freshly stamped effective_access_key so the
+    # downstream `get_all_feature_access` reads the cached key.
+    fresh = await db.users.find_one({"user_id": user["user_id"]}) or user
+    features = await get_all_feature_access(fresh)
 
     return {
         "user_id": user["user_id"],
         "user_type": profile["user_type"],
-        "subscription_plan": user.get("subscription_plan", "none"),
+        "subscription_plan": profile.get("subscription_plan", "none"),
         "access_key": profile["access_key"],
+        "effective_reason": profile.get("reason"),
         "features": features,
     }
 
@@ -251,8 +257,13 @@ async def set_user_type(user_id: str, request: Request, user: dict = Depends(get
         raise HTTPException(404, "User not found")
 
     update = {}
-    valid_types = ["free", "trial", "paid", "unit_tester", "integration_tester", "alpha", "beta"]
-    valid_plans = ["none", "starter", "pro", "enterprise", "api"]
+    valid_types = [
+        "free", "trial", "paid",
+        "starter_trial", "pro_trial", "premium_trial",
+        "on_demand_retail_buyer", "on_demand_bulk_buyer",
+        "unit_tester", "integration_tester", "alpha", "beta",
+    ]
+    valid_plans = ["none", "starter", "pro", "premium", "enterprise", "api"]
 
     if "user_type" in body:
         if body["user_type"] not in valid_types:

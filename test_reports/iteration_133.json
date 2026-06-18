@@ -1,0 +1,40 @@
+{
+  "summary": "WOWO ACM v2 Mega-Build backend regression — 20 PASSED / 1 SKIPPED / 1 FAILED (95% pass). Version stamp, geo seed (50 countries + 36 IN states/UTs), all 4 new /api/acm-v2/* admin endpoints (resolver-config GET+PUT, trial-payments GET, tier-segment-mapping GET+PUT) work and persist correctly. /api/auth/me correctly returns the new resolver fields (effective_access_key, user_type, subscription_plan). PUT /api/acm/user/{id}/type accepts all 5 new user types (starter_trial, pro_trial, premium_trial, on_demand_retail_buyer, on_demand_bulk_buyer) + premium plan. Single defect: /api/acm/my-access returns the resolver's effective key under JSON key `access_key` instead of `effective_access_key` (resolver wiring itself is correct — value=platform_admin, effective_reason present). Admin auth (admin@test.com/AdminPass2026!) login works, role=admin resolves to platform_admin via 5-axis resolver bypass.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "GET /api/acm/my-access",
+        "issue": "Response JSON key is `access_key` but the v2 spec / /api/auth/me use `effective_access_key`. Resolver itself works correctly (value=platform_admin, effective_reason returned). Fix in backend/routes/acm.py:223 — rename or also include `effective_access_key` (additive, back-compat safe)."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter132_acm_v2_resolver.py",
+    "/app/test_reports/pytest/iter132_acm_v2.xml"
+  ],
+  "action_items": [
+    "In /app/backend/routes/acm.py line 223 in GET /api/acm/my-access, return `effective_access_key` (rename `access_key` -> `effective_access_key`, or include both keys with the same value to avoid breaking existing frontend code). Spec from review request: '/api/acm/my-access ... returns effective_access_key + effective_reason fields'.",
+    "Optional: expose /api/acm/admin/overview (currently 404) so seed-counter regression (134 features / 33 modules) is observable; test was SKIPPED for that reason."
+  ],
+  "critical_code_review_comments": [
+    "core/user_type_resolver.py returns the effective key in the resolver tuple, but routes/acm.py:223 renames it to `access_key` while /api/auth/me exposes it as `effective_access_key` — inconsistent naming across the v2 surface.",
+    "routes/acm_v2.py is well-structured (admin-guarded, idempotent geo seed, proper request validation). Trial-payments POST endpoint is implemented but not part of this regression scope.",
+    "geo seed in _ensure_geo_seeded() relies on an in-process flag (_GEO_SEEDED) — fine for single-process supervisor; in multi-worker each worker re-checks DB once on cold start (acceptable)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter132_acm_v2_resolver.py (NEW)"
+  ],
+  "success_rate": {"backend": "95% (20/21 executed, 1 skipped, 1 failed)", "frontend": "not tested (backend only requested)"},
+  "seed_data_creation": "Created TEST_tier_iter132 mapping in tier_segment_mapping collection (admin scope, low impact).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Build 2026.06.17.003 / tag v3.26-acm-v2-resolver-trial-geo verified on https://pros-cons-engine.preview.emergentagent.com. All new /api/acm-v2/* + /api/geo/* endpoints functional. After main agent fixes the access_key/effective_access_key naming on /api/acm/my-access, just rerun `pytest backend/tests/test_iter132_acm_v2_resolver.py -v` — the TestMyAccess test accepts platform_admin, paid_premium, paid_enterprise or paid_pro as valid admin-resolved keys.",
+  "rca_of_issue": "RCA: backend/routes/acm.py:223 in GET /api/acm/my-access constructs the response dict with `\"access_key\": profile[\"access_key\"]`. resolve_user_acm_profile returns the resolver tuple under key `access_key`, while persist_resolved_type() writes `effective_access_key` to the user doc, which /api/auth/me echoes verbatim — hence the inconsistency. Reproduction: `curl -H 'Authorization: Bearer <admin-token>' https://pros-cons-engine.preview.emergentagent.com/api/acm/my-access | jq 'keys'` shows `access_key` not `effective_access_key`. One-line additive mitigation in routes/acm.py:223 → `\"effective_access_key\": profile[\"access_key\"], \"access_key\": profile[\"access_key\"],` (no FE breakage)."
+}

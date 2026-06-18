@@ -52,6 +52,9 @@ const QUICK_ACTIONS: QuickAction[] = [
   { key: 'values',          label: 'Values Tracker',      description: '8 VEALES Collaboration Principles + org-custom add-ons · AI alignment threshold', icon: 'shield-checkmark', color: '#0EA5E9', href: '/admin/values' },
   { key: 'seven-seven',     label: '7×7 Org Matrix',      description: '7 Divisions (Chakras) × 7 Drivers (Team/Systems/Strategy) · master seed + custom', icon: 'grid', color: '#8B5CF6', href: '/admin/seven-seven' },
   { key: 'referral',        label: 'Referral Bonus Designer', description: 'L1/L2/L3 commissions · Karma rate · Coupons · AI auto-split · ALOS', icon: 'gift', color: '#EC4899', href: '/admin/referral' },
+  { key: 'acm-resolver-cfg', label: 'ACM Resolver Config',  description: '5-axis user-type resolver · trial days · plan aliases · on-demand thresholds', icon: 'options', color: '#5B7CFA', href: '/admin/acm-resolver-config' },
+  { key: 'tier-segments',   label: 'Tier ↔ Segments',       description: 'Map customer segments to each chakra tier · multi-select', icon: 'link', color: '#0EA5E9', href: '/admin/tier-segment-mapping' },
+  { key: 'trial-payments',  label: 'Trial Payment Tokens',  description: 'Saved cards/UPI captured at trial opt-in · audit + filter', icon: 'card-outline', color: '#F59E0B', href: '/admin/trial-payments' },
 ];
 
 export default function AdminHomeScreen() {

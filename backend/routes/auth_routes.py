@@ -224,8 +224,22 @@ async def google_session(session_data: SessionRequest, response: Response):
 
 @router.get("/auth/me")
 async def get_me(user: dict = Depends(get_current_user)):
-    """Get current authenticated user"""
+    """Get current authenticated user (with ACM v2 effective access key)."""
     custom_pic = user.get("profile_picture")
+
+    # Resolve effective access key on every /me call (cheap; cached on user doc)
+    eff_key = user.get("effective_access_key")
+    eff_user_type = user.get("effective_user_type") or user.get("user_type", "free")
+    eff_plan = user.get("effective_plan") or user.get("subscription_plan", "none")
+    try:
+        from core.acm_engine import resolve_user_acm_profile
+        prof = await resolve_user_acm_profile(user)
+        eff_key = prof.get("access_key", eff_key)
+        eff_user_type = prof.get("user_type", eff_user_type)
+        eff_plan = prof.get("subscription_plan", eff_plan)
+    except Exception:
+        pass
+
     return {
         "user_id": user["user_id"], "email": user["email"], "name": user["name"],
         "picture": custom_pic or user.get("picture"),
@@ -238,6 +252,10 @@ async def get_me(user: dict = Depends(get_current_user)):
         "whatsapp_number": user.get("whatsapp_number"),
         "whatsapp_verified": await effective_whatsapp_verified(user),
         "can_view_pii": bool(user.get("can_view_pii")),
+        # ACM v2 fields
+        "user_type": eff_user_type,
+        "subscription_plan": eff_plan,
+        "effective_access_key": eff_key,
     }
 
 

@@ -3,10 +3,12 @@ ACM Engine — Access Control Matrix core logic.
 Evaluates (user_type, subscription_plan, feature_id) → {allowed, quota, usage, access_level}
 
 Design:
-  - Two-axis check: user_type × subscription_plan
+  - Unified 5-axis resolver (core.user_type_resolver) → effective_access_key
+  - Legacy fallback chain keeps old seed maps compatible (paid_premium → paid_enterprise,
+    starter_trial → trial, on_demand_retail_buyer → paid_starter, etc.)
   - Quota tracking per (user_id, feature_id, period)
   - Caches the matrix in memory (refreshed on admin update)
-  - Trial expiry auto-downgrades to free
+  - Trial expiry auto-downgrades via resolver
 """
 
 import logging
@@ -15,6 +17,38 @@ from typing import Optional
 from core.database import db
 
 logger = logging.getLogger(__name__)
+
+# Legacy access-key → list of fallback keys to try, in order, when the
+# resolver-issued effective key is not present in a feature's access map.
+# This keeps the existing ~1500 hand-crafted access entries valid while
+# we roll out the new keys gradually.
+LEGACY_ACCESS_KEY_FALLBACK = {
+    "platform_admin":          ["paid_enterprise", "paid_pro"],
+    "paid_premium":            ["paid_enterprise"],
+    "starter_trial":           ["trial", "paid_starter", "free"],
+    "pro_trial":               ["trial", "paid_pro", "paid_starter", "free"],
+    "premium_trial":           ["trial", "paid_enterprise", "paid_pro", "free"],
+    "on_demand_retail_buyer":  ["paid_starter", "free"],
+    "on_demand_bulk_buyer":    ["paid_pro", "paid_starter", "free"],
+}
+
+
+def _lookup_access_rule(access_map: dict, access_key: str) -> dict:
+    """Look up an access rule with legacy fallback chain.
+
+    Returns {"level": str, "quota": int}. Never raises — defaults to
+    {"level": "hidden", "quota": 0} if nothing matches.
+    """
+    if not isinstance(access_map, dict):
+        return {"level": "hidden", "quota": 0}
+    rule = access_map.get(access_key)
+    if rule:
+        return rule
+    for fb in LEGACY_ACCESS_KEY_FALLBACK.get(access_key, []):
+        rule = access_map.get(fb)
+        if rule:
+            return rule
+    return {"level": "hidden", "quota": 0}
 
 # In-memory cache of the ACM matrix (refreshed on seed/update)
 _acm_cache: dict = {}  # feature_id → {module_id, feature_name, release_stage, quota_unit, quota_resets, access: {...}}
@@ -176,18 +210,43 @@ async def ensure_acm_seeded_on_boot():
 # ============================================================
 
 def _resolve_access_key(user_type: str, subscription_plan: str) -> str:
-    """Build the access key for lookup in the ACM matrix."""
+    """Build the access key for lookup in the ACM matrix (legacy/sync)."""
+    if user_type in ("super_admin", "admin", "co_admin"):
+        return "platform_admin"
     if user_type == "paid":
-        return f"paid_{subscription_plan}" if subscription_plan else "paid_starter"
+        plan = subscription_plan or "starter"
+        if plan == "enterprise":
+            plan = "premium"
+        return f"paid_{plan}"
     return user_type
 
 
 def get_user_acm_profile(user: dict) -> dict:
-    """Extract ACM-relevant fields from a user document."""
+    """Sync ACM profile extraction. For new code prefer
+    ``resolve_user_acm_profile`` (async, calls the 5-axis resolver).
+    """
     user_type = user.get("user_type", "free")
     subscription_plan = user.get("subscription_plan", "none")
 
-    # Auto-downgrade trial users if expired
+    # If resolver has already stamped an effective key, trust it.
+    eff = user.get("effective_access_key")
+    if eff:
+        return {
+            "user_type": user_type,
+            "subscription_plan": subscription_plan,
+            "access_key": eff,
+        }
+
+    # Platform admin shortcut
+    role = (user.get("role") or "").lower()
+    if role in ("super_admin", "admin", "co_admin"):
+        return {
+            "user_type": "paid",
+            "subscription_plan": "premium",
+            "access_key": "platform_admin",
+        }
+
+    # Legacy trial auto-downgrade
     if user_type == "trial":
         trial_start = user.get("trial_start_date")
         trial_days = user.get("trial_duration_days", 14)
@@ -198,13 +257,42 @@ def get_user_acm_profile(user: dict) -> dict:
                 trial_start = trial_start.replace(tzinfo=timezone.utc)
             elapsed = (datetime.now(timezone.utc) - trial_start).days
             if elapsed > trial_days:
-                user_type = "free"  # Auto-downgrade (DB update happens async)
+                user_type = "free"
 
     return {
         "user_type": user_type,
         "subscription_plan": subscription_plan,
         "access_key": _resolve_access_key(user_type, subscription_plan),
     }
+
+
+async def resolve_user_acm_profile(user: dict) -> dict:
+    """Async-resolve via the 5-axis user_type_resolver and cache result on the user doc."""
+    try:
+        from core.user_type_resolver import resolve_user_type
+        user_type, plan, effective, reason = await resolve_user_type(user)
+        # Cache to user doc for fast subsequent reads
+        uid = user.get("user_id")
+        if uid:
+            await db.users.update_one(
+                {"user_id": uid},
+                {"$set": {
+                    "effective_access_key": effective,
+                    "effective_user_type": user_type,
+                    "effective_plan": plan,
+                    "effective_reason": reason,
+                    "effective_resolved_at": datetime.now(timezone.utc),
+                }},
+            )
+        return {
+            "user_type": user_type,
+            "subscription_plan": plan,
+            "access_key": effective,
+            "reason": reason,
+        }
+    except Exception as e:
+        logger.warning(f"resolver fallback (sync): {e}")
+        return get_user_acm_profile(user)
 
 
 async def check_feature_access(
@@ -239,7 +327,7 @@ async def check_feature_access(
 
     profile = get_user_acm_profile(user)
     access_key = profile["access_key"]
-    access_rule = feature["access"].get(access_key, {"level": "hidden", "quota": 0})
+    access_rule = _lookup_access_rule(feature["access"], access_key)
 
     level = access_rule.get("level", "hidden")
     quota_limit = access_rule.get("quota", 0)
@@ -391,7 +479,7 @@ async def get_all_feature_access(user: dict) -> dict:
     result = {}
 
     for feature_id, feature in _acm_cache.items():
-        access_rule = feature["access"].get(access_key, {"level": "hidden", "quota": 0})
+        access_rule = _lookup_access_rule(feature["access"], access_key)
         level = access_rule.get("level", "hidden")
         quota_limit = access_rule.get("quota", 0)
         quota_unit = feature["quota_unit"]

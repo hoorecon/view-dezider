@@ -34,21 +34,24 @@ RELEASE_STAGES = [
 ]
 
 USER_TYPES = [
-    {"id": "unit_tester", "name": "Unit Tester", "description": "Internal QA — tests individual modules in production", "order": 1},
-    {"id": "integration_tester", "name": "Integration Tester", "description": "Internal QA — tests integrated features pre-release", "order": 2},
-    {"id": "alpha", "name": "Alpha User", "description": "Closed group — non-technical internal/extended stakeholders", "order": 3},
-    {"id": "beta", "name": "Beta User", "description": "Early adopters — unreleased features (like Google Labs)", "order": 4},
-    {"id": "free", "name": "Free User", "description": "Public free tier with limited feature access", "order": 5},
-    {"id": "trial", "name": "Free Trial User", "description": "Time-limited access to premium features", "order": 6},
-    {"id": "paid", "name": "Paid User", "description": "Active subscription holder", "order": 7},
+    {"id": "unit_tester", "name": "Unit Tester", "description": "Internal QA — tests individual modules", "order": 1},
+    {"id": "integration_tester", "name": "Integration Tester", "description": "Internal QA — tests integrated features", "order": 2},
+    {"id": "alpha", "name": "Alpha User", "description": "Closed group — internal/extended stakeholders", "order": 3},
+    {"id": "beta", "name": "Beta User", "description": "Early adopters — unreleased features", "order": 4},
+    {"id": "free", "name": "Free User", "description": "Public free tier", "order": 5},
+    {"id": "starter_trial", "name": "Starter Trial", "description": "Free→Starter trial (default 1 day)", "order": 6},
+    {"id": "pro_trial", "name": "Pro Trial", "description": "Starter→Pro trial (default 3 days)", "order": 7},
+    {"id": "premium_trial", "name": "Premium Trial", "description": "Pro→Premium trial (default 7 days)", "order": 8},
+    {"id": "on_demand_retail_buyer", "name": "On-Demand Retail Buyer", "description": "Per-unit SKU purchases", "order": 9},
+    {"id": "on_demand_bulk_buyer", "name": "On-Demand Bulk Buyer", "description": "Bulk/wallet/AI-credit SKU purchases", "order": 10},
+    {"id": "paid", "name": "Paid User", "description": "Active subscription holder", "order": 11},
 ]
 
 SUBSCRIPTION_PLANS = [
     {"id": "none", "name": "No Plan", "description": "Free tier — no subscription", "price": 0, "order": 0},
-    {"id": "starter", "name": "Starter", "description": "Basic paid features with moderate limits", "price": 499, "order": 1},
-    {"id": "pro", "name": "Professional", "description": "Full feature access with generous limits", "price": 1499, "order": 2},
-    {"id": "enterprise", "name": "Enterprise", "description": "Multi-org, API access, white-label, unlimited", "price": 4999, "order": 3},
-    {"id": "api", "name": "API / Developer", "description": "DEO outbound API access for external consumers", "price": 2999, "order": 4},
+    {"id": "starter", "name": "Starter", "description": "Basic paid features", "price": 499, "order": 1},
+    {"id": "pro", "name": "Professional", "description": "Full feature access", "price": 1499, "order": 2},
+    {"id": "premium", "name": "Premium", "description": "All-inclusive for startups/MSMEs/enterprises", "price": 4999, "order": 3},
 ]
 
 

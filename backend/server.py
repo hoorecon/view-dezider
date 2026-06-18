@@ -342,6 +342,9 @@ api_router.include_router(webhooks_razorpay_router)
 from routes.tenses_feels import router as tenses_feels_router  # noqa: E402
 api_router.include_router(tenses_feels_router)
 
+from routes.acm_v2 import router as acm_v2_router, ensure_indexes as _acm_v2_indexes  # noqa: E402
+api_router.include_router(acm_v2_router)
+
 
 # ========================
 # HEALTH CHECK + INFRA STATUS
@@ -416,6 +419,10 @@ async def startup_db_client():
         await ensure_acm_seeded_on_boot()
     except Exception as e:
         logger.error(f"ACM boot seed failed: {e}")
+    try:
+        await _acm_v2_indexes()
+    except Exception as e:
+        logger.error(f"ACM v2 index init failed: {e}")
     try:
         from core.admin_data_seed import ensure_admin_data_seeded_on_boot
         await ensure_admin_data_seeded_on_boot()
