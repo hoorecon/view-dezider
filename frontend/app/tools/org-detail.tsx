@@ -38,6 +38,31 @@ export default function OrgDetail() {
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState<{ level: string; parent_goal_id: string | null } | null>(null);
   const [newGoal, setNewGoal] = useState<any>({});
+  const [smartGoals, setSmartGoals] = useState<any[]>([]);
+
+  // Date helpers — UI uses DD-MM-YYYY, backend stores YYYY-MM-DD (ISO).
+  const ddmmToIso = (s: string): string | null => {
+    if (!s) return null;
+    const m = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    if (!m) return null;
+    return `${m[3]}-${m[2]}-${m[1]}`;
+  };
+  const isoToDdmm = (s: string | null | undefined): string => {
+    if (!s) return '';
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[3]}-${m[2]}-${m[1]}` : s;
+  };
+
+  // Load SMART goals once when modal opens (lazy)
+  useEffect(() => {
+    if (!adding) return;
+    (async () => {
+      try {
+        const { data } = await api.get('/goal-setter/goals');
+        setSmartGoals(data?.goals || data || []);
+      } catch { setSmartGoals([]); }
+    })();
+  }, [adding]);
 
   const reload = async () => {
     setBusy(true);
@@ -93,9 +118,10 @@ export default function OrgDetail() {
         metric_label: newGoal.metric_label || '',
         metric_target: newGoal.metric_target || '',
         metric_unit: newGoal.metric_unit || '',
-        target_date: newGoal.target_date || null,
+        target_date: ddmmToIso(newGoal.target_date) || newGoal.target_date || null,
         owner_name: newGoal.owner_name || '',
         division_code: newGoal.division_code || null,
+        goal_setter_id: newGoal.goal_setter_id || null,
         status: 'pending',
       });
       setAdding(null); setNewGoal({});
@@ -132,7 +158,7 @@ export default function OrgDetail() {
           <View style={{ flex: 1 }}>
             <Text style={s.goalTitle}>{node.title}</Text>
             {node.metric_label ? <Text style={s.goalMeta}>{node.metric_label}: {node.metric_target} {node.metric_unit}</Text> : null}
-            {node.owner_name ? <Text style={s.goalMeta}>Owner: {node.owner_name}{node.target_date ? ` · by ${node.target_date}` : ''}</Text> : null}
+            {node.owner_name ? <Text style={s.goalMeta}>Owner: {node.owner_name}{node.target_date ? ` · by ${isoToDdmm(node.target_date)}` : ''}</Text> : null}
           </View>
           <TouchableOpacity style={s.goalAct} onPress={() => convertToAction(node.id, false)} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}><Ionicons name="checkmark-circle" size={16} color="#10B981" /></TouchableOpacity>
           <TouchableOpacity style={s.goalAct} onPress={() => convertToAction(node.id, true)} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}><Ionicons name="repeat" size={16} color="#8B5CF6" /></TouchableOpacity>
@@ -176,7 +202,7 @@ export default function OrgDetail() {
                 <Text style={s.divName}>{d.order}. {d.name}</Text>
                 <Text style={s.divDept}>{d.department}</Text>
               </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ padding: 8 }}>
+              <View style={s.driversWrap}>
                 {drivers.map((dr) => {
                   const cell = matrix[`${d.code}|${dr.code}`];
                   const sc = cell ? findScale(cell.scale_code) : null;
@@ -188,7 +214,7 @@ export default function OrgDetail() {
                     </TouchableOpacity>
                   );
                 })}
-              </ScrollView>
+              </View>
             </View>
           ))}
         </ScrollView>
@@ -288,12 +314,18 @@ const s = StyleSheet.create({
   divHead: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 10 },
   divName: { color: '#FFF', fontWeight: '800', fontSize: 13, flex: 1 },
   divDept: { color: 'rgba(255,255,255,0.85)', fontSize: 10 },
-  cell: { width: 130, padding: 8, marginRight: 6, borderRadius: 8, borderWidth: 1.5, backgroundColor: '#FFF' },
+  driversWrap: { flexDirection: 'row', flexWrap: 'wrap', padding: 6, gap: 6 },
+  cell: { flexBasis: '23.5%', flexGrow: 1, minWidth: 110, padding: 8, borderRadius: 8, borderWidth: 1.5, backgroundColor: '#FFF' },
   cellCat: { fontSize: 9, fontWeight: '800', color: '#94A3B8' },
   cellName: { fontSize: 12, fontWeight: '700', color: '#0F172A', marginTop: 2 },
   cellPill: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, alignSelf: 'flex-start', marginTop: 6 },
   cellPillText: { color: '#FFF', fontSize: 9, fontWeight: '800' },
   cellEmpty: { fontSize: 10, color: '#94A3B8', marginTop: 6, fontStyle: 'italic' },
+  linkRow: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8, borderRadius: 6, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 4, backgroundColor: '#FFF' },
+  linkRowOn: { borderColor: '#003087', backgroundColor: '#EEF2FF' },
+  linkText: { fontSize: 12, color: '#0F172A', fontWeight: '600' },
+  linkMeta: { fontSize: 10, color: '#64748B', marginTop: 1 },
+  linkEmpty: { fontSize: 11, color: '#94A3B8', fontStyle: 'italic', padding: 8 },
   gateBanner: { backgroundColor: '#EEF2FF', color: '#4338CA', padding: 10, borderRadius: 8, fontSize: 11, marginBottom: 10 },
   addRootBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#DC2626', borderRadius: 10, padding: 10, marginBottom: 10 },
   addRootText: { color: '#FFF', fontWeight: '800', fontSize: 13 },

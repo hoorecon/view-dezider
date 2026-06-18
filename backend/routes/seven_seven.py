@@ -26,7 +26,31 @@ def _now() -> datetime:
 
 
 async def _ensure_seeded():
-    """Idempotent seed of master tables."""
+    """Idempotent seed of master tables + dedup of legacy duplicates."""
+    # ── 1. Drop any duplicate rows (same `code`) — keep oldest by created_at ──
+    # Legacy data prior to the unique-index fix sometimes inserted two copies
+    # of the same division / driver. Clean them up before re-seeding.
+    for coll in ("ss_divisions", "ss_drivers", "ss_scale"):
+        seen: set[str] = set()
+        cur = db[coll].find({}).sort("created_at", 1)
+        async for row in cur:
+            code = row.get("code")
+            if not code:
+                continue
+            if code in seen:
+                await db[coll].delete_one({"_id": row["_id"]})
+            else:
+                seen.add(code)
+
+    # ── 2. Ensure unique index on `code` so the bug can't recur ──
+    try:
+        await db.ss_divisions.create_index([("code", 1)], unique=True)
+        await db.ss_drivers.create_index([("code", 1)], unique=True)
+        await db.ss_scale.create_index([("code", 1)], unique=True)
+    except Exception:
+        pass  # Index may already exist with different options — safe to ignore
+
+    # ── 3. Upsert canonical seed ──
     for d in SEVEN_DIVISIONS:
         await db.ss_divisions.update_one(
             {"code": d["code"]},
