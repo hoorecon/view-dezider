@@ -38,6 +38,7 @@ export default function OrgDetail() {
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState<{ level: string; parent_goal_id: string | null } | null>(null);
   const [newGoal, setNewGoal] = useState<any>({});
+  const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
   const [smartGoals, setSmartGoals] = useState<any[]>([]);
 
   // Date helpers — UI uses DD-MM-YYYY, backend stores YYYY-MM-DD (ISO).
@@ -108,23 +109,28 @@ export default function OrgDetail() {
     if (!adding) return;
     if (!newGoal.title?.trim()) { showAlert('Title required'); return; }
     if (adding.level === 'L3' && !newGoal.division_code) { showAlert('Division required', 'L3 goals must be linked to one of the 7 Divisions.'); return; }
+    const payload = {
+      user_org_id: orgId,
+      level: adding.level,
+      parent_goal_id: adding.parent_goal_id,
+      title: newGoal.title,
+      description: newGoal.description || '',
+      metric_label: newGoal.metric_label || '',
+      metric_target: newGoal.metric_target || '',
+      metric_unit: newGoal.metric_unit || '',
+      target_date: ddmmToIso(newGoal.target_date) || newGoal.target_date || null,
+      owner_name: newGoal.owner_name || '',
+      division_code: newGoal.division_code || null,
+      goal_setter_id: newGoal.goal_setter_id || null,
+      status: newGoal.status || 'pending',
+    };
     try {
-      await api.post('/six-legs/goals', {
-        user_org_id: orgId,
-        level: adding.level,
-        parent_goal_id: adding.parent_goal_id,
-        title: newGoal.title,
-        description: newGoal.description || '',
-        metric_label: newGoal.metric_label || '',
-        metric_target: newGoal.metric_target || '',
-        metric_unit: newGoal.metric_unit || '',
-        target_date: ddmmToIso(newGoal.target_date) || newGoal.target_date || null,
-        owner_name: newGoal.owner_name || '',
-        division_code: newGoal.division_code || null,
-        goal_setter_id: newGoal.goal_setter_id || null,
-        status: 'pending',
-      });
-      setAdding(null); setNewGoal({});
+      if (editingGoalId) {
+        await api.put(`/six-legs/goals/${editingGoalId}`, payload);
+      } else {
+        await api.post('/six-legs/goals', payload);
+      }
+      setAdding(null); setNewGoal({}); setEditingGoalId(null);
       await reload();
     } catch (e: any) { showAlert('Save failed', e?.response?.data?.detail || e.message); }
   };
@@ -160,12 +166,13 @@ export default function OrgDetail() {
             {node.metric_label ? <Text style={s.goalMeta}>{node.metric_label}: {node.metric_target} {node.metric_unit}</Text> : null}
             {node.owner_name ? <Text style={s.goalMeta}>Owner: {node.owner_name}{node.target_date ? ` · by ${isoToDdmm(node.target_date)}` : ''}</Text> : null}
           </View>
-          <TouchableOpacity style={s.goalAct} onPress={() => convertToAction(node.id, false)} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}><Ionicons name="checkmark-circle" size={16} color="#10B981" /></TouchableOpacity>
-          <TouchableOpacity style={s.goalAct} onPress={() => convertToAction(node.id, true)} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}><Ionicons name="repeat" size={16} color="#8B5CF6" /></TouchableOpacity>
+          <TouchableOpacity style={s.goalAct} onPress={() => convertToAction(node.id, false)} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }} accessibilityLabel="Mark as done (one-time)" {...({ title: 'Mark as done — convert to one-time Action Tracker task' } as any)}><Ionicons name="checkmark-circle" size={16} color="#10B981" /></TouchableOpacity>
+          <TouchableOpacity style={s.goalAct} onPress={() => convertToAction(node.id, true)} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }} accessibilityLabel="Convert to recurring routine" {...({ title: 'Convert to recurring routine in Action Tracker' } as any)}><Ionicons name="repeat" size={16} color="#8B5CF6" /></TouchableOpacity>
+          <TouchableOpacity style={s.goalAct} onPress={() => { setEditingGoalId(node.id); setAdding({ level: lvl as any, parent_goal_id: node.parent_goal_id || null }); setNewGoal({ ...node, target_date: node.target_date ? isoToDdmm(node.target_date) : '' }); }} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }} accessibilityLabel="Edit goal" {...({ title: 'Edit this goal' } as any)}><Ionicons name="create" size={16} color="#F59E0B" /></TouchableOpacity>
           {lvl !== 'L6' && (
-            <TouchableOpacity style={s.goalAct} onPress={() => { const nextLvl = LEVEL_ORDER[LEVEL_ORDER.indexOf(lvl as any) + 1] || 'L6'; setAdding({ level: nextLvl, parent_goal_id: node.id }); setNewGoal({}); }} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}><Ionicons name="add-circle" size={16} color="#003087" /></TouchableOpacity>
+            <TouchableOpacity style={s.goalAct} onPress={() => { const nextLvl = LEVEL_ORDER[LEVEL_ORDER.indexOf(lvl as any) + 1] || 'L6'; setEditingGoalId(null); setAdding({ level: nextLvl, parent_goal_id: node.id }); setNewGoal({}); }} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }} accessibilityLabel="Add sub-goal" {...({ title: `Add a sub-goal under ${lvl}` } as any)}><Ionicons name="add-circle" size={16} color="#003087" /></TouchableOpacity>
           )}
-          <TouchableOpacity style={s.goalAct} onPress={() => deleteGoal(node.id)} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}><Ionicons name="trash" size={14} color="#EF4444" /></TouchableOpacity>
+          <TouchableOpacity style={s.goalAct} onPress={() => deleteGoal(node.id)} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }} accessibilityLabel="Delete goal" {...({ title: 'Delete this goal and all its children' } as any)}><Ionicons name="trash" size={14} color="#EF4444" /></TouchableOpacity>
         </View>
         {isOpen && (node.children || []).map((c: any) => renderNode(c, depth + 1))}
       </View>
@@ -178,7 +185,7 @@ export default function OrgDetail() {
   return (
     <SafeAreaView style={s.wrap} edges={['top']}>
       <View style={[s.header, { backgroundColor: org.color || '#003087' }]}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn}><Ionicons name="arrow-back" size={22} color="#FFF" /></TouchableOpacity>
+        <TouchableOpacity onPress={() => { try { router.back(); } catch {} router.replace('/(tabs)' as any); }} style={s.backBtn} accessibilityLabel="Back to dashboard" {...({ title: 'Back to dashboard' } as any)}><Ionicons name="arrow-back" size={22} color="#FFF" /></TouchableOpacity>
         <Text style={s.title}>{org.name}</Text>
         <Text style={s.subtitle}>{org.org_type} · {org.life_area}{org.sub_area ? ` / ${org.sub_area}` : ''}</Text>
       </View>
@@ -283,12 +290,43 @@ export default function OrgDetail() {
               </View>
               <View style={{ flexDirection: 'row', gap: 6 }}>
                 <View style={{ flex: 1 }}><Text style={s.lbl}>Owner</Text><TextInput style={s.inp} value={newGoal.owner_name||''} onChangeText={(v) => setNewGoal((p:any)=>({...p, owner_name: v}))} placeholder="e.g. Chelz" placeholderTextColor="#94A3B8" /></View>
-                <View style={{ flex: 1 }}><Text style={s.lbl}>Target Date</Text><TextInput style={s.inp} value={newGoal.target_date||''} onChangeText={(v) => setNewGoal((p:any)=>({...p, target_date: v}))} placeholder="YYYY-MM-DD" placeholderTextColor="#94A3B8" /></View>
+                <View style={{ flex: 1 }}><Text style={s.lbl}>Target Date</Text><TextInput style={s.inp} value={newGoal.target_date||''} onChangeText={(v) => setNewGoal((p:any)=>({...p, target_date: v}))} placeholder="DD-MM-YYYY" placeholderTextColor="#94A3B8" /></View>
               </View>
+              {/* Linked Goal Setter — visible at all times so user can attach/detach */}
+              <Text style={s.lbl}>Linked Goal Setter (optional)</Text>
+              {(() => {
+                const linked = smartGoals.find((g: any) => (g.goal_id || g.id) === newGoal.goal_setter_id);
+                if (linked) return (
+                  <View style={[s.linkRow, s.linkRowOn]}>
+                    <Ionicons name="link" size={14} color="#003087" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.linkText} numberOfLines={1}>{linked.title}</Text>
+                      <Text style={s.linkMeta}>{linked.life_area || '—'}{linked.goal_type ? ` · ${linked.goal_type}` : ''}</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => setNewGoal((p:any) => ({ ...p, goal_setter_id: null }))} accessibilityLabel="Unlink Goal Setter entry" {...({ title: 'Detach SMART goal' } as any)}>
+                      <Ionicons name="close-circle" size={16} color="#EF4444" />
+                    </TouchableOpacity>
+                  </View>
+                );
+                return (
+                  <ScrollView style={{ maxHeight: 120 }} nestedScrollEnabled>
+                    {smartGoals.length === 0 ? <Text style={s.linkEmpty}>No SMART goals available — create one in Goal Setter first.</Text>
+                    : smartGoals.map((g: any) => {
+                      const gid = g.goal_id || g.id;
+                      return (
+                        <TouchableOpacity key={gid} style={s.linkRow} onPress={() => setNewGoal((p:any) => ({ ...p, goal_setter_id: gid }))}>
+                          <Ionicons name="radio-button-off" size={14} color="#94A3B8" />
+                          <Text style={s.linkText} numberOfLines={1}>{g.title}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                );
+              })()}
             </ScrollView>
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-              <TouchableOpacity style={s.cancelBtn} onPress={() => { setAdding(null); setNewGoal({}); }}><Text style={s.cancelText}>Cancel</Text></TouchableOpacity>
-              <TouchableOpacity style={s.saveBtn} onPress={createGoal}><Text style={s.saveText}>Create</Text></TouchableOpacity>
+              <TouchableOpacity style={s.cancelBtn} onPress={() => { setAdding(null); setNewGoal({}); setEditingGoalId(null); }}><Text style={s.cancelText}>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity style={s.saveBtn} onPress={createGoal}><Text style={s.saveText}>{editingGoalId ? 'Save' : 'Create'}</Text></TouchableOpacity>
             </View>
           </View>
         </View>

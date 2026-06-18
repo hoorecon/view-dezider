@@ -479,7 +479,8 @@ export default function HomeScreen() {
               <Text style={styles.actionSubtitle}>Two-column starter</Text>
             </TouchableOpacity>
             )}
-            {isTileOn('swot') && (
+            {/* SWOT Analysis - hidden for all users per product decision (P0). */}
+            {false && isTileOn('swot') && (
             <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/swot' as any)}>
               <LinearGradient colors={['#1E40AF', '#3B82F6']} style={styles.actionIcon}>
                 <Ionicons name="grid" size={24} color={COLORS.white} />
@@ -488,8 +489,13 @@ export default function HomeScreen() {
               <Text style={styles.actionSubtitle}>4-quadrant strategic</Text>
             </TouchableOpacity>
             )}
-            {/* Solution Finder — promoted into Decision Kickstarters as the
-                4th tile (sits in the SWOT slot when SWOT is wired off). */}
+            {/* Solution Finder moved to §3 Problem Solvers (below). */}
+          </View>
+
+          {/* ══════════ §3 PROBLEM SOLVERS ══════════
+              Renamed from "Inner Wellbeing" — houses Solution Finder + The Conflict Breaker. */}
+          <Text style={styles.sectionTitle}>❤️ 3 · Problem Solvers</Text>
+          <View style={styles.quickActions}>
             {isTileOn('solution_finder') && (
             <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/solution-finder-list' as any)}>
               <LinearGradient colors={['#7C3AED', '#C084FC']} style={styles.actionIcon}>
@@ -499,33 +505,30 @@ export default function HomeScreen() {
               <Text style={styles.actionSubtitle}>Concerns → RCA → Plan · ASM</Text>
             </TouchableOpacity>
             )}
-          </View>
-
-          {/* ══════════ §3 SOLUTION SPACE — MOVED to position §9.5 ══════════
-              See below: rendered after Collaboration & Management. */}
-
-          {/* ══════════ §3 INNER WELLBEING ══════════ */}
-          <Text style={styles.sectionTitle}>❤️ 3 · Inner Wellbeing</Text>
-          <View style={styles.quickActions}>
-            {isTileOn('emotional_gatekeeper') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/emotional-gatekeeper' as any)}>
-              <LinearGradient colors={['#F59E0B', '#D97706']} style={styles.actionIcon}>
-                <Ionicons name="heart-circle" size={24} color={COLORS.white} />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Emotional Gatekeeper</Text>
-              <Text style={styles.actionSubtitle}>Break loops & traps</Text>
-            </TouchableOpacity>
-            )}
             {isTileOn('conflict_breaker') && (
             <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/conflict-breaker' as any)}>
               <LinearGradient colors={['#7C2D12', '#DC2626']} style={styles.actionIcon}>
                 <Ionicons name="flash" size={24} color={COLORS.white} />
               </LinearGradient>
-              <Text style={styles.actionTitle}>Conflict Breaker</Text>
+              <Text style={styles.actionTitle}>The Conflict Breaker</Text>
               <Text style={styles.actionSubtitle}>Crucial conversations</Text>
             </TouchableOpacity>
             )}
           </View>
+
+          {/* (Decision Kickstarters now ends with Pros & Cons + Emotional Gatekeeper.
+              §3 above is the rebranded Problem Solvers; EG moved up into §2.) */}
+          {isTileOn('emotional_gatekeeper') && (
+            <View style={[styles.quickActions, { marginTop: -10 }]}>
+              <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/emotional-gatekeeper' as any)}>
+                <LinearGradient colors={['#F59E0B', '#D97706']} style={styles.actionIcon}>
+                  <Ionicons name="heart-circle" size={24} color={COLORS.white} />
+                </LinearGradient>
+                <Text style={styles.actionTitle}>Emotional Gatekeeper</Text>
+                <Text style={styles.actionSubtitle}>Break loops & traps</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           {/* ══════════ §4 GOALS & MANIFESTATION ══════════ */}
           <Text style={styles.sectionTitle}>🎯 4 · Goals & Manifestation</Text>

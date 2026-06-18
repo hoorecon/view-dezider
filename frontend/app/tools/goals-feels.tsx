@@ -74,6 +74,8 @@ export default function GoalsFeelsScreen() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [smartGoals, setSmartGoals] = useState<any[]>([]);
   const [focusedIdx, setFocusedIdx] = useState<number | null>(null);
+  const [browsing, setBrowsing] = useState<number | null>(null);  // row idx whose Browse modal is open
+  const [browseQuery, setBrowseQuery] = useState('');
 
   // Load existing sheet + Goal Setter pool
   useEffect(() => {
@@ -107,7 +109,7 @@ export default function GoalsFeelsScreen() {
         } else {
           setRows(seedRows());
         }
-        setSmartGoals(gs.data || []);
+        setSmartGoals((gs.data || []).slice().sort((a: any, b: any) => (new Date(b.created_at || 0) as any) - (new Date(a.created_at || 0) as any)));
       } catch {
         setRows(seedRows());
       }
@@ -224,23 +226,29 @@ export default function GoalsFeelsScreen() {
                       })}
                     </View>
 
-                    {/* Goal title autosuggest */}
+                    {/* Goal title autosuggest + Browse button */}
                     {!!r.goal_type && (
                       <>
                         <Text style={s.fieldLbl}>Goal title — {GOAL_TYPES.find(t => t.code === r.goal_type)?.helper || ''}</Text>
-                        <TextInput
-                          style={s.fieldInp}
-                          value={r.goal_title}
-                          onChangeText={(v) => updateRow(idx, { goal_title: v, goal_setter_id: null })}
-                          onFocus={() => setFocusedIdx(idx)}
-                          onBlur={() => setTimeout(() => setFocusedIdx((f) => f === idx ? null : f), 200)}
-                          placeholder="Type to search Goal Setter goals…"
-                          placeholderTextColor="#94A3B8"
-                        />
-                        {suggestions.length > 0 && (
+                        <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                          <TextInput
+                            style={[s.fieldInp, { flex: 1 }]}
+                            value={r.goal_title}
+                            onChangeText={(v) => updateRow(idx, { goal_title: v, goal_setter_id: null })}
+                            onFocus={() => setFocusedIdx(idx)}
+                            onBlur={() => setTimeout(() => setFocusedIdx((f) => f === idx ? null : f), 200)}
+                            placeholder="Type to search Goal Setter goals…"
+                            placeholderTextColor="#94A3B8"
+                          />
+                          <TouchableOpacity onPress={() => { setBrowsing(idx); setBrowseQuery(''); }} style={s.browseBtn} accessibilityLabel="Browse all Goal Setter goals" {...({ title: 'Browse all SMART goals from Goal Setter' } as any)}>
+                            <Ionicons name="search" size={14} color="#FFF" />
+                            <Text style={s.browseTxt}>Browse</Text>
+                          </TouchableOpacity>
+                        </View>
+                        {suggestions.length > 0 && focusedIdx === idx && (
                           <View style={s.suggestBox}>
                             {suggestions.map(g => (
-                              <TouchableOpacity key={g.goal_id} style={s.suggestRow} onPress={() => { updateRow(idx, { goal_title: g.title, goal_setter_id: g.goal_id }); setFocusedIdx(null); }}>
+                              <TouchableOpacity key={g.goal_id || g.id} style={s.suggestRow} onPress={() => { updateRow(idx, { goal_title: g.title, goal_setter_id: g.goal_id || g.id }); setFocusedIdx(null); }}>
                                 <Ionicons name="flag" size={12} color="#6D28D9" />
                                 <Text style={s.suggestTxt} numberOfLines={1}>{g.title}</Text>
                               </TouchableOpacity>
@@ -377,4 +385,13 @@ const s = StyleSheet.create({
   saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#6D28D9', borderRadius: 12, padding: 14, marginTop: 16 },
   saveBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
   hint: { fontSize: 11, color: '#6D28D9', textAlign: 'center', marginTop: 8, fontStyle: 'italic' },
+  browseBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#6D28D9', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6 },
+  browseTxt: { color: '#FFF', fontSize: 11, fontWeight: '700' },
+  modalOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 16 },
+  modalBox: { backgroundColor: '#FFF', borderRadius: 12, width: '100%', maxWidth: 480, overflow: 'hidden' },
+  modalHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#6D28D9', padding: 12 },
+  modalTitle: { color: '#FFF', fontWeight: '800', fontSize: 14 },
+  browseRow: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 6, backgroundColor: '#FAF5FF' },
+  browseRowTitle: { fontSize: 13, color: '#0F172A', fontWeight: '700' },
+  browseRowMeta: { fontSize: 10, color: '#64748B', marginTop: 2 },
 });
