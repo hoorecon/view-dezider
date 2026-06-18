@@ -12,7 +12,7 @@
  * Bottom CTA → Goals & Feels.
  * Top-left arrow → Back to EG hub.
  */
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -20,14 +20,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
-import {
-  ALL_EMOTIONS,
-  PAST_EMOTIONS, FUTURE_EMOTIONS,
-  PRESENT_SELF_EMOTIONAL, PRESENT_SELF_MENTAL,
-  PRESENT_OTHERS_YOURS, PRESENT_OTHERS_THEIRS,
-  HEALING_FEELINGS, TENSES_FEELS_INTRO,
-  EmotionDef,
-} from '../../src/data/tensesFeelsContent';
+import { EmotionDef } from '../../src/data/tensesFeelsContent';
+import { loadTensesFeels, TensesFeelsBundle } from '../../src/data/tensesFeelsLoader';
 
 export default function TensesFeelsScreen() {
   const router = useRouter();
@@ -41,6 +35,8 @@ export default function TensesFeelsScreen() {
   const [aiGuidance, setAiGuidance] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [completedCodes, setCompletedCodes] = useState<Set<string>>(new Set());
+  const [content, setContent] = useState<TensesFeelsBundle | null>(null);
+  const [contentLoading, setContentLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
@@ -50,6 +46,21 @@ export default function TensesFeelsScreen() {
         setCompletedCodes(s);
       } catch {}
     })();
+  }, []);
+
+  // Load coaching content from Content Library CMS (with static fallback)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setContentLoading(true);
+      try {
+        const bundle = await loadTensesFeels('en');
+        if (!cancelled) setContent(bundle);
+      } finally {
+        if (!cancelled) setContentLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   const openEmotion = (e: EmotionDef) => {
@@ -136,33 +147,42 @@ export default function TensesFeelsScreen() {
 
       {stage === 'intro' && (
         <ScrollView contentContainerStyle={{ padding: 16 }}>
-          <Text style={s.introH}>Welcome</Text>
-          <Text style={s.introBody}>{TENSES_FEELS_INTRO.welcome}</Text>
-          <Text style={s.introBody}>{TENSES_FEELS_INTRO.definition}</Text>
-          <View style={s.divider} />
-          <Text style={s.introH}>What we'll do</Text>
-          <Text style={s.introBody}>{TENSES_FEELS_INTRO.pain_definition}</Text>
-          <Text style={s.introBody}>{TENSES_FEELS_INTRO.pain_breakdown}</Text>
-          <Text style={s.introHint}>Estimated time: {TENSES_FEELS_INTRO.estimated_minutes} min · you can pause anytime.</Text>
-          <TouchableOpacity style={s.primaryBtn} onPress={() => setStage('overview')}>
-            <Ionicons name="arrow-forward" size={16} color="#FFF" />
-            <Text style={s.primaryBtnText}>  Begin overview</Text>
-          </TouchableOpacity>
+          {contentLoading || !content ? (
+            <ActivityIndicator style={{ marginTop: 40 }} />
+          ) : (
+            <>
+              <Text style={s.introH}>Welcome</Text>
+              <Text style={s.introBody}>{content.intro.welcome}</Text>
+              <Text style={s.introBody}>{content.intro.definition}</Text>
+              <View style={s.divider} />
+              <Text style={s.introH}>What we'll do</Text>
+              <Text style={s.introBody}>{content.intro.pain_definition}</Text>
+              <Text style={s.introBody}>{content.intro.pain_breakdown}</Text>
+              <Text style={s.introHint}>
+                Estimated time: {content.intro.estimated_minutes} min · you can pause anytime.
+                {content.source === 'static' ? '  ·  (offline content)' : ''}
+              </Text>
+              <TouchableOpacity style={s.primaryBtn} onPress={() => setStage('overview')}>
+                <Ionicons name="arrow-forward" size={16} color="#FFF" />
+                <Text style={s.primaryBtnText}>  Begin overview</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </ScrollView>
       )}
 
-      {stage === 'overview' && (
+      {stage === 'overview' && content && (
         <ScrollView contentContainerStyle={{ padding: 16 }}>
-          <Section title="I. Pain about the PAST" hint="Negative = Clinging · Positive = Longing" items={PAST_EMOTIONS} />
-          <Section title="II. Pain about the FUTURE" hint="Negative = Fear · Positive = Anxiety" items={FUTURE_EMOTIONS} />
-          <Section title="III-a. PRESENT · Self · Emotional" items={PRESENT_SELF_EMOTIONAL} />
-          <Section title="III-b. PRESENT · Self · Mental" items={PRESENT_SELF_MENTAL} />
-          <Section title="III-c. PRESENT · Others · Triggers from YOUR side" items={PRESENT_OTHERS_YOURS} />
-          <Section title="III-d. PRESENT · Others · Triggers from THEIR side" items={PRESENT_OTHERS_THEIRS} />
+          <Section title="I. Pain about the PAST" hint="Negative = Clinging · Positive = Longing" items={content.past} />
+          <Section title="II. Pain about the FUTURE" hint="Negative = Fear · Positive = Anxiety" items={content.future} />
+          <Section title="III-a. PRESENT · Self · Emotional" items={content.present_self_emotional} />
+          <Section title="III-b. PRESENT · Self · Mental" items={content.present_self_mental} />
+          <Section title="III-c. PRESENT · Others · Triggers from YOUR side" items={content.present_others_yours} />
+          <Section title="III-d. PRESENT · Others · Triggers from THEIR side" items={content.present_others_theirs} />
 
           <View style={s.healingCard}>
             <Text style={s.healingHead}>3 Healing Feelings</Text>
-            {HEALING_FEELINGS.map(h => (
+            {content.healing.map(h => (
               <View key={h.code} style={s.healingRow}>
                 <Ionicons name={h.icon as any} size={18} color={h.color} />
                 <Text style={s.healingLabel}>{h.label}</Text>
