@@ -345,6 +345,9 @@ api_router.include_router(tenses_feels_router)
 from routes.acm_v2 import router as acm_v2_router, ensure_indexes as _acm_v2_indexes  # noqa: E402
 api_router.include_router(acm_v2_router)
 
+from routes.content_library import router as content_library_router, ensure_indexes as _content_library_indexes  # noqa: E402
+api_router.include_router(content_library_router)
+
 
 # ========================
 # HEALTH CHECK + INFRA STATUS
@@ -423,6 +426,10 @@ async def startup_db_client():
         await _acm_v2_indexes()
     except Exception as e:
         logger.error(f"ACM v2 index init failed: {e}")
+    try:
+        await _content_library_indexes()
+    except Exception as e:
+        logger.error(f"Content Library index init failed: {e}")
     try:
         from core.admin_data_seed import ensure_admin_data_seeded_on_boot
         await ensure_admin_data_seeded_on_boot()

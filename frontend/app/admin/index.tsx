@@ -55,6 +55,7 @@ const QUICK_ACTIONS: QuickAction[] = [
   { key: 'acm-resolver-cfg', label: 'ACM Resolver Config',  description: '5-axis user-type resolver · trial days · plan aliases · on-demand thresholds', icon: 'options', color: '#5B7CFA', href: '/admin/acm-resolver-config' },
   { key: 'tier-segments',   label: 'Tier ↔ Segments',       description: 'Map customer segments to each chakra tier · multi-select', icon: 'link', color: '#0EA5E9', href: '/admin/tier-segment-mapping' },
   { key: 'trial-payments',  label: 'Trial Payment Tokens',  description: 'Saved cards/UPI captured at trial opt-in · audit + filter', icon: 'card-outline', color: '#F59E0B', href: '/admin/trial-payments' },
+  { key: 'content-library', label: 'Content Library CMS',    description: 'Paste/edit verbatim coaching scripts · multi-locale · tenses_feels + 6 modules', icon: 'document-text', color: '#10B981', href: '/admin/content-library' },
 ];
 
 export default function AdminHomeScreen() {
