@@ -489,7 +489,17 @@ export default function HomeScreen() {
               <Text style={styles.actionSubtitle}>4-quadrant strategic</Text>
             </TouchableOpacity>
             )}
-            {/* Solution Finder moved to §3 Problem Solvers (below). */}
+            {/* Emotional Gatekeeper — last tile in Decision Kickstarters
+                (sits next to Pros & Cons in the second row). */}
+            {isTileOn('emotional_gatekeeper') && (
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/emotional-gatekeeper' as any)}>
+              <LinearGradient colors={['#F59E0B', '#D97706']} style={styles.actionIcon}>
+                <Ionicons name="heart-circle" size={24} color={COLORS.white} />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Emotional Gatekeeper</Text>
+              <Text style={styles.actionSubtitle}>Break loops & traps</Text>
+            </TouchableOpacity>
+            )}
           </View>
 
           {/* ══════════ §3 PROBLEM SOLVERS ══════════
@@ -516,19 +526,8 @@ export default function HomeScreen() {
             )}
           </View>
 
-          {/* (Decision Kickstarters now ends with Pros & Cons + Emotional Gatekeeper.
-              §3 above is the rebranded Problem Solvers; EG moved up into §2.) */}
-          {isTileOn('emotional_gatekeeper') && (
-            <View style={[styles.quickActions, { marginTop: -10 }]}>
-              <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/emotional-gatekeeper' as any)}>
-                <LinearGradient colors={['#F59E0B', '#D97706']} style={styles.actionIcon}>
-                  <Ionicons name="heart-circle" size={24} color={COLORS.white} />
-                </LinearGradient>
-                <Text style={styles.actionTitle}>Emotional Gatekeeper</Text>
-                <Text style={styles.actionSubtitle}>Break loops & traps</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+          {/* (Emotional Gatekeeper now lives as the last tile of §2 Decision
+              Kickstarters above. SWOT remains hidden globally.) */}
 
           {/* ══════════ §4 GOALS & MANIFESTATION ══════════ */}
           <Text style={styles.sectionTitle}>🎯 4 · Goals & Manifestation</Text>
