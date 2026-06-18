@@ -221,6 +221,7 @@ async def get_my_access(user: dict = Depends(get_current_user)):
         "user_type": profile["user_type"],
         "subscription_plan": profile.get("subscription_plan", "none"),
         "access_key": profile["access_key"],
+        "effective_access_key": profile["access_key"],
         "effective_reason": profile.get("reason"),
         "features": features,
     }
