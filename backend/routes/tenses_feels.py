@@ -180,9 +180,20 @@ async def ai_guidance(p: AIGuidanceIn, user: dict = Depends(get_current_user)):
 
 
 # ─── Goals & Feels: 10-area-of-life rows ──────────────────────────
+class AssociatedEmotion(BaseModel):
+    emotion_code: str
+    healing_feeling: Optional[str] = ""
+    degree: Optional[int] = 5  # 1..10
+
 class GoalFeelRow(BaseModel):
     area_of_life: str             # e.g. "holistic_health"
     sub_area: Optional[str] = ""  # e.g. "physical", "mental", "emotional"
+    # ── New schema (June 2026): typed goal + multi-emotion ──
+    goal_type: Optional[str] = ""     # problem | need | risk | aspiration
+    goal_title: Optional[str] = ""    # picked/autosuggested from goal-setter
+    goal_setter_id: Optional[str] = None  # back-link to /goal-setter
+    associated_emotions: List[AssociatedEmotion] = Field(default_factory=list)
+    # ── Legacy fields kept for backwards compatibility with old sheets ──
     problem: Optional[str] = ""
     need: Optional[str] = ""
     aspiration: Optional[str] = ""
@@ -190,7 +201,6 @@ class GoalFeelRow(BaseModel):
     primary_emotion: Optional[str] = ""  # one of EMOTION_CODES or healing
     degree: int = 5                # 1..10
     healing_feeling: Optional[str] = ""
-    goal_setter_id: Optional[str] = None
 
 
 class GoalFeelsSheetIn(BaseModel):

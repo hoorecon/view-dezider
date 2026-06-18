@@ -86,6 +86,10 @@ async def create_goal(request: Request, user: dict = Depends(get_current_user)):
         "org_id": user.get("org_id"),
         "title": body.get("title", ""),
         "life_area": body.get("life_area", ""),
+        # ── New (June 2026): typed goal for bidirectional My-360 / Goal-Setter link ──
+        # one of: problem_resolution | need_fulfillment | risk_management | aspiration_achievement
+        "goal_type": body.get("goal_type", ""),
+        "sub_area": body.get("sub_area", ""),
         "challenge": body.get("challenge", ""),
         # SMART fields
         "specific": body.get("specific", ""),
@@ -123,6 +127,12 @@ async def list_goals(request: Request, user: dict = Depends(get_current_user)):
         query["status"] = params["status"]
     if params.get("life_area"):
         query["life_area"] = params["life_area"]
+    if params.get("goal_type"):
+        query["goal_type"] = params["goal_type"]
+    if params.get("sub_area"):
+        query["sub_area"] = params["sub_area"]
+    if params.get("q"):
+        query["title"] = {"$regex": params["q"], "$options": "i"}
 
     docs = await db.smart_goals.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
     return docs
@@ -143,7 +153,8 @@ async def update_goal(goal_id: str, request: Request, user: dict = Depends(get_c
     body = await request.json()
     now = datetime.now(timezone.utc).isoformat()
     allowed = [
-        "title", "life_area", "challenge", "specific", "measurable", "metrics",
+        "title", "life_area", "goal_type", "sub_area",
+        "challenge", "specific", "measurable", "metrics",
         "achievable", "achievable_skills",
         "realistic", "realistic_resources",
         "timebound", "milestones",

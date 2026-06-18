@@ -550,46 +550,10 @@ export default function HomeScreen() {
             )}
           </View>
 
-          {/* ══════════ §5 EXECUTE & TRACK ══════════ */}
+          {/* ══════════ §5 EXECUTE & TRACK ══════════
+              Order: My Organizations · Values Tracker · Action Tracker ·
+                     Effort Estimation · CTT · Lifestyle Dezider */}
           <Text style={styles.sectionTitle}>✅ 5 · Execute & Track</Text>
-          <View style={styles.quickActions}>
-            {isTileOn('action_tracker') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/action-center' as any)}>
-              <LinearGradient colors={['#0D9488', '#0F766E']} style={styles.actionIcon}>
-                <Ionicons name="checkmark-done-circle" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Action Tracker</Text>
-              <Text style={styles.actionSubtitle}>Universal inbox</Text>
-            </TouchableOpacity>
-            )}
-            {isTileOn('ctt') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/ctt' as any)}>
-              <LinearGradient colors={['#1E3A5F', '#2D5F8B']} style={styles.actionIcon}>
-                <Ionicons name="clipboard" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>CTT</Text>
-              <Text style={styles.actionSubtitle}>Project tracker</Text>
-            </TouchableOpacity>
-            )}
-          </View>
-          <View style={styles.quickActions}>
-            {isTileOn('lifestyle_dezider') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/lifestyle' as any)}>
-              <LinearGradient colors={['#065F46', '#059669']} style={styles.actionIcon}>
-                <Ionicons name="leaf" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Lifestyle Dezider</Text>
-              <Text style={styles.actionSubtitle}>Decide a change</Text>
-            </TouchableOpacity>
-            )}
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/atex' as any)}>
-              <LinearGradient colors={['#7C3AED', '#A855F7']} style={styles.actionIcon}>
-                <Ionicons name="calculator" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Effort Estimation</Text>
-              <Text style={styles.actionSubtitle}>ATEX · EE+MB+PB+RM=TT</Text>
-            </TouchableOpacity>
-          </View>
           <View style={styles.quickActions}>
             <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/orgs' as any)}>
               <LinearGradient colors={['#4338CA', '#6366F1']} style={styles.actionIcon}>
@@ -605,6 +569,44 @@ export default function HomeScreen() {
               <Text style={styles.actionTitle}>Values Tracker</Text>
               <Text style={styles.actionSubtitle}>8 VEALES Collaboration Principles</Text>
             </TouchableOpacity>
+          </View>
+          <View style={styles.quickActions}>
+            {isTileOn('action_tracker') && (
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/action-center' as any)}>
+              <LinearGradient colors={['#0D9488', '#0F766E']} style={styles.actionIcon}>
+                <Ionicons name="checkmark-done-circle" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Action Tracker</Text>
+              <Text style={styles.actionSubtitle}>Universal inbox</Text>
+            </TouchableOpacity>
+            )}
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/atex' as any)}>
+              <LinearGradient colors={['#7C3AED', '#A855F7']} style={styles.actionIcon}>
+                <Ionicons name="calculator" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Effort Estimation</Text>
+              <Text style={styles.actionSubtitle}>ATEX · EE+MB+PB+RM=TT</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.quickActions}>
+            {isTileOn('ctt') && (
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/ctt' as any)}>
+              <LinearGradient colors={['#1E3A5F', '#2D5F8B']} style={styles.actionIcon}>
+                <Ionicons name="clipboard" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>CTT</Text>
+              <Text style={styles.actionSubtitle}>Project tracker</Text>
+            </TouchableOpacity>
+            )}
+            {isTileOn('lifestyle_dezider') && (
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/lifestyle' as any)}>
+              <LinearGradient colors={['#065F46', '#059669']} style={styles.actionIcon}>
+                <Ionicons name="leaf" size={24} color="#FFF" />
+              </LinearGradient>
+              <Text style={styles.actionTitle}>Lifestyle Dezider</Text>
+              <Text style={styles.actionSubtitle}>Decide a change</Text>
+            </TouchableOpacity>
+            )}
           </View>
 
           {/* ══════════ §6 REFLECTION & AWARENESS (8 tiles, consolidated) ══════════

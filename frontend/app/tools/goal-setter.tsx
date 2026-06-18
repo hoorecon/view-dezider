@@ -53,6 +53,9 @@ export default function GoalSetterScreen() {
   const [timebound, setTimebound] = useState('');
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
   const [goalMilestones, setGoalMilestones] = useState<SmartMilestone[]>([]);
+  // Phase 4 — bidirectional My-360 / Goals & Feels link
+  const [lifeArea, setLifeArea] = useState<string>('');
+  const [goalType, setGoalType] = useState<string>('');
 
   const fetchData = async () => {
     try {
@@ -77,6 +80,7 @@ export default function GoalSetterScreen() {
     setTimebound('');
     setEditingGoalId(null);
     setGoalMilestones([]);
+    setLifeArea(''); setGoalType('');
   };
 
   const handleSave = async () => {
@@ -85,6 +89,7 @@ export default function GoalSetterScreen() {
     try {
       const payload = {
         title: title.trim(), challenge: challenge.trim(),
+        life_area: lifeArea, goal_type: goalType,
         specific, measurable, metrics,
         achievable, achievable_skills: achievableSkills,
         realistic, realistic_resources: realisticResources,
@@ -115,6 +120,7 @@ export default function GoalSetterScreen() {
       const res = await api.get(`/goal-setter/goals/${id}`);
       const g = res.data;
       setTitle(g.title || ''); setChallenge(g.challenge || '');
+      setLifeArea(g.life_area || ''); setGoalType(g.goal_type || '');
       setSpecific(g.specific || ''); setMeasurable(g.measurable || '');
       setMetrics(g.metrics || []);
       setAchievable(g.achievable || ''); setAchievableSkills(g.achievable_skills || []);
@@ -199,6 +205,49 @@ export default function GoalSetterScreen() {
 
       <Text style={s.formLabel}>Goal Title *</Text>
       <TextInput style={s.input} value={title} onChangeText={setTitle} placeholder="What is your goal?" placeholderTextColor={COLORS.textMuted} />
+
+      <Text style={s.formLabel}>Life Area</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 6 }}>
+        {[
+          { code: 'holistic_health', label: 'Holistic Health' },
+          { code: 'relationships', label: 'Relationships' },
+          { code: 'career_business', label: 'Career / Business' },
+          { code: 'finances', label: 'Finances' },
+          { code: 'growth_learning', label: 'Growth & Learning' },
+          { code: 'recreation', label: 'Recreation' },
+          { code: 'contribution', label: 'Contribution' },
+          { code: 'spirituality', label: 'Spirituality' },
+          { code: 'environment', label: 'Environment' },
+          { code: 'identity_purpose', label: 'Identity & Purpose' },
+        ].map(la => (
+          <TouchableOpacity key={la.code} onPress={() => setLifeArea(lifeArea === la.code ? '' : la.code)}
+            style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, borderWidth: 1,
+              borderColor: lifeArea === la.code ? '#059669' : '#CBD5E1',
+              backgroundColor: lifeArea === la.code ? '#059669' : '#FFF', marginRight: 6 }}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: lifeArea === la.code ? '#FFF' : '#475569' }}>{la.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      <Text style={s.formLabel}>Goal Type</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+        {[
+          { code: 'problem_resolution',     label: 'Problem Resolution',     color: '#DC2626' },
+          { code: 'need_fulfillment',       label: 'Need Fulfillment',       color: '#EA580C' },
+          { code: 'risk_management',        label: 'Risk Management',        color: '#7C3AED' },
+          { code: 'aspiration_achievement', label: 'Aspiration Achievement', color: '#0EA5E9' },
+        ].map(gt => {
+          const on = goalType === gt.code;
+          return (
+            <TouchableOpacity key={gt.code} onPress={() => setGoalType(on ? '' : gt.code)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, borderWidth: 1,
+                borderColor: on ? gt.color : '#CBD5E1', backgroundColor: on ? gt.color : '#FFF' }}>
+              <Ionicons name={on ? 'radio-button-on' : 'radio-button-off'} size={12} color={on ? '#FFF' : gt.color} />
+              <Text style={{ fontSize: 11, fontWeight: '700', color: on ? '#FFF' : '#475569' }}>{gt.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
 
       <Text style={s.formLabel}>Challenge / Context</Text>
       <TextInput style={[s.input, { minHeight: 60 }]} value={challenge} onChangeText={setChallenge} placeholder="What challenge does this goal address?" placeholderTextColor={COLORS.textMuted} multiline />
