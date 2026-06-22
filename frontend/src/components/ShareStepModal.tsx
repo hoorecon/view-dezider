@@ -75,12 +75,16 @@ export default function ShareStepModal({
   const [showSent, setShowSent] = useState(false);
   const [allowReshare, setAllowReshare] = useState(false);
   // New: share source tab
-  const [shareSource, setShareSource] = useState<'email' | 'users' | 'experts'>('email');
+  const [shareSource, setShareSource] = useState<'email' | 'contacts' | 'users' | 'experts'>('email');
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [experts, setExperts] = useState<any[]>([]);
   const [expertsLoading, setExpertsLoading] = useState(false);
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [contactSearch, setContactSearch] = useState('');
+  const [smeOnly, setSmeOnly] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -120,10 +124,28 @@ export default function ShareStepModal({
     setExpertsLoading(true);
     try {
       const resp = await api.get('/experts');
-      setExperts(resp.data || []);
+      setExperts(resp.data?.items || resp.data || []);
     } catch { setExperts([]); }
     finally { setExpertsLoading(false); }
   };
+
+  // Contacts tab — share with the user's own Contacts (optionally SME experts).
+  const fetchContacts = async () => {
+    setContactsLoading(true);
+    try {
+      const params: string[] = [];
+      if (contactSearch.trim()) params.push(`search=${encodeURIComponent(contactSearch.trim())}`);
+      if (smeOnly) params.push('is_sme=true');
+      const resp = await api.get(`/contacts${params.length ? '?' + params.join('&') : ''}`);
+      setContacts((resp.data?.contacts || []).filter((c: any) => c.email));
+    } catch { setContacts([]); }
+    finally { setContactsLoading(false); }
+  };
+  useEffect(() => {
+    if (!visible || shareSource !== 'contacts') return;
+    const t = setTimeout(fetchContacts, 300);
+    return () => clearTimeout(t);
+  }, [visible, shareSource, contactSearch, smeOnly]);
 
   const addEmail = () => {
     const email = emailInput.trim().toLowerCase();
@@ -238,6 +260,7 @@ export default function ShareStepModal({
                 <View style={styles.sourceTabRow}>
                   {[
                     { id: 'email' as const, label: 'Email', icon: 'mail-outline' },
+                    { id: 'contacts' as const, label: 'Contacts', icon: 'person-outline' },
                     { id: 'users' as const, label: 'Users', icon: 'people-outline' },
                     { id: 'experts' as const, label: 'Experts', icon: 'shield-checkmark-outline' },
                   ].map((st) => (
@@ -272,6 +295,54 @@ export default function ShareStepModal({
                       <TouchableOpacity style={styles.addEmailBtn} onPress={addEmail}>
                         <Ionicons name="add" size={20} color="#FFF" />
                       </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {/* Contacts (own contacts, optional SME experts) */}
+                  {shareSource === 'contacts' && (
+                    <View>
+                      <TextInput
+                        style={[styles.emailInput, { marginBottom: 6 }]}
+                        placeholder="Search your contacts..."
+                        placeholderTextColor={COLORS.textMuted}
+                        value={contactSearch}
+                        onChangeText={setContactSearch}
+                        autoCapitalize="none"
+                      />
+                      <TouchableOpacity
+                        onPress={() => setSmeOnly((v) => !v)}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4, marginBottom: 4 }}
+                        testID="share-sme-only"
+                      >
+                        <Ionicons name={smeOnly ? 'checkbox' : 'square-outline'} size={18} color={smeOnly ? COLORS.primary : COLORS.textMuted} />
+                        <Text style={{ fontSize: 12.5, color: COLORS.textSecondary, fontWeight: '600' }}>Experts only (Subject-Matter)</Text>
+                      </TouchableOpacity>
+                      {contactsLoading && <ActivityIndicator size="small" color={COLORS.primary} style={{ marginBottom: 6 }} />}
+                      {!contactsLoading && contacts.length === 0 && (
+                        <Text style={{ fontSize: 12, color: COLORS.textMuted, padding: 8 }}>
+                          {smeOnly ? 'No SME contacts with an email found.' : 'No contacts with an email found.'}
+                        </Text>
+                      )}
+                      {contacts.map((c) => (
+                        <TouchableOpacity
+                          key={c.id || c.contact_id || c.email}
+                          style={[styles.userResultItem, emails.includes(c.email) && { backgroundColor: '#F0FDF4' }]}
+                          onPress={() => addUserEmail(c.email)}
+                        >
+                          <View style={[styles.userAvatar, c.is_sme && { backgroundColor: '#6366F1' }]}>
+                            {c.is_sme
+                              ? <Ionicons name="shield-checkmark" size={14} color="#FFF" />
+                              : <Text style={styles.userAvatarText}>{(c.name || c.email)[0].toUpperCase()}</Text>}
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.userName}>{c.name || c.email}{c.is_sme ? '  · SME' : ''}</Text>
+                            <Text style={styles.userEmail}>{c.email}</Text>
+                          </View>
+                          {emails.includes(c.email)
+                            ? <Ionicons name="checkmark-circle" size={18} color="#16A34A" />
+                            : <Ionicons name="add-circle-outline" size={18} color={COLORS.primary} />}
+                        </TouchableOpacity>
+                      ))}
                     </View>
                   )}
 
