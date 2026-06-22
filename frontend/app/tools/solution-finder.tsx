@@ -731,6 +731,16 @@ export default function SimpleSolutionFinder() {
     });
   };
 
+  const goToEFT = () => {
+    setEmoGateVisible(false);
+    handleSave(true).then((sid) => {
+      const rid = sid || savedId || '';
+      router.push(
+        `/tools/eg-eft?return_to=solution-finder&return_id=${rid}` as any
+      );
+    });
+  };
+
   // ============ NAVIGATION GUARDS ============
   const canProceed = () => {
     if (step === 0) return !!areaOfLife && !!smartGoal.trim();
@@ -1414,6 +1424,13 @@ export default function SimpleSolutionFinder() {
                   onPress={goToEmotionalReception}>
                   <Ionicons name="water" size={16} color="#0369A1" />
                   <Text style={s.emoSecondaryText}>No — Emotional Reception first</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={s.emoSecondaryBtn}
+                  testID="sf-emo-eft"
+                  onPress={goToEFT}>
+                  <Ionicons name="hand-left" size={16} color="#0369A1" />
+                  <Text style={s.emoSecondaryText}>No — EFT Tapping for Stress Relief first</Text>
                 </TouchableOpacity>
               </View>
             </View>

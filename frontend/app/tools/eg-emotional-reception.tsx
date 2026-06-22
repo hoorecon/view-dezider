@@ -439,6 +439,13 @@ export default function EmotionalReceptionScreen() {
       </TouchableOpacity>
       <TouchableOpacity
         style={[s.secondaryBtn, { width: '100%' }]}
+        onPress={() => router.push('/tools/eg-eft' as any)}
+      >
+        <Ionicons name="hand-left" size={16} color="#0EA5E9" />
+        <Text style={s.secondaryBtnText}>EFT Tapping for Stress Relief</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[s.secondaryBtn, { width: '100%' }]}
         onPress={() => router.push('/tools/eg-advisor' as any)}
       >
         <Ionicons name="leaf-outline" size={16} color="#0EA5E9" />

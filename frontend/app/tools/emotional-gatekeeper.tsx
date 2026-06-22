@@ -230,7 +230,7 @@ export default function EmotionalGatekeeperScreen() {
       >
         {/* Header */}
         <LinearGradient colors={['#F59E0B', '#D97706', '#B45309']} style={styles.header}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => router.replace('/' as any)}>
             <Ionicons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
           <View style={styles.headerContent}>

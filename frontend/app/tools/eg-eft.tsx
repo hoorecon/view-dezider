@@ -361,6 +361,11 @@ export default function EftTappingScreen() {
 
   const exitFlow = async (withReflection: boolean) => {
     if (withReflection) await saveSession({ final: finalIntensity, withReflection: true });
+    // If we were sent here from Solution Finder, chain back to its Step 2.
+    if (params.return_to === 'solution-finder' && params.return_id) {
+      router.replace(`/tools/solution-finder?id=${params.return_id}&step=2` as any);
+      return;
+    }
     router.replace('/tools/emotional-gatekeeper' as any);
   };
 
@@ -673,6 +678,7 @@ function ResultScreen({ finalIntensity, initialIntensity, reflection, setReflect
   setReflection: (s: string) => void; saving: boolean;
   onRepeat: () => void; onSaveExit: () => void; onReturn: () => void;
 }) {
+  const router = useRouter();
   let band: 'low' | 'mid' | 'high' = finalIntensity <= 2 ? 'low' : finalIntensity <= 6 ? 'mid' : 'high';
   const cfg = {
     low: { color: EFT.green, icon: 'happy' as const, msg: 'Beautiful. The emotional intensity has reduced well. Take a slow breath and notice how you feel now.' },
@@ -718,6 +724,10 @@ function ResultScreen({ finalIntensity, initialIntensity, reflection, setReflect
           <SecondaryBtn label={saving ? 'Saving…' : 'Save and Exit'} testID="eft-save-exit" onPress={onSaveExit} />
         </>
       )}
+
+      <Text style={styles.continueLabel}>Continue your journey</Text>
+      <SecondaryBtn label="Breaking the Trap" testID="eft-go-trap" onPress={() => router.push('/tools/eg-trap' as any)} />
+      <SecondaryBtn label="Effective Outlets Advisor" testID="eft-go-advisor" onPress={() => router.push('/tools/eg-advisor' as any)} />
     </View>
   );
 }
@@ -853,6 +863,7 @@ const styles = StyleSheet.create({
   scoreLabel: { fontSize: 11, color: COLORS.textMuted, marginTop: 2, textTransform: 'uppercase' },
   resultMsg: { fontSize: 15, color: COLORS.textSecondary, textAlign: 'center', marginTop: 16, lineHeight: 23 },
   reflectQ: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary, marginTop: 24, marginBottom: 10 },
+  continueLabel: { fontSize: 12, fontWeight: '700', color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 24, marginBottom: 4, textAlign: 'center' },
   optional: { fontSize: 13, color: COLORS.textMuted, fontWeight: '400' },
 
   primaryBtn: { paddingVertical: 16, borderRadius: 14, alignItems: 'center' },
