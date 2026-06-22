@@ -181,9 +181,14 @@ export default function ProsConsWizard() {
 
   const addFactor = async () => {
     if (!fName.trim()) return;
+    const t = fName.trim();
+    if ((analysis?.factors || []).some(f => !f.parent_id && (f.name || '').trim().toLowerCase() === t.toLowerCase())) {
+      showAlert('Duplicate entry', `“${t}” is already listed as a factor. Please add a different one.`);
+      return;
+    }
     setBusy(true);
     try {
-      await api.post(`${base}/${id}/factors`, { name: fName.trim() });
+      await api.post(`${base}/${id}/factors`, { name: t });
       setFName('');
       await reload();
     } catch (e: any) {
@@ -367,8 +372,13 @@ export default function ProsConsWizard() {
 
   const addOption = async () => {
     if (!optName.trim()) return;
+    const t = optName.trim();
+    if ((analysis?.options || []).some(o => (o.name || '').trim().toLowerCase() === t.toLowerCase())) {
+      showAlert('Duplicate entry', `“${t}” is already one of your options. Please add a different one.`);
+      return;
+    }
     setBusy(true);
-    try { await api.post(`${base}/${id}/options`, { name: optName.trim() }); setOptName(''); await reload(); }
+    try { await api.post(`${base}/${id}/options`, { name: t }); setOptName(''); await reload(); }
     finally { setBusy(false); }
   };
   const deleteOption = async (oid: string) => {

@@ -71,6 +71,10 @@ export default function EmotionalReceptionScreen() {
       router.replace(`/tools/solution-finder?id=${params.return_id}&step=2` as any);
       return;
     }
+    if (params.return_to === 'test123' && params.return_id) {
+      router.replace(`/test123/${params.return_id}` as any);
+      return;
+    }
     if (router.canGoBack?.()) router.back();
     else router.replace('/tools/emotional-gatekeeper' as any);
   };

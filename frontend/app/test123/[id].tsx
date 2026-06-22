@@ -9,6 +9,7 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -49,6 +50,7 @@ export default function Test123Detail() {
   const [editingText, setEditingText] = useState('');
   const [actionPlan, setActionPlan] = useState('');
   const [finalDecision, setFinalDecision] = useState('');
+  const [showRiskGate, setShowRiskGate] = useState(false);
 
   useEffect(() => {
     fetchSession();
@@ -322,7 +324,8 @@ export default function Test123Detail() {
               style={[styles.yesNoButton, styles.noButton]}
               onPress={() => {
                 handleWorstCase();
-                handleReadyForWorst(false);
+                saveSession({ ready_for_worst: false, completed_test: 2 });
+                setShowRiskGate(true);
               }}
             >
               <Ionicons name="close-circle" size={24} color={COLORS.white} />
@@ -642,11 +645,55 @@ export default function Test123Detail() {
 
         {renderCurrentTest()}
       </ScrollView>
+
+      <Modal visible={showRiskGate} transparent animationType="fade" onRequestClose={() => setShowRiskGate(false)}>
+        <View style={styles.gateBackdrop}>
+          <View style={styles.gateCard} testID="id-risk-gate">
+            <Text style={styles.gateTitle}>Take a breath before deciding</Text>
+            <Text style={styles.gateSub}>
+              This feels risky right now. Would you like to keep exploring what you really
+              need, or settle your emotions first? You can come right back here.
+            </Text>
+            <TouchableOpacity
+              style={styles.gatePrimary}
+              testID="id-gate-introspect"
+              onPress={() => { setShowRiskGate(false); setCurrentTest(3); }}
+            >
+              <Ionicons name="bulb" size={16} color={COLORS.white} />
+              <Text style={styles.gatePrimaryText}>Continue — explore what I really need</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.gateSecondary}
+              testID="id-gate-reception"
+              onPress={() => { setShowRiskGate(false); router.push(`/tools/eg-emotional-reception?return_to=test123&return_id=${id}` as any); }}
+            >
+              <Ionicons name="water" size={16} color="#0369A1" />
+              <Text style={styles.gateSecondaryText}>Settle with Emotional Reception</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.gateSecondary}
+              testID="id-gate-eft"
+              onPress={() => { setShowRiskGate(false); router.push(`/tools/eg-eft?return_to=test123&return_id=${id}` as any); }}
+            >
+              <Ionicons name="hand-left" size={16} color="#0369A1" />
+              <Text style={styles.gateSecondaryText}>Try EFT Tapping for Stress Relief</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  gateBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 24 },
+  gateCard: { backgroundColor: COLORS.white, borderRadius: 18, padding: 22 },
+  gateTitle: { fontSize: 19, fontWeight: '800', color: COLORS.textPrimary, marginBottom: 8 },
+  gateSub: { fontSize: 14, color: COLORS.textSecondary, lineHeight: 21, marginBottom: 18 },
+  gatePrimary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#7C3AED', paddingVertical: 14, borderRadius: 12, marginBottom: 10 },
+  gatePrimaryText: { color: COLORS.white, fontSize: 15, fontWeight: '700' },
+  gateSecondary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#E0F2FE', paddingVertical: 13, borderRadius: 12, marginBottom: 10 },
+  gateSecondaryText: { color: '#0369A1', fontSize: 14, fontWeight: '700' },
   // ── Top navigation toolbar (explicit Back / Home) ──────────────
   topBar: {
     flexDirection: 'row',

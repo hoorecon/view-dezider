@@ -361,9 +361,13 @@ export default function EftTappingScreen() {
 
   const exitFlow = async (withReflection: boolean) => {
     if (withReflection) await saveSession({ final: finalIntensity, withReflection: true });
-    // If we were sent here from Solution Finder, chain back to its Step 2.
+    // If we were sent here from another flow, chain back to it.
     if (params.return_to === 'solution-finder' && params.return_id) {
       router.replace(`/tools/solution-finder?id=${params.return_id}&step=2` as any);
+      return;
+    }
+    if (params.return_to === 'test123' && params.return_id) {
+      router.replace(`/test123/${params.return_id}` as any);
       return;
     }
     router.replace('/tools/emotional-gatekeeper' as any);

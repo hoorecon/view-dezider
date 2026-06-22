@@ -300,6 +300,10 @@ export default function SimpleSolutionFinder() {
   const addConcern = () => {
     const t = newConcernText.trim();
     if (!t) return;
+    if (concerns.some(c => c.text.trim().toLowerCase() === t.toLowerCase())) {
+      showAlert('Duplicate entry', `“${t}” is already in your list. Please add a different concern.`);
+      return;
+    }
     setConcerns(prev => [...prev, { id: uid(), text: t, is_primary: false, order: prev.length }]);
     setNewConcernText('');
   };

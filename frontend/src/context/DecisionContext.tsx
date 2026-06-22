@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Alert } from 'react-native';
+import { showAlert } from '../utils/alert';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '../utils/api';
@@ -282,9 +283,14 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const addFactor = () => {
     if (!newFactorName.trim()) return;
+    const t = newFactorName.trim();
+    if (decision!.factors.some(f => (f.name || '').trim().toLowerCase() === t.toLowerCase())) {
+      showAlert('Duplicate entry', `“${t}” is already in your factors. Please add a different one.`);
+      return;
+    }
     const newFactor: Factor = {
       id: `factor_${Date.now()}`,
-      name: newFactorName.trim(),
+      name: t,
       category: 'secondary',
       rating: 50,
       order: decision!.factors.length,
@@ -378,9 +384,14 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const addOption = () => {
     if (!newOptionName.trim()) return;
+    const t = newOptionName.trim();
+    if (decision!.options.some(o => (o.name || '').trim().toLowerCase() === t.toLowerCase())) {
+      showAlert('Duplicate entry', `“${t}” is already one of your options. Please add a different one.`);
+      return;
+    }
     const newOption: DecisionOption = {
       id: `option_${Date.now()}`,
-      name: newOptionName.trim(),
+      name: t,
       assessments: [],
       worth_percentage: 0,
     };
