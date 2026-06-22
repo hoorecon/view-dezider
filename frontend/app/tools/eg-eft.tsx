@@ -94,7 +94,9 @@ export default function EftTappingScreen() {
   const [videoFailed, setVideoFailed] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Load config + ensure a session exists.
+  // Load config and, when resuming, restore previously entered data.
+  // NOTE: we do NOT eagerly create a session here — that produced empty
+  // "draft" rows. The session is created lazily on the first save.
   useEffect(() => {
     (async () => {
       try {
@@ -102,15 +104,30 @@ export default function EftTappingScreen() {
         setConfig(res.data);
       } catch {
         showAlert('Error', 'Could not load EFT content. Please try again.');
-      } finally {
         setLoading(false);
+        return;
       }
-      if (!sessionId) {
+      if (sessionId) {
         try {
-          const s = await api.post('/emotional-gatekeeper/sessions', { session_type: 'eft' });
-          setSessionId(s.data.id);
-        } catch { /* will retry on save */ }
+          const s = await api.get(`/emotional-gatekeeper/sessions/${sessionId}`);
+          const r = s.data?.eft_reflection;
+          if (r) {
+            if (r.selected_type) setSelectedType(r.selected_type);
+            if (r.subject_text) setSubjectText(r.subject_text);
+            if (typeof r.initial_intensity_score === 'number') setInitialIntensity(r.initial_intensity_score);
+            if (typeof r.final_intensity_score === 'number') setFinalIntensity(r.final_intensity_score);
+            if (r.rounds_completed) setRounds(r.rounds_completed);
+            if (r.user_reflection) setReflection(r.user_reflection);
+            if (r.safety_flagged) setSafetyFlagged(true);
+            // Jump to the furthest step the saved data supports.
+            if (typeof r.final_intensity_score === 'number') setStep('result');
+            else if (typeof r.initial_intensity_score === 'number') setStep('affirmation');
+            else if (r.subject_text) setStep('intensity_before');
+            else if (r.selected_type) setStep('subject');
+          }
+        } catch { /* ignore — start fresh */ }
       }
+      setLoading(false);
     })();
   }, []);
 
@@ -140,8 +157,30 @@ export default function EftTappingScreen() {
 
   const points = config?.tapping_points || [];
 
-  const goBack = () => {
+  const exitToHub = () => {
     router.canGoBack?.() ? router.back() : router.replace('/tools/emotional-gatekeeper' as any);
+  };
+
+  // Step-aware back: move to the previous step within the wizard; only leave
+  // the screen when on the very first step.
+  const handleBack = () => {
+    if (showSafety) { setShowSafety(false); return; }
+    switch (step) {
+      case 'type': exitToHub(); break;
+      case 'subject': setStep('type'); break;
+      case 'intensity_before': setStep('subject'); break;
+      case 'affirmation': setStep('intensity_before'); break;
+      case 'tapping':
+        if (pointIdx > 0) setPointIdx((i) => i - 1);
+        else setStep('affirmation');
+        break;
+      case 'intensity_after':
+        setPointIdx(Math.max(0, points.length - 1));
+        setStep('tapping');
+        break;
+      case 'result': setStep('intensity_after'); break;
+      default: exitToHub();
+    }
   };
 
   const checkSafety = (text: string): boolean => {
@@ -229,7 +268,7 @@ export default function EftTappingScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <LinearGradient colors={[EFT.teal, EFT.tealDark]} style={styles.header}>
         <View style={styles.headerTop}>
-          <TouchableOpacity style={styles.backBtn} onPress={goBack} testID="eft-back">
+          <TouchableOpacity style={styles.backBtn} onPress={handleBack} testID="eft-back">
             <Ionicons name="arrow-back" size={20} color="#FFF" />
           </TouchableOpacity>
           <View style={styles.progressPill}>
@@ -327,7 +366,7 @@ export default function EftTappingScreen() {
                   <IntensityScale value={initialIntensity} onChange={setInitialIntensity} testIDPrefix="eft-before" />
                   <PrimaryBtn
                     label="Continue" testID="eft-before-continue" disabled={initialIntensity === null}
-                    onPress={() => setStep('affirmation')}
+                    onPress={() => { saveSession(); setStep('affirmation'); }}
                   />
                 </View>
               )}

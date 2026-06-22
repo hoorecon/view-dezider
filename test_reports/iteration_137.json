@@ -1,0 +1,25 @@
+{
+  "summary": "EFT Tapping (/tools/eg-eft) navigation + resume bug-fix verification. All 4 targeted scenarios PASS: (1) Step-aware back nav — from intensity step the back arrow returns to subject (with 'fear' retained), then to type (with Emotion still selected, continue enabled), then exits to /tools/emotional-gatekeeper hub only on Step 1; (2) Deeper back — from affirmation back returns to intensity with value retained, from tapping point 1 back returns to affirmation, from tapping point 3 successive backs step through points 2 → 1 → affirmation; (3) Resume restores state — opening /tools/eg-eft?sessionId=<draft> rehydrates selected_type=emotion, subject_text='fear', initial_intensity=7 and lands directly on affirmation (Step 4), not blank Step 1; verified Step header shows 'Step 4 of 6' and affirmation text reads 'Even though I feel fear, I deeply and completely love and accept myself.'; back-walk from affirmation through intensity, subject ('fear' filled), to type (Emotion selected, continue enabled); (4) No empty drafts — fresh visit to /tools/eg-eft then immediate leave does NOT create a new draft session (total sessions count unchanged 11 → 11; only created after the intensity Continue, observed 11 → 12 with status=in_progress). Sessions list and resume route already wired correctly in eg-session.tsx (resumeRoutes.eft = `/tools/eg-eft?sessionId=...`).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "eg-eft.tsx handleBack is step-aware and correctly handles safety overlay first, with explicit cases for each Step; intensity_after back rewinds pointIdx and re-enters tapping step which is the right UX; result back returns to intensity_after — clean.",
+    "ensureSession is lazy and called only on saveSession; the empty-draft regression is resolved.",
+    "Resume restore logic computes furthest-reached step from saved eft_reflection fields (selected_type / subject_text / initial_intensity_score / final_intensity_score) — order matches the wizard. Note: if a saved session has subject_text but somehow no selected_type, restore would skip type selection state; not observed in practice because subject step requires type to be set first.",
+    "useEffect deps are empty [] which is fine for one-shot mount, but suppresses re-run if sessionId param changes mid-route; acceptable for current flow."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "n/a (frontend-only)", "frontend": "100% (4/4 bug-fix scenarios PASSED)" },
+  "seed_data_creation": "Used existing admin@test.com account. Created 1 additional EFT in_progress session during resume verification (EG-C20DEC7F78, subject 'fear', intensity 7). No cleanup required.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Both reported bugs on /tools/eg-eft are fixed and verified end-to-end: step-aware back navigation and resume-with-state restore. Lazy session creation also confirmed (no empty drafts created on fresh visit). Full happy-path regression was already validated in iteration 136 (12/12 backend + frontend EFT flows) and remains intact.",
+  "rca_of_issue": "Original bugs were caused by (a) the back button calling exitToHub unconditionally regardless of internal wizard step, and (b) the screen eagerly creating a draft session on mount and not reading back the saved eft_reflection on resume. Fix in eg-eft.tsx introduced a step-aware handleBack switch, a lazy ensureSession used only inside saveSession, and an init useEffect that fetches the session by sessionId, hydrates state from eft_reflection, and computes the furthest step to jump to. All paths verified via Playwright on the public preview URL."
+}
