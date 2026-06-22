@@ -22,7 +22,7 @@ import { COLORS } from '../../src/constants/colors';
 const TEAL = '#0D9488';
 const BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
-interface TapPoint { id: string; name: string; instruction: string; is_setup?: boolean; }
+interface TapPoint { id: string; name: string; instruction: string; is_setup?: boolean; image_url?: string; }
 interface EftCfg {
   enabled: boolean; title: string; description: string;
   affirmation_template_emotion: string; affirmation_template_problem: string;
@@ -59,7 +59,7 @@ export default function AdminEftConfig() {
 
   const set = (k: keyof EftCfg, v: any) => setCfg((c) => (c ? { ...c, [k]: v } : c));
 
-  const setPoint = (idx: number, field: 'name' | 'instruction', value: string) => {
+  const setPoint = (idx: number, field: 'name' | 'instruction' | 'image_url', value: string) => {
     setCfg((c) => {
       if (!c) return c;
       const pts = [...c.tapping_points];
@@ -195,6 +195,8 @@ export default function AdminEftConfig() {
             </View>
             <TextInput style={styles.pointInput} value={p.name} onChangeText={(t) => setPoint(i, 'name', t)} placeholder="Point name" placeholderTextColor={COLORS.textMuted} />
             <TextInput style={[styles.pointInput, { minHeight: 56 }]} value={p.instruction} onChangeText={(t) => setPoint(i, 'instruction', t)} placeholder="Tapping instruction" placeholderTextColor={COLORS.textMuted} multiline />
+            <TextInput style={styles.pointInput} value={p.image_url || ''} onChangeText={(t) => setPoint(i, 'image_url', t)} placeholder="Image URL for this point (optional — falls back to the diagram)" placeholderTextColor={COLORS.textMuted} autoCapitalize="none" />
+            {!!p.image_url && <Image source={{ uri: abs(p.image_url) }} style={styles.pointThumb} resizeMode="contain" />}
           </View>
         ))}
         <View style={styles.btnRow}>
@@ -295,6 +297,7 @@ const styles = StyleSheet.create({
   pointNum: { width: 26, height: 26, borderRadius: 13, backgroundColor: TEAL, color: '#FFF', textAlign: 'center', lineHeight: 26, fontWeight: '800' },
   pointActions: { flexDirection: 'row', gap: 16, alignItems: 'center' },
   pointInput: { backgroundColor: COLORS.background, borderRadius: 8, padding: 10, fontSize: 13, color: COLORS.textPrimary, borderWidth: 1, borderColor: COLORS.border, marginTop: 6 },
+  pointThumb: { width: '100%', height: 120, borderRadius: 8, marginTop: 6, backgroundColor: '#FFF', borderWidth: 1, borderColor: COLORS.border },
 
   btnRow: { flexDirection: 'row', gap: 10, marginBottom: 16, marginTop: 4, alignItems: 'center' },
   ghostBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, backgroundColor: '#FFF' },

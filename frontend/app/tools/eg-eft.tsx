@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, ActivityIndicator, Image, Platform, KeyboardAvoidingView,
@@ -27,7 +27,7 @@ const BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 type Step = 'type' | 'subject' | 'intensity_before' | 'affirmation' | 'tapping' | 'intensity_after' | 'result';
 const MAIN_STEPS: Step[] = ['type', 'subject', 'intensity_before', 'affirmation', 'tapping', 'intensity_after'];
 
-interface TapPoint { id: string; name: string; instruction: string; is_setup?: boolean; }
+interface TapPoint { id: string; name: string; instruction: string; is_setup?: boolean; image_url?: string; }
 
 interface EftConfig {
   enabled: boolean;
@@ -71,6 +71,59 @@ function buildMediaHtml(rawUrl: string): string {
     inner = `<iframe src="${url}" frameborder="0" allowfullscreen style="width:100%;height:100%"></iframe>`;
   }
   return `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>*{margin:0;padding:0;box-sizing:border-box}html,body{height:100%;background:#000;overflow:hidden}</style></head><body>${inner}</body></html>`;
+}
+
+// Resolve a share URL into an embeddable src + kind (web path).
+function resolveMediaSrc(rawUrl: string): { kind: 'video' | 'iframe'; src: string } {
+  let url = (rawUrl || '').trim();
+  if (url.startsWith('/')) url = `${BACKEND}${url}`;
+  const lower = url.toLowerCase();
+  if (/\.(mp4|webm|ogg|mov)(\?|$)/.test(lower) || lower.includes('/api/static/eft/')) {
+    return { kind: 'video', src: url };
+  }
+  if (lower.includes('youtube.com') || lower.includes('youtu.be')) {
+    const m1 = url.match(/[?&]v=([^&]+)/);
+    const m2 = url.match(/youtu\.be\/([^?&]+)/);
+    const m3 = url.match(/embed\/([^?&]+)/);
+    const id = (m1 && m1[1]) || (m2 && m2[1]) || (m3 && m3[1]) || '';
+    return { kind: 'iframe', src: `https://www.youtube.com/embed/${id}` };
+  }
+  if (lower.includes('vimeo.com')) {
+    const m = url.match(/vimeo\.com\/(?:video\/)?(\d+)(?:\/([0-9a-zA-Z]+))?/);
+    const id = m ? m[1] : '';
+    const hash = m && m[2] ? `?h=${m[2]}` : '';
+    return { kind: 'iframe', src: `https://player.vimeo.com/video/${id}${hash}` };
+  }
+  return { kind: 'iframe', src: url };
+}
+
+// Cross-platform media embed. react-native-webview is NOT supported on web
+// (react-native-web), so on web we render a real DOM <iframe>/<video>; on
+// native we fall back to the WebView with an HTML document.
+function MediaEmbed({ url, onError }: { url: string; onError?: () => void }) {
+  if (Platform.OS === 'web') {
+    const { kind, src } = resolveMediaSrc(url);
+    const style: any = { width: '100%', height: '100%', border: '0', backgroundColor: '#000' };
+    if (kind === 'video') {
+      return React.createElement('video', { src, controls: true, playsInline: true, style, onError });
+    }
+    return React.createElement('iframe', {
+      src, style, allowFullScreen: true,
+      allow: 'autoplay; fullscreen; picture-in-picture; encrypted-media',
+    });
+  }
+  return (
+    <WebView
+      testID="eft-video"
+      source={{ html: buildMediaHtml(url) }}
+      style={{ flex: 1, backgroundColor: '#000' }}
+      originWhitelist={['*']}
+      javaScriptEnabled
+      allowsFullscreenVideo
+      onError={onError}
+      onHttpError={onError}
+    />
+  );
 }
 
 export default function EftTappingScreen() {
@@ -156,6 +209,63 @@ export default function EftTappingScreen() {
   }, [subjectText, selectedType]);
 
   const points = config?.tapping_points || [];
+
+  // ---------- Hands-free voice control (web Speech API only) ----------
+  const voiceSupported = Platform.OS === 'web' && typeof window !== 'undefined'
+    && !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+  const [voiceOn, setVoiceOn] = useState(false);
+  const [listening, setListening] = useState(false);
+  const recogRef = useRef<any>(null);
+  const advanceRef = useRef<() => void>(() => {});
+  const backRef = useRef<() => void>(() => {});
+  const voiceOnRef = useRef(false);
+  const stepRef = useRef<Step>(step);
+  voiceOnRef.current = voiceOn;
+  stepRef.current = step;
+
+  // Keep the navigation actions fresh for both buttons and voice.
+  useEffect(() => {
+    advanceRef.current = () => {
+      if (pointIdx < points.length - 1) setPointIdx((i) => i + 1);
+      else setStep('intensity_after');
+    };
+    backRef.current = () => {
+      if (pointIdx > 0) setPointIdx((i) => i - 1);
+      else setStep('affirmation');
+    };
+  }, [pointIdx, points.length]);
+
+  // Start/stop speech recognition based on step + toggle.
+  useEffect(() => {
+    if (!voiceSupported) return;
+    const stop = () => { try { recogRef.current?.stop(); } catch {} recogRef.current = null; setListening(false); };
+    if (step !== 'tapping' || !voiceOn) { stop(); return; }
+
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const r = new SR();
+    r.continuous = true; r.interimResults = false; r.lang = 'en-US';
+    r.onresult = (e: any) => {
+      const t = String(e.results[e.results.length - 1][0].transcript || '').toLowerCase().trim();
+      if (/\b(next|forward|continue|proceed)\b/.test(t)) advanceRef.current();
+      else if (/\b(back|previous|prev|go back)\b/.test(t)) backRef.current();
+    };
+    r.onend = () => {
+      // Auto-restart while still on the tapping step with voice enabled.
+      if (voiceOnRef.current && stepRef.current === 'tapping' && recogRef.current === r) {
+        try { r.start(); } catch {}
+      }
+    };
+    r.onerror = (ev: any) => {
+      if (ev?.error === 'not-allowed' || ev?.error === 'service-not-allowed') {
+        setVoiceOn(false);
+        showAlert('Microphone blocked', 'Allow microphone access in your browser to use hands-free voice commands.');
+      }
+    };
+    recogRef.current = r;
+    try { r.start(); setListening(true); } catch {}
+    return () => stop();
+  }, [step, voiceOn, voiceSupported]);
+
 
   const exitToHub = () => {
     router.canGoBack?.() ? router.back() : router.replace('/tools/emotional-gatekeeper' as any);
@@ -412,16 +522,7 @@ export default function EftTappingScreen() {
                         </View>
                       ) : (
                         <View style={styles.videoWrap}>
-                          <WebView
-                            testID="eft-video"
-                            source={{ html: buildMediaHtml(config.video_url) }}
-                            style={styles.video}
-                            originWhitelist={['*']}
-                            javaScriptEnabled
-                            allowsFullscreenVideo
-                            onError={() => setVideoFailed(true)}
-                            onHttpError={() => setVideoFailed(true)}
-                          />
+                          <MediaEmbed url={config.video_url} onError={() => setVideoFailed(true)} />
                         </View>
                       )}
                     </View>
@@ -438,6 +539,19 @@ export default function EftTappingScreen() {
               {/* ===== STEP 5: TAPPING POINTS ===== */}
               {step === 'tapping' && points[pointIdx] && (
                 <View>
+                  {/* Visual: per-point image if admin provided one, else the full diagram */}
+                  {(() => {
+                    const img = points[pointIdx].image_url || config.diagram_image_url;
+                    if (!img) return null;
+                    return (
+                      <Image
+                        source={{ uri: img.startsWith('/') ? `${BACKEND}${img}` : img }}
+                        style={styles.pointImage}
+                        resizeMode="contain"
+                      />
+                    );
+                  })()}
+
                   <View style={styles.pointBadge}>
                     <Text style={styles.pointBadgeTxt}>{pointIdx + 1}</Text>
                   </View>
@@ -451,14 +565,29 @@ export default function EftTappingScreen() {
                     </Text>
                   </View>
 
+                  {/* Hands-free voice control (web only) */}
+                  {voiceSupported && (
+                    <TouchableOpacity
+                      testID="eft-voice-toggle"
+                      style={[styles.voiceToggle, voiceOn && styles.voiceToggleOn]}
+                      onPress={() => setVoiceOn((v) => !v)}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name={voiceOn ? 'mic' : 'mic-off'} size={18} color={voiceOn ? '#FFF' : EFT.tealDark} />
+                      <Text style={[styles.voiceToggleTxt, voiceOn && { color: '#FFF' }]}>
+                        {voiceOn ? (listening ? 'Listening… say “Next” or “Back”' : 'Voice on — starting…') : 'Hands-free: tap to enable voice'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
                   {pointIdx < points.length - 1 ? (
-                    <PrimaryBtn label="Next Point" testID="eft-next-point" onPress={() => setPointIdx((i) => i + 1)} />
+                    <PrimaryBtn label="Next Point" testID="eft-next-point" onPress={() => advanceRef.current()} />
                   ) : (
-                    <PrimaryBtn label="Complete Round" testID="eft-complete-round" onPress={() => setStep('intensity_after')} />
+                    <PrimaryBtn label="Complete Round" testID="eft-complete-round" onPress={() => advanceRef.current()} />
                   )}
 
                   {pointIdx > 0 && (
-                    <TouchableOpacity style={styles.prevPointBtn} onPress={() => setPointIdx((i) => i - 1)}>
+                    <TouchableOpacity style={styles.prevPointBtn} onPress={() => backRef.current()}>
                       <Text style={styles.prevPointTxt}>Previous point</Text>
                     </TouchableOpacity>
                   )}
@@ -659,6 +788,10 @@ const styles = StyleSheet.create({
   videoFallbackTxt: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center', lineHeight: 20 },
 
   pointBadge: { width: 56, height: 56, borderRadius: 28, backgroundColor: EFT.teal, justifyContent: 'center', alignItems: 'center', alignSelf: 'center', marginBottom: 16 },
+  pointImage: { width: '100%', height: 220, borderRadius: 14, backgroundColor: '#FFF', borderWidth: 1, borderColor: COLORS.border, marginBottom: 16 },
+  voiceToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 16, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1.5, borderColor: EFT.teal, backgroundColor: EFT.tealLight },
+  voiceToggleOn: { backgroundColor: EFT.teal, borderColor: EFT.tealDark },
+  voiceToggleTxt: { fontSize: 13, fontWeight: '700', color: EFT.tealDark },
   pointBadgeTxt: { fontSize: 24, fontWeight: '800', color: '#FFF' },
   pointName: { fontSize: 24, fontWeight: '800', color: COLORS.textPrimary, textAlign: 'center' },
   pointInstruction: { fontSize: 15, color: COLORS.textSecondary, textAlign: 'center', marginTop: 12, lineHeight: 23 },

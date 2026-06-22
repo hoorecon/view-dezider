@@ -1,13 +1,14 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  RefreshControl, ActivityIndicator, Alert,
+  RefreshControl, ActivityIndicator,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
+import { Alert } from '../../src/utils/crossAlert';
 import api from '../../src/utils/api';
 import { formatAbsolute } from '../../src/utils/datetime';
 
@@ -83,6 +84,29 @@ export default function EmotionalGatekeeperScreen() {
     setRefreshing(true);
     await fetchDashboard();
     setRefreshing(false);
+  };
+
+  const deleteSession = (id: string) => {
+    Alert.alert(
+      'Delete session?',
+      'This permanently removes this session and its reflections. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive', onPress: async () => {
+            try {
+              await api.delete(`/emotional-gatekeeper/sessions/${id}`);
+              // Optimistically drop from any visible list, then refresh counts.
+              setFiltered((prev) => (prev ? prev.filter((x) => x.id !== id) : prev));
+              await fetchDashboard();
+              await fetchFiltered();
+            } catch {
+              Alert.alert('Error', 'Could not delete the session. Please try again.');
+            }
+          },
+        },
+      ],
+    );
   };
 
   const startSession = async (type: string) => {
@@ -342,6 +366,14 @@ export default function EmotionalGatekeeperScreen() {
                     {s.status === 'completed' && (
                       <Ionicons name="checkmark-circle" size={16} color="#10B981" style={{ marginRight: 4 }} />
                     )}
+                    <TouchableOpacity
+                      testID={`eg-session-delete-${s.id}`}
+                      onPress={() => deleteSession(s.id)}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      style={styles.deleteBtn}
+                    >
+                      <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                    </TouchableOpacity>
                     <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
                   </TouchableOpacity>
                 ));
@@ -404,11 +436,11 @@ const styles = StyleSheet.create({
   actionDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: EG_COLORS.amber },
   actionText: { fontSize: 13, fontWeight: '600', color: COLORS.textPrimary },
   actionMeta: { fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
-  sessionCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#FFF',
+  sessionCard: {    flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#FFF',
     borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: COLORS.border,
   },
   sessionTypeBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  deleteBtn: { padding: 4 },
   sessionTypeTxt: { fontSize: 9, fontWeight: '700', color: '#FFF' },
   sessionTitle: { fontSize: 14, fontWeight: '600', color: COLORS.textPrimary },
   sessionMeta: { fontSize: 11, color: COLORS.textMuted, marginTop: 2 },

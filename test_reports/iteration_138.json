@@ -1,0 +1,26 @@
+{
+  "summary": "EFT (/tools/eg-eft) WEB build verification — all 4 reported fixes PASS plus full happy-path regression. (1) VIDEO ON WEB: no 'React Native WebView does not support this platform' text on the affirmation step; MediaEmbed correctly renders a real DOM <iframe src=\"https://player.vimeo.com/video/1184450823?h=11b05769d7\"> on web (iframe count=1, video count=0). (2) PER-POINT IMAGE: every one of the 9 tapping points shows an Image at the top — points.image_url is empty by default so it correctly falls back to config.diagram_image_url (https://eftinternational.org/wp-content/uploads/page-uploads/EFT-Tapping-Points-EFTi.jpg) on all 9 points. (3) VOICE TOGGLE (web): testID 'eft-voice-toggle' is rendered on each tapping step, is pressable, and does not crash the page when toggled on/off (headless can't grant mic, expected); button-based 'eft-next-point' and 'eft-complete-round' continue to advance the wizard. (4) DELETE in EG listing: trash buttons 'eg-session-delete-<id>' render on every Recent-Sessions row; clicking one triggers the cross-platform confirm (window.confirm on web), Accept fires DELETE /api/emotional-gatekeeper/sessions/EG-60D7484D7C which returns 200, and the targeted row is removed from the DOM (re-fetch backfills the next older session into the visible list, which is correct). (5) REGRESSION: full EFT happy path — type=Emotion → subject 'stress about deadlines' → before=7 → affirmation/media → 9 tapping points (Next x8 + Complete Round) → after=3 → result band 'mid' → Save and Exit → returns to /tools/emotional-gatekeeper. Step-aware back nav + resume from iteration 137 not re-tested per request scope but no related code changed.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "MediaEmbed in eg-eft.tsx cleanly platform-branches: on web it uses React.createElement('iframe'|'video') with resolveMediaSrc(); on native it falls back to react-native-webview with buildMediaHtml(). This is the right cross-platform pattern and removes the WebView-on-web error.",
+    "resolveMediaSrc handles vimeo URLs with private hash (vimeo.com/<id>/<hash>) — verified by inspecting the rendered iframe src on the affirmation step.",
+    "Per-point image logic at points[pointIdx].image_url || config.diagram_image_url is sound; fallback path observed for all 9 default points.",
+    "Voice-recognition lifecycle is guarded by voiceSupported (web-only) and step==='tapping' && voiceOn; r.onerror handles 'not-allowed'/'service-not-allowed' by toggling voiceOn off and surfacing an alert — robust against denied mic permissions in headless.",
+    "deleteSession in emotional-gatekeeper.tsx routes through crossAlert.Alert.alert which maps to window.confirm on web; deletion is optimistic (filter list) then re-fetches dashboard/filtered — consistent UX. Verified DELETE returns 200.",
+    "No deprecated expo packages introduced (no expo-av / expo-barcode-scanner / expo-background-fetch usage in changed files). react-native-webview is still imported for native; that is intentional and correct."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "n/a (frontend-only)", "frontend": "100% (5/5 scenarios PASSED)" },
+  "seed_data_creation": "Used existing admin@test.com account. Completed one EFT happy-path session (subject 'stress about deadlines', before 7 → after 3). Deleted one earlier session EG-60D7484D7C during delete verification.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All four reported issues on the WEB build are resolved and confirmed end-to-end via Playwright on the public preview URL: (a) MediaEmbed renders an iframe on web (no WebView error), (b) per-point image fallback to diagram works on all 9 points, (c) eft-voice-toggle present and pressable without crashing, (d) eg-session-delete-<id> calls DELETE /api/emotional-gatekeeper/sessions/<id> returning 200 and the row is removed. The cross-platform Alert shim crossAlert.ts correctly drives window.confirm on web for the delete confirmation."
+}
