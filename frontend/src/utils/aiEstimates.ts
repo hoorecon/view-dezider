@@ -7,6 +7,8 @@ export type Estimates = {
   confirm_threshold_credits: number;
   features: Record<string, number>;
   default_estimate: number;
+  /** AI touchpoint master switches (admin-controlled). Missing key ⇒ enabled. */
+  touchpoints?: Record<string, boolean>;
 };
 
 let _cache: Estimates | null = null;
@@ -33,6 +35,19 @@ export function useAiEstimate(feature: string): number | null {
     });
   }, [feature]);
   return credits;
+}
+
+/** Hook: whether an AI touchpoint master switch is ON (admin-controlled). Defaults to true. */
+export function useAiTouchpoint(key: string): boolean {
+  const [enabled, setEnabled] = useState<boolean>(
+    _cache?.touchpoints ? _cache.touchpoints[key] !== false : true,
+  );
+  useEffect(() => {
+    getEstimates().then((e) => {
+      if (e) setEnabled(e.touchpoints ? e.touchpoints[key] !== false : true);
+    });
+  }, [key]);
+  return enabled;
 }
 
 /**

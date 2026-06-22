@@ -62,6 +62,14 @@ DEFAULTS = {
     # and existing consents are NOT auto-revoked (so an admin can toggle this
     # off temporarily without nuking the user setting).
     "openai_free_tier_feature_enabled": True,
+    # ── AI touchpoint toggles (MyDezider core flow) ──
+    # Super-admin master switches for each AI-assist entry point. When False,
+    # the button is hidden in the app AND the endpoint refuses the call (403).
+    # All default True (feature available).
+    "tp_best_factors": True,        # Step 2 — "Fetch My Best Factors"
+    "tp_prioritize_factors": True,  # Step 4 — "Prioritize with AI"
+    "tp_best_options": True,        # Step 5 — "Find My Best Options"
+    "tp_assess_all": True,          # Step 7 — "AI Assess ALL"
     # Import-from-URL: AI may auto-GROUP ungrouped factors into categories only
     # when the page defines no grouping AND the factor count exceeds this.
     "loader_music_volume_web": 0.55,
@@ -196,6 +204,10 @@ async def update_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
     # Feature flag — admin toggle for the OpenAI free-tier opt-in.
     if "openai_free_tier_feature_enabled" in patch and patch["openai_free_tier_feature_enabled"] is not None:
         allowed["openai_free_tier_feature_enabled"] = bool(patch["openai_free_tier_feature_enabled"])
+    # AI touchpoint master switches (MyDezider core flow).
+    for tp in ("tp_best_factors", "tp_prioritize_factors", "tp_best_options", "tp_assess_all"):
+        if tp in patch and patch[tp] is not None:
+            allowed[tp] = bool(patch[tp])
     if not allowed:
         return await get_config()
     allowed["updated_at"] = _now()
@@ -287,6 +299,7 @@ FEATURE_TOKENS = {
     "eg_breakthrough_report": 2000,
     "ai_assess": 400,          # per cell (single ✨ assess)
     "ai_assess_batch": 1200,   # per ~40-cell batched chunk
+    "factor_prioritize": 1100, # Step 4 "Prioritize with AI" — one call for the whole factor set
 }
 DEFAULT_FEATURE_TOKENS = 900
 
@@ -305,7 +318,20 @@ async def estimates() -> Dict[str, Any]:
         "confirm_threshold_credits": float(cfg.get("confirm_threshold_credits", 15.0)),
         "features": feats,
         "default_estimate": round(tokens_to_credits(DEFAULT_FEATURE_TOKENS, tpc), 2),
+        # AI touchpoint master switches — the app uses these to show/hide each
+        # AI-assist button in the MyDezider flow (cached app-wide via getEstimates).
+        "touchpoints": {
+            tp: bool(cfg.get(tp, True))
+            for tp in ("tp_best_factors", "tp_prioritize_factors",
+                       "tp_best_options", "tp_assess_all")
+        },
     }
+
+
+async def touchpoint_enabled(key: str) -> bool:
+    """True when the given AI touchpoint master switch is ON (default True)."""
+    cfg = await get_config()
+    return bool(cfg.get(key, True))
 
 
 def precise_multiplier(cfg: Dict[str, Any]) -> float:

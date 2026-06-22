@@ -10,9 +10,11 @@ import { GAP_PRESETS, STANDARD_GAP, calculateRatingsFromOrder } from '../../util
 import api from '../../utils/api';
 import { showAlert } from '../../utils/alert';
 import { DeepImportBudgetPicker } from '../DeepImportBudgetPicker';
+import { useAiTouchpoint } from '../../utils/aiEstimates';
 
 export default function Step5() {
   const { decision, saveDecision, applyRatingsAndContinue, setCurrentStep, prefillBestOptions } = useDecision();
+  const aiBestOptionsEnabled = useAiTouchpoint('tp_best_options');
   const [aiLoading, setAiLoading] = useState(false);
 
   // "Find My Best Options" — persists current ratings, asks AI (+ Solution Store)
@@ -175,9 +177,9 @@ export default function Step5() {
       </Card>
 
       <TouchableOpacity
-        style={[localS.aiBtn, aiLoading && { opacity: 0.7 }]}
+        style={[localS.aiBtn, aiLoading && { opacity: 0.7 }, !aiBestOptionsEnabled && { display: 'none' }]}
         onPress={handleFindBestOptions}
-        disabled={aiLoading}
+        disabled={aiLoading || !aiBestOptionsEnabled}
         activeOpacity={0.85}
         accessibilityLabel="Find My Best Options with AI"
       >
@@ -188,9 +190,11 @@ export default function Step5() {
           {aiLoading ? 'Finding your best options…' : 'Find My Best Options'}
         </Text>
       </TouchableOpacity>
-      <Text style={localS.aiHint}>
-        AI picks the top options for this Life Area & your prioritized factors (incl. matching Solution Store items). Review &amp; remove any in the next step.
-      </Text>
+      {aiBestOptionsEnabled && (
+        <Text style={localS.aiHint}>
+          AI picks the top options for this Life Area & your prioritized factors (incl. matching Solution Store items). Review &amp; remove any in the next step.
+        </Text>
+      )}
 
       <View style={styles.navButtons}>
         <TouchableOpacity style={styles.backButton} onPress={() => setCurrentStep(4)}>

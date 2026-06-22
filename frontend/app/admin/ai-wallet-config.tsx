@@ -70,6 +70,11 @@ interface Cfg {
    * Deep Import / Import URL credit strips are HIDDEN, and the routing
    * layer ignores any prior user consent. Defaults to true. */
   openai_free_tier_feature_enabled?: boolean;
+  /** AI touchpoint master switches (MyDezider core flow). Default true. */
+  tp_best_factors?: boolean;
+  tp_prioritize_factors?: boolean;
+  tp_best_options?: boolean;
+  tp_assess_all?: boolean;
 }
 
 const FIELDS: Array<{
@@ -290,6 +295,46 @@ export default function AdminAIWalletConfigScreen() {
               trackColor={{ true: C.primary }}
             />
           </View>
+        </View>
+
+        {/* AI touchpoints — master switches for the MyDezider core flow */}
+        <View style={s.flagsCard} testID="awc-ai-touchpoints">
+          <Text style={s.flagsTitle}>AI touchpoints (MyDezider flow)</Text>
+          <Text style={[s.flagHint, { marginBottom: 10 }]}>
+            Turn each AI-assist entry point on or off across the decision flow. When OFF, the
+            button is hidden in the app AND the endpoint refuses the call. Changes apply instantly.
+          </Text>
+          {([
+            { key: 'tp_best_factors', label: 'Step 2 · Fetch My Best Factors', hint: 'AI suggests decision factors from the life area, type & description.' },
+            { key: 'tp_prioritize_factors', label: 'Step 4 · Prioritize with AI', hint: 'AI ranks the factors by importance for the decision.' },
+            { key: 'tp_best_options', label: 'Step 5 · Find My Best Options', hint: 'AI proposes the top options (incl. Solution Store matches).' },
+            { key: 'tp_assess_all', label: 'Step 7 · AI Assess ALL', hint: 'AI scores every empty option × factor cell in bulk.' },
+          ] as Array<{ key: keyof Cfg; label: string; hint: string }>).map((tp, i) => (
+            <View key={tp.key} style={[s.flagRow, i > 0 && { marginTop: 12, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 12 }]}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={s.flagLabel}>{tp.label}</Text>
+                <Text style={s.flagHint}>{tp.hint}</Text>
+              </View>
+              <Switch
+                testID={`awc-touchpoint-${tp.key}`}
+                value={(cfg as any)[tp.key] !== false}
+                disabled={saving}
+                onValueChange={async (v) => {
+                  const prev = (cfg as any)[tp.key] !== false;
+                  setCfg({ ...cfg, [tp.key]: v } as Cfg);
+                  setSaving(true);
+                  try {
+                    const res = await api.put('/admin/ai-wallet/config', { [tp.key]: v });
+                    setCfg(res.data);
+                  } catch (e: any) {
+                    setCfg({ ...cfg, [tp.key]: prev } as Cfg);
+                    showAlert('Save failed', e?.response?.data?.detail || 'Could not update the touchpoint.');
+                  } finally { setSaving(false); }
+                }}
+                trackColor={{ true: C.primary }}
+              />
+            </View>
+          ))}
         </View>
 
         {/* Fields */}

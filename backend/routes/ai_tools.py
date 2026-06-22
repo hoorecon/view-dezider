@@ -534,6 +534,10 @@ async def find_best_options(request: Request, user: dict = Depends(get_current_u
     decision_id = body.get("decision_id")
     limit = max(3, min(5, int(body.get("limit") or 5)))
 
+    from core import ai_wallet as _aw
+    if not await _aw.touchpoint_enabled("tp_best_options"):
+        raise HTTPException(status_code=403, detail="‘Find My Best Options’ is currently disabled by the administrator.")
+
     title = body.get("title", "")
     context = body.get("context", "")
     life_area = body.get("life_area")
@@ -713,6 +717,10 @@ async def suggest_factors(request: Request, user: dict = Depends(get_current_use
     decision_id = body.get("decision_id")
     limit = max(4, min(8, int(body.get("limit") or 7)))
 
+    from core import ai_wallet as _aw
+    if not await _aw.touchpoint_enabled("tp_best_factors"):
+        raise HTTPException(status_code=403, detail="‘Fetch My Best Factors’ is currently disabled by the administrator.")
+
     title = body.get("title", "")
     context = body.get("context", "")
     life_area = body.get("life_area")
@@ -799,4 +807,110 @@ Return ONLY valid JSON, no markdown:
             break
 
     return {"factors": factors, "used_model": used_model}
+
+
+# ============================================================================
+# PRIORITIZE FACTORS — AI suggests the importance ORDER for Step 4 (metered)
+# ============================================================================
+@router.post("/ai/prioritize-factors")
+@limiter.limit(AI_LIMIT)
+async def prioritize_factors(request: Request, user: dict = Depends(get_current_user)):
+    """AI-suggest the priority ORDER of the decision's existing factors for
+    Step 4. METERED — charges the user's AI Wallet by ACTUAL tokens used
+    (free-first Gemini chain on the 'fast' tier; Claude on 'precise').
+    Returns a per-factor {id, name, rank} the frontend applies as the new
+    ordering (the user can still tweak with the up/down arrows afterwards)."""
+    import re as _re
+    import json as _json
+    from core.ai_metering import metered_chat
+    from core import ai_wallet as _aw
+
+    if not await _aw.touchpoint_enabled("tp_prioritize_factors"):
+        raise HTTPException(status_code=403, detail="‘Prioritize with AI’ is currently disabled by the administrator.")
+
+    body = await request.json()
+    decision_id = body.get("decision_id")
+    ai_tier = "precise" if str(body.get("ai_tier") or "").lower() == "precise" else "fast"
+
+    title = body.get("title", "")
+    context = body.get("context", "")
+    life_area = body.get("life_area")
+    factors = body.get("factors", [])
+
+    if decision_id:
+        dec = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
+        if not dec:
+            raise HTTPException(status_code=404, detail="Decision not found")
+        title = dec.get("title", title)
+        context = dec.get("context", context)
+        life_area = dec.get("life_area", life_area)
+        factors = dec.get("factors") or factors
+
+    # Only the TOP-LEVEL factors are prioritised in Step 4.
+    top = [f for f in factors if not f.get("parent_id")]
+    names = [(f.get("name") or "").strip() for f in top if (f.get("name") or "").strip()]
+    if len(names) < 2:
+        raise HTTPException(status_code=422, detail="Add at least 2 factors before prioritising with AI.")
+
+    factor_list = "\n".join(f"- {n}" for n in names)
+    system_message = "You are a decision-prioritisation strategist. Return only valid JSON."
+    prompt = f"""Rank the user's decision factors from MOST to LEAST important for THIS decision.
+
+Life area: {life_area or 'general'}
+Decision title: {title or '(none)'}
+Description / context: {context or '(none)'}
+
+Factors to prioritise:
+{factor_list}
+
+Return a 1-based rank for EVERY factor (1 = most important). Use EXACTLY the factor
+names given, rank each once, no ties.
+
+Return ONLY valid JSON, no markdown:
+{{"factors":[{{"name":"<exact name>","rank":1}}]}}"""
+
+    meta: dict = {}
+    try:
+        out = await metered_chat(
+            user["user_id"], system_message=system_message, prompt=prompt,
+            feature="factor_prioritize", session_prefix="factorprio",
+            tier=ai_tier, meta=meta)
+    except ai_wallet.InsufficientCredits:
+        raise HTTPException(status_code=402, detail="Out of AI credits. Top up your AI Wallet to use AI prioritisation.")
+    except Exception as e:  # noqa: BLE001 — every provider failed
+        logger.warning(f"prioritize-factors LLM failed: {e}")
+        raise HTTPException(status_code=503, detail="AI is temporarily unavailable. Please try again shortly.")
+
+    data = {}
+    m = _re.search(r"\{.*\}", (out or "").strip(), _re.S)
+    if m:
+        try:
+            data = _json.loads(m.group(0))
+        except Exception:  # noqa: BLE001
+            data = {}
+
+    by_name = {(f.get("name") or "").strip().lower(): f for f in top}
+    ranked, seen = [], set()
+    for r in (data.get("factors") or []):
+        if not isinstance(r, dict):
+            continue
+        f = by_name.get((r.get("name") or "").strip().lower())
+        if not f or f["id"] in seen:
+            continue
+        seen.add(f["id"])
+        try:
+            rank = int(r.get("rank"))
+        except (TypeError, ValueError):
+            rank = len(ranked) + 1
+        ranked.append({"id": f["id"], "name": f.get("name"), "rank": rank})
+    # Append any factors the AI omitted (stable, after the ranked ones).
+    for f in top:
+        if f["id"] not in seen:
+            ranked.append({"id": f["id"], "name": f.get("name"), "rank": len(ranked) + 1})
+    ranked.sort(key=lambda x: x["rank"])
+    # Normalise to a clean 1..N sequence after sorting.
+    for i, r in enumerate(ranked):
+        r["rank"] = i + 1
+
+    return {"factors": ranked, "provider": meta.get("provider"), "credits": meta.get("credits")}
 

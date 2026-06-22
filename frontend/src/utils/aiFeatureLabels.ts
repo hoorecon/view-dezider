@@ -29,6 +29,7 @@ export const AI_FEATURE_LABELS: Record<string, string> = {
 
   // ── Decision builder (Step 4-9)
   factor_suggestions: 'Decisions · Factor suggestions',
+  factor_prioritize:  'Decisions · Prioritize factors',
   prompt_autotune:    'Decisions · Prompt auto-tune',
   assist_cell:        'Decisions · AI Assist cell',
   ai_assess:          'Decisions · AI Assess',

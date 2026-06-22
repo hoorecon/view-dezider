@@ -22,6 +22,7 @@ import {
   parseCountInput,
 } from '../../utils/decisionHelpers';
 import LoaderMusicChip from '../LoaderMusicChip';
+import { useAiTouchpoint } from '../../utils/aiEstimates';
 
 const DATA_SOURCE_TYPES = [
   { key: 'webhook', label: 'Webhook/API', icon: 'link-outline', color: '#3B82F6' },
@@ -44,6 +45,7 @@ export default function Step2() {
   } = useDecision();
 
   const [showDataSourceConfig, setShowDataSourceConfig] = useState<{ [key: string]: boolean }>({});
+  const aiBestFactorsEnabled = useAiTouchpoint('tp_best_factors');
 
   // ── "Import from URL" — crawl a comparison page → fill factors (with Expected),
   // options (Step 6) and partial assessments (Step 7), behind the consent gate.
@@ -543,6 +545,7 @@ export default function Step2() {
       </Text>
 
       {/* One-tap: AI-score every un-scored cell (e.g. a freshly imported comparison). */}
+      {aiBestFactorsEnabled && (<>
       <TouchableOpacity
         onPress={handleFetchBestFactors}
         disabled={aiFactorsLoading}
@@ -565,6 +568,7 @@ export default function Step2() {
       <Text style={{ fontSize: 11, color: COLORS.textMuted, textAlign: 'center', marginBottom: 14, lineHeight: 16, paddingHorizontal: 8 }}>
         AI suggests factors from your Life Area, decision type &amp; description. Review, reorder or remove any, then continue to Step 3.
       </Text>
+      </>)}
 
       <View style={iurl.box}>
         <View style={iurl.head}>

@@ -20,6 +20,7 @@ import { api } from '../../utils/api';
 import type { Factor } from '../../types/decision';
 import UrlAccessConsentModal, { UrlConsentPayload } from '../UrlAccessConsentModal';
 import LoaderMusicChip from '../LoaderMusicChip';
+import { useAiTouchpoint } from '../../utils/aiEstimates';
 
 export default function Step7() {
   const {
@@ -32,6 +33,7 @@ export default function Step7() {
     setCurrentStep, fetchDecision,
     bulkAssessAllRemaining,
   } = useDecision();
+  const aiAssessAllEnabled = useAiTouchpoint('tp_assess_all');
 
   // Import ACTUAL VALUES from a URL (consent-gated), then auto AI-assess.
   const [actualsDialogOpen, setActualsDialogOpen] = useState(false);
@@ -992,6 +994,7 @@ export default function Step7() {
         </View>
 
         {/* One-tap metered AI assessment of every empty option×factor cell. */}
+        {aiAssessAllEnabled && (<>
         <TouchableOpacity
           style={[styles.aiAssessAllBtn, bulkAssessing && styles.aiAssessAllBtnBusy]}
           onPress={handleAIAssessAll}
@@ -1022,6 +1025,7 @@ export default function Step7() {
           <LoaderMusicChip slot="ai_assess_all" enabled={bulkAssessing} />
           {!bulkAssessing && <LoaderMusicChip slot="ai_assess_all" enabled={false} iconOnly />}
         </View>
+        </>)}
       </Card>
 
       {decision.options.map((option) => {

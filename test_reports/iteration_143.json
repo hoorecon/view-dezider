@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 143 — FULL backend + frontend regression for the new METERED Step 4 'Prioritize with AI' button + Admin AI-Wallet-Config touchpoint toggles. ALL TESTS PASS. Backend (6/6 pytest in /app/backend/tests/test_iter143_prioritize_factors.py): GET /api/ai-wallet/estimates exposes both `touchpoints` map (all 4 keys) AND `features.factor_prioritize`=11 cr; POST /api/ai/prioritize-factors returns 200 with ranked={id,name,rank} list + provider + credits when ON, 422 when <2 factors, 403 when tp_prioritize_factors disabled, PUT /api/admin/ai-wallet/config = 200 for super-admin and 403 for plain admin. Frontend Playwright (mobile 390×844 against EXPO_PUBLIC_BACKEND_URL): (1) Logged in as super@test.com → /admin/ai-wallet-config rendered the new 'AI touchpoints (MyDezider flow)' card (testID awc-ai-touchpoints) with all 4 Switch toggles (awc-touchpoint-tp_best_factors, tp_prioritize_factors, tp_best_options, tp_assess_all) — all started ON. Toggled tp_prioritize_factors OFF → autosave fired → reloaded the screen → state still OFF (persisted). Toggled back ON → persists. (2) Registered fresh user (iter143ui_*@example.com), seeded a decision with 3 top-level factors (Salary primary order=1, Work-life balance primary order=2, Career growth secondary order=3) and navigated to /prr/{id}?step=4. The purple 'Prioritize with AI' button (step4-prioritize-ai) was visible with the credit-estimate hint 'uses ~11 AI credits'. Tapped it → POST /ai/prioritize-factors → 200. 'Factors prioritised' success alert appeared. Factor order changed (AI ranked: Career growth=1, Work-life balance=2, Salary=3) and UI re-sorted within categories. (3) Gating: with super-admin, set tp_prioritize_factors=False → reloaded Step 4 → button count=0 (HIDDEN). Restored ALL 4 touchpoints to ON → button reappeared on next reload. (4) All touchpoints left ON at end so live app is unaffected. Test decision + user cleaned up.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "expo Animated", "issue": "Console warning: 'Animated: useNativeDriver is not supported because the native animated module is missing. Falling back to JS-based animation' on web preview. Cosmetic on web; main agent may consider passing useNativeDriver=false explicitly to silence. Not blocking."},
+      {"component": "deprecated style props", "issue": "Console warnings: 'shadow* style props are deprecated. Use boxShadow' AND 'props.pointerEvents is deprecated. Use style.pointerEvents' AND 'TouchableWithoutFeedback is deprecated. Please use Pressable' AND 'Image: style.resizeMode is deprecated'. Pre-existing, not introduced by this feature, but worth migrating eventually."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter143_prioritize_factors.py",
+    "/app/test_reports/pytest/iter143.xml",
+    "/tmp/iter143_awc.png",
+    "/tmp/iter143_awc_after.png",
+    "/tmp/iter143_step4_on.png",
+    "/tmp/iter143_step4_after.png",
+    "/tmp/iter143_step4_off.png"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Step4.tsx — clean: useAiTouchpoint('tp_prioritize_factors') gates render, useAiEstimate('factor_prioritize') drives hint, handlePrioritizeWithAI applies orderById map then recalculates ratings via calculateRatingsFromOrder before saveDecision. 402 path routes user to /ai-wallet correctly.",
+    "ai_wallet.py — touchpoint_enabled() simple cfg read, default True; estimates() returns touchpoints + features.factor_prioritize derived from FEATURE_TOKENS[factor_prioritize]=1100 / tokens_per_credit=100 → 11 credits (matches main-agent expectation).",
+    "ai_tools.py prioritize_factors — gates touchpoint FIRST (403 fast-path) before any LLM cost, raises 422 on <2 factors, 402 on InsufficientCredits, 503 on LLM exhausted; ranked output is normalised to 1..N sequence after sorting; AI-omitted factors are appended stably. Solid implementation.",
+    "ai-wallet-config.tsx — awc-ai-touchpoints card autosaves on Switch flip (PUT /admin/ai-wallet/config with just the changed key) and rolls back local state on save failure. Good UX; the openai_free_tier flag uses the same pattern. Plain admin → 403 surface via the same showAlert path."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "100% (6/6 pytest)", "frontend": "100% (3/3 UI scenarios: super-admin toggles + Step4 button + gating hide/show)" },
+  "seed_data_creation": "Pytest fixture and Playwright run BOTH seeded ephemeral users (iter143_* / iter143ui_*@example.com) and TEST_ prefixed decisions via /api/auth/register + /api/decisions + PUT factors. ALL cleaned up at teardown (decisions DELETEd). Touchpoint config restored to all-ON.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The new prioritize-factors feature + 4 AI touchpoint master switches are FULLY WORKING end-to-end as of iter143. Test suite at /app/backend/tests/test_iter143_prioritize_factors.py is the regression for backend. If you need to retest the frontend, the Playwright pattern is: register a user via /api/auth/register, POST a base decision then PUT factors (factors are NOT accepted in PRRDecisionCreate), navigate to /prr/{id}?step=4 — the 'Prioritize with AI' button uses testID 'step4-prioritize-ai' and only renders when topLevel.length>=2 AND tp_prioritize_factors touchpoint is true. The super-admin toggle screen is /admin/ai-wallet-config, card testID 'awc-ai-touchpoints', individual switches 'awc-touchpoint-<key>'. Plain admin (admin@test.com) gets 403 on PUT /admin/ai-wallet/config — only super@test.com can write. The web Switch component renders as input[type=checkbox] when probed; read state via the .checked property.",
+  "rca_of_issue": "n/a — feature works end-to-end as designed; no bugs found."
+}

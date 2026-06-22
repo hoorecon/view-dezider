@@ -364,6 +364,10 @@ async def md_ai_assess_all_batched(
     Returns: { results: [...], out_of_credits, ai_unavailable }
     """
     from core.ai_assess import batch_score_cells
+    from core import ai_wallet as _aw
+
+    if not await _aw.touchpoint_enabled("tp_assess_all"):
+        raise HTTPException(status_code=403, detail="‘AI Assess ALL’ is currently disabled by the administrator.")
 
     decision = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
     if not decision:
