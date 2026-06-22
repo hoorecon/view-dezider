@@ -549,7 +549,7 @@ export default function EGSessionScreen() {
                 </TouchableOpacity>
               </View>
             </View>
-          ) : hasContent && session.status !== 'completed' ? (
+          ) : hasContent && session.status !== 'completed' && session.session_type !== 'eft' ? (
             <TouchableOpacity style={st.generateBtn} onPress={handleGenerateReport} disabled={generatingReport}>
               {generatingReport ? (
                 <><ActivityIndicator color="#FFF" /><Text style={st.generateBtnText}>Generating Report...</Text></>

@@ -244,22 +244,28 @@ export default function EftTappingScreen() {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const r = new SR();
     r.continuous = true; r.interimResults = false; r.lang = 'en-US';
-    r.onresult = (e: any) => {
-      const t = String(e.results[e.results.length - 1][0].transcript || '').toLowerCase().trim();
-      if (/\b(next|forward|continue|proceed)\b/.test(t)) advanceRef.current();
-      else if (/\b(back|previous|prev|go back)\b/.test(t)) backRef.current();
-    };
-    r.onend = () => {
-      // Auto-restart while still on the tapping step with voice enabled.
+    const restart = () => {
       if (voiceOnRef.current && stepRef.current === 'tapping' && recogRef.current === r) {
-        try { r.start(); } catch {}
+        // Small delay avoids "recognition already started" races in Chrome.
+        setTimeout(() => {
+          try { r.start(); } catch {}
+        }, 300);
       }
     };
+    r.onresult = (e: any) => {
+      const t = String(e.results[e.results.length - 1][0].transcript || '').toLowerCase().trim();
+      if (/\b(next|forward|continue|proceed|go on)\b/.test(t)) advanceRef.current();
+      else if (/\b(back|previous|prev|go back)\b/.test(t)) backRef.current();
+    };
+    // Chrome stops continuous recognition after a short silence — keep it alive.
+    r.onend = restart;
     r.onerror = (ev: any) => {
-      if (ev?.error === 'not-allowed' || ev?.error === 'service-not-allowed') {
+      const err = ev?.error;
+      if (err === 'not-allowed' || err === 'service-not-allowed') {
         setVoiceOn(false);
         showAlert('Microphone blocked', 'Allow microphone access in your browser to use hands-free voice commands.');
       }
+      // 'no-speech' / 'aborted' / 'network' — onend fires next and restarts.
     };
     recogRef.current = r;
     try { r.start(); setListening(true); } catch {}
@@ -525,6 +531,9 @@ export default function EftTappingScreen() {
                           <MediaEmbed url={config.video_url} onError={() => setVideoFailed(true)} />
                         </View>
                       )}
+                      <Text style={styles.videoHint}>
+                        If the video shows a privacy/“cannot be played here” message, it is restricted by its host. You can still follow the step-by-step guide below.
+                      </Text>
                     </View>
                   )}
 
@@ -786,6 +795,7 @@ const styles = StyleSheet.create({
   video: { flex: 1, backgroundColor: '#000' },
   videoFallback: { backgroundColor: '#FFF', borderRadius: 14, padding: 18, alignItems: 'center', gap: 8, borderWidth: 1, borderColor: COLORS.border },
   videoFallbackTxt: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center', lineHeight: 20 },
+  videoHint: { fontSize: 11, color: COLORS.textMuted, marginTop: 8, lineHeight: 16, fontStyle: 'italic' },
 
   pointBadge: { width: 56, height: 56, borderRadius: 28, backgroundColor: EFT.teal, justifyContent: 'center', alignItems: 'center', alignSelf: 'center', marginBottom: 16 },
   pointImage: { width: '100%', height: 220, borderRadius: 14, backgroundColor: '#FFF', borderWidth: 1, borderColor: COLORS.border, marginBottom: 16 },
