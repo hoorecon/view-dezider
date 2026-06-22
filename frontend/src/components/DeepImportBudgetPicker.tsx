@@ -110,6 +110,7 @@ export const DeepImportBudgetPicker: React.FC<Props> = ({ disabled, onRanked }) 
   }, [budget, visible, decision?.id, estimate]);
 
   const close = (alsoDismissOnServer: boolean) => {
+    setRunning(false);
     setVisible(false);
     if (alsoDismissOnServer && decision?.id) {
       api.post(`/decisions/${decision.id}/deep-import/dismiss-rank-prompt`).catch(() => { /* best effort */ });
@@ -177,6 +178,13 @@ export const DeepImportBudgetPicker: React.FC<Props> = ({ disabled, onRanked }) 
           <View style={s.head}>
             <Ionicons name="sparkles" size={18} color="#7C3AED" />
             <Text style={s.title}>Rank & jump to Step 8?</Text>
+            <TouchableOpacity
+              testID="deep-import-budget-close"
+              onPress={() => close(true)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={{ marginLeft: 'auto' }}>
+              <Ionicons name="close" size={20} color={COLORS.textMuted} />
+            </TouchableOpacity>
           </View>
 
           {loading && !estimate ? (
@@ -256,8 +264,8 @@ export const DeepImportBudgetPicker: React.FC<Props> = ({ disabled, onRanked }) 
 
               <View style={s.btnsRow}>
                 <TouchableOpacity testID="deep-import-budget-skip" style={s.skipBtn}
-                  onPress={() => close(true)} disabled={running}>
-                  <Text style={s.skipTxt}>Skip — I&apos;ll assess manually</Text>
+                  onPress={() => close(true)}>
+                  <Text style={s.skipTxt}>{running ? 'Close (runs in background)' : "Skip — I'll assess manually"}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity testID="deep-import-budget-run" style={[s.goBtn, (!estimate.sufficient || running) && { opacity: 0.55 }]}
                   onPress={run} disabled={running || !estimate.sufficient}>

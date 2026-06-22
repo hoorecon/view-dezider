@@ -31,7 +31,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from core.database import db
 from core.auth import get_current_user
 from core import ai_wallet
-from core.url_crawl import fetch_page, fetch_rendered, page_text, metered_chat, has_any_llm
+from core.url_crawl import (
+    fetch_page, fetch_rendered, page_text, metered_chat, has_any_llm,
+    is_conversation_url, extract_conversation_text, ai_extract_decision_from_conversation,
+)
 from core.import_verify import verify_detail
 from core.decision_builder import merge_into_mydezider
 from core import url_telemetry
@@ -439,6 +442,34 @@ async def _discover(job_id: str, user_id: str, base_url: str, context: str,
         await _prog(job_id, 8, "Fetching the base page…")
         html, links = await _page_links(base_url, user_id)
         base_text = page_text(html, limit=PICK_TEXT_LIMIT)
+
+        # ── Conversation / embedded-script pages (ChatGPT/Claude/Gemini shares,
+        # or any page whose content is rendered from a script blob so the visible
+        # text is sparse): there are no comparable detail pages to crawl. Recover
+        # the text and extract factors+options in ONE call, then hand off to the
+        # same review/merge flow. Avoids the misleading "no crawlable links". ──
+        if is_conversation_url(base_url) or len((base_text or "").strip()) < 400:
+            await _prog(job_id, 45, "Reading the page content…")
+            conv = extract_conversation_text(html)
+            ex = await ai_extract_decision_from_conversation(user_id, conv)
+            if len(ex["factors"]) >= 1 and len(ex["options"]) >= 1:
+                opt_names = ex["options"]
+                conv_factors = [{
+                    "name": fn[:120], "group": "General", "data_type": "text",
+                    "unit": None, "operator": None, "expected_value": None,
+                    "values": {n: None for n in opt_names}, "coverage": 0,
+                } for fn in ex["factors"]]
+                await _set_job(job_id, status="factors_ready",
+                               progress={"pct": 100, "label": "Factors ready for your review."},
+                               options=[{"name": n} for n in opt_names],
+                               factors=conv_factors, page_texts={n: "" for n in opt_names},
+                               constraint_note=None)
+                await url_telemetry.record_run(tel, status="success", response={
+                    "mode": "deep_conversation", "item_count": len(opt_names),
+                    "factor_count": len(conv_factors)})
+                return
+            # else: fall through to the normal crawl (and its clearer failure).
+
         if not links:
             await _fail(job_id, tel,
                         "No crawlable same-site links found on the base page.")
