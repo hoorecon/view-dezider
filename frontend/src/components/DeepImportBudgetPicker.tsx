@@ -53,7 +53,7 @@ interface Props {
 }
 
 export const DeepImportBudgetPicker: React.FC<Props> = ({ disabled, onRanked }) => {
-  const { decision, fetchDecision, setCurrentStep } = useDecision();
+  const { decision, fetchDecision, setCurrentStep, patchDecisionLocal } = useDecision();
   const pending = !!(decision as any)?.deep_import_pending_rank;
   const [visible, setVisible] = useState(false);
   const [estimate, setEstimate] = useState<BudgetEstimate | null>(null);
@@ -119,10 +119,13 @@ export const DeepImportBudgetPicker: React.FC<Props> = ({ disabled, onRanked }) 
     setRunning(false);
     setVisible(false);
     if (decision?.id) setDismissedId(decision.id);   // block the auto-open effect from re-firing
+    // Optimistically clear the pending flag in-memory so `pending` flips to
+    // false SYNCHRONOUSLY — without this the auto-open effect re-fired on the
+    // next render (the screener.in "stuck popup" the user reported).
+    patchDecisionLocal({ deep_import_pending_rank: false } as any);
     if (alsoDismissOnServer && decision?.id) {
       api.post(`/decisions/${decision.id}/deep-import/dismiss-rank-prompt`)
-        .then(() => { fetchDecision().catch(() => {}); })   // sync context so `pending` flips false
-        .catch(() => { /* best effort */ });
+        .catch(() => { /* best effort — flag is already cleared locally */ });
     }
   };
 
@@ -136,6 +139,7 @@ export const DeepImportBudgetPicker: React.FC<Props> = ({ disabled, onRanked }) 
       );
       await fetchDecision();
       if (decision?.id) setDismissedId(decision.id);
+      patchDecisionLocal({ deep_import_pending_rank: false } as any);
       setVisible(false);
       const topN: string[] = data?.top_n_option_ids || [];
       if (onRanked) onRanked(topN);

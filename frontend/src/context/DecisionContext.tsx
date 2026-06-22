@@ -17,6 +17,10 @@ interface DecisionContextType {
   setCurrentStep: (step: number) => void;
   isCompleted: boolean;
   saveDecision: (updates: Partial<Decision>) => Promise<void>;
+  /** Optimistically patch the in-memory decision WITHOUT a network call —
+   *  used for instant UI flags like clearing deep_import_pending_rank so a
+   *  dismissed modal cannot re-open while the server round-trip is in flight. */
+  patchDecisionLocal: (updates: Partial<Decision>) => void;
   fetchDecision: () => Promise<void>;
 
   // Factor operations
@@ -280,6 +284,13 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } finally {
       setSaving(false);
     }
+  };
+
+  // Instant, network-free patch of the in-memory decision. Used to clear flags
+  // like deep_import_pending_rank the moment the user dismisses a prompt, so a
+  // re-render/remount can't re-open the modal before the server round-trip.
+  const patchDecisionLocal = (updates: Partial<Decision>) => {
+    setDecision(prev => (prev ? { ...prev, ...updates } : prev));
   };
 
   const addFactor = () => {
@@ -754,6 +765,7 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setCurrentStep,
     isCompleted: isCompleted || false,
     saveDecision,
+    patchDecisionLocal,
     fetchDecision,
     addFactor, addFactorsFromTemplate, updateFactor, removeFactor, moveFactorUp, moveFactorDown, applyRatingsAndContinue,
     newFactorName, setNewFactorName,

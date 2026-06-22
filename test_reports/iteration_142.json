@@ -1,0 +1,30 @@
+{
+  "summary": "RETEST of iteration_141 deep-import budget/rank modal Skip/X-close loop — FIX VERIFIED, BUG RESOLVED. Used the exact same Mongo seeding approach from iter141 (registered iter141ui_*@example.com via /auth/register, inserted a decision with deep_import_pending_rank=true, 2 factors, 2 options). Logged in via UI, navigated to /prr/{id}?step=5: modal auto-opened (testID deep-import-budget-picker) ✓. SKIP TEST: clicked [data-testid=deep-import-budget-skip] → POST /deep-import/dismiss-rank-prompt 200 fired → modal DISAPPEARED at 500ms, 2s, AND 4s (was stuck-open in iter141). NO second GET /deep-import/budget-estimate fired (budget-estimate count stayed at 1 — the same one fired on initial modal open). Re-navigating to Step 5 in a fresh load did NOT reopen the modal (DB flag confirmed flipped to false). X-CLOSE TEST (on fresh setup after re-flagging pending=true): clicked [data-testid=deep-import-budget-close] → identical PASS pattern: dismiss POST fired, modal closed at 500ms/2s/4s, no follow-up budget-estimate GET. The patchDecisionLocal({deep_import_pending_rank:false}) + dismissedId guard combination correctly prevents the auto-open useEffect from re-firing. Backend regression: dismiss-rank-prompt still returns 200 and flips DB flag — confirmed via direct API trace. Iter141's full pytest suite (test_iter141_dismiss_edges.py + test_iter118_deep_import_rank.py) remains green from last run, not re-executed here per 'frontend only' scope. All seeded TEST_ data cleaned up.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/seed_iter141.py",
+    "/tmp/iter142_step5.png",
+    "/tmp/iter142_after_skip.png",
+    "/tmp/iter142_renav.png",
+    "/tmp/iter142_after_xclose.png"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Fix is clean: patchDecisionLocal in DecisionContext is a single setDecision(prev=>{...prev,...updates}) — synchronously mutates the in-memory decision so `pending` flips to false within the same React batch as setVisible(false)+setDismissedId. The auto-open useEffect on next render reads pending=false AND dismissedId===decision.id, both guards independently block reopen. Belt-and-braces is appropriate here given iter141's race condition.",
+    "Minor (non-blocking): close() calls patchDecisionLocal({deep_import_pending_rank:false}) optimistically even before the dismiss POST is acknowledged. If that POST fails (network drop), the in-memory state diverges from server until next fetchDecision. Acceptable — comment in code acknowledges 'best effort — flag is already cleared locally', and next load will re-sync.",
+    "Minor: in run() (line 132-170), patchDecisionLocal is called AFTER fetchDecision() awaits — fetchDecision will overwrite the optimistic patch with whatever the server returns. Since auto-assess-rank sets the flag false server-side too this is fine, but the patch ordering is technically redundant there. Harmless."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (regression unchanged from iter141)", "frontend": "100% (all 4 acceptance criteria + X-close retest pass)"},
+  "seed_data_creation": "Reused iter141 seed pattern via /app/test_reports/seed_iter141.py — created 1 user (iter141ui_1782159654@example.com) + 1 decision (TEST_ScreenerDeepImport, id=7c1e6c50-3539-4683-b06e-bfad516bd326). CLEANED UP at end (1 decision + 1 user deleted).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "DeepImportBudgetPicker Skip/X-close loop is fully fixed as of iteration 142. The fix lives in DecisionContext.patchDecisionLocal (synchronous setDecision spread) + dismissedId per-decision guard in DeepImportBudgetPicker. If you need to retest in future, the seed at /app/test_reports/seed_iter141.py still works as-is — register user → insert decision with deep_import_pending_rank=true in Mongo → login → navigate to /prr/{id}?step=5. To re-flip pending=true between attempts use db.decisions.update_one({'id':...},{'$set':{'deep_import_pending_rank':True}}).",
+  "rca_of_issue": "FIX VERIFIED for iter141 RCA. Root cause was auto-open useEffect re-firing because the dismissedId state guard wasn't synchronously committed and the `pending` flag stayed true in-memory until fetchDecision came back from the server (race window). Main agent's fix: added patchDecisionLocal in DecisionContext that synchronously mutates decision.deep_import_pending_rank=false via setDecision callback — so on the next render of DeepImportBudgetPicker, both `pending` AND `dismissedId === decision.id` flip in the same React batch as setVisible(false). The auto-open effect's guard `if (pending && !visible && dismissedId !== decision?.id)` now evaluates false on every subsequent render. Repro that previously failed (Skip → reopen at 500ms/2s/4s + immediate budget-estimate refetch) now passes cleanly with zero additional network calls."
+}
