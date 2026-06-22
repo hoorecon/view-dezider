@@ -132,6 +132,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
       { key: 'scenarios', label: 'Intake Scenarios',  icon: 'bulb',                 href: '/admin/scenarios' },
       { key: 'social',   label: 'Social Learning',   icon: 'school',               href: '/admin/social-learning-admin' },
       { key: 'review',   label: 'ReviewNet',         icon: 'thumbs-up',            href: '/admin/review-net' },
+      { key: 'eft',      label: 'EFT Tapping',       icon: 'hand-left',            href: '/admin/eft-config' },
     ],
   },
   {

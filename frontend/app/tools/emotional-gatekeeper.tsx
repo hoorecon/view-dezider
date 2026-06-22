@@ -28,6 +28,7 @@ interface DashboardData {
   limitations_identified: number;
   outlets_analyzed: number;
   aim_sessions: number;
+  eft_sessions: number;
   total_sessions: number;
   completed_sessions: number;
   commitments_total: number;
@@ -102,6 +103,10 @@ export default function EmotionalGatekeeperScreen() {
       router.push('/tools/eg-emotional-reception' as any);
       return;
     }
+    if (type === 'eft') {
+      router.push('/tools/eg-eft' as any);
+      return;
+    }
     if (type === 'solution_finder') {
       // Hand-off card #5 — leaves the EG flow. Solution Finder runs its
       // own list of sessions independently (visible in /tools/solution-
@@ -135,6 +140,11 @@ export default function EmotionalGatekeeperScreen() {
       id: 'emotional_reception', title: '1 · Emotional Reception', icon: 'water' as const,
       desc: 'Just Be in the Here and Now — 5 min EQ builder', colors: ['#0EA5E9', '#0369A1'],
       stat: 0, label: 'Sessions', isDirectNav: true,
+    },
+    {
+      id: 'eft', title: '2 · EFT Tapping for Stress Relief', icon: 'hand-left' as const,
+      desc: 'Release emotional intensity through a guided tapping practice', colors: ['#14B8A6', '#0D9488'],
+      stat: dashboard?.eft_sessions || 0, label: 'Sessions', isDirectNav: true,
     },
     {
       id: 'trap', title: '2 · Breaking the Trap', icon: 'alert-circle' as const,
@@ -292,7 +302,7 @@ export default function EmotionalGatekeeperScreen() {
                 ))}
               </View>
               <View style={styles.filterRow}>
-                {[['all', 'All types'], ['trap', 'Trap'], ['loop', 'Loop'], ['limitation', 'Limitation'], ['outlet', 'Outlet'], ['aim', 'AIM']].map(([v, label]) => (
+                {[['all', 'All types'], ['trap', 'Trap'], ['loop', 'Loop'], ['limitation', 'Limitation'], ['outlet', 'Outlet'], ['aim', 'AIM'], ['eft', 'EFT']].map(([v, label]) => (
                   <TouchableOpacity
                     key={v}
                     testID={`eg-filter-type-${v}`}

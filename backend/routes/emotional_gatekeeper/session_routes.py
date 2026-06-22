@@ -82,6 +82,7 @@ async def get_session(session_id: str, user: dict = Depends(get_current_user)):
     limitation = await db.limitation_reflections.find_one({"session_id": session_id}, {"_id": 0})
     outlet = await db.outlet_reflections.find_one({"session_id": session_id}, {"_id": 0})
     aim = await db.aim_reflections.find_one({"session_id": session_id}, {"_id": 0})
+    eft = await db.eft_reflections.find_one({"session_id": session_id}, {"_id": 0})
     commitments = await db.breakthrough_commitments.find(
         {"session_id": session_id}, {"_id": 0}
     ).to_list(20)
@@ -93,6 +94,7 @@ async def get_session(session_id: str, user: dict = Depends(get_current_user)):
     session["limitation_reflection"] = limitation
     session["outlet_reflection"] = outlet
     session["aim_reflection"] = aim
+    session["eft_reflection"] = eft
     session["commitments"] = commitments
     session["journal"] = journal
     session["report"] = report
@@ -138,6 +140,7 @@ async def delete_session(session_id: str, user: dict = Depends(get_current_user)
     await db.limitation_reflections.delete_many({"session_id": session_id})
     await db.outlet_reflections.delete_many({"session_id": session_id})
     await db.aim_reflections.delete_many({"session_id": session_id})
+    await db.eft_reflections.delete_many({"session_id": session_id})
     await db.breakthrough_commitments.delete_many({"session_id": session_id})
     await db.breakthrough_journal.delete_many({"session_id": session_id})
     await db.breakthrough_reports.delete_many({"session_id": session_id})
@@ -299,6 +302,7 @@ async def get_dashboard(user: dict = Depends(get_current_user)):
     limitations_identified = await db.limitation_reflections.count_documents({"user_id": uid})
     outlets_analyzed = await db.outlet_reflections.count_documents({"user_id": uid})
     aim_sessions = await db.aim_reflections.count_documents({"user_id": uid})
+    eft_sessions = await db.eft_reflections.count_documents({"user_id": uid})
 
     commitments_total = await db.breakthrough_commitments.count_documents({"user_id": uid})
     commitments_completed = await db.breakthrough_commitments.count_documents({"user_id": uid, "status": "completed"})
@@ -338,6 +342,7 @@ async def get_dashboard(user: dict = Depends(get_current_user)):
         "limitations_identified": limitations_identified,
         "outlets_analyzed": outlets_analyzed,
         "aim_sessions": aim_sessions,
+        "eft_sessions": eft_sessions,
         "total_sessions": total_sessions,
         "completed_sessions": completed_sessions,
         "commitments_total": commitments_total,

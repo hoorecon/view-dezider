@@ -135,6 +135,36 @@ class AIMSaveRequest(BaseModel):
     irritations: Optional[List[IrritationEntry]] = []
 
 
+# ============ EFT TAPPING ============
+
+class EFTSaveRequest(BaseModel):
+    selected_type: str  # "emotion" | "problem"
+    subject_text: str  # the emotion or problem the user entered
+    affirmation: str
+    initial_intensity_score: int  # 0-10
+    final_intensity_score: Optional[int] = None  # 0-10
+    rounds_completed: Optional[int] = 1
+    user_reflection: Optional[str] = None
+    safety_flagged: Optional[bool] = False
+
+
+class EFTConfigRequest(BaseModel):
+    enabled: Optional[bool] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    affirmation_template_emotion: Optional[str] = None
+    affirmation_template_problem: Optional[str] = None
+    alt_affirmation_template_emotion: Optional[str] = None
+    alt_affirmation_template_problem: Optional[str] = None
+    tapping_instructions: Optional[str] = None
+    tapping_points: Optional[List[Dict[str, Any]]] = None
+    diagram_image_url: Optional[str] = None
+    video_url: Optional[str] = None
+    disclaimer: Optional[str] = None
+    safety_keywords: Optional[List[str]] = None
+    safety_message: Optional[str] = None
+
+
 # ============ COMMITMENT ============
 
 class CommitmentRequest(BaseModel):

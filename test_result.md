@@ -48,6 +48,35 @@
 ##   run_ui: false
 ##
 backend:
+  - task: "EFT Tapping for Stress Relief — backend (config, save, admin CRUD, media upload)"
+    implemented: true
+    working: "NA"
+    file: "backend/routes/emotional_gatekeeper/eft_routes.py, constants.py, models.py, session_routes.py, __init__.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          New EFT sub-module under Emotional Gatekeeper. Deterministic (NO AI / no credits).
+          Endpoints (all /api/emotional-gatekeeper/eft/*):
+            • GET  /config            (auth) → merged admin-config over EFT_DEFAULTS
+            • POST /{session_id}/save (auth) → upsert eft_reflections; validates type∈{emotion,problem},
+              0≤intensity≤10; computes intensity_reduction; sets session intensity_before/after +
+              status (in_progress/completed) + title.
+            • GET  /admin/config      (require_admin) → {config, defaults}
+            • PUT  /admin/config      (require_admin) → upsert app_config{key:eft_config}; only non-null fields
+            • POST /admin/upload-media?media_type=image|video (require_admin, multipart) → saves to
+              backend/static/eft/, returns /api/static/eft/<file> (image≤8MB via UI guard, video≤50MB).
+          Wiring: 'eft' added to SESSION_TYPES; eft_reflection attached in GET /sessions/{id};
+          delete cascade; dashboard adds eft_sessions count.
+          MAIN-AGENT SMOKE (curl, all PASS): config returns 9 points/16 kw/vimeo url; create eft session +
+          save (before 8 → after 2, reduction 6) 200; dashboard eft_sessions=1, completed=1.
+          NEEDS testing_agent: admin config GET/PUT round-trip + RBAC (403 for non-admin), upload-media
+          image/video (415 on wrong type, 400 on >50MB), save validation (400 on bad type / out-of-range),
+          reset-to-default behavior.
+
   - task: "Iter 129 — Backend hardening + 5 deferred wires"
     implemented: true
     working: true

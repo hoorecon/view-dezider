@@ -158,7 +158,48 @@ AIM_OCCURRENCE_OPTIONS = [
     "social_situations", "alone_time", "other",
 ]
 
-SESSION_TYPES = ["trap", "loop", "limitation", "outlet", "aim", "integrated"]
+SESSION_TYPES = ["trap", "loop", "limitation", "outlet", "aim", "integrated", "eft"]
+
+# ============================================================
+# EFT TAPPING FOR STRESS RELIEF
+# ============================================================
+# Built-in defaults. Admin can override any of these via app_config
+# {key: "eft_config"} from the Admin → EFT Tapping config screen.
+EFT_DEFAULTS = {
+    "enabled": True,
+    "title": "EFT Tapping for Stress Relief",
+    "description": "A gentle guided tapping practice to reduce emotional intensity and return to inner calm.",
+    # Affirmation templates. "{input}" is replaced with the user's emotion or problem text.
+    # Emotion-type uses the "feel" phrasing; problem-type drops "feel".
+    "affirmation_template_emotion": "Even though I feel {input}, I deeply and completely love and accept myself.",
+    "affirmation_template_problem": "Even though {input}, I deeply and completely love and accept myself.",
+    "alt_affirmation_template_emotion": "Even though I feel {input}, I choose to feel calm and at peace.",
+    "alt_affirmation_template_problem": "Even though {input}, I choose to feel calm and at peace.",
+    "tapping_instructions": "Use two fingertips of one hand. Tap gently, not forcefully. Tap around 5–7 times on each point. Breathe slowly while tapping. You can speak the reminder phrase aloud or silently.",
+    # 9 tapping points in the EXACT order required by the SRS.
+    "tapping_points": [
+        {"id": "karate_chop", "name": "Karate Chop Point", "instruction": "Tap the fleshy side of your hand (below the little finger). Repeat your setup affirmation 3 times.", "is_setup": True},
+        {"id": "eyebrow", "name": "Eyebrow Point", "instruction": "Tap gently on the beginning of your eyebrow, near the bridge of your nose."},
+        {"id": "side_of_eye", "name": "Side of Eye", "instruction": "Tap gently on the bone at the outer corner of your eye."},
+        {"id": "under_eye", "name": "Under Eye", "instruction": "Tap gently on the bone just under your eye."},
+        {"id": "under_nose", "name": "Under Nose", "instruction": "Tap gently on the area between your nose and upper lip."},
+        {"id": "chin", "name": "Chin Point", "instruction": "Tap gently on the crease between your lower lip and chin."},
+        {"id": "collarbone", "name": "Collarbone Point", "instruction": "Tap gently just below the hard ridge of your collarbone."},
+        {"id": "under_arm", "name": "Under Arm", "instruction": "Tap gently about four inches below your armpit."},
+        {"id": "top_of_head", "name": "Top of Head", "instruction": "Tap gently on the crown of your head."},
+    ],
+    "diagram_image_url": "https://eftinternational.org/wp-content/uploads/page-uploads/EFT-Tapping-Points-EFTi.jpg",
+    "video_url": "https://vimeo.com/1184450823/11b05769d7?fl=pl&fe=cm",
+    "disclaimer": "This practice is for emotional self-regulation and stress relief. It is not a substitute for medical, psychological, or emergency care. If you feel unsafe, overwhelmed, or have thoughts of self-harm, please contact a qualified professional or emergency support immediately.",
+    # Words that trigger the gentle safety support message (case-insensitive substring match).
+    "safety_keywords": [
+        "suicide", "suicidal", "kill myself", "end my life", "self harm", "self-harm",
+        "hurt myself", "cutting myself", "want to die", "no reason to live",
+        "panic attack", "abuse", "abused", "being beaten", "in danger", "overdose",
+    ],
+    "safety_message": "This sounds serious and you deserve immediate support. EFT may help you calm down, but please also reach out to a trusted person, mental health professional, or emergency support near you.",
+}
+
 SESSION_STATUSES = ["draft", "in_progress", "completed", "resolved"]
 COMMITMENT_TYPES = ["immediate", "7_day", "30_day"]
 COMMITMENT_STATUSES = ["pending", "completed", "missed"]

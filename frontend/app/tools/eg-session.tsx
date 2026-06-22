@@ -118,18 +118,20 @@ export default function EGSessionScreen() {
   const limRef = session.limitation_reflection;
   const aimRef = session.aim_reflection;
   const outletRef = session.outlet_reflection;
+  const eftRef = session.eft_reflection;
   const outletA = outletRef?.ai_analysis;
   const trapA = trapRef?.ai_summary;
   const loopR = loopRef?.ai_reframe_full;
   const limR = limRef?.ai_summary;
   const aimA = aimRef?.ai_analysis;
-  const hasContent = !!(trapRef || loopRef || limRef || aimRef || session.outlet_reflection || report);
+  const hasContent = !!(trapRef || loopRef || limRef || aimRef || session.outlet_reflection || eftRef || report);
   const resumeRoutes: Record<string, string> = {
     trap: `/tools/eg-trap?sessionId=${session.id}`,
     loop: `/tools/eg-loop?sessionId=${session.id}`,
     limitation: `/tools/eg-limitation?sessionId=${session.id}`,
     outlet: `/tools/eg-outlet?sessionId=${session.id}`,
     aim: `/tools/eg-aim?sessionId=${session.id}`,
+    eft: `/tools/eg-eft?sessionId=${session.id}`,
   };
 
   return (
@@ -311,6 +313,23 @@ export default function EGSessionScreen() {
                   {ir.constructive_response ? <Text style={st.aText}>Response: {ir.constructive_response}</Text> : null}
                 </View>
               ))}
+            </View>
+          )}
+
+          {/* EFT Tapping — what was worked on + intensity shift */}
+          {eftRef && (
+            <View style={st.insightCard} testID="session-eft">
+              <Text style={st.insightTitle}>EFT Tapping</Text>
+              <Text style={st.aLabel}>{eftRef.selected_type === 'emotion' ? 'Emotion' : 'Problem / Situation'}</Text>
+              <Text style={st.aText}>{eftRef.subject_text}</Text>
+              {!!eftRef.affirmation && (<><Text style={st.aLabel}>Setup Affirmation</Text><Text style={[st.aText, { fontStyle: 'italic' }]}>“{eftRef.affirmation}”</Text></>)}
+              <Text style={st.aLabel}>Intensity</Text>
+              <Text style={st.aText}>
+                Before {eftRef.initial_intensity_score}/10 → After {eftRef.final_intensity_score ?? '-'}/10
+                {typeof eftRef.intensity_reduction === 'number' ? `  (released ${eftRef.intensity_reduction})` : ''}
+                {eftRef.rounds_completed ? `  ·  ${eftRef.rounds_completed} round${eftRef.rounds_completed === 1 ? '' : 's'}` : ''}
+              </Text>
+              {!!eftRef.user_reflection && (<><Text style={st.aLabel}>What they noticed</Text><Text style={st.aText}>{eftRef.user_reflection}</Text></>)}
             </View>
           )}
 
