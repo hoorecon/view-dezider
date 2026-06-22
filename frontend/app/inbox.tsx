@@ -53,6 +53,9 @@ export default function InboxScreen() {
   const [contributeModal, setContributeModal] = useState<SharedStep | null>(null);
   const [assessments, setAssessments] = useState<Record<string, string>>({});
   const [note, setNote] = useState('');
+  const [consolidated, setConsolidated] = useState('');
+  const [forwardEmail, setForwardEmail] = useState('');
+  const [forwarding, setForwarding] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const fetchShares = async () => {
@@ -78,6 +81,8 @@ export default function InboxScreen() {
   const openContribute = (share: SharedStep) => {
     setAssessments({});
     setNote('');
+    setConsolidated('');
+    setForwardEmail('');
     setContributeModal(share);
   };
 
@@ -85,15 +90,14 @@ export default function InboxScreen() {
     if (!contributeModal) return;
     setSubmitting(true);
     try {
-      // Convert string values to numbers
       const numAssessments: Record<string, number> = {};
       for (const [key, val] of Object.entries(assessments)) {
         numAssessments[key] = parseInt(val, 10) || 50;
       }
-      
       await api.post(`/shared-steps/${contributeModal.id}/contribute`, {
         assessments: numAssessments,
         note,
+        consolidated,
       });
       showAlert('Submitted!', 'Your contribution has been submitted');
       setContributeModal(null);
@@ -102,6 +106,23 @@ export default function InboxScreen() {
       showAlert('Error', error.response?.data?.detail || 'Failed to submit');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleForward = async () => {
+    if (!contributeModal || !forwardEmail.trim()) return;
+    setForwarding(true);
+    try {
+      const res = await api.post(`/shared-steps/${contributeModal.id}/reshare`, {
+        recipient_emails: [forwardEmail.trim()],
+        message: note,
+      });
+      showAlert('Forwarded', res.data?.message || 'Sent for further help.');
+      setForwardEmail('');
+    } catch (error: any) {
+      showAlert('Could not forward', error.response?.data?.detail || 'Failed to forward.');
+    } finally {
+      setForwarding(false);
     }
   };
 
@@ -304,6 +325,46 @@ export default function InboxScreen() {
                     />
                   </View>
 
+                  {contributeModal.allow_reshare && (
+                    <View style={styles.noteSection}>
+                      <Text style={styles.noteLabel}>Consolidated recommendation (optional)</Text>
+                      <TextInput
+                        style={styles.noteInput}
+                        value={consolidated}
+                        onChangeText={setConsolidated}
+                        placeholder="Summarise inputs you gathered from others…"
+                        placeholderTextColor={COLORS.textMuted}
+                        multiline
+                        numberOfLines={3}
+                      />
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.textPrimary, marginTop: 12, marginBottom: 6 }}>
+                        Seek further help (optional)
+                      </Text>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <TextInput
+                          style={[styles.noteInput, { flex: 1, minHeight: 0, paddingVertical: 10 }]}
+                          value={forwardEmail}
+                          onChangeText={setForwardEmail}
+                          placeholder="email to forward to"
+                          placeholderTextColor={COLORS.textMuted}
+                          autoCapitalize="none"
+                          keyboardType="email-address"
+                          testID="inbox-forward-email"
+                        />
+                        <TouchableOpacity
+                          style={{ backgroundColor: COLORS.primary, borderRadius: 10, paddingHorizontal: 14, justifyContent: 'center', opacity: forwarding ? 0.7 : 1 }}
+                          onPress={handleForward}
+                          disabled={forwarding || !forwardEmail.trim()}
+                          testID="inbox-forward-btn"
+                        >
+                          {forwarding ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={{ color: '#FFF', fontWeight: '700' }}>Forward</Text>}
+                        </TouchableOpacity>
+                      </View>
+                      <Text style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 6, lineHeight: 15 }}>
+                        Your inputs and theirs stay transparently attributed to the original owner.
+                      </Text>
+                    </View>
+                  )}
                   <TouchableOpacity
                     style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
                     onPress={handleContribute}

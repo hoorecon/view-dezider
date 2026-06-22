@@ -7,7 +7,7 @@ from core.database import db
 from core.auth import get_current_user
 from core.helpers import create_notification
 from core.email import send_email, PUBLIC_APP_URL
-from models.decisions_models import ShareStepRequest, ContributeStepRequest, MergeStepRequest
+from models.decisions_models import ShareStepRequest, ContributeStepRequest, MergeStepRequest, ReshareStepRequest
 
 router = APIRouter(tags=["Decisions"])
 
@@ -102,9 +102,10 @@ async def share_step(decision_id: str, data: ShareStepRequest, user: dict = Depe
         recipient_user = await db.users.find_one({"email": email}, {"_id": 0})
         if recipient_user:
             recipients.append({"user_id": recipient_user["user_id"], "email": email,
-                               "name": recipient_user.get("name", email), "status": "pending", "contribution": None})
+                               "name": recipient_user.get("name", email), "status": "pending",
+                               "contribution": None, "invited_by": None, "invited_by_name": None})
         else:
-            pending_invites.append({"email": email})
+            pending_invites.append({"email": email, "invited_by": None, "invited_by_name": None})
     if not recipients and not pending_invites:
         raise HTTPException(status_code=400, detail="No valid recipient emails provided")
 
@@ -113,6 +114,7 @@ async def share_step(decision_id: str, data: ShareStepRequest, user: dict = Depe
         "owner_name": user.get("name", user["email"]), "step_number": data.step_number,
         "merge_mode": data.merge_mode, "custom_weights": data.custom_weights or {},
         "message": data.message, "recipients": recipients, "pending_invites": pending_invites,
+        "allow_reshare": bool(data.allow_reshare),
         "decision_title": decision.get("title", ""), "decision_context": decision.get("context", ""),
         "step_data": {"factors": decision.get("factors", []),
                       "options": [{"id": o["id"], "name": o["name"]} for o in decision.get("options", [])]},
@@ -194,7 +196,8 @@ async def contribute_to_shared_step(share_id: str, data: ContributeStepRequest, 
     if not is_recipient:
         raise HTTPException(status_code=403, detail="You are not a recipient of this share")
     contribution = {"factors": data.factors, "options": data.options, "assessments": data.assessments,
-                    "note": data.note, "submitted_at": datetime.now(timezone.utc).isoformat()}
+                    "note": data.note, "consolidated": data.consolidated,
+                    "submitted_at": datetime.now(timezone.utc).isoformat()}
     await db.shared_steps.update_one({"id": share_id, "recipients.user_id": user["user_id"]},
         {"$set": {"recipients.$.status": "contributed", "recipients.$.contribution": contribution}})
     contributor_name = user.get("name", user.get("email", "Someone"))
@@ -202,6 +205,60 @@ async def contribute_to_shared_step(share_id: str, data: ContributeStepRequest, 
         f'{contributor_name} contributed to Step {share.get("step_number", "?")} of "{share.get("decision_title", "your decision")}"',
         {"share_id": share_id, "decision_id": share.get("decision_id")})
     return {"message": "Contribution submitted successfully"}
+
+
+@router.post("/shared-steps/{share_id}/reshare")
+async def reshare_step(share_id: str, data: ReshareStepRequest, user: dict = Depends(get_current_user)):
+    """A recipient seeks further help from their OWN contacts/experts — allowed
+    only if the owner enabled it. New recipients are added to the SAME share
+    with `invited_by` attribution, so the owner sees a transparent tree."""
+    await _claim_pending_for_user(user)
+    share = await db.shared_steps.find_one({"id": share_id}, {"_id": 0})
+    if not share:
+        raise HTTPException(status_code=404, detail="Shared step not found")
+    me = next((r for r in share.get("recipients", []) if r.get("user_id") == user["user_id"]), None)
+    if not me and share.get("owner_id") != user["user_id"]:
+        raise HTTPException(status_code=403, detail="You are not a recipient of this share")
+    if not share.get("allow_reshare"):
+        raise HTTPException(status_code=403, detail="The decision owner hasn't allowed seeking further help on this share.")
+
+    existing = {r.get("email", "").lower() for r in share.get("recipients", [])} | \
+               {p.get("email", "").lower() for p in share.get("pending_invites", [])}
+    existing.add((user.get("email") or "").lower())
+    by_name = user.get("name", user.get("email", "Someone"))
+    added, invited = 0, 0
+    for raw in data.recipient_emails:
+        email = (raw or "").strip().lower()
+        if not email or email in existing or email == share.get("owner_id"):
+            continue
+        existing.add(email)
+        ru = await db.users.find_one({"email": email}, {"_id": 0})
+        if ru:
+            await db.shared_steps.update_one({"id": share_id}, {"$push": {"recipients": {
+                "user_id": ru["user_id"], "email": email, "name": ru.get("name", email),
+                "status": "pending", "contribution": None,
+                "invited_by": user["user_id"], "invited_by_name": by_name}}})
+            await create_notification(ru["user_id"], "share_invite",
+                f'Step {share.get("step_number")}: help requested',
+                f'{by_name} asked for your input on "{share.get("decision_title", "a decision")}"',
+                {"share_id": share_id, "decision_id": share.get("decision_id"), "via": by_name})
+            await send_email(email, f'{by_name} asked for your input on a decision step',
+                _share_email_html(by_name, share.get("step_number", 0),
+                    STEP_NAMES.get(share.get("step_number"), "a step"),
+                    share.get("decision_title", "a decision"), data.message, PUBLIC_APP_URL))
+            added += 1
+        else:
+            await db.shared_steps.update_one({"id": share_id}, {"$push": {"pending_invites": {
+                "email": email, "invited_by": user["user_id"], "invited_by_name": by_name}}})
+            await send_email(email, f'{by_name} invited you to help on a decision step',
+                _invite_email_html(by_name, share.get("step_number", 0),
+                    STEP_NAMES.get(share.get("step_number"), "a step"),
+                    share.get("decision_title", "a decision"), data.message, f"{PUBLIC_APP_URL}/register"))
+            invited += 1
+    if added + invited == 0:
+        raise HTTPException(status_code=400, detail="No new recipients to add.")
+    return {"ok": True, "added": added, "invited": invited,
+            "message": f'Forwarded for help to {added + invited} {"person" if added + invited == 1 else "people"}.'}
 
 
 @router.post("/shared-steps/{share_id}/merge")

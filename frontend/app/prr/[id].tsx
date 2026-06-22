@@ -189,12 +189,14 @@ function PRRDecisionDetailInner() {
       >
         <Ionicons name="videocam-outline" size={16} color="#16A34A" />
       </TouchableOpacity>
-      <TouchableOpacity
-        style={styles.shareStepBtn}
-        onPress={() => setShareModalVisible(true)}
-      >
-        <Ionicons name="share-outline" size={18} color={COLORS.primary} />
-      </TouchableOpacity>
+      {currentStep >= 2 && currentStep <= 9 && (
+        <TouchableOpacity
+          style={styles.shareStepBtn}
+          onPress={() => setShareModalVisible(true)}
+        >
+          <Ionicons name="share-outline" size={18} color={COLORS.primary} />
+        </TouchableOpacity>
+      )}
     </View>
   );
 

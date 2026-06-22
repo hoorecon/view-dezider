@@ -337,6 +337,14 @@ class ShareStepRequest(BaseModel):
     merge_mode: str = "equal"
     custom_weights: Optional[dict] = None
     message: str = ""
+    # Owner opt-in: allow recipients to seek further help from THEIR own
+    # contacts/experts. Sub-contributions stay transparently attributed.
+    allow_reshare: bool = False
+
+
+class ReshareStepRequest(BaseModel):
+    recipient_emails: List[str]
+    message: str = ""
 
 
 class ContributeStepRequest(BaseModel):
@@ -344,6 +352,9 @@ class ContributeStepRequest(BaseModel):
     options: Optional[List[dict]] = None
     assessments: Optional[dict] = None
     note: str = ""
+    # Optional consolidated recommendation a contributor writes on top of any
+    # sub-inputs they gathered after re-sharing.
+    consolidated: str = ""
 
 
 class MergeStepRequest(BaseModel):

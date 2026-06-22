@@ -73,6 +73,7 @@ export default function ShareStepModal({
   const [loading, setLoading] = useState(false);
   const [sentShares, setSentShares] = useState<any[]>([]);
   const [showSent, setShowSent] = useState(false);
+  const [allowReshare, setAllowReshare] = useState(false);
   // New: share source tab
   const [shareSource, setShareSource] = useState<'email' | 'users' | 'experts'>('email');
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -156,6 +157,7 @@ export default function ShareStepModal({
         recipient_emails: emails,
         merge_mode: mergeMode,
         message,
+        allow_reshare: allowReshare,
       };
 
       if (mergeMode === 'custom') {
@@ -431,6 +433,27 @@ export default function ShareStepModal({
                     numberOfLines={3}
                   />
                 </View>
+
+                {/* Allow re-share (transparent attribution) */}
+                <TouchableOpacity
+                  testID="share-allow-reshare"
+                  activeOpacity={0.8}
+                  onPress={() => setAllowReshare(v => !v)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 }}
+                >
+                  <Ionicons
+                    name={allowReshare ? 'checkbox' : 'square-outline'}
+                    size={22} color={allowReshare ? COLORS.primary : COLORS.textSecondary}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13.5, fontWeight: '700', color: COLORS.textPrimary }}>
+                      Allow recipients to seek further help
+                    </Text>
+                    <Text style={{ fontSize: 11.5, color: COLORS.textSecondary, marginTop: 2, lineHeight: 16 }}>
+                      Contributors can forward to their own contacts/experts. Every input stays transparently attributed to you.
+                    </Text>
+                  </View>
+                </TouchableOpacity>
 
                 {/* Share Button */}
                 <TouchableOpacity
