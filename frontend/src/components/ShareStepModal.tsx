@@ -166,8 +166,12 @@ export default function ShareStepModal({
         payload.custom_weights = weights;
       }
 
-      await api.post(`/decisions/${decisionId}/share-step`, payload);
-      Alert.alert('Shared!', `Step ${stepNumber} has been shared with ${emails.length} user(s)`);
+      const res = await api.post(`/decisions/${decisionId}/share-step`, payload);
+      Alert.alert(
+        'Shared!',
+        res.data?.message
+          || `Step ${stepNumber} has been shared with ${emails.length} user(s)`,
+      );
       onShareSuccess();
       onClose();
     } catch (error: any) {
