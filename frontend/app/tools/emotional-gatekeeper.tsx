@@ -147,22 +147,22 @@ export default function EmotionalGatekeeperScreen() {
       stat: dashboard?.eft_sessions || 0, label: 'Sessions', isDirectNav: true,
     },
     {
-      id: 'trap', title: '2 · Breaking the Trap', icon: 'alert-circle' as const,
+      id: 'trap', title: '3 · Breaking the Trap', icon: 'alert-circle' as const,
       desc: 'Landscaping → Linking → Looping', colors: [EG_COLORS.trap, '#DC2626'],
       stat: dashboard?.traps_identified || 0, label: 'Traps Found',
     },
     {
-      id: 'loop', title: '3 · Breaking the Loop', icon: 'sync-circle' as const,
+      id: 'loop', title: '4 · Breaking the Loop', icon: 'sync-circle' as const,
       desc: '4 methods to break mental loops', colors: [EG_COLORS.loop, '#7C3AED'],
       stat: dashboard?.loops_broken || 0, label: 'Loops Broken',
     },
     {
-      id: 'limitation', title: '4 · Breaking Limitations', icon: 'lock-open' as const,
+      id: 'limitation', title: '5 · Breaking Limitations', icon: 'lock-open' as const,
       desc: 'Transform limiting beliefs', colors: [EG_COLORS.limitation, '#1D4ED8'],
       stat: dashboard?.limitations_identified || 0, label: 'Limits Broken',
     },
     {
-      id: 'solution_finder', title: '5 · Solution Finder', icon: 'bulb' as const,
+      id: 'solution_finder', title: '6 · Solution Finder', icon: 'bulb' as const,
       desc: 'Apply your clarity to a real-world decision', colors: ['#7C3AED', '#A855F7'],
       stat: 0, label: 'Continue', isDirectNav: true,
     },
