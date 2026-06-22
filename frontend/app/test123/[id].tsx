@@ -118,6 +118,17 @@ export default function Test123Detail() {
     }
   };
 
+  const handleBack = () => {
+    if (showRiskGate) { setShowRiskGate(false); return; }
+    if (currentTest === 4) { setCurrentTest(3); return; }
+    if (currentTest === 3) { setCurrentTest(2); return; }
+    if (currentTest === 2) { setCurrentTest(1); return; }
+    if (currentTest === 1.5) { setCurrentTest(1); return; }
+    // On the first step: leave the flow.
+    if (router.canGoBack?.()) router.back();
+    else router.replace('/' as any);
+  };
+
   const handleWorstCase = async () => {
     if (!worstCase.trim()) {
       showAlert('Error', 'Please describe the worst case scenario');
@@ -593,7 +604,7 @@ export default function Test123Detail() {
         <View style={styles.topBar}>
           <TouchableOpacity
             style={styles.topBarBtn}
-            onPress={() => router.back()}
+            onPress={handleBack}
             accessibilityLabel="Back"
             hitSlop={8}
           >
@@ -687,7 +698,7 @@ export default function Test123Detail() {
 
 const styles = StyleSheet.create({
   gateBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 24 },
-  gateCard: { backgroundColor: COLORS.white, borderRadius: 18, padding: 22 },
+  gateCard: { backgroundColor: COLORS.white, borderRadius: 18, padding: 22, width: '100%', maxWidth: 440, alignSelf: 'center' },
   gateTitle: { fontSize: 19, fontWeight: '800', color: COLORS.textPrimary, marginBottom: 8 },
   gateSub: { fontSize: 14, color: COLORS.textSecondary, lineHeight: 21, marginBottom: 18 },
   gatePrimary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#7C3AED', paddingVertical: 14, borderRadius: 12, marginBottom: 10 },
