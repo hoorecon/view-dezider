@@ -143,6 +143,7 @@ export default function EftTappingScreen() {
   const [rounds, setRounds] = useState(1);
   const [reflection, setReflection] = useState('');
   const [safetyFlagged, setSafetyFlagged] = useState(false);
+  const [phraseMode, setPhraseMode] = useState<'reminder' | 'full'>('reminder');
   const [showSafety, setShowSafety] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -503,6 +504,31 @@ export default function EftTappingScreen() {
                     <Text style={styles.tipText}>{config.tapping_instructions}</Text>
                   </View>
 
+                  {/* What to say on the other 8 points */}
+                  <View style={styles.phraseModeWrap}>
+                    <Text style={styles.phraseModeLabel}>On the other tapping points, say:</Text>
+                    <View style={styles.segmented}>
+                      <TouchableOpacity
+                        testID="eft-phrase-reminder"
+                        style={[styles.segBtn, phraseMode === 'reminder' && styles.segBtnActive]}
+                        onPress={() => setPhraseMode('reminder')}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.segTxt, phraseMode === 'reminder' && styles.segTxtActive]}>Reminder phrase</Text>
+                        <Text style={[styles.segHint, phraseMode === 'reminder' && styles.segHintActive]}>e.g. “{reminderPhrase}”</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        testID="eft-phrase-full"
+                        style={[styles.segBtn, phraseMode === 'full' && styles.segBtnActive]}
+                        onPress={() => setPhraseMode('full')}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.segTxt, phraseMode === 'full' && styles.segTxtActive]}>Full affirmation</Text>
+                        <Text style={[styles.segHint, phraseMode === 'full' && styles.segHintActive]}>the complete “Even though…” line</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
                   {/* Diagram */}
                   {!!config.diagram_image_url && (
                     <View style={styles.mediaBlock}>
@@ -570,7 +596,7 @@ export default function EftTappingScreen() {
                   <View style={styles.reminderCard}>
                     <Text style={styles.reminderLabel}>Say{points[pointIdx].is_setup ? ' (3 times)' : ''}:</Text>
                     <Text style={styles.reminderPhrase}>
-                      {points[pointIdx].is_setup ? `“${affirmation}”` : `“${reminderPhrase}”`}
+                      {(points[pointIdx].is_setup || phraseMode === 'full') ? `“${affirmation}”` : `“${reminderPhrase}”`}
                     </Text>
                   </View>
 
@@ -787,6 +813,15 @@ const styles = StyleSheet.create({
   instruction: { fontSize: 14, color: COLORS.textSecondary, marginTop: 14, lineHeight: 21 },
   tipBox: { backgroundColor: '#FFF', borderRadius: 12, padding: 14, marginTop: 14, borderLeftWidth: 3, borderLeftColor: EFT.teal },
   tipText: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 20 },
+  phraseModeWrap: { marginTop: 16 },
+  phraseModeLabel: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 8 },
+  segmented: { flexDirection: 'row', gap: 10 },
+  segBtn: { flex: 1, padding: 12, borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.border, backgroundColor: '#FFF' },
+  segBtnActive: { borderColor: EFT.teal, backgroundColor: EFT.tealLight },
+  segTxt: { fontSize: 14, fontWeight: '700', color: COLORS.textSecondary },
+  segTxtActive: { color: EFT.tealDark },
+  segHint: { fontSize: 11, color: COLORS.textMuted, marginTop: 4, lineHeight: 15 },
+  segHintActive: { color: EFT.tealDark },
 
   mediaBlock: { marginTop: 20 },
   mediaLabel: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 8 },
