@@ -41,7 +41,7 @@
     "backend": "100% — 7/7 pytest cases pass (skip_gate_on, regular_user_no_gate, super_admin_no_gate, security_config_super_admin_only, scraperapi_provider_listed, gsmarena_url_analyze_hierarchical, bulk_assess_endpoint_exists).",
     "frontend": "100% — both security toggles render with correct testIDs, regular user bypasses gate, AI Assess banner renders+confirms+gracefully handles ranOut=true with the 'Out of AI credits' modal, no crashes."
   },
-  "seed_data_creation": "None. Used the existing pre-built decision id=591116dd-d134-414c-8c33-cb46deb0b78c (3 options × ~55 leaf factors = 163 unscored cells) and the already-set skip_whatsapp_gate=true flag.",
+  "seed_data_creation": "None. Used the existing pre-built decision id=goals-feels-tracker (3 options × ~55 leaf factors = 163 unscored cells) and the already-set skip_whatsapp_gate=true flag.",
   "retest_needed": false,
   "should_main_agent_self_test": false,
   "context_for_next_testing_agent": "Re-test recipe: (1) curl GET /api/admin/security-config with super_admin token → expect {skip_whatsapp_otp_for_admins:true, skip_whatsapp_gate:true}. (2) Run pytest backend/tests/test_iter95_skip_gate_assess_scraper.py -v — all 7 must stay green. (3) Frontend: super_admin login → goto /admin/settings → assert [data-testid=toggle-skip-whatsapp-gate] exists and reflects ON; goto /prr/591116dd-d134-414c-8c33-cb46deb0b78c?step=2 → assert [data-testid=ai-assess-all-remaining-btn] exists and shows 'un-scored cells' count; tap it and tap 'Assess N' in the showAlert dialog → POST /api/decisions/{id}/ai-assess-batch should return 200 with ranOut=true (until wallet topped up) → 'Out of AI credits' modal must appear. (4) GET /api/admin/integrations → assert any provider where provider=='scraperapi'.",

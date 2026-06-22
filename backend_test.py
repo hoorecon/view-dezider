@@ -14,7 +14,7 @@ from datetime import datetime, timezone, timedelta
 
 BASE = os.environ.get(
     "BACKEND_BASE_URL",
-    "https://voice-browse-epic.preview.emergentagent.com",
+    "https://goals-feels-tracker.preview.emergentagent.com",
 ).rstrip("/")
 API = f"{BASE}/api"
 

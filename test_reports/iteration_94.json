@@ -61,7 +61,7 @@
     "backend": "100% — 2/2 pytest cases pass (test_prebuilt_decision_has_15_parents_55_subs_3_options, test_url_analyze_hierarchical_mode).",
     "frontend": "100% — all 15 parent factors render, 55 sub-factors render via md-subweight testIDs, 14/15 'Split evenly' buttons (15th hidden by design), 3 options visible on Step 6, Body subs match {Dimensions,Weight,Build,SIM} spec exactly."
   },
-  "seed_data_creation": "No new seed data created. Used the existing pre-built decision id=a856aca3-548f-4bb5-bf5f-c608ae303474 (title 'GSMArena Phone Compare (verify)') owned by super-admin veales (user_87819d8c4fd3).",
+  "seed_data_creation": "No new seed data created. Used the existing pre-built decision id=goals-feels-tracker (title 'GSMArena Phone Compare (verify)') owned by super-admin veales (user_87819d8c4fd3).",
   "retest_needed": false,
   "should_main_agent_self_test": false,
   "context_for_next_testing_agent": "Quick re-test recipe: (1) POST /api/auth/login {veales.vedic.decisions@gmail.com / Jelcos@Admin2026} -> session_token. (2) Run pytest backend/tests/test_iter94_url_hierarchy_import.py -v — both tests must stay green; if test_url_analyze_hierarchical_mode is skipped, GSMArena live fetch was blocked (transient). (3) Frontend Playwright: set localStorage(session_token/token/auth_token, whatsapp_verified=true), goto /prr/a856aca3-548f-4bb5-bf5f-c608ae303474?step=2 on viewport 390x844, wait 7-8 s, query document.querySelectorAll('[data-testid^=\"md-subweight-\"]').length == 55, and assert all 15 parent names appear in document.body.innerText. (4) For options visibility, navigate /prr/{id}?step=6 — expect 3 option rows. (5) Body factor id reachable from /api/decisions/{id} as `f_74f76c6f` (may change if re-seeded; rely on name='Body').",

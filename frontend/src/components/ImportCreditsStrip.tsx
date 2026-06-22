@@ -70,9 +70,20 @@ export const ImportCreditsStrip: React.FC<Props> = ({ endpoint, pages = 1, tier 
   const isScaled = data.basis === 'history_scaled';
   const isDefault = data.basis === 'default';
   const freeTierActive = !!data.free_tier_active;
-  // Admin policy on, server has OPENAI key, user mode='ask' → backend
-  // surfaces free_tier_available so we can offer per-run opt-in here.
-  const freeTierAvailable = !!data.free_tier_available && !freeTierActive;
+  // Free-tier offer visibility — FAIL-OPEN.
+  //
+  // We deliberately DON'T gate this on the backend's `free_tier_available`
+  // (or the user's prior consent) anymore. That flag is false whenever the
+  // server isn't "free-tier ready" — i.e. the admin master flag is off OR
+  // OPENAI_API_KEY is unset on the box — which was silently suppressing the
+  // offer on production even though credits were clearly short.
+  //
+  // Now: show the offer whenever credits fall short. The only thing that
+  // hides it is an EXPLICIT admin kill-switch (free_tier_feature_enabled ===
+  // false). A missing / loading / errored flag defaults to SHOWING, so a
+  // backend hiccup can never silently hide it again.
+  const showFreeTierPanel =
+    !ok && !freeTierActive && data.free_tier_feature_enabled !== false;
 
   return (
     <View testID="import-credits-strip-wrap">
@@ -107,12 +118,12 @@ export const ImportCreditsStrip: React.FC<Props> = ({ endpoint, pages = 1, tier 
         )}
       </View>
 
-      {/* Per-run opt-in button — only when admin allows free-tier AND the
-          user has 'Ask each time' mode AND credits are short. Pressing it
-          sets a one-shot flag on the backend; the next AI call will use
-          OpenAI free-tier for free, then the flag auto-resets so the user
-          is prompted again on the NEXT run. */}
-      {freeTierAvailable && !ok && (
+      {/* Per-run opt-in button — shown whenever credits are short (see
+          showFreeTierPanel above; fail-open, only an explicit admin
+          kill-switch hides it). Pressing it sets a one-shot flag on the
+          backend; the next AI call will use OpenAI free-tier for free, then
+          the flag auto-resets so the user is prompted again on the NEXT run. */}
+      {showFreeTierPanel && (
         <TouchableOpacity
           testID="import-credits-use-freetier-btn"
           style={[s.skipBtn, optingIn && { opacity: 0.6 }]}

@@ -17,7 +17,7 @@ import time
 import pytest
 import requests
 
-BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://dashboard-rewire.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://goals-feels-tracker.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
 
 OWNER_EMAIL = "harden_1777921741@example.com"

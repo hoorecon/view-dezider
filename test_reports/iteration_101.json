@@ -30,7 +30,7 @@
     "backend": "100% (no backend changes in this iter; iter100 pytest suite remains green)",
     "frontend": "100% (5/5 acceptance criteria + 1/1 regression PASS)"
   },
-  "seed_data_creation": "Created TEST_FE_BulkAssess_Iter101 decision (id=bb483000-41f6-4e88-bdef-f948f153c875, 2 options × 4 factors = 8 cells) via /app/test_reports/seed_decision_iter101.py as harden_1777921741@example.com. Decision deleted at the end of the run.",
+  "seed_data_creation": "Created TEST_FE_BulkAssess_Iter101 decision (id=goals-feels-tracker, 2 options × 4 factors = 8 cells) via /app/test_reports/seed_decision_iter101.py as harden_1777921741@example.com. Decision deleted at the end of the run.",
   "retest_needed": false,
   "should_main_agent_self_test": false,
   "context_for_next_testing_agent": "AI Assess All end-to-end is GREEN as of iter 101. Backend chunking/retry: covered by /app/backend/tests/test_batch_assess.py (4 pytests) + /app/backend/tests/test_ai_assess_all_batched_e2e.py (live 10-cell E2E). Frontend race fix: applyCellResult is now local-only (Step7.tsx:485-490). To smoke-test the full flow on demand: run `python /app/test_reports/seed_decision_iter101.py` to create a fresh small decision, then drive the UI (/prr/{id} → click Step 7 → click testID='ai-assess-all' → confirm 'AI-fill all'/'Assess'), and verify NO PUT /api/decisions/{id} fires after the batched POST while the GET still returns 8/8 (or N/N) assessments. The user-visible 'cells not filled despite credits charged' escalation should NOT recur."

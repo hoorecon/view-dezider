@@ -40,7 +40,7 @@ AUTH_URI = "https://accounts.google.com/o/oauth2/auth"
 # Must EXACTLY match the redirect URI registered in the Google Cloud Console.
 REDIRECT_URI = os.getenv(
     "GOOGLE_SHEETS_REDIRECT_URI",
-    "https://dashboard-rewire.preview.emergentagent.com/api/oauth/sheets/callback",
+    "https://goals-feels-tracker.preview.emergentagent.com/api/oauth/sheets/callback",
 )
 
 SCOPES = [

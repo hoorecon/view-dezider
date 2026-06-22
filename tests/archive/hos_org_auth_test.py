@@ -11,7 +11,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, Any
 
 # Backend URL from frontend/.env
-BACKEND_URL = "https://voice-browse-epic.preview.emergentagent.com/api"
+BACKEND_URL = "https://goals-feels-tracker.preview.emergentagent.com/api"
 
 class HOSOrgAuthTester:
     def __init__(self):

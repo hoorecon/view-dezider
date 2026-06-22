@@ -7,7 +7,7 @@ import asyncio
 import httpx
 import json
 
-BASE_URL = "https://voice-browse-epic.preview.emergentagent.com/api"
+BASE_URL = "https://goals-feels-tracker.preview.emergentagent.com/api"
 
 async def debug_endpoints():
     # First register and get API key

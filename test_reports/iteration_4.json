@@ -48,7 +48,7 @@
     "backend": "100%",
     "frontend": "85%"
   },
-  "seed_data_creation": "Created Pros & Cons analysis id=517fae05-579f-4005-8f86-195edbfa21a8 titled 'Step7 sectioned' with 5 factors (Zeta, Alpha, Mango, Banana, Echo), 1 option (OptX), notation Alpha+Mango=mandatory, others=optional, current_step=7. Seed script: /app/backend/tests/seed_step7_sections.py",
+  "seed_data_creation": "Created Pros & Cons analysis id=goals-feels-tracker titled 'Step7 sectioned' with 5 factors (Zeta, Alpha, Mango, Banana, Echo), 1 option (OptX), notation Alpha+Mango=mandatory, others=optional, current_step=7. Seed script: /app/backend/tests/seed_step7_sections.py",
   "retest_needed": true,
   "should_main_agent_self_test": false,
   "context_for_next_testing_agent": "Use the existing analysis id 517fae05-579f-4005-8f86-195edbfa21a8 for retesting. To reset Alpha back to 'mandatory' before retesting, PUT {\"notation\":\"mandatory\"} to /api/pros-cons/517fae05-579f-4005-8f86-195edbfa21a8/factors/a0950374-64c1-4c37-a359-041cc14acfa7. The Step 6 UI 'A/B' toggle buttons could not be reliably triggered via DOM .click() in evaluate() — use Playwright's page.click() on the right coordinate or set notation via API for cross-check tests. Seed script /app/backend/tests/seed_step7_sections.py is reusable; it correctly uses {\"step\": N} payload (not {\"current_step\": N}) for the /step endpoint.",

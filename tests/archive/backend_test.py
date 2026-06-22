@@ -7,7 +7,7 @@ import time
 import json
 
 # Backend URL from frontend/.env
-BASE_URL = "https://voice-browse-epic.preview.emergentagent.com/api"
+BASE_URL = "https://goals-feels-tracker.preview.emergentagent.com/api"
 
 # Test user credentials
 timestamp = int(time.time())

@@ -40,7 +40,7 @@
     "collab_routes.py mixed tz-aware vs tz-naive datetime comparisons (a frequent Motor/Mongo trap) — FIXED via `_as_aware()` helper.",
     "Cancel endpoints (invite + appointment) do not check terminal state — any owner can flip status to 'cancelled' even after merge/completion. Consider adding state-machine guard.",
     "create_invite leaks owner_user_id/owner_name/phone/email in the returned invite doc — fine for owner but if the same shape is returned to the invitee via GET /invite/{id}, the invitee gets owner contact info. Verified GET /invite/{id} returns the full doc; consider stripping owner_user_id/email/phone fields when caller is the invitee-only.",
-    "_public_link defaults to https://jelcos.ai which is the prod URL — invitations created from dev/preview will email a link that opens prod. Set PUBLIC_APP_URL=https://pros-cons-engine.preview.emergentagent.com in dev backend/.env for accurate test links."
+    "_public_link defaults to https://jelcos.ai which is the prod URL — invitations created from dev/preview will email a link that opens prod. Set PUBLIC_APP_URL=https://goals-feels-tracker.preview.emergentagent.com in dev backend/.env for accurate test links."
   ],
   "updated_files": [
     "/app/backend/routes/collab_routes.py (added _as_aware helper; applied to get_invite, submit_invite, _av_appointment_tick)",
@@ -51,6 +51,6 @@
   "seed_data_creation": "Each test run creates ephemeral CB sessions (title prefix 'TEST_iter126_'), invites, and appointments — appointments are cancelled at end of test_av_appointment_tick_fires; invites/sessions remain. Safe to leave (TEST_ prefix).",
   "retest_needed": false,
   "should_main_agent_self_test": false,
-  "context_for_next_testing_agent": "All collab + CB-parties endpoints work. Only outstanding item: cancel endpoint state-guard (action_item #1). Re-running /app/backend/tests/test_iter126_collab_and_cb_parties.py + test_iter126_reminder_tick.py is sufficient to re-verify v3.24 collab backbone. Both files take ~70s total. Use EXPO_PUBLIC_BACKEND_URL=https://pros-cons-engine.preview.emergentagent.com.",
+  "context_for_next_testing_agent": "All collab + CB-parties endpoints work. Only outstanding item: cancel endpoint state-guard (action_item #1). Re-running /app/backend/tests/test_iter126_collab_and_cb_parties.py + test_iter126_reminder_tick.py is sufficient to re-verify v3.24 collab backbone. Both files take ~70s total. Use EXPO_PUBLIC_BACKEND_URL=https://goals-feels-tracker.preview.emergentagent.com.",
   "rca_of_issue": "Root cause of 500s on GET /api/collab/invite/{id} and POST /api/collab/invite/{id}/submit: Motor (Mongo async driver) returns naive UTC datetimes (no tzinfo) when reading back the `expires_at` Date that was inserted as a tz-aware datetime. Python rejects mixed naive/aware comparisons with TypeError. Fix: introduced `_as_aware(dt)` helper that coerces naive→UTC-aware before any comparison. Applied at three sites: get_invite line 235, submit_invite line 250, and _av_appointment_tick line 423 (the existing guard there was correct but I unified to one helper). Reproduction (pre-fix): create invite, then GET /api/collab/invite/{id} as owner → 500 TypeError. Post-fix: GET returns 200 with full invite document. Verified end-to-end via pytest run: 11 PASS + 1 XFAIL (cancel state guard, separate bug)."
 }

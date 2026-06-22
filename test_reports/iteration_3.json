@@ -25,7 +25,7 @@
   ],
   "updated_files": [],
   "success_rate": {"backend": "100%", "frontend": "100%"},
-  "seed_data_creation": "Created via /app/backend/tests/seed_step6_8_test.py — analysis_id=1c3ff5dd-680d-4d91-a5b7-48692c25df9b. Factors: MainA(#1, rating 80), MainB(sub of MainA), MainC(rating 60), MainC-sub(sub of MainC). Option: OptX with Assess% 70 on MainA, 50 on MainC, 100 on subs.",
+  "seed_data_creation": "Created via /app/backend/tests/seed_step6_8_test.py — analysis_id=goals-feels-tracker. Factors: MainA(#1, rating 80), MainB(sub of MainA), MainC(rating 60), MainC-sub(sub of MainC). Option: OptX with Assess% 70 on MainA, 50 on MainC, 100 on subs.",
   "retest_needed": false,
   "should_main_agent_self_test": false,
   "context_for_next_testing_agent": "Seed script /app/backend/tests/seed_step6_8_test.py re-creates a deterministic hierarchy with one POST + login. Wizard URL: /tools/pros-cons-wizard?id={analysis_id}&module=pros-cons. The wizard restores the highest reached step from the server on each load; use the Back button (testID-less, locate via text=\"Back\") to step back. Chevron reorder buttons render as raw SVGs without aria-label/testID — easiest to validate by hitting POST /api/pros-cons/{id}/factors/reorder directly. Aggregate endpoint: GET /api/pros-cons/{id}/aggregate returns rollups[].joint_score; with the seeded data the value MUST equal 86 (MainA 70%×80=56 plus MainC 50%×60=30) — sub-factors with 100% assess must NOT contribute.",

@@ -11,7 +11,7 @@ import os
 import pytest
 import requests
 
-BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://pros-cons-engine.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://goals-feels-tracker.preview.emergentagent.com").rstrip("/")
 
 SUPER_ADMIN = {"email": "veales.vedic.decisions@gmail.com", "password": "Jelcos@Admin2026"}
 REGULAR_ADMIN = {"email": "admin@test.com", "password": "AdminPass2026!"}

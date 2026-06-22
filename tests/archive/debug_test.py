@@ -10,7 +10,7 @@ import sys
 from datetime import datetime
 
 # Backend URL from frontend/.env
-BASE_URL = "https://voice-browse-epic.preview.emergentagent.com/api"
+BASE_URL = "https://goals-feels-tracker.preview.emergentagent.com/api"
 
 async def debug_endpoints():
     """Debug the failing endpoints"""

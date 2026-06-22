@@ -23,7 +23,7 @@
   ],
   "updated_files": [],
   "success_rate": {"backend": "n/a (not tested per scope)", "frontend": "100% (9/9 scenarios passed: pencil visibility, edit mode pre-fill, Save persistence, Originally hint, Back→Step4 preserves original, Back→Step1 preserves original, Forward→Step5 restores renamed, Revert clears, Cancel discards, Step 6/7/8 reflect displayName both with rename active and after revert)"},
-  "seed_data_creation": "Created Pros & Cons analysis id=3daf1d8c-2cf1-4b2c-8d68-9b75a41f7f41 titled 'Rename E2E test' with direct factor 'AlphaOriginal' (currently has display_name='AlphaRenamed' from last test). Owner: admin@test.com. Safe to delete from /tools/pros-cons.",
+  "seed_data_creation": "Created Pros & Cons analysis id=goals-feels-tracker titled 'Rename E2E test' with direct factor 'AlphaOriginal' (currently has display_name='AlphaRenamed' from last test). Owner: admin@test.com. Safe to delete from /tools/pros-cons.",
   "retest_needed": false,
   "should_main_agent_self_test": false,
   "context_for_next_testing_agent": "Selectors that worked for the rename UI (no testIDs present): pencil icon = '[aria-label=\"Rename this factor\"]', edit input = 'input[placeholder=\"Rename factor\"]', Save = '[aria-label=\"Save factor rename\"]', Cancel = '[aria-label=\"Cancel rename\"]', Revert link = 'text=/Revert to original/', Originally hint = 'text=/Originally:/'. Wizard auto-creates an analysis if no id query param; current_step persists server-side so reloading lands on last-visited step. Use Back button to walk back through Steps.",

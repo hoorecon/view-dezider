@@ -15,7 +15,7 @@ import uuid
 import pytest
 import requests
 
-BASE_URL = os.environ.get("EXPO_BACKEND_URL", "https://voice-browse-epic.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("EXPO_BACKEND_URL", "https://goals-feels-tracker.preview.emergentagent.com").rstrip("/")
 ADMIN_EMAIL = "admin@test.com"
 ADMIN_PASSWORD = "AdminPass2026!"
 

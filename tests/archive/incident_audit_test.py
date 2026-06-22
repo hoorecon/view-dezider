@@ -9,7 +9,7 @@ import time
 from datetime import datetime
 
 # Backend URL from review request
-BASE_URL = "https://voice-browse-epic.preview.emergentagent.com/api"
+BASE_URL = "https://goals-feels-tracker.preview.emergentagent.com/api"
 
 class IncidentAuditTestRunner:
     def __init__(self):

@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 import uuid
 
 # Backend URL
-BASE_URL = "https://voice-browse-epic.preview.emergentagent.com/api"
+BASE_URL = "https://goals-feels-tracker.preview.emergentagent.com/api"
 
 class RegressionTester:
     def __init__(self):

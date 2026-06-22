@@ -24,7 +24,7 @@ from core.database import db
 router = APIRouter()
 log = logging.getLogger("google_sheets_routes")
 
-DEFAULT_RETURN = "https://dashboard-rewire.preview.emergentagent.com"
+DEFAULT_RETURN = "https://goals-feels-tracker.preview.emergentagent.com"
 
 
 async def _user_from_token(token: str):

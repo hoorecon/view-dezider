@@ -20,7 +20,7 @@ import requests
 BASE_URL = os.environ.get(
     "EXPO_BACKEND_URL",
     os.environ.get("EXPO_PUBLIC_BACKEND_URL",
-                   "https://pros-cons-engine.preview.emergentagent.com"),
+                   "https://goals-feels-tracker.preview.emergentagent.com"),
 ).rstrip("/")
 
 ADMIN_EMAIL = "admin@test.com"

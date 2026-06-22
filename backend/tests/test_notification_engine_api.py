@@ -16,7 +16,7 @@ import pytest
 import requests
 
 BASE_URL = (os.environ.get("EXPO_PUBLIC_BACKEND_URL")
-            or "https://pros-cons-engine.preview.emergentagent.com").rstrip("/")
+            or "https://goals-feels-tracker.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
 NE = f"{API}/admin/notification-engine"
 

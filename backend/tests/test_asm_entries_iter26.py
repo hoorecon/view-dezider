@@ -14,7 +14,7 @@ import pytest
 import requests
 
 BASE_URL = (os.environ.get("EXPO_PUBLIC_BACKEND_URL")
-            or "https://dashboard-rewire.preview.emergentagent.com").rstrip("/")
+            or "https://goals-feels-tracker.preview.emergentagent.com").rstrip("/")
 
 ADMIN_EMAIL = "admin@test.com"
 ADMIN_PASS = "AdminPass2026!"

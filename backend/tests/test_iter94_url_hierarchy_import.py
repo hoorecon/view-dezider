@@ -7,7 +7,7 @@ import os
 import pytest
 import requests
 
-BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://pros-cons-engine.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://goals-feels-tracker.preview.emergentagent.com").rstrip("/")
 
 VEALES = {"email": "veales.vedic.decisions@gmail.com", "password": "Jelcos@Admin2026"}
 GSMA_URL = "https://www.gsmarena.com/compare.php3?&idPhone2=14592&idPhone3=14379&idPhone1=9286"

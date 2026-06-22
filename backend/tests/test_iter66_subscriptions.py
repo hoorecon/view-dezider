@@ -4,7 +4,7 @@ import time
 import requests
 import pytest
 
-BASE_URL = "https://dashboard-rewire.preview.emergentagent.com"
+BASE_URL = "https://goals-feels-tracker.preview.emergentagent.com"
 API = f"{BASE_URL}/api"
 
 SUPER_EMAIL = "veales.vedic.decisions@gmail.com"

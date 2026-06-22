@@ -12,7 +12,7 @@ import json
 import requests
 from pymongo import MongoClient
 
-BACKEND_URL = "https://voice-browse-epic.preview.emergentagent.com/api"
+BACKEND_URL = "https://goals-feels-tracker.preview.emergentagent.com/api"
 MONGO_URL = "mongodb://localhost:27017"
 DB_NAME = "test_database"
 
