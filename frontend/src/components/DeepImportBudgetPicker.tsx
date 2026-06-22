@@ -60,6 +60,12 @@ export const DeepImportBudgetPicker: React.FC<Props> = ({ disabled, onRanked }) 
   const [budget, setBudget] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
+  // Once the user closes/skips/finishes for a given decision, remember its id
+  // so the auto-open effect below can't immediately re-open the modal while
+  // the context's `deep_import_pending_rank` flag is still catching up to the
+  // server. Without this the Skip/✕ buttons appeared to do nothing — the modal
+  // re-opened on the very next render (the screener.in "stuck popup loop").
+  const [dismissedId, setDismissedId] = useState<string | null>(null);
 
   // Top-5 reveal soundtrack — plays the `results_reveal` slot (fallback:
   // `default`) while the auto-assess-rank loop is in flight, so the user
@@ -72,10 +78,10 @@ export const DeepImportBudgetPicker: React.FC<Props> = ({ disabled, onRanked }) 
   // per decision; the user can re-trigger by manually re-running deep import.
   useEffect(() => {
     if (disabled) return;
-    if (pending && !visible) {
+    if (pending && !visible && dismissedId !== decision?.id) {
       setVisible(true);
     }
-  }, [pending, disabled, visible]);
+  }, [pending, disabled, visible, dismissedId, decision?.id]);
 
   // Fetch the auto-default estimate when the modal opens.
   useEffect(() => {
@@ -112,8 +118,11 @@ export const DeepImportBudgetPicker: React.FC<Props> = ({ disabled, onRanked }) 
   const close = (alsoDismissOnServer: boolean) => {
     setRunning(false);
     setVisible(false);
+    if (decision?.id) setDismissedId(decision.id);   // block the auto-open effect from re-firing
     if (alsoDismissOnServer && decision?.id) {
-      api.post(`/decisions/${decision.id}/deep-import/dismiss-rank-prompt`).catch(() => { /* best effort */ });
+      api.post(`/decisions/${decision.id}/deep-import/dismiss-rank-prompt`)
+        .then(() => { fetchDecision().catch(() => {}); })   // sync context so `pending` flips false
+        .catch(() => { /* best effort */ });
     }
   };
 
@@ -126,6 +135,7 @@ export const DeepImportBudgetPicker: React.FC<Props> = ({ disabled, onRanked }) 
         { budget_count: budget },
       );
       await fetchDecision();
+      if (decision?.id) setDismissedId(decision.id);
       setVisible(false);
       const topN: string[] = data?.top_n_option_ids || [];
       if (onRanked) onRanked(topN);

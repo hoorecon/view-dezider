@@ -1,0 +1,46 @@
+{
+  "summary": "BACKEND: All deep-import endpoints PASS (9/10 effective; 1 admin test skipped due to non-admin perms). budget-estimate, auto-assess-rank, dismiss-rank-prompt all return correct payloads, 404 on unknown, 401 without auth, idempotent. FRONTEND PRIMARY BUG (Skip-loop): NOT FIXED. Reproduced the original screener.in stuck-popup loop on the seeded decision (deep_import_pending_rank=true, 2 factors × 2 options) on web preview. Skip button (testID deep-import-budget-skip) DOES fire onPress — confirmed by the POST /deep-import/dismiss-rank-prompt request leaving the page and returning 200. However the DeepImportBudgetPicker modal does NOT visually close; immediately after the dismiss POST a fresh GET /deep-import/budget-estimate?budget_count=0 fires, which only happens when picker.visible flips back to true. Modal remains open at 500ms / 2s / 4s post-click. Subsequent X-close (testID deep-import-budget-close) click does NOT even fire another dismiss POST, so the user is fully trapped — only a hard refresh clears it (matches the original bug report). The `dismissedId` guard added by the main agent is ineffective on web — the auto-open useEffect is re-firing despite dismissedId being set. SECONDARY PASS: Persistence does work — once the dismiss POST sets deep_import_pending_rank=false in DB, re-navigating to Step 5 in a fresh tab does NOT reopen the modal. So the SERVER side is correct; the FRONTEND state-loop is the live bug.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "DeepImportBudgetPicker", "issue": "BUG NOT FIXED. Skip button click fires the dismiss POST (verified via network trace) but the modal immediately re-opens (fresh budget-estimate?budget_count=0 GET fires within the same render cycle). dismissedId guard is not preventing the auto-open useEffect from re-firing. Reference: /app/frontend/src/components/DeepImportBudgetPicker.tsx:79-84 (auto-open effect) and :118-127 (close()). The user is locked in the modal — only a hard page refresh escapes.", "testID": "deep-import-budget-picker", "priority": "CRITICAL"},
+      {"component": "DeepImportBudgetPicker X close (testID deep-import-budget-close)", "issue": "After Skip has already fired one dismiss POST, clicking the X close button does NOT fire a second dismiss POST and does NOT close the modal either. Suggests close() is either no-op'd by stale state (decision?.id null at that moment) or the modal portal stops accepting clicks.", "testID": "deep-import-budget-close", "priority": "HIGH"}
+    ],
+    "integration_issues": [
+      {"flow": "Step 5 → DeepImportBudgetPicker Skip → expect modal close", "issue": "Network proves dismiss POST is sent (200 OK from /decisions/{id}/deep-import/dismiss-rank-prompt). But the picker's own visibility flips back to true on the next render — confirmed by the immediately-following GET /deep-import/budget-estimate?budget_count=0 (only fires when visible=true).", "affected_testIDs": ["deep-import-budget-picker", "deep-import-budget-skip", "deep-import-budget-close"]}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter118_deep_import_rank.py",
+    "/app/backend/tests/test_iter141_dismiss_edges.py",
+    "/app/test_reports/pytest/iter141_dismiss_edges.xml",
+    "/app/test_reports/pytest/iter141_deep_import_rank.xml",
+    "/app/test_reports/seed_iter141.py",
+    "/tmp/iter141_modal_open.png",
+    "/tmp/iter141_after_skip.png",
+    "/tmp/iter141_after_renav.png",
+    "/tmp/iter141_final.png"
+  ],
+  "action_items": [
+    "CRITICAL: Re-fix the DeepImportBudgetPicker Skip/close loop. The dismissedId guard alone is insufficient — auto-open useEffect still re-fires. Suggested options: (a) Use a ref instead of state for dismissedId so the value is read synchronously inside the effect (avoids closure / batch staleness); (b) Add `if (visible) return;` AND `if (dismissedRef.current === decision?.id) return;` at the very top of the auto-open effect with the ref source-of-truth; (c) On Skip/X, call fetchDecision() BEFORE setVisible(false) so `pending` flips first, OR optimistically mutate the local decision state to flip deep_import_pending_rank=false synchronously (e.g. via a setDecision callback in DecisionContext); (d) Ensure the close() handler runs synchronously even if `decision` is briefly null (cache decision.id at modal-open time).",
+    "Also investigate why a 2nd click on X-close does not even fire a 2nd dismiss POST — likely the close() is exiting early because `decision?.id` is undefined at that instant. Cache the id in a ref so close() always knows what to send.",
+    "Optionally: hard-guard `setVisible(true)` calls by also checking that fetchDecision() has reconciled — e.g. by tracking a `lastSeenPendingForId` ref."
+  ],
+  "critical_code_review_comments": [
+    "DeepImportBudgetPicker.tsx — `dismissedId` is plain useState. Because React 18 batches setVisible(false)+setDismissedId together, the guard SHOULD work in theory. But the empirical evidence proves it doesn't on web. Suspect: the auto-open useEffect runs once with stale dismissedId=null between batched re-renders, OR the post-dismiss fetchDecision triggers a re-mount of Step5 (resetting local state). A useRef is safer because it survives renders & ignores batching.",
+    "Step5.tsx renders <DeepImportBudgetPicker /> with no key — Step5 itself is reachable via `case 5: return <Step5 />;` in prr/[id].tsx; renderStep is called inline in JSX, so each render creates a fresh element. React reconciles by position so Step5 should not unmount; but worth double-checking by `console.log('mount')` in DeepImportBudgetPicker.",
+    "close() captures `decision` from closure — if decision becomes null mid-await, `if (decision?.id)` short-circuits and no dismiss is sent on subsequent clicks. Cache decision.id at mount in a ref."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter141_dismiss_edges.py (NEW — edge tests for dismiss/budget endpoints)",
+    "/app/test_reports/seed_iter141.py (NEW — UI seed helper)"
+  ],
+  "success_rate": {"backend": "100% (9 passed, 1 admin-skip)", "frontend": "0% (primary skip-loop NOT FIXED)"},
+  "seed_data_creation": "Created 1 test user iter141ui_*@example.com + 1 TEST_ScreenerDeepImport decision in Mongo for the UI run. CLEANED UP at end (82 TEST_ decisions + 2 users deleted).",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Reproduction: register a user via /api/auth/register, insert a decision directly in Mongo with deep_import_pending_rank=true (>=2 factors, >=2 options pre-seeded), login in UI, navigate to /prr/{id}?step=5. Modal auto-opens. Click [data-testid=deep-import-budget-skip] — observe network: POST /deep-import/dismiss-rank-prompt returns 200, but a follow-up GET /deep-import/budget-estimate?budget_count=0 also fires, and the modal stays visible. To re-flag pending=true between attempts use PUT /api/decisions/{id} with {deep_import_pending_rank: true} body (this endpoint allows arbitrary field updates).",
+  "rca_of_issue": "PROXIMATE: Auto-open useEffect (line 79-84 of DeepImportBudgetPicker.tsx) re-fires after Skip despite the dismissedId guard. CONFIRMED via network trace: Skip→dismiss POST 200, then within the same render burst a new budget-estimate GET fires (which can only happen if visible flipped back to true). ROOT CAUSES (most likely, ranked): (1) dismissedId state was not committed before the next effect run (batch/timing race) — fix: convert to useRef; (2) Step5 component re-mounts during fetchDecision (resetting picker local state) — fix: hoist dismissedId tracking to DecisionContext or use a ref; (3) close() runs when decision is briefly null after fetchDecision (decision?.id evaluates falsy) → setDismissedId never called → guard never engaged — fix: cache decision.id in a ref at modal-open time. MITIGATION until fixed: hard-refresh clears it (DB flag IS set to false correctly)."
+}

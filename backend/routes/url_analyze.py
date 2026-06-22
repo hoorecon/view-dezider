@@ -938,6 +938,34 @@ async def _import_inner(decision_id: str, req: ImportRequest, request: Request,
             "factors_added": counts["factors_added"], "options_added": counts["options_added"],
         }
 
+    # ── Embedded-script content fallback: pages whose comparison data lives in
+    # a <script> JSON blob (so the deterministic + AI-table parses find little
+    # visible text) — e.g. SPA dashboards, screener-style screens, JS-rendered
+    # widgets. Recover the text the same way as AI conversation shares and
+    # extract factors+options with one LLM call. Mirrors Deep Import's sparse
+    # short-circuit so BOTH import modes handle script-rendered URLs. ──
+    if not is_json and len(candidates) < 2:
+        visible_len = len(page_text(r.text, limit=2500).strip())
+        if visible_len < 600:
+            await prog(70, "Reading script-embedded content…")
+            conv = extract_conversation_text(r.text)
+            ex = await ai_extract_decision_from_conversation(user["user_id"], conv)
+            factors_c = [{"name": n} for n in ex["factors"]][: (req.max_factors or 12)]
+            options_c = [{"name": n} for n in ex["options"]]
+            if len(factors_c) + len(options_c) >= 2:
+                await prog(85, "Merging factors & options into your decision…")
+                counts = await merge_into_mydezider(user["user_id"], decision_id,
+                                                    factors=factors_c, candidates=options_c)
+                tel["route"] = "embedded_script"
+                tel["item_count"] = len(options_c)
+                await _page_type()
+                await prog(100, "Done — factors & options added.", status="done")
+                return {
+                    "decision_id": decision_id, "consent_id": consent_id, "mode": "conversation",
+                    "item_count": len(options_c),
+                    "factors_added": counts["factors_added"], "options_added": counts["options_added"],
+                }
+
     # ── LLM flat fallback for table-less / irregular comparison pages ──
     if len(candidates) < 2:
         candidates = await candidates_from_response(r, user["user_id"], allow_ai=True)
