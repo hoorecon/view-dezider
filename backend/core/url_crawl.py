@@ -307,6 +307,85 @@ async def ai_extract_candidates(user_id: str, html: str) -> List[Dict[str, Any]]
         return []
 
 
+# ── AI conversation share-links (ChatGPT / Claude / Gemini) ──────────────
+# These pages render the conversation client-side from an embedded data
+# stream, so the visible DOM is nearly empty and the comparison-table parsers
+# find nothing. We recover the message bodies from the embedded escaped-string
+# literals and let an LLM pull the decision's factors + options.
+_CONVERSATION_HOSTS = ("chatgpt.com", "chat.openai.com", "claude.ai",
+                       "gemini.google.com", "g.co", "poe.com")
+
+
+def is_conversation_url(url: str) -> bool:
+    u = (url or "").lower()
+    if not any(h in u for h in _CONVERSATION_HOSTS):
+        return False
+    return ("/share/" in u) or ("/c/" in u) or ("/g/" in u)
+
+
+def extract_conversation_text(html: str) -> str:
+    """Recover human-readable conversation text from an AI share page.
+
+    The transcript is embedded as escaped JSON string literals inside the page's
+    data stream. Split on the escaped-quote delimiter and keep natural-language
+    chunks (dropping HTML/URL/metadata noise). Falls back to visible text."""
+    import codecs
+    out: List[str] = []
+    seen: set = set()
+    for seg in html.split('\\"'):
+        if len(seg) < 45 or " " not in seg:
+            continue
+        if "<" in seg or "://" in seg or "href" in seg or "rel=" in seg or "charset" in seg:
+            continue
+        letters = sum(c.isalpha() for c in seg)
+        if letters / max(1, len(seg)) < 0.6:
+            continue
+        s = seg.replace("\\n", "\n").replace("\\t", " ")
+        try:
+            s = codecs.decode(s, "unicode_escape").encode("latin-1").decode("utf-8")
+        except Exception:
+            pass
+        k = s[:48].strip().lower()
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(s.strip())
+    text = "\n\n".join(out)
+    if len(text) < 200:
+        soup = BeautifulSoup(html, "html.parser")
+        for t in soup(["script", "style", "noscript", "svg"]):
+            t.decompose()
+        text = re.sub(r"\n{2,}", "\n", soup.get_text("\n", strip=True))
+    return text[:16000]
+
+
+async def ai_extract_decision_from_conversation(user_id: str, text: str) -> Dict[str, List[str]]:
+    """LLM: from a decision-making chat, pull the comparison OPTIONS and the
+    FACTORS/criteria. Returns {"factors": [...], "options": [...]}. Metered."""
+    if not has_any_llm() or len(text) < 50:
+        return {"factors": [], "options": []}
+    sys = (
+        "You are reading a chat conversation in which someone works through a real decision. "
+        "Identify (1) the DECISION OPTIONS — the choices/alternatives being compared "
+        "(e.g. specific companies, investors, products, candidates, or paths), and "
+        "(2) the FACTORS — the criteria used to compare them (e.g. price, ticket size, fit, stage). "
+        'Reply with ONLY compact JSON: {"factors":["..."],"options":["..."]} . '
+        "Use the exact short names used in the chat. Max 15 factors and 24 options. No prose."
+    )
+    try:
+        out = await metered_chat(user_id, system_message=sys, prompt=text,
+                                 feature="url_analyze_conversation", session_prefix="urlconv")
+        m = re.search(r"\{.*\}", out, re.S)
+        data = json.loads(m.group(0)) if m else {}
+        f = [str(x).strip() for x in (data.get("factors") or []) if str(x).strip()][:15]
+        o = [str(x).strip() for x in (data.get("options") or []) if str(x).strip()][:24]
+        return {"factors": f, "options": o}
+    except Exception as e:
+        logger.warning("conversation extraction failed: %s", str(e)[:120])
+        return {"factors": [], "options": []}
+
+
+
 def _scraperapi_reason(status: int, body: str) -> str:
     """Map a failed ScraperAPI response to a human-readable admin-facing reason."""
     low = (body or "").lower()

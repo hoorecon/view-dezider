@@ -28,6 +28,7 @@ from core.url_crawl import (
     has_any_llm, metered_chat,
     fetch_page, fetch_rendered, parse_hierarchy, candidates_from_response,
     page_text,
+    is_conversation_url, extract_conversation_text, ai_extract_decision_from_conversation,
 )
 from core.url_detail import ai_extract_detail, deterministic_hint_issues
 from core.url_pagetype import classify_page_type
@@ -759,6 +760,36 @@ async def _import_inner(decision_id: str, req: ImportRequest, request: Request,
     await prog(12, "Fetching the page…")
     r = await fetch_page(req.url, user_id=user["user_id"])
     is_json = "json" in r.headers.get("content-type", "")
+
+    # ── AI conversation share-links (ChatGPT / Claude / Gemini): the page is a
+    # transcript, not a comparison table. Pull the discussed factors + options
+    # with one LLM call and merge them. Fast path — avoids the slow multi-strategy
+    # crawl (which times out on these JS-rendered pages) entirely. ──
+    if is_conversation_url(req.url):
+        await prog(35, "Reading the conversation…")
+        conv = extract_conversation_text(r.text)
+        await prog(60, "Extracting factors & options…")
+        ex = await ai_extract_decision_from_conversation(user["user_id"], conv)
+        factors = [{"name": n} for n in ex["factors"]][: (req.max_factors or 12)]
+        options = [{"name": n} for n in ex["options"]]
+        if len(factors) + len(options) < 2:
+            raise HTTPException(
+                422,
+                "Couldn't find clear decision factors/options in this conversation. "
+                "Open the chat and make sure the options and criteria are stated, then retry — "
+                "or paste the text via the 'Text' import.",
+            )
+        await prog(85, "Merging factors & options into your decision…")
+        counts = await merge_into_mydezider(user["user_id"], decision_id,
+                                            factors=factors, candidates=options)
+        tel["route"] = "ai_conversation"
+        tel["item_count"] = len(options)
+        await prog(100, "Done — factors & options added.", status="done")
+        return {
+            "decision_id": decision_id, "consent_id": consent_id, "mode": "conversation",
+            "item_count": len(options),
+            "factors_added": counts["factors_added"], "options_added": counts["options_added"],
+        }
 
     # ── LLM page-type classification (always-on): selects the specialised
     # extraction prompt AND powers per-page-type accuracy analytics. Started
