@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 const DAY_TABS = [
   { id: '', label: 'All', icon: 'calendar' },
@@ -178,7 +179,7 @@ export default function LifestyleEvalScreen() {
   return (
     <SafeAreaView style={s.container} edges={['top']}>
       <LinearGradient colors={['#7C3AED', '#A855F7']} style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={s.backBtn}>
           <Ionicons name="arrow-back" size={22} color="#FFF" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>

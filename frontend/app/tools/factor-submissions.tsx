@@ -8,6 +8,7 @@ import { router, Stack } from 'expo-router';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import { showAlert, confirmDialog } from '../../src/utils/alert';
+import { safeBack } from '../../src/utils/navigation';
 
 const TABS: { key: string; label: string }[] = [
   { key: 'pending', label: 'Pending' },
@@ -121,7 +122,7 @@ export default function FactorSubmissions() {
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ width: 44 }}>
+        <TouchableOpacity onPress={() => safeBack(router)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ width: 44 }}>
           <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Factor Submissions</Text>

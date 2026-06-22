@@ -21,6 +21,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
+import { safeBack } from '../../src/utils/navigation';
 
 let WebView: any = null;
 if (Platform.OS !== 'web') {
@@ -98,7 +99,7 @@ export default function JitsiRoomScreen() {
   const externalUrl = `https://${domain}/${room}#userInfo.displayName=%22${encodeURIComponent(displayName)}%22`;
 
   const handleEnd = () => {
-    try { router.back(); } catch { /* ignore */ }
+    try { safeBack(router); } catch { /* ignore */ }
   };
 
   return (

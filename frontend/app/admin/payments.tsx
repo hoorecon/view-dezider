@@ -16,6 +16,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
+import { safeBack } from '../../src/utils/navigation';
 
 type Coupon = {
   coupon_code: string;
@@ -210,7 +211,7 @@ export default function AdminPaymentsScreen() {
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 80 }}>
         {/* Header */}
         <View style={s.headerRow}>
-          <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
+          <TouchableOpacity onPress={() => safeBack(router)} style={s.backBtn}>
             <Ionicons name="chevron-back" size={22} color="#0F172A" />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>

@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 // life-area inline map replaced — see getLifeAreaShort()/getLifeAreaIcon()
 // life-area inline map replaced — see getLifeAreaShort()/getLifeAreaIcon()
@@ -156,7 +157,7 @@ export default function LifestyleAnalyticsScreen() {
   return (
     <SafeAreaView style={s.container} edges={['top']}>
       <LinearGradient colors={['#065F46', '#059669']} style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={s.backBtn}>
           <Ionicons name="arrow-back" size={22} color="#FFF" />
         </TouchableOpacity>
         <Text style={s.headerTitle}>Lifestyle Analytics</Text>

@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { showAlert } from '../../src/utils/alert';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 interface ModuleInfo { module: string; label: string; blocks: number; }
 interface FieldDef { key: string; label: string; type: string; options?: string[]; required?: boolean; }
@@ -132,7 +133,7 @@ export default function AdminContentLibrary() {
   return (
     <SafeAreaView style={s.wrap} edges={['top']}>
       <View style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={s.backBtn}>
           <Ionicons name="arrow-back" size={22} color="#FFF" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>

@@ -31,6 +31,7 @@ import { Ionicons } from '@expo/vector-icons';
 import api from '../../../src/utils/api';
 import { COLORS } from '../../../src/constants/colors';
 import { showAlert } from '../../../src/utils/alert';
+import { safeBack } from '../../../src/utils/navigation';
 
 interface ExplorerNode {
   id: string;
@@ -481,7 +482,7 @@ export default function AdminCatalogExplorerScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Central Catalog</Text>

@@ -13,6 +13,7 @@ import api from '../../src/utils/api';
 import { COLORS } from '../../src/constants/colors';
 import { showAlert } from '../../src/utils/alert';
 import { VoiceDictate } from '../../src/components/VoiceDictate';
+import { safeBack } from '../../src/utils/navigation';
 
 const FREEDOM_KEYS = ['business', 'financial', 'time', 'health', 'emotional', 'social', 'mission'];
 const TEPFI = ['time', 'energy', 'people', 'finance', 'infrastructure'];
@@ -94,7 +95,7 @@ export default function DailyTrackerScreen() {
   return (
     <SafeAreaView style={s.container} edges={['top']}>
       <View style={s.header}>
-        <TouchableOpacity onPress={() => router.back()}><Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} /></TouchableOpacity>
+        <TouchableOpacity onPress={() => safeBack(router)}><Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} /></TouchableOpacity>
         <View style={{ flex: 1, marginHorizontal: 12 }}>
           <Text style={s.title}>Daily Tracker</Text>
           <Text style={s.subtitle}>What did you do? Log it once, AALA + LDC update automatically</Text>

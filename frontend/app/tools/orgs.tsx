@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { showAlert } from '../../src/utils/alert';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 const LIFE_AREAS = ['Career','Business','Finance','Family','Health','Relationships','Personal','Social','Spiritual','Recreation'];
 const ORG_TYPES = ['BUSINESS','NGO','GOVT','EDUCATION','FAMILY','COMMUNITY','SPIRITUAL','HEALTHCARE','OTHER'];
@@ -44,7 +45,7 @@ export default function OrgsScreen() {
   return (
     <SafeAreaView style={s.wrap} edges={['top']}>
       <View style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn}><Ionicons name="arrow-back" size={22} color="#FFF" /></TouchableOpacity>
+        <TouchableOpacity onPress={() => safeBack(router)} style={s.backBtn}><Ionicons name="arrow-back" size={22} color="#FFF" /></TouchableOpacity>
         <Text style={s.title}>My Organizations</Text>
         <Text style={s.subtitle}>Custom orgs across life areas · 7×7 matrix · 6 LeGs goals</Text>
       </View>

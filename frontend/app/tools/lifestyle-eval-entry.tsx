@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 interface Activity {
   activity_id: string;
@@ -181,7 +182,7 @@ export default function LifestyleEvalEntryScreen() {
         activities: valid,
         remarks,
       });
-      showAlert('Saved', 'Activities logged!', [{ text: 'OK', onPress: () => router.back() }]);
+      showAlert('Saved', 'Activities logged!', [{ text: 'OK', onPress: () => safeBack(router) }]);
     } catch (e) {
       showAlert('Error', 'Failed to save');
     } finally { setSaving(false); }
@@ -203,7 +204,7 @@ export default function LifestyleEvalEntryScreen() {
     <SafeAreaView style={st.container} edges={['top']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <LinearGradient colors={['#7C3AED', '#A855F7']} style={st.header}>
-          <TouchableOpacity onPress={() => router.back()} style={st.backBtn}>
+          <TouchableOpacity onPress={() => safeBack(router)} style={st.backBtn}>
             <Ionicons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>

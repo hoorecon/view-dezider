@@ -21,6 +21,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { COLORS, GRADIENTS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
+import { safeBack } from '../../src/utils/navigation';
 
 // ========================
 // CONSTANTS
@@ -1218,7 +1219,7 @@ export default function SocialLearningScreen() {
       >
         {/* Header */}
         <LinearGradient colors={GRADIENTS.header} style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity onPress={() => safeBack(router)} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={24} color="#FFF" />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>

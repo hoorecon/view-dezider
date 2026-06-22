@@ -37,6 +37,7 @@ import ValuesAlignmentPanel from '../../src/components/ValuesAlignmentPanel';
 import ConvertToActionButton from '../../src/components/ConvertToActionButton';
 import { CollabBar } from '../../src/components/CollabBar';
 import { DecisionContinuePanel } from '../../src/components/DecisionContinuePanel';
+import { safeBack } from '../../src/utils/navigation';
 
 // ============== CONSTANTS ==============
 // NOTE: Life-area list is no longer hardcoded — it now flows from the
@@ -101,7 +102,7 @@ export default function SimpleSolutionFinder() {
   // (fixes a dead back button on direct/deep-linked loads where there is no
   // history to pop).
   const goBack = useCallback(() => {
-    if (router.canGoBack()) router.back();
+    if (router.canGoBack()) safeBack(router);
     else router.replace('/(tabs)' as any);
   }, [router]);
   // Hydration gate — auth store rehydrates async from secure storage; we must

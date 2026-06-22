@@ -17,6 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, GRADIENTS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import { getLifeAreaName } from '../../src/constants/lifeAreas';
+import { safeBack } from '../../src/utils/navigation';
 
 export default function SolutionFinderListScreen() {
   const router = useRouter();
@@ -27,9 +28,9 @@ export default function SolutionFinderListScreen() {
   // Robust back: pop history if we got here via in-app nav, else go to the
   // dashboard. Fixes the dead "back" button on direct/deep-linked loads
   // (e.g. opening /tools/solution-finder-list in a fresh tab) where
-  // router.back() is a no-op because there is no history to pop.
+  // safeBack(router) is a no-op because there is no history to pop.
   const goBack = useCallback(() => {
-    if (router.canGoBack()) router.back();
+    if (router.canGoBack()) safeBack(router);
     else router.replace('/(tabs)' as any);
   }, [router]);
 

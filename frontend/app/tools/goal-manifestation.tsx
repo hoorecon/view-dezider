@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import { AudioGuidePlayer } from '../../src/components/AudioGuidePlayer';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 interface Stage { stage_number: number; letter: string; name: string; color: string; icon: string; summary: string; steps: any[]; audio_url?: string; audio_title?: string; }
 
@@ -287,7 +288,7 @@ export default function GoalManifestationScreen() {
     <SafeAreaView style={st.container} edges={['top']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <LinearGradient colors={['#7C3AED', '#9333EA']} style={st.header}>
-          <TouchableOpacity onPress={() => mode === 'journey' ? setMode('list') : router.back()} style={st.backBtn}>
+          <TouchableOpacity onPress={() => mode === 'journey' ? setMode('list') : safeBack(router)} style={st.backBtn}>
             <Ionicons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>

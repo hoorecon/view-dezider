@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 interface DecisionMode {
   id: string;
@@ -82,7 +83,7 @@ export default function DecisionModesScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <LinearGradient colors={['#4C1D95', '#7C3AED']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => safeBack(router)}>
           <Ionicons name="arrow-back" size={22} color="#FFF" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>

@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
+import { safeBack } from '../../src/utils/navigation';
 
 const SLOTS = [
   { id: 'day-plan', label: 'Morning', icon: 'sunny', endpoint: '/raja-guru/day-plan' },
@@ -92,7 +93,7 @@ export default function TimeDeziderScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <LinearGradient colors={['#6D28D9', '#EC4899']} style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => safeBack(router)}>
           <Ionicons name="chevron-back" size={26} color="#FFF" />
         </TouchableOpacity>
         <View style={{ flex: 1, marginLeft: 8 }}>

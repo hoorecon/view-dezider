@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 // LIFE_AREAS array moved into the component (catalog-driven).
 const STATUS_COLORS: Record<string, string> = {
@@ -153,7 +154,7 @@ export default function GemFlightScreen() {
     <SafeAreaView style={s.container} edges={['top']}>
       {/* Header */}
       <LinearGradient colors={['#0C1445', '#1A237E', '#283593']} style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={s.backBtn}>
           <Ionicons name="arrow-back" size={24} color="#FFF" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>

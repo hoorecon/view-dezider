@@ -14,6 +14,7 @@ import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import TimestampLine from '../../src/components/TimestampLine';
 import ATEXEstimateButton from '../../src/components/ATEXEstimateButton';
+import { safeBack } from '../../src/utils/navigation';
 
 // LIFE_AREAS array moved into the component (catalog-driven).
 const DAY_TYPES = [
@@ -498,7 +499,7 @@ export default function LifestyleDesignerScreen() {
       >
         {/* Header */}
         <View style={s.header}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={() => safeBack(router)}>
             <Ionicons name="arrow-back" size={24} color="#FFF" />
           </TouchableOpacity>
           <Text style={s.headerTitle}>Lifestyle Designer</Text>

@@ -14,6 +14,7 @@ import { COLORS } from '../src/constants/colors';
 import api from '../src/utils/api';
 import { showAlert } from '../src/utils/alert';
 import { useAuthStore } from '../src/store/authStore';
+import { safeBack } from '../src/utils/navigation';
 
 const BASE_URL = (Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL as string) || process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
@@ -163,7 +164,7 @@ export default function SubscriptionPlansScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={{ width: 24 }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={{ width: 24 }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Subscription</Text>

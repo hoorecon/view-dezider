@@ -21,6 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import api from '../../src/utils/api';
 import { COLORS } from '../../src/constants/colors';
 import { showAlert } from '../../src/utils/alert';
+import { safeBack } from '../../src/utils/navigation';
 
 type Tab = 'about' | 'surveys' | 'reviews' | 'feedback';
 
@@ -97,7 +98,7 @@ export default function PublicOrgPortal() {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.headerBar}>
-          <TouchableOpacity onPress={() => router.back()}><Ionicons name="arrow-back" size={22} color="#FFF" /></TouchableOpacity>
+          <TouchableOpacity onPress={() => safeBack(router)}><Ionicons name="arrow-back" size={22} color="#FFF" /></TouchableOpacity>
           <Text style={styles.headerTitle}>Org Portal</Text>
           <View style={{ width: 22 }} />
         </View>
@@ -114,7 +115,7 @@ export default function PublicOrgPortal() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header — themed */}
       <View style={[styles.headerBar, { backgroundColor: primary }]}>
-        <TouchableOpacity onPress={() => router.back()} style={{ padding: 4 }}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={{ padding: 4 }}>
           <Ionicons name="arrow-back" size={22} color="#FFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>{org.display_name}</Text>

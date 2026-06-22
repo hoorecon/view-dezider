@@ -17,6 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, GRADIENTS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import { useAuthStore } from '../../src/store/authStore';
+import { safeBack } from '../../src/utils/navigation';
 
 const ORG_ROLES = [
   { key: 'org_super_admin', label: 'Org Super Admin', level: 3, color: '#EF4444', icon: 'shield' },
@@ -178,7 +179,7 @@ export default function OrgMembersScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <LinearGradient colors={GRADIENTS.header} style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity onPress={() => safeBack(router)} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={24} color="#FFF" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Org Members</Text>
@@ -195,7 +196,7 @@ export default function OrgMembersScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <LinearGradient colors={GRADIENTS.header} style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color="#FFF" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>

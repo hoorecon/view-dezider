@@ -26,6 +26,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { showAlert } from '../../src/utils/alert';
 import api from '../../src/utils/api';
 import { useAuthStore } from '../../src/store/authStore';
+import { safeBack } from '../../src/utils/navigation';
 
 type Tab = 'browse' | 'mine' | 'top';
 
@@ -198,7 +199,7 @@ export default function ReviewNetPage() {
   return (
     <SafeAreaView style={s.container} edges={['top']}>
       <LinearGradient colors={['#F59E0B', '#FBBF24']} style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} style={s.headerBtn}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={s.headerBtn}>
           <Ionicons name="arrow-back" size={22} color="#FFF" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>

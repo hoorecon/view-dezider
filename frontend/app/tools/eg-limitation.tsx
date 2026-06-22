@@ -17,6 +17,7 @@ import { handleAiError } from '../../src/utils/aiErrors';
 import { confirmAiSpend, useAiEstimate } from '../../src/utils/aiEstimates';
 import { AiCreditsBadge } from '../../src/components/AiCreditsBadge';
 import { Alert } from '../../src/utils/crossAlert';
+import { safeBack } from '../../src/utils/navigation';
 
 const LIMITATION_AUDIO_URL = 'https://customer-assets.emergentagent.com/job_a7a2d7ec-9ce2-470b-8ff8-d26638aa4277/artifacts/qrq3iqkh_Breaking%20the%20LIMITATIONS.mp3';
 
@@ -56,7 +57,7 @@ export default function EGLimitationScreen() {
       router.replace(`/tools/solution-finder?id=${params.return_id}&step=2` as any);
       return;
     }
-    if (router.canGoBack?.()) router.back();
+    if (router.canGoBack?.()) safeBack(router);
     else router.replace('/tools/emotional-gatekeeper' as any);
   };
   const params = useLocalSearchParams<{ sessionId: string; return_to?: string; return_id?: string }>();

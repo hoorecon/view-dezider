@@ -12,6 +12,7 @@ import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { safeBack } from '../../src/utils/navigation';
 
 type DocType = 'prd' | 'srs' | 'regression_tests' | 'uat_cases' | 'api_catalog';
 
@@ -539,7 +540,7 @@ export default function AdminDocsScreen() {
         end={{ x: 1, y: 1 }}
         style={styles.header}
       >
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => safeBack(router)}>
           <Ionicons name="arrow-back" size={22} color="#FFF" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>

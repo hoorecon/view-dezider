@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import { LinkedFreedomsPicker } from '../../src/components/LinkedFreedomsPicker';
+import { safeBack } from '../../src/utils/navigation';
 
 // LIFE_AREAS array moved into the component (catalog-driven).
 const FREQUENCIES = [
@@ -91,7 +92,7 @@ export default function LifestyleRoutineScreen() {
       setLinkedFreedoms(d.linked_freedoms || []);
     } catch (e) {
       showAlert('Error', 'Failed to load routine');
-      router.back();
+      safeBack(router);
     } finally { setLoading(false); }
   };
 
@@ -117,7 +118,7 @@ export default function LifestyleRoutineScreen() {
       } else {
         await api.post('/lifestyle/routines', payload);
       }
-      router.back();
+      safeBack(router);
     } catch (e) { showAlert('Error', 'Failed to save'); }
     finally { setSaving(false); }
   };
@@ -136,7 +137,7 @@ export default function LifestyleRoutineScreen() {
     <SafeAreaView style={st.container} edges={['top']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <LinearGradient colors={['#065F46', '#059669']} style={st.header}>
-          <TouchableOpacity onPress={() => router.back()} style={st.backBtn}>
+          <TouchableOpacity onPress={() => safeBack(router)} style={st.backBtn}>
             <Ionicons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
           <Text style={st.headerTitle}>{editId ? 'Edit Routine' : 'New Routine'}</Text>
@@ -146,7 +147,7 @@ export default function LifestyleRoutineScreen() {
               onPress={() => showAlert('Delete', 'Delete this routine?', [
                 { text: 'Cancel', style: 'cancel' },
                 { text: 'Delete', style: 'destructive', onPress: async () => {
-                  try { await api.delete(`/lifestyle/routines/${editId}`); router.back(); }
+                  try { await api.delete(`/lifestyle/routines/${editId}`); safeBack(router); }
                   catch (e) { showAlert('Error', 'Failed to delete'); }
                 }},
               ])}

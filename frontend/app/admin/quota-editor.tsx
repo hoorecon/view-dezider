@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import api from '../../src/utils/api';
 import { COLORS } from '../../src/constants/colors';
 import { showAlert } from '../../src/utils/alert';
+import { safeBack } from '../../src/utils/navigation';
 
 interface SkuRow { sku_code: string; name: string; granted: number; consumed: number; balance: number; }
 interface FoundUser { user_id: string; name?: string; email?: string; mobile_masked?: string; whatsapp_verified?: boolean; }
@@ -154,7 +155,7 @@ export default function AdminQuotaEditorScreen() {
   if (!perm?.can_edit_quota) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <Header onBack={() => router.back()} />
+        <Header onBack={() => safeBack(router)} />
         <View style={styles.center}>
           <Ionicons name="lock-closed" size={40} color={COLORS.textMuted} />
           <Text style={styles.deniedText}>You don't have permission to edit report allocations.</Text>
@@ -166,7 +167,7 @@ export default function AdminQuotaEditorScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Header onBack={() => router.back()} />
+      <Header onBack={() => safeBack(router)} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 60 }} keyboardShouldPersistTaps="handled">
           {/* Lookup */}

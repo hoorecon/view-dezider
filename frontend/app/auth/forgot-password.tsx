@@ -16,6 +16,7 @@ import { COLORS } from '../../src/constants/colors';
 import { Input } from '../../src/components/Input';
 import { GradientButton } from '../../src/components/GradientButton';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 type Step = 'email' | 'otp' | 'success';
 
@@ -234,7 +235,7 @@ export default function ForgotPasswordScreen() {
                   setStep('email');
                   setError('');
                 } else {
-                  router.back();
+                  safeBack(router);
                 }
               }}
             >

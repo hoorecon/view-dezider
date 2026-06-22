@@ -20,6 +20,7 @@ import { useFontFamily, useAppLogo } from '../../src/contexts/FontFamilyContext'
 import { useAuthStore } from '../../src/store/authStore';
 import { invalidateLoaderMusicCache } from '../../src/hooks/useLoaderMusic';
 import Slider from '@react-native-community/slider';
+import { safeBack } from '../../src/utils/navigation';
 
 export default function AdminAppearance() {
   const router = useRouter();
@@ -305,7 +306,7 @@ export default function AdminAppearance() {
   return (
     <SafeAreaView style={s.root} edges={['top']}>
       <View style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={8} style={s.backBtn}>
+        <TouchableOpacity onPress={() => safeBack(router)} hitSlop={8} style={s.backBtn}>
           <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <Text style={s.headerTitle}>Appearance · Font</Text>

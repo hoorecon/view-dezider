@@ -15,6 +15,7 @@ import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
 import { COLORS } from '../../src/constants/colors';
 import { useAuthStore } from '../../src/store/authStore';
+import { safeBack } from '../../src/utils/navigation';
 
 const PURPOSES = ['Support service', 'Data Analytics', 'Training Support', 'Other'];
 
@@ -109,7 +110,7 @@ export default function UserLookup() {
   if (!hasAccess) {
     return (
       <SafeAreaView style={s.root} edges={['top']}>
-        <Header title="User Lookup" onBack={() => router.back()} />
+        <Header title="User Lookup" onBack={() => safeBack(router)} />
         <View style={s.center}>
           <Ionicons name="lock-closed" size={40} color={COLORS.textMuted} />
           <Text style={s.noAccess}>You don't have PII-access permission.</Text>
@@ -121,7 +122,7 @@ export default function UserLookup() {
 
   return (
     <SafeAreaView style={s.root} edges={['top']}>
-      <Header title="User Lookup (PII)" onBack={() => router.back()} />
+      <Header title="User Lookup (PII)" onBack={() => safeBack(router)} />
 
       {/* Tabs */}
       <View style={s.tabs}>

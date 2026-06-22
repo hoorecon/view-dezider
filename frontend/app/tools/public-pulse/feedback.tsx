@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../../src/constants/colors';
 import api from '../../../src/utils/api';
 import { showAlert } from '../../../src/utils/alert';
+import { safeBack } from '../../../src/utils/navigation';
 
 const TYPES = [
   { code: 'service', label: 'Service Issue', icon: 'business' },
@@ -78,7 +79,7 @@ export default function FeedbackScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={() => safeBack(router)}>
             <Ionicons name="chevron-back" size={28} color={COLORS.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Feedback & Issues</Text>

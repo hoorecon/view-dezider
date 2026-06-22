@@ -13,6 +13,7 @@ import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import ProjectStatusPicker from '../../src/components/decisions/ProjectStatusPicker';
 import TimestampLine from '../../src/components/TimestampLine';
+import { safeBack } from '../../src/utils/navigation';
 
 // LIFE_AREAS array moved into the component (catalog-driven).
 const GOAL_TYPES = [
@@ -79,7 +80,7 @@ export default function GEMScreen() {
   return (
     <SafeAreaView style={s.container} edges={['top']}>
       <LinearGradient colors={['#0D9488','#14B8A6']} style={s.header}>
-        <TouchableOpacity onPress={()=>router.back()} style={s.backBtn}>
+        <TouchableOpacity onPress={()=>safeBack(router)} style={s.backBtn}>
           <Ionicons name="arrow-back" size={24} color="#FFF" />
         </TouchableOpacity>
         <View style={{flex:1}}>

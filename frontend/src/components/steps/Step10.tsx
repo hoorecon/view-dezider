@@ -11,6 +11,7 @@ import ActionItemEditor from '../ActionItemEditor';
 import { styles } from '../../styles/decisionStyles';
 import { TEPFI_ELEMENTS, TEPFI_LAYERS } from '../../utils/decisionHelpers';
 import { showAlert } from '../../utils/alert';
+import { safeBack } from '../../utils/navigation';
 
 export default function Step10() {
   const { decision, saveDecision, selectOption, calculateDynamicWorth, setCurrentStep, router } = useDecision();
@@ -312,7 +313,7 @@ export default function Step10() {
                             final_choice_decided_at: decision.final_choice_decided_at || new Date().toISOString(),
                           });
                           showAlert('Decision Completed 🎉', 'Your decision has been marked as completed.', [
-                            { text: 'Done', onPress: () => { if (router.canGoBack?.()) router.back(); else router.replace('/(tabs)' as any); } },
+                            { text: 'Done', onPress: () => { if (router.canGoBack?.()) safeBack(router); else router.replace('/(tabs)' as any); } },
                           ]);
                         } catch (e) {
                           showAlert('Could not complete', 'Something went wrong. Please try again.');

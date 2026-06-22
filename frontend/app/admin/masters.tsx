@@ -15,6 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
 import { OrgTypesManager } from '../../src/components/admin/OrgTypesManager';
+import { safeBack } from '../../src/utils/navigation';
 
 const TYPES = [
   { key: 'org_type', label: 'Org Types' },
@@ -91,7 +92,7 @@ export default function AdminMastersScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <LinearGradient colors={['#6366F1', '#4338CA']} style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => safeBack(router)}>
           <Ionicons name="arrow-back" size={22} color="#FFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Masters</Text>

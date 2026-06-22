@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
 import { useOrgTypes } from '../../src/hooks/useOrgTypes';
+import { safeBack } from '../../src/utils/navigation';
 
 interface Tpl {
   id: string; title: string; description?: string;
@@ -120,7 +121,7 @@ export default function AdminScenarios() {
   return (
     <SafeAreaView style={s.safe}>
       <View style={s.header}>
-        <TouchableOpacity testID="scenarios-back-btn" style={s.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity testID="scenarios-back-btn" style={s.backBtn} onPress={() => safeBack(router)}>
           <Ionicons name="arrow-back" size={22} color="#0F172A" />
         </TouchableOpacity>
         <Text style={s.headerTitle}>Intake Scenarios</Text>

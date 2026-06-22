@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import api from '../../src/utils/api';
 import { useAuthStore } from '../../src/store/authStore';
+import { safeBack } from '../../src/utils/navigation';
 
 const COLORS = {
   bg: '#0F172A', surface: '#1E293B', surfaceLight: '#334155',
@@ -244,7 +245,7 @@ export default function SolutionsStoreScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>

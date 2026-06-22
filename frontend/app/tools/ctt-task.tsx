@@ -15,6 +15,7 @@ import api from '../../src/utils/api';
 import { useAuthStore } from '../../src/store/authStore';
 import { LinkedFreedomsPicker } from '../../src/components/LinkedFreedomsPicker';
 import ATEXEstimateButton from '../../src/components/ATEXEstimateButton';
+import { safeBack } from '../../src/utils/navigation';
 
 // LIFE_AREAS array moved into the component (catalog-driven).
 const PRIORITIES = [
@@ -136,7 +137,7 @@ export default function CTTTaskScreen() {
       setLinkedFreedoms(d.linked_freedoms || []);
     } catch (e) {
       showAlert('Error', 'Failed to load task');
-      router.back();
+      safeBack(router);
     } finally {
       setLoading(false);
     }
@@ -179,7 +180,7 @@ export default function CTTTaskScreen() {
       } else {
         await api.post('/ctt/tasks', payload);
       }
-      router.back();
+      safeBack(router);
     } catch (e) {
       showAlert('Error', 'Failed to save task');
     } finally {
@@ -226,7 +227,7 @@ export default function CTTTaskScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         {/* Header */}
         <LinearGradient colors={['#F1F5F9', '#2D5F8B']} style={st.header}>
-          <TouchableOpacity onPress={() => router.back()} style={st.backBtn}>
+          <TouchableOpacity onPress={() => safeBack(router)} style={st.backBtn}>
             <Ionicons name="arrow-back" size={22} color="#1E293B" />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
@@ -241,7 +242,7 @@ export default function CTTTaskScreen() {
               onPress={() => showAlert('Delete', 'Delete this task?', [
                 { text: 'Cancel', style: 'cancel' },
                 { text: 'Delete', style: 'destructive', onPress: async () => {
-                  try { await api.delete(`/ctt/tasks/${editId}`); router.back(); }
+                  try { await api.delete(`/ctt/tasks/${editId}`); safeBack(router); }
                   catch (e) { showAlert('Error', 'Failed to delete'); }
                 }},
               ])}

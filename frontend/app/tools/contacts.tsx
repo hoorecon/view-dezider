@@ -14,6 +14,7 @@ import api from '../../src/utils/api';
 import MasterSelect from '../../src/components/MasterSelect';
 import ProfessionalRolesPanel from '../../src/components/ProfessionalRolesPanel';
 import * as ImagePicker from 'expo-image-picker';
+import { safeBack } from '../../src/utils/navigation';
 
 const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'JPY', 'CNY', 'AUD', 'CAD', 'CHF', 'AED', 'SGD'];
 
@@ -455,7 +456,7 @@ export default function ContactsScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <LinearGradient colors={['#FFFFFF','#475569']} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => safeBack(router)}>
           <Ionicons name="arrow-back" size={22} color="#1E293B" />
         </TouchableOpacity>
         <View style={{flex:1}}>

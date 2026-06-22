@@ -10,6 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../../src/constants/colors';
 import api from '../../../src/utils/api';
 import { showAlert } from '../../../src/utils/alert';
+import { safeBack } from '../../../src/utils/navigation';
 
 type Question = {
   id: string;
@@ -59,7 +60,7 @@ export default function RunToolScreen() {
         setSessionId(startRes.data.session_id);
       } catch (e: any) {
         showAlert('Error', e?.response?.data?.detail || 'Failed to start tool');
-        router.back();
+        safeBack(router);
       } finally {
         setLoading(false);
       }
@@ -126,7 +127,7 @@ export default function RunToolScreen() {
         <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
           {/* Header */}
           <View style={styles.header}>
-            <TouchableOpacity onPress={() => router.back()}>
+            <TouchableOpacity onPress={() => safeBack(router)}>
               <Ionicons name="close" size={28} color={COLORS.text} />
             </TouchableOpacity>
             <Text style={styles.headerStep}>Step {currentStep.step} of {totalSteps}</Text>

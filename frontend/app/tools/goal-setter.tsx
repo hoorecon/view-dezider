@@ -19,6 +19,7 @@ import TimestampLine from '../../src/components/TimestampLine';
 import { CollabBar } from '../../src/components/CollabBar';
 import { DecisionContinuePanel } from '../../src/components/DecisionContinuePanel';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 const AUDIO_URL = 'https://customer-assets.emergentagent.com/job_a7a2d7ec-9ce2-470b-8ff8-d26638aa4277/artifacts/unvj7j0c_Goal%20Setter.mp3';
 
@@ -317,7 +318,7 @@ export default function GoalSetterScreen() {
     <SafeAreaView style={s.container} edges={['top']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <LinearGradient colors={['#059669', '#10B981']} style={s.header}>
-          <TouchableOpacity onPress={() => mode === 'create' ? setMode('list') : router.back()} style={s.backBtn}>
+          <TouchableOpacity onPress={() => mode === 'create' ? setMode('list') : safeBack(router)} style={s.backBtn}>
             <Ionicons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>

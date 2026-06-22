@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { showAlert } from '../../src/utils/alert';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 export default function AdminACMResolverConfig() {
   const router = useRouter();
@@ -55,7 +56,7 @@ export default function AdminACMResolverConfig() {
   return (
     <SafeAreaView style={s.wrap} edges={['top']}>
       <View style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn}><Ionicons name="arrow-back" size={22} color="#FFF" /></TouchableOpacity>
+        <TouchableOpacity onPress={() => safeBack(router)} style={s.backBtn}><Ionicons name="arrow-back" size={22} color="#FFF" /></TouchableOpacity>
         <Text style={s.title}>ACM Resolver · Config</Text>
         <Text style={s.subtitle}>5-axis user-type resolution tuning</Text>
       </View>

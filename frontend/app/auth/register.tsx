@@ -18,6 +18,7 @@ import { useAuthStore } from '../../src/store/authStore';
 import { COLORS } from '../../src/constants/colors';
 import { Input } from '../../src/components/Input';
 import { GradientButton } from '../../src/components/GradientButton';
+import { safeBack } from '../../src/utils/navigation';
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -114,7 +115,7 @@ export default function RegisterScreen() {
         >
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => router.back()}
+            onPress={() => safeBack(router)}
           >
             <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
           </TouchableOpacity>

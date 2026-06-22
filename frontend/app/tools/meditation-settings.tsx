@@ -12,6 +12,7 @@ import { COLORS } from '../../src/constants/colors';
 import { AudioGuidePlayer } from '../../src/components/AudioGuidePlayer';
 import * as DocumentPicker from 'expo-document-picker';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 interface MeditationSlot {
   id: string;
@@ -141,7 +142,7 @@ export default function MeditationSettingsScreen() {
   return (
     <SafeAreaView style={st.container} edges={['top']}>
       <LinearGradient colors={['#7C3AED', '#9333EA']} style={st.header}>
-        <TouchableOpacity onPress={() => router.back()} style={st.backBtn}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={st.backBtn}>
           <Ionicons name="arrow-back" size={22} color="#FFF" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>

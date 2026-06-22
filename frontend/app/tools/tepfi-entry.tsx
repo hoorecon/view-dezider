@@ -12,6 +12,7 @@ import { COLORS } from '../../src/constants/colors';
 import { LIFE_AREAS as CATALOG_LIFE_AREAS } from '../../src/constants/lifeAreas';
 import api from '../../src/utils/api';
 import Slider from '@react-native-community/slider';
+import { safeBack } from '../../src/utils/navigation';
 
 const DIMENSIONS = [
   { id: 'time', name: 'Time', icon: 'time', color: '#3B82F6', desc: 'Time allocated & required' },
@@ -104,7 +105,7 @@ export default function TEPFIEntryScreen() {
       if (d.matrix) setMatrix(d.matrix);
     } catch (e) {
       showAlert('Error', 'Failed to load entry');
-      router.back();
+      safeBack(router);
     } finally {
       setLoading(false);
     }
@@ -142,7 +143,7 @@ export default function TEPFIEntryScreen() {
       } else {
         await api.post('/tepfi/entries', payload);
       }
-      router.back();
+      safeBack(router);
     } catch (e) {
       showAlert('Error', 'Failed to save');
     } finally {
@@ -164,7 +165,7 @@ export default function TEPFIEntryScreen() {
     <SafeAreaView style={st.container} edges={['top']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <LinearGradient colors={['#7C3AED', '#A855F7']} style={st.header}>
-          <TouchableOpacity onPress={() => router.back()} style={st.backBtn}>
+          <TouchableOpacity onPress={() => safeBack(router)} style={st.backBtn}>
             <Ionicons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
           <Text style={st.headerTitle}>{editId ? 'Edit Assessment' : 'New Capabilities Assessment'}</Text>

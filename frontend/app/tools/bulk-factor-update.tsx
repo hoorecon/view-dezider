@@ -15,6 +15,7 @@ import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
 import { useAuthStore } from '../../src/store/authStore';
+import { safeBack } from '../../src/utils/navigation';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
@@ -171,7 +172,7 @@ export default function BulkFactorUpdate() {
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ width: 44 }}>
+        <TouchableOpacity onPress={() => safeBack(router)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ width: 44 }}>
           <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>Bulk Factor Updates</Text>

@@ -27,6 +27,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import { Card } from '../../src/components/Card';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 interface Test123Session {
   id: string;
@@ -166,7 +167,7 @@ export default function Test123ListScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header with visible Back button */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => safeBack(router)}>
           <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>

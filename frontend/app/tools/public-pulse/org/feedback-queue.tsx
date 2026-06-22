@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../../../src/constants/colors';
 import api from '../../../../src/utils/api';
 import { showAlert } from '../../../../src/utils/alert';
+import { safeBack } from '../../../../src/utils/navigation';
 
 const STATUS_COLOR: Record<string, string> = {
   new: '#3B82F6', auto_routed: '#8B5CF6', routed: '#8B5CF6',
@@ -92,7 +93,7 @@ export default function OrgFeedbackQueue() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => safeBack(router)}>
           <Ionicons name="chevron-back" size={28} color={COLORS.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Feedback Queue</Text>

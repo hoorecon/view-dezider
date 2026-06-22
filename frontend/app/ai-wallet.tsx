@@ -16,6 +16,7 @@ import { showAlert } from '../src/utils/alert';
 import { AI_FEATURE_LABELS, labelForFeature } from '../src/utils/aiFeatureLabels';
 import { useAiWalletStore } from '../src/store/aiWalletStore';
 import AiConsumptionPie from '../src/components/AiConsumptionPie';
+import { safeBack } from '../src/utils/navigation';
 
 const BASE_URL = (Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL as string) || process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
@@ -175,7 +176,7 @@ export default function AiWalletScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={styles.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>AI Wallet</Text>

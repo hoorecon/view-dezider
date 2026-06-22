@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import api from '../../../../src/utils/api';
 import { COLORS } from '../../../../src/constants/colors';
 import { showAlert } from '../../../../src/utils/alert';
+import { safeBack } from '../../../../src/utils/navigation';
 
 type Tab = 'inbox' | 'schedule' | 'intake' | 'webinars';
 
@@ -49,7 +50,7 @@ export default function ExpertManageScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={{ padding: 4 }}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={{ padding: 4 }}>
           <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <View style={{ flex: 1, marginHorizontal: 10 }}>

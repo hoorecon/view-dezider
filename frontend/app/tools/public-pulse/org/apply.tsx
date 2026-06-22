@@ -11,6 +11,7 @@ import * as FileSystem from 'expo-file-system';
 import { COLORS } from '../../../../src/constants/colors';
 import api from '../../../../src/utils/api';
 import { showAlert } from '../../../../src/utils/alert';
+import { safeBack } from '../../../../src/utils/navigation';
 
 type OrgType = { code: string; label: string; icon: string };
 
@@ -193,7 +194,7 @@ export default function OrgApplyScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={() => safeBack(router)}>
             <Ionicons name="chevron-back" size={28} color={COLORS.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Apply to Register Org</Text>

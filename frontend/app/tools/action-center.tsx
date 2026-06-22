@@ -13,6 +13,7 @@ import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
 import TimestampLine from '../../src/components/TimestampLine';
 import { formatDMY } from '../../src/utils/datetime';
+import { safeBack } from '../../src/utils/navigation';
 
 type ActionItem = {
   action_id: string; title: string; who: string; by_when?: string|null;
@@ -127,7 +128,7 @@ export default function ActionCenter() {
     <SafeAreaView style={s.root}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 80 }}>
         <View style={s.headerRow}>
-          <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
+          <TouchableOpacity onPress={() => safeBack(router)} style={s.backBtn}>
             <Ionicons name="chevron-back" size={22} color="#0F172A" />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>

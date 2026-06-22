@@ -7,6 +7,7 @@ import api from '../utils/api';
 import type { Factor, OptionAssessment, DecisionOption, MPPSImprovement, Decision, BestOptionSuggestion } from '../types/decision';
 import { calculateRatingsFromOrder } from '../utils/decisionHelpers';
 import { StepVoiceCommand } from '../utils/stepVoiceParser';
+import { safeBack } from '../utils/navigation';
 
 interface DecisionContextType {
   decision: Decision;
@@ -263,7 +264,7 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to load decision');
-      router.back();
+      safeBack(router);
     } finally {
       setLoading(false);
     }

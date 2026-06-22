@@ -11,6 +11,7 @@ import { WebView } from 'react-native-webview';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import { Alert } from '../../src/utils/crossAlert';
+import { safeBack } from '../../src/utils/navigation';
 const showAlert = (title: string, message?: string) => Alert.alert(title, message);
 
 const EFT = {
@@ -275,7 +276,7 @@ export default function EftTappingScreen() {
 
 
   const exitToHub = () => {
-    router.canGoBack?.() ? router.back() : router.replace('/tools/emotional-gatekeeper' as any);
+    router.canGoBack?.() ? safeBack(router) : router.replace('/tools/emotional-gatekeeper' as any);
   };
 
   // Step-aware back: move to the previous step within the wizard; only leave

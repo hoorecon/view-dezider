@@ -21,6 +21,7 @@ import AudioAttachment, { AudioAttachmentMeta } from '../../src/components/Audio
 import { CollabBar } from '../../src/components/CollabBar';
 import { DecisionContinuePanel } from '../../src/components/DecisionContinuePanel';
 import { PartyTabs, defaultPartyColor, type Party } from '../../src/components/PartyTabs';
+import { safeBack } from '../../src/utils/navigation';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -876,7 +877,7 @@ export default function ConflictBreakerScreen() {
             <TouchableOpacity onPress={() => {
               if (activeSession && currentStage > 0) {
                 setActiveSession(null); setCurrentStage(0); fetchSessions();
-              } else { router.back(); }
+              } else { safeBack(router); }
             }}>
               <Ionicons name="arrow-back" size={24} color="#FFF" />
             </TouchableOpacity>

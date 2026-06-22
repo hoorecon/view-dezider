@@ -13,6 +13,7 @@ import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import Slider from '@react-native-community/slider';
 import LinkedGoalMilestonesView from '../../src/components/LinkedGoalMilestonesView';
+import { safeBack } from '../../src/utils/navigation';
 
 // LIFE_AREAS array moved into the component (catalog-driven).
 const GOAL_TYPES = [{id:'problem',label:'Problem',icon:'alert-circle',c:'#EF4444'},{id:'need',label:'Need',icon:'bulb',c:'#F59E0B'},{id:'aspiration',label:'Aspiration',icon:'rocket',c:'#10B981'}];
@@ -109,7 +110,7 @@ export default function GEMGoalScreen() {
       };
       if(editId) await api.put(`/gem/goals/${editId}`, payload);
       else await api.post('/gem/goals', payload);
-      showAlert('Saved','Goal saved!', [{text:'OK',onPress:()=>router.back()}]);
+      showAlert('Saved','Goal saved!', [{text:'OK',onPress:()=>safeBack(router)}]);
     } catch(e) { showAlert('Error','Failed to save'); }
     finally { setSaving(false); }
   };
@@ -146,7 +147,7 @@ export default function GEMGoalScreen() {
     <SafeAreaView style={st.c} edges={['top']}>
       <KeyboardAvoidingView behavior={Platform.OS==='ios'?'padding':'height'} style={{flex:1}}>
         <LinearGradient colors={['#0D9488','#14B8A6']} style={st.hdr}>
-          <TouchableOpacity onPress={()=>router.back()} style={st.back}>
+          <TouchableOpacity onPress={()=>safeBack(router)} style={st.back}>
             <Ionicons name="arrow-back" size={24} color="#FFF" />
           </TouchableOpacity>
           <Text style={st.hdrT}>{editId?'Edit Goal':'New Goal'}</Text>

@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import { AudioGuidePlayer } from '../../src/components/AudioGuidePlayer';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 const JOY_AUDIO = 'https://customer-assets.emergentagent.com/job_a7a2d7ec-9ce2-470b-8ff8-d26638aa4277/artifacts/zcy23t73_Joy.mp3';
 
@@ -247,7 +248,7 @@ export default function UnconditionalHappinessScreen() {
     <SafeAreaView style={s.container} edges={['top']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <LinearGradient colors={['#EC4899', '#F472B6']} style={s.header}>
-          <TouchableOpacity onPress={() => mode === 'practice' ? setMode('dashboard') : router.back()} style={s.backBtn}>
+          <TouchableOpacity onPress={() => mode === 'practice' ? setMode('dashboard') : safeBack(router)} style={s.backBtn}>
             <Ionicons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>

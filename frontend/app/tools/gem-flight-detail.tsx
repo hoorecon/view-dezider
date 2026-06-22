@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 // ========================
 // TYPE DEFINITIONS
@@ -180,7 +181,7 @@ export default function GemFlightDetailScreen() {
       console.error('Flight fetch error:', e);
       if (e?.response?.status === 404) {
         showAlert('Not Found', 'Flight project not found');
-        router.back();
+        safeBack(router);
       }
     } finally {
       setLoading(false);
@@ -244,7 +245,7 @@ export default function GemFlightDetailScreen() {
       <LinearGradient colors={WEATHER_GRADIENTS[weather] || WEATHER_GRADIENTS.clear} style={{ flex: 1 }}>
         {/* Header Bar */}
         <View style={s.headerBar}>
-          <TouchableOpacity onPress={() => router.back()} style={s.headerBtn}>
+          <TouchableOpacity onPress={() => safeBack(router)} style={s.headerBtn}>
             <Ionicons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
           <View style={{ flex: 1, marginHorizontal: 12 }}>

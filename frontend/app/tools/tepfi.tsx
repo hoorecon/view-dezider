@@ -12,6 +12,7 @@ import Slider from '@react-native-community/slider';
 import { COLORS } from '../../src/constants/colors';
 import { LIFE_AREAS as CATALOG_LIFE_AREAS } from '../../src/constants/lifeAreas';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -252,7 +253,7 @@ export default function TEPFIScreen() {
   return (
     <SafeAreaView style={s.container} edges={['top']}>
       <LinearGradient colors={['#7C3AED', '#A855F7']} style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={s.backBtn}>
           <Ionicons name="arrow-back" size={22} color="#FFF" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>

@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import api from '../../src/utils/api';
 import { useAuthStore } from '../../src/store/authStore';
+import { safeBack } from '../../src/utils/navigation';
 
 const COLORS = {
   // Google Workspace blue-white palette (matches /admin/acm)
@@ -41,7 +42,7 @@ export default function PendingApprovalsScreen() {
     } catch (e: any) {
       if (e?.response?.status === 403) {
         showAlert('Access Denied', 'Admin access required');
-        router.back();
+        safeBack(router);
       }
     } finally {
       setLoading(false);
@@ -105,7 +106,7 @@ export default function PendingApprovalsScreen() {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>

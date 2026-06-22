@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { showAlert } from '../../src/utils/alert';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 interface Tier { id: string; name: string; }
 interface Segment { id: string; name: string; }
@@ -60,7 +61,7 @@ export default function AdminTierSegmentMapping() {
   return (
     <SafeAreaView style={s.wrap} edges={['top']}>
       <View style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn}><Ionicons name="arrow-back" size={22} color="#FFF" /></TouchableOpacity>
+        <TouchableOpacity onPress={() => safeBack(router)} style={s.backBtn}><Ionicons name="arrow-back" size={22} color="#FFF" /></TouchableOpacity>
         <Text style={s.title}>Tier ↔ Customer Segments</Text>
         <Text style={s.subtitle}>{tiers.length} tiers · {segments.length} segments</Text>
       </View>

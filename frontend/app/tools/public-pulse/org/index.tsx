@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../../../src/constants/colors';
 import api from '../../../../src/utils/api';
+import { safeBack } from '../../../../src/utils/navigation';
 
 const STATUS_COLOR: Record<string, string> = {
   pending: '#F59E0B',
@@ -44,7 +45,7 @@ export default function OrgHome() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={() => safeBack(router)}>
             <Ionicons name="chevron-back" size={28} color={COLORS.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Org / Gov Portal</Text>

@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import api from '../../../src/utils/api';
 import { COLORS } from '../../../src/constants/colors';
 import { showAlert } from '../../../src/utils/alert';
+import { safeBack } from '../../../src/utils/navigation';
 
 export default function ExpertRecommendScreen() {
   const router = useRouter();
@@ -50,7 +51,7 @@ export default function ExpertRecommendScreen() {
         routine_frequency: routineFreq,
       });
       showAlert('Recommended', `Sent to ${user_name || 'user'}.${createCtt ? ' CTT task created.' : ''}${createRoutine ? ' Routine created.' : ''}`);
-      router.back();
+      safeBack(router);
     } catch (e: any) { showAlert('Recommend failed', e?.response?.data?.detail || e.message); }
     finally { setSubmitting(false); }
   };
@@ -58,7 +59,7 @@ export default function ExpertRecommendScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={{ padding: 4 }}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={{ padding: 4 }}>
           <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Recommend a solution</Text>

@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 const AWARENESS_LEVELS = [
   { level: 1, name: 'Thought Level', icon: 'bulb', color: '#818CF8', desc: 'Awareness of thoughts' },
@@ -153,7 +154,7 @@ export default function ConsciousnessDiaryScreen() {
   return (
     <SafeAreaView style={s.container} edges={['top']}>
       <LinearGradient colors={['#1E1B4B', '#312E81', '#3730A3']} style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={s.backBtn}>
           <Ionicons name="arrow-back" size={24} color="#FFF" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>

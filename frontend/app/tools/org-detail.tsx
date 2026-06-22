@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { showAlert } from '../../src/utils/alert';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 const LEVEL_ORDER = ['L1','L2','L3','L4','L5','L6'] as const;
 const LEVEL_INFO: Record<string, { label: string; hint: string; color: string }> = {
@@ -185,7 +186,7 @@ export default function OrgDetail() {
   return (
     <SafeAreaView style={s.wrap} edges={['top']}>
       <View style={[s.header, { backgroundColor: org.color || '#003087' }]}>
-        <TouchableOpacity onPress={() => { try { router.back(); } catch {} router.replace('/(tabs)' as any); }} style={s.backBtn} accessibilityLabel="Back to dashboard" {...({ title: 'Back to dashboard' } as any)}><Ionicons name="arrow-back" size={22} color="#FFF" /></TouchableOpacity>
+        <TouchableOpacity onPress={() => { try { safeBack(router); } catch {} router.replace('/(tabs)' as any); }} style={s.backBtn} accessibilityLabel="Back to dashboard" {...({ title: 'Back to dashboard' } as any)}><Ionicons name="arrow-back" size={22} color="#FFF" /></TouchableOpacity>
         <Text style={s.title}>{org.name}</Text>
         <Text style={s.subtitle}>{org.org_type} · {org.life_area}{org.sub_area ? ` / ${org.sub_area}` : ''}</Text>
       </View>

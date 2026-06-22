@@ -18,6 +18,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
 import { COLORS } from '../../src/constants/colors';
+import { safeBack } from '../../src/utils/navigation';
 
 const TEAL = '#0D9488';
 const BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL || '';
@@ -147,7 +148,7 @@ export default function AdminEftConfig() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={20} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>EFT Tapping Config</Text>

@@ -12,6 +12,7 @@ import { COLORS } from '../../src/constants/colors';
 import { AudioGuidePlayer } from '../../src/components/AudioGuidePlayer';
 import { VoiceTextInput } from '../../src/components/VoiceTextInput';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 interface Outlet {
   id: string; number: string; name: string; category: string;
@@ -50,7 +51,7 @@ const CATEGORY_ICONS: Record<string, { name: string; bg: string }> = {
 
 export default function EGAdvisorScreen() {
   const router = useRouter();
-  const goBack = () => { if (router.canGoBack?.()) router.back(); else router.replace('/tools/emotional-gatekeeper' as any); };
+  const goBack = () => { if (router.canGoBack?.()) safeBack(router); else router.replace('/tools/emotional-gatekeeper' as any); };
   const [loading, setLoading] = useState(true);
   const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [affirmations, setAffirmations] = useState<AffirmationCategory[]>([]);

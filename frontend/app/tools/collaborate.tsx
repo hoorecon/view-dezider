@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import { formatAbsolute } from '../../src/utils/datetime';
+import { safeBack } from '../../src/utils/navigation';
 
 const STATUS_COLORS: Record<string, {bg: string; text: string; label: string}> = {
   active: { bg: '#ECFDF5', text: '#059669', label: 'Active' },
@@ -460,7 +461,7 @@ export default function CollaborateScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <LinearGradient colors={['#7C3AED', '#A855F7']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => safeBack(router)}>
           <Ionicons name="arrow-back" size={22} color="#FFF" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>

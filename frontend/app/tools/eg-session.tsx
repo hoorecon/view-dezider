@@ -15,10 +15,11 @@ import { confirmAiSpend, useAiEstimate } from '../../src/utils/aiEstimates';
 import { AiCreditsBadge } from '../../src/components/AiCreditsBadge';
 import { VoiceTextInput } from '../../src/components/VoiceTextInput';
 import { Alert } from '../../src/utils/crossAlert';
+import { safeBack } from '../../src/utils/navigation';
 
 export default function EGSessionScreen() {
   const router = useRouter();
-  const goBack = () => { if (router.canGoBack?.()) router.back(); else router.replace('/tools/emotional-gatekeeper' as any); };
+  const goBack = () => { if (router.canGoBack?.()) safeBack(router); else router.replace('/tools/emotional-gatekeeper' as any); };
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);

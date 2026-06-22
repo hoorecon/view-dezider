@@ -13,6 +13,7 @@ import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import TimestampLine from '../../src/components/TimestampLine';
 import ATEXEstimateButton from '../../src/components/ATEXEstimateButton';
+import { safeBack } from '../../src/utils/navigation';
 
 const FREQ_LABELS: Record<string, string> = {
   hourly: 'Hourly', daily: 'Daily', weekly: 'Weekly',
@@ -392,7 +393,7 @@ export default function LifestyleScreen() {
   return (
     <SafeAreaView style={s.container} edges={['top']}>
       <LinearGradient colors={['#065F46', '#059669']} style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={s.backBtn}>
           <Ionicons name="arrow-back" size={22} color="#FFF" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>

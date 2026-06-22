@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import api from '../src/utils/api';
 import { COLORS } from '../src/constants/colors';
+import { safeBack } from '../src/utils/navigation';
 
 interface Tier { key: string; order: number; chakra_sanskrit: string; label: string; aspiration: string; color: string; icon: string; monthly_price_inr: number }
 interface MatrixRow { module_id: string; module_name?: string; module_icon?: string; tiers: Record<string, boolean> }
@@ -93,7 +94,7 @@ export default function PricingScreen() {
   return (
     <SafeAreaView style={s.container} edges={['top']}>
       <View style={s.header}>
-        <TouchableOpacity onPress={() => router.back()}><Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} /></TouchableOpacity>
+        <TouchableOpacity onPress={() => safeBack(router)}><Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} /></TouchableOpacity>
         <View style={{ flex: 1, marginHorizontal: 12 }}>
           <Text style={s.title}>Pricing</Text>
           <Text style={s.subtitle}>7 chakra tiers · for every aspiration</Text>

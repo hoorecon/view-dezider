@@ -17,6 +17,7 @@ import { COLORS } from '../../src/constants/colors';
 import { Input } from '../../src/components/Input';
 import { GradientButton } from '../../src/components/GradientButton';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 export default function NewTest123() {
   const router = useRouter();
@@ -44,7 +45,7 @@ export default function NewTest123() {
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       {/* Visible Top Bar with Back & Home */}
       <View style={styles.topBar}>
-        <TouchableOpacity style={styles.topBtn} onPress={() => router.back()} accessibilityLabel="Back">
+        <TouchableOpacity style={styles.topBtn} onPress={() => safeBack(router)} accessibilityLabel="Back">
           <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.topTitle}>Instant Dezider — Quick Decision</Text>

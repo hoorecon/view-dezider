@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import api from '../../src/utils/api';
 import { COLORS } from '../../src/constants/colors';
+import { safeBack } from '../../src/utils/navigation';
 
 export default function DriftReportScreen() {
   const router = useRouter();
@@ -26,7 +27,7 @@ export default function DriftReportScreen() {
   return (
     <SafeAreaView style={s.container} edges={['top']}>
       <View style={s.header}>
-        <TouchableOpacity onPress={() => router.back()}><Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} /></TouchableOpacity>
+        <TouchableOpacity onPress={() => safeBack(router)}><Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} /></TouchableOpacity>
         <View style={{ flex: 1, marginHorizontal: 12 }}>
           <Text style={s.title}>Drift Report</Text>
           <Text style={s.subtitle}>Compass said … vs You actually did</Text>

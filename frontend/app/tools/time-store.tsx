@@ -19,6 +19,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
+import { safeBack } from '../../src/utils/navigation';
 
 const TABS = [
   { id: 'audit', label: 'Audit', icon: 'analytics' },
@@ -88,7 +89,7 @@ export default function TimeStoreScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <LinearGradient colors={['#0891B2', '#10B981']} style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => safeBack(router)}>
           <Ionicons name="chevron-back" size={26} color="#FFF" />
         </TouchableOpacity>
         <View style={{ flex: 1, marginLeft: 8 }}>

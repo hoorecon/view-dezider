@@ -8,6 +8,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 export default function WeeklyReviewScreen() {
   const router = useRouter();
@@ -39,7 +40,7 @@ export default function WeeklyReviewScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => safeBack(router)}>
           <Ionicons name="chevron-back" size={28} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.h1}>Weekly Review</Text>

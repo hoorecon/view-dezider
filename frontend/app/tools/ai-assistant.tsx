@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import * as Speech from 'expo-speech';
+import { safeBack } from '../../src/utils/navigation';
 
 const LANGS = [
   { id: 'en', name: 'English', flag: '🇬🇧' },
@@ -325,7 +326,7 @@ export default function AIAssistantScreen() {
         <View style={s.header}>
           <TouchableOpacity onPress={() => {
             if (activeConv) { setActiveConv(null); setMessages([]); fetchConversations(); Speech.stop(); }
-            else { router.back(); }
+            else { safeBack(router); }
           }}>
             <Ionicons name="arrow-back" size={24} color="#FFF" />
           </TouchableOpacity>

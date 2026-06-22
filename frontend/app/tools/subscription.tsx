@@ -11,6 +11,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import Constants from 'expo-constants';
+import { safeBack } from '../../src/utils/navigation';
 
 const PLAN_COLORS: Record<string, string[]> = {
   free: ['#94A3B8', '#CBD5E1'],
@@ -181,7 +182,7 @@ export default function SubscriptionScreen() {
   return (
     <SafeAreaView style={st.container}>
       <View style={st.header}>
-        <TouchableOpacity onPress={() => router.back()} style={st.backBtn}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={st.backBtn}>
           <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>

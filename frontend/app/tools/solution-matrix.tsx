@@ -23,6 +23,7 @@ import Constants from 'expo-constants';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import { useACM } from '../../src/hooks/useACM';
+import { safeBack } from '../../src/utils/navigation';
 
 const API_BASE = (Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL
   || process.env.EXPO_PUBLIC_BACKEND_URL
@@ -356,7 +357,7 @@ export default function SolutionMatrixScreen() {
       if (editId) await api.put(`/solution-matrices/${editId}`, payload);
       else await api.post('/solution-matrices', payload);
       showAlert('Saved', 'Solution Matrix saved successfully!', [
-        { text: 'OK', onPress: () => router.back() },
+        { text: 'OK', onPress: () => safeBack(router) },
       ]);
     } catch {
       showAlert('Error', 'Failed to save');
@@ -889,7 +890,7 @@ export default function SolutionMatrixScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <LinearGradient colors={['#E91E63', '#8E24AA']} style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity onPress={() => safeBack(router)} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={24} color="#FFF" />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>

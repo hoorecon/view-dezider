@@ -29,6 +29,7 @@ import { COLORS } from '../../src/constants/colors';
 import { showAlert } from '../../src/utils/alert';
 import api from '../../src/utils/api';
 import CLDFlowEditor, { type CLDFlowEditorHandle } from '../../src/components/CLDFlowEditor';
+import { safeBack } from '../../src/utils/navigation';
 
 interface CLDNode {
   factor_id: string;
@@ -341,7 +342,7 @@ export default function CLDEditorScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.headerBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.headerBtn} onPress={() => safeBack(router)}>
           <Ionicons name="arrow-back" size={20} color={COLORS.textPrimary} />
           <Text style={styles.headerBtnText}>Back</Text>
         </TouchableOpacity>

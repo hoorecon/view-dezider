@@ -1,0 +1,34 @@
+{
+  "summary": "Frontend-only verification of safeBack regression sweep + Instant Dezider step-aware back + risk-gate modal width. All 4 primary acceptance criteria PASS. Verified 5/5 representative deep-linked screens (/tools/eg-advisor, /tools/solution-finder-list, /tools/values, /ai-wallet, /pricing) — top-left back arrow correctly lands on '/' (or the eg-advisor's custom EG-hub fallback) instead of dead-ending. In-flow back regression (Dashboard → Solution Box → tool → back → Solution Box) also works. Instant Dezider step-aware back returns Test2→Test1 correctly. Risk-gate modal renders as a centered card (width=440px, maxWidth=440px, alignSelf=center on a 1280-wide viewport) — NOT stretched. One MINOR finding only: the header Back button is z-ordered BEHIND the RN-web Modal overlay when the risk-gate is open, so tapping the visible header 'Back' while the modal is up does not reach handleBack(); only Esc (onRequestClose) and the 3 in-modal CTAs dismiss it. handleBack itself correctly checks showRiskGate first, so on native this works — only the web Modal portal causes the click to not reach the header. No crashes or red screens; safeBack import insertion did not break any of the sampled screens.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "test123/[id] risk-gate modal vs header Back button", "issue": "On web preview, when id-risk-gate Modal is open, the page header 'Back' button is visible (modal is centered card, not full-screen) but is rendered behind RN-web's Modal portal/overlay, so tapping it does nothing. handleBack() does have the correct showRiskGate-first guard, but the click never reaches it on web. Esc and the 3 in-modal CTAs still close the modal correctly. Reference: /app/frontend/app/test123/[id].tsx:122-131, :661-695", "testID": "id-risk-gate", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/tmp/eg_advisor.png", "/tmp/eg_advisor_back.png",
+    "/tmp/pricing.png", "/tmp/solution_box.png",
+    "/tmp/id_step1.png", "/tmp/id_test2_landed.png",
+    "/tmp/id_back_to_test1.png", "/tmp/id_test2_forward.png",
+    "/tmp/risk_gate_modal.png", "/tmp/risk_gate_after_back.png"
+  ],
+  "action_items": [
+    "Optional (LOW): If 'tapping the header Back arrow while id-risk-gate modal is up should also dismiss the modal' is a hard requirement, render the header Back inside the Modal as well, OR replace router.back-style handling with a global keyboard/back interceptor. Current behavior on web: header Back is visible but click is swallowed by Modal portal. Esc & in-modal CTAs work fine."
+  ],
+  "critical_code_review_comments": [
+    "test123/[id].tsx is 1035 lines — exceeds 700-line guideline. Consider extracting Test1/Test2/Test3/Complete into per-step components.",
+    "safeBack helper is clean (12 LoC) and the canGoBack check is defensive (typeof check + try/catch).",
+    "eg-advisor.tsx line 54 wraps safeBack with another canGoBack check + a manual replace fallback — slightly redundant since safeBack already handles the no-history case, but it customizes the fallback target to '/tools/emotional-gatekeeper' (the EG hub), which is intentional and correct."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a", "frontend": "100% (4/4 acceptance criteria; 1 LOW-priority cosmetic z-order observation)"},
+  "seed_data_creation": "Created 2 TEST_ Instant Dezider sessions under admin@test.com (ids 4081d323-..., e0f197e6-...). Safe to retain or delete.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Auth: admin@test.com / AdminPass2026!. The /admin/* routes use a SEPARATE admin login at /admin/login (orange 'Sign in to Admin' button) — they cannot be tested with the normal user session, so /admin/scenarios back-button safeBack behavior could not be re-verified from within the user session. Spot-check the admin Back arrow separately if needed. Instant Dezider session-resume auto-jumps to the highest completed_test, so to retest from Test1 create a NEW session via /test123/new. Risk-gate modal: id-risk-gate testID, opens after Test1=Yes + worst_case filled + 'No, its too risky'.",
+  "rca_of_issue": "n/a — feature/regression sweep passed. The LOW-priority modal-z-order observation has handleBack code already in place; the limitation is RN-web Modal portal rendering above header on web only."
+}

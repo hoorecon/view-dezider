@@ -16,6 +16,7 @@ import { handleAiError } from '../../src/utils/aiErrors';
 import { confirmAiSpend, useAiEstimate } from '../../src/utils/aiEstimates';
 import { AiCreditsBadge } from '../../src/components/AiCreditsBadge';
 import { Alert } from '../../src/utils/crossAlert';
+import { safeBack } from '../../src/utils/navigation';
 
 const CATEGORIES = [
   'career', 'business', 'relationship', 'money', 'family',
@@ -33,7 +34,7 @@ export default function EGTrapScreen() {
       router.replace(`/tools/solution-finder?id=${params.return_id}&step=2` as any);
       return;
     }
-    if (router.canGoBack?.()) router.back();
+    if (router.canGoBack?.()) safeBack(router);
     else router.replace('/tools/emotional-gatekeeper' as any);
   };
   const params = useLocalSearchParams<{ sessionId: string; return_to?: string; return_id?: string }>();

@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import TimestampLine from '../../src/components/TimestampLine';
+import { safeBack } from '../../src/utils/navigation';
 
 const CAT_CFG: Record<string, { color: string; icon: string; label: string }> = {
   problem:    { color: '#EF4444', icon: 'alert-circle',  label: 'Problem' },
@@ -764,7 +765,7 @@ export default function PNAScreen() {
         {/* Header */}
         <View style={s.header}>
           <TouchableOpacity onPress={() => {
-            if (viewMode === 'area') { setViewMode('overview'); } else { router.back(); }
+            if (viewMode === 'area') { setViewMode('overview'); } else { safeBack(router); }
           }}>
             <Ionicons name="arrow-back" size={24} color="#FFF" />
           </TouchableOpacity>

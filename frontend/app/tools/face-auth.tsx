@@ -9,6 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -190,7 +191,7 @@ export default function FaceAuthScreen() {
           <Ionicons name="camera-outline" size={64} color="#DC2626" />
           <Text style={styles.permTitle}>Camera Access Required</Text>
           <Text style={styles.permDesc}>Face authentication requires camera access to verify your identity.</Text>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.backButton} onPress={() => safeBack(router)}>
             <Text style={styles.backButtonText}>Go Back</Text>
           </TouchableOpacity>
         </View>
@@ -219,7 +220,7 @@ export default function FaceAuthScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={styles.headerBtn}>
           <Ionicons name="arrow-back" size={22} color="#FFF" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
@@ -335,7 +336,7 @@ export default function FaceAuthScreen() {
               <Ionicons name="refresh" size={16} color="#FFF" />
               <Text style={styles.actionBtnText}>Retry</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBtnGray} onPress={() => router.back()}>
+            <TouchableOpacity style={styles.actionBtnGray} onPress={() => safeBack(router)}>
               <Text style={styles.actionBtnText}>Done</Text>
             </TouchableOpacity>
           </View>

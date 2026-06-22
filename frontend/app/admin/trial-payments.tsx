@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 interface PI { user_id: string; email?: string; trial_type: string; method?: string; last4?: string; status: string; created_at?: string; razorpay_customer_id?: string; }
 
@@ -30,7 +31,7 @@ export default function AdminTrialPayments() {
   return (
     <SafeAreaView style={s.wrap} edges={['top']}>
       <View style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn}><Ionicons name="arrow-back" size={22} color="#FFF" /></TouchableOpacity>
+        <TouchableOpacity onPress={() => safeBack(router)} style={s.backBtn}><Ionicons name="arrow-back" size={22} color="#FFF" /></TouchableOpacity>
         <Text style={s.title}>Trial Payment Instruments</Text>
         <Text style={s.subtitle}>{items.length} record(s)</Text>
       </View>

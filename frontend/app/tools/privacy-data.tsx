@@ -25,6 +25,7 @@ import api from '../../src/utils/api';
 import { COLORS } from '../../src/constants/colors';
 import { Card } from '../../src/components/Card';
 import { showAlert } from '../../src/utils/alert';
+import { safeBack } from '../../src/utils/navigation';
 
 interface DpdpStatus {
   deletion_status?: string;            // "none" | "pending" | "cancelled"
@@ -147,7 +148,7 @@ export default function PrivacyDataScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Privacy & Data</Text>

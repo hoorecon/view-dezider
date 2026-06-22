@@ -147,7 +147,7 @@ export default function AddSolutionScreen() {
         ? 'Solution submitted for admin review. It will be visible to everyone once approved!'
         : 'Solution added to store!';
       showAlert('Success', successMsg, [
-        { text: 'OK', onPress: () => router.back() },
+        { text: 'OK', onPress: () => safeBack(router) },
       ]);
     } catch (e: any) {
       showAlert('Error', e?.response?.data?.detail || 'Failed to create solution');

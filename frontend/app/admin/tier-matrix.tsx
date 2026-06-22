@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import api from '../../src/utils/api';
 import { COLORS } from '../../src/constants/colors';
 import { showAlert } from '../../src/utils/alert';
+import { safeBack } from '../../src/utils/navigation';
 
 interface Tier { key: string; order: number; chakra_sanskrit: string; label: string; aspiration: string; color: string; icon: string; monthly_price_inr: number }
 interface FeatureRow { feature_id: string; feature_name: string; tiers: Record<string, boolean> }
@@ -81,7 +82,7 @@ export default function TierMatrixScreen() {
   return (
     <SafeAreaView style={s.container} edges={['top']}>
       <View style={s.header}>
-        <TouchableOpacity onPress={() => router.back()}><Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} /></TouchableOpacity>
+        <TouchableOpacity onPress={() => safeBack(router)}><Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} /></TouchableOpacity>
         <View style={{ flex: 1, marginHorizontal: 12 }}>
           <Text style={s.title}>Tier Matrix · 7 Chakras</Text>
           <Text style={s.subtitle}>Modules × tiers · cascade-up smart toggle</Text>

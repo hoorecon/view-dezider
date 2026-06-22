@@ -25,6 +25,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
+import { safeBack } from '../../src/utils/navigation';
 
 const C = {
   bg: '#F8FAFC', card: '#FFFFFF', border: '#E2E8F0', text: '#0F172A',
@@ -181,7 +182,7 @@ export default function AdminAIWalletConfigScreen() {
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator>
         {/* Header */}
         <View style={s.headerRow}>
-          <TouchableOpacity onPress={() => router.back()} style={s.backBtn} testID="awc-back">
+          <TouchableOpacity onPress={() => safeBack(router)} style={s.backBtn} testID="awc-back">
             <Ionicons name="chevron-back" size={18} color={C.text} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>

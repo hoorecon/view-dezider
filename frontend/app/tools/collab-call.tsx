@@ -9,6 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -50,7 +51,7 @@ export default function CollabCallScreen() {
       await api.post(`/collaboration/sessions/${sessionId}/join-call`).catch(() => {});
     } catch (err: any) {
       showAlert('Error', err.response?.data?.detail || 'Failed to start call');
-      router.back();
+      safeBack(router);
     } finally {
       setLoading(false);
     }
@@ -68,7 +69,7 @@ export default function CollabCallScreen() {
         }));
         if (res.data.status === 'ended') {
           showAlert('Call Ended', 'The host has ended the call.');
-          router.back();
+          safeBack(router);
         }
       }
     } catch (e) {}
@@ -103,7 +104,7 @@ export default function CollabCallScreen() {
     try {
       await api.post(`/collaboration/sessions/${sessionId}/end-call`);
       showAlert('Call Ended', 'The video call has been ended for all participants.');
-      router.back();
+      safeBack(router);
     } catch (err: any) {
       showAlert('Error', err.response?.data?.detail || 'Failed to end call');
     } finally {
@@ -141,7 +142,7 @@ export default function CollabCallScreen() {
         <View style={styles.loadingContainer}>
           <Ionicons name="videocam-off" size={48} color="#DC2626" />
           <Text style={styles.loadingText}>Unable to start call</Text>
-          <TouchableOpacity style={styles.retryBtn} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => safeBack(router)}>
             <Text style={styles.retryBtnText}>Go Back</Text>
           </TouchableOpacity>
         </View>
@@ -159,7 +160,7 @@ export default function CollabCallScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Top Bar */}
       <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.topBtn}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={styles.topBtn}>
           <Ionicons name="arrow-back" size={20} color="#FFF" />
         </TouchableOpacity>
 

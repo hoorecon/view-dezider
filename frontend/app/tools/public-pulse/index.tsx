@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../../src/constants/colors';
 import api from '../../../src/utils/api';
+import { safeBack } from '../../../src/utils/navigation';
 
 type Tool = {
   slug: string;
@@ -68,7 +69,7 @@ export default function PublicPulseHome() {
       <ScrollView contentContainerStyle={styles.scroll}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity onPress={() => safeBack(router)} style={styles.backBtn}>
             <Ionicons name="chevron-back" size={28} color={COLORS.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Public Pulse</Text>

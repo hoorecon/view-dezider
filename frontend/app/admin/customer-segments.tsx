@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import api from '../../src/utils/api';
 import { COLORS } from '../../src/constants/colors';
 import { showAlert } from '../../src/utils/alert';
+import { safeBack } from '../../src/utils/navigation';
 
 interface Tier { key: string; order: number; label: string; aspiration: string; color: string; icon: string; monthly_price_inr: number }
 interface Factor {
@@ -204,7 +205,7 @@ export default function CustomerSegmentsScreen() {
   return (
     <SafeAreaView style={s.container} edges={['top']}>
       <View style={s.header}>
-        <TouchableOpacity onPress={() => router.back()}><Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} /></TouchableOpacity>
+        <TouchableOpacity onPress={() => safeBack(router)}><Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} /></TouchableOpacity>
         <View style={{ flex: 1, marginHorizontal: 12 }}>
           <Text style={s.title}>Customer Segments</Text>
           <Text style={s.subtitle}>TG master · demography · psychography · pricing</Text>

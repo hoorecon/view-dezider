@@ -14,6 +14,7 @@ import { router, Stack } from 'expo-router';
 import { COLORS } from '../src/constants/colors';
 import api from '../src/utils/api';
 import { showAlert, confirmDialog } from '../src/utils/alert';
+import { safeBack } from '../src/utils/navigation';
 
 interface TrashItem {
   trash_id: string;
@@ -189,7 +190,7 @@ export default function TrashScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => safeBack(router)}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           style={styles.backBtn}
         >

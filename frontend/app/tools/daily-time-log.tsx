@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
+import { safeBack } from '../../src/utils/navigation';
 
 const CATEGORIES = [
   { key: 'lifestyle', label: 'Lifestyle', color: '#10B981', icon: 'leaf' },
@@ -116,7 +117,7 @@ export default function DailyTimeLogScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={() => safeBack(router)}>
             <Ionicons name="chevron-back" size={28} color={COLORS.textPrimary} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>

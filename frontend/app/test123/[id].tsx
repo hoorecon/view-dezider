@@ -19,6 +19,7 @@ import { Card } from '../../src/components/Card';
 import { Input } from '../../src/components/Input';
 import { GradientButton } from '../../src/components/GradientButton';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 interface Test123Session {
   id: string;
@@ -73,7 +74,7 @@ export default function Test123Detail() {
       }
     } catch (error) {
       showAlert('Error', 'Failed to load session');
-      router.back();
+      safeBack(router);
     } finally {
       setLoading(false);
     }
@@ -125,7 +126,7 @@ export default function Test123Detail() {
     if (currentTest === 2) { setCurrentTest(1); return; }
     if (currentTest === 1.5) { setCurrentTest(1); return; }
     // On the first step: leave the flow.
-    if (router.canGoBack?.()) router.back();
+    if (router.canGoBack?.()) safeBack(router);
     else router.replace('/' as any);
   };
 
@@ -577,7 +578,7 @@ export default function Test123Detail() {
 
         <GradientButton
           title="Done"
-          onPress={() => router.back()}
+          onPress={() => safeBack(router)}
           style={styles.actionButton}
         />
       </View>

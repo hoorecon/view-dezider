@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../../../src/constants/colors';
 import api from '../../../../src/utils/api';
+import { safeBack } from '../../../../src/utils/navigation';
 
 export default function OrgDashboard() {
   const router = useRouter();
@@ -42,7 +43,7 @@ export default function OrgDashboard() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={() => safeBack(router)}>
             <Ionicons name="chevron-back" size={28} color={COLORS.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle} numberOfLines={1}>{org.display_name}</Text>

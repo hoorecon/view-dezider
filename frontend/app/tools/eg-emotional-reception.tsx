@@ -15,6 +15,7 @@ import { COLORS } from '../../src/constants/colors';
 import { VoiceTextInput } from '../../src/components/VoiceTextInput';
 import { ConfirmDialog } from '../../src/components/ConfirmDialog';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 const DONTS = [
   {
@@ -75,7 +76,7 @@ export default function EmotionalReceptionScreen() {
       router.replace(`/test123/${params.return_id}` as any);
       return;
     }
-    if (router.canGoBack?.()) router.back();
+    if (router.canGoBack?.()) safeBack(router);
     else router.replace('/tools/emotional-gatekeeper' as any);
   };
   const [step, setStep] = useState(0);

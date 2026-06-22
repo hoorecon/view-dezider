@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../../src/constants/colors';
 import api from '../../../src/utils/api';
 import { showAlert } from '../../../src/utils/alert';
+import { safeBack } from '../../../src/utils/navigation';
 
 type Purpose = { code: string; label: string; description: string; default: boolean };
 
@@ -60,7 +61,7 @@ export default function ConsentScreen() {
     try {
       await api.post('/public-pulse/consent/withdraw');
       showAlert('Done', 'Your consent has been withdrawn. You will no longer be included in research.');
-      router.back();
+      safeBack(router);
     } catch (e) {
       showAlert('Error', 'Failed to withdraw');
     } finally {
@@ -74,7 +75,7 @@ export default function ConsentScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={() => safeBack(router)}>
             <Ionicons name="chevron-back" size={28} color={COLORS.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Your Data Preferences</Text>

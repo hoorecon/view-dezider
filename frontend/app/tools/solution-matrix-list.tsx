@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import { formatAbsolute } from '../../src/utils/datetime';
+import { safeBack } from '../../src/utils/navigation';
 
 export default function SolutionMatrixListScreen() {
   const router = useRouter();
@@ -76,7 +77,7 @@ export default function SolutionMatrixListScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <LinearGradient colors={['#E91E63', '#8E24AA']} style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => safeBack(router)} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color="#FFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Advanced Solution Matrix</Text>

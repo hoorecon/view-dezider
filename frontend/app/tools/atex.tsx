@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { showAlert } from '../../src/utils/alert';
 import api from '../../src/utils/api';
+import { safeBack } from '../../src/utils/navigation';
 
 interface SubTask { title: string; effort_minutes: number; ip_level: string; support_needs: string[]; notes?: string; }
 interface RiskItem { category: string; description: string; mitigation_minutes: number; contingency_minutes: number; }
@@ -104,7 +105,7 @@ export default function ATEXScreen() {
   return (
     <SafeAreaView style={s.wrap} edges={['top']}>
       <View style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn}><Ionicons name="arrow-back" size={22} color="#FFF" /></TouchableOpacity>
+        <TouchableOpacity onPress={() => safeBack(router)} style={s.backBtn}><Ionicons name="arrow-back" size={22} color="#FFF" /></TouchableOpacity>
         <Text style={s.title}>ATEX Effort Estimation</Text>
         <Text style={s.subtitle}>Accurate Task Estimation for eXcellence</Text>
       </View>

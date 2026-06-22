@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../../src/constants/colors';
 import api from '../../../src/utils/api';
+import { safeBack } from '../../../src/utils/navigation';
 
 const DASHBOARDS = [
   { key: 'district-demand-heatmap', title: 'District Demand', subtitle: 'Where the action is', icon: 'map', color: '#6366F1', kind: 'rows' as const },
@@ -82,7 +83,7 @@ export default function DashboardsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => safeBack(router)}>
           <Ionicons name="chevron-back" size={28} color={COLORS.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Public Insights</Text>

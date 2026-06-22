@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../../../src/constants/colors';
 import api from '../../../../src/utils/api';
 import { showAlert } from '../../../../src/utils/alert';
+import { safeBack } from '../../../../src/utils/navigation';
 
 export default function AdminModeration() {
   const router = useRouter();
@@ -63,7 +64,7 @@ export default function AdminModeration() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => safeBack(router)}>
           <Ionicons name="chevron-back" size={28} color={COLORS.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Admin — Public Pulse</Text>
