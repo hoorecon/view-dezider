@@ -23,6 +23,8 @@ import {
 } from '../../utils/decisionHelpers';
 import LoaderMusicChip from '../LoaderMusicChip';
 import { useAiTouchpoint } from '../../utils/aiEstimates';
+import DecisionLinkPicker from '../DecisionLinkPicker';
+import { useRouter } from 'expo-router';
 
 const DATA_SOURCE_TYPES = [
   { key: 'webhook', label: 'Webhook/API', icon: 'link-outline', color: '#3B82F6' },
@@ -46,6 +48,28 @@ export default function Step2() {
 
   const [showDataSourceConfig, setShowDataSourceConfig] = useState<{ [key: string]: boolean }>({});
   const aiBestFactorsEnabled = useAiTouchpoint('tp_best_factors');
+  const [linkPickerOpen, setLinkPickerOpen] = useState(false);
+  const router = useRouter();
+
+  // Open the linked target decision in a new flow view.
+  const openLinkedDecision = (factor: Factor) => {
+    const id = factor.data_source?.config?.linked_decision_id;
+    if (id) router.push(`/prr/${id}` as any);
+  };
+  // Manual refresh of a single linked factor's value from its target.
+  const refreshLinkedFactor = async (factor: Factor) => {
+    try {
+      const r = await api.post(`/decisions/${decision.id}/links/${factor.id}/resolve`);
+      if (r.data?.ok === false) {
+        showAlert('Not yet scored', 'The linked decision has no scored options yet.');
+        return;
+      }
+      await fetchDecision();
+      if (r.data?.changed) showAlert('Updated', `Value refreshed to ${r.data.new}%.`);
+    } catch {
+      showAlert('Refresh failed', 'Could not refresh the linked value.');
+    }
+  };
 
   // ── "Import from URL" — crawl a comparison page → fill factors (with Expected),
   // options (Step 6) and partial assessments (Step 7), behind the consent gate.
@@ -570,6 +594,23 @@ export default function Step2() {
       </Text>
       </>)}
 
+      <TouchableOpacity
+        testID="link-decision-btn"
+        onPress={() => setLinkPickerOpen(true)}
+        activeOpacity={0.85}
+        style={{
+          flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+          borderWidth: 1.5, borderColor: COLORS.primary, borderRadius: 12,
+          paddingVertical: 12, paddingHorizontal: 16, marginBottom: 6, backgroundColor: '#F5F3FF',
+        }}
+      >
+        <Ionicons name="git-network-outline" size={18} color={COLORS.primary} />
+        <Text style={{ color: COLORS.primary, fontSize: 14.5, fontWeight: '800' }}>Link a Decision</Text>
+      </TouchableOpacity>
+      <Text style={{ fontSize: 11, color: COLORS.textMuted, textAlign: 'center', marginBottom: 14, lineHeight: 16, paddingHorizontal: 8 }}>
+        Pull another scored decision's option result in as a factor (and optionally an option).
+      </Text>
+
       <View style={iurl.box}>
         <View style={iurl.head}>
           <Ionicons name="cloud-upload-outline" size={15} color="#2563EB" />
@@ -959,6 +1000,27 @@ export default function Step2() {
               </TouchableOpacity>
             </View>
 
+            {factor.data_source?.type === 'decision_link' && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F5F3FF',
+                borderRadius: 8, paddingVertical: 6, paddingHorizontal: 8, marginTop: 2, marginBottom: 6 }}>
+                <Ionicons name="git-network" size={13} color={COLORS.primary} />
+                <Text style={{ flex: 1, fontSize: 11.5, color: COLORS.primary, fontWeight: '600' }} numberOfLines={1}>
+                  {factor.data_source.config?.linked_title || 'Linked decision'}
+                  {factor.data_source.config?.linked_option_name ? ` · ${factor.data_source.config.linked_option_name}` : ''}
+                  {factor.data_source.last_value ? ` (${factor.data_source.last_value}%)` : ''}
+                  {factor.data_source.config?.refresh === 'auto' ? ' · Auto' : ' · Manual'}
+                </Text>
+                {factor.data_source.config?.refresh === 'manual' && (
+                  <TouchableOpacity onPress={() => refreshLinkedFactor(factor)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} testID={`link-refresh-${factor.id}`}>
+                    <Ionicons name="refresh" size={15} color={COLORS.primary} />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity onPress={() => openLinkedDecision(factor)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} testID={`link-open-${factor.id}`}>
+                  <Ionicons name="open-outline" size={15} color={COLORS.primary} />
+                </TouchableOpacity>
+              </View>
+            )}
+
             {/* Factor Type Toggle: Quantitative / Qualitative — placed ABOVE the Operator/Expected/Unit criteria */}
             {!hasChildren && (
               <View style={dsStyles.factorTypeRow}>
@@ -983,7 +1045,7 @@ export default function Step2() {
             {!hasChildren && renderCriteria(factor)}
 
             {/* Data Source toggle — kept adjacent to its collapsible config panel below */}
-            {!hasChildren && (
+            {!hasChildren && factor.data_source?.type !== 'decision_link' && (
               <View style={dsStyles.factorTypeRow}>
                 <TouchableOpacity
                   style={[dsStyles.dsToggleBtn, factor.data_source?.type && dsStyles.dsToggleBtnActive]}
@@ -1337,6 +1399,8 @@ export default function Step2() {
           </View>
         </View>
       </Modal>
+
+      <DecisionLinkPicker visible={linkPickerOpen} onClose={() => setLinkPickerOpen(false)} />
     </View>
   );
 }

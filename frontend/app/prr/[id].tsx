@@ -24,6 +24,7 @@ import { DecisionProvider, useDecision } from '../../src/context/DecisionContext
 import { styles } from '../../src/styles/decisionStyles';
 import { calculateRatingsFromOrder } from '../../src/utils/decisionHelpers';
 import { safeBack, goHome } from '../../src/utils/navigation';
+import api from '../../src/utils/api';
 
 // Step components
 import Step2 from '../../src/components/steps/Step2';
@@ -88,6 +89,17 @@ function PRRDecisionDetailInner() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [currentStep]);
+
+  // Auto-refresh any "automatic" Dependent-Decision links once per decision
+  // open, so a linked factor reflects the latest result of its source.
+  const autoRefreshedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!decision?.id || autoRefreshedRef.current === decision.id) return;
+    autoRefreshedRef.current = decision.id;
+    api.post(`/decisions/${decision.id}/links/refresh-auto`)
+      .then((r) => { if (r.data?.changes?.length) fetchDecision().catch(() => {}); })
+      .catch(() => { /* best effort */ });
+  }, [decision?.id]);
 
   // Honour ?step=N query param coming from SWOT→Decider conversion so we
   // always land on Step 2 instead of the persisted current_step.

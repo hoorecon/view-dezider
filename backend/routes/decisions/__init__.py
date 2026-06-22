@@ -29,6 +29,7 @@ from .journal import router as journal_router
 from .dashboard import router as dashboard_router
 from .sharing import router as sharing_router
 from .mpps import router as mpps_router
+from .links import router as links_router
 
 router = APIRouter(tags=["Decisions"])
 
@@ -43,6 +44,7 @@ for _sub in (
     dashboard_router,
     sharing_router,
     mpps_router,
+    links_router,
 ):
     router.include_router(_sub)
 

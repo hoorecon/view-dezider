@@ -32,6 +32,10 @@ class Factor(BaseModel):
     gap_multiplier: Optional[float] = 1.0
     parent_id: Optional[str] = None
     weight: Optional[float] = None
+    # Auto-resolved value source. Carries webhook/web_surf/ai_llm configs AND
+    # the "decision_link" (Dependent Decision) config so a factor's value can be
+    # pulled from another scored decision's option. Generic dict to stay flexible.
+    data_source: Optional[Dict[str, Any]] = None
 
 
 class OptionAssessment(BaseModel):

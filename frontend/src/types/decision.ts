@@ -1,12 +1,21 @@
 // Shared types for the PRR Decision system
 
 export interface FactorDataSource {
-  type: 'webhook' | 'web_surf' | 'ai_llm';
+  type: 'webhook' | 'web_surf' | 'ai_llm' | 'decision_link';
   config: {
     url?: string;          // For webhook
     headers?: string;      // For webhook (JSON string)
     search_query?: string; // For web_surf
     prompt?: string;       // For ai_llm
+    // ── Dependent Decision link (decision_link) ──
+    linked_decision_id?: string;
+    linked_module?: string;          // 'mydezider' | 'pros_cons'
+    linked_option_id?: string;
+    linked_option_name?: string;
+    linked_title?: string;
+    metric?: 'option_worth' | 'top_score';
+    refresh?: 'auto' | 'manual';
+    link_mode?: 'factor_only' | 'factor_and_option';
   };
   last_fetched?: string;   // ISO timestamp
   last_value?: string;     // Last fetched value

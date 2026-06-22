@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 144 — Dependent Decisions ('Link a Decision') backend + frontend regression. ALL TESTS PASS. Backend (10/10 pytest in /app/backend/tests/test_iter144_decision_link.py): GET /api/decisions/{id}/linkable returns only scored, non-cyclic decisions (target included; self + unscored excluded) with options[{id,name,worth_percentage}] + top_option_id. POST /api/decisions/{id}/link-decision works for both link_modes — factor_only creates a decision_link factor with expected_value = chosen option worth (Honda 75.33%) and refresh='manual'/'auto'/link_mode persisted in data_source.config; factor_and_option additionally appends an option whose assessment.percentage equals int(round(value)) — verified Toyota path. Validation: self-link → 422, unscored target → 422, A→B→A circular link → 409. POST /links/{factor_id}/resolve and POST /links/refresh-auto return {ok:true,...} and recompute correctly. Frontend Playwright (mobile 390×844 against EXPO_PUBLIC_BACKEND_URL): registered fresh user, seeded a SCORED target ('TEST_iter144_TARGET_UI' — Honda 75.3%, Toyota 74%) and an empty linker; navigated to /prr/{linker_id}?step=2 — 'Link a Decision' button (testID link-decision-btn) visible. Tap → DecisionLinkPicker (testID decision-link-picker) opens with the SCORED target row (testID dlp-decision-<id>) visible. Selecting it reveals all config controls: dlp-metric-option_worth, dlp-metric-top_score, dlp-option-o_honda, dlp-option-o_toyota, dlp-factor-name (prefilled with option name, renamed to 'Honda link UI'), dlp-mode-factor_only, dlp-mode-factor_and_option, dlp-refresh-auto, dlp-refresh-manual, and dlp-confirm — all visible & tappable. Chose option_worth + Honda + factor_and_option + manual + 'Honda link UI' → tapped dlp-confirm → picker closed, GET /api/decisions/{linker} confirms factor 'Honda link UI' with expected_value=75.3, data_source.type='decision_link', refresh='manual', link_mode='factor_and_option', and an OPTION appended with assessment.percentage=75. Both link-open-{fid} and link-refresh-{fid} icons are visible on the factor card (manual mode shows the refresh icon). Edge: a fresh user with no scored decisions sees the picker empty-state ('No scored decisions to link yet. Complete another decision's assessment (Steps 7–8) first.') — confirmed via DOM text. Gating: Step2.tsx line 1048 — `{!hasChildren && factor.data_source?.type !== 'decision_link' && …}` — confirms the generic Data Source toggle (webhook/web_surf/ai_llm) is HIDDEN on decision_link factors. All test users + decisions cleaned up. No new react-native issues introduced; the pre-existing Animated/shadow/pointerEvents/expo-notifications web warnings noted in iter143 are unchanged and not blocking.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "Animated useNativeDriver", "issue": "Console warning on web: 'Animated: useNativeDriver is not supported because the native animated module is missing'. Pre-existing, not from this feature. Cosmetic on web."},
+      {"component": "Deprecated style props", "issue": "Console warnings: 'shadow* style props are deprecated. Use boxShadow' and 'props.pointerEvents is deprecated. Use style.pointerEvents'. Pre-existing (also flagged in iter143). DecisionLinkPicker.tsx itself uses StyleSheet (no shadow* props), so these are from older sibling components."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter144_decision_link.py",
+    "/app/test_reports/pytest/iter144_decision_link.xml",
+    "/tmp/iter144_picker_pane1.png",
+    "/tmp/iter144_picker_configured.png",
+    "/tmp/iter144_after_link.png",
+    "/tmp/iter144_empty_state.png"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "links.py — clean implementation. _depends_on() walks the dependency graph with _seen to prevent infinite recursion. Self-link guard (422) is checked BEFORE target fetch. _resolve_value picks the right option for option_worth metric or max() for top_score; raises 422 if no scored option. Factor created with default_rating = mean of existing top-level factor ratings (or 5 fallback) — good UX so the linked factor has weight from day 1.",
+    "links.py refresh-auto — only updates when value actually changed (str(old) != str(round(value,1))) which keeps Mongo writes minimal; _recompute_worth() called once at the end after all factors processed. Solid.",
+    "DecisionLinkPicker.tsx — choose() defaults metric=option_worth, picks top_option_id (or first), pre-fills factor name with option name. selectOption() keeps factor_name in sync with the option until the user edits it — nice UX touch (line 61-67). Confirm gracefully handles 409 (Circular dependency) and falls back to backend's detail message.",
+    "Step2.tsx line 1048 — `factor.data_source?.type !== 'decision_link'` correctly hides the generic Data Source picker on linked factors; the purple linked-badge with open/refresh icons replaces it (lines 1003-1020). Refresh icon only renders in manual mode, matching spec."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "100% (10/10 pytest)", "frontend": "100% (6/6 UI scenarios: picker open, target listed, config controls visible, confirm → factor+option created, badge + open/refresh icons, empty-state)" },
+  "seed_data_creation": "Pytest fixture seeded ephemeral user (iter144_<ts>@example.com) + TEST_iter144_TARGET (scored: Honda 75.33%, Toyota 74%) + TEST_iter144_LINKER. Playwright seeded iter144ui_<ts>@example.com + TEST_iter144_TARGET_UI + TEST_iter144_LINKER_UI plus a separate iter144empty_<ts>@example.com + TEST_iter144_LONE for the empty-state path. ALL DELETE'd at teardown.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Dependent Decisions ('Link a Decision' picker) feature is end-to-end working as of iter144. Backend endpoints: GET /decisions/{id}/linkable, POST /decisions/{id}/link-decision, POST /decisions/{id}/links/{factor_id}/resolve, POST /decisions/{id}/links/refresh-auto. Key gotcha: PUT /api/decisions/{id} returns only {message:..} — refetch via GET to inspect the persisted worth_percentage. Frontend testIDs: link-decision-btn (Step2), decision-link-picker (modal), dlp-decision-<id>, dlp-metric-option_worth|top_score, dlp-option-<id>, dlp-factor-name, dlp-mode-factor_only|factor_and_option, dlp-refresh-auto|manual, dlp-confirm, dlp-close, dlp-back, dlp-search; on the created factor: link-open-<factorId>, link-refresh-<factorId> (manual only). For auth, store session_token (or token) in localStorage and load /prr/{decision_id}?step=2. Regression file: /app/backend/tests/test_iter144_decision_link.py. The generic Data Source toggle is hidden on decision_link factors at Step2.tsx:1048.",
+  "rca_of_issue": "n/a — feature works end-to-end."
+}
