@@ -21,7 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 
 from core.database import db
-from core.auth import get_current_user
+from core.auth import get_current_user, require_admin
 from routes.decision_reports import (
     _load_decision,
     _build_pdf,
@@ -192,6 +192,58 @@ class ShareCreate(BaseModel):
     recipient_email: Optional[str] = None
     recipient_phone: Optional[str] = None
     recipient_name: Optional[str] = None
+
+
+# ──────────────────────── admin diagnostics ────────────────────────
+@router.get("/admin/ultramsg-status")
+async def ultramsg_status(_: dict = Depends(require_admin)):
+    """Admin-only health ping for the WhatsApp (UltraMsg) instance.
+
+    Lets an admin confirm whether the linked WhatsApp session is actually
+    connected (QR scanned) before blaming a failed share on the app. When the
+    instance is disconnected, UltraMsg silently accepts /messages/chat but
+    returns {"sent":"false"} — which is why WhatsApp shares "succeed" yet never
+    arrive. This surfaces the real session state.
+    """
+    if not (ULTRAMSG_INSTANCE and ULTRAMSG_TOKEN):
+        return {
+            "configured": False,
+            "connected": False,
+            "status": "not_configured",
+            "detail": "ULTRAMSG_INSTANCE_ID / ULTRAMSG_API_TOKEN are not set on the server.",
+        }
+    url = f"https://api.ultramsg.com/{ULTRAMSG_INSTANCE}/instance/status"
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(url, params={"token": ULTRAMSG_TOKEN})
+        data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+    except Exception as e:  # noqa: BLE001
+        return {
+            "configured": True,
+            "connected": False,
+            "status": "error",
+            "detail": f"Could not reach UltraMsg: {str(e)[:200]}",
+            "instance_id": ULTRAMSG_INSTANCE,
+        }
+    # UltraMsg shape: {"status": {"accountStatus": {"status": "authenticated"|"got qr code"|...}}}
+    acct = (((data or {}).get("status") or {}).get("accountStatus") or {})
+    acct_status = (acct.get("status") or "").lower()
+    substatus = acct.get("substatus") or ""
+    connected = acct_status == "authenticated"
+    return {
+        "configured": True,
+        "connected": connected,
+        "status": acct_status or "unknown",
+        "substatus": substatus,
+        "instance_id": ULTRAMSG_INSTANCE,
+        "raw": data,
+        "detail": (
+            "WhatsApp session is connected and ready to send."
+            if connected
+            else "WhatsApp session is NOT connected. Open your UltraMsg dashboard and "
+                 "re-scan the QR code to relink the phone."
+        ),
+    }
 
 
 # ──────────────────────────── endpoints ────────────────────────────

@@ -70,6 +70,27 @@ export default function AdminHomeScreen() {
 
   const [stats, setStats] = useState<StatCard[]>([]);
   const [loading, setLoading] = useState(true);
+  const [wa, setWa] = useState<{ loading: boolean; connected: boolean; status: string; detail: string; configured: boolean }>(
+    { loading: true, connected: false, status: 'checking', detail: '', configured: true },
+  );
+
+  const checkWhatsApp = React.useCallback(async () => {
+    setWa((w) => ({ ...w, loading: true }));
+    try {
+      const r = await api.get('/shares/admin/ultramsg-status');
+      setWa({
+        loading: false,
+        connected: !!r.data?.connected,
+        configured: r.data?.configured !== false,
+        status: r.data?.status || 'unknown',
+        detail: r.data?.detail || '',
+      });
+    } catch (e: any) {
+      setWa({ loading: false, connected: false, configured: true, status: 'error', detail: e?.response?.data?.detail || 'Could not reach status endpoint.' });
+    }
+  }, []);
+
+  useEffect(() => { checkWhatsApp(); }, [checkWhatsApp]);
 
   useEffect(() => {
     (async () => {
@@ -206,6 +227,29 @@ export default function AdminHomeScreen() {
               <Text style={s.statusLabel}>/api/pricing cache</Text>
               <Text style={[s.statusBadge, { backgroundColor: ADMIN_THEME.semantic.successSoft, color: ADMIN_THEME.semantic.success }]}>WARM</Text>
             </View>
+            <View style={s.statusRow}>
+              <View style={[s.statusDot, {
+                backgroundColor: wa.loading
+                  ? ADMIN_THEME.semantic.textMuted
+                  : wa.connected ? ADMIN_THEME.semantic.success : ADMIN_THEME.semantic.danger,
+              }]} />
+              <Text style={s.statusLabel}>WhatsApp · UltraMsg</Text>
+              <TouchableOpacity onPress={checkWhatsApp} accessibilityLabel="Re-check WhatsApp status" style={{ marginRight: 6 }}>
+                <Ionicons name="refresh" size={13} color={ADMIN_THEME.semantic.textMuted} />
+              </TouchableOpacity>
+              {wa.loading ? (
+                <ActivityIndicator size="small" color={ADMIN_THEME.semantic.textMuted} />
+              ) : (
+                <Text style={[s.statusBadge, wa.connected
+                  ? { backgroundColor: ADMIN_THEME.semantic.successSoft, color: ADMIN_THEME.semantic.success }
+                  : { backgroundColor: ADMIN_THEME.semantic.dangerSoft, color: ADMIN_THEME.semantic.danger }]}>
+                  {wa.connected ? 'CONNECTED' : !wa.configured ? 'NOT SET' : 'DISCONNECTED'}
+                </Text>
+              )}
+            </View>
+            {!wa.loading && !wa.connected && !!wa.detail && (
+              <Text style={s.waDetail}>{wa.detail}</Text>
+            )}
             <View style={s.statusDivider} />
             <View style={s.statusRow}>
               <Text style={s.statusLabel}>Edition</Text>
@@ -311,6 +355,7 @@ const s = StyleSheet.create({
   statusValue: { fontSize: 12, fontWeight: '700', color: ADMIN_THEME.semantic.text },
   statusBadge: { fontSize: 9, fontWeight: '700', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, letterSpacing: 0.5 },
   statusDivider: { height: 1, backgroundColor: ADMIN_THEME.semantic.divider, marginVertical: 8 },
+  waDetail: { fontSize: 11, color: ADMIN_THEME.semantic.danger, lineHeight: 16, marginTop: -2, marginBottom: 4, paddingLeft: 16 },
   editionPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: ADMIN_THEME.semantic.primarySoft, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   editionText: { fontSize: 10, fontWeight: '700', color: ADMIN_THEME.semantic.primary, letterSpacing: 0.4 },
   newsItem: { fontSize: 12, color: ADMIN_THEME.semantic.textSecondary, lineHeight: 20, marginBottom: 2 },

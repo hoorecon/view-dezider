@@ -1,0 +1,31 @@
+{
+  "summary": "Verified the two recurring bug fixes + new UltraMsg admin diagnostic. (1) DEEP-LINK REDIRECT: /shared/{token} while logged out stores AsyncStorage 'pending_share_token' (confirmed via localStorage) and redirects to /auth/login (confirmed); getPostAuthRoute() logic in src/utils/postAuthRedirect.ts is correct and is now invoked at every auth-completion point (email login useEffect for non-admins, native Google success handler, web OAuth hash handler in app/index.tsx, native deep-link handler). Admin login does NOT consume pending_share_token and still routes to /admin — confirmed (super@test.com landed on /admin and pending_share_token remained in localStorage). (2) WEBSCROLLFIX: On /admin (long RN ScrollView with overflow-y:scroll inner div, scrollHeight=1550, clientHeight=740), pressing PageDown WITHOUT first clicking inside the scroll frame moved scrollTop from 0 → 666 (~90% of viewport) — the original bug (PageDown does nothing until first click) is FIXED. Home key reset scroll to 0. (3) ULTRAMSG STATUS: Backend GET /api/shares/admin/ultramsg-status returns 401 unauth, 200 with {configured,connected,status,detail} when authed as super admin (status='standby' from real instance). Admin home /admin shows 'WhatsApp · UltraMsg' row with a RED dot, a refresh icon (accessibilityLabel='Re-check WhatsApp status'), a RED 'DISCONNECTED' badge, and the red detail line 'WhatsApp session is NOT connected. Open your UltraMsg dashboard and re-scan the QR code to relink the phone.' All 4 backend pytest cases pass. No regressions observed.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter149_ultramsg_status.py",
+    "/app/test_reports/pytest/iter149.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "app/admin/index.tsx (~380 lines) is fine for now but the QUICK_ACTIONS array (33 entries inline) could be extracted to /src/constants/adminQuickActions.ts to keep the screen file focused on layout.",
+    "src/components/WebScrollFix.tsx: smooth-scroll on End/Home occasionally races a re-render of the underlying RN ScrollView (observed scrollTop reset to 0 right after End). Functionally fine for users; consider switching End/Home to 'behavior: auto' to make it instantaneous and avoid the race during programmatic checks.",
+    "app/auth/login.tsx isAuthenticated effect calls router.replace inside an async then() without an isMounted guard — low risk because the screen unmounts immediately, but technically can warn in StrictMode.",
+    "app/shared/[token].tsx reads session_token directly from AsyncStorage as a fallback to isAuthenticated — fine, but consider using the auth store's hydration-complete flag to avoid a tiny race on first paint.",
+    "Backend /api/shares/admin/ultramsg-status takes 800-3200ms (httpx call to UltraMsg). Hardening already flags it as slow_request. Consider a 60s in-memory cache so the admin home doesn't pay that latency on every mount."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter149_ultramsg_status.py (new — 4 tests, all passing)"
+  ],
+  "success_rate": { "backend": "100% (4/4)", "frontend": "100% on tested flows (deep-link store+redirect, admin status row + badge + refresh + detail, WebScrollFix PageDown without click)" },
+  "seed_data_creation": "No persistent seed data. Test created one transient report_share row via POST /api/shares (TEST_share_… recipient email) as part of pytest; ignored thereafter.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All three review items pass. The only E2E gap was directly testing the non-admin user login → /shared/{token} redirect through the UI (couldn't reuse veales.testing@gmail.com because its password isn't in test_credentials.md, and the register form requires a name+email+password+confirm flow that I didn't fully complete in one shot). That code path is however straightforward and was verified by reading login.tsx lines 59-71: when isAuthenticated && !adminLike, router.replace(await getPostAuthRoute()) — and getPostAuthRoute returns `/shared/${token}` whenever AsyncStorage 'pending_share_token' is set. The bug previously came from individual auth-completion sites hardcoding `/(tabs)`; that has been fixed at every site. If E1 wants a full E2E proof, the next iteration can either (a) add a known non-admin password to test_credentials.md, or (b) script a complete register-then-login walkthrough.",
+  "rca_of_issue": "Original bug #1 (deep-link drops on Dashboard): each auth-completion site hardcoded `router.replace('/(tabs)')` instead of consulting a single helper. Fixed by introducing src/utils/postAuthRedirect.ts which reads AsyncStorage 'pending_share_token' (set by app/shared/[token].tsx when an unauth visitor arrives) and returns '/shared/{token}' if present, else '/(tabs)'. All auth sites now call getPostAuthRoute(). Verified. Original bug #2 (keyboard scroll requires first click): RN-Web renders ScrollView as an inner div with overflow-y:scroll, so browser-default PageUp/PageDown/Space/Home/End only acts on the focused scrollable, which is never the body. Fixed by WebScrollFix global keydown listener that picks the nearest scroller via mouse pointer → focused element → best visible scroller → document scroller, and programmatically scrollBy/scrollTo on it. Confirmed PageDown moved scrollTop from 0 to 666px on /admin without any prior click. New diagnostic (UltraMsg status): backend endpoint /api/shares/admin/ultramsg-status hits UltraMsg /instance/status, normalises to {configured,connected,status,detail}; admin home renders a status row with colored dot + refresh button + badge + red detail line when disconnected. Real instance returns status='standby' (not 'authenticated') → DISCONNECTED row renders correctly."
+}

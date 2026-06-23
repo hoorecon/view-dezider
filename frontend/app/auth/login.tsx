@@ -21,6 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { useAuthStore } from '../../src/store/authStore';
+import { getPostAuthRoute } from '../../src/utils/postAuthRedirect';
 import { useAppLogo } from '../../src/contexts/FontFamilyContext';
 import { COLORS } from '../../src/constants/colors';
 import { Input } from '../../src/components/Input';
@@ -62,7 +63,9 @@ export default function LoginScreen() {
       if (adminLike) {
         router.replace('/admin' as any);
       } else {
-        router.replace('/(tabs)');
+        // Honour a pending shared-report deep link (lead-magnet onboarding):
+        // route the recipient straight to the report instead of the dashboard.
+        getPostAuthRoute().then((route) => router.replace(route as any));
       }
     }
   }, [isAuthenticated, user]);
@@ -203,7 +206,7 @@ export default function LoginScreen() {
           const sessionId = result.url.split('session_id=')[1]?.split('&')[0];
           if (sessionId) {
             await loginWithGoogle(sessionId);
-            router.replace('/(tabs)');
+            router.replace((await getPostAuthRoute()) as any);
           }
         }
       }

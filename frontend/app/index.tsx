@@ -8,6 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
 import { useAuthStore } from '../src/store/authStore';
+import { getPostAuthRoute } from '../src/utils/postAuthRedirect';
 import { COLORS, GRADIENTS } from '../src/constants/colors';
 import { useCompany } from '../src/contexts/FontFamilyContext';
 import MarketingHeader from '../src/components/marketing/MarketingHeader';
@@ -49,7 +50,7 @@ export default function Index() {
         if (sessionId) {
           try {
             await loginWithGoogle(sessionId);
-            router.replace('/(tabs)');
+            router.replace((await getPostAuthRoute()) as any);
           } catch {
             router.replace('/auth/login');
           }
@@ -68,9 +69,9 @@ export default function Index() {
       if (hash.includes('session_id=')) {
         const sessionId = hash.split('session_id=')[1]?.split('&')[0];
         if (sessionId) {
-          loginWithGoogle(sessionId).then(() => {
+          loginWithGoogle(sessionId).then(async () => {
             window.history.replaceState(null, '', window.location.pathname);
-            router.replace('/(tabs)');
+            router.replace((await getPostAuthRoute()) as any);
           }).catch(() => router.replace('/auth/login'));
           return;
         }
