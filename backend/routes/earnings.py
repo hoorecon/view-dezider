@@ -18,6 +18,8 @@ Collections:
 from __future__ import annotations
 
 import asyncio
+import base64
+import io
 import logging
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -25,6 +27,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from openpyxl import Workbook
 
 from core.auth import get_current_user, require_admin
 from core.database import db
@@ -44,6 +47,7 @@ DEFAULT_CONFIG = {
     "platform_commission_percent": 0,
     "enabled": True,
     "razorpayx_account_number": "",
+    "idfc_debit_account_number": "",
 }
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
@@ -217,6 +221,7 @@ class ConfigUpdate(BaseModel):
     platform_commission_percent: Optional[int] = Field(None, ge=0, le=100)
     enabled: Optional[bool] = None
     razorpayx_account_number: Optional[str] = None
+    idfc_debit_account_number: Optional[str] = None
 
 
 @admin_router.get("/config")
@@ -257,6 +262,210 @@ async def admin_list_payouts(admin: dict = Depends(require_admin)):
 async def admin_run_now(admin: dict = Depends(require_admin)):
     result = await run_weekly_payouts(force=True)
     return {"ok": True, **result}
+
+
+# ---------------------------------------------------------------------------
+# Manual payout batch (IDFC bulk transfer / on-screen UPI) — no aggregator
+# ---------------------------------------------------------------------------
+async def run_manual_payout_batch() -> dict:
+    """Create `pending_manual` payout rows for every eligible seller, snapshotting
+    their beneficiary details so the IDFC export is self-contained. Does NOT call
+    any payout API — admin pays via IDFC net-banking and then marks them paid."""
+    cfg = await get_config()
+    min_inr = cfg.get("min_payout_inr", 500)
+    pipeline = [
+        {"$match": {"status": "available"}},
+        {"$group": {"_id": "$user_id", "total": {"$sum": "$net_inr"},
+                    "entries": {"$push": "$entry_id"}}},
+    ]
+    rows = [r async for r in db.earnings_ledger.aggregate(pipeline)]
+    created = 0
+    bank = 0
+    upi = 0
+    skipped = 0
+    for r in rows:
+        user_id, total, entry_ids = r["_id"], r["total"], r["entries"]
+        if total < min_inr:
+            skipped += 1
+            continue
+        acct = await db.payout_accounts.find_one({"user_id": user_id}, {"_id": 0})
+        if not acct or not acct.get("verified"):
+            skipped += 1
+            continue
+        user = await db.users.find_one({"user_id": user_id}, {"_id": 0}) or {}
+        payout_id = f"pay_{uuid.uuid4().hex[:12]}"
+        payout_doc = {
+            "payout_id": payout_id,
+            "user_id": user_id,
+            "amount_inr": total,
+            "method": acct.get("method"),
+            "destination": acct.get("vpa") or acct.get("account_number"),
+            # snapshot beneficiary details for a self-contained export
+            "beneficiary_name": acct.get("beneficiary_name") or user.get("name") or user.get("email"),
+            "account_number": acct.get("account_number"),
+            "ifsc": acct.get("ifsc"),
+            "vpa": acct.get("vpa"),
+            "email": user.get("email"),
+            "entry_ids": entry_ids,
+            "status": "pending_manual",
+            "razorpay_payout_id": None,
+            "failure_reason": None,
+            "channel": "manual_idfc",
+            "created_at": _iso(),
+            "processed_at": None,
+        }
+        await db.payouts.insert_one(payout_doc)
+        await db.earnings_ledger.update_many(
+            {"entry_id": {"$in": entry_ids}},
+            {"$set": {"status": "paid_out", "payout_id": payout_id}},
+        )
+        created += 1
+        bank += 1 if acct.get("method") == "bank" else 0
+        upi += 1 if acct.get("method") == "upi" else 0
+    return {"created": created, "bank": bank, "upi": upi, "skipped": skipped}
+
+
+@admin_router.post("/create-manual-batch")
+async def admin_create_manual_batch(admin: dict = Depends(require_admin)):
+    res = await run_manual_payout_batch()
+    return {"ok": True, **res}
+
+
+def _idfc_txn_type(ifsc: Optional[str], amount: int) -> str:
+    code = (ifsc or "").upper()
+    if code.startswith("IDFB"):     # within IDFC FIRST Bank
+        return "IFT"
+    if amount >= 200000:            # RTGS floor
+        return "RTGS"
+    return "NEFT"
+
+
+def _xlsx_b64(wb: Workbook) -> str:
+    buf = io.BytesIO()
+    wb.save(buf)
+    return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+IDFC_HEADERS = [
+    "Beneficiary Name", "Beneficiary Account Number", "IFSC", "Transaction Type",
+    "Debit Account Number", "Transaction Date", "Amount", "Currency",
+    "Beneficiary Email ID", "Remarks", "Custom Header – 1", "Custom Header – 2",
+    "Custom Header – 3", "Custom Header – 4", "Custom Header – 5",
+]
+
+
+@admin_router.get("/export/bank")
+async def export_idfc_bank(admin: dict = Depends(require_admin)):
+    """IDFC BLKPAY-format xlsx for all pending_manual BANK payouts."""
+    cfg = await get_config()
+    debit_acct = (cfg.get("idfc_debit_account_number") or "").strip()
+    txn_date = _now().strftime("%d/%m/%Y")
+    cur = db.payouts.find({"status": "pending_manual", "method": "bank"}, {"_id": 0}).sort("created_at", 1)
+    rows = await cur.to_list(1000)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Sheet1"
+    ws.append(IDFC_HEADERS)
+    total = 0
+    for p in rows:
+        amt = int(p.get("amount_inr") or 0)
+        total += amt
+        ws.append([
+            p.get("beneficiary_name") or "",
+            p.get("account_number") or "",
+            (p.get("ifsc") or "").upper(),
+            _idfc_txn_type(p.get("ifsc"), amt),
+            debit_acct,
+            txn_date,
+            amt,
+            "INR",
+            p.get("email") or "",
+            f"Dezider payout {p.get('payout_id')}",
+            p.get("payout_id") or "", "", "", "", "",
+        ])
+    fname = f"BLKPAY_{_now().strftime('%Y%m%d')}.xlsx"
+    return {"filename": fname, "count": len(rows), "total_inr": total,
+            "content_base64": _xlsx_b64(wb),
+            "debit_account_set": bool(debit_acct)}
+
+
+@admin_router.get("/export/upi")
+async def export_upi_list(admin: dict = Depends(require_admin)):
+    """Simple VPA list xlsx for IDFC 'Bulk Pay On-Screen' (UPI/VPA group tool)."""
+    cur = db.payouts.find({"status": "pending_manual", "method": "upi"}, {"_id": 0}).sort("created_at", 1)
+    rows = await cur.to_list(1000)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "UPI Payouts"
+    ws.append(["Beneficiary Name", "UPI ID (VPA)", "Amount", "Currency", "Remarks", "Payout ID"])
+    total = 0
+    for p in rows:
+        amt = int(p.get("amount_inr") or 0)
+        total += amt
+        ws.append([
+            p.get("beneficiary_name") or "",
+            p.get("vpa") or p.get("destination") or "",
+            amt, "INR",
+            f"Dezider payout {p.get('payout_id')}",
+            p.get("payout_id") or "",
+        ])
+    fname = f"UPI_PAYOUTS_{_now().strftime('%Y%m%d')}.xlsx"
+    return {"filename": fname, "count": len(rows), "total_inr": total,
+            "content_base64": _xlsx_b64(wb)}
+
+
+class MarkPaidReq(BaseModel):
+    payout_ids: Optional[List[str]] = None   # None => all pending_manual
+
+
+@admin_router.post("/mark-paid")
+async def admin_mark_paid(body: MarkPaidReq, admin: dict = Depends(require_admin)):
+    q: Dict[str, Any] = {"status": "pending_manual"}
+    if body.payout_ids:
+        q["payout_id"] = {"$in": body.payout_ids}
+    rows = await db.payouts.find(q, {"_id": 0, "payout_id": 1, "user_id": 1, "amount_inr": 1}).to_list(1000)
+    now = _iso()
+    ids = [r["payout_id"] for r in rows]
+    if ids:
+        await db.payouts.update_many(
+            {"payout_id": {"$in": ids}},
+            {"$set": {"status": "processed", "processed_at": now, "channel": "manual_idfc"}},
+        )
+        for r in rows:
+            try:
+                await create_notification(r["user_id"], "payout", "Payout completed ✅",
+                                          f"₹{r['amount_inr']} has been transferred to your account.",
+                                          {"payout_id": r["payout_id"]})
+            except Exception:
+                pass
+    return {"ok": True, "marked_paid": len(ids)}
+
+
+@admin_router.post("/{payout_id}/mark-failed")
+async def admin_mark_failed(payout_id: str, admin: dict = Depends(require_admin)):
+    payout = await db.payouts.find_one({"payout_id": payout_id})
+    if not payout:
+        raise HTTPException(404, "payout not found")
+    await db.payouts.update_one(
+        {"payout_id": payout_id},
+        {"$set": {"status": "failed", "failure_reason": "Marked failed by admin", "updated_at": _iso()}},
+    )
+    reverted = 0
+    entry_ids = payout.get("entry_ids") or []
+    if entry_ids:
+        res = await db.earnings_ledger.update_many(
+            {"entry_id": {"$in": entry_ids}},
+            {"$set": {"status": "available", "payout_id": None}},
+        )
+        reverted = res.modified_count
+    try:
+        await create_notification(payout["user_id"], "payout", "Payout failed ⚠️",
+                                  f"₹{payout.get('amount_inr')} payout failed and was returned to your available balance.",
+                                  {"payout_id": payout_id})
+    except Exception:
+        pass
+    return {"ok": True, "status": "failed", "reverted_entries": reverted}
 
 
 # ---------------------------------------------------------------------------

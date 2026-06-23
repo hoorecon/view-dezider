@@ -6,17 +6,41 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
-  ActivityIndicator, Switch,
+  ActivityIndicator, Switch, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
 import { safeBack } from '../../src/utils/navigation';
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+// Save a base64 xlsx — browser download on web, share sheet on native.
+async function saveBase64Xlsx(filename: string, b64: string) {
+  const mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  if (Platform.OS === 'web') {
+    const byteChars = atob(b64);
+    const bytes = new Uint8Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+    const blob = new Blob([bytes], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    return;
+  }
+  const uri = `${FileSystem.cacheDirectory}${filename}`;
+  await FileSystem.writeAsStringAsync(uri, b64, { encoding: 'base64' as any });
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(uri, { mimeType: mime, dialogTitle: filename });
+  }
+}
 
 export default function AdminPayoutsScreen() {
   const router = useRouter();
@@ -24,6 +48,7 @@ export default function AdminPayoutsScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
   const [payouts, setPayouts] = useState<any[]>([]);
   const [pending, setPending] = useState<any[]>([]);
 
@@ -49,6 +74,7 @@ export default function AdminPayoutsScreen() {
         platform_commission_percent: parseInt(String(cfg.platform_commission_percent) || '0', 10),
         enabled: cfg.enabled,
         razorpayx_account_number: cfg.razorpayx_account_number || '',
+        idfc_debit_account_number: cfg.idfc_debit_account_number || '',
       });
       setCfg(r.data); showAlert('Saved', 'Payout configuration updated.');
     } catch (e: any) { showAlert('Error', e?.response?.data?.detail || 'Save failed'); }
@@ -70,9 +96,49 @@ export default function AdminPayoutsScreen() {
     ]);
   };
 
+  const createBatch = async () => {
+    setBusy('batch');
+    try {
+      const r = await api.post('/admin/payouts/create-manual-batch');
+      showAlert('Batch created', `Queued ${r.data.created} payout(s): ${r.data.bank} bank, ${r.data.upi} UPI. Skipped ${r.data.skipped} (below threshold / no account).`);
+      load();
+    } catch (e: any) { showAlert('Error', e?.response?.data?.detail || 'Failed to create batch'); }
+    finally { setBusy(null); }
+  };
+
+  const downloadExport = async (kind: 'bank' | 'upi') => {
+    setBusy(kind);
+    try {
+      const r = await api.get(`/admin/payouts/export/${kind}`);
+      if (!r.data?.count) { showAlert('Nothing to export', `No pending ${kind === 'bank' ? 'bank' : 'UPI'} payouts. Create a batch first.`); return; }
+      if (kind === 'bank' && !r.data.debit_account_set) {
+        showAlert('Tip', 'Set your IDFC debit account number in Configuration so the file is ready to upload.');
+      }
+      await saveBase64Xlsx(r.data.filename, r.data.content_base64);
+    } catch (e: any) { showAlert('Error', e?.response?.data?.detail || 'Export failed'); }
+    finally { setBusy(null); }
+  };
+
+  const markAllPaid = async () => {
+    showAlert('Mark all as paid?', `This marks all ${pendingManual.length} pending manual payout(s) as PROCESSED. Do this only after you have actually transferred the money via IDFC.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Mark paid', onPress: async () => {
+        setBusy('markpaid');
+        try {
+          const r = await api.post('/admin/payouts/mark-paid', {});
+          showAlert('Done', `${r.data.marked_paid} payout(s) marked as paid.`);
+          load();
+        } catch (e: any) { showAlert('Error', e?.response?.data?.detail || 'Failed'); }
+        finally { setBusy(null); }
+      } },
+    ]);
+  };
+
   if (loading || !cfg) return (
     <SafeAreaView style={styles.container} edges={['top']}><ActivityIndicator style={{ marginTop: 60 }} color="#16A34A" /></SafeAreaView>
   );
+
+  const pendingManual = payouts.filter((p) => p.status === 'pending_manual');
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -121,6 +187,9 @@ export default function AdminPayoutsScreen() {
           <Text style={styles.label}>RazorpayX account number</Text>
           <TextInput style={styles.input} value={cfg.razorpayx_account_number || ''} onChangeText={(t) => update({ razorpayx_account_number: t })} placeholder="RazorpayX virtual account no." autoCapitalize="none" />
 
+          <Text style={styles.label}>IDFC debit account number (for manual bulk transfer)</Text>
+          <TextInput style={styles.input} value={cfg.idfc_debit_account_number || ''} onChangeText={(t) => update({ idfc_debit_account_number: t.replace(/[^0-9]/g, '') })} placeholder="Your IDFC current a/c no." keyboardType="numeric" />
+
           <TouchableOpacity style={styles.saveBtn} onPress={save} disabled={saving}>
             {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveBtnText}>Save configuration</Text>}
           </TouchableOpacity>
@@ -129,6 +198,32 @@ export default function AdminPayoutsScreen() {
         <TouchableOpacity style={styles.runBtn} onPress={runNow} disabled={running} testID="run-payouts-now">
           {running ? <ActivityIndicator color="#FFF" /> : <><Ionicons name="play" size={18} color="#FFF" /><Text style={styles.runBtnText}>Run payouts now</Text></>}
         </TouchableOpacity>
+
+        {/* Manual payouts via IDFC bank file / on-screen UPI */}
+        <Text style={styles.sectionTitle}>Manual payouts (IDFC)</Text>
+        <View style={styles.card}>
+          <Text style={styles.helpText}>
+            Pay sellers directly from your IDFC current account — no aggregator needed.
+            {'\n'}1. Create a batch (locks eligible balances).{'\n'}2. Download the file(s).{'\n'}3. Upload Bank file to IDFC Bulk Transfer; enter UPI IDs in IDFC {'"'}Bulk Pay On-Screen{'"'}.{'\n'}4. After transferring, tap {'"'}Mark all as paid{'"'}.
+          </Text>
+
+          <TouchableOpacity style={[styles.actBtn, { backgroundColor: '#7C3AED' }]} onPress={createBatch} disabled={busy === 'batch'} testID="create-manual-batch">
+            {busy === 'batch' ? <ActivityIndicator color="#FFF" /> : <><Ionicons name="albums" size={16} color="#FFF" /><Text style={styles.actBtnText}>Create manual batch</Text></>}
+          </TouchableOpacity>
+
+          <View style={styles.exportRow}>
+            <TouchableOpacity style={[styles.exportBtn, { borderColor: '#16A34A' }]} onPress={() => downloadExport('bank')} disabled={busy === 'bank'} testID="export-bank">
+              {busy === 'bank' ? <ActivityIndicator color="#16A34A" /> : <><Ionicons name="download" size={15} color="#16A34A" /><Text style={[styles.exportBtnText, { color: '#16A34A' }]}>Bank file (IDFC)</Text></>}
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.exportBtn, { borderColor: '#0EA5E9' }]} onPress={() => downloadExport('upi')} disabled={busy === 'upi'} testID="export-upi">
+              {busy === 'upi' ? <ActivityIndicator color="#0EA5E9" /> : <><Ionicons name="download" size={15} color="#0EA5E9" /><Text style={[styles.exportBtnText, { color: '#0EA5E9' }]}>UPI list</Text></>}
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity style={[styles.actBtn, { backgroundColor: pendingManual.length ? '#16A34A' : '#CBD5E1' }]} onPress={markAllPaid} disabled={busy === 'markpaid' || !pendingManual.length} testID="mark-all-paid">
+            {busy === 'markpaid' ? <ActivityIndicator color="#FFF" /> : <><Ionicons name="checkmark-done" size={16} color="#FFF" /><Text style={styles.actBtnText}>Mark all as paid ({pendingManual.length})</Text></>}
+          </TouchableOpacity>
+        </View>
 
         {/* pending balances */}
         <Text style={styles.sectionTitle}>Pending balances ({pending.length})</Text>
@@ -177,6 +272,12 @@ const styles = StyleSheet.create({
   saveBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
   runBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#0EA5E9', paddingVertical: 13, borderRadius: 12, marginTop: 14 },
   runBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
+  helpText: { fontSize: 12.5, color: '#475569', lineHeight: 19, marginBottom: 12 },
+  actBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 10, marginTop: 10 },
+  actBtnText: { color: '#FFF', fontWeight: '800', fontSize: 13.5 },
+  exportRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  exportBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11, borderRadius: 10, borderWidth: 1.5, backgroundColor: '#FFF' },
+  exportBtnText: { fontWeight: '800', fontSize: 12.5 },
   empty: { fontSize: 13, color: '#94A3B8', marginBottom: 10 },
   row: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 10, padding: 12, marginBottom: 6, borderWidth: 1, borderColor: '#EEF2F7' },
   rowTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
