@@ -9,11 +9,13 @@ disclaimer, safety keywords) stored in app_config {key: "eft_config"}.
 
 import os
 import uuid
+import base64
 import logging
 from pathlib import Path
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
+from fastapi.responses import Response
 
 from core.database import db
 from core.auth import require_admin
@@ -42,6 +44,15 @@ async def _load_config() -> dict:
         for k, v in stored["value"].items():
             if v is not None:
                 cfg[k] = v
+    # Auto-heal legacy diagram images that were written to ephemeral disk
+    # (static/eft/<file>) and lost on redeploy → fall back to the default
+    # diagram so the screen is never blank. New uploads use DB-backed
+    # /api/emotional-gatekeeper/eft/media/<id> which always persists.
+    diag = str(cfg.get("diagram_image_url") or "")
+    if diag.startswith("/api/static/eft/"):
+        fname = diag.rsplit("/", 1)[-1]
+        if not (_STATIC_DIR / fname).exists():
+            cfg["diagram_image_url"] = EFT_DEFAULTS["diagram_image_url"]
     return cfg
 
 
@@ -175,10 +186,41 @@ async def admin_upload_eft_media(
     ext = os.path.splitext(file.filename or "")[1].lower() or (
         ".jpg" if media_type == "image" else ".mp4"
     )
-    fname = f"{media_type}_{uuid.uuid4().hex[:12]}{ext}"
-    dest = _STATIC_DIR / fname
-    with open(dest, "wb") as f:
-        f.write(data)
+    media_id = f"{media_type}_{uuid.uuid4().hex[:12]}"
 
-    url = f"/api/static/eft/{fname}"
+    # Persist in MongoDB (survives redeploys / multi-replica scaling) instead of
+    # writing to ephemeral container disk under static/eft/ which gets wiped.
+    await db.eft_media.update_one(
+        {"id": media_id},
+        {"$set": {
+            "id": media_id,
+            "media_type": media_type,
+            "content_type": content_type,
+            "ext": ext,
+            "data_b64": base64.b64encode(data).decode("ascii"),
+            "size_bytes": len(data),
+            "uploaded_by": user["user_id"],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+
+    url = f"/api/emotional-gatekeeper/eft/media/{media_id}"
     return {"url": url, "media_type": media_type, "size_mb": round(size_mb, 2)}
+
+
+@router.get("/eft/media/{media_id}")
+async def get_eft_media(media_id: str):
+    """Serve an uploaded EFT image/video from MongoDB (persistent across deploys)."""
+    doc = await db.eft_media.find_one({"id": media_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Media not found")
+    try:
+        raw = base64.b64decode(doc["data_b64"])
+    except Exception:
+        raise HTTPException(500, "Corrupt media")
+    return Response(
+        content=raw,
+        media_type=doc.get("content_type") or "application/octet-stream",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )

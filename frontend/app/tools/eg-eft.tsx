@@ -222,6 +222,7 @@ export default function EftTappingScreen() {
   const backRef = useRef<() => void>(() => {});
   const voiceOnRef = useRef(false);
   const stepRef = useRef<Step>(step);
+  const lastCmdAtRef = useRef(0);
   voiceOnRef.current = voiceOn;
   stepRef.current = step;
 
@@ -245,21 +246,34 @@ export default function EftTappingScreen() {
 
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const r = new SR();
-    r.continuous = true; r.interimResults = false; r.lang = 'en-US';
+    // interimResults=true lets us react the instant a command word is heard
+    // (Chrome otherwise only emits a final result after a long pause, which is
+    // why "Next" used to need 2-3 tries and "Back" often never registered).
+    r.continuous = true; r.interimResults = true; r.lang = 'en-US';
+
     const restart = () => {
       if (voiceOnRef.current && stepRef.current === 'tapping' && recogRef.current === r) {
-        // Small delay avoids "recognition already started" races in Chrome.
-        setTimeout(() => {
-          try { r.start(); } catch {}
-        }, 300);
+        setTimeout(() => { try { r.start(); } catch {} }, 150);
       }
     };
-    r.onresult = (e: any) => {
-      const t = String(e.results[e.results.length - 1][0].transcript || '').toLowerCase().trim();
-      if (/\b(next|forward|continue|proceed|go on)\b/.test(t)) advanceRef.current();
-      else if (/\b(back|previous|prev|go back)\b/.test(t)) backRef.current();
+
+    const fire = (fn: () => void) => {
+      const now = Date.now();
+      if (now - lastCmdAtRef.current < 1500) return; // debounce repeated detections of one utterance
+      lastCmdAtRef.current = now;
+      fn();
     };
-    // Chrome stops continuous recognition after a short silence — keep it alive.
+
+    r.onresult = (e: any) => {
+      // Scan every result from this event (interim + final) and match the
+      // newest command word. "back" is checked first so it is never shadowed.
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = String(e.results[i][0]?.transcript || '').toLowerCase().trim();
+        if (!t) continue;
+        if (/\b(back|previous|prev|go back)\b/.test(t)) { fire(() => backRef.current()); return; }
+        if (/\b(next|forward|continue|proceed|go on)\b/.test(t)) { fire(() => advanceRef.current()); return; }
+      }
+    };
     r.onend = restart;
     r.onerror = (ev: any) => {
       const err = ev?.error;
@@ -507,7 +521,11 @@ export default function EftTappingScreen() {
                     <Text style={styles.affirmText}>“{affirmation}”</Text>
                   </View>
                   <Text style={styles.instruction}>
-                    Repeat this affirmation 3 times while gently tapping on the Karate Chop point.
+                    Here is the full sequence: you will tap through {points.length} points in order.
+                    Begin by repeating your setup affirmation 3 times while tapping the
+                    Karate Chop point (the fleshy side of your hand, below the little finger).
+                    Then move through the remaining points, saying your chosen phrase once at each.
+                    Tap gently 5–7 times per point and keep breathing slowly.
                   </Text>
 
                   <View style={styles.tipBox}>
