@@ -116,10 +116,19 @@ async def _send_whatsapp(to: str, body: str) -> None:
         raise RuntimeError(f"UltraMsg error {r.status_code}: {r.text[:300]}")
     try:
         data = r.json()
-        if isinstance(data, dict) and data.get("error"):
-            raise RuntimeError(f"UltraMsg error: {data.get('error')}")
     except ValueError:
-        pass
+        data = None
+    if isinstance(data, dict):
+        if data.get("error"):
+            raise RuntimeError(f"UltraMsg error: {data.get('error')}")
+        # UltraMsg returns {"sent":"false", ...} (no "error" key) when the number
+        # isn't on WhatsApp or the instance session is disconnected — that used to
+        # be reported as success. Treat it as a real failure so the UI is honest.
+        if str(data.get("sent", "true")).lower() in ("false", "0", "none", ""):
+            raise RuntimeError(
+                f"UltraMsg did not deliver (sent={data.get('sent')}). "
+                "Check the recipient number is on WhatsApp and the UltraMsg instance is connected."
+            )
 
 
 def _email_html(owner: str, title: str, module_label: str, link: str) -> str:

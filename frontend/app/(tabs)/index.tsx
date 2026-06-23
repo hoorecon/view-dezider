@@ -12,6 +12,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -94,6 +95,15 @@ export default function HomeScreen() {
   const [isClient, setIsClient] = useState(false);
   useEffect(() => {
     setIsClient(true);
+    // If the user arrived via a shared-report deep link and just authenticated,
+    // they land on the dashboard — route them to the Shared tab so the report
+    // (e.g. a Decision-Making-Style result) is actually shown & auto-accepted.
+    (async () => {
+      try {
+        const pend = await AsyncStorage.getItem('pending_share_token');
+        if (pend) router.replace('/(tabs)/shared' as any);
+      } catch { /* ignore */ }
+    })();
   }, []);
 
   const fetchStats = async () => {
