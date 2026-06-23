@@ -387,14 +387,14 @@ export default function HomeScreen() {
           <View style={styles.colabRow}>
             <TouchableOpacity
               style={styles.colabCard}
-              onPress={() => router.push('/tools/dezider-list' as any)}
+              onPress={() => router.push('/(tabs)/profile' as any)}
             >
-              <View style={[styles.colabIconWrap, { backgroundColor: 'rgba(99,102,241,0.1)' }]}>
-                <Ionicons name="compass" size={22} color="#6366F1" />
+              <View style={[styles.colabIconWrap, { backgroundColor: 'rgba(139,92,246,0.12)' }]}>
+                <Ionicons name="sparkles" size={22} color="#8B5CF6" />
               </View>
-              <Text style={styles.colabTitle}>Last Decision</Text>
-              <Text style={styles.colabSubtitle}>
-                {stats?.decisions.total ? `${stats.decisions.total} total · ${stats.decisions.completed || 0} done` : 'Start your first'}
+              <Text style={styles.colabTitle} numberOfLines={1}>Decision Style</Text>
+              <Text style={styles.colabSubtitle} numberOfLines={1}>
+                {stats?.latest_assessment?.dominant_mode ? `${stats.latest_assessment.dominant_mode}` : 'Take the quiz'}
               </Text>
             </TouchableOpacity>
 

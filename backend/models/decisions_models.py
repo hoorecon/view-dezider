@@ -262,6 +262,9 @@ class Test123Update(BaseModel):
 
 class ModeAssessmentCreate(BaseModel):
     answers: Dict[str, int]
+    subject_type: str = "self"          # "self" | "other"
+    subject_name: Optional[str] = None  # name of the person assessed (when "other")
+    subject_whatsapp: Optional[str] = None  # optional WhatsApp number for sharing
 
 
 class ModeAssessmentResult(BaseModel):
@@ -270,6 +273,10 @@ class ModeAssessmentResult(BaseModel):
     answers: Dict[str, int]
     dominant_mode: str
     mode_scores: Dict[str, float]
+    subject_type: str = "self"
+    subject_name: Optional[str] = None
+    subject_whatsapp: Optional[str] = None
+    ai_insight: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

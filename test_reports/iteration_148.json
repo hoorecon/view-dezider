@@ -1,0 +1,35 @@
+{
+  "summary": "Frontend-only retest of Decision-Style Assessment (Profile) + Home Quick Links + EFT diagram. Logged in as super@test.com, navigated to /(tabs) and /profile. Home Quick Links: FIRST card is 'Decision Style' (sparkles), 2nd Action Tracker, 3rd Today's Routine — Last Decision card is GONE (confirmed). Tapping Decision Style navigates to /profile. Profile shows 'Your Predominant Decision Mode' (Emotional) with mode-breakdown bars. 'Get personalized AI insight (8 credits)' worked end-to-end — backend was called, alert 'AI insight ready · 8 credits used' fired, and the purple AI Insight box rendered a long gpt-4.1-mini paragraph. WhatsApp / PDF / Share buttons present on result card. 'Retake (me)' and 'Assess someone' buttons present. 'Assess someone' opens quiz with the For myself / For someone else toggle, Person's name * input, and WhatsApp number (optional) input. Assessment Track Record card shows Ravi (Emotional · 6/23/2026 · ✨ insight) with the WhatsApp icon — confirming the multi-assessment + WhatsApp save flow works. EFT tool: Step 4 (affirmation) instruction text correctly contains 'Here is the full sequence: you will tap through 9 points in order…' AND 'Karate Chop point (the fleshy side of your hand, below the little finger)'. However, the Tapping Points Diagram is BLANK — react-native-web renders 0 <img> elements and no background-image, because the upstream URL https://eftinternational.org/wp-content/uploads/page-uploads/EFT-Tapping-Points-EFTi.jpg now returns HTTP 202 with content-type text/html (hotlink-protected / anti-bot), so the JPEG never loads. This blocks the explicit requirement that the diagram image must render.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "EFT Affirmation step — Tapping Points Diagram",
+        "issue": "Diagram image does not render; the area is a blank/empty box. Config returns diagram_image_url = https://eftinternational.org/wp-content/uploads/page-uploads/EFT-Tapping-Points-EFTi.jpg but that URL now serves HTTP 202 + content-type text/html (Cloudflare hotlink/bot protection), so RN-Web's <Image> shows nothing. document.querySelectorAll('img') = 0 on that step. Reference: /app/frontend/app/tools/eg-eft.tsx:561-570",
+        "testID": "(none — diagram <Image> has no testID)",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "EFT diagram: replace the diagram_image_url in /app/backend/routes/.../eft config (or its seed/default) with a self-hosted asset (e.g. /api/static/eft/tapping-points.png served by FastAPI) OR a known-public CDN/Unsplash image that does NOT enforce hotlink protection. Verify by opening /tools/eg-eft, reaching the affirmation step, and confirming an <img> tag exists with naturalWidth > 0.",
+    "Optionally add testID='eft-diagram-image' to the diagram <Image> in eg-eft.tsx so future tests can assert its presence.",
+    "Optional polish: the Vimeo guided video also returns 403 (https://player.vimeo.com/video/1184450823) — the in-page fallback message renders correctly, but consider replacing with a video whose embed is unrestricted."
+  ],
+  "critical_code_review_comments": [
+    "/app/frontend/app/tools/eg-eft.tsx is ~900 lines — consider splitting the step components (Type/Subject/Intensity/Affirmation/Tapping/Result) into their own files; size threshold from review guidelines is 700.",
+    "/app/frontend/app/(tabs)/profile.tsx is ~1580 lines — well over the 700-line guideline; the Decision-Style quiz + Track-Record sub-screens should be extracted to their own components.",
+    "Diagram <Image> in eg-eft.tsx has no onError handler — a broken image silently shows a blank box. Add an onError that surfaces a small inline fallback ('Diagram unavailable') to avoid the current invisible failure mode."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "n/a (frontend-only)", "frontend": "88% (7/8 review items pass; EFT diagram fails)" },
+  "seed_data_creation": "No new seeds created. Used existing super@test.com (Super Admin, ~131 AI credits) and an existing 'Ravi' track-record entry from a previous test run was observed in the Assessment Track Record card.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All Profile/Decision-Style requirements PASS. The single failure is the EFT diagram image — root cause is the upstream URL (eftinternational.org) returning HTML/202 instead of JPEG due to hotlink protection. Fix the seeded diagram_image_url in the EFT config (probably in /app/backend/routes/emotional_gatekeeper/*.py or a Mongo seed) and re-verify by checking that document.querySelectorAll('img') on /tools/eg-eft step 4 returns at least one img with naturalWidth > 0. The Profile auto-scroll-to-top after submit is implemented (scrollRef.current?.scrollTo({y:0})) — couldn't independently verify scroll movement because the page was already at scrollY=0 when the test re-opened the quiz; the code path is correct.",
+  "rca_of_issue": "EFT diagram blank box — RCA: the EFT config endpoint /api/emotional-gatekeeper/eft/config returns diagram_image_url pointing to a 3rd-party WordPress site (eftinternational.org). That host now responds to non-browser-fingerprinted requests (including iframes/react-native-web Image loads from a different origin) with a Cloudflare-style HTTP 202 + text/html anti-bot challenge instead of the JPEG. React Native Web's <Image> swallows the load error silently, producing an empty 280px-tall box. Mitigation: host the diagram on our own /api/static/eft/ path (the EFT screen already special-cases /api/static/eft/ for videos) OR switch to a license-cleared CDN image; then the existing <Image> code will render correctly with no frontend changes."
+}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,11 @@ import {
   Platform,
   Modal,
   Linking,
+  TextInput,
+  Share,
 } from 'react-native';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -45,8 +49,15 @@ export default function ProfileScreen() {
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [assessmentResult, setAssessmentResult] = useState<any>(null);
   const [showQuiz, setShowQuiz] = useState(false);
+  const [history, setHistory] = useState<any[]>([]);
+  const [subjectType, setSubjectType] = useState<'self' | 'other'>('self');
+  const [subjectName, setSubjectName] = useState('');
+  const [subjectWhatsapp, setSubjectWhatsapp] = useState('');
+  const [insightBusy, setInsightBusy] = useState<string | null>(null);
+  const [pdfBusy, setPdfBusy] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
 
   // Set Password state
   const [showSetPassword, setShowSetPassword] = useState(false);
@@ -88,9 +99,10 @@ export default function ProfileScreen() {
   const fetchLatestAssessment = async () => {
     try {
       const response = await api.get('/assessment/history');
-      if (response.data.length > 0) {
-        setAssessmentResult(response.data[0]);
-      }
+      const data: any[] = response.data || [];
+      setHistory(data);
+      const latestSelf = data.find((x) => x.subject_type !== 'other');
+      setAssessmentResult(latestSelf || data[0] || null);
     } catch (error) {
       console.error('Error fetching assessment:', error);
     }
@@ -109,16 +121,97 @@ export default function ProfileScreen() {
 
     setSubmitting(true);
     try {
-      const response = await api.post('/assessment', { answers });
-      setAssessmentResult(response.data);
+      const payload: any = { answers };
+      if (subjectType === 'other') {
+        if (!subjectName.trim()) { showAlert('Name needed', 'Enter the name of the person you are assessing.'); setSubmitting(false); return; }
+        payload.subject_type = 'other';
+        payload.subject_name = subjectName.trim();
+        payload.subject_whatsapp = subjectWhatsapp.trim();
+      }
+      const response = await api.post('/assessment', payload);
       setShowQuiz(false);
       setAnswers({});
-      showAlert('Assessment Complete', `Your dominant mode is: ${response.data.dominant_mode}`);
+      await fetchLatestAssessment();
+      if (subjectType === 'self') setAssessmentResult(response.data);
+      setSubjectType('self'); setSubjectName(''); setSubjectWhatsapp('');
+      setTimeout(() => scrollRef.current?.scrollTo({ y: 0, animated: true }), 120);
+      const who = response.data?.subject_name ? ` for ${response.data.subject_name}` : '';
+      showAlert('Assessment Complete', `Dominant mode${who}: ${response.data.dominant_mode}`);
     } catch (error) {
       showAlert('Error', 'Failed to submit assessment');
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // ── Decision-Style: AI insight + share/whatsapp/PDF (reuses jelcos.ai hook) ──
+  const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+  const buildShareText = (a: any) => {
+    const owner = a?.subject_type === 'other' && a?.subject_name ? `${a.subject_name}'s` : 'My';
+    const scores = Object.entries(a?.mode_scores || {})
+      .map(([m, s]) => `${cap(m)} ${Math.round((s as number) * 20)}%`).join(' · ');
+    const insight = a?.ai_insight ? `\n\n${a.ai_insight}` : '';
+    return `${owner} Decision-Making Style\nDominant: ${cap(a?.dominant_mode || '')}\n${scores}${insight}\n\nDiscover your decision-making style on JELCOS AI → https://jelcos.ai`;
+  };
+
+  const generateInsight = async (a: any) => {
+    setInsightBusy(a.id);
+    try {
+      const r = await api.post(`/assessment/${a.id}/ai-insight`);
+      const insight = r.data.ai_insight;
+      setHistory((h) => h.map((x) => (x.id === a.id ? { ...x, ai_insight: insight } : x)));
+      setAssessmentResult((prev: any) => (prev && prev.id === a.id ? { ...prev, ai_insight: insight } : prev));
+      refreshAiWallet();
+      if (r.data.credits_charged) showAlert('AI insight ready', `${r.data.credits_charged} credits used.`);
+    } catch (e: any) {
+      showAlert('AI insight', e?.response?.data?.detail || 'Could not generate insight.');
+    } finally { setInsightBusy(null); }
+  };
+
+  const shareGeneric = async (a: any) => {
+    try { await Share.share({ message: buildShareText(a) }); } catch {}
+  };
+
+  const shareWhatsApp = (a: any) => {
+    const text = encodeURIComponent(buildShareText(a));
+    const phone = String(a?.subject_whatsapp || '').replace(/[^0-9]/g, '');
+    const url = phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
+    Linking.openURL(url).catch(() => showAlert('WhatsApp', 'Could not open WhatsApp.'));
+  };
+
+  const pdfHtml = (a: any) => {
+    const owner = a?.subject_type === 'other' && a?.subject_name ? `${a.subject_name}'s` : 'My';
+    const rows = Object.entries(a?.mode_scores || {})
+      .map(([m, s]) => `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${cap(m)}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;font-weight:600">${Math.round((s as number) * 20)}%</td></tr>`).join('');
+    const insight = a?.ai_insight ? `<h3 style="color:#4338CA;margin:18px 0 6px">AI Insight</h3><p style="line-height:1.6;color:#333">${a.ai_insight}</p>` : '';
+    return `<html><head><meta charset="utf-8"/></head><body style="font-family:-apple-system,Helvetica,Arial;padding:28px;color:#111">
+      <h1 style="margin:0 0 4px;color:#4338CA">${owner} Decision-Making Style</h1>
+      <p style="margin:0 0 16px;color:#666">Dominant mode: <b style="color:#111">${cap(a?.dominant_mode || '')}</b></p>
+      <table style="border-collapse:collapse;width:100%;max-width:420px">${rows}</table>
+      ${insight}
+      <p style="margin-top:28px;color:#888;font-size:12px">Generated by <a href="https://jelcos.ai" style="color:#1E40AF">JELCOS AI</a> · https://jelcos.ai</p>
+    </body></html>`;
+  };
+
+  const downloadPdf = async (a: any) => {
+    setPdfBusy(a.id);
+    try {
+      if (Platform.OS === 'web') {
+        await Print.printAsync({ html: pdfHtml(a) });
+      } else {
+        const { uri } = await Print.printToFileAsync({ html: pdfHtml(a) });
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Decision-Making Style' });
+        }
+      }
+    } catch (e: any) {
+      showAlert('PDF', 'Could not generate the PDF.');
+    } finally { setPdfBusy(null); }
+  };
+
+  const startQuiz = (type: 'self' | 'other') => {
+    setSubjectType(type); setSubjectName(''); setSubjectWhatsapp(''); setAnswers({}); setShowQuiz(true);
   };
 
   const handleLogout = () => {
@@ -198,11 +291,49 @@ export default function ProfileScreen() {
   const renderQuiz = () => (
     <View style={styles.quizContainer}>
       <View style={styles.quizHeader}>
-        <Text style={styles.quizTitle}>Decision Mode Assessment</Text>
+        <Text style={styles.quizTitle}>Decision Style Assessment</Text>
         <TouchableOpacity onPress={() => setShowQuiz(false)}>
           <Ionicons name="close" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
       </View>
+
+      <View style={styles.subjectToggle}>
+        <TouchableOpacity
+          style={[styles.subjectBtn, subjectType === 'self' && styles.subjectBtnActive]}
+          onPress={() => setSubjectType('self')}
+        >
+          <Ionicons name="person" size={15} color={subjectType === 'self' ? COLORS.white : COLORS.textSecondary} />
+          <Text style={[styles.subjectBtnText, subjectType === 'self' && styles.subjectBtnTextActive]}>For myself</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.subjectBtn, subjectType === 'other' && styles.subjectBtnActive]}
+          onPress={() => setSubjectType('other')}
+        >
+          <Ionicons name="people" size={15} color={subjectType === 'other' ? COLORS.white : COLORS.textSecondary} />
+          <Text style={[styles.subjectBtnText, subjectType === 'other' && styles.subjectBtnTextActive]}>For someone else</Text>
+        </TouchableOpacity>
+      </View>
+
+      {subjectType === 'other' && (
+        <View style={styles.subjectInputs}>
+          <TextInput
+            style={styles.subjectInput}
+            placeholder="Person's name *"
+            placeholderTextColor={COLORS.textMuted}
+            value={subjectName}
+            onChangeText={setSubjectName}
+          />
+          <TextInput
+            style={styles.subjectInput}
+            placeholder="WhatsApp number (optional, e.g. +9198…)"
+            placeholderTextColor={COLORS.textMuted}
+            value={subjectWhatsapp}
+            onChangeText={setSubjectWhatsapp}
+            keyboardType="phone-pad"
+          />
+        </View>
+      )}
+
       <Text style={styles.quizInstructions}>
         Rate each statement from 1 (Strongly Disagree) to 5 (Strongly Agree)
       </Text>
@@ -501,13 +632,51 @@ export default function ProfileScreen() {
             ))}
           </View>
 
-          <TouchableOpacity
-            style={styles.retakeButton}
-            onPress={() => setShowQuiz(true)}
-          >
-            <Ionicons name="refresh" size={16} color={COLORS.primary} />
-            <Text style={styles.retakeText}>Retake Assessment</Text>
-          </TouchableOpacity>
+          {assessmentResult.ai_insight ? (
+            <View style={styles.insightBox}>
+              <View style={styles.insightHeader}>
+                <Ionicons name="sparkles" size={15} color="#7C3AED" />
+                <Text style={styles.insightTitle}>AI Insight</Text>
+              </View>
+              <Text style={styles.insightText}>{assessmentResult.ai_insight}</Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.insightBtn}
+              onPress={() => generateInsight(assessmentResult)}
+              disabled={insightBusy === assessmentResult.id}
+            >
+              {insightBusy === assessmentResult.id
+                ? <ActivityIndicator color="#7C3AED" size="small" />
+                : <><Ionicons name="sparkles" size={16} color="#7C3AED" /><Text style={styles.insightBtnText}>Get personalized AI insight (8 credits)</Text></>}
+            </TouchableOpacity>
+          )}
+
+          <View style={styles.shareRow}>
+            <TouchableOpacity style={styles.shareBtn} onPress={() => shareWhatsApp(assessmentResult)}>
+              <Ionicons name="logo-whatsapp" size={18} color="#25D366" />
+              <Text style={styles.shareBtnText}>WhatsApp</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.shareBtn} onPress={() => downloadPdf(assessmentResult)} disabled={pdfBusy === assessmentResult.id}>
+              {pdfBusy === assessmentResult.id ? <ActivityIndicator size="small" color="#DC2626" /> : <Ionicons name="document-text" size={18} color="#DC2626" />}
+              <Text style={styles.shareBtnText}>PDF</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.shareBtn} onPress={() => shareGeneric(assessmentResult)}>
+              <Ionicons name="share-social" size={18} color={COLORS.primary} />
+              <Text style={styles.shareBtnText}>Share</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.retakeRow}>
+            <TouchableOpacity style={styles.retakeButton} onPress={() => startQuiz('self')}>
+              <Ionicons name="refresh" size={16} color={COLORS.primary} />
+              <Text style={styles.retakeText}>Retake (me)</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.retakeButton} onPress={() => startQuiz('other')}>
+              <Ionicons name="person-add" size={16} color={COLORS.primary} />
+              <Text style={styles.retakeText}>Assess someone</Text>
+            </TouchableOpacity>
+          </View>
         </Card>
       ) : (
         <Card style={styles.noAssessmentCard}>
@@ -518,10 +687,45 @@ export default function ProfileScreen() {
           </Text>
           <GradientButton
             title="Take Assessment"
-            onPress={() => setShowQuiz(true)}
+            onPress={() => startQuiz('self')}
             style={styles.takeAssessmentButton}
           />
         </Card>
+      )}
+
+      {/* Track record — Self pinned on top, others chronological */}
+      {history.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>Assessment Track Record</Text>
+          <Card style={{ marginBottom: 16 }}>
+            {[...history]
+              .sort((a, b) => (a.subject_type === 'other' ? 1 : 0) - (b.subject_type === 'other' ? 1 : 0))
+              .map((a, idx) => (
+                <View key={a.id} style={[styles.trackRow, idx > 0 && styles.trackRowBorder]}>
+                  <View style={[styles.trackDot, { backgroundColor: getModeColor(a.dominant_mode) }]} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.trackName} numberOfLines={1}>
+                      {a.subject_type === 'other' ? (a.subject_name || 'Someone') : 'You'}
+                      {a.subject_type === 'self' && <Text style={styles.trackSelfTag}>  • Self</Text>}
+                    </Text>
+                    <Text style={styles.trackMeta} numberOfLines={1}>
+                      {a.dominant_mode ? a.dominant_mode.charAt(0).toUpperCase() + a.dominant_mode.slice(1) : ''}
+                      {a.created_at ? `  ·  ${new Date(a.created_at).toLocaleDateString()}` : ''}
+                      {a.ai_insight ? '  ·  ✨ insight' : ''}
+                    </Text>
+                  </View>
+                  <TouchableOpacity style={styles.trackAction} onPress={() => setAssessmentResult(a)}>
+                    <Ionicons name="eye-outline" size={18} color={COLORS.primary} />
+                  </TouchableOpacity>
+                  {a.subject_type === 'other' && !!a.subject_whatsapp && (
+                    <TouchableOpacity style={styles.trackAction} onPress={() => shareWhatsApp(a)}>
+                      <Ionicons name="logo-whatsapp" size={18} color="#25D366" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+          </Card>
+        </>
       )}
 
       {/* Account Security — Set / Change Password (available to all users) */}
@@ -786,7 +990,7 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+      <ScrollView ref={scrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
         <View style={styles.header}>
           <Text style={styles.title}>Profile</Text>
         </View>
@@ -914,6 +1118,30 @@ const styles = StyleSheet.create({
   resultCard: {
     marginBottom: 16,
   },
+  subjectToggle: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  subjectBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, borderWidth: 1.5, borderColor: COLORS.border, backgroundColor: COLORS.white },
+  subjectBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  subjectBtnText: { fontSize: 13, fontWeight: '700', color: COLORS.textSecondary },
+  subjectBtnTextActive: { color: COLORS.white },
+  subjectInputs: { gap: 8, marginBottom: 12 },
+  subjectInput: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: COLORS.textPrimary, backgroundColor: COLORS.white },
+  insightBox: { backgroundColor: '#F5F3FF', borderRadius: 12, padding: 12, marginTop: 14, borderLeftWidth: 3, borderLeftColor: '#7C3AED' },
+  insightHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  insightTitle: { fontSize: 13, fontWeight: '800', color: '#7C3AED' },
+  insightText: { fontSize: 13.5, color: '#3730A3', lineHeight: 20 },
+  insightBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14, paddingVertical: 11, borderRadius: 10, borderWidth: 1.5, borderColor: '#7C3AED', backgroundColor: '#F5F3FF' },
+  insightBtnText: { fontSize: 13, fontWeight: '800', color: '#7C3AED' },
+  shareRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  shareBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.white },
+  shareBtnText: { fontSize: 12.5, fontWeight: '700', color: COLORS.textPrimary },
+  retakeRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  trackRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
+  trackRowBorder: { borderTopWidth: 1, borderTopColor: COLORS.divider },
+  trackDot: { width: 10, height: 10, borderRadius: 5 },
+  trackName: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
+  trackSelfTag: { fontSize: 11, fontWeight: '700', color: COLORS.primary },
+  trackMeta: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
+  trackAction: { padding: 6 },
   resultHeader: {
     flexDirection: 'row',
     alignItems: 'center',
