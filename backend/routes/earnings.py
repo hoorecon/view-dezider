@@ -354,6 +354,15 @@ async def _payout_loop():
 
 
 def start_payout_scheduler():
+    # Multi-worker safety: run the weekly payout sweep in only ONE worker so it
+    # doesn't fire N times (which could double-pay sellers).
+    try:
+        from core.boot_lock import try_acquire_named_lock
+        if not try_acquire_named_lock("payout_scheduler"):
+            log.info("Payout scheduler lock held by another worker; skipping.")
+            return
+    except Exception:
+        pass
     try:
         asyncio.create_task(_payout_loop())
         log.info("Marketplace payout scheduler started (weekly auto-payout sweep).")

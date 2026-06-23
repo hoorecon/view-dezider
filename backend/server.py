@@ -424,33 +424,47 @@ from core.database import client, ensure_indexes
 @app.on_event("startup")
 async def startup_db_client():
     """Ensure all production indexes exist + ACM seed is up to date before serving traffic."""
+    # Multi-worker safety: only ONE worker per host runs the heavy blocking boot
+    # seeds/index creation; the rest skip them and start serving (and answering
+    # health checks) immediately. Prevents index drop/create races and startup
+    # exceeding the deploy health-check window after a SEED_VERSION bump.
+    from core.boot_lock import try_acquire_boot_seed_lock
+    boot_owner = try_acquire_boot_seed_lock()
+    if not boot_owner:
+        logger.info("[boot] Heavy seed/index lock held by another worker — skipping seeds; serving immediately.")
     try:
-        await ensure_indexes()
+        if boot_owner:
+            await ensure_indexes()
     except Exception as e:
         # Don't crash boot — index creation is idempotent and self-healing
         logger.error(f"Index initialization failed: {e}")
     try:
-        from core.acm_engine import ensure_acm_seeded_on_boot
-        await ensure_acm_seeded_on_boot()
+        if boot_owner:
+            from core.acm_engine import ensure_acm_seeded_on_boot
+            await ensure_acm_seeded_on_boot()
     except Exception as e:
         logger.error(f"ACM boot seed failed: {e}")
     try:
-        await _acm_v2_indexes()
+        if boot_owner:
+            await _acm_v2_indexes()
     except Exception as e:
         logger.error(f"ACM v2 index init failed: {e}")
     try:
-        await _content_library_indexes()
+        if boot_owner:
+            await _content_library_indexes()
     except Exception as e:
         logger.error(f"Content Library index init failed: {e}")
     try:
-        from core.admin_data_seed import ensure_admin_data_seeded_on_boot
-        await ensure_admin_data_seeded_on_boot()
+        if boot_owner:
+            from core.admin_data_seed import ensure_admin_data_seeded_on_boot
+            await ensure_admin_data_seeded_on_boot()
     except Exception as e:
         logger.error(f"Admin data seed at boot failed: {e}")
     try:
-        from core.masters_seed import ensure_masters_seeded_on_boot, dedup_masters_on_boot
-        await ensure_masters_seeded_on_boot()
-        await dedup_masters_on_boot()
+        if boot_owner:
+            from core.masters_seed import ensure_masters_seeded_on_boot, dedup_masters_on_boot
+            await ensure_masters_seeded_on_boot()
+            await dedup_masters_on_boot()
     except Exception as e:
         logger.error(f"Masters seed at boot failed: {e}")
 
