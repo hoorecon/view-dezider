@@ -31,6 +31,7 @@ from routes.decision_reports import (
     _pdf_payload_for_pros_cons,
     _pdf_payload_for_swot,
     _pdf_payload_for_solution_finder,
+    _pdf_payload_for_assessment,
 )
 
 load_dotenv()
@@ -49,12 +50,14 @@ MODULE_LABELS = {
     "pros_cons": "Pros & Cons",
     "swot": "SWOT",
     "solution_finder": "Solution Finder",
+    "assessment": "Decision-Making Style",
 }
 _BUILDERS = {
     "dezider": _pdf_payload_for_dezider,
     "pros_cons": _pdf_payload_for_pros_cons,
     "swot": _pdf_payload_for_swot,
     "solution_finder": _pdf_payload_for_solution_finder,
+    "assessment": _pdf_payload_for_assessment,
 }
 
 

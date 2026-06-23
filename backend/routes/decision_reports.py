@@ -83,7 +83,48 @@ async def _load_decision(module: str, decision_id: str, user_id: str) -> Dict[st
             raise HTTPException(status_code=404, detail="Solution Finder entry not found")
         return {"module": "solution_finder", "raw": doc,
                 "title": doc.get("smart_goal") or "Solution Finder"}
+    if module == "assessment":
+        doc = await db.assessments.find_one(
+            {"id": decision_id, "user_id": user_id}, {"_id": 0}
+        )
+        if not doc:
+            raise HTTPException(status_code=404, detail="Assessment not found")
+        owner = "You" if doc.get("subject_type") != "other" else (doc.get("subject_name") or "Someone")
+        return {"module": "assessment", "raw": doc,
+                "title": f"{owner}'s Decision-Making Style"}
     raise HTTPException(status_code=400, detail=f"Unknown module: {module}")
+
+
+_DMS_LABELS = {"emotional": "Emotional", "logical": "Logical",
+               "intuitive": "Intuitive", "consciousness": "Consciousness"}
+
+
+def _pdf_payload_for_assessment(raw: Dict[str, Any]) -> Dict[str, Any]:
+    is_other = raw.get("subject_type") == "other"
+    owner = (raw.get("subject_name") or "Someone") if is_other else "Your"
+    owner_poss = f"{raw.get('subject_name')}'s" if is_other and raw.get("subject_name") else "Your"
+    dominant = _DMS_LABELS.get(raw.get("dominant_mode"), raw.get("dominant_mode") or "—")
+    scores = raw.get("mode_scores") or {}
+    rows = [["Decision Style", "Score"]]
+    for k, v in scores.items():
+        try:
+            pct = f"{round(float(v) * 20)}%"
+        except Exception:
+            pct = str(v)
+        rows.append([_DMS_LABELS.get(k, k), pct])
+    sections = [{
+        "heading": "Style Breakdown",
+        "table": rows,
+        "col_ratios": [3, 1],
+    }]
+    if raw.get("ai_insight"):
+        sections.append({"heading": "Personalized AI Insight", "paragraph": _esc(raw["ai_insight"])})
+    return {
+        "title": f"{owner_poss} Decision-Making Style",
+        "context": f"Dominant decision-making style: {dominant}.",
+        "module_label": "Decision-Making Style",
+        "sections": sections,
+    }
 
 
 async def _check_access_and_maybe_consume(

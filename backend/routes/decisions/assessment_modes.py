@@ -57,6 +57,30 @@ async def get_assessment_history(user: dict = Depends(get_current_user)):
     return assessments
 
 
+@router.get("/assessment/{assessment_id}/report.pdf")
+async def assessment_report_pdf(assessment_id: str, user: dict = Depends(get_current_user)):
+    """Owner download of a Decision-Making-Style result as a branded PDF
+    (reuses the shared reportlab engine — same as decision reports)."""
+    from fastapi.responses import Response
+    from datetime import datetime, timezone
+    from routes.decision_reports import (
+        _load_decision, _build_pdf, _pdf_payload_for_assessment,
+        _user_timezone, _format_local,
+    )
+    from routes.app_appearance import get_app_logo
+    info = await _load_decision("assessment", assessment_id, user["user_id"])
+    payload = _pdf_payload_for_assessment(info["raw"])
+    payload["module_label"] = "Decision-Making Style"
+    tzname = await _user_timezone(user["user_id"])
+    payload["generated_at"] = _format_local(datetime.now(timezone.utc), tzname)
+    logo = await get_app_logo()
+    pdf = _build_pdf(payload, logo_data_url=logo)
+    return Response(
+        content=pdf, media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="jelcos_decision_style_{assessment_id[:8]}.pdf"'},
+    )
+
+
 @router.post("/assessment/{assessment_id}/ai-insight")
 async def generate_ai_insight(assessment_id: str, user: dict = Depends(get_current_user)):
     """Generate a personalized AI insight for a Decision-Making-Style result.
