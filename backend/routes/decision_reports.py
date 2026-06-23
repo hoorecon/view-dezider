@@ -89,9 +89,9 @@ async def _load_decision(module: str, decision_id: str, user_id: str) -> Dict[st
         )
         if not doc:
             raise HTTPException(status_code=404, detail="Assessment not found")
-        owner = "You" if doc.get("subject_type") != "other" else (doc.get("subject_name") or "Someone")
-        return {"module": "assessment", "raw": doc,
-                "title": f"{owner}'s Decision-Making Style"}
+        owner = "My" if doc.get("subject_type") != "other" else (doc.get("subject_name") or "Someone")
+        title = "My Decision-Making Style" if doc.get("subject_type") != "other" else f"{owner}'s Decision-Making Style"
+        return {"module": "assessment", "raw": doc, "title": title}
     raise HTTPException(status_code=400, detail=f"Unknown module: {module}")
 
 
