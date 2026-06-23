@@ -233,7 +233,7 @@ export default function CollaborateScreen() {
               <Text style={[styles.smeBtnText, smeFilter && { color: '#FFF' }]}>SME</Text>
             </TouchableOpacity>
           </View>
-          <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
+          <ScrollView style={{ maxHeight: 440 }} showsVerticalScrollIndicator={true}>
             {filteredContacts.length === 0 ? (
               <Text style={styles.noItems}>No contacts match. Add contacts from the Contacts screen first.</Text>
             ) : filteredContacts.map(c => (
@@ -329,13 +329,19 @@ export default function CollaborateScreen() {
                   </View>
                 )}
                 <View style={styles.overrideFieldRow}>
-                  <Text style={styles.overrideFieldLabel}>Deadline (Hours)</Text>
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <Text style={styles.overrideFieldLabel}>Deadline (Hours)</Text>
+                    <Text style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }}>Window to contribute before the session auto-locks. Late inputs stay as reference.</Text>
+                  </View>
                   <TextInput style={styles.overrideFieldInput} keyboardType="numeric" placeholder="48"
                     value={overrideFields.deadline_hours || ''}
                     onChangeText={v => setOverrideFields({...overrideFields, deadline_hours: v})} />
                 </View>
                 <View style={styles.overrideFieldRow}>
-                  <Text style={styles.overrideFieldLabel}>Presence Check (Seconds)</Text>
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <Text style={styles.overrideFieldLabel}>Presence Check (Seconds)</Text>
+                    <Text style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }}>Live-sync heartbeat — how often to confirm participants are still active.</Text>
+                  </View>
                   <TextInput style={styles.overrideFieldInput} keyboardType="numeric" placeholder="300"
                     value={overrideFields.presence_check_interval || ''}
                     onChangeText={v => setOverrideFields({...overrideFields, presence_check_interval: v})} />

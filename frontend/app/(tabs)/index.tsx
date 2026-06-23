@@ -66,6 +66,7 @@ export default function HomeScreen() {
   const [journalReminders, setJournalReminders] = useState<JournalReminder[]>([]);
   const [quotaSkus, setQuotaSkus] = useState<any[]>([]);
   const [quotaEnts, setQuotaEnts] = useState<Record<string, { granted: number; consumed: number; balance: number }>>({});
+  const [quotaOpen, setQuotaOpen] = useState(false);
 
   // WOWO Dashboard Tile gating — single hook gates every tile on this
   // screen via the ACM `dashboard_tiles` module. Admin toggles in
@@ -309,16 +310,17 @@ export default function HomeScreen() {
           {/* ════════ Report Quota Summary (glanceable for everyone) ════════ */}
           <View style={styles.quotaCard}>
             <View style={styles.quotaHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+              <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }} activeOpacity={0.7} onPress={() => setQuotaOpen((o) => !o)}>
                 <Ionicons name="documents" size={18} color={COLORS.primary} />
                 <Text style={styles.quotaHeaderTitle}>Your Report Quota</Text>
-              </View>
+                <Ionicons name={quotaOpen ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.textMuted} />
+              </TouchableOpacity>
               <TouchableOpacity onPress={() => router.push('/store' as any)} style={styles.quotaBuyBtn} accessibilityLabel="Buy more reports">
                 <Ionicons name="add" size={14} color="#FFF" />
                 <Text style={styles.quotaBuyText}>Buy more</Text>
               </TouchableOpacity>
             </View>
-            {quotaSkus.filter((sk: any) => sk.active).length === 0 ? (
+            {quotaOpen && (quotaSkus.filter((sk: any) => sk.active).length === 0 ? (
               <Text style={styles.quotaEmpty}>Loading your balances…</Text>
             ) : (
               quotaSkus.filter((sk: any) => sk.active).map((sk: any) => {
@@ -339,7 +341,7 @@ export default function HomeScreen() {
                   </View>
                 );
               })
-            )}
+            ))}
           </View>
 
           {/* Journal Review Reminders Banner */}

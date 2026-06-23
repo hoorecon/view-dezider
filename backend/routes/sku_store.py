@@ -584,19 +584,21 @@ async def ensure_decision_entitlement(
 
     access = await has_any_paid_access(user_id, module=module)
     via = access.get("via")
+    # Track ACTUAL usage: always consume from a real pack first (so USED reflects
+    # reality even for admin / subscription accounts that also hold a pack).
+    if await consume_one(user_id, "L2", decision_id=decision_id, module=module):
+        await _persist("L2")
+        return {"via": "L2", "consumed": True}
+    if await consume_one(user_id, "L1", decision_id=decision_id, module=module):
+        await _persist("L1")
+        return {"via": "L1", "consumed": True}
+    # No consumable pack — subscription / admin-skip grant a free pass.
     if access.get("has_access") and via == "admin_skip":
         return {"via": "admin_skip", "consumed": False}          # temporary — don't persist
     if access.get("has_access") and via == "subscription":
         await _persist("subscription")
         return {"via": "subscription", "consumed": False}
-    if access.get("has_access") and via in ("L2", "L1"):
-        if await consume_one(user_id, "L2", decision_id=decision_id, module=module):
-            await _persist("L2")
-            return {"via": "L2", "consumed": True}
-        if await consume_one(user_id, "L1", decision_id=decision_id, module=module):
-            await _persist("L1")
-            return {"via": "L1", "consumed": True}
-    # No consumable entitlement — allow free creation; report paywall applies later.
+    # No entitlement at all — allow free creation; report paywall applies later.
     return {"via": None, "consumed": False}
 
 
