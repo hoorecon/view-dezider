@@ -32,7 +32,7 @@ from models.tier_models import CHAKRA_TIERS
 
 logger = logging.getLogger(__name__)
 
-SEED_VERSION = "2026-06-01-04"
+SEED_VERSION = "2026-06-23-01"
 SYSTEM_USER_ID = "system_seed"
 
 
@@ -111,6 +111,69 @@ EXPERTS_SEED: List[Dict[str, Any]] = [
         "specialization": "Mindfulness, Meditation & Stress",
         "bio": "Trained at Isha & Vipassana traditions. Guides professionals on stress management, focus, and meditative decision-making practices.",
         "is_active": True,
+    },
+]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1b. PLATFORM EXPERTS  (collection: platform_experts — Collaboration Epic B2)
+#     Vetted, masters-driven, catalog-linked, multi-org directory.
+# ─────────────────────────────────────────────────────────────────────────────
+PLATFORM_EXPERTS_SEED: List[Dict[str, Any]] = [
+    {
+        "expert_id": "pex_seed_health_01",
+        "name": "Dr. Sanjay Kulkarni",
+        "email": "sanjay.kulkarni@pexperts.viewdezider.com",
+        "headline": "Cardiac surgeon · 18 yrs · second-opinion specialist",
+        "expert_type": "Surgeon",
+        "languages": ["English", "Hindi", "Marathi"],
+        "experience_range": "15-20 years",
+        "fees_per_min_inr": 100,
+        "available_timings": ["Evening (4-8 PM)", "Weekends only"],
+        "specializations": ["Cardiac Surgery", "Valve Replacement"],
+        "catalog_node_ids": ["cn_l0_la_health"],
+        "organizations": [
+            {"org_name": "Apollo Hospitals", "role": "Senior Consultant Surgeon", "fees_per_min_inr": 120,
+             "contact_email": "cardio@apollo.example.com", "city": "Bengaluru", "state": "Karnataka", "country": "India",
+             "available_timings": ["Morning (8-12 PM)"]},
+            {"org_name": "Fortis Heart Institute", "role": "Visiting Surgeon", "fees_per_min_inr": 100,
+             "city": "Mumbai", "state": "Maharashtra", "country": "India"},
+        ],
+    },
+    {
+        "expert_id": "pex_seed_finance_01",
+        "name": "CA Neha Agarwal",
+        "email": "neha.agarwal@pexperts.viewdezider.com",
+        "headline": "Chartered Accountant · tax & wealth structuring",
+        "expert_type": "Chartered Accountant",
+        "languages": ["English", "Hindi"],
+        "experience_range": "10-15 years",
+        "fees_per_min_inr": 50,
+        "available_timings": ["Morning (8-12 PM)", "Weekdays only"],
+        "specializations": ["Tax Planning", "Investment Allocation", "Startup Compliance"],
+        "catalog_node_ids": ["cn_l0_la_finance"],
+        "organizations": [
+            {"org_name": "Agarwal & Associates", "role": "Founding Partner", "fees_per_min_inr": 50,
+             "contact_email": "neha@aassociates.example.com", "whatsapp": "+919800000001",
+             "city": "Delhi", "state": "Delhi", "country": "India"},
+        ],
+    },
+    {
+        "expert_id": "pex_seed_career_01",
+        "name": "Rahul Verma",
+        "email": "rahul.verma@pexperts.viewdezider.com",
+        "headline": "Career & leadership coach · ex-FAANG hiring manager",
+        "expert_type": "Career Coach",
+        "languages": ["English", "Hindi"],
+        "experience_range": "5-10 years",
+        "fees_per_min_inr": 30,
+        "available_timings": ["Evening (4-8 PM)", "Flexible / On-demand"],
+        "specializations": ["Career Pivots", "Interview Prep", "Negotiation"],
+        "catalog_node_ids": ["cn_l0_la_career"],
+        "organizations": [
+            {"org_name": "CareerCraft", "role": "Lead Coach", "fees_per_min_inr": 30,
+             "contact_email": "rahul@careercraft.example.com", "city": "Pune", "state": "Maharashtra", "country": "India"},
+        ],
     },
 ]
 
@@ -1111,6 +1174,24 @@ async def seed_admin_data(force: bool = False) -> Dict[str, Any]:
         if res.upserted_id or res.modified_count:
             n += 1
     summary["experts"] = n
+
+    # ── 1b) Platform Experts (collection: platform_experts — Epic B2) ────────
+    n = 0
+    for pe in PLATFORM_EXPERTS_SEED:
+        doc = {
+            **pe,
+            "photo_url": pe.get("photo_url"),
+            "bio": pe.get("bio"),
+            "rating_avg": None, "rating_count": 0, "karma_points": 0,
+            "is_active": True, "is_verified": True, "source": "seed",
+            "created_by": SYSTEM_USER_ID, "created_at": _iso(now), "updated_at": _iso(now),
+        }
+        res = await db.platform_experts.update_one(
+            {"expert_id": pe["expert_id"]}, {"$setOnInsert": doc}, upsert=True,
+        )
+        if res.upserted_id:
+            n += 1
+    summary["platform_experts"] = n
 
     # ── 2) Decision Templates ────────────────────────────────────────────────
     n = 0

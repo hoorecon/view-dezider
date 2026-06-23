@@ -223,6 +223,10 @@ export default function InboxScreen() {
           <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Shared Inbox</Text>
+        <TouchableOpacity onPress={() => router.push('/public-help')} style={styles.publicHelpBtn} testID="open-public-help">
+          <Ionicons name="megaphone-outline" size={18} color="#0369A1" />
+          <Text style={styles.publicHelpText}>Public</Text>
+        </TouchableOpacity>
         <View style={styles.countBadge}>
           <Text style={styles.countText}>{shares.filter(s => getMyStatus(s) === 'pending').length} pending</Text>
         </View>
@@ -394,6 +398,8 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
   backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.white, justifyContent: 'center', alignItems: 'center' },
   headerTitle: { flex: 1, fontSize: 22, fontWeight: '700', color: COLORS.textPrimary },
+  publicHelpBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#E0F2FE', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, marginRight: 8 },
+  publicHelpText: { fontSize: 12, fontWeight: '700', color: '#0369A1' },
   countBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: 'rgba(245,158,11,0.12)' },
   countText: { fontSize: 11, fontWeight: '600', color: '#F59E0B' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },

@@ -11,6 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { COLORS } from '../constants/colors';
 import api from '../utils/api';
 
@@ -85,6 +86,24 @@ export default function ShareStepModal({
   const [contactsLoading, setContactsLoading] = useState(false);
   const [contactSearch, setContactSearch] = useState('');
   const [smeOnly, setSmeOnly] = useState(false);
+  const router = useRouter();
+
+  const askPublic = async () => {
+    try {
+      setLoading(true);
+      await api.post(`/public-help/decisions/${decisionId}/ask-public`, {
+        step_number: stepNumber,
+        message,
+      });
+      Alert.alert('Published 📢', 'Your request is now on the Public Help feed. Track contributions under "My Requests".');
+      onClose();
+      router.push('/public-help');
+    } catch (e: any) {
+      Alert.alert('Error', e?.response?.data?.detail || 'Failed to publish');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (visible) {
@@ -123,8 +142,26 @@ export default function ShareStepModal({
   const fetchExperts = async () => {
     setExpertsLoading(true);
     try {
-      const resp = await api.get('/experts');
-      setExperts(resp.data?.items || resp.data || []);
+      const [pRes, lRes] = await Promise.allSettled([
+        api.get('/platform-experts'),
+        api.get('/experts'),
+      ]);
+      const platform = pRes.status === 'fulfilled' ? (pRes.value.data?.items || []) : [];
+      const legacy = lRes.status === 'fulfilled' ? (lRes.value.data?.items || lRes.value.data || []) : [];
+      const merged: any[] = [];
+      const seen = new Set<string>();
+      [...platform, ...legacy].forEach((e: any) => {
+        const email = (e.email || '').toLowerCase();
+        if (!email || seen.has(email)) return;
+        seen.add(email);
+        merged.push({
+          key: e.expert_id || e.id || email,
+          name: e.name,
+          email,
+          specialization: e.expert_type || e.specialization || (e.specializations && e.specializations[0]) || '',
+        });
+      });
+      setExperts(merged);
     } catch { setExperts([]); }
     finally { setExpertsLoading(false); }
   };
@@ -393,7 +430,7 @@ export default function ShareStepModal({
                       )}
                       {experts.map((exp) => (
                         <TouchableOpacity
-                          key={exp.id}
+                          key={exp.key}
                           style={[styles.userResultItem, emails.includes(exp.email) && { backgroundColor: '#F0FDF4' }]}
                           onPress={() => addUserEmail(exp.email)}
                         >
@@ -524,6 +561,22 @@ export default function ShareStepModal({
                       Contributors can forward to their own contacts/experts. Every input stays transparently attributed to you.
                     </Text>
                   </View>
+                </TouchableOpacity>
+
+                {/* Ask the public for help */}
+                <TouchableOpacity
+                  testID="ask-public-btn"
+                  style={styles.askPublicBtn}
+                  onPress={askPublic}
+                  disabled={loading}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="megaphone-outline" size={18} color="#0369A1" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.askPublicTitle}>Ask the public for help</Text>
+                    <Text style={styles.askPublicDesc}>Publish this step to the community feed — anyone can contribute ideas you can review &amp; merge.</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color="#0369A1" />
                 </TouchableOpacity>
 
                 {/* Share Button */}
@@ -675,6 +728,14 @@ const styles = StyleSheet.create({
   },
   shareBtnDisabled: { opacity: 0.6 },
   shareBtnText: { fontSize: 16, fontWeight: '600', color: '#FFF' },
+
+  askPublicBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#F0F9FF', borderWidth: 1, borderColor: '#BAE6FD',
+    borderRadius: 12, padding: 12, marginBottom: 12,
+  },
+  askPublicTitle: { fontSize: 13.5, fontWeight: '700', color: '#0369A1' },
+  askPublicDesc: { fontSize: 11.5, color: '#0C4A6E', marginTop: 2, lineHeight: 15 },
 
   // Sent shares
   noShares: { fontSize: 14, color: COLORS.textMuted, textAlign: 'center', paddingVertical: 20 },

@@ -26,6 +26,10 @@ const TYPES = [
   { key: 'skill', label: 'Skills' },
   { key: 'drive', label: 'Drives' },
   { key: 'trait', label: 'Traits' },
+  { key: 'expert_type', label: 'Expert Types' },
+  { key: 'experience_range', label: 'Experience' },
+  { key: 'fees_per_min', label: 'Fees/min' },
+  { key: 'available_timing', label: 'Timings' },
 ];
 
 export default function AdminMastersScreen() {

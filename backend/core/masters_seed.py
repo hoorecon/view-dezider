@@ -18,7 +18,11 @@ logger = logging.getLogger("masters_seed")
 SEED_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "masters_seed.json")
 
 # Supported master types
-MASTER_TYPES = ["religion", "caste", "language", "occupation", "skill", "drive", "trait"]
+MASTER_TYPES = [
+    "religion", "caste", "language", "occupation", "skill", "drive", "trait",
+    # Platform-Experts (Collaboration Epic B2)
+    "expert_type", "experience_range", "fees_per_min", "available_timing",
+]
 
 # JSON key -> master type
 _KEY_TO_TYPE = {
@@ -29,6 +33,10 @@ _KEY_TO_TYPE = {
     "skills": "skill",
     "drives": "drive",
     "traits": "trait",
+    "expert_types": "expert_type",
+    "experience_ranges": "experience_range",
+    "fees_per_min": "fees_per_min",
+    "available_timings": "available_timing",
 }
 
 

@@ -1,0 +1,41 @@
+{
+  "summary": "Backend-only review of Collaboration & Knowledge Marketplace Epic (Phases B2..F). Wrote 17 pytest cases covering Platform Experts CRUD/bulk/filters + 4 new master types, Public Help ask/contribute/accept/dismiss/merge/close + idempotency + auth boundaries, Marketplace publish validation + view_only/free/paid tiers + browse gating + clone with assessment-reset, Razorpay create-order + bad-signature verify-payment rejection (400), Earnings summary/ledger/payouts/payout-account validation, Admin payout config + run-now (no RazorpayX -> pending_manual ledger conversion), Karma rating boundaries (only cloners can rate, owner cannot rate self), karma awards on free-clone (+5) / accepted-contribution (+10) / 5★ rating (+20), leaderboard, /karma/me, fame profile, and admin karma config. 17/17 passed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/marketplace/{lid}/create-order", "issue": "Slow request observed in backend logs (1.5s+, hardening 'slow_request' warning). Reaching out to Razorpay live is intrinsically slow; consider adding a configurable timeout / async path or a mock branch when no real customer-facing flow is needed."},
+      {"endpoint": "POST /api/platform-experts (non-admin)", "issue": "admin@test.com has role='admin' so it is permitted to call admin endpoints — this is correct per ADMIN_ROLES but means there is no 'plain user' guard in this test. Consider adding a regression test that uses a non-admin user to confirm 403."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter146_collab_phases_b2_to_f.py",
+    "/app/test_reports/pytest/iter146_collab.xml"
+  ],
+  "action_items": [
+    "No action required — all 17 backend tests for Phases B2..F pass against the public preview URL.",
+    "(nice-to-have) Add a non-admin regression test to confirm POST /api/platform-experts returns 403 for plain users.",
+    "(nice-to-have) Investigate Razorpay create-order latency (~1.5s — flagged by hardening as slow_request)."
+  ],
+  "critical_code_review_comments": [
+    "marketplace.py L389: resolve_razorpay_creds() returns (key_id, key_secret, _) but the unpacking '_, key_secret, _' may be order-wrong depending on integration helper; verify_payment correctly rejected our fake signature, so signing works — but if the order ever changes, signature validation will silently fail. Add a unit test that round-trips a HMAC with a known order/payment id.",
+    "earnings.py credit_seller is invoked inside marketplace.verify_payment AFTER a state-mutating order update; if credit_seller throws, the order is left as 'paid' with no ledger entry. Wrap credit_seller in try/except (or move to a transactional helper).",
+    "karma.py _save_rating: when a rater UPDATES their rating (existing!=None), karma is NOT re-awarded (correct), but neither is karma DECREMENTED if user lowers from 5★->1★. Possibly intended, worth confirming with PM.",
+    "public_help.py merge-accepted: appends factors with default category='primary' and rating=0; the front-end Step-4 prioritisation can fix that, but worth noting that newly-merged factors won't influence Step-7 scoring until rated.",
+    "marketplace.py clone_listing_to_user copies factors verbatim (good) but resets only 'assessments' + 'worth_percentage' on options; if source had other per-option computed fields (e.g. 'pros_cons', 'risk_score'), they'll be carried over unchanged. Audit the option schema for any other computed fields that should be reset on clone."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter146_collab_phases_b2_to_f.py (new)"
+  ],
+  "success_rate": {"backend": "100% (17/17)", "frontend": "not tested (backend-only request)"},
+  "seed_data_creation": "Test creates ephemeral decisions, listings, posts, and platform experts — all are cleaned up at the end (zzz_cleanup + per-class fixtures). Verified via backend logs (DELETE 200 OK on every created decision; unpublish on every listing).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Reusable test file at /app/backend/tests/test_iter146_collab_phases_b2_to_f.py exercises the entire Collaboration epic end-to-end with two real users (super@test.com seller / admin@test.com buyer). Run with: EXPO_PUBLIC_BACKEND_URL=<public URL> pytest backend/tests/test_iter146_collab_phases_b2_to_f.py -v . Auth login response uses 'session_token' (not 'token' / 'access_token'). Razorpay live keys are present in backend/.env so /create-order returns real order_ids; do NOT trigger checkout. Default karma values: contribution_accepted=10, decision_cloned_free=5, decision_cloned_paid=15, positive_rating=4 (per star).",
+  "rca_of_issue": "N/A — no bugs found. Two cosmetic test fixes were applied while authoring the suite: (1) auth response uses 'session_token' key; (2) backend lowercases stored email so the test had to use a lowercase fixture email."
+}

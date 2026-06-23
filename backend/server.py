@@ -192,6 +192,11 @@ from routes.catalog_explorer import router as catalog_explorer_router
 from routes.admin_quota import router as admin_quota_router
 from routes.review_net import router as review_net_router
 from routes.expert_net import router as expert_net_router
+from routes.platform_experts import router as platform_experts_router
+from routes.public_help import router as public_help_router
+from routes.marketplace import router as marketplace_router
+from routes.earnings import router as earnings_router, admin_router as payouts_admin_router
+from routes.karma import router as karma_router, admin_router as karma_admin_router
 from routes.org_surveys import router as org_surveys_router
 from routes.branding import router as branding_router
 from routes.life_directions import router as life_directions_router
@@ -290,6 +295,13 @@ api_router.include_router(catalog_explorer_router)
 api_router.include_router(admin_quota_router)
 api_router.include_router(review_net_router)
 api_router.include_router(expert_net_router)
+api_router.include_router(platform_experts_router)
+api_router.include_router(public_help_router)
+api_router.include_router(marketplace_router)
+api_router.include_router(earnings_router)
+api_router.include_router(payouts_admin_router)
+api_router.include_router(karma_router)
+api_router.include_router(karma_admin_router)
 api_router.include_router(org_surveys_router)
 api_router.include_router(branding_router)
 api_router.include_router(life_directions_router)
@@ -533,6 +545,13 @@ async def startup_db_client():
         start_weekly_scheduler()
     except Exception as e:
         logger.error(f"URL Training weekly scheduler boot failed: {e}", exc_info=True)
+
+    # Marketplace weekly payout scheduler (Collaboration Epic Phase E)
+    try:
+        from routes.earnings import start_payout_scheduler
+        start_payout_scheduler()
+    except Exception as e:
+        logger.error(f"Payout scheduler boot failed: {e}", exc_info=True)
 
     # Notification Engine — seed default weekly import-analytics digest trigger
     # (idempotent) + start the 60s scheduler tick (fcntl-singleton-locked).
