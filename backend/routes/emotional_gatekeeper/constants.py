@@ -188,7 +188,7 @@ EFT_DEFAULTS = {
         {"id": "under_arm", "name": "Under Arm", "instruction": "Tap gently about four inches below your armpit."},
         {"id": "top_of_head", "name": "Top of Head", "instruction": "Tap gently on the crown of your head."},
     ],
-    "diagram_image_url": "https://eftinternational.org/wp-content/uploads/page-uploads/EFT-Tapping-Points-EFTi.jpg",
+    "diagram_image_url": "/api/static/eft/default_tapping_points.png",
     "video_url": "https://vimeo.com/1184450823/11b05769d7?fl=pl&fe=cm",
     "disclaimer": "This practice is for emotional self-regulation and stress relief. It is not a substitute for medical, psychological, or emergency care. If you feel unsafe, overwhelmed, or have thoughts of self-harm, please contact a qualified professional or emergency support immediately.",
     # Words that trigger the gentle safety support message (case-insensitive substring match).

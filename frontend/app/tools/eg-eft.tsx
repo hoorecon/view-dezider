@@ -147,6 +147,7 @@ export default function EftTappingScreen() {
   const [phraseMode, setPhraseMode] = useState<'reminder' | 'full'>('reminder');
   const [showSafety, setShowSafety] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
+  const [diagramFailed, setDiagramFailed] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Load config and, when resuming, restore previously entered data.
@@ -561,11 +562,22 @@ export default function EftTappingScreen() {
                   {!!config.diagram_image_url && (
                     <View style={styles.mediaBlock}>
                       <Text style={styles.mediaLabel}>Tapping Points Diagram</Text>
-                      <Image
-                        source={{ uri: config.diagram_image_url.startsWith('/') ? `${BACKEND}${config.diagram_image_url}` : config.diagram_image_url }}
-                        style={styles.diagram}
-                        resizeMode="contain"
-                      />
+                      {diagramFailed ? (
+                        <View style={[styles.diagram, styles.diagramFallback]}>
+                          <Ionicons name="body-outline" size={26} color={COLORS.textMuted} />
+                          <Text style={styles.diagramFallbackTxt}>
+                            Diagram unavailable — each point&apos;s exact location is shown step-by-step below.
+                          </Text>
+                        </View>
+                      ) : (
+                        <Image
+                          testID="eft-diagram-image"
+                          source={{ uri: config.diagram_image_url.startsWith('/') ? `${BACKEND}${config.diagram_image_url}` : config.diagram_image_url }}
+                          style={styles.diagram}
+                          resizeMode="contain"
+                          onError={() => setDiagramFailed(true)}
+                        />
+                      )}
                     </View>
                   )}
 
@@ -859,6 +871,8 @@ const styles = StyleSheet.create({
   mediaBlock: { marginTop: 20 },
   mediaLabel: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 8 },
   diagram: { width: '100%', height: 280, borderRadius: 14, backgroundColor: '#FFF', borderWidth: 1, borderColor: COLORS.border },
+  diagramFallback: { alignItems: 'center', justifyContent: 'center', padding: 20, gap: 10 },
+  diagramFallbackTxt: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center', lineHeight: 19 },
   videoWrap: { borderRadius: 14, overflow: 'hidden', backgroundColor: '#000', height: 210 },
   video: { flex: 1, backgroundColor: '#000' },
   videoFallback: { backgroundColor: '#FFF', borderRadius: 14, padding: 18, alignItems: 'center', gap: 8, borderWidth: 1, borderColor: COLORS.border },
