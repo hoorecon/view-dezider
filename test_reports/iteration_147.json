@@ -1,0 +1,48 @@
+{
+  "summary": "Frontend smoke + flow test of Collaboration & Knowledge Marketplace Epic (Phases B2..F) via the public preview URL. Logged in as super@test.com (Organization Login) and validated every requested screen: /marketplace, /public-help, /earnings, /leaderboard, /fame/{id}, /admin/platform-experts (incl. Add Expert form + JSON Bulk modal), /admin/payouts (incl. Run payouts now confirmation), /admin/karma (incl. Save). 13/13 frontend checks passed. The ShareStepModal Experts tab was NOT exercised end-to-end (requires drilling into a specific decision step with a Share action — deep nav), but the underlying data is verified (3 seeded experts visible on /admin/platform-experts and backend covered in iter146).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/acm/health", "issue": "Returns 404 on every page load (frontend bootstrap hits it). Pre-existing — unrelated to this epic — but worth fixing or removing the call to avoid noise in console / hardening logs."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/admin/platform-experts", "issues": ["Header '+', cloud-upload and back icons have NO testID on TouchableOpacity. Tests/regression had to click by coordinate. Add testID='open-add-expert', testID='open-bulk-upload' for stable selectors."]},
+      {"screen": "/admin/payouts", "issues": ["'Run payouts now' button and 'Save configuration' button have no testID — works today via visible text but adding testIDs would harden tests."]},
+      {"screen": "/admin/karma", "issues": ["'Save configuration' button and per-event TextInputs have no testID."]},
+      {"screen": "/leaderboard", "issues": ["Tapping the demo top-rank row navigates to /fame/user_fake which renders a placeholder ('Member' / 400 KP / 0 ratings). If 'user_fake' is a real user_id, fine — but if it is a literal demo string, real fame lookups will look broken to users. Verify the leaderboard endpoint isn't returning seeded fake ids."]}
+    ],
+    "react_native_issues": [
+      {"component": "global (LinearGradient/shadow*)", "issue": "Web preview console emits 'shadow* style props are deprecated. Use boxShadow.' on every screen. Migrate shadowColor/shadowOffset/shadowOpacity/shadowRadius to boxShadow for web parity (still ok on native)."},
+      {"component": "expo-notifications", "issue": "Console: '[expo-notifications] Listening to push token changes is not yet fully supported on web. Adding a listener will have no effect.' — expected on web preview, no action needed unless web is target."}
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_147.json",
+    "/app/backend/tests/test_iter146_collab_phases_b2_to_f.py (backend regression — passed in iter146)"
+  ],
+  "action_items": [
+    "Add testID attributes on /admin/platform-experts header buttons (open-add-expert, open-bulk-upload), Add Expert form Save button, and on /admin/payouts (run-payouts-now, save-config) + /admin/karma (save-config) for stable e2e selectors.",
+    "Investigate /api/acm/health 404 — either implement or remove the frontend probe to clean up console.",
+    "Migrate shadow* style props to boxShadow across LinearGradient/cards to silence RN web deprecation warnings.",
+    "Verify the /api/karma/leaderboard endpoint isn't returning a synthetic 'user_fake' id — if it is, replace with real seed user ids so /fame/{id} renders a real profile.",
+    "(Optional, not tested by me) End-to-end exercise the ShareStepModal Experts tab on a real decision step to confirm the 3 seeded platform experts appear and 'Ask the public for help' submits."
+  ],
+  "critical_code_review_comments": [
+    "/app/frontend/app/marketplace.tsx L29 loadRazorpayScript references document/window directly — guarded by Platform.OS==='web' at call-site, but the function itself is unconditional. If ever called from native it will throw — add an early return when Platform.OS !== 'web'.",
+    "/app/frontend/app/marketplace.tsx L114 buyClone catches errors but the busy flag is reset on a 1000ms timer rather than awaiting rzp.open(); if Razorpay script load fails after the catch returns, busy will still toggle off — fine, but means double-clicks during the 1s window could fire 2nd order. Consider a dedicated 'rzpOpen' flag.",
+    "/app/frontend/app/public-help.tsx is 388 lines — getting close to the 700-line guideline, OK but a refactor splitting the Detail modal into its own component would help.",
+    "/app/frontend/app/leaderboard.tsx L113 routes to /fame/${u.user_id} cast as 'any' — Expo Router type is wider than that; consider declaring the route type so type-checking catches stale ids.",
+    "/app/frontend/app/admin/platform-experts.tsx does not surface success/error toasts on Add Expert save — would be a UX improvement (currently relies on modal close)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested this iter — 100% in iter146", "frontend": "100% on the 13 flows requested (12 explicit + login)"},
+  "seed_data_creation": "No new seed data created. Touched only the super@test.com account: linked a UPI payout account (test-super@upi) on /earnings (per request — 'enter VPA → Save persists'). This persists for super@test.com — feel free to clear via /api/earnings/payout-account if needed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Login uses 'Organization Login' tab on /auth/login (default). Public preview URL works. /admin/* routes require role=admin/super_admin. Public collaboration routes (/marketplace, /public-help, /earnings, /leaderboard, /fame/{id}) are all live and rendering. Admin platform-experts add form correctly pulls masters dropdowns (Expert Type/Experience/Languages/Timings/Catalog/Add Org/JSON bulk). Backend already 17/17 (iter146). Razorpay flow was intentionally NOT triggered.",
+  "rca_of_issue": "N/A — no functional bugs. Only cosmetic findings (missing testIDs, RN-web shadow deprecation, /api/acm/health 404 noise, possible synthetic 'user_fake' leaderboard id)."
+}

@@ -411,7 +411,13 @@ async def verify_payment(listing_id: str, request: Request, user: dict = Depends
     gross = int(order.get("amount_inr") or listing.get("price_inr") or 0)
     result = await clone_listing_to_user(listing, user, paid_amount_inr=gross,
                                          payment_id=payment_id, order_id=order_id)
-    # credit the seller's earnings ledger
-    from routes.earnings import credit_seller
-    await credit_seller(listing, order_id=order_id, gross_inr=gross, payment_id=payment_id, buyer_id=user["user_id"])
+    # credit the seller's earnings ledger (never fail the buyer's purchase on a ledger error)
+    try:
+        from routes.earnings import credit_seller
+        await credit_seller(listing, order_id=order_id, gross_inr=gross, payment_id=payment_id, buyer_id=user["user_id"])
+    except Exception as e:
+        import logging
+        logging.getLogger("marketplace").error(
+            f"credit_seller failed for order {order_id} (clone delivered, needs reconciliation): {str(e)[:200]}"
+        )
     return {"ok": True, **result, "message": "Purchase successful"}
