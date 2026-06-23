@@ -402,26 +402,24 @@ export default function HomeScreen() {
 
             <TouchableOpacity
               style={styles.colabCard}
-              onPress={() => router.push('/tools/action-center' as any)}
+              onPress={() => router.push('/tools/today' as any)}
             >
               <View style={[styles.colabIconWrap, { backgroundColor: 'rgba(13,148,136,0.1)' }]}>
-                <Ionicons name="checkmark-done-circle" size={22} color="#0D9488" />
+                <Ionicons name="today" size={22} color="#0D9488" />
               </View>
-              <Text style={styles.colabTitle}>Action Tracker</Text>
-              <Text style={styles.colabSubtitle}>
-                {cttStats?.total ? `${cttStats.total} on plate` : 'All clear'}
-              </Text>
+              <Text style={styles.colabTitle} numberOfLines={1}>Today&apos;s Plan</Text>
+              <Text style={styles.colabSubtitle} numberOfLines={1}>Actions + routines</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.colabCard}
-              onPress={() => router.push('/tools/lifestyle' as any)}
+              onPress={() => router.push('/tools/eg-eft' as any)}
             >
               <View style={[styles.colabIconWrap, { backgroundColor: 'rgba(234,88,12,0.1)' }]}>
-                <Ionicons name="color-palette" size={22} color="#EA580C" />
+                <Ionicons name="hand-left" size={22} color="#EA580C" />
               </View>
-              <Text style={styles.colabTitle}>Today&apos;s Routine</Text>
-              <Text style={styles.colabSubtitle}>Lifestyle Dezider</Text>
+              <Text style={styles.colabTitle} numberOfLines={1}>EFT Tapping</Text>
+              <Text style={styles.colabSubtitle} numberOfLines={1}>Stress relief</Text>
             </TouchableOpacity>
           </View>
 
