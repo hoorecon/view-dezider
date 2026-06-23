@@ -32,14 +32,34 @@ async def _account_number() -> str:
     return (cfg.get("razorpayx_account_number") or os.getenv("RAZORPAYX_ACCOUNT_NUMBER", "")).strip()
 
 
-async def is_configured() -> bool:
+async def _payout_creds() -> Tuple[str, str, str]:
+    """Resolve credentials used for RazorpayX *payout* API calls.
+
+    Priority:
+      1. Dedicated RAZORPAYX_KEY_ID / RAZORPAYX_KEY_SECRET env vars (isolated
+         test/payout account). When set, ALL payout calls use these — payment
+         collection is completely unaffected.
+      2. Fallback to the shared Razorpay payment credentials (live account that
+         has RazorpayX activated on the same key pair).
+
+    Returns (key_id, key_secret, source) where source ∈ {"razorpayx_env", "shared"}.
+    """
+    x_kid = os.getenv("RAZORPAYX_KEY_ID", "").strip()
+    x_ks = os.getenv("RAZORPAYX_KEY_SECRET", "").strip()
+    if x_kid and x_ks:
+        return x_kid, x_ks, "razorpayx_env"
     key_id, key_secret, _ = await resolve_razorpay_creds()
+    return key_id, key_secret, "shared"
+
+
+async def is_configured() -> bool:
+    key_id, key_secret, _ = await _payout_creds()
     acct = await _account_number()
     return bool(key_id and key_secret and acct)
 
 
 async def _auth() -> Tuple[str, str]:
-    key_id, key_secret, _ = await resolve_razorpay_creds()
+    key_id, key_secret, _ = await _payout_creds()
     return key_id, key_secret
 
 

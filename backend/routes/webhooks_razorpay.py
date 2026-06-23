@@ -305,6 +305,151 @@ async def razorpay_webhook(
     return {"ok": True, "event": event, "credited": results, "payment_id": payment_id}
 
 
+# ───────────────────────────────────────────────────────────────────────────
+# RazorpayX Payout-status webhook (Collaboration Epic Phase E)
+#
+# Subscribe in the RazorpayX Dashboard → Webhooks to:
+#   payout.processed, payout.failed, payout.reversed
+# Uses a SEPARATE secret (RAZORPAYX_WEBHOOK_SECRET) so it never collides with
+# the payment-collection webhook above. Reconciles `payouts` + `earnings_ledger`.
+# ───────────────────────────────────────────────────────────────────────────
+RAZORPAYX_WEBHOOK_SECRET = os.getenv("RAZORPAYX_WEBHOOK_SECRET", "").strip()
+PAYOUT_EVENTS = {"payout.processed", "payout.failed", "payout.reversed"}
+
+
+def _verify_razorpayx_signature(raw_body: bytes, signature: Optional[str]) -> Optional[str]:
+    if not RAZORPAYX_WEBHOOK_SECRET:
+        return "RAZORPAYX_WEBHOOK_SECRET not configured"
+    if not signature:
+        return "Missing X-Razorpay-Signature header"
+    expected = hmac.new(
+        RAZORPAYX_WEBHOOK_SECRET.encode("utf-8"), raw_body, hashlib.sha256
+    ).hexdigest()
+    if not hmac.compare_digest(expected, signature):
+        return "Signature mismatch"
+    return None
+
+
+@router.post("/razorpayx")
+async def razorpayx_payout_webhook(
+    request: Request,
+    x_razorpay_signature: Optional[str] = Header(default=None, alias="X-Razorpay-Signature"),
+    x_razorpay_event_id: Optional[str] = Header(default=None, alias="X-Razorpay-Event-Id"),
+):
+    raw = await request.body()
+
+    err = _verify_razorpayx_signature(raw, x_razorpay_signature)
+    if err:
+        logger.warning("RazorpayX webhook rejected: %s", err)
+        raise HTTPException(status_code=403, detail=f"RazorpayX verification failed: {err}")
+
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    event = (payload.get("event") or "").lower()
+    if event not in PAYOUT_EVENTS:
+        return {"ok": True, "ignored_event": event}
+
+    payout_entity = (
+        ((payload.get("payload") or {}).get("payout") or {}).get("entity") or {}
+    )
+    rzp_payout_id = payout_entity.get("id")
+    reference_id = (payout_entity.get("reference_id") or "").strip()  # our internal payout_id
+    failure_reason = payout_entity.get("failure_reason") or payout_entity.get("status_details", {}).get("description")
+
+    if not (rzp_payout_id or reference_id):
+        raise HTTPException(status_code=400, detail="Missing payout id / reference_id")
+
+    # Idempotency
+    dedupe_key = x_razorpay_event_id or f"{event}:{rzp_payout_id or reference_id}"
+    if await db.razorpayx_events.find_one({"event_id": dedupe_key}):
+        return {"ok": True, "duplicate": True, "event_id": dedupe_key}
+
+    # Match our payout row by RazorpayX id first, then by our reference_id
+    query: Dict[str, Any] = {}
+    if rzp_payout_id:
+        query = {"razorpay_payout_id": rzp_payout_id}
+    payout = await db.payouts.find_one(query) if query else None
+    if not payout and reference_id:
+        payout = await db.payouts.find_one({"payout_id": reference_id})
+
+    if not payout:
+        await db.razorpayx_events.insert_one({
+            "event_id": dedupe_key, "event": event, "razorpay_payout_id": rzp_payout_id,
+            "reference_id": reference_id, "outcome": "no_matching_payout",
+            "raw": payload, "created_at": _now(),
+        })
+        return {"ok": True, "skipped": "no_matching_payout"}
+
+    payout_id = payout["payout_id"]
+    new_status = {
+        "payout.processed": "processed",
+        "payout.failed": "failed",
+        "payout.reversed": "reversed",
+    }[event]
+
+    updates: Dict[str, Any] = {
+        "status": new_status,
+        "razorpay_payout_id": rzp_payout_id or payout.get("razorpay_payout_id"),
+        "webhook_event": event,
+        "updated_at": _now().isoformat(),
+    }
+    if new_status == "processed":
+        updates["processed_at"] = _now().isoformat()
+    if new_status in ("failed", "reversed") and failure_reason:
+        updates["failure_reason"] = str(failure_reason)[:300]
+
+    await db.payouts.update_one({"payout_id": payout_id}, {"$set": updates})
+
+    reverted = 0
+    if new_status in ("failed", "reversed"):
+        # Revert the bundled earnings back to `available` so the next weekly
+        # sweep retries them.
+        entry_ids = payout.get("entry_ids") or []
+        if entry_ids:
+            res = await db.earnings_ledger.update_many(
+                {"entry_id": {"$in": entry_ids}},
+                {"$set": {"status": "available", "payout_id": None}},
+            )
+            reverted = res.modified_count
+
+    # Notify the seller
+    try:
+        from core.helpers import create_notification
+        if new_status == "processed":
+            msg = f"✅ Your ₹{payout.get('amount_inr')} payout was completed."
+        elif new_status == "failed":
+            msg = f"⚠️ Your ₹{payout.get('amount_inr')} payout failed and was returned to your available balance."
+        else:
+            msg = f"↩️ Your ₹{payout.get('amount_inr')} payout was reversed and returned to your available balance."
+        await create_notification(payout["user_id"], "payout", "Payout update 💸", msg, {"payout_id": payout_id})
+    except Exception:
+        pass
+
+    await db.razorpayx_events.insert_one({
+        "event_id": dedupe_key, "event": event, "razorpay_payout_id": rzp_payout_id,
+        "reference_id": reference_id, "payout_id": payout_id, "new_status": new_status,
+        "reverted_entries": reverted, "outcome": "reconciled", "created_at": _now(),
+    })
+    return {"ok": True, "event": event, "payout_id": payout_id,
+            "status": new_status, "reverted_entries": reverted}
+
+
+@router.get("/razorpayx/health")
+async def razorpayx_health():
+    """Quick configuration sanity check for the SuperAdmin."""
+    from core import razorpayx
+    return {
+        "webhook_secret_configured": bool(RAZORPAYX_WEBHOOK_SECRET),
+        "payout_events": sorted(PAYOUT_EVENTS),
+        "endpoint": "/api/webhooks/razorpayx",
+        "payouts_live": await razorpayx.is_configured(),
+        "isolated_keys": bool(os.getenv("RAZORPAYX_KEY_ID") and os.getenv("RAZORPAYX_KEY_SECRET")),
+    }
+
+
 @router.get("/razorpay/health")
 async def razorpay_health():
     """Quick configuration sanity check for the SuperAdmin."""
