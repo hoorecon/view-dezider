@@ -76,6 +76,30 @@ export default function HomeScreen() {
   // inside GEM even when `dash_goal_setter` is locked).
   const { isTileOn } = useDashboardTiles();
 
+  // Section-level gating for the 9 dashboard sections. A section is shown when
+  // its `dash_section_<id>` flag is ON *and* it still has at least one visible
+  // tile (so disabling every child tile, or the section itself, also removes
+  // the now-empty header). Sections that contain always-on utility tiles
+  // (Execute & Track, More Tools) only hide via the explicit section flag.
+  const SECTION_TILES: Record<string, { always: boolean; tiles: string[] }> = {
+    self_discovery:        { always: false, tiles: ['pna', 'gem'] },
+    decision_kickstarters: { always: false, tiles: ['instant_dezider', 'my_dezider', 'pros_cons', 'emotional_gatekeeper'] },
+    problem_solvers:       { always: false, tiles: ['solution_finder', 'conflict_breaker'] },
+    goals_manifestation:   { always: false, tiles: ['goal_setter', 'goal_manifestation'] },
+    execute_track:         { always: true,  tiles: ['action_tracker', 'ctt', 'lifestyle_dezider'] },
+    reflection_awareness:  { always: false, tiles: ['public_pulse', 'outlet_analyzer', 'aim_manager', 'capabilities_index', 'lifestyle_designer', 'lifestyle_analyzer', 'consciousness_diary', 'unconditional_happiness'] },
+    collaboration_mgmt:    { always: false, tiles: ['collaboration_hub', 'aala', 'time_dezider', 'gem_flight'] },
+    solution_space:        { always: false, tiles: ['solution_store', 'review_net', 'deo', 'time_store'] },
+    more_tools:            { always: true,  tiles: ['contacts', 'calendar', 'ai_assistant', 'social_learning', 'cld_engine', 'subscription'] },
+  };
+  const showSection = (sid: string): boolean => {
+    if (!isTileOn(`dash_section_${sid}`)) return false;
+    const cfg = SECTION_TILES[sid];
+    if (!cfg) return true;
+    if (cfg.always) return true;
+    return cfg.tiles.some((t) => isTileOn(t));
+  };
+
   // ---------------------------------------------------------------------------
   // Hydration-safe client mount gate
   // ---------------------------------------------------------------------------
@@ -434,6 +458,7 @@ export default function HomeScreen() {
           </View>
 
           {/* ══════════ §1 SELF DISCOVERY ══════════ */}
+          {showSection('self_discovery') && (<>
           <Text style={styles.sectionTitle}>🌌 1 · Self Discovery</Text>
           <View style={styles.quickActions}>
             {isTileOn('pna') && (
@@ -456,8 +481,10 @@ export default function HomeScreen() {
             </TouchableOpacity>
             )}
           </View>
+          </>)}
 
           {/* ══════════ §2 DECISION KICKSTARTERS ══════════ */}
+          {showSection('decision_kickstarters') && (<>
           <Text style={styles.sectionTitle}>🔮 2 · Decision Kickstarters</Text>
           <View style={styles.quickActions}>
             {isTileOn('instant_dezider') && (
@@ -511,9 +538,11 @@ export default function HomeScreen() {
             </TouchableOpacity>
             )}
           </View>
+          </>)}
 
           {/* ══════════ §3 PROBLEM SOLVERS ══════════
               Renamed from "Inner Wellbeing" — houses Solution Finder + The Conflict Breaker. */}
+          {showSection('problem_solvers') && (<>
           <Text style={styles.sectionTitle}>❤️ 3 · Problem Solvers</Text>
           <View style={styles.quickActions}>
             {isTileOn('solution_finder') && (
@@ -535,11 +564,13 @@ export default function HomeScreen() {
             </TouchableOpacity>
             )}
           </View>
+          </>)}
 
           {/* (Emotional Gatekeeper now lives as the last tile of §2 Decision
               Kickstarters above. SWOT remains hidden globally.) */}
 
           {/* ══════════ §4 GOALS & MANIFESTATION ══════════ */}
+          {showSection('goals_manifestation') && (<>
           <Text style={styles.sectionTitle}>🎯 4 · Goals & Manifestation</Text>
           <View style={styles.quickActions}>
             {isTileOn('goal_setter') && (
@@ -561,10 +592,12 @@ export default function HomeScreen() {
             </TouchableOpacity>
             )}
           </View>
+          </>)}
 
           {/* ══════════ §5 EXECUTE & TRACK ══════════
               Order: My Organizations · Values Tracker · Action Tracker ·
                      Effort Estimation · CTT · Lifestyle Dezider */}
+          {showSection('execute_track') && (<>
           <Text style={styles.sectionTitle}>✅ 5 · Execute & Track</Text>
           <View style={styles.quickActions}>
             <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/orgs' as any)}>
@@ -620,11 +653,13 @@ export default function HomeScreen() {
             </TouchableOpacity>
             )}
           </View>
+          </>)}
 
           {/* ══════════ §6 REFLECTION & AWARENESS (8 tiles, consolidated) ══════════
               Order: Life Mirror · Outlet Analyzer · AIM Manager ·
                      Capabilities & Resources Index · Lifestyle Designer ·
                      Lifestyle Analyzer · Consciousness Diary · Unconditional Happiness */}
+          {showSection('reflection_awareness') && (<>
           <Text style={styles.sectionTitle}>🪞 6 · Reflection & Awareness</Text>
           <View style={styles.quickActions}>
             {isTileOn('public_pulse') && (
@@ -706,8 +741,10 @@ export default function HomeScreen() {
             </TouchableOpacity>
             )}
           </View>
+          </>)}
 
           {/* ══════════ §7 COLLABORATION & MANAGEMENT ══════════ */}
+          {showSection('collaboration_mgmt') && (<>
           <Text style={styles.sectionTitle}>👥 7 · Collaboration & Management</Text>
           <View style={styles.quickActions}>
             {isTileOn('collaboration_hub') && (
@@ -749,12 +786,14 @@ export default function HomeScreen() {
             </TouchableOpacity>
             )}
           </View>
+          </>)}
 
           {/* ══════════ §8 SOLUTION SPACE (moved here from §3) ══════════
               Now placed after Collaboration & Management and above More
               Tools. DEO + Time Store relocated here from More Tools.
               Solution Finder MOVED OUT to §2 Decision Kickstarters as
               the 4th card (where SWOT sat before). */}
+          {showSection('solution_space') && (<>
           <Text style={styles.sectionTitle}>🧩 8 · Solution Space</Text>
           <View style={styles.quickActions}>
             {isTileOn('solution_store') && (
@@ -796,8 +835,10 @@ export default function HomeScreen() {
             </TouchableOpacity>
             )}
           </View>
+          </>)}
 
           {/* ══════════ §9 MORE TOOLS (secondary utilities) ══════════ */}
+          {showSection('more_tools') && (<>
           <Text style={styles.sectionTitle}>🧰 9 · More Tools</Text>
           <View style={styles.colabRow}>
             <TouchableOpacity style={styles.colabCard} onPress={() => router.push('/inbox')}>
@@ -896,6 +937,7 @@ export default function HomeScreen() {
             </TouchableOpacity>
             )}
           </View>
+          </>)}
 
           {/* Stats */}
           <Text style={styles.sectionTitle}>Your Progress</Text>

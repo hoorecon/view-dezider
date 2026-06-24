@@ -9751,3 +9751,100 @@ agent_communication:
         /api/action-items?source_module=PROS_CONS&source_id={id} shows them. Re-POST must NOT duplicate (idempotent).
         Setting final_choice_option_id=null and re-POST -> imported_count 0. NOTE the P&C base path/prefix from
         server.py (routes/pros_cons.py router mount).
+
+#====================================================================================================
+# Iter 154 (fork) — Deploy startup fix + ACM/WOWO dashboard alignment
+#====================================================================================================
+backend:
+  - task: "Deploy health-check fix — background boot work"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          ROOT CAUSE of EC2 deploy "Backend did not become healthy": the @app.on_event("startup")
+          handler ran ALL seeds + migrations synchronously, blocking uvicorn from logging
+          "Application startup complete" until every collection migration finished across 4 workers
+          concurrently — exceeding the ~44s health window. FIX: startup now schedules a background
+          task (_run_boot_work) and returns immediately, so /api/health/live answers within seconds.
+          Also guarded the 3 migrations + tier_matrix auto-reset behind boot_owner so non-owner workers
+          skip them. Verified locally: "Application startup complete" present, GET /api/health/live 200.
+          TEST: confirm all core endpoints still work after boot (auth, /acm/my-access, /acm matrix,
+          /action-items), and that seeds completed in background (ACM version 2026-06-24-01).
+
+  - task: "ACM seed grouping aligned to live dashboard (Option A) + version bump"
+    implemented: true
+    working: "NA"
+    file: "backend/data/acm_seed_data.py, backend/core/acm_engine.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          ACM_SEED_VERSION bumped 2026-06-16-02 → 2026-06-24-01 (non-destructive reseed preserves
+          admin access overrides). dashboard_tiles regrouped to match Home: §3 renamed inner_wellbeing
+          → problem_solvers ("Problem Solvers"); dash_emotional_gatekeeper → §2 decision_kickstarters;
+          dash_conflict_breaker + dash_solution_finder → §3 problem_solvers; removed duplicate dash_swot
+          under more_tools. Local DB reseeded + verified parent_feature_id mapping + swot dedup (1).
+
+  - task: "ACM 'Apply to all user types' bulk edit"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/admin/acm.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Cell editor modal now has an "Apply to all user types" checkbox. When checked, Save writes the
+          chosen level+quota to ALL audience/tier columns (accessKeys) via the existing PUT
+          /api/acm/feature/{id}. Default off; resets on each open.
+
+frontend:
+  - task: "Dashboard 9-section header gating (hide disabled/empty sections)"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/(tabs)/index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Added showSection(sid): a section (header + tiles) renders only when dash_section_<id> is ON
+          AND it still has ≥1 visible tile (sections with always-on utility tiles — Execute & Track,
+          More Tools — hide only via the section flag). All 9 sections wrapped. Fixes empty/disabled
+          section headers persisting on Home.
+
+metadata:
+  created_by: "main_agent"
+  version: "fork-iter-154"
+  test_sequence: 154
+
+test_plan:
+  current_focus:
+    - "Backend boots fast + all core endpoints functional after background boot"
+    - "ACM matrix grouping (problem_solvers, EG in §2) via GET /api/acm"
+    - "ACM Apply-to-all PUT /api/acm/feature/{id} writes all columns"
+    - "Dashboard section headers hide when section/tiles disabled"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Fork iter 154. Fixed EC2 deploy health-check failure (background boot) and aligned ACM
+      dashboard_tiles grouping to the live Home dashboard (Option A, version 2026-06-24-01) +
+      added "Apply to all user types" in /admin/acm + section-level dashboard gating.
+      Admin: super@test.com / SuperPass2026!

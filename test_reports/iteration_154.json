@@ -1,0 +1,43 @@
+{
+  "summary": "Iter 154 — Verified the EC2 health-check fix (background-boot startup) and ACM dashboard_tiles grouping realignment, plus the new 'Apply to all user types' bulk-edit PUT on /api/acm/feature/{id}. Backend: 12/12 pytest tests pass via the public EXPO_BACKEND_URL. /api/health/live returns 200 with no auth (request handling works immediately after the new background-boot startup). Super admin login (super@test.com/SuperPass2026!) succeeds and /api/auth/me, /api/acm/my-access, /api/action-items all return 200 — confirming the background asyncio _run_boot_work task did not break request handling. The ACM matrix endpoint is GET /api/acm/matrix (admin-gated, 403 for non-admin). dashboard_tiles grouping is correct: dash_section_problem_solvers exists ('§3 · Problem Solvers'), dash_emotional_gatekeeper.parent_feature_id == dash_section_decision_kickstarters, dash_conflict_breaker.parent == dash_section_problem_solvers, dash_solution_finder.parent == dash_section_problem_solvers, dash_swot appears exactly once, and all 9 expected section features are present. ACM_SEED_VERSION in code is '2026-06-24-01'. The bulk 'Apply to all user types' PUT works: applying {level:'read', quota:5} to all 10 audiences on dash_swot persisted to every audience in the re-fetched matrix; the feature was restored to its prior access map at the end of the test. Frontend: landing → Sign in → email/password login flow works. After login as super_admin user is routed to /admin (admin overview), but navigating to '/' the user-facing Home dashboard renders all 9 section headers (Self Discovery, Decision Kickstarters, Problem Solvers, Goals & Manifestation, Execute & Track, Reflection & Awareness, Collaboration & Management, Solution Space, More Tools) with no JS crash and no red-screen error. Section §2 contains 'Emotional Gatekeeper' as a tile (matches grouping change) and §3 lists Solution Finder + Conflict Breaker. No deprecated Expo packages observed in the files of reference. Did NOT exercise the optional 'hide an entire section via ACM and confirm header disappears' flow since the spec marked it non-blocking, and bulk-applying Hidden to dash_section_<id> would temporarily disable the section globally for super admin.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter154_acm_grouping.py",
+    "/app/test_reports/pytest/iter154.xml"
+  ],
+  "action_items": [
+    "Optional: add testIDs to /admin/acm bulk-edit modal — apply-all-toggle, level-select, quota-input, save-button — so future UI automation can exercise the bulk-apply path end-to-end without DOM-input fallbacks.",
+    "Optional: add testID='login-email', 'login-password', 'login-submit' to login screen TextInputs/Button — current automation works only via DOM query_selector_all('input') because there are no testIDs on the login form.",
+    "Optional UX: when a super_admin logs in they land on /admin (admin overview), so the dashboard's section-gating spec is observable only after manually navigating to '/'. Confirm with product whether this is intentional or whether super admins should also see the 9-section Home by default."
+  ],
+  "critical_code_review_comments": [
+    "backend/data/acm_seed_data.py:23 — ACM_SEED_VERSION='2026-06-24-01' is the new non-destructive reseed token; matches the request.",
+    "backend/data/acm_seed_data.py:1775-1785 — 9 section features are seeded with deterministic order 1..9 and ids dash_section_{sid}; the (1, self_discovery), (2, decision_kickstarters), (3, problem_solvers), … mapping matches the live dashboard.",
+    "backend/data/acm_seed_data.py:1809 — dash_solution_finder.parent_section='problem_solvers' ✓ (moved from decision_kickstarters per spec).",
+    "backend/data/acm_seed_data.py:1811 — dash_emotional_gatekeeper.parent_section='decision_kickstarters' ✓ (moved into §2 per spec).",
+    "backend/data/acm_seed_data.py:1812 — dash_conflict_breaker.parent_section='problem_solvers' ✓.",
+    "backend/data/acm_seed_data.py:1808 — dash_swot is defined exactly once under decision_kickstarters; no duplicate entry detected by grep.",
+    "backend/routes/acm.py:50 — GET /api/acm/matrix returns full modules array with nested features (admin-gated; non-admin gets 403). This is the endpoint /admin/acm consumes.",
+    "backend/routes/acm.py:77-198 — PUT /api/acm/feature/{feature_id} accepts {release_stage, access:{audience:{level,quota}}} and replaces the per-audience map atomically; 'Apply to all user types' is implemented client-side by sending the same {level,quota} for every audience key — server has no special branch, but persistence is correct (verified by re-fetch). Section/tile cascade rules R1/R2/R3 are intact for dashboard_tiles edits.",
+    "frontend/app/(tabs)/index.tsx:462-842 — All 9 section headers (🌌 1 · Self Discovery through 🧰 9 · More Tools) are rendered with stable labels; matches what the testing harness scraped from the live DOM.",
+    "Backend background-boot: GET /api/health/live consistently returns 200 within ms even immediately after uvicorn start, confirming the _run_boot_work refactor lets ASGI startup complete before the heavy seed/migration finishes."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter154_acm_grouping.py (new — 12 pytest cases)"
+  ],
+  "success_rate": {"backend": "100% (12/12)", "frontend": "100% on covered flows (login + 9-section Home render + no red-screen)"},
+  "seed_data_creation": "None. The bulk-apply test on dash_swot mutated the feature's access map for a few hundred ms and then restored the original snapshot via a second PUT.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "ACM matrix endpoint is GET /api/acm/matrix (NOT /api/acm). Login response uses 'session_token' (not 'access_token' / 'token') — pass it as Bearer. Super admin lands on /admin after login; the user-facing Home with 9 sections is reachable at '/'. Section header labels in the DOM are formatted like '🌌 1 · Self Discovery' — match on the '1 · Self Discovery' substring (with the · middle-dot, U+00B7). For the 'Apply to all user types' UI in /admin/acm, the 10 audience keys are: unit_tester, integration_tester, alpha, beta, free, trial, paid_starter, paid_pro, paid_enterprise, paid_api. Confirmed cascade: editing a dash_section_<id> Hidden propagates to non-overridden children; editing a tile sets tile_overrides[aud]=true. Backend background-boot refactor verified — no startup race for /api/health/live or auth endpoints.",
+  "rca_of_issue": "No issues found. All four review-request criteria pass: (1) health-live + post-login critical GETs all 200, (2) ACM dashboard_tiles grouping matches spec (problem_solvers section present, EG→§2, CB+SF→§3, dash_swot unique, ACM_SEED_VERSION=2026-06-24-01), (3) PUT /api/acm/feature/dash_swot with the same rule replicated across all 10 audiences persists to every column and survives re-fetch, (4) Home renders 9 sections with no JS crash."
+}

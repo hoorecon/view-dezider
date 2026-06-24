@@ -102,6 +102,7 @@ export default function ACMAdminScreen() {
   } | null>(null);
   const [editLevel, setEditLevel] = useState<'full' | 'read' | 'locked' | 'hidden'>('full');
   const [editQuota, setEditQuota] = useState<string>('-1');
+  const [applyAll, setApplyAll] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const accessKeys = [
@@ -177,6 +178,7 @@ export default function ACMAdminScreen() {
     setEditing({ feature, audienceKey });
     setEditLevel((cur.level as any) || 'full');
     setEditQuota(String(cur.quota ?? -1));
+    setApplyAll(false);
   };
 
   const closeEditor = () => {
@@ -197,10 +199,16 @@ export default function ACMAdminScreen() {
         nextAccess[k] = editing.feature.access[k] || { level: 'hidden', quota: 0 };
       }
       const qNum = parseInt(editQuota, 10);
-      nextAccess[editing.audienceKey] = {
+      const cell = {
         level: editLevel,
         quota: Number.isFinite(qNum) ? qNum : (editLevel === 'hidden' ? 0 : -1),
       };
+      if (applyAll) {
+        // Mass-apply this level+quota to every audience/tier column.
+        for (const k of accessKeys) nextAccess[k] = { ...cell };
+      } else {
+        nextAccess[editing.audienceKey] = cell;
+      }
       const resp = await fetch(
         `${API}/api/acm/feature/${editing.feature.feature_id}`,
         {
@@ -565,6 +573,23 @@ export default function ACMAdminScreen() {
               placeholderTextColor={COLORS.textMuted}
             />
 
+            <TouchableOpacity
+              style={styles.applyAllRow}
+              activeOpacity={0.75}
+              onPress={() => setApplyAll((v) => !v)}>
+              <Ionicons
+                name={applyAll ? 'checkbox' : 'square-outline'}
+                size={22}
+                color={applyAll ? COLORS.accent : COLORS.textMuted}
+              />
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={styles.applyAllTitle}>Apply to all user types</Text>
+                <Text style={styles.applyAllHint}>
+                  Sets this level &amp; quota for every audience/tier column at once.
+                </Text>
+              </View>
+            </TouchableOpacity>
+
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={[styles.modalBtn, styles.modalBtnCancel]}
@@ -774,6 +799,14 @@ const styles = StyleSheet.create({
     position: 'absolute', top: 4, right: 4,
   },
   levelBtnText: { fontSize: 11, fontWeight: '700' },
+  applyAllRow: {
+    flexDirection: 'row', alignItems: 'center',
+    marginTop: 16, padding: 12, borderRadius: 10,
+    backgroundColor: COLORS.accent + '0F',
+    borderWidth: 1, borderColor: COLORS.accent + '33',
+  },
+  applyAllTitle: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
+  applyAllHint: { fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
   quotaInput: {
     backgroundColor: COLORS.bg,
     borderRadius: 10, borderWidth: 1, borderColor: COLORS.border,

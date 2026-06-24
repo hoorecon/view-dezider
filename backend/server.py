@@ -4,6 +4,7 @@ Slim entry point: app init, CORS, rate-limiting, routers, lifecycle.
 All route logic lives in /routes/*.py
 """
 
+import asyncio
 import logging
 import time
 import uuid
@@ -423,15 +424,28 @@ from core.database import client, ensure_indexes
 
 @app.on_event("startup")
 async def startup_db_client():
-    """Ensure all production indexes exist + ACM seed is up to date before serving traffic."""
-    # Multi-worker safety: only ONE worker per host runs the heavy blocking boot
-    # seeds/index creation; the rest skip them and start serving (and answering
-    # health checks) immediately. Prevents index drop/create races and startup
-    # exceeding the deploy health-check window after a SEED_VERSION bump.
+    """Schedule all heavy boot work (indexes, seeds, migrations, schedulers) in a
+    BACKGROUND task so the ASGI startup completes immediately and the worker can
+    answer /api/health/live right away.
+
+    WHY: the deploy health-check window is ~30-45s. Previously all of the seeds +
+    migrations ran synchronously inside this startup handler, blocking uvicorn from
+    ever logging "Application startup complete" until every collection migration
+    finished across all 4 workers concurrently — which routinely exceeded the
+    window and made the deploy report the backend as unhealthy even though the
+    process was alive. All boot work below is idempotent and version-guarded, so
+    running it in the background after the worker starts serving is safe.
+    """
     from core.boot_lock import try_acquire_boot_seed_lock
     boot_owner = try_acquire_boot_seed_lock()
     if not boot_owner:
-        logger.info("[boot] Heavy seed/index lock held by another worker — skipping seeds; serving immediately.")
+        logger.info("[boot] Heavy seed/index lock held by another worker — skipping seeds.")
+    # Fire-and-forget; never block ASGI startup completion.
+    asyncio.create_task(_run_boot_work(boot_owner))
+
+
+async def _run_boot_work(boot_owner: bool):
+    """Heavy, idempotent boot work run off the ASGI startup critical path."""
     try:
         if boot_owner:
             await ensure_indexes()
@@ -471,50 +485,54 @@ async def startup_db_client():
     # One-shot, idempotent migration — SWOT-converted Decisions need at least
     # one "Current Scenario" option so Steps 6/7/9/10 of /prr/[id] render.
     try:
-        from core.migrations.swot_decisions_single_option import (
-            migrate_swot_decisions_single_option,
-        )
-        await migrate_swot_decisions_single_option()
+        if boot_owner:
+            from core.migrations.swot_decisions_single_option import (
+                migrate_swot_decisions_single_option,
+            )
+            await migrate_swot_decisions_single_option()
     except Exception as e:
         logger.error(f"SWOT-decisions single-option migration failed: {e}")
 
     # Idempotent — adds applies_to_modules/org_types/decision_types/swot_flag to
     # templates AND org_types/decision_types/scenario_ids to solutions_store.
     try:
-        from core.migrations.template_taxonomy_v2 import (
-            migrate_template_taxonomy_v2,
-        )
-        await migrate_template_taxonomy_v2()
+        if boot_owner:
+            from core.migrations.template_taxonomy_v2 import (
+                migrate_template_taxonomy_v2,
+            )
+            await migrate_template_taxonomy_v2()
     except Exception as e:
         logger.error(f"Template-taxonomy v2 migration failed: {e}")
 
     # Idempotent — rename legacy decision-mode enum `awareness` → `consciousness`.
     try:
-        from core.migrations.decision_mode_awareness_to_consciousness import (
-            migrate_decision_mode_awareness_to_consciousness,
-        )
-        await migrate_decision_mode_awareness_to_consciousness()
+        if boot_owner:
+            from core.migrations.decision_mode_awareness_to_consciousness import (
+                migrate_decision_mode_awareness_to_consciousness,
+            )
+            await migrate_decision_mode_awareness_to_consciousness()
     except Exception as e:
         logger.error(f"Decision-mode awareness→consciousness migration failed: {e}")
     try:
         # If tier_matrix smart-seed was previously applied with stale module ids
         # (where root tier ended up with < 5 modules), auto-reset to apply the
         # corrected SMART_SEED_MIN_TIER mapping. One-shot, idempotent.
-        from core.database import db as _db
-        from routes.tier_matrix import _smart_seed as _tm_smart_seed
-        from models.tier_models import SMART_SEED_MIN_TIER as _SS
-        root_y = await _db.tier_matrix.count_documents(
-            {"tier_key": "root", "allowed": True, "feature_id": None}
-        )
-        expected_root = sum(1 for v in _SS.values() if v == 1)
-        if root_y < max(3, expected_root - 1):
-            logger.warning(
-                f"Tier-matrix root tier has only {root_y} modules enabled "
-                f"(expected ~{expected_root}). Auto-resetting smart-seed."
+        if boot_owner:
+            from core.database import db as _db
+            from routes.tier_matrix import _smart_seed as _tm_smart_seed
+            from models.tier_models import SMART_SEED_MIN_TIER as _SS
+            root_y = await _db.tier_matrix.count_documents(
+                {"tier_key": "root", "allowed": True, "feature_id": None}
             )
-            await _db.tier_matrix.delete_many({})
-            res = await _tm_smart_seed()
-            logger.info(f"Tier-matrix reseeded: {res}")
+            expected_root = sum(1 for v in _SS.values() if v == 1)
+            if root_y < max(3, expected_root - 1):
+                logger.warning(
+                    f"Tier-matrix root tier has only {root_y} modules enabled "
+                    f"(expected ~{expected_root}). Auto-resetting smart-seed."
+                )
+                await _db.tier_matrix.delete_many({})
+                res = await _tm_smart_seed()
+                logger.info(f"Tier-matrix reseeded: {res}")
     except Exception as e:
         logger.error(f"Tier-matrix auto-reset at boot failed: {e}")
 

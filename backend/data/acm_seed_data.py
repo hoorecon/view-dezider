@@ -20,7 +20,7 @@ Subscription Plans (for paid): starter, pro, enterprise, api
 # Bump this version whenever ACM_MODULES / USER_TYPES / SUBSCRIPTION_PLANS change.
 # Boot-time auto-seed (core/acm_engine.py) reseeds DB iff stored version < this one.
 # Format: "YYYY-MM-DD-N" — human-readable, monotonically sortable.
-ACM_SEED_VERSION = "2026-06-16-02"  # +swot under decision_kickstarters; non-destructive reseed
+ACM_SEED_VERSION = "2026-06-24-01"  # align dashboard_tiles grouping to live dashboard (§3 Problem Solvers; EG→§2); non-destructive reseed
 
 # Release stages (ordered by visibility)
 RELEASE_STAGES = [
@@ -1775,7 +1775,7 @@ ACM_MODULES = [
                 for order, sid, sname in [
                     (1, "self_discovery",          "Self Discovery"),
                     (2, "decision_kickstarters",   "Decision Kickstarters"),
-                    (3, "inner_wellbeing",         "Inner Wellbeing"),
+                    (3, "problem_solvers",         "Problem Solvers"),
                     (4, "goals_manifestation",     "Goals & Manifestation"),
                     (5, "execute_track",           "Execute & Track"),
                     (6, "reflection_awareness",    "Reflection & Awareness"),
@@ -1806,10 +1806,10 @@ ACM_MODULES = [
                     ("instant_dezider",       "Instant Dezider (Test123)",      "decision_kickstarters"),
                     ("pros_cons",             "Pros & Cons",                    "decision_kickstarters"),
                     ("swot",                  "SWOT Analysis",                  "decision_kickstarters"),
-                    ("solution_finder",       "Solution Finder",                "decision_kickstarters"),
+                    ("solution_finder",       "Solution Finder",                "problem_solvers"),
                     # §3 Inner Wellbeing
-                    ("emotional_gatekeeper",  "Emotional Gatekeeper",           "inner_wellbeing"),
-                    ("conflict_breaker",      "Conflict Breaker",               "inner_wellbeing"),
+                    ("emotional_gatekeeper",  "Emotional Gatekeeper",           "decision_kickstarters"),
+                    ("conflict_breaker",      "Conflict Breaker",               "problem_solvers"),
                     # §4 Goals & Manifestation
                     ("goal_setter",           "Goal Setter",                    "goals_manifestation"),
                     ("goal_manifestation",    "Manifestation",                  "goals_manifestation"),
@@ -1839,7 +1839,6 @@ ACM_MODULES = [
                     # §9 More Tools
                     ("ai_assistant",          "AI Assistant",                   "more_tools"),
                     ("social_learning",       "Social Learning",                "more_tools"),
-                    ("swot",                  "SWOT Analysis",                  "more_tools"),
                     ("contacts",              "Contacts",                       "more_tools"),
                     ("calendar",              "Calendar",                       "more_tools"),
                     ("subscription",          "Subscription",                   "more_tools"),
