@@ -37,7 +37,8 @@ DEFAULT_SECTIONS = [
                "lifestyle_designer", "lifestyle_analyzer", "consciousness_diary",
                "unconditional_happiness"]},
     {"id": "collaboration_mgmt", "emoji": "👥", "name": "Collaboration & Management",
-     "tiles": ["collaboration_hub", "aala", "time_dezider", "gem_flight"]},
+     "tiles": ["collaboration_hub", "aala", "time_dezider", "gem_flight",
+               "knowledge_marketplace", "my_earnings", "karma_fame"]},
     {"id": "solution_space", "emoji": "🧩", "name": "Solution Space",
      "tiles": ["solution_store", "review_net", "deo", "time_store"]},
     {"id": "more_tools", "emoji": "🧰", "name": "More Tools",
@@ -53,7 +54,29 @@ async def _load_layout() -> dict:
     doc = await db.app_config.find_one({"key": _CFG_KEY}, {"_id": 0})
     sections = (doc or {}).get("sections") or DEFAULT_SECTIONS
     tile_titles = (doc or {}).get("tile_titles") or {}
+    sections = _reconcile_new_tiles(sections)
     return {"sections": sections, "tile_titles": tile_titles}
+
+
+def _reconcile_new_tiles(sections: list) -> list:
+    """Append any registry tile that isn't present in the saved layout to its
+    canonical default section, so newly-added tiles (e.g. relocated modules)
+    surface even when an admin has a previously-saved custom layout."""
+    placed = {t for s in sections for t in (s.get("tiles") or [])}
+    missing = [t for t in KNOWN_TILES if t not in placed]
+    if not missing:
+        return sections
+    by_id = {s.get("id"): s for s in sections}
+    for ds in DEFAULT_SECTIONS:
+        new_for_section = [t for t in ds["tiles"] if t in missing]
+        if not new_for_section:
+            continue
+        target = by_id.get(ds["id"])
+        if target:
+            target["tiles"] = list(target.get("tiles") or []) + new_for_section
+        else:
+            sections.append({**ds, "tiles": list(new_for_section)})
+    return sections
 
 
 async def _seed_tile_feature_names() -> dict:

@@ -27,11 +27,17 @@ export default function AdminSubscriptionPlansScreen() {
   const [plans, setPlans] = useState<any[]>([]);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  // Per-plan editable "key benefits" text (one benefit per line).
+  const [featuresDraft, setFeaturesDraft] = useState<Record<string, string>>({});
 
   const fetchData = async () => {
     try {
       const res = await api.get('/admin/subscriptions/plans');
-      setPlans(res.data?.plans || []);
+      const list = res.data?.plans || [];
+      setPlans(list);
+      const drafts: Record<string, string> = {};
+      list.forEach((p: any) => { drafts[p.plan_id] = (p.features || []).join('\n'); });
+      setFeaturesDraft(drafts);
     } catch { /* silent */ } finally {
       setLoading(false);
     }
@@ -42,12 +48,16 @@ export default function AdminSubscriptionPlansScreen() {
   const savePlan = async (p: any) => {
     setSavingId(p.plan_id);
     try {
+      const features = (featuresDraft[p.plan_id] ?? '')
+        .split('\n').map(s => s.trim()).filter(Boolean).slice(0, 12);
       const res = await api.put(`/admin/subscriptions/plans/${p.plan_id}`, {
         credits_per_month: Number(p.credits_per_month),
         active: !!p.active,
         name: p.name,
+        features,
       });
       setPlans(prev => prev.map(x => x.plan_id === p.plan_id ? res.data : x));
+      setFeaturesDraft(prev => ({ ...prev, [p.plan_id]: (res.data.features || []).join('\n') }));
       showAlert('Saved', `${res.data.name} updated.`);
     } catch (e: any) {
       showAlert('Save failed', e?.response?.data?.detail || 'Could not update plan.');
@@ -108,6 +118,15 @@ export default function AdminSubscriptionPlansScreen() {
                   value={String(p.credits_per_month)}
                   onChangeText={(t) => setPlans(prev => prev.map(x => x.plan_id === p.plan_id ? { ...x, credits_per_month: t } : x))}
                 />
+                <Text style={styles.fieldLabel}>Key benefits (one per line — shown on the user pricing card)</Text>
+                <TextInput
+                  style={[styles.input, styles.multiline]}
+                  multiline
+                  value={featuresDraft[p.plan_id] ?? ''}
+                  onChangeText={(t) => setFeaturesDraft(prev => ({ ...prev, [p.plan_id]: t }))}
+                  placeholder={'Everything in Free\nCLD Engine\n2,000 credits / month'}
+                />
+                <Text style={styles.helper}>Tip: update the “credits / month” line here to match the value above.</Text>
                 <View style={styles.activeRow}>
                   <Text style={styles.fieldLabel}>Active</Text>
                   <Switch
@@ -150,6 +169,8 @@ const styles = StyleSheet.create({
   planId: { fontSize: 11, color: COLORS.textMuted, marginBottom: 4 },
   fieldLabel: { fontSize: 13, fontWeight: '600', color: COLORS.textSecondary, marginTop: 8, marginBottom: 4 },
   input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, fontSize: 14, color: COLORS.textPrimary, backgroundColor: COLORS.white },
+  multiline: { minHeight: 110, textAlignVertical: 'top', lineHeight: 22 },
+  helper: { fontSize: 11, color: COLORS.textMuted, marginTop: 4 },
   activeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
   saveBtn: { backgroundColor: COLORS.primary, borderRadius: 10, paddingVertical: 11, alignItems: 'center', marginTop: 10 },
   saveBtnText: { color: COLORS.white, fontWeight: '700', fontSize: 13 },
