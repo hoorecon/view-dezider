@@ -6,7 +6,7 @@
  * only see the simple WhatsApp-OTP / Email-OTP options.
  */
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Switch } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Switch, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,6 +18,19 @@ export default function AdminCollabAuthScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [advancedEnabled, setAdvancedEnabled] = useState(false);
+  const [testContact, setTestContact] = useState('');
+  const [testBusy, setTestBusy] = useState<'whatsapp' | 'email' | null>(null);
+
+  const runTest = async (channel: 'whatsapp' | 'email') => {
+    if (!testContact.trim()) { showAlert('Required', channel === 'email' ? 'Enter an email address' : 'Enter a WhatsApp number'); return; }
+    setTestBusy(channel);
+    try {
+      await api.post('/collaboration/admin/otp-test', { channel, contact: testContact.trim() });
+      showAlert('Sent', `Test ${channel === 'email' ? 'email' : 'WhatsApp'} OTP sent to ${testContact.trim()}.`);
+    } catch (e: any) {
+      showAlert('Delivery failed', e?.response?.data?.detail || 'Could not send the test code.');
+    } finally { setTestBusy(null); }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -103,6 +116,26 @@ export default function AdminCollabAuthScreen() {
               <View style={s.otpChip}><Ionicons name="mail" size={14} color="#3B82F6" /><Text style={s.otpChipTxt}>Email OTP</Text></View>
             </View>
           </View>
+
+          <View style={s.card}>
+            <Text style={s.cardTitle}>Test delivery</Text>
+            <Text style={s.cardDesc}>Send yourself a throwaway code to confirm a channel actually delivers.</Text>
+            <TextInput
+              style={s.testInput}
+              placeholder="email@example.com  or  WhatsApp number"
+              autoCapitalize="none"
+              value={testContact}
+              onChangeText={setTestContact}
+            />
+            <View style={s.otpRow}>
+              <TouchableOpacity style={[s.testBtn, { backgroundColor: '#3B82F6' }]} disabled={testBusy !== null} onPress={() => runTest('email')}>
+                {testBusy === 'email' ? <ActivityIndicator color="#FFF" size="small" /> : (<><Ionicons name="mail" size={14} color="#FFF" /><Text style={s.testBtnTxt}>Test Email OTP</Text></>)}
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.testBtn, { backgroundColor: '#059669' }]} disabled={testBusy !== null} onPress={() => runTest('whatsapp')}>
+                {testBusy === 'whatsapp' ? <ActivityIndicator color="#FFF" size="small" /> : (<><Ionicons name="logo-whatsapp" size={14} color="#FFF" /><Text style={s.testBtnTxt}>Test WhatsApp OTP</Text></>)}
+              </TouchableOpacity>
+            </View>
+          </View>
         </ScrollView>
       )}
     </SafeAreaView>
@@ -127,4 +160,7 @@ const s = StyleSheet.create({
   otpRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
   otpChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F3F4F6', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
   otpChipTxt: { fontSize: 13, fontWeight: '600', color: '#374151' },
+  testInput: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, marginTop: 12, color: '#111827' },
+  testBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11, borderRadius: 10 },
+  testBtnTxt: { color: '#FFF', fontSize: 13, fontWeight: '700' },
 });

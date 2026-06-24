@@ -133,16 +133,14 @@ export default function GoalManifestationScreen() {
 
       {/* Stage overview */}
       <Text style={st.sectionTitle}>CAB-FAME — 7 Stages</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          {stages.map(s => (
-            <View key={s.stage_number} style={[st.stagePill, { borderColor: s.color }]}>
-              <Text style={[st.stageLetterSmall, { color: s.color }]}>{s.letter}</Text>
-              <Text style={st.stageNameSmall} numberOfLines={1}>{s.name}</Text>
-            </View>
-          ))}
-        </View>
-      </ScrollView>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+        {stages.map(s => (
+          <View key={s.stage_number} style={[st.stagePill, { borderColor: s.color }]}>
+            <Text style={[st.stageLetterSmall, { color: s.color }]}>{s.letter}</Text>
+            <Text style={st.stageNameSmall}>{s.name}</Text>
+          </View>
+        ))}
+      </View>
 
       {journeys.length === 0 ? (
         <View style={st.empty}>
@@ -350,7 +348,7 @@ const st = StyleSheet.create({
 
   stagePill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, borderWidth: 1.5, backgroundColor: COLORS.white },
   stageLetterSmall: { fontSize: 13, fontWeight: '800' },
-  stageNameSmall: { fontSize: 10, fontWeight: '500', color: COLORS.textMuted, maxWidth: 90 },
+  stageNameSmall: { fontSize: 11, fontWeight: '500', color: COLORS.textMuted, maxWidth: 110, flexShrink: 1 },
 
   journeyCard: { backgroundColor: COLORS.white, borderRadius: 14, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: COLORS.border },
   journeyWish: { fontSize: 15, fontWeight: '600', color: COLORS.textPrimary },

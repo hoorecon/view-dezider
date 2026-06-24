@@ -72,7 +72,7 @@ export default function PublicPulseHome() {
           <TouchableOpacity onPress={() => safeBack(router)} style={styles.backBtn}>
             <Ionicons name="chevron-back" size={28} color={COLORS.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Public Pulse</Text>
+          <Text style={styles.headerTitle}>Life Mirror</Text>
           <TouchableOpacity onPress={() => router.push('/tools/public-pulse/dashboards' as any)}>
             <Ionicons name="stats-chart" size={26} color={COLORS.primary} />
           </TouchableOpacity>

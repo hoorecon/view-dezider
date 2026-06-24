@@ -67,7 +67,7 @@ export default function AdminModeration() {
         <TouchableOpacity onPress={() => safeBack(router)}>
           <Ionicons name="chevron-back" size={28} color={COLORS.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Admin — Public Pulse</Text>
+        <Text style={styles.headerTitle}>Admin — Life Mirror</Text>
         <View style={{ width: 28 }} />
       </View>
 

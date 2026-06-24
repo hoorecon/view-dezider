@@ -1455,3 +1455,32 @@ async def verify_collab_otp(session_id: str, request: Request, user: dict = Depe
                 break
     return {"verified": True}
 
+
+@router.post("/admin/otp-test")
+async def otp_test_delivery(request: Request, _: dict = Depends(require_admin)):
+    """Admin-only: send a throwaway OTP to verify a channel actually delivers."""
+    body = await request.json()
+    channel = (body.get("channel") or "").lower()
+    contact = (body.get("contact") or "").strip()
+    if channel not in ("whatsapp", "email") or not contact:
+        raise HTTPException(status_code=400, detail="channel ('whatsapp'|'email') and contact are required")
+    code = f"{_secrets.randbelow(1000000):06d}"
+    if channel == "email":
+        html = basic_email(
+            "Test verification code",
+            ["This is a <b>test</b> one-time code from the JELCOS admin console:",
+             f"<div style='font-size:28px;font-weight:800;letter-spacing:6px'>{code}</div>",
+             "If you received this, Email OTP delivery is working."],
+        )
+        ok = await send_email(contact, "JELCOS · Test OTP", html)
+    else:
+        ok = await send_whatsapp(_sanitize_phone(contact),
+                                 f"JELCOS test OTP: {code}. If you received this, WhatsApp OTP delivery is working.")
+    if not ok:
+        raise HTTPException(
+            status_code=502,
+            detail=("WhatsApp not delivered — the UltraMsg session is likely disconnected (re-scan the QR)."
+                    if channel == "whatsapp" else "Email not delivered — check the Resend configuration."),
+        )
+    return {"sent": True, "channel": channel}
+
