@@ -56,15 +56,28 @@ async def _load_layout() -> dict:
     return {"sections": sections, "tile_titles": tile_titles}
 
 
+async def _seed_tile_feature_names() -> dict:
+    """feature_id → original seed feature_name for the dashboard_tiles module,
+    so cleared/blank custom titles can be reverted to their seed defaults."""
+    try:
+        from data.acm_seed_data import ACM_MODULES
+        for m in ACM_MODULES:
+            if m.get("module_id") == "dashboard_tiles":
+                return {f["feature_id"]: f["feature_name"] for f in (m.get("features") or [])}
+    except Exception:
+        pass
+    return {}
+
+
 async def _sync_tile_titles_to_acm(tile_titles: dict) -> None:
     """Mirror custom dashboard tile names into the ACM matrix so the
     `dashboard_tiles` module's feature labels stay in sync with what the
-    admin renamed in the Dashboard Sections editor."""
-    if not tile_titles:
-        return
+    admin renamed in the Dashboard Sections editor. Tiles WITHOUT a custom
+    title are reverted to their original seed label (two-way sync)."""
     mod = await db.acm_modules.find_one({"module_id": "dashboard_tiles"}, {"_id": 0, "features": 1})
     if not mod:
         return
+    seed_names = await _seed_tile_feature_names()
     changed = False
     features = mod.get("features") or []
     for f in features:
@@ -72,12 +85,14 @@ async def _sync_tile_titles_to_acm(tile_titles: dict) -> None:
         if not fid.startswith("dash_"):
             continue
         tile_id = fid[len("dash_"):]
-        new_label = (tile_titles.get(tile_id) or "").strip()
-        if new_label:
-            desired = f"Dashboard tile · {new_label}"
-            if f.get("feature_name") != desired:
-                f["feature_name"] = desired
-                changed = True
+        custom = (tile_titles.get(tile_id) or "").strip()
+        if custom:
+            desired = f"Dashboard tile · {custom}"
+        else:
+            desired = seed_names.get(fid)  # revert to seed label (None → leave as-is)
+        if desired and f.get("feature_name") != desired:
+            f["feature_name"] = desired
+            changed = True
     if changed:
         await db.acm_modules.update_one(
             {"module_id": "dashboard_tiles"}, {"$set": {"features": features}}
@@ -145,4 +160,5 @@ async def reset_dashboard_layout(user: dict = Depends(get_current_user)):
     if get_user_role(user) not in ADMIN_ROLES:
         raise HTTPException(403, "Admin access required")
     await db.app_config.delete_one({"key": _CFG_KEY})
+    await _sync_tile_titles_to_acm({})  # revert any ACM label overrides to seed defaults
     return {"ok": True, "sections": DEFAULT_SECTIONS, "tile_titles": {}}
