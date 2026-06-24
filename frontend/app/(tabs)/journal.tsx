@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { showAlert } from '../../src/utils/alert';
 import {
   View,
@@ -15,7 +15,7 @@ import {
   ActivityIndicator,
   TextInput,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
@@ -174,6 +174,24 @@ export default function JournalScreen() {
     fetchLinkableItems();
     setModalVisible(true);
   };
+
+  // When launched from a specific decision flow (My Dezider / Pros & Cons /
+  // Solution Finder) the source screen passes linkModule/linkId/linkTitle so we
+  // open the create modal pre-filled — no need for the user to pick Module/Item.
+  const params = useLocalSearchParams<{ linkModule?: string; linkId?: string; linkTitle?: string }>();
+  const router = useRouter();
+  const prefillHandled = useRef(false);
+  useEffect(() => {
+    if (prefillHandled.current) return;
+    const mod = params.linkModule;
+    if (mod) {
+      prefillHandled.current = true;
+      openCreateModal(mod, params.linkId, params.linkTitle);
+      // Clear params so re-focusing the tab later doesn't re-open the modal.
+      router.setParams({ linkModule: '', linkId: '', linkTitle: '' } as any);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.linkModule]);
 
   const handleCreate = async () => {
     if (!formTitle.trim()) {
@@ -571,7 +589,7 @@ export default function JournalScreen() {
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setShowModulePicker(false)}>
           <View style={styles.pickerModal}>
             <Text style={styles.pickerModalTitle}>Select Module</Text>
-            {Object.entries(MODULE_CONFIG).map(([key, config]) => (
+            {Object.entries(MODULE_CONFIG).filter(([key]) => key !== 'swot').map(([key, config]) => (
               <TouchableOpacity
                 key={key}
                 style={[styles.pickerOption, formLinkedModule === key && { backgroundColor: config.color + '12' }]}

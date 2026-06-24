@@ -1344,6 +1344,15 @@ export default function SimpleSolutionFinder() {
         </TouchableOpacity>
       )}
       {editId && (
+        <TouchableOpacity
+          onPress={() => router.push({ pathname: '/(tabs)/journal', params: { linkModule: 'solution_finder', linkId: editId, linkTitle: smartGoal || 'Solution Finder' } } as any)}
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#FFFBEB', borderWidth: 1.5, borderColor: '#F59E0B', borderRadius: 12, paddingVertical: 13, marginTop: 16 }}
+        >
+          <Ionicons name="book" size={18} color="#B45309" />
+          <Text style={{ fontSize: 14, fontWeight: '700', color: '#B45309' }}>Document Learnings</Text>
+        </TouchableOpacity>
+      )}
+      {editId && (
         <DecisionContinuePanel
           sourceModule="solution-finder"
           sourceDecisionId={editId}

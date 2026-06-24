@@ -2074,6 +2074,18 @@ export default function ProsConsWizard() {
                         title="Action Plan — Who · What · By When"
                       />
                     ) : null}
+
+                    {/* Document Learnings — pre-fills the Learning Journal
+                        with this Pros & Cons decision (module + linked item). */}
+                    {analysis?.id ? (
+                      <TouchableOpacity
+                        onPress={() => router.push({ pathname: '/(tabs)/journal', params: { linkModule: 'pros_cons', linkId: analysis.id, linkTitle: (analysis as any)?.title || 'Pros & Cons' } } as any)}
+                        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#FFFBEB', borderWidth: 1.5, borderColor: '#F59E0B', borderRadius: 12, paddingVertical: 13, marginTop: 16 }}
+                      >
+                        <Ionicons name="book" size={18} color="#B45309" />
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: '#B45309' }}>Document Learnings</Text>
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
                 );
               })()}

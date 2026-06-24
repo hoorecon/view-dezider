@@ -36,6 +36,7 @@ export default function CollaborateScreen() {
   const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [detailSession, setDetailSession] = useState<any>(null);
 
   // Create session
   const [showCreate, setShowCreate] = useState(false);
@@ -501,7 +502,8 @@ export default function CollaborateScreen() {
               const status = STATUS_COLORS[s.status] || STATUS_COLORS.active;
               const contributed = (s.participants || []).filter((p: any) => p.status === 'contributed').length;
               return (
-                <TouchableOpacity key={s.id} style={styles.sessionCard} activeOpacity={0.7}>
+                <TouchableOpacity key={s.id} style={styles.sessionCard} activeOpacity={0.7}
+                  onPress={() => setDetailSession(s)}>
                   <View style={styles.sessionHeader}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.sessionTitle} numberOfLines={1}>{s.title}</Text>
@@ -582,7 +584,7 @@ export default function CollaborateScreen() {
                 ))}
               </View>
 
-              <ScrollView style={{ maxHeight: 440 }} showsVerticalScrollIndicator={false}>
+              <ScrollView style={{ maxHeight: 560 }} showsVerticalScrollIndicator={true}>
                 {renderCreateStep()}
               </ScrollView>
 
@@ -615,6 +617,66 @@ export default function CollaborateScreen() {
               </View>
             </View>
           </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
+      {/* Session Detail Modal — opens when a session card is tapped */}
+      <Modal visible={!!detailSession} transparent animationType="slide" onRequestClose={() => setDetailSession(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '82%' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle} numberOfLines={1}>{detailSession?.title || 'Session'}</Text>
+              <TouchableOpacity onPress={() => setDetailSession(null)}>
+                <Ionicons name="close" size={24} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            {detailSession && (
+              <ScrollView showsVerticalScrollIndicator={true}>
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+                  <View style={[styles.statusBadge, { backgroundColor: (STATUS_COLORS[detailSession.status] || STATUS_COLORS.active).bg }]}>
+                    <Text style={[styles.statusText, { color: (STATUS_COLORS[detailSession.status] || STATUS_COLORS.active).text }]}>{(STATUS_COLORS[detailSession.status] || STATUS_COLORS.active).label}</Text>
+                  </View>
+                  <View style={[styles.modeBadge, { backgroundColor: detailSession.session_mode === 'live_sync' ? '#ECFDF5' : '#EFF6FF', marginLeft: 0 }]}>
+                    <Ionicons name={detailSession.session_mode === 'live_sync' ? 'videocam' : 'time'} size={10} color={detailSession.session_mode === 'live_sync' ? '#059669' : '#3B82F6'} />
+                    <Text style={[styles.modeBadgeText, { color: detailSession.session_mode === 'live_sync' ? '#059669' : '#3B82F6' }]}>{detailSession.session_mode === 'live_sync' ? 'Live Sync' : 'Async'}</Text>
+                  </View>
+                </View>
+                <Text style={styles.sessionMeta}>{detailSession.module_type === 'decision' ? 'My Dezider' : 'Solution Finder'} · {detailSession.decision_mode?.name || detailSession.decision_mode_id} · {formatAbsolute(detailSession.created_at)}</Text>
+
+                <Text style={[styles.inputLabel, { marginTop: 16, marginBottom: 8 }]}>Participants ({(detailSession.participants || []).length})</Text>
+                {(detailSession.participants || []).length === 0 ? (
+                  <Text style={styles.noItems}>No participants added.</Text>
+                ) : (detailSession.participants || []).map((p: any, i: number) => (
+                  <View key={i} style={styles.contactRow}>
+                    <View style={styles.contactAvatar}><Text style={styles.contactAvatarText}>{(p.name || p.contact_name || '?')[0]?.toUpperCase()}</Text></View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.contactName}>{p.name || p.contact_name || 'Participant'}</Text>
+                      {!!(p.email || p.contact_email) && <Text style={styles.contactDetail}>{p.email || p.contact_email}</Text>}
+                    </View>
+                    <View style={[styles.statusBadge, { backgroundColor: p.status === 'contributed' ? '#ECFDF5' : '#FEF3C7' }]}>
+                      <Text style={[styles.statusText, { color: p.status === 'contributed' ? '#059669' : '#B45309' }]}>{p.status === 'contributed' ? 'Contributed' : 'Pending'}</Text>
+                    </View>
+                  </View>
+                ))}
+
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+                  <TouchableOpacity style={[styles.verifyActionBtn, { backgroundColor: '#7C3AED' }]}
+                    onPress={() => { const s = detailSession; setDetailSession(null); setVerifySession(s); setShowVerifyModal(true); fetchVerificationStatus(); }}>
+                    <Ionicons name="shield-checkmark" size={14} color="#FFF" />
+                    <Text style={styles.verifyActionText}>Verify Identity</Text>
+                  </TouchableOpacity>
+                  {detailSession.session_mode === 'live_sync' && detailSession.status === 'active' && (
+                    <TouchableOpacity style={[styles.verifyActionBtn, { backgroundColor: '#059669' }]}
+                      onPress={() => { const sid = detailSession.id; setDetailSession(null); router.push({ pathname: '/tools/collab-call', params: { sessionId: sid } } as any); }}>
+                      <Ionicons name="videocam" size={14} color="#FFF" />
+                      <Text style={styles.verifyActionText}>{detailSession.call_room_url ? 'Join Call' : 'Start Call'}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <View style={{ height: 20 }} />
+              </ScrollView>
+            )}
+          </View>
         </View>
       </Modal>
 
