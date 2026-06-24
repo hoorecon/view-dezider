@@ -26,11 +26,10 @@ const C = {
   chipBg: '#F1F5F9',
 };
 
-const tileTitle = (id: string) => TILE_META[id]?.title || id;
-
 export default function DashboardLayoutScreen() {
   const router = useRouter();
   const [sections, setSections] = useState<LayoutSection[]>([]);
+  const [tileTitles, setTileTitles] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<LayoutSection | null>(null);
@@ -43,8 +42,10 @@ export default function DashboardLayoutScreen() {
       const secs = Array.isArray(r.data?.sections) && r.data.sections.length
         ? r.data.sections : DEFAULT_LAYOUT;
       setSections(secs.map((s: any) => ({ ...s, tiles: [...(s.tiles || [])] })));
+      setTileTitles(r.data?.tile_titles && typeof r.data.tile_titles === 'object' ? r.data.tile_titles : {});
     } catch {
       setSections(DEFAULT_LAYOUT.map((s) => ({ ...s, tiles: [...s.tiles] })));
+      setTileTitles({});
     } finally {
       setLoading(false);
     }
@@ -55,8 +56,8 @@ export default function DashboardLayoutScreen() {
   const save = async () => {
     setSaving(true);
     try {
-      await api.put('/admin/dashboard-layout', { sections });
-      Alert.alert('Saved', 'Dashboard layout updated. Users will see it on next refresh.');
+      await api.put('/admin/dashboard-layout', { sections, tile_titles: tileTitles });
+      Alert.alert('Saved', 'Dashboard layout updated. Module renames are mirrored into the ACM matrix. Users see changes on next refresh.');
     } catch (e: any) {
       Alert.alert('Save failed', e?.response?.data?.detail || 'Please try again.');
     } finally {
@@ -65,13 +66,14 @@ export default function DashboardLayoutScreen() {
   };
 
   const resetDefaults = () => {
-    Alert.alert('Reset to defaults?', 'This restores the original section names, order and tile placement.', [
+    Alert.alert('Reset to defaults?', 'This restores the original section names, order, tile placement and module names.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Reset', style: 'destructive', onPress: async () => {
           try {
             const r = await api.post('/admin/dashboard-layout/reset');
             setSections((r.data?.sections || DEFAULT_LAYOUT).map((s: any) => ({ ...s, tiles: [...(s.tiles || [])] })));
+            setTileTitles({});
             Alert.alert('Reset', 'Defaults restored. Tap Save to keep, or leave to revert.');
           } catch {
             Alert.alert('Reset failed', 'Please try again.');
@@ -86,6 +88,18 @@ export default function DashboardLayoutScreen() {
     setSections((prev) => prev.map((s) => (s.id === id ? { ...s, name } : s)));
   const setEmoji = (id: string, emoji: string) =>
     setSections((prev) => prev.map((s) => (s.id === id ? { ...s, emoji } : s)));
+
+  // ---- module(tile)-level rename ----
+  // Effective display name = custom override, else the registry default.
+  const tileLabel = (id: string) => tileTitles[id] ?? TILE_META[id]?.title ?? id;
+  const renameTile = (id: string, name: string) =>
+    setTileTitles((prev) => {
+      const next = { ...prev };
+      // Empty / unchanged-to-default → drop the override.
+      if (!name.trim() || name.trim() === (TILE_META[id]?.title ?? id)) delete next[id];
+      else next[id] = name;
+      return next;
+    });
 
   const reorderTilesInSection = (id: string, tiles: string[]) =>
     setSections((prev) => prev.map((s) => (s.id === id ? { ...s, tiles } : s)));
@@ -186,7 +200,7 @@ export default function DashboardLayoutScreen() {
                   <Ionicons name="close" size={24} color={C.text} />
                 </TouchableOpacity>
               </View>
-              <Text style={styles.modalHint}>Drag to reorder · tap “Move” to send a module to another section.</Text>
+              <Text style={styles.modalHint}>Rename a module (synced to the ACM matrix) · drag to reorder · tap “Move” to send it to another section.</Text>
               <View style={{ flex: 1 }}>
                 <DraggableFlatList
                   data={editingLive?.tiles || []}
@@ -198,7 +212,12 @@ export default function DashboardLayoutScreen() {
                         <TouchableOpacity onLongPress={drag} delayLongPress={150} style={styles.dragHandle}>
                           <Ionicons name="reorder-two" size={22} color={C.muted} />
                         </TouchableOpacity>
-                        <Text style={styles.tileName} numberOfLines={1}>{tileTitle(item)}</Text>
+                        <TextInput
+                          value={tileLabel(item)}
+                          onChangeText={(t) => renameTile(item, t)}
+                          style={styles.tileNameInput}
+                          placeholder="Module name"
+                        />
                         <TouchableOpacity
                           style={styles.moveBtn}
                           onPress={() => editingLive && setMoveTile({ tile: item, fromId: editingLive.id })}>
@@ -223,7 +242,7 @@ export default function DashboardLayoutScreen() {
         <Modal visible={!!moveTile} animationType="fade" transparent onRequestClose={() => setMoveTile(null)}>
           <TouchableOpacity style={styles.pickerWrap} activeOpacity={1} onPress={() => setMoveTile(null)}>
             <View style={styles.pickerCard}>
-              <Text style={styles.pickerTitle}>Move “{moveTile ? tileTitle(moveTile.tile) : ''}” to…</Text>
+              <Text style={styles.pickerTitle}>Move “{moveTile ? tileLabel(moveTile.tile) : ''}” to…</Text>
               <ScrollView style={{ maxHeight: 360 }}>
                 {sections.filter((s) => s.id !== moveTile?.fromId).map((s) => (
                   <TouchableOpacity key={s.id} style={styles.pickerRow}
@@ -286,6 +305,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 12, marginBottom: 8,
   },
   tileName: { flex: 1, fontSize: 14, fontWeight: '600', color: C.text },
+  tileNameInput: {
+    flex: 1, fontSize: 14, fontWeight: '600', color: C.text, paddingVertical: 2,
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}),
+  },
   moveBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.chipBg, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
   moveText: { fontSize: 12, fontWeight: '700', color: C.accent },
   empty: { textAlign: 'center', color: C.muted, fontSize: 13, paddingVertical: 24 },

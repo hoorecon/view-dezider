@@ -80,6 +80,9 @@ export default function HomeScreen() {
   // Dashboard layout (section order, display names, tile→section assignment).
   // Admin-configurable via /admin/dashboard-layout; falls back to DEFAULT_LAYOUT.
   const [layout, setLayout] = useState<LayoutSection[]>(DEFAULT_LAYOUT);
+  // Admin-customizable per-tile display names (tileId → title); overrides TILE_META.
+  const [tileTitles, setTileTitles] = useState<Record<string, string>>({});
+  const tileLabel = (id: string) => tileTitles[id] ?? TILE_META[id]?.title ?? id;
 
   // A tile is visible if it's always-on (not ACM-gated) or its ACM flag is on.
   const tileVisible = (id: string): boolean => {
@@ -118,7 +121,7 @@ export default function HomeScreen() {
               </View>
             )}
           </View>
-          <Text style={styles.colabTitle}>{m.title}</Text>
+          <Text style={styles.colabTitle}>{tileLabel(id)}</Text>
           <Text style={styles.colabSubtitle}>{subtitle}</Text>
         </TouchableOpacity>
       );
@@ -128,7 +131,7 @@ export default function HomeScreen() {
         <LinearGradient colors={(m.gradient || ['#64748B', '#475569']) as any} style={styles.actionIcon}>
           <Ionicons name={m.icon as any} size={24} color={COLORS.white} />
         </LinearGradient>
-        <Text style={styles.actionTitle}>{m.title}</Text>
+        <Text style={styles.actionTitle}>{tileLabel(id)}</Text>
         <Text style={styles.actionSubtitle}>{m.subtitle}</Text>
       </TouchableOpacity>
     );
@@ -270,6 +273,9 @@ export default function HomeScreen() {
       const r = await api.get('/dashboard-layout');
       if (Array.isArray(r.data?.sections) && r.data.sections.length) {
         setLayout(r.data.sections);
+      }
+      if (r.data?.tile_titles && typeof r.data.tile_titles === 'object') {
+        setTileTitles(r.data.tile_titles);
       }
     } catch (error) {
       console.error('Error fetching dashboard layout:', error);

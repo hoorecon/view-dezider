@@ -1,0 +1,33 @@
+{
+  "summary": "Backend-only verification of ACM dashboard_tiles extensions + dashboard-layout tile_titles sync. Wrote new pytest suite (15 tests) covering all 7 features in the review request and re-ran the iter155 dashboard-layout regression (8 tests). 23/23 passed against the public EXPO_BACKEND_URL. Confirmed: GET /api/dashboard-layout returns {sections, tile_titles} with tile_titles defaulting to {}; PUT /api/admin/dashboard-layout accepts tile_titles, trims whitespace, drops blanks; PUT with tile_titles={'orgs':'My Companies'} updates ACM dashboard_tiles feature dash_orgs.feature_name to 'Dashboard tile \u00b7 My Companies' (cache stamp bumped, visible via /api/acm/matrix); POST /api/admin/dashboard-layout/reset returns tile_titles: {} and clears layout; ACM seed v2026-06-24-03 has exactly 145 features; dashboard_tiles module contains dash_section_home_top ('Home Page - Header'), dash_section_home_footer ('Home Page - Footer'), dash_orgs & dash_values parented to dash_section_execute_track, and dash_notifications & dash_analytics parented to dash_section_home_footer; /api/acm/my-access exposes dash_orgs/dash_values/dash_notifications/dash_analytics for both admin and normal users; non-admin PUT and POST/reset both return 403; unauthenticated PUT returns 401/403.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter158_acm_dash_extensions.py",
+    "/app/test_reports/pytest/iter158.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "_sync_tile_titles_to_acm() in /app/backend/routes/dashboard_layout.py is one-way: when an admin renames a tile and later removes that override (reset or blank), the ACM dashboard_tiles feature_name does NOT revert to its original seed label. The seed defaults are only restored by a forced ACM reseed. Consider tracking original labels (or restoring from ACM_SEED on tile_titles removal) so reset truly returns the matrix to defaults. Verified empirically: after PUT {orgs:'My Companies'} followed by reset, dash_orgs.feature_name remained 'Dashboard tile \u00b7 My Companies' until /api/acm/refresh-cache + explicit reseed.",
+    "PUT /api/admin/dashboard-layout silently accepts unknown tile_ids inside tile_titles (e.g. 'not_a_real_tile') and persists them. Harmless today (sync loop only writes to existing dash_<id> features), but consider validating against KNOWN_TILES to avoid drift and stray DB entries.",
+    "reset_dashboard_layout() bumps the ACM cache stamp only indirectly via the next mutation; consider calling bump_acm_cache_stamp()/refresh_acm_cache() inside reset as well so any previously-overridden feature_names propagate to other workers immediately."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (23/23 \u2014 15 new in iter158 + 8 iter155 regression)",
+    "frontend": "not_tested"
+  },
+  "seed_data_creation": "Re-uses existing super@test.com admin and provisions a fresh user iter158_user@test.com / UserPass2026! (idempotent: login-or-register). No production data mutated; layout is reset after each mutating test.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend API for ACM dashboard_tiles + dashboard-layout tile_titles sync is fully working (see test_iter158_acm_dash_extensions.py). Known soft gap: tile_titles ACM sync is one-way \u2014 clearing tile_titles via reset does not revert ACM feature_name to the seed default until the next reseed. If the user later asks for round-trip behavior, update _sync_tile_titles_to_acm or reset_dashboard_layout to restore seed labels for any dash_<tile_id> not present in the new tile_titles. login response field is 'session_token' (not 'access_token').",
+  "rca_of_issue": "n/a \u2014 implementation already correct on arrival. Previous syntax error in acm_seed_data.py had been fixed by main agent; ACM cache log confirms 'ACM cache refreshed: 145 features loaded' at backend startup, matching the expected seed v2026-06-24-03."
+}

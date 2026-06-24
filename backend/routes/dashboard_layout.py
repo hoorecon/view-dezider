@@ -49,17 +49,51 @@ DEFAULT_SECTIONS = [
 KNOWN_TILES = {t for s in DEFAULT_SECTIONS for t in s["tiles"]}
 
 
-async def _load_layout() -> list:
+async def _load_layout() -> dict:
     doc = await db.app_config.find_one({"key": _CFG_KEY}, {"_id": 0})
-    if not doc or not doc.get("sections"):
-        return DEFAULT_SECTIONS
-    return doc["sections"]
+    sections = (doc or {}).get("sections") or DEFAULT_SECTIONS
+    tile_titles = (doc or {}).get("tile_titles") or {}
+    return {"sections": sections, "tile_titles": tile_titles}
+
+
+async def _sync_tile_titles_to_acm(tile_titles: dict) -> None:
+    """Mirror custom dashboard tile names into the ACM matrix so the
+    `dashboard_tiles` module's feature labels stay in sync with what the
+    admin renamed in the Dashboard Sections editor."""
+    if not tile_titles:
+        return
+    mod = await db.acm_modules.find_one({"module_id": "dashboard_tiles"}, {"_id": 0, "features": 1})
+    if not mod:
+        return
+    changed = False
+    features = mod.get("features") or []
+    for f in features:
+        fid = f.get("feature_id") or ""
+        if not fid.startswith("dash_"):
+            continue
+        tile_id = fid[len("dash_"):]
+        new_label = (tile_titles.get(tile_id) or "").strip()
+        if new_label:
+            desired = f"Dashboard tile · {new_label}"
+            if f.get("feature_name") != desired:
+                f["feature_name"] = desired
+                changed = True
+    if changed:
+        await db.acm_modules.update_one(
+            {"module_id": "dashboard_tiles"}, {"$set": {"features": features}}
+        )
+        try:
+            from core.acm_engine import bump_acm_cache_stamp, refresh_acm_cache
+            await bump_acm_cache_stamp()
+            await refresh_acm_cache()
+        except Exception:
+            pass
 
 
 @router.get("/dashboard-layout")
 async def get_dashboard_layout(user: dict = Depends(get_current_user)):
-    """Effective dashboard layout (sections in order, with tiles)."""
-    return {"sections": await _load_layout()}
+    """Effective dashboard layout (sections in order, with tiles, custom titles)."""
+    return await _load_layout()
 
 
 @router.put("/admin/dashboard-layout")
@@ -86,14 +120,24 @@ async def save_dashboard_layout(request: Request, user: dict = Depends(get_curre
             "tiles": tiles,
         })
 
+    # Custom per-tile display names (tileId → title). Empty/blank values are
+    # dropped so the tile falls back to its registry default.
+    raw_titles = body.get("tile_titles") or {}
+    tile_titles = {}
+    if isinstance(raw_titles, dict):
+        for k, v in raw_titles.items():
+            if isinstance(k, str) and isinstance(v, str) and v.strip():
+                tile_titles[k] = v.strip()
+
     await db.app_config.update_one(
         {"key": _CFG_KEY},
-        {"$set": {"key": _CFG_KEY, "sections": cleaned,
+        {"$set": {"key": _CFG_KEY, "sections": cleaned, "tile_titles": tile_titles,
                   "updated_at": datetime.now(timezone.utc).isoformat(),
                   "updated_by": user.get("email") or user.get("id")}},
         upsert=True,
     )
-    return {"ok": True, "sections": cleaned}
+    await _sync_tile_titles_to_acm(tile_titles)
+    return {"ok": True, "sections": cleaned, "tile_titles": tile_titles}
 
 
 @router.post("/admin/dashboard-layout/reset")
@@ -101,4 +145,4 @@ async def reset_dashboard_layout(user: dict = Depends(get_current_user)):
     if get_user_role(user) not in ADMIN_ROLES:
         raise HTTPException(403, "Admin access required")
     await db.app_config.delete_one({"key": _CFG_KEY})
-    return {"ok": True, "sections": DEFAULT_SECTIONS}
+    return {"ok": True, "sections": DEFAULT_SECTIONS, "tile_titles": {}}
