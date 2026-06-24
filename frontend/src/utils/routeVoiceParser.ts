@@ -230,10 +230,10 @@ export const ROUTE_DICTIONARY: RouteDefinition[] = [
   {
     id: 'public_pulse',
     path: '/tools/public-pulse',
-    label: 'Public Pulse',
+    label: 'Life Mirror',
     icon: 'globe',
     keywords: {
-      en: ['public pulse', 'pulse', 'public feedback'],
+      en: ['life mirror', 'public pulse', 'pulse', 'public feedback'],
       hi: ['पब्लिक पल्स', 'जनता की बात'],
       ta: ['पब्लिक् पल्स्'],
       te: ['पब्लिक् पल्स्'],
