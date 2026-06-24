@@ -10066,3 +10066,54 @@ agent_communication:
       Focus testing on the EMAIL/PASSWORD logout→relogin-as-different-user flow (Google OAuth redirect
       can't be automated). Admin: super@test.com / SuperPass2026!. Create/login a 2nd email user to
       verify no session/org bleed. ATEX picker: open /tools/atex and the 'Pick from Task Tracker' modal.
+
+#====================================================================================================
+# Iter 158 (fork) — Decision Style quiz: deep-open from Home + start from top on retake
+#====================================================================================================
+frontend:
+  - task: "Home 'Decision Style' opens the assessment directly (self) instead of Profile top"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/(tabs)/index.tsx, frontend/app/(tabs)/profile.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Home 'Decision Style' tile + 'Take Quiz' button now navigate to /(tabs)/profile?startQuiz=self.
+          profile.tsx reads useLocalSearchParams; when startQuiz=self|other AND questions are loaded AND
+          quiz not already open, it calls startQuiz(type) and clears the param. So the assessment opens
+          directly with 'For myself' selected.
+  - task: "Retake / Assess-for-others starts the quiz from the TOP (Q1)"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/(tabs)/profile.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Root cause: quiz renders all questions in the shared ScrollView; startQuiz() reset answers but
+          never scrolled to top, so the previous scroll position (mid-results) made it look like it began
+          at Q3/Q4. startQuiz() now scrolls the ScrollView to y:0 after opening. Verify Retake(me) and
+          'Assess for others' both begin at Question 1 with answers cleared.
+
+metadata: { created_by: "main_agent", version: "fork-iter-158", test_sequence: 158 }
+test_plan:
+  current_focus:
+    - "Home Decision Style → assessment opens directly (self), from top"
+    - "Retake / Assess-for-others start at Q1 with cleared answers"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+agent_communication:
+  - agent: "main"
+    message: |
+      Iter 158. Decision Style quiz fixes (frontend only). Home Decision Style/Take-Quiz deep-link with
+      ?startQuiz=self; profile auto-opens the quiz from the top; startQuiz scrolls to top so retake/assess-
+      others no longer appear to start at Q3/Q4. Admin: super@test.com / SuperPass2026!. Quiz lives inside
+      the Profile tab (renderQuiz). Backend unchanged.

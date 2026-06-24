@@ -495,7 +495,7 @@ export default function HomeScreen() {
             {isTileOn('ql_decision_style') && (
             <TouchableOpacity
               style={styles.colabCard}
-              onPress={() => router.push('/(tabs)/profile' as any)}
+              onPress={() => router.push('/(tabs)/profile?startQuiz=self' as any)}
             >
               <View style={[styles.colabIconWrap, { backgroundColor: 'rgba(139,92,246,0.12)' }]}>
                 <Ionicons name="sparkles" size={22} color="#8B5CF6" />
@@ -627,7 +627,7 @@ export default function HomeScreen() {
             </View>
             <TouchableOpacity
               style={styles.takeQuizButton}
-              onPress={() => router.push('/(tabs)/profile')}
+              onPress={() => router.push('/(tabs)/profile?startQuiz=self')}
             >
               <Text style={styles.takeQuizText}>Take Quiz & Know your Decision Style</Text>
               <Ionicons name="arrow-forward" size={16} color={COLORS.primary} />

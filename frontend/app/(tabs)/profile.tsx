@@ -14,7 +14,7 @@ import {
   TextInput,
 } from 'react-native';
 import ReportShareSheet, { downloadReportPdf } from '../../src/components/ReportShareSheet';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -37,6 +37,7 @@ interface AssessmentQuestion {
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ startQuiz?: string }>();
   const { user, logout, checkAuth } = useAuthStore();
   const aiBalance = useAiWalletStore((s) => s.balance);
   const refreshAiWallet = useAiWalletStore((s) => s.refresh);
@@ -75,6 +76,17 @@ export default function ProfileScreen() {
     fetchUserInfo();
     refreshAiWallet();
   }, []);
+
+  // Deep-link: arriving with ?startQuiz=self|other (e.g. from the Home
+  // "Decision Style" tile) opens the assessment directly, from the top.
+  useEffect(() => {
+    const sq = params?.startQuiz;
+    if ((sq === 'self' || sq === 'other') && questions.length > 0 && !showQuiz) {
+      startQuiz(sq);
+      router.setParams({ startQuiz: undefined } as any);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params?.startQuiz, questions.length]);
 
   const fetchUserInfo = async () => {
     try {
@@ -174,6 +186,9 @@ export default function ProfileScreen() {
 
   const startQuiz = (type: 'self' | 'other') => {
     setSubjectType(type); setSubjectName(''); setSubjectWhatsapp(''); setAnswers({}); setShowQuiz(true);
+    // Always start the quiz from the very top — otherwise the previous scroll
+    // position (e.g. mid-results) makes it look like it begins at Q3/Q4.
+    setTimeout(() => scrollRef.current?.scrollTo({ y: 0, animated: false }), 60);
   };
 
   const handleLogout = () => {

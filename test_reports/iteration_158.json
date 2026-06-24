@@ -1,0 +1,37 @@
+{
+  "summary": "Iter 158 — Frontend-only verification of (1) Home 'Decision Style' deep-open into Profile quiz and (2) Retake / Assess-for-others starting from Question 1 (top). All four review items VERIFIED on mobile viewport 390x844 against the live preview. After super@test.com login (redirects to /admin) we switch to the user app (/) and navigate. Quick Links 'Decision Style' tile and 'Take Quiz & Know your Decision Style' button both point to /(tabs)/profile?startQuiz=self; profile.tsx's useEffect on params.startQuiz calls startQuiz(type) once /assessment/questions resolves, sets showQuiz=true, scrolls scrollRef to y:0, and clears the URL param via router.setParams. Observed: (a) Deep-link ?startQuiz=self → quiz visibly opens with 'Decision Style Assessment' header, 'For myself' tab active, Question 1 at y=208 (top of viewport, scrollY=0), URL cleaned to /profile (no startQuiz). (b) Retake (me) → scrollY=0, Question 1 at y=208, 'For myself' tab active, answers cleared. (c) Assess someone → quiz reopens with subject=other (name input + WhatsApp input visible), 'For someone else' tab active, Question 1 at y=304 (still in upper viewport, scrollY=0). (d) Regression: navigating away to (tabs) home and back to /profile (no param) does NOT auto-open the quiz — profile/results render correctly; startQuiz param is also cleared in the URL after first open so a refresh doesn't re-trigger. No React red screen. No deprecated Expo packages in files of reference. No SafeAreaView issues. Only benign warnings observed (shadow* deprecated, expo-notifications web no-op, pointerEvents prop deprecated) — all pre-existing in the repo, unrelated to this fix.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/tmp/04_quiz_open.png (Decision Style deep-open shows Q1 at top, For myself active)",
+    "/tmp/05_profile_no_autoopen.png (plain /profile shows results, quiz NOT auto-opened)",
+    "/tmp/06_retake_top.png (Retake → Q1 at top, scrollY=0, For myself active)",
+    "/tmp/p2_others.png (Assess someone → Q1 at top, For someone else active, name+WA inputs visible)"
+  ],
+  "action_items": [
+    "No fix needed — both reported bugs are RESOLVED. (i) Home 'Decision Style' tile + 'Take Quiz & Know your Decision Style' button correctly open the Decision-Style assessment with 'For myself' selected and Question 1 visible at the top of the Profile screen. (ii) 'Retake (me)' and 'Assess someone' both reset scrollRef to y:0 so the quiz starts at Question 1 (not mid-list at Q3/Q4) with answers cleared.",
+    "(Optional, low-priority) Add testIDs on Quick Links tiles ('home-quick-decision-style', 'home-take-quiz-cta') and quiz primitives ('profile-quiz-title', 'profile-retake-me', 'profile-assess-someone', 'profile-quiz-close') so future regressions can be asserted without language-coupled text selectors."
+  ],
+  "critical_code_review_comments": [
+    "profile.tsx:82-89 — the deep-link useEffect correctly guards on `questions.length > 0 && !showQuiz` so it fires exactly once after the questions API resolves; calling router.setParams({startQuiz: undefined}) on the same tick ensures a refresh/regression visit to /profile doesn't re-trigger startQuiz (verified live: URL becomes /profile after the auto-open).",
+    "profile.tsx:187-192 — startQuiz() resets answers + subjectType + subjectName + subjectWhatsapp BEFORE setting showQuiz(true), then schedules scrollRef.current?.scrollTo({y:0, animated:false}) inside setTimeout 60ms — this is necessary because the ScrollView re-mounts its content when showQuiz toggles, so an immediate scrollTo would be a no-op. The 60ms delay is sufficient on web; verified Q1 at y≈208 and window.scrollY=0 after both Retake and Assess-someone clicks.",
+    "index.tsx:498 and index.tsx:630 — both Home entry points use router.push('/(tabs)/profile?startQuiz=self'), so the user lands inside the (tabs) layout (preserves bottom tab bar) rather than a bare /profile route. This keeps the Profile tab highlighted while the quiz is visible.",
+    "Minor: profile.tsx:84 — the condition `sq === 'self' || sq === 'other'` correctly rejects any other string (e.g. a stale '?startQuiz=' empty value or an XSS attempt) — no need to additionally sanitize.",
+    "Minor: profile.tsx:148 — after a successful submit, scrollRef is scrolled back to y:0 so the freshly-rendered result card is in view (good UX touch, but not required by this review)."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "n/a (frontend-only review)",
+    "frontend": "100% (4/4 review items: home deep-open, retake-from-top, assess-others-from-top, regression no-auto-reopen / URL-param cleared)"
+  },
+  "seed_data_creation": "No seed data created. Used existing super@test.com / SuperPass2026! account which already had a prior assessment (so the Retake (me) and Assess someone buttons were available on /profile).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Both bugs from iter 158 are fixed. The deep-link contract: tap any Home 'Decision Style' entry → router.push('/(tabs)/profile?startQuiz=self') → profile.tsx reads useLocalSearchParams().startQuiz, awaits /assessment/questions, calls startQuiz('self'|'other') (which sets showQuiz=true and scrolls to y:0), then clears the param via router.setParams. To verify interactively on mobile viewport 390x844: log in as super@test.com / SuperPass2026!, force the user view (admins redirect to /admin so navigate to / manually), then either (a) tap the 'Decision Style' tile in Quick Links or (b) open /profile?startQuiz=self directly. Expected: Question 1 sits at y≈200–310 (well above the fold), window.scrollY===0, 'For myself' tab highlighted purple. For the 'other' path use ?startQuiz=other or click 'Assess someone' under the result card — additionally the Person's-name + WhatsApp inputs must be visible above Question 1.",
+  "rca_of_issue": "RCA: Both pre-fix symptoms shared a single root cause — the quiz was already rendered conditionally via `showQuiz` inside the ScrollView, but two things were wrong: (1) the Home 'Decision Style' tile previously routed to /(tabs)/profile WITHOUT a startQuiz param, so it just opened the Profile tab; nothing in profile.tsx auto-toggled the quiz. (2) When the user pressed 'Retake (me)' or 'Assess someone' on the result card, startQuiz() only flipped showQuiz=true; the ScrollView retained the previous scroll offset (which was mid-results, ~Q3/Q4 height into the page) so the quiz appeared to 'start' at Q3/Q4. FIX (verified): (a) Home links now carry ?startQuiz=self and profile.tsx has a useEffect that calls startQuiz(self|other) once questions load AND clears the URL param via router.setParams; (b) startQuiz() schedules scrollRef.current.scrollTo({y:0, animated:false}) on a 60ms timeout so the ScrollView resets to the top right after the quiz content re-renders. Both behaviours are observable in the screenshots: Q1 bbox.y is 208–304 and window.scrollY is 0 in all three entry paths."
+}
