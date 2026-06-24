@@ -26,7 +26,6 @@ import { Input } from '../../src/components/Input';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
 import { useAiWalletStore } from '../../src/store/aiWalletStore';
-import { useFeatureGate } from '../../src/utils/useFeatureGate';
 
 const GENDER_OPTIONS = ['Male', 'Female', 'Other', 'Prefer not to say'];
 
@@ -38,7 +37,6 @@ interface AssessmentQuestion {
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { isOn: isFeatureOn } = useFeatureGate();
   const params = useLocalSearchParams<{ startQuiz?: string }>();
   const { user, logout, checkAuth } = useAuthStore();
   const aiBalance = useAiWalletStore((s) => s.balance);
@@ -824,56 +822,8 @@ export default function ProfileScreen() {
           dedicated /admin route only. Super-admins still navigate there
           directly; we don't surface it as a profile section. */}
 
-      {/* Knowledge Marketplace — centrally toggled via ACM › Collaboration (off by default) */}
-      {isFeatureOn('collab_knowledge_marketplace') && (
-      <TouchableOpacity
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}
-        onPress={() => router.push('/marketplace' as any)}
-      >
-        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#9333EA', alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="storefront" size={18} color="#FFF" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>Knowledge Marketplace</Text>
-          <Text style={{ fontSize: 12, color: COLORS.textMuted }}>Publish & clone decisions · free or paid</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
-      </TouchableOpacity>
-      )}
-
-      {/* My Earnings — centrally toggled via ACM › Collaboration (off by default) */}
-      {isFeatureOn('collab_my_earnings') && (
-      <TouchableOpacity
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}
-        onPress={() => router.push('/earnings' as any)}
-      >
-        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#16A34A', alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="cash" size={18} color="#FFF" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>My Earnings & Payouts</Text>
-          <Text style={{ fontSize: 12, color: COLORS.textMuted }}>Marketplace income · weekly payouts</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
-      </TouchableOpacity>
-      )}
-
-      {/* Karma & Leaderboard — centrally toggled via ACM › Collaboration (off by default) */}
-      {isFeatureOn('collab_karma_fame') && (
-      <TouchableOpacity
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}
-        onPress={() => router.push('/leaderboard' as any)}
-      >
-        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#F59E0B', alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="trophy" size={18} color="#FFF" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>Karma & Fame</Text>
-          <Text style={{ fontSize: 12, color: COLORS.textMuted }}>Your karma points & public leaderboard</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
-      </TouchableOpacity>
-      )}
+      {/* Knowledge Marketplace, My Earnings & Karma & Fame moved to the
+          Dashboard › Collaboration section (gated by ACM › Collaboration). */}
 
       {/* Privacy & Data (DPDP Act 2023) */}
       <TouchableOpacity

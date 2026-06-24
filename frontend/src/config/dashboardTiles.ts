@@ -68,6 +68,9 @@ export const TILE_META: Record<string, TileMeta> = {
   aala: { title: 'AALA', subtitle: 'Assets & Liabilities', icon: 'wallet', route: '/tools/aala', variant: 'action', gradient: ['#0EA5E9', '#2563EB'] },
   time_dezider: { title: 'Time Intelligence', subtitle: 'Daily schedule AI', icon: 'time-outline', route: '/tools/time-dezider', variant: 'action', gradient: ['#7C3AED', '#A855F7'] },
   gem_flight: { title: 'GEM Flight Model', subtitle: 'Pilot your goals', icon: 'airplane', route: '/tools/gem-flight', variant: 'action', gradient: ['#0C1445', '#3949AB'] },
+  knowledge_marketplace: { title: 'Knowledge Marketplace', subtitle: 'Publish & clone decisions', icon: 'storefront', route: '/marketplace', variant: 'action', gradient: ['#9333EA', '#A855F7'] },
+  my_earnings: { title: 'My Earnings & Payouts', subtitle: 'Marketplace income · payouts', icon: 'cash', route: '/earnings', variant: 'action', gradient: ['#16A34A', '#22C55E'] },
+  karma_fame: { title: 'Karma & Fame', subtitle: 'Karma points · leaderboard', icon: 'trophy', route: '/leaderboard', variant: 'action', gradient: ['#F59E0B', '#FBBF24'] },
 
   // §8 Solution Space
   solution_store: { title: 'Solution Store', subtitle: 'Products & services', icon: 'storefront', route: '/tools/solutions-store', variant: 'action', gradient: ['#7C3AED', '#A855F7'] },
@@ -102,7 +105,7 @@ export const DEFAULT_LAYOUT: LayoutSection[] = [
   { id: 'goals_manifestation', emoji: '🎯', name: 'Goals & Manifestation', tiles: ['goal_setter', 'goal_manifestation'] },
   { id: 'execute_track', emoji: '✅', name: 'Execute & Track', tiles: ['orgs', 'values', 'action_tracker', 'atex', 'ctt', 'lifestyle_dezider'] },
   { id: 'reflection_awareness', emoji: '🪞', name: 'Reflection & Awareness', tiles: ['public_pulse', 'outlet_analyzer', 'aim_manager', 'capabilities_index', 'lifestyle_designer', 'lifestyle_analyzer', 'consciousness_diary', 'unconditional_happiness'] },
-  { id: 'collaboration_mgmt', emoji: '👥', name: 'Collaboration & Management', tiles: ['collaboration_hub', 'aala', 'time_dezider', 'gem_flight'] },
+  { id: 'collaboration_mgmt', emoji: '👥', name: 'Collaboration & Management', tiles: ['collaboration_hub', 'aala', 'time_dezider', 'gem_flight', 'knowledge_marketplace', 'my_earnings', 'karma_fame'] },
   { id: 'solution_space', emoji: '🧩', name: 'Solution Space', tiles: ['solution_store', 'review_net', 'deo', 'time_store'] },
   { id: 'more_tools', emoji: '🧰', name: 'More Tools', tiles: ['inbox', 'notifications', 'analytics', 'contacts', 'calendar', 'ai_assistant', 'social_learning', 'cld_engine', 'subscription'] },
 ];

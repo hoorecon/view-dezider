@@ -90,8 +90,15 @@ export default function HomeScreen() {
   const tileVisible = (id: string): boolean => {
     const m = TILE_META[id];
     if (!m) return false;
-    // Shared Inbox is centrally controlled by the Collaboration ACM toggle.
-    if (id === 'inbox') return isFeatureOn('collab_shared_inbox');
+    // Tiles whose visibility is centrally controlled by the ACM › Collaboration
+    // module (disabled by default; admin enables per audience there).
+    const COLLAB_GATED: Record<string, string> = {
+      inbox: 'collab_shared_inbox',
+      knowledge_marketplace: 'collab_knowledge_marketplace',
+      my_earnings: 'collab_my_earnings',
+      karma_fame: 'collab_karma_fame',
+    };
+    if (COLLAB_GATED[id]) return isFeatureOn(COLLAB_GATED[id]);
     return m.alwaysOn ? true : isTileOn(id);
   };
   // A section renders when its `dash_section_<id>` flag is ON and it still has
