@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request, Depends
 from core.database import db
-from core.auth import get_current_user
+from core.auth import get_current_user, require_admin
 
 router = APIRouter(prefix="/goal-manifestation", tags=["Goal Manifestation"])
 
@@ -288,10 +288,55 @@ CABFAME_STAGES = [
 ]
 
 
+_CABFAME_CFG_KEY = "cabfame_framework"
+
+
+async def _effective_framework() -> list:
+    """Admin override (db.app_config) if present, else the built-in default."""
+    doc = await db.app_config.find_one({"key": _CABFAME_CFG_KEY}, {"_id": 0})
+    if doc and isinstance(doc.get("stages"), list) and doc["stages"]:
+        return doc["stages"]
+    return CABFAME_STAGES
+
+
 @router.get("/framework")
 async def get_cabfame_framework():
-    """Return the complete CAB-FAME 7-stage framework."""
-    return {"stages": CABFAME_STAGES, "total_stages": 7}
+    """Return the complete CAB-FAME 7-stage framework (admin-overridable)."""
+    stages = await _effective_framework()
+    return {"stages": stages, "total_stages": len(stages)}
+
+
+@router.get("/admin/framework")
+async def admin_get_framework(_: dict = Depends(require_admin)):
+    doc = await db.app_config.find_one({"key": _CABFAME_CFG_KEY}, {"_id": 0})
+    is_override = bool(doc and isinstance(doc.get("stages"), list) and doc["stages"])
+    return {"stages": await _effective_framework(), "is_override": is_override}
+
+
+@router.put("/admin/framework")
+async def admin_put_framework(request: Request, _: dict = Depends(require_admin)):
+    body = await request.json()
+    stages = body.get("stages")
+    if not isinstance(stages, list) or not stages:
+        raise HTTPException(status_code=400, detail="stages must be a non-empty list")
+    for st in stages:
+        if not isinstance(st, dict) or "stage_number" not in st or "name" not in st or "steps" not in st:
+            raise HTTPException(status_code=400, detail="each stage needs stage_number, name and steps")
+        if not isinstance(st.get("steps"), list):
+            raise HTTPException(status_code=400, detail=f"stage {st.get('stage_number')} steps must be a list")
+    await db.app_config.update_one(
+        {"key": _CABFAME_CFG_KEY},
+        {"$set": {"key": _CABFAME_CFG_KEY, "stages": stages,
+                  "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    return {"saved": True, "total_stages": len(stages)}
+
+
+@router.post("/admin/framework/reset")
+async def admin_reset_framework(_: dict = Depends(require_admin)):
+    await db.app_config.delete_one({"key": _CABFAME_CFG_KEY})
+    return {"reset": True, "stages": CABFAME_STAGES, "total_stages": len(CABFAME_STAGES)}
 
 
 # ═══════════════════════════════════════════════════════════════

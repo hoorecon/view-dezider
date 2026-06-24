@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../../src/constants/colors';
 import { AudioGuidePlayer } from '../../src/components/AudioGuidePlayer';
+import InAppVideoModal from '../../src/components/InAppVideoModal';
 import api from '../../src/utils/api';
 import { safeBack } from '../../src/utils/navigation';
 
@@ -31,6 +32,7 @@ export default function GoalManifestationScreen() {
   const [currentStage, setCurrentStage] = useState(1);
   const [stageInputs, setStageInputs] = useState<Record<string, string>>({});
   const [expandedSteps, setExpandedSteps] = useState<Record<string, boolean>>({});
+  const [videoModal, setVideoModal] = useState<{ visible: boolean; url: string; title: string }>({ visible: false, url: '', title: '' });
   const [editId, setEditId] = useState('');
   const [meditationPrefs, setMeditationPrefs] = useState<Record<string, any>>({});
 
@@ -238,8 +240,14 @@ export default function GoalManifestationScreen() {
 
                   {/* YouTube / external links — uses resolved URL from user prefs */}
                   {resolvedLink ? (
-                    <TouchableOpacity style={st.linkBtn} onPress={() => Linking.openURL(resolvedLink)}>
-                      <Ionicons name={resolvedLink.includes('youtube') ? 'logo-youtube' : 'link'} size={16} color="#EF4444" />
+                    <TouchableOpacity style={st.linkBtn} onPress={() => {
+                      if (/youtube\.com|youtu\.be|vimeo\.com|\.(mp4|webm|ogg|mov)(\?|$)/i.test(resolvedLink)) {
+                        setVideoModal({ visible: true, url: resolvedLink, title: step.link_label || 'Now playing' });
+                      } else {
+                        Linking.openURL(resolvedLink);
+                      }
+                    }}>
+                      <Ionicons name={/youtube|youtu\.be|vimeo|\.(mp4|webm|ogg|mov)/i.test(resolvedLink) ? 'play-circle' : 'link'} size={16} color="#EF4444" />
                       <Text style={st.linkText}>{step.link_label || 'Open Link'}</Text>
                       {meditationPrefs[step.id === '1.1' || step.id === '4.4' ? 'guru_invocation' : 'stillness_meditation']?.source_type !== 'default' && (
                         <Text style={st.customBadge}>CUSTOM</Text>
@@ -327,6 +335,12 @@ export default function GoalManifestationScreen() {
           </View>
         )}
       </KeyboardAvoidingView>
+      <InAppVideoModal
+        visible={videoModal.visible}
+        url={videoModal.url}
+        title={videoModal.title}
+        onClose={() => setVideoModal({ visible: false, url: '', title: '' })}
+      />
     </SafeAreaView>
   );
 }

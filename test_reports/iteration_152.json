@@ -1,0 +1,33 @@
+{
+  "summary": "Iter 152: Validated Manifestation in-app YouTube modal, 7-stage wrapping, admin Manifestation Content editor, admin Test OTP buttons, and Life Mirror rename. Wrote pytest suite (8/8 PASS) covering: public framework returns 7 stages; admin framework requires auth (401); admin GET/PUT/RESET round-trip with override flag flip and public reflection; PUT 400 on empty list; collab admin/otp-test requires admin and accepts email + whatsapp from super-admin. Frontend smoke-test (web preview, super-admin login) confirmed: (a) /admin/manifestation-content loads with JSON editor pre-filled, DEFAULT badge visible, Save / Reset buttons rendered; (b) /admin/collab-auth shows the new 'Test delivery' card with input + Test Email OTP + Test WhatsApp OTP buttons; (c) /tools/goal-manifestation overview wraps the 7 CAB-FAME stage pills across 2 rows with full readable names (no horizontal scroll/truncation); (d) /tools/public-pulse header now reads 'Life Mirror' (string 'Public Pulse' no longer present on that screen). InAppVideoModal wiring verified by code review: goal-manifestation.tsx L243-248 invokes setVideoModal for youtube|youtu.be|vimeo|.mp4/.webm/.ogg/.mov links and falls back to Linking.openURL otherwise; InAppVideoModal.tsx web path renders a real <iframe src='https://www.youtube.com/embed/<id>'> inside a Modal overlay with a close button — keeps user in-app.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter152_manifestation_admin_otp.py",
+    "/app/test_reports/pytest/iter152.xml"
+  ],
+  "action_items": [
+    "Minor (non-blocking): /app/frontend/src/utils/routeVoiceParser.ts L233 still has label 'Public Pulse'. Voice/parser-only label — won't show as a screen title but consider updating to 'Life Mirror' for voice navigation consistency.",
+    "Pre-existing (acknowledged in request, not in scope): GET /api/acm/health → 404, and passlib bcrypt __about__ warning. No action."
+  ],
+  "critical_code_review_comments": [
+    "InAppVideoModal correctly uses iframe on web (Platform.OS==='web') and react-native-webview on native — same pattern as EFT MediaEmbed.",
+    "Admin manifestation override stored in db.app_config under key cabfame_framework with idempotent reset; _effective_framework() correctly falls back to built-in CABFAME_STAGES.",
+    "PUT validates stage_number/name/steps presence and rejects empty list (400) — verified by test.",
+    "collab-auth Test delivery section disables both OTP buttons while one is in-flight (testBusy state) — good UX."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter152_manifestation_admin_otp.py (new)"
+  ],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "100% (4/4 smoke checks)"},
+  "seed_data_creation": "None. PUT/RESET test self-cleans by deleting the cabfame_framework override at end via /admin/framework/reset.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Login endpoint /api/auth/login returns session_token (not access_token) — use Bearer of session_token for admin routes. EXPO_PUBLIC_BACKEND_URL is the public base URL (not EXPO_BACKEND_URL). Manifestation admin override key is db.app_config key='cabfame_framework'. Iteration 152 features all green; the in-app YouTube modal is verified by code-path + DOM iframe render (cannot autoplay YouTube on CI but the iframe element does appear when ytlink is tapped after expanding step 1.6).",
+  "rca_of_issue": ""
+}
