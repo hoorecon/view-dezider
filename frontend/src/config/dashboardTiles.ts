@@ -46,8 +46,8 @@ export const TILE_META: Record<string, TileMeta> = {
   goal_manifestation: { title: 'Manifestation', subtitle: 'CAB-FAME 7 stages', icon: 'sparkles', route: '/tools/goal-manifestation', variant: 'action', gradient: ['#7C3AED', '#9333EA'] },
 
   // §5 Execute & Track
-  orgs: { title: 'My Organizations', subtitle: '7×7 matrix · 6 LeGs goals', icon: 'business', route: '/tools/orgs', variant: 'action', gradient: ['#4338CA', '#6366F1'], alwaysOn: true },
-  values: { title: 'Values Tracker', subtitle: '8 VEALES Collaboration Principles', icon: 'shield-checkmark', route: '/tools/values', variant: 'action', gradient: ['#0EA5E9', '#0284C7'], alwaysOn: true },
+  orgs: { title: 'My Organizations', subtitle: '7×7 matrix · 6 LeGs goals', icon: 'business', route: '/tools/orgs', variant: 'action', gradient: ['#4338CA', '#6366F1'] },
+  values: { title: 'Values Tracker', subtitle: '8 VEALES Collaboration Principles', icon: 'shield-checkmark', route: '/tools/values', variant: 'action', gradient: ['#0EA5E9', '#0284C7'] },
   action_tracker: { title: 'Action Tracker', subtitle: 'Universal inbox', icon: 'checkmark-done-circle', route: '/tools/action-center', variant: 'action', gradient: ['#0D9488', '#0F766E'] },
   atex: { title: 'Effort Estimation', subtitle: 'ATEX · EE+MB+PB+RM=TT', icon: 'calculator', route: '/tools/atex', variant: 'action', gradient: ['#7C3AED', '#A855F7'], alwaysOn: true },
   ctt: { title: 'CTT', subtitle: 'Project tracker', icon: 'clipboard', route: '/tools/ctt', variant: 'action', gradient: ['#1E3A5F', '#2D5F8B'] },
@@ -77,8 +77,8 @@ export const TILE_META: Record<string, TileMeta> = {
 
   // §9 More Tools — colab strip (always-on small cards with badges)
   inbox: { title: 'Shared Inbox', subtitle: 'No pending', icon: 'mail-unread', route: '/inbox', variant: 'colab', iconBg: 'rgba(99,102,241,0.1)', iconColor: '#6366F1', alwaysOn: true, badgeKey: 'inbox' },
-  notifications: { title: 'Notifications', subtitle: 'All caught up', icon: 'notifications', route: '/notifications', variant: 'colab', iconBg: 'rgba(245,158,11,0.1)', iconColor: '#F59E0B', alwaysOn: true, badgeKey: 'unread' },
-  analytics: { title: 'Analytics', subtitle: 'Life areas', icon: 'bar-chart', route: '/analytics', variant: 'colab', iconBg: 'rgba(16,185,129,0.1)', iconColor: '#10B981', alwaysOn: true },
+  notifications: { title: 'Notifications', subtitle: 'All caught up', icon: 'notifications', route: '/notifications', variant: 'colab', iconBg: 'rgba(245,158,11,0.1)', iconColor: '#F59E0B', badgeKey: 'unread' },
+  analytics: { title: 'Folder Analytics', subtitle: 'Life areas', icon: 'bar-chart', route: '/analytics', variant: 'colab', iconBg: 'rgba(16,185,129,0.1)', iconColor: '#10B981' },
   // §9 More Tools — action cards
   contacts: { title: 'Contacts', subtitle: 'Manage participants', icon: 'people', route: '/tools/contacts', variant: 'action', gradient: ['#1E293B', '#475569'] },
   calendar: { title: 'Calendar', subtitle: 'Schedules & deadlines', icon: 'calendar', route: '/tools/calendar-view', variant: 'action', gradient: ['#4285F4', '#5B9EF4'] },

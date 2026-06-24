@@ -20,7 +20,7 @@ Subscription Plans (for paid): starter, pro, enterprise, api
 # Bump this version whenever ACM_MODULES / USER_TYPES / SUBSCRIPTION_PLANS change.
 # Boot-time auto-seed (core/acm_engine.py) reseeds DB iff stored version < this one.
 # Format: "YYYY-MM-DD-N" — human-readable, monotonically sortable.
-ACM_SEED_VERSION = "2026-06-24-02"  # +home_top section: dash_report_quota, dash_quick_links + 3 QL sub-items; non-destructive reseed
+ACM_SEED_VERSION = "2026-06-24-03"  # rename home_top→"Home Page - Header", +home_footer section (notifications, folder analytics); non-destructive reseed
 
 # Release stages (ordered by visibility)
 RELEASE_STAGES = [
@@ -1773,7 +1773,7 @@ ACM_MODULES = [
                     "paid_enterprise", "paid_api",
                  ]}}
                 for order, sid, sname in [
-                    (0, "home_top",               "Home — Top of Page"),
+                    (0, "home_top",               "Home Page - Header"),
                     (1, "self_discovery",          "Self Discovery"),
                     (2, "decision_kickstarters",   "Decision Kickstarters"),
                     (3, "problem_solvers",         "Problem Solvers"),
@@ -1783,6 +1783,7 @@ ACM_MODULES = [
                     (7, "collaboration_mgmt",      "Collaboration & Management"),
                     (8, "solution_space",          "Solution Space"),
                     (9, "more_tools",              "More Tools"),
+                    (10, "home_footer",           "Home Page - Footer"),
                 ]
             ]
             +
@@ -1821,6 +1822,8 @@ ACM_MODULES = [
                     ("goal_setter",           "Goal Setter",                    "goals_manifestation"),
                     ("goal_manifestation",    "Manifestation",                  "goals_manifestation"),
                     # §5 Execute & Track
+                    ("orgs",                  "My Organizations",               "execute_track"),
+                    ("values",                "Values Tracker",                 "execute_track"),
                     ("action_tracker",        "Action Tracker",                 "execute_track"),
                     ("ctt",                   "Centralized Task Tracker (CTT)", "execute_track"),
                     ("lifestyle_dezider",     "Lifestyle Dezider",              "execute_track"),
@@ -1850,6 +1853,9 @@ ACM_MODULES = [
                     ("calendar",              "Calendar",                       "more_tools"),
                     ("subscription",          "Subscription",                   "more_tools"),
                     ("cld_engine",            "CLD Engine",                     "more_tools"),
+                    # §10 Home Page - Footer (always-on utility tiles, now togglable)
+                    ("notifications",         "Notifications",                  "home_footer"),
+                    ("analytics",             "Folder Analytics",               "home_footer"),
                 ]
             ]
         ),
