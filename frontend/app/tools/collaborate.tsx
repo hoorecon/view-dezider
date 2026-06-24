@@ -26,6 +26,11 @@ const AUTH_METHODS = [
   { key: 'authenticator', label: 'Authenticator App', icon: 'key', desc: 'TOTP 6-digit code' },
 ];
 
+const OTP_METHODS = [
+  { key: 'whatsapp_otp', label: 'WhatsApp OTP', icon: 'logo-whatsapp', desc: '6-digit code sent on WhatsApp' },
+  { key: 'email_otp', label: 'Email OTP', icon: 'mail', desc: '6-digit code sent by email' },
+];
+
 const SESSION_MODES = [
   { key: 'async', label: 'Asynchronous', icon: 'time-outline', desc: 'Participants contribute at their own pace', color: '#3B82F6' },
   { key: 'live_sync', label: 'Live Sync', icon: 'videocam-outline', desc: 'Real-time collaboration with video call', color: '#059669' },
@@ -37,6 +42,13 @@ export default function CollaborateScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [detailSession, setDetailSession] = useState<any>(null);
+  const [advancedAuthEnabled, setAdvancedAuthEnabled] = useState(false);
+  // Participant OTP verification
+  const [otpChannel, setOtpChannel] = useState<'whatsapp' | 'email'>('email');
+  const [otpContact, setOtpContact] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpSending, setOtpSending] = useState(false);
 
   // Create session
   const [showCreate, setShowCreate] = useState(false);
@@ -77,7 +89,12 @@ export default function CollaborateScreen() {
     } finally { setLoading(false); }
   };
 
-  useFocusEffect(useCallback(() => { fetchSessions(); }, []));
+  useFocusEffect(useCallback(() => {
+    fetchSessions();
+    api.get('/collaboration/auth-config')
+      .then(r => setAdvancedAuthEnabled(!!r.data?.advanced_methods_enabled))
+      .catch(() => {});
+  }, []));
 
   const onRefresh = async () => { setRefreshing(true); await fetchSessions(); setRefreshing(false); };
 
@@ -355,11 +372,13 @@ export default function CollaborateScreen() {
       case 4: return (
         <View>
           <Text style={styles.stepTitle}>Participant Authentication</Text>
-          <Text style={styles.stepHint}>Configure identity verification for participants. Select which methods and how many required.</Text>
-          
-          {AUTH_METHODS.map(m => (
+          <Text style={styles.stepHint}>{advancedAuthEnabled
+            ? 'Configure identity verification for participants. Select which methods and how many required.'
+            : 'Choose how participants verify before contributing. Pick one or both — they can use whichever is convenient. Leave both unchecked to skip verification.'}</Text>
+
+          {(advancedAuthEnabled ? AUTH_METHODS : OTP_METHODS).map(m => (
             <TouchableOpacity key={m.key} style={[styles.authMethodCard, authConfig.enabled_methods.includes(m.key) && styles.authMethodActive]}
-              onPress={() => toggleAuth(m.key)}>
+              onPress={() => (advancedAuthEnabled ? toggleAuth(m.key) : toggleOtp(m.key))}>
               <Ionicons name={m.icon as any} size={22} color={authConfig.enabled_methods.includes(m.key) ? '#6366F1' : COLORS.textMuted} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.authMethodLabel}>{m.label}</Text>
@@ -370,7 +389,7 @@ export default function CollaborateScreen() {
             </TouchableOpacity>
           ))}
 
-          {authConfig.enabled_methods.length >= 2 && (
+          {advancedAuthEnabled && authConfig.enabled_methods.length >= 2 && (
             <View style={styles.authRequiredBox}>
               <Text style={styles.authRequiredLabel}>Methods required per participant:</Text>
               <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -463,6 +482,86 @@ export default function CollaborateScreen() {
     } finally {
       setVerifying(false);
     }
+  };
+
+  const toggleOtp = (method: string) => {
+    const enabled = [...authConfig.enabled_methods];
+    const idx = enabled.indexOf(method);
+    if (idx >= 0) enabled.splice(idx, 1); else enabled.push(method);
+    // Any selected OTP channel ⇒ contributor verifies via one; none ⇒ verification skipped.
+    setAuthConfig({ ...authConfig, enabled_methods: enabled, methods_required: enabled.length > 0 ? 1 : 0 });
+  };
+
+  const sendOtp = async () => {
+    if (!otpContact.trim()) { showAlert('Required', otpChannel === 'email' ? 'Enter your email' : 'Enter your WhatsApp number'); return; }
+    setOtpSending(true);
+    try {
+      await api.post(`/collaboration/sessions/${verifySession?.id}/otp/send`, { channel: otpChannel, contact: otpContact.trim() });
+      setOtpSent(true);
+      showAlert('Code sent', `A 6-digit code was sent via ${otpChannel === 'email' ? 'email' : 'WhatsApp'}. It expires in 10 minutes.`);
+    } catch (err: any) {
+      showAlert('Error', err.response?.data?.detail || 'Could not send code');
+    } finally { setOtpSending(false); }
+  };
+
+  const verifyOtp = async () => {
+    if (otpCode.length !== 6) { showAlert('Invalid', 'Enter the 6-digit code'); return; }
+    setOtpSending(true);
+    try {
+      await api.post(`/collaboration/sessions/${verifySession?.id}/otp/verify`, { channel: otpChannel, contact: otpContact.trim(), otp: otpCode });
+      showAlert('Verified', 'Your identity is verified for this session.');
+      setOtpSent(false); setOtpCode('');
+      setShowVerifyModal(false);
+      fetchSessions();
+    } catch (err: any) {
+      showAlert('Error', err.response?.data?.detail || 'Verification failed');
+    } finally { setOtpSending(false); }
+  };
+
+  const renderOtpVerify = () => {
+    const enabled: string[] = verifySession?.auth_requirements?.enabled_methods || [];
+    const channels: ('whatsapp' | 'email')[] = [];
+    if (enabled.includes('whatsapp_otp')) channels.push('whatsapp');
+    if (enabled.includes('email_otp')) channels.push('email');
+    if (channels.length === 0) {
+      return <Text style={styles.stepHint}>No verification is required for this session — you can contribute directly.</Text>;
+    }
+    return (
+      <View style={styles.verifyCard}>
+        <Text style={styles.verifyCardTitle}>One-Time Passcode</Text>
+        <Text style={styles.verifyCardDesc}>Pick a channel, get a 6-digit code, and enter it below.</Text>
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+          {channels.map(ch => (
+            <TouchableOpacity key={ch} style={[styles.otpChannelBtn, otpChannel === ch && styles.otpChannelActive]}
+              onPress={() => { setOtpChannel(ch); setOtpSent(false); }}>
+              <Ionicons name={ch === 'whatsapp' ? 'logo-whatsapp' : 'mail'} size={16} color={otpChannel === ch ? '#FFF' : COLORS.textSecondary} />
+              <Text style={[styles.otpChannelTxt, otpChannel === ch && { color: '#FFF' }]}>{ch === 'whatsapp' ? 'WhatsApp' : 'Email'}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <TextInput style={[styles.totpInput, { marginTop: 10 }]}
+          placeholder={otpChannel === 'email' ? 'your@email.com' : 'WhatsApp number (e.g. 9198…)'}
+          autoCapitalize="none" keyboardType={otpChannel === 'email' ? 'email-address' : 'phone-pad'}
+          value={otpContact} onChangeText={setOtpContact} />
+        {!otpSent ? (
+          <TouchableOpacity style={[styles.verifyActionBtn, { backgroundColor: '#7C3AED', marginTop: 10 }]} onPress={sendOtp} disabled={otpSending}>
+            {otpSending ? <ActivityIndicator color="#FFF" size="small" /> : (<><Ionicons name="send" size={14} color="#FFF" /><Text style={styles.verifyActionText}>Send Code</Text></>)}
+          </TouchableOpacity>
+        ) : (
+          <>
+            <View style={[styles.totpVerifyRow, { marginTop: 10 }]}>
+              <TextInput style={styles.totpInput} placeholder="6-digit code" keyboardType="numeric" maxLength={6} value={otpCode} onChangeText={setOtpCode} />
+              <TouchableOpacity style={[styles.verifyActionBtn, { backgroundColor: '#059669', flex: 0 }]} onPress={verifyOtp} disabled={otpSending}>
+                {otpSending ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.verifyActionText}>Verify</Text>}
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity onPress={sendOtp} disabled={otpSending} style={{ marginTop: 8 }}>
+              <Text style={{ color: '#7C3AED', fontSize: 12, fontWeight: '600' }}>Resend code</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+    );
   };
 
   return (
@@ -692,8 +791,9 @@ export default function CollaborateScreen() {
             </View>
             
             <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
-              <Text style={styles.stepHint}>Complete verification to participate in this session. Select a method below.</Text>
-              
+              <Text style={styles.stepHint}>Complete verification to participate in this session.</Text>
+
+              {!advancedAuthEnabled ? renderOtpVerify() : (<>
               {/* DigiLocker */}
               <View style={styles.verifyCard}>
                 <View style={styles.verifyCardHeader}>
@@ -799,6 +899,7 @@ export default function CollaborateScreen() {
                   </TouchableOpacity>
                 </View>
               </View>
+              </>)}
 
             </ScrollView>
           </View>
@@ -865,6 +966,9 @@ const styles = StyleSheet.create({
   contactDetail: { fontSize: 11, color: COLORS.textMuted },
   smeBadge: { padding: 2 },
   authMethodCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 12, backgroundColor: '#F9FAFB', marginBottom: 8, borderWidth: 1, borderColor: '#E5E7EB' },
+  otpChannelBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF' },
+  otpChannelActive: { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
+  otpChannelTxt: { fontSize: 13, fontWeight: '600', color: COLORS.textSecondary },
   authMethodActive: { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' },
   authMethodLabel: { fontSize: 14, fontWeight: '600', color: COLORS.textPrimary },
   authMethodDesc: { fontSize: 11, color: COLORS.textSecondary },

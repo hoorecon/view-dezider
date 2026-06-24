@@ -37,7 +37,7 @@ export const DecisionContinuePanel: React.FC<DecisionContinuePanelProps> = ({
 }) => {
   const router = useRouter();
   const list: ContinueModuleKey[] = modules || [
-    'instant-dezider', 'my-dezider', 'pros-cons', 'solution-finder', 'swot',
+    'instant-dezider', 'my-dezider', 'pros-cons', 'solution-finder',
     'life-360', 'gem', 'goal-setter',
   ];
 
@@ -56,14 +56,14 @@ export const DecisionContinuePanel: React.FC<DecisionContinuePanelProps> = ({
   return (
     <View style={s.wrap}>
       <View style={s.headerRow}>
-        <Ionicons name="arrow-redo" size={18} color="#0F172A" />
-        <Text style={s.header}>Continue this decision in another module</Text>
+        <Ionicons name="rocket-outline" size={18} color="#0F172A" />
+        <Text style={s.header}>Want to go deeper? Explore this in another module</Text>
       </View>
       <Text style={s.help}>
-        Carry the context forward. The selected module opens with your title &amp;
-        summary prefilled — you can open as many as you need.
+        Take this further — carry your title &amp; summary into any module below to
+        dive deeper from a new angle. Open as many as you need.
       </Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+      <View style={s.grid}>
         {list.map(k => {
           const meta = MODULE_META[k];
           return (
@@ -76,7 +76,7 @@ export const DecisionContinuePanel: React.FC<DecisionContinuePanelProps> = ({
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
+      </View>
     </View>
   );
 };
@@ -86,7 +86,8 @@ const s = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   header: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
   help: { fontSize: 12, color: '#64748B', marginBottom: 10 },
-  card: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FFF', borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, minWidth: 170 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingVertical: 4 },
+  card: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FFF', borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, flexGrow: 1, flexBasis: 150, minWidth: 150 },
   cardIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   cardLabel: { fontSize: 13, fontWeight: '700', color: '#0F172A', flex: 1 },
 });

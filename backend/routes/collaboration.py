@@ -2,11 +2,14 @@
 Supports 6 Decision Making Modes and enhanced participant authentication."""
 
 import uuid
-from datetime import datetime, timezone
+import hashlib
+import secrets as _secrets
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Request, Depends
 from core.database import db
 from core.auth import get_current_user, require_admin
+from core.notify import send_email, send_whatsapp, basic_email
 from routes.audit_trail import log_audit_event, get_client_ip
 from models.collaboration_data import DEFAULT_MODES
 
@@ -99,6 +102,7 @@ async def create_collaboration_session(request: Request, user: dict = Depends(ge
                 "contact_id": cid,
                 "name": contact.get("name", ""),
                 "email": contact.get("email", ""),
+                "phone": contact.get("whatsapp") or contact.get("phone") or contact.get("mobile") or "",
                 "linked_user_id": contact.get("linked_user_id"),
                 "is_sme": contact.get("is_sme", False),
                 "status": "invited",
@@ -1282,3 +1286,172 @@ async def biometric_status(user: dict = Depends(get_current_user)):
         {"user_id": user["user_id"]}, {"_id": 0, "template_hash": 0}
     ).to_list(10)
     return {"registered": len(registrations) > 0, "registrations": registrations}
+
+
+# ════════════════════════════════════════════════════════════════════
+#  Collaboration Auth Config + OTP verification (WhatsApp / Email)
+#  - Admin flag `advanced_methods_enabled` gates the legacy DigiLocker/
+#    Biometric/TOTP methods. When OFF (default), session initiators offer
+#    simple WhatsApp-OTP and/or Email-OTP verification to participants.
+# ════════════════════════════════════════════════════════════════════
+
+_COLLAB_AUTH_KEY = "collab_auth"
+_OTP_TTL_MINUTES = 10
+_OTP_RESEND_COOLDOWN_SEC = 60
+_OTP_MAX_ATTEMPTS = 5
+
+
+async def _get_collab_auth_config() -> dict:
+    doc = await db.app_config.find_one({"key": _COLLAB_AUTH_KEY}, {"_id": 0})
+    if not doc:
+        # Default: advanced (DigiLocker/Biometric/TOTP) disabled → OTP defaults shown.
+        return {"advanced_methods_enabled": False}
+    return {"advanced_methods_enabled": bool(doc.get("advanced_methods_enabled", False))}
+
+
+def _hash_otp(session_id: str, contact: str, channel: str, otp: str) -> str:
+    return hashlib.sha256(f"{session_id}|{contact}|{channel}|{otp}".encode()).hexdigest()
+
+
+def _sanitize_phone(phone: str) -> str:
+    # UltraMsg expects digits only (international format, no +/spaces).
+    return "".join(ch for ch in (phone or "") if ch.isdigit())
+
+
+@router.get("/auth-config")
+async def get_collab_auth_config_public(user: dict = Depends(get_current_user)):
+    """What verification options the session-create wizard should show."""
+    cfg = await _get_collab_auth_config()
+    return {
+        "advanced_methods_enabled": cfg["advanced_methods_enabled"],
+        "otp_channels": ["whatsapp", "email"],
+    }
+
+
+@router.get("/admin/auth-config")
+async def get_collab_auth_config_admin(_: dict = Depends(require_admin)):
+    return await _get_collab_auth_config()
+
+
+@router.put("/admin/auth-config")
+async def put_collab_auth_config_admin(request: Request, _: dict = Depends(require_admin)):
+    body = await request.json()
+    enabled = bool(body.get("advanced_methods_enabled", False))
+    await db.app_config.update_one(
+        {"key": _COLLAB_AUTH_KEY},
+        {"$set": {"key": _COLLAB_AUTH_KEY, "advanced_methods_enabled": enabled,
+                  "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    return {"advanced_methods_enabled": enabled}
+
+
+@router.post("/sessions/{session_id}/otp/send")
+async def send_collab_otp(session_id: str, request: Request, user: dict = Depends(get_current_user)):
+    """Generate + deliver a 6-digit OTP to a participant over WhatsApp or Email."""
+    body = await request.json()
+    channel = (body.get("channel") or "").lower()
+    contact = (body.get("contact") or "").strip()
+    if channel not in ("whatsapp", "email"):
+        raise HTTPException(status_code=400, detail="channel must be 'whatsapp' or 'email'")
+    if not contact:
+        raise HTTPException(status_code=400, detail="contact (email or phone) is required")
+
+    session = await db.collaboration_sessions.find_one({"id": session_id}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    now = datetime.now(timezone.utc)
+    existing = await db.collab_otps.find_one(
+        {"session_id": session_id, "contact": contact, "channel": channel}
+    )
+    if existing and existing.get("last_sent_at"):
+        last = datetime.fromisoformat(existing["last_sent_at"])
+        if (now - last).total_seconds() < _OTP_RESEND_COOLDOWN_SEC:
+            wait = int(_OTP_RESEND_COOLDOWN_SEC - (now - last).total_seconds())
+            raise HTTPException(status_code=429, detail=f"Please wait {wait}s before requesting another code.")
+
+    otp = f"{_secrets.randbelow(1000000):06d}"
+    expires_at = now + timedelta(minutes=_OTP_TTL_MINUTES)
+    await db.collab_otps.update_one(
+        {"session_id": session_id, "contact": contact, "channel": channel},
+        {"$set": {
+            "session_id": session_id, "contact": contact, "channel": channel,
+            "hashed_otp": _hash_otp(session_id, contact, channel, otp),
+            "expires_at": expires_at.isoformat(),
+            "last_sent_at": now.isoformat(),
+            "attempts": 0,
+        }},
+        upsert=True,
+    )
+
+    title = session.get("title") or "a decision"
+    sent = False
+    if channel == "email":
+        html = basic_email(
+            "Your verification code",
+            [f"Use this code to join the collaboration on <b>{title}</b>:",
+             f"<div style='font-size:28px;font-weight:800;letter-spacing:6px'>{otp}</div>",
+             f"This code expires in {_OTP_TTL_MINUTES} minutes."],
+        )
+        sent = await send_email(contact, "Your JELCOS verification code", html)
+    else:
+        phone = _sanitize_phone(contact)
+        body_txt = (f"Your JELCOS verification code is {otp}. "
+                    f"It joins the collaboration on \"{title}\" and expires in {_OTP_TTL_MINUTES} minutes.")
+        sent = await send_whatsapp(phone, body_txt)
+
+    if not sent:
+        raise HTTPException(
+            status_code=502,
+            detail=("Could not deliver the WhatsApp code (the WhatsApp session may be disconnected). "
+                    "Try Email instead." if channel == "whatsapp"
+                    else "Could not send the email code. Please try again."),
+        )
+    return {"sent": True, "channel": channel, "expires_in_minutes": _OTP_TTL_MINUTES}
+
+
+@router.post("/sessions/{session_id}/otp/verify")
+async def verify_collab_otp(session_id: str, request: Request, user: dict = Depends(get_current_user)):
+    body = await request.json()
+    channel = (body.get("channel") or "").lower()
+    contact = (body.get("contact") or "").strip()
+    otp = (body.get("otp") or "").strip()
+    if not (channel and contact and otp):
+        raise HTTPException(status_code=400, detail="channel, contact and otp are required")
+
+    record = await db.collab_otps.find_one(
+        {"session_id": session_id, "contact": contact, "channel": channel}
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="No code found. Request a new one.")
+
+    now = datetime.now(timezone.utc)
+    if now > datetime.fromisoformat(record["expires_at"]):
+        await db.collab_otps.delete_one({"_id": record["_id"]})
+        raise HTTPException(status_code=400, detail="Code expired. Request a new one.")
+    if record.get("attempts", 0) >= _OTP_MAX_ATTEMPTS:
+        await db.collab_otps.delete_one({"_id": record["_id"]})
+        raise HTTPException(status_code=403, detail="Too many attempts. Request a new code.")
+    if _hash_otp(session_id, contact, channel, otp) != record["hashed_otp"]:
+        await db.collab_otps.update_one({"_id": record["_id"]}, {"$inc": {"attempts": 1}})
+        raise HTTPException(status_code=401, detail="Incorrect code. Please try again.")
+
+    # Success → invalidate code + mark the matching participant verified.
+    await db.collab_otps.delete_one({"_id": record["_id"]})
+    c = contact.lower()
+    cdigits = _sanitize_phone(contact)
+    session = await db.collaboration_sessions.find_one({"id": session_id}, {"_id": 0})
+    if session:
+        for p in session.get("participants", []):
+            if (p.get("email", "").lower() == c) or (_sanitize_phone(p.get("phone", "")) and _sanitize_phone(p.get("phone", "")) == cdigits):
+                methods = set(p.get("auth_methods_completed", []))
+                methods.add(f"{channel}_otp")
+                await db.collaboration_sessions.update_one(
+                    {"id": session_id, "participants.contact_id": p.get("contact_id")},
+                    {"$set": {"participants.$.auth_verified": True,
+                              "participants.$.auth_methods_completed": list(methods)}},
+                )
+                break
+    return {"verified": True}
+

@@ -29,6 +29,7 @@ import api from '../utils/api';
 import MetricsEditor, { type GoalMetric } from './MetricsEditor';
 import SkillsetPicker from './SkillsetPicker';
 import ResourcePicker, { type PickedResource } from './ResourcePicker';
+import { DecisionContinuePanel } from './DecisionContinuePanel';
 
 export interface SmartMilestone {
   milestone_id: string;
@@ -84,6 +85,7 @@ export default function MilestoneEditor({ goalId, milestones, onChange, readOnly
   const list = Array.isArray(milestones) ? milestones : [];
   const [editing, setEditing] = useState<SmartMilestone | null>(null);
   const [saving, setSaving] = useState(false);
+  const [exploreId, setExploreId] = useState<string | null>(null);
 
   const persistAdd = async (m: SmartMilestone) => {
     if (!goalId) {
@@ -192,7 +194,23 @@ export default function MilestoneEditor({ goalId, milestones, onChange, readOnly
                     </TouchableOpacity>
                   </>
                 )}
+                <TouchableOpacity
+                  style={st.exploreBtn}
+                  onPress={() => setExploreId(exploreId === m.milestone_id ? null : m.milestone_id)}
+                >
+                  <Ionicons name="rocket-outline" size={13} color="#3B82F6" />
+                  <Text style={st.exploreBtnTxt}>Go deeper</Text>
+                  <Ionicons name={exploreId === m.milestone_id ? 'chevron-up' : 'chevron-down'} size={12} color="#3B82F6" />
+                </TouchableOpacity>
               </View>
+              {exploreId === m.milestone_id && (
+                <DecisionContinuePanel
+                  sourceModule="goal-setter"
+                  sourceDecisionId={goalId || m.milestone_id}
+                  title={m.title}
+                  contextSummary={`Milestone from your SMART goal${m.title ? `: ${m.title}` : ''}.`}
+                />
+              )}
             </View>
           );
         })
@@ -304,6 +322,8 @@ const st = StyleSheet.create({
   statusBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: '#E5E7EB' },
   statusBtnText: { fontSize: 10, fontWeight: '600', color: COLORS.textSecondary },
   iconBtn: { padding: 6 },
+  exploreBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: '#BFDBFE', backgroundColor: '#EFF6FF' },
+  exploreBtnTxt: { fontSize: 11, fontWeight: '700', color: '#3B82F6' },
   addBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 4, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#059669', borderStyle: 'dashed', marginTop: 4 },
   addBtnTxt: { fontSize: 12, fontWeight: '700', color: '#059669' },
 

@@ -59,6 +59,7 @@ const QUICK_ACTIONS: QuickAction[] = [
   { key: 'tier-segments',   label: 'Tier ↔ Segments',       description: 'Map customer segments to each chakra tier · multi-select', icon: 'link', color: '#0EA5E9', href: '/admin/tier-segment-mapping' },
   { key: 'trial-payments',  label: 'Trial Payment Tokens',  description: 'Saved cards/UPI captured at trial opt-in · audit + filter', icon: 'card-outline', color: '#F59E0B', href: '/admin/trial-payments' },
   { key: 'content-library', label: 'Content Library CMS',    description: 'Paste/edit verbatim coaching scripts · multi-locale · tenses_feels + 6 modules', icon: 'document-text', color: '#10B981', href: '/admin/content-library' },
+  { key: 'collab-auth', label: 'Collaboration Verification', description: 'Advanced ID methods vs WhatsApp / Email OTP for group-decision participants', icon: 'shield-checkmark', color: '#7C3AED', href: '/admin/collab-auth' },
 ];
 
 // Meaningful grouping of the 32 admin modules into 6 collapsible sections.
@@ -66,7 +67,7 @@ const QUICK_ACTIONS: QuickAction[] = [
 const ACTION_GROUPS: { key: string; label: string; icon: string; keys: string[] }[] = [
   { key: 'essentials',     label: 'Essentials',                icon: 'star',          keys: ['acm', 'tier-matrix', 'pricing', 'appearance', 'masters', 'user-lookup'] },
   { key: 'monetization',   label: 'Monetization & Billing',    icon: 'cash',          keys: ['payments', 'payouts', 'ai-wallet-cfg', 'recon', 'trial-payments', 'quota-editor', 'referral', 'karma'] },
-  { key: 'plans',          label: 'Plans, Tiers & Segments',   icon: 'apps',          keys: ['segments', 'tier-segments', 'acm-resolver-cfg', 'seven-seven', 'values'] },
+  { key: 'plans',          label: 'Plans, Tiers & Segments',   icon: 'apps',          keys: ['segments', 'tier-segments', 'acm-resolver-cfg', 'seven-seven', 'values', 'collab-auth'] },
   { key: 'people',         label: 'People & Experts',          icon: 'people',        keys: ['org-members', 'experts', 'platform-experts', 'embed-partners'] },
   { key: 'content',        label: 'Content & Intelligence',    icon: 'sparkles',      keys: ['catalog', 'content-library', 'scenarios', 'import-analytics', 'url-training', 'notification-engine'] },
   { key: 'ops',            label: 'Operations & Docs',         icon: 'construct',     keys: ['audit', 'incident', 'docs'] },
