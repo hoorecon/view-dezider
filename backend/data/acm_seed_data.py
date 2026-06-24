@@ -20,7 +20,7 @@ Subscription Plans (for paid): starter, pro, enterprise, api
 # Bump this version whenever ACM_MODULES / USER_TYPES / SUBSCRIPTION_PLANS change.
 # Boot-time auto-seed (core/acm_engine.py) reseeds DB iff stored version < this one.
 # Format: "YYYY-MM-DD-N" — human-readable, monotonically sortable.
-ACM_SEED_VERSION = "2026-06-24-03"  # rename home_top→"Home Page - Header", +home_footer section (notifications, folder analytics); non-destructive reseed
+ACM_SEED_VERSION = "2026-06-24-04"  # +collaboration: collab_share, collab_expert_call, collab_shared_inbox (in-flow toggles)
 
 # Release stages (ordered by visibility)
 RELEASE_STAGES = [
@@ -869,6 +869,52 @@ ACM_MODULES = [
                     "free": _hidden(), "trial": _full(1),
                     "paid_starter": _full(3), "paid_pro": _full(),
                     "paid_enterprise": _full(), "paid_api": _hidden(),
+                },
+            },
+            # ── Centrally-togglable collaboration affordances shown INSIDE the
+            #    decision flows (My Dezider, Pros & Cons, Solution Finder, etc.).
+            #    Toggling these here shows/hides the in-flow Share & Expert-call
+            #    buttons and the Shared Inbox tile for the audience. ──
+            {
+                "feature_id": "collab_share",
+                "feature_name": "In-Flow Share (Share this step)",
+                "release_stage": "ga_free",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _full(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _full(),
+                },
+            },
+            {
+                "feature_id": "collab_expert_call",
+                "feature_name": "In-Flow Expert Video Connect (Schedule call)",
+                "release_stage": "ga_free",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _full(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _full(),
+                },
+            },
+            {
+                "feature_id": "collab_shared_inbox",
+                "feature_name": "Shared Inbox (More Tools tile)",
+                "release_stage": "ga_free",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _full(), "integration_tester": _full(),
+                    "alpha": _full(), "beta": _full(),
+                    "free": _full(), "trial": _full(),
+                    "paid_starter": _full(), "paid_pro": _full(),
+                    "paid_enterprise": _full(), "paid_api": _full(),
                 },
             },
         ],

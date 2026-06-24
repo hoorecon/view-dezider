@@ -1,0 +1,41 @@
+{
+  "summary": "Iter160 — Verified both review items end-to-end against the public preview URL. (A) Backend: 7/7 pytest assertions pass in /app/backend/tests/test_iter160_collab_acm_atex.py. ACM seed is v2026-06-24-04 with exactly 148 features (backend boot log: 'ACM cache refreshed: 148 features loaded'). The collaboration module exposes the 3 new togglable feature_ids: collab_share ('In-Flow Share (Share this step)'), collab_expert_call ('In-Flow Expert Video Connect (Schedule call)'), collab_shared_inbox ('Shared Inbox (More Tools tile)'). GET /api/acm/my-access for super@test.com returns access_level='full' for all 3. /api/dashboard-layout {sections, tile_titles} contract still intact (iter158/159 regression smoke). (B) Frontend: ATEX picker bug is FIXED. Logged in super@test.com on mobile viewport 390x844, navigated to /tools/atex, tapped 'Pick from existing tasks'. Modal opened showing the 3 seeded TEST_iter160_action_* items plus pre-existing Action-Tracker entries ('Module task example', 'Plan Q3 OKRs (manual)', 'TEST_Module_Sourced_AIM'). 'No tasks found in your Task Tracker yet' NO LONGER appears when the user has action items. Tapping a row correctly closed the modal and populated the Task title input with the row's title (verified DOM input.value = 'TEST_iter160_action_57db65'). openPicker in /app/frontend/app/tools/atex.tsx now Promise.allSettled([/action-items, /ctt/tasks?status=all]) and de-dupes by lower-cased title, so any Action-Tracker item is selectable for an ATEX estimate. (C) Code review: useFeatureGate.ts gracefully defaults missing feature_ids to ON (forward-compat) and treats 'locked'/'hidden' as OFF — wiring in CollabBar.tsx (Share + Schedule call), prr/[id].tsx lines 188/196 (in-flow share-outline & videocam-outline), and (tabs)/index.tsx line 94 (Shared Inbox tile) is consistent with the 3 new ACM feature_ids. No deprecated Expo packages introduced. No React red screen.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter160_collab_acm_atex.py",
+    "/app/test_reports/pytest/iter160.xml",
+    "/tmp/02_atex.png (ATEX screen loaded with Pick button visible)",
+    "/tmp/03_picker.png (Picker modal now lists Action-Tracker items — bug fix confirmed)",
+    "/tmp/04_after_pick.png (Task title field populated with selected row's title)"
+  ],
+  "action_items": [
+    "No fix needed — both review items are RESOLVED. ATEX 'Pick from existing tasks' now lists Action-Tracker items, and the 3 new Collaboration ACM toggles (collab_share, collab_expert_call, collab_shared_inbox) are wired in /api/acm/my-access and consumed by CollabBar, prr/[id].tsx and (tabs)/index.tsx via useFeatureGate.",
+    "(Optional, low-priority) Add testIDs to the ATEX picker primitives ('atex-pick-from-tasks-button', 'atex-picker-modal', 'atex-picker-row-<id>', 'atex-task-title-input') so future regressions can be asserted without text-coupled selectors. Same for CollabBar — testIDs already exist ('collab-share-btn'/'collab-call-btn'); consider exposing the inline Share/Videocam icons in prr/[id].tsx with explicit testIDs as well.",
+    "(Optional) Validate the test-credentials note for the admin account: the review request says admin has 3 action items and 0 CTT tasks. Live state today: GET /api/action-items returns >=3 items (including 'Module task example', 'Plan Q3 OKRs (manual)', 'TEST_Module_Sourced_AIM') and GET /api/ctt/tasks?status=all returns 0 items — matches the spec. Keep this seed snapshot stable for next iterations."
+  ],
+  "critical_code_review_comments": [
+    "useFeatureGate.ts:36-39 — graceful default of `return true` for missing feature_ids is the correct call: when the ACM cache predates a new feature_id (e.g. older worker hasn't seen v2026-06-24-04 yet), the in-flow affordance still renders rather than mysteriously disappearing. The 'locked'/'hidden' codes are correctly treated as OFF.",
+    "CollabBar.tsx:36-37 — combining the caller's `hideShare/hideCall` prop with the ACM flag via boolean AND is correct; gives admin a hard kill-switch via ACM but lets individual screens still opt out per step.",
+    "atex.tsx:44-72 — openPicker uses Promise.allSettled (not Promise.all) so a 5xx from /ctt/tasks won't break /action-items results and vice-versa. Dedup keys on lower-cased trimmed title — correct for the typical 'same task added in both trackers' case. Empty-title entries are skipped via the early-return in `push`. Cleanup is fine.",
+    "atex.tsx:295-309 — picker empty-state copy still reads 'No tasks found in your Task Tracker yet.' which is now misleading when both /action-items and /ctt/tasks are empty (the user might not realize Action Tracker was even consulted). Consider rewording to 'No tasks found in your Action Tracker or Task Tracker yet.' so the empty state is honest about both sources.",
+    "(tabs)/index.tsx:94 — the Shared Inbox tile filter `if (id === 'inbox') return isFeatureOn('collab_shared_inbox')` is wired before other filters; good. Verified the hook fetches /acm/my-access once on mount and `isOn` is referentially-stable via useCallback so the tile filter doesn't re-render on every keystroke."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter160_collab_acm_atex.py (NEW — 7 tests, all pass)"
+  ],
+  "success_rate": {
+    "backend": "100% (7/7 — iter160 suite)",
+    "frontend": "100% (ATEX picker bug fix verified live on mobile viewport)"
+  },
+  "seed_data_creation": "Seeded 3 transient action items 'TEST_iter160_action_<uuid>' for admin via POST /api/action-items (status='pending'). All 3 were deleted via DELETE /api/action-items/<id> after verification. Admin's persistent action items (Module task example / Plan Q3 OKRs / TEST_Module_Sourced_AIM) were left untouched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "ACM seed has bumped to v2026-06-24-04 with 148 features. The 3 collaboration in-flow toggles (collab_share, collab_expert_call, collab_shared_inbox) live under module_id='collaboration' and are 'full' for all tiers (incl. free). Frontend reads them via /api/acm/my-access through the new useFeatureGate hook (defaults missing keys to ON). ATEX openPicker now merges /action-items + /ctt/tasks?status=all. Login response field is 'session_token'. Admin redirects to /admin after login; navigate to /tools/atex directly (or the user-app root /) to reach the user-side flows. To create an action item via API, use status in ['blocked','cancelled','done','in_progress','pending'] — NOT 'open'. POST /api/action-items returns 201 with id.",
+  "rca_of_issue": "ATEX picker bug RCA: Prior implementation only queried GET /api/ctt/tasks (the project tracker). The admin's task data lives in /api/action-items (universal Action Tracker / inbox), so the picker rendered the 'No tasks found' empty state even though the user had 3+ entries. FIX (confirmed live, /app/frontend/app/tools/atex.tsx:44-72): openPicker now uses Promise.allSettled to fetch BOTH endpoints in parallel, normalises titles, dedupes by lower-cased title, and tags each row with _kind ('action' / 'ctt' / 'routine') so the leading icon switches accordingly (flag-outline for Action-Tracker, ellipse-outline for CTT, repeat for routine CTT). Selecting a row sets taskTitle to the row title and closes the modal — verified."
+}

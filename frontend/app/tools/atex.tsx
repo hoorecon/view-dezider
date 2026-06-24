@@ -44,8 +44,29 @@ export default function ATEXScreen() {
   const openPicker = async () => {
     setPickerOpen(true); setPickLoading(true);
     try {
-      const r = await api.get('/ctt/tasks?status=all');
-      setPickTasks(Array.isArray(r.data) ? r.data : []);
+      // Pull from BOTH the Action Tracker (universal inbox) and the CTT
+      // (project tracker) so any existing task can seed an ATEX estimate.
+      const [actionRes, cttRes] = await Promise.allSettled([
+        api.get('/action-items'),
+        api.get('/ctt/tasks?status=all'),
+      ]);
+      const merged: any[] = [];
+      const seen = new Set<string>();
+      const push = (id: string, title: string, kind: string) => {
+        const t = (title || '').trim();
+        if (!t) return;
+        const key = t.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        merged.push({ id, title: t, _kind: kind });
+      };
+      if (actionRes.status === 'fulfilled' && Array.isArray(actionRes.value.data)) {
+        for (const a of actionRes.value.data) push(a.action_id || a.id, a.title || a.task, 'action');
+      }
+      if (cttRes.status === 'fulfilled' && Array.isArray(cttRes.value.data)) {
+        for (const c of cttRes.value.data) push(c.task_id || c.id, c.task || c.title, c.recurrence_type === 'recurring' || c.type === 'routine' ? 'routine' : 'ctt');
+      }
+      setPickTasks(merged);
     } catch { setPickTasks([]); }
     finally { setPickLoading(false); }
   };
@@ -276,10 +297,10 @@ export default function ATEXScreen() {
             ) : (
               <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator>
                 {pickTasks.map((t) => (
-                  <TouchableOpacity key={t.task_id || t.id} style={s.pkRow}
-                    onPress={() => { setTaskTitle(t.task || t.title || ''); setPickerOpen(false); }}>
-                    <Ionicons name={t.recurrence_type === 'recurring' || t.type === 'routine' ? 'repeat' : 'ellipse-outline'} size={14} color="#2563EB" />
-                    <Text style={s.pkRowText} numberOfLines={2}>{t.task || t.title || 'Untitled'}</Text>
+                  <TouchableOpacity key={t.id || t.title} style={s.pkRow}
+                    onPress={() => { setTaskTitle(t.title || ''); setPickerOpen(false); }}>
+                    <Ionicons name={t._kind === 'routine' ? 'repeat' : t._kind === 'action' ? 'flag-outline' : 'ellipse-outline'} size={14} color="#2563EB" />
+                    <Text style={s.pkRowText} numberOfLines={2}>{t.title || 'Untitled'}</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>

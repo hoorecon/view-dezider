@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StepShareModal } from './StepShareModal';
 import { AppointmentSchedulerModal } from './AppointmentSchedulerModal';
+import { useFeatureGate } from '../utils/useFeatureGate';
 
 interface CollabBarProps {
   module: 'conflict-breaker' | 'pros-cons' | 'swot' | 'solution-finder' | 'goal-setter' | 'my-dezider';
@@ -29,17 +30,21 @@ export const CollabBar: React.FC<CollabBarProps> = ({
 }) => {
   const [showShare, setShowShare] = useState(false);
   const [showCall, setShowCall] = useState(false);
+  const { isOn } = useFeatureGate();
   if (!decisionId) return null;
+  // Combine caller's prop with the central ACM toggle (Collaboration module).
+  const showShareBtn = !hideShare && isOn('collab_share');
+  const showCallBtn = !hideCall && isOn('collab_expert_call');
   return (
     <>
       <View style={s.row}>
-        {!hideShare && (
+        {showShareBtn && (
           <TouchableOpacity testID="collab-share-btn" style={[s.btn, { borderColor: '#0EA5E9' }]} onPress={() => setShowShare(true)}>
             <Ionicons name="share-social" size={14} color="#0EA5E9" />
             <Text style={[s.btnText, { color: '#0EA5E9' }]}>Share this step</Text>
           </TouchableOpacity>
         )}
-        {!hideCall && (
+        {showCallBtn && (
           <TouchableOpacity testID="collab-call-btn" style={[s.btn, { borderColor: '#10B981' }]} onPress={() => setShowCall(true)}>
             <Ionicons name="videocam" size={14} color="#10B981" />
             <Text style={[s.btnText, { color: '#10B981' }]}>Schedule call</Text>

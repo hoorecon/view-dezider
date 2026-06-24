@@ -24,6 +24,7 @@ import { DecisionProvider, useDecision } from '../../src/context/DecisionContext
 import { styles } from '../../src/styles/decisionStyles';
 import { calculateRatingsFromOrder } from '../../src/utils/decisionHelpers';
 import { safeBack, goHome } from '../../src/utils/navigation';
+import { useFeatureGate } from '../../src/utils/useFeatureGate';
 import api from '../../src/utils/api';
 
 // Step components
@@ -55,6 +56,7 @@ function PRRDecisionDetailInner() {
 
   const [showCLD, setShowCLD] = useState(false);
   const [showCallModal, setShowCallModal] = useState(false);
+  const { isOn: isFeatureOn } = useFeatureGate();
 
   // Inline title editor — pencil icon toggles a TextInput in place of the
   // static title. Used heavily by the "Fresh Decision" path where the title
@@ -183,13 +185,15 @@ function PRRDecisionDetailInner() {
         </TouchableOpacity>
       )}
       {/* Call Expert button */}
+      {isFeatureOn('collab_expert_call') && (
       <TouchableOpacity
         style={[styles.shareStepBtn, { marginRight: 4, backgroundColor: '#DCFCE7' }]}
         onPress={() => setShowCallModal(true)}
       >
         <Ionicons name="videocam-outline" size={16} color="#16A34A" />
       </TouchableOpacity>
-      {currentStep >= 2 && currentStep <= 9 && (
+      )}
+      {currentStep >= 2 && currentStep <= 9 && isFeatureOn('collab_share') && (
         <TouchableOpacity
           style={styles.shareStepBtn}
           onPress={() => setShareModalVisible(true)}

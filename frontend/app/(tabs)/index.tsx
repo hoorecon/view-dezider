@@ -22,6 +22,7 @@ import { Card } from '../../src/components/Card';
 import api from '../../src/utils/api';
 import { FontScaleButton } from '../../src/components/FontScaleButton';
 import { useDashboardTiles } from '../../src/utils/useDashboardTiles';
+import { useFeatureGate } from '../../src/utils/useFeatureGate';
 import { TILE_META, DEFAULT_LAYOUT, LayoutSection, chunk } from '../../src/config/dashboardTiles';
 
 interface Stats {
@@ -76,6 +77,7 @@ export default function HomeScreen() {
   // inter-module navigation (e.g. Goal Setter is still reachable from
   // inside GEM even when `dash_goal_setter` is locked).
   const { isTileOn } = useDashboardTiles();
+  const { isOn: isFeatureOn } = useFeatureGate();
 
   // Dashboard layout (section order, display names, tile→section assignment).
   // Admin-configurable via /admin/dashboard-layout; falls back to DEFAULT_LAYOUT.
@@ -88,6 +90,8 @@ export default function HomeScreen() {
   const tileVisible = (id: string): boolean => {
     const m = TILE_META[id];
     if (!m) return false;
+    // Shared Inbox is centrally controlled by the Collaboration ACM toggle.
+    if (id === 'inbox') return isFeatureOn('collab_shared_inbox');
     return m.alwaysOn ? true : isTileOn(id);
   };
   // A section renders when its `dash_section_<id>` flag is ON and it still has
