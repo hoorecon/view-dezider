@@ -167,6 +167,7 @@ from routes.audit_trail import router as audit_trail_router
 from routes.face_auth import router as face_auth_router
 from routes.social_learning import router as social_learning_router
 from routes.acm import router as acm_router
+from routes.dashboard_layout import router as dashboard_layout_router
 from routes.emotional_gatekeeper import router as emotional_gatekeeper_router
 from routes.aala import router as aala_router  # noqa: F811 — re-imported below near related routers
 from routes.lifestyle_eval import router as lee_router
@@ -270,6 +271,7 @@ api_router.include_router(audit_trail_router)
 api_router.include_router(face_auth_router)
 api_router.include_router(social_learning_router)
 api_router.include_router(acm_router)
+api_router.include_router(dashboard_layout_router)
 api_router.include_router(emotional_gatekeeper_router)
 api_router.include_router(aala_router)
 api_router.include_router(lee_router)

@@ -1,0 +1,44 @@
+{
+  "summary": "Iter 155 — Verified the new admin-configurable Home dashboard layout feature (Expo + FastAPI). Backend: 8/8 pytest cases pass against the public EXPO_BACKEND_URL covering GET /api/dashboard-layout (auth required, returns 9 default sections for both admin and a fresh non-admin user), PUT /api/admin/dashboard-layout (200 for admin with rename+move+reorder persistence verified via re-fetch; 403 for non-admin; 400 for empty or missing sections payload), and POST /api/admin/dashboard-layout/reset (200 admin / 403 non-admin / restores 9 default sections). Frontend: Home dashboard regression after data-driven refactor PASSES — all 9 sections render with sequential auto-numbering '1 · Self Discovery' through '9 · More Tools' with no gaps, no JS crash, no red-screen. Admin editor at /admin/dashboard-layout loads all 9 section rows with correct emoji, name, module counts (2,4,2,2,6,8,4,4,9 — matches DEFAULT_LAYOUT exactly), drag handle, and 'Modules' button; the Modules modal opens for 'More Tools' and lists all 9 tiles (Shared Inbox, Notifications, Analytics, Contacts, Calendar, AI Assistant, Social Learning, CLD Engine, Subscription); the Move-to-section picker opens and lists the other 8 sections (correctly excluding the source section); Save + Reset buttons visible; auto-numbering tip rendered. End-to-end: PUTting {name:'E2E Tools Renamed' for more_tools, subscription moved to self_discovery} and then refreshing the Home dashboard correctly shows '9 · E2E Tools Renamed' with the original 'More Tools' label gone; subsequent reset endpoint restores the original layout (visible as '9 · More Tools' on refresh). No deprecated Expo packages observed in files of reference. No SafeAreaView / RN issues. Login form lacks testIDs (still works via DOM input fallback).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter155_dashboard_layout.py",
+    "/app/test_reports/pytest/iter155.xml"
+  ],
+  "action_items": [
+    "Optional: add testIDs to /admin/dashboard-layout — section-row-<id>, section-name-input-<id>, section-emoji-input-<id>, modules-btn-<id>, tile-row-<id>, move-btn-<id>, picker-row-<id>, save-button, reset-button — so future automation can drive the editor without DOM nth-of-type fallbacks.",
+    "Optional: add testIDs to the login form (login-email, login-password, login-submit). Still missing in 2026-06 — automation has to query_selector_all('input') and click 'Sign in' by role/text.",
+    "Optional UX (no longer blocking): super_admin still lands on /admin after login; user-facing Home with the 9-section layout is reachable at '/'. Confirmed reflecting layout edits correctly on refresh."
+  ],
+  "critical_code_review_comments": [
+    "backend/routes/dashboard_layout.py:24-46 — DEFAULT_SECTIONS exactly matches frontend DEFAULT_LAYOUT (same 9 ids, same tile assignments). Single source of truth duplication is intentional and consistent.",
+    "backend/routes/dashboard_layout.py:65-96 — PUT cleans payload: drops sections without an id, dedupes by id, coerces emoji/name to strings, filters non-string tiles. Persists with updated_at + updated_by. No tile-id validation against KNOWN_TILES — admin can technically save an unknown tile id, which would be silently ignored by the frontend renderer (TILE_META[id] missing). Acceptable; could optionally filter to known ids.",
+    "backend/routes/dashboard_layout.py:62 — GET excludes Mongo _id via projection.",
+    "frontend/app/admin/dashboard-layout.tsx:53 — useFocusEffect reloads layout every time the screen is focused (good — ensures admin sees latest after a save and re-entry).",
+    "frontend/app/admin/dashboard-layout.tsx:144-241 — Wrapped in GestureHandlerRootView (required by react-native-draggable-flatlist on web).",
+    "frontend/app/admin/dashboard-layout.tsx:106 — editingLive re-resolves the section from `sections` so module-list stays in sync after a move; correct.",
+    "frontend/src/config/dashboardTiles.ts:98-108 — DEFAULT_LAYOUT 9 sections × tile lists match backend DEFAULT_SECTIONS exactly.",
+    "frontend/app/(tabs)/index.tsx:78-95 — Section visibility is the conjunction of `dash_section_<id>` ACM flag AND ≥1 visible tile; auto-numbering is based on the filtered list so hiding a section closes the gap. Verified on live UI (1..9 sequential with no gaps).",
+    "Backend correctly returns 401 (not 403) for unauthenticated GET /api/dashboard-layout — matches existing app-wide auth dependency behaviour."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter155_dashboard_layout.py (new — 8 pytest cases, all PASS)"
+  ],
+  "success_rate": {
+    "backend": "100% (8/8)",
+    "frontend": "100% on covered flows (login → Home renders 9 auto-numbered sections; /admin/dashboard-layout loads with correct counts; Modules modal + Move picker open; PUT-then-refresh end-to-end reflects rename and module move; reset restores defaults)"
+  },
+  "seed_data_creation": "Registered one test user (iter155_user@test.com / UserPass2026!) for the non-admin authorization tests. End-to-end mutation reset to defaults at the end of both pytest run and the browser E2E flow — no residual layout changes.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Dashboard layout config lives in MongoDB `app_config` with key 'dashboard_layout'. Endpoints: GET /api/dashboard-layout (auth — any user), PUT /api/admin/dashboard-layout (admin only — body {sections:[...]}), POST /api/admin/dashboard-layout/reset (admin only — deletes the doc so DEFAULT_SECTIONS are served). Login response token field is `session_token` (Bearer). Super admin (super@test.com) lands on /admin after login — to see the user-facing 9-section Home navigate to '/'. Auto-numbering in the Home header uses U+00B7 middle-dot like '9 · More Tools'. The admin editor uses react-native-draggable-flatlist (long-press the reorder-three icon for ~150ms to drag) — playwright cannot easily exercise the long-press DnD on web, so reorder was verified via the PUT API instead. Modules modal Move button opens a section picker that excludes the source section (8 destinations of 9 total). User register API requires both `name` (and `full_name`) fields — `name` is required."
+}

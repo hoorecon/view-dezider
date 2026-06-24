@@ -9848,3 +9848,83 @@ agent_communication:
       dashboard_tiles grouping to the live Home dashboard (Option A, version 2026-06-24-01) +
       added "Apply to all user types" in /admin/acm + section-level dashboard gating.
       Admin: super@test.com / SuperPass2026!
+
+#====================================================================================================
+# Iter 155 (fork) — Data-driven dashboard layout: admin rename/reorder/move + auto-numbering
+#====================================================================================================
+backend:
+  - task: "Dashboard layout config API (GET/PUT/reset)"
+    implemented: true
+    working: "NA"
+    file: "backend/routes/dashboard_layout.py, backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          New router: GET /api/dashboard-layout (any auth user) returns effective layout
+          (sections[] with id/emoji/name/tiles, in order). PUT /api/admin/dashboard-layout
+          (admin) saves; POST /api/admin/dashboard-layout/reset restores defaults. Stored in
+          app_config key 'dashboard_layout'. Verified via httpx: login→GET(9 sections)→PUT(rename)
+          →persisted→reset all 200. Auth token field is `session_token`.
+
+frontend:
+  - task: "Home dashboard rendered from layout config (auto-numbered) + tile registry"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/(tabs)/index.tsx, frontend/src/config/dashboardTiles.ts"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Replaced the hardcoded §1–§9 JSX with renderDashboardSections() driven by the layout
+          config + TILE_META registry. Visible sections auto-number 1..N (no gaps when sections are
+          hidden). Visibility still via ACM (isTileOn / dash_section_*). Always-on utility tiles
+          (orgs/values/atex/inbox/notifications/analytics) render without ACM gating. Lint clean.
+          REGRESSION RISK: this is the app home — verify all default sections + tiles still render
+          and navigate correctly for a normal user.
+
+  - task: "Admin Dashboard Sections editor (rename + drag reorder + move modules)"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/admin/dashboard-layout.tsx, frontend/app/admin/index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          New screen /admin/dashboard-layout (Essentials group, 'Dashboard Sections' card). Uses
+          react-native-draggable-flatlist: drag to reorder sections, inline rename + emoji edit,
+          a modal per section to reorder tiles (drag) and 'Move' a tile to another section. Save →
+          PUT. Reset → defaults. Verify: open screen, rename a section, reorder, move a module, Save,
+          then confirm the Home dashboard reflects the new name/order/placement.
+
+metadata:
+  created_by: "main_agent"
+  version: "fork-iter-155"
+  test_sequence: 155
+
+test_plan:
+  current_focus:
+    - "Home dashboard still renders all default sections/tiles for a normal user (no regression)"
+    - "Admin Dashboard Sections editor: rename, drag-reorder, move module, Save persists"
+    - "Auto-numbering reflects only visible sections"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Fork iter 155. Dashboard is now data-driven (admin can rename section titles, drag-reorder
+      sections, and move modules between sections; numbering auto 1..N). Backend GET/PUT/reset
+      verified via curl. Need frontend verification — esp. that the Home dashboard has NO regression
+      (all tiles render + navigate) and the admin editor saves correctly. Admin: super@test.com /
+      SuperPass2026!. Note super_admin routes to /admin; use 'User View' or a normal account for Home.

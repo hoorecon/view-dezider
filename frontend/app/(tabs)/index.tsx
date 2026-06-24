@@ -22,6 +22,7 @@ import { Card } from '../../src/components/Card';
 import api from '../../src/utils/api';
 import { FontScaleButton } from '../../src/components/FontScaleButton';
 import { useDashboardTiles } from '../../src/utils/useDashboardTiles';
+import { TILE_META, DEFAULT_LAYOUT, LayoutSection, chunk } from '../../src/config/dashboardTiles';
 
 interface Stats {
   decisions: { total: number; completed: number };
@@ -76,31 +77,85 @@ export default function HomeScreen() {
   // inside GEM even when `dash_goal_setter` is locked).
   const { isTileOn } = useDashboardTiles();
 
-  // Section-level gating for the 9 dashboard sections. A section is shown when
-  // its `dash_section_<id>` flag is ON *and* it still has at least one visible
-  // tile (so disabling every child tile, or the section itself, also removes
-  // the now-empty header). Sections that contain always-on utility tiles
-  // (Execute & Track, More Tools) only hide via the explicit section flag.
-  const SECTION_TILES: Record<string, { always: boolean; tiles: string[] }> = {
-    self_discovery:        { always: false, tiles: ['pna', 'gem'] },
-    decision_kickstarters: { always: false, tiles: ['instant_dezider', 'my_dezider', 'pros_cons', 'emotional_gatekeeper'] },
-    problem_solvers:       { always: false, tiles: ['solution_finder', 'conflict_breaker'] },
-    goals_manifestation:   { always: false, tiles: ['goal_setter', 'goal_manifestation'] },
-    execute_track:         { always: true,  tiles: ['action_tracker', 'ctt', 'lifestyle_dezider'] },
-    reflection_awareness:  { always: false, tiles: ['public_pulse', 'outlet_analyzer', 'aim_manager', 'capabilities_index', 'lifestyle_designer', 'lifestyle_analyzer', 'consciousness_diary', 'unconditional_happiness'] },
-    collaboration_mgmt:    { always: false, tiles: ['collaboration_hub', 'aala', 'time_dezider', 'gem_flight'] },
-    solution_space:        { always: false, tiles: ['solution_store', 'review_net', 'deo', 'time_store'] },
-    more_tools:            { always: true,  tiles: ['contacts', 'calendar', 'ai_assistant', 'social_learning', 'cld_engine', 'subscription'] },
+  // Dashboard layout (section order, display names, tile→section assignment).
+  // Admin-configurable via /admin/dashboard-layout; falls back to DEFAULT_LAYOUT.
+  const [layout, setLayout] = useState<LayoutSection[]>(DEFAULT_LAYOUT);
+
+  // A tile is visible if it's always-on (not ACM-gated) or its ACM flag is on.
+  const tileVisible = (id: string): boolean => {
+    const m = TILE_META[id];
+    if (!m) return false;
+    return m.alwaysOn ? true : isTileOn(id);
   };
-  const showSection = (sid: string): boolean => {
-    if (!isTileOn(`dash_section_${sid}`)) return false;
-    const cfg = SECTION_TILES[sid];
-    if (!cfg) return true;
-    if (cfg.always) return true;
-    return cfg.tiles.some((t) => isTileOn(t));
+  // A section renders when its `dash_section_<id>` flag is ON and it still has
+  // at least one visible tile (so disabling every tile, or the section itself,
+  // also removes the now-empty header).
+  const showSection = (sec: LayoutSection): boolean => {
+    if (!isTileOn(`dash_section_${sec.id}`)) return false;
+    return sec.tiles.some((t) => tileVisible(t));
   };
   const showQuickLinks = isTileOn('quick_links')
     && (isTileOn('ql_decision_style') || isTileOn('ql_today_plan') || isTileOn('ql_eft'));
+
+  // Render a single dashboard tile from the registry (gated by ACM unless always-on).
+  const renderTile = (id: string) => {
+    const m = TILE_META[id];
+    if (!m || !tileVisible(id)) return null;
+    if (m.variant === 'colab') {
+      const badge = m.badgeKey === 'inbox' ? inboxPending : m.badgeKey === 'unread' ? unreadCount : 0;
+      const subtitle = m.badgeKey === 'inbox'
+        ? (inboxPending > 0 ? `${inboxPending} pending` : 'No pending')
+        : m.badgeKey === 'unread'
+          ? (unreadCount > 0 ? `${unreadCount} unread` : 'All caught up')
+          : m.subtitle;
+      return (
+        <TouchableOpacity key={id} style={styles.colabCard} onPress={() => router.push(m.route as any)}>
+          <View style={[styles.colabIconWrap, { backgroundColor: m.iconBg }]}>
+            <Ionicons name={m.icon as any} size={22} color={m.iconColor} />
+            {badge > 0 && (
+              <View style={[styles.colabBadge, { backgroundColor: m.iconColor }]}>
+                <Text style={styles.colabBadgeText}>{badge}</Text>
+              </View>
+            )}
+          </View>
+          <Text style={styles.colabTitle}>{m.title}</Text>
+          <Text style={styles.colabSubtitle}>{subtitle}</Text>
+        </TouchableOpacity>
+      );
+    }
+    return (
+      <TouchableOpacity key={id} style={styles.actionCard} onPress={() => router.push(m.route as any)}>
+        <LinearGradient colors={(m.gradient || ['#64748B', '#475569']) as any} style={styles.actionIcon}>
+          <Ionicons name={m.icon as any} size={24} color={COLORS.white} />
+        </LinearGradient>
+        <Text style={styles.actionTitle}>{m.title}</Text>
+        <Text style={styles.actionSubtitle}>{m.subtitle}</Text>
+      </TouchableOpacity>
+    );
+  };
+
+  // Render all visible sections in admin-configured order, auto-numbered 1..N.
+  const renderDashboardSections = () => {
+    let n = 0;
+    return layout.map((sec) => {
+      if (!showSection(sec)) return null;
+      n += 1;
+      const visibleTiles = sec.tiles.filter(tileVisible);
+      const colabTiles = visibleTiles.filter((t) => TILE_META[t]?.variant === 'colab');
+      const actionTiles = visibleTiles.filter((t) => TILE_META[t]?.variant !== 'colab');
+      return (
+        <View key={sec.id}>
+          <Text style={styles.sectionTitle}>{`${sec.emoji ? sec.emoji + ' ' : ''}${n} · ${sec.name}`}</Text>
+          {chunk(colabTiles, 3).map((row, i) => (
+            <View key={`c${i}`} style={styles.colabRow}>{row.map(renderTile)}</View>
+          ))}
+          {chunk(actionTiles, 2).map((row, i) => (
+            <View key={`a${i}`} style={styles.quickActions}>{row.map(renderTile)}</View>
+          ))}
+        </View>
+      );
+    });
+  };
 
   // ---------------------------------------------------------------------------
   // Hydration-safe client mount gate
@@ -210,8 +265,19 @@ export default function HomeScreen() {
     }
   };
 
+  const fetchLayout = async () => {
+    try {
+      const r = await api.get('/dashboard-layout');
+      if (Array.isArray(r.data?.sections) && r.data.sections.length) {
+        setLayout(r.data.sections);
+      }
+    } catch (error) {
+      console.error('Error fetching dashboard layout:', error);
+    }
+  };
+
   const fetchAll = async () => {
-    await Promise.all([fetchStats(), fetchUnreadCount(), fetchInboxCount(), fetchFeatureFlags(), fetchCttStats(), fetchJournalReminders(), fetchQuota()]);
+    await Promise.all([fetchStats(), fetchUnreadCount(), fetchInboxCount(), fetchFeatureFlags(), fetchCttStats(), fetchJournalReminders(), fetchQuota(), fetchLayout()]);
   };
 
   useFocusEffect(
@@ -469,487 +535,11 @@ export default function HomeScreen() {
           </View>
           </>)}
 
-          {/* ══════════ §1 SELF DISCOVERY ══════════ */}
-          {showSection('self_discovery') && (<>
-          <Text style={styles.sectionTitle}>🌌 1 · Self Discovery</Text>
-          <View style={styles.quickActions}>
-            {isTileOn('pna') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/pna' as any)}>
-              <LinearGradient colors={['#4338CA', '#6366F1']} style={styles.actionIcon}>
-                <Ionicons name="layers" size={24} color={COLORS.white} />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>My 360° Life</Text>
-              <Text style={styles.actionSubtitle}>Problems · Needs · Aspirations</Text>
-            </TouchableOpacity>
-            )}
-
-            {isTileOn('gem') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/gem' as any)}>
-              <LinearGradient colors={['#0F766E', '#14B8A6']} style={styles.actionIcon}>
-                <Ionicons name="flag" size={24} color={COLORS.white} />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>GEM</Text>
-              <Text style={styles.actionSubtitle}>Goal Execution Manager</Text>
-            </TouchableOpacity>
-            )}
-          </View>
-          </>)}
-
-          {/* ══════════ §2 DECISION KICKSTARTERS ══════════ */}
-          {showSection('decision_kickstarters') && (<>
-          <Text style={styles.sectionTitle}>🔮 2 · Decision Kickstarters</Text>
-          <View style={styles.quickActions}>
-            {isTileOn('instant_dezider') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/test123' as any)}>
-              <LinearGradient colors={[COLORS.accent, COLORS.accentDark]} style={styles.actionIcon}>
-                <Ionicons name="flash" size={24} color={COLORS.white} />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Instant Dezider</Text>
-              <Text style={styles.actionSubtitle}>Instant decision</Text>
-            </TouchableOpacity>
-            )}
-            {isTileOn('my_dezider') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/dezider-list' as any)}>
-              <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.actionIcon}>
-                <Ionicons name="compass" size={24} color={COLORS.white} />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>MyDezider</Text>
-              <Text style={styles.actionSubtitle}>10-step canonical</Text>
-            </TouchableOpacity>
-            )}
-          </View>
-          <View style={styles.quickActions}>
-            {isTileOn('pros_cons') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/pros-cons-list' as any)}>
-              <LinearGradient colors={['#059669', '#10B981']} style={styles.actionIcon}>
-                <Ionicons name="git-compare" size={24} color={COLORS.white} />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Pros & Cons</Text>
-              <Text style={styles.actionSubtitle}>Two-column starter</Text>
-            </TouchableOpacity>
-            )}
-            {/* SWOT Analysis - hidden for all users per product decision (P0). */}
-            {false && isTileOn('swot') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/swot' as any)}>
-              <LinearGradient colors={['#1E40AF', '#3B82F6']} style={styles.actionIcon}>
-                <Ionicons name="grid" size={24} color={COLORS.white} />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>SWOT Analysis</Text>
-              <Text style={styles.actionSubtitle}>4-quadrant strategic</Text>
-            </TouchableOpacity>
-            )}
-            {/* Emotional Gatekeeper — last tile in Decision Kickstarters
-                (sits next to Pros & Cons in the second row). */}
-            {isTileOn('emotional_gatekeeper') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/emotional-gatekeeper' as any)}>
-              <LinearGradient colors={['#F59E0B', '#D97706']} style={styles.actionIcon}>
-                <Ionicons name="heart-circle" size={24} color={COLORS.white} />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Emotional Gatekeeper</Text>
-              <Text style={styles.actionSubtitle}>Break loops & traps</Text>
-            </TouchableOpacity>
-            )}
-          </View>
-          </>)}
-
-          {/* ══════════ §3 PROBLEM SOLVERS ══════════
-              Renamed from "Inner Wellbeing" — houses Solution Finder + The Conflict Breaker. */}
-          {showSection('problem_solvers') && (<>
-          <Text style={styles.sectionTitle}>❤️ 3 · Problem Solvers</Text>
-          <View style={styles.quickActions}>
-            {isTileOn('solution_finder') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/solution-finder-list' as any)}>
-              <LinearGradient colors={['#7C3AED', '#C084FC']} style={styles.actionIcon}>
-                <Ionicons name="bulb" size={24} color={COLORS.white} />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Solution Finder</Text>
-              <Text style={styles.actionSubtitle}>Concerns → RCA → Plan · ASM</Text>
-            </TouchableOpacity>
-            )}
-            {isTileOn('conflict_breaker') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/conflict-breaker' as any)}>
-              <LinearGradient colors={['#7C2D12', '#DC2626']} style={styles.actionIcon}>
-                <Ionicons name="flash" size={24} color={COLORS.white} />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>The Conflict Breaker</Text>
-              <Text style={styles.actionSubtitle}>Crucial conversations</Text>
-            </TouchableOpacity>
-            )}
-          </View>
-          </>)}
-
-          {/* (Emotional Gatekeeper now lives as the last tile of §2 Decision
-              Kickstarters above. SWOT remains hidden globally.) */}
-
-          {/* ══════════ §4 GOALS & MANIFESTATION ══════════ */}
-          {showSection('goals_manifestation') && (<>
-          <Text style={styles.sectionTitle}>🎯 4 · Goals & Manifestation</Text>
-          <View style={styles.quickActions}>
-            {isTileOn('goal_setter') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/goal-setter' as any)}>
-              <LinearGradient colors={['#059669', '#10B981']} style={styles.actionIcon}>
-                <Ionicons name="flag" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Goal Setter</Text>
-              <Text style={styles.actionSubtitle}>SMART Framework</Text>
-            </TouchableOpacity>
-            )}
-            {isTileOn('goal_manifestation') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/goal-manifestation' as any)}>
-              <LinearGradient colors={['#7C3AED', '#9333EA']} style={styles.actionIcon}>
-                <Ionicons name="sparkles" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Manifestation</Text>
-              <Text style={styles.actionSubtitle}>CAB-FAME 7 stages</Text>
-            </TouchableOpacity>
-            )}
-          </View>
-          </>)}
-
-          {/* ══════════ §5 EXECUTE & TRACK ══════════
-              Order: My Organizations · Values Tracker · Action Tracker ·
-                     Effort Estimation · CTT · Lifestyle Dezider */}
-          {showSection('execute_track') && (<>
-          <Text style={styles.sectionTitle}>✅ 5 · Execute & Track</Text>
-          <View style={styles.quickActions}>
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/orgs' as any)}>
-              <LinearGradient colors={['#4338CA', '#6366F1']} style={styles.actionIcon}>
-                <Ionicons name="business" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>My Organizations</Text>
-              <Text style={styles.actionSubtitle}>7×7 matrix · 6 LeGs goals</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/values' as any)}>
-              <LinearGradient colors={['#0EA5E9', '#0284C7']} style={styles.actionIcon}>
-                <Ionicons name="shield-checkmark" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Values Tracker</Text>
-              <Text style={styles.actionSubtitle}>8 VEALES Collaboration Principles</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.quickActions}>
-            {isTileOn('action_tracker') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/action-center' as any)}>
-              <LinearGradient colors={['#0D9488', '#0F766E']} style={styles.actionIcon}>
-                <Ionicons name="checkmark-done-circle" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Action Tracker</Text>
-              <Text style={styles.actionSubtitle}>Universal inbox</Text>
-            </TouchableOpacity>
-            )}
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/atex' as any)}>
-              <LinearGradient colors={['#7C3AED', '#A855F7']} style={styles.actionIcon}>
-                <Ionicons name="calculator" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Effort Estimation</Text>
-              <Text style={styles.actionSubtitle}>ATEX · EE+MB+PB+RM=TT</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.quickActions}>
-            {isTileOn('ctt') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/ctt' as any)}>
-              <LinearGradient colors={['#1E3A5F', '#2D5F8B']} style={styles.actionIcon}>
-                <Ionicons name="clipboard" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>CTT</Text>
-              <Text style={styles.actionSubtitle}>Project tracker</Text>
-            </TouchableOpacity>
-            )}
-            {isTileOn('lifestyle_dezider') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/lifestyle' as any)}>
-              <LinearGradient colors={['#065F46', '#059669']} style={styles.actionIcon}>
-                <Ionicons name="leaf" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Lifestyle Dezider</Text>
-              <Text style={styles.actionSubtitle}>Decide a change</Text>
-            </TouchableOpacity>
-            )}
-          </View>
-          </>)}
-
-          {/* ══════════ §6 REFLECTION & AWARENESS (8 tiles, consolidated) ══════════
-              Order: Life Mirror · Outlet Analyzer · AIM Manager ·
-                     Capabilities & Resources Index · Lifestyle Designer ·
-                     Lifestyle Analyzer · Consciousness Diary · Unconditional Happiness */}
-          {showSection('reflection_awareness') && (<>
-          <Text style={styles.sectionTitle}>🪞 6 · Reflection & Awareness</Text>
-          <View style={styles.quickActions}>
-            {isTileOn('public_pulse') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/public-pulse' as any)}>
-              <LinearGradient colors={['#6366F1', '#8B5CF6']} style={styles.actionIcon}>
-                <Ionicons name="sparkles" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Life Mirror</Text>
-              <Text style={styles.actionSubtitle}>Self-discovery quiz</Text>
-            </TouchableOpacity>
-            )}
-            {isTileOn('outlet_analyzer') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/eg-outlet' as any)}>
-              <LinearGradient colors={['#10B981', '#059669']} style={styles.actionIcon}>
-                <Ionicons name="heart-circle" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Outlet Analyzer</Text>
-              <Text style={styles.actionSubtitle}>Coping strategies</Text>
-            </TouchableOpacity>
-            )}
-          </View>
-          <View style={styles.quickActions}>
-            {isTileOn('aim_manager') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/eg-aim' as any)}>
-              <LinearGradient colors={['#F97316', '#EA580C']} style={styles.actionIcon}>
-                <Ionicons name="flame" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>AIM Manager</Text>
-              <Text style={styles.actionSubtitle}>Addictions · Irritations</Text>
-            </TouchableOpacity>
-            )}
-            {isTileOn('capabilities_index') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/tepfi')}>
-              <LinearGradient colors={['#7C3AED', '#A855F7']} style={styles.actionIcon}>
-                <Ionicons name="cube" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Capabilities & Resources Index</Text>
-              <Text style={styles.actionSubtitle}>Resource tracking</Text>
-            </TouchableOpacity>
-            )}
-          </View>
-          <View style={styles.quickActions}>
-            {isTileOn('lifestyle_designer') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/lifestyle-designer' as any)}>
-              <LinearGradient colors={['#7C2D12', '#EA580C']} style={styles.actionIcon}>
-                <Ionicons name="color-palette" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Lifestyle Designer</Text>
-              <Text style={styles.actionSubtitle}>Design daily routine</Text>
-            </TouchableOpacity>
-            )}
-            {isTileOn('lifestyle_analyzer') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/lifestyle-eval' as any)}>
-              <LinearGradient colors={['#7C3AED', '#A855F7']} style={styles.actionIcon}>
-                <Ionicons name="analytics" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Lifestyle Analyzer</Text>
-              <Text style={styles.actionSubtitle}>Actual vs Planned</Text>
-            </TouchableOpacity>
-            )}
-          </View>
-          <View style={styles.quickActions}>
-            {isTileOn('consciousness_diary') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/consciousness-diary' as any)}>
-              <LinearGradient colors={['#1E1B4B', '#3730A3']} style={styles.actionIcon}>
-                <Ionicons name="eye" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Consciousness Diary</Text>
-              <Text style={styles.actionSubtitle}>Self-awareness journal</Text>
-            </TouchableOpacity>
-            )}
-            {isTileOn('unconditional_happiness') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/unconditional-happiness' as any)}>
-              <LinearGradient colors={['#EC4899', '#F472B6']} style={styles.actionIcon}>
-                <Ionicons name="happy" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Unconditional Happiness</Text>
-              <Text style={styles.actionSubtitle}>Celebrate · Streaks</Text>
-            </TouchableOpacity>
-            )}
-          </View>
-          </>)}
-
-          {/* ══════════ §7 COLLABORATION & MANAGEMENT ══════════ */}
-          {showSection('collaboration_mgmt') && (<>
-          <Text style={styles.sectionTitle}>👥 7 · Collaboration & Management</Text>
-          <View style={styles.quickActions}>
-            {isTileOn('collaboration_hub') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/collaborate' as any)}>
-              <LinearGradient colors={['#7C3AED', '#A855F7']} style={styles.actionIcon}>
-                <Ionicons name="git-network" size={24} color={COLORS.white} />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Collaboration Hub</Text>
-              <Text style={styles.actionSubtitle}>Group decisions · Contacts</Text>
-            </TouchableOpacity>
-            )}
-            {isTileOn('aala') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/aala' as any)}>
-              <LinearGradient colors={['#0EA5E9', '#2563EB']} style={styles.actionIcon}>
-                <Ionicons name="wallet" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>AALA</Text>
-              <Text style={styles.actionSubtitle}>Assets & Liabilities</Text>
-            </TouchableOpacity>
-            )}
-          </View>
-          <View style={styles.quickActions}>
-            {isTileOn('time_dezider') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/time-dezider' as any)}>
-              <LinearGradient colors={['#7C3AED', '#A855F7']} style={styles.actionIcon}>
-                <Ionicons name="time-outline" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Time Intelligence</Text>
-              <Text style={styles.actionSubtitle}>Daily schedule AI</Text>
-            </TouchableOpacity>
-            )}
-            {isTileOn('gem_flight') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/gem-flight' as any)}>
-              <LinearGradient colors={['#0C1445', '#3949AB']} style={styles.actionIcon}>
-                <Ionicons name="airplane" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>GEM Flight Model</Text>
-              <Text style={styles.actionSubtitle}>Pilot your goals</Text>
-            </TouchableOpacity>
-            )}
-          </View>
-          </>)}
-
-          {/* ══════════ §8 SOLUTION SPACE (moved here from §3) ══════════
-              Now placed after Collaboration & Management and above More
-              Tools. DEO + Time Store relocated here from More Tools.
-              Solution Finder MOVED OUT to §2 Decision Kickstarters as
-              the 4th card (where SWOT sat before). */}
-          {showSection('solution_space') && (<>
-          <Text style={styles.sectionTitle}>🧩 8 · Solution Space</Text>
-          <View style={styles.quickActions}>
-            {isTileOn('solution_store') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/solutions-store' as any)}>
-              <LinearGradient colors={['#7C3AED', '#A855F7']} style={styles.actionIcon}>
-                <Ionicons name="storefront" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Solution Store</Text>
-              <Text style={styles.actionSubtitle}>Products & services</Text>
-            </TouchableOpacity>
-            )}
-            {isTileOn('review_net') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/review-net' as any)}>
-              <LinearGradient colors={['#F59E0B', '#FBBF24']} style={styles.actionIcon}>
-                <Ionicons name="star" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Review Net</Text>
-              <Text style={styles.actionSubtitle}>Factor-wise ratings</Text>
-            </TouchableOpacity>
-            )}
-          </View>
-          <View style={styles.quickActions}>
-            {isTileOn('deo') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/deo' as any)}>
-              <LinearGradient colors={['#059669', '#10B981']} style={styles.actionIcon}>
-                <Ionicons name="git-network" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>DEO</Text>
-              <Text style={styles.actionSubtitle}>Import & API</Text>
-            </TouchableOpacity>
-            )}
-            {isTileOn('time_store') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/time-store' as any)}>
-              <LinearGradient colors={['#DC2626', '#EF4444']} style={styles.actionIcon}>
-                <Ionicons name="cart-outline" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Time Store</Text>
-              <Text style={styles.actionSubtitle}>Buy back time</Text>
-            </TouchableOpacity>
-            )}
-          </View>
-          </>)}
-
-          {/* ══════════ §9 MORE TOOLS (secondary utilities) ══════════ */}
-          {showSection('more_tools') && (<>
-          <Text style={styles.sectionTitle}>🧰 9 · More Tools</Text>
-          <View style={styles.colabRow}>
-            <TouchableOpacity style={styles.colabCard} onPress={() => router.push('/inbox')}>
-              <View style={[styles.colabIconWrap, { backgroundColor: 'rgba(99,102,241,0.1)' }]}>
-                <Ionicons name="mail-unread" size={22} color="#6366F1" />
-                {inboxPending > 0 && (
-                  <View style={[styles.colabBadge, { backgroundColor: '#6366F1' }]}>
-                    <Text style={styles.colabBadgeText}>{inboxPending}</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.colabTitle}>Shared Inbox</Text>
-              <Text style={styles.colabSubtitle}>
-                {inboxPending > 0 ? `${inboxPending} pending` : 'No pending'}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.colabCard} onPress={() => router.push('/notifications')}>
-              <View style={[styles.colabIconWrap, { backgroundColor: 'rgba(245,158,11,0.1)' }]}>
-                <Ionicons name="notifications" size={22} color="#F59E0B" />
-                {unreadCount > 0 && (
-                  <View style={[styles.colabBadge, { backgroundColor: '#F59E0B' }]}>
-                    <Text style={styles.colabBadgeText}>{unreadCount}</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.colabTitle}>Notifications</Text>
-              <Text style={styles.colabSubtitle}>
-                {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.colabCard} onPress={() => router.push('/analytics')}>
-              <View style={[styles.colabIconWrap, { backgroundColor: 'rgba(16,185,129,0.1)' }]}>
-                <Ionicons name="bar-chart" size={22} color="#10B981" />
-              </View>
-              <Text style={styles.colabTitle}>Analytics</Text>
-              <Text style={styles.colabSubtitle}>Life areas</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.quickActions}>
-            {isTileOn('contacts') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/contacts' as any)}>
-              <LinearGradient colors={['#1E293B', '#475569']} style={styles.actionIcon}>
-                <Ionicons name="people" size={24} color={COLORS.white} />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Contacts</Text>
-              <Text style={styles.actionSubtitle}>Manage participants</Text>
-            </TouchableOpacity>
-            )}
-            {isTileOn('calendar') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/calendar-view')}>
-              <LinearGradient colors={['#4285F4', '#5B9EF4']} style={styles.actionIcon}>
-                <Ionicons name="calendar" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Calendar</Text>
-              <Text style={styles.actionSubtitle}>Schedules & deadlines</Text>
-            </TouchableOpacity>
-            )}
-          </View>
-          <View style={styles.quickActions}>
-            {isTileOn('ai_assistant') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/ai-assistant' as any)}>
-              <LinearGradient colors={['#312E81', '#818CF8']} style={styles.actionIcon}>
-                <Ionicons name="chatbubble-ellipses" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>AI Assistant</Text>
-              <Text style={styles.actionSubtitle}>Cross-module advisor</Text>
-            </TouchableOpacity>
-            )}
-            {isTileOn('social_learning') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/social-learning' as any)}>
-              <LinearGradient colors={['#7C3AED', '#A855F7']} style={styles.actionIcon}>
-                <Ionicons name="newspaper" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Social Learning</Text>
-              <Text style={styles.actionSubtitle}>News → templates</Text>
-            </TouchableOpacity>
-            )}
-          </View>
-          <View style={styles.quickActions}>
-            {isTileOn('cld_engine') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/cld-engine' as any)}>
-              <LinearGradient colors={['#1E40AF', '#3B82F6']} style={styles.actionIcon}>
-                <Ionicons name="git-network-outline" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>CLD Engine</Text>
-              <Text style={styles.actionSubtitle}>Systems thinking</Text>
-            </TouchableOpacity>
-            )}
-            {isTileOn('subscription') && (
-            <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/tools/subscription' as any)}>
-              <LinearGradient colors={['#1E293B', '#334155']} style={styles.actionIcon}>
-                <Ionicons name="diamond-outline" size={24} color="#FFF" />
-              </LinearGradient>
-              <Text style={styles.actionTitle}>Subscription</Text>
-              <Text style={styles.actionSubtitle}>Credits & plans</Text>
-            </TouchableOpacity>
-            )}
-          </View>
-          </>)}
+          {/* ══════════ Dashboard sections (admin-configurable layout) ══════════
+              Order, display names and tile placement come from
+              /admin/dashboard-layout; visibility from ACM (dash_section_* / dash_*).
+              Visible sections auto-number 1..N (no gaps when hidden). */}
+          {renderDashboardSections()}
 
           {/* Stats */}
           <Text style={styles.sectionTitle}>Your Progress</Text>
