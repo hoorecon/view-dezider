@@ -20,7 +20,7 @@ Subscription Plans (for paid): starter, pro, enterprise, api
 # Bump this version whenever ACM_MODULES / USER_TYPES / SUBSCRIPTION_PLANS change.
 # Boot-time auto-seed (core/acm_engine.py) reseeds DB iff stored version < this one.
 # Format: "YYYY-MM-DD-N" — human-readable, monotonically sortable.
-ACM_SEED_VERSION = "2026-06-24-05"  # +collaboration: knowledge_marketplace, my_earnings, karma_fame (profile modules, disabled by default)
+ACM_SEED_VERSION = "2026-06-24-06"  # +subscription.sub_auto_renew (disabled by default until Razorpay approves recurring)
 
 # Release stages (ordered by visibility)
 RELEASE_STAGES = [
@@ -1482,6 +1482,24 @@ ACM_MODULES = [
                     "free": _full(), "trial": _full(),
                     "paid_starter": _full(), "paid_pro": _full(),
                     "paid_enterprise": _full(), "paid_api": _full(),
+                },
+            },
+            # Auto-renew (Razorpay recurring) — DISABLED by default for all
+            # user types until Razorpay approves the subscriptions/mandate
+            # product. When OFF, the "Subscribe — auto-renew" button is hidden
+            # and users see only the "Pay once (1 month)" option.
+            {
+                "feature_id": "sub_auto_renew",
+                "feature_name": "Subscribe — Auto-Renew (Razorpay recurring)",
+                "release_stage": "beta",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _hidden(), "integration_tester": _hidden(),
+                    "alpha": _hidden(), "beta": _hidden(),
+                    "free": _hidden(), "trial": _hidden(),
+                    "paid_starter": _hidden(), "paid_pro": _hidden(),
+                    "paid_enterprise": _hidden(), "paid_api": _hidden(),
                 },
             },
         ],

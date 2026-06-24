@@ -14,6 +14,7 @@ import { COLORS } from '../src/constants/colors';
 import api from '../src/utils/api';
 import { showAlert } from '../src/utils/alert';
 import { useAuthStore } from '../src/store/authStore';
+import { useFeatureGate } from '../src/utils/useFeatureGate';
 import { safeBack } from '../src/utils/navigation';
 
 const BASE_URL = (Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL as string) || process.env.EXPO_PUBLIC_BACKEND_URL || '';
@@ -36,17 +37,17 @@ const STATUS_LABEL: Record<string, { label: string; color: string }> = {
 export default function SubscriptionPlansScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const role = (user?.role || '').toLowerCase();
-  const isSuperAdmin = role === 'super_admin';
+  const { isOn: isFeatureOn } = useFeatureGate();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [plans, setPlans] = useState<any[]>([]);
   const [me, setMe] = useState<any>(null);
-  const [adminPlans, setAdminPlans] = useState<any[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [savingId, setSavingId] = useState<string | null>(null);
-  const [syncing, setSyncing] = useState(false);
+
+  // Auto-renew (Razorpay recurring) is gated centrally via ACM › Credits &
+  // Subscription › sub_auto_renew — OFF by default until Razorpay approves it.
+  const autoRenewEnabled = isFeatureOn('sub_auto_renew');
 
   const fetchData = async () => {
     try {
@@ -56,12 +57,6 @@ export default function SubscriptionPlansScreen() {
       ]);
       setPlans(pRes.data?.plans || []);
       setMe(mRes.data);
-      if (isSuperAdmin) {
-        try {
-          const aRes = await api.get('/admin/subscriptions/plans');
-          setAdminPlans(aRes.data?.plans || []);
-        } catch { /* ignore */ }
-      }
     } catch { /* silent */ } finally {
       setLoading(false);
       setRefreshing(false);
@@ -125,38 +120,6 @@ export default function SubscriptionPlansScreen() {
     ]);
   };
 
-  const saveAdminPlan = async (p: any) => {
-    setSavingId(p.plan_id);
-    try {
-      const res = await api.put(`/admin/subscriptions/plans/${p.plan_id}`, {
-        credits_per_month: Number(p.credits_per_month),
-        active: !!p.active,
-        name: p.name,
-      });
-      setAdminPlans(prev => prev.map(x => x.plan_id === p.plan_id ? res.data : x));
-      showAlert('Saved', `${res.data.name} updated.`);
-      fetchData();
-    } catch (e: any) {
-      showAlert('Save failed', e?.response?.data?.detail || 'Could not update plan.');
-    } finally {
-      setSavingId(null);
-    }
-  };
-
-  const syncPlans = async () => {
-    setSyncing(true);
-    try {
-      const res = await api.post('/admin/subscriptions/sync', {});
-      setAdminPlans(res.data?.plans || []);
-      showAlert('Synced', `Pulled latest pricing from Razorpay (${res.data?.updated ?? 0} updated).`);
-      fetchData();
-    } catch (e: any) {
-      showAlert('Sync failed', e?.response?.data?.detail || 'Could not sync.');
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   const status = me?.status || 'none';
   const statusMeta = STATUS_LABEL[status] || STATUS_LABEL.none;
   const hasActive = ['active', 'manual', 'pending', 'cancelled'].includes(status);
@@ -200,7 +163,7 @@ export default function SubscriptionPlansScreen() {
             </View>
 
             <Text style={styles.sectionTitle}>Monthly plans</Text>
-            <Text style={styles.sectionHint}>Auto-renews each month. You can cancel anytime.</Text>
+            <Text style={styles.sectionHint}>{autoRenewEnabled ? 'Auto-renews each month. You can cancel anytime.' : 'One-time payment for 1 month — no auto-renew, no surprises.'}</Text>
 
             {plans.map((p) => {
               const colors = TIER_COLORS[p.tier] || TIER_COLORS.basic;
@@ -231,13 +194,25 @@ export default function SubscriptionPlansScreen() {
                       </View>
                     ) : (
                       <>
-                        <TouchableOpacity style={[styles.subBtn, { backgroundColor: colors[0] }]} onPress={() => subscribe(p)} disabled={busyId !== null}>
-                          {busyId === p.plan_id ? <ActivityIndicator color={COLORS.white} />
-                            : <Text style={styles.subBtnText}>Subscribe — auto-renew</Text>}
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.onceBtn} onPress={() => payOnce(p)} disabled={busyId !== null}>
-                          {busyId === p.plan_id + '_once' ? <ActivityIndicator color={colors[0]} size="small" />
-                            : <Text style={[styles.onceBtnText, { color: colors[0] }]}>Pay once (1 month, no auto-renew)</Text>}
+                        {autoRenewEnabled && (
+                          <TouchableOpacity style={[styles.subBtn, { backgroundColor: colors[0] }]} onPress={() => subscribe(p)} disabled={busyId !== null}>
+                            {busyId === p.plan_id ? <ActivityIndicator color={COLORS.white} />
+                              : <Text style={styles.subBtnText}>Subscribe — auto-renew</Text>}
+                          </TouchableOpacity>
+                        )}
+                        <TouchableOpacity
+                          style={autoRenewEnabled
+                            ? [styles.onceBtnSecondary, { borderColor: colors[0] }]
+                            : [styles.onceBtnPrimary, { backgroundColor: colors[0] }]}
+                          onPress={() => payOnce(p)} disabled={busyId !== null}>
+                          {busyId === p.plan_id + '_once'
+                            ? <ActivityIndicator color={autoRenewEnabled ? colors[0] : COLORS.white} size="small" />
+                            : (
+                              <View style={styles.onceInner}>
+                                <Ionicons name="flash" size={15} color={autoRenewEnabled ? colors[0] : COLORS.white} />
+                                <Text style={[styles.onceBtnText, { color: autoRenewEnabled ? colors[0] : COLORS.white }]}>Pay once · 1 month (no auto-renew)</Text>
+                              </View>
+                            )}
                         </TouchableOpacity>
                       </>
                     )}
@@ -246,42 +221,7 @@ export default function SubscriptionPlansScreen() {
               );
             })}
 
-            {/* Admin: plan config */}
-            {isSuperAdmin && adminPlans.length > 0 && (
-              <View style={styles.adminCard}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                  <Text style={styles.sectionTitle}>Admin · Plan config</Text>
-                  <TouchableOpacity style={styles.syncBtn} onPress={syncPlans} disabled={syncing}>
-                    {syncing ? <ActivityIndicator size="small" color={COLORS.primary} />
-                      : <><Ionicons name="sync" size={14} color={COLORS.primary} /><Text style={styles.syncBtnText}>Sync</Text></>}
-                  </TouchableOpacity>
-                </View>
-                {adminPlans.map((p) => (
-                  <View key={p.plan_id} style={styles.adminRow}>
-                    <Text style={styles.adminPlanName}>{p.name} · ₹{p.price_inr}</Text>
-                    <Text style={styles.adminPlanId}>{p.plan_id}</Text>
-                    <Text style={styles.fieldLabel}>Credits / month</Text>
-                    <TextInput
-                      style={styles.input} keyboardType="numeric"
-                      value={String(p.credits_per_month)}
-                      onChangeText={(t) => setAdminPlans(prev => prev.map(x => x.plan_id === p.plan_id ? { ...x, credits_per_month: t } : x))}
-                    />
-                    <View style={styles.activeRow}>
-                      <Text style={styles.fieldLabel}>Active</Text>
-                      <Switch
-                        value={!!p.active}
-                        onValueChange={(v) => setAdminPlans(prev => prev.map(x => x.plan_id === p.plan_id ? { ...x, active: v } : x))}
-                        trackColor={{ true: COLORS.primary }}
-                      />
-                    </View>
-                    <TouchableOpacity style={styles.saveBtn} onPress={() => saveAdminPlan(p)} disabled={savingId === p.plan_id}>
-                      {savingId === p.plan_id ? <ActivityIndicator color={COLORS.white} size="small" />
-                        : <Text style={styles.saveBtnText}>Save</Text>}
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            )}
+            {/* Admin plan config moved to Admin → Monetization & Billing → Subscription Plans */}
             <View style={{ height: 32 }} />
           </ScrollView>
         </KeyboardAvoidingView>
@@ -326,8 +266,10 @@ const styles = StyleSheet.create({
   featureText: { flex: 1, fontSize: 13, color: COLORS.textSecondary },
   subBtn: { borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginTop: 10 },
   subBtnText: { color: COLORS.white, fontWeight: '800', fontSize: 14 },
-  onceBtn: { paddingVertical: 10, alignItems: 'center', marginTop: 6 },
-  onceBtnText: { fontWeight: '600', fontSize: 12.5 },
+  onceBtnPrimary: { borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginTop: 10 },
+  onceBtnSecondary: { borderRadius: 12, paddingVertical: 11, alignItems: 'center', marginTop: 8, borderWidth: 1.5, backgroundColor: 'transparent' },
+  onceInner: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  onceBtnText: { fontWeight: '800', fontSize: 13.5 },
   currentPill: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10, backgroundColor: COLORS.success + '15', paddingVertical: 10, borderRadius: 10 },
   currentPillText: { color: COLORS.success, fontWeight: '700', fontSize: 13 },
 

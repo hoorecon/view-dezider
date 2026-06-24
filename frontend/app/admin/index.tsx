@@ -63,13 +63,14 @@ const QUICK_ACTIONS: QuickAction[] = [
   { key: 'manifestation-content', label: 'Manifestation Content', description: 'Edit CAB-FAME 7-stage mantras, affirmations & YouTube/resource URLs (all users)', icon: 'sparkles', color: '#8B5CF6', href: '/admin/manifestation-content' },
   { key: 'signup-gate', label: 'Signup & WhatsApp Gate', description: 'Toggle the post-login WhatsApp verification gate for all users (opens Settings)', icon: 'shield-half', color: '#0EA5E9', href: '/admin/settings' },
   { key: 'dashboard-layout', label: 'Dashboard Sections', description: 'Rename section titles · drag to reorder sections · move modules between sections · auto-numbered', icon: 'grid', color: '#0D9488', href: '/admin/dashboard-layout' },
+  { key: 'subscription-plans', label: 'Subscription Plans', description: 'Plan credits/month · Active toggle · Sync live pricing & plan IDs from Razorpay', icon: 'diamond', color: '#7C3AED', href: '/admin/subscription-plans' },
 ];
 
 // Meaningful grouping of the 32 admin modules into 6 collapsible sections.
 // 'Essentials' is expanded by default; all others start collapsed.
 const ACTION_GROUPS: { key: string; label: string; icon: string; keys: string[] }[] = [
   { key: 'essentials',     label: 'Essentials',                icon: 'star',          keys: ['acm', 'dashboard-layout', 'signup-gate', 'tier-matrix', 'pricing', 'appearance', 'masters', 'user-lookup'] },
-  { key: 'monetization',   label: 'Monetization & Billing',    icon: 'cash',          keys: ['payments', 'payouts', 'ai-wallet-cfg', 'recon', 'trial-payments', 'quota-editor', 'referral', 'karma'] },
+  { key: 'monetization',   label: 'Monetization & Billing',    icon: 'cash',          keys: ['subscription-plans', 'payments', 'payouts', 'ai-wallet-cfg', 'recon', 'trial-payments', 'quota-editor', 'referral', 'karma'] },
   { key: 'plans',          label: 'Plans, Tiers & Segments',   icon: 'apps',          keys: ['segments', 'tier-segments', 'acm-resolver-cfg', 'seven-seven', 'values', 'collab-auth'] },
   { key: 'people',         label: 'People & Experts',          icon: 'people',        keys: ['org-members', 'experts', 'platform-experts', 'embed-partners'] },
   { key: 'content',        label: 'Content & Intelligence',    icon: 'sparkles',      keys: ['catalog', 'content-library', 'manifestation-content', 'scenarios', 'import-analytics', 'url-training', 'notification-engine'] },
