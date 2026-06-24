@@ -436,6 +436,19 @@ export default function ACMAdminScreen() {
 
             {expandedModules.has(mod.module_id) && (
               <View style={styles.featuresContainer}>
+                {mod.module_id === 'dashboard_tiles' && (
+                  <TouchableOpacity
+                    style={styles.layoutLinkBtn}
+                    activeOpacity={0.8}
+                    onPress={() => router.push('/admin/dashboard-layout' as any)}>
+                    <Ionicons name="swap-vertical" size={16} color={COLORS.accent} />
+                    <View style={{ flex: 1, marginLeft: 8 }}>
+                      <Text style={styles.layoutLinkTitle}>Rename · Reorder · Move modules</Text>
+                      <Text style={styles.layoutLinkHint}>Drag to reorder sections &amp; move tiles between them (cells here control visibility)</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={COLORS.accent} />
+                  </TouchableOpacity>
+                )}
                 {(() => {
                   // ─── SECTION GROUPING (dashboard_tiles only) ───────────
                   // If this module declares sections (rows with is_section)
@@ -799,6 +812,14 @@ const styles = StyleSheet.create({
     position: 'absolute', top: 4, right: 4,
   },
   levelBtnText: { fontSize: 11, fontWeight: '700' },
+  layoutLinkBtn: {
+    flexDirection: 'row', alignItems: 'center',
+    padding: 12, borderRadius: 10, marginBottom: 10,
+    backgroundColor: COLORS.accent + '12',
+    borderWidth: 1, borderColor: COLORS.accent + '33',
+  },
+  layoutLinkTitle: { fontSize: 13, fontWeight: '700', color: COLORS.accent },
+  layoutLinkHint: { fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
   applyAllRow: {
     flexDirection: 'row', alignItems: 'center',
     marginTop: 16, padding: 12, borderRadius: 10,
