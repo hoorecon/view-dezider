@@ -293,7 +293,7 @@ export default function ATEXScreen() {
             {pickLoading ? (
               <ActivityIndicator color="#2563EB" style={{ marginVertical: 20 }} />
             ) : pickTasks.length === 0 ? (
-              <Text style={s.pkEmpty}>No tasks found in your Task Tracker yet.</Text>
+              <Text style={s.pkEmpty}>No tasks found in your Action Tracker or Task Tracker yet.</Text>
             ) : (
               <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator>
                 {pickTasks.map((t) => (
