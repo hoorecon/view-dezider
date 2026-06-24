@@ -226,9 +226,9 @@ export default function CTTTaskScreen() {
     <SafeAreaView style={st.container} edges={['top']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         {/* Header */}
-        <LinearGradient colors={['#F1F5F9', '#2D5F8B']} style={st.header}>
+        <LinearGradient colors={['#2D5F8B', '#1E3A5F']} style={st.header}>
           <TouchableOpacity onPress={() => safeBack(router)} style={st.backBtn}>
-            <Ionicons name="arrow-back" size={22} color="#1E293B" />
+            <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={st.headerTitle}>{editId ? 'Edit Task' : 'New Task'}</Text>
@@ -561,8 +561,8 @@ const st = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, paddingBottom: 18 },
   backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(15,23,42,0.06)', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
-  headerSub: { fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 2, textTransform: 'capitalize' },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#FFFFFF' },
+  headerSub: { fontSize: 11, color: 'rgba(255,255,255,0.85)', marginTop: 2, textTransform: 'capitalize' },
   deleteBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' },
 
   section: { paddingHorizontal: 16, paddingVertical: 12 },
