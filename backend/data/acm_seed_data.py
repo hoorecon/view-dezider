@@ -20,7 +20,7 @@ Subscription Plans (for paid): starter, pro, enterprise, api
 # Bump this version whenever ACM_MODULES / USER_TYPES / SUBSCRIPTION_PLANS change.
 # Boot-time auto-seed (core/acm_engine.py) reseeds DB iff stored version < this one.
 # Format: "YYYY-MM-DD-N" — human-readable, monotonically sortable.
-ACM_SEED_VERSION = "2026-06-24-04"  # +collaboration: collab_share, collab_expert_call, collab_shared_inbox (in-flow toggles)
+ACM_SEED_VERSION = "2026-06-24-05"  # +collaboration: knowledge_marketplace, my_earnings, karma_fame (profile modules, disabled by default)
 
 # Release stages (ordered by visibility)
 RELEASE_STAGES = [
@@ -915,6 +915,50 @@ ACM_MODULES = [
                     "free": _full(), "trial": _full(),
                     "paid_starter": _full(), "paid_pro": _full(),
                     "paid_enterprise": _full(), "paid_api": _full(),
+                },
+            },
+            # ── Profile-page modules relocated under Collaboration. Disabled by
+            #    default for ALL user types; admins enable per audience here. ──
+            {
+                "feature_id": "collab_knowledge_marketplace",
+                "feature_name": "Knowledge Marketplace (Profile)",
+                "release_stage": "beta",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _hidden(), "integration_tester": _hidden(),
+                    "alpha": _hidden(), "beta": _hidden(),
+                    "free": _hidden(), "trial": _hidden(),
+                    "paid_starter": _hidden(), "paid_pro": _hidden(),
+                    "paid_enterprise": _hidden(), "paid_api": _hidden(),
+                },
+            },
+            {
+                "feature_id": "collab_my_earnings",
+                "feature_name": "My Earnings & Payouts (Profile)",
+                "release_stage": "beta",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _hidden(), "integration_tester": _hidden(),
+                    "alpha": _hidden(), "beta": _hidden(),
+                    "free": _hidden(), "trial": _hidden(),
+                    "paid_starter": _hidden(), "paid_pro": _hidden(),
+                    "paid_enterprise": _hidden(), "paid_api": _hidden(),
+                },
+            },
+            {
+                "feature_id": "collab_karma_fame",
+                "feature_name": "Karma & Fame (Profile)",
+                "release_stage": "beta",
+                "quota_unit": "toggle",
+                "quota_resets": "none",
+                "access": {
+                    "unit_tester": _hidden(), "integration_tester": _hidden(),
+                    "alpha": _hidden(), "beta": _hidden(),
+                    "free": _hidden(), "trial": _hidden(),
+                    "paid_starter": _hidden(), "paid_pro": _hidden(),
+                    "paid_enterprise": _hidden(), "paid_api": _hidden(),
                 },
             },
         ],

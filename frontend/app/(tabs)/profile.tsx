@@ -26,6 +26,7 @@ import { Input } from '../../src/components/Input';
 import api from '../../src/utils/api';
 import { showAlert } from '../../src/utils/alert';
 import { useAiWalletStore } from '../../src/store/aiWalletStore';
+import { useFeatureGate } from '../../src/utils/useFeatureGate';
 
 const GENDER_OPTIONS = ['Male', 'Female', 'Other', 'Prefer not to say'];
 
@@ -37,6 +38,7 @@ interface AssessmentQuestion {
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const { isOn: isFeatureOn } = useFeatureGate();
   const params = useLocalSearchParams<{ startQuiz?: string }>();
   const { user, logout, checkAuth } = useAuthStore();
   const aiBalance = useAiWalletStore((s) => s.balance);
@@ -822,7 +824,8 @@ export default function ProfileScreen() {
           dedicated /admin route only. Super-admins still navigate there
           directly; we don't surface it as a profile section. */}
 
-      {/* Knowledge Marketplace */}
+      {/* Knowledge Marketplace — centrally toggled via ACM › Collaboration (off by default) */}
+      {isFeatureOn('collab_knowledge_marketplace') && (
       <TouchableOpacity
         style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}
         onPress={() => router.push('/marketplace' as any)}
@@ -836,8 +839,10 @@ export default function ProfileScreen() {
         </View>
         <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
       </TouchableOpacity>
+      )}
 
-      {/* My Earnings */}
+      {/* My Earnings — centrally toggled via ACM › Collaboration (off by default) */}
+      {isFeatureOn('collab_my_earnings') && (
       <TouchableOpacity
         style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}
         onPress={() => router.push('/earnings' as any)}
@@ -851,8 +856,10 @@ export default function ProfileScreen() {
         </View>
         <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
       </TouchableOpacity>
+      )}
 
-      {/* Karma & Leaderboard */}
+      {/* Karma & Leaderboard — centrally toggled via ACM › Collaboration (off by default) */}
+      {isFeatureOn('collab_karma_fame') && (
       <TouchableOpacity
         style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}
         onPress={() => router.push('/leaderboard' as any)}
@@ -866,67 +873,7 @@ export default function ProfileScreen() {
         </View>
         <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
       </TouchableOpacity>
-
-
-      {/* Goals Execution Manager */}
-      <TouchableOpacity
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}
-        onPress={() => router.push('/tools/gem')}
-      >
-        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#0F766E', alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="flag" size={18} color="#FFF" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>Goals (GEM)</Text>
-          <Text style={{ fontSize: 12, color: COLORS.textMuted }}>Goals across 10 Life Areas</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
-      </TouchableOpacity>
-
-      {/* TEPFI Resource Matrix */}
-      <TouchableOpacity
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}
-        onPress={() => router.push('/tools/tepfi')}
-      >
-        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#7C3AED', alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="cube" size={18} color="#FFF" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>Capabilities & Resources Index</Text>
-          <Text style={{ fontSize: 12, color: COLORS.textMuted }}>Resource tracking across Self/Micro/Macro</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
-      </TouchableOpacity>
-
-      {/* Calendar View */}
-      <TouchableOpacity
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}
-        onPress={() => router.push('/tools/calendar-view')}
-      >
-        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#4285F4', alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="calendar" size={18} color="#FFF" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>Calendar & Scheduling</Text>
-          <Text style={{ fontSize: 12, color: COLORS.textMuted }}>Deadlines & Google Calendar sync</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
-      </TouchableOpacity>
-
-      {/* Lifestyle Dezider */}
-      <TouchableOpacity
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.white, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 12 }}
-        onPress={() => router.push('/tools/lifestyle')}
-      >
-        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#065F46', alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="leaf" size={18} color="#FFF" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 14, fontWeight: '600', color: COLORS.textPrimary }}>Lifestyle Dezider</Text>
-          <Text style={{ fontSize: 12, color: COLORS.textMuted }}>Routines & lifestyle effectiveness</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
-      </TouchableOpacity>
+      )}
 
       {/* Privacy & Data (DPDP Act 2023) */}
       <TouchableOpacity
