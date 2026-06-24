@@ -9992,3 +9992,77 @@ agent_communication:
       dash_report_quota (module dashboard_tiles). Token field: session_token. Register a fresh FREE
       user for the user-side check if needed. IMPORTANT: leave dash_report_quota set back to FULL/visible
       at the end so the default dashboard is not left broken.
+
+#====================================================================================================
+# Iter 157 (fork) — ATEX modal cutoff + auth/session bugs (logout sticky user, OAuth invalid state)
+#====================================================================================================
+frontend:
+  - task: "ATEX 'Pick a task' modal fully visible (bounded + centered)"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/tools/atex.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          The picker was a bottom-sheet (justifyContent flex-end) with NO maxHeight → overflowed below
+          the viewport on desktop web. Changed pkOverlay to center (justifyContent/alignItems center,
+          padding 20), pkSheet to borderRadius 18 + maxHeight '85%' + maxWidth 640, and Modal
+          animationType slide→fade. Verify: open ATEX → 'Pick from Task Tracker' → modal fully visible
+          with close (X) reachable and list scrolls within bounds on web + mobile.
+
+  - task: "Logout clears org context (no sticky previous user/org)"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/store/authStore.ts"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          logout() only removed session_token; org_id/org_slug/orgBranding persisted, so after logout the
+          previous org (VEALES) branding/login-scope stuck and the next user appeared as the old one. Now
+          logout also removes org_id + org_slug and resets orgBranding:null. Verify: login (email/pass) as
+          user A → logout → login screen shows NO stale org branding; login as user B → /api/auth/me is
+          user B (not A), and no VEALES branding leaks.
+
+  - task: "Emergent Google Auth: prompt=select_account + immediate callback URL strip"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/auth/login.tsx, frontend/app/auth/register.tsx, frontend/app/index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Per integration_expert: (1) added &prompt=select_account to the auth.emergentagent.com URL so
+          logout→login lets a DIFFERENT Google account in (was the cause of 'logged in as new user but
+          shows VEALES'); (2) index.tsx now strips the OAuth callback hash via window.history.replaceState
+          IMMEDIATELY (before the async loginWithGoogle), so a refresh/back no longer replays a consumed
+          state → fixes 'Invalid state parameter'. NOTE: Google OAuth redirect cannot be fully driven by
+          the test harness; verify the email/password logout→relogin path + that the auth URL contains
+          prompt=select_account, and that the callback hash is cleared. Backend auth unchanged.
+
+metadata: { created_by: "main_agent", version: "fork-iter-157", test_sequence: 157 }
+test_plan:
+  current_focus:
+    - "Logout→login as different EMAIL user shows correct user (no sticky VEALES org)"
+    - "ATEX picker modal fully visible/scrollable on web"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+agent_communication:
+  - agent: "main"
+    message: |
+      Iter 157. Fixes: ATEX modal cutoff; logout now clears org context; Google auth uses
+      prompt=select_account + immediate callback-hash strip (fixes sticky user + Invalid state).
+      Focus testing on the EMAIL/PASSWORD logout→relogin-as-different-user flow (Google OAuth redirect
+      can't be automated). Admin: super@test.com / SuperPass2026!. Create/login a 2nd email user to
+      verify no session/org bleed. ATEX picker: open /tools/atex and the 'Pick from Task Tracker' modal.

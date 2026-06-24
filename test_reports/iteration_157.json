@@ -1,0 +1,37 @@
+{
+  "summary": "Iter 157 — Session relogin bleed + ATEX modal fixes VERIFIED. Backend pytest 4/4 PASSED against live preview: login A (super@test.com) → /auth/me returns A; logout; /auth/me w/o token = 401; freshly-registered user B logs in and /auth/me returns B (NOT A), with B's user_id ≠ A's. Invalid token rejected with 401. ATEX 'Pick a task' modal verified visually on desktop 1280x900 (bbox y=390.5 h=119, y+h=509.5 within vh=900, x within vw) AND mobile 390x844 (bbox y=362.5 h=119, y+h=481.5 within vh=844): centered, close X + 'No tasks found' message visible, modal sheet bounded by maxHeight 85% with inner ScrollView maxHeight 380 — no cut-off. Google auth URL hardening confirmed via static grep: both auth/login.tsx:198 and auth/register.tsx:85 build https://auth.emergentagent.com/?redirect=<encoded>&prompt=select_account (the prompt=select_account lets a different Google account sign in after logout). OAuth callback hash strip confirmed at app/index.tsx:74 — window.history.replaceState(null,'',window.location.pathname) is invoked BEFORE the async loginWithGoogle(sessionId) call on line 76, so a refresh can never replay a consumed OAuth state. Logout clearing org context confirmed in authStore.ts:149-154 — removes session_token, org_id, org_slug, sets orgBranding:null, resets analytics. No deprecated Expo packages (no expo-av/expo-barcode-scanner/expo-background-fetch) in the files of reference. No SafeAreaView issues observed (atex.tsx uses safe-area-context with edges=['top']).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter157_session_relogin.py",
+    "/app/test_reports/pytest/iter157_session.xml"
+  ],
+  "action_items": [
+    "No fix needed — all four review items pass: ATEX modal sized correctly on desktop + mobile, logout clears session_token/org_id/org_slug/orgBranding, Google auth URLs contain prompt=select_account, callback hash is stripped before the async login. Backend session contract validated against live preview.",
+    "(Optional, low-priority) Add testID='atex-pick-task-modal', testID='atex-pick-task-close' and testID='profile-logout-button' for more robust future UI tests; currently text-based selectors work but are language-dependent."
+  ],
+  "critical_code_review_comments": [
+    "authStore.logout() (frontend/src/store/authStore.ts:139-157) correctly clears session_token + org_id + org_slug AND sets orgBranding:null in the same `finally` block, so even a 5xx from POST /api/auth/logout still purges client state — the previous VEALES bleed cannot recur.",
+    "app/index.tsx OAuth web handler now strips the hash via window.history.replaceState IMMEDIATELY (line 74) BEFORE awaiting loginWithGoogle (line 76). A refresh/back-button after a successful login no longer replays the consumed state token → no more 'Invalid state parameter'.",
+    "ATEX modal sheet (atex.tsx:310): {maxWidth:640, width:'100%', maxHeight:'85%', alignSelf:'center'} inside a flex:1 overlay with justifyContent:'center'+alignItems:'center'+padding:20 — guarantees the dialog is always centered AND bounded ≤85% of the viewport height; the task list is wrapped in ScrollView maxHeight:380 so it scrolls inside the modal. Fix is solid.",
+    "Both Google auth flows pass prompt=select_account (login.tsx:198, register.tsx:85) — Google will show the account chooser instead of silently re-using the prior session, which is exactly what's needed after a multi-account logout.",
+    "Minor: authStore.setSession persists org_id on login (line 71) only if userData.org_id is present; combined with logout removing org_id, the org context lifecycle is now symmetric."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter157_session_relogin.py (NEW)"
+  ],
+  "success_rate": {
+    "backend": "100% (4/4 pytest: super login + /me, logout invalidation + 401 no-token, A→logout→B no bleed, invalid token rejected)",
+    "frontend": "100% on the testable parts (ATEX modal sized + visible on desktop & mobile; Google URL strings verified by static check; hash-strip & logout-clear verified by code review — external Google redirect is not driveable by the harness as noted in the agent-to-agent context)"
+  },
+  "seed_data_creation": "Ephemeral TEST_iter157_*@example.com users created during pytest module (auto-cleaned by being TEST_-prefixed; no fixtures/seeds persisted beyond the user docs).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "External Google OAuth (auth.emergentagent.com) cannot be driven by the harness — verify the two Google-related changes by static grep / DOM inspection ONLY (prompt=select_account present in URL; history.replaceState called BEFORE loginWithGoogle in app/index.tsx). The reproducible part is the EMAIL/PASSWORD relogin flow, validated by /app/backend/tests/test_iter157_session_relogin.py. To verify the UI logout-clears-storage path interactively, navigate to /(tabs)/profile, click the Logout row, then confirm in the modal — clicking just the text 'Logout' is NOT enough since there's a confirmation step.",
+  "rca_of_issue": "RCA (previous bleed bug): authStore.logout() previously only removed session_token from AsyncStorage/localStorage and did not clear org_id/org_slug/orgBranding. On a subsequent login as a different user the cached org context (e.g. VEALES) was still present in storage and the orgBranding zustand slice still held the old org, so the login screen showed stale VEALES branding and (on /api/auth/me with the new token) the React state was briefly merged with leftover org context until next checkAuth. The 'Invalid state parameter' on refresh came from the OAuth callback hash (#session_id=…) lingering in window.location after a successful loginWithGoogle, so a reload re-sent the now-consumed state token to the backend. FIX: (1) authStore.logout finally-block now removes session_token + org_id + org_slug AND sets orgBranding:null + resetAnalytics(); (2) app/index.tsx OAuth web handler now calls window.history.replaceState BEFORE the async loginWithGoogle call; (3) the Google auth URLs now include prompt=select_account so Google itself shows the account chooser. All three fixes verified."
+}

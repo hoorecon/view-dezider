@@ -82,7 +82,7 @@ export default function RegisterScreen() {
         redirectUrl = Linking.createURL('/');
       }
 
-      const authUrl = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
+      const authUrl = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}&prompt=select_account`;
 
       if (Platform.OS === 'web') {
         window.location.href = authUrl;

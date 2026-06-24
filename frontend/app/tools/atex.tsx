@@ -262,7 +262,7 @@ export default function ATEXScreen() {
         )}
       </ScrollView>
 
-      <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
+      <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
         <View style={s.pkOverlay}>
           <View style={s.pkSheet}>
             <View style={s.pkHeader}>
@@ -306,8 +306,8 @@ const s = StyleSheet.create({
   aiBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#8B5CF6', paddingHorizontal: 10, borderRadius: 8 },
   pickBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, marginTop: 8, marginBottom: 4 },
   pickBtnText: { color: '#2563EB', fontSize: 12, fontWeight: '700' },
-  pkOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  pkSheet: { backgroundColor: '#FFF', borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 16, maxWidth: 640, width: '100%', alignSelf: 'center' },
+  pkOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  pkSheet: { backgroundColor: '#FFF', borderRadius: 18, padding: 16, maxWidth: 640, width: '100%', maxHeight: '85%', alignSelf: 'center' },
   pkHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   pkTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
   pkEmpty: { fontSize: 13, color: '#64748B', paddingVertical: 20, textAlign: 'center' },

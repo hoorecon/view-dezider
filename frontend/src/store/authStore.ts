@@ -147,7 +147,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.log('Logout error:', error);
     } finally {
       await AsyncStorage.removeItem('session_token');
-      set({ user: null, isAuthenticated: false, sessionToken: null });
+      // Clear org context too — otherwise the previous org's branding/login
+      // scope (e.g. VEALES) sticks and the next user appears as the old one.
+      await AsyncStorage.removeItem('org_id');
+      await AsyncStorage.removeItem('org_slug');
+      set({ user: null, isAuthenticated: false, sessionToken: null, orgBranding: null });
       resetAnalytics();
     }
   },

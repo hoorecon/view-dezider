@@ -68,9 +68,12 @@ export default function Index() {
       const hash = window.location.hash;
       if (hash.includes('session_id=')) {
         const sessionId = hash.split('session_id=')[1]?.split('&')[0];
+        // Strip the callback params from the URL IMMEDIATELY (before any async
+        // work) so a refresh/back never replays a consumed OAuth state — this
+        // is what produced the "Invalid state parameter" error.
+        window.history.replaceState(null, '', window.location.pathname);
         if (sessionId) {
           loginWithGoogle(sessionId).then(async () => {
-            window.history.replaceState(null, '', window.location.pathname);
             router.replace((await getPostAuthRoute()) as any);
           }).catch(() => router.replace('/auth/login'));
           return;
