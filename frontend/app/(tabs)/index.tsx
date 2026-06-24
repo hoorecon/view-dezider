@@ -99,6 +99,8 @@ export default function HomeScreen() {
     if (cfg.always) return true;
     return cfg.tiles.some((t) => isTileOn(t));
   };
+  const showQuickLinks = isTileOn('quick_links')
+    && (isTileOn('ql_decision_style') || isTileOn('ql_today_plan') || isTileOn('ql_eft'));
 
   // ---------------------------------------------------------------------------
   // Hydration-safe client mount gate
@@ -342,6 +344,7 @@ export default function HomeScreen() {
           ) : (
           <>
           {/* ════════ Report Quota Summary (glanceable for everyone) ════════ */}
+          {isTileOn('report_quota') && (
           <View style={styles.quotaCard}>
             <View style={styles.quotaHeader}>
               <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }} activeOpacity={0.7} onPress={() => setQuotaOpen((o) => !o)}>
@@ -377,6 +380,7 @@ export default function HomeScreen() {
               })
             ))}
           </View>
+          )}
 
           {/* Journal Review Reminders Banner */}
           {journalReminders.length > 0 && (
@@ -418,9 +422,11 @@ export default function HomeScreen() {
               ════════════════════════════════════════════════════════════════ */}
 
           {/* PINNED — "Quick Links" */}
+          {showQuickLinks && (<>
           <Text style={styles.sectionTitle}>Quick Links</Text>
           <Text style={styles.sectionSubtitle}>Pick up where you left off</Text>
           <View style={styles.colabRow}>
+            {isTileOn('ql_decision_style') && (
             <TouchableOpacity
               style={styles.colabCard}
               onPress={() => router.push('/(tabs)/profile' as any)}
@@ -433,7 +439,9 @@ export default function HomeScreen() {
                 {stats?.latest_assessment?.dominant_mode ? `${stats.latest_assessment.dominant_mode}` : 'Take the quiz'}
               </Text>
             </TouchableOpacity>
+            )}
 
+            {isTileOn('ql_today_plan') && (
             <TouchableOpacity
               style={styles.colabCard}
               onPress={() => router.push('/tools/today' as any)}
@@ -444,7 +452,9 @@ export default function HomeScreen() {
               <Text style={styles.colabTitle} numberOfLines={1}>Today&apos;s Plan</Text>
               <Text style={styles.colabSubtitle} numberOfLines={1}>Actions + routines</Text>
             </TouchableOpacity>
+            )}
 
+            {isTileOn('ql_eft') && (
             <TouchableOpacity
               style={styles.colabCard}
               onPress={() => router.push('/tools/eg-eft' as any)}
@@ -455,7 +465,9 @@ export default function HomeScreen() {
               <Text style={styles.colabTitle} numberOfLines={1}>EFT Tapping</Text>
               <Text style={styles.colabSubtitle} numberOfLines={1}>Stress relief</Text>
             </TouchableOpacity>
+            )}
           </View>
+          </>)}
 
           {/* ══════════ §1 SELF DISCOVERY ══════════ */}
           {showSection('self_discovery') && (<>

@@ -20,7 +20,7 @@ Subscription Plans (for paid): starter, pro, enterprise, api
 # Bump this version whenever ACM_MODULES / USER_TYPES / SUBSCRIPTION_PLANS change.
 # Boot-time auto-seed (core/acm_engine.py) reseeds DB iff stored version < this one.
 # Format: "YYYY-MM-DD-N" — human-readable, monotonically sortable.
-ACM_SEED_VERSION = "2026-06-24-01"  # align dashboard_tiles grouping to live dashboard (§3 Problem Solvers; EG→§2); non-destructive reseed
+ACM_SEED_VERSION = "2026-06-24-02"  # +home_top section: dash_report_quota, dash_quick_links + 3 QL sub-items; non-destructive reseed
 
 # Release stages (ordered by visibility)
 RELEASE_STAGES = [
@@ -1773,6 +1773,7 @@ ACM_MODULES = [
                     "paid_enterprise", "paid_api",
                  ]}}
                 for order, sid, sname in [
+                    (0, "home_top",               "Home — Top of Page"),
                     (1, "self_discovery",          "Self Discovery"),
                     (2, "decision_kickstarters",   "Decision Kickstarters"),
                     (3, "problem_solvers",         "Problem Solvers"),
@@ -1798,6 +1799,12 @@ ACM_MODULES = [
                     "paid_enterprise": _full(), "paid_api": _full(),
                  }}
                 for tile_id, tile_label, parent_section in [
+                    # §0 Home — Top of Page (Report Quota + Quick Links strip)
+                    ("report_quota",          "Your Report Quota (card)",       "home_top"),
+                    ("quick_links",           "Quick Links (whole strip)",      "home_top"),
+                    ("ql_decision_style",     "Quick Link · Decision Style",    "home_top"),
+                    ("ql_today_plan",         "Quick Link · Today's Plan",      "home_top"),
+                    ("ql_eft",                "Quick Link · EFT Tapping",       "home_top"),
                     # §1 Self Discovery
                     ("pna",                   "My 360° Life",                   "self_discovery"),
                     ("gem",                   "GEM",                            "self_discovery"),
