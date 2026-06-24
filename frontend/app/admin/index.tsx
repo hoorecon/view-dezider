@@ -61,12 +61,13 @@ const QUICK_ACTIONS: QuickAction[] = [
   { key: 'content-library', label: 'Content Library CMS',    description: 'Paste/edit verbatim coaching scripts · multi-locale · tenses_feels + 6 modules', icon: 'document-text', color: '#10B981', href: '/admin/content-library' },
   { key: 'collab-auth', label: 'Collaboration Verification', description: 'Advanced ID methods vs WhatsApp / Email OTP for group-decision participants', icon: 'shield-checkmark', color: '#7C3AED', href: '/admin/collab-auth' },
   { key: 'manifestation-content', label: 'Manifestation Content', description: 'Edit CAB-FAME 7-stage mantras, affirmations & YouTube/resource URLs (all users)', icon: 'sparkles', color: '#8B5CF6', href: '/admin/manifestation-content' },
+  { key: 'signup-gate', label: 'Signup & WhatsApp Gate', description: 'Toggle the post-login WhatsApp verification gate for all users (opens Settings)', icon: 'shield-half', color: '#0EA5E9', href: '/admin/settings' },
 ];
 
 // Meaningful grouping of the 32 admin modules into 6 collapsible sections.
 // 'Essentials' is expanded by default; all others start collapsed.
 const ACTION_GROUPS: { key: string; label: string; icon: string; keys: string[] }[] = [
-  { key: 'essentials',     label: 'Essentials',                icon: 'star',          keys: ['acm', 'tier-matrix', 'pricing', 'appearance', 'masters', 'user-lookup'] },
+  { key: 'essentials',     label: 'Essentials',                icon: 'star',          keys: ['acm', 'signup-gate', 'tier-matrix', 'pricing', 'appearance', 'masters', 'user-lookup'] },
   { key: 'monetization',   label: 'Monetization & Billing',    icon: 'cash',          keys: ['payments', 'payouts', 'ai-wallet-cfg', 'recon', 'trial-payments', 'quota-editor', 'referral', 'karma'] },
   { key: 'plans',          label: 'Plans, Tiers & Segments',   icon: 'apps',          keys: ['segments', 'tier-segments', 'acm-resolver-cfg', 'seven-seven', 'values', 'collab-auth'] },
   { key: 'people',         label: 'People & Experts',          icon: 'people',        keys: ['org-members', 'experts', 'platform-experts', 'embed-partners'] },
