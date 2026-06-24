@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { showAlert } from '../../src/utils/alert';
-import { getLifeAreaShort, getLifeAreaIcon } from '../../src/constants/lifeAreas';
+import { getLifeAreaShort, getLifeAreaIcon, LIFE_AREAS } from '../../src/constants/lifeAreas';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, Alert, ActivityIndicator, Linking, Dimensions,
@@ -267,19 +267,19 @@ export default function CTTScreen() {
           >
             <Text style={[s.filterText, !lifeAreaFilter && { color: COLORS.primary }]}>All Areas</Text>
           </TouchableOpacity>
-          {Object.entries(LIFE_AREA_LABELS).map(([key, label]) => (
+          {LIFE_AREAS.map((area) => (
             <TouchableOpacity
-              key={key}
-              style={[s.filterChip, lifeAreaFilter === key && s.filterActiveSecondary]}
-              onPress={() => setLifeAreaFilter(lifeAreaFilter === key ? '' : key)}
+              key={area.id}
+              style={[s.filterChip, lifeAreaFilter === area.id && s.filterActiveSecondary]}
+              onPress={() => setLifeAreaFilter(lifeAreaFilter === area.id ? '' : area.id)}
             >
               <Ionicons
-                name={(getLifeAreaIcon(key) || 'ellipse') as any}
+                name={(getLifeAreaIcon(area.id) || 'ellipse') as any}
                 size={12}
-                color={lifeAreaFilter === key ? COLORS.primary : COLORS.textMuted}
+                color={lifeAreaFilter === area.id ? COLORS.primary : COLORS.textMuted}
               />
-              <Text style={[s.filterText, lifeAreaFilter === key && { color: COLORS.primary }]}>
-                {label}
+              <Text style={[s.filterText, lifeAreaFilter === area.id && { color: COLORS.primary }]}>
+                {getLifeAreaShort(area.id)}
               </Text>
             </TouchableOpacity>
           ))}
