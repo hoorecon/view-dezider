@@ -61,6 +61,17 @@ const QUICK_ACTIONS: QuickAction[] = [
   { key: 'content-library', label: 'Content Library CMS',    description: 'Paste/edit verbatim coaching scripts · multi-locale · tenses_feels + 6 modules', icon: 'document-text', color: '#10B981', href: '/admin/content-library' },
 ];
 
+// Meaningful grouping of the 32 admin modules into 6 collapsible sections.
+// 'Essentials' is expanded by default; all others start collapsed.
+const ACTION_GROUPS: { key: string; label: string; icon: string; keys: string[] }[] = [
+  { key: 'essentials',     label: 'Essentials',                icon: 'star',          keys: ['acm', 'tier-matrix', 'pricing', 'appearance', 'masters', 'user-lookup'] },
+  { key: 'monetization',   label: 'Monetization & Billing',    icon: 'cash',          keys: ['payments', 'payouts', 'ai-wallet-cfg', 'recon', 'trial-payments', 'quota-editor', 'referral', 'karma'] },
+  { key: 'plans',          label: 'Plans, Tiers & Segments',   icon: 'apps',          keys: ['segments', 'tier-segments', 'acm-resolver-cfg', 'seven-seven', 'values'] },
+  { key: 'people',         label: 'People & Experts',          icon: 'people',        keys: ['org-members', 'experts', 'platform-experts', 'embed-partners'] },
+  { key: 'content',        label: 'Content & Intelligence',    icon: 'sparkles',      keys: ['catalog', 'content-library', 'scenarios', 'import-analytics', 'url-training', 'notification-engine'] },
+  { key: 'ops',            label: 'Operations & Docs',         icon: 'construct',     keys: ['audit', 'incident', 'docs'] },
+];
+
 export default function AdminHomeScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -72,6 +83,11 @@ export default function AdminHomeScreen() {
   const [loading, setLoading] = useState(true);
   const [wa, setWa] = useState<{ loading: boolean; connected: boolean; status: string; detail: string; configured: boolean }>(
     { loading: true, connected: false, status: 'checking', detail: '', configured: true },
+  );
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ essentials: true });
+  const actionByKey = React.useMemo(
+    () => Object.fromEntries(QUICK_ACTIONS.map((a) => [a.key, a])) as Record<string, QuickAction>,
+    [],
   );
 
   const checkWhatsApp = React.useCallback(async () => {
@@ -171,34 +187,61 @@ export default function AdminHomeScreen() {
           <View style={s.sectionHeader}>
             <View>
               <Text style={s.sectionTitle}>Operations</Text>
-              <Text style={s.sectionSub}>Jump into the most-used admin modules</Text>
+              <Text style={s.sectionSub}>Browse admin modules by category</Text>
             </View>
           </View>
-          <View style={s.actionGrid}>
-            {QUICK_ACTIONS.map(action => (
-              <Pressable
-                key={action.key}
-                onPress={() => router.push(action.href as any)}
-                style={({ hovered }: any) => [
-                  s.actionCard,
-                  { width: isWide ? '33.333%' : isDesktop ? '50%' : '100%' },
-                  hovered && s.actionCardHover,
-                ]}
-                testID={`admin-action-${action.key}`}
-              >
-                <View style={s.actionCardInner}>
-                  <View style={[s.actionIcon, { backgroundColor: action.color + '15' }]}>
-                    <Ionicons name={action.icon as any} size={18} color={action.color} />
+          {ACTION_GROUPS.map((group) => {
+            const open = !!openGroups[group.key];
+            const groupActions = group.keys.map((k) => actionByKey[k]).filter(Boolean);
+            return (
+              <View key={group.key} style={s.groupBlock}>
+                <TouchableOpacity
+                  style={s.groupHeader}
+                  activeOpacity={0.7}
+                  onPress={() => setOpenGroups((g) => ({ ...g, [group.key]: !g[group.key] }))}
+                  testID={`admin-group-${group.key}`}
+                >
+                  <View style={[s.groupIcon, { backgroundColor: ADMIN_THEME.semantic.primarySoft }]}>
+                    <Ionicons name={group.icon as any} size={15} color={ADMIN_THEME.semantic.primary} />
                   </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={s.actionLabel}>{action.label}</Text>
-                    <Text style={s.actionDesc} numberOfLines={2}>{action.description}</Text>
+                  <Text style={s.groupLabel}>{group.label}</Text>
+                  <Text style={s.groupCount}>{groupActions.length}</Text>
+                  <Ionicons
+                    name={open ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color={ADMIN_THEME.semantic.textMuted}
+                  />
+                </TouchableOpacity>
+                {open && (
+                  <View style={s.actionGrid}>
+                    {groupActions.map((action) => (
+                      <Pressable
+                        key={action.key}
+                        onPress={() => router.push(action.href as any)}
+                        style={({ hovered }: any) => [
+                          s.actionCard,
+                          { width: isWide ? '33.333%' : isDesktop ? '50%' : '100%' },
+                          hovered && s.actionCardHover,
+                        ]}
+                        testID={`admin-action-${action.key}`}
+                      >
+                        <View style={s.actionCardInner}>
+                          <View style={[s.actionIcon, { backgroundColor: action.color + '15' }]}>
+                            <Ionicons name={action.icon as any} size={18} color={action.color} />
+                          </View>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={s.actionLabel}>{action.label}</Text>
+                            <Text style={s.actionDesc} numberOfLines={2}>{action.description}</Text>
+                          </View>
+                          <Ionicons name="arrow-forward" size={14} color={ADMIN_THEME.semantic.textMuted} style={{ marginLeft: 6 }} />
+                        </View>
+                      </Pressable>
+                    ))}
                   </View>
-                  <Ionicons name="arrow-forward" size={14} color={ADMIN_THEME.semantic.textMuted} style={{ marginLeft: 6 }} />
-                </View>
-              </Pressable>
-            ))}
-          </View>
+                )}
+              </View>
+            );
+          })}
         </View>
 
         {/* System status side panel */}
@@ -320,6 +363,20 @@ const s = StyleSheet.create({
   sectionSub: { fontSize: 12, color: ADMIN_THEME.semantic.textMuted, marginTop: 2 },
 
   actionGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 },
+  groupBlock: { marginBottom: 12 },
+  groupHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: ADMIN_THEME.content.cardBg,
+    borderWidth: 1, borderColor: ADMIN_THEME.content.cardBorder,
+    borderRadius: 10, paddingVertical: 12, paddingHorizontal: 16,
+  },
+  groupIcon: { width: 28, height: 28, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
+  groupLabel: { flex: 1, fontSize: 14, fontWeight: '700', color: ADMIN_THEME.semantic.text },
+  groupCount: {
+    fontSize: 11, fontWeight: '700', color: ADMIN_THEME.semantic.textMuted,
+    backgroundColor: ADMIN_THEME.semantic.divider, paddingHorizontal: 8, paddingVertical: 2,
+    borderRadius: 10, overflow: 'hidden', marginRight: 4,
+  },
   actionCard: {
     paddingHorizontal: 6,
     paddingVertical: 6,

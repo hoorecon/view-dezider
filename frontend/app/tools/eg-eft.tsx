@@ -760,9 +760,26 @@ function ResultScreen({ finalIntensity, initialIntensity, reflection, setReflect
         </>
       )}
 
-      <Text style={styles.continueLabel}>Continue your journey</Text>
-      <SecondaryBtn label="Breaking the Trap" testID="eft-go-trap" onPress={() => router.push('/tools/eg-trap' as any)} />
-      <SecondaryBtn label="Effective Outlets Advisor" testID="eft-go-advisor" onPress={() => router.push('/tools/eg-advisor' as any)} />
+      <View style={styles.navChipRow}>
+        <TouchableOpacity
+          testID="eft-go-trap"
+          style={[styles.navChip, { borderColor: EFT.amber, backgroundColor: '#FFFBEB' }]}
+          onPress={() => router.push('/tools/eg-trap' as any)}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="git-branch" size={16} color={EFT.amber} />
+          <Text style={[styles.navChipTxt, { color: '#B45309' }]} numberOfLines={2}>Breaking the Trap</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          testID="eft-go-advisor"
+          style={[styles.navChip, { borderColor: '#8B5CF6', backgroundColor: '#F5F3FF' }]}
+          onPress={() => router.push('/tools/eg-advisor' as any)}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="heart-circle" size={16} color="#8B5CF6" />
+          <Text style={[styles.navChipTxt, { color: '#6D28D9' }]} numberOfLines={2}>Effective Emotional Outlets Advisor</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -901,6 +918,9 @@ const styles = StyleSheet.create({
   resultMsg: { fontSize: 15, color: COLORS.textSecondary, textAlign: 'center', marginTop: 16, lineHeight: 23 },
   reflectQ: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary, marginTop: 24, marginBottom: 10 },
   continueLabel: { fontSize: 12, fontWeight: '700', color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 24, marginBottom: 4, textAlign: 'center' },
+  navChipRow: { flexDirection: 'row', gap: 10, marginTop: 24 },
+  navChip: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1.5 },
+  navChipTxt: { fontSize: 13, fontWeight: '700', flexShrink: 1 },
   optional: { fontSize: 13, color: COLORS.textMuted, fontWeight: '400' },
 
   primaryBtn: { paddingVertical: 16, borderRadius: 14, alignItems: 'center' },

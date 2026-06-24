@@ -169,9 +169,20 @@ export default function AdminShell({ children, title, rightSlot }: AdminShellPro
       )}
       <View style={{ flex: 1, minWidth: 0 }}>
         <View style={s.breadcrumbs}>
-          <Text style={s.breadcrumbMuted}>{headerSection}</Text>
+          <TouchableOpacity
+            onPress={() => router.push((activeItem?.sec.items?.[0]?.href || '/admin') as any)}
+            accessibilityLabel={`Go to ${headerSection}`}
+          >
+            <Text style={s.breadcrumbMuted}>{headerSection}</Text>
+          </TouchableOpacity>
           <Ionicons name="chevron-forward" size={11} color={ADMIN_THEME.topbar.textMuted} style={{ marginHorizontal: 4 }} />
-          <Text style={s.breadcrumbActive} numberOfLines={1}>{headerTitle}</Text>
+          <TouchableOpacity
+            onPress={() => router.push((activeItem?.it.href || '/admin') as any)}
+            accessibilityLabel={`Go to ${headerTitle}`}
+            style={{ flexShrink: 1 }}
+          >
+            <Text style={s.breadcrumbActive} numberOfLines={1}>{headerTitle}</Text>
+          </TouchableOpacity>
         </View>
       </View>
       {rightSlot}
