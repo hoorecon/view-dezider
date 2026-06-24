@@ -9928,3 +9928,67 @@ agent_communication:
       verified via curl. Need frontend verification — esp. that the Home dashboard has NO regression
       (all tiles render + navigate) and the admin editor saves correctly. Admin: super@test.com /
       SuperPass2026!. Note super_admin routes to /admin; use 'User View' or a normal account for Home.
+
+#====================================================================================================
+# Iter 156 (fork) — BUG: ACM toggle not reflecting (multi-worker stale cache)
+#====================================================================================================
+backend:
+  - task: "ACM cross-worker cache invalidation (stamp-based)"
+    implemented: true
+    working: "NA"
+    file: "backend/core/acm_engine.py, backend/routes/acm.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          ROOT CAUSE of "disabled 'Your Report Quota' still shows for users": `_acm_cache` is a
+          per-PROCESS in-memory global. PUT /api/acm/feature only called refresh_acm_cache() on the
+          ONE worker that served the request; the other production workers (gunicorn/uvicorn --workers N)
+          kept serving the STALE matrix, so a user's GET /api/acm/my-access randomly hit a stale worker
+          and still saw report_quota=full. (Worked locally only because 1 worker.)
+          FIX: added a DB-backed cache stamp in acm_meta. Writes (PUT /acm/feature, /acm/refresh-cache)
+          call bump_acm_cache_stamp(); readers (get_all_feature_access, get_feature_access) call
+          ensure_fresh_cache() which reloads the in-process cache if the stamp changed (throttled to 2s
+          to bound DB hits). Verified locally: a simulated stale worker reloads after another bumps the
+          stamp. TEST: as admin set dash_report_quota → Hidden via PUT /api/acm/feature/dash_report_quota
+          (audience 'free' and/or all), then GET /api/acm/my-access for a normal FREE user must return
+          access_level 'hidden' for dash_report_quota; set back to 'full' must return full. Confirm no
+          regression to other ACM reads (my-access still returns 140 features).
+
+frontend:
+  - task: "Home hides 'Your Report Quota' when ACM-disabled (verify gating end-to-end)"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/(tabs)/index.tsx, frontend/src/utils/useDashboardTiles.ts"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Quota card gated by isTileOn('report_quota') → dash_report_quota. With the backend cache fix,
+          toggling Hidden in Admin ACM should hide the card on the user Home after refresh. Verify: a normal
+          user sees the card when full; after admin sets dash_report_quota Hidden, the user's Home (reload)
+          no longer shows 'Your Report Quota'.
+
+metadata: { created_by: "main_agent", version: "fork-iter-156", test_sequence: 156 }
+test_plan:
+  current_focus:
+    - "ACM toggle propagation: set dash_report_quota hidden → my-access reflects hidden"
+    - "User Home hides 'Your Report Quota' when disabled, shows when enabled"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+agent_communication:
+  - agent: "main"
+    message: |
+      Iter 156 bug fix. ACM visibility toggles now propagate across workers via a DB cache stamp.
+      Please verify the reported bug: disabling 'Your Report Quota' in Admin ACM must hide it for a
+      normal user (and re-enabling shows it). Admin: super@test.com / SuperPass2026!. Feature id:
+      dash_report_quota (module dashboard_tiles). Token field: session_token. Register a fresh FREE
+      user for the user-side check if needed. IMPORTANT: leave dash_report_quota set back to FULL/visible
+      at the end so the default dashboard is not left broken.

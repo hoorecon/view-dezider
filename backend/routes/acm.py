@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Request, Depends
 from core.database import db
 from core.auth import get_current_user, get_user_role, ADMIN_ROLES
 from core.acm_engine import (
-    seed_acm_defaults, refresh_acm_cache,
+    seed_acm_defaults, refresh_acm_cache, bump_acm_cache_stamp,
     check_feature_access, check_and_consume,
     get_all_feature_access, get_user_acm_profile,
     resolve_user_acm_profile,
@@ -40,6 +40,8 @@ async def api_refresh_cache(user: dict = Depends(get_current_user)):
     if role not in ADMIN_ROLES:
         raise HTTPException(403, "Admin access required")
     count = await refresh_acm_cache()
+    # Propagate to all other workers as well.
+    await bump_acm_cache_stamp()
     return {"message": "Cache refreshed", "features_loaded": count}
 
 
@@ -190,6 +192,7 @@ async def update_feature_access(feature_id: str, request: Request, user: dict = 
                     )
                     cascade_log.append(f"auto-unhid parent → {parent_id}")
 
+    await bump_acm_cache_stamp()
     await refresh_acm_cache()
 
     resp = {"message": f"Feature '{feature_id}' updated", "updates": list(update_ops.keys())}

@@ -52,6 +52,49 @@ def _lookup_access_rule(access_map: dict, access_key: str) -> dict:
 
 # In-memory cache of the ACM matrix (refreshed on seed/update)
 _acm_cache: dict = {}  # feature_id → {module_id, feature_name, release_stage, quota_unit, quota_resets, access: {...}}
+# Cross-worker cache invalidation. Each worker keeps an in-process copy of the
+# matrix; a stamp stored in `acm_meta` is bumped on every WRITE. Readers check
+# the stamp (throttled) and reload if another worker changed the matrix — this
+# fixes stale tiles in multi-worker (gunicorn/uvicorn --workers N) deployments
+# where a PUT only refreshed the cache on the single worker that served it.
+_acm_cache_stamp: str = ""
+_last_stamp_check: float = 0.0
+_STAMP_CHECK_INTERVAL = 2.0  # seconds — bounds cross-worker staleness
+
+
+async def _read_cache_stamp() -> str:
+    doc = await db.acm_meta.find_one({"key": "acm_cache_stamp"}, {"_id": 0, "value": 1})
+    return (doc or {}).get("value", "")
+
+
+async def bump_acm_cache_stamp() -> str:
+    """Mark the ACM matrix as changed so every worker reloads on next read."""
+    import uuid as _uuid
+    stamp = _uuid.uuid4().hex
+    await db.acm_meta.update_one(
+        {"key": "acm_cache_stamp"},
+        {"$set": {"key": "acm_cache_stamp", "value": stamp}},
+        upsert=True,
+    )
+    return stamp
+
+
+async def ensure_fresh_cache():
+    """Reload the in-process cache if empty or if another worker bumped the stamp.
+    Throttled to at most once per _STAMP_CHECK_INTERVAL to avoid a DB hit on
+    every single access check."""
+    global _last_stamp_check
+    import time as _time
+    if not _acm_cache:
+        await refresh_acm_cache()
+        return
+    now = _time.monotonic()
+    if now - _last_stamp_check < _STAMP_CHECK_INTERVAL:
+        return
+    _last_stamp_check = now
+    stamp = await _read_cache_stamp()
+    if stamp and stamp != _acm_cache_stamp:
+        await refresh_acm_cache()
 
 
 # ============================================================
@@ -60,7 +103,7 @@ _acm_cache: dict = {}  # feature_id → {module_id, feature_name, release_stage,
 
 async def refresh_acm_cache():
     """Reload the ACM matrix from MongoDB into memory."""
-    global _acm_cache
+    global _acm_cache, _acm_cache_stamp
     modules = await db.acm_modules.find({}, {"_id": 0}).to_list(50)
     new_cache = {}
     for mod in modules:
@@ -75,7 +118,9 @@ async def refresh_acm_cache():
                 "access": feat.get("access", {}),
             }
     _acm_cache = new_cache
-    logger.info(f"ACM cache refreshed: {len(new_cache)} features loaded")
+    # Record the stamp we just loaded so ensure_fresh_cache() won't needlessly reload.
+    _acm_cache_stamp = await _read_cache_stamp()
+    logger.info(f"ACM cache refreshed: {len(new_cache)} features loaded (stamp={_acm_cache_stamp[:8]})")
     return len(new_cache)
 
 
@@ -312,9 +357,9 @@ async def check_feature_access(
             "upgrade_message": str,    # Shown when locked
         }
     """
-    # Ensure cache is loaded
-    if not _acm_cache:
-        await refresh_acm_cache()
+    # Ensure cache is loaded AND fresh across workers (reload if another worker
+    # changed the matrix — fixes stale single-feature checks in multi-worker).
+    await ensure_fresh_cache()
 
     feature = _acm_cache.get(feature_id)
     if not feature:
@@ -471,8 +516,7 @@ async def get_all_feature_access(user: dict) -> dict:
     Used by the frontend to render the entire UI conditionally.
     Returns: { feature_id: {access_level, quota_limit, quota_used, quota_remaining, quota_unit} }
     """
-    if not _acm_cache:
-        await refresh_acm_cache()
+    await ensure_fresh_cache()
 
     profile = get_user_acm_profile(user)
     access_key = profile["access_key"]
