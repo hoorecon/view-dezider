@@ -4,7 +4,7 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Modal, TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -46,6 +46,43 @@ export default function ActionCenter() {
   const [fStatus, setFStatus] = useState('all');
   const [fSource, setFSource] = useState('all');
   const [fPorted, setFPorted] = useState('all');
+  const [editItem, setEditItem] = useState<ActionItem | null>(null);
+  const [eTitle, setETitle] = useState('');
+  const [eBy, setEBy] = useState('');
+  const [ePri, setEPri] = useState<ActionItem['priority']>('medium');
+  const [eStatus, setEStatus] = useState('pending');
+  const [eSaving, setESaving] = useState(false);
+
+  const openEdit = (it: ActionItem) => {
+    setEditItem(it);
+    setETitle(it.title || '');
+    setEBy((it.by_when || '').slice(0, 10));
+    setEPri(it.priority || 'medium');
+    setEStatus(it.status || 'pending');
+  };
+  const isManual = (it: ActionItem | null) => (it?.source_module || 'MANUAL').toUpperCase() === 'MANUAL';
+  const saveEdit = async () => {
+    if (!editItem) return;
+    setESaving(true);
+    try {
+      const body: any = { by_when: eBy || null, priority: ePri, status: eStatus };
+      if (isManual(editItem)) body.title = eTitle.trim();
+      await api.put(`/action-items/${editItem.action_id}`, body);
+      setEditItem(null);
+      load();
+    } catch (e: any) {
+      showAlert('Error', e?.response?.data?.detail || 'Could not save');
+    } finally { setESaving(false); }
+  };
+  const removeItem = (it: ActionItem) => {
+    showAlert('Delete action?', 'This permanently removes the action you created here.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        try { await api.delete(`/action-items/${it.action_id}?hard=true`); load(); }
+        catch (e: any) { showAlert('Error', e?.response?.data?.detail || 'Failed'); }
+      } },
+    ]);
+  };
 
   // Auto-import banner shown after seeding from an upstream source
   // (e.g. AIM session → Action Items Planner deep-link).
@@ -243,12 +280,73 @@ export default function ActionCenter() {
                       </>
                     )}
                   </View>
+                  <View style={s.actionsRow}>
+                    <TouchableOpacity style={s.actBtn} onPress={() => openEdit(it)}>
+                      <Ionicons name="create-outline" size={13} color="#0F172A" />
+                      <Text style={s.actText}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={s.actBtn} onPress={() => router.push({ pathname: '/tools/atex', params: { title: it.title, source: 'action_center', ref_id: it.action_id } } as any)}>
+                      <Ionicons name="timer-outline" size={13} color="#6D28D9" />
+                      <Text style={[s.actText, { color: '#6D28D9' }]}>Estimate (ATEX)</Text>
+                    </TouchableOpacity>
+                    {it.source_module === 'MANUAL' && !it.ported_to && (
+                      <TouchableOpacity style={s.actBtn} onPress={() => removeItem(it)}>
+                        <Ionicons name="trash-outline" size={13} color="#EF4444" />
+                        <Text style={[s.actText, { color: '#EF4444' }]}>Delete</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
               </View>
             ))}
           </View>
         )}
       </ScrollView>
+
+      {/* Edit modal — name editable only for Manual items; other fields always editable */}
+      <Modal visible={!!editItem} transparent animationType="slide" onRequestClose={() => setEditItem(null)}>
+        <View style={s.mOverlay}>
+          <View style={s.mSheet}>
+            <View style={s.mHeader}>
+              <Text style={s.mTitle}>Edit action</Text>
+              <TouchableOpacity onPress={() => setEditItem(null)}><Ionicons name="close" size={22} color="#475569" /></TouchableOpacity>
+            </View>
+            <Text style={s.mLabel}>Action name</Text>
+            <TextInput
+              style={[s.mInput, !isManual(editItem) && s.mInputLocked]}
+              value={eTitle}
+              onChangeText={setETitle}
+              editable={isManual(editItem)}
+              multiline
+            />
+            {!isManual(editItem) && (
+              <Text style={s.mLockHint}>🔒 Name is owned by the source module — edit it there.</Text>
+            )}
+            <Text style={s.mLabel}>Deadline (YYYY-MM-DD)</Text>
+            <TextInput style={s.mInput} value={eBy} onChangeText={setEBy} placeholder="2026-07-01" autoCapitalize="none" />
+            <Text style={s.mLabel}>Priority</Text>
+            <View style={s.mChips}>
+              {(['low','medium','high','urgent'] as const).map(p => (
+                <TouchableOpacity key={p} style={[s.mChip, ePri === p && { backgroundColor: PRIORITY_COLOR[p], borderColor: PRIORITY_COLOR[p] }]} onPress={() => setEPri(p)}>
+                  <Text style={[s.mChipTxt, ePri === p && { color: '#FFF' }]}>{p}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={s.mLabel}>Status</Text>
+            <View style={s.mChips}>
+              {['pending','in_progress','done','blocked'].map(st => (
+                <TouchableOpacity key={st} style={[s.mChip, eStatus === st && { backgroundColor: '#0D9488', borderColor: '#0D9488' }]} onPress={() => setEStatus(st)}>
+                  <Text style={[s.mChipTxt, eStatus === st && { color: '#FFF' }]}>{st.replace('_',' ')}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={s.mNote}>Internal dependency, task duration & start/end dates live in CTT — port this item to CTT to edit those.</Text>
+            <TouchableOpacity style={s.mSave} onPress={saveEdit} disabled={eSaving}>
+              {eSaving ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={s.mSaveTxt}>Save changes</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -285,6 +383,23 @@ const s = StyleSheet.create({
   tagText: { fontSize: 10, fontWeight: '700' },
   smallBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   smallBtnText: { fontSize: 10, fontWeight: '700' },
+  actionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  actBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#F8FAFC' },
+  actText: { fontSize: 11, fontWeight: '700', color: '#0F172A' },
+  mOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  mSheet: { backgroundColor: '#FFF', borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 16, maxWidth: 640, width: '100%', alignSelf: 'center' },
+  mHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  mTitle: { fontSize: 17, fontWeight: '800', color: '#0F172A' },
+  mLabel: { fontSize: 11, fontWeight: '700', color: '#64748B', marginTop: 12, marginBottom: 5, textTransform: 'uppercase' },
+  mInput: { borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: '#0F172A' },
+  mInputLocked: { backgroundColor: '#F1F5F9', color: '#94A3B8' },
+  mLockHint: { fontSize: 11, color: '#94A3B8', marginTop: 4 },
+  mChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  mChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 14, borderWidth: 1, borderColor: '#CBD5E1', backgroundColor: '#FFF' },
+  mChipTxt: { fontSize: 12, fontWeight: '700', color: '#0F172A', textTransform: 'capitalize' },
+  mNote: { fontSize: 11, color: '#64748B', marginTop: 14, lineHeight: 16 },
+  mSave: { backgroundColor: '#0D9488', borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginTop: 16 },
+  mSaveTxt: { color: '#FFF', fontSize: 14, fontWeight: '800' },
   banner: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: '#F5F3FF', borderRadius: 12, padding: 12, marginBottom: 12,

@@ -1,0 +1,44 @@
+{
+  "summary": "Frontend-only review for Action Center edit/delete + ATEX cross-linking. Backend behavior verified via direct API calls through the public EXPO_BACKEND_URL (super admin auth). All four backend invariants the new UI depends on are correct: (1) POST /api/action-items with source_module=MANUAL succeeds, (2) PUT on a module-sourced item (AIM) IGNORES title changes — title remained 'TEST_Module_Sourced_AIM' even when sending title='HACKED_NAME', while priority/status are updated, (3) PUT on a MANUAL item ACCEPTS title changes (renamed successfully), (4) GET /api/ctt/tasks?status=all returns 200 with an array (used by ATEX picker). UI screen rendering & flows could NOT be fully exercised in Playwright because get_by_placeholder('Enter your email') consistently timed out on the login form (likely RN-web TextInput placeholder rendering quirk in this preview) — code review of the three frontend files shows the implementation matches the spec.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "action-center.tsx Edit / Estimate / Delete row buttons", "issue": "No testID on the per-row Edit/Estimate/Delete TouchableOpacity, the Pick-from-existing button, the edit modal inputs, or the Save button. Makes automated mobile/web testing brittle.", "testID": "missing", "priority": "MEDIUM"},
+      {"component": "atex.tsx Pick from existing tasks button + modal", "issue": "No testID on pickBtn, modal sheet, picker rows, or close button. Add e.g. atex-pick-btn, atex-pick-modal, atex-pick-row-<id>.", "testID": "missing", "priority": "MEDIUM"},
+      {"component": "ctt-task.tsx header delete icon", "issue": "Header LinearGradient was changed to ['#F1F5F9','#2D5F8B']. The delete button uses bg rgba(255,255,255,0.15) with a red icon — fine — but headerTitle color is now #0F172A (dark) on a gradient that ends in #2D5F8B (dark blue), so the right edge of the title may have low contrast on mobile when the gradient extends. Sub-text headerSub still uses rgba(255,255,255,0.7) which is now invisible on the light start of the gradient. Reference: /app/frontend/app/tools/ctt-task.tsx:565-566.", "testID": "n/a", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Action Center edit modal", "issues": ["Deadline field is a free-text TextInput with placeholder '2026-07-01' — no validation/regex, so users can save an invalid date. Consider a masked input or quick chips (Today / +7d / +30d).", "Status chips inside the modal don't include 'cancelled', although STATUS_COLOR includes it — backend accepts it. Minor inconsistency."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Add testID props to Action Center row actions: action-edit-btn, action-atex-btn, action-delete-btn; modal: action-edit-modal, action-edit-title, action-edit-deadline, action-edit-save.",
+    "Add testID props to ATEX: atex-task-title (TextInput), atex-pick-btn, atex-pick-modal, atex-pick-row, atex-pick-close.",
+    "Add 'cancelled' to the Status chip set in the edit modal (or document it as deliberately omitted).",
+    "Add light client-side YYYY-MM-DD validation for the Deadline field before PUT.",
+    "Audit ctt-task.tsx header: headerSub text color (rgba(255,255,255,0.7)) is unreadable on the new light gradient start (#F1F5F9); change to a darker tone or restore the original gradient."
+  ],
+  "critical_code_review_comments": [
+    "action-center.tsx:69 — saveEdit only sends title when isManual(); good. But it always sends by_when: eBy || null even when user didn't touch it — fine because backend merges, just noting.",
+    "action-center.tsx:292 — Delete button visibility condition is `it.source_module === 'MANUAL' && !it.ported_to`. Matches spec exactly.",
+    "action-center.tsx:288 — Estimate button navigates with params { title, source:'action_center', ref_id: it.action_id } which ATEX correctly reads via useLocalSearchParams.",
+    "atex.tsx:44-51 — openPicker uses /ctt/tasks?status=all and handles non-array/null gracefully; falls back to [] on error. Verified the endpoint returns 200.",
+    "atex.tsx:279-283 — Each pickRow uses key={t.task_id || t.id} and sets taskTitle to t.task || t.title — covers both schema names. Good.",
+    "ctt-task.tsx:279 — ATEXEstimateButton receives ref_id={editId}, so prefilled-with-title + ref_id=task_id navigation works as designed.",
+    "backend action_items.py:188-189 — Title lock logic forces merged['title']=existing.get('title') for non-MANUAL items BEFORE _normalise. Verified by API: AIM item title unchanged after PUT with new title.",
+    "backend action_items.py:204-209 — hard=true is honored only for MANUAL and non-ported items; otherwise soft-cancels. Correct per spec."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (4/4 invariant checks)", "frontend": "not_measured (UI auto-login blocked by Playwright RN TextInput selector issue; code review only)"},
+  "seed_data_creation": "Created TEST_Manual_Action_E2E (MANUAL), TEST_UI_Manual_Item (MANUAL) and TEST_Module_Sourced_AIM (AIM) via API to verify PUT/lock behavior; all cleaned up via DELETE ?hard=true at end of run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Playwright login via get_by_placeholder('Enter your email') on https://goals-feels-tracker.preview.emergentagent.com/login times out — try filling using JS evaluate on document.querySelectorAll('input')[0/1] or add testIDs to the login email/password TextInputs (login-email, login-password, login-submit). Backend invariants for action-items lock & ctt/tasks endpoint are confirmed working. For full UI verification, prefer adding testID to: edit/estimate/delete row buttons in action-center.tsx, the modal inputs, and atex.tsx pick button + modal rows. The current screen renders correctly per code; only the automation harness needs better selectors.",
+  "rca_of_issue": "No functional issues found. Implementation matches spec on both frontend (manual vs module-sourced edit modal, conditional delete, ATEX picker, ATEX navigation from Action Center & CTT) and backend (PUT name-lock for non-MANUAL, hard delete restricted to MANUAL non-ported). Suggested improvements are testability (testID) and design polish (header contrast on ctt-task, modal status chip parity, deadline validation)."
+}

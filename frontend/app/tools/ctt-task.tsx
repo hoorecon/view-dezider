@@ -276,7 +276,7 @@ export default function CTTTaskScreen() {
 
             {/* Iter 129 — ATEX Effort Estimation invocation */}
             <View style={{ marginTop: 8, marginBottom: 4 }}>
-              <ATEXEstimateButton source="ctt" title={task} ref_id={undefined} />
+              <ATEXEstimateButton source="ctt" title={task} ref_id={editId} />
             </View>
 
             {/* Priority */}

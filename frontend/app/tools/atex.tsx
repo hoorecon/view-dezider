@@ -4,7 +4,7 @@
  * Start-date + holidays per week → auto end-date.
  */
 import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -38,6 +38,17 @@ export default function ATEXScreen() {
   const [calc, setCalc] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickTasks, setPickTasks] = useState<any[]>([]);
+  const [pickLoading, setPickLoading] = useState(false);
+  const openPicker = async () => {
+    setPickerOpen(true); setPickLoading(true);
+    try {
+      const r = await api.get('/ctt/tasks?status=all');
+      setPickTasks(Array.isArray(r.data) ? r.data : []);
+    } catch { setPickTasks([]); }
+    finally { setPickLoading(false); }
+  };
   const [templates, setTemplates] = useState<any[]>([]);
   const [saveTpl, setSaveTpl] = useState({ on: false, name: '' });
 
@@ -119,6 +130,10 @@ export default function ATEXScreen() {
               {aiBusy ? <ActivityIndicator size="small" color="#FFF" /> : <><Ionicons name="sparkles" size={14} color="#FFF" /><Text style={s.aiBtnText}> AI</Text></>}
             </TouchableOpacity>
           </View>
+          <TouchableOpacity style={s.pickBtn} onPress={openPicker}>
+            <Ionicons name="list" size={14} color="#2563EB" />
+            <Text style={s.pickBtnText}>Pick from existing tasks</Text>
+          </TouchableOpacity>
           <Text style={s.lbl}>Priority</Text>
           <View style={{ flexDirection: 'row', gap: 6 }}>
             {(['P0','P1','P2','P3'] as const).map(p => (
@@ -246,6 +261,32 @@ export default function ATEXScreen() {
           </View>
         )}
       </ScrollView>
+
+      <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
+        <View style={s.pkOverlay}>
+          <View style={s.pkSheet}>
+            <View style={s.pkHeader}>
+              <Text style={s.pkTitle}>Pick a task</Text>
+              <TouchableOpacity onPress={() => setPickerOpen(false)}><Ionicons name="close" size={22} color="#475569" /></TouchableOpacity>
+            </View>
+            {pickLoading ? (
+              <ActivityIndicator color="#2563EB" style={{ marginVertical: 20 }} />
+            ) : pickTasks.length === 0 ? (
+              <Text style={s.pkEmpty}>No tasks found in your Task Tracker yet.</Text>
+            ) : (
+              <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator>
+                {pickTasks.map((t) => (
+                  <TouchableOpacity key={t.task_id || t.id} style={s.pkRow}
+                    onPress={() => { setTaskTitle(t.task || t.title || ''); setPickerOpen(false); }}>
+                    <Ionicons name={t.recurrence_type === 'recurring' || t.type === 'routine' ? 'repeat' : 'ellipse-outline'} size={14} color="#2563EB" />
+                    <Text style={s.pkRowText} numberOfLines={2}>{t.task || t.title || 'Untitled'}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -263,6 +304,15 @@ const s = StyleSheet.create({
   inp: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, padding: 8, fontSize: 13, color: '#0F172A' },
   multi: { minHeight: 64, textAlignVertical: 'top' },
   aiBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#8B5CF6', paddingHorizontal: 10, borderRadius: 8 },
+  pickBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, marginTop: 8, marginBottom: 4 },
+  pickBtnText: { color: '#2563EB', fontSize: 12, fontWeight: '700' },
+  pkOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  pkSheet: { backgroundColor: '#FFF', borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 16, maxWidth: 640, width: '100%', alignSelf: 'center' },
+  pkHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  pkTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
+  pkEmpty: { fontSize: 13, color: '#64748B', paddingVertical: 20, textAlign: 'center' },
+  pkRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  pkRowText: { flex: 1, fontSize: 14, color: '#0F172A', fontWeight: '500' },
   aiBtnText: { color: '#FFF', fontWeight: '800', fontSize: 12 },
   priBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', backgroundColor: '#F8FAFC', alignItems: 'center' },
   priBtnOn: { backgroundColor: '#003087', borderColor: '#003087' },

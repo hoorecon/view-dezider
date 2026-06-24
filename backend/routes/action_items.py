@@ -183,6 +183,10 @@ async def update_action_item(action_id: str, request: Request, user: dict = Depe
 
     # Allow partial — only validate supplied enum fields
     merged = {**existing, **body}
+    # Module-sourced items: the action NAME is owned by the source module and
+    # must be edited there, not from the Action Center.
+    if (existing.get("source_module") or "MANUAL").upper() != "MANUAL":
+        merged["title"] = existing.get("title")
     norm = _normalise(merged, user)
     norm["updated_at"] = _now_iso()
     await db.action_items.update_one({"action_id": action_id}, {"$set": norm})
@@ -191,13 +195,19 @@ async def update_action_item(action_id: str, request: Request, user: dict = Depe
 
 
 @router.delete("/action-items/{action_id}")
-async def delete_action_item(action_id: str, user: dict = Depends(get_current_user)):
+async def delete_action_item(action_id: str, request: Request, user: dict = Depends(get_current_user)):
     existing = await db.action_items.find_one(
         {"action_id": action_id, "user_id": user.get("user_id")}
     )
     if not existing:
         raise HTTPException(404, "action item not found")
-    # Soft-cancel by default; if `?hard=true` and not ported, hard-delete.
+    hard = (request.query_params.get("hard") or "").lower() in ("1", "true", "yes")
+    is_manual = (existing.get("source_module") or "MANUAL").upper() == "MANUAL"
+    # Only manually-created, un-ported items may be hard-deleted from here.
+    if hard and is_manual and not existing.get("ported_to"):
+        await db.action_items.delete_one({"action_id": action_id})
+        return {"deleted": True, "action_id": action_id}
+    # Otherwise soft-cancel.
     await db.action_items.update_one(
         {"action_id": action_id},
         {"$set": {"status": "cancelled", "updated_at": _now_iso()}},
