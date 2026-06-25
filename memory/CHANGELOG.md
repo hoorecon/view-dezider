@@ -1094,3 +1094,22 @@ TESTS: tests/test_iter113_constraint_gate.py (5) — battery 67/67 PASS. Bundle 
 GOTCHA: search_replace edits occasionally do not persist when many edits run in one batch —
 ALWAYS re-grep critical lines after batch edits (lost edits found twice: admin copy iter110,
 hub filter iter112).
+
+## Iteration 161 — FIX: ChatGPT share-link Import URL (React-Router stream) — 25 Jun 2026
+USER BUG (prod): Step-2 "Import URL" of a ChatGPT conversation share link always failed with 422
+"Couldn't find clear decision factors/options in this conversation".
+ROOT CAUSE: chatgpt.com share pages moved to a React-Router v7 turbo-stream payload
+(window.__reactRouterContext.streamController.enqueue("...")). The old extract_conversation_text
+split on escaped quotes and scraped the page's JS-bundle UI/system-prompt template strings
+("Please make this response more concise", Codex ad prompts) instead of the real chat → LLM found
+nothing → 422.
+FIX (core/url_crawl.py): extract_conversation_text now decodes the React-Router enqueue stream
+(_decode_rr_stream) and pulls each user/assistant TEXT message body via the
+'"content_type":"text","parts":[..],"<body>"' shape with its role (_messages_from_rr_stream),
+falling back to the legacy heuristic only for non-RR pages.
+VERIFIED: live E2E on user's real URL https://chatgpt.com/share/6a36d8d2-3b08-83e8-b67a-6dffa9cc9ffa →
+POST /api/url-analyze/decision/{id}/import 200 {mode:conversation, item_count:9, factors_added:8,
+options_added:9}. testing_agent confirmed (unit 2/2 + live e2e 2/2, no 422 regression).
+TESTS: backend/tests/test_chatgpt_share_import.py, test_chatgpt_import_e2e.py.
+SCOPE NOTE: ChatGPT only. Claude.ai / Gemini share links use different SSR formats — NOT yet
+implemented/verified (need sample share URLs from each to build+test deterministically).
