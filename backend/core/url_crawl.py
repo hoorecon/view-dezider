@@ -323,13 +323,108 @@ def is_conversation_url(url: str) -> bool:
     return ("/share/" in u) or ("/c/" in u) or ("/g/" in u)
 
 
+def _decode_rr_stream(html: str) -> str:
+    """React Router v7 (used by chatgpt.com share pages, 2025+) streams its
+    loader data via ``window.__reactRouterContext.streamController.enqueue("…")``.
+    The FULL conversation lives there. Concatenate + JS-unescape every enqueued
+    chunk into one clean string ('' when the page is not React-Router based)."""
+    chunks: List[str] = []
+    needle = "streamController.enqueue("
+    i = 0
+    while True:
+        j = html.find(needle, i)
+        if j < 0:
+            break
+        k = j + len(needle)
+        if k >= len(html) or html[k] not in "\"'":
+            i = k
+            continue
+        q = html[k]
+        k += 1
+        buf: List[str] = []
+        while k < len(html):
+            ch = html[k]
+            if ch == "\\":
+                buf.append(html[k:k + 2])
+                k += 2
+                continue
+            if ch == q:
+                break
+            buf.append(ch)
+            k += 1
+        literal = "".join(buf)
+        try:
+            chunks.append(json.loads('"' + literal + '"'))
+        except Exception:
+            try:
+                chunks.append(literal.encode().decode("unicode_escape", "ignore"))
+            except Exception:
+                pass
+        i = k + 1
+    return "\n".join(chunks)
+
+
+_PARTS_RE = re.compile(r'"content_type","(?:text|multimodal_text)","parts",\[[\d,\s]*\],')
+_ROLE_RE = re.compile(r'"role","(user|assistant|system|tool)"')
+_JSTR_RE = re.compile(r'"((?:[^"\\]|\\.)*)"')
+
+
+def _messages_from_rr_stream(stream: str) -> List[str]:
+    """Pull each user/assistant TEXT message body (with its role) from a decoded
+    ChatGPT React-Router stream, in document order. Targets the
+    ``"content_type":"text","parts":[…],"<body>"`` shape so it never picks up the
+    page's UI/system-prompt template strings."""
+    out: List[str] = []
+    for m in _PARTS_RE.finditer(stream):
+        p = m.end()
+        texts: List[str] = []
+        while p < len(stream) and stream[p] == '"':
+            sm = _JSTR_RE.match(stream, p)
+            if not sm:
+                break
+            try:
+                txt = json.loads('"' + sm.group(1) + '"')
+            except Exception:
+                txt = sm.group(1)
+            if txt.strip():
+                texts.append(txt)
+            p = sm.end()
+            if p < len(stream) and stream[p] == ",":
+                p += 1
+            else:
+                break
+        if not texts:
+            continue
+        body = "\n".join(texts).strip()
+        if len(body) < 2:
+            continue
+        rm = _ROLE_RE.search(stream, m.end(), m.end() + len(body) + 3000)
+        role = rm.group(1) if rm else "assistant"
+        if role in ("system", "tool"):
+            continue
+        out.append(f"{role.upper()}: {body}")
+    return out
+
+
 def extract_conversation_text(html: str) -> str:
     """Recover human-readable conversation text from an AI share page.
 
-    The transcript is embedded as escaped JSON string literals inside the page's
-    data stream. Split on the escaped-quote delimiter and keep natural-language
-    chunks (dropping HTML/URL/metadata noise). Falls back to visible text."""
+    PRIMARY (ChatGPT share pages, React-Router SSR): decode the
+    ``streamController.enqueue(...)`` loader stream and pull message bodies with
+    roles — avoids the JS-bundle template/system strings a naive string-split
+    grabs (which previously made every import fail with "no factors/options").
+
+    FALLBACK (older formats / Claude / Gemini): legacy escaped-literal heuristic,
+    then visible DOM text."""
     import codecs
+    # 1) React Router stream (chatgpt.com share, 2025+ turbo-stream format)
+    stream = _decode_rr_stream(html)
+    if stream:
+        msgs = _messages_from_rr_stream(stream)
+        if msgs:
+            return "\n\n".join(msgs)[:16000]
+
+    # 2) Legacy heuristic: escaped-string literals (older share formats)
     out: List[str] = []
     seen: set = set()
     for seg in html.split('\\"'):

@@ -1,0 +1,22 @@
+{
+  "summary": "Backend-only retest of ChatGPT share-link import bug fix. Both the deterministic extractor unit tests (tests/test_chatgpt_share_import.py) and the new live end-to-end test (tests/test_chatgpt_import_e2e.py) PASS against the deployed backend. The old 422 'Couldn't find clear decision factors/options' is gone; the React-Router turbo-stream decoder in core/url_crawl.py now recovers the real chat (Java Capital, Chiratae Ventures, role tags) and the import endpoint returns 200 with mode='conversation', item_count=9, factors_added=8, options_added=9. AI wallet had sufficient credits — no 402 path exercised.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_chatgpt_share_import.py",
+    "/app/backend/tests/test_chatgpt_import_e2e.py",
+    "/app/test_reports/pytest/iter161_chatgpt_share.xml",
+    "/app/test_reports/pytest/iter161_chatgpt_e2e.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/url_analyze.py is 1200+ lines — consider splitting (analyze vs import vs feedback/training vs set-expectations) for maintainability. Not blocking this fix."
+  ],
+  "updated_files": ["/app/backend/tests/test_chatgpt_import_e2e.py"],
+  "success_rate": {"backend": "100% (4/4 tests across 2 files)", "frontend": "not tested (backend-only request)"},
+  "seed_data_creation": "Each live test creates a TEST decision via /api/decisions and best-effort deletes it after the import assertion.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "ChatGPT share-link extraction regression is covered by two suites: (a) tests/test_chatgpt_share_import.py — network-fetches the live share URL and asserts the React-Router turbo-stream decoder pulls real message bodies (skips if chatgpt.com unreachable); (b) tests/test_chatgpt_import_e2e.py — exercises the full POST /api/auth/login → POST /api/decisions → POST /api/url-analyze/decision/{id}/import flow against EXPO_PUBLIC_BACKEND_URL using super@test.com/SuperPass2026! and asserts 200 + mode=conversation + factors_added>=2 + options_added>=2 + 8 factors / 9 options persisted on GET. Both also explicitly fail if the old 422 'Couldn't find clear decision factors/options' string returns. A 402 (wallet drained) is treated as a skip per main-agent spec.",
+  "rca_of_issue": "Bug: chatgpt.com share pages migrated to a React-Router v7 turbo-stream payload (streamController.enqueue('[\"manifest\",...\"]') blocks). The old extractor's escaped-quote splitter scraped surrounding JS-bundle UI strings ('Please make this response more concise', 'starts using Codex', system-prompt fragments) instead of the actual transcript → ai_extract_decision_from_conversation found 0 factors/options → the import handler raised HTTPException(422, 'Couldn\\'t find clear decision factors/options in this conversation.'). Fix (in core/url_crawl.extract_conversation_text) decodes the turbo-stream and emits ROLE-tagged message bodies. Verified end-to-end: 200 OK, 8 factors + 9 options added in 4.7s."
+}

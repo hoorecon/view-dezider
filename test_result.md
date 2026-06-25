@@ -10117,3 +10117,55 @@ agent_communication:
       ?startQuiz=self; profile auto-opens the quiz from the top; startQuiz scrolls to top so retake/assess-
       others no longer appear to start at Q3/Q4. Admin: super@test.com / SuperPass2026!. Quiz lives inside
       the Profile tab (renderQuiz). Backend unchanged.
+
+#====================================================================================================
+# Iter 161 (fork) — FIX: ChatGPT share-link Import URL ("Couldn't find clear decision factors/options")
+#====================================================================================================
+backend:
+  - task: "Step-2 Import URL from a ChatGPT conversation share link extracts factors/options"
+    implemented: true
+    working: "NA"
+    file: "backend/core/url_crawl.py (extract_conversation_text + _decode_rr_stream + _messages_from_rr_stream); routes/url_analyze.py (conversation branch unchanged)"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          USER BUG (prod jelcos.ai): importing a ChatGPT share URL into a Decision (Step 2 → Import URL)
+          always failed with 422 "Couldn't find clear decision factors/options in this conversation".
+          ROOT CAUSE: chatgpt.com share pages moved to a React-Router v7 turbo-stream payload
+          (window.__reactRouterContext.streamController.enqueue("...")). The old extract_conversation_text
+          split on escaped quotes and scraped the page's JS-bundle UI/system-prompt template strings
+          (e.g. "Please make this response more concise", Codex ad prompts) instead of the real chat, so the
+          LLM found no options/factors → 422.
+          FIX: extract_conversation_text now (1) decodes the React-Router enqueue stream, (2) pulls each
+          user/assistant TEXT message body via the "content_type":"text","parts":[..],"<body>" shape with its
+          role, falling back to the legacy heuristic only for non-RR pages.
+          VERIFIED (main agent, live localhost:8001, super@test.com, user's real URL
+          https://chatgpt.com/share/6a36d8d2-3b08-83e8-b67a-6dffa9cc9ffa):
+          POST /api/url-analyze/decision/{id}/import {url, accepted:true, eligibility_type:"own"}
+          → 200 {"mode":"conversation","item_count":9,"factors_added":8,"options_added":9}.
+          Deterministic regression: backend/tests/test_chatgpt_share_import.py (2 tests) PASS.
+          NOTE: fix is ChatGPT-only. Claude.ai / Gemini share links use different SSR formats and were NOT
+          implemented/verified (need sample share URLs).
+
+metadata: { created_by: "main_agent", version: "fork-iter-161", test_sequence: 161 }
+test_plan:
+  current_focus:
+    - "ChatGPT share-link Import URL succeeds (factors_added/options_added > 0, no 422)"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+agent_communication:
+  - agent: "main"
+    message: |
+      Iter 161. Fixed ChatGPT-conversation Import URL. Test the backend flow ONLY:
+      Admin super@test.com / SuperPass2026! (wallet had ~124 credits; an import costs a few credits).
+      Steps: login (response field is session_token) → POST /api/decisions {title, decision_type:"need",
+      context:"..."} to get an id → POST /api/url-analyze/decision/{id}/import with body
+      {"url":"https://chatgpt.com/share/6a36d8d2-3b08-83e8-b67a-6dffa9cc9ffa","accepted":true,
+      "eligibility_type":"own"}. EXPECT 200 with mode="conversation" and options_added>=2 / factors_added>=2
+      (NOT a 422 "Couldn't find clear decision factors/options"). If wallet is out of credits the endpoint
+      returns 402 (not a code bug). Backend uses live network to fetch chatgpt.com.
