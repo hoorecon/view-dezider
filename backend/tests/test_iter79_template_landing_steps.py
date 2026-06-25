@@ -22,7 +22,7 @@ import pytest
 
 BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "").rstrip("/")
 if not BASE_URL:
-    BASE_URL = "https://goals-feels-tracker.preview.emergentagent.com"
+    BASE_URL = "https://modal-responsive-fix.preview.emergentagent.com"
 API = f"{BASE_URL}/api"
 
 OWNER_EMAIL = "harden_1777921741@example.com"

@@ -19,7 +19,7 @@ from pymongo import MongoClient
 
 BASE_URL = os.environ.get(
     "EXPO_PUBLIC_BACKEND_URL",
-    "https://goals-feels-tracker.preview.emergentagent.com",
+    "https://modal-responsive-fix.preview.emergentagent.com",
 ).rstrip("/")
 API = f"{BASE_URL}/api"
 

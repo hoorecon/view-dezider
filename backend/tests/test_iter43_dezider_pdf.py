@@ -6,7 +6,7 @@ import os
 import pytest
 import requests
 
-BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://goals-feels-tracker.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://modal-responsive-fix.preview.emergentagent.com").rstrip("/")
 USER_EMAIL = "harden_1777921741@example.com"
 USER_PASSWORD = "HardenPass2026!"
 ADMIN_EMAIL = "veales.vedic.decisions@gmail.com"

@@ -3,7 +3,7 @@ Step 7 AI Assess All retest. Prints the decision id on stdout."""
 import os, sys, json, requests
 
 BASE = (os.environ.get("EXPO_PUBLIC_BACKEND_URL")
-        or "https://goals-feels-tracker.preview.emergentagent.com").rstrip("/")
+        or "https://modal-responsive-fix.preview.emergentagent.com").rstrip("/")
 EMAIL = "harden_1777921741@example.com"
 PWD = "HardenPass2026!"
 

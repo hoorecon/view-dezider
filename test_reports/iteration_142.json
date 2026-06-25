@@ -22,7 +22,7 @@
   ],
   "updated_files": [],
   "success_rate": {"backend": "100% (regression unchanged from iter141)", "frontend": "100% (all 4 acceptance criteria + X-close retest pass)"},
-  "seed_data_creation": "Reused iter141 seed pattern via /app/test_reports/seed_iter141.py — created 1 user (iter141ui_1782159654@example.com) + 1 decision (TEST_ScreenerDeepImport, id=7c1e6c50-3539-4683-b06e-bfad516bd326). CLEANED UP at end (1 decision + 1 user deleted).",
+  "seed_data_creation": "Reused iter141 seed pattern via /app/test_reports/seed_iter141.py — created 1 user (iter141ui_1782159654@example.com) + 1 decision (TEST_ScreenerDeepImport, id=modal-responsive-fix). CLEANED UP at end (1 decision + 1 user deleted).",
   "retest_needed": false,
   "should_main_agent_self_test": false,
   "context_for_next_testing_agent": "DeepImportBudgetPicker Skip/X-close loop is fully fixed as of iteration 142. The fix lives in DecisionContext.patchDecisionLocal (synchronous setDecision spread) + dismissedId per-decision guard in DeepImportBudgetPicker. If you need to retest in future, the seed at /app/test_reports/seed_iter141.py still works as-is — register user → insert decision with deep_import_pending_rank=true in Mongo → login → navigate to /prr/{id}?step=5. To re-flip pending=true between attempts use db.decisions.update_one({'id':...},{'$set':{'deep_import_pending_rank':True}}).",

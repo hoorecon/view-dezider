@@ -10,7 +10,7 @@ import time
 from datetime import datetime
 
 # Backend URL from review request
-BACKEND_URL = "https://goals-feels-tracker.preview.emergentagent.com/api"
+BACKEND_URL = "https://modal-responsive-fix.preview.emergentagent.com/api"
 
 class TestResults:
     def __init__(self):

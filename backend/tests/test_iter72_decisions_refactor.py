@@ -17,7 +17,7 @@ import requests
 BASE_URL = (
     os.environ.get("EXPO_BACKEND_URL")
     or os.environ.get("EXPO_PUBLIC_BACKEND_URL")
-    or "https://goals-feels-tracker.preview.emergentagent.com"
+    or "https://modal-responsive-fix.preview.emergentagent.com"
 ).rstrip("/")
 
 REG_EMAIL = "harden_1777921741@example.com"

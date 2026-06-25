@@ -15,7 +15,7 @@ import pytest
 import requests
 
 BASE_URL = (os.environ.get("EXPO_PUBLIC_BACKEND_URL")
-            or "https://goals-feels-tracker.preview.emergentagent.com").rstrip("/")
+            or "https://modal-responsive-fix.preview.emergentagent.com").rstrip("/")
 
 
 @pytest.fixture(scope="module")

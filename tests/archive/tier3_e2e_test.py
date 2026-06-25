@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timedelta
 
 # Backend URL from environment
-BASE_URL = "https://goals-feels-tracker.preview.emergentagent.com/api"
+BASE_URL = "https://modal-responsive-fix.preview.emergentagent.com/api"
 
 class Tier3E2ETester:
     def __init__(self):

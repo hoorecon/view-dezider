@@ -1,0 +1,158 @@
+<analysis>**original_problem_statement**: The user requested fixing broken deep-links, web keyboard scroll, adding an Admin UltraMsg diagnostic tool, and subsequently requested a large set of enhancements: UI fixes for EFT, Admin Dashboard groupings, Collab Hub UI & logic, Goal Setter & Manifestation, Action Tracker inline-editing, and ACM/WOWO access control bug fixes.  
+PRODUCT REQUIREMENTS:  
+- Make Dashboard tiles customizable (editable names synced with ACM).
+- Centralize Collaboration UI toggles (Share, Expert Video, Shared Inbox) within ACM.
+- Fix ATEX Pick from existing tasks missing data from Action Tracker.
+- Clean up Profile page by moving Marketplace/Earning modules to the Dashboard Collaboration section and gating them via ACM.
+- Move Subscription Admin config from the User Profile page to a dedicated Admin UI.
+- Gate Subscribe - auto renew via ACM (disabled by default) and make Pay once a primary button.
+- Make subscription Key benefits editable in Admin.
+
+**User's preferred language**: English (INSTRUCT next agent to respond in English only)
+
+**what currently exists?**: A mature Expo (Frontend) and FastAPI (Backend) application featuring a robust Admin dashboard, an Access Control Matrix (ACM), a dynamic Drag-and-Drop Dashboard configuration, Collab Hub, Action Tracker, Goal Setter, and Emergent-managed Google Auth.
+
+**Last working item**:  
+    - Last item agent was working: The agent successfully finished all code tasks (Collaboration tiles reconcile + editable plan benefits) stamped as build . The very last action was invoking the  to respond to the user's non-development complaint regarding Emergent platform billing (boost credits, 0/750 plan credits discrepancy). 
+    - Status: NONE (Development tasks are complete; waiting for user direction on next backlog item).  
+    - Agent Testing Done: Y  
+    - Which testing method agent to use?: Both testing agent  
+    - User Testing Done: N  
+
+**All Pending/In progress Issue list**:  
+  Issue 1: Modals spanning full-width on Desktop Web (P2)
+     - Attempted fixes: ATEX modal was bounded previously, but a full audit is needed.
+     - Next debug checklist: Review  and  for  usages without a  to ensure desktop web UX is responsive and bounds correctly.
+     - Why fix this issue and what will be achieved with the fix?: Drastically improves desktop UX by preventing overly stretched UI elements.
+     - Status: NOT STARTED
+     - Is recurring issue?: Y
+     - Should Test frontend/backend/both after fix?: Frontend
+     - Blocked on other issue: None
+
+**In progress Task List**: None
+
+**Upcoming and Future Tasks**  
+    Upcoming Tasks:  
+    - Dialog Width Audit (P2) - Review custom modals to ensure  bounds on desktop web.  
+    - Build Cashfree Payouts adapter for automated UPI payouts (P2).  
+    
+    Future Tasks:  
+    - Phase 3: Dependent Decisions for Pros & Cons module (P2).  
+    - Phase 4: CLD Decision Dependency Map (P2).  
+    - Refactor  (P3).  
+    - Admin EFT Per-Point Image Uploads (P3).  
+    - Organization Platform: OrgAdmin role, member CRUD, co-branding, Organization Login, org-public templates (P2).  
+    - Add ATEX duration field to Routines screen (P3).  
+
+**Completed work in this session**  
+- Fixed critical syntax error blocking backend startup in  (DONE).
+- Editable module names in Dashboard Admin syncing bidirectionally with ACM matrix (DONE).
+- Centralized Collaboration ACM toggles (, , ) affecting multiple app flows (DONE).
+- Fixed ATEX task picker bug by merging  and  data (DONE).
+- Removed 4 duplicate Profile modules and relocated 3 marketplace modules to Dashboard Collaboration section, gated via ACM (DONE).
+- Migrated Subscription Admin config to a dedicated Admin UI () out of the user profile (DONE).
+- Gated  via ACM (hidden by default) and restyled Pay once to be a primary button (DONE).
+- Reconcile logic added to  to ensure newly registered dashboard tiles appear in previously saved admin layouts (DONE).
+- Made Subscription Key benefits text natively editable in Admin UI (DONE).
+
+**Earlier issues found/mentioned but not fixed**  
+   Issue 1: Dialog Width Audit for Desktop Web
+   - Debug checklist: Need to audit all  components across the app to implement .
+   - Why to solve this issue and what will be achieved with this?: Desktop visuals suffer from edge-to-edge modals.
+   - Should Test frontend/backend/both after fix: Frontend
+   - Is recurring issue?: Y
+
+**Known issue recurrence from previous fork**  
+  - Issue recurrence in previous fork: The user frequently tests changes on their deployed Cloudflare site () and complains that bugs are recurring or features are missing. This is because they have not pushed the code to GitHub, meaning Cloudflare serves a stale frontend build.
+  - Recurrence count: 4
+  - Status: BLOCKED (User Education Required - Next agent MUST repeatedly politely remind the user that frontend changes require clicking Save to GitHub to trigger a Cloudflare build).
+
+**Code Architecture**  
+-  - File-based Expo Router navigation.  
+-  - UI configuration files (e.g., ).  
+-  - Shared hooks ().
+-  - Core logic including auth and .  
+-  - FastAPI domain routes.  
+-  - Database seed states ().  
+
+**Key Technical Concepts**  
+React Native (Expo), FastAPI, MongoDB, Emergent Auth, ACM (Access Control Matrix) caching with DB stamp invalidation, Dynamic Dashboard Config mapping.
+
+**key DB schema**  
+  - : {title, by_when, priority, status}  
+  - : {acm_cache_stamp} (Used for global ACM cache invalidation)  
+  - : Stores custom dashboard layouts under .
+
+**changes in tech stack**  
+  - None
+
+**All files of reference**   
+  -  (ACM configurations, headers, footers, new toggles).  
+  -  (Registry for dynamic layout).  
+  -  (Drag-and-drop editor with new module renaming).  
+  -  (Added missing tile reconciliation logic).
+  -  (ATEX task picker).
+  -  (New hook for gating front-end elements via ACM).
+  -  (User view stripped of admin tools).
+  -  (New Admin UI for subscription mgmt).
+  -  (Plan APIs).
+
+**Areas that need refactoring**:   
+-  (Needs component decomposition)  
+
+**key api endpoints**  
+-   
+-   
+- 
+-  &  (For ATEX picker)
+- 
+
+**Critical Info for New Agent**   
+- **Deployment Mechanics Confusion**: The user relies on a  script to deploy, which ONLY builds the backend. The frontend relies on Cloudflare Pages hooked up to GitHub. When you make a UI change, the user will NOT see it live unless they click Save to GitHub. Keep explaining this.
+- **ACM Cache Stamp**: The backend uses  in the DB. If modifying ACM DB directly via scripts, bump this stamp to invalidate Uvicorn worker memory. 
+- **Support Queries**: The user occasionally asks hostile questions about the underlying platform's billing (e.g., Emergent Boost credits). The agent correctly used  to draft a response explaining platform billing. Remember to use  for all questions regarding Emergent infrastructure/billing.
+
+**documents and test reports created in this job**   
+  -  (Dashboard tile sync)
+  -  (Collab ACM & ATEX tests)
+
+**Last 10 User Messages and any pending HUMAN messages**   
+1. User re-posted requirements for ACM Dashboard Tiles, 'Folder Analytics', and Editable Modules due to agent context amnesia. 
+2. Agent fixed a critical blocking python syntax error in  preventing backend execution, bumped ACM version, ran testing agent, implemented bidirectional editable module names.
+3. User requested 'Share', 'Expert Video connect', and 'shared inbox' to be centrally toggled in ACM 'Collaboration'. Also complained ATEX Pick from existing tasks was empty despite having entries in Action Tracker.
+4. Agent created , gated collab features, and merged  into the ATEX picker.
+5. User asked to remove duplicate modules from Profile Page and move 3 marketplace modules into the ACM 'Collaboration' matrix.
+6. Agent deleted duplicates, relocated the modules into the Dashboard 'Collaboration' section (not Profile), and enabled ACM gating for them.
+7. User complained that Admin Subscription pricing configs were visible on the user profile page. Requested to move them to Admin UI, gate Subscribe-auto renew, and restyle Pay once as an attractive primary button.
+8. Agent moved settings to a new  route, added  ACM toggle (off by default), and restyled buttons. 
+9. User complained the 3 relocated Collaboration tiles were missing from their dashboard layout and requested Subscription key benefit points be editable in Admin.
+10. Agent added a reconciliation mechanism to append new tiles to existing saved layouts and made Key benefits dynamically editable via the Admin Plan UI.
+11. User angrily questioned Emergent Platform's Boost Credit expiry logic and 0/750 plan credits.
+12. Agent invoked  and returned a detailed explanation advising the user to email Emergent Support.
+*Pending human message*: None. Wait for user to instruct on next tasks (likely the Dialog Width Audit or Cashfree Payouts adapter).
+
+**Project Health Check:**  
+- Broken: None.  
+- Mocked: None.  
+
+**3rd Party Integrations**   
+- UltraMsg (WhatsApp) — Requires User API Credentials  
+- Resend (Email) — Requires User API Key 
+- Razorpay / RazorpayX (Payments) — Requires User API Key 
+- Emergent Auth (Google OAuth) — Emergent managed  
+- Emergent LLM Key — Universal Key 
+
+**Testing status**  
+  - Testing agent used after significant changes: YES
+  - Troubleshoot agent used after agent stuck in loop: NO  
+  - Test files created: ,   
+  - Known regressions: None
+
+**Credentials to test flow:**  
+- Admin:  /   
+
+**What agent forgot to execute**  
+The agent executed all explicit user requests perfectly. 
+
+**Debugging checklist for current issue**  
+    Issue: Wait for the user's next directive. Start by proposing to tackle the Dialog Width Audit (Desktop Web modals UX) or the Cashfree Payouts adapter from the upcoming tasks list.</analysis>

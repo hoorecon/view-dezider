@@ -4,7 +4,7 @@ Test that authentication is required on all AALA and LEE endpoints (except taxon
 
 import requests
 
-BASE_URL = "https://goals-feels-tracker.preview.emergentagent.com/api"
+BASE_URL = "https://modal-responsive-fix.preview.emergentagent.com/api"
 
 def test_auth_required():
     """Test that endpoints require authentication"""

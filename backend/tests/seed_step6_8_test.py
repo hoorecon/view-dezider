@@ -12,7 +12,7 @@ import os
 import sys
 import requests
 
-BASE = (os.environ.get("EXPO_PUBLIC_BACKEND_URL") or "https://goals-feels-tracker.preview.emergentagent.com").rstrip("/")
+BASE = (os.environ.get("EXPO_PUBLIC_BACKEND_URL") or "https://modal-responsive-fix.preview.emergentagent.com").rstrip("/")
 EMAIL = "admin@test.com"
 PASSWORD = "AdminPass2026!"
 

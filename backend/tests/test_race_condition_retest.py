@@ -14,7 +14,7 @@ import time
 import pytest
 import requests
 
-BASE_URL = "https://goals-feels-tracker.preview.emergentagent.com"
+BASE_URL = "https://modal-responsive-fix.preview.emergentagent.com"
 ANALYSIS_ID = "517fae05-579f-4005-8f86-195edbfa21a8"
 ALPHA_FID = "a0950374-64c1-4c37-a359-041cc14acfa7"
 OPTX_OID = "fa25dab4-75d6-4377-adaf-a88288a8e109"
