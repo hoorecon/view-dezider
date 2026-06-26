@@ -49,6 +49,7 @@ export default function AdminPayoutsScreen() {
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [channel, setChannel] = useState<'razorpayx' | 'manual_idfc'>('manual_idfc');
   const [payouts, setPayouts] = useState<any[]>([]);
   const [pending, setPending] = useState<any[]>([]);
 
@@ -81,29 +82,44 @@ export default function AdminPayoutsScreen() {
     finally { setSaving(false); }
   };
 
-  const runNow = async () => {
-    showAlert('Run payouts now?', 'This processes all eligible sellers above the threshold immediately.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Run', onPress: async () => {
-        setRunning(true);
-        try {
-          const r = await api.post('/admin/payouts/run-now');
-          showAlert('Payout run complete', `Processed ${r.data.processed}, queued ${r.data.queued_pending}, skipped ${r.data.skipped}.\nRazorpayX live: ${r.data.razorpayx_live ? 'yes' : 'no'}`);
-          load();
-        } catch (e: any) { showAlert('Error', e?.response?.data?.detail || 'Run failed'); }
-        finally { setRunning(false); }
-      } },
-    ]);
-  };
-
-  const createBatch = async () => {
-    setBusy('batch');
+  const runBatch = async () => {
+    setRunning(true);
+    let summary: any = {};
     try {
-      const r = await api.post('/admin/payouts/create-manual-batch');
-      showAlert('Batch created', `Queued ${r.data.created} payout(s): ${r.data.bank} bank, ${r.data.upi} UPI. Skipped ${r.data.skipped} (below threshold / no account).`);
-      load();
-    } catch (e: any) { showAlert('Error', e?.response?.data?.detail || 'Failed to create batch'); }
-    finally { setBusy(null); }
+      const s = await api.get('/admin/payouts/eligible-summary');
+      summary = s.data || {};
+    } catch { /* show generic copy if summary fails */ }
+    setRunning(false);
+
+    const isRzx = channel === 'razorpayx';
+    const who = summary.eligible != null
+      ? `${summary.eligible} eligible seller(s) · ₹${summary.total_inr ?? 0} total`
+      : 'all eligible sellers above the threshold';
+    const title = isRzx ? 'Run a RazorpayX batch?' : 'Create a Manual-IDFC batch?';
+    const msg = isRzx
+      ? `This sends REAL payouts via RazorpayX to ${who}. This cannot be undone.${summary.razorpayx_active === false ? '\n\n⚠️ RazorpayX is NOT active — this will abort.' : ''}`
+      : `This only QUEUES rows (pending_manual) for ${who}. No money moves until you pay via IDFC net-banking and mark them paid.`;
+
+    showAlert(title, msg, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: isRzx ? 'Send RazorpayX' : 'Queue Manual',
+        style: isRzx ? 'destructive' : 'default',
+        onPress: async () => {
+          setRunning(true);
+          try {
+            const r = await api.post('/admin/payouts/run', { channel });
+            if (isRzx) {
+              showAlert('RazorpayX batch complete', `Processed ${r.data.processed ?? 0}, queued ${r.data.queued_pending ?? 0}, skipped ${r.data.skipped ?? 0}.`);
+            } else {
+              showAlert('Manual batch created', `Queued ${r.data.created ?? 0} payout(s): ${r.data.bank ?? 0} bank, ${r.data.upi ?? 0} UPI. Skipped ${r.data.skipped ?? 0}.`);
+            }
+            load();
+          } catch (e: any) { showAlert('Error', e?.response?.data?.detail || 'Run failed'); }
+          finally { setRunning(false); }
+        },
+      },
+    ]);
   };
 
   const downloadExport = async (kind: 'bank' | 'upi') => {

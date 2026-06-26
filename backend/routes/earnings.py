@@ -331,6 +331,60 @@ async def admin_create_manual_batch(admin: dict = Depends(require_admin)):
     return {"ok": True, **res}
 
 
+class RunBatchReq(BaseModel):
+    channel: str  # "razorpayx" | "manual_idfc"
+
+
+@admin_router.get("/eligible-summary")
+async def admin_eligible_summary(admin: dict = Depends(require_admin)):
+    """Count + total of sellers eligible for the next batch (available balance ≥
+    min payout AND a verified payout account). Powers the run-confirm dialog."""
+    cfg = await get_config()
+    min_inr = cfg.get("min_payout_inr", 500)
+    pipeline = [
+        {"$match": {"status": "available"}},
+        {"$group": {"_id": "$user_id", "total": {"$sum": "$net_inr"}}},
+    ]
+    eligible = 0
+    total = 0
+    async for r in db.earnings_ledger.aggregate(pipeline):
+        if r["total"] < min_inr:
+            continue
+        acct = await db.payout_accounts.find_one({"user_id": r["_id"]}, {"_id": 0, "verified": 1})
+        if not acct or not acct.get("verified"):
+            continue
+        eligible += 1
+        total += r["total"]
+    return {
+        "eligible": eligible, "total_inr": total,
+        "min_payout_inr": min_inr,
+        "razorpayx_active": await razorpayx.is_configured(),
+    }
+
+
+@admin_router.post("/run")
+async def admin_run_batch(body: RunBatchReq, admin: dict = Depends(require_admin)):
+    """Run a payout batch on an EXPLICITLY chosen channel — prevents accidentally
+    firing the wrong path during testing.
+      • manual_idfc → never calls any payout API (queues pending_manual rows).
+      • razorpayx   → sends real payouts; HARD-ERRORS if RazorpayX isn't configured
+                       (does NOT silently fall back to manual)."""
+    channel = (body.channel or "").strip()
+    if channel == "manual_idfc":
+        res = await run_manual_payout_batch()
+        return {"ok": True, "channel": channel, **res}
+    if channel == "razorpayx":
+        if not await razorpayx.is_configured():
+            raise HTTPException(
+                400,
+                "RazorpayX not configured — aborting. Activate RazorpayX (set the "
+                "account number) or use the Manual-IDFC channel.",
+            )
+        res = await run_weekly_payouts(force=True)
+        return {"ok": True, "channel": channel, **res}
+    raise HTTPException(400, "channel must be 'razorpayx' or 'manual_idfc'")
+
+
 def _idfc_txn_type(ifsc: Optional[str], amount: int) -> str:
     code = (ifsc or "").upper()
     if code.startswith("IDFB"):     # within IDFC FIRST Bank
