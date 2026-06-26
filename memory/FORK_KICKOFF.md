@@ -5,7 +5,16 @@
 > file SHORT and CURRENT — it is the first thing to read after PRD.md.
 
 ## 0) Last user intent (update at end of every session)
-- 2026-06-26 (later): Admin Payouts now has an explicit CHANNEL selector
+- 2026-06-26 (latest): Seller payout hardening. Payout form (/earnings) now
+  collects BOTH UPI (primary) + Bank (fallback, with Account Type from India
+  list + Bank Name/Branch auto-filled from IFSC); account is payout-eligible
+  only when UPI-format valid AND IFSC validates (free ifsc.razorpay.com) AND —
+  when RazorpayX is live — a ₹1 penny-drop passes (skipped while test-mode).
+  Admin Payouts writes a tamper-evident audit trail per run (who/when/channel/
+  amount/outcome) via payout_audit_log + /admin/payouts/audit-log. /earnings now
+  linked from Profile tab. Build 2026.06.26.004 (v3.77-seller-payout-verify-audit).
+  Tested 14/14 BE + FE. PENDING: user Save-to-GitHub + EC2 sync.
+- 2026-06-26 (earlier): Admin Payouts CHANNEL selector (Manual-IDFC default vs
   (Manual-IDFC default vs RazorpayX). Replaced the two ambiguous triggers with
   ONE unified Run → POST /api/admin/payouts/run {channel}. RazorpayX hard-errors
   (400) if not configured (no silent manual fallback). Removed legacy unused
