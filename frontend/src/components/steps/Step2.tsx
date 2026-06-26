@@ -10,6 +10,7 @@ import type { Factor, FactorDataSource } from '../../types/decision';
 import api from '../../utils/api';
 import { showAlert } from '../../utils/alert';
 import UrlAccessConsentModal, { UrlConsentPayload } from '../UrlAccessConsentModal';
+import ImportReviewModal from '../ImportReviewModal';
 import ImportCreditsStrip from '../ImportCreditsStrip';
 import DeepImport from './DeepImport';
 import TrainAIPanel from '../TrainAIPanel';
@@ -121,6 +122,36 @@ export default function Step2() {
   // /url-analyze/progress/{id}; we poll while the import POST is in flight. ──
   const [importProgress, setImportProgress] = useState<{ pct: number; label: string; elapsed: number } | null>(null);
 
+  // ── Review-before-merge for AI-conversation imports (ChatGPT/Claude/Gemini):
+  // the backend returns the detected factors/options as a PREVIEW; the user
+  // trims/renames them in a modal, then we merge the reviewed list (free). ──
+  const [reviewItems, setReviewItems] = useState<{ factors: string[]; options: string[] } | null>(null);
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const isConversationShare = (u: string) => {
+    const s = (u || '').toLowerCase();
+    return /(chatgpt\.com|chat\.openai\.com|claude\.ai|gemini\.google\.com|g\.co|poe\.com)/.test(s)
+      && /(\/share\/|\/c\/|\/g\/)/.test(s);
+  };
+
+  const confirmReviewedImport = async (factors: string[], options: string[]) => {
+    setReviewBusy(true);
+    try {
+      const { data } = await api.post(
+        `/url-analyze/decision/${decision.id}/import/confirm`, { factors, options });
+      await fetchDecision();
+      setReviewItems(null);
+      showAlert(
+        'Added to decision',
+        `Added ${data.factors_added} factor${data.factors_added === 1 ? '' : 's'} and ${data.options_added} option${data.options_added === 1 ? '' : 's'}. Options (Step 6) and actuals (Step 7) are pre-filled.`,
+      );
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || 'Could not add the reviewed items.';
+      showAlert('Could not add', typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setReviewBusy(false);
+    }
+  };
+
   const runImport = async (consent: UrlConsentPayload) => {
     const progressId = `imp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     setImportConsentOpen(false);
@@ -146,11 +177,19 @@ export default function Step2() {
         accepted: true,
         ai_tier: importTier,
         progress_id: progressId,
+        preview: isConversationShare(importUrl.trim()),
         expected_factor_count: parseCountInput(hintFactorCount),
         expected_option_count: parseCountInput(hintOptionCount),
         first_factor_name: hintFirstFactor.trim() || undefined,
         first_option_name: hintFirstOption.trim() || undefined,
       }, { timeout: 300000 }); // detail pages may need a rendered fetch + LLM pass (+1 retry)
+      // AI-conversation imports return a PREVIEW — open the review modal instead
+      // of writing straight to the decision.
+      if (data.mode === 'conversation_preview') {
+        setImportUrl('');
+        setReviewItems({ factors: data.factors || [], options: data.options || [] });
+        return;
+      }
       setImportUrl('');
       await fetchDecision();
       if (data.run_id) setImportFeedback({ runId: data.run_id, voted: null });
@@ -870,6 +909,16 @@ export default function Step2() {
         primary="#2563EB"
         onCancel={() => { if (!importing) setImportConsentOpen(false); }}
         onConfirm={runImport}
+      />
+
+      <ImportReviewModal
+        visible={!!reviewItems}
+        factors={reviewItems?.factors || []}
+        options={reviewItems?.options || []}
+        busy={reviewBusy}
+        primary="#2563EB"
+        onCancel={() => { if (!reviewBusy) setReviewItems(null); }}
+        onConfirm={confirmReviewedImport}
       />
 
       {/* ── Live import progress — real backend stages + % + elapsed time ── */}

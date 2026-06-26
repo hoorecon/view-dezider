@@ -29,6 +29,7 @@ from core.url_crawl import (
     fetch_page, fetch_rendered, parse_hierarchy, candidates_from_response,
     page_text,
     is_conversation_url, extract_conversation_text, ai_extract_decision_from_conversation,
+    fetch_ai_conversation,
 )
 from core.url_detail import ai_extract_detail, deterministic_hint_issues
 from core.url_pagetype import classify_page_type
@@ -550,6 +551,10 @@ class ImportRequest(BaseModel):
     # Client-generated id the frontend polls (GET /url-analyze/progress/{id})
     # for live stage/percentage updates while this request runs.
     progress_id: Optional[str] = None
+    # When true (conversation/AI-share imports only): return the detected
+    # factors/options for the user to review & trim BEFORE anything is written
+    # to the decision. The reviewed list is then merged via the confirm endpoint.
+    preview: bool = False
     # ── Optional accuracy hints (self-healing oracle) ──
     expected_factor_count: Optional[int] = Field(default=None, ge=1, le=200)
     expected_option_count: Optional[int] = Field(default=None, ge=1, le=50)
@@ -727,6 +732,40 @@ async def import_url_into_decision(
     return resp
 
 
+class ReviewedMergeRequest(BaseModel):
+    """Final, user-reviewed factor/option names to merge into the decision
+    after a `preview` conversation import. No fetch/LLM — so it costs nothing."""
+    factors: List[str] = []
+    options: List[str] = []
+    consent_id: Optional[str] = None
+
+
+@router.post("/decision/{decision_id}/import/confirm")
+async def confirm_reviewed_import(
+    decision_id: str, req: ReviewedMergeRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Merge the user-reviewed (renamed/trimmed) factors & options from a
+    conversation-import preview into the decision. Idempotent via name-dedupe
+    inside merge_into_mydezider."""
+    decision = await db.decisions.find_one(
+        {"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not decision:
+        raise HTTPException(404, "Decision not found")
+    factors = [{"name": n.strip()} for n in (req.factors or []) if n and n.strip()][:20]
+    options = [{"name": n.strip()} for n in (req.options or []) if n and n.strip()][:50]
+    if len(factors) + len(options) < 1:
+        raise HTTPException(400, "Select at least one factor or option to add.")
+    counts = await merge_into_mydezider(user["user_id"], decision_id,
+                                        factors=factors, candidates=options)
+    return {
+        "decision_id": decision_id, "mode": "conversation_confirmed",
+        "item_count": len(options),
+        "factors_added": counts["factors_added"], "options_added": counts["options_added"],
+    }
+
+
+
 async def _import_inner(decision_id: str, req: ImportRequest, request: Request,
                         user: dict, tel: Dict[str, Any], prog) -> Dict[str, Any]:
     """Crawl a comparison page and MERGE the derived factors (with suggested
@@ -767,7 +806,7 @@ async def _import_inner(decision_id: str, req: ImportRequest, request: Request,
     # crawl (which times out on these JS-rendered pages) entirely. ──
     if is_conversation_url(req.url):
         await prog(35, "Reading the conversation…")
-        conv = extract_conversation_text(r.text)
+        conv = await fetch_ai_conversation(req.url, user["user_id"], raw_html=r.text)
         await prog(60, "Extracting factors & options…")
         ex = await ai_extract_decision_from_conversation(user["user_id"], conv)
         factors = [{"name": n} for n in ex["factors"]][: (req.max_factors or 12)]
@@ -779,6 +818,19 @@ async def _import_inner(decision_id: str, req: ImportRequest, request: Request,
                 "Open the chat and make sure the options and criteria are stated, then retry — "
                 "or paste the text via the 'Text' import.",
             )
+        # ── Review-before-merge: return the detected items for the user to trim
+        # /rename; nothing is written to the decision until they confirm. The
+        # AI call (and its cost) has already happened, so confirming is free. ──
+        if req.preview:
+            tel["route"] = "ai_conversation_preview"
+            tel["item_count"] = len(options)
+            await prog(100, "Review the detected factors & options.", status="done")
+            return {
+                "decision_id": decision_id, "consent_id": consent_id,
+                "mode": "conversation_preview",
+                "factors": [f["name"] for f in factors],
+                "options": [o["name"] for o in options],
+            }
         await prog(85, "Merging factors & options into your decision…")
         counts = await merge_into_mydezider(user["user_id"], decision_id,
                                             factors=factors, candidates=options)

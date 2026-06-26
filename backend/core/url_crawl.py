@@ -480,6 +480,93 @@ async def ai_extract_decision_from_conversation(user_id: str, text: str) -> Dict
         return {"factors": [], "options": []}
 
 
+# ── Claude share links (claude.ai/share/<uuid>) ─────────────────────────────
+# Claude renders the conversation client-side; the share PAGE is a thin shell.
+# The transcript lives at the chat_snapshots JSON API, which is Cloudflare-gated
+# (direct httpx → 403) so we fetch it through ScraperAPI's proxy.
+_CLAUDE_SHARE_RE = re.compile(r"claude\.ai/share/([0-9a-fA-F-]{36})")
+_CLAUDE_BLOCK_PLACEHOLDER = "not supported on your current device"
+
+
+async def _scraperapi_get_text(url: str, user_id: Optional[str] = None) -> Optional[str]:
+    """GET any URL through ScraperAPI's proxy (bypasses Cloudflare/bot walls) and
+    return the raw body regardless of content-type. Metered when user_id given.
+    Returns None when no key is configured or every attempt fails."""
+    sc = await resolve_scraperapi()
+    if not sc["api_key"]:
+        return None
+    if user_id:
+        await scrape_meter.ensure_can_scrape(user_id)  # raises InsufficientCredits
+    params = {"api_key": sc["api_key"], "url": url}
+    if sc.get("country_code"):
+        params["country_code"] = sc["country_code"]
+    for extra in ({}, {"premium": "true"}):
+        try:
+            async with httpx.AsyncClient(timeout=75.0, follow_redirects=True) as cli:
+                r = await cli.get("https://api.scraperapi.com/", params={**params, **extra})
+            if r.status_code == 200 and r.text.strip():
+                if user_id:
+                    await scrape_meter.charge_scrape(
+                        user_id, url, "premium_render" if extra else "render")
+                return r.text
+            logger.warning("ScraperAPI JSON fetch %s for %s%s", r.status_code, url[:80],
+                           " (premium)" if extra else "")
+        except Exception as e:  # noqa: BLE001
+            logger.warning("ScraperAPI JSON fetch failed for %s: %s", url[:80], str(e)[:120])
+    return None
+
+
+def _claude_messages_from_snapshot(data: Dict[str, Any]) -> List[str]:
+    """Build role-tagged message bodies from a Claude chat_snapshots JSON payload.
+    Each message has sender ('human'/'assistant') and a `content` list of typed
+    blocks; we keep the text blocks (dropping unsupported-block placeholders)."""
+    out: List[str] = []
+    for m in (data.get("chat_messages") or []):
+        sender = (m.get("sender") or "").lower()
+        role = "USER" if sender in ("human", "user") else "ASSISTANT"
+        parts: List[str] = []
+        content = m.get("content")
+        if isinstance(content, list):
+            for b in content:
+                if isinstance(b, dict) and b.get("type") == "text":
+                    t = (b.get("text") or "").strip()
+                    if t and _CLAUDE_BLOCK_PLACEHOLDER not in t:
+                        parts.append(t)
+        body = "\n".join(parts).strip() or (m.get("text") or "").strip()
+        if body:
+            out.append(f"{role}: {body}")
+    return out
+
+
+async def fetch_ai_conversation(url: str, user_id: str,
+                                raw_html: Optional[str] = None) -> str:
+    """Return clean, role-tagged conversation text for an AI share link.
+
+    • Claude (claude.ai/share/<uuid>): fetch the chat_snapshots JSON API through
+      ScraperAPI (Cloudflare-gated) and join the message blocks.
+    • ChatGPT (chatgpt.com/share/…) & everything else: parse the page HTML via
+      extract_conversation_text (React-Router stream / legacy heuristic).
+    """
+    cm = _CLAUDE_SHARE_RE.search(url or "")
+    if cm:
+        sid = cm.group(1)
+        api = f"https://claude.ai/api/chat_snapshots/{sid}?rendering_mode=messages"
+        body = await _scraperapi_get_text(api, user_id)
+        if body:
+            try:
+                start = body.find("{")
+                data = json.loads(body[start:] if start >= 0 else body)
+                msgs = _claude_messages_from_snapshot(data)
+                if msgs:
+                    return "\n\n".join(msgs)[:16000]
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Claude snapshot parse failed: %s", str(e)[:140])
+
+    html = raw_html if raw_html is not None else (await fetch_page(url, user_id=user_id)).text
+    return extract_conversation_text(html)
+
+
+
 
 def _scraperapi_reason(status: int, body: str) -> str:
     """Map a failed ScraperAPI response to a human-readable admin-facing reason."""

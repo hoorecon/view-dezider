@@ -10169,3 +10169,86 @@ agent_communication:
       "eligibility_type":"own"}. EXPECT 200 with mode="conversation" and options_added>=2 / factors_added>=2
       (NOT a 422 "Couldn't find clear decision factors/options"). If wallet is out of credits the endpoint
       returns 402 (not a code bug). Backend uses live network to fetch chatgpt.com.
+
+#====================================================================================================
+# Iter 162 (fork) — Claude share-link import + Review-before-merge for AI-conversation imports
+#====================================================================================================
+backend:
+  - task: "Claude share-link Import URL extracts factors/options"
+    implemented: true
+    working: "NA"
+    file: "backend/core/url_crawl.py (fetch_ai_conversation, _scraperapi_get_text, _claude_messages_from_snapshot); routes/url_analyze.py"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Claude (claude.ai/share/<uuid>) renders client-side; transcript lives at the Cloudflare-gated
+          chat_snapshots JSON API. New fetch_ai_conversation fetches it via ScraperAPI and joins message
+          blocks (drops 'not supported on your current device' placeholders). Wired into the import route's
+          conversation branch. VERIFIED (main, live localhost): POST /api/url-analyze/decision/{id}/import
+          {url:"https://claude.ai/share/4b324e58-3e3f-453a-8746-3af2b1a970e9", accepted:true,
+          eligibility_type:"own"} -> 200 {mode:conversation, factors_added:8, options_added:9}.
+          Regression: backend/tests/test_claude_share_import.py PASS.
+  - task: "Review-before-merge: preview + confirm endpoints for AI-conversation imports"
+    implemented: true
+    working: "NA"
+    file: "backend/routes/url_analyze.py (ImportRequest.preview, conversation_preview return, POST /decision/{id}/import/confirm + ReviewedMergeRequest)"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          With body field preview:true (conversation imports only), the import endpoint returns
+          {mode:"conversation_preview", factors:[names], options:[names]} WITHOUT writing to the decision.
+          New POST /api/url-analyze/decision/{id}/import/confirm {factors:[...],options:[...]} merges the
+          user-reviewed (renamed/trimmed) list with NO extra fetch/LLM cost. VERIFIED (main, live):
+          preview -> 200 8 factors/9 options, decision still 0/0; confirm with 3 factors + 4 options
+          (one option renamed) -> 200 factors_added:3 options_added:4; decision ends with exactly those
+          and the rename applied.
+
+frontend:
+  - task: "ImportReviewModal — review/rename/remove detected factors & options before merging"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/components/ImportReviewModal.tsx; frontend/src/components/steps/Step2.tsx (preview flag + handler + confirmReviewedImport + modal render)"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          When importing an AI-conversation share link (chatgpt.com/claude.ai/gemini, detected by
+          isConversationShare), Step2 sends preview:true and, on mode==conversation_preview, opens
+          ImportReviewModal (testID import-review-modal) listing Options + Factors as editable rows
+          (review-option-input-N / review-factor-input-N, remove via review-option-remove-N), with
+          'Add an option/factor' rows. Confirm (testID import-review-confirm) calls /import/confirm and
+          refreshes the decision. NEEDS frontend UI verification.
+
+metadata: { created_by: "main_agent", version: "fork-iter-162", test_sequence: 162 }
+test_plan:
+  current_focus:
+    - "Claude share-link import succeeds (factors/options added, no 422)"
+    - "Conversation import shows ImportReviewModal; editing+confirm merges only reviewed items"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+agent_communication:
+  - agent: "main"
+    message: |
+      Iter 162. Admin super@test.com / SuperPass2026! (dev wallet topped to ~2000 credits).
+      BACKEND to verify:
+        1) Claude import: create decision (POST /api/decisions {title,decision_type:'need',context:'...'}),
+           then POST /api/url-analyze/decision/{id}/import {url:'https://claude.ai/share/4b324e58-3e3f-453a-8746-3af2b1a970e9',
+           accepted:true, eligibility_type:'own'} -> expect 200 mode=conversation, options_added>=2.
+        2) Preview+confirm: same import with preview:true -> 200 mode='conversation_preview' with factors[]/options[]
+           and the decision NOT modified; then POST /api/url-analyze/decision/{id}/import/confirm
+           {factors:[...subset...],options:[...subset...]} -> 200 factors_added/options_added match the subset.
+      FRONTEND to verify (web preview): login -> open a decision Step 2 -> tap step2-import-url -> enter the
+      ChatGPT share URL https://chatgpt.com/share/6a36d8d2-3b08-83e8-b67a-6dffa9cc9ffa -> step2-url-continue ->
+      consent (url-consent-elig-own, url-consent-accept, url-consent-proceed) -> EXPECT ImportReviewModal
+      (testID import-review-modal) to appear with editable options/factors -> tap import-review-confirm ->
+      expect success and items added. NOTE: route is /prr/{id}?step=2; hard goto can hit a rehydration race
+      (retry goto/re-login). Backend makes live network + metered LLM calls.
