@@ -73,16 +73,10 @@ export default function MarketingFooter() {
           <Text style={styles.mRow}><Text style={styles.mKey}>Merchant Legal Name: </Text>{company.legalName}</Text>
           <Text style={styles.mRow}>
             <Text style={styles.mKey}>Merchant Website: </Text>
-            <Text accessibilityRole="link" {...(Platform.OS === 'web' ? ({ href: company.websiteUrl } as any) : {})} style={styles.mLink}>{company.websiteUrl}</Text>
+            <Text accessibilityRole="link" {...(Platform.OS === 'web' ? ({ href: 'https://www.jelcos.ai' } as any) : {})} style={styles.mLink}>https://www.jelcos.ai</Text>
           </Text>
           <Text style={styles.mRow}><Text style={styles.mKey}>Support Email: </Text>{company.email}</Text>
-          <Text style={styles.mRow}><Text style={styles.mKey}>Support Phone: </Text>04446972104</Text>
-          <Text style={styles.mRow}><Text style={styles.mKey}>Business Type: </Text>{company.businessType}</Text>
-          <Text style={styles.mRow}><Text style={styles.mKey}>Payment Gateway: </Text>{company.paymentGateway}</Text>
-          <Text style={styles.mRow}>
-            <Text style={styles.mKey}>Company Website: </Text>
-            <Text accessibilityRole="link" {...(Platform.OS === 'web' ? ({ href: company.companyWebsiteUrl } as any) : {})} style={styles.mLink}>{company.companyWebsiteUrl}</Text>
-          </Text>
+          <Text style={styles.mRow}><Text style={styles.mKey}>Support Phone: </Text>{company.phone}</Text>
         </View>
       </View>
 
