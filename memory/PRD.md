@@ -1,5 +1,15 @@
 # View Dezider - Product Requirements Document
 
+> ⚠️ FORK AGENTS: read **/app/memory/FORK_KICKOFF.md** FIRST — it holds the
+> standing operating procedure (deploy ritual, QA facts, last user intent).
+>
+> ## 🚀 Custom Deploy Ritual (DO NOT LOSE — prod = jelcos.ai, branch emergent-v3)
+> 1. `python3 backend/scripts/bump_build_version.py --tag v3.<n>-<desc>`  (bumps README BUILD_VERSION=YYYY.MM.DD.NNN)
+> 2. User clicks **Save to GitHub** (emergent-v3) — the agent CANNOT push; never claim a git push happened.
+> 3. On EC2: `cd /opt/dezider && EXPECT_BUILD=<new BUILD_VERSION> ./deploy/sync.sh emergent-v3`
+>    (sync.sh fail-fasts if remote BUILD_VERSION != EXPECT_BUILD → catches dropped pushes).
+> Cloudflare Pages auto-builds the frontend on push to emergent-v3.
+
 ## Overview
 Multi-user Decision Making App based on a 10-step Proactive Risk Response (PRR) framework with AI-driven features, Solution Tools, and Multi-tenant SaaS capabilities.
 
