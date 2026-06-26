@@ -1113,3 +1113,21 @@ options_added:9}. testing_agent confirmed (unit 2/2 + live e2e 2/2, no 422 regre
 TESTS: backend/tests/test_chatgpt_share_import.py, test_chatgpt_import_e2e.py.
 SCOPE NOTE: ChatGPT only. Claude.ai / Gemini share links use different SSR formats — NOT yet
 implemented/verified (need sample share URLs from each to build+test deterministically).
+
+## Iteration 162 — Claude share-link import + Review-before-merge — 26 Jun 2026
+1) CLAUDE IMPORT (claude.ai/share/<uuid>): page is a client-rendered shell; transcript is at the
+   Cloudflare-gated chat_snapshots JSON API. Added fetch_ai_conversation + _scraperapi_get_text
+   (fetches that JSON via ScraperAPI) + _claude_messages_from_snapshot (joins message text blocks,
+   drops 'not supported on your current device' placeholders). Wired into the import conversation branch.
+   VERIFIED live: POST /api/url-analyze/decision/{id}/import {url:claude.ai/share/4b324e58..., own} ->
+   200 factors_added:8 options_added:9. test: backend/tests/test_claude_share_import.py.
+2) REVIEW-BEFORE-MERGE: ImportRequest.preview=true (conversation imports only) -> returns
+   {mode:"conversation_preview", factors:[names], options:[names]} WITHOUT writing to the decision.
+   New POST /api/url-analyze/decision/{id}/import/confirm {factors,options} merges the reviewed
+   (renamed/trimmed) list with NO extra fetch/LLM cost. Frontend: new ImportReviewModal.tsx
+   (testID import-review-modal) + Step2 sends preview:true for chatgpt/claude/gemini share links,
+   opens the modal on preview, confirm calls /import/confirm. Fixed a brief progress/review modal overlap.
+   testing_agent: backend 9/9 + frontend PASS (rename from UI persisted).
+GEMINI: NOT implemented — the URL the user provided was a private gemini.google.com/app/<id> session
+   (not a public share); needs a real gemini.google.com/share/<id> or g.co/gemini/share/<id> to build+verify.
+DEV NOTE: super@test.com AI-wallet was overdrawn during testing; topped back to 2000 cr (ai_wallets.balance).

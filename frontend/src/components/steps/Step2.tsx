@@ -187,6 +187,8 @@ export default function Step2() {
       // of writing straight to the decision.
       if (data.mode === 'conversation_preview') {
         setImportUrl('');
+        setImportProgress(null);
+        setImportConsentOpen(false);
         setReviewItems({ factors: data.factors || [], options: data.options || [] });
         return;
       }
