@@ -18,7 +18,15 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 export default function Step6() {
-  const { decision, addOption, addOptionByName, addOptionFromStore, removeOption, newOptionName, setNewOptionName, setCurrentStep, saveDecision } = useDecision();
+  const { decision, addOption, addOptionByName, addOptionFromStore, removeOption, newOptionName, setNewOptionName, setCurrentStep, saveDecision, highlightOptionName, setHighlightOptionName } = useDecision();
+
+  // Auto-clear the post-import spotlight after a few seconds.
+  useEffect(() => {
+    if (!highlightOptionName) return;
+    const t = setTimeout(() => setHighlightOptionName(null), 4500);
+    return () => clearTimeout(t);
+  }, [highlightOptionName, setHighlightOptionName]);
+
 
   const [showStoreModal, setShowStoreModal] = useState(false);
   const [storeSolutions, setStoreSolutions] = useState<any[]>([]);
@@ -206,11 +214,18 @@ export default function Step6() {
       {/* Current Options */}
       {decision.options.map((option) => {
         const isStore = !!option.solution_id || option.source === 'store';
+        const isTop = !!highlightOptionName && option.name.trim() === highlightOptionName.trim();
         return (
-          <Card key={option.id} style={styles.optionCard}>
+          <Card key={option.id} style={[styles.optionCard, isTop && localStyles.topPickCard]}>
             <View style={styles.optionHeader}>
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                  {isTop ? (
+                    <View style={localStyles.topPickBadge}>
+                      <Ionicons name="star" size={10} color="#fff" />
+                      <Text style={localStyles.topPickBadgeText}>Top pick</Text>
+                    </View>
+                  ) : null}
                   {isStore ? (
                     <View style={localStyles.srcBadgeStore}>
                       <Ionicons name="storefront" size={10} color="#047857" />
@@ -470,6 +485,21 @@ export default function Step6() {
 }
 
 const localStyles = StyleSheet.create({
+  topPickCard: {
+    borderWidth: 2,
+    borderColor: '#F59E0B',
+    backgroundColor: '#FFFBEB',
+  },
+  topPickBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  topPickBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
   storeButton: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -15,6 +15,10 @@ interface DecisionContextType {
   saving: boolean;
   currentStep: number;
   setCurrentStep: (step: number) => void;
+  /** Name of an option to briefly spotlight in Step 6 (e.g. the top-ranked
+   *  option right after a reviewed import). Auto-clears after a few seconds. */
+  highlightOptionName: string | null;
+  setHighlightOptionName: (name: string | null) => void;
   isCompleted: boolean;
   saveDecision: (updates: Partial<Decision>) => Promise<void>;
   /** Optimistically patch the in-memory decision WITHOUT a network call —
@@ -139,6 +143,7 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [newSubFactorName, setNewSubFactorName] = useState<{ [key: string]: string }>({});
   const [expandedGroups, setExpandedGroups] = useState<{ [key: string]: boolean }>({});
   const [subWeightInputs, setSubWeightInputs] = useState<{ [key: string]: string }>({});
+  const [highlightOptionName, setHighlightOptionName] = useState<string | null>(null);
 
   useEffect(() => {
     fetchDecision();
@@ -763,6 +768,8 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     saving,
     currentStep,
     setCurrentStep,
+    highlightOptionName,
+    setHighlightOptionName,
     isCompleted: isCompleted || false,
     saveDecision,
     patchDecisionLocal,

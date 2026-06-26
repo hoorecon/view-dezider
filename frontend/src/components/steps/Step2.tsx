@@ -44,6 +44,7 @@ export default function Step2() {
     showUnitPicker, setShowUnitPicker,
     customUnitInput, setCustomUnitInput,
     setCurrentStep,
+    setHighlightOptionName,
     fetchDecision,
   } = useDecision();
 
@@ -138,12 +139,14 @@ export default function Step2() {
     try {
       const { data } = await api.post(
         `/url-analyze/decision/${decision.id}/import/confirm`, { factors, options });
+      void data;
       await fetchDecision();
       setReviewItems(null);
-      showAlert(
-        'Added to decision',
-        `Added ${data.factors_added} factor${data.factors_added === 1 ? '' : 's'} and ${data.options_added} option${data.options_added === 1 ? '' : 's'}. Options (Step 6) and actuals (Step 7) are pre-filled.`,
-      );
+      // Auto-jump to Step 6 (Options) and spotlight the top-ranked option so the
+      // user immediately sees their reordered priority in context.
+      const topOption = options.find(o => o && o.trim());
+      if (topOption) setHighlightOptionName(topOption.trim());
+      setCurrentStep(6);
     } catch (e: any) {
       const msg = e?.response?.data?.detail || 'Could not add the reviewed items.';
       showAlert('Could not add', typeof msg === 'string' ? msg : JSON.stringify(msg));

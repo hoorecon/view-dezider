@@ -1144,3 +1144,12 @@ DRAG-REORDER: Rewrote ImportReviewModal to use react-native-draggable-flatlist f
   simple editable list. NOTE: Metro runs in CI mode — must `supervisorctl restart expo` to rebundle frontend changes.
 testing_agent: backend 6/6 + frontend PASS — real mouse drag reordered options and the new order PERSISTED to
   GET /api/decisions/{id} options[]. retest_needed:false.
+
+## Iteration 164 — Auto-jump to Step 6 + spotlight top option after reviewed import — 26 Jun 2026
+After the review-before-merge confirm (ImportReviewModal), Step2.confirmReviewedImport now jumps to Step 6
+(Options) via setCurrentStep(6) and spotlights the top-ranked option. Added highlightOptionName +
+setHighlightOptionName to DecisionContext; Step6 highlights the matching option card (amber border + 'Top pick'
+star badge) and auto-clears after 4.5s. Removed the blocking success alert (the jump+spotlight is the feedback).
+The top option = first item in the (drag-reordered) options list, so the user lands on their stated priority.
+VERIFIED via screenshot: confirm -> 'Step 6/10' active, 'Java Capital' card shows 'Top pick' badge highlighted.
+Reminder: Metro CI mode — restart expo to rebundle frontend edits.
