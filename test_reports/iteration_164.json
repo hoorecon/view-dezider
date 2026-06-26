@@ -1,0 +1,22 @@
+{
+  "summary": "ACM platform_admin bypass fix verified. Super-admin (super@test.com) now sees ALL 152 features as 'full' on /api/acm/my-access (was 147 full / 5 hidden before fix). The 5 previously-hidden features (collab_knowledge_marketplace, collab_my_earnings, collab_karma_fame, digilocker, sub_auto_renew) all return access_level='full' both via /my-access and /check/{feature_id}. Regression confirmed: a freshly registered free user is NOT bypassed — gets {full:95, locked:34, hidden:19, read:4} with access_key='free', and /api/acm/check/digilocker correctly returns allowed=false access_level='hidden'. 6/6 tests passed.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter164_acm_admin_bypass.py",
+    "/app/test_reports/pytest/iter164_acm_admin_bypass.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Fix in /app/backend/core/acm_engine.py is correctly placed in BOTH check_feature_access (lines 381-386) and get_all_feature_access (lines 540-549). Early-return short-circuits all matrix lookup for access_key=='platform_admin'.",
+    "get_user_acm_profile (sync) sets access_key='platform_admin' when role in {super_admin, admin, co_admin} OR when effective_access_key was already stamped by the 5-axis resolver. /api/acm/my-access first calls resolve_user_acm_profile() which writes effective_access_key onto the user doc, then re-reads the user, so the bypass triggers correctly via either path.",
+    "Legacy fallback LEGACY_ACCESS_KEY_FALLBACK['platform_admin'] = ['paid_enterprise','paid_pro'] (line 26) is now effectively dead code for true platform_admin users (early-return wins). Consider removing or leaving as defense-in-depth — no functional impact."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "not tested (backend-only request)"},
+  "seed_data_creation": "Test registers one TEST_free_<uuid>@example.com user per pytest module run for regression check. Not cleaned up (acceptable; prefixed with TEST_).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "ACM matrix has 152 features across 33 modules. Super-admin login returns 'session_token'. Free user register endpoint POST /api/auth/register returns a token directly. Fixture pattern in test_iter164_acm_admin_bypass.py is reusable for any platform_admin vs free-user ACM regressions.",
+  "rca_of_issue": "Original bug: platform_admin access_key fell through to LEGACY_ACCESS_KEY_FALLBACK -> paid_enterprise -> paid_pro. Any feature whose access map had no platform_admin entry AND was hidden for paid_enterprise/paid_pro (e.g. digilocker, sub_auto_renew, the 3 collab_* features) appeared hidden in the Admin 'User View'. Fix: short-circuit access_key=='platform_admin' to {allowed:true, access_level:'full', quota:-1} in both single-feature (check_feature_access) and bulk (get_all_feature_access) paths. Verified post-fix: 152/152 full for super-admin, free user unchanged."
+}

@@ -372,6 +372,19 @@ async def check_feature_access(
 
     profile = get_user_acm_profile(user)
     access_key = profile["access_key"]
+
+    # Platform roles (super_admin / admin / co_admin) BYPASS the ACM matrix
+    # entirely: they always get full access to every feature, regardless of the
+    # per-tier rules. (Previously platform_admin fell back to paid_enterprise/
+    # paid_pro, so any feature hidden for those tiers was wrongly hidden for
+    # admins too — e.g. in the Admin "User View".)
+    if access_key == "platform_admin":
+        return {
+            "allowed": True, "access_level": "full",
+            "quota_limit": -1, "quota_used": 0, "quota_remaining": -1,
+            "quota_unit": feature["quota_unit"], "upgrade_message": "",
+        }
+
     access_rule = _lookup_access_rule(feature["access"], access_key)
 
     level = access_rule.get("level", "hidden")
@@ -521,6 +534,19 @@ async def get_all_feature_access(user: dict) -> dict:
     profile = get_user_acm_profile(user)
     access_key = profile["access_key"]
     result = {}
+
+    # Platform roles bypass the matrix — full access to every feature (so the
+    # Admin "User View" and any admin-logged-in app shows everything).
+    if access_key == "platform_admin":
+        for feature_id, feature in _acm_cache.items():
+            result[feature_id] = {
+                "access_level": "full",
+                "quota_limit": -1,
+                "quota_used": 0,
+                "quota_remaining": -1,
+                "quota_unit": feature.get("quota_unit", "toggle"),
+            }
+        return result
 
     for feature_id, feature in _acm_cache.items():
         access_rule = _lookup_access_rule(feature["access"], access_key)

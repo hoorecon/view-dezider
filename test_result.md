@@ -10318,3 +10318,46 @@ agent_communication:
         GET /api/decisions/{id} that the option order matches the reordered list (first option = what you moved to top).
         NOTE: route /prr/{id}?step=2 may bounce to /auth/login (rehydration race) — retry goto/re-login. Metro is CI
         mode; bundle already rebuilt. Backend conversation imports are metered (LLM) + ChatGPT direct / Claude via ScraperAPI.
+
+#====================================================================================================
+# Iter 165 (fork) — FIX: platform admin roles must bypass ACM (Admin User View showed limited features)
+#====================================================================================================
+backend:
+  - task: "Super-admin/admin/co_admin get FULL access to every feature (true ACM bypass)"
+    implemented: true
+    working: "NA"
+    file: "backend/core/acm_engine.py (check_feature_access + get_all_feature_access — early platform_admin bypass)"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          BUG: In the Admin 'User View' (which just opens the normal app as the logged-in admin), 5 features
+          were hidden for the super-admin (collab_knowledge_marketplace, collab_my_earnings, collab_karma_fame,
+          digilocker, sub_auto_renew). ROOT CAUSE: access_key 'platform_admin' did NOT bypass the matrix — it
+          fell back to paid_enterprise/paid_pro rules (LEGACY_ACCESS_KEY_FALLBACK), so any feature hidden for
+          those tiers was hidden for admins too. FIX: check_feature_access and get_all_feature_access now
+          short-circuit to access_level 'full' (quota -1) for access_key=='platform_admin'. VERIFIED (main, repro
+          script): super-admin my-access went from {full:147, hidden:5} -> {full:152}. Normal users unaffected.
+
+metadata: { created_by: "main_agent", version: "fork-iter-165", test_sequence: 165 }
+test_plan:
+  current_focus:
+    - "GET /api/acm/my-access for a super_admin returns access_level=full for ALL features (esp. the 5 above)"
+    - "Regression: a NON-admin free user still gets those release-hidden features as hidden/locked"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+agent_communication:
+  - agent: "main"
+    message: |
+      Iter 165 BACKEND ONLY. Admin: super@test.com / SuperPass2026! (role super_admin).
+      1) GET /api/acm/my-access as super@test.com -> every entry in features{} must have access_level=='full';
+         specifically check collab_knowledge_marketplace, collab_my_earnings, collab_karma_fame, digilocker,
+         sub_auto_renew are 'full' (these were 'hidden' before the fix).
+      2) Regression: register/login a NEW free user (POST /api/auth/register then /api/auth/login, or any
+         existing non-admin) and GET /api/acm/my-access -> at least one of those 5 features should NOT be 'full'
+         (i.e. the bypass is admin-only, ACM still governs normal users). Also GET /api/acm/check/digilocker for
+         the free user should be allowed=false/hidden while for super@test.com allowed=true/full.
+      No frontend test needed (User View just navigates to '/').
