@@ -1131,3 +1131,16 @@ implemented/verified (need sample share URLs from each to build+test determinist
 GEMINI: NOT implemented — the URL the user provided was a private gemini.google.com/app/<id> session
    (not a public share); needs a real gemini.google.com/share/<id> or g.co/gemini/share/<id> to build+verify.
 DEV NOTE: super@test.com AI-wallet was overdrawn during testing; topped back to 2000 cr (ai_wallets.balance).
+
+## Iteration 163 — Gemini guard + drag-reorder reviewed options — 26 Jun 2026
+GEMINI: Investigated the user's link (share.gemini.google/eOlCCzMAqeHt -> gemini.google.com/share/eb754d628ffa).
+  Gemini serves a SIGNED-OUT shell; the conversation loads only for the logged-in owner via an authenticated
+  batchexecute RPC. Not in direct HTML; NOT captured by ScraperAPI render=true (DOM stays empty;
+  render+wait_for_selector -> 500). Automated import not feasible. Added is_gemini_share_url() + an early guard
+  in _import_inner returning a clear 422 (points to the 'Text' import) BEFORE any fetch/LLM spend. Verified 422 fast.
+DRAG-REORDER: Rewrote ImportReviewModal to use react-native-draggable-flatlist for OPTIONS (GestureHandlerRootView
+  wraps the Modal). Drag handle (review-option-drag-N) + rank badge (1..N) per option; onConfirm sends options in the
+  reordered array order; merge_into_mydezider preserves order so option #1 is most-preferred in Step 6. Factors stay a
+  simple editable list. NOTE: Metro runs in CI mode — must `supervisorctl restart expo` to rebundle frontend changes.
+testing_agent: backend 6/6 + frontend PASS — real mouse drag reordered options and the new order PERSISTED to
+  GET /api/decisions/{id} options[]. retest_needed:false.
