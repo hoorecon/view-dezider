@@ -45,4 +45,15 @@ Cloudflare Pages auto-builds the frontend on push to emergent-v3 (~3-5 min).
 
 ## 4) Active integrations
 ScraperAPI (configured, used for Claude import + page crawls), Emergent LLM key
-(Gemini/OpenAI/Claude text), Razorpay (test). See PRD.md for the full list.
+(Gemini/OpenAI/Claude text), Razorpay + RazorpayX (test mode; live approval pending).
+RazorpayX adds: free IFSC lookup (ifsc.razorpay.com, no key) + ₹1 penny-drop
+fund-account validation (only when RazorpayX is live). See PRD.md for the full list.
+
+## 5) 🚨 UI RULES — DO NOT VIOLATE (user repeated this; stop making them ask)
+- **Forms & modals must NEVER stretch to full viewport width on web.** Cap them:
+  `maxWidth: ~480-520, width: '100%', alignSelf: 'center'`. Bottom-sheet modals:
+  keep `modalBg` as `alignItems: 'center'` + the sheet `maxWidth`. A form that
+  spans the whole desktop screen is a BUG, not a layout choice.
+- Inputs/labels inside such forms inherit the capped container — never set fixed
+  full-width pixel widths.
+

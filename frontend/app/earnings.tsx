@@ -26,25 +26,34 @@ export default function EarningsScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const [showAccount, setShowAccount] = useState(false);
-  const [method, setMethod] = useState<'upi' | 'bank'>('upi');
   const [vpa, setVpa] = useState('');
   const [acctNo, setAcctNo] = useState('');
   const [ifsc, setIfsc] = useState('');
   const [benName, setBenName] = useState('');
+  const [acctType, setAcctType] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [branch, setBranch] = useState('');
+  const [acctTypeOpen, setAcctTypeOpen] = useState(false);
+  const [accountTypes, setAccountTypes] = useState<string[]>([]);
+  const [ifscChecking, setIfscChecking] = useState(false);
+  const [ifscError, setIfscError] = useState('');
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [s, l, p] = await Promise.all([
+      const [s, l, p, at] = await Promise.all([
         api.get('/earnings/summary'),
         api.get('/earnings/ledger'),
         api.get('/earnings/payouts'),
+        api.get('/earnings/account-types'),
       ]);
       setSummary(s.data); setLedger(l.data?.items || []); setPayouts(p.data?.items || []);
+      setAccountTypes(at.data?.account_types || []);
       const acct = s.data?.payout_account;
       if (acct) {
-        setMethod(acct.method || 'upi'); setVpa(acct.vpa || '');
+        setVpa(acct.vpa || '');
         setAcctNo(acct.account_number || ''); setIfsc(acct.ifsc || ''); setBenName(acct.beneficiary_name || '');
+        setAcctType(acct.account_type || ''); setBankName(acct.bank_name || ''); setBranch(acct.branch || '');
       }
     } catch { /* noop */ }
     finally { setLoading(false); }
@@ -52,15 +61,35 @@ export default function EarningsScreen() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Live IFSC validation → auto-fill bank name + branch (free Razorpay IFSC API).
+  const verifyIfsc = useCallback(async (code: string) => {
+    const c = (code || '').trim().toUpperCase();
+    setIfscError('');
+    if (c.length !== 11) { return; }
+    setIfscChecking(true);
+    try {
+      const r = await api.get(`/earnings/ifsc/${c}`);
+      setBankName(r.data?.bank || ''); setBranch(r.data?.branch || '');
+    } catch {
+      setBankName(''); setBranch(''); setIfscError('Invalid or unknown IFSC — please re-check.');
+    } finally { setIfscChecking(false); }
+  }, []);
+
   const saveAccount = async () => {
-    if (method === 'upi' && !vpa.trim()) { showAlert('UPI required', 'Enter your UPI ID (VPA).'); return; }
-    if (method === 'bank' && (!acctNo.trim() || !ifsc.trim() || !benName.trim())) { showAlert('Details required', 'Enter account number, IFSC and beneficiary name.'); return; }
+    if (!vpa.trim()) { showAlert('UPI required', 'Enter your UPI ID (VPA) — this is the primary payout method.'); return; }
+    if (!acctNo.trim() || !ifsc.trim() || !benName.trim()) { showAlert('Bank details required', 'Enter beneficiary name, account number and IFSC (the bank account is the fallback method).'); return; }
+    if (!acctType) { showAlert('Account type required', 'Select your bank account type.'); return; }
+    if (ifscError || !bankName) { showAlert('Check IFSC', 'Enter a valid IFSC so we can confirm your bank & branch.'); return; }
     setSaving(true);
     try {
-      await api.post('/earnings/payout-account', {
-        method, vpa: vpa.trim(), account_number: acctNo.trim(), ifsc: ifsc.trim(), beneficiary_name: benName.trim(),
+      const r = await api.post('/earnings/payout-account', {
+        vpa: vpa.trim(), account_number: acctNo.trim(), ifsc: ifsc.trim().toUpperCase(),
+        beneficiary_name: benName.trim(), account_type: acctType, bank_name: bankName, branch,
       });
-      setShowAccount(false); load(); showAlert('Saved', 'Payout account linked.');
+      setShowAccount(false); load();
+      showAlert(r.data?.verified ? 'Saved & verified' : 'Saved', r.data?.verified
+        ? 'Payout account linked and verified. You\'re eligible for payouts once your balance qualifies.'
+        : 'Payout account saved. Verification pending.');
     } catch (e: any) { showAlert('Error', e?.response?.data?.detail || 'Failed'); }
     finally { setSaving(false); }
   };
@@ -111,17 +140,24 @@ export default function EarningsScreen() {
 
         {/* payout account */}
         <TouchableOpacity style={styles.acctCard} onPress={() => setShowAccount(true)} testID="link-payout-account">
-          <View style={styles.acctIcon}><Ionicons name={summary?.has_payout_account ? 'checkmark-circle' : 'add-circle-outline'} size={22} color={summary?.has_payout_account ? '#16A34A' : '#94A3B8'} /></View>
+          <View style={styles.acctIcon}><Ionicons name={summary?.account_verified ? 'checkmark-circle' : (summary?.has_payout_account ? 'time-outline' : 'add-circle-outline')} size={22} color={summary?.account_verified ? '#16A34A' : (summary?.has_payout_account ? '#F59E0B' : '#94A3B8')} /></View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.acctTitle}>{summary?.has_payout_account ? 'Payout account linked' : 'Link a payout account'}</Text>
+            <Text style={styles.acctTitle}>{summary?.has_payout_account ? (summary?.account_verified ? 'Payout account verified' : 'Payout account — pending') : 'Link a payout account'}</Text>
             <Text style={styles.acctSub}>
               {summary?.has_payout_account
-                ? (summary.payout_account?.method === 'upi' ? `UPI · ${summary.payout_account?.vpa}` : `Bank · ****${(summary.payout_account?.account_number || '').slice(-4)}`)
-                : 'Add UPI or bank to receive payouts'}
+                ? `UPI ${summary.payout_account?.vpa || '—'} · Bank ****${(summary.payout_account?.account_number || '').slice(-4)}`
+                : 'Add BOTH UPI & Bank to receive payouts'}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
         </TouchableOpacity>
+
+        {!summary?.account_verified && (
+          <View style={styles.warnCard}>
+            <Ionicons name="information-circle" size={16} color="#9A3412" />
+            <Text style={styles.warnText}>You become eligible for payouts only when BOTH your UPI and Bank details are added & verified.</Text>
+          </View>
+        )}
 
         {/* ledger */}
         <Text style={styles.sectionTitle}>Earnings ({ledger.length})</Text>
@@ -168,32 +204,75 @@ export default function EarningsScreen() {
               <Text style={styles.sheetTitle}>Payout account</Text>
               <TouchableOpacity onPress={() => setShowAccount(false)}><Ionicons name="close" size={24} color="#0F172A" /></TouchableOpacity>
             </View>
-            <View style={styles.methodRow}>
-              {(['upi', 'bank'] as const).map(m => (
-                <TouchableOpacity key={m} style={[styles.methodBtn, method === m && styles.methodBtnActive]} onPress={() => setMethod(m)}>
-                  <Ionicons name={m === 'upi' ? 'phone-portrait-outline' : 'business-outline'} size={18} color={method === m ? '#FFF' : '#16A34A'} />
-                  <Text style={[styles.methodText, method === m && { color: '#FFF' }]}>{m === 'upi' ? 'UPI' : 'Bank'}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            {method === 'upi' ? (
-              <>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.eligNote}>
+                <Ionicons name="shield-checkmark" size={15} color="#166534" />
+                <Text style={styles.eligNoteText}>Add BOTH UPI (primary) and Bank (fallback). You're paid only after both are saved & verified.</Text>
+              </View>
+
+              {/* UPI section */}
+              <View style={styles.formSection}>
+                <View style={styles.secHead}><Ionicons name="phone-portrait-outline" size={16} color="#16A34A" /><Text style={styles.secHeadText}>UPI (primary)</Text></View>
                 <Text style={styles.fieldLabel}>UPI ID (VPA)</Text>
-                <TextInput style={styles.input} value={vpa} onChangeText={setVpa} placeholder="name@bank" autoCapitalize="none" />
-              </>
-            ) : (
-              <>
+                <TextInput style={styles.input} value={vpa} onChangeText={setVpa} placeholder="name@bank" autoCapitalize="none" testID="input-vpa" />
+              </View>
+
+              {/* Bank section */}
+              <View style={styles.formSection}>
+                <View style={styles.secHead}><Ionicons name="business-outline" size={16} color="#16A34A" /><Text style={styles.secHeadText}>Bank account (fallback)</Text></View>
                 <Text style={styles.fieldLabel}>Beneficiary name</Text>
-                <TextInput style={styles.input} value={benName} onChangeText={setBenName} placeholder="As per bank records" />
+                <TextInput style={styles.input} value={benName} onChangeText={setBenName} placeholder="As per bank records" testID="input-beneficiary" />
+
                 <Text style={styles.fieldLabel}>Account number</Text>
-                <TextInput style={styles.input} value={acctNo} onChangeText={setAcctNo} placeholder="Account number" keyboardType="numeric" />
+                <TextInput style={styles.input} value={acctNo} onChangeText={setAcctNo} placeholder="Account number" keyboardType="numeric" testID="input-acctno" />
+
+                <Text style={styles.fieldLabel}>Account type</Text>
+                <TouchableOpacity style={styles.select} onPress={() => setAcctTypeOpen(!acctTypeOpen)} testID="select-acct-type">
+                  <Text style={[styles.selectText, !acctType && { color: '#94A3B8' }]}>{acctType || 'Select account type'}</Text>
+                  <Ionicons name={acctTypeOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#64748B" />
+                </TouchableOpacity>
+                {acctTypeOpen && (
+                  <View style={styles.selectMenu}>
+                    {accountTypes.map((t) => (
+                      <TouchableOpacity key={t} style={styles.selectOption} onPress={() => { setAcctType(t); setAcctTypeOpen(false); }}>
+                        <Text style={[styles.selectOptionText, acctType === t && { color: '#16A34A', fontWeight: '800' }]}>{t}</Text>
+                        {acctType === t && <Ionicons name="checkmark" size={16} color="#16A34A" />}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+
                 <Text style={styles.fieldLabel}>IFSC</Text>
-                <TextInput style={styles.input} value={ifsc} onChangeText={(t) => setIfsc(t.toUpperCase())} placeholder="e.g. HDFC0001234" autoCapitalize="characters" />
-              </>
-            )}
-            <TouchableOpacity style={styles.saveBtn} onPress={saveAccount} disabled={saving}>
-              {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveBtnText}>Save account</Text>}
-            </TouchableOpacity>
+                <TextInput
+                  style={styles.input}
+                  value={ifsc}
+                  onChangeText={(t) => { const v = t.toUpperCase(); setIfsc(v); if (v.length === 11) verifyIfsc(v); else { setBankName(''); setBranch(''); setIfscError(''); } }}
+                  onBlur={() => verifyIfsc(ifsc)}
+                  placeholder="e.g. HDFC0001234"
+                  autoCapitalize="characters"
+                  maxLength={11}
+                  testID="input-ifsc"
+                />
+                {ifscChecking ? <Text style={styles.ifscHint}>Checking IFSC…</Text> : null}
+                {ifscError ? <Text style={styles.ifscError}>{ifscError}</Text> : null}
+                {bankName ? (
+                  <View style={styles.ifscOk}>
+                    <Ionicons name="checkmark-circle" size={15} color="#16A34A" />
+                    <Text style={styles.ifscOkText}>{bankName}{branch ? ` · ${branch}` : ''}</Text>
+                  </View>
+                ) : null}
+
+                <Text style={styles.fieldLabel}>Bank name</Text>
+                <TextInput style={[styles.input, styles.inputReadonly]} value={bankName} onChangeText={setBankName} placeholder="Auto-filled from IFSC" editable={false} />
+
+                <Text style={styles.fieldLabel}>Branch</Text>
+                <TextInput style={[styles.input, styles.inputReadonly]} value={branch} onChangeText={setBranch} placeholder="Auto-filled from IFSC" editable={false} />
+              </View>
+
+              <TouchableOpacity style={styles.saveBtn} onPress={saveAccount} disabled={saving} testID="save-payout-account">
+                {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveBtnText}>Save account</Text>}
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -227,16 +306,29 @@ const styles = StyleSheet.create({
   rowStatus: { fontSize: 11, color: '#94A3B8', marginTop: 2, fontWeight: '600' },
   statusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
   statusPillText: { fontSize: 11, fontWeight: '800' },
-  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 18, maxHeight: '90%' },
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end', alignItems: 'center' },
+  sheet: { backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 18, maxHeight: '90%', width: '100%', maxWidth: 520, alignSelf: 'center' },
   sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   sheetTitle: { fontSize: 17, fontWeight: '800', color: '#0F172A' },
-  methodRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
-  methodBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 10, borderWidth: 1.5, borderColor: '#16A34A' },
-  methodBtnActive: { backgroundColor: '#16A34A' },
-  methodText: { fontSize: 14, fontWeight: '700', color: '#16A34A' },
+  eligNote: { flexDirection: 'row', gap: 8, alignItems: 'flex-start', backgroundColor: '#F0FDF4', borderRadius: 10, padding: 11, marginBottom: 14, borderWidth: 1, borderColor: '#BBF7D0' },
+  eligNoteText: { flex: 1, fontSize: 12, color: '#166534', lineHeight: 17 },
+  formSection: { marginBottom: 6 },
+  secHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, marginBottom: 2 },
+  secHeadText: { fontSize: 13.5, fontWeight: '800', color: '#16A34A' },
   fieldLabel: { fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 6, marginTop: 12 },
   input: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, fontSize: 14, color: '#0F172A', backgroundColor: '#FAFAFA' },
-  saveBtn: { backgroundColor: '#16A34A', paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginTop: 18 },
+  inputReadonly: { backgroundColor: '#F1F5F9', color: '#64748B' },
+  select: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 12, backgroundColor: '#FAFAFA' },
+  selectText: { fontSize: 14, color: '#0F172A' },
+  selectMenu: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, marginTop: 6, backgroundColor: '#FFF', overflow: 'hidden' },
+  selectOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  selectOptionText: { fontSize: 13.5, color: '#334155' },
+  ifscHint: { fontSize: 11.5, color: '#0EA5E9', marginTop: 6 },
+  ifscError: { fontSize: 11.5, color: '#EF4444', marginTop: 6, fontWeight: '600' },
+  ifscOk: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
+  ifscOkText: { flex: 1, fontSize: 12, color: '#166534', fontWeight: '600' },
+  warnCard: { flexDirection: 'row', gap: 8, alignItems: 'flex-start', backgroundColor: '#FFF7ED', borderRadius: 10, padding: 11, marginBottom: 16, borderWidth: 1, borderColor: '#FED7AA' },
+  warnText: { flex: 1, fontSize: 12, color: '#9A3412', lineHeight: 17 },
+  saveBtn: { backgroundColor: '#16A34A', paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginTop: 18, marginBottom: 8 },
   saveBtnText: { color: '#FFF', fontWeight: '800', fontSize: 15 },
 });

@@ -58,6 +58,74 @@ async def is_configured() -> bool:
     return bool(key_id and key_secret and acct)
 
 
+# ---------------------------------------------------------------------------
+# IFSC lookup (Razorpay FREE public API — no auth, no cost) + bank-account
+# penny-drop validation (RazorpayX Fund Account Validation, needs RazorpayX live)
+# ---------------------------------------------------------------------------
+IFSC_BASE = "https://ifsc.razorpay.com"
+
+
+async def lookup_ifsc(ifsc: str) -> Optional[dict]:
+    """Validate an IFSC and return its bank + branch via Razorpay's free public
+    IFSC API. Returns {bank, branch, address, city, state, ifsc} or None if the
+    IFSC is invalid / unknown. No credentials required."""
+    code = (ifsc or "").strip().upper()
+    if len(code) != 11:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=12) as client:
+            resp = await client.get(f"{IFSC_BASE}/{code}")
+        if resp.status_code != 200:
+            return None
+        d = resp.json()
+        return {
+            "ifsc": d.get("IFSC") or code,
+            "bank": d.get("BANK"),
+            "branch": d.get("BRANCH"),
+            "city": d.get("CITY"),
+            "state": d.get("STATE"),
+            "address": d.get("ADDRESS"),
+        }
+    except Exception as e:  # network / parse failure — treat as unverifiable
+        log.warning(f"IFSC lookup failed for {code}: {str(e)[:120]}")
+        return None
+
+
+async def validate_bank_pennydrop(user: dict, acct: dict) -> dict:
+    """Trigger a RazorpayX Fund Account Validation (₹1 penny-drop) on the seller's
+    BANK account. Requires RazorpayX to be live (is_configured()). Returns
+    {validation_id, status, account_status, registered_name}. Raises on API error.
+
+    status is async: 'created' → later 'completed' (with results.account_status
+    'active'|'invalid') or 'failed'. We persist whatever we get; a webhook/poll
+    can finalise it later."""
+    account_number = await _account_number()
+    contact_id = acct.get("contact_id") or await ensure_contact(user)
+    bank_acct = {
+        "method": "bank",
+        "beneficiary_name": acct.get("beneficiary_name"),
+        "ifsc": acct.get("ifsc"),
+        "account_number": acct.get("account_number"),
+    }
+    fund_account_id = acct.get("fund_account_id") or await ensure_fund_account(contact_id, bank_acct)
+    res = await _post("fund_accounts/validations", {
+        "account_number": account_number,
+        "fund_account": {"id": fund_account_id},
+        "amount": 100,            # ₹1 penny-drop (paise)
+        "currency": "INR",
+        "notes": {"purpose": "seller_bank_verification", "user_id": user.get("user_id", "")},
+    }, idempotency=str(uuid.uuid4()))
+    results = res.get("results") or {}
+    return {
+        "validation_id": res.get("id"),
+        "status": res.get("status"),                  # created | completed | failed
+        "account_status": results.get("account_status"),   # active | invalid | None
+        "registered_name": results.get("registered_name"),
+        "contact_id": contact_id,
+        "fund_account_id": fund_account_id,
+    }
+
+
 async def _auth() -> Tuple[str, str]:
     key_id, key_secret, _ = await _payout_creds()
     return key_id, key_secret

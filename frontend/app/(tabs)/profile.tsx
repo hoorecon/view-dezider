@@ -533,6 +533,24 @@ export default function ProfileScreen() {
         </Card>
       </TouchableOpacity>
 
+      {/* Earnings & Payouts */}
+      <TouchableOpacity activeOpacity={0.85} onPress={() => router.push('/earnings' as any)} testID="profile-earnings-link">
+        <Card style={styles.aiCreditsCard}>
+          <View style={styles.aiCreditsLeft}>
+            <View style={[styles.aiCreditsIcon, { backgroundColor: '#16A34A' }]}>
+              <Ionicons name="wallet" size={20} color={COLORS.white} />
+            </View>
+            <View style={{ flexShrink: 1 }}>
+              <Text style={styles.aiCreditsLabel}>Earnings &amp; Payouts</Text>
+              <Text style={styles.aiCreditsSub}>Your marketplace earnings &amp; payout account</Text>
+            </View>
+          </View>
+          <View style={styles.aiCreditsRight}>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+          </View>
+        </Card>
+      </TouchableOpacity>
+
       {/* Gender picker modal */}
       <Modal visible={genderModalOpen} transparent animationType="fade" onRequestClose={() => setGenderModalOpen(false)}>
         <TouchableOpacity style={styles.gOverlay} activeOpacity={1} onPress={() => setGenderModalOpen(false)}>

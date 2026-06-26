@@ -52,11 +52,17 @@ export default function AdminPayoutsScreen() {
   const [channel, setChannel] = useState<'razorpayx' | 'manual_idfc'>('manual_idfc');
   const [payouts, setPayouts] = useState<any[]>([]);
   const [pending, setPending] = useState<any[]>([]);
+  const [auditLog, setAuditLog] = useState<any[]>([]);
 
   const load = useCallback(async () => {
     try {
-      const [c, p] = await Promise.all([api.get('/admin/payouts/config'), api.get('/admin/payouts')]);
+      const [c, p, a] = await Promise.all([
+        api.get('/admin/payouts/config'),
+        api.get('/admin/payouts'),
+        api.get('/admin/payouts/audit-log'),
+      ]);
       setCfg(c.data); setPayouts(p.data?.payouts || []); setPending(p.data?.pending_balances || []);
+      setAuditLog(a.data?.items || []);
     } catch { /* noop */ }
     finally { setLoading(false); }
   }, []);
@@ -293,6 +299,26 @@ export default function AdminPayoutsScreen() {
               <Text style={[styles.statusTag, p.status === 'processing' && { color: '#0EA5E9' }, p.status === 'pending_manual' && { color: '#F59E0B' }, p.status === 'failed' && { color: '#EF4444' }]}>{p.status}</Text>
             </View>
           ))}
+
+        {/* audit trail */}
+        <Text style={styles.sectionTitle}>Payout run audit trail ({auditLog.length})</Text>
+        {auditLog.length === 0 ? <Text style={styles.empty}>No batch runs recorded yet.</Text> :
+          auditLog.map((a) => {
+            const oc = a.outcome === 'success' ? '#16A34A' : a.outcome === 'aborted' ? '#F59E0B' : '#EF4444';
+            const paid = a.result?.created ?? a.result?.processed ?? 0;
+            return (
+              <View key={a.audit_id} style={styles.auditRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.auditTitle}>
+                    {(a.channel === 'razorpayx' ? 'RazorpayX' : 'Manual-IDFC')} · <Text style={{ color: oc }}>{a.outcome}</Text>
+                  </Text>
+                  <Text style={styles.auditSub}>{a.actor_email || a.actor_user_id || 'admin'} · {new Date(a.created_at).toLocaleString()}</Text>
+                  <Text style={styles.auditSub}>Eligible {a.eligible_before ?? '—'} · ₹{a.total_inr_before ?? 0} · paid/queued {paid}</Text>
+                </View>
+                <View style={[styles.auditDot, { backgroundColor: oc }]} />
+              </View>
+            );
+          })}
       </ScrollView>
     </SafeAreaView>
   );
@@ -336,4 +362,8 @@ const styles = StyleSheet.create({
   rowSub: { fontSize: 11.5, color: '#64748B', flex: 1 },
   rowAmount: { fontSize: 14, fontWeight: '800', color: '#16A34A' },
   statusTag: { fontSize: 11.5, fontWeight: '700', color: '#64748B', textTransform: 'capitalize' },
+  auditRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 10, padding: 12, marginBottom: 6, borderWidth: 1, borderColor: '#EEF2F7' },
+  auditTitle: { fontSize: 13.5, fontWeight: '800', color: '#0F172A' },
+  auditSub: { fontSize: 11, color: '#64748B', marginTop: 2 },
+  auditDot: { width: 10, height: 10, borderRadius: 5, marginLeft: 8 },
 });

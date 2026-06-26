@@ -10,6 +10,11 @@
 >    (sync.sh fail-fasts if remote BUILD_VERSION != EXPECT_BUILD → catches dropped pushes).
 > Cloudflare Pages auto-builds the frontend on push to emergent-v3.
 
+> ## 🚫 GLOBAL UI RULE (user-mandated — do not regress)
+> Forms & modals must NEVER stretch to full viewport width on web. Always cap:
+> `maxWidth ~480-520, width '100%', alignSelf 'center'` (bottom-sheet `modalBg`
+> uses `alignItems: 'center'`). A full-desktop-width form is a BUG.
+
 ## Overview
 Multi-user Decision Making App based on a 10-step Proactive Risk Response (PRR) framework with AI-driven features, Solution Tools, and Multi-tenant SaaS capabilities.
 

@@ -109,12 +109,28 @@ async def credit_seller(listing: dict, *, order_id: str, gross_inr: int, payment
 # ---------------------------------------------------------------------------
 # seller-facing endpoints
 # ---------------------------------------------------------------------------
+# Complete list of bank account types used in India (payout-relevant first).
+ACCOUNT_TYPES = [
+    "Savings", "Current", "Salary", "Cash Credit (CC)", "Overdraft (OD)",
+    "NRE (Non-Resident External)", "NRO (Non-Resident Ordinary)",
+    "FCNR (Foreign Currency Non-Resident)", "Recurring Deposit (RD)",
+    "Fixed Deposit (FD)", "PPF (Public Provident Fund)", "Demat", "Loan",
+]
+
+# Simple UPI VPA format: handle@psp  (e.g. name@oksbi, 9000000000@ybl)
+import re as _re
+_VPA_RE = _re.compile(r"^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$")
+
+
 class PayoutAccountReq(BaseModel):
-    method: str = Field(..., description="upi | bank")
-    vpa: Optional[str] = None
-    account_number: Optional[str] = None
-    ifsc: Optional[str] = None
-    beneficiary_name: Optional[str] = None
+    # Both are now REQUIRED — UPI is primary, Bank is the fallback channel.
+    vpa: str = Field(..., description="UPI VPA, e.g. name@bank")
+    account_number: str = Field(..., description="Bank account number")
+    ifsc: str = Field(..., description="Bank IFSC")
+    beneficiary_name: str = Field(..., description="Account holder name as per bank")
+    account_type: str = Field(..., description="One of ACCOUNT_TYPES")
+    bank_name: Optional[str] = None     # auto-filled/confirmed from IFSC
+    branch: Optional[str] = None        # auto-filled/confirmed from IFSC
 
 
 def _next_payout_eta(cfg: dict) -> str:
@@ -141,18 +157,37 @@ async def summary(user: dict = Depends(get_current_user)):
     available = by_status.get("available", {}).get("total", 0)
     paid_out = by_status.get("paid_out", {}).get("total", 0)
     acct = await db.payout_accounts.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    eligible_account = bool(acct and acct.get("verified"))
     return {
         "available_inr": available,
         "paid_out_inr": paid_out,
         "lifetime_inr": available + paid_out,
         "currency": "INR",
         "min_payout_inr": cfg["min_payout_inr"],
-        "eligible_for_payout": available >= cfg["min_payout_inr"],
+        # eligible for the next run = enough balance AND a fully-verified account
+        "eligible_for_payout": available >= cfg["min_payout_inr"] and eligible_account,
+        "balance_eligible": available >= cfg["min_payout_inr"],
+        "account_verified": eligible_account,
         "next_payout_eta": _next_payout_eta(cfg),
         "payout_weekday": WEEKDAYS[cfg["payout_weekday"]],
         "has_payout_account": bool(acct),
         "payout_account": acct,
     }
+
+
+@router.get("/account-types")
+async def list_account_types(user: dict = Depends(get_current_user)):
+    return {"account_types": ACCOUNT_TYPES}
+
+
+@router.get("/ifsc/{ifsc}")
+async def ifsc_lookup(ifsc: str, user: dict = Depends(get_current_user)):
+    """Live IFSC validation — returns bank + branch so the seller can confirm
+    they typed the right code. 404 if the IFSC is invalid/unknown."""
+    info = await razorpayx.lookup_ifsc(ifsc)
+    if not info:
+        raise HTTPException(404, "Invalid or unknown IFSC code.")
+    return info
 
 
 @router.get("/ledger")
@@ -175,27 +210,82 @@ async def get_payout_account(user: dict = Depends(get_current_user)):
 
 @router.post("/payout-account")
 async def set_payout_account(body: PayoutAccountReq, user: dict = Depends(get_current_user)):
-    if body.method not in ("upi", "bank"):
-        raise HTTPException(400, "method must be 'upi' or 'bank'")
-    if body.method == "upi" and not body.vpa:
-        raise HTTPException(400, "UPI VPA is required")
-    if body.method == "bank" and not (body.account_number and body.ifsc and body.beneficiary_name):
-        raise HTTPException(400, "account_number, ifsc and beneficiary_name are required for bank")
+    """Save BOTH UPI (primary) + Bank (fallback). The account becomes
+    payout-eligible only when: UPI VPA is well-formed AND the IFSC validates
+    (bank+branch resolved) AND — when RazorpayX is live — the bank passes a
+    ₹1 penny-drop fund-account validation."""
+    vpa = (body.vpa or "").strip()
+    acct_no = (body.account_number or "").strip()
+    ifsc = (body.ifsc or "").strip().upper()
+    ben = (body.beneficiary_name or "").strip()
+    acct_type = (body.account_type or "").strip()
+
+    # --- field presence (both methods mandatory) ---
+    if not vpa:
+        raise HTTPException(400, "UPI ID (VPA) is required.")
+    if not _VPA_RE.match(vpa):
+        raise HTTPException(400, "UPI ID looks invalid. Use the form name@bank (e.g. john@oksbi).")
+    if not (acct_no and ifsc and ben):
+        raise HTTPException(400, "Bank account number, IFSC and beneficiary name are all required.")
+    if acct_type not in ACCOUNT_TYPES:
+        raise HTTPException(400, f"account_type must be one of: {', '.join(ACCOUNT_TYPES)}")
+
+    # --- IFSC validation via free Razorpay IFSC API (also gives bank+branch) ---
+    ifsc_info = await razorpayx.lookup_ifsc(ifsc)
+    if not ifsc_info:
+        raise HTTPException(400, f"IFSC '{ifsc}' is invalid or unknown. Please re-check.")
+    bank_name = ifsc_info.get("bank") or (body.bank_name or "").strip() or None
+    branch = ifsc_info.get("branch") or (body.branch or "").strip() or None
+
     doc = {
         "user_id": user["user_id"],
-        "method": body.method,
-        "vpa": (body.vpa or "").strip() or None,
-        "account_number": (body.account_number or "").strip() or None,
-        "ifsc": (body.ifsc or "").strip().upper() or None,
-        "beneficiary_name": (body.beneficiary_name or "").strip() or None,
-        "verified": True,
+        # UPI is the PRIMARY payout channel; bank is the fallback. `method`
+        # stays 'upi' so the existing payout router never double-pays.
+        "method": "upi",
+        "fallback_method": "bank",
+        "vpa": vpa,
+        "account_number": acct_no,
+        "ifsc": ifsc,
+        "beneficiary_name": ben,
+        "account_type": acct_type,
+        "bank_name": bank_name,
+        "branch": branch,
+        "ifsc_verified": True,
+        "upi_format_valid": True,
         # reset cached RazorpayX ids whenever account details change
         "contact_id": None,
         "fund_account_id": None,
         "updated_at": _iso(),
     }
+
+    # --- bank penny-drop (only when RazorpayX is live) ---
+    pennydrop = {"status": "skipped_rzx_inactive", "account_status": None}
+    if await razorpayx.is_configured():
+        try:
+            res = await razorpayx.validate_bank_pennydrop(user, doc)
+            pennydrop = {
+                "status": res.get("status"),
+                "account_status": res.get("account_status"),
+                "registered_name": res.get("registered_name"),
+                "validation_id": res.get("validation_id"),
+                "checked_at": _iso(),
+            }
+            doc["contact_id"] = res.get("contact_id")
+            doc["fund_account_id"] = res.get("fund_account_id")
+        except Exception as e:
+            log.warning(f"penny-drop failed for {user['user_id']}: {str(e)[:160]}")
+            pennydrop = {"status": "error", "account_status": None, "error": str(e)[:160]}
+    doc["bank_pennydrop"] = pennydrop
+
+    # Account is verified (payout-eligible) when IFSC validates AND UPI is valid.
+    # If a penny-drop ran and returned 'invalid', block; 'active' or skipped/created pass.
+    bank_blocked = pennydrop.get("account_status") == "invalid"
+    doc["verified"] = bool(doc["ifsc_verified"] and doc["upi_format_valid"] and not bank_blocked)
+
     await db.payout_accounts.update_one({"user_id": user["user_id"]}, {"$set": doc}, upsert=True)
-    return {"ok": True, "payout_account": {k: v for k, v in doc.items() if k != "user_id"}}
+    return {"ok": True, "verified": doc["verified"], "ifsc_info": ifsc_info,
+            "bank_pennydrop": pennydrop,
+            "payout_account": {k: v for k, v in doc.items() if k != "user_id"}}
 
 
 @router.get("/config")
@@ -327,6 +417,64 @@ class RunBatchReq(BaseModel):
 async def admin_eligible_summary(admin: dict = Depends(require_admin)):
     """Count + total of sellers eligible for the next batch (available balance ≥
     min payout AND a verified payout account). Powers the run-confirm dialog."""
+    return await _eligible_snapshot()
+
+
+@admin_router.post("/run")
+async def admin_run_batch(body: RunBatchReq, admin: dict = Depends(require_admin)):
+    """Run a payout batch on an EXPLICITLY chosen channel — prevents accidentally
+    firing the wrong path during testing.
+      • manual_idfc → never calls any payout API (queues pending_manual rows).
+      • razorpayx   → sends real payouts; HARD-ERRORS if RazorpayX isn't configured
+                       (does NOT silently fall back to manual).
+    Every run (success OR failure) is written to payout_audit_log for a
+    tamper-evident money trail."""
+    channel = (body.channel or "").strip()
+    # snapshot what WOULD be paid, for the audit row
+    try:
+        pre = await _eligible_snapshot()
+    except Exception:
+        pre = {}
+
+    async def _audit(outcome: str, result: dict):
+        await db.payout_audit_log.insert_one({
+            "audit_id": f"audit_{uuid.uuid4().hex[:12]}",
+            "actor_user_id": admin.get("user_id"),
+            "actor_email": admin.get("email"),
+            "channel": channel,
+            "outcome": outcome,                       # success | aborted | error
+            "eligible_before": pre.get("eligible"),
+            "total_inr_before": pre.get("total_inr"),
+            "result": result,
+            "razorpayx_active": pre.get("razorpayx_active"),
+            "created_at": _iso(),
+        })
+
+    if channel not in ("manual_idfc", "razorpayx"):
+        await _audit("error", {"detail": "invalid channel"})
+        raise HTTPException(400, "channel must be 'razorpayx' or 'manual_idfc'")
+
+    if channel == "manual_idfc":
+        res = await run_manual_payout_batch()
+        await _audit("success", res)
+        return {"ok": True, "channel": channel, **res}
+
+    # razorpayx
+    if not await razorpayx.is_configured():
+        await _audit("aborted", {"detail": "RazorpayX not configured"})
+        raise HTTPException(
+            400,
+            "RazorpayX not configured — aborting. Activate RazorpayX (set the "
+            "account number) or use the Manual-IDFC channel.",
+        )
+    res = await run_weekly_payouts(force=True)
+    await _audit("success", res)
+    return {"ok": True, "channel": channel, **res}
+
+
+async def _eligible_snapshot() -> dict:
+    """Count + total of sellers eligible for a batch (shared by eligible-summary
+    and the audit log)."""
     cfg = await get_config()
     min_inr = cfg.get("min_payout_inr", 500)
     pipeline = [
@@ -343,34 +491,15 @@ async def admin_eligible_summary(admin: dict = Depends(require_admin)):
             continue
         eligible += 1
         total += r["total"]
-    return {
-        "eligible": eligible, "total_inr": total,
-        "min_payout_inr": min_inr,
-        "razorpayx_active": await razorpayx.is_configured(),
-    }
+    return {"eligible": eligible, "total_inr": total, "min_payout_inr": min_inr,
+            "razorpayx_active": await razorpayx.is_configured()}
 
 
-@admin_router.post("/run")
-async def admin_run_batch(body: RunBatchReq, admin: dict = Depends(require_admin)):
-    """Run a payout batch on an EXPLICITLY chosen channel — prevents accidentally
-    firing the wrong path during testing.
-      • manual_idfc → never calls any payout API (queues pending_manual rows).
-      • razorpayx   → sends real payouts; HARD-ERRORS if RazorpayX isn't configured
-                       (does NOT silently fall back to manual)."""
-    channel = (body.channel or "").strip()
-    if channel == "manual_idfc":
-        res = await run_manual_payout_batch()
-        return {"ok": True, "channel": channel, **res}
-    if channel == "razorpayx":
-        if not await razorpayx.is_configured():
-            raise HTTPException(
-                400,
-                "RazorpayX not configured — aborting. Activate RazorpayX (set the "
-                "account number) or use the Manual-IDFC channel.",
-            )
-        res = await run_weekly_payouts(force=True)
-        return {"ok": True, "channel": channel, **res}
-    raise HTTPException(400, "channel must be 'razorpayx' or 'manual_idfc'")
+@admin_router.get("/audit-log")
+async def admin_payout_audit_log(admin: dict = Depends(require_admin), limit: int = 50):
+    """Tamper-evident money trail of every payout-batch run (who/when/channel/amount)."""
+    cur = db.payout_audit_log.find({}, {"_id": 0}).sort("created_at", -1).limit(min(200, max(1, limit)))
+    return {"items": await cur.to_list(200)}
 
 
 def _idfc_txn_type(ifsc: Optional[str], amount: int) -> str:
