@@ -211,21 +211,51 @@ export default function AdminPayoutsScreen() {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.runBtn} onPress={runNow} disabled={running} testID="run-payouts-now">
-          {running ? <ActivityIndicator color="#FFF" /> : <><Ionicons name="play" size={18} color="#FFF" /><Text style={styles.runBtnText}>Run payouts now</Text></>}
-        </TouchableOpacity>
+        {/* Run a batch — explicit channel choice prevents accidental double-pay */}
+        <Text style={styles.sectionTitle}>Run a payout batch</Text>
+        <View style={styles.card}>
+          <Text style={styles.label}>Channel</Text>
+          <View style={styles.channelWrap}>
+            <TouchableOpacity
+              style={[styles.channelChip, channel === 'manual_idfc' && styles.channelChipActiveManual]}
+              onPress={() => setChannel('manual_idfc')}
+              testID="channel-manual-idfc"
+            >
+              <Ionicons name="albums" size={16} color={channel === 'manual_idfc' ? '#FFF' : '#7C3AED'} />
+              <Text style={[styles.channelChipText, channel === 'manual_idfc' && { color: '#FFF' }]}>Manual-IDFC</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.channelChip, channel === 'razorpayx' && styles.channelChipActiveRzx]}
+              onPress={() => setChannel('razorpayx')}
+              testID="channel-razorpayx"
+            >
+              <Ionicons name="flash" size={16} color={channel === 'razorpayx' ? '#FFF' : '#0EA5E9'} />
+              <Text style={[styles.channelChipText, channel === 'razorpayx' && { color: '#FFF' }]}>RazorpayX</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.channelHint}>
+            {channel === 'manual_idfc'
+              ? 'Manual-IDFC only QUEUES rows (pending_manual). No money moves until you transfer via IDFC net-banking and mark them paid.'
+              : `RazorpayX sends REAL payouts immediately. ${cfg.razorpayx_active ? 'RazorpayX is active.' : '⚠️ RazorpayX is NOT active — this run will abort.'}`}
+          </Text>
+
+          <TouchableOpacity
+            style={[styles.runBtn, channel === 'razorpayx' ? { backgroundColor: '#DC2626' } : { backgroundColor: '#7C3AED' }, { marginTop: 4 }]}
+            onPress={runBatch}
+            disabled={running}
+            testID="run-batch"
+          >
+            {running ? <ActivityIndicator color="#FFF" /> : <><Ionicons name="play" size={18} color="#FFF" /><Text style={styles.runBtnText}>{channel === 'razorpayx' ? 'Send RazorpayX batch' : 'Queue Manual-IDFC batch'}</Text></>}
+          </TouchableOpacity>
+        </View>
 
         {/* Manual payouts via IDFC bank file / on-screen UPI */}
         <Text style={styles.sectionTitle}>Manual payouts (IDFC)</Text>
         <View style={styles.card}>
           <Text style={styles.helpText}>
             Pay sellers directly from your IDFC current account — no aggregator needed.
-            {'\n'}1. Create a batch (locks eligible balances).{'\n'}2. Download the file(s).{'\n'}3. Upload Bank file to IDFC Bulk Transfer; enter UPI IDs in IDFC {'"'}Bulk Pay On-Screen{'"'}.{'\n'}4. After transferring, tap {'"'}Mark all as paid{'"'}.
+            {'\n'}1. Queue a Manual-IDFC batch above (locks eligible balances).{'\n'}2. Download the file(s).{'\n'}3. Upload Bank file to IDFC Bulk Transfer; enter UPI IDs in IDFC {'"'}Bulk Pay On-Screen{'"'}.{'\n'}4. After transferring, tap {'"'}Mark all as paid{'"'}.
           </Text>
-
-          <TouchableOpacity style={[styles.actBtn, { backgroundColor: '#7C3AED' }]} onPress={createBatch} disabled={busy === 'batch'} testID="create-manual-batch">
-            {busy === 'batch' ? <ActivityIndicator color="#FFF" /> : <><Ionicons name="albums" size={16} color="#FFF" /><Text style={styles.actBtnText}>Create manual batch</Text></>}
-          </TouchableOpacity>
 
           <View style={styles.exportRow}>
             <TouchableOpacity style={[styles.exportBtn, { borderColor: '#16A34A' }]} onPress={() => downloadExport('bank')} disabled={busy === 'bank'} testID="export-bank">
@@ -286,8 +316,14 @@ const styles = StyleSheet.create({
   weekChipText: { fontSize: 12, fontWeight: '700', color: '#475569' },
   saveBtn: { backgroundColor: '#16A34A', paddingVertical: 13, borderRadius: 10, alignItems: 'center', marginTop: 18 },
   saveBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
-  runBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#0EA5E9', paddingVertical: 13, borderRadius: 12, marginTop: 14 },
+  runBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 13, borderRadius: 12, marginTop: 14 },
   runBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
+  channelWrap: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  channelChip: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11, borderRadius: 10, borderWidth: 1.5, borderColor: '#E2E8F0', backgroundColor: '#FFF' },
+  channelChipActiveManual: { backgroundColor: '#7C3AED', borderColor: '#7C3AED' },
+  channelChipActiveRzx: { backgroundColor: '#0EA5E9', borderColor: '#0EA5E9' },
+  channelChipText: { fontSize: 13, fontWeight: '800', color: '#475569' },
+  channelHint: { fontSize: 12, color: '#64748B', lineHeight: 18, marginTop: 10 },
   helpText: { fontSize: 12.5, color: '#475569', lineHeight: 19, marginBottom: 12 },
   actBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 10, marginTop: 10 },
   actBtnText: { color: '#FFF', fontWeight: '800', fontSize: 13.5 },

@@ -1,0 +1,27 @@
+{
+  "summary": "Tested the new Admin Payouts channel selector (RazorpayX vs Manual-IDFC) end-to-end. Backend: 7/7 pytest cases passed — POST /api/admin/payouts/run with {channel:'manual_idfc'} returns ok+counters, with {channel:'razorpayx'} hard-errors HTTP 400 with the exact 'RazorpayX not configured — aborting' message (no silent fallback), invalid/unknown/empty channel returns 400 with 'channel must be razorpayx or manual_idfc', missing field returns 422, and unauthenticated returns 401/403. GET /api/admin/payouts/eligible-summary returns the expected shape {eligible, total_inr, min_payout_inr, razorpayx_active}. Frontend: /admin/payouts loads without crash, channel segmented control renders with Manual-IDFC selected by default; tapping RazorpayX toggles selection AND swaps the Run button label ('Queue Manual-IDFC batch' ↔ 'Send RazorpayX batch') AND swaps the hint text to the 'RazorpayX sends REAL payouts immediately. ⚠️ RazorpayX is NOT active — this run will abort.' copy; confirm dialog appears on Run ('Create a Manual-IDFC batch?' with Cancel/Queue Manual). New testIDs channel-manual-idfc, channel-razorpayx, run-batch are all present and the old ambiguous testIDs run-payouts-now and create-manual-batch are GONE. Money-flow channel enforcement works correctly.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_admin_payouts_run_channel.py",
+    "/app/test_reports/pytest/iter167_payouts_channel.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/app/backend/routes/earnings.py still exposes the legacy POST /admin/payouts/create-manual-batch and POST /admin/payouts/run-now endpoints alongside the new unified /run. They are not referenced by the frontend anymore but remain reachable — consider deprecating/removing to fully eliminate the double-pay surface area at the API layer.",
+    "Admin login screen (/admin/login) email + password TextInputs have no testID — added selectors via placeholder works but adding testID='admin-login-email' / 'admin-login-password' / 'admin-login-submit' would harden future automation."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_admin_payouts_run_channel.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "None — tests are non-destructive; manual_idfc run on an empty eligible set returns zero counters, no payouts written.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend test file /app/backend/tests/test_admin_payouts_run_channel.py is reusable. It logs in as super@test.com, hits the four critical paths (eligible-summary, manual_idfc, razorpayx-not-configured 400, invalid channels). The RazorpayX hard-error test auto-skips if RazorpayX ever becomes configured in this env. Frontend testIDs to use: channel-manual-idfc, channel-razorpayx, run-batch, export-bank, export-upi, mark-all-paid."
+}
