@@ -18,7 +18,14 @@ export default function Root({ children }: PropsWithChildren) {
           (app/_layout.tsx). Description is intentionally NOT set here to avoid a
           duplicate with <Seo>.
         */}
-        <title>JELCOS AI — Decision-making tools & AI insights | Joyful Executive&apos;s Life Choices Operating System</title>
+        {/*
+          The brand <title> is provided once, at the root, via <Head> in
+          app/_layout.tsx — it serializes into the static HTML as the first
+          <title>. Do NOT set a <title> here (or in page-level <Seo>), else
+          expo-router emits a duplicate/empty <title> that wins in the browser
+          and shows a blank/app-name tab while loading. Per-page name is carried
+          by og:title; the client keeps document.title in sync.
+        */}
         <meta
           name="viewport"
           content="width=device-width, initial-scale=1, shrink-to-fit=no"

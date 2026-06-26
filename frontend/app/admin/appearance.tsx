@@ -330,12 +330,12 @@ export default function AdminAppearance() {
             {([
               ['brand_name', 'Brand / Display Name', 'JELCOS AI', false],
               ['tagline', 'Tagline', 'Your product tagline', false],
-              ['legal_name', 'Legal Entity Name', 'HOORECON IT-Sys Pvt Ltd', false],
+              ['legal_name', 'Legal Entity Name', 'HOORECON IT-Sys Private Limited', false],
               ['address', 'Registered Address', 'Street, City, State, PIN, Country', true],
-              ['phone', 'Phone', '+(91)-(0)44-46972104', false],
-              ['email', 'Email', 'admin@hoorecon.com', false],
-              ['website', 'Website', 'www.hoorecon.com', false],
-              ['support_hours', 'Support Hours', 'Mon-Fri, 10:00 AM - 6:00 PM IST', false],
+              ['phone', 'Phone', '044 4697 2104', false],
+              ['email', 'Email', 'support@hoorecon.com', false],
+              ['website', 'Website', 'www.jelcos.ai', false],
+              ['support_hours', 'Support Hours', 'Mon-Sat, 10:00 AM - 6:00 PM IST', false],
             ] as [string, string, string, boolean][]).map(([key, label, ph, multi]) => (
               <View key={key} style={{ marginBottom: 10 }}>
                 <Text style={s.fieldLabel}>{label}</Text>

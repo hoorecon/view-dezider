@@ -5,7 +5,21 @@
 > file SHORT and CURRENT — it is the first thing to read after PRD.md.
 
 ## 0) Last user intent (update at end of every session)
-- 2026-06-26 (latest): Razorpay card-activation compliance for jelcos.ai. (a) New
+- 2026-06-26 (latest): Fixed the browser-tab title flashing blank/"frontend"
+  before resolving to JELCOS AI. ROOT CAUSE: expo-router static export emitted an
+  EMPTY `<title data-rh></title>` FIRST (helmet placeholder) ahead of the real
+  +html `<title>`; browsers honour the first <title> → blank tab → app-name
+  fallback. FIX: render the brand <title> ONCE via `<Head>` in app/_layout.tsx
+  ROOT (this serializes content correctly, unlike page-level Seo Head which
+  stayed empty); removed the <title> from +html and from Seo.tsx so there's
+  exactly ONE <title>; renamed app.json expo.name "frontend" → "JELCOS AI";
+  unified _layout client document.title to match. Verified: every page (index,
+  legal/*, contact) has exactly one brand <title>, no empty, no "frontend".
+  Also confirmed Contact details ARE Admin-configurable via /admin/appearance
+  (legal_name/address/phone/email/website/support_hours) and refreshed those
+  field placeholders to the new merchant identity. Build 2026.06.26.008
+  (v3.81-fix-title-flash-admin-contact).
+- 2026-06-26 (earlier): Razorpay card-activation compliance for jelcos.ai. (a) New
   separate /legal/cancellation route + cancellationPolicy builder (title exactly
   "Cancellation Policy"); refund split out as standalone "Refund Policy" (7–10
   working-day timeline, original-payment-method, duplicate/failed/non-delivery

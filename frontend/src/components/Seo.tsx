@@ -28,7 +28,14 @@ export default function Seo({ title, description, path = '/', image = DEFAULT_IM
   const url = `${SITE_URL}${path}`;
   return (
     <Head>
-      <title>{title}</title>
+      {/*
+        NOTE: we deliberately do NOT render a <title> here. expo-router 6 static
+        export can't serialize a Head <title>'s text, so it emits an EMPTY
+        <title data-rh> that wins over the real brand <title> in app/+html.tsx
+        (browsers use the first <title>) — which made the tab flash blank/"frontend".
+        The per-page name is carried by og:title below; the brand <title> lives
+        in +html and the client sets document.title in app/_layout.tsx.
+      */}
       <meta name="description" content={description} />
       <link rel="canonical" href={url} />
 

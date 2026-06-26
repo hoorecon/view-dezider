@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { View, Text, Platform } from 'react-native';
 import { Stack, useRouter, useSegments, usePathname, useGlobalSearchParams } from 'expo-router';
+import Head from 'expo-router/head';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { Ionicons } from '@expo/vector-icons';
@@ -263,7 +264,7 @@ export default function RootLayout() {
   // consistent instead of the default Expo project name.
   useEffect(() => {
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
-      document.title = "JELCOS AI - Joyful Executive's Life Choices Operating System — Powered by AI";
+      document.title = "JELCOS AI — Decision-making tools & AI insights | Joyful Executive's Life Choices Operating System";
     }
   }, []);
 
@@ -319,6 +320,11 @@ export default function RootLayout() {
 
   return (
     <NavErrorBoundary>
+      {Platform.OS === 'web' && (
+        <Head>
+          <title>JELCOS AI — Decision-making tools & AI insights | Joyful Executive's Life Choices Operating System</title>
+        </Head>
+      )}
       <StatusBar style="dark" />
       <AnalyticsListener />
       <FontFamilyProvider>
