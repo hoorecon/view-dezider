@@ -1,0 +1,32 @@
+{
+  "summary": "Iter 163 verified PASS end-to-end on both backend and frontend. (1) Backend Gemini guard: POST /api/url-analyze/decision/{id}/import with share.gemini.google URL returns 422 in <1s with detail mentioning 'Gemini' and the 'Text' importer — no fetch, no LLM spend (the guard runs before fetch_page at routes/url_analyze.py:785). (2) Backend regression: pytest tests/test_chatgpt_share_import.py tests/test_claude_share_import.py → 4 passed; full iter163 run incl. new tests/test_gemini_guard_iter163.py → 6/6 passed (no skips). (3) Frontend drag-reorder: opened Step-2 ImportReviewModal by importing the ChatGPT share URL (got 9 options + 8 factors). Real mouse drag on review-option-drag-0 down past row 2 reorders the list — verified ['Java Capital', 'Chiratae Ventures', 'Capital-A', …] became ['Chiratae Ventures', 'Capital-A', 'VeeVault Capital', 'Java Capital', …] in the input values; rank badges renumber 1-9 correctly; confirm button shows 'Add 17 to decision'. After tapping import-review-confirm, GET /api/decisions/{id} returns options[].name in EXACTLY the same order as the UI (persisted_first3 = ['Chiratae Ventures', 'Capital-A', 'VeeVault Capital']; monotonic positions [0,1,2,3,4,5,6,7,8]). (4) ChatGPT review modal still opens with import-review-modal testID; editing/removing/adding controls all rendered alongside the new drag handles.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_gemini_guard_iter163.py",
+    "/app/backend/tests/test_chatgpt_share_import.py",
+    "/app/backend/tests/test_claude_share_import.py",
+    "/app/test_reports/pytest/iter163.xml",
+    "/tmp/iter163_after_drag.png"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/url_analyze.py is now 1285 lines. Splitting into url_analyze/analyze.py, import.py, import_confirm.py, feedback.py, training.py would improve maintainability (carried over from iter162; non-blocking).",
+    "ImportReviewModal.tsx uses Platform.OS === 'web' activationDistance=1 which is correct for the web preview drag UX — verified it still requires a real mouse drag (no accidental reorders observed).",
+    "Iter 162's noted side issue (import-progress-modal staying behind the review modal) was not in the iter 163 scope; it still applies — Step2.runImport() should clear importProgress when data.mode === 'conversation_preview'."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_gemini_guard_iter163.py (NEW: 2 tests — helper + fast-422 API)"
+  ],
+  "success_rate": {"backend": "100% (6/6 in iter163 suites: 4 ChatGPT+Claude regression + 2 Gemini guard)", "frontend": "100% (drag reorder verified in UI, rank badges, persisted to DB in UI order)"},
+  "seed_data_creation": "Each test creates a TEST_ decision via POST /api/decisions {title,context,category} and best-effort deletes it after the assertion (try/finally / fixture teardown).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iter 163 adds: (a) backend Gemini-share guard — is_gemini_share_url() check in routes/url_analyze.py:785 raises 422 BEFORE any fetch/LLM call when the URL is share.gemini.google/* or gemini.google.com/share/* or g.co + /share/; detail message mentions both 'Gemini' and 'Text' importer. (b) frontend drag-reorder in ImportReviewModal — DraggableFlatList with rank badges next to each option; drag handle has testID review-option-drag-N; rank badges renumber on drag; confirm posts the reordered list into the decision via /api/url-analyze/decision/{id}/import/confirm so options[].name in the persisted decision matches the UI order. To drive the drag in Playwright: real mouse.move + mouse.down on the handle bbox, small initial nudge to clear activationDistance=1, then ~12-16 incremental mouse.move steps toward the target row, mouse.up. Login response field is 'session_token'; decision-creation payload MUST include 'context' (Pydantic required). The standard option list from the ChatGPT share URL is 9 names beginning with 'Java Capital' — convenient for ordering assertions.",
+  "rca_of_issue": "N/A — feature additions verified clean. The previously noted import-progress-modal overlap from iter162 was not in this scope; it persists as a low-priority cosmetic item."
+}

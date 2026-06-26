@@ -29,7 +29,7 @@ from core.url_crawl import (
     fetch_page, fetch_rendered, parse_hierarchy, candidates_from_response,
     page_text,
     is_conversation_url, extract_conversation_text, ai_extract_decision_from_conversation,
-    fetch_ai_conversation,
+    fetch_ai_conversation, is_gemini_share_url,
 )
 from core.url_detail import ai_extract_detail, deterministic_hint_issues
 from core.url_pagetype import classify_page_type
@@ -778,6 +778,18 @@ async def _import_inner(decision_id: str, req: ImportRequest, request: Request,
         raise HTTPException(400, f"Select a valid access-eligibility type ({', '.join(sorted(ELIGIBILITY_TYPES))}).")
     if elig == "custom" and not (req.custom_note or "").strip():
         raise HTTPException(400, "Describe your access right in the custom field.")
+
+    # Gemini share links serve a signed-out shell and load the conversation only
+    # for the logged-in owner via an authenticated RPC — it cannot be read by any
+    # crawler. Fail fast (no fetch/LLM spend) with an actionable message.
+    if is_gemini_share_url(req.url):
+        raise HTTPException(
+            422,
+            "Gemini share links can't be imported automatically — Google only loads the "
+            "conversation for signed-in users, so it isn't visible to our importer. "
+            "Open your Gemini chat, copy the text, and use the 'Text' import instead. "
+            "(ChatGPT and Claude share links work directly.)",
+        )
 
     decision = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
     if not decision:

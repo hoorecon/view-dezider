@@ -323,6 +323,18 @@ def is_conversation_url(url: str) -> bool:
     return ("/share/" in u) or ("/c/" in u) or ("/g/" in u)
 
 
+def is_gemini_share_url(url: str) -> bool:
+    """Gemini share links — these CANNOT be imported automatically: Google serves
+    a signed-out shell and loads the transcript only for the logged-in owner via
+    an authenticated RPC (invisible to any crawler/headless render)."""
+    u = (url or "").lower()
+    if "share.gemini.google" in u:
+        return True
+    if ("gemini.google.com" in u or "g.co" in u) and ("/share/" in u or "/gemini/share" in u):
+        return True
+    return False
+
+
 def _decode_rr_stream(html: str) -> str:
     """React Router v7 (used by chatgpt.com share pages, 2025+) streams its
     loader data via ``window.__reactRouterContext.streamController.enqueue("…")``.

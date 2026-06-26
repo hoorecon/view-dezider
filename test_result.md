@@ -10252,3 +10252,69 @@ agent_communication:
       (testID import-review-modal) to appear with editable options/factors -> tap import-review-confirm ->
       expect success and items added. NOTE: route is /prr/{id}?step=2; hard goto can hit a rehydration race
       (retry goto/re-login). Backend makes live network + metered LLM calls.
+
+#====================================================================================================
+# Iter 163 (fork) — Gemini guard (not importable) + drag-reorder of reviewed options
+#====================================================================================================
+backend:
+  - task: "Gemini share links rejected fast with actionable guidance (no credit spend)"
+    implemented: true
+    working: "NA"
+    file: "backend/core/url_crawl.py (is_gemini_share_url); routes/url_analyze.py (_import_inner early guard)"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Investigated the user's Gemini link (share.gemini.google/eOlCCzMAqeHt -> redirects to
+          gemini.google.com/share/eb754d628ffa). Gemini serves a SIGNED-OUT shell; the conversation
+          loads only for the logged-in owner via an authenticated batchexecute RPC — NOT present in
+          direct HTML and NOT captured by ScraperAPI render=true (DOM never populates; render+wait_for_selector
+          returns 500). So automated Gemini import is not feasible. Added is_gemini_share_url() and an early
+          guard in _import_inner that returns 422 with a clear message pointing users to the 'Text' import,
+          BEFORE any fetch/LLM spend. VERIFIED (main, live): POST import with url=share.gemini.google/... -> 422
+          with the guidance message.
+frontend:
+  - task: "ImportReviewModal — drag-to-reorder OPTIONS (order preserved into the decision/Step 6)"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/components/ImportReviewModal.tsx"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Rewrote ImportReviewModal to use react-native-draggable-flatlist for the OPTIONS list (wrapped in
+          GestureHandlerRootView for the Modal). Each option row now has a drag handle (testID
+          review-option-drag-N), a rank badge (1..N), the editable name (review-option-input-N) and remove
+          (review-option-remove-N). Factors remain a simple editable/removable list. onConfirm sends options
+          in the current (reordered) array order; merge_into_mydezider preserves order, so the first option is
+          most-preferred in Step 6. SMOKE-VERIFIED via screenshot: modal renders with handles + rank badges +
+          'OPTIONS (N) · DRAG TO REORDER'. Needs interaction test that dragging actually reorders and the order
+          persists through /import/confirm.
+
+metadata: { created_by: "main_agent", version: "fork-iter-163", test_sequence: 163 }
+test_plan:
+  current_focus:
+    - "Gemini share link import returns helpful 422 fast (no credit spend)"
+    - "Review modal: drag an option to a new position; confirm; decision option order matches the new order"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+agent_communication:
+  - agent: "main"
+    message: |
+      Iter 163. super@test.com / SuperPass2026! (dev wallet ~2000 cr). Tests:
+      BACKEND: POST /api/url-analyze/decision/{id}/import {url:"https://share.gemini.google/eOlCCzMAqeHt",
+        accepted:true, eligibility_type:"own"} -> expect 422 with message about Gemini/Text import (FAST, no LLM).
+        Claude + ChatGPT + preview/confirm from iter162 should still pass (pytests: tests/test_chatgpt_share_import.py
+        tests/test_claude_share_import.py).
+      FRONTEND (web preview /prr/{id}?step=2): import the ChatGPT share URL
+        https://chatgpt.com/share/6a36d8d2-3b08-83e8-b67a-6dffa9cc9ffa -> review modal (import-review-modal) opens
+        with draggable options. Verify: drag review-option-drag-0 down a couple rows (playwright mouse down on the
+        handle, move, up), the rank badges/order update, then tap import-review-confirm and confirm via
+        GET /api/decisions/{id} that the option order matches the reordered list (first option = what you moved to top).
+        NOTE: route /prr/{id}?step=2 may bounce to /auth/login (rehydration race) — retry goto/re-login. Metro is CI
+        mode; bundle already rebuilt. Backend conversation imports are metered (LLM) + ChatGPT direct / Claude via ScraperAPI.
