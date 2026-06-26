@@ -51,6 +51,22 @@ export default function UserLookup() {
   const [result, setResult] = useState<any>(null);
   const [savingType, setSavingType] = useState(false);
   const [pendingType, setPendingType] = useState<string | null>(null);
+  const [summaries, setSummaries] = useState<Record<string, any>>({});
+
+  const ensureSummary = useCallback(async (type: string) => {
+    if (!type || summaries[type]) return;
+    try {
+      const r = await api.get('/acm/user-type-access-summary', { params: { user_type: type } });
+      setSummaries((prev) => ({ ...prev, [type]: r.data }));
+    } catch { /* non-blocking preview */ }
+  }, [summaries]);
+
+  // Fetch feature-visibility summaries for the current + pending tier (preview).
+  useEffect(() => {
+    const cur = result?.profile?.user_type;
+    if (cur) ensureSummary(cur);
+    if (pendingType) ensureSummary(pendingType);
+  }, [result?.profile?.user_type, pendingType, ensureSummary]);
 
   // NDA modal
   const [nda, setNda] = useState<any>(null);
@@ -182,7 +198,7 @@ export default function UserLookup() {
               )}
 
               {/* NDA */}
-              <TouchableOpacity style={s.ndaRow} onPress={() => setNdaAck((v) => !v)} activeOpacity={0.8}>
+              <TouchableOpacity testID="pii-nda-ack" style={s.ndaRow} onPress={() => setNdaAck((v) => !v)} activeOpacity={0.8}>
                 <Ionicons name={ndaAck ? 'checkbox' : 'square-outline'} size={22} color={ndaAck ? COLORS.primary : COLORS.textMuted} />
                 <Text style={s.ndaText}>
                   I acknowledge the{' '}
@@ -191,7 +207,7 @@ export default function UserLookup() {
               </TouchableOpacity>
               <Text style={s.warn}>You must have signed an NDA to access this PII.</Text>
 
-              <TouchableOpacity style={[s.primaryBtn, submitting && { opacity: 0.6 }]} onPress={submit} disabled={submitting}>
+              <TouchableOpacity testID="pii-lookup-submit" style={[s.primaryBtn, submitting && { opacity: 0.6 }]} onPress={submit} disabled={submitting}>
                 {submitting ? <ActivityIndicator color="#FFF" /> : <Text style={s.primaryText}>View user details</Text>}
               </TouchableOpacity>
             </View>
@@ -252,6 +268,33 @@ export default function UserLookup() {
                     );
                   })}
                 </View>
+                {(() => {
+                  const curType = result.profile.user_type || 'free';
+                  const cur = summaries[curType];
+                  const pend = pendingType ? summaries[pendingType] : null;
+                  const lbl = (id: string) => ASSIGNABLE_TYPES.find((x) => x.id === id)?.label || id;
+                  if (pendingType && pendingType !== curType) {
+                    if (!pend || !cur) {
+                      return <Text style={s.typeHint} testID="assign-type-preview">Calculating feature impact…</Text>;
+                    }
+                    const delta = pend.usable - cur.usable;
+                    const sign = delta > 0 ? `+${delta}` : `${delta}`;
+                    return (
+                      <Text style={s.previewLine} testID="assign-type-preview">
+                        {lbl(pendingType)} → {pend.usable} of {pend.total} features usable
+                        {delta !== 0 ? ` (${sign} vs now)` : ' (no change)'} · {pend.hidden} hidden
+                      </Text>
+                    );
+                  }
+                  if (cur) {
+                    return (
+                      <Text style={s.typeHint} testID="assign-type-preview">
+                        Currently {cur.usable} of {cur.total} features usable · {cur.hidden} hidden.
+                      </Text>
+                    );
+                  }
+                  return null;
+                })()}
                 {(() => {
                   const dirty = !!pendingType && pendingType !== (result.profile.user_type || 'free');
                   return (
@@ -399,6 +442,7 @@ const s = StyleSheet.create({
   auditNote: { fontSize: 11, color: COLORS.textMuted, marginTop: 14, fontStyle: 'italic' },
   sectionTitle: { fontSize: 15, fontWeight: '800', color: COLORS.textPrimary, marginBottom: 8 },
   typeHint: { fontSize: 12.5, color: COLORS.textSecondary, lineHeight: 18, marginTop: 8, marginBottom: 12 },
+  previewLine: { fontSize: 13, fontWeight: '700', color: COLORS.primary, backgroundColor: '#EFF6FF', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 10, marginTop: 10, marginBottom: 4, overflow: 'hidden' },
   logRow: { flexDirection: 'row', gap: 10, paddingVertical: 8, borderTopWidth: 1, borderTopColor: COLORS.divider, alignItems: 'flex-start' },
   logViewer: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
   logTarget: { fontSize: 13, color: COLORS.textSecondary },

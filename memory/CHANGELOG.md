@@ -1178,3 +1178,11 @@ FEATURE (user request): Admins can now flip a user to a tester/early-access tier
   unit_tester/integration_tester/alpha/beta columns). No bypass added for tester tiers (per user choice).
 testing_agent: backend 8/8 + frontend PASS. Test target user: acmtarget@test.com / WhatsApp +919900112233.
 NDA-checkbox tap nuance noted in test_credentials/test_result for future Playwright runs.
+
+## Iteration 167 — Tier feature-visibility preview on assign card — 26 Jun 2026
+New GET /api/acm/user-type-access-summary?user_type=<t> (gated super_admin OR can_view_pii) returns
+{total, usable=full+read, visible=usable+locked, full, read, locked, hidden} for a tier WITHOUT changing
+any user — synthetic profile through get_all_feature_access. User Lookup assign card now shows a live preview:
+when a different tier is selected -> "Beta → 143 of 152 usable (+44 vs now) · 9 hidden"; when same as current
+-> "Currently N of 152 usable · H hidden". Added testIDs pii-nda-ack, pii-lookup-submit, assign-type-preview.
+Verified: endpoint counts (free 99u/19h, beta 143u/9h, unit_tester 148u/4h); screenshot shows preview on card.

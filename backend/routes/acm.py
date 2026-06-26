@@ -304,6 +304,36 @@ async def set_user_type(user_id: str, request: Request, user: dict = Depends(get
     }
 
 
+@router.get("/user-type-access-summary")
+async def user_type_access_summary(
+    user_type: str,
+    user: dict = Depends(get_current_user),
+):
+    """Preview how many features a given user_type can see — WITHOUT changing any
+    user. Lets a permitted admin confirm the ACM effect of a tier (e.g. beta)
+    before assigning it. Counts: usable = full+read, visible = usable+locked."""
+    role = get_user_role(user)
+    if role != "super_admin" and not user.get("can_view_pii"):
+        raise HTTPException(403, "User-management permission required (ask a Super Admin)")
+
+    synthetic = {
+        "user_id": "__preview__", "role": "user",
+        "user_type": user_type, "subscription_plan": "none",
+    }
+    feats = await get_all_feature_access(synthetic)
+    from collections import Counter
+    c = Counter(v["access_level"] for v in feats.values())
+    full, read = c.get("full", 0), c.get("read", 0)
+    locked, hidden = c.get("locked", 0), c.get("hidden", 0)
+    return {
+        "user_type": user_type,
+        "total": len(feats),
+        "usable": full + read,          # fully/partly usable
+        "visible": full + read + locked,  # shown to the user (locked = with upgrade prompt)
+        "full": full, "read": read, "locked": locked, "hidden": hidden,
+    }
+
+
 @router.get("/users")
 async def list_users_by_type(
     user_type: Optional[str] = None,
