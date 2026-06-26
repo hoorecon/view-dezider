@@ -25,7 +25,7 @@ export default function LegalShell({ slug }: { slug: string }) {
 
   return (
     <View nativeID="jelcosMarketing" style={styles.root}>
-      <Seo title={`${doc.title} · ${company.product}`} description={metaDesc} path={`/legal/${slug}`} />
+      <Seo title={doc.title} description={metaDesc} path={`/legal/${slug}`} />
       <MarketingHeader />
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator>
         <View style={[styles.body, { width: contentWidth }]}>

@@ -13,7 +13,7 @@ import Head from 'expo-router/head';
 import { Platform } from 'react-native';
 
 // Canonical public origin of the deployed marketing site.
-export const SITE_URL = 'https://jelcos.ai';
+export const SITE_URL = 'https://www.jelcos.ai';
 const DEFAULT_IMAGE = `${SITE_URL}/og-image.png`;
 
 type SeoProps = {

@@ -66,6 +66,24 @@ export default function MarketingFooter() {
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* Merchant details (payment-gateway compliance) */}
+        <View style={[styles.col, twoCol && { flex: 1.2 }]}>
+          <Text style={styles.colHead}>Merchant Details</Text>
+          <Text style={styles.mRow}><Text style={styles.mKey}>Merchant Legal Name: </Text>{company.legalName}</Text>
+          <Text style={styles.mRow}>
+            <Text style={styles.mKey}>Merchant Website: </Text>
+            <Text accessibilityRole="link" {...(Platform.OS === 'web' ? ({ href: company.websiteUrl } as any) : {})} style={styles.mLink}>{company.websiteUrl}</Text>
+          </Text>
+          <Text style={styles.mRow}><Text style={styles.mKey}>Support Email: </Text>{company.email}</Text>
+          <Text style={styles.mRow}><Text style={styles.mKey}>Support Phone: </Text>04446972104</Text>
+          <Text style={styles.mRow}><Text style={styles.mKey}>Business Type: </Text>{company.businessType}</Text>
+          <Text style={styles.mRow}><Text style={styles.mKey}>Payment Gateway: </Text>{company.paymentGateway}</Text>
+          <Text style={styles.mRow}>
+            <Text style={styles.mKey}>Company Website: </Text>
+            <Text accessibilityRole="link" {...(Platform.OS === 'web' ? ({ href: company.companyWebsiteUrl } as any) : {})} style={styles.mLink}>{company.companyWebsiteUrl}</Text>
+          </Text>
+        </View>
       </View>
 
       <View style={styles.bottomBar}>
@@ -92,6 +110,9 @@ const styles = StyleSheet.create({
   colHead: { fontSize: 13, fontWeight: '800', color: '#FFFFFF', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.6 },
   linkRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 7 },
   link: { fontSize: 13.5, color: '#C7C9E6' },
+  mRow: { fontSize: 12.5, color: '#A9ABC9', lineHeight: 20, marginBottom: 4 },
+  mKey: { color: '#E2E3F0', fontWeight: '700' },
+  mLink: { color: '#C7C9E6', textDecorationLine: 'underline' },
   bottomBar: { borderTopWidth: 1, borderTopColor: '#22243F', paddingVertical: 16, paddingHorizontal: 24, alignItems: 'center' },
   copy: { fontSize: 11.5, color: '#7E80A0', textAlign: 'center' },
 });

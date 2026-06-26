@@ -5,7 +5,33 @@
 > file SHORT and CURRENT — it is the first thing to read after PRD.md.
 
 ## 0) Last user intent (update at end of every session)
-- 2026-06-26 (latest): Added SEO to the static marketing/legal pages. New
+- 2026-06-26 (latest): Razorpay card-activation compliance for jelcos.ai. (a) New
+  separate /legal/cancellation route + cancellationPolicy builder (title exactly
+  "Cancellation Policy"); refund split out as standalone "Refund Policy" (7–10
+  working-day timeline, original-payment-method, duplicate/failed/non-delivery
+  rules). (b) Rewrote Terms (14 required sections + decision-support disclaimer),
+  Privacy (10 sections + "we do not store full card numbers, CVV, UPI PIN…"
+  wording), Delivery (exact JELCOS.AI digital-delivery wording) in
+  src/constants/company.ts. (c) Merchant identity updated everywhere: legalName
+  "HOORECON IT-Sys Private Limited", merchant website www.jelcos.ai, support
+  email support@hoorecon.com, phone 044 4697 2104 (04446972104), support hours
+  Mon–Sat 10–6 IST, business type + Razorpay gateway + company website
+  www.hoorecon.com — updated frontend COMPANY defaults AND backend
+  app_appearance.py DEFAULTS AND the preview-DB app_settings 'appearance' doc.
+  (d) MarketingFooter now has a "Merchant Details" block + Cancellation link;
+  footer legal links are real <a href> anchors. (e) Seo SITE_URL → www.jelcos.ai;
+  legal og:title is now exactly the policy name; sitemap.xml + robots.txt → www
+  (robots allows /legal/ + /contact). Verified via expo export: all 7 pages
+  (/, /contact, /legal/{terms,privacy,refund,cancellation,delivery}) render full
+  static content, no "enable JavaScript", no noindex, www canonical, exact
+  og:titles. Build 2026.06.26.007 (v3.80-razorpay-card-compliance-legal).
+  ⚠️ PROD ACTIONS NEEDED: (1) Save-to-GitHub → Cloudflare rebuild. (2) On the
+  PROD app, update Company Info via Admin → Appearance (prod Mongo has its own
+  app_settings doc; the preview DB was updated here but prod is separate) so
+  logged-in/JS users see the same merchant identity as the static pages.
+  (3) In Cloudflare, ensure a clean non-www → www (or single canonical) redirect
+  for jelcos.ai (DNS/Pages custom-domain setting — not in code).
+- 2026-06-26 (earlier): Added SEO to the static marketing/legal pages. New
   src/components/Seo.tsx (expo-router <Head>) injects per-page meta description,
   canonical and Open Graph + Twitter Card tags (incl. per-page og:title) on
   index.tsx, LegalShell.tsx and contact.tsx. Added public/robots.txt,

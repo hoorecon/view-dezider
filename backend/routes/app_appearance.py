@@ -25,17 +25,17 @@ APPEARANCE_KEY = "appearance"
 DEFAULT_FONT = "Inter"
 DEFAULT_BRAND_NAME = "JELCOS AI"
 DEFAULT_TAGLINE = "Joyful Executive's Life Choices Operating System — Powered by AI"
-DEFAULT_COMPANY_NAME = "HOORECON IT-Sys Pvt Ltd"  # legal entity name
+DEFAULT_COMPANY_NAME = "HOORECON IT-Sys Private Limited"  # legal entity name
 DEFAULT_ADDRESS = (
     "Innov8 Millenia, 2nd Floor, East Wing, RMZ,\n"
     "Millennia Business Park, Campus 1A, No. 143,\n"
     "MGR Road (North Veeranam Salai), Perungudi,\n"
     "Sholinganallur, Chennai-600096, Tamil Nadu, India."
 )
-DEFAULT_PHONE = "+(91)-(0)44-46972104"
-DEFAULT_EMAIL = "admin@hoorecon.com"
-DEFAULT_WEBSITE = "www.hoorecon.com"
-DEFAULT_SUPPORT_HOURS = "Monday–Friday, 10:00 AM – 6:00 PM IST"
+DEFAULT_PHONE = "044 4697 2104"
+DEFAULT_EMAIL = "support@hoorecon.com"
+DEFAULT_WEBSITE = "www.jelcos.ai"
+DEFAULT_SUPPORT_HOURS = "Monday to Saturday, 10:00 AM to 6:00 PM IST"
 MAX_LOGO_BYTES = 1024 * 1024  # 1 MB
 ALLOWED_LOGO_MIME = {"image/png", "image/jpeg", "image/jpg"}
 # Loader music — kept small so it streams instantly even on slow links.

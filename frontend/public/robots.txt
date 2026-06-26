@@ -1,8 +1,10 @@
 User-agent: *
 Allow: /
+Allow: /legal/
+Allow: /contact
 
 # App-only / authenticated areas (no useful content for crawlers)
 Disallow: /admin
 Disallow: /auth
 
-Sitemap: https://jelcos.ai/sitemap.xml
+Sitemap: https://www.jelcos.ai/sitemap.xml
