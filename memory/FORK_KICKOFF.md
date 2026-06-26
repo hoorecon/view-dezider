@@ -5,11 +5,18 @@
 > file SHORT and CURRENT — it is the first thing to read after PRD.md.
 
 ## 0) Last user intent (update at end of every session)
+- 2026-06-26 (later): Admin Payouts now has an explicit CHANNEL selector
+  (Manual-IDFC default vs RazorpayX). Replaced the two ambiguous triggers with
+  ONE unified Run → POST /api/admin/payouts/run {channel}. RazorpayX hard-errors
+  (400) if not configured (no silent manual fallback). Removed legacy unused
+  endpoints /run-now and /create-manual-batch (now 404) to shrink double-pay
+  surface. Tested both BE (7/7 pytest) + FE (Playwright). Build bumped to
+  2026.06.26.003 (tag v3.76-payouts-channel-selector).
+  PENDING: user to Save-to-GitHub (emergent-v3) + run EC2 sync (see §2).
 - 2026-06-26: Fixed AI-chat URL import (ChatGPT React-Router parse + Claude
   snapshot-JSON via ScraperAPI), Gemini = not importable (guard 422),
   review-before-merge modal with drag-reorder, auto-jump to Step 6 + "Top pick"
   spotlight. Build bumped to 2026.06.26.001 (tag v3.75-ai-chat-import-claude-review-reorder).
-  PENDING: user to Save-to-GitHub (emergent-v3) + run EC2 sync (see §2).
 
 ## 1) What this app is
 View Dezider — decision-making SaaS (PRR framework). Frontend = Expo/React-Native

@@ -258,12 +258,6 @@ async def admin_list_payouts(admin: dict = Depends(require_admin)):
     return {"payouts": payouts, "pending_balances": pending}
 
 
-@admin_router.post("/run-now")
-async def admin_run_now(admin: dict = Depends(require_admin)):
-    result = await run_weekly_payouts(force=True)
-    return {"ok": True, **result}
-
-
 # ---------------------------------------------------------------------------
 # Manual payout batch (IDFC bulk transfer / on-screen UPI) — no aggregator
 # ---------------------------------------------------------------------------
@@ -323,12 +317,6 @@ async def run_manual_payout_batch() -> dict:
         bank += 1 if acct.get("method") == "bank" else 0
         upi += 1 if acct.get("method") == "upi" else 0
     return {"created": created, "bank": bank, "upi": upi, "skipped": skipped}
-
-
-@admin_router.post("/create-manual-batch")
-async def admin_create_manual_batch(admin: dict = Depends(require_admin)):
-    res = await run_manual_payout_batch()
-    return {"ok": True, **res}
 
 
 class RunBatchReq(BaseModel):
