@@ -1165,3 +1165,16 @@ access_key=='platform_admin'. testing_agent 6/6: super-admin 152/152 full; free 
 NOTE (open item, not a bug): user_types unit_tester/integration_tester/alpha/beta are defined and ALL 152
 features already have ACM columns for them (granular per-role control via Admin > ACM matrix). However there is
 NO Admin UI to ASSIGN a user_type to a specific user yet — only the API PUT /api/acm/user/{user_id}/type exists.
+
+## Iteration 166 — Admin UI: assign user_type (tester/alpha/beta/trial) on User Lookup — 26 Jun 2026
+FEATURE (user request): Admins can now flip a user to a tester/early-access tier from the UI.
+- backend/routes/acm.py: PUT /acm/user/{id}/type gate changed to super_admin OR can_view_pii (the per-admin
+  permission Super Admin grants for User Lookup). Invalid type -> 400; non-permitted -> 403.
+- backend/routes/pii_admin.py: PII lookup profile now returns user_type + effective_user_type.
+- frontend/app/admin/user-lookup.tsx: after a successful lookup, a 'User Type & Access' card (assign-type-card)
+  shows current tier + chips (assign-type-{free,trial,unit_tester,integration_tester,alpha,beta}) + Save
+  (assign-type-save) -> PUT /acm/user/{id}/type. Screen already lives under Dashboard → Essentials.
+- Which features each tier unlocks stays GRANULAR via Admin → ACM matrix (all 152 features already have
+  unit_tester/integration_tester/alpha/beta columns). No bypass added for tester tiers (per user choice).
+testing_agent: backend 8/8 + frontend PASS. Test target user: acmtarget@test.com / WhatsApp +919900112233.
+NDA-checkbox tap nuance noted in test_credentials/test_result for future Playwright runs.
