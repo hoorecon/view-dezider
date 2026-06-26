@@ -3,7 +3,7 @@
  * and links to all legal/policy pages (required for payment-gateway review).
  */
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Linking, useWindowDimensions, Image, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, useWindowDimensions, Image, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { COLORS } from '../../constants/colors';
@@ -30,24 +30,6 @@ export default function MarketingFooter() {
           {company.addressLines.map((l, i) => (
             <Text key={i} style={styles.addr}>{l}</Text>
           ))}
-          <View style={styles.contactRow}>
-            <Ionicons name="call-outline" size={13} color={COLORS.textSecondary} />
-            <TouchableOpacity onPress={() => Linking.openURL(`tel:${company.phoneDial}`)}>
-              <Text style={styles.contactLink}>{company.phone}</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.contactRow}>
-            <Ionicons name="mail-outline" size={13} color={COLORS.textSecondary} />
-            <TouchableOpacity onPress={() => Linking.openURL(`mailto:${company.email}`)}>
-              <Text style={styles.contactLink}>{company.email}</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.contactRow}>
-            <Ionicons name="globe-outline" size={13} color={COLORS.textSecondary} />
-            <TouchableOpacity onPress={() => Linking.openURL(company.websiteUrl)}>
-              <Text style={styles.contactLink}>{company.website}</Text>
-            </TouchableOpacity>
-          </View>
         </View>
 
         {/* Legal links */}
@@ -73,7 +55,7 @@ export default function MarketingFooter() {
           <Text style={styles.mRow}><Text style={styles.mKey}>Merchant Legal Name: </Text>{company.legalName}</Text>
           <Text style={styles.mRow}>
             <Text style={styles.mKey}>Merchant Website: </Text>
-            <Text accessibilityRole="link" {...(Platform.OS === 'web' ? ({ href: 'https://www.jelcos.ai' } as any) : {})} style={styles.mLink}>https://www.jelcos.ai</Text>
+            <Text accessibilityRole="link" {...(Platform.OS === 'web' ? ({ href: company.websiteUrl } as any) : {})} style={styles.mLink}>{company.websiteUrl}</Text>
           </Text>
           <Text style={styles.mRow}><Text style={styles.mKey}>Support Email: </Text>{company.email}</Text>
           <Text style={styles.mRow}><Text style={styles.mKey}>Support Phone: </Text>{company.phone}</Text>
