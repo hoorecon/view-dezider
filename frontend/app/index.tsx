@@ -13,6 +13,7 @@ import { COLORS, GRADIENTS } from '../src/constants/colors';
 import { useCompany } from '../src/contexts/FontFamilyContext';
 import MarketingHeader from '../src/components/marketing/MarketingHeader';
 import MarketingFooter from '../src/components/marketing/MarketingFooter';
+import Seo from '../src/components/Seo';
 
 const HERO_IMG = 'https://images.unsplash.com/photo-1653549893012-b8b4fbe97630?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjd8MHwxfHNlYXJjaHwzfHxhYnN0cmFjdCUyMEFJJTIwdGVjaG5vbG9neXxlbnwwfHx8Ymx1ZXwxNzgwNDk3MjQ0fDA&ixlib=rb-4.1.0&q=85';
 const FEATURE_IMG = 'https://images.unsplash.com/photo-1720548168939-0f41625c2906?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2ODl8MHwxfHNlYXJjaHw0fHxleGVjdXRpdmUlMjBkZWNpc2lvbnxlbnwwfHx8Ymx1ZXwxNzgwNDk3MjQ0fDA&ixlib=rb-4.1.0&q=85';
@@ -105,6 +106,11 @@ export default function Index() {
   // ── Public landing page ──
   return (
     <View nativeID="jelcosMarketing" style={styles.root}>
+      <Seo
+        title="JELCOS AI — Make every life choice with clarity & confidence"
+        description="JELCOS AI gives you structured decision tools — Dezider, weighted Pros & Cons, SWOT — plus AI insights that turn complex life and work choices into clear, actionable plans."
+        path="/"
+      />
       <MarketingHeader />
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator>
         {/* HERO */}

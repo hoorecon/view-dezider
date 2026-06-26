@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+# App-only / authenticated areas (no useful content for crawlers)
+Disallow: /admin
+Disallow: /auth
+
+Sitemap: https://jelcos.ai/sitemap.xml

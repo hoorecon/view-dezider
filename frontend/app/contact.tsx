@@ -11,6 +11,7 @@ import { COLORS, GRADIENTS } from '../src/constants/colors';
 import { useCompany } from '../src/contexts/FontFamilyContext';
 import MarketingHeader from '../src/components/marketing/MarketingHeader';
 import MarketingFooter from '../src/components/marketing/MarketingFooter';
+import Seo from '../src/components/Seo';
 
 export default function ContactPage() {
   const router = useRouter();
@@ -32,6 +33,11 @@ export default function ContactPage() {
 
   return (
     <View nativeID="jelcosMarketing" style={styles.root}>
+      <Seo
+        title={`Contact Us · ${company.product}`}
+        description={`Contact the ${company.product} team at ${company.legalName} — phone, email and registered office. We're here to help with your account, payments and support queries.`}
+        path="/contact"
+      />
       <MarketingHeader />
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content} showsVerticalScrollIndicator>
         <View style={[styles.body, { width: cardWidth }]}>

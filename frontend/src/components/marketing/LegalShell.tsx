@@ -12,6 +12,7 @@ import { getLegalDoc } from '../../constants/company';
 import { useCompany } from '../../contexts/FontFamilyContext';
 import MarketingHeader from './MarketingHeader';
 import MarketingFooter from './MarketingFooter';
+import Seo from '../Seo';
 
 export default function LegalShell({ slug }: { slug: string }) {
   const router = useRouter();
@@ -20,8 +21,11 @@ export default function LegalShell({ slug }: { slug: string }) {
   const { width } = useWindowDimensions();
   const contentWidth = Math.min(width - 32, 820);
 
+  const metaDesc = (doc.intro || `${doc.title} for ${company.product}, operated by ${company.legalName}.`).slice(0, 200);
+
   return (
     <View nativeID="jelcosMarketing" style={styles.root}>
+      <Seo title={`${doc.title} · ${company.product}`} description={metaDesc} path={`/legal/${slug}`} />
       <MarketingHeader />
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator>
         <View style={[styles.body, { width: contentWidth }]}>

@@ -5,7 +5,20 @@
 > file SHORT and CURRENT — it is the first thing to read after PRD.md.
 
 ## 0) Last user intent (update at end of every session)
-- 2026-06-26 (latest): Made site CRAWLER-READABLE for Razorpay (was a JS-only SPA
+- 2026-06-26 (latest): Added SEO to the static marketing/legal pages. New
+  src/components/Seo.tsx (expo-router <Head>) injects per-page meta description,
+  canonical and Open Graph + Twitter Card tags (incl. per-page og:title) on
+  index.tsx, LegalShell.tsx and contact.tsx. Added public/robots.txt,
+  public/sitemap.xml (home, contact, legal/*), public/og-image.png. Removed the
+  hardcoded <title>/<meta description> dup from app/+html.tsx (kept a brand-level
+  <title> fallback). KEY LEARNING: expo-router 6 SSG serializes <Head> META tags
+  (data-rh) into static HTML but NOT a per-page <title> (no generateMetadata in
+  v6.0.24) — so og:title carries the per-page title for crawlers/social; the
+  client sets document.title per route. Verified via expo export: title present,
+  1 description, per-page og:title (Privacy Policy · JELCOS AI etc), robots/
+  sitemap/og-image in dist root. FRONTEND deploy → Save-to-GitHub → Cloudflare
+  rebuild. Build 2026.06.26.006 (v3.79-seo-meta-og-sitemap-robots).
+- 2026-06-26 (earlier): Made site CRAWLER-READABLE for Razorpay (was a JS-only SPA
   showing "enable JavaScript"). Switched Expo web to `output: "static"` (SSG) in
   app.json — every route now prerenders to real HTML at `expo export`. Fixed the
   homepage (app/index.tsx) to render the marketing landing during static render

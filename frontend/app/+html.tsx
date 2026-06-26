@@ -8,11 +8,17 @@ export default function Root({ children }: PropsWithChildren) {
       <head>
         <meta charSet="utf-8" />
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
-        <title>JELCOS AI - Joyful Executive&apos;s Life Choices Operating System — Powered by AI</title>
-        <meta
-          name="description"
-          content="JELCOS AI — Joyful Executive's Life Choices Operating System, Powered by AI."
-        />
+        {/*
+          Brand-level <title> fallback for every static page. Per-page SEO is
+          provided by <Seo> (expo-router <Head>): it serializes meta description,
+          canonical and Open Graph / Twitter tags (incl. per-page og:title) into
+          the prerendered HTML. NOTE: expo-router 6 SSG does NOT serialize a
+          per-page <title> tag, so og:title carries the per-page title for
+          crawlers/social; the client also sets document.title per route
+          (app/_layout.tsx). Description is intentionally NOT set here to avoid a
+          duplicate with <Seo>.
+        */}
+        <title>JELCOS AI — Decision-making tools & AI insights | Joyful Executive&apos;s Life Choices Operating System</title>
         <meta
           name="viewport"
           content="width=device-width, initial-scale=1, shrink-to-fit=no"
