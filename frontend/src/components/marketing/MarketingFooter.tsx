@@ -3,7 +3,7 @@
  * and links to all legal/policy pages (required for payment-gateway review).
  */
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Linking, useWindowDimensions, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Linking, useWindowDimensions, Image, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { COLORS } from '../../constants/colors';
@@ -56,7 +56,13 @@ export default function MarketingFooter() {
           {LEGAL_LINKS.map((link) => (
             <TouchableOpacity key={link.route} style={styles.linkRow} onPress={() => router.push(link.route as any)}>
               <Ionicons name="chevron-forward" size={12} color={COLORS.primary} />
-              <Text style={styles.link}>{link.label}</Text>
+              <Text
+                style={styles.link}
+                accessibilityRole="link"
+                {...(Platform.OS === 'web' ? ({ href: link.route } as any) : {})}
+              >
+                {link.label}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>

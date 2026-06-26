@@ -5,7 +5,21 @@
 > file SHORT and CURRENT — it is the first thing to read after PRD.md.
 
 ## 0) Last user intent (update at end of every session)
-- 2026-06-26 (latest): Seller payout hardening. Payout form (/earnings) now
+- 2026-06-26 (latest): Made site CRAWLER-READABLE for Razorpay (was a JS-only SPA
+  showing "enable JavaScript"). Switched Expo web to `output: "static"` (SSG) in
+  app.json — every route now prerenders to real HTML at `expo export`. Fixed the
+  homepage (app/index.tsx) to render the marketing landing during static render
+  (`typeof window === 'undefined'`) instead of the auth spinner. Footer legal
+  links (MarketingFooter.tsx) are now real `<a href>` anchors on web
+  (accessibilityRole="link" + href) → /legal/privacy /legal/terms /legal/refund
+  /legal/delivery /contact are all crawlable with full content (source: company.ts).
+  Verified via local `expo export`: index.html 90KB w/ hero + anchors, legal
+  pages 87KB w/ full policy text. ⚠️ This is a FRONTEND deploy → Save-to-GitHub
+  triggers Cloudflare Pages rebuild (no EC2 sync needed; CF runs expo export).
+  IMPORTANT: when running `expo export` in THIS pod, use an isolated
+  METRO_CACHE_ROOT and do NOT restart expo concurrently or the export emits empty
+  shells (cache contention). Build 2026.06.26.005 (v3.78-ssg-crawlable-marketing-legal).
+- 2026-06-26 (earlier): Seller payout hardening. Payout form (/earnings) now
   collects BOTH UPI (primary) + Bank (fallback, with Account Type from India
   list + Bank Name/Branch auto-filled from IFSC); account is payout-eligible
   only when UPI-format valid AND IFSC validates (free ifsc.razorpay.com) AND —

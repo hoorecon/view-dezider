@@ -88,7 +88,12 @@ export default function Index() {
   }, [isLoading, isAuthenticated]);
 
   // While auth is resolving, or for authenticated users mid-redirect → spinner.
-  if (isLoading || isAuthenticated) {
+  // NOTE: during static web prerender (SSG, no `window`) we must NOT show the
+  // spinner — otherwise crawlers (e.g. payment-gateway verification bots) see an
+  // empty splash instead of the marketing content. Render the landing on the
+  // server; the client keeps the exact same spinner/redirect behaviour.
+  const isServerRender = typeof window === 'undefined';
+  if (!isServerRender && (isLoading || isAuthenticated)) {
     return (
       <LinearGradient colors={GRADIENTS.primary} style={styles.splash} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
         <ActivityIndicator color={COLORS.white} size="large" />
