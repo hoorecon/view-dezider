@@ -252,8 +252,10 @@ async def set_user_type(user_id: str, request: Request, user: dict = Depends(get
     }
     """
     role = get_user_role(user)
-    if role not in ADMIN_ROLES:
-        raise HTTPException(403, "Admin access required")
+    # Super Admin always; other admins only if the Super Admin granted them the
+    # User-Lookup (can_view_pii) permission — the same gate as this screen.
+    if role != "super_admin" and not user.get("can_view_pii"):
+        raise HTTPException(403, "User-management permission required (ask a Super Admin)")
 
     body = await request.json()
     target = await db.users.find_one({"user_id": user_id})

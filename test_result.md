@@ -10361,3 +10361,59 @@ agent_communication:
          (i.e. the bypass is admin-only, ACM still governs normal users). Also GET /api/acm/check/digilocker for
          the free user should be allowed=false/hidden while for super@test.com allowed=true/full.
       No frontend test needed (User View just navigates to '/').
+
+#====================================================================================================
+# Iter 166 (fork) — Admin UI: assign user_type (ut/it/alpha/beta/trial) on User Lookup screen
+#====================================================================================================
+backend:
+  - task: "PUT /api/acm/user/{id}/type gated by super_admin OR can_view_pii; lookup returns user_type"
+    implemented: true
+    working: "NA"
+    file: "backend/routes/acm.py (set_user_type gate); backend/routes/pii_admin.py (profile.user_type)"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Changed set_user_type gate from any-admin to: super_admin always, other admins only if can_view_pii
+          (the per-admin permission the Super Admin grants for User Lookup). PII lookup profile now also returns
+          user_type + effective_user_type so the UI can show current tier. VERIFIED (main): super sets target to
+          beta then unit_tester -> 200 each.
+frontend:
+  - task: "User Lookup → 'User Type & Access' card: pick tier (ut/it/alpha/beta/trial/free) + Save"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/admin/user-lookup.tsx"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          After a successful PII lookup, a 'User Type & Access' card (testID assign-type-card) shows current
+          user_type + chips assign-type-{free,trial,unit_tester,integration_tester,alpha,beta}; selecting a chip
+          enables 'Save user type' (testID assign-type-save) which PUTs /acm/user/{id}/type and updates the shown
+          type. Screen is already under Dashboard → Essentials. Needs UI verification.
+
+metadata: { created_by: "main_agent", version: "fork-iter-166", test_sequence: 166 }
+test_plan:
+  current_focus:
+    - "Admin can assign a user_type from User Lookup; backend persists it; gate respects can_view_pii"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+agent_communication:
+  - agent: "main"
+    message: |
+      Iter 166. Admin super@test.com / SuperPass2026! (super_admin). Lookup TARGET: acmtarget@test.com,
+      WhatsApp +919900112233 (user_type starts 'free').
+      BACKEND: (1) PUT /api/acm/user/user_0f76e1bfb3b7/type {user_type:'beta'} as super -> 200; repeat with
+      'unit_tester','alpha','trial' -> 200. (2) Gate: a logged-in NON-super admin WITHOUT can_view_pii calling
+      the same PUT -> 403; with can_view_pii -> 200. (If hard to make such an admin, at least confirm a normal
+      free user token -> 403.)
+      FRONTEND (web preview, login super): go to /admin/user-lookup (Dashboard → Essentials → User Lookup),
+      enter email acmtarget@test.com + WhatsApp +919900112233, purpose 'Support service', tick NDA, Search.
+      On result, the 'User Type & Access' card (testID assign-type-card) appears -> tap chip assign-type-beta ->
+      tap assign-type-save -> expect success alert and the 'Current:' line to read beta. Confirm via
+      PUT persistence / re-lookup. NOTE: route may bounce to /auth/login (rehydration) — retry/re-login.

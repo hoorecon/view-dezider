@@ -10,3 +10,7 @@
 
 ## Testing User
 - Email: veales.testing@gmail.com
+
+## ACM user-type assignment (iter 166)
+- Lookup TARGET user: acmtarget@test.com / WhatsApp +919900112233 / uid user_0f76e1bfb3b7 (user_type starts 'free')
+  Use in Admin > User Lookup (purpose 'Support service', tick NDA) to reach the "User Type & Access" card.

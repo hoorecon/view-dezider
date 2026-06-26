@@ -19,6 +19,17 @@ import { safeBack } from '../../src/utils/navigation';
 
 const PURPOSES = ['Support service', 'Data Analytics', 'Training Support', 'Other'];
 
+// Tester / early-access tiers a permitted admin can assign to a user. The exact
+// features each tier unlocks are controlled in Admin → ACM (granular matrix).
+const ASSIGNABLE_TYPES: { id: string; label: string }[] = [
+  { id: 'free', label: 'Free' },
+  { id: 'trial', label: 'Trial' },
+  { id: 'unit_tester', label: 'Unit Tester' },
+  { id: 'integration_tester', label: 'Integration Tester' },
+  { id: 'alpha', label: 'Alpha' },
+  { id: 'beta', label: 'Beta' },
+];
+
 function fmtDate(d: any) {
   if (!d) return '—';
   try { return new Date(d).toLocaleString(); } catch { return String(d); }
@@ -38,6 +49,8 @@ export default function UserLookup() {
   const [ndaAck, setNdaAck] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<any>(null);
+  const [savingType, setSavingType] = useState(false);
+  const [pendingType, setPendingType] = useState<string | null>(null);
 
   // NDA modal
   const [nda, setNda] = useState<any>(null);
@@ -91,6 +104,7 @@ export default function UserLookup() {
         purpose_note: note.trim() || null, nda_ack: ndaAck,
       });
       setResult(r.data);
+      setPendingType(null);
       loadMyLog();
     } catch (e: any) {
       showAlert('Lookup failed', e?.response?.data?.detail || 'No matching account.');
@@ -106,6 +120,21 @@ export default function UserLookup() {
       showAlert('Failed', e?.response?.data?.detail || 'Could not update permission');
     }
   }, [loadManage]);
+
+  const saveUserType = useCallback(async (uid: string, newType: string) => {
+    setSavingType(true);
+    try {
+      const r = await api.put(`/acm/user/${uid}/type`, { user_type: newType });
+      const applied = r.data?.user_type || newType;
+      setResult((prev: any) => (prev ? { ...prev, profile: { ...prev.profile, user_type: applied } } : prev));
+      setPendingType(null);
+      showAlert('User type updated', `Set to "${applied.replace(/_/g, ' ')}". Their feature access now follows the ACM matrix for this tier.`);
+    } catch (e: any) {
+      showAlert('Update failed', e?.response?.data?.detail || 'Could not change the user type.');
+    } finally {
+      setSavingType(false);
+    }
+  }, []);
 
   if (!hasAccess) {
     return (
@@ -193,6 +222,49 @@ export default function UserLookup() {
                 ))}
                 {!result.recent_decisions?.length && <Text style={s.muted}>No decisions.</Text>}
                 <Text style={s.auditNote}>Access logged · ref {String(result.audit_id).slice(0, 8)}</Text>
+              </View>
+            )}
+
+            {result?.profile && (
+              <View style={s.card} testID="assign-type-card">
+                <Text style={s.sectionTitle}>User Type & Access</Text>
+                <Text style={s.muted}>
+                  Current: <Text style={{ fontWeight: '800', color: COLORS.textPrimary }}>{(result.profile.user_type || 'free').replace(/_/g, ' ')}</Text>
+                  {result.profile.role && result.profile.role !== 'user' ? `   ·   role: ${result.profile.role}` : ''}
+                </Text>
+                <Text style={s.typeHint}>
+                  Assign a tester / early-access tier so this user sees pre-release features. Exactly which
+                  features each tier unlocks is controlled in Admin → ACM.
+                </Text>
+                <View style={s.chips}>
+                  {ASSIGNABLE_TYPES.map((t) => {
+                    const current = pendingType ?? (result.profile.user_type || 'free');
+                    const on = current === t.id;
+                    return (
+                      <TouchableOpacity
+                        key={t.id}
+                        testID={`assign-type-${t.id}`}
+                        style={[s.chip, on && s.chipOn]}
+                        onPress={() => setPendingType(t.id)}
+                      >
+                        <Text style={[s.chipText, on && s.chipTextOn]}>{t.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                {(() => {
+                  const dirty = !!pendingType && pendingType !== (result.profile.user_type || 'free');
+                  return (
+                    <TouchableOpacity
+                      testID="assign-type-save"
+                      style={[s.primaryBtn, (!dirty || savingType) && { opacity: 0.5 }]}
+                      onPress={() => saveUserType(result.profile.user_id, pendingType as string)}
+                      disabled={!dirty || savingType}
+                    >
+                      {savingType ? <ActivityIndicator color="#FFF" /> : <Text style={s.primaryText}>Save user type</Text>}
+                    </TouchableOpacity>
+                  );
+                })()}
               </View>
             )}
           </>
@@ -326,6 +398,7 @@ const s = StyleSheet.create({
   muted: { fontSize: 13, color: COLORS.textMuted, paddingVertical: 4 },
   auditNote: { fontSize: 11, color: COLORS.textMuted, marginTop: 14, fontStyle: 'italic' },
   sectionTitle: { fontSize: 15, fontWeight: '800', color: COLORS.textPrimary, marginBottom: 8 },
+  typeHint: { fontSize: 12.5, color: COLORS.textSecondary, lineHeight: 18, marginTop: 8, marginBottom: 12 },
   logRow: { flexDirection: 'row', gap: 10, paddingVertical: 8, borderTopWidth: 1, borderTopColor: COLORS.divider, alignItems: 'flex-start' },
   logViewer: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
   logTarget: { fontSize: 13, color: COLORS.textSecondary },

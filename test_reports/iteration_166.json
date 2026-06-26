@@ -1,0 +1,27 @@
+{
+  "summary": "Iter166 ACM user-type assignment — BACKEND + FRONTEND both PASS. Backend: created pytest suite /app/backend/tests/test_iter166_acm_set_user_type.py with 8 tests, all green. Verified PUT /api/acm/user/user_0f76e1bfb3b7/type as super for beta, unit_tester, alpha, trial, free (200, value echoed); invalid type returns 400; non-super non-can_view_pii free user is blocked with 403; POST /api/admin/pii/lookup as super with acmtarget@test.com + +919900112233 + 'Support service' + nda_ack:true returns 200 with profile.user_type reflecting the last value set. Frontend: logged in as super@test.com, navigated to /admin/user-lookup, filled form, ticked NDA checkbox (had to click the checkbox icon — the row's inline 'PII Access NDA & terms' link was intercepting clicks, but the real-user flow works fine because the icon area is wider), searched, the 'User Type & Access' card (testID=assign-type-card) appeared, tapped testID=assign-type-beta then testID=assign-type-save, 'Current:' updated to 'beta'. No bugs found.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter166_acm_set_user_type.py",
+    "/app/test_reports/pytest/iter166.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "user-lookup.tsx: the NDA row uses an inline link Text with onPress=openNda nested inside the TouchableOpacity that toggles ndaAck. Tapping the link region opens the NDA window/modal as intended, but in automation it can shadow the checkbox toggle. Real users have ~44px of icon+label area to toggle, so this is acceptable — note for future testing only."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter166_acm_set_user_type.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "No new seed data created; used existing super@test.com and acmtarget@test.com (uid user_0f76e1bfb3b7) as instructed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend pytest: EXPO_PUBLIC_BACKEND_URL must be exported when running iter166 tests. Frontend: when ticking the NDA checkbox via Playwright, click the icon area (~16px left of the 'I acknowledge the' text), NOT the row text — the inline 'PII Access NDA & terms' link will otherwise capture the click and open the NDA modal. Use bounding-box offset approach as in iter166 script.",
+  "rca_of_issue": "n/a — feature works as designed end-to-end."
+}

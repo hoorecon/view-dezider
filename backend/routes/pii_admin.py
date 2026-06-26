@@ -210,6 +210,8 @@ async def lookup(body: LookupRequest, user: dict = Depends(get_current_user)):
             "whatsapp_number": target.get("whatsapp_number"),
             "whatsapp_verified": bool(target.get("whatsapp_verified")),
             "role": target.get("role", "user"),
+            "user_type": target.get("user_type") or "free",
+            "effective_user_type": target.get("effective_user_type"),
             "org_id": target.get("org_id"),
             "auth_method": target.get("auth_method", "email"),
             "created_at": target.get("created_at"),
