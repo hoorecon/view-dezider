@@ -1153,3 +1153,15 @@ star badge) and auto-clears after 4.5s. Removed the blocking success alert (the 
 The top option = first item in the (drag-reordered) options list, so the user lands on their stated priority.
 VERIFIED via screenshot: confirm -> 'Step 6/10' active, 'Java Capital' card shows 'Top pick' badge highlighted.
 Reminder: Metro CI mode — restart expo to rebundle frontend edits.
+
+## Iteration 165 — FIX: platform admin roles truly bypass ACM — 26 Jun 2026
+BUG: Admin 'User View' (super-admin opening the normal app) hid 5 release-disabled features
+(collab_knowledge_marketplace, collab_my_earnings, collab_karma_fame, digilocker, sub_auto_renew).
+ROOT CAUSE: access_key 'platform_admin' did not bypass the matrix — it fell back to paid_enterprise/paid_pro
+rules, so features hidden for those tiers were hidden for admins too. FIX (core/acm_engine.py):
+check_feature_access + get_all_feature_access early-return access_level='full' (quota -1) when
+access_key=='platform_admin'. testing_agent 6/6: super-admin 152/152 full; free user still governed
+(full:95/locked:34/hidden:19/read:4); digilocker hidden for free, full for admin.
+NOTE (open item, not a bug): user_types unit_tester/integration_tester/alpha/beta are defined and ALL 152
+features already have ACM columns for them (granular per-role control via Admin > ACM matrix). However there is
+NO Admin UI to ASSIGN a user_type to a specific user yet — only the API PUT /api/acm/user/{user_id}/type exists.
