@@ -55,7 +55,7 @@ export default function MarketingFooter() {
           <Text style={styles.mRow}><Text style={styles.mKey}>Merchant Legal Name: </Text>{company.legalName}</Text>
           <Text style={styles.mRow}>
             <Text style={styles.mKey}>Merchant Website: </Text>
-            <Text accessibilityRole="link" {...(Platform.OS === 'web' ? ({ href: company.websiteUrl } as any) : {})} style={styles.mLink}>{company.websiteUrl}</Text>
+            <Text accessibilityRole="link" {...(Platform.OS === 'web' ? ({ href: company.websiteUrl, target: '_blank', rel: 'noopener noreferrer' } as any) : {})} style={styles.mLink}>{company.websiteUrl}</Text>
           </Text>
           <Text style={styles.mRow}><Text style={styles.mKey}>Support Email: </Text>{company.email}</Text>
           <Text style={styles.mRow}><Text style={styles.mKey}>Support Phone: </Text>{company.phone}</Text>
