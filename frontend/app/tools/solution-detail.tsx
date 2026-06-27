@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator,
-  StyleSheet, Alert, Modal, KeyboardAvoidingView, Platform,
+  StyleSheet, Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -64,6 +64,7 @@ export default function SolutionDetailScreen() {
   // "Use this solution" — casual usage that rewards the publisher (Karma/Cash flywheel)
   const [usingNow, setUsingNow] = useState(false);
   const [usedThisSession, setUsedThisSession] = useState(false);
+  const [impact, setImpact] = useState<{ usage_count: number; unique_users: number; karma_earned: number; cash_earned: number } | null>(null);
 
   const recordUse = async () => {
     setUsingNow(true);
@@ -130,6 +131,13 @@ export default function SolutionDetailScreen() {
   };
 
   useEffect(() => { fetchSolution(); }, [solution_id]);
+  useEffect(() => {
+    if (solution?.published_from_option && user?.user_id && solution?.created_by === user.user_id) {
+      api.get(`/option-publish/impact/${solution_id}`)
+        .then((r) => setImpact(r.data))
+        .catch(() => { /* impact is best-effort */ });
+    }
+  }, [solution, user, solution_id]);
   useEffect(() => {
     if (activeTab === 'reviews' && solution_id) {
       loadReviewNet();
@@ -381,6 +389,41 @@ export default function SolutionDetailScreen() {
                 </View>
               )}
             </View>
+
+            {/* Creator impact — flywheel visibility (Karma/Cash earned) */}
+            {impact && user?.user_id === solution.created_by && (
+              <View style={styles.impactCard}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <Ionicons name="trending-up" size={18} color={COLORS.accent} />
+                  <Text style={styles.useTitle}>Your impact</Text>
+                </View>
+                <View style={styles.impactRow}>
+                  <View style={styles.impactStat}>
+                    <Text style={styles.impactNum}>{impact.usage_count}</Text>
+                    <Text style={styles.impactLabel}>{impact.usage_count === 1 ? 'use' : 'uses'}</Text>
+                  </View>
+                  <View style={styles.impactStat}>
+                    <Text style={styles.impactNum}>{impact.unique_users}</Text>
+                    <Text style={styles.impactLabel}>{impact.unique_users === 1 ? 'person' : 'people'}</Text>
+                  </View>
+                  <View style={styles.impactStat}>
+                    <Text style={[styles.impactNum, { color: COLORS.secondary }]}>{impact.karma_earned}</Text>
+                    <Text style={styles.impactLabel}>Karma</Text>
+                  </View>
+                  {impact.cash_earned > 0 && (
+                    <View style={styles.impactStat}>
+                      <Text style={[styles.impactNum, { color: COLORS.accent }]}>₹{impact.cash_earned}</Text>
+                      <Text style={styles.impactLabel}>earned</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.useDesc}>
+                  {impact.usage_count > 0
+                    ? 'Every use rewards you. Publish more completed flows to grow your impact.'
+                    : 'No uses yet — share this solution so others can apply it and reward you.'}
+                </Text>
+              </View>
+            )}
 
             {/* Use this solution — rewards the creator (Karma/Cash flywheel) */}
             {solution.published_from_option && !solution.is_locked && user?.user_id !== solution.created_by && (
@@ -886,6 +929,11 @@ const styles = StyleSheet.create({
   useBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.secondary, borderRadius: 12, paddingVertical: 12, marginTop: 12 },
   useBtnDisabled: { backgroundColor: COLORS.surfaceLight },
   useBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
+  impactCard: { backgroundColor: COLORS.accent + '12', borderWidth: 1, borderColor: COLORS.accent + '38', borderRadius: 16, padding: 16, marginBottom: 12 },
+  impactRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 18, marginBottom: 10 },
+  impactStat: { alignItems: 'center', minWidth: 56 },
+  impactNum: { fontSize: 22, fontWeight: '900', color: COLORS.text },
+  impactLabel: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
   skuHint: { fontSize: 13, color: COLORS.textMuted, lineHeight: 19, marginBottom: 14 },
   skuEmpty: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center', paddingVertical: 24 },
   skuRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 8, backgroundColor: COLORS.surface },

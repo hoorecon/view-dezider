@@ -5,6 +5,17 @@
 > file SHORT and CURRENT — it is the first thing to read after PRD.md.
 
 ## 0) Last user intent (update at end of every session)
+- 2026-06-27 (latest, fork — Creator "Your impact" card DONE + tested E2E): Added flywheel visibility for
+  publishers. Backend: NEW GET /option-publish/impact/{solution_id} (creator-only; usage_count,
+  unique_users, karma_earned [sum karma_ledger.points where ref.solution_id], cash_earned [sum
+  earnings_ledger.net_inr]); my-published now also returns those 4 fields (via _solution_impact helper).
+  Frontend (app/tools/solution-detail.tsx Overview): when the viewer IS the creator of an option-published
+  solution, an effect fetches /impact and renders a "Your impact" card (uses · people · Karma · ₹earned)
+  with a nudge to publish more. NOTE: impact fetch is its own useEffect keyed on [solution,user,solution_id]
+  to avoid the auth-hydration race (inline fetch in fetchSolution silently skipped). Verified: BE impact
+  endpoint returns correct stats + 403 for non-creator; FE E2E screenshot showed "1 use · 1 person · 10
+  Karma" for the creator. Build 2026.06.27.007 (v3.91-creator-impact-card).
+
 - 2026-06-27 (latest, fork — "Use this solution" CTA DONE + tested E2E): Added a casual-usage reward
   CTA on the Solution Store detail (app/tools/solution-detail.tsx, Overview tab). Shows only for
   option-published solutions (published_from_option) that aren't locked and aren't viewed by their own

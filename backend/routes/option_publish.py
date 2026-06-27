@@ -44,6 +44,26 @@ def _now() -> str:
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
+async def _solution_impact(solution_id: str) -> dict:
+    """Flywheel stats for a published solution: usages, unique users, karma & cash earned."""
+    usage_count = await db.solution_usages.count_documents({"solution_id": solution_id})
+    unique_users = len(await db.solution_usages.distinct("beneficiary_id", {"solution_id": solution_id}))
+    karma_agg = [r async for r in db.karma_ledger.aggregate([
+        {"$match": {"ref.solution_id": solution_id, "points": {"$gt": 0}}},
+        {"$group": {"_id": None, "sum": {"$sum": "$points"}}},
+    ])]
+    cash_agg = [r async for r in db.earnings_ledger.aggregate([
+        {"$match": {"solution_id": solution_id, "source": "solution_store_usage"}},
+        {"$group": {"_id": None, "sum": {"$sum": "$net_inr"}}},
+    ])]
+    return {
+        "usage_count": usage_count,
+        "unique_users": unique_users,
+        "karma_earned": int(karma_agg[0]["sum"]) if karma_agg else 0,
+        "cash_earned": round(float(cash_agg[0]["sum"]), 2) if cash_agg else 0.0,
+    }
+
+
 async def _review_stats(solution_id: str) -> tuple[float, int]:
     """avg overall rating + count of PUBLISHED ReviewNet reviews for a solution."""
     pipeline = [
@@ -405,6 +425,21 @@ async def record_usage(body: RecordUsageBody, user: dict = Depends(get_current_u
     return {"ok": True, **res}
 
 
+@router.get("/impact/{solution_id}")
+async def solution_impact(solution_id: str, user: dict = Depends(get_current_user)):
+    """Flywheel impact stats for the CREATOR of a published solution."""
+    sol = await db.solutions_store.find_one(
+        {"solution_id": solution_id}, {"_id": 0, "created_by": 1, "monetization": 1}
+    )
+    if not sol:
+        raise HTTPException(404, "Solution not found")
+    if sol.get("created_by") != user["user_id"]:
+        raise HTTPException(403, "Only the creator can view impact stats")
+    stats = await _solution_impact(solution_id)
+    stats["mode"] = (sol.get("monetization") or {}).get("mode", "free")
+    return stats
+
+
 @router.get("/my-published")
 async def my_published(user: dict = Depends(get_current_user)):
     """List the current user's option-published Store solutions + usage/earning stats."""
@@ -415,8 +450,11 @@ async def my_published(user: dict = Depends(get_current_user)):
     items = await cur.to_list(200)
     for it in items:
         avg, cnt = await _review_stats(it["solution_id"])
-        usages = await db.solution_usages.count_documents({"solution_id": it["solution_id"]})
+        impact = await _solution_impact(it["solution_id"])
         it["review_avg"] = avg
         it["review_count"] = cnt
-        it["usage_count"] = usages
+        it["usage_count"] = impact["usage_count"]
+        it["unique_users"] = impact["unique_users"]
+        it["karma_earned"] = impact["karma_earned"]
+        it["cash_earned"] = impact["cash_earned"]
     return {"items": items, "count": len(items)}
