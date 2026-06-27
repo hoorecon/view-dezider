@@ -5,6 +5,15 @@
 > file SHORT and CURRENT — it is the first thing to read after PRD.md.
 
 ## 0) Last user intent (update at end of every session)
+- 2026-06-27 (latest, fork — Publish modal UI polish DONE + tested): Applied the 4 requested
+  PublishOptionsModal tweaks: header "Classify factors"→"Categorize Factors"; segment labels now show
+  full "Quantitative"/"Qualitative" (was Quant/Qual) with the flow's default kind pre-selected and
+  overridable; each factor row now has a checkbox (factorSelected, default ON) so factors are
+  skippable like options; "(Karma)" wording→"(Karma Points)". Backend POST /option-publish/publish
+  already honours factor_ids (unchecked factors excluded from solutions_store quantitative/qualitative).
+  Verified: FE modal renders all 4 changes (screenshot), BE tests/verify_factor_skip.py PASS (skipped
+  factor excluded, quant/qual partition correct). Build 2026.06.27.005 (v3.89-publish-modal-polish).
+
 - 2026-06-27 (latest, iter171 — Phase 3B/3C DONE + tested 11/11 BE + FE E2E): Publish a COMPLETED
   decider's Option values into the existing modules. NEW backend: routes/option_publish.py
   (prefix /option-publish under /api) — GET /source/{decision_id}, POST /publish, POST /record-usage,
