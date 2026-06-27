@@ -5,6 +5,16 @@
 > file SHORT and CURRENT — it is the first thing to read after PRD.md.
 
 ## 0) Last user intent (update at end of every session)
+- 2026-06-27 (latest, fork — "My Published Solutions" hub DONE + tested E2E): New creator hub screen
+  app/tools/my-published.tsx (route /tools/my-published) — header summary card (🏆 Karma rank, balance,
+  totals: published/uses/Karma/₹) + a list of published solutions each with per-item stats (uses · people ·
+  Karma · ₹), tap → /tools/solution-detail. Entry point: NEW trophy-outline icon in the Solution Box
+  (prr.tsx) header actions (testID prr-my-published). Backend: GET /option-publish/my-published now returns
+  a `summary` object {solutions,total_uses,total_unique_users,total_karma_earned,total_cash_earned,
+  karma_balance,karma_rank} (rank/balance via core.karma get_rank/get_balance) alongside the per-item
+  stats. Verified: BE summary correct (rank #2, balance 60, 2 published, 10 Karma); FE E2E screenshot
+  showed the populated hub. Build 2026.06.27.008 (v3.92-my-published-hub).
+
 - 2026-06-27 (latest, fork — Creator "Your impact" card DONE + tested E2E): Added flywheel visibility for
   publishers. Backend: NEW GET /option-publish/impact/{solution_id} (creator-only; usage_count,
   unique_users, karma_earned [sum karma_ledger.points where ref.solution_id], cash_earned [sum

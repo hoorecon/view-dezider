@@ -448,6 +448,8 @@ async def my_published(user: dict = Depends(get_current_user)):
         {"_id": 0},
     ).sort("created_at", -1)
     items = await cur.to_list(200)
+    total_uses = total_unique = total_karma = 0
+    total_cash = 0.0
     for it in items:
         avg, cnt = await _review_stats(it["solution_id"])
         impact = await _solution_impact(it["solution_id"])
@@ -457,4 +459,17 @@ async def my_published(user: dict = Depends(get_current_user)):
         it["unique_users"] = impact["unique_users"]
         it["karma_earned"] = impact["karma_earned"]
         it["cash_earned"] = impact["cash_earned"]
-    return {"items": items, "count": len(items)}
+        total_uses += impact["usage_count"]
+        total_unique += impact["unique_users"]
+        total_karma += impact["karma_earned"]
+        total_cash += impact["cash_earned"]
+    summary = {
+        "solutions": len(items),
+        "total_uses": total_uses,
+        "total_unique_users": total_unique,
+        "total_karma_earned": total_karma,
+        "total_cash_earned": round(total_cash, 2),
+        "karma_balance": await karma_engine.get_balance(user["user_id"]),
+        "karma_rank": await karma_engine.get_rank(user["user_id"]),
+    }
+    return {"items": items, "count": len(items), "summary": summary}

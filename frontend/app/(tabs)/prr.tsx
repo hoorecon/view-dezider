@@ -520,6 +520,14 @@ export default function SolutionBoxScreen() {
         <View style={styles.headerActions}>
           <TouchableOpacity
             style={styles.templateButton}
+            onPress={() => router.push('/tools/my-published' as any)}
+            testID="prr-my-published"
+            accessibilityLabel="My published solutions"
+          >
+            <Ionicons name="trophy-outline" size={20} color={COLORS.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.templateButton}
             onPress={() => router.push('/(tabs)/shared' as any)}
           >
             <Ionicons name="share-social-outline" size={20} color={COLORS.primary} />
