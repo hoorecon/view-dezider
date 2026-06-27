@@ -5,6 +5,18 @@
 > file SHORT and CURRENT — it is the first thing to read after PRD.md.
 
 ## 0) Last user intent (update at end of every session)
+- 2026-06-27 (latest, fork — Collaborate modal clipping FIX + async/sync audit): User reported the
+  "Identity Verification" (and other) modals on app/tools/collaborate.tsx were clipped off the bottom on
+  wide/desktop web viewports. ROOT CAUSE: shared `modalOverlay` used justifyContent:'flex-end' (bottom
+  sheet) + `modalContent` borderTop-only radius — on tall web windows the card overflowed below the fold,
+  cutting off action buttons. FIX: modalOverlay → justifyContent:'center' + padding:16; modalContent →
+  borderRadius:24 (all corners) + maxHeight:'88%' (internal ScrollViews already cap height). This centers
+  ALL 3 modals on the screen (create/detail/verify) and guarantees full visibility on web + mobile.
+  Verified via desktop-viewport screenshot (modal centered, fully visible). Async vs Live Sync audit:
+  BOTH modes fully implemented in routes/collaboration.py (create accepts session_mode; live_sync
+  auto-creates a Jitsi room meet.jit.si + start/join/end-call + screen-share endpoints; async uses
+  invite→verify→contribute→merge with weighting). Not mocked. Build 2026.06.27.009 (v3.93-collab-modal-center).
+
 - 2026-06-27 (latest, fork — "My Published Solutions" hub DONE + tested E2E): New creator hub screen
   app/tools/my-published.tsx (route /tools/my-published) — header summary card (🏆 Karma rank, balance,
   totals: published/uses/Karma/₹) + a list of published solutions each with per-item stats (uses · people ·
