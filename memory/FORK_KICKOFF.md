@@ -5,6 +5,15 @@
 > file SHORT and CURRENT — it is the first thing to read after PRD.md.
 
 ## 0) Last user intent (update at end of every session)
+- 2026-06-27 (latest, fork — "Use this solution" CTA DONE + tested E2E): Added a casual-usage reward
+  CTA on the Solution Store detail (app/tools/solution-detail.tsx, Overview tab). Shows only for
+  option-published solutions (published_from_option) that aren't locked and aren't viewed by their own
+  creator. Tapping → cross-platform confirm (showAlert) → POST /option-publish/record-usage {solution_id}
+  → publisher credited (Karma free/in-quota, Cash on paid beyond quota); button then locks to "Marked as
+  used" for the session. Verified: BE tests/verify_use_solution.py PASS (cross-user → +karma, self-use →
+  no reward); FE E2E screenshot (admin viewing super's PUBLIC listing) showed confirm → "+5 Karma Points"
+  success. Build 2026.06.27.006 (v3.90-use-this-solution-cta).
+
 - 2026-06-27 (latest, fork — Publish modal UI polish DONE + tested): Applied the 4 requested
   PublishOptionsModal tweaks: header "Classify factors"→"Categorize Factors"; segment labels now show
   full "Quantitative"/"Qualitative" (was Quant/Qual) with the flow's default kind pre-selected and

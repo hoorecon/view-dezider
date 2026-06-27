@@ -61,6 +61,41 @@ export default function SolutionDetailScreen() {
   const [selectedSkus, setSelectedSkus] = useState<string[]>([]);
   const [savingSkus, setSavingSkus] = useState(false);
 
+  // "Use this solution" — casual usage that rewards the publisher (Karma/Cash flywheel)
+  const [usingNow, setUsingNow] = useState(false);
+  const [usedThisSession, setUsedThisSession] = useState(false);
+
+  const recordUse = async () => {
+    setUsingNow(true);
+    try {
+      const { data } = await api.post('/option-publish/record-usage', { solution_id: String(solution_id) });
+      if (data?.ok) {
+        setUsedThisSession(true);
+        const msg = data.reward_kind === 'cash'
+          ? 'Logged as a paid use — the creator has been rewarded in cash. 💰'
+          : `Logged — the creator earned +${data.karma} Karma Points for your use. ✨`;
+        showAlert('Thanks for using this 🙌', msg);
+      } else {
+        showAlert('Noted', "Usage recorded (you're the creator, so no reward applies).");
+      }
+    } catch (e: any) {
+      showAlert('Error', e?.response?.data?.detail || 'Could not record usage');
+    } finally {
+      setUsingNow(false);
+    }
+  };
+
+  const confirmUse = () => {
+    showAlert(
+      'Use this solution?',
+      'Confirm you applied this solution to a decision. This rewards the creator with Karma Points (or cash on paid use).',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Confirm', onPress: recordUse },
+      ],
+    );
+  };
+
   const openSkuModal = async () => {
     setSelectedSkus((solution?.linked_sku_codes || []).map((c: string) => String(c).toUpperCase()));
     setShowSkuModal(true);
@@ -347,9 +382,37 @@ export default function SolutionDetailScreen() {
               )}
             </View>
 
+            {/* Use this solution — rewards the creator (Karma/Cash flywheel) */}
+            {solution.published_from_option && !solution.is_locked && user?.user_id !== solution.created_by && (
+              <View style={styles.useCard}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Ionicons name="sparkles" size={18} color={COLORS.secondary} />
+                  <Text style={styles.useTitle}>Used this solution?</Text>
+                </View>
+                <Text style={styles.useDesc}>
+                  Let the creator know you applied it. Your use rewards them with Karma Points
+                  {(solution.monetization?.mode === 'paid') ? ' (or cash on paid use).' : '.'}
+                </Text>
+                <TouchableOpacity
+                  style={[styles.useBtn, (usingNow || usedThisSession) && styles.useBtnDisabled]}
+                  onPress={confirmUse}
+                  disabled={usingNow || usedThisSession}
+                  testID="use-solution-btn"
+                >
+                  {usingNow ? (
+                    <ActivityIndicator color="#FFF" />
+                  ) : (
+                    <>
+                      <Ionicons name={usedThisSession ? 'checkmark-circle' : 'hand-left'} size={18} color="#FFF" />
+                      <Text style={styles.useBtnText}>{usedThisSession ? 'Marked as used' : 'Use this solution'}</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+
             {/* Type-specific fields */}
-            {solution.type_specific && Object.keys(solution.type_specific).length > 0 && (
-              <View style={styles.infoCard}>
+            {solution.type_specific && Object.keys(solution.type_specific).length > 0 && (              <View style={styles.infoCard}>
                 <Text style={styles.sectionTitle}>Details</Text>
                 {Object.entries(solution.type_specific).map(([key, val]) => (
                   <View style={styles.infoRow} key={key}>
@@ -817,6 +880,12 @@ const styles = StyleSheet.create({
   lockBannerBtnText: { color: '#FFF', fontWeight: '800', fontSize: 13 },
   unlockedBanner: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.accent + '15', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 14, alignSelf: 'flex-start' },
   unlockedText: { fontSize: 12.5, color: COLORS.accent, fontWeight: '700' },
+  useCard: { backgroundColor: COLORS.secondary + '14', borderWidth: 1, borderColor: COLORS.secondary + '40', borderRadius: 16, padding: 16, marginBottom: 12 },
+  useTitle: { fontSize: 15, fontWeight: '800', color: COLORS.text },
+  useDesc: { fontSize: 12.5, color: COLORS.textSecondary, marginTop: 6, lineHeight: 18 },
+  useBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.secondary, borderRadius: 12, paddingVertical: 12, marginTop: 12 },
+  useBtnDisabled: { backgroundColor: COLORS.surfaceLight },
+  useBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
   skuHint: { fontSize: 13, color: COLORS.textMuted, lineHeight: 19, marginBottom: 14 },
   skuEmpty: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center', paddingVertical: 24 },
   skuRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, marginBottom: 8, backgroundColor: COLORS.surface },
