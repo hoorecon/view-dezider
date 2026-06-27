@@ -13,6 +13,7 @@ import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import { formatAbsolute } from '../../src/utils/datetime';
 import { safeBack } from '../../src/utils/navigation';
+import { useAuthStore } from '../../src/store/authStore';
 
 const STATUS_COLORS: Record<string, {bg: string; text: string; label: string}> = {
   active: { bg: '#ECFDF5', text: '#059669', label: 'Active' },
@@ -38,6 +39,7 @@ const SESSION_MODES = [
 
 export default function CollaborateScreen() {
   const router = useRouter();
+  const { user } = useAuthStore();
   const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -79,6 +81,63 @@ export default function CollaborateScreen() {
   const [totpStatus, setTotpStatus] = useState<any>(null);
   const [biometricStatus, setBiometricStatus] = useState<any>(null);
   const [digilockerStatus, setDigilockerStatus] = useState<any>(null);
+
+  // Contribute / Merge (async flow)
+  const [contributeOpen, setContributeOpen] = useState(false);
+  const [contribNotes, setContribNotes] = useState('');
+  const [contribVote, setContribVote] = useState<boolean | null>(null);
+  const [contribAccepted, setContribAccepted] = useState<boolean | null>(null);
+  const [submittingContrib, setSubmittingContrib] = useState(false);
+  const [merging, setMerging] = useState(false);
+
+  const refreshDetail = async (sessionId: string) => {
+    try {
+      const r = await api.get(`/collaboration/sessions/${sessionId}`);
+      setDetailSession(r.data);
+    } catch { /* ignore */ }
+    fetchSessions();
+  };
+
+  const submitContribution = async () => {
+    if (!detailSession) return;
+    const modeId = detailSession.decision_mode_id;
+    if (modeId === 'voting' && contribVote === null) { showAlert('Required', 'Cast your vote (Yes / No).'); return; }
+    if (modeId === 'consensus' && contribAccepted === null) { showAlert('Required', 'Accept or reject the proposal.'); return; }
+    setSubmittingContrib(true);
+    try {
+      await api.post(`/collaboration/sessions/${detailSession.id}/contribute`, {
+        contribution: { notes: contribNotes.trim() },
+        vote: contribVote,
+        accepted: contribAccepted,
+      });
+      setContributeOpen(false);
+      setContribNotes(''); setContribVote(null); setContribAccepted(null);
+      showAlert('Contribution submitted', 'Your input has been recorded for this session.');
+      await refreshDetail(detailSession.id);
+    } catch (e: any) {
+      showAlert('Error', e?.response?.data?.detail || 'Could not submit contribution');
+    } finally { setSubmittingContrib(false); }
+  };
+
+  const mergeSession = async () => {
+    if (!detailSession) return;
+    setMerging(true);
+    try {
+      const { data } = await api.post(`/collaboration/sessions/${detailSession.id}/merge`, {});
+      if (data.status === 'merged') {
+        showAlert('Merged ✓', data.merge_details?.message || 'Contributions merged and the decision was finalized.');
+      } else if (data.status === 'pending_consensus') {
+        showAlert('Consensus pending', data.message || 'Not all participants have accepted yet.');
+      } else if (data.status === 'voting_failed') {
+        showAlert('Voting threshold not met', data.message || 'The required vote share was not reached.');
+      } else {
+        showAlert('Merge', data.message || 'Done.');
+      }
+      await refreshDetail(detailSession.id);
+    } catch (e: any) {
+      showAlert('Error', e?.response?.data?.detail || 'Could not merge contributions');
+    } finally { setMerging(false); }
+  };
 
   const fetchSessions = async () => {
     try {
@@ -772,6 +831,105 @@ export default function CollaborateScreen() {
                     </TouchableOpacity>
                   )}
                 </View>
+
+                {/* Contribute (participant) + Merge (owner) — async flow */}
+                {detailSession.status === 'active' && (() => {
+                  const isOwner = detailSession.owner_id === user?.user_id;
+                  const myP = (detailSession.participants || []).find((p: any) => p.linked_user_id === user?.user_id);
+                  const modeId = detailSession.decision_mode_id;
+                  return (
+                    <View style={{ marginTop: 10 }}>
+                      <View style={{ flexDirection: 'row', gap: 10 }}>
+                        {myP && (
+                          <TouchableOpacity style={[styles.verifyActionBtn, { backgroundColor: '#2563EB' }]}
+                            onPress={() => { setContributeOpen((v) => !v); setContribNotes(myP.contribution?.notes || ''); setContribVote(myP.vote ?? null); setContribAccepted(myP.accepted ?? null); }}>
+                            <Ionicons name="create-outline" size={14} color="#FFF" />
+                            <Text style={styles.verifyActionText}>{myP.status === 'contributed' ? 'Edit Contribution' : 'Contribute'}</Text>
+                          </TouchableOpacity>
+                        )}
+                        {isOwner && (
+                          <TouchableOpacity style={[styles.verifyActionBtn, { backgroundColor: '#059669' }]}
+                            onPress={mergeSession} disabled={merging}>
+                            {merging ? <ActivityIndicator color="#FFF" size="small" /> : (
+                              <><Ionicons name="git-merge-outline" size={14} color="#FFF" /><Text style={styles.verifyActionText}>Merge &amp; Finalize</Text></>
+                            )}
+                          </TouchableOpacity>
+                        )}
+                      </View>
+
+                      {contributeOpen && myP && (
+                        <View style={styles.contribForm}>
+                          <Text style={styles.inputLabel}>Your input / perspective</Text>
+                          <TextInput
+                            style={styles.contribInput}
+                            placeholder="Share your view, reasoning or recommendation…"
+                            placeholderTextColor={COLORS.textMuted}
+                            value={contribNotes} onChangeText={setContribNotes}
+                            multiline numberOfLines={3}
+                          />
+                          {modeId === 'voting' && (
+                            <View style={{ marginTop: 10 }}>
+                              <Text style={styles.inputLabel}>Your vote</Text>
+                              <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+                                <TouchableOpacity style={[styles.choiceBtn, contribVote === true && styles.choiceBtnYes]} onPress={() => setContribVote(true)}>
+                                  <Text style={[styles.choiceText, contribVote === true && { color: '#FFF' }]}>👍 Yes</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={[styles.choiceBtn, contribVote === false && styles.choiceBtnNo]} onPress={() => setContribVote(false)}>
+                                  <Text style={[styles.choiceText, contribVote === false && { color: '#FFF' }]}>👎 No</Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          )}
+                          {modeId === 'consensus' && (
+                            <View style={{ marginTop: 10 }}>
+                              <Text style={styles.inputLabel}>Do you accept the proposal?</Text>
+                              <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+                                <TouchableOpacity style={[styles.choiceBtn, contribAccepted === true && styles.choiceBtnYes]} onPress={() => setContribAccepted(true)}>
+                                  <Text style={[styles.choiceText, contribAccepted === true && { color: '#FFF' }]}>✓ Accept</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={[styles.choiceBtn, contribAccepted === false && styles.choiceBtnNo]} onPress={() => setContribAccepted(false)}>
+                                  <Text style={[styles.choiceText, contribAccepted === false && { color: '#FFF' }]}>✕ Reject</Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          )}
+                          <TouchableOpacity style={[styles.verifyActionBtn, { backgroundColor: '#2563EB', marginTop: 12 }]}
+                            onPress={submitContribution} disabled={submittingContrib}>
+                            {submittingContrib ? <ActivityIndicator color="#FFF" size="small" /> : (
+                              <><Ionicons name="send" size={14} color="#FFF" /><Text style={styles.verifyActionText}>Submit Contribution</Text></>
+                            )}
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })()}
+
+                {/* Result (after merge) */}
+                {detailSession.status === 'completed' && detailSession.result && (
+                  <View style={styles.resultCard}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                      <Ionicons name="checkmark-circle" size={18} color="#059669" />
+                      <Text style={styles.resultTitle}>Finalized result · {detailSession.result.mode}</Text>
+                    </View>
+                    {!!detailSession.result.merge_details?.message && (
+                      <Text style={styles.resultMsg}>{detailSession.result.merge_details.message}</Text>
+                    )}
+                    {!!detailSession.result.weights && (
+                      <View style={{ marginTop: 8 }}>
+                        <Text style={styles.inputLabel}>Contribution weights</Text>
+                        {(detailSession.participants || []).map((p: any, i: number) => {
+                          const w = detailSession.result.weights[p.linked_user_id] ?? detailSession.result.weights[p.contact_id];
+                          if (w == null) return null;
+                          return (<Text key={i} style={styles.weightRow}>{p.name || 'Participant'} — {Math.round(w * 100)}%</Text>);
+                        })}
+                        {detailSession.result.weights[detailSession.owner_id] != null && (
+                          <Text style={styles.weightRow}>{detailSession.owner_name || 'You (owner)'} — {Math.round(detailSession.result.weights[detailSession.owner_id] * 100)}%</Text>
+                        )}
+                      </View>
+                    )}
+                  </View>
+                )}
                 <View style={{ height: 20 }} />
               </ScrollView>
             )}
@@ -1030,6 +1188,16 @@ const styles = StyleSheet.create({
   verifiedText: { fontSize: 10, fontWeight: '600', color: '#059669' },
   verifyActionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 8, flex: 1 },
   verifyActionText: { fontSize: 12, fontWeight: '700', color: '#FFF' },
+  contribForm: { marginTop: 12, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, padding: 12 },
+  contribInput: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 10, fontSize: 13, color: COLORS.textPrimary, minHeight: 70, textAlignVertical: 'top' },
+  choiceBtn: { flex: 1, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', alignItems: 'center', backgroundColor: '#FFF' },
+  choiceBtnYes: { backgroundColor: '#059669', borderColor: '#059669' },
+  choiceBtnNo: { backgroundColor: '#DC2626', borderColor: '#DC2626' },
+  choiceText: { fontSize: 13, fontWeight: '700', color: COLORS.textPrimary },
+  resultCard: { marginTop: 14, backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0', borderRadius: 12, padding: 14 },
+  resultTitle: { fontSize: 14, fontWeight: '800', color: '#065F46' },
+  resultMsg: { fontSize: 13, color: '#047857', lineHeight: 18 },
+  weightRow: { fontSize: 12.5, color: '#065F46', marginTop: 3 },
   totpVerifyRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   totpInput: { flex: 1, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 16, fontWeight: '700', letterSpacing: 4, textAlign: 'center' },
 });

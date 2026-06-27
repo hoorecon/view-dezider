@@ -5,6 +5,20 @@
 > file SHORT and CURRENT — it is the first thing to read after PRD.md.
 
 ## 0) Last user intent (update at end of every session)
+- 2026-06-27 (latest, fork — Collaborate ASYNC Contribute+Merge wired to frontend + both flows proven):
+  User reported async collaboration wasn't integrated on the frontend. CONFIRMED GAP: backend had
+  /contribute and /merge endpoints but the UI (app/tools/collaborate.tsx detail modal) only had Verify +
+  (live_sync) Join Call — no way to contribute or merge. FIX: added to the session detail modal — a
+  "Contribute" button (participants) opening an inline form (notes textarea + mode-specific Yes/No vote
+  for voting mode, Accept/Reject for consensus mode) → POST /contribute; a "Merge & Finalize" button
+  (owner) → POST /merge with status handling (merged / pending_consensus / voting_failed); and a
+  "Finalized result" card showing the merge message + per-participant contribution weights. Added
+  useAuthStore for owner/participant detection + refreshDetail() via GET /sessions/{id}. Verified E2E:
+  BE tests/verify_collab_async.py PASS (contribute→contributed, merge→completed, 50/50 weights); FE
+  screenshots for ALL THREE flows — async Contribute form, async merged-result card, and Live Sync Jitsi
+  video call (real meet.jit.si embed with join/mic/cam/share/people/end). Live Sync was already wired
+  (collab-call.tsx). Build 2026.06.27.010 (v3.94-collab-contribute-merge).
+
 - 2026-06-27 (latest, fork — Collaborate modal clipping FIX + async/sync audit): User reported the
   "Identity Verification" (and other) modals on app/tools/collaborate.tsx were clipped off the bottom on
   wide/desktop web viewports. ROOT CAUSE: shared `modalOverlay` used justifyContent:'flex-end' (bottom
