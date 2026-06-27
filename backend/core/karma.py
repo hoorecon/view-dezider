@@ -74,6 +74,36 @@ async def award_karma(user_id: str, event: str, *, multiplier: float = 1.0,
     return points
 
 
+async def award_karma_points(user_id: str, points: int, *, event: str = "custom",
+                             reason: Optional[str] = None, ref: Optional[dict] = None) -> int:
+    """Award an EXACT number of karma points (used when the amount is computed
+    by an external engine, e.g. the catalog payout engine). Journals to the
+    ledger. Respects the global enabled flag. Returns points awarded."""
+    if not user_id or points is None:
+        return 0
+    points = int(round(points))
+    if points <= 0:
+        return 0
+    cfg = await get_karma_config()
+    if not cfg.get("enabled"):
+        return 0
+    await db.referral_profiles.update_one(
+        {"user_id": user_id},
+        {"$inc": {"karma_balance": points}, "$setOnInsert": {"user_id": user_id, "cash_balance_inr": 0.0}},
+        upsert=True,
+    )
+    await db.karma_ledger.insert_one({
+        "ledger_id": f"karma_{uuid.uuid4().hex[:12]}",
+        "user_id": user_id,
+        "event": event,
+        "points": points,
+        "reason": reason or event.replace("_", " "),
+        "ref": ref or {},
+        "created_at": _now(),
+    })
+    return points
+
+
 async def get_balance(user_id: str) -> int:
     p = await db.referral_profiles.find_one({"user_id": user_id}, {"_id": 0, "karma_balance": 1})
     return int((p or {}).get("karma_balance", 0) or 0)

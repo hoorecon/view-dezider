@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../src/constants/colors';
 import { Card } from '../../src/components/Card';
 import CloneTemplateModal from '../../src/components/CloneTemplateModal';
+import PublishOptionsModal from '../../src/components/PublishOptionsModal';
 import TemplateBrowserModal from '../../src/components/TemplateBrowserModal';
 import api from '../../src/utils/api';
 import { useDashboardTiles } from '../../src/utils/useDashboardTiles';
@@ -116,6 +117,8 @@ export default function SolutionBoxScreen() {
   const [deleteTarget, setDeleteTarget] = useState<SolutionItem | null>(null);
   const [cloneModalVisible, setCloneModalVisible] = useState(false);
   const [cloneTarget, setCloneTarget] = useState<any>(null);
+  const [publishTarget, setPublishTarget] = useState<any>(null);
+  const [publishVisible, setPublishVisible] = useState(false);
   const [templateBrowserVisible, setTemplateBrowserVisible] = useState(false);
   const [userRole, setUserRole] = useState('user');
   const [folderCounts, setFolderCounts] = useState<Record<string, number>>({});
@@ -435,6 +438,16 @@ export default function SolutionBoxScreen() {
               <Ionicons name="copy-outline" size={18} color={COLORS.primary} />
             </TouchableOpacity>
           )}
+          {item.type === 'decider' && (
+            <TouchableOpacity
+              onPress={() => { setPublishTarget(item); setPublishVisible(true); }}
+              style={styles.actionButton}
+              testID={`publish-decision-${item.id}`}
+              accessibilityLabel="Publish options to Store / ReviewNet"
+            >
+              <Ionicons name="storefront-outline" size={18} color={COLORS.primary} />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity onPress={() => handleDeletePress(item)} style={styles.actionButton}>
             <Ionicons name="trash-outline" size={18} color={COLORS.error} />
           </TouchableOpacity>
@@ -694,6 +707,16 @@ export default function SolutionBoxScreen() {
           decision={cloneTarget}
           onCloneSuccess={(newId) => { fetchItems(selectedLifeArea, selectedType); router.push(`/prr/${newId}`); }}
           onTemplateSuccess={() => showAlert('Template Saved', 'Decision saved as template.')}
+        />
+      )}
+
+      {publishTarget && (
+        <PublishOptionsModal
+          visible={publishVisible}
+          decisionId={publishTarget.id}
+          decisionName={publishTarget.title || publishTarget.name}
+          onClose={() => { setPublishVisible(false); setPublishTarget(null); }}
+          onPublished={() => { setPublishVisible(false); setPublishTarget(null); }}
         />
       )}
 

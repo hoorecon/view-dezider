@@ -621,6 +621,14 @@ async def apply_solution_to_option(request: Request, user: dict = Depends(get_cu
     # Get quantitative factors
     quant_factors = sol.get("quantitative_factors", [])
 
+    # Phase 3C: credit the publisher for this usage (fire-and-forget). Only
+    # rewards option-published monetized Store solutions; never self-use.
+    try:
+        from routes.option_publish import record_solution_usage
+        await record_solution_usage(sol, user["user_id"], source="apply_to_option")
+    except Exception:
+        pass
+
     # Get aggregated qualitative scores
     reviews = await db.solution_reviews.find({"solution_id": solution_id}, {"_id": 0}).to_list(100)
     qual_scores = {}

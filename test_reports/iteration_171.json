@@ -1,0 +1,60 @@
+{
+  "summary": "Iter171 Epic Phase 3B/3C — Option Publish. Backend: 11/11 tests passed in tests/test_iter171_option_publish.py. All endpoints behave per spec: GET /api/option-publish/source/dec_phase3_publish_demo returns is_completed=true with 3 quantitative-default factors (Price/Quality/Support Experience) and 2 options (Alpha/Beta); POST /publish gated 400 on non-completed decider (e.g. VC pick reorder ~75%); POST /publish with paid + Support→qualitative returns published_count=2, reward_kind='cash', quant_ids=2, qual_ids=1 and inserts 2 db.solutions_store docs + matching db.review_policies rows; ALL-qualitative payload → 400 'At least one factor must remain Quantitative'; unknown solution_type → 400; record-usage self-use → {ok:false}, unknown solution → 404. The karma→cash crediting chain was re-verified via tests/smoke_phase3.py: uses #1-3 award karma=10 each (karma_solution_store=5, 5★), use #4 awards cash=₹9 (₹10 gross minus 10% commission), karma_ledger=3 rows, earnings_ledger=1 row, publisher.karma_balance updated. GET /my-published returns the publisher's option-published solutions with review_avg/review_count/usage_count fields. Frontend: Solution Box (/prr) shows a storefront icon testID publish-decision-<id> next to clone; on the completed demo decider (filter via status-chip-completed) the Publish modal renders correctly with all required testIDs (publish-type-PRODUCT default + 4 others, factor-<fid>-quantitative/-qualitative for f_price/f_quality/f_support, publish-option-o_alpha/o_beta both default checked, publish-monet-free default + publish-monet-paid, publish-submit/close). Switching to Paid shows '~₹206 per paid use (at 4★, 1500 ratings)' and '+10 Karma per free use (at 5★)'. Submitting publishes 2 options with a 'Published 🎉' alert. Gating verified — opening the same modal on VC pick reorder demo (75%) shows the 'Completed flows only' locked state with 'This flow is at 75%.' One UI concern detected: the floating font-size accessibility widget (AA/A+/A++) at the bottom overlaps the card action icons (clone/publish/trash) on the 390x844 viewport at certain scroll positions — standard pointer clicks were intercepted, only JS dispatchEvent worked in Playwright. Deprecated packages detected: none of the listed expo-av/barcode-scanner/background-fetch. Other minor RN deprecation warnings observed in expo logs: 'shadow* style props deprecated, use boxShadow' and 'props.pointerEvents deprecated, use style.pointerEvents'.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Solution Box card action icons (clone/publish/trash)",
+        "issue": "Floating font-size widget (AA/A+/A++) at the screen bottom overlaps the card action row at certain scroll positions (icon centre ~y=703, widget ~y=715-740 on 390x844). In Playwright standard force-click did not fire onPress; only JS dispatched click worked. On a real touch device tap may still be intercepted by the overlay z-order. Reference: /app/frontend/app/(tabs)/prr.tsx:430-453.",
+        "testID": "publish-decision-<id>",
+        "priority": "MEDIUM"
+      },
+      {
+        "component": "Decision card title rendering",
+        "issue": "The seeded decider 'Phase3 Publish Demo (Completed)' renders as 'Untitled decision' in the completed filter card (the modal subtitle DOES show the correct name 'Phase3 Publish Demo (Completed)'). Likely the card uses dec.title || dec.name fallback and the seed only sets 'name'. Reference: /app/frontend/app/(tabs)/prr.tsx (card title), /app/backend/tests/seed_phase3_demo.py.",
+        "testID": "publish-decision-dec_phase3_publish_demo",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "/prr (Solution Box)",
+        "issues": [
+          "Floating typography widget z-order conflicts with card icon row; should auto-hide while scrolling or sit above the bottom nav only."
+        ]
+      }
+    ],
+    "react_native_issues": [
+      {"component": "shadow* style props", "issue": "RN-Web warning: 'shadow*' style props are deprecated. Use 'boxShadow' instead. Recurs across multiple components. Reference: bundler logs."},
+      {"component": "props.pointerEvents", "issue": "RN-Web warning: props.pointerEvents is deprecated. Use style.pointerEvents. Recurs across multiple components. Reference: bundler logs."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter171_option_publish.py",
+    "/app/test_reports/pytest/iter171_option_publish.xml",
+    "/app/backend/tests/smoke_phase3.py"
+  ],
+  "action_items": [
+    "Adjust the floating font-size widget z-index or auto-hide on scroll so the storefront/clone/trash icons on Solution Box cards remain reliably tappable on mobile.",
+    "Decision card title in prr.tsx should fall back to dec.name when dec.title is missing (current seeded demo shows 'Untitled decision').",
+    "Address RN-Web deprecation warnings ('shadow*' → boxShadow, props.pointerEvents → style.pointerEvents) — not blocking but pollutes the console."
+  ],
+  "critical_code_review_comments": [
+    "routes/option_publish.py is well-structured (~420 lines, under the 700-line guideline) and consistently strips MongoDB _id via projections.",
+    "Solution doc created in publish_options correctly snapshots payout config and tags 'published_from_option=True' for filtering on my-published.",
+    "record_solution_usage swallows errors with log.warning and never raises into caller paths — good for the fire-and-forget hook in solutions_store.apply-to-option."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter171_option_publish.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Re-ran /app/backend/tests/seed_phase3_demo.py to upsert dec_phase3_publish_demo. Smoke + pytest temporary publishes and usages were cleaned up after testing (deleted 2 solutions_store + matching review_policies rows for the super_admin user).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Phase3 publish endpoints under /api/option-publish/* are stable. Re-running tests/test_iter171_option_publish.py + tests/smoke_phase3.py recreates artefacts that should be cleaned via db.solutions_store.delete_many({created_by:<uid>, published_from_option:True}) and db.solution_usages.delete_many({publisher_id:<uid>}). For frontend, the floating font-size widget can intercept card-action taps — open the publish modal via JS dispatchEvent on '[data-testid=\"publish-decision-<id>\"]' if standard click is intercepted.",
+  "rca_of_issue": "Not a defect, but the only frontend friction observed: TouchableOpacity action icons at the bottom of card rows can be visually overlapped by the bottom-anchored typography (AA/A+/A++) widget. Playwright force-click and mouse.click missed onPress (web treats it as a hit-test miss); MouseEvent dispatchEvent on the element directly bypassed hit-testing and the modal opened correctly. Recommendation: lower the typography widget z-index or auto-hide it on scroll/when modal is open."
+}
