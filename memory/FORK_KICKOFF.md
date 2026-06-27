@@ -5,6 +5,25 @@
 > file SHORT and CURRENT — it is the first thing to read after PRD.md.
 
 ## 0) Last user intent (update at end of every session)
+- 2026-06-27 (latest): EPIC Phase 1 & 2 (Status filter + Public-template gating) DONE + tested
+  (BE 12/12, FE all pass). (1) Solution Box (app/(tabs)/prr.tsx) now has a SECOND chip row of
+  STATUS filters under the type chips — Any/Draft/In Progress <35%/35–70%/>70%/Completed
+  (testID status-chip-{all,draft,ip_low,ip_mid,ip_high,completed}); selecting refetches
+  /api/solution-box?status=<band>. Card status pill reads band+% ("In Progress · 75%" /
+  "Completed · 100%" / "Draft"). Bands kept at <35 / 35–70 / >70 (user choice). (2) Public
+  Decision Templates can ONLY be created from a COMPLETED (100%) flow — CloneTemplateModal
+  greys+locks the "Public" option (testID visibility-public, lock icon, "· Completed only")
+  for non-completed flows; Private/Shared allowed any time. Backend guard added in
+  routes/decisions/templates.py (save-as-template returns 400 when visibility=public and
+  solution_box._progress_decider(original).status != 'completed'). Also switched the modal's
+  RN Alert → cross-platform showAlert (src/utils/alert) so web users get visible feedback.
+  Build 2026.06.27.002 (v3.86-status-band-filter-public-template-gating).
+  ⏭️ NEXT (Epic Phase 3 — NOT STARTED, needs equation specifics from user): publish a flow's
+  Option values → Solutions Store (quantitative) / ReviewNet (qualitative) with confirm/override
+  + FREE vs Paid toggle generating Karma/Cash; Admin Catalog L0–L3 config (free-usage count +
+  payment ranges) driving the payout equation. catalog_nodes already has level 0–3; NO payout/
+  free-usage schema exists yet (net-new). Existing bridges: POST /solutions-store/apply-to-option,
+  GET /solutions-store/for-decision (store→decision); Phase 3 is the reverse direction.
 - 2026-06-26 (latest): Fixed the browser-tab title flashing blank/"frontend"
   before resolving to JELCOS AI. ROOT CAUSE: expo-router static export emitted an
   EMPTY `<title data-rh></title>` FIRST (helmet placeholder) ahead of the real

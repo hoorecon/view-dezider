@@ -7,11 +7,11 @@ import {
   Modal,
   TextInput,
   ScrollView,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/colors';
+import { showAlert } from '../utils/alert';
 import api from '../utils/api';
 
 interface CloneTemplateModalProps {
@@ -139,7 +139,7 @@ export default function CloneTemplateModal({
 
   const handleClone = async () => {
     if (!title.trim()) {
-      Alert.alert('Error', 'Please enter a title for the cloned decision');
+      showAlert('Error', 'Please enter a title for the cloned decision');
       return;
     }
     
@@ -151,9 +151,9 @@ export default function CloneTemplateModal({
       });
       onCloneSuccess(response.data.id);
       onClose();
-      Alert.alert('Cloned!', `Decision cloned with "${COPY_LEVELS.find(l => l.key === selectedCloneLevel)?.label}"`);
+      showAlert('Cloned!', `Decision cloned with "${COPY_LEVELS.find(l => l.key === selectedCloneLevel)?.label}"`);
     } catch (err: any) {
-      Alert.alert('Error', err.response?.data?.detail || 'Failed to clone decision');
+      showAlert('Error', err.response?.data?.detail || 'Failed to clone decision');
     } finally {
       setLoading(false);
     }
@@ -161,15 +161,15 @@ export default function CloneTemplateModal({
 
   const handleSaveTemplate = async () => {
     if (!title.trim()) {
-      Alert.alert('Error', 'Please enter a name for the template');
+      showAlert('Error', 'Please enter a name for the template');
       return;
     }
     if (visibility === 'shared' && !sharedEmails.trim()) {
-      Alert.alert('Error', 'Please enter at least one email to share with');
+      showAlert('Error', 'Please enter at least one email to share with');
       return;
     }
     if (visibility === 'public' && !isCompleted) {
-      Alert.alert(
+      showAlert(
         'Completed flows only',
         'Public templates can only be created from a Completed (100%) flow. Save it as Private or Shared, or finish the assessment to publish publicly.'
       );
@@ -195,9 +195,9 @@ export default function CloneTemplateModal({
       onTemplateSuccess?.();
       onClose();
       const visLabel = visibility === 'public' ? 'publicly' : visibility === 'shared' ? `with ${shared_with.length} account(s)` : 'privately';
-      Alert.alert('Saved!', `Template saved ${visLabel} as "${finalName}"`);
+      showAlert('Saved!', `Template saved ${visLabel} as "${finalName}"`);
     } catch (err: any) {
-      Alert.alert('Error', err.response?.data?.detail || 'Failed to save template');
+      showAlert('Error', err.response?.data?.detail || 'Failed to save template');
     } finally {
       setLoading(false);
     }
@@ -343,7 +343,7 @@ export default function CloneTemplateModal({
                       activeOpacity={locked ? 1 : 0.7}
                       onPress={() => {
                         if (locked) {
-                          Alert.alert(
+                          showAlert(
                             'Completed flows only',
                             'Public templates can only be created from a Completed (100%) flow. Save as Private or Shared instead, or finish the assessment to publish publicly.'
                           );
