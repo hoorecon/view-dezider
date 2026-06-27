@@ -43,7 +43,8 @@ const STEP_LABELS: Record<string, string> = {
 const STEPS = ['factors', 'classification', 'prioritization', 'options', 'assessment'];
 
 type Cfg = {
-  free_usage_count?: number;
+  free_usage_solution_store?: number;
+  free_usage_template_by_step?: Record<string, number>;
   payment_min?: number;
   payment_max?: number;
   karma_solution_store?: number;
@@ -60,21 +61,31 @@ type NodeOverride = Cfg & {
 
 const numOr = (v: any): string => (v === undefined || v === null ? '' : String(v));
 
-function buildPayload(form: Record<string, string>, steps: Record<string, string>) {
+function buildPayload(
+  form: Record<string, string>,
+  karmaSteps: Record<string, string>,
+  freeSteps: Record<string, string>,
+) {
   const out: any = {};
   const setNum = (k: string) => {
     if (form[k] !== undefined && form[k] !== '') out[k] = Number(form[k]);
   };
-  setNum('free_usage_count');
+  setNum('free_usage_solution_store');
   setNum('payment_min');
   setNum('payment_max');
   setNum('karma_solution_store');
   setNum('karma_reviewnet');
-  const by: Record<string, number> = {};
-  STEPS.forEach((s) => {
-    if (steps[s] !== undefined && steps[s] !== '') by[s] = Number(steps[s]);
-  });
-  if (Object.keys(by).length) out.karma_template_by_step = by;
+  const collect = (src: Record<string, string>) => {
+    const o: Record<string, number> = {};
+    STEPS.forEach((s) => {
+      if (src[s] !== undefined && src[s] !== '') o[s] = Number(src[s]);
+    });
+    return o;
+  };
+  const k = collect(karmaSteps);
+  if (Object.keys(k).length) out.karma_template_by_step = k;
+  const f = collect(freeSteps);
+  if (Object.keys(f).length) out.free_usage_template_by_step = f;
   return out;
 }
 
@@ -86,13 +97,15 @@ export default function CatalogPayoutScreen() {
 
   // global form state
   const [gForm, setGForm] = useState<Record<string, string>>({});
-  const [gSteps, setGSteps] = useState<Record<string, string>>({});
+  const [gSteps, setGSteps] = useState<Record<string, string>>({});         // karma by step
+  const [gFreeSteps, setGFreeSteps] = useState<Record<string, string>>({});  // free-usage quota by step
 
   // node override modal
   const [modalOpen, setModalOpen] = useState(false);
   const [editNode, setEditNode] = useState<NodeOverride | null>(null);
   const [nForm, setNForm] = useState<Record<string, string>>({});
-  const [nSteps, setNSteps] = useState<Record<string, string>>({});
+  const [nSteps, setNSteps] = useState<Record<string, string>>({});         // karma by step
+  const [nFreeSteps, setNFreeSteps] = useState<Record<string, string>>({});  // free-usage quota by step
 
   // node picker (for add)
   const [lifeAreas, setLifeAreas] = useState<any[]>([]);
@@ -103,16 +116,19 @@ export default function CatalogPayoutScreen() {
 
   const hydrateGlobal = (cfg: Cfg) => {
     setGForm({
-      free_usage_count: numOr(cfg.free_usage_count),
+      free_usage_solution_store: numOr(cfg.free_usage_solution_store),
       payment_min: numOr(cfg.payment_min),
       payment_max: numOr(cfg.payment_max),
       karma_solution_store: numOr(cfg.karma_solution_store),
       karma_reviewnet: numOr(cfg.karma_reviewnet),
     });
     const by = cfg.karma_template_by_step || {};
+    const fb = cfg.free_usage_template_by_step || {};
     const s: Record<string, string> = {};
-    STEPS.forEach((k) => (s[k] = numOr(by[k])));
+    const fs: Record<string, string> = {};
+    STEPS.forEach((k) => { s[k] = numOr(by[k]); fs[k] = numOr(fb[k]); });
     setGSteps(s);
+    setGFreeSteps(fs);
   };
 
   const load = useCallback(async () => {
@@ -136,7 +152,7 @@ export default function CatalogPayoutScreen() {
   const saveGlobal = async () => {
     setSaving(true);
     try {
-      const payload = buildPayload(gForm, gSteps);
+      const payload = buildPayload(gForm, gSteps, gFreeSteps);
       const { data } = await api.put('/catalog/payout/config/global', payload);
       hydrateGlobal(data);
       showAlert('Saved', 'Global payout config updated.');
@@ -154,6 +170,7 @@ export default function CatalogPayoutScreen() {
     const s: Record<string, string> = {};
     STEPS.forEach((k) => (s[k] = ''));
     setNSteps(s);
+    setNFreeSteps({ ...s });
     setPickArea('');
     setAreaNodes([]);
     setPickNodeId('');
@@ -164,16 +181,19 @@ export default function CatalogPayoutScreen() {
   const openEditNode = (n: NodeOverride) => {
     setEditNode(n);
     setNForm({
-      free_usage_count: numOr(n.free_usage_count),
+      free_usage_solution_store: numOr(n.free_usage_solution_store),
       payment_min: numOr(n.payment_min),
       payment_max: numOr(n.payment_max),
       karma_solution_store: numOr(n.karma_solution_store),
       karma_reviewnet: numOr(n.karma_reviewnet),
     });
     const by = n.karma_template_by_step || {};
+    const fb = n.free_usage_template_by_step || {};
     const s: Record<string, string> = {};
-    STEPS.forEach((k) => (s[k] = numOr(by[k])));
+    const fs: Record<string, string> = {};
+    STEPS.forEach((k) => { s[k] = numOr(by[k]); fs[k] = numOr(fb[k]); });
     setNSteps(s);
+    setNFreeSteps(fs);
     setPickNodeId(n.node_id);
     setPickNodeName(n.node_name || n.node_id);
     setModalOpen(true);
@@ -201,7 +221,7 @@ export default function CatalogPayoutScreen() {
     }
     setSaving(true);
     try {
-      const payload = buildPayload(nForm, nSteps);
+      const payload = buildPayload(nForm, nSteps, nFreeSteps);
       await api.put(`/catalog/payout/config/node/${encodeURIComponent(pickNodeId)}`, payload);
       setModalOpen(false);
       await load();
@@ -258,11 +278,13 @@ export default function CatalogPayoutScreen() {
   );
 
   const renderStepRows = (
+    title: string,
     steps: Record<string, string>,
     setSteps: (s: Record<string, string>) => void,
+    idPrefix: string,
   ) => (
     <View style={styles.stepBox}>
-      <Text style={styles.subLabel}>Decision Template free-use Karma (by copy-depth · higher = more)</Text>
+      <Text style={styles.subLabel}>{title}</Text>
       {STEPS.map((s) => (
         <View style={styles.fieldRow} key={s}>
           <Text style={[styles.fieldLabel, { flex: 1 }]}>{STEP_LABELS[s]}</Text>
@@ -273,7 +295,7 @@ export default function CatalogPayoutScreen() {
             keyboardType="decimal-pad"
             placeholder="—"
             placeholderTextColor={COLORS.textMuted}
-            testID={`payout-step-${s}`}
+            testID={`${idPrefix}-${s}`}
           />
         </View>
       ))}
@@ -323,12 +345,13 @@ export default function CatalogPayoutScreen() {
           {/* GLOBAL */}
           <Text style={styles.sectionTitle}>Global defaults</Text>
           <View style={styles.card}>
-            {renderNumRow('Free-usage quota', 'free_usage_count', gForm, setGForm, 'First N uses are free (Karma)')}
+            {renderNumRow('Free uses · Store', 'free_usage_solution_store', gForm, setGForm, 'Free uses before paid (Solution Store)')}
             {renderNumRow('Payment min (₹)', 'payment_min', gForm, setGForm)}
             {renderNumRow('Payment max (₹)', 'payment_max', gForm, setGForm)}
             {renderNumRow('Karma · Store free use', 'karma_solution_store', gForm, setGForm)}
             {renderNumRow('Karma · ReviewNet rating', 'karma_reviewnet', gForm, setGForm)}
-            {renderStepRows(gSteps, setGSteps)}
+            {renderStepRows('Decision Template free-use Karma (by copy-depth · higher = more)', gSteps, setGSteps, 'payout-step')}
+            {renderStepRows('Decision Template free-usage quota (by copy-depth · before paid)', gFreeSteps, setGFreeSteps, 'payout-free-step')}
             <TouchableOpacity
               style={[styles.saveBtn, saving && { opacity: 0.6 }]}
               onPress={saveGlobal}
@@ -364,7 +387,7 @@ export default function CatalogPayoutScreen() {
                     {[
                       n.payment_min != null ? `₹${n.payment_min}–${n.payment_max ?? '?'}` : null,
                       n.karma_solution_store != null ? `K:${n.karma_solution_store}` : null,
-                      n.free_usage_count != null ? `free:${n.free_usage_count}` : null,
+                      n.free_usage_solution_store != null ? `free:${n.free_usage_solution_store}` : null,
                     ].filter(Boolean).join('  ·  ') || 'partial override'}
                   </Text>
                 </View>
@@ -436,12 +459,13 @@ export default function CatalogPayoutScreen() {
                 <>
                   <Text style={[styles.subLabel, { marginTop: 8 }]}>Config for: {pickNodeName}</Text>
                   <Text style={styles.fieldHint}>Leave blank to inherit that value from the parent / global.</Text>
-                  {renderNumRow('Free-usage quota', 'free_usage_count', nForm, setNForm)}
+                  {renderNumRow('Free uses · Store', 'free_usage_solution_store', nForm, setNForm)}
                   {renderNumRow('Payment min (₹)', 'payment_min', nForm, setNForm)}
                   {renderNumRow('Payment max (₹)', 'payment_max', nForm, setNForm)}
                   {renderNumRow('Karma · Store free use', 'karma_solution_store', nForm, setNForm)}
                   {renderNumRow('Karma · ReviewNet rating', 'karma_reviewnet', nForm, setNForm)}
-                  {renderStepRows(nSteps, setNSteps)}
+                  {renderStepRows('Template free-use Karma (by copy-depth)', nSteps, setNSteps, 'payout-nkarma-step')}
+                  {renderStepRows('Template free-usage quota (by copy-depth)', nFreeSteps, setNFreeSteps, 'payout-nfree-step')}
                 </>
               )}
             </ScrollView>

@@ -5,6 +5,23 @@
 > file SHORT and CURRENT — it is the first thing to read after PRD.md.
 
 ## 0) Last user intent (update at end of every session)
+- 2026-06-27 (latest, iter171): Epic Phase 3A DONE + tested. Admin Central Catalog now has an L0–L3
+  monetization config screen at /admin/catalog-payout (reached via the cash-outline icon in the
+  /admin/catalog header). Backend: NEW core/payout_engine.py + routes/catalog_payout.py (router prefix
+  /catalog/payout, mounted under /api), registered in server.py. Config is per catalog node OR global,
+  inheriting L3→L2→L1→L0→global→default (nearest non-null per field, incl. per-step dict fields).
+  Fields: free_usage_solution_store + free_usage_template_by_step{5 steps} (=6 free-usage quotas, before
+  paid), payment_min/max (₹), karma_solution_store, karma_reviewnet, karma_template_by_step{5 steps}.
+  Equations (server-side): cash = pmin+(pmax-pmin)*(avg★/5)*(#ratings/3000) clamp[min,max];
+  karma = karma_per_use*(1+★/5). Cash ONLY for Store paid use; free use + ReviewNet => Karma.
+  Tested: 9/9 pytest (iter170) + curl for 6-quota refinement + screenshots of the admin UI.
+  Also (iter169, earlier this session): Phase 1 status-band filter chips + card %  and Phase 2 public-
+  template gating (CloneTemplateModal + backend) — DONE + tested.
+  ⏭️ NEXT (Epic Phase 3B/3C — NOT STARTED): publish a Completed flow's Option values → Solutions Store
+  (quantitative, cash on paid use) / ReviewNet (qualitative, karma) with FREE/Paid toggle; wire usage →
+  compute_cash_payout / compute_karma into earnings wallet + karma. Build on solutions_store.py
+  (create_solution already carries quantitative_factors + catalog_node_id) and review_net.py. Gating:
+  Store publish = Completed only; Decision Template = any step (public template share still Completed).
 - 2026-06-27 (latest): EPIC Phase 1 & 2 (Status filter + Public-template gating) DONE + tested
   (BE 12/12, FE all pass). (1) Solution Box (app/(tabs)/prr.tsx) now has a SECOND chip row of
   STATUS filters under the type chips — Any/Draft/In Progress <35%/35–70%/>70%/Completed

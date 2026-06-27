@@ -37,7 +37,8 @@ router = APIRouter(prefix="/catalog/payout", tags=["Central Catalog Payout"])
 
 
 class PayoutConfigBody(BaseModel):
-    free_usage_count: Optional[int] = None
+    free_usage_solution_store: Optional[int] = None
+    free_usage_template_by_step: Optional[Dict[str, int]] = None
     payment_min: Optional[float] = None
     payment_max: Optional[float] = None
     karma_solution_store: Optional[int] = None
@@ -56,12 +57,13 @@ class PreviewBody(BaseModel):
 
 def _clean(body: PayoutConfigBody) -> Dict[str, Any]:
     data = {k: v for k, v in body.model_dump().items() if v is not None}
-    if "karma_template_by_step" in data:
-        data["karma_template_by_step"] = {
-            s: int(data["karma_template_by_step"][s])
-            for s in TEMPLATE_STEPS
-            if data["karma_template_by_step"].get(s) is not None
-        }
+    for dict_field in ("karma_template_by_step", "free_usage_template_by_step"):
+        if dict_field in data and isinstance(data[dict_field], dict):
+            data[dict_field] = {
+                s: int(data[dict_field][s])
+                for s in TEMPLATE_STEPS
+                if data[dict_field].get(s) is not None
+            }
     pmin = data.get("payment_min")
     pmax = data.get("payment_max")
     if pmin is not None and pmax is not None and float(pmax) < float(pmin):

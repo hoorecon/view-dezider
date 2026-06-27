@@ -25,9 +25,13 @@ from typing import Any, Dict, List, Optional
 # The 5 cumulative copy-depth steps of a Decision Template (low -> high value).
 TEMPLATE_STEPS = ["factors", "classification", "prioritization", "options", "assessment"]
 
+# Per-step dict fields (resolved step-by-step during inheritance).
+DICT_FIELDS = {"karma_template_by_step", "free_usage_template_by_step"}
+
 # Fields that participate in inheritance.
 CONFIG_FIELDS = [
-    "free_usage_count",
+    "free_usage_solution_store",
+    "free_usage_template_by_step",
     "payment_min",
     "payment_max",
     "karma_solution_store",
@@ -37,7 +41,14 @@ CONFIG_FIELDS = [
 
 # System default (the implicit L0 baseline if no global config is set).
 DEFAULT_GLOBAL: Dict[str, Any] = {
-    "free_usage_count": 3,
+    "free_usage_solution_store": 3,
+    "free_usage_template_by_step": {
+        "factors": 3,
+        "classification": 3,
+        "prioritization": 3,
+        "options": 3,
+        "assessment": 3,
+    },
     "payment_min": 10.0,
     "payment_max": 500.0,
     "karma_solution_store": 5,
@@ -81,7 +92,7 @@ async def resolve_payout_config(db, node_id: Optional[str]) -> Dict[str, Any]:
     provenance: Dict[str, Any] = {}
 
     for field in CONFIG_FIELDS:
-        if field == "karma_template_by_step":
+        if field in DICT_FIELDS:
             merged: Dict[str, int] = {}
             prov: Dict[str, str] = {}
             for step in TEMPLATE_STEPS:

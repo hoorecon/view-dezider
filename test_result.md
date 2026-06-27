@@ -10505,3 +10505,62 @@ agent_communication:
       clone icon (copy-outline) on a NON-completed decider card -> modal -> 'Template' tab -> 'Who can see this?'
       -> 'Public' (testID visibility-public) must be locked (lock icon, '· Completed only'); tapping it shows an
       alert and keeps Private. NOTE: route may bounce to /auth/login (rehydration) — retry/re-login.
+
+#====================================================================================================
+# Iter 170-171 (fork) — Epic Phase 3A: Catalog L0–L3 Payout & Karma config + engine
+#====================================================================================================
+backend:
+  - task: "core/payout_engine.py + routes/catalog_payout.py — per-node L0-L3 monetization config + payout/karma equations"
+    implemented: true
+    working: true
+    file: "backend/routes/catalog_payout.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          Iter170: 9/9 pytest passed (tests/test_iter170_catalog_payout.py). Endpoints under /api/catalog/payout:
+          GET /config, GET /resolve[/{node_id}] (+_provenance), PUT /config/global, PUT/DELETE /config/node/{id},
+          POST /preview. Cash equation pmin+(pmax-pmin)*(avg/5)*(n/3000) clamp[min,max] verified (460.0 case);
+          karma = karma_per_use*(1+star/5) verified (10). Inheritance L3->L0->global->default nearest-wins.
+      - working: true
+        agent: "main"
+        comment: |
+          Iter171 refinement (user): free-usage quota is now 6 values — free_usage_solution_store (Store) +
+          free_usage_template_by_step{factors,classification,prioritization,options,assessment} (Decision
+          Template, per copy-depth, before paid). Replaced the old single free_usage_count. Engine generalized
+          to per-step inheritance for BOTH karma_template_by_step and free_usage_template_by_step. Curl-verified
+          resolve + PUT global with all 6 quotas + provenance.
+frontend:
+  - task: "Admin /admin/catalog-payout — Global + per-node override editor (linked from /admin/catalog header cash icon)"
+    implemented: true
+    working: true
+    file: "frontend/app/admin/catalog-payout.tsx"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          Iter170: 100% verified — loads with equation card + prefilled global form; Save Global persists;
+          Add-node modal (life-area chip -> node pick -> form -> Save Override) creates an override row with
+          L-badge; edit/delete work. testIDs payout-save-global, payout-add-node, payout-save-node,
+          payout-edit-{node_id}, payout-delete-{node_id}, payout-input-{key}.
+      - working: true
+        agent: "main"
+        comment: |
+          Iter171: UI now shows TWO step blocks (free-use Karma by step + free-usage quota by step) plus a
+          'Free uses · Store' scalar. testIDs payout-step-{step} (global karma), payout-free-step-{step}
+          (global free quota), payout-nkarma-step-{step} / payout-nfree-step-{step} (modal). Screenshot-verified
+          by main agent; backend curl-verified.
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Iter171. Phase 1, 2 (done+tested iter169) and Phase 3A (Catalog L0-L3 payout/karma config, done+tested
+      iter170, refined to 6 free-usage quotas iter171) complete. REMAINING Epic Phase 3B/3C (NOT STARTED):
+      publish a completed flow's Option values -> Solutions Store (quantitative factors, cash on paid use) /
+      ReviewNet (qualitative, karma); FREE vs Paid toggle; wire usage -> compute_cash_payout/compute_karma into
+      earnings + karma. Build on existing solutions_store.py (create_solution carries quantitative_factors +
+      catalog_node_id) and review_net.py. Gating: Store publish = completed only; Decision Template = any step.
