@@ -5,7 +5,22 @@
 > file SHORT and CURRENT — it is the first thing to read after PRD.md.
 
 ## 0) Last user intent (update at end of every session)
-- 2026-06-27 (latest, iter171): Epic Phase 3A DONE + tested. Admin Central Catalog now has an L0–L3
+- 2026-06-27 (latest, iter171 — Phase 3B/3C DONE + tested 11/11 BE + FE E2E): Publish a COMPLETED
+  decider's Option values into the existing modules. NEW backend: routes/option_publish.py
+  (prefix /option-publish under /api) — GET /source/{decision_id}, POST /publish, POST /record-usage,
+  GET /my-published; core/karma.award_karma_points() (exact-points award); usage-credit hook added in
+  solutions_store.apply-to-option. Publishing creates one db.solutions_store solution PER option
+  (quantitative_factors -> Store; qualitative_factors -> ReviewNet via db.review_policies) tagged with
+  monetization {mode free|paid, reward_kind}. Crediting on usage: free use (and first
+  free_usage_solution_store uses of a paid listing) -> Karma = karma_solution_store*(1+star/5); paid use
+  beyond quota -> Cash = compute_cash_payout(...) minus platform commission, into db.earnings_ledger.
+  NEW frontend: src/components/PublishOptionsModal.tsx (factor Quant/Qual toggles, option checkboxes,
+  Free/Paid, live /catalog/payout/preview earnings) launched from a storefront icon on completed decider
+  cards in prr.tsx (gated: non-completed shows 'Completed flows only'). Also moved the floating
+  GlobalFontScale FAB to bottom-LEFT (was overlapping right-aligned card action icons). Seeded a
+  persistent completed decider for testing: id dec_phase3_publish_demo (super@test.com). Builds:
+  3B/3C = 2026.06.27.004 (v3.88).
+- 2026-06-27 (iter171): Epic Phase 3A DONE + tested. Admin Central Catalog now has an L0–L3
   monetization config screen at /admin/catalog-payout (reached via the cash-outline icon in the
   /admin/catalog header). Backend: NEW core/payout_engine.py + routes/catalog_payout.py (router prefix
   /catalog/payout, mounted under /api), registered in server.py. Config is per catalog node OR global,

@@ -10564,3 +10564,49 @@ agent_communication:
       ReviewNet (qualitative, karma); FREE vs Paid toggle; wire usage -> compute_cash_payout/compute_karma into
       earnings + karma. Build on existing solutions_store.py (create_solution carries quantitative_factors +
       catalog_node_id) and review_net.py. Gating: Store publish = completed only; Decision Template = any step.
+
+#====================================================================================================
+# Iter 171 (fork) — Epic Phase 3B/3C: Option Publishing (Store/ReviewNet) + usage crediting
+#====================================================================================================
+backend:
+  - task: "routes/option_publish.py — publish completed decider options to Store/ReviewNet + credit usage (cash/karma)"
+    implemented: true
+    working: true
+    file: "backend/routes/option_publish.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          Iter171: 11/11 pytest (tests/test_iter171_option_publish.py) + re-ran tests/smoke_phase3.py.
+          GET /api/option-publish/source/{id}; POST /publish (gating non-completed=>400; all-qualitative=>400;
+          unknown solution_type=>400; happy path creates one db.solutions_store solution per option +
+          review_policies, reward_kind cash for paid). record-usage: uses 1-3 => Karma=10 (=5*(1+5/5)),
+          use#4 => Cash ₹9 (₹10 gross - 10% commission); self-use => {ok:false}; unknown sol => 404.
+          /my-published returns review_avg/review_count/usage_count. core/karma.award_karma_points OK.
+frontend:
+  - task: "PublishOptionsModal + storefront entry on completed decider cards (live earnings preview)"
+    implemented: true
+    working: true
+    file: "frontend/src/components/PublishOptionsModal.tsx"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: |
+          Iter171: modal renders with testIDs publish-decision-<id>, publish-type-*, factor-<fid>-quantitative/
+          -qualitative, publish-option-<oid>, publish-monet-free/paid, publish-submit/close. Paid shows
+          "~Rs per paid use (4 stars/1500)" + "+10 Karma per free use"; submit => "Published". Gating verified:
+          non-completed decider shows "Completed flows only". Main agent then moved the floating GlobalFontScale
+          FAB to bottom-LEFT to stop it intercepting right-aligned card action icons.
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Iter171 COMPLETE: Epic Phases 1, 2, 3A, 3B, 3C all done + tested. Phase 3B/3C adds option publishing
+      (Store quantitative=cash / ReviewNet qualitative=karma), FREE/Paid toggle, live earnings preview, and
+      usage->cash/karma crediting wired into apply-to-option. Seeded completed decider dec_phase3_publish_demo
+      for ongoing tests. Fixed floating font-scale FAB overlap (now bottom-left). Builds: 3A=2026.06.27.003
+      (v3.87), 3B/3C=2026.06.27.004 (v3.88).

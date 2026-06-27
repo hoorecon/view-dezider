@@ -68,9 +68,10 @@ export default function GlobalFontScale() {
 
 const styles = StyleSheet.create({
   wrap: {
-    right: 16,
-    // Raised above bottom action bars / tab bars / wizard Save CTAs so the
-    // floating A/A+/A++ pill never overlaps a primary button on narrow widths.
+    // Pinned bottom-LEFT: the bottom-right corner is owned by GlobalVoiceNav
+    // and card action icons (clone/publish/trash) are right-aligned, so a
+    // right-side FAB was intercepting their taps. Left side keeps it clear.
+    left: 16,
     bottom: 96,
     zIndex: 9000,
     // Keep within safe-area on iOS web (notched layouts)
