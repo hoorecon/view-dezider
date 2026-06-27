@@ -9,9 +9,9 @@ line below). The three keys must each start at column 1 — sync.sh looks
 for ^BUILD_VERSION=, ^BUILD_TIMESTAMP=, ^BUILD_TAG= anchored to a line
 start so this descriptive paragraph CANNOT trip the extractor.
 ═══════════════════════════════════════════════════════════════════════
-BUILD_VERSION=2026.06.27.004
-BUILD_TIMESTAMP=2026-06-27T17:24:03Z
-BUILD_TAG=v3.88-option-publish-store-reviewnet-monetization
+BUILD_VERSION=2026.06.27.005
+BUILD_TIMESTAMP=2026-06-27T17:59:36Z
+BUILD_TAG=v3.89-publish-modal-polish
 -->
 
 > The Decision OS — codebase powering **JELCOS AI** (live), **GeoDezider AI** (next), and **Earth Dezider Consumer** (year 3) — under master brand **Earth Dezider**.
