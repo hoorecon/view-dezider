@@ -175,6 +175,7 @@ async def record_solution_usage(
 class PublishBody(BaseModel):
     decision_id: str
     option_ids: Optional[List[str]] = None           # None => all options
+    factor_ids: Optional[List[str]] = None           # None => all factors (unlisted are skipped)
     factor_types: Dict[str, str] = {}                # factor_id -> 'quantitative'|'qualitative'
     catalog_node_id: Optional[str] = None
     life_area_id: Optional[str] = None
@@ -266,6 +267,9 @@ async def publish_options(body: PublishBody, user: dict = Depends(get_current_us
         raise HTTPException(400, "visibility must be PRIVATE or PUBLIC")
 
     factors = {f["id"]: f for f in (dec.get("factors") or []) if f.get("id")}
+    if body.factor_ids is not None:
+        keep = set(body.factor_ids)
+        factors = {fid: f for fid, f in factors.items() if fid in keep}
     quant_ids = [fid for fid in factors if body.factor_types.get(fid, "quantitative") != "qualitative"]
     qual_ids = [fid for fid in factors if body.factor_types.get(fid) == "qualitative"]
     if not quant_ids:

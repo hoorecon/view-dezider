@@ -46,6 +46,7 @@ export default function PublishOptionsModal({ visible, decisionId, decisionName,
   const [src, setSrc] = useState<Source | null>(null);
   const [factorTypes, setFactorTypes] = useState<Record<string, 'quantitative' | 'qualitative'>>({});
   const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [factorSelected, setFactorSelected] = useState<Record<string, boolean>>({});
   const [monetization, setMonetization] = useState<'free' | 'paid'>('free');
   const [solType, setSolType] = useState('PRODUCT');
   const [publishing, setPublishing] = useState(false);
@@ -60,6 +61,9 @@ export default function PublishOptionsModal({ visible, decisionId, decisionName,
       const ft: Record<string, 'quantitative' | 'qualitative'> = {};
       (data.factors || []).forEach((f: any) => (ft[f.id] = (f.default_kind === 'qualitative' ? 'qualitative' : 'quantitative')));
       setFactorTypes(ft);
+      const fsel: Record<string, boolean> = {};
+      (data.factors || []).forEach((f: any) => (fsel[f.id] = true));
+      setFactorSelected(fsel);
       const sel: Record<string, boolean> = {};
       (data.options || []).forEach((o: any) => (sel[o.id] = true));
       setSelected(sel);
@@ -90,8 +94,9 @@ export default function PublishOptionsModal({ visible, decisionId, decisionName,
     }
   }, [visible, load]);
 
-  const quantCount = Object.values(factorTypes).filter((v) => v === 'quantitative').length;
-  const qualCount = Object.values(factorTypes).filter((v) => v === 'qualitative').length;
+  const includedIds = (src?.factors || []).filter((f) => factorSelected[f.id] !== false).map((f) => f.id);
+  const quantCount = includedIds.filter((id) => (factorTypes[id] || 'quantitative') === 'quantitative').length;
+  const qualCount = includedIds.filter((id) => factorTypes[id] === 'qualitative').length;
   const selectedCount = Object.values(selected).filter(Boolean).length;
   const canPublish = src?.is_completed && quantCount >= 1 && selectedCount >= 1 && !publishing;
 
@@ -110,6 +115,7 @@ export default function PublishOptionsModal({ visible, decisionId, decisionName,
       const { data } = await api.post('/option-publish/publish', {
         decision_id: decisionId,
         option_ids,
+        factor_ids: includedIds,
         factor_types: factorTypes,
         monetization,
         solution_type: solType,
@@ -176,27 +182,39 @@ export default function PublishOptionsModal({ visible, decisionId, decisionName,
                 </View>
 
                 {/* Factor classification */}
-                <Text style={styles.sectionLabel}>Classify factors</Text>
-                <Text style={styles.hint}>Quantitative → Solution Store · Qualitative → ReviewNet (rated for Karma)</Text>
+                <Text style={styles.sectionLabel}>Categorize Factors</Text>
+                <Text style={styles.hint}>Quantitative → Solution Store · Qualitative → ReviewNet (rated for Karma Points)</Text>
                 {(src.factors || []).map((f) => {
                   const kind = factorTypes[f.id] || 'quantitative';
+                  const on = factorSelected[f.id] !== false;
                   return (
-                    <View key={f.id} style={styles.factorRow}>
-                      <Text style={styles.factorName} numberOfLines={1}>{f.name}{f.unit ? ` (${f.unit})` : ''}</Text>
-                      <View style={styles.segment}>
-                        {(['quantitative', 'qualitative'] as const).map((k) => (
-                          <TouchableOpacity
-                            key={k}
-                            style={[styles.segBtn, kind === k && styles.segBtnActive]}
-                            onPress={() => setFactorTypes({ ...factorTypes, [f.id]: k })}
-                            testID={`factor-${f.id}-${k}`}
-                          >
-                            <Text style={[styles.segText, kind === k && { color: '#FFF' }]}>
-                              {k === 'quantitative' ? 'Quant' : 'Qual'}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
+                    <View key={f.id} style={styles.factorBlock}>
+                      <TouchableOpacity
+                        style={styles.factorHead}
+                        onPress={() => setFactorSelected({ ...factorSelected, [f.id]: !on })}
+                        testID={`factor-select-${f.id}`}
+                      >
+                        <Ionicons name={on ? 'checkbox' : 'square-outline'} size={20} color={on ? COLORS.primary : COLORS.textMuted} />
+                        <Text style={[styles.factorName, !on && { color: COLORS.textMuted }]} numberOfLines={1}>
+                          {f.name}{f.unit ? ` (${f.unit})` : ''}
+                        </Text>
+                      </TouchableOpacity>
+                      {on && (
+                        <View style={styles.segmentFull}>
+                          {(['quantitative', 'qualitative'] as const).map((k) => (
+                            <TouchableOpacity
+                              key={k}
+                              style={[styles.segBtnFull, kind === k && styles.segBtnActive]}
+                              onPress={() => setFactorTypes({ ...factorTypes, [f.id]: k })}
+                              testID={`factor-${f.id}-${k}`}
+                            >
+                              <Text style={[styles.segTextFull, kind === k && { color: '#FFF' }]}>
+                                {k === 'quantitative' ? 'Quantitative' : 'Qualitative'}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      )}
                     </View>
                   );
                 })}
@@ -238,7 +256,7 @@ export default function PublishOptionsModal({ visible, decisionId, decisionName,
                         color={monetization === m ? COLORS.primary : COLORS.textMuted}
                       />
                       <Text style={[styles.monetTitle, monetization === m && { color: COLORS.primary }]}>
-                        {m === 'free' ? 'Free (Karma)' : 'Paid (Cash)'}
+                        {m === 'free' ? 'Free (Karma Points)' : 'Paid (Cash)'}
                       </Text>
                       <Text style={styles.monetDesc}>
                         {m === 'free' ? 'Earn Karma on every use' : 'Cash once free quota is used; Karma before that'}
@@ -323,11 +341,16 @@ const styles = StyleSheet.create({
   typeChipText: { fontSize: 11, fontWeight: '600', color: COLORS.textSecondary },
 
   factorRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 7, gap: 10 },
+  factorBlock: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: COLORS.divider },
+  factorHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   factorName: { flex: 1, fontSize: 14, color: COLORS.textPrimary },
   segment: { flexDirection: 'row', borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
+  segmentFull: { flexDirection: 'row', marginTop: 8, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
   segBtn: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: COLORS.surface },
+  segBtnFull: { flex: 1, paddingVertical: 8, alignItems: 'center', backgroundColor: COLORS.surface },
   segBtnActive: { backgroundColor: COLORS.primary },
   segText: { fontSize: 12, fontWeight: '600', color: COLORS.textSecondary },
+  segTextFull: { fontSize: 13, fontWeight: '700', color: COLORS.textSecondary },
 
   optRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
   optName: { flex: 1, fontSize: 14, color: COLORS.textPrimary },
