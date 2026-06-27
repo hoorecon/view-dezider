@@ -10417,3 +10417,91 @@ agent_communication:
       On result, the 'User Type & Access' card (testID assign-type-card) appears -> tap chip assign-type-beta ->
       tap assign-type-save -> expect success alert and the 'Current:' line to read beta. Confirm via
       PUT persistence / re-lookup. NOTE: route may bounce to /auth/login (rehydration) — retry/re-login.
+
+#====================================================================================================
+# Iter 169 (fork) — Epic Phase 1 & 2: Unified Status filter (band + %) + Public-template gating
+#====================================================================================================
+backend:
+  - task: "GET /api/solution-box ?status= accepts band filter (ip_low/ip_mid/ip_high) + coarse (draft/in_progress/completed); items carry progress_pct + progress_band"
+    implemented: true
+    working: "NA"
+    file: "backend/routes/solution_box.py"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Phase-1 unified status model already lives in solution_box.py. Each normalized item returns
+          status (draft|in_progress|completed), progress_pct (int), progress_band
+          (draft|ip_low<35|ip_mid 35-70|ip_high>70<100|completed). _match_status() lets ?status= accept
+          either the coarse status OR a fine band. Verify: GET /api/solution-box returns progress_pct &
+          progress_band on every item; ?status=ip_mid returns only items whose band==ip_mid; ?status=completed
+          returns only completed; ?status=in_progress returns all in-progress bands.
+  - task: "POST /api/decisions/{id}/save-as-template blocks visibility=public unless source flow is Completed"
+    implemented: true
+    working: "NA"
+    file: "backend/routes/decisions/templates.py"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Added guard: when data.visibility=='public', reuse solution_box._progress_decider(original) and
+          require status=='completed', else HTTP 400. Private/Shared unaffected. Verify with a NON-completed
+          decision -> public => 400; private/shared => 200. With a completed decision -> public => 200.
+frontend:
+  - task: "Solution Box: 2nd chip row of Status filters (Any/Draft/<35/35-70/>70/Completed) wired to API; card pill shows band + %"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/(tabs)/prr.tsx"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          New STATUS_CHIPS row under the existing type chips (testID status-chip-{all,draft,ip_low,ip_mid,
+          ip_high,completed}). Selecting a chip refetches /solution-box?status=<band>. Card status pill now reads
+          'In Progress · <pct>%' / 'Completed · 100%' / 'Draft'. Smoke-verified (main): chip row renders, a
+          decider card shows 'In Progress · 75%'. Verify filtering changes the list.
+  - task: "CloneTemplateModal: PUBLIC visibility locked unless decision.status=='completed'"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/components/CloneTemplateModal.tsx"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          In the Template tab, the 'Public' option (testID visibility-public) is greyed + lock icon + label
+          '· Completed only' when the source decision is not completed; tapping shows an Alert and does NOT
+          select it. handleSaveTemplate also blocks public for non-completed. Private/Shared selectable always.
+          Verify with a non-completed decider (clone icon on its card -> Template tab -> Public is locked).
+
+metadata: { created_by: "main_agent", version: "fork-iter-169", test_sequence: 169 }
+test_plan:
+  current_focus:
+    - "Status band filtering on /api/solution-box + UI chip row + card pill % + public-template gating (BE+FE)"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+agent_communication:
+  - agent: "main"
+    message: |
+      Iter 169. Login super@test.com / SuperPass2026!. There is at least one decider 'VC pick reorder demo'
+      (In Progress · 75% => band ip_high). Test BOTH:
+      BACKEND: (1) GET /api/solution-box -> every item has progress_pct (int 0-100) + progress_band in
+      {draft,ip_low,ip_mid,ip_high,completed} + status in {draft,in_progress,completed}. (2) ?status=ip_high
+      returns only band==ip_high; ?status=completed only completed; ?status=in_progress returns any in-progress.
+      (3) save-as-template public gating: pick a NON-completed decision id from /solution-box, POST
+      /api/decisions/{id}/save-as-template {name, template_type:'options', visibility:'public', shared_with:[]}
+      -> expect 400; same with visibility:'private' -> 200.
+      FRONTEND (web preview): /prr (Solution Box). The status chip row (testID status-chip-*) sits under the
+      type chips. Tapping 'Completed' (status-chip-completed) should filter to completed only; tapping
+      'In Progress <35%' etc. filters accordingly; 'Any Status' resets. Card pill shows band+%. Then tap the
+      clone icon (copy-outline) on a NON-completed decider card -> modal -> 'Template' tab -> 'Who can see this?'
+      -> 'Public' (testID visibility-public) must be locked (lock icon, '· Completed only'); tapping it shows an
+      alert and keeps Private. NOTE: route may bounce to /auth/login (rehydration) — retry/re-login.

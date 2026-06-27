@@ -112,6 +112,11 @@ export default function CloneTemplateModal({
   const [visibility, setVisibility] = useState('private');
   const [sharedEmails, setSharedEmails] = useState('');
 
+  // A flow counts as "Completed" only when the unified status model says so.
+  // The Solution Box / API returns `status === 'completed'` (and progress_pct === 100)
+  // for flows that have reached their final step AND filled the full assessment.
+  const isCompleted = decision?.status === 'completed';
+
   const getTimestampPrefix = () => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -127,6 +132,8 @@ export default function CloneTemplateModal({
   React.useEffect(() => {
     if (visible) {
       setTitle(getDefaultTitle());
+      // If a non-completed flow had Public left selected, fall back to Private.
+      if (!isCompleted && visibility === 'public') setVisibility('private');
     }
   }, [visible, activeTab]);
 
@@ -159,6 +166,13 @@ export default function CloneTemplateModal({
     }
     if (visibility === 'shared' && !sharedEmails.trim()) {
       Alert.alert('Error', 'Please enter at least one email to share with');
+      return;
+    }
+    if (visibility === 'public' && !isCompleted) {
+      Alert.alert(
+        'Completed flows only',
+        'Public templates can only be created from a Completed (100%) flow. Save it as Private or Shared, or finish the assessment to publish publicly.'
+      );
       return;
     }
     
@@ -314,22 +328,38 @@ export default function CloneTemplateModal({
 
                 {/* Visibility Selector */}
                 <Text style={[styles.sectionLabel, { marginTop: 16 }]}>Who can see this?</Text>
-                {VISIBILITY_OPTIONS.map((opt) => (
+                {VISIBILITY_OPTIONS.map((opt) => {
+                  const locked = opt.key === 'public' && !isCompleted;
+                  return (
                   <React.Fragment key={opt.key}>
                     <TouchableOpacity
+                      testID={`visibility-${opt.key}`}
                       style={[
                         styles.visibilityOption,
                         visibility === opt.key && styles.visibilityOptionActive,
                         visibility === opt.key && { borderColor: opt.color },
+                        locked && styles.visibilityOptionLocked,
                       ]}
-                      onPress={() => setVisibility(opt.key)}
+                      activeOpacity={locked ? 1 : 0.7}
+                      onPress={() => {
+                        if (locked) {
+                          Alert.alert(
+                            'Completed flows only',
+                            'Public templates can only be created from a Completed (100%) flow. Save as Private or Shared instead, or finish the assessment to publish publicly.'
+                          );
+                          return;
+                        }
+                        setVisibility(opt.key);
+                      }}
                     >
-                      <Ionicons name={opt.icon} size={18} color={visibility === opt.key ? opt.color : COLORS.textMuted} />
+                      <Ionicons name={locked ? 'lock-closed' : opt.icon} size={18} color={visibility === opt.key ? opt.color : COLORS.textMuted} />
                       <View style={styles.visibilityInfo}>
-                        <Text style={[styles.visibilityLabel, visibility === opt.key && { color: opt.color }]}>
-                          {opt.label}
+                        <Text style={[styles.visibilityLabel, visibility === opt.key && { color: opt.color }, locked && { color: COLORS.textMuted }]}>
+                          {opt.label}{locked ? ' · Completed only' : ''}
                         </Text>
-                        <Text style={styles.visibilityDesc}>{opt.description}</Text>
+                        <Text style={styles.visibilityDesc}>
+                          {locked ? 'Finish the flow (100%) to share publicly' : opt.description}
+                        </Text>
                       </View>
                       <View style={[
                         styles.radio,
@@ -359,7 +389,8 @@ export default function CloneTemplateModal({
                       </View>
                     )}
                   </React.Fragment>
-                ))}
+                  );
+                })}
               </View>
             )}
           </ScrollView>
@@ -586,6 +617,9 @@ const styles = StyleSheet.create({
   },
   visibilityOptionActive: {
     backgroundColor: 'rgba(142, 36, 170, 0.04)',
+  },
+  visibilityOptionLocked: {
+    opacity: 0.55,
   },
   visibilityInfo: {
     flex: 1,

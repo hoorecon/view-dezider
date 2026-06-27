@@ -18,6 +18,18 @@ async def save_as_template(decision_id: str, data: SaveTemplateRequest, user: di
     original = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
     if not original:
         raise HTTPException(status_code=404, detail="Decision not found")
+
+    # Phase-2 gating: PUBLIC templates can only be created from a Completed (100%)
+    # flow. Private / Shared remain allowed at any step. Uses the SAME unified
+    # status model as the Solution Box (/solution-box) so UI and API agree.
+    if (data.visibility or "private") == "public":
+        from routes.solution_box import _progress_decider
+        if _progress_decider(original).get("status") != "completed":
+            raise HTTPException(
+                status_code=400,
+                detail="Public templates can only be created from a Completed (100%) flow. Save it as Private or Shared instead, or finish the assessment first.",
+            )
+
     template_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
 

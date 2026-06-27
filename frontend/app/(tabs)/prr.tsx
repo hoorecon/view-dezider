@@ -41,6 +41,8 @@ const EMPTY_ARR: string[] = [];
 
 type SolutionType = 'decider' | 'pros_cons' | 'swot' | 'test123' | 'solution_finder';
 type SolutionStatus = 'draft' | 'in_progress' | 'completed';
+type ProgressBand = 'draft' | 'ip_low' | 'ip_mid' | 'ip_high' | 'completed';
+type StatusFilter = 'all' | ProgressBand;
 
 interface SolutionItem {
   id: string;
@@ -49,6 +51,8 @@ interface SolutionItem {
   context: string;
   life_area?: string | null;
   status: SolutionStatus;
+  progress_pct?: number;
+  progress_band?: ProgressBand;
   current_step?: number | null;
   created_at: string | null;
   updated_at: string | null;
@@ -85,6 +89,17 @@ const STATUS_META: Record<SolutionStatus, { label: string; color: string; bg: st
   completed:   { label: 'Completed',   color: '#047857', bg: '#D1FAE5' },
 };
 
+// Status filter chips — unified band model shared with backend /solution-box.
+// Values map 1:1 to the server `status`/`progress_band` query param.
+const STATUS_CHIPS: { key: StatusFilter; label: string; icon: string; color: string }[] = [
+  { key: 'all',       label: 'Any Status',        icon: 'ellipse-outline',          color: COLORS.primary },
+  { key: 'draft',     label: 'Draft',             icon: 'document-outline',         color: '#6B7280' },
+  { key: 'ip_low',    label: 'In Progress <35%',  icon: 'hourglass-outline',        color: '#B45309' },
+  { key: 'ip_mid',    label: '35–70%',            icon: 'time-outline',             color: '#B45309' },
+  { key: 'ip_high',   label: '>70%',              icon: 'trending-up-outline',      color: '#B45309' },
+  { key: 'completed', label: 'Completed',         icon: 'checkmark-circle-outline', color: '#047857' },
+];
+
 export default function SolutionBoxScreen() {
   const router = useRouter();
   // WOWO — gates SWOT in the "+" menu when admin wires it off.
@@ -94,6 +109,7 @@ export default function SolutionBoxScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedLifeArea, setSelectedLifeArea] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState<'all' | SolutionType>('all');
+  const [selectedStatus, setSelectedStatus] = useState<StatusFilter>('all');
   const [showFolders, setShowFolders] = useState(true);
   const [showNewMenu, setShowNewMenu] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
@@ -128,16 +144,18 @@ export default function SolutionBoxScreen() {
   const fetchItems = async (
     lifeAreaFilter?: string | null,
     typeFilter?: 'all' | SolutionType,
+    statusFilter?: StatusFilter,
   ) => {
     try {
       const params: string[] = [];
       if (lifeAreaFilter) params.push(`life_area=${encodeURIComponent(lifeAreaFilter)}`);
       if (typeFilter && typeFilter !== 'all') params.push(`type=${typeFilter}`);
+      if (statusFilter && statusFilter !== 'all') params.push(`status=${statusFilter}`);
       const qs = params.length ? `?${params.join('&')}` : '';
       const response = await api.get(`/solution-box${qs}`);
       setItems(response.data || []);
       // recompute life-area counts from the unfiltered fetch only
-      if (!lifeAreaFilter && (!typeFilter || typeFilter === 'all')) {
+      if (!lifeAreaFilter && (!typeFilter || typeFilter === 'all') && (!statusFilter || statusFilter === 'all')) {
         const counts: Record<string, number> = {};
         (response.data || []).forEach((it: SolutionItem) => {
           if (it.life_area) counts[it.life_area] = (counts[it.life_area] || 0) + 1;
@@ -163,14 +181,14 @@ export default function SolutionBoxScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      fetchItems(selectedLifeArea, selectedType);
+      fetchItems(selectedLifeArea, selectedType, selectedStatus);
       fetchUserRole();
-    }, [selectedLifeArea, selectedType])
+    }, [selectedLifeArea, selectedType, selectedStatus])
   );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchItems(selectedLifeArea, selectedType);
+    await fetchItems(selectedLifeArea, selectedType, selectedStatus);
     setRefreshing(false);
   };
 
@@ -186,6 +204,10 @@ export default function SolutionBoxScreen() {
 
   const handleTypeSelect = (typeKey: 'all' | SolutionType) => {
     setSelectedType(typeKey);
+  };
+
+  const handleStatusSelect = (statusKey: StatusFilter) => {
+    setSelectedStatus(statusKey);
   };
 
   const handleItemPress = (it: SolutionItem) => {
@@ -304,6 +326,40 @@ export default function SolutionBoxScreen() {
     </ScrollView>
   );
 
+  // ---------- Render: Status filter chip bar (band + %) ----------
+  const renderStatusChips = () => (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.statusChipBar}
+    >
+      {STATUS_CHIPS.map((chip) => {
+        const active = selectedStatus === chip.key;
+        return (
+          <TouchableOpacity
+            key={chip.key}
+            testID={`status-chip-${chip.key}`}
+            style={[
+              styles.statusChip,
+              active && { backgroundColor: chip.color, borderColor: chip.color },
+            ]}
+            onPress={() => handleStatusSelect(chip.key)}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={chip.icon as any}
+              size={12}
+              color={active ? '#FFF' : chip.color}
+            />
+            <Text style={[styles.statusChipText, active ? { color: '#FFF' } : { color: chip.color }]}>
+              {chip.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  );
+
   // ---------- Render: Single solution card ----------
   const renderItem = ({ item }: { item: SolutionItem }) => {
     const typeMeta = TYPE_META[item.type];
@@ -325,8 +381,11 @@ export default function SolutionBoxScreen() {
             <View style={[styles.statusPill, { backgroundColor: statusMeta.bg }]}>
               <View style={[styles.statusDot, { backgroundColor: statusMeta.color }]} />
               <Text style={[styles.statusPillText, { color: statusMeta.color }]}>
-                {statusMeta.label}
-                {item.type !== 'decider' && item.current_step ? ` · Step ${item.current_step}/8` : ''}
+                {item.status === 'in_progress' && item.progress_pct != null
+                  ? `In Progress · ${item.progress_pct}%`
+                  : item.status === 'completed'
+                    ? 'Completed · 100%'
+                    : statusMeta.label}
               </Text>
             </View>
           </View>
@@ -434,6 +493,7 @@ export default function SolutionBoxScreen() {
         </View>
       )}
       {renderTypeChips()}
+      {renderStatusChips()}
     </View>
   );
 
@@ -715,6 +775,17 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   chipText: { fontSize: 12, fontWeight: '600' },
+
+  // Status filter chips (second row)
+  statusChipBar: { flexDirection: 'row', gap: 8, paddingBottom: 10 },
+  statusChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 11, paddingVertical: 5,
+    borderRadius: 16, borderWidth: 1.5,
+    backgroundColor: COLORS.white,
+    borderColor: COLORS.border,
+  },
+  statusChipText: { fontSize: 11, fontWeight: '600' },
 
   // Item Cards
   itemCard: { marginBottom: 10, flexDirection: 'row', alignItems: 'flex-start' },

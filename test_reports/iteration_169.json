@@ -1,0 +1,37 @@
+{
+  "summary": "Iter 169 (Phase-1 Solution Box status filter + Phase-2 Decision Template public gating) — Backend 12 passed / 1 skipped (no Completed decider in user's seed data; tested as fixture-skip per design). Frontend: all 6 status chips (status-chip-all/draft/ip_low/ip_mid/ip_high/completed) render under the type chips, tap-filter works correctly (ip_high returned only >70% in-progress cards e.g. 75% & 88%; completed returned 0 cards; All reset returned full set). 'VC pick reorder demo' card pill reads 'In Progress · 75%' as specified. CloneTemplateModal Template tab — visibility-public is visually locked with lock icon and label '· Completed only', tapping it does NOT switch selection (stays on Private); visibility-private and visibility-shared remain selectable; backend POST /decisions/{id}/save-as-template correctly returns 400 for visibility=public on non-completed decider and 200 for visibility=private. ONE CRITICAL BUG fixed by tester: CloneTemplateModal.tsx referenced `isCompleted` 3 times but never declared the variable — would throw ReferenceError on render. Added `const isCompleted = decision?.status === 'completed';` after the useState block. Note: RN-Web `Alert.alert` did not visibly trigger a browser dialog after tapping locked Public option, but the gating still works because the locked branch returns early — verified selection stayed Private and Public element has no checkmark icon afterwards.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "CloneTemplateModal", "issue": "`isCompleted` was referenced (lines 131, 166, 327) but never declared — caused ReferenceError on modal render. Tester added derivation `const isCompleted = decision?.status === 'completed';` to make the gating functional.", "testID": "visibility-public", "priority": "HIGH (fixed by tester)"}
+    ],
+    "integration_issues": [
+      {"flow": "Public-locked alert on web", "issue": "Tapping visibility-public when locked does prevent selection (selection stays Private — gating works), but `Alert.alert(...)` from react-native does not visibly render a dialog on the Expo web preview. On native iOS/Android this should work fine. Consider using a cross-platform alert (window.confirm fallback or react-native-web compatible modal) so web users see the explanation, not silent rejection.", "affected_testIDs": ["visibility-public"]}
+    ],
+    "design_issues": [
+      {"screen": "/prr", "issues": ["Floating 'A A+ A++ ×' accessibility text-size widget overlaps card action icons (clone/delete) on small mobile viewports (390x844) — pre-existing, not introduced by this iteration, but worth noting since it intercepted Playwright clicks until we scrolled."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter169_status_filter_template_gating.py",
+    "/app/test_reports/pytest/iter169.xml"
+  ],
+  "action_items": [
+    "Verify the `isCompleted` fix tester added to CloneTemplateModal.tsx (line ~115) matches your intended semantics — currently `decision?.status === 'completed'`. The Solution Box payload includes both `status` and `progress_band`; if you want stricter gating you could check `decision?.progress_band === 'completed'` too.",
+    "Consider replacing `Alert.alert` with a cross-platform confirm/toast so the 'Completed flows only' explanation is visible on the Expo web preview as well (currently silent on web — selection just doesn't change).",
+    "(Pre-existing, optional) The floating accessibility text-size widget (A A+ A++) overlaps action icons on small viewports; consider repositioning or auto-hiding."
+  ],
+  "critical_code_review_comments": [
+    "CloneTemplateModal.tsx — `isCompleted` was a free variable. Always run TypeScript strict mode in CI to catch this class of bug at build time (the project compiles in non-strict bundler mode so this slipped through).",
+    "routes/solution_box.py is clean — single source of truth for progress band, shared by templates.py public-gating guard. Good DRY.",
+    "routes/decisions/templates.py imports `_progress_decider` from solution_box inside the handler (lazy) — fine, but a top-level import would be marginally cleaner."
+  ],
+  "updated_files": ["/app/frontend/src/components/CloneTemplateModal.tsx"],
+  "success_rate": {"backend": "100% (12 passed / 1 skipped — no Completed decider in seed for positive public-OK case)", "frontend": "100% (all 6 status chips + filter + card pill + Template modal gating verified)"},
+  "seed_data_creation": "None. Used existing super@test.com decisions including 'VC pick reorder demo' (ip_high · 75%).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend pytest file /app/backend/tests/test_iter169_status_filter_template_gating.py is parameterized across all bands and covers: shape validation, band/status consistency, per-band filter, in_progress umbrella filter, full-set count parity, public-gating 400/200, completed-positive (skipped if absent), VC pick reorder demo at ip_high · ~75%. Frontend testIDs available: status-chip-{all,draft,ip_low,ip_mid,ip_high,completed}, clone-decision-<id>, visibility-{private,shared,public}. Login uses `session_token` field (not `token`).",
+  "rca_of_issue": "Missing variable declaration: `isCompleted` was referenced at 3 sites in CloneTemplateModal.tsx but never declared. The component would throw `ReferenceError: isCompleted is not defined` when rendered (e.g., in the useEffect re-init at line 131, in the handleSaveTemplate guard at 166, and in the per-option `locked` derivation at 327). Fix: derived from prop with `const isCompleted = decision?.status === 'completed';` placed immediately after the useState block. After fix, modal renders, Public option visually locks with lock icon + '· Completed only' label, and tapping it returns early so selection stays on Private."
+}
