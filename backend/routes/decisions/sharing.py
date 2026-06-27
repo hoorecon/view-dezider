@@ -114,7 +114,9 @@ async def _load_owner_doc(module: str, module_id: str, owner_id: str):
         return None, "", meta
     coll = getattr(db, meta["coll"])
     doc = await coll.find_one({meta["key"]: module_id, "user_id": owner_id}, {"_id": 0})
-    title = (doc or {}).get(meta["title"]) or (doc or {}).get("title") or "Shared item"
+    d = doc or {}
+    title = (d.get(meta["title"]) or d.get("title") or d.get("name") or d.get("smart_goal")
+             or d.get("problem_statement") or d.get("problem") or d.get("concern") or "Shared item")
     return doc, title, meta
 
 

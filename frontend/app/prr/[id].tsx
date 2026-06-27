@@ -210,6 +210,7 @@ function PRRDecisionDetailInner() {
       {currentStep >= 2 && currentStep <= 9 && isFeatureOn('collab_share') && !contributionMode && (
         <TouchableOpacity
           style={styles.shareStepBtn}
+          testID="share-step-btn"
           onPress={() => setShareModalVisible(true)}
         >
           <Ionicons name="share-outline" size={18} color={COLORS.primary} />
