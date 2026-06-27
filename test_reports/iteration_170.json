@@ -1,0 +1,35 @@
+{
+  "summary": "Iter 170 (Phase 3A — Central Catalog L0-L3 Payout & Karma Config) — Backend: 9/9 pytest passed in /app/backend/tests/test_iter170_catalog_payout.py covering GET /catalog/payout/config shape, default fields, PUT /global persistence + validation (max>=min returns 400), PUT/DELETE /node/{id} + 404 for unknown id, GET /resolve/{node_id} with _provenance, POST /preview cash equation (100+900*(4/5)*(1500/3000)=460.0 verified) and karma equation (5*(1+5/5)=10 verified) and unknown usage_type 400. Frontend (mobile viewport 390x844, super@test.com / SuperPass2026!): /admin/catalog-payout loads with equation reference card + 'Global defaults' card fully prefilled (3/100/1000/10/5 and step values 5/8/10/15/20); editing Payment max to 800 and tapping payout-save-global triggered the 'Saved' alert and the value persisted after a full reload (verified 800 in input on rehydrated page). 'Add' (payout-add-node) opened the modal, life-area chip 'Physical, Mental & Emotional Health' selected, 'Mental Health' (cn_l1_sa_hlt_mental, L1) picked, payment_min=25 entered, payout-save-node closed modal, 'Saved · Node override saved.' alert shown, and the override row appeared in 'Per-node overrides' with L1 level badge + correct payout summary (₹25–800). Pencil (payout-edit-cn_l1_sa_hlt_mental) opened 'Edit override' modal with payment_min prefilled to 25. Trash (payout-delete-cn_l1_sa_hlt_mental) showed in-app 'Remove override?' confirm modal — tapping 'Remove' deleted the row (API count went 1→0, 'No overrides yet' empty state rendered). Tester ADDED testIDs (payout-edit-${node_id}, payout-delete-${node_id}) to the pencil/trash TouchableOpacity buttons since they previously had no test hooks. No critical bugs found in this iteration.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter170_catalog_payout.py",
+    "/app/test_reports/pytest/iter170.xml"
+  ],
+  "action_items": [
+    "(Already applied by tester) Added testIDs payout-edit-{node_id} and payout-delete-{node_id} to the pencil/trash TouchableOpacity buttons in /app/frontend/app/admin/catalog-payout.tsx so the row-level actions are testable from Playwright/Detox.",
+    "(Nice-to-have, non-blocking) The 'Karma · Store free use' karma equation tested in /preview returns karma=10 with current global karma_reviewnet=5 + star=5. Confirm the canonical example '40 case' from the brief uses karma_per_use=20 (then 20*(1+5/5)=40) — equation logic is correct, just depending on configured values.",
+    "(Nice-to-have) Pencil/trash icons sit close together in the node row; on very small viewports they may need a 4-8px gap to comfortably hit a 44x44 touch target. Currently each iconBtn is 36x36 — slightly below iOS HIG's 44pt minimum. Consider bumping to 44x44 or adding hitSlop."
+  ],
+  "critical_code_review_comments": [
+    "routes/catalog_payout.py — payment_min/max validation in _clean() correctly raises 400 when max<min and is reused for both global and node upserts. Good DRY.",
+    "core/payout_engine.py provides equations centrally; the FE only renders them as read-only reference text, so the FE/BE will never drift. Good.",
+    "Inheritance chain (L3→L2→L1→L0→global→default) is exposed via /resolve/{node_id} with _provenance — enables future UI to show 'inherited from' indicators. Currently the FE list shows only direct overrides which is fine for v1.",
+    "catalog-payout.tsx — single screen, 537 lines (within the 700-line guidance). Uses StyleSheet.create; all interactive elements have testIDs after this iteration's fix. Inputs sanitize via t.replace(/[^0-9.]/g, '')."
+  ],
+  "updated_files": [
+    "/app/frontend/app/admin/catalog-payout.tsx (added testIDs payout-edit-${node_id} & payout-delete-${node_id} on the pencil/trash icon buttons)",
+    "/app/backend/tests/test_iter170_catalog_payout.py (new — 9 tests, all passing)"
+  ],
+  "success_rate": {"backend": "100% (9/9 passed)", "frontend": "100% (all listed flows: load+prefill, edit-save-persist global, add-node modal, save-override, edit prefill, delete confirm+row removal)"},
+  "seed_data_creation": "Global config was set to canonical values (min=100, max=1000, karma_solution_store=10, karma_reviewnet=5, free_usage_count=3, steps 5/8/10/15/20) so equation tests are deterministic. After UI test of Payment max=800, the global was overwritten to 800 (visible in final screenshot). One node override on cn_l1_sa_hlt_mental was created and then deleted during testing — DB is clean.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend tests live at /app/backend/tests/test_iter170_catalog_payout.py (run: pytest backend/tests/test_iter170_catalog_payout.py -v). Login uses field 'session_token'. Frontend testIDs on /admin/catalog-payout: payout-input-{free_usage_count|payment_min|payment_max|karma_solution_store|karma_reviewnet}, payout-step-{factors|classification|prioritization|options|assessment}, payout-save-global, payout-add-node, payout-save-node, payout-edit-{node_id}, payout-delete-{node_id}. The delete confirm uses the in-app showAlert listener (custom modal — NOT window.confirm); tap text 'Remove' to confirm. Note: after a hard supervisorctl restart expo, the first bundle takes ~5-8s; subsequent navigations are fast. Web preview redirects to /auth/login on token-less hard goto; the tested workaround is to POST /api/auth/login and seed localStorage 'session_token' before goto.",
+  "rca_of_issue": "No bugs to RCA — feature works as specified. The one tester improvement was adding testIDs to row-level pencil/trash buttons (no functional behavior changed)."
+}

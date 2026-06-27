@@ -486,6 +486,9 @@ export default function AdminCatalogExplorerScreen() {
           <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Central Catalog</Text>
+        <TouchableOpacity onPress={() => router.push('/admin/catalog-payout')} style={styles.iconBtn}>
+          <Ionicons name="cash-outline" size={20} color={COLORS.primary} />
+        </TouchableOpacity>
         <TouchableOpacity onPress={() => { setCache({}); setExpanded({}); loadInto(null); }} style={styles.iconBtn}>
           <Ionicons name="refresh" size={20} color={COLORS.textPrimary} />
         </TouchableOpacity>
