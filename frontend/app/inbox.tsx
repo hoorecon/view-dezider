@@ -37,6 +37,9 @@ interface SharedStep {
   };
   status: string;
   created_at: string;
+  module?: string;
+  step_access?: string;
+  allow_reshare?: boolean;
 }
 
 const STEP_NAMES: Record<number, string> = {
@@ -72,6 +75,46 @@ export default function InboxScreen() {
   useFocusEffect(useCallback(() => { fetchShares(); }, []));
 
   const onRefresh = async () => { setRefreshing(true); await fetchShares(); setRefreshing(false); };
+
+  // Open the REAL module flow in Contribution Mode (scoped to the shared step).
+  // decision → load owner's doc read-only; pros_cons/solution_finder → edit a sandbox clone.
+  const goContribute = async (item: SharedStep) => {
+    const access = item.step_access || 'hidden';
+    const mod = item.module || 'decision';
+    const qs = `contribShareId=${item.id}&contribStep=${item.step_number}&access=${access}`;
+    if (mod === 'decision') {
+      router.push(`/prr/${item.decision_id}?${qs}` as any);
+      return;
+    }
+    try {
+      const { data } = await api.post(`/shared-steps/${item.id}/open`, {});
+      const targetId = data.target_id;
+      if (mod === 'pros_cons') {
+        router.push(`/tools/pros-cons-wizard?id=${targetId}&${qs}` as any);
+      } else if (mod === 'solution_finder') {
+        router.push(`/tools/solution-finder?id=${targetId}&${qs}` as any);
+      }
+    } catch (e: any) {
+      showAlert('Error', e.response?.data?.detail || 'Could not open the flow for contribution');
+    }
+  };
+
+  const withdrawContribution = (item: SharedStep) => {
+    Alert.alert('Withdraw contribution?', 'Your input for this step will be removed. You can contribute again later.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Withdraw', style: 'destructive', onPress: async () => {
+          try {
+            await api.delete(`/shared-steps/${item.id}/contribution`);
+            showAlert('Withdrawn', 'Your contribution was removed.');
+            fetchShares();
+          } catch (e: any) {
+            showAlert('Error', e.response?.data?.detail || 'Failed to withdraw');
+          }
+        },
+      },
+    ]);
+  };
 
   const getMyStatus = (share: SharedStep) => {
     const me = share.recipients?.find(r => r.status === 'contributed');
@@ -200,10 +243,22 @@ export default function InboxScreen() {
         <View style={styles.shareFooter}>
           <Text style={styles.shareTime}>{formatTime(item.created_at)}</Text>
           {!isContributed && item.status === 'active' && (
-            <TouchableOpacity style={styles.contributeBtn} onPress={() => openContribute(item)}>
-              <Ionicons name="create-outline" size={16} color="#FFF" />
-              <Text style={styles.contributeBtnText}>Contribute</Text>
+            <TouchableOpacity style={styles.contributeBtn} onPress={() => goContribute(item)} testID={`contribute-${item.id}`}>
+              <Ionicons name="open-outline" size={16} color="#FFF" />
+              <Text style={styles.contributeBtnText}>Open & contribute</Text>
             </TouchableOpacity>
+          )}
+          {isContributed && item.status === 'active' && (
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity style={[styles.contributeBtn, { backgroundColor: '#6366F1' }]} onPress={() => goContribute(item)}>
+                <Ionicons name="create-outline" size={15} color="#FFF" />
+                <Text style={styles.contributeBtnText}>Edit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.contributeBtn, { backgroundColor: '#FEE2E2' }]} onPress={() => withdrawContribution(item)}>
+                <Ionicons name="trash-outline" size={15} color="#DC2626" />
+                <Text style={[styles.contributeBtnText, { color: '#DC2626' }]}>Withdraw</Text>
+              </TouchableOpacity>
+            </View>
           )}
           {item.status === 'merged' && (
             <View style={styles.mergedBadge}>

@@ -120,7 +120,7 @@ async def create_solution_finder(request: Request, user: dict = Depends(get_curr
 
 @router.get("/solution-finders")
 async def list_solution_finders(user: dict = Depends(get_current_user)):
-    query = {"user_id": user["user_id"]}
+    query = {"user_id": user["user_id"], "contribution_clone": {"$exists": False}}
     entries = await db.solution_finders.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
     return entries
 

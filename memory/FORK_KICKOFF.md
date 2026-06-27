@@ -5,6 +5,28 @@
 > file SHORT and CURRENT — it is the first thing to read after PRD.md.
 
 ## 0) Last user intent (update at end of every session)
+- 2026-06-27 (latest, fork — REAL-FLOW step contribution for ALL 3 modules, built on share-step):
+  User clarified "Contribute" must open the SAME module flow scoped to a step (Google-Docs-style), NOT a
+  text box / PDF. RETIRED the collaboration-session text box. Built on the existing share-step system.
+  • Backend (routes/decisions/sharing.py): added module + step_access to shares; ShareStepRequest gains
+    step_access. New endpoints: GET /shared-steps/{id}/decision (recipient-read for decision),
+    DELETE /shared-steps/{id}/contribution (withdraw), POST /shared-steps/create (module-aware: decision|
+    pros_cons|swot|solution_finder), POST /shared-steps/{id}/open (decision→read owner doc; others→create
+    per-recipient sandbox CLONE in same collection, user_id=contributor, tagged contribution_clone).
+    contribute is module-aware (clone snapshot for non-decision). Clones filtered out of pros_cons list,
+    solution-finders list (tools.py), and solution_box aggregator.
+  • Frontend: MyDezider (prr/[id].tsx + DecisionContext) = Contribution Mode (loads owner decision via
+    share, LOCAL-only edits, jumps to step, banner, only-target-step, "Submit my contribution"→/contribute).
+    Pros&Cons (pros-cons-wizard) + SolutionFinder (solution-finder) = open CLONE via /open, edit natively,
+    banner+inline Submit, step scoping. inbox.tsx "Open & contribute" (was simplified modal) now navigates
+    into the real flow (+Edit/Withdraw). ShareStepModal is module-aware (posts /shared-steps/create for
+    pros_cons/swot/solution_finder) + a Hidden/Read-only "other steps" selector.
+  • Verified: BE E2E tests/verify_step_contribution.py (decision share→read→contribute→merge→withdraw) &
+    verify_pc_contribution.py (P&C clone→edit→submit→owner snapshot, no list clutter) PASS; FE screenshot of
+    MyDezider Contribution Mode at Step 7 with Submit bar. Merge: decision step-7 auto-weighted (exists);
+    P&C/SF = owner reviews per-contributor snapshots (manual/AI merge). Build 2026.06.27.012.
+  • PENDING: testing_agent validation of P&C + SF FE contribution screens; owner per-contributor review UI.
+
 - 2026-06-27 (latest, fork — Collaborate ASYNC Contribute+Merge wired to frontend + both flows proven):
   User reported async collaboration wasn't integrated on the frontend. CONFIRMED GAP: backend had
   /contribute and /merge endpoints but the UI (app/tools/collaborate.tsx detail modal) only had Verify +

@@ -95,6 +95,24 @@ export default function SimpleSolutionFinder() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const editId = params.id as string | undefined;
+  // Contribution Mode: contributor edits their sandbox clone, scoped to one step.
+  const contribShareId = params.contribShareId as string | undefined;
+  const contributionMode = !!contribShareId;
+  const contribStepNum = parseInt(String(params.contribStep || '0'), 10) || 0;
+  const stepAccess = String(params.access || 'hidden');
+  const [submittingContribution, setSubmittingContribution] = useState(false);
+  const submitContribution = async () => {
+    setSubmittingContribution(true);
+    try {
+      await api.post(`/shared-steps/${contribShareId}/contribute`, { note: '' });
+      showAlert('Contribution submitted ✓', 'Your input has been sent to the owner to review and merge.');
+      router.replace('/inbox');
+    } catch (e: any) {
+      showAlert('Error', e?.response?.data?.detail || 'Could not submit your contribution');
+    } finally {
+      setSubmittingContribution(false);
+    }
+  };
   // Single source of truth for the L0 life-area list — flows from the
   // Admin Central Catalog so order/names match every other module.
   const { items: lifeAreas } = useLifeAreas();
@@ -117,6 +135,7 @@ export default function SimpleSolutionFinder() {
   // Honor `?step=<N>` deep-link so the EG chain-back lands the user on
   // the correct step (Step 3 / RCA = index 2).
   const initialStep = (() => {
+    if (contributionMode) return Math.min(5, Math.max(0, contribStepNum));
     const s = parseInt(String(params.step || ''), 10);
     return Number.isFinite(s) && s >= 0 && s <= 5 ? s : 0;
   })();
@@ -1259,7 +1278,7 @@ export default function SimpleSolutionFinder() {
           />
         </View>
       ) : null}
-      {editId && (
+      {editId && !contributionMode && (
         <CollabBar
           module="solution-finder"
           decisionId={editId}
@@ -1384,6 +1403,24 @@ export default function SimpleSolutionFinder() {
         </View>
         {saving && <ActivityIndicator size="small" color="#FFF" />}
       </LinearGradient>
+      {contributionMode && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#EEF2FF' }}>
+          <Ionicons name="people-circle-outline" size={18} color="#4338CA" />
+          <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '700', color: '#3730A3' }}>
+            Contribution Mode — add your input to Step {contribStepNum + 1}.
+          </Text>
+          <TouchableOpacity
+            onPress={submitContribution}
+            disabled={submittingContribution}
+            testID="sf-submit-contribution"
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#7C3AED', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, opacity: submittingContribution ? 0.7 : 1 }}
+          >
+            {submittingContribution ? <ActivityIndicator color="#fff" size="small" /> : (
+              <><Ionicons name="send" size={14} color="#fff" /><Text style={{ color: '#fff', fontWeight: '800', fontSize: 12.5 }}>Submit</Text></>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
       {renderStepIndicator()}
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         {step === 0 && renderStep0()}

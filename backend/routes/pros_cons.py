@@ -140,7 +140,7 @@ async def create_pros_cons(data: ProsConsCreate, user: dict = Depends(get_curren
 async def list_pros_cons(user: dict = Depends(get_current_user)):
     """List all Pros & Cons analyses for the user"""
     docs = await db.pros_cons.find(
-        {"user_id": user["user_id"]}, {"_id": 0}
+        {"user_id": user["user_id"], "contribution_clone": {"$exists": False}}, {"_id": 0}
     ).sort("created_at", -1).to_list(100)
     return docs
 

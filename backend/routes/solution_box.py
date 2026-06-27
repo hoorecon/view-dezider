@@ -359,7 +359,7 @@ async def list_solution_box(
     # Legacy "pros_cons_8step" filter still accepted so older URLs / clients
     # continue to work; all items now report type="pros_cons".
     if type_filter in (None, "pros_cons", "pros_cons_8step"):
-        cursor = db.pros_cons.find({"user_id": uid}, {"_id": 0}).sort("updated_at", -1)
+        cursor = db.pros_cons.find({"user_id": uid, "contribution_clone": {"$exists": False}}, {"_id": 0}).sort("updated_at", -1)
         async for doc in cursor:
             item = _norm_pros_cons(doc)
             item.update(_intake_fields(doc))
@@ -395,7 +395,7 @@ async def list_solution_box(
 
     # --- Solution Finder (5-step worksheet) ---
     if type_filter in (None, "solution_finder"):
-        cursor = db.solution_finders.find({"user_id": uid}, {"_id": 0}).sort("updated_at", -1)
+        cursor = db.solution_finders.find({"user_id": uid, "contribution_clone": {"$exists": False}}, {"_id": 0}).sort("updated_at", -1)
         async for doc in cursor:
             item = _norm_solution_finder(doc)
             if life_area_filter and item["life_area"] != life_area_filter:
@@ -429,13 +429,13 @@ async def solution_box_counts(user: dict = Depends(get_current_user)):
 
     async for doc in db.decisions.find({"user_id": uid}, {"_id": 0}):
         await _bump(_norm_decider(doc))
-    async for doc in db.pros_cons.find({"user_id": uid}, {"_id": 0}):
+    async for doc in db.pros_cons.find({"user_id": uid, "contribution_clone": {"$exists": False}}, {"_id": 0}):
         await _bump(_norm_pros_cons(doc))
     async for doc in db.swot.find({"user_id": uid}, {"_id": 0}):
         await _bump(_norm_swot(doc))
     async for doc in db.test123_sessions.find({"user_id": uid}, {"_id": 0}):
         await _bump(_norm_test123(doc))
-    async for doc in db.solution_finders.find({"user_id": uid}, {"_id": 0}):
+    async for doc in db.solution_finders.find({"user_id": uid, "contribution_clone": {"$exists": False}}, {"_id": 0}):
         await _bump(_norm_solution_finder(doc))
 
     total = sum(by_type.values())

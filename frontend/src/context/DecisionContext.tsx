@@ -96,6 +96,14 @@ interface DecisionContextType {
   // Router
   router: ReturnType<typeof useRouter>;
   id: string;
+
+  // Contribution Mode (opened from a shared step)
+  contributionMode: boolean;
+  contribShareId?: string;
+  contribStep: number;
+  stepAccess: string;
+  submittingContribution: boolean;
+  submitContribution: (note?: string) => Promise<boolean>;
 }
 
 const DecisionContext = createContext<DecisionContextType | null>(null);
@@ -107,8 +115,18 @@ export const useDecision = (): DecisionContextType => {
 };
 
 export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const params = useLocalSearchParams<{ id?: string | string[]; step?: string | string[] }>();
+  const params = useLocalSearchParams<{ id?: string | string[]; step?: string | string[]; contribShareId?: string | string[]; contribStep?: string | string[]; access?: string | string[] }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
+  // ── Contribution Mode ─────────────────────────────────────────────────
+  // When opened from a shared step (inbox → "Contribute"), the contributor
+  // works inside the REAL flow but scoped to one step. We load the owner's
+  // decision via the share (recipient-accessible), keep all edits LOCAL (no
+  // PUT to the owner's doc), and on submit POST to /shared-steps/{id}/contribute.
+  const contribShareId = Array.isArray(params.contribShareId) ? params.contribShareId[0] : params.contribShareId;
+  const contributionMode = !!contribShareId;
+  const contribStep = parseInt(String((Array.isArray(params.contribStep) ? params.contribStep[0] : params.contribStep) || '0'), 10) || 0;
+  const stepAccess = String((Array.isArray(params.access) ? params.access[0] : params.access) || 'hidden');
+  const [submittingContribution, setSubmittingContribution] = useState(false);
   // Single-shot guard so the ?step=N override is consumed only on the
   // first fetchDecision() call (not on subsequent refreshes triggered by
   // save / reload). Once true, the smart auto-jump takes over.
@@ -199,6 +217,17 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const fetchDecision = async () => {
     try {
+      // Contribution Mode: load the owner's decision via the share, land on the
+      // requested step, and skip embed/auto-jump. All edits stay local.
+      if (contributionMode) {
+        const { data } = await api.get(`/shared-steps/${contribShareId}/decision`);
+        setDecision(data.decision);
+        autoJumpDoneRef.current = true;
+        overrideConsumedRef.current = true;
+        if (contribStep >= 2 && contribStep <= 10) setCurrentStep(contribStep);
+        setLoading(false);
+        return;
+      }
       const response = await api.get(`/decisions/${id}`);
       setDecision(response.data);
 
@@ -280,6 +309,11 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const saveDecision = async (updates: Partial<Decision>) => {
+    // Contribution Mode: never write to the owner's decision — keep edits local.
+    if (contributionMode) {
+      setDecision(prev => (prev ? { ...prev, ...updates } : prev));
+      return;
+    }
     setSaving(true);
     try {
       await api.put(`/decisions/${id}`, updates);
@@ -288,6 +322,36 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       Alert.alert('Error', 'Failed to save changes');
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Serialize the contributor's edited step into a contribution and submit it
+  // to the shared step. Sends factors/options (for list steps) AND an
+  // assessments map keyed "<optionId>_<factorId>" (for the rating step / merge).
+  const submitContribution = async (note?: string): Promise<boolean> => {
+    if (!decision) return false;
+    setSubmittingContribution(true);
+    try {
+      const assessments: Record<string, number> = {};
+      (decision.options || []).forEach((o) => {
+        (o.assessments || []).forEach((a) => {
+          if (a.factor_id != null && a.percentage != null) {
+            assessments[`${o.id}_${a.factor_id}`] = Math.round(a.percentage as number);
+          }
+        });
+      });
+      await api.post(`/shared-steps/${contribShareId}/contribute`, {
+        factors: decision.factors || [],
+        options: (decision.options || []).map((o) => ({ id: o.id, name: o.name, assessments: o.assessments || [] })),
+        assessments,
+        note: note || '',
+      });
+      return true;
+    } catch (e: any) {
+      showAlert('Error', e?.response?.data?.detail || 'Could not submit your contribution');
+      return false;
+    } finally {
+      setSubmittingContribution(false);
     }
   };
 
@@ -797,6 +861,12 @@ export const DecisionProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     handleUniversalVoiceCommand,
     router,
     id: id as string,
+    contributionMode,
+    contribShareId: contribShareId as string | undefined,
+    contribStep,
+    stepAccess,
+    submittingContribution,
+    submitContribution,
   };
 
   return (

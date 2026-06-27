@@ -347,6 +347,13 @@ class ShareStepRequest(BaseModel):
     # Owner opt-in: allow recipients to seek further help from THEIR own
     # contacts/experts. Sub-contributions stay transparently attributed.
     allow_reshare: bool = False
+    # How the contributor sees steps OTHER than the requested one when they open
+    # the real flow in Contribution Mode: "hidden" (only the target step) or
+    # "readonly" (can view other steps for reference, but only the target step
+    # is submitted).
+    step_access: str = "hidden"
+    # Which module the shared step belongs to: decision | pros_cons | solution_finder
+    module: str = "decision"
 
 
 class ReshareStepRequest(BaseModel):

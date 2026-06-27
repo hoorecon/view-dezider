@@ -47,8 +47,26 @@ import {
 export default function ProsConsWizard() {
   const router = useRouter();
   const refreshAiWallet = useAiWalletStore((s) => s.refresh);
-  const { id, module = 'pros-cons' } = useLocalSearchParams<{ id: string; module?: string }>();
+  const { id, module = 'pros-cons', contribShareId, contribStep, access } = useLocalSearchParams<{ id: string; module?: string; contribShareId?: string; contribStep?: string; access?: string }>();
   const base = module === 'swot' ? '/swot' : '/pros-cons';
+  // Contribution Mode: contributor edits their sandbox clone, scoped to one step.
+  const contributionMode = !!contribShareId;
+  const contribStepNum = parseInt(String(contribStep || '0'), 10) || 0;
+  const stepAccess = String(access || 'hidden');
+  const [submittingContribution, setSubmittingContribution] = useState(false);
+
+  const submitContribution = async () => {
+    setSubmittingContribution(true);
+    try {
+      await api.post(`/shared-steps/${contribShareId}/contribute`, { note: '' });
+      showAlert('Contribution submitted ✓', 'Your input has been sent to the owner to review and merge.');
+      router.replace('/inbox');
+    } catch (e: any) {
+      showAlert('Error', e?.response?.data?.detail || 'Could not submit your contribution');
+    } finally {
+      setSubmittingContribution(false);
+    }
+  };
 
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [loading, setLoading] = useState(true);
@@ -138,6 +156,15 @@ export default function ProsConsWizard() {
   }, [id, base, module, router]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Contribution Mode: land on the requested step once the analysis is loaded.
+  const contribJumpedRef = useRef(false);
+  useEffect(() => {
+    if (contributionMode && analysis && contribStepNum && !contribJumpedRef.current) {
+      contribJumpedRef.current = true;
+      setStep(contribStepNum);
+    }
+  }, [contributionMode, analysis, contribStepNum]);
 
   const persistStep = async (n: number) => {
     setStep(n);
@@ -783,12 +810,31 @@ export default function ProsConsWizard() {
         </TouchableOpacity>
       </LinearGradient>
 
+      {contributionMode && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#EEF2FF' }}>
+          <Ionicons name="people-circle-outline" size={18} color="#4338CA" />
+          <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '700', color: '#3730A3' }}>
+            Contribution Mode — add your input to Step {contribStepNum}. {stepAccess === 'readonly' ? 'Other steps are reference-only.' : 'Only this step is shown.'}
+          </Text>
+          <TouchableOpacity
+            onPress={submitContribution}
+            disabled={submittingContribution}
+            testID="pc-submit-contribution"
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.primary, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, opacity: submittingContribution ? 0.7 : 1 }}
+          >
+            {submittingContribution ? <ActivityIndicator color="#fff" size="small" /> : (
+              <><Ionicons name="send" size={14} color="#fff" /><Text style={{ color: '#fff', fontWeight: '800', fontSize: 12.5 }}>Submit</Text></>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Step strip */}
       <View style={styles.stepStrip}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 8 }}>
-          {STEPS.map(s => (
+          {(contributionMode && stepAccess === 'hidden' ? STEPS.filter(s => s.n === contribStepNum) : STEPS).map(s => (
             <TouchableOpacity key={s.n} style={[styles.stepChip, step === s.n && styles.stepChipActive]}
-              onPress={() => persistStep(s.n)}>
+              onPress={() => { if (!(contributionMode && stepAccess === 'hidden')) persistStep(s.n); }}>
               <Text style={[styles.stepChipNum, step === s.n && { color: '#fff' }]}>{s.n}</Text>
               <Text style={[styles.stepChipLabel, step === s.n && { color: '#fff' }]}>{s.label}</Text>
             </TouchableOpacity>
@@ -800,7 +846,7 @@ export default function ProsConsWizard() {
         <ScrollView contentContainerStyle={styles.body}>
 
           {/* Collab affordance — share this step or schedule discussion. */}
-          {id && analysis && (
+          {!contributionMode && id && analysis && (
             <CollabBar
               module="pros-cons"
               decisionId={id}

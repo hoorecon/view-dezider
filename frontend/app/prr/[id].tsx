@@ -21,6 +21,7 @@ import LinkedSourcePill from '../../src/components/decisions/LinkedSourcePill';
 import ModuleStoreActions from '../../src/components/ModuleStoreActions';
 import { deadlineCountdown, formatHorizon } from '../../src/utils/dateLocalize';
 import { DecisionProvider, useDecision } from '../../src/context/DecisionContext';
+import { showAlert } from '../../src/utils/alert';
 import { styles } from '../../src/styles/decisionStyles';
 import { calculateRatingsFromOrder } from '../../src/utils/decisionHelpers';
 import { safeBack, goHome } from '../../src/utils/navigation';
@@ -52,11 +53,24 @@ function PRRDecisionDetailInner() {
     fetchDecision,
     saveDecision,
     id,
+    contributionMode,
+    contribStep,
+    stepAccess,
+    submittingContribution,
+    submitContribution,
   } = useDecision();
 
   const [showCLD, setShowCLD] = useState(false);
   const [showCallModal, setShowCallModal] = useState(false);
   const { isOn: isFeatureOn } = useFeatureGate();
+
+  const handleSubmitContribution = async () => {
+    const ok = await submitContribution();
+    if (ok) {
+      showAlert('Contribution submitted ✓', 'Your input has been sent to the owner to review and merge.');
+      router.replace('/inbox');
+    }
+  };
 
   // Inline title editor — pencil icon toggles a TextInput in place of the
   // static title. Used heavily by the "Fresh Decision" path where the title
@@ -157,7 +171,7 @@ function PRRDecisionDetailInner() {
   const renderStepIndicator = () => (
     <View style={styles.stepIndicator}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        {[2, 3, 4, 5, 6, 7, 8, 9, 10].map((step) => (
+        {(contributionMode && stepAccess === 'hidden' ? [contribStep] : [2, 3, 4, 5, 6, 7, 8, 9, 10]).map((step) => (
           <TouchableOpacity
             key={step}
             testID={`step-dot-${step}`}
@@ -193,7 +207,7 @@ function PRRDecisionDetailInner() {
         <Ionicons name="videocam-outline" size={16} color="#16A34A" />
       </TouchableOpacity>
       )}
-      {currentStep >= 2 && currentStep <= 9 && isFeatureOn('collab_share') && (
+      {currentStep >= 2 && currentStep <= 9 && isFeatureOn('collab_share') && !contributionMode && (
         <TouchableOpacity
           style={styles.shareStepBtn}
           onPress={() => setShareModalVisible(true)}
@@ -330,6 +344,14 @@ function PRRDecisionDetailInner() {
             </View>
           );
         })()}
+        {contributionMode && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#EEF2FF', borderBottomWidth: 1, borderBottomColor: '#C7D2FE' }}>
+            <Ionicons name="people-circle-outline" size={18} color="#4338CA" />
+            <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '700', color: '#3730A3' }}>
+              Contribution Mode — add your input to Step {contribStep}. {stepAccess === 'readonly' ? 'Other steps are reference-only.' : 'Only this step is shown.'}
+            </Text>
+          </View>
+        )}
         {renderStepIndicator()}
         <ScrollView
           ref={scrollRef}
@@ -337,15 +359,31 @@ function PRRDecisionDetailInner() {
           showsVerticalScrollIndicator={false}
         >
           {renderCurrentStep()}
-          <ModuleStoreActions
-            module="dezider"
-            decisionId={id || ''}
-            lifeAreaId={(decision as any)?.life_area_id || decision?.life_area || null}
-            subAreaId={(decision as any)?.sub_area_id || null}
-          />
+          {!contributionMode && (
+            <ModuleStoreActions
+              module="dezider"
+              decisionId={id || ''}
+              lifeAreaId={(decision as any)?.life_area_id || decision?.life_area || null}
+              subAreaId={(decision as any)?.sub_area_id || null}
+            />
+          )}
         </ScrollView>
+        {contributionMode && (
+          <View style={{ padding: 12, borderTopWidth: 1, borderTopColor: COLORS.divider, backgroundColor: '#FFF' }}>
+            <TouchableOpacity
+              testID="submit-contribution"
+              onPress={handleSubmitContribution}
+              disabled={submittingContribution}
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, paddingVertical: 14, borderRadius: 12, opacity: submittingContribution ? 0.7 : 1 }}
+            >
+              {submittingContribution ? <ActivityIndicator color="#FFF" /> : (
+                <><Ionicons name="send" size={18} color="#FFF" /><Text style={{ color: '#FFF', fontWeight: '800', fontSize: 15 }}>Submit my contribution</Text></>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
         {/* Universal voice input panel */}
-        {currentStep !== 5 && (
+        {currentStep !== 5 && !contributionMode && (
           <VoiceStepInput
             step={currentStep}
             factors={decision.factors || []}

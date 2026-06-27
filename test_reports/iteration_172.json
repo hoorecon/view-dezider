@@ -1,0 +1,57 @@
+{
+  "summary": "Iter172 — Google-Docs-style step-share contribution across all three modules (decision, pros_cons, solution_finder). Backend: 3/3 new pytest tests in tests/test_iter172_step_contribution.py PASS plus the two existing verify scripts (verify_step_contribution.py + verify_pc_contribution.py) PASS. Decision share returns target_id==owner decision id (no clone) and exposes the owner doc via GET /api/shared-steps/{id}/decision with step_access=readonly|hidden propagated. Pros&Cons and Solution Finder shares create a per-recipient sandbox CLONE on /open (different target_id, contributor can load via the normal /api/pros-cons/{id} or /api/solution-finders/{id}) — clone is correctly tagged contribution_clone and HIDDEN from contributor's lists (/api/pros-cons, /api/solution-finders, and the /api/solution-box aggregator). Contribute saves a snapshot for clone modules and assessments for decision; withdraw via DELETE works. Frontend (mobile 390x844): logged in as admin → /inbox shows three Pending shares with testID contribute-<share_id>; tapping the decision share opens /prr/<id>?contribShareId=...&contribStep=7&access=hidden with the purple 'Contribution Mode — add your input to Step 7. Only this step is shown.' banner and a Submit my contribution button (testID submit-contribution); tapping the P&C share opens /tools/pros-cons-wizard?id=<clone>&contribShareId=...&contribStep=3 with the banner and testID pc-submit-contribution; tapping the SF share opens /tools/solution-finder?id=<clone>&contribShareId=...&contribStep=2 with the banner and testID sf-submit-contribution. After contributing the decision via API and reloading /inbox, the card flips to a green 'Contributed' badge with Edit + Withdraw buttons. Owner share UI: opening /prr/dec_stepshare_demo as super and tapping the share icon in the step header opens the Share Step modal which contains the 'Contributor's view of other steps' row with testIDs step-access-hidden and step-access-readonly, both selectable; visual state (border colour + tint) toggles correctly between them. Minor frontend observations only — no blockers.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "DELETE /api/shared-steps/{id}", "issue": "405 Method Not Allowed — no delete endpoint for a share. Test cleanup ignores it but consider exposing this for the owner to revoke a share."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Inbox card title (SolutionFinder share)",
+        "issue": "When the share is a solution_finder, the inbox renders the title as 'Shared item' instead of the SF's actual title ('TEST_iter172 SF FE' in this test). P&C and Decision titles render correctly. Likely inbox.tsx renders share.decision_title without a fallback to the SF doc title. Reference: /app/frontend/app/inbox.tsx item.decision_title rendering + /app/backend/routes/decisions/sharing.py _load_owner_doc may not populate decision_title for SF.",
+        "testID": "contribute-<sf_share_id>",
+        "priority": "LOW"
+      },
+      {
+        "component": "Step share button (shareStepBtn) in /prr/[id]",
+        "issue": "No testID on the share icon in the step header making it hard to target deterministically. Currently relies on coordinate or font-glyph lookups. Reference: /app/frontend/app/prr/[id].tsx:211-217.",
+        "testID": "(missing) share-step-btn",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props", "issue": "RN-Web warning 'shadow*' style props are deprecated; use 'boxShadow'. Recurs across components (bundler logs). Not iter172-specific but still present."},
+      {"component": "props.pointerEvents", "issue": "RN-Web warning props.pointerEvents is deprecated; use style.pointerEvents."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter172_step_contribution.py",
+    "/app/test_reports/pytest/iter172.xml",
+    "/app/backend/tests/verify_step_contribution.py",
+    "/app/backend/tests/verify_pc_contribution.py"
+  ],
+  "action_items": [
+    "(LOW) Inbox: when the share's module is 'solution_finder' (and even pros_cons fallback), render the actual SF/PC title instead of the literal 'Shared item' fallback. Either populate decision_title server-side for SF in /shared-steps/create or fallback to a lookup on the client.",
+    "(LOW) Add testID 'share-step-btn' to the shareStepBtn TouchableOpacity in /app/frontend/app/prr/[id].tsx (line 211) for reliable owner-side share modal testing.",
+    "(NICE-TO-HAVE) Add DELETE /api/shared-steps/{id} so owners can revoke a share; currently only the per-recipient withdraw endpoint exists.",
+    "(CHRONIC) Clean up RN-Web deprecation warnings (shadow* → boxShadow, props.pointerEvents → style.pointerEvents)."
+  ],
+  "critical_code_review_comments": [
+    "routes/decisions/sharing.py /shared-steps/open is correctly idempotent: stores clone_id on the recipient record and reuses it on subsequent opens.",
+    "Clone exclusion is implemented by tagging the clone doc with contribution_clone and filtering in /api/pros-cons, /api/solution-finders, /api/solution-box list endpoints — verified by Create→GET-list pattern (counts unchanged before/after clone creation).",
+    "Decision module uses target_id == owner decision id and edits happen LOCAL-only in the contributor's flow (no DB writes against owner doc); merge endpoint applies weighted aggregation only on owner submit — correct per spec."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter172_step_contribution.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Seeded 3 fresh shares (decision dec_stepshare_demo step 7, a PC 'TEST_iter172 PC FE' step 3, a SF 'TEST_iter172 SF FE' step 2) to super→admin; cleaned up afterwards via db.pros_cons + db.solution_finders + db.shared_steps deleteMany. Pre-existing dec_stepshare_demo decision is reused (idempotent).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All three module contribution flows are wired and pass end-to-end. Re-seed quickly with /tmp/seed_iter172_shares.py (admin@test.com receives 3 shares). The shareStepBtn in /prr/[id] has no testID — click by font-glyph (Ionicons 'share-outline') or by clicking coordinate (362, 149) on the 390x844 viewport. Backend tests can be reused: pytest tests/test_iter172_step_contribution.py -v.",
+  "rca_of_issue": "No critical bugs. Only minor observation: inbox renders 'Shared item' fallback for SolutionFinder shares because the share document's decision_title field may be empty or untitled for newly-created SFs; the inbox client lacks a module-aware title resolver. Easy fix in either backend (always populate decision_title from the SF/PC doc on share create) or client."
+}

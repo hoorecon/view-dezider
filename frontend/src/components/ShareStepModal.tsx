@@ -22,6 +22,7 @@ interface ShareStepModalProps {
   stepNumber: number;
   stepName: string;
   onShareSuccess: () => void;
+  module?: string;
 }
 
 const STEP_NAMES: Record<number, string> = {
@@ -65,6 +66,7 @@ export default function ShareStepModal({
   stepNumber,
   stepName,
   onShareSuccess,
+  module: shareModule,
 }: ShareStepModalProps) {
   const [emailInput, setEmailInput] = useState('');
   const [emails, setEmails] = useState<string[]>([]);
@@ -75,6 +77,7 @@ export default function ShareStepModal({
   const [sentShares, setSentShares] = useState<any[]>([]);
   const [showSent, setShowSent] = useState(false);
   const [allowReshare, setAllowReshare] = useState(false);
+  const [stepAccess, setStepAccess] = useState<'hidden' | 'readonly'>('hidden');
   // New: share source tab
   const [shareSource, setShareSource] = useState<'email' | 'contacts' | 'users' | 'experts'>('email');
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -217,6 +220,8 @@ export default function ShareStepModal({
         merge_mode: mergeMode,
         message,
         allow_reshare: allowReshare,
+        step_access: stepAccess,
+        module: 'decision',
       };
 
       if (mergeMode === 'custom') {
@@ -227,7 +232,11 @@ export default function ShareStepModal({
         payload.custom_weights = weights;
       }
 
-      const res = await api.post(`/decisions/${decisionId}/share-step`, payload);
+      const _modMap: Record<string, string> = { 'pros-cons': 'pros_cons', 'swot': 'swot', 'solution-finder': 'solution_finder' };
+      const _beModule = _modMap[shareModule || ''];
+      const res = _beModule
+        ? await api.post('/shared-steps/create', { ...payload, module: _beModule, module_id: decisionId })
+        : await api.post(`/decisions/${decisionId}/share-step`, payload);
       Alert.alert(
         'Shared!',
         res.data?.message
@@ -540,6 +549,35 @@ export default function ShareStepModal({
                     multiline
                     numberOfLines={3}
                   />
+                </View>
+
+                {/* Other-steps access for the contributor's flow */}
+                <View style={{ paddingVertical: 8 }}>
+                  <Text style={{ fontSize: 13.5, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 8 }}>
+                    Contributor's view of other steps
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    {([
+                      { id: 'hidden', label: 'Hidden', icon: 'eye-off-outline', desc: 'Only this step' },
+                      { id: 'readonly', label: 'Read-only', icon: 'eye-outline', desc: 'View others for context' },
+                    ] as const).map((opt) => (
+                      <TouchableOpacity
+                        key={opt.id}
+                        testID={`step-access-${opt.id}`}
+                        activeOpacity={0.85}
+                        onPress={() => setStepAccess(opt.id)}
+                        style={{
+                          flex: 1, borderWidth: 1.5, borderRadius: 12, padding: 12,
+                          borderColor: stepAccess === opt.id ? COLORS.primary : COLORS.border,
+                          backgroundColor: stepAccess === opt.id ? COLORS.primary + '10' : 'transparent',
+                        }}
+                      >
+                        <Ionicons name={opt.icon as any} size={18} color={stepAccess === opt.id ? COLORS.primary : COLORS.textMuted} />
+                        <Text style={{ fontSize: 13, fontWeight: '700', marginTop: 6, color: stepAccess === opt.id ? COLORS.primary : COLORS.textPrimary }}>{opt.label}</Text>
+                        <Text style={{ fontSize: 11, color: COLORS.textSecondary, marginTop: 2 }}>{opt.desc}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                 </View>
 
                 {/* Allow re-share (transparent attribution) */}

@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Body
 from core.database import db
 from core.auth import get_current_user
 from core.helpers import create_notification
@@ -83,6 +83,121 @@ async def _claim_pending_for_user(user: dict) -> None:
         await db.shared_steps.update_one({"id": s["id"]}, update)
 
 
+_MODULE_META = {
+    "decision": {"coll": "decisions", "key": "id", "title": "title"},
+    "pros_cons": {"coll": "pros_cons", "key": "id", "title": "title"},
+    "swot": {"coll": "swot", "key": "id", "title": "title"},
+    "solution_finder": {"coll": "solution_finders", "key": "entry_id", "title": "smart_goal"},
+}
+
+
+async def _resolve_recipients(emails):
+    """Split emails into registered recipients and pending invites (deduped)."""
+    recipients, pending, seen = [], [], set()
+    for raw in emails or []:
+        email = (raw or "").strip().lower()
+        if not email or email in seen:
+            continue
+        seen.add(email)
+        ru = await db.users.find_one({"email": email}, {"_id": 0})
+        if ru:
+            recipients.append({"user_id": ru["user_id"], "email": email, "name": ru.get("name", email),
+                               "status": "pending", "contribution": None, "invited_by": None, "invited_by_name": None})
+        else:
+            pending.append({"email": email, "invited_by": None, "invited_by_name": None})
+    return recipients, pending
+
+
+async def _load_owner_doc(module: str, module_id: str, owner_id: str):
+    meta = _MODULE_META.get(module)
+    if not meta:
+        return None, "", meta
+    coll = getattr(db, meta["coll"])
+    doc = await coll.find_one({meta["key"]: module_id, "user_id": owner_id}, {"_id": 0})
+    title = (doc or {}).get(meta["title"]) or (doc or {}).get("title") or "Shared item"
+    return doc, title, meta
+
+
+@router.post("/shared-steps/create")
+async def create_shared_step(data: dict = Body(...), user: dict = Depends(get_current_user)):
+    """Module-aware step share (decision | pros_cons | solution_finder). Used by
+    Pros&Cons / SolutionFinder flows and the Collab Hub."""
+    module = data.get("module", "decision")
+    module_id = data.get("module_id") or data.get("decision_id")
+    if not module_id:
+        raise HTTPException(status_code=400, detail="module_id is required")
+    doc, title, meta = await _load_owner_doc(module, module_id, user["user_id"])
+    if not meta:
+        raise HTTPException(status_code=400, detail=f"Unsupported module: {module}")
+    if not doc:
+        raise HTTPException(status_code=404, detail="Item not found")
+    recipients, pending = await _resolve_recipients(data.get("recipient_emails", []))
+    if not recipients and not pending:
+        raise HTTPException(status_code=400, detail="No valid recipient emails provided")
+    share_id = str(uuid.uuid4())
+    share_doc = {
+        "id": share_id, "decision_id": module_id, "module": module, "module_id": module_id,
+        "owner_id": user["user_id"], "owner_name": user.get("name", user["email"]),
+        "step_number": int(data.get("step_number") or 0),
+        "merge_mode": data.get("merge_mode", "equal"), "custom_weights": data.get("custom_weights") or {},
+        "message": data.get("message", ""), "allow_reshare": bool(data.get("allow_reshare")),
+        "step_access": data.get("step_access", "hidden"),
+        "decision_title": title, "decision_context": doc.get("context", ""),
+        "step_data": {}, "status": "active",
+        "recipients": recipients, "pending_invites": pending,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.shared_steps.insert_one(share_doc)
+    for r in recipients:
+        await create_notification(r["user_id"], "share_received", "Shared with you",
+            f'{share_doc["owner_name"]} asked for your input on "{title}"',
+            {"share_id": share_id, "module": module})
+    return {"id": share_id, "shared_count": len(recipients), "invited_count": len(pending)}
+
+
+@router.post("/shared-steps/{share_id}/open")
+async def open_for_contribution(share_id: str, user: dict = Depends(get_current_user)):
+    """Resolve where the contributor should edit. For decision → the owner's
+    decision is loaded read-only via /decision (local-only edits). For pros_cons /
+    solution_finder → create (or reuse) a per-recipient sandbox CLONE the
+    contributor can edit natively via the normal flow."""
+    await _claim_pending_for_user(user)
+    share = await db.shared_steps.find_one({"id": share_id}, {"_id": 0})
+    if not share:
+        raise HTTPException(status_code=404, detail="Shared step not found")
+    rec = next((r for r in share.get("recipients", []) if r["user_id"] == user["user_id"]), None)
+    if not rec:
+        raise HTTPException(status_code=403, detail="You are not a recipient of this share")
+    module = share.get("module", "decision")
+    if module == "decision":
+        return {"module": "decision", "target_id": share.get("module_id") or share.get("decision_id"),
+                "step_number": share.get("step_number"), "step_access": share.get("step_access", "hidden")}
+
+    meta = _MODULE_META.get(module)
+    if not meta:
+        raise HTTPException(status_code=400, detail=f"Unsupported module: {module}")
+    coll = getattr(db, meta["coll"])
+    key = meta["key"]
+    clone_id = rec.get("clone_id")
+    if clone_id and await coll.find_one({key: clone_id}, {"_id": 0, key: 1}):
+        return {"module": module, "target_id": clone_id, "step_number": share.get("step_number"),
+                "step_access": share.get("step_access", "hidden")}
+    owner_doc = await coll.find_one({meta["key"]: share.get("module_id"), "user_id": share["owner_id"]}, {"_id": 0})
+    if not owner_doc:
+        raise HTTPException(status_code=404, detail="Source item not found")
+    import copy as _copy
+    clone = _copy.deepcopy(owner_doc)
+    new_id = str(uuid.uuid4())
+    clone[key] = new_id
+    clone["user_id"] = user["user_id"]
+    clone["contribution_clone"] = {"share_id": share_id, "owner_id": share["owner_id"], "module": module}
+    await coll.insert_one(clone)
+    await db.shared_steps.update_one({"id": share_id, "recipients.user_id": user["user_id"]},
+                                     {"$set": {"recipients.$.clone_id": new_id}})
+    return {"module": module, "target_id": new_id, "step_number": share.get("step_number"),
+            "step_access": share.get("step_access", "hidden")}
+
+
 @router.post("/decisions/{decision_id}/share-step")
 async def share_step(decision_id: str, data: ShareStepRequest, user: dict = Depends(get_current_user)):
     decision = await db.decisions.find_one({"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
@@ -115,6 +230,8 @@ async def share_step(decision_id: str, data: ShareStepRequest, user: dict = Depe
         "merge_mode": data.merge_mode, "custom_weights": data.custom_weights or {},
         "message": data.message, "recipients": recipients, "pending_invites": pending_invites,
         "allow_reshare": bool(data.allow_reshare),
+        "module": getattr(data, "module", "decision") or "decision",
+        "step_access": getattr(data, "step_access", "hidden") or "hidden",
         "decision_title": decision.get("title", ""), "decision_context": decision.get("context", ""),
         "step_data": {"factors": decision.get("factors", []),
                       "options": [{"id": o["id"], "name": o["name"]} for o in decision.get("options", [])]},
@@ -186,6 +303,53 @@ async def get_shared_step(share_id: str, user: dict = Depends(get_current_user))
     return share
 
 
+@router.get("/shared-steps/{share_id}/decision")
+async def get_shared_step_decision(share_id: str, user: dict = Depends(get_current_user)):
+    """Recipient-accessible read of the owner's decision so the contributor can
+    open the REAL flow (Contribution Mode) scoped to the requested step."""
+    await _claim_pending_for_user(user)
+    share = await db.shared_steps.find_one({"id": share_id}, {"_id": 0})
+    if not share:
+        raise HTTPException(status_code=404, detail="Shared step not found")
+    is_owner = share["owner_id"] == user["user_id"]
+    is_recipient = any(r["user_id"] == user["user_id"] for r in share.get("recipients", []))
+    if not is_owner and not is_recipient:
+        raise HTTPException(status_code=403, detail="Access denied")
+    decision = await db.decisions.find_one({"id": share["decision_id"]}, {"_id": 0})
+    if not decision:
+        raise HTTPException(status_code=404, detail="Decision not found")
+    me = next((r for r in share.get("recipients", []) if r.get("user_id") == user["user_id"]), None)
+    return {
+        "decision": decision,
+        "share": {
+            "id": share["id"], "step_number": share.get("step_number"),
+            "step_access": share.get("step_access", "hidden"),
+            "module": share.get("module", "decision"),
+            "merge_mode": share.get("merge_mode", "equal"),
+            "owner_name": share.get("owner_name"), "decision_title": share.get("decision_title"),
+            "message": share.get("message", ""), "allow_reshare": share.get("allow_reshare", False),
+            "status": share.get("status", "active"),
+        },
+        "my_contribution": (me or {}).get("contribution"),
+        "is_owner": is_owner,
+    }
+
+
+@router.delete("/shared-steps/{share_id}/contribution")
+async def delete_my_contribution(share_id: str, user: dict = Depends(get_current_user)):
+    """A contributor withdraws/deletes their own contribution (back to pending)."""
+    share = await db.shared_steps.find_one({"id": share_id}, {"_id": 0})
+    if not share:
+        raise HTTPException(status_code=404, detail="Shared step not found")
+    is_recipient = any(r["user_id"] == user["user_id"] for r in share.get("recipients", []))
+    if not is_recipient:
+        raise HTTPException(status_code=403, detail="You are not a recipient of this share")
+    res = await db.shared_steps.update_one(
+        {"id": share_id, "recipients.user_id": user["user_id"]},
+        {"$set": {"recipients.$.status": "pending", "recipients.$.contribution": None}})
+    return {"ok": True, "modified": res.modified_count}
+
+
 @router.post("/shared-steps/{share_id}/contribute")
 async def contribute_to_shared_step(share_id: str, data: ContributeStepRequest, user: dict = Depends(get_current_user)):
     await _claim_pending_for_user(user)
@@ -195,9 +359,22 @@ async def contribute_to_shared_step(share_id: str, data: ContributeStepRequest, 
     is_recipient = any(r["user_id"] == user["user_id"] for r in share.get("recipients", []))
     if not is_recipient:
         raise HTTPException(status_code=403, detail="You are not a recipient of this share")
-    contribution = {"factors": data.factors, "options": data.options, "assessments": data.assessments,
-                    "note": data.note, "consolidated": data.consolidated,
-                    "submitted_at": datetime.now(timezone.utc).isoformat()}
+    module = share.get("module", "decision")
+    if module != "decision":
+        # Clone-based modules (pros_cons / solution_finder): snapshot the
+        # contributor's edited clone as their contribution.
+        rec = next((r for r in share.get("recipients", []) if r["user_id"] == user["user_id"]), None)
+        clone_id = (rec or {}).get("clone_id")
+        meta = _MODULE_META.get(module)
+        snapshot = None
+        if clone_id and meta:
+            snapshot = await getattr(db, meta["coll"]).find_one({meta["key"]: clone_id}, {"_id": 0})
+        contribution = {"snapshot": snapshot, "note": data.note,
+                        "submitted_at": datetime.now(timezone.utc).isoformat()}
+    else:
+        contribution = {"factors": data.factors, "options": data.options, "assessments": data.assessments,
+                        "note": data.note, "consolidated": data.consolidated,
+                        "submitted_at": datetime.now(timezone.utc).isoformat()}
     await db.shared_steps.update_one({"id": share_id, "recipients.user_id": user["user_id"]},
         {"$set": {"recipients.$.status": "contributed", "recipients.$.contribution": contribution}})
     contributor_name = user.get("name", user.get("email", "Someone"))
