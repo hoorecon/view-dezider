@@ -49,15 +49,132 @@ def _intake_fields(doc: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _solution_finder_status(doc: Dict[str, Any]) -> str:
-    s = (doc.get("status") or "").lower()
-    if s in ("draft", "in_progress", "completed"):
-        return s
-    if doc.get("action_items"):
-        return "completed"
-    if doc.get("q1_all_concerns") or doc.get("q3_solutions") or doc.get("milestones"):
-        return "in_progress"
-    return "draft"
+# ---------- unified progress model ----------
+# One consistent rule across ALL tools so the same amount of work reads the
+# same way everywhere (fixes the old per-tool inconsistency):
+#   • Draft        – created but real work not started (factor-tools: no factors
+#                    defined yet; quick tools: only the opening field filled)
+#   • In Progress  – actively being worked on, shown with a % = steps done ÷ total
+#                    steps, split into <35% / 35–70% / >70%&<100%
+#   • Completed    – BOTH the final step reached AND 100% of the option×factor
+#                    assessment matrix filled (quick tools with no matrix complete
+#                    when their final field is recorded)
+#
+# Bands: draft | ip_low (<35) | ip_mid (35–70) | ip_high (>70,<100) | completed
+# `status` stays the coarse draft | in_progress | completed for back-compat.
+
+def _band(pct: int, is_draft: bool, is_completed: bool):
+    """Return (progress_pct, progress_band, status_coarse)."""
+    if is_completed:
+        return 100, "completed", "completed"
+    if is_draft:
+        return max(0, min(int(pct), 34)), "draft", "draft"
+    pct = max(1, min(99, int(pct)))
+    band = "ip_low" if pct < 35 else ("ip_mid" if pct <= 70 else "ip_high")
+    return pct, band, "in_progress"
+
+
+def _decider_assess_complete(doc: Dict[str, Any]) -> bool:
+    factors = doc.get("factors") or []
+    options = doc.get("options") or []
+    if not factors or not options:
+        return False
+    fids = {f.get("id") for f in factors}
+    for o in options:
+        filled = {a.get("factor_id") for a in (o.get("assessments") or [])
+                  if a.get("percentage") is not None}
+        if not fids.issubset(filled):
+            return False
+    return True
+
+
+def _proscons_assess_complete(doc: Dict[str, Any]) -> bool:
+    factors = doc.get("factors") or []
+    options = doc.get("options") or []
+    if not factors or not options:
+        return False
+    a = doc.get("assessments") or {}
+    fids = [f.get("id") for f in factors]
+    for o in options:
+        cell = a.get(o.get("id")) or {}
+        if not isinstance(cell, dict):
+            return False
+        for fid in fids:
+            v = cell.get(fid)
+            if v is None:
+                return False
+            if isinstance(v, dict) and v.get("assessment_pct") is None and v.get("actual_value") in (None, ""):
+                return False
+    return True
+
+
+def _progress_decider(doc: Dict[str, Any]) -> Dict[str, Any]:
+    factors = doc.get("factors") or []
+    options = doc.get("options") or []
+    title = bool((doc.get("title") or "").strip())
+    classified = any(f.get("category") for f in factors)
+    rated = any(f.get("rating") is not None for f in factors)
+    assess = _decider_assess_complete(doc)
+    worth = any(o.get("worth_percentage") is not None for o in options)
+    chosen = bool(doc.get("chosen_option_id"))
+    milestones = [title, bool(factors), classified, rated, bool(options), assess, worth, chosen]
+    steps_done = sum(1 for m in milestones if m)
+    final_reached = chosen or (doc.get("status") == "completed")
+    completed = final_reached and assess
+    pct = round(steps_done / 8 * 100)
+    if final_reached and not assess:
+        pct = min(pct, 95)
+    p, band, status = _band(pct, is_draft=not factors and not completed, is_completed=completed)
+    return {"total_steps": 8, "steps_done": steps_done, "progress_pct": p,
+            "progress_band": band, "status": status}
+
+
+def _progress_stepwise(doc: Dict[str, Any], assess_complete) -> Dict[str, Any]:
+    """8-step wizard tools that track `current_step` (Pros & Cons, SWOT)."""
+    cur = int(doc.get("current_step") or 1)
+    factors = doc.get("factors") or []
+    converted = bool(doc.get("converted_decision_id"))
+    assess = assess_complete(doc)
+    final_reached = converted or cur >= 8
+    completed = final_reached and assess
+    steps_done = min(cur, 8)
+    pct = round(steps_done / 8 * 100)
+    if final_reached and not assess:
+        pct = min(pct, 95)
+    p, band, status = _band(pct, is_draft=not factors and not completed, is_completed=completed)
+    return {"total_steps": 8, "steps_done": steps_done, "progress_pct": p,
+            "progress_band": band, "status": status}
+
+
+def _progress_test123(doc: Dict[str, Any]) -> Dict[str, Any]:
+    situation = bool((doc.get("situation") or "").strip())
+    worst = bool((doc.get("worst_case") or "").strip())
+    needs = bool(doc.get("all_needs") or doc.get("important_needs"))
+    final = bool((doc.get("final_decision") or "").strip())
+    steps_done = sum(1 for m in (situation, worst, needs) if m)
+    completed = final  # no assessment matrix → final field == completed
+    is_draft = not (worst or needs or final)
+    pct = round((3 if completed else steps_done) / 3 * 100)
+    p, band, status = _band(pct, is_draft=is_draft and not completed, is_completed=completed)
+    return {"total_steps": 3, "steps_done": 3 if completed else steps_done,
+            "progress_pct": p, "progress_band": band, "status": status}
+
+
+def _progress_solution_finder(doc: Dict[str, Any]) -> Dict[str, Any]:
+    goal = bool((doc.get("smart_goal") or "").strip())
+    concerns = bool(doc.get("q1_all_concerns"))
+    sols = bool(doc.get("q3_solutions"))
+    miles = bool(doc.get("milestones"))
+    acts = bool(doc.get("action_items"))
+    steps_done = sum(1 for m in (goal, concerns, sols, miles, acts) if m)
+    completed = acts
+    is_draft = goal and not (concerns or sols or miles or acts)
+    if not goal:
+        is_draft = True
+    pct = round(steps_done / 5 * 100)
+    p, band, status = _band(pct, is_draft=is_draft and not completed, is_completed=completed)
+    return {"total_steps": 5, "steps_done": steps_done, "progress_pct": p,
+            "progress_band": band, "status": status}
 
 
 def _norm_solution_finder(doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -70,7 +187,6 @@ def _norm_solution_finder(doc: Dict[str, Any]) -> Dict[str, Any]:
         "title": title,
         "context": goal,
         "life_area": doc.get("area_of_life"),
-        "status": _solution_finder_status(doc),
         "current_step": None,
         "created_at": _iso(doc.get("created_at")),
         "updated_at": _iso(doc.get("updated_at") or doc.get("created_at")),
@@ -78,85 +194,21 @@ def _norm_solution_finder(doc: Dict[str, Any]) -> Dict[str, Any]:
         "linked_from_decision_id": None,
         "options_count": len(doc.get("action_items") or []),
     }
+    item.update(_progress_solution_finder(doc))
     item.update(_intake_fields(doc))
     return item
-
-
-def _decider_status(doc: Dict[str, Any]) -> str:
-    """Pass-through with safe default for legacy rows."""
-    s = (doc.get("status") or "").lower()
-    if s in ("draft", "in_progress", "completed"):
-        return s
-    # Heuristic for very old rows that omit status
-    if doc.get("chosen_option_id"):
-        return "completed"
-    if doc.get("options"):
-        return "in_progress"
-    return "draft"
-
-
-def _pros_cons_status(doc: Dict[str, Any]) -> str:
-    if doc.get("converted_decision_id"):
-        return "completed"
-    cur_step = int(doc.get("current_step") or 1)
-    has_any_content = bool(
-        doc.get("options") or doc.get("factors")
-        or doc.get("pros") or doc.get("cons")
-    )
-    if cur_step >= 8:
-        return "completed"
-    if cur_step > 1 or has_any_content:
-        return "in_progress"
-    return "draft"
-
-
-def _swot_status(doc: Dict[str, Any]) -> str:
-    if doc.get("converted_decision_id"):
-        return "completed"
-    cur_step = int(doc.get("current_step") or 1)
-    quadrants = doc.get("quadrants") or {}
-    has_any = any(
-        bool(quadrants.get(k))
-        for k in ("strengths", "weaknesses", "opportunities", "threats")
-    )
-    has_any = has_any or bool(doc.get("options") or doc.get("factors"))
-    if cur_step >= 8:
-        return "completed"
-    if cur_step > 1 or has_any:
-        return "in_progress"
-    return "draft"
-
-
-def _test123_status(doc: Dict[str, Any]) -> str:
-    """Test123 is the 3-step quick-decision module (situation → worst case → needs).
-
-    Status heuristic:
-      - completed when a final_decision string is recorded
-      - in_progress once worst_case OR any needs entered
-      - draft otherwise (only `situation` filled)
-    """
-    if (doc.get("final_decision") or "").strip():
-        return "completed"
-    if (
-        (doc.get("worst_case") or "").strip()
-        or (doc.get("all_needs") or [])
-        or (doc.get("important_needs") or [])
-    ):
-        return "in_progress"
-    return "draft"
 
 
 def _norm_test123(doc: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize a `test123_sessions` doc into the Solution Box shape."""
     situation = (doc.get("situation") or "").strip()
     title = (situation[:60] + ("…" if len(situation) > 60 else "")) if situation else "Quick Decision (Test123)"
-    return {
+    item = {
         "id": doc.get("id"),
         "type": "test123",
         "title": title,
         "context": situation,
         "life_area": doc.get("life_area"),
-        "status": _test123_status(doc),
         "current_step": int(doc.get("current_step") or 1),
         "created_at": _iso(doc.get("created_at")),
         "updated_at": _iso(doc.get("updated_at") or doc.get("created_at")),
@@ -164,6 +216,8 @@ def _norm_test123(doc: Dict[str, Any]) -> Dict[str, Any]:
         "linked_from_decision_id": None,
         "options_count": len(doc.get("all_needs") or []),
     }
+    item.update(_progress_test123(doc))
+    return item
 
 
 
@@ -175,7 +229,7 @@ def _norm_decider(doc: Dict[str, Any]) -> Dict[str, Any]:
     is_swot_sourced = (doc.get("source_module") == "swot")
     sb_type = "swot" if is_swot_sourced else "decider"
 
-    return {
+    item = {
         "id": doc.get("id"),
         "type": sb_type,
         # Collection hint so the Solution Box delete path picks the right
@@ -186,7 +240,6 @@ def _norm_decider(doc: Dict[str, Any]) -> Dict[str, Any]:
         "title": doc.get("title") or "Untitled decision",
         "context": doc.get("context") or "",
         "life_area": doc.get("folder") or doc.get("life_area"),
-        "status": _decider_status(doc),
         "current_step": None,
         "created_at": _iso(doc.get("created_at")),
         "updated_at": _iso(doc.get("updated_at") or doc.get("created_at")),
@@ -200,6 +253,8 @@ def _norm_decider(doc: Dict[str, Any]) -> Dict[str, Any]:
         "linked_from_decision_id": doc.get("linked_from_decision_id"),
         "options_count": len(doc.get("options") or []),
     }
+    item.update(_progress_decider(doc))
+    return item
 
 
 def _norm_pros_cons(doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -208,13 +263,12 @@ def _norm_pros_cons(doc: Dict[str, Any]) -> Dict[str, Any]:
     # All items — including legacy `pros`/`cons`-only docs — now open in
     # the 8-Step wizard which handles empty state gracefully.
     route = f"/tools/pros-cons-wizard?id={doc.get('id')}&module=pros-cons"
-    return {
+    item = {
         "id": doc.get("id"),
         "type": "pros_cons",
         "title": doc.get("title") or "Untitled analysis",
         "context": doc.get("context") or "",
         "life_area": doc.get("life_area"),
-        "status": _pros_cons_status(doc),
         "current_step": int(doc.get("current_step") or 1),
         "created_at": _iso(doc.get("created_at")),
         "updated_at": _iso(doc.get("updated_at") or doc.get("created_at")),
@@ -222,16 +276,17 @@ def _norm_pros_cons(doc: Dict[str, Any]) -> Dict[str, Any]:
         "linked_from_decision_id": doc.get("converted_decision_id"),
         "options_count": len(doc.get("options") or []),
     }
+    item.update(_progress_stepwise(doc, _proscons_assess_complete))
+    return item
 
 
 def _norm_swot(doc: Dict[str, Any]) -> Dict[str, Any]:
-    return {
+    item = {
         "id": doc.get("id"),
         "type": "swot",
         "title": doc.get("title") or "Untitled SWOT",
         "context": doc.get("context") or "",
         "life_area": doc.get("life_area"),
-        "status": _swot_status(doc),
         "current_step": int(doc.get("current_step") or 1),
         "created_at": _iso(doc.get("created_at")),
         "updated_at": _iso(doc.get("updated_at") or doc.get("created_at")),
@@ -239,9 +294,19 @@ def _norm_swot(doc: Dict[str, Any]) -> Dict[str, Any]:
         "linked_from_decision_id": doc.get("converted_decision_id"),
         "options_count": len(doc.get("options") or []),
     }
+    item.update(_progress_stepwise(doc, _proscons_assess_complete))
+    return item
 
 
 # ---------- routes ----------
+
+def _match_status(item: Dict[str, Any], f: Optional[str]) -> bool:
+    """Accepts coarse status (draft|in_progress|completed) OR a fine band
+    (ip_low|ip_mid|ip_high). `in_progress` matches any in-progress band."""
+    if not f:
+        return True
+    return item.get("status") == f or item.get("progress_band") == f
+
 
 @router.get("")
 async def list_solution_box(
@@ -286,7 +351,7 @@ async def list_solution_box(
                 continue
             if life_area_filter and item["life_area"] != life_area_filter:
                 continue
-            if status_filter and item["status"] != status_filter:
+            if not _match_status(item, status_filter):
                 continue
             results.append(item)
 
@@ -300,7 +365,7 @@ async def list_solution_box(
             item.update(_intake_fields(doc))
             if life_area_filter and item["life_area"] != life_area_filter:
                 continue
-            if status_filter and item["status"] != status_filter:
+            if not _match_status(item, status_filter):
                 continue
             results.append(item)
 
@@ -312,7 +377,7 @@ async def list_solution_box(
             item.update(_intake_fields(doc))
             if life_area_filter and item["life_area"] != life_area_filter:
                 continue
-            if status_filter and item["status"] != status_filter:
+            if not _match_status(item, status_filter):
                 continue
             results.append(item)
 
@@ -324,7 +389,7 @@ async def list_solution_box(
             item.update(_intake_fields(doc))
             if life_area_filter and item["life_area"] != life_area_filter:
                 continue
-            if status_filter and item["status"] != status_filter:
+            if not _match_status(item, status_filter):
                 continue
             results.append(item)
 
@@ -335,7 +400,7 @@ async def list_solution_box(
             item = _norm_solution_finder(doc)
             if life_area_filter and item["life_area"] != life_area_filter:
                 continue
-            if status_filter and item["status"] != status_filter:
+            if not _match_status(item, status_filter):
                 continue
             results.append(item)
 
@@ -351,12 +416,16 @@ async def solution_box_counts(user: dict = Depends(get_current_user)):
     by_type: Dict[str, int] = {"decider": 0, "pros_cons": 0, "swot": 0, "test123": 0, "solution_finder": 0}
     by_life_area: Dict[str, int] = {}
     by_status: Dict[str, int] = {"draft": 0, "in_progress": 0, "completed": 0}
+    by_band: Dict[str, int] = {"draft": 0, "ip_low": 0, "ip_mid": 0, "ip_high": 0, "completed": 0}
 
     async def _bump(item: Dict[str, Any]):
         by_type[item["type"]] = by_type.get(item["type"], 0) + 1
         if item.get("life_area"):
             by_life_area[item["life_area"]] = by_life_area.get(item["life_area"], 0) + 1
         by_status[item["status"]] = by_status.get(item["status"], 0) + 1
+        b = item.get("progress_band")
+        if b:
+            by_band[b] = by_band.get(b, 0) + 1
 
     async for doc in db.decisions.find({"user_id": uid}, {"_id": 0}):
         await _bump(_norm_decider(doc))
