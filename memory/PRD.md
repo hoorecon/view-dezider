@@ -242,3 +242,19 @@ Multi-user Decision Making App based on a 10-step Proactive Risk Response (PRR) 
 
 **Status**: Verified by testing_agent (27/27 backend pytest PASS; frontend flows PASS; no new bugs). Demo Life Goals exist for super@test.com.
 
+---
+
+## ITER 177 — Financial Model on L1 (Financial) of 6 LeGS (Phase 1) ✅ TESTED
+
+**Where**: A "Financial Model" branch on L1 (Financial) of each Org's 6 LeGS tree (My Organizations → org-detail → "6 LeGs GOALS" tab). Entry points: a "Financial Model" button + a calculator icon on every L1 goal node.
+
+**Phase 1 — on-screen modelling & valuation engine** (no external deps):
+- Backend `core/fin_model.py` (pure engine) + `routes/financial_model.py` (`/api/financial-models/*`: meta, compute (stateless preview), CRUD with org ownership).
+- From **revenue projections + assumptions** → 3-statement forecast (P&L, Balance Sheet that ties out, Cash Flow), **financial ratios** (current/quick/debt-equity/interest-coverage/**DSCR**/margins/ROCE/ROE/WC-days), and an **FCFF-DCF valuation** → **Enterprise Value, Equity Value, Per-Share Price** + headline indicators (revenue CAGR, avg/min DSCR).
+- Screen `app/tools/financial-model.tsx`: Inputs | P&L | Balance Sheet | Cash Flow | Ratios | Valuation tabs; units selector (default **Absolute**; Thousands/Lakhs/Millions/Crores); Recalculate + Save.
+- Stored in `db.financial_models` (owned by user + scoped to a `user_org_id`, optional `leg_goal_id`).
+
+**Deferred**: Phase 2 = Investor-ready PDF + Bank-ready CMA workbook (Excel, multi-form incl DSCR stress scenarios, MPBF, WC cycle, break-even). Phase 3 = **Zoho Books** (then Analytics) 2-way sync (needs OAuth client + Books Org ID; integration via integration_expert; secrets in backend `.env` / EC2 prod `.env`).
+
+**Status**: Verified by testing_agent (13/13 backend pytest PASS incl. BS-ties-out & DCF; all 5 frontend flows PASS; no new bugs).
+
