@@ -201,3 +201,11 @@ Multi-user Decision Making App based on a 10-step Proactive Risk Response (PRR) 
 - **CHANGELOG.md**: chronological session build log (newest at bottom)
 - **ROADMAP.md**: prioritized backlog P0/P1/P2
 - test_credentials.md · pending_verifications.md · carry_forward.md unchanged
+
+---
+## Iter 173 — Per-step Review & Merge + AI Review & Auto-Merge (DONE, tested 11/11 BE + 5 FE flows)
+- Owner-side per-step "Review & Merge" (manual) + "AI Review & Auto-Merge" for MyDezider, Pros&Cons, Solution Finder, surfaced in the in-flow share modal (ShareStepModal Sent tab) and via per-step CollabBar ("Share this step" + "Review & merge") for P&C/SF.
+- Backend: GET /api/shared-steps/{id}/review, POST /ai-merge, POST /apply (owner-only). AI weights owner merge_mode + each contributor's SME/capability/resources (enriched from owner contacts). metered_chat (free→paid) metered per user / per flow (session_id={module}:{flow_id}) / per step (feature=collab_ai_merge:{module}:s{step}) via tp_collab_ai_merge.
+- Owner can view own + per-contributor inputs even AFTER merge (contributions preserved). AI advisory: owner edits/overrides or applies as suggested (default).
+- Admin → AI Wallet Config → AI touchpoints: new tp_collab_ai_merge toggle.
+- PENDING (next): Email/WhatsApp OTP verification toggles in Step 6 (inviting).
