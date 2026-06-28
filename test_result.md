@@ -10678,3 +10678,24 @@ agent_communication:
         6. P&C wizard + Solution Finder: per-step CollabBar shows "Share this step" + "Review & merge"; the latter opens the modal on the Sent tab.
         7. Admin AI Wallet Config shows the new tp_collab_ai_merge toggle and it persists.
       NOTE: AI merge consumes real credits (Emergent key, gemini free-tier first). No mocks.
+
+
+#====================================================================================================
+# ITER 174 — Collab Hub redesign: Module→Flow→Step wizard + share-step launch + wizard bug fixes
+#====================================================================================================
+agent_communication:
+  - agent: "main"
+    message: |
+      ITER 174 (creds: owner super@test.com/SuperPass2026!, contributor admin@test.com/AdminPass2026!).
+      BACKEND (high): POST /api/shared-steps/create now (a) accepts module(decision|pros_cons|solution_finder), module_id, step_number, recipient_emails, merge_mode, session_mode, auth_config, notify; (b) stores session_mode/auth_config/call_room_url on the share; (c) dispatches Email + WhatsApp (best-effort via core.notify; NOTE: no email/WhatsApp provider key is configured in this env so actual delivery is a no-op — a 200 with shared_count + a 'link' field is the success criterion, NOT real inbox delivery). Verified manually: decision create returns 200 + link https://jelcos.ai/?share=<id>.
+      FRONTEND (high) — /tools/collaborate "New Collaboration" wizard:
+        1. Step 1 reworked to Module→Flow→Step: a 3-chip module selector (MyDezider/Pros&Cons/Solution Finder) filters the flow list; selecting a flow reveals a step-picker; Next is blocked until BOTH a flow and a step are chosen.
+        2. Launch (handleCreate) now POSTs /shared-steps/create (NOT /collaboration/sessions) and on success shows "Invites sent" then routes the owner to that flow (decision→/prr/{id}?step=N, pros_cons→/tools/pros-cons-wizard?id=, sf→/tools/solution-finder?id=) where they track responses under the step's share "Sent" tab (Review & Merge from iter173).
+        3. Bug fixes to verify: vertical scroll is smooth (removed nested ScrollViews) and resets to top on each step; the 2 checkboxes ("Notify participants"/"Disclose mode") are visible in the Mode step without scrolling; "Presence Check" field appears ONLY for Live Sync; Step-5 Auth instructions fully visible; in an Async session detail the "Verify Identity" button shows ONLY when a verification method was enabled (no dead-end); the word "Jitsi" is gone (now "Video call • Screen sharing on").
+      Contributor side is unchanged (existing inbox → opens exact module/flow/step; signup auto-claims pending shares). Deep-link auto-open from the emailed link is deferred (contributor uses inbox) — do NOT flag that as a bug.
+test_plan:
+  current_focus:
+    - "Iter174 — Collab wizard Module→Flow→Step + share-step launch"
+    - "Iter174 — wizard UX bug fixes (scroll, checkboxes, presence-check, auth instructions, verify-identity dead-end, de-brand)"
+  test_all: false
+  test_priority: "high_first"

@@ -174,12 +174,54 @@ async def create_shared_step(data: dict = Body(...), user: dict = Depends(get_cu
         "recipients": recipients, "pending_invites": pending,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+    share_doc["session_mode"] = data.get("session_mode", "async")
+    share_doc["auth_config"] = data.get("auth_config") or {}
+    share_doc["call_room_url"] = data.get("call_room_url")
     await db.shared_steps.insert_one(share_doc)
+
+    # Dispatch invites: in-app notification + Email + WhatsApp, each carrying a
+    # contribution link (and, for Live Sync, the meeting link). Best-effort — a
+    # failed channel never blocks the share.
+    import os as _os
+    from core.notify import send_email as _send_email, send_whatsapp as _send_wa
+    base = (_os.getenv("PUBLIC_APP_URL") or "").rstrip("/")
+    link = f"{base}/?share={share_id}" if base else base
+    notify = data.get("notify") or {}
+    want_email = notify.get("participants", True)
+    sender = share_doc["owner_name"]
+    step_no = share_doc["step_number"]
+    is_live = share_doc["session_mode"] == "live_sync"
+    meeting = share_doc.get("call_room_url")
+
+    async def _dispatch(email: str):
+        contact = await db.contacts.find_one(
+            {"user_id": user["user_id"], "email": email}, {"_id": 0}) or {}
+        phone = contact.get("phone") or contact.get("mobile") or ""
+        html = _invite_email_html(sender, step_no, f"Step {step_no}", title, data.get("message", ""), link)
+        if is_live and meeting:
+            html += f'<p style="margin-top:12px"><a href="{meeting}" style="background:#059669;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none">Join the live video session</a></p>'
+        if want_email and email:
+            try:
+                await _send_email(email, f'{sender} wants your input — {title}', html)
+            except Exception:
+                pass
+        if phone:
+            wa = f'{sender} asked for your input on "{title}" (Step {step_no}). Open: {link}'
+            if is_live and meeting:
+                wa += f'\nJoin the live session: {meeting}'
+            try:
+                await _send_wa(phone, wa)
+            except Exception:
+                pass
+
     for r in recipients:
         await create_notification(r["user_id"], "share_received", "Shared with you",
-            f'{share_doc["owner_name"]} asked for your input on "{title}"',
+            f'{sender} asked for your input on "{title}"',
             {"share_id": share_id, "module": module})
-    return {"id": share_id, "shared_count": len(recipients), "invited_count": len(pending)}
+        await _dispatch(r["email"])
+    for p in pending:
+        await _dispatch(p["email"])
+    return {"id": share_id, "shared_count": len(recipients), "invited_count": len(pending), "link": link}
 
 
 @router.post("/shared-steps/{share_id}/open")

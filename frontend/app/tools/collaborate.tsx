@@ -70,6 +70,18 @@ export default function CollaborateScreen() {
   const [sessionMode, setSessionMode] = useState<string>('async');
   const createScrollRef = useRef<ScrollView>(null);
   const scrollWizardTop = () => createScrollRef.current?.scrollTo({ y: 0, animated: false });
+  const [selectedStep, setSelectedStep] = useState<number | null>(null);
+  const [moduleTypeFilter, setModuleTypeFilter] = useState<'decision' | 'pros_cons' | 'solution_finder'>('decision');
+  const MODULE_TYPES = [
+    { key: 'decision', label: 'MyDezider', icon: 'git-branch', color: '#2563EB' },
+    { key: 'pros_cons', label: 'Pros & Cons', icon: 'swap-horizontal', color: '#D97706' },
+    { key: 'solution_finder', label: 'Solution Finder', icon: 'bulb', color: '#059669' },
+  ] as const;
+  const STEP_CATALOG: Record<string, { n: number; label: string }[]> = {
+    decision: [{ n: 1, label: 'Frame' }, { n: 2, label: 'Factors' }, { n: 3, label: 'Categorize' }, { n: 4, label: 'Weight' }, { n: 5, label: 'Options' }, { n: 6, label: 'Assess' }, { n: 7, label: 'Decide' }],
+    pros_cons: [{ n: 1, label: 'Topic' }, { n: 2, label: 'Pros' }, { n: 3, label: 'Cons' }, { n: 4, label: 'Weight' }, { n: 5, label: 'Score' }, { n: 6, label: 'Analyze' }, { n: 7, label: 'Decide' }, { n: 8, label: 'Summary' }],
+    solution_finder: [{ n: 0, label: 'Problem' }, { n: 1, label: 'Goal' }, { n: 2, label: 'Root causes' }, { n: 3, label: 'Solutions' }, { n: 4, label: 'Evaluate' }, { n: 5, label: 'Action plan' }],
+  };
   const [modeConfigOverride, setModeConfigOverride] = useState<any>(null);
   const [showOverride, setShowOverride] = useState(false);
   const [overrideFields, setOverrideFields] = useState<Record<string, string>>({});
@@ -107,6 +119,8 @@ export default function CollaborateScreen() {
     setShowCreate(true);
     setCreateStep(0);
     setSelectedModule(null);
+    setSelectedStep(null);
+    setModuleTypeFilter('decision');
     setSelectedMode('equal');
     setSelectedContacts(new Set());
     setAuthConfig({ methods_required: 0, verify_each_time: false, enabled_methods: [] });
@@ -115,17 +129,21 @@ export default function CollaborateScreen() {
     setShowOverride(false);
     setOverrideFields({});
 
-    // Fetch all modules (decisions + solution finders)
+    // Fetch flows across all three modules + modes + contacts.
     try {
-      const [decisionsRes, sfRes, modesRes, contactsRes] = await Promise.all([
-        api.get('/decisions?limit=50'),
+      const [decisionsRes, pcRes, sfRes, modesRes, contactsRes] = await Promise.all([
+        api.get('/decisions?limit=50').catch(() => ({ data: [] })),
+        api.get('/pros-cons?limit=50').catch(() => ({ data: [] })),
         api.get('/solution-finder').catch(() => ({ data: [] })),
         api.get('/collaboration/decision-modes'),
         api.get('/contacts?limit=200'),
       ]);
-      const decisionModules = (decisionsRes.data || []).map((d: any) => ({ type: 'decision', id: d.id, title: d.title || 'Untitled Decision', status: d.current_step }));
-      const sfModules = (Array.isArray(sfRes.data) ? sfRes.data : []).map((s: any) => ({ type: 'solution_finder', id: s.entry_id, title: s.smart_goal || 'Untitled', status: s.status }));
-      setModules([...decisionModules, ...sfModules]);
+      const dec = (decisionsRes.data || []).map((d: any) => ({ type: 'decision', id: d.id, title: d.title || 'Untitled Decision' }));
+      const pcArr = Array.isArray(pcRes.data) ? pcRes.data : (pcRes.data?.items || pcRes.data?.analyses || []);
+      const pc = pcArr.map((p: any) => ({ type: 'pros_cons', id: p.id, title: p.title || p.topic || 'Untitled P&C' }));
+      const sfArr = Array.isArray(sfRes.data) ? sfRes.data : (sfRes.data?.items || []);
+      const sf = sfArr.map((s: any) => ({ type: 'solution_finder', id: s.entry_id || s.id, title: s.smart_goal || s.title || 'Untitled' }));
+      setModules([...dec, ...pc, ...sf]);
       setModes((modesRes.data || []).filter((m: any) => m.active));
       setContacts(contactsRes.data?.contacts || []);
     } catch (err) {
@@ -134,30 +152,34 @@ export default function CollaborateScreen() {
   };
 
   const handleCreate = async () => {
-    if (!selectedModule) { showAlert('Required', 'Select a decision or problem'); return; }
+    if (!selectedModule) { showAlert('Required', 'Select a flow first'); return; }
+    if (selectedStep === null) { showAlert('Required', 'Select which step needs input'); return; }
     if (selectedContacts.size === 0) { showAlert('Required', 'Select at least one participant'); return; }
+    const emails = contacts.filter((c: any) => selectedContacts.has(c.id)).map((c: any) => c.email).filter(Boolean);
+    if (emails.length === 0) { showAlert('No emails', 'Selected contacts need an email to receive the invite.'); return; }
 
     setCreating(true);
     try {
-      const res = await api.post('/collaboration/sessions', {
-        module_type: selectedModule.type,
+      const res = await api.post('/shared-steps/create', {
+        module: selectedModule.type,
         module_id: selectedModule.id,
-        title: selectedModule.title,
-        decision_mode_id: selectedMode,
-        participant_contact_ids: Array.from(selectedContacts),
-        auth_config: authConfig,
-        notify_participants: notifyParticipants,
-        notify_mode: notifyMode,
+        step_number: selectedStep,
+        recipient_emails: emails,
+        merge_mode: selectedMode,
+        message: notifyMode ? `Decision mode: ${modes.find((m: any) => m.id === selectedMode)?.name || selectedMode}` : '',
         session_mode: sessionMode,
-        mode_config_override: showOverride && Object.keys(overrideFields).length > 0
-          ? Object.fromEntries(Object.entries(overrideFields).map(([k, v]) => [k, parseFloat(v) || v]))
-          : null,
+        auth_config: authConfig,
+        notify: { participants: notifyParticipants, mode: notifyMode },
       });
       setShowCreate(false);
-      showAlert('Session Created', `Collaboration session created with ${selectedContacts.size} participant(s). Mode: ${modes.find((m: any) => m.id === selectedMode)?.name || selectedMode}`);
-      fetchSessions();
+      showAlert('Invites sent ✓',
+        `${res.data?.shared_count || 0} contributor(s) notified via Email/WhatsApp for Step ${selectedStep}. Track their responses under that step's "Sent Requests" (open the step → share icon → Sent).`);
+      const m = selectedModule;
+      if (m.type === 'decision') router.push(`/prr/${m.id}?step=${selectedStep}` as any);
+      else if (m.type === 'pros_cons') router.push(`/tools/pros-cons-wizard?id=${m.id}` as any);
+      else router.push(`/tools/solution-finder?id=${m.id}` as any);
     } catch (err: any) {
-      showAlert('Error', err.response?.data?.detail || 'Failed to create session');
+      showAlert('Error', err.response?.data?.detail || 'Failed to send invites');
     } finally { setCreating(false); }
   };
 
@@ -187,26 +209,51 @@ export default function CollaborateScreen() {
     switch (createStep) {
       case 0: return (
         <View>
-          <Text style={styles.stepTitle}>Select Decision / Problem</Text>
-          <Text style={styles.stepHint}>Choose the My Dezider or Solution Finder to collaborate on.</Text>
+          <Text style={styles.stepTitle}>Choose flow & step</Text>
+          <Text style={styles.stepHint}>Pick the module, the specific flow, then the step you want input on.</Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+            {MODULE_TYPES.map(mt => {
+              const on = moduleTypeFilter === mt.key;
+              return (
+                <TouchableOpacity key={mt.key}
+                  onPress={() => { setModuleTypeFilter(mt.key as any); setSelectedModule(null); setSelectedStep(null); }}
+                  style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 9, borderRadius: 18, borderWidth: 1.5, borderColor: on ? mt.color : '#E5E7EB', backgroundColor: on ? mt.color + '14' : '#FFF' }}>
+                  <Ionicons name={mt.icon as any} size={14} color={on ? mt.color : COLORS.textMuted} />
+                  <Text style={{ fontSize: 11.5, fontWeight: '700', color: on ? mt.color : COLORS.textSecondary }}>{mt.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
           <View>
-            {modules.length === 0 ? (
-              <Text style={styles.noItems}>No decisions or problems found. Create one first.</Text>
-            ) : modules.map((m, i) => (
+            {modules.filter(m => m.type === moduleTypeFilter).length === 0 ? (
+              <Text style={styles.noItems}>No {MODULE_TYPES.find(t => t.key === moduleTypeFilter)?.label} flows yet. Create one first.</Text>
+            ) : modules.filter(m => m.type === moduleTypeFilter).map((m, i) => (
               <TouchableOpacity key={i} style={[styles.moduleCard, selectedModule?.id === m.id && styles.moduleCardSelected]}
-                onPress={() => setSelectedModule(m)}>
-                <View style={[styles.moduleType, { backgroundColor: m.type === 'decision' ? '#EFF6FF' : '#FFF7ED' }]}>
-                  <Ionicons name={m.type === 'decision' ? 'git-branch' : 'bulb'} size={14}
-                    color={m.type === 'decision' ? '#2563EB' : '#D97706'} />
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: m.type === 'decision' ? '#2563EB' : '#D97706' }}>
-                    {m.type === 'decision' ? 'PRR' : 'SOLVER'}
-                  </Text>
-                </View>
+                onPress={() => { setSelectedModule(m); setSelectedStep(null); }}>
                 <Text style={styles.moduleTitle} numberOfLines={2}>{m.title}</Text>
                 {selectedModule?.id === m.id && <Ionicons name="checkmark-circle" size={20} color="#059669" />}
               </TouchableOpacity>
             ))}
           </View>
+          {selectedModule && (
+            <View style={{ marginTop: 10 }}>
+              <Text style={[styles.inputLabel, { marginBottom: 8 }]}>Which step needs input?</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {(STEP_CATALOG[moduleTypeFilter] || []).map(st => {
+                  const on = selectedStep === st.n;
+                  return (
+                    <TouchableOpacity key={st.n} onPress={() => setSelectedStep(st.n)}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: on ? '#7C3AED' : '#E5E7EB', backgroundColor: on ? '#7C3AED' : '#FFF' }}>
+                      <View style={{ width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? '#FFF' : '#F1F5F9' }}>
+                        <Text style={{ fontSize: 10, fontWeight: '800', color: on ? '#7C3AED' : COLORS.textSecondary }}>{st.n}</Text>
+                      </View>
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: on ? '#FFF' : COLORS.textPrimary }}>{st.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          )}
         </View>
       );
       case 1: return (
@@ -703,7 +750,7 @@ export default function CollaborateScreen() {
                 <View style={{ flex: 1 }} />
                 {createStep < 4 ? (
                   <TouchableOpacity style={styles.nextBtn} onPress={() => {
-                    if (createStep === 0 && !selectedModule) { showAlert('Required', 'Select a module first'); return; }
+                    if (createStep === 0 && (!selectedModule || selectedStep === null)) { showAlert('Required', 'Pick a flow and the step to collaborate on'); return; }
                     if (createStep === 2 && selectedContacts.size === 0) { showAlert('Required', 'Select at least one participant'); return; }
                     setCreateStep(createStep + 1);
                     scrollWizardTop();
