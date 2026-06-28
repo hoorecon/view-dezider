@@ -209,3 +209,11 @@ Multi-user Decision Making App based on a 10-step Proactive Risk Response (PRR) 
 - Owner can view own + per-contributor inputs even AFTER merge (contributions preserved). AI advisory: owner edits/overrides or applies as suggested (default).
 - Admin → AI Wallet Config → AI touchpoints: new tp_collab_ai_merge toggle.
 - PENDING (next): Email/WhatsApp OTP verification toggles in Step 6 (inviting).
+
+---
+## Iter 174–175 — Collab Hub redesign + deep-link/OTP/live (DONE, tested)
+- Wizard Step 1 = Module→Flow→Step; Launch creates share-step invites (Email+WhatsApp via Resend/UltraMsg, real) and routes owner to the step's Sent tab. Wizard bugs fixed (scroll, checkbox visibility, presence-check live-only, auth instructions, async verify dead-end, de-branded "Jitsi").
+- Deep-link /contribute?share=<id> → signup→auto-return → opens exact module/flow/step in contribution mode (login.tsx honors getPostAuthRoute for all; contribute.tsx waits on isLoading).
+- OTP-on-access gate (email/WhatsApp, once/every-time) via /shared-steps/{id}/access,/send-otp,/verify-otp. Owner bypasses.
+- Live Sync: auto room URL; ShareStepModal Sent tab shows meeting link + Copy + Invite-more (/shared-steps/{id}/add-recipients dispatches step+meeting links).
+- All verified: backend scripts PASS + testing_agent iter174/175/176 PASS.
