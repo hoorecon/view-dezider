@@ -379,6 +379,58 @@ async def add_share_recipients(share_id: str, data: dict = Body(default={}), use
     return {"added": len(new_recipients), "invited": len(new_pending)}
 
 
+@router.post("/shared-steps/{share_id}/presence")
+async def share_heartbeat(share_id: str, user: dict = Depends(get_current_user)):
+    """Mark the caller as currently present in this (live) shared step."""
+    now = datetime.now(timezone.utc).isoformat()
+    res = await db.shared_steps.update_one(
+        {"id": share_id}, {"$set": {f"presence.{user['user_id']}": now}})
+    if not res.matched_count:
+        raise HTTPException(status_code=404, detail="Shared step not found")
+    return {"ok": True, "at": now}
+
+
+@router.get("/shared-steps/{share_id}/presence")
+async def share_presence(share_id: str, user: dict = Depends(get_current_user)):
+    """Who's active now (heartbeat within the last 70s)."""
+    from datetime import timedelta as _td
+    share = await db.shared_steps.find_one({"id": share_id}, {"_id": 0})
+    if not share:
+        raise HTTPException(status_code=404, detail="Shared step not found")
+    cutoff = (datetime.now(timezone.utc) - _td(seconds=70)).isoformat()
+    pres = share.get("presence", {}) or {}
+    names = {share["owner_id"]: share.get("owner_name", "Owner")}
+    for r in share.get("recipients", []):
+        names[r["user_id"]] = r.get("name", r.get("email"))
+    active = [{"user_id": uid, "name": names.get(uid, "Someone")}
+              for uid, ts in pres.items() if ts and ts >= cutoff]
+    return {"active": active, "count": len(active)}
+
+
+@router.get("/shared-steps-by-flow")
+async def shares_by_flow(module: str, module_id: str, user: dict = Depends(get_current_user)):
+    """Owner: every shared step for ONE flow — powers the Collaboration dashboard."""
+    cur = db.shared_steps.find(
+        {"owner_id": user["user_id"], "module": module,
+         "$or": [{"module_id": module_id}, {"decision_id": module_id}]}, {"_id": 0})
+    out = []
+    async for s in cur:
+        recs = s.get("recipients", [])
+        out.append({
+            "id": s["id"], "step_number": s.get("step_number"),
+            "session_mode": s.get("session_mode", "async"), "status": s.get("status", "active"),
+            "call_room_url": s.get("call_room_url"), "merge_history": s.get("merge_history", []),
+            "merge_mode": s.get("merge_mode", "equal"),
+            "total": len(recs) + len(s.get("pending_invites", [])),
+            "contributed": sum(1 for r in recs if r.get("status") == "contributed"),
+            "recipients": [{"name": r.get("name", r.get("email")), "status": r.get("status"),
+                            "sme": bool(r.get("sme"))} for r in recs],
+            "pending": [p.get("email") for p in s.get("pending_invites", [])],
+        })
+    out.sort(key=lambda x: (x.get("step_number") if x.get("step_number") is not None else 99))
+    return {"shares": out}
+
+
 @router.post("/shared-steps/{share_id}/open")
 async def open_for_contribution(share_id: str, user: dict = Depends(get_current_user)):
     """Resolve where the contributor should edit. For decision → the owner's
