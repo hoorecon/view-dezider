@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { COLORS } from '../constants/colors';
 import api from '../utils/api';
+import ReviewMergeModal from './ReviewMergeModal';
 
 interface ShareStepModalProps {
   visible: boolean;
@@ -23,6 +24,8 @@ interface ShareStepModalProps {
   stepName: string;
   onShareSuccess: () => void;
   module?: string;
+  /** Open directly on the "Sent" tab (used by the Review & Merge entry point). */
+  initialShowSent?: boolean;
 }
 
 const STEP_NAMES: Record<number, string> = {
@@ -67,6 +70,7 @@ export default function ShareStepModal({
   stepName,
   onShareSuccess,
   module: shareModule,
+  initialShowSent,
 }: ShareStepModalProps) {
   const [emailInput, setEmailInput] = useState('');
   const [emails, setEmails] = useState<string[]>([]);
@@ -89,6 +93,8 @@ export default function ShareStepModal({
   const [contactsLoading, setContactsLoading] = useState(false);
   const [contactSearch, setContactSearch] = useState('');
   const [smeOnly, setSmeOnly] = useState(false);
+  const [reviewShareId, setReviewShareId] = useState<string | null>(null);
+  const [reviewAutoAi, setReviewAutoAi] = useState(false);
   const router = useRouter();
 
   const askPublic = async () => {
@@ -110,6 +116,7 @@ export default function ShareStepModal({
 
   useEffect(() => {
     if (visible) {
+      setShowSent(!!initialShowSent);
       fetchSentShares();
       fetchExperts();
     }
@@ -252,21 +259,8 @@ export default function ShareStepModal({
     }
   };
 
-  const handleMerge = async (shareId: string) => {
-    try {
-      setLoading(true);
-      await api.post(`/shared-steps/${shareId}/merge`, { merge_mode: mergeMode });
-      Alert.alert('Merged!', 'Contributions have been merged into your decision');
-      onShareSuccess();
-      fetchSentShares();
-    } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.detail || 'Failed to merge');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
+    <>
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.container}>
@@ -669,14 +663,25 @@ export default function ShareStepModal({
                             <Text style={styles.recipientStatus}>{r.status}</Text>
                           </View>
                         ))}
-                        {share.status === 'active' && contributed > 0 && (
-                          <TouchableOpacity
-                            style={styles.mergeBtn}
-                            onPress={() => handleMerge(share.id)}
-                          >
-                            <Ionicons name="git-merge-outline" size={16} color="#FFF" />
-                            <Text style={styles.mergeBtnText}>Merge Contributions</Text>
-                          </TouchableOpacity>
+                        {contributed > 0 && (
+                          <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                            <TouchableOpacity
+                              style={[styles.mergeBtn, { flex: 1, backgroundColor: COLORS.primary }]}
+                              testID={`review-merge-${share.id}`}
+                              onPress={() => { setReviewAutoAi(false); setReviewShareId(share.id); }}
+                            >
+                              <Ionicons name="git-compare-outline" size={15} color="#FFF" />
+                              <Text style={styles.mergeBtnText}>Review &amp; Merge</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[styles.mergeBtn, { flex: 1, backgroundColor: '#7C3AED' }]}
+                              testID={`ai-merge-${share.id}`}
+                              onPress={() => { setReviewAutoAi(true); setReviewShareId(share.id); }}
+                            >
+                              <Ionicons name="sparkles" size={15} color="#FFF" />
+                              <Text style={styles.mergeBtnText}>AI Auto-Merge</Text>
+                            </TouchableOpacity>
+                          </View>
                         )}
                       </View>
                     );
@@ -688,6 +693,14 @@ export default function ShareStepModal({
         </View>
       </View>
     </Modal>
+    <ReviewMergeModal
+      visible={!!reviewShareId}
+      shareId={reviewShareId}
+      autoAi={reviewAutoAi}
+      onClose={() => { setReviewShareId(null); setReviewAutoAi(false); }}
+      onMerged={() => { onShareSuccess(); fetchSentShares(); }}
+    />
+    </>
   );
 }
 

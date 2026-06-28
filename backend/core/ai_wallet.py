@@ -70,6 +70,7 @@ DEFAULTS = {
     "tp_prioritize_factors": True,  # Step 4 — "Prioritize with AI"
     "tp_best_options": True,        # Step 5 — "Find My Best Options"
     "tp_assess_all": True,          # Step 7 — "AI Assess ALL"
+    "tp_collab_ai_merge": True,     # Collab — "AI Review & Auto-Merge" contributions (all modules/steps)
     # Import-from-URL: AI may auto-GROUP ungrouped factors into categories only
     # when the page defines no grouping AND the factor count exceeds this.
     "loader_music_volume_web": 0.55,
@@ -205,7 +206,7 @@ async def update_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
     if "openai_free_tier_feature_enabled" in patch and patch["openai_free_tier_feature_enabled"] is not None:
         allowed["openai_free_tier_feature_enabled"] = bool(patch["openai_free_tier_feature_enabled"])
     # AI touchpoint master switches (MyDezider core flow).
-    for tp in ("tp_best_factors", "tp_prioritize_factors", "tp_best_options", "tp_assess_all"):
+    for tp in ("tp_best_factors", "tp_prioritize_factors", "tp_best_options", "tp_assess_all", "tp_collab_ai_merge"):
         if tp in patch and patch[tp] is not None:
             allowed[tp] = bool(patch[tp])
     if not allowed:
@@ -323,7 +324,7 @@ async def estimates() -> Dict[str, Any]:
         "touchpoints": {
             tp: bool(cfg.get(tp, True))
             for tp in ("tp_best_factors", "tp_prioritize_factors",
-                       "tp_best_options", "tp_assess_all")
+                       "tp_best_options", "tp_assess_all", "tp_collab_ai_merge")
         },
     }
 

@@ -75,6 +75,8 @@ interface Cfg {
   tp_prioritize_factors?: boolean;
   tp_best_options?: boolean;
   tp_assess_all?: boolean;
+  /** Collaboration · AI Review & Auto-Merge of contributors' step inputs. */
+  tp_collab_ai_merge?: boolean;
 }
 
 const FIELDS: Array<{
@@ -309,6 +311,7 @@ export default function AdminAIWalletConfigScreen() {
             { key: 'tp_prioritize_factors', label: 'Step 4 · Prioritize with AI', hint: 'AI ranks the factors by importance for the decision.' },
             { key: 'tp_best_options', label: 'Step 5 · Find My Best Options', hint: 'AI proposes the top options (incl. Solution Store matches).' },
             { key: 'tp_assess_all', label: 'Step 7 · AI Assess ALL', hint: 'AI scores every empty option × factor cell in bulk.' },
+            { key: 'tp_collab_ai_merge', label: 'Collaboration · AI Review & Auto-Merge', hint: 'Owners can AI-consolidate contributors\u2019 step inputs (MyDezider, P&C, Solution Finder), weighting SME/capability/resources. Metered per user / flow / step.' },
           ] as Array<{ key: keyof Cfg; label: string; hint: string }>).map((tp, i) => (
             <View key={tp.key} style={[s.flagRow, i > 0 && { marginTop: 12, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 12 }]}>
               <View style={{ flex: 1, paddingRight: 12 }}>

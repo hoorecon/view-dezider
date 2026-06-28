@@ -1,0 +1,40 @@
+{
+  "summary": "Iter173 — Per-step owner-side Review & Merge + AI Auto-Merge across all 3 modules (decision, pros_cons, solution_finder). Backend: 11/11 pytest tests PASS in /app/backend/tests/test_iter173_review_merge.py covering /review (owner-only, owner+contributions with sme/sme_domains/capability/resources), contributions preserved post-merge, /ai-merge (200 with proposal+rationale+charged+provider+balance) for decision, pros_cons AND solution_finder, /apply persists merged fields and strips protected identity keys (id/_id/user_id), legacy weighted /merge for decision step-7 (owner 40 + contrib 80 → ~60 with equal mode), contributor 403 on /review,/ai-merge,/apply, admin tp_collab_ai_merge=false disables /ai-merge with 'disabled by the administrator' detail (re-enabling restores), and SME enrichment from owner contact propagates is_sme=true / capability containing 'Finance'. Frontend (mobile 390x844, web): admin AI Wallet Config screen shows testID awc-touchpoint-tp_collab_ai_merge and persists toggle after save+reload. MyDezider /prr/{id}: clicking testID share-step-btn in the step header opens ShareStepModal; switching to 'Sent' tab shows '1 recipient · 1/1 contributed' and the two action buttons review-merge-<shareId> + ai-merge-<shareId>; tapping AI Auto-Merge opens ReviewMergeModal with the owner block + contributor block (Regular Admin · SME · Finance) — AI auto-runs (autoAi=true) and renders rationale ('AI consolidates all inputs, weighting by your merge mode (equal) plus each contributor's SME status…') and the ai-merge-apply button; clicking ai-merge-apply applies and the share status flips to a purple 'Merged' badge while the contributor input remains fully visible. Pros&Cons /tools/pros-cons-wizard: per-step CollabBar exposes testID collab-share-btn ('Share this step') + collab-review-btn ('Review & merge'); collab-review-btn opens ShareStepModal directly on the Sent tab as required. Solution Finder /tools/solution-finder: CollabBar is correctly gated behind savedId/editId (source verified, /app/frontend/app/tools/solution-finder.tsx:1416) — it does not show on the fresh-Goal step (Step 1) until the entry is first saved. Same testIDs (collab-share-btn / collab-review-btn) used identically to P&C. AI merge consumed real Gemini free-tier credits (~7-12s per call, provider='gemini') and balance is returned. No console errors observed. No blockers; only minor non-iter173 RN-Web deprecation warnings (shadow*, props.pointerEvents) still present.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/tools/solution-finder (Step 1/Goal)", "issues": ["CollabBar (share/review) is gated behind savedId/editId so on a brand-new SF the bar isn't visible until the user advances past the Goal step. Not a bug — code follows the same pattern as P&C — but consider rendering a disabled affordance with a hint ('Save the goal to share') so contributors know it's available."]}
+    ],
+    "react_native_issues": [
+      {"component": "shadow* style props", "issue": "RN-Web 'shadow*' style props are deprecated; use 'boxShadow'. Still recurring across multiple components in bundler logs (chronic; not iter173-specific)."},
+      {"component": "props.pointerEvents", "issue": "RN-Web warning props.pointerEvents is deprecated; use style.pointerEvents. Chronic."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter173_review_merge.py",
+    "/app/test_reports/pytest/iter173.xml",
+    "/app/backend/tests/verify_review_merge.py"
+  ],
+  "action_items": [
+    "(NICE-TO-HAVE) Solution Finder Goal step (step 1): render a disabled/hint CollabBar before savedId is created so users see the affordance from step 1.",
+    "(CHRONIC) Replace deprecated RN-Web 'shadow*' style props with 'boxShadow' and props.pointerEvents with style.pointerEvents across the codebase."
+  ],
+  "critical_code_review_comments": [
+    "routes/decisions/sharing.py::ai_merge_contributions correctly gates on tp_collab_ai_merge and 402s on InsufficientCredits; system_msg properly instructs the model to weight by owner merge_mode + contributor SME/capability/resources; rationale is parsed from a fenced JSON block with a graceful fallback when JSON parsing fails (raw[:400]).",
+    "routes/decisions/sharing.py::apply_merged_step strips identity keys (key/_id/user_id/id/entry_id/contribution_clone/created_at) before $set, preventing payload-based ID forgery — verified in test_apply_owner_persists_and_preserves.",
+    "routes/decisions/sharing.py::review_contributions correctly returns sme/sme_domains/capability/resources sourced from the per-recipient embedded fields populated at share-time via _contact_meta() — and contributions persist after status='merged' (preserved in shared_steps.recipients[].contribution).",
+    "ReviewMergeModal.tsx auto-triggers ai-merge when autoAi=true and renders rationale + a 'Why this merge' block; ai-merge-apply POSTs /apply with the parsed proposal."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter173_review_merge.py (new)",
+    "/tmp/seed_iter173_share.py (helper, seed only)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Created 1 decision 'TEST_iter173_FE …' with one factor + one option, shared step 7 to admin@test.com, admin contributed assessments {o1_f1:80} + note. Decision id 3fdbdba3-d34a-42dd-9218-7c050cf655f7 (left behind for any retest, can be cleaned with DELETE /api/decisions/{id}). pytest tests self-clean via DELETE on decisions/pros-cons/solution-finders. Touchpoint tp_collab_ai_merge was toggled off then on twice — restored to ON.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend: pytest backend/tests/test_iter173_review_merge.py — uses external EXPO_PUBLIC_BACKEND_URL automatically; 11 tests, ~42s (AI calls included). Frontend ReviewMergeModal flow: log in as super, /prr/<decision_id>, click testID share-step-btn (added in iter172), switch to Sent tab, click ai-merge-<shareId> — autoAi=true auto-runs the AI call, wait up to 60s for ai-merge-apply, then click it. The seed/cleanup pattern in test_iter173_review_merge.py is reusable for other share-step features.",
+  "rca_of_issue": "No bugs. All 11 backend assertions and 5 frontend flows (admin toggle persistence, MyDezider review-merge button, MyDezider ai-merge button + auto-run + apply + merged-badge + contributor preserved, P&C CollabBar share+review opening Sent tab, SF CollabBar gating) verified."
+}

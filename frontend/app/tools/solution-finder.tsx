@@ -1278,15 +1278,6 @@ export default function SimpleSolutionFinder() {
           />
         </View>
       ) : null}
-      {editId && !contributionMode && (
-        <CollabBar
-          module="solution-finder"
-          decisionId={editId}
-          stepId="s_action_plan"
-          stepLabel="Solution Finder — Action Plan"
-          decisionTitle={smartGoal || 'Solution Finder'}
-        />
-      )}
       <TouchableOpacity onPress={recomputePlan} style={s.regenBtn}>
         <Ionicons name="refresh" size={14} color="#0F172A" />
         <Text style={s.regenText}>Re-aggregate from Q3 + Q4b + Q4c</Text>
@@ -1422,6 +1413,19 @@ export default function SimpleSolutionFinder() {
         </View>
       )}
       {renderStepIndicator()}
+      {(savedId || editId) && !contributionMode && (
+        <View style={{ paddingHorizontal: 16, marginBottom: 4 }}>
+          <CollabBar
+            module="solution-finder"
+            decisionId={(savedId || editId) as string}
+            stepId={`s${step}`}
+            stepLabel={`${STEPS[step]?.title || 'Step'} (Solution Finder)`}
+            decisionTitle={smartGoal || 'Solution Finder'}
+            useShareStep
+            stepNumber={step}
+          />
+        </View>
+      )}
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         {step === 0 && renderStep0()}
         {step === 1 && renderStep1()}

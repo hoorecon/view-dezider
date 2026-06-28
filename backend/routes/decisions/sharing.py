@@ -91,8 +91,32 @@ _MODULE_META = {
 }
 
 
-async def _resolve_recipients(emails):
-    """Split emails into registered recipients and pending invites (deduped)."""
+async def _contact_meta(owner_id: str, email: str) -> dict:
+    """Look up the OWNER's contact record for this recipient email so the AI
+    merge can weight the contributor by SME status, declared resources and
+    capability/bandwidth. Best-effort; returns empty dict when no contact."""
+    if not owner_id or not email:
+        return {}
+    c = await db.contacts.find_one(
+        {"user_id": owner_id, "email": email}, {"_id": 0}) or {}
+    sme = bool(c.get("is_sme"))
+    domains = c.get("sme_domains") or []
+    cap = "SME · " + ", ".join(domains) if (sme and domains) else ("SME" if sme else "")
+    bw = c.get("time_bandwidth_hours_per_month")
+    if bw:
+        cap = (cap + f" · ~{bw}h/mo").strip(" ·")
+    return {
+        "sme": sme,
+        "sme_domains": domains,
+        "capability": cap or None,
+        "resources": c.get("resources") or None,
+    }
+
+
+async def _resolve_recipients(emails, owner_id: str = ""):
+    """Split emails into registered recipients and pending invites (deduped).
+    Registered recipients are enriched with the owner's contact metadata
+    (SME / capability / resources) when available."""
     recipients, pending, seen = [], [], set()
     for raw in emails or []:
         email = (raw or "").strip().lower()
@@ -102,7 +126,8 @@ async def _resolve_recipients(emails):
         ru = await db.users.find_one({"email": email}, {"_id": 0})
         if ru:
             recipients.append({"user_id": ru["user_id"], "email": email, "name": ru.get("name", email),
-                               "status": "pending", "contribution": None, "invited_by": None, "invited_by_name": None})
+                               "status": "pending", "contribution": None, "invited_by": None, "invited_by_name": None,
+                               **await _contact_meta(owner_id, email)})
         else:
             pending.append({"email": email, "invited_by": None, "invited_by_name": None})
     return recipients, pending
@@ -133,7 +158,7 @@ async def create_shared_step(data: dict = Body(...), user: dict = Depends(get_cu
         raise HTTPException(status_code=400, detail=f"Unsupported module: {module}")
     if not doc:
         raise HTTPException(status_code=404, detail="Item not found")
-    recipients, pending = await _resolve_recipients(data.get("recipient_emails", []))
+    recipients, pending = await _resolve_recipients(data.get("recipient_emails", []), user["user_id"])
     if not recipients and not pending:
         raise HTTPException(status_code=400, detail="No valid recipient emails provided")
     share_id = str(uuid.uuid4())
@@ -220,7 +245,8 @@ async def share_step(decision_id: str, data: ShareStepRequest, user: dict = Depe
         if recipient_user:
             recipients.append({"user_id": recipient_user["user_id"], "email": email,
                                "name": recipient_user.get("name", email), "status": "pending",
-                               "contribution": None, "invited_by": None, "invited_by_name": None})
+                               "contribution": None, "invited_by": None, "invited_by_name": None,
+                               **await _contact_meta(user["user_id"], email)})
         else:
             pending_invites.append({"email": email, "invited_by": None, "invited_by_name": None})
     if not recipients and not pending_invites:
@@ -438,6 +464,153 @@ async def reshare_step(share_id: str, data: ReshareStepRequest, user: dict = Dep
         raise HTTPException(status_code=400, detail="No new recipients to add.")
     return {"ok": True, "added": added, "invited": invited,
             "message": f'Forwarded for help to {added + invited} {"person" if added + invited == 1 else "people"}.'}
+
+
+@router.get("/shared-steps/{share_id}/review")
+async def review_contributions(share_id: str, user: dict = Depends(get_current_user)):
+    """Owner-only: own step data + every contributor's per-step input (preserved
+    even after merge). Works for all modules / steps."""
+    share = await db.shared_steps.find_one({"id": share_id}, {"_id": 0})
+    if not share:
+        raise HTTPException(status_code=404, detail="Shared step not found")
+    if share["owner_id"] != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Only the owner can review contributions")
+    module = share.get("module", "decision")
+    meta = _MODULE_META.get(module, _MODULE_META["decision"])
+    flow_id = share.get("module_id") or share.get("decision_id")
+    owner_doc = await getattr(db, meta["coll"]).find_one(
+        {meta["key"]: flow_id, "user_id": share["owner_id"]}, {"_id": 0})
+    contributions = []
+    for r in share.get("recipients", []):
+        if r.get("status") == "contributed" and r.get("contribution"):
+            c = r["contribution"]
+            data = c.get("snapshot") if module != "decision" else c
+            contributions.append({
+                "user_id": r["user_id"], "name": r.get("name", r.get("email")),
+                "email": r.get("email"),
+                "sme": bool(r.get("sme")), "sme_domains": r.get("sme_domains") or [],
+                "capability": r.get("capability"), "resources": r.get("resources"),
+                "data": data, "note": c.get("note", ""), "submitted_at": c.get("submitted_at"),
+            })
+    return {
+        "module": module, "step_number": share.get("step_number"),
+        "merge_mode": share.get("merge_mode", "equal"), "status": share.get("status", "active"),
+        "decision_title": share.get("decision_title"), "owner": owner_doc,
+        "contributions": contributions,
+    }
+
+
+@router.post("/shared-steps/{share_id}/ai-merge")
+async def ai_merge_contributions(share_id: str, data: dict = Body(default={}), user: dict = Depends(get_current_user)):
+    """Owner-only: AI proposes a consolidated step from all contributors' inputs,
+    weighted by the owner's mode + each contributor's capability/SME/resources.
+    Advisory — NOT applied automatically. Routed free-tier→paid like every other
+    AI feature and metered per user / flow / step via the tp_collab_ai_merge
+    touchpoint."""
+    import json as _json
+    from core import ai_wallet as _aw
+    from core.ai_metering import metered_chat
+    share = await db.shared_steps.find_one({"id": share_id}, {"_id": 0})
+    if not share:
+        raise HTTPException(status_code=404, detail="Shared step not found")
+    if share["owner_id"] != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Only the owner can run AI merge")
+    if not await _aw.touchpoint_enabled("tp_collab_ai_merge"):
+        raise HTTPException(status_code=403, detail="AI merge is currently disabled by the administrator")
+
+    module = share.get("module", "decision")
+    step = share.get("step_number")
+    flow_id = share.get("module_id") or share.get("decision_id") or share_id
+    meta = _MODULE_META.get(module, _MODULE_META["decision"])
+    owner_doc = await getattr(db, meta["coll"]).find_one(
+        {meta["key"]: flow_id, "user_id": share["owner_id"]}, {"_id": 0}) or {}
+    contribs = []
+    for r in share.get("recipients", []):
+        if r.get("status") == "contributed" and r.get("contribution"):
+            c = r["contribution"]
+            contribs.append({
+                "contributor": r.get("name", r.get("email")),
+                "capability": r.get("capability") or "unknown",
+                "sme": bool(r.get("sme")),
+                "sme_domains": r.get("sme_domains") or [],
+                "resources": r.get("resources"),
+                "input": (c.get("snapshot") if module != "decision" else
+                          {"factors": c.get("factors"), "options": c.get("options"), "assessments": c.get("assessments")}),
+                "note": c.get("note", ""),
+            })
+    if not contribs:
+        raise HTTPException(status_code=400, detail="No contributions to merge yet")
+
+    system_msg = (
+        "You consolidate multiple contributors' inputs for ONE step of a decision-making flow "
+        f"(module='{module}', step={step}). Produce the best merged version of THIS step.\n"
+        f"Owner merge mode = '{share.get('merge_mode', 'equal')}'. Weight contributors by this mode AND by "
+        "their capability/SME status, declared domains and available resources: an SME (subject-matter expert), "
+        "a higher-capability contributor, or one whose declared resources are clearly relevant should carry more "
+        "weight; 'self'/'self_weighted' mode means the owner's existing values dominate; 'equal' weights everyone "
+        "equally; 'custom' respects provided weights.\n"
+        "Return STRICT JSON only: {\"merged\": <object with the same shape as the owner's step fields>, "
+        "\"rationale\": \"2-4 sentences explaining how you weighted SME/capability/resources & the owner's mode\"}. "
+        "No prose outside JSON."
+    )
+    prompt = _json.dumps({
+        "owner_current": owner_doc,
+        "contributions": contribs,
+        "instruction": "Merge into a single best version of this step's fields. Keep field names identical to owner_current where possible.",
+    }, default=str)[:14000]
+    meta_out: dict = {}
+    try:
+        raw = (await metered_chat(
+            user["user_id"], system_message=system_msg, prompt=prompt,
+            feature=f"collab_ai_merge:{module}:s{step}",
+            session_prefix="collab_merge", session_id=f"{module}:{flow_id}",
+            tier="fast", meta=meta_out,
+        )).strip()
+    except _aw.InsufficientCredits:
+        raise HTTPException(status_code=402, detail="You're out of AI credits. Top up to use AI Auto-Merge.")
+    except Exception as e:
+        from core.llm_errors import llm_error_to_http
+        raise llm_error_to_http(e)
+
+    parsed = None
+    try:
+        txt = raw
+        if "```" in txt:
+            txt = txt.split("```")[1].replace("json", "", 1).strip() if txt.count("```") >= 2 else txt
+        parsed = _json.loads(txt[txt.find("{"): txt.rfind("}") + 1])
+    except Exception:
+        parsed = {"merged": None, "rationale": raw[:400]}
+
+    return {"proposal": parsed.get("merged"), "rationale": parsed.get("rationale", ""),
+            "raw": raw, "charged": meta_out.get("credits"), "provider": meta_out.get("provider"),
+            "balance": (await _aw.get_balance(user["user_id"])).get("balance")}
+
+
+@router.post("/shared-steps/{share_id}/apply")
+async def apply_merged_step(share_id: str, data: dict = Body(...), user: dict = Depends(get_current_user)):
+    """Owner-only: write the (owner-reviewed) merged step fields back into the
+    owner's record and mark the share merged. Contributions are preserved."""
+    share = await db.shared_steps.find_one({"id": share_id}, {"_id": 0})
+    if not share:
+        raise HTTPException(status_code=404, detail="Shared step not found")
+    if share["owner_id"] != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Only the owner can apply a merge")
+    merged = data.get("merged")
+    if not isinstance(merged, dict) or not merged:
+        raise HTTPException(status_code=400, detail="merged (object of step fields) is required")
+    module = share.get("module", "decision")
+    meta = _MODULE_META.get(module, _MODULE_META["decision"])
+    flow_id = share.get("module_id") or share.get("decision_id")
+    # Never let the merge payload clobber identity/ownership fields.
+    for protected in (meta["key"], "_id", "user_id", "id", "entry_id", "contribution_clone", "created_at"):
+        merged.pop(protected, None)
+    res = await getattr(db, meta["coll"]).update_one(
+        {meta["key"]: flow_id, "user_id": share["owner_id"]},
+        {"$set": {**merged, "updated_at": datetime.now(timezone.utc).isoformat()}})
+    await db.shared_steps.update_one({"id": share_id},
+        {"$set": {"status": "merged", "merged_at": datetime.now(timezone.utc).isoformat(),
+                  "merge_method": data.get("method", "manual")}})
+    return {"ok": True, "modified": res.modified_count}
 
 
 @router.post("/shared-steps/{share_id}/merge")

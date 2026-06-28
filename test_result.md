@@ -10610,3 +10610,71 @@ agent_communication:
       usage->cash/karma crediting wired into apply-to-option. Seeded completed decider dec_phase3_publish_demo
       for ongoing tests. Fixed floating font-scale FAB overlap (now bottom-left). Builds: 3A=2026.06.27.003
       (v3.87), 3B/3C=2026.06.27.004 (v3.88).
+
+
+#====================================================================================================
+# ITER 173 — Per-step "Review & Merge" + "AI Review & Auto-Merge" (all 3 modules)
+#====================================================================================================
+backend:
+  - task: "Iter 173 — Review / AI-Merge / Apply endpoints (collab)"
+    implemented: true
+    working: true
+    file: "backend/routes/decisions/sharing.py, backend/core/ai_wallet.py, backend/core/ai_metering.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          Owner-side collaboration review & merge for shared steps (module-aware: decision/pros_cons/swot/solution_finder).
+          Endpoints (all owner-only):
+            • GET  /api/shared-steps/{id}/review  → {owner, contributions[] (each with sme, sme_domains, capability, resources, data, note)}. Contributions are PRESERVED even after status=merged.
+            • POST /api/shared-steps/{id}/ai-merge → AI consolidates inputs weighting owner merge_mode + contributor SME/capability/resources. Uses metered_chat (free→paid, tier=fast), metered via tp_collab_ai_merge per user / per flow (session_id={module}:{flow_id}) / per step (feature=collab_ai_merge:{module}:s{step}). Advisory only. Returns {proposal, rationale, charged, provider, balance}.
+            • POST /api/shared-steps/{id}/apply → writes owner-approved merged fields back; protects identity keys; preserves contributions.
+            • POST /api/shared-steps/{id}/merge → legacy weighted numeric merge (decision step 7).
+          Recipients are enriched at share-create time with the OWNER's contact metadata (is_sme, sme_domains, resources → capability string).
+          MAIN-AGENT E2E (tests/verify_review_merge.py) ALL PASS: review pre-merge contributions=1 + owner present; ai-merge 200 (gemini, ~33 credits charged); weighted merge 200; review post-merge contributions STILL=1 (status=merged). SME-enrich test PASS (sme=true, domains=[Finance], capability="SME · Finance", resources populated).
+          tp_collab_ai_merge added to admin AI-wallet config touchpoints + estimates.
+
+frontend:
+  - task: "Iter 173 — ReviewMergeModal + entry points (ShareStepModal Sent tab, CollabBar for P&C/SF)"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/components/ReviewMergeModal.tsx, frontend/src/components/ShareStepModal.tsx, frontend/src/components/CollabBar.tsx, frontend/app/tools/pros-cons-wizard.tsx, frontend/app/tools/solution-finder.tsx, frontend/app/admin/ai-wallet-config.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: |
+          New reusable ReviewMergeModal: shows owner's own input + each contributor's input side-by-side (SME/capability badges, note, data preview, raw JSON toggle); "AI Review & Auto-Merge" (runs /ai-merge, shows proposal + rationale + credits, owner can Edit JSON or Apply as suggested [default]); manual "Adopt this version" per contributor (non-decision); "Weighted merge" for decision. Contributions remain viewable post-merge.
+          Entry points:
+            • MyDezider (prr step header → ShareStepModal): "Sent" tab now shows per-share "Review & Merge" + "AI Auto-Merge" buttons when contributions exist.
+            • Pros&Cons / SWOT (pros-cons-wizard per-step CollabBar) and Solution Finder (solution-finder per-step CollabBar) now use the share-step system (useShareStep) — "Share this step" opens module-aware ShareStepModal; new "Review & merge" pill opens it on the Sent tab.
+            • Admin → AI Wallet Config → AI touchpoints: new "Collaboration · AI Review & Auto-Merge" toggle (tp_collab_ai_merge).
+          Lint clean; web bundle compiles; landing renders.
+
+test_plan:
+  current_focus:
+    - "Iter 173 — Backend review/ai-merge/apply endpoints (owner-only, metering, post-merge contribution retention)"
+    - "Iter 173 — Frontend Review & Merge + AI Auto-Merge UI across MyDezider, P&C, Solution Finder"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: |
+      ITER 173 — please test (creds: owner super@test.com/SuperPass2026!, contributor admin@test.com/AdminPass2026!):
+      BACKEND (high):
+        1. Owner shares a MyDezider step 7 to admin; admin opens+contributes; owner GET /review (own + contributor inputs incl sme/capability/resources); POST /ai-merge (200, proposal+rationale+charged via tp_collab_ai_merge); POST /apply (writes back); GET /review AGAIN → contributions still present after merge.
+        2. RBAC: non-owner calling /review, /ai-merge, /apply → 403.
+        3. Admin toggle tp_collab_ai_merge OFF (super@test.com via PUT /admin/ai-wallet/config) → /ai-merge returns 403; toggle back ON.
+        4. Same review→ai-merge→apply for a P&C clone share (module=pros_cons) and a Solution Finder share (module=solution_finder).
+      FRONTEND (high):
+        5. MyDezider /prr/{id}: open step share modal → "Sent" tab → buttons "Review & Merge" and "AI Auto-Merge" appear for a share that has contributions; ReviewMergeModal opens, shows inputs, AI proposal renders, Apply works.
+        6. P&C wizard + Solution Finder: per-step CollabBar shows "Share this step" + "Review & merge"; the latter opens the modal on the Sent tab.
+        7. Admin AI Wallet Config shows the new tp_collab_ai_merge toggle and it persists.
+      NOTE: AI merge consumes real credits (Emergent key, gemini free-tier first). No mocks.

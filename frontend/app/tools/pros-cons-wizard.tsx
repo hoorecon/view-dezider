@@ -848,11 +848,13 @@ export default function ProsConsWizard() {
           {/* Collab affordance — share this step or schedule discussion. */}
           {!contributionMode && id && analysis && (
             <CollabBar
-              module="pros-cons"
+              module={module === 'swot' ? 'swot' : 'pros-cons'}
               decisionId={id}
               stepId={`s${step}`}
-              stepLabel={`P&C Step ${step}`}
+              stepLabel={`${module === 'swot' ? 'SWOT' : 'P&C'} Step ${step}`}
               decisionTitle={analysis.title || 'Pros & Cons analysis'}
+              useShareStep
+              stepNumber={step}
             />
           )}
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StepShareModal } from './StepShareModal';
+import ShareStepModal from './ShareStepModal';
 import { AppointmentSchedulerModal } from './AppointmentSchedulerModal';
 import { useFeatureGate } from '../utils/useFeatureGate';
 
@@ -17,31 +18,51 @@ interface CollabBarProps {
   /** Hide one of the buttons if not applicable. */
   hideShare?: boolean;
   hideCall?: boolean;
+  /** Use the share-step system (real-flow clone + Review & Merge + AI Auto-Merge)
+   *  instead of the WhatsApp invite. Set for Pros&Cons / SWOT / Solution Finder. */
+  useShareStep?: boolean;
+  /** Numeric step index for the share-step system. */
+  stepNumber?: number;
 }
 
 /**
  * Drop-in single-row affordance for any step of any collaborative module.
- * Renders two pill buttons: "Share this step" + "Schedule A/V call".
- * Internally manages both modal visibilities.
+ * Renders pill buttons: "Share this step" + (owner) "Review & merge" + "Schedule call".
+ * Internally manages all modal visibilities.
  */
 export const CollabBar: React.FC<CollabBarProps> = ({
   module, decisionId, stepId, stepLabel, partyId, partyLabel, fields, decisionTitle,
-  hideShare = false, hideCall = false,
+  hideShare = false, hideCall = false, useShareStep = false, stepNumber,
 }) => {
   const [showShare, setShowShare] = useState(false);
   const [showCall, setShowCall] = useState(false);
+  const [showShareStep, setShowShareStep] = useState(false);
+  const [shareStepSent, setShareStepSent] = useState(false);
   const { isOn } = useFeatureGate();
   if (!decisionId) return null;
   // Combine caller's prop with the central ACM toggle (Collaboration module).
   const showShareBtn = !hideShare && isOn('collab_share');
   const showCallBtn = !hideCall && isOn('collab_expert_call');
+  const openShareStep = (sent: boolean) => { setShareStepSent(sent); setShowShareStep(true); };
   return (
     <>
       <View style={s.row}>
         {showShareBtn && (
-          <TouchableOpacity testID="collab-share-btn" style={[s.btn, { borderColor: '#0EA5E9' }]} onPress={() => setShowShare(true)}>
+          <TouchableOpacity
+            testID="collab-share-btn" style={[s.btn, { borderColor: '#0EA5E9' }]}
+            onPress={() => (useShareStep ? openShareStep(false) : setShowShare(true))}
+          >
             <Ionicons name="share-social" size={14} color="#0EA5E9" />
             <Text style={[s.btnText, { color: '#0EA5E9' }]}>Share this step</Text>
+          </TouchableOpacity>
+        )}
+        {showShareBtn && useShareStep && (
+          <TouchableOpacity
+            testID="collab-review-btn" style={[s.btn, { borderColor: '#7C3AED' }]}
+            onPress={() => openShareStep(true)}
+          >
+            <Ionicons name="git-compare" size={14} color="#7C3AED" />
+            <Text style={[s.btnText, { color: '#7C3AED' }]}>Review &amp; merge</Text>
           </TouchableOpacity>
         )}
         {showCallBtn && (
@@ -51,11 +72,25 @@ export const CollabBar: React.FC<CollabBarProps> = ({
           </TouchableOpacity>
         )}
       </View>
-      <StepShareModal
-        visible={showShare} onClose={() => setShowShare(false)}
-        module={module} decisionId={decisionId} stepId={stepId} stepLabel={stepLabel}
-        partyId={partyId} partyLabel={partyLabel} fields={fields || []}
-      />
+      {!useShareStep && (
+        <StepShareModal
+          visible={showShare} onClose={() => setShowShare(false)}
+          module={module} decisionId={decisionId} stepId={stepId} stepLabel={stepLabel}
+          partyId={partyId} partyLabel={partyLabel} fields={fields || []}
+        />
+      )}
+      {useShareStep && (
+        <ShareStepModal
+          visible={showShareStep}
+          onClose={() => setShowShareStep(false)}
+          decisionId={decisionId}
+          stepNumber={stepNumber ?? 1}
+          stepName={stepLabel}
+          module={module}
+          initialShowSent={shareStepSent}
+          onShareSuccess={() => {}}
+        />
+      )}
       <AppointmentSchedulerModal
         visible={showCall} onClose={() => setShowCall(false)}
         module={module} decisionId={decisionId} stepId={stepId}
