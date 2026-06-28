@@ -497,6 +497,7 @@ async def review_contributions(share_id: str, user: dict = Depends(get_current_u
         "merge_mode": share.get("merge_mode", "equal"), "status": share.get("status", "active"),
         "decision_title": share.get("decision_title"), "owner": owner_doc,
         "contributions": contributions,
+        "merge_history": share.get("merge_history", []),
     }
 
 
@@ -607,9 +608,14 @@ async def apply_merged_step(share_id: str, data: dict = Body(...), user: dict = 
     res = await getattr(db, meta["coll"]).update_one(
         {meta["key"]: flow_id, "user_id": share["owner_id"]},
         {"$set": {**merged, "updated_at": datetime.now(timezone.utc).isoformat()}})
+    hist = {"at": datetime.now(timezone.utc).isoformat(), "by": user.get("name", "Owner"),
+            "by_id": user["user_id"], "method": data.get("method", "manual"),
+            "credits": data.get("credits"), "contributor": data.get("contributor"),
+            "contributors_count": sum(1 for r in share.get("recipients", []) if r.get("status") == "contributed")}
     await db.shared_steps.update_one({"id": share_id},
         {"$set": {"status": "merged", "merged_at": datetime.now(timezone.utc).isoformat(),
-                  "merge_method": data.get("method", "manual")}})
+                  "merge_method": data.get("method", "manual")},
+         "$push": {"merge_history": hist}})
     return {"ok": True, "modified": res.modified_count}
 
 
@@ -665,7 +671,10 @@ async def merge_shared_step(share_id: str, data: MergeStepRequest, user: dict = 
             merged_options.append({**option, "assessments": merged_assessments})
         now = datetime.now(timezone.utc)
         await db.decisions.update_one({"id": share["decision_id"]}, {"$set": {"options": merged_options, "updated_at": now}})
-    await db.shared_steps.update_one({"id": share_id}, {"$set": {"status": "merged", "merged_at": datetime.now(timezone.utc)}})
+    await db.shared_steps.update_one({"id": share_id}, {"$set": {"status": "merged", "merged_at": datetime.now(timezone.utc)},
+        "$push": {"merge_history": {"at": datetime.now(timezone.utc).isoformat(), "by": user.get("name", "Owner"),
+                                    "by_id": user["user_id"], "method": "weighted", "merge_mode": merge_mode,
+                                    "credits": 0, "contributors_count": len(contributions)}}})
     for r in share.get("recipients", []):
         if r.get("contribution"):
             await create_notification(r["user_id"], "share_merged", "Contributions Merged",

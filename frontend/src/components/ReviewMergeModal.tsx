@@ -39,7 +39,29 @@ interface ReviewData {
   decision_title?: string;
   owner?: any;
   contributions: Contribution[];
+  merge_history?: MergeEntry[];
 }
+
+interface MergeEntry {
+  at?: string;
+  by?: string;
+  method?: string;
+  credits?: number | null;
+  contributor?: string | null;
+  merge_mode?: string;
+  contributors_count?: number;
+}
+
+const METHOD_LABEL: Record<string, string> = {
+  ai: 'AI Auto-Merge', ai_edited: 'AI Auto-Merge (edited)',
+  manual_adopt: 'Adopted a contributor', weighted: 'Weighted merge', manual: 'Manual merge',
+};
+
+const fmtWhen = (iso?: string) => {
+  if (!iso) return '';
+  try { return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); }
+  catch { return iso.slice(0, 16).replace('T', ' '); }
+};
 
 /** Render an arbitrary step-data object as a readable key/value preview. */
 const DataPreview: React.FC<{ data: any }> = ({ data }) => {
@@ -128,7 +150,7 @@ export const ReviewMergeModal: React.FC<ReviewMergeModalProps> = ({
     }
   };
 
-  const applyMerged = async (merged: any, method: string) => {
+  const applyMerged = async (merged: any, method: string, credits?: number, contributor?: string) => {
     if (!shareId) return;
     if (!merged || (typeof merged === 'object' && Object.keys(merged).length === 0)) {
       showAlert('Nothing to apply', 'No merged fields to write.');
@@ -136,7 +158,7 @@ export const ReviewMergeModal: React.FC<ReviewMergeModalProps> = ({
     }
     setApplying(true);
     try {
-      await api.post(`/shared-steps/${shareId}/apply`, { merged, method });
+      await api.post(`/shared-steps/${shareId}/apply`, { merged, method, credits: credits ?? 0, contributor });
       showAlert('Merged ✓', 'The merged version has been applied to your flow. Contributor inputs are kept for reference.');
       onMerged?.();
       await fetchReview();
@@ -153,9 +175,9 @@ export const ReviewMergeModal: React.FC<ReviewMergeModalProps> = ({
       let parsed: any;
       try { parsed = JSON.parse(editedJson); }
       catch { showAlert('Invalid JSON', 'Please fix the JSON before applying.'); return; }
-      applyMerged(parsed, 'ai_edited');
+      applyMerged(parsed, 'ai_edited', aiCharged ?? 0);
     } else {
-      applyMerged(aiProposal, 'ai');
+      applyMerged(aiProposal, 'ai', aiCharged ?? 0);
     }
   };
 
@@ -216,7 +238,31 @@ export const ReviewMergeModal: React.FC<ReviewMergeModalProps> = ({
               {merged && (
                 <View style={s.infoBanner}>
                   <Ionicons name="information-circle" size={16} color="#7C3AED" />
-                  <Text style={s.infoBannerTxt}>This step is merged. You can still review every contributor's original input below, and re-merge if needed.</Text>
+                  <Text style={s.infoBannerTxt}>This step is merged. You can still review each contributor input below, and re-merge if needed.</Text>
+                </View>
+              )}
+
+              {(review.merge_history?.length || 0) > 0 && (
+                <View style={s.histCard}>
+                  <Text style={[s.sectionLabel, { marginTop: 0 }]}>Merge history</Text>
+                  {review.merge_history!.slice().reverse().map((h, i) => (
+                    <View key={i} style={s.histRow}>
+                      <Ionicons
+                        name={h.method?.startsWith('ai') ? 'sparkles' : h.method === 'weighted' ? 'git-merge' : 'checkmark-done'}
+                        size={14} color={h.method?.startsWith('ai') ? '#7C3AED' : COLORS.textSecondary}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.histTitle}>
+                          {METHOD_LABEL[h.method || 'manual'] || h.method}
+                          {h.contributor ? ` · ${h.contributor}` : ''}
+                          {h.merge_mode ? ` · ${h.merge_mode}` : ''}
+                        </Text>
+                        <Text style={s.histMeta}>
+                          {fmtWhen(h.at)}{h.by ? ` · by ${h.by}` : ''}{(h.credits ?? 0) > 0 ? ` · ${h.credits} credits` : ''}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
                 </View>
               )}
 
@@ -245,12 +291,12 @@ export const ReviewMergeModal: React.FC<ReviewMergeModalProps> = ({
                       {!!c.capability && <Text style={s.capability}>{c.capability}</Text>}
                     </View>
                   </View>
-                  {!!c.note && <Text style={s.note}>"{c.note}"</Text>}
+                  {!!c.note && <Text style={s.note}>{`“${c.note}”`}</Text>}
                   <DataPreview data={c.data} />
                   {!isDecision && (
                     <TouchableOpacity
                       style={s.adoptBtn} disabled={applying}
-                      onPress={() => applyMerged(c.data, 'manual_adopt')}
+                      onPress={() => applyMerged(c.data, 'manual_adopt', 0, c.name)}
                       testID={`adopt-${c.user_id}`}
                     >
                       <Ionicons name="checkmark-done" size={14} color="#0F766E" />
@@ -272,7 +318,7 @@ export const ReviewMergeModal: React.FC<ReviewMergeModalProps> = ({
                       <Text style={s.aiTitle}>AI Review &amp; Auto-Merge</Text>
                     </View>
                     <Text style={s.aiHint}>
-                      AI consolidates all inputs, weighting by your merge mode ({review.merge_mode}) plus each contributor's SME status, capability &amp; resources. Advisory — you approve before it's applied.
+                      AI consolidates all inputs, weighting by your merge mode ({review.merge_mode}) plus each contributor SME status, capability and resources. Advisory — you approve before applying.
                     </Text>
                     {!aiProposal && (
                       <TouchableOpacity style={s.aiBtn} onPress={runAiMerge} disabled={aiBusy} testID="ai-merge-run">
@@ -384,6 +430,10 @@ const s = StyleSheet.create({
   applyTxt: { fontSize: 14, fontWeight: '700', color: '#FFF' },
   weightedBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 12, marginBottom: 16 },
   weightedTxt: { fontSize: 13.5, fontWeight: '700', color: '#FFF' },
+  histCard: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, padding: 12, backgroundColor: '#F8FAFC', marginBottom: 12 },
+  histRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingVertical: 5, borderTopWidth: 1, borderTopColor: '#EEF2F7' },
+  histTitle: { fontSize: 12.5, fontWeight: '700', color: COLORS.textPrimary },
+  histMeta: { fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
 });
 
 export default ReviewMergeModal;
