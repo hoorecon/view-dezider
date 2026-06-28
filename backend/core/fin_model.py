@@ -316,3 +316,105 @@ def compute_model(assumptions: Dict[str, Any], projection_years: int = 5,
             "min_dscr": _r(min(dscr_vals), 2) if dscr_vals else 0.0,
         },
     }
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# CMA (bank-ready) extras — DSCR stress, MPBF (Tandon), Working-capital cycle,
+# Break-even and Fund-flow. Built on top of compute_model() output.
+# ──────────────────────────────────────────────────────────────────────────
+
+def compute_stress_dscr(assumptions: Dict[str, Any], n: int) -> List[Dict[str, Any]]:
+    """Base DSCR plus 3 standard bank stress scenarios."""
+    a = assumptions or {}
+
+    def scaled_rev(factor: float) -> Dict[str, Any]:
+        b = dict(a)
+        if b.get("revenue_by_year"):
+            b["revenue_by_year"] = [_num(x) * factor for x in b["revenue_by_year"]]
+        b["year1_revenue"] = _num(b.get("year1_revenue")) * factor
+        return b
+
+    base = compute_model(a, n)
+    s1 = compute_model(scaled_rev(0.90), n)                       # sales −10%
+    b2 = dict(a); b2["gross_margin_pct"] = _num(a.get("gross_margin_pct")) - 5
+    s2 = compute_model(b2, n)                                     # margin −5pp
+    b3 = dict(a); b3["interest_rate_pct"] = _num(a.get("interest_rate_pct")) + 2
+    s3 = compute_model(b3, n)                                     # interest +2pp
+
+    def pack(label: str, m: Dict[str, Any]) -> Dict[str, Any]:
+        return {"label": label, "dscr": m["ratios"]["dscr"],
+                "min_dscr": m["summary"]["min_dscr"], "avg_dscr": m["summary"]["dscr_avg"]}
+
+    return [
+        pack("Base case", base),
+        pack("Stress 1: Sales -10%", s1),
+        pack("Stress 2: Gross margin -5pp", s2),
+        pack("Stress 3: Interest +2pp", s3),
+    ]
+
+
+def compute_cma_extras(assumptions: Dict[str, Any], computed: Dict[str, Any]) -> Dict[str, Any]:
+    """MPBF (Tandon I & II), WC cycle, break-even, fund-flow + DSCR stress."""
+    a = assumptions or {}
+    n = computed["projection_years"]
+    pnl = computed["pnl"]; bs = computed["balance_sheet"]; rat = computed["ratios"]
+    gm = _num(a.get("gross_margin_pct")) / 100.0
+
+    new_debt = _series(a.get("new_debt_by_year"), n)
+    repay = _series(a.get("repayment_by_year"), n)
+    new_eq = _series(a.get("new_equity_by_year"), n)
+    capex = _series(a.get("capex_by_year"), n)
+
+    wc_cycle, mpbf_i, mpbf_ii, wc_gap, nwc = [], [], [], [], []
+    for i in range(n):
+        wc_cycle.append(_r(rat["inventory_days"][i] + rat["debtor_days"][i] - rat["creditor_days"][i], 1))
+        ca = bs["total_current_assets"][i]
+        cl = bs["creditors"][i]                       # current liab other than bank borrowing
+        gap = ca - cl
+        wc_gap.append(_r(gap))
+        mpbf_i.append(_r(0.75 * gap))                 # Tandon Method I
+        mpbf_ii.append(_r(0.75 * ca - cl))            # Tandon Method II
+        nwc.append((bs["inventory"][i] + bs["debtors"][i]) - bs["creditors"][i])
+
+    break_even = []
+    for i in range(n):
+        fixed = pnl["opex"][i] + pnl["depreciation"][i] + pnl["interest"][i]
+        be_sales = (fixed / gm) if gm > 0 else 0.0
+        rev = pnl["revenue"][i]
+        mos = ((rev - be_sales) / rev * 100) if rev else 0.0
+        break_even.append({
+            "fixed_cost": _r(fixed), "variable_cost": _r(pnl["cogs"][i]),
+            "contribution_margin_pct": _r(gm * 100, 1),
+            "be_sales": _r(be_sales), "margin_of_safety_pct": _r(mos, 1),
+        })
+
+    fund_flow = []
+    prev_nwc = (_num(a.get("opening_inventory")) + _num(a.get("opening_debtors"))) - _num(a.get("opening_creditors"))
+    for i in range(n):
+        ffo = pnl["pat"][i] + pnl["depreciation"][i]
+        d_nwc = nwc[i] - prev_nwc
+        sources = {
+            "funds_from_operations": _r(ffo),
+            "new_debt": _r(new_debt[i]),
+            "new_equity": _r(new_eq[i]),
+            "decrease_in_working_capital": _r(-d_nwc) if d_nwc < 0 else 0.0,
+        }
+        uses = {
+            "capex": _r(capex[i]),
+            "debt_repayment": _r(repay[i]),
+            "dividend": _r(pnl["dividend"][i]),
+            "increase_in_working_capital": _r(d_nwc) if d_nwc > 0 else 0.0,
+        }
+        ts = sum(sources.values()); tu = sum(uses.values())
+        fund_flow.append({"sources": sources, "uses": uses,
+                          "total_sources": _r(ts), "total_uses": _r(tu), "net": _r(ts - tu)})
+        prev_nwc = nwc[i]
+
+    return {
+        "wc_cycle_days": wc_cycle,
+        "mpbf_method_1": mpbf_i, "mpbf_method_2": mpbf_ii, "working_capital_gap": wc_gap,
+        "break_even": break_even,
+        "fund_flow": fund_flow,
+        "dscr_stress": compute_stress_dscr(a, n),
+    }
+

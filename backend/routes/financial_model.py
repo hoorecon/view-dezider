@@ -6,16 +6,28 @@ A model is owned by a user + scoped to one of their Orgs (user_org_id) and can b
 linked to an L1 six_legs goal (leg_goal_id). It stores assumptions; the 3-statement
 forecast + ratios + DCF valuation are computed on the fly by core.fin_model.
 """
+import asyncio
+import base64
+import json
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from core.database import db
 from core.auth import get_current_user
-from core.fin_model import compute_model, default_assumptions
+from core import ai_wallet
+from core.fin_model import compute_model, default_assumptions, compute_cma_extras
+from core.url_crawl import has_any_llm, metered_chat
+from core import fin_export
+from routes.file_import import _extract_text, _detect_type
+
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+PDF_MIME = "application/pdf"
 
 router = APIRouter(prefix="/financial-models", tags=["Financial Model"])
 
@@ -157,3 +169,138 @@ async def delete_model(model_id: str, user: dict = Depends(get_current_user)):
     if not res.deleted_count:
         raise HTTPException(404, "Financial model not found")
     return {"ok": True}
+
+
+# ────────────────────────── Exports (Phase 2) ──────────────────────────
+
+def _unit_ctx(model: dict):
+    uid = model.get("units", "absolute")
+    u = next((x for x in UNITS if x["id"] == uid), UNITS[0])
+    label = f"{model.get('currency', 'INR')} · {u['name']}"
+    return u["divisor"], label
+
+
+def _slug(model: dict) -> str:
+    base = (model.get("name") or "financial-model").strip().lower()
+    s = re.sub(r"[^a-z0-9]+", "-", base).strip("-")
+    return s or "financial-model"
+
+
+def _stream(data: bytes, filename: str, media: str) -> StreamingResponse:
+    return StreamingResponse(
+        iter([data]), media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+async def _load_for_export(model_id: str, user: dict):
+    doc = await db.financial_models.find_one({"id": model_id, "user_id": user["user_id"]})
+    if not doc:
+        raise HTTPException(404, "Financial model not found")
+    doc.pop("_id", None)
+    computed = compute_model(doc.get("assumptions") or {}, doc.get("projection_years", 5))
+    return doc, computed
+
+
+@router.get("/{model_id}/export/investor.xlsx")
+async def export_investor_xlsx(model_id: str, user: dict = Depends(get_current_user)):
+    doc, computed = await _load_for_export(model_id, user)
+    div, label = _unit_ctx(doc)
+    data = fin_export.build_investor_xlsx(doc, computed, div, label)
+    return _stream(data, f"{_slug(doc)}-investor.xlsx", XLSX_MIME)
+
+
+@router.get("/{model_id}/export/investor.pdf")
+async def export_investor_pdf(model_id: str, user: dict = Depends(get_current_user)):
+    doc, computed = await _load_for_export(model_id, user)
+    div, label = _unit_ctx(doc)
+    data = fin_export.build_investor_pdf(doc, computed, div, label)
+    return _stream(data, f"{_slug(doc)}-investor.pdf", PDF_MIME)
+
+
+@router.get("/{model_id}/export/cma.xlsx")
+async def export_cma_xlsx(model_id: str, user: dict = Depends(get_current_user)):
+    doc, computed = await _load_for_export(model_id, user)
+    extras = compute_cma_extras(doc.get("assumptions") or {}, computed)
+    div, label = _unit_ctx(doc)
+    data = fin_export.build_cma_xlsx(doc, computed, extras, div, label)
+    return _stream(data, f"{_slug(doc)}-cma.xlsx", XLSX_MIME)
+
+
+@router.get("/{model_id}/export/cma.pdf")
+async def export_cma_pdf(model_id: str, user: dict = Depends(get_current_user)):
+    doc, computed = await _load_for_export(model_id, user)
+    extras = compute_cma_extras(doc.get("assumptions") or {}, computed)
+    div, label = _unit_ctx(doc)
+    data = fin_export.build_cma_pdf(doc, computed, extras, div, label)
+    return _stream(data, f"{_slug(doc)}-cma.pdf", PDF_MIME)
+
+
+# ────────────────── Seed base year from an uploaded Excel (Phase 1 add-on) ──────────────────
+
+_SEED_KEYS = [
+    "opening_gross_block", "opening_debt", "opening_equity_capital", "opening_cash",
+    "opening_debtors", "opening_inventory", "opening_creditors",
+    "year1_revenue", "gross_margin_pct", "opex_pct", "tax_rate_pct",
+    "interest_rate_pct", "shares_outstanding",
+]
+_SEED_SYS = (
+    "You read a company's financial statements (P&L + Balance Sheet) and seed a "
+    "forecast's OPENING balances from the MOST RECENT period's closing figures. "
+    "Reply with ONLY compact JSON using these numeric keys (absolute units, omit a "
+    "key if it cannot be determined): "
+    "opening_gross_block (gross fixed assets), opening_debt (total borrowings), "
+    "opening_equity_capital (share capital), opening_cash, opening_debtors (receivables), "
+    "opening_inventory, opening_creditors (payables), year1_revenue (latest revenue), "
+    "gross_margin_pct, opex_pct (% of revenue), tax_rate_pct, interest_rate_pct, "
+    "shares_outstanding. No prose, no commentary."
+)
+
+
+class SeedIn(BaseModel):
+    filename: str
+    file_b64: str
+    ai_tier: Optional[str] = "fast"
+
+
+@router.post("/seed-from-file")
+async def seed_from_file(body: SeedIn, user: dict = Depends(get_current_user)):
+    """Parse an uploaded financial statements file and return an assumptions patch
+    that pre-fills the opening balances. Metered via the AI wallet."""
+    if not has_any_llm():
+        raise HTTPException(400, "AI is not configured on this server.")
+    ftype = _detect_type(body.filename or "")
+    if ftype in ("unknown", "doc_legacy"):
+        raise HTTPException(400, "Use an Excel/CSV/PDF/text financial statements file.")
+    try:
+        raw = base64.b64decode((body.file_b64 or "").split(",")[-1])
+    except Exception:
+        raise HTTPException(400, "Could not decode the uploaded file.")
+    if not raw:
+        raise HTTPException(400, "The uploaded file is empty.")
+    try:
+        text = await asyncio.to_thread(_extract_text, raw, ftype)
+    except Exception:
+        raise HTTPException(422, "Couldn't read this file. Try a clearer Excel/PDF.")
+    if len(text.strip()) < 20:
+        raise HTTPException(422, "No readable financial data found in the file.")
+
+    tier = "precise" if (body.ai_tier or "").lower() == "precise" else "fast"
+    try:
+        out = await metered_chat(
+            user["user_id"], system_message=_SEED_SYS, prompt=text[:16000],
+            feature="fin_seed", session_prefix="finseed", tier=tier)
+    except ai_wallet.InsufficientCredits as e:
+        raise HTTPException(402, f"Out of AI credits (balance {round(e.balance, 2)}).")
+    m = re.search(r"\{.*\}", out, re.S)
+    data = json.loads(m.group(0)) if m else {}
+    patch: Dict[str, Any] = {}
+    for k in _SEED_KEYS:
+        if k in data and data[k] not in (None, ""):
+            try:
+                patch[k] = float(data[k])
+            except (TypeError, ValueError):
+                continue
+    if not patch:
+        raise HTTPException(422, "Couldn't extract opening balances from this file.")
+    return {"patch": patch, "found": list(patch.keys())}
+
