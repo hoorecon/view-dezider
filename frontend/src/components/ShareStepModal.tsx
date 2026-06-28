@@ -633,6 +633,21 @@ export default function ShareStepModal({
             ) : (
               /* Sent Shares */
               <View style={styles.section}>
+                {/* Owner-only: jump to the per-flow Collaboration dashboard */}
+                <TouchableOpacity
+                  style={styles.dashBtn}
+                  testID="open-collab-dashboard"
+                  onPress={() => {
+                    const _m: Record<string, string> = { 'pros-cons': 'pros_cons', 'swot': 'swot', 'solution-finder': 'solution_finder' };
+                    const beMod = _m[shareModule || ''] || 'decision';
+                    onClose();
+                    router.push(`/collab-dashboard?module=${beMod}&id=${decisionId}` as any);
+                  }}
+                >
+                  <Ionicons name="grid-outline" size={16} color="#7C3AED" />
+                  <Text style={styles.dashBtnTxt}>Collaboration dashboard — all shared steps</Text>
+                  <Ionicons name="chevron-forward" size={16} color="#7C3AED" />
+                </TouchableOpacity>
                 {sentShares.length === 0 ? (
                   <Text style={styles.noShares}>No shares sent for this step yet.</Text>
                 ) : (
@@ -767,6 +782,8 @@ const styles = StyleSheet.create({
   tabTextActive: { color: '#FFF' },
 
   section: { marginBottom: 18 },
+  dashBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F5F3FF', borderWidth: 1, borderColor: '#DDD6FE', borderRadius: 12, paddingVertical: 12, paddingHorizontal: 14, marginBottom: 14 },
+  dashBtnTxt: { flex: 1, color: '#7C3AED', fontSize: 13.5, fontWeight: '700' },
   sectionTitle: { fontSize: 14, fontWeight: '600', color: COLORS.textPrimary, marginBottom: 6 },
   sectionHint: { fontSize: 12, color: COLORS.textMuted, marginBottom: 8 },
 

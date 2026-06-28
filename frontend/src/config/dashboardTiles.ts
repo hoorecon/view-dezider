@@ -28,7 +28,7 @@ export interface TileMeta {
 
 export const TILE_META: Record<string, TileMeta> = {
   // §1 Self Discovery
-  pna: { title: 'My 360° Life', subtitle: 'Problems · Needs · Aspirations', icon: 'layers', route: '/tools/pna', variant: 'action', gradient: ['#4338CA', '#6366F1'] },
+  pna: { title: 'My 360° Life', subtitle: 'Present Problem · Need · Future Risk · Aspiration', icon: 'layers', route: '/tools/pna', variant: 'action', gradient: ['#4338CA', '#6366F1'] },
   gem: { title: 'GEM', subtitle: 'Goal Execution Manager', icon: 'flag', route: '/tools/gem', variant: 'action', gradient: ['#0F766E', '#14B8A6'] },
 
   // §2 Decision Kickstarters

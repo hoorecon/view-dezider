@@ -36,6 +36,7 @@ import { useLifeAreas } from '../../src/utils/useLifeAreas';
 import ValuesAlignmentPanel from '../../src/components/ValuesAlignmentPanel';
 import ConvertToActionButton from '../../src/components/ConvertToActionButton';
 import { CollabBar } from '../../src/components/CollabBar';
+import LiveSessionPill from '../../src/components/LiveSessionPill';
 import { DecisionContinuePanel } from '../../src/components/DecisionContinuePanel';
 import { safeBack } from '../../src/utils/navigation';
 
@@ -776,7 +777,39 @@ export default function SimpleSolutionFinder() {
   };
 
   const onNext = async () => {
-    if (!canProceed()) {
+    // Auto-commit any text typed into an "add" box but not yet committed via "+"
+    // (a common source of false "Step incomplete" errors — e.g. RCA on Q2).
+    let _concerns = concerns, _rcas = rootCauses, _sols = solutions;
+    if (step === 1 && newConcernText.trim()) {
+      const t = newConcernText.trim();
+      if (!_concerns.some(c => c.text.trim().toLowerCase() === t.toLowerCase())) {
+        _concerns = [..._concerns, { id: uid(), text: t, is_primary: false, order: _concerns.length }];
+        setConcerns(_concerns); setNewConcernText('');
+      }
+    }
+    if (step === 2) {
+      const adds: RootCause[] = [];
+      primaryConcerns.forEach(c => {
+        const t = (newRcaText[c.id] || '').trim();
+        if (t) adds.push({ id: uid(), concern_id: c.id, text: t });
+      });
+      if (adds.length) { _rcas = [..._rcas, ...adds]; setRootCauses(_rcas); setNewRcaText({}); }
+    }
+    if (step === 3) {
+      const adds: Solution[] = [];
+      Object.entries(newSolText).forEach(([rcaId, val]) => {
+        const t = ((val as string) || '').trim();
+        if (t) adds.push({ id: uid(), rca_id: rcaId, text: t });
+      });
+      if (adds.length) { _sols = [..._sols, ...adds]; setSolutions(_sols); setNewSolText({}); }
+    }
+    const ok =
+      step === 0 ? (!!areaOfLife && !!smartGoal.trim())
+      : step === 1 ? _concerns.some(c => c.is_primary)
+      : step === 2 ? _rcas.length > 0
+      : step === 3 ? _sols.length > 0
+      : true;
+    if (!ok) {
       const msg =
         step === 0 ? 'Pick a life area and enter a SMART goal.'
         : step === 1 ? 'Tap the ⭐ on at least one concern to mark it as PRIMARY.'
@@ -1534,6 +1567,7 @@ export default function SimpleSolutionFinder() {
           </View>
         </View>
       </Modal>
+      {contributionMode && <LiveSessionPill shareId={contribShareId} />}
     </SafeAreaView>
   );
 }

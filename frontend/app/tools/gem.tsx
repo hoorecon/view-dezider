@@ -17,8 +17,9 @@ import { safeBack } from '../../src/utils/navigation';
 
 // LIFE_AREAS array moved into the component (catalog-driven).
 const GOAL_TYPES = [
-  {id:'problem',label:'Problems',icon:'alert-circle',c:'#EF4444'},
+  {id:'problem',label:'Present Problems',icon:'alert-circle',c:'#EF4444'},
   {id:'need',label:'Needs',icon:'bulb',c:'#F59E0B'},
+  {id:'risk',label:'Future Risks',icon:'warning',c:'#F97316'},
   {id:'aspiration',label:'Aspirations',icon:'rocket',c:'#10B981'},
 ];
 

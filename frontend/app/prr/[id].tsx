@@ -38,6 +38,7 @@ import Step7 from '../../src/components/steps/Step7';
 import Step8 from '../../src/components/steps/Step8';
 import Step9 from '../../src/components/steps/Step9';
 import Step10 from '../../src/components/steps/Step10';
+import LiveSessionPill from '../../src/components/LiveSessionPill';
 
 function PRRDecisionDetailInner() {
   const router = useRouter();
@@ -55,6 +56,7 @@ function PRRDecisionDetailInner() {
     id,
     contributionMode,
     contribStep,
+    contribShareId,
     stepAccess,
     submittingContribution,
     submitContribution,
@@ -426,6 +428,7 @@ function PRRDecisionDetailInner() {
         stepNumber={currentStep}
         stepName={STEP_NAMES[currentStep] || `Step ${currentStep}`}
       />
+      {contributionMode && <LiveSessionPill shareId={contribShareId} />}
     </SafeAreaView>
   );
 }

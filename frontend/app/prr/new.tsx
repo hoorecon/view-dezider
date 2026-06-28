@@ -39,8 +39,9 @@ const FOLDERS = [
 ];
 
 const DECISION_TYPES = [
-  { id: 'problem', name: 'Problem', icon: 'warning', color: '#EF4444', desc: 'Solving a challenge' },
-  { id: 'need', name: 'Need', icon: 'flag', color: '#F59E0B', desc: 'Fulfilling a requirement' },
+  { id: 'problem', name: 'Present Problem', icon: 'alert-circle', color: '#EF4444', desc: 'Solving a current challenge' },
+  { id: 'need', name: 'Need', icon: 'bulb', color: '#F59E0B', desc: 'Fulfilling a requirement' },
+  { id: 'risk', name: 'Future Risk', icon: 'warning', color: '#F97316', desc: 'Mitigating a future risk' },
   { id: 'aspiration', name: 'Aspiration', icon: 'rocket', color: '#10B981', desc: 'Pursuing a goal' },
 ];
 
@@ -233,7 +234,7 @@ export default function NewPRRDecision() {
             {/* Decision Type Selection */}
             <View style={styles.folderSection}>
               <Text style={styles.folderLabel}>Decision Type</Text>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
                 {DECISION_TYPES.map((dt) => (
                   <TouchableOpacity
                     key={dt.id}

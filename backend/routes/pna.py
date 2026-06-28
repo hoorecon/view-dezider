@@ -29,8 +29,9 @@ LIFE_AREAS = [
 ]
 
 CATEGORIES = [
-    {"id": "problem", "name": "Problem", "color": "#EF4444", "icon": "alert-circle"},
+    {"id": "problem", "name": "Present Problem", "color": "#EF4444", "icon": "alert-circle"},
     {"id": "need", "name": "Need", "color": "#F59E0B", "icon": "bulb"},
+    {"id": "risk", "name": "Future Risk", "color": "#F97316", "icon": "warning"},
     {"id": "aspiration", "name": "Aspiration", "color": "#10B981", "icon": "rocket"},
 ]
 
@@ -61,8 +62,8 @@ async def create_item(request: Request, user: dict = Depends(get_current_user)):
     now = datetime.now(timezone.utc).isoformat()
 
     category = body.get("category", "need")
-    if category not in ["problem", "need", "aspiration"]:
-        raise HTTPException(400, "category must be problem, need, or aspiration")
+    if category not in ["problem", "need", "risk", "aspiration"]:
+        raise HTTPException(400, "category must be problem, need, risk, or aspiration")
 
     doc = {
         "item_id": item_id,
@@ -203,7 +204,7 @@ async def pna_dashboard(user: dict = Depends(get_current_user)):
     ).to_list(500)
 
     total = len(items)
-    by_category = {"problem": 0, "need": 0, "aspiration": 0}
+    by_category = {"problem": 0, "need": 0, "risk": 0, "aspiration": 0}
     by_status = {}
     by_area = {}
     by_priority = {}
@@ -218,7 +219,7 @@ async def pna_dashboard(user: dict = Depends(get_current_user)):
 
         area = item.get("life_area", "unclassified")
         if area not in by_area:
-            by_area[area] = {"problem": 0, "need": 0, "aspiration": 0, "total": 0}
+            by_area[area] = {"problem": 0, "need": 0, "risk": 0, "aspiration": 0, "total": 0}
         by_area[area][cat] = by_area[area].get(cat, 0) + 1
         by_area[area]["total"] += 1
 
@@ -231,7 +232,7 @@ async def pna_dashboard(user: dict = Depends(get_current_user)):
     # Build area summaries with metadata
     area_summaries = []
     for la in LIFE_AREAS:
-        counts = by_area.get(la["id"], {"problem": 0, "need": 0, "aspiration": 0, "total": 0})
+        counts = by_area.get(la["id"], {"problem": 0, "need": 0, "risk": 0, "aspiration": 0, "total": 0})
         area_summaries.append({
             "area_id": la["id"],
             "area_name": la["name"],
@@ -271,12 +272,14 @@ async def get_area_detail(area_id: str, user: dict = Depends(get_current_user)):
 
     problems = [i for i in items if i.get("category") == "problem"]
     needs = [i for i in items if i.get("category") == "need"]
+    risks = [i for i in items if i.get("category") == "risk"]
     aspirations = [i for i in items if i.get("category") == "aspiration"]
 
     return {
         "area": area_meta,
         "problems": problems,
         "needs": needs,
+        "risks": risks,
         "aspirations": aspirations,
         "total": len(items),
         "open_count": sum(1 for i in items if i.get("status") in ["open", "in_progress"]),
@@ -300,7 +303,7 @@ async def convert_to_decision(item_id: str, request: Request, user: dict = Depen
     decision_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
 
-    cat_label = {"problem": "Problem", "need": "Need", "aspiration": "Aspiration"}.get(item["category"], "Item")
+    cat_label = {"problem": "Present Problem", "need": "Need", "risk": "Future Risk", "aspiration": "Aspiration"}.get(item["category"], "Item")
     decision_doc = {
         "id": decision_id,
         "user_id": user["user_id"],

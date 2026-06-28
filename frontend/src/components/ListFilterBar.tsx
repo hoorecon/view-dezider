@@ -8,7 +8,8 @@ import { LIFE_AREAS, getLifeArea } from '../constants/lifeAreas';
 export const DECISION_TYPE_LABELS: Record<string, string> = {
   need: 'Need',
   want: 'Want',
-  problem: 'Problem',
+  problem: 'Present Problem',
+  risk: 'Future Risk',
   aspiration: 'Aspiration',
   product_purchase: 'Product Purchase',
   standard: 'Standard',

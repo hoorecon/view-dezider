@@ -38,6 +38,7 @@ import { Factor, OptionT, Rollup, Guideline, Analysis } from '../../src/features
 import { STEPS, LIFE_AREAS, COLORS } from '../../src/features/pros-cons/constants';
 import { styles, pcAssess } from '../../src/features/pros-cons/styles';
 import { CollabBar } from '../../src/components/CollabBar';
+import LiveSessionPill from '../../src/components/LiveSessionPill';
 import { DecisionContinuePanel } from '../../src/components/DecisionContinuePanel';
 import {
   DebouncedInput, NextBack, FactorGroupRow, DataSourceModal, FactorTreeNode,
@@ -2183,6 +2184,7 @@ export default function ProsConsWizard() {
           setDsFactor(null);
         }}
       />
+      {contributionMode && <LiveSessionPill shareId={contribShareId as string} />}
     </SafeAreaView>
   );
 }

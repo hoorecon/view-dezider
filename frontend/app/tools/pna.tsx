@@ -15,8 +15,9 @@ import TimestampLine from '../../src/components/TimestampLine';
 import { safeBack } from '../../src/utils/navigation';
 
 const CAT_CFG: Record<string, { color: string; icon: string; label: string }> = {
-  problem:    { color: '#EF4444', icon: 'alert-circle',  label: 'Problem' },
+  problem:    { color: '#EF4444', icon: 'alert-circle',  label: 'Present Problem' },
   need:       { color: '#F59E0B', icon: 'bulb',          label: 'Need' },
+  risk:       { color: '#F97316', icon: 'warning',       label: 'Future Risk' },
   aspiration: { color: '#10B981', icon: 'rocket',        label: 'Aspiration' },
 };
 
@@ -318,17 +319,22 @@ export default function PNAScreen() {
           <View style={[s.summaryCard, { borderLeftColor: '#EF4444' }]}>
             <Ionicons name="alert-circle" size={20} color="#EF4444" />
             <Text style={s.summaryNum}>{by_category?.problem || 0}</Text>
-            <Text style={s.summaryLabel}>Problems</Text>
+            <Text style={s.summaryLabel}>Present Problem</Text>
           </View>
           <View style={[s.summaryCard, { borderLeftColor: '#F59E0B' }]}>
             <Ionicons name="bulb" size={20} color="#F59E0B" />
             <Text style={s.summaryNum}>{by_category?.need || 0}</Text>
-            <Text style={s.summaryLabel}>Needs</Text>
+            <Text style={s.summaryLabel}>Need</Text>
+          </View>
+          <View style={[s.summaryCard, { borderLeftColor: '#F97316' }]}>
+            <Ionicons name="warning" size={20} color="#F97316" />
+            <Text style={s.summaryNum}>{by_category?.risk || 0}</Text>
+            <Text style={s.summaryLabel}>Future Risk</Text>
           </View>
           <View style={[s.summaryCard, { borderLeftColor: '#10B981' }]}>
             <Ionicons name="rocket" size={20} color="#10B981" />
             <Text style={s.summaryNum}>{by_category?.aspiration || 0}</Text>
-            <Text style={s.summaryLabel}>Aspirations</Text>
+            <Text style={s.summaryLabel}>Aspiration</Text>
           </View>
         </View>
 
@@ -364,6 +370,11 @@ export default function PNAScreen() {
                     <Text style={[s.countText, { color: '#D97706' }]}>N:{area.need}</Text>
                   </View>
                 )}
+                {area.risk > 0 && (
+                  <View style={[s.countBadge, { backgroundColor: '#FFEDD5' }]}>
+                    <Text style={[s.countText, { color: '#EA580C' }]}>R:{area.risk}</Text>
+                  </View>
+                )}
                 {area.aspiration > 0 && (
                   <View style={[s.countBadge, { backgroundColor: '#D1FAE5' }]}>
                     <Text style={[s.countText, { color: '#059669' }]}>A:{area.aspiration}</Text>
@@ -391,7 +402,7 @@ export default function PNAScreen() {
   const renderAreaView = () => {
     if (areaLoading) return <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 40 }} />;
     if (!areaDetail) return null;
-    const { area, problems, needs, aspirations, open_count, resolved_count } = areaDetail;
+    const { area, problems, needs, risks, aspirations, open_count, resolved_count } = areaDetail;
 
     return (
       <>
@@ -405,7 +416,7 @@ export default function PNAScreen() {
             </View>
           </View>
           <View style={s.addBtnRow}>
-            {(['problem', 'need', 'aspiration'] as const).map((cat) => (
+            {(['problem', 'need', 'risk', 'aspiration'] as const).map((cat) => (
               <TouchableOpacity
                 key={cat}
                 style={[s.addCatBtn, { backgroundColor: CAT_CFG[cat].color }]}
@@ -434,6 +445,14 @@ export default function PNAScreen() {
           </>
         )}
 
+        {/* Future Risks */}
+        {(risks || []).length > 0 && (
+          <>
+            <Text style={[s.catSectionTitle, { color: '#F97316' }]}>Future Risks ({risks.length})</Text>
+            {risks.map((item: any) => renderItemCard(item))}
+          </>
+        )}
+
         {/* Aspirations */}
         {aspirations.length > 0 && (
           <>
@@ -442,7 +461,7 @@ export default function PNAScreen() {
           </>
         )}
 
-        {problems.length === 0 && needs.length === 0 && aspirations.length === 0 && (
+        {problems.length === 0 && needs.length === 0 && (risks || []).length === 0 && aspirations.length === 0 && (
           <View style={s.emptyState}>
             <Ionicons name="layers-outline" size={48} color="#9CA3AF" />
             <Text style={s.emptyStateText}>No items in this area yet</Text>
@@ -535,7 +554,7 @@ export default function PNAScreen() {
             {/* Category Selector */}
             <Text style={s.fieldLabel}>Category</Text>
             <View style={s.catSelector}>
-              {(['problem', 'need', 'aspiration'] as const).map((cat) => (
+              {(['problem', 'need', 'risk', 'aspiration'] as const).map((cat) => (
                 <TouchableOpacity
                   key={cat}
                   style={[
@@ -767,23 +786,36 @@ export default function PNAScreen() {
           <TouchableOpacity onPress={() => {
             if (viewMode === 'area') { setViewMode('overview'); } else { safeBack(router); }
           }}>
-            <Ionicons name="arrow-back" size={24} color="#FFF" />
+            <Ionicons name="arrow-back" size={24} color="#0F172A" />
           </TouchableOpacity>
           <Text style={s.headerTitle}>
-            {viewMode === 'area' ? (areaDetail?.area?.name || 'Area') : 'PNA Framework'}
+            {viewMode === 'area' ? (areaDetail?.area?.name || 'Area') : 'My 360° Life'}
           </Text>
           <TouchableOpacity onPress={() => openAddModal()}>
-            <Ionicons name="add-circle" size={28} color="#FFF" />
+            <Ionicons name="add-circle" size={28} color={COLORS.primary} />
           </TouchableOpacity>
         </View>
 
         <LinearGradient colors={['#FFFFFF', '#F8FAFC']} style={s.heroBanner}>
           <Ionicons name="layers" size={32} color="#818CF8" />
           <View style={{ marginLeft: 12, flex: 1 }}>
-            <Text style={s.heroTitle}>Problems · Needs · Aspirations</Text>
+            <Text style={s.heroTitle}>Present Problem · Need · Future Risk · Aspiration</Text>
             <Text style={s.heroSub}>Map your life across 10 areas. Track, resolve, and convert to actions.</Text>
           </View>
         </LinearGradient>
+
+        {viewMode === 'overview' && (
+          <View style={s.mainTabs}>
+            <View style={[s.mainTab, s.mainTabActive]}>
+              <Ionicons name="grid" size={15} color="#4338CA" />
+              <Text style={[s.mainTabTxt, s.mainTabTxtActive]}>Life Map</Text>
+            </View>
+            <TouchableOpacity style={s.mainTab} onPress={() => router.push('/tools/life-goals' as any)} testID="life-goals-tab">
+              <Ionicons name="trophy-outline" size={15} color="#64748B" />
+              <Text style={s.mainTabTxt}>Life Goals</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {viewMode === 'overview' ? renderOverview() : renderAreaView()}
       </ScrollView>
@@ -800,6 +832,11 @@ const s = StyleSheet.create({
   heroBanner: { borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
   heroTitle: { color: '#0F172A', fontSize: 16, fontWeight: '700' },
   heroSub: { color: '#94A3B8', fontSize: 12, marginTop: 4 },
+  mainTabs: { flexDirection: 'row', gap: 8, marginBottom: 16, backgroundColor: '#EEF2FF', borderRadius: 12, padding: 4 },
+  mainTab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 9 },
+  mainTabActive: { backgroundColor: '#FFFFFF' },
+  mainTabTxt: { fontSize: 13.5, fontWeight: '700', color: '#64748B' },
+  mainTabTxtActive: { color: '#4338CA' },
 
   // Summary
   summaryRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
@@ -828,7 +865,7 @@ const s = StyleSheet.create({
   areaHeaderRow: { flexDirection: 'row', alignItems: 'center' },
   areaHeaderTitle: { color: '#0F172A', fontSize: 18, fontWeight: '700' },
   areaHeaderSub: { color: '#94A3B8', fontSize: 12, marginTop: 2 },
-  addBtnRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  addBtnRow: { flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' },
   addCatBtn: { flexDirection: 'row', alignItems: 'center', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, gap: 4 },
   addCatText: { color: '#0F172A', fontSize: 12, fontWeight: '600' },
 
