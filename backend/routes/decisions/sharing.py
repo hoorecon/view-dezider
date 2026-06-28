@@ -174,9 +174,13 @@ async def create_shared_step(data: dict = Body(...), user: dict = Depends(get_cu
         "recipients": recipients, "pending_invites": pending,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    share_doc["session_mode"] = data.get("session_mode", "async")
+    _sess_mode = data.get("session_mode", "async")
+    _room = data.get("call_room_url")
+    if _sess_mode == "live_sync" and not _room:
+        _room = f"https://meet.jit.si/JELCOS-{share_id[:10]}"
+    share_doc["session_mode"] = _sess_mode
     share_doc["auth_config"] = data.get("auth_config") or {}
-    share_doc["call_room_url"] = data.get("call_room_url")
+    share_doc["call_room_url"] = _room
     await db.shared_steps.insert_one(share_doc)
 
     # Dispatch invites: in-app notification + Email + WhatsApp, each carrying a
@@ -185,7 +189,7 @@ async def create_shared_step(data: dict = Body(...), user: dict = Depends(get_cu
     import os as _os
     from core.notify import send_email as _send_email, send_whatsapp as _send_wa
     base = (_os.getenv("PUBLIC_APP_URL") or "").rstrip("/")
-    link = f"{base}/?share={share_id}" if base else base
+    link = f"{base}/contribute?share={share_id}" if base else base
     notify = data.get("notify") or {}
     want_email = notify.get("participants", True)
     sender = share_doc["owner_name"]
@@ -222,6 +226,157 @@ async def create_shared_step(data: dict = Body(...), user: dict = Depends(get_cu
     for p in pending:
         await _dispatch(p["email"])
     return {"id": share_id, "shared_count": len(recipients), "invited_count": len(pending), "link": link}
+
+
+def _otp_code() -> str:
+    import random
+    return f"{random.randint(0, 999999):06d}"
+
+
+def _mask(s: str) -> str:
+    if not s:
+        return ""
+    if "@" in s:
+        u, _, d = s.partition("@")
+        return (u[:2] + "***@" + d)
+    return s[:2] + "***" + s[-2:]
+
+
+def _share_recipient(share, uid):
+    return next((r for r in share.get("recipients", []) if r.get("user_id") == uid), None)
+
+
+@router.get("/shared-steps/{share_id}/access")
+async def access_check(share_id: str, user: dict = Depends(get_current_user)):
+    """Tell the contributor whether identity verification is required before they
+    can open this shared step, and where the step lives (for deep-link routing)."""
+    await _claim_pending_for_user(user)
+    share = await db.shared_steps.find_one({"id": share_id}, {"_id": 0})
+    if not share:
+        raise HTTPException(status_code=404, detail="Shared step not found")
+    rec = _share_recipient(share, user["user_id"])
+    is_owner = share["owner_id"] == user["user_id"]
+    if not rec and not is_owner:
+        raise HTTPException(status_code=403, detail="You are not a participant on this step")
+    ac = share.get("auth_config") or {}
+    methods = ac.get("enabled_methods") or []
+    each_time = bool(ac.get("verify_each_time"))
+    verified = bool(rec and rec.get("verified_at"))
+    needs = (not is_owner) and len(methods) > 0 and (each_time or not verified)
+    contact = await db.contacts.find_one(
+        {"user_id": share["owner_id"], "email": (rec or {}).get("email")}, {"_id": 0}) or {}
+    return {
+        "needs_verification": needs, "methods": methods, "verify_each_time": each_time,
+        "module": share.get("module", "decision"),
+        "decision_id": share.get("module_id") or share.get("decision_id"),
+        "step_number": share.get("step_number"), "step_access": share.get("step_access", "hidden"),
+        "session_mode": share.get("session_mode", "async"), "call_room_url": share.get("call_room_url"),
+        "title": share.get("decision_title", ""),
+        "email_hint": _mask((rec or {}).get("email", "")),
+        "phone_hint": _mask(contact.get("phone") or contact.get("mobile") or ""),
+    }
+
+
+@router.post("/shared-steps/{share_id}/send-otp")
+async def send_share_otp(share_id: str, data: dict = Body(default={}), user: dict = Depends(get_current_user)):
+    from datetime import timedelta as _td
+    share = await db.shared_steps.find_one({"id": share_id}, {"_id": 0})
+    if not share:
+        raise HTTPException(status_code=404, detail="Shared step not found")
+    rec = _share_recipient(share, user["user_id"])
+    if not rec:
+        raise HTTPException(status_code=403, detail="Not a participant")
+    channel = (data.get("channel") or "email").lower()
+    code = _otp_code()
+    expires = (datetime.now(timezone.utc) + _td(minutes=10)).isoformat()
+    await db.shared_steps.update_one(
+        {"id": share_id, "recipients.user_id": user["user_id"]},
+        {"$set": {"recipients.$.otp_code": code, "recipients.$.otp_expires": expires}})
+    from core.notify import send_email as _se, send_whatsapp as _sw
+    sent = False
+    if channel == "whatsapp":
+        contact = await db.contacts.find_one({"user_id": share["owner_id"], "email": rec.get("email")}, {"_id": 0}) or {}
+        phone = contact.get("phone") or contact.get("mobile") or ""
+        if phone:
+            try:
+                sent = bool(await _sw(phone, f"Your verification code: {code} (valid 10 min)"))
+            except Exception:
+                sent = False
+    else:
+        try:
+            sent = bool(await _se(rec.get("email"), "Your verification code",
+                f'<p>Your code to access "{share.get("decision_title", "")}" is:</p><h2 style="letter-spacing:4px">{code}</h2><p>Valid for 10 minutes.</p>'))
+        except Exception:
+            sent = False
+    return {"sent": sent, "channel": channel}
+
+
+@router.post("/shared-steps/{share_id}/verify-otp")
+async def verify_share_otp(share_id: str, data: dict = Body(default={}), user: dict = Depends(get_current_user)):
+    share = await db.shared_steps.find_one({"id": share_id}, {"_id": 0})
+    if not share:
+        raise HTTPException(status_code=404, detail="Shared step not found")
+    rec = _share_recipient(share, user["user_id"])
+    if not rec:
+        raise HTTPException(status_code=403, detail="Not a participant")
+    code = (data.get("code") or "").strip()
+    if not rec.get("otp_code") or code != rec.get("otp_code"):
+        raise HTTPException(status_code=400, detail="Invalid code")
+    if rec.get("otp_expires") and rec["otp_expires"] < datetime.now(timezone.utc).isoformat():
+        raise HTTPException(status_code=400, detail="Code expired — request a new one")
+    await db.shared_steps.update_one(
+        {"id": share_id, "recipients.user_id": user["user_id"]},
+        {"$set": {"recipients.$.verified_at": datetime.now(timezone.utc).isoformat()},
+         "$unset": {"recipients.$.otp_code": "", "recipients.$.otp_expires": ""}})
+    return {"ok": True}
+
+
+@router.post("/shared-steps/{share_id}/add-recipients")
+async def add_share_recipients(share_id: str, data: dict = Body(default={}), user: dict = Depends(get_current_user)):
+    """Owner invites additional people to an existing share (and its live meeting),
+    dispatching the same contribution + meeting links via Email + WhatsApp."""
+    import os as _os
+    share = await db.shared_steps.find_one({"id": share_id}, {"_id": 0})
+    if not share:
+        raise HTTPException(status_code=404, detail="Shared step not found")
+    if share["owner_id"] != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Only the owner can invite more people")
+    existing = {r.get("email") for r in share.get("recipients", [])} | {p.get("email") for p in share.get("pending_invites", [])}
+    emails = [e for e in (data.get("emails") or []) if e and e.strip().lower() not in existing]
+    new_recipients, new_pending = await _resolve_recipients(emails, user["user_id"])
+    if not new_recipients and not new_pending:
+        raise HTTPException(status_code=400, detail="No new valid emails to invite")
+    await db.shared_steps.update_one({"id": share_id}, {
+        "$push": {"recipients": {"$each": new_recipients}, "pending_invites": {"$each": new_pending}}})
+    from core.notify import send_email as _se, send_whatsapp as _sw
+    base = (_os.getenv("PUBLIC_APP_URL") or "").rstrip("/")
+    link = f"{base}/contribute?share={share_id}" if base else base
+    title = share.get("decision_title", "")
+    sender = share.get("owner_name", "")
+    step_no = share.get("step_number")
+    meeting = share.get("call_room_url")
+    for r in new_recipients:
+        await create_notification(r["user_id"], "share_received", "Shared with you",
+            f'{sender} asked for your input on "{title}"', {"share_id": share_id, "module": share.get("module")})
+    for em in [r["email"] for r in new_recipients] + [p["email"] for p in new_pending]:
+        contact = await db.contacts.find_one({"user_id": user["user_id"], "email": em}, {"_id": 0}) or {}
+        phone = contact.get("phone") or contact.get("mobile") or ""
+        html = _invite_email_html(sender, step_no, f"Step {step_no}", title, share.get("message", ""), link)
+        if meeting:
+            html += f'<p style="margin-top:12px"><a href="{meeting}" style="background:#059669;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none">Join the live video session</a></p>'
+        try:
+            await _se(em, f'{sender} wants your input — {title}', html)
+        except Exception:
+            pass
+        if phone:
+            wa = f'{sender} asked for your input on "{title}". Open: {link}'
+            if meeting:
+                wa += f'\nJoin live: {meeting}'
+            try:
+                await _sw(phone, wa)
+            except Exception:
+                pass
+    return {"added": len(new_recipients), "invited": len(new_pending)}
 
 
 @router.post("/shared-steps/{share_id}/open")

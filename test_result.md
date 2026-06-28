@@ -10699,3 +10699,24 @@ test_plan:
     - "Iter174 — wizard UX bug fixes (scroll, checkboxes, presence-check, auth instructions, verify-identity dead-end, de-brand)"
   test_all: false
   test_priority: "high_first"
+
+
+#====================================================================================================
+# ITER 175 — Deep-link contribute + OTP-on-access gate + Live video room/copy/invite-more
+#====================================================================================================
+agent_communication:
+  - agent: "main"
+    message: |
+      ITER 175 (creds owner super@test.com/SuperPass2026!, contributor admin@test.com/AdminPass2026!). Backend ALL verified by main agent via scripts (PASS). Please test FRONTEND only.
+      Three features:
+      1) DEEP-LINK CONTRIBUTE (/contribute?share=<id>): new screen app/contribute.tsx. If logged out it stashes pending_contribute_share + sends to /auth/login then returns; if logged in it calls GET /api/shared-steps/{id}/access and, when no verification required, routes to the EXACT step in contribution mode (decision→/prr/{id}?contribShareId&contribStep&access; pros_cons→/tools/pros-cons-wizard?id=..; sf→/tools/solution-finder?id=..). To test: as owner create a decision + POST /api/shared-steps/create {module:decision, module_id, step_number:4, recipient_emails:[admin@test.com], merge_mode:equal, session_mode:async, auth_config:{enabled_methods:[]}}; copy the returned share id; log in as admin and visit /contribute?share=<id> → should auto-route into /prr/.. (no dead-end).
+      2) OTP-ON-ACCESS: create the same share but auth_config:{enabled_methods:["email"], verify_each_time:false}; as admin visit /contribute?share=<id> → an "Verify it's you" card appears with a "Send code via Email" button + a 6-digit input + "Verify & continue". (Backend send-otp uses Resend and actually sends; to fully verify you can read the code from the shared_steps doc via DB, OR just confirm the OTP UI renders and the Send button calls POST /shared-steps/{id}/send-otp returning {sent:true}.) Owner visiting their own share should NOT be asked to verify.
+      3) LIVE VIDEO in ShareStepModal "Sent" tab: create a share with session_mode:"live_sync" (room auto-generated). Open the relevant flow (/prr/{module_id}), tap the per-step share icon → "Sent" tab → for that live share a green "Live video session · screen-share on" box shows the meeting URL + a "Copy link" button + "Invite more" button; tapping "Invite more" reveals an emails input + "Send invites + meeting link" which calls POST /shared-steps/{id}/add-recipients.
+      Regression: confirm the wizard Module→Flow→Step + Launch from iter174 still works.
+test_plan:
+  current_focus:
+    - "Iter175 — /contribute deep-link routing + signup-return"
+    - "Iter175 — OTP-on-access verify card (email/whatsapp)"
+    - "Iter175 — ShareStepModal live-session copy link + invite-more"
+  test_all: false
+  test_priority: "high_first"

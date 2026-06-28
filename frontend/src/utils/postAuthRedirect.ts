@@ -13,6 +13,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  */
 export async function getPostAuthRoute(): Promise<string> {
   try {
+    const contribute = await AsyncStorage.getItem('pending_contribute_share');
+    if (contribute) {
+      await AsyncStorage.removeItem('pending_contribute_share');
+      return `/contribute?share=${contribute}`;
+    }
     const token = await AsyncStorage.getItem('pending_share_token');
     if (token) return `/shared/${token}`;
   } catch {

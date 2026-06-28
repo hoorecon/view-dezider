@@ -15,6 +15,7 @@ import { useRouter } from 'expo-router';
 import { COLORS } from '../constants/colors';
 import api from '../utils/api';
 import ReviewMergeModal from './ReviewMergeModal';
+import * as Clipboard from 'expo-clipboard';
 
 interface ShareStepModalProps {
   visible: boolean;
@@ -95,6 +96,8 @@ export default function ShareStepModal({
   const [smeOnly, setSmeOnly] = useState(false);
   const [reviewShareId, setReviewShareId] = useState<string | null>(null);
   const [reviewAutoAi, setReviewAutoAi] = useState(false);
+  const [liveInviteFor, setLiveInviteFor] = useState<string | null>(null);
+  const [liveEmails, setLiveEmails] = useState('');
   const router = useRouter();
 
   const askPublic = async () => {
@@ -683,6 +686,44 @@ export default function ShareStepModal({
                             </TouchableOpacity>
                           </View>
                         )}
+                        {share.session_mode === 'live_sync' && share.call_room_url && (
+                          <View style={styles.liveBox}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Ionicons name="videocam" size={15} color="#059669" />
+                              <Text style={styles.liveTitle}>Live video session · screen-share on</Text>
+                            </View>
+                            <Text style={styles.liveLink} numberOfLines={1}>{share.call_room_url}</Text>
+                            <View style={{ flexDirection: 'row', gap: 8 }}>
+                              <TouchableOpacity style={styles.liveBtn} onPress={async () => { await Clipboard.setStringAsync(share.call_room_url); Alert.alert('Copied', 'Meeting link copied to clipboard.'); }}>
+                                <Ionicons name="copy-outline" size={14} color="#059669" />
+                                <Text style={styles.liveBtnTxt}>Copy link</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity style={styles.liveBtn} onPress={() => { setLiveInviteFor(liveInviteFor === share.id ? null : share.id); setLiveEmails(''); }}>
+                                <Ionicons name="person-add-outline" size={14} color="#059669" />
+                                <Text style={styles.liveBtnTxt}>Invite more</Text>
+                              </TouchableOpacity>
+                            </View>
+                            {liveInviteFor === share.id && (
+                              <View style={{ marginTop: 8 }}>
+                                <TextInput style={styles.liveInput} placeholder="emails, comma separated" autoCapitalize="none"
+                                  value={liveEmails} onChangeText={setLiveEmails} />
+                                <TouchableOpacity style={[styles.mergeBtn, { backgroundColor: '#059669', marginTop: 8 }]}
+                                  onPress={async () => {
+                                    const emails = liveEmails.split(/[,\s]+/).map((e: string) => e.trim()).filter(Boolean);
+                                    if (!emails.length) { Alert.alert('Add emails', 'Enter at least one email.'); return; }
+                                    try {
+                                      const { data } = await api.post(`/shared-steps/${share.id}/add-recipients`, { emails });
+                                      Alert.alert('Invited', `Sent the step + meeting link to ${(data.added || 0) + (data.invited || 0)} more.`);
+                                      setLiveInviteFor(null); setLiveEmails(''); fetchSentShares();
+                                    } catch (e: any) { Alert.alert('Error', e.response?.data?.detail || 'Could not invite'); }
+                                  }}>
+                                  <Ionicons name="send" size={14} color="#FFF" />
+                                  <Text style={styles.mergeBtnText}>Send invites + meeting link</Text>
+                                </TouchableOpacity>
+                              </View>
+                            )}
+                          </View>
+                        )}
                       </View>
                     );
                   })
@@ -808,6 +849,12 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.success, paddingVertical: 10, borderRadius: 10, marginTop: 8,
   },
   mergeBtnText: { fontSize: 13, fontWeight: '600', color: '#FFF' },
+  liveBox: { marginTop: 10, padding: 10, borderRadius: 10, backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0', gap: 6 },
+  liveTitle: { fontSize: 12.5, fontWeight: '800', color: '#065F46' },
+  liveLink: { fontSize: 11, color: '#047857' },
+  liveBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8, borderWidth: 1, borderColor: '#6EE7B7', backgroundColor: '#FFF' },
+  liveBtnTxt: { fontSize: 12, fontWeight: '700', color: '#059669' },
+  liveInput: { borderWidth: 1, borderColor: '#A7F3D0', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 12.5, backgroundColor: '#FFF', color: '#1F2937' },
   sourceTabRow: {
     flexDirection: 'row', gap: 4, marginBottom: 12, backgroundColor: '#F1F5F9',
     borderRadius: 10, padding: 3,

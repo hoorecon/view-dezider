@@ -1,0 +1,52 @@
+{
+  "summary": "Iter175 frontend-only validation of three new collaboration features. PASS: (a) logged-out /contribute?share=<id> redirects to /auth/login and stashes pending_contribute_share in AsyncStorage; (b) ShareStepModal 'Sent' tab on a live_sync share renders the green 'Live video session · screen-share on' card with the meeting URL (https://meet.jit.si/JELCOS-…), Copy link + Invite more buttons; tapping Invite more reveals the emails TextInput + 'Send invites + meeting link' button, and submitting calls POST /api/shared-steps/{id}/add-recipients → 200; (c) /tools/collaborate Step 1 regression — wizard opens with all three module-type chips (MyDezider, Pros & Cons, Solution Finder), flow list renders, Next button present. FAIL (HIGH, two related root-causes that BLOCK the deep-link feature end-to-end): (1) /app/frontend/app/auth/login.tsx lines 62-69 — when the freshly-logged-in user is adminLike (role=admin / super_admin / co_admin / is_admin), the screen unconditionally router.replace('/admin') and NEVER calls getPostAuthRoute(); the pending_contribute_share is therefore stranded in AsyncStorage and the contributor is NOT auto-returned to /contribute. Because the supplied test contributor admin@test.com has role=admin, the entire 'emailed/WhatsApp deep link → signup→auto-return' flow is broken for admin-role contributors. (2) /app/frontend/app/contribute.tsx lines 66-76 — the useEffect reads isAuthenticated from authStore but does NOT wait for isLoading=false; on a hard browser load of /contribute?share=… the store hydrates async, so the effect fires once with isAuthenticated=false, stashes the share and pushes /auth/login even when the user actually has a valid session. After auth hydrates the login screen's adminLike branch then drops them on /admin (compounded by bug 1). Net effect on web: /contribute is effectively unreachable via a cold deep-link click for admin/super_admin contributors. As a side-effect Tests 2/3/4 (OTP card render + owner-bypass) could not be exercised through the UI because /contribute always bounces; the OTP card markup itself is correct in source (contribute.tsx lines 122-165 — verify card with channel chips, 'Send code via Email' button, 6-digit TextInput, 'Verify & continue' button; routeToStep calls /shared-steps/{id}/open or router.replace('/prr/<id>?contribShareId=...&contribStep=…')).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "auth/login.tsx adminLike post-login redirect",
+        "issue": "Lines 62-69 unconditionally route adminLike users to /admin and bypass getPostAuthRoute(). pending_contribute_share (and pending_share_token) deep-links are dropped for any contributor whose role is admin / super_admin / co_admin / is_admin. Fix: call getPostAuthRoute() FIRST and only fall back to '/admin' if the helper returned '/(tabs)' (i.e. no deep-link pending). Reference: /app/frontend/app/auth/login.tsx:62-69",
+        "testID": "(login-submit)",
+        "priority": "HIGH"
+      },
+      {
+        "component": "contribute.tsx isAuthenticated race on hard load",
+        "issue": "useEffect at lines 66-76 acts on isAuthenticated without first waiting for authStore isLoading=false. On a cold web load the effect fires with isAuthenticated=false → stashes pending_contribute_share and router.replace('/auth/login') even when the user has a valid session. Fix: pull isLoading from useAuthStore and early-return while isLoading is true (similar to _layout.tsx:279). Reference: /app/frontend/app/contribute.tsx:23,66-76",
+        "testID": "(contribute root)",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Emailed/WhatsApp deep-link → /contribute → /prr (signup→auto-return)",
+        "issue": "Broken for adminLike contributors. The /contribute screen never gets to render its OTP card or routeToStep because the cold load races to /auth/login, and login.tsx then dumps adminLike users on /admin instead of honouring pending_contribute_share. Two root causes combined (see ui_bugs).",
+        "affected_testIDs": ["login-submit"]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props", "issue": "RN-Web warning 'shadow*' style props are deprecated; use 'boxShadow' — chronic across many components (not iter175-specific)."},
+      {"component": "props.pointerEvents", "issue": "RN-Web warning props.pointerEvents is deprecated; use style.pointerEvents — chronic."},
+      {"component": "expo-notifications listener", "issue": "Warning '[expo-notifications] Listening to push token changes is not yet fully supported on web. Adding a listener will have no effect.' — chronic."}
+    ]
+  },
+  "test_report_links": ["/tmp/seed_iter175.py"],
+  "action_items": [
+    "(HIGH) /app/frontend/app/auth/login.tsx lines 62-69 — call getPostAuthRoute() FIRST in the post-login useEffect; only fall through to '/admin' when there is NO pending_contribute_share / pending_share_token. Otherwise adminLike contributors lose the deep-link return path.",
+    "(HIGH) /app/frontend/app/contribute.tsx — pull isLoading from useAuthStore and skip the routing useEffect until isLoading is false, OR consult AsyncStorage('session_token') as a fallback before deciding the user is logged-out. The current race makes /contribute unreachable via hard navigation.",
+    "(LOW) Once the two bugs above are fixed, retest TEST 2/3/4 from the review request (admin auto-route into /prr, OTP card render + send-otp 200, owner-bypass) — backend was already verified by the main agent, so retest is pure UI."
+  ],
+  "critical_code_review_comments": [
+    "contribute.tsx routeToStep (line 32-48) — correct: decision goes router.replace('/prr/<id>?contribShareId=…&contribStep=…&access=…'); other modules POST /shared-steps/{id}/open then route to /tools/pros-cons-wizard or /tools/solution-finder. Matches review-request requirements.",
+    "contribute.tsx verify card (lines 122-165) — correct: methods filter renders email/whatsapp chips only when both methods are configured; 'Send code via Email/WhatsApp' button calls POST /shared-steps/{id}/send-otp with {channel}; 6-digit TextInput; 'Verify & continue' calls POST /shared-steps/{id}/verify-otp then routeToStep(access).",
+    "ShareStepModal Sent live-sync card (lines 689-726) — correct: conditional on share.session_mode==='live_sync' && share.call_room_url; Copy link uses Clipboard.setStringAsync + Alert; Invite more reveals TextInput + button that POSTs /shared-steps/{id}/add-recipients and surfaces an Alert('Invited', ...).",
+    "postAuthRedirect.ts — correct: dequeues pending_contribute_share FIRST, then pending_share_token, then falls back to /(tabs). The bug is that login.tsx doesn't invoke it for adminLike users."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only per review request)", "frontend": "Live-sync Sent tab: 100% PASS, Wizard regression: 100% PASS, Deep-link (logged-out stash): 100% PASS, Deep-link (logged-in route into /prr): 0% (blocked by 2 HIGH bugs above), OTP card render: not observable via UI"},
+  "seed_data_creation": "/tmp/seed_iter175.py created 1 decision (id 0d6ab9f5-6114-4754-a75f-a86bcacad49b) + 3 shares: share_no_auth=262c323b-7ac3-4f19-9882-bf3364fd4919 (step 4, async, no OTP); share_otp=f8b2a68d-2c3a-4045-a5fa-480f2daa79ff (step 5, async, OTP-email); share_live=731464fa-d33b-438d-ac40-74a440622ea2 (step 6, live_sync, room auto-generated meet.jit.si/JELCOS-…). Owned by super@test.com, recipient admin@test.com. Not cleaned up — small footprint.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Re-seed via `python3 /tmp/seed_iter175.py` (writes a JSON with share ids to stdout). For the OTP card render test, the simplest workaround once login.tsx is fixed: after admin login, run a soft router.push to /contribute via in-app navigation (e.g. window.location to /contribute?share=...) — but the real fix path is the two HIGH bugs in action_items. The live_sync Sent-tab flow needs the PRR to be on the SAME step as the share (step 6 in this seed); ShareStepModal.fetchSentShares filters by decisionId AND stepNumber (line 148-149). For the regression wizard, the + FAB opens at mouse(355,32) on a 390x844 viewport.",
+  "rca_of_issue": "Root cause #1 (login.tsx:62-69): the early-2025 'adminLike fast-path' to /admin was added before the iter175 contribute-deep-link helper existed; nobody updated the branch to defer to getPostAuthRoute() for adminLike users. Fix: invoke getPostAuthRoute() first; route adminLike to /admin only when the helper returned the default '/(tabs)'.\n\nRoot cause #2 (contribute.tsx:23,66-76): the deep-link screen treats `!isAuthenticated` as 'logged-out' the moment it mounts, but on a hard web load the zustand authStore hasn't hydrated yet, so the effect fires before checkAuth() resolves. Fix: pull isLoading from useAuthStore and `if (isLoading) return;` at the top of the effect, mirroring the pattern in /app/frontend/app/_layout.tsx line 279.\n\nBoth fixes are small (≤5 lines each) and unblock TEST 2/3/4 from the review request. The live-sync Sent-tab flow and the wizard regression both PASS as-is."
+}
