@@ -33,6 +33,7 @@ import { createAssessmentGsheet, importAssessmentGsheet, openSheetUrl } from '..
 import { safeBack, goHome } from '../../src/utils/navigation';
 import AiCreditsBadge from '../../src/components/AiCreditsBadge';
 import { useAiWalletStore } from '../../src/store/aiWalletStore';
+import { DECISION_TYPES } from '../../src/constants/decisionTypes';
 // ── Extracted modules (refactor: split from the former 3.8k-line monolith) ──
 import { Factor, OptionT, Rollup, Guideline, Analysis } from '../../src/features/pros-cons/types';
 import { STEPS, LIFE_AREAS, COLORS } from '../../src/features/pros-cons/constants';
@@ -185,6 +186,7 @@ export default function ProsConsWizard() {
   const [bTitle, setBTitle] = useState('');
   const [bContext, setBContext] = useState('');
   const [bLifeArea, setBLifeArea] = useState<string>('');
+  const [bDecisionType, setBDecisionType] = useState<string>('');
 
   // Sync local basics when analysis loads / changes id
   useEffect(() => {
@@ -192,10 +194,11 @@ export default function ProsConsWizard() {
       setBTitle(analysis.title || '');
       setBContext(analysis.context || '');
       setBLifeArea(analysis.life_area || '');
+      setBDecisionType((analysis as any).decision_type || '');
     }
   }, [analysis?.id]);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const saveBasics = async (patch: { title?: string; context?: string; life_area?: string | null }) => {
+  const saveBasics = async (patch: { title?: string; context?: string; life_area?: string | null; decision_type?: string }) => {
     if (!id) return;
     try {
       await api.put(`${base}/${id}`, patch);
@@ -910,6 +913,31 @@ export default function ProsConsWizard() {
                         if (bContext !== (analysis?.context || '')) saveBasics({ context: bContext });
                       }}
                     />
+
+                    {/* Sub-type — consistent across MyDezider / Pros & Cons / Solution Finder.
+                        Order is user-mandated: Present Problem · Need · Future Risk · Aspiration. */}
+                    <Text style={styles.inputLabel}>Type</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
+                      {DECISION_TYPES.map((dt) => {
+                        const active = bDecisionType === dt.key;
+                        return (
+                          <TouchableOpacity
+                            key={dt.key}
+                            testID={`pc-subtype-${dt.key}`}
+                            onPress={() => { setBDecisionType(dt.key); saveBasics({ decision_type: dt.key }); }}
+                            style={{
+                              flexDirection: 'row', alignItems: 'center',
+                              borderWidth: 1.5, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7,
+                              borderColor: active ? dt.color : '#E5E7EB',
+                              backgroundColor: active ? dt.color : '#FFF',
+                            }}
+                          >
+                            <Ionicons name={dt.icon as any} size={13} color={active ? '#fff' : dt.color} />
+                            <Text style={{ fontSize: 12.5, fontWeight: '600', marginLeft: 5, color: active ? '#fff' : COLORS.text }}>{dt.label}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
 
                     {/* Life Area is captured in the 4-step intake on creation and is
                         shown in the collapsed summary above — the redundant re-ask

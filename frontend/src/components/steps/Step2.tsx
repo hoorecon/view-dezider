@@ -26,6 +26,7 @@ import LoaderMusicChip from '../LoaderMusicChip';
 import { useAiTouchpoint } from '../../utils/aiEstimates';
 import DecisionLinkPicker from '../DecisionLinkPicker';
 import { useRouter } from 'expo-router';
+import { pickAndReadFile, PickedFile } from '../../utils/filePick';
 
 const DATA_SOURCE_TYPES = [
   { key: 'webhook', label: 'Webhook/API', icon: 'link-outline', color: '#3B82F6' },
@@ -293,6 +294,14 @@ export default function Step2() {
   const [sheetDialogOpen, setSheetDialogOpen] = useState(false);
   const [sheetUrl, setSheetUrl] = useState('');
 
+  // ── "Import from File" — parse a doc/image → AI factors+options (+optional web crawl) ──
+  const [fileDialogOpen, setFileDialogOpen] = useState(false);
+  const [fileTier, setFileTier] = useState<'fast' | 'precise'>('fast');
+  const [fileCrawl, setFileCrawl] = useState(false);
+  const [fileContext, setFileContext] = useState('');
+  const [fileBusy, setFileBusy] = useState(false);
+  const [picked, setPicked] = useState<PickedFile | null>(null);
+
   const afterMatrixImport = async (data: any) => {
     await fetchDecision();
     showAlert(
@@ -343,6 +352,57 @@ export default function Step2() {
       setImportBusy('');
     }
   };
+
+  const choosePickFile = async () => {
+    try {
+      const f = await pickAndReadFile();
+      if (f) setPicked(f);
+    } catch (e: any) {
+      showAlert('Could not read file', e?.message || 'Try another file.');
+    }
+  };
+
+  const runFileImport = async () => {
+    if (!picked) {
+      showAlert('Pick a file', 'Choose a PDF, DOCX, TXT, XLS/CSV or image first.');
+      return;
+    }
+    setFileBusy(true);
+    try {
+      const { data } = await api.post(`/file-import/decision/${decision.id}`, {
+        filename: picked.filename,
+        file_b64: picked.base64,
+        ai_tier: fileTier,
+        crawl_web: fileCrawl,
+        context: fileContext.trim() || undefined,
+      }, { timeout: 300000 });
+      setFileDialogOpen(false);
+      setPicked(null);
+      setFileContext('');
+      await fetchDecision();
+      const topOption = (data.options || []).find((o: string) => o && o.trim());
+      if (topOption) setHighlightOptionName(String(topOption).trim());
+      const enrichedNote = data.enriched
+        ? ` Web research enriched ${data.enriched_count} option${data.enriched_count === 1 ? '' : 's'} with extra detail.`
+        : '';
+      // Post-import: offer the existing metered, plan-capped "Fetch My Best Factors"
+      // so AI can surface relevant factors the file missed (user's choice).
+      showAlert(
+        'Imported from file',
+        `Added ${data.factors_added} factor${data.factors_added === 1 ? '' : 's'} and ${data.options_added} option${data.options_added === 1 ? '' : 's'} from your file.${enrichedNote}\n\nWould you like AI to also add any missed-out factors relevant to your context? It checks the web & your decision context (uses AI credits, capped by your plan).`,
+        [
+          { text: 'No — keep file factors', style: 'cancel' },
+          { text: 'Yes — fetch best factors', onPress: () => { handleFetchBestFactors(); } },
+        ],
+      );
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || 'Could not import from this file. Try a clearer file or add a context note.';
+      showAlert('Import failed', typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setFileBusy(false);
+    }
+  };
+
 
   const submitUrlDialog = () => {
     if (!/^https?:\/\/.+/i.test(importUrl.trim())) {
@@ -677,6 +737,10 @@ export default function Step2() {
             <Ionicons name="link" size={22} color="#2563EB" />
             <Text style={iurl.iconLabel}>URL</Text>
           </TouchableOpacity>
+          <TouchableOpacity testID="step2-import-file" style={iurl.iconBtn} onPress={() => setFileDialogOpen(true)} disabled={!!importBusy || fileBusy} activeOpacity={0.85}>
+            {fileBusy ? <ActivityIndicator size="small" color="#7C3AED" /> : <Ionicons name="document-attach-outline" size={22} color="#7C3AED" />}
+            <Text style={iurl.iconLabel}>File</Text>
+          </TouchableOpacity>
         </View>
         <TouchableOpacity testID="step2-download-template" onPress={handleDownloadTemplate} disabled={!!importBusy} style={iurl.tmplLink}>
           <Ionicons name="download-outline" size={13} color="#2563EB" />
@@ -906,6 +970,89 @@ export default function Step2() {
           </View>
         </View>
       </Modal>
+
+      {/* Import from File dialog — pdf/docx/txt/xls(x)/csv/image → AI factors+options */}
+      <Modal visible={fileDialogOpen} transparent animationType="fade" onRequestClose={() => setFileDialogOpen(false)}>
+        <View style={iurl.dlgOverlay}>
+          <View style={iurl.dlg}>
+            <Text style={iurl.dlgTitle}>Import from File</Text>
+            <Text style={iurl.dlgSub}>Upload a PDF, Word, Excel/CSV, text or image file. AI extracts your factors &amp; options — great for VC lists, comparison sheets or profiles.</Text>
+
+            <TouchableOpacity testID="step2-file-pick" style={ifile.pickBtn} onPress={choosePickFile} activeOpacity={0.85}>
+              <Ionicons name={picked ? 'document-text' : 'cloud-upload-outline'} size={20} color="#7C3AED" />
+              <Text style={ifile.pickTxt} numberOfLines={1}>
+                {picked ? picked.filename : 'Choose a file…'}
+              </Text>
+              {picked ? <Ionicons name="checkmark-circle" size={18} color="#10B981" /> : null}
+            </TouchableOpacity>
+            <Text style={ifile.types}>PDF · DOCX · TXT · XLSX/XLS · CSV · JPG/PNG (max 8 MB)</Text>
+
+            <Text style={iurl.tierLabel}>AI engine</Text>
+            <View style={iurl.tierRow}>
+              <TouchableOpacity
+                testID="step2-file-tier-fast"
+                style={[iurl.tierBtn, fileTier === 'fast' && iurl.tierBtnActive]}
+                onPress={() => setFileTier('fast')}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="flash" size={15} color={fileTier === 'fast' ? '#2563EB' : '#94A3B8'} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[iurl.tierTxt, fileTier === 'fast' && iurl.tierTxtActive]}>Cheap &amp; Fast AI</Text>
+                  <Text style={iurl.tierHint}>Default · lowest credit cost</Text>
+                </View>
+                {fileTier === 'fast' && <Ionicons name="checkmark-circle" size={16} color="#2563EB" />}
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="step2-file-tier-precise"
+                style={[iurl.tierBtn, fileTier === 'precise' && iurl.tierBtnActive]}
+                onPress={() => setFileTier('precise')}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="diamond" size={15} color={fileTier === 'precise' ? '#7C3AED' : '#94A3B8'} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[iurl.tierTxt, fileTier === 'precise' && { color: '#7C3AED' }]}>Costly &amp; Precise AI</Text>
+                  <Text style={iurl.tierHint}>Claude-grade extraction · more credits</Text>
+                </View>
+                {fileTier === 'precise' && <Ionicons name="checkmark-circle" size={16} color="#7C3AED" />}
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              testID="step2-file-crawl-toggle"
+              style={[ifile.crawlRow, fileCrawl && ifile.crawlRowOn]}
+              onPress={() => setFileCrawl(!fileCrawl)}
+              activeOpacity={0.85}
+            >
+              <Ionicons name={fileCrawl ? 'checkbox' : 'square-outline'} size={20} color={fileCrawl ? '#7C3AED' : '#94A3B8'} />
+              <View style={{ flex: 1 }}>
+                <Text style={ifile.crawlTitle}>Also research the web (AI crawl)</Text>
+                <Text style={ifile.crawlHint}>Enrich each option with details missing from the file. Uses more credits.</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TextInput
+              testID="step2-file-context"
+              style={[iurl.dlgInput, { marginTop: 10 }]}
+              placeholder="Optional: what are you deciding? (helps AI focus)"
+              placeholderTextColor="#9CA3AF"
+              value={fileContext}
+              onChangeText={setFileContext}
+            />
+
+            <ImportCreditsStrip endpoint="import" tier={fileTier} />
+
+            <View style={iurl.dlgBtns}>
+              <TouchableOpacity style={iurl.dlgCancel} onPress={() => { setFileDialogOpen(false); }}>
+                <Text style={iurl.dlgCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity testID="step2-file-import" style={[iurl.dlgGo, !picked && { opacity: 0.5 }]} onPress={runFileImport} disabled={fileBusy || !picked}>
+                {fileBusy ? <ActivityIndicator size="small" color="#fff" /> : <Text style={iurl.dlgGoText}>Import</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
 
       <UrlAccessConsentModal
         visible={importConsentOpen}
@@ -1487,6 +1634,25 @@ const sfStyles = StyleSheet.create({
   autoSplitBtnText: { fontSize: 11, fontWeight: '700', color: '#7C3AED' },
   weightHint: { fontSize: 10.5, color: COLORS.textMuted, marginTop: 4, marginBottom: 2, lineHeight: 15 },
 });
+
+const ifile = StyleSheet.create({
+  pickBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderWidth: 1.5, borderColor: '#DDD6FE', borderStyle: 'dashed',
+    backgroundColor: '#F5F3FF', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 14,
+    marginTop: 4,
+  },
+  pickTxt: { flex: 1, fontSize: 14, fontWeight: '600', color: '#5B21B6' },
+  types: { fontSize: 11, color: '#94A3B8', marginTop: 6, marginBottom: 4 },
+  crawlRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12,
+    borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, padding: 12, backgroundColor: '#FFF',
+  },
+  crawlRowOn: { borderColor: '#7C3AED', backgroundColor: '#FAF5FF' },
+  crawlTitle: { fontSize: 13.5, fontWeight: '700', color: '#0F172A' },
+  crawlHint: { fontSize: 11, color: '#94A3B8', marginTop: 2, lineHeight: 15 },
+});
+
 
 const iurl = StyleSheet.create({
   box: { backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE', borderRadius: 12, padding: 12, marginBottom: 16 },

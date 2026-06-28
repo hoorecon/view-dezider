@@ -53,6 +53,7 @@ async def create_solution_finder(request: Request, user: dict = Depends(get_curr
         "user_id": user["user_id"],
         "org_id": user.get("org_id"),
         "area_of_life": body.get("area_of_life", ""),
+        "decision_type": body.get("decision_type", ""),
         "smart_goal": body.get("smart_goal", ""),
         "milestones": body.get("milestones", []),
         # --- v2 structured tree ---
@@ -144,7 +145,7 @@ async def update_solution_finder(entry_id: str, request: Request, user: dict = D
 
     update_fields = {}
     allowed = [
-        "area_of_life", "smart_goal", "milestones",
+        "area_of_life", "decision_type", "smart_goal", "milestones",
         # legacy v1
         "q1_all_concerns", "q2_primary_concerns",
         "q3_capabilities", "q3_resources", "q3_solutions",

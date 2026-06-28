@@ -28,6 +28,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { showAlert } from '../../src/utils/alert';
 import { COLORS } from '../../src/constants/colors';
+import { DECISION_TYPES } from '../../src/constants/decisionTypes';
 import { useAuthStore } from '../../src/store/authStore';
 import api from '../../src/utils/api';
 import TimingFieldset, { TimingValue } from '../../src/components/decisions/TimingFieldset';
@@ -145,6 +146,7 @@ export default function SimpleSolutionFinder() {
   // Step 0 — Goal
   const [areaOfLife, setAreaOfLife] = useState('');
   const [smartGoal, setSmartGoal] = useState('');
+  const [decisionType, setDecisionType] = useState('');
   const [timing, setTiming] = useState<TimingValue>({
     deadline_date: addDaysISO(7), impact_horizon_value: 7, impact_horizon_unit: 'days',
   });
@@ -199,6 +201,7 @@ export default function SimpleSolutionFinder() {
       const d = res.data;
       setAreaOfLife(d.area_of_life || '');
       setSmartGoal(d.smart_goal || '');
+      setDecisionType((d as any).decision_type || '');
       setTiming({
         deadline_date: d.deadline_date || addDaysISO(7),
         impact_horizon_value: d.impact_horizon_value ?? 7,
@@ -246,6 +249,7 @@ export default function SimpleSolutionFinder() {
   // ============ SAVE ============
   const buildPayload = (statusOverride?: string) => ({
     area_of_life: areaOfLife,
+    decision_type: decisionType,
     smart_goal: smartGoal,
     deadline_date: timing.deadline_date || null,
     impact_horizon_value: timing.impact_horizon_value ?? null,
@@ -871,6 +875,25 @@ export default function SimpleSolutionFinder() {
             <Text style={[s.areaChipText, areaOfLife === a.id && { color: '#FFF' }]}>{a.name}</Text>
           </TouchableOpacity>
         ))}
+      </View>
+      {/* Sub-type — consistent across MyDezider / Pros & Cons / Solution Finder.
+          Order is user-mandated: Present Problem · Need · Future Risk · Aspiration. */}
+      <Text style={s.sectionLabel}>Type</Text>
+      <View style={s.areaGrid}>
+        {DECISION_TYPES.map((dt) => {
+          const active = decisionType === dt.key;
+          return (
+            <TouchableOpacity
+              key={dt.key}
+              testID={`sf-subtype-${dt.key}`}
+              style={[s.areaChip, active && { backgroundColor: dt.color, borderColor: dt.color }]}
+              onPress={() => setDecisionType(dt.key)}
+            >
+              <Ionicons name={dt.icon as any} size={14} color={active ? '#FFF' : dt.color} />
+              <Text style={[s.areaChipText, active && { color: '#FFF' }]}>{dt.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
       <Text style={s.sectionLabel}>SMART Goal</Text>
       <TextInput

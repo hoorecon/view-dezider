@@ -13,6 +13,7 @@ import { COLORS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import TimestampLine from '../../src/components/TimestampLine';
 import { safeBack } from '../../src/utils/navigation';
+import LifeGoalsPanel from '../../src/components/lifegoals/LifeGoalsPanel';
 
 const CAT_CFG: Record<string, { color: string; icon: string; label: string }> = {
   problem:    { color: '#EF4444', icon: 'alert-circle',  label: 'Present Problem' },
@@ -40,6 +41,7 @@ export default function PNAScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [dashboard, setDashboard] = useState<any>(null);
   const [viewMode, setViewMode] = useState<'overview' | 'area'>('overview');
+  const [topTab, setTopTab] = useState<'lifemap' | 'lifegoals'>('lifemap');
   const [selectedArea, setSelectedArea] = useState<string>('');
   const [areaDetail, setAreaDetail] = useState<any>(null);
   const [areaLoading, setAreaLoading] = useState(false);
@@ -791,9 +793,13 @@ export default function PNAScreen() {
           <Text style={s.headerTitle}>
             {viewMode === 'area' ? (areaDetail?.area?.name || 'Area') : 'My 360° Life'}
           </Text>
-          <TouchableOpacity onPress={() => openAddModal()}>
-            <Ionicons name="add-circle" size={28} color={COLORS.primary} />
-          </TouchableOpacity>
+          {viewMode === 'overview' && topTab === 'lifegoals' ? (
+            <View style={{ width: 28 }} />
+          ) : (
+            <TouchableOpacity onPress={() => openAddModal()}>
+              <Ionicons name="add-circle" size={28} color={COLORS.primary} />
+            </TouchableOpacity>
+          )}
         </View>
 
         <LinearGradient colors={['#FFFFFF', '#F8FAFC']} style={s.heroBanner}>
@@ -806,18 +812,30 @@ export default function PNAScreen() {
 
         {viewMode === 'overview' && (
           <View style={s.mainTabs}>
-            <View style={[s.mainTab, s.mainTabActive]}>
-              <Ionicons name="grid" size={15} color="#4338CA" />
-              <Text style={[s.mainTabTxt, s.mainTabTxtActive]}>Life Map</Text>
-            </View>
-            <TouchableOpacity style={s.mainTab} onPress={() => router.push('/tools/life-goals' as any)} testID="life-goals-tab">
-              <Ionicons name="trophy-outline" size={15} color="#64748B" />
-              <Text style={s.mainTabTxt}>Life Goals</Text>
+            <TouchableOpacity
+              style={[s.mainTab, topTab === 'lifemap' && s.mainTabActive]}
+              onPress={() => setTopTab('lifemap')}
+              testID="life-map-tab"
+            >
+              <Ionicons name="grid" size={15} color={topTab === 'lifemap' ? '#4338CA' : '#64748B'} />
+              <Text style={[s.mainTabTxt, topTab === 'lifemap' && s.mainTabTxtActive]}>Life Map</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.mainTab, topTab === 'lifegoals' && s.mainTabActive]}
+              onPress={() => setTopTab('lifegoals')}
+              testID="life-goals-tab"
+            >
+              <Ionicons name="trophy-outline" size={15} color={topTab === 'lifegoals' ? '#4338CA' : '#64748B'} />
+              <Text style={[s.mainTabTxt, topTab === 'lifegoals' && s.mainTabTxtActive]}>Life Goals</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {viewMode === 'overview' ? renderOverview() : renderAreaView()}
+        {viewMode === 'area'
+          ? renderAreaView()
+          : topTab === 'lifegoals'
+            ? <LifeGoalsPanel />
+            : renderOverview()}
       </ScrollView>
 
       {renderFormModal()}

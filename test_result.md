@@ -10720,3 +10720,59 @@ test_plan:
     - "Iter175 — ShareStepModal live-session copy link + invite-more"
   test_all: false
   test_priority: "high_first"
+
+
+#====================================================================================================
+# ITER 176 — Life Goals (7-level GEM-backed) + Import-from-File (AI + web crawl) + 4 sub-types everywhere
+#====================================================================================================
+agent_communication:
+  - agent: "main"
+    message: |
+      ITER 176 (creds owner super@test.com/SuperPass2026!, contributor admin@test.com/AdminPass2026!).
+      THREE features, all need testing.
+
+      A) LIFE GOALS (My 360° Life → "Life Goals" tab). Stored in db.gem_goals (GEM is the central connector).
+         New backend router /api/life-goals (routes/life_goals.py):
+           - GET /api/life-goals/meta → {life_areas, sub_types(Present Problem/Need/Future Risk/Aspiration, that exact order), levels(L1..L7), horizons, statuses}
+           - POST /api/life-goals  (mode 'timeline' OR 'tree')
+               timeline requires {title, horizon in [quarter,1yr,3yr,5yr,10yr], life_area}; sub_type optional.
+               tree requires {title, level 1..7, parent_id for L>1}; L5 requires life_area; L6 requires sub_type.
+               parent must be exactly level-1 (else 400); L1 with parent → 400.
+           - GET /api/life-goals?mode=&level=&parent_id=&life_area=
+           - GET /api/life-goals/tree ; GET/PUT/DELETE /api/life-goals/{id} (tree delete cascades descendants)
+           Backend verified by main agent via curl: L1/L2 create OK, L2-without-parent →400, timeline create OK,
+           goals appear in GET /api/gem/goals with lg_mode set. (3 demo goals exist for super@test.com.)
+         FRONTEND: /tools/pna now has an in-screen top-tab switch "Life Map" | "Life Goals"
+           (testIDs life-map-tab / life-goals-tab). The Life Goals panel (src/components/lifegoals/LifeGoalsPanel.tsx)
+           has a mode toggle "By Life Area" (timeline) | "7-Level Tree" (testIDs lg-mode-timeline / lg-mode-tree),
+           add/edit/delete via a modal (testIDs lg-add-overall, lg-add-child-<id>, lg-add-<area>, lg-title, lg-save).
+           Verify: switch tabs; create a timeline goal under a Life Area; build a tree L1→L2 (Add Overall Life Goal,
+           then + on a node); L5 forces Life Area, L6 forces sub-type; delete cascades.
+
+      B) IMPORT FROM FILE (MyDezider Step 2, decision factors). New backend POST /api/file-import/decision/{decision_id}
+         (routes/file_import.py): body {filename, file_b64, ai_tier 'fast'|'precise', crawl_web bool, context?}.
+         Parses pdf/docx/txt/xlsx/xls/csv/image(OCR) → AI extracts factors+options (metered_chat, same wallet as URL import)
+         → if crawl_web, DuckDuckGo + LLM enrich each option (cap 8) with factor values → merge_into_mydezider
+         (factors + option candidates with unit_values). Returns {factors_added, options_added, enriched, factors, options}.
+         FRONTEND: Step2 import row now has a 4th "File" button (testID step2-import-file) → modal (testIDs
+         step2-file-pick, step2-file-tier-fast/precise, step2-file-crawl-toggle, step2-file-context, step2-file-import).
+         After success, an alert offers "Yes — fetch best factors" which calls the existing /ai/suggest-factors
+         (tp_best_factors, plan-capped) so AI adds missed-out factors (user's choice).
+         NOTE: AI uses real Emergent key (gemini free-tier first) — consumes credits, NOT mocked. File picking on web
+         uses a hidden <input>; native uses expo-document-picker + new expo-file-system File().base64().
+         BACKEND testing: a TXT/CSV upload (base64) is the easiest to validate end-to-end without a real PDF.
+
+      C) 4 SUB-TYPES CONSISTENCY. "Present Problem · Need · Future Risk · Aspiration" (exact order) now appear as a
+         "Type" chip selector in the Initial-Info step of:
+           - MyDezider (already present in /prr/new.tsx) ,
+           - Pros & Cons wizard Step-1 "Basics" (testIDs pc-subtype-problem/need/risk/aspiration; saved to decision_type) ,
+           - Solution Finder Step-0 "Goal" (testIDs sf-subtype-problem/need/risk/aspiration; saved via buildPayload decision_type).
+         Backend: pros_cons already stored decision_type; tools.py (Solution Finder) now accepts decision_type on create+update.
+test_plan:
+  current_focus:
+    - "Iter176 — Life Goals timeline + 7-level tree (GEM-backed) CRUD + validation"
+    - "Iter176 — Import-from-File (txt/csv/pdf/image) → factors+options (+web crawl) → merge into Step 2"
+    - "Iter176 — 4 sub-type chips persist in Pros & Cons Step-1 and Solution Finder Step-0"
+  test_all: false
+  test_priority: "high_first"
+
