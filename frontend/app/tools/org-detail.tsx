@@ -167,6 +167,9 @@ export default function OrgDetail() {
             {node.metric_label ? <Text style={s.goalMeta}>{node.metric_label}: {node.metric_target} {node.metric_unit}</Text> : null}
             {node.owner_name ? <Text style={s.goalMeta}>Owner: {node.owner_name}{node.target_date ? ` · by ${isoToDdmm(node.target_date)}` : ''}</Text> : null}
           </View>
+          {lvl === 'L1' && (
+            <TouchableOpacity style={s.goalAct} onPress={() => router.push(`/tools/financial-model?org=${orgId}&goal=${node.id}` as any)} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }} accessibilityLabel="Open Financial Model" testID={`fm-open-${node.id}`} {...({ title: 'Open Financial Model (forecasts, ratios, DCF)' } as any)}><Ionicons name="calculator" size={16} color="#003087" /></TouchableOpacity>
+          )}
           <TouchableOpacity style={s.goalAct} onPress={() => convertToAction(node.id, false)} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }} accessibilityLabel="Mark as done (one-time)" {...({ title: 'Mark as done — convert to one-time Action Tracker task' } as any)}><Ionicons name="checkmark-circle" size={16} color="#10B981" /></TouchableOpacity>
           <TouchableOpacity style={s.goalAct} onPress={() => convertToAction(node.id, true)} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }} accessibilityLabel="Convert to recurring routine" {...({ title: 'Convert to recurring routine in Action Tracker' } as any)}><Ionicons name="repeat" size={16} color="#8B5CF6" /></TouchableOpacity>
           <TouchableOpacity style={s.goalAct} onPress={() => { setEditingGoalId(node.id); setAdding({ level: lvl as any, parent_goal_id: node.parent_goal_id || null }); setNewGoal({ ...node, target_date: node.target_date ? isoToDdmm(node.target_date) : '' }); }} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }} accessibilityLabel="Edit goal" {...({ title: 'Edit this goal' } as any)}><Ionicons name="create" size={16} color="#F59E0B" /></TouchableOpacity>
@@ -234,6 +237,9 @@ export default function OrgDetail() {
           {/* New L1 root button */}
           <TouchableOpacity style={s.addRootBtn} onPress={() => { setAdding({ level: 'L1', parent_goal_id: null }); setNewGoal({}); }}>
             <Ionicons name="add-circle" size={18} color="#FFF" /><Text style={s.addRootText}>  New L1 Financial Goal</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.fmBtn} onPress={() => router.push(`/tools/financial-model?org=${orgId}` as any)} testID="open-financial-model">
+            <Ionicons name="calculator" size={18} color="#003087" /><Text style={s.fmBtnText}>  Financial Model — forecasts · ratios · DCF valuation</Text>
           </TouchableOpacity>
           {tree.length === 0 && <Text style={s.emptyTree}>No goals yet. Start with an L1 Financial goal, then drill down through the 6 levels.</Text>}
           {tree.map((node: any) => renderNode(node, 0))}
@@ -368,6 +374,8 @@ const s = StyleSheet.create({
   gateBanner: { backgroundColor: '#EEF2FF', color: '#4338CA', padding: 10, borderRadius: 8, fontSize: 11, marginBottom: 10 },
   addRootBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#DC2626', borderRadius: 10, padding: 10, marginBottom: 10 },
   addRootText: { color: '#FFF', fontWeight: '800', fontSize: 13 },
+  fmBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF2FF', borderWidth: 1, borderColor: '#003087', borderRadius: 10, padding: 10, marginBottom: 10 },
+  fmBtnText: { color: '#003087', fontWeight: '800', fontSize: 12 },
   emptyTree: { textAlign: 'center', color: '#64748B', fontSize: 12, padding: 20, fontStyle: 'italic' },
   goalNode: { marginBottom: 4 },
   goalRow: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#FFF', padding: 8, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' },

@@ -10776,3 +10776,47 @@ test_plan:
   test_all: false
   test_priority: "high_first"
 
+
+
+#====================================================================================================
+# ITER 177 — Financial Model (Phase 1): 3-statement forecast + ratios + DCF valuation on L1 Financial
+#====================================================================================================
+agent_communication:
+  - agent: "main"
+    message: |
+      ITER 177 (creds super@test.com/SuperPass2026!). NEW feature: a "Financial Model" branch on
+      L1 (Financial) of an Org's 6 LeGS tree. Phase 1 = on-screen modelling + valuation engine.
+      (Phase 2 = CMA Excel + Investor PDF export; Phase 3 = Zoho Books/Analytics 2-way — NOT built yet.)
+
+      BACKEND — core/fin_model.py (pure engine) + routes/financial_model.py (prefix /api/financial-models):
+        - GET  /api/financial-models/meta  -> {default_assumptions, units(Absolute default + Thousands/Lakhs/Millions/Crores),
+              currencies, historical_stages(pre_revenue/3m/6m/9m/1y/2y), max_projection_years}
+        - POST /api/financial-models/compute {assumptions, projection_years} -> {computed} (stateless preview, login only)
+        - POST /api/financial-models {user_org_id, leg_goal_id?, name, currency, units, historical_stage,
+              projection_years, assumptions} -> model + computed  (must OWN the org: user_orgs.owner_user_id)
+        - GET  /api/financial-models?user_org_id= -> {models:[...]}
+        - GET  /api/financial-models/{id} -> model + computed
+        - PUT  /api/financial-models/{id} (assumptions/units/currency/name/projection_years) -> model + computed
+        - DELETE /api/financial-models/{id}
+        Engine output `computed`: pnl, balance_sheet (incl balance_check that MUST be ~0 each year),
+        cash_flow, ratios (current/quick/debt_equity/interest_coverage/DSCR/margins/ROCE/ROE/WC-days),
+        valuation (FCFF, PV, terminal_value, enterprise_value, net_debt, equity_value, per_share, wacc, terminal growth),
+        summary (revenue_cagr_pct, dscr_avg, min_dscr, final_year_pat).
+        Main agent already verified: default model BS balance_check=[0,0,0,0,0]; meta & compute return 200.
+        NOTE: super@test.com currently has 0 Orgs — to test create/list/get/put/delete you must FIRST create an
+        Org (POST /api/seven-seven/orgs or via the My Organizations UI), then use its id as user_org_id.
+
+      FRONTEND — app/tools/financial-model.tsx (route /tools/financial-model?org=<userOrgId>&goal=<L1goalId>&model=<id>):
+        tabs Inputs|P&L|Balance Sheet|Cash Flow|Ratios|Valuation (testIDs fm-tab-assumptions/pnl/bs/cf/ratios/valuation),
+        editable assumptions form (numeric + per-year arrays), units selector, "Recalculate" (fm-recalc) calls /compute,
+        "Save/Create" (fm-save) persists. Valuation tab shows EV / Equity Value / Per-Share cards + DCF breakdown + DSCR.
+        Entry points in app/tools/org-detail.tsx → "6 LeGs GOALS" tab: a top button "Financial Model …"
+        (testID open-financial-model) and a calculator icon on each L1 node (testID fm-open-<goalId>).
+test_plan:
+  current_focus:
+    - "Iter177 — Financial Model backend CRUD + ownership + compute (BS balance_check≈0, DCF EV/Equity/per-share, DSCR)"
+    - "Iter177 — Financial Model screen: edit inputs → Recalculate → all 6 tabs render; Save/Create persists"
+    - "Iter177 — org-detail 6 LeGs tab: 'Financial Model' button + L1-node calculator icon navigate correctly"
+  test_all: false
+  test_priority: "high_first"
+
