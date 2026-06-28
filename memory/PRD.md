@@ -217,3 +217,28 @@ Multi-user Decision Making App based on a 10-step Proactive Risk Response (PRR) 
 - OTP-on-access gate (email/WhatsApp, once/every-time) via /shared-steps/{id}/access,/send-otp,/verify-otp. Owner bypasses.
 - Live Sync: auto room URL; ShareStepModal Sent tab shows meeting link + Copy + Invite-more (/shared-steps/{id}/add-recipients dispatches step+meeting links).
 - All verified: backend scripts PASS + testing_agent iter174/175/176 PASS.
+
+
+---
+
+## ITER 176 — Life Goals, Import-from-File, Global Sub-types (June 2026) ✅ TESTED
+
+### A) Life Goals (My 360° Life → "Life Goals" tab) — GEM-backed
+- **Storage**: lives in `db.gem_goals` (GEM is the central connector across Goal Setter, Solution Finder, MyDezider, Pros & Cons, Action Tracker). A Life Goal is a GEM goal carrying `lg_mode`, `lg_level`, `parent_id`, `horizon`, `sub_type`; regular GEM goals have no `lg_mode`.
+- **Backend**: `routes/life_goals.py` (prefix `/api/life-goals`): `GET /meta`, `POST ""`, `GET ""` (filters mode/level/parent_id/life_area), `GET /tree`, `GET/PUT/DELETE /{id}` (tree delete cascades descendants).
+- **Two modes**:
+  - *Timeline* ("By Life Area"): per Life Area, a goal with horizon ∈ {This Quarter, 1yr, 3yr, 5yr, 10yr} + optional sub-type.
+  - *7-Level Tree* (strict nested): L1 Overall → L2 10yr → L3 5yr → L4 3yr → L5 1yr (requires Life Area) → L6 Quarterly (requires sub-type) → L7 Monthly. Child must reference a parent exactly one level up.
+- **Frontend**: in-screen top-tab switch in `app/tools/pna.tsx` ("Life Map" | "Life Goals"); panel `src/components/lifegoals/LifeGoalsPanel.tsx`.
+
+### B) Import from File (MyDezider Step 2)
+- **Backend**: `routes/file_import.py` — `POST /api/file-import/decision/{decision_id}` {filename, file_b64, ai_tier, crawl_web, context}. Parses pdf/docx/txt/xlsx/xls/csv/image(OCR) → AI extracts factors+options (metered via same AI wallet as URL import) → optional DuckDuckGo + LLM web-enrichment of options (cap 8) → `merge_into_mydezider` (factors + option candidates with `unit_values`).
+- **Frontend**: 4th "File" button in Step2 import row + modal (file pick, AI tier, "Also research the web (AI crawl)" toggle, context). After success, an alert offers an opt-in to run the existing plan-capped "Fetch My Best Factors" (`/ai/suggest-factors`, `tp_best_factors`) to add missed-out factors.
+- `src/utils/filePick.ts` — cross-platform pick→base64 (web FileReader; native `new File(uri).base64()` from expo-file-system v19).
+
+### C) 4 Sub-types consistency
+- Canonical order **Present Problem · Need · Future Risk · Aspiration** (`src/constants/decisionTypes.ts`).
+- "Type" chip selector now in the Initial-Info step of MyDezider (`prr/new.tsx`), Pros & Cons wizard Step-1 Basics (saved to `decision_type`), and Solution Finder Step-0 Goal (saved via `buildPayload.decision_type`). Backend `tools.py` now accepts `decision_type` for Solution Finder.
+
+**Status**: Verified by testing_agent (27/27 backend pytest PASS; frontend flows PASS; no new bugs). Demo Life Goals exist for super@test.com.
+
