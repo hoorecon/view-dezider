@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { showAlert } from '../../src/utils/alert';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -68,6 +68,8 @@ export default function CollaborateScreen() {
   const [creating, setCreating] = useState(false);
   const [smeFilter, setSmeFilter] = useState(false);
   const [sessionMode, setSessionMode] = useState<string>('async');
+  const createScrollRef = useRef<ScrollView>(null);
+  const scrollWizardTop = () => createScrollRef.current?.scrollTo({ y: 0, animated: false });
   const [modeConfigOverride, setModeConfigOverride] = useState<any>(null);
   const [showOverride, setShowOverride] = useState(false);
   const [overrideFields, setOverrideFields] = useState<Record<string, string>>({});
@@ -187,7 +189,7 @@ export default function CollaborateScreen() {
         <View>
           <Text style={styles.stepTitle}>Select Decision / Problem</Text>
           <Text style={styles.stepHint}>Choose the My Dezider or Solution Finder to collaborate on.</Text>
-          <ScrollView style={{ maxHeight: 350 }} showsVerticalScrollIndicator={false}>
+          <View>
             {modules.length === 0 ? (
               <Text style={styles.noItems}>No decisions or problems found. Create one first.</Text>
             ) : modules.map((m, i) => (
@@ -204,14 +206,25 @@ export default function CollaborateScreen() {
                 {selectedModule?.id === m.id && <Ionicons name="checkmark-circle" size={20} color="#059669" />}
               </TouchableOpacity>
             ))}
-          </ScrollView>
+          </View>
         </View>
       );
       case 1: return (
         <View>
           <Text style={styles.stepTitle}>Decision Making Mode</Text>
           <Text style={styles.stepHint}>How should participant contributions be weighted and merged?</Text>
-          <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
+          {/* Notification options — kept above the fold so they're visible without scrolling */}
+          <View style={styles.notifySection}>
+            <TouchableOpacity style={styles.notifyRow} onPress={() => setNotifyParticipants(!notifyParticipants)}>
+              <Ionicons name={notifyParticipants ? 'checkbox' : 'square-outline'} size={20} color={notifyParticipants ? '#6366F1' : COLORS.textMuted} />
+              <Text style={styles.notifyText}>Notify participants about invitation</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.notifyRow} onPress={() => setNotifyMode(!notifyMode)}>
+              <Ionicons name={notifyMode ? 'checkbox' : 'square-outline'} size={20} color={notifyMode ? '#6366F1' : COLORS.textMuted} />
+              <Text style={styles.notifyText}>Disclose decision making mode to participants</Text>
+            </TouchableOpacity>
+          </View>
+          <View>
             {modes.map((mode: any) => (
               <TouchableOpacity key={mode.id} style={[styles.modeCard, selectedMode === mode.id && { borderColor: mode.color, borderWidth: 2 }]}
                 onPress={() => setSelectedMode(mode.id)}>
@@ -225,17 +238,6 @@ export default function CollaborateScreen() {
                 {selectedMode === mode.id && <Ionicons name="checkmark-circle" size={20} color={mode.color} />}
               </TouchableOpacity>
             ))}
-          </ScrollView>
-          {/* Notification options */}
-          <View style={styles.notifySection}>
-            <TouchableOpacity style={styles.notifyRow} onPress={() => setNotifyParticipants(!notifyParticipants)}>
-              <Ionicons name={notifyParticipants ? 'checkbox' : 'square-outline'} size={20} color={notifyParticipants ? '#6366F1' : COLORS.textMuted} />
-              <Text style={styles.notifyText}>Notify participants about invitation</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.notifyRow} onPress={() => setNotifyMode(!notifyMode)}>
-              <Ionicons name={notifyMode ? 'checkbox' : 'square-outline'} size={20} color={notifyMode ? '#6366F1' : COLORS.textMuted} />
-              <Text style={styles.notifyText}>Disclose decision making mode to participants</Text>
-            </TouchableOpacity>
           </View>
         </View>
       );
@@ -254,7 +256,7 @@ export default function CollaborateScreen() {
               <Text style={[styles.smeBtnText, smeFilter && { color: '#FFF' }]}>SME</Text>
             </TouchableOpacity>
           </View>
-          <ScrollView style={{ maxHeight: 440 }} showsVerticalScrollIndicator={true}>
+          <View>
             {filteredContacts.length === 0 ? (
               <Text style={styles.noItems}>No contacts match. Add contacts from the Contacts screen first.</Text>
             ) : filteredContacts.map(c => (
@@ -272,7 +274,7 @@ export default function CollaborateScreen() {
                   color={selectedContacts.has(c.id) ? '#059669' : '#D1D5DB'} />
               </TouchableOpacity>
             ))}
-          </ScrollView>
+          </View>
         </View>
       );
       case 3: return (
@@ -358,6 +360,7 @@ export default function CollaborateScreen() {
                     value={overrideFields.deadline_hours || ''}
                     onChangeText={v => setOverrideFields({...overrideFields, deadline_hours: v})} />
                 </View>
+                {sessionMode === 'live_sync' && (
                 <View style={styles.overrideFieldRow}>
                   <View style={{ flex: 1, paddingRight: 8 }}>
                     <Text style={styles.overrideFieldLabel}>Presence Check (Seconds)</Text>
@@ -367,6 +370,7 @@ export default function CollaborateScreen() {
                     value={overrideFields.presence_check_interval || ''}
                     onChangeText={v => setOverrideFields({...overrideFields, presence_check_interval: v})} />
                 </View>
+                )}
               </View>
             )}
           </View>
@@ -650,7 +654,7 @@ export default function CollaborateScreen() {
                         <Text style={styles.joinCallTitle}>
                           {s.call_room_url ? 'Join Video Call' : 'Start Video Call'}
                         </Text>
-                        <Text style={styles.joinCallSub}>Jitsi Meet • Screen sharing enabled</Text>
+                        <Text style={styles.joinCallSub}>Video call • Screen sharing on</Text>
                       </View>
                       <Ionicons name="arrow-forward" size={16} color="#059669" />
                     </TouchableOpacity>
@@ -686,13 +690,13 @@ export default function CollaborateScreen() {
                 ))}
               </View>
 
-              <ScrollView style={{ maxHeight: 560 }} showsVerticalScrollIndicator={true}>
+              <ScrollView ref={createScrollRef} style={{ maxHeight: 560 }} showsVerticalScrollIndicator={true} nestedScrollEnabled>
                 {renderCreateStep()}
               </ScrollView>
 
               <View style={styles.modalFooter}>
                 {createStep > 0 && (
-                  <TouchableOpacity style={styles.prevBtn} onPress={() => setCreateStep(createStep - 1)}>
+                  <TouchableOpacity style={styles.prevBtn} onPress={() => { setCreateStep(createStep - 1); scrollWizardTop(); }}>
                     <Text style={styles.prevBtnText}>Back</Text>
                   </TouchableOpacity>
                 )}
@@ -702,6 +706,7 @@ export default function CollaborateScreen() {
                     if (createStep === 0 && !selectedModule) { showAlert('Required', 'Select a module first'); return; }
                     if (createStep === 2 && selectedContacts.size === 0) { showAlert('Required', 'Select at least one participant'); return; }
                     setCreateStep(createStep + 1);
+                    scrollWizardTop();
                   }}>
                     <Text style={styles.nextBtnText}>Next</Text>
                     <Ionicons name="arrow-forward" size={16} color="#FFF" />
@@ -762,11 +767,13 @@ export default function CollaborateScreen() {
                 ))}
 
                 <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
+                  {((detailSession.auth_requirements?.enabled_methods || detailSession.auth_config?.enabled_methods || []).length > 0) && (
                   <TouchableOpacity style={[styles.verifyActionBtn, { backgroundColor: '#7C3AED' }]}
                     onPress={() => { const s = detailSession; setDetailSession(null); setVerifySession(s); setShowVerifyModal(true); fetchVerificationStatus(); }}>
                     <Ionicons name="shield-checkmark" size={14} color="#FFF" />
                     <Text style={styles.verifyActionText}>Verify Identity</Text>
                   </TouchableOpacity>
+                  )}
                   {detailSession.session_mode === 'live_sync' && detailSession.status === 'active' && (
                     <TouchableOpacity style={[styles.verifyActionBtn, { backgroundColor: '#059669' }]}
                       onPress={() => { const sid = detailSession.id; setDetailSession(null); router.push({ pathname: '/tools/collab-call', params: { sessionId: sid } } as any); }}>
