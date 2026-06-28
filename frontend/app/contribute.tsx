@@ -20,7 +20,7 @@ import api from '../src/utils/api';
 export default function ContributeDeepLink() {
   const { share } = useLocalSearchParams<{ share?: string }>();
   const router = useRouter();
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, isLoading } = useAuthStore();
   const [phase, setPhase] = useState<'loading' | 'verify' | 'opening' | 'error'>('loading');
   const [access, setAccess] = useState<any>(null);
   const [channel, setChannel] = useState<'email' | 'whatsapp'>('email');
@@ -65,6 +65,7 @@ export default function ContributeDeepLink() {
 
   useEffect(() => {
     (async () => {
+      if (isLoading) return; // wait for auth hydration on cold load
       if (!share) { setErr('Missing contribution link.'); setPhase('error'); return; }
       if (!isAuthenticated) {
         await AsyncStorage.setItem('pending_contribute_share', String(share));
@@ -73,7 +74,7 @@ export default function ContributeDeepLink() {
       }
       await loadAccess();
     })();
-  }, [share, isAuthenticated, loadAccess, router]);
+  }, [share, isAuthenticated, isLoading, loadAccess, router]);
 
   const sendOtp = async () => {
     setSending(true);

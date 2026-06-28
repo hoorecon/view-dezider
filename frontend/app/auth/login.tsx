@@ -60,13 +60,12 @@ export default function LoginScreen() {
     if (isAuthenticated) {
       const role = (user?.role || '').toLowerCase();
       const adminLike = user?.is_admin || role === 'admin' || role === 'super_admin' || role === 'co_admin';
-      if (adminLike) {
-        router.replace('/admin' as any);
-      } else {
-        // Honour a pending shared-report deep link (lead-magnet onboarding):
-        // route the recipient straight to the report instead of the dashboard.
-        getPostAuthRoute().then((route) => router.replace(route as any));
-      }
+      getPostAuthRoute().then((route) => {
+        // A pending deep link (contribution invite / shared report) always wins,
+        // even for admin-like users — only fall back to /admin when there is none.
+        if (route && route !== '/(tabs)') { router.replace(route as any); return; }
+        router.replace((adminLike ? '/admin' : route) as any);
+      });
     }
   }, [isAuthenticated, user]);
 
