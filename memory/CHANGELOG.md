@@ -1186,3 +1186,35 @@ any user — synthetic profile through get_all_feature_access. User Lookup assig
 when a different tier is selected -> "Beta → 143 of 152 usable (+44 vs now) · 9 hidden"; when same as current
 -> "Currently N of 152 usable · H hidden". Added testIDs pii-nda-ack, pii-lookup-submit, assign-type-preview.
 Verified: endpoint counts (free 99u/19h, beta 143u/9h, unit_tester 148u/4h); screenshot shows preview on card.
+
+
+# Life Goals + Import-from-File + Global Sub-types (Iter 176 · 28 Jun 2026)
+
+Build **v3.176-life-goals-file-import-subtypes** (BUILD_VERSION 2026.06.28.003).
+
+## What shipped
+1. **Life Goals** — new in-screen tab in "My 360° Life" (`app/tools/pna.tsx` → `Life Map` | `Life Goals`).
+   Panel `src/components/lifegoals/LifeGoalsPanel.tsx` with two modes:
+   - *By Life Area (timeline):* goal + horizon (Quarter/1yr/3yr/5yr/10yr) per Life Area.
+   - *7-Level Tree:* L1 Overall → 10yr → 5yr → 3yr → 1yr (Life Area) → Quarterly (sub-type) → Monthly;
+     strict parent nesting, cascade delete.
+   - Backend `routes/life_goals.py` (`/api/life-goals/*`). **Stored in `db.gem_goals`** because GEM is the
+     central connector between goals and every module. Sub_type mirrored into `goal_type`.
+2. **Import from File** — `routes/file_import.py` (`POST /api/file-import/decision/{id}`). Parses
+   pdf/docx/txt/xlsx/xls/csv/image(OCR) → AI factors+options (metered, same wallet as URL import) →
+   optional DuckDuckGo+LLM web-crawl enrichment (cap 8) → `merge_into_mydezider`. New "File" button + modal
+   in `src/components/steps/Step2.tsx` (+ `src/utils/filePick.ts` cross-platform pick→base64). Post-import
+   opt-in to run the plan-capped "Fetch My Best Factors" (`/api/ai/suggest-factors`).
+3. **4 sub-types everywhere** — "Present Problem · Need · Future Risk · Aspiration" (exact order, from
+   `src/constants/decisionTypes.ts`) now a "Type" chip selector in the Initial-Info step of MyDezider,
+   Pros & Cons (Step 1) and Solution Finder (Step 0), persisted as `decision_type`. `tools.py` (Solution
+   Finder) now accepts/persists `decision_type`.
+
+## Verification
+testing_agent: 27/27 backend pytest PASS (`tests/test_iter176_lg_fileimport_sf.py`) + frontend flows PASS;
+no new bugs. File-import validated E2E with real Gemini calls (200 in ~1-4s).
+
+## Docs refreshed (v3.20.0 bundle)
+PRD, API_REFERENCE, ADMIN_USER_GUIDE, INDEX, and Postman_Collection.json (now 55 folders:
++ "Life Goals (My 360° Life)", + "Import from File (MyDezider Step 2)").
+

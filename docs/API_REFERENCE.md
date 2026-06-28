@@ -1,6 +1,6 @@
 # REST API Reference — Dezider
 
-_metadata: { "version": "3.18.0", "updated": "2026-06-12" }
+_metadata: { "version": "3.20.0", "updated": "2026-06-28" }
 
 Base URL: `/api`. Auth: `Authorization: Bearer <session_token>` from `/auth/login`.
 Every response carries `X-Request-ID`, `X-Response-Time-MS`, security headers.
@@ -403,3 +403,34 @@ Trigger document: `{id, event_key, name, kind: scheduled|event, enabled, schedul
 Run statuses: `sent` (≥1 delivery ok), `failed` (all attempted failed), `skipped_no_recipients`, `error` (builder/registry failure).
 Scheduler: 60-second APScheduler tick (fcntl-singleton across workers, `NOTIFICATION_SCHEDULER_DISABLED=true` to disable). Boot seeds the default **Weekly Import Analytics Digest** (Mon 09:00 IST, email ON/empty, WhatsApp OFF) idempotently.
 Event emission: `core.url_telemetry.record_run` fires `import-run-failed` (fire-and-forget, per-trigger `throttle_minutes` guard) whenever an import run errors.
+
+---
+## v3.20.0 — Life Goals + Import-from-File + Global Sub-types (2026-06-28)
+
+### Life Goals — "My 360° Life" (stored in `db.gem_goals`; GEM is the central connector)
+Sub-types are fixed in this exact order: **Present Problem · Need · Future Risk · Aspiration**.
+7 levels: L1 Overall → L2 10yr → L3 5yr → L4 3yr → L5 1yr (Life Area) → L6 Quarterly (sub-type) → L7 Monthly.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/api/life-goals/meta` | auth | Config: `life_areas`, `sub_types` (ordered), `levels` (L1..L7), `horizons`, `statuses` |
+| POST | `/api/life-goals` | auth | Create. `mode='timeline'` needs `{title, horizon∈[quarter,1yr,3yr,5yr,10yr], life_area}` (sub_type optional). `mode='tree'` needs `{title, level 1..7}`; L>1 needs `parent_id` of exactly level-1 (else 400); L1+parent → 400; L5 needs `life_area`; L6 needs `sub_type` |
+| GET | `/api/life-goals` | auth | List; filters `?mode=&level=&parent_id=&life_area=` |
+| GET | `/api/life-goals/tree` | auth | All tree goals flat + level config (client nests by `parent_id`) |
+| GET | `/api/life-goals/{id}` | auth | One goal |
+| PUT | `/api/life-goals/{id}` | auth | Update (title, description, status, life_area, sub_type, target_date, horizon, period_label, priority, progress 0-100). `status='done'` ⇒ progress 100 |
+| DELETE | `/api/life-goals/{id}` | auth | Delete; **tree goals cascade-delete descendants** |
+
+A Life Goal is a GEM goal carrying `lg_mode`, `lg_level`, `parent_id`, `horizon`, `sub_type`; it also appears in `GET /api/gem/goals` (`sub_type` mirrored into `goal_type`). Regular GEM goals have no `lg_mode`.
+
+### Import from File — MyDezider Step 2
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/api/file-import/decision/{decision_id}` | owner | Body `{filename, file_b64, ai_tier:'fast'|'precise', crawl_web:bool, context?}`. Parses pdf/docx/txt/xlsx/xls/csv/image(OCR) → AI extracts factors+options (metered via the AI wallet, same as URL import) → if `crawl_web`, DuckDuckGo + LLM enrich up to 8 options with factor values → `merge_into_mydezider`. Returns `{factors_added, options_added, enriched, enriched_count, factors[], options[]}`. Errors: unsupported ext / bad-empty base64 → 400, >8 MB → 413, unreadable / <20-char text → 422, no AI credits → 402 |
+
+Post-import the client offers an opt-in to run the existing plan-capped **`POST /api/ai/suggest-factors`** ("Fetch My Best Factors", touchpoint `tp_best_factors`) to add missed-out factors.
+
+### Sub-type field across the other modules
+- **Pros & Cons** (`POST /api/pros-cons` + `PUT /api/pros-cons/{id}`) already persists `decision_type`.
+- **Solution Finder** (`POST /api/solution-finders` + `PUT /api/solution-finders/{id}`) now accepts/persists `decision_type` (one of `problem|need|risk|aspiration`).
+

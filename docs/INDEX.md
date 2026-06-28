@@ -1,6 +1,6 @@
 # Dezider — Admin Documentation
 
-Maintained by the engineering team. Last refreshed: **2026-06-15 · v3.19.0** (Conflict Breaker Voice Input — raw audio storage + Whisper transcription + 4 new admin-tunable audio-storage knobs in AI Wallet Config · Dashboard 9-section IA cleanup with "Inner Wellbeing" rename + "Life Mirror" rename · Generic Notification Engine · Import-URL Intelligence + AI Auto-Tune · PostHog Web Session Replays · Revenue Reconciliation · AI Wallet Config).
+Maintained by the engineering team. Last refreshed: **2026-06-28 · v3.20.0** (Life Goals — 7-level GEM-backed planner in "My 360° Life"; Import-from-File for MyDezider Step 2 with AI factor/option extraction + optional web-crawl enrichment; the 4 sub-types "Present Problem · Need · Future Risk · Aspiration" now consistent across MyDezider, Pros & Cons and Solution Finder).
 
 The documents below are the source of truth for product scope, system
 behaviour, and operational posture. They are authored as plain markdown
@@ -25,6 +25,11 @@ admin team to read on mobile.
 
 Every doc has a `_metadata` section at the top with version + last-update.
 If you edit a doc, **bump the version number and add a CHANGELOG line.**
+
+## Changelog of this doc bundle (2026-06-28)
+v3.20.0 refresh (Iter 176):
+- **PRD, API_REFERENCE, ADMIN_USER_GUIDE, POSTMAN** — appendix sections for **Life Goals** (7-level GEM-backed planner in "My 360° Life": `/api/life-goals/*`), **Import-from-File** (`/api/file-import/decision/{id}` — pdf/docx/txt/xlsx/csv/image → AI factors+options + optional metered web-crawl enrichment), and the **4 sub-types** "Present Problem · Need · Future Risk · Aspiration" now persisted via `decision_type` on Pros & Cons + Solution Finder.
+- `Postman_Collection.json` adds the **"Life Goals (My 360° Life)"** and **"Import from File (MyDezider Step 2)"** folders: **55 folders**.
 
 ## Changelog of this doc bundle (2026-06-12)
 v3.18.0 refresh:

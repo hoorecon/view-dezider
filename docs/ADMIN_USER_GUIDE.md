@@ -1,6 +1,6 @@
 # Admin User Guide
 
-**Version:** 3.19.0 (2026-06-15)
+**Version:** 3.20.0 (2026-06-28)
 **Audience:** Anyone with admin/super_admin/co_admin role
 **Purpose:** Explain every Admin Panel menu item — what it does, when to use it, and a sample workflow.
 
@@ -427,3 +427,26 @@ A 5-MB clip at the same settings = ~2.2 credits. A user with a fresh 20-credit w
 - Ledger key for the charge: `feature="conflict_breaker_audio"` (storage) and `feature="cb_voice_transcribe"` (Whisper). Revenue-recon will split these cleanly.
 - Files live under `/app/backend/uploads/conflict_audio/{user_id}/{audio_id}.{ext}`. Plan disk-pressure alerts accordingly. (Auto-purge cron deferred to v3.20.)
 - The user-facing wallet panel does NOT itemise "audio storage" separately yet — show users the running balance as a single number for now.
+
+
+---
+
+## Life Goals & Import-from-File (v3.20.0 · 2026-06-28) — admin/ops notes
+
+**Life Goals ("My 360° Life" → Life Goals tab)**
+- Data lives in the existing `gem_goals` collection (no new collection). A Life Goal is a GEM goal with
+  `lg_mode` ('timeline'|'tree'), `lg_level` (1-7), `parent_id`, `horizon`, `sub_type`. They surface in the
+  normal GEM goal lists/dashboards, so support can inspect them via the same admin tooling as GEM goals.
+- No admin config knobs — it's an end-user planning surface. Sub-types are fixed in code/order.
+
+**Import from File (MyDezider Step 2 → "File")**
+- AI usage is **metered through the AI Wallet** exactly like URL import: the extraction call (and each
+  web-enrichment call when "Also research the web" is on) debits the user's wallet. Fast tier uses the
+  Gemini free-tier first; Precise tier uses a Claude-grade model and costs more credits.
+  - Ledger features to watch in Revenue-Recon: `feature="file_import_extract"` and `feature="file_import_enrich"`.
+- Web enrichment uses DuckDuckGo search (no key) + LLM synthesis, capped at 8 options per import.
+- If a user is out of credits, extraction returns **402**; enrichment failures are best-effort and never
+  fail the whole import. Uploads are capped at **8 MB**; legacy `.doc` is rejected (ask for `.docx`/PDF).
+- The post-import "Fetch My Best Factors" prompt reuses the existing plan-capped `tp_best_factors` flow
+  (default cap 25 factors), so no separate quota to manage.
+

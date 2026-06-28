@@ -1,7 +1,7 @@
 {
  "info": {
-  "name": "View Dezider API \u2014 Full Collection",
-  "description": "Auto-generated Postman Collection from View Dezider OpenAPI schema.\nGenerated: 2026-06-12 12:19 UTC",
+  "name": "View Dezider API — Full Collection",
+  "description": "Auto-generated Postman Collection from View Dezider OpenAPI schema.\nGenerated: 2026-06-12 12:19 UTC. Iter-176 (2026-06-28): +Life Goals, +File Import folders.",
   "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
  },
  "item": [
@@ -387,7 +387,7 @@
         }
        ]
       },
-      "description": "Used by Time Dezider \u2014 0..1 score where 1 = lots of spare resource, 0 = depleted.\nChannels: internal, chatbot"
+      "description": "Used by Time Dezider — 0..1 score where 1 = lots of spare resource, 0 = depleted.\nChannels: internal, chatbot"
      },
      "response": []
     },
@@ -428,7 +428,7 @@
         }
        }
       },
-      "description": "Spawn a new Solution Matrix pre-populated from the user's current AALA.\nSame TEPFI\u00d7Level shape \u2014 AALA is the live ledger, Solution Matrix is the\nproblem-scoped snapshot.\nChannels: internal, chatbot"
+      "description": "Spawn a new Solution Matrix pre-populated from the user's current AALA.\nSame TEPFI×Level shape — AALA is the live ledger, Solution Matrix is the\nproblem-scoped snapshot.\nChannels: internal, chatbot"
      },
      "response": []
     }
@@ -1517,7 +1517,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Idempotently seed production-ready starter content across all admin\nsections (Experts, Templates, Customer Segments, Pending Approvals,\nSocial Learning, Incidents, Audit Trail, ReviewNet Factors, Decision Modes).\n\nSafe to re-run any number of times \u2014 every record is upserted by stable id.\nAdmin-only.\nChannels: internal"
+      "description": "Idempotently seed production-ready starter content across all admin\nsections (Experts, Templates, Customer Segments, Pending Approvals,\nSocial Learning, Incidents, Audit Trail, ReviewNet Factors, Decision Modes).\n\nSafe to re-run any number of times — every record is upserted by stable id.\nAdmin-only.\nChannels: internal"
      },
      "response": []
     },
@@ -2259,7 +2259,7 @@
         }
        ]
       },
-      "description": "Lightweight connectivity test \u2014 does NOT charge money / send messages.\nFor MVP this just checks that required fields are present. Real\nprovider-specific health-checks can be added under core/integrations/.\nChannels: internal"
+      "description": "Lightweight connectivity test — does NOT charge money / send messages.\nFor MVP this just checks that required fields are present. Real\nprovider-specific health-checks can be added under core/integrations/.\nChannels: internal"
      },
      "response": []
     },
@@ -4912,7 +4912,7 @@
         }
        ]
       },
-      "description": "Update day-wise status for a task. Body: {date: status} \u2014 empty status removes the date.\nChannels: internal, chatbot"
+      "description": "Update day-wise status for a task. Body: {date: status} — empty status removes the date.\nChannels: internal, chatbot"
      },
      "response": []
     },
@@ -6976,7 +6976,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Returns the union of all skills across the user's contacts (incl. Self),\nwith the contact-ids of who has each skill. Powers the Goal Setter\n'Achievable \u2192 Skillset' picker.\nChannels: internal, chatbot, partner"
+      "description": "Returns the union of all skills across the user's contacts (incl. Self),\nwith the contact-ids of who has each skill. Powers the Goal Setter\n'Achievable → Skillset' picker.\nChannels: internal, chatbot, partner"
      },
      "response": []
     },
@@ -7112,14 +7112,14 @@
        "query": [],
        "variable": []
       },
-      "description": "Public read \u2014 used by /pricing page to render segment cards.\nChannels: internal, chatbot, partner"
+      "description": "Public read — used by /pricing page to render segment cards.\nChannels: internal, chatbot, partner"
      },
      "response": []
     }
    ]
   },
   {
-   "name": "Customer Segments \u2014 TG Master",
+   "name": "Customer Segments — TG Master",
    "item": [
     {
      "name": "Admin List",
@@ -7629,7 +7629,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Create a domain \u2192 life_area mapping for DEO scraping.\nChannels: internal, partner"
+      "description": "Create a domain → life_area mapping for DEO scraping.\nChannels: internal, partner"
      },
      "response": []
     },
@@ -8803,7 +8803,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Get all feature flags (WOWO settings).\n\nBoth `solution_finder` and `solution_matrix` default to TRUE \u2014 they were\npromoted to first-class dashboard modules in the June 2026 overhaul.\nAdmins can still toggle them off via the admin payment/settings UI.\nChannels: internal"
+      "description": "Get all feature flags (WOWO settings).\n\nBoth `solution_finder` and `solution_matrix` default to TRUE — they were\npromoted to first-class dashboard modules in the June 2026 overhaul.\nAdmins can still toggle them off via the admin payment/settings UI.\nChannels: internal"
      },
      "response": []
     },
@@ -9210,7 +9210,7 @@
         }
        ]
       },
-      "description": "Auto-compute the 12 secrets scores by pulling data from ALL linked modules:\n- Goal Clarity \u2192 GEM goals completion\n- Practicality \u2192 CTT tasks with from/to times set\n- Creativity \u2192 Solutions Store solutions count\n- Intensity \u2192 Lifestyle streaks / daily completion rate\n- Objectivity \u2192 CLD analysis (balance of reinforcing/balancing loops)\n- Physical Health \u2192 TEPFI Effort: Physical Health\n- Mental Strength \u2192 TEPFI Effort: Mental State + Attitude\n- Emotional Balance \u2192 TEPFI Effort: Emotional Wellness\n- Energy Levels \u2192 TEPFI Effort: Energy Level\n- Capability \u2192 TEPFI Effort: Knowledge + Skills + Action\n- Vision \u2192 Project vision clarity score\n- External Image \u2192 Solutions reviews / external feedback\nChannels: internal, chatbot"
+      "description": "Auto-compute the 12 secrets scores by pulling data from ALL linked modules:\n- Goal Clarity → GEM goals completion\n- Practicality → CTT tasks with from/to times set\n- Creativity → Solutions Store solutions count\n- Intensity → Lifestyle streaks / daily completion rate\n- Objectivity → CLD analysis (balance of reinforcing/balancing loops)\n- Physical Health → TEPFI Effort: Physical Health\n- Mental Strength → TEPFI Effort: Mental State + Attitude\n- Emotional Balance → TEPFI Effort: Emotional Wellness\n- Energy Levels → TEPFI Effort: Energy Level\n- Capability → TEPFI Effort: Knowledge + Skills + Action\n- Vision → Project vision clarity score\n- External Image → Solutions reviews / external feedback\nChannels: internal, chatbot"
      },
      "response": []
     },
@@ -10242,7 +10242,7 @@
         }
        ]
       },
-      "description": "Lightweight status/progress updater \u2014 used by GEM read-only execution view.\nChannels: internal, chatbot"
+      "description": "Lightweight status/progress updater — used by GEM read-only execution view.\nChannels: internal, chatbot"
      },
      "response": []
     },
@@ -11073,7 +11073,7 @@
        ],
        "variable": []
       },
-      "description": "Autosuggest matching scenarios/templates (Level 5).\n\nFilters by:\n  - module      \u2192 templates whose `applies_to_modules` includes the requested module\n  - acting_as   \u2192 6-value OrgType.  Empty `org_types` array on a doc means\n                  \"applies to ALL OrgTypes\". Legacy docs that still only have\n                  `acting_as_contexts` are also matched via that field.\n  - ask_type_id \u2192 existing single-value filter; the new `decision_types`\n                  multi-array is also honored if present.\n  - life_area_id required\n  - sub_area_id, category_id optional\n  - q free-text search across title/description/tags\nChannels: internal, chatbot"
+      "description": "Autosuggest matching scenarios/templates (Level 5).\n\nFilters by:\n  - module      → templates whose `applies_to_modules` includes the requested module\n  - acting_as   → 6-value OrgType.  Empty `org_types` array on a doc means\n                  \"applies to ALL OrgTypes\". Legacy docs that still only have\n                  `acting_as_contexts` are also matched via that field.\n  - ask_type_id → existing single-value filter; the new `decision_types`\n                  multi-array is also honored if present.\n  - life_area_id required\n  - sub_area_id, category_id optional\n  - q free-text search across title/description/tags\nChannels: internal, chatbot"
      },
      "response": []
     },
@@ -11205,7 +11205,7 @@
         }
        ]
       },
-      "description": "Delete a decision template.\n\nAuthorisation:\n  \u2022 Admins (super_admin / co_admin) can delete any template.\n  \u2022 Regular users can only delete templates THEY authored\n    (created_by_user_id == own user_id) AND which are still\n    in CUSTOM_BLANK / unapproved status (you cannot remove a\n    template that has been approved by an admin).\n\nDeletion is HARD (removes the row entirely) plus a side-purge\nof any orphan `hos_template_defaults` row keyed by the same\ntemplate_id, so the SWOT-saved templates can be cleaned up\nwithout leaving stale data.\nChannels: internal, chatbot"
+      "description": "Delete a decision template.\n\nAuthorisation:\n  • Admins (super_admin / co_admin) can delete any template.\n  • Regular users can only delete templates THEY authored\n    (created_by_user_id == own user_id) AND which are still\n    in CUSTOM_BLANK / unapproved status (you cannot remove a\n    template that has been approved by an admin).\n\nDeletion is HARD (removes the row entirely) plus a side-purge\nof any orphan `hos_template_defaults` row keyed by the same\ntemplate_id, so the SWOT-saved templates can be cleaned up\nwithout leaving stale data.\nChannels: internal, chatbot"
      },
      "response": []
     },
@@ -11583,7 +11583,7 @@
        "query": [],
        "variable": []
       },
-      "description": "LEE dashboard \u2014 recent logs, coverage stats, top areas.\nChannels: internal, chatbot"
+      "description": "LEE dashboard — recent logs, coverage stats, top areas.\nChannels: internal, chatbot"
      },
      "response": []
     }
@@ -12731,7 +12731,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Return user's meditation preferences \u2014 custom URL/upload if set, otherwise defaults.\nChannels: internal"
+      "description": "Return user's meditation preferences — custom URL/upload if set, otherwise defaults.\nChannels: internal"
      },
      "response": []
     },
@@ -13953,7 +13953,7 @@
         }
        }
       },
-      "description": "Step 1: Validate org credentials.\nIf org type is Business or Government \u2192 require WhatsApp OTP (returns verification_id).\nIf org type is NonProfit \u2192 login immediately.\nChannels: internal, partner"
+      "description": "Step 1: Validate org credentials.\nIf org type is Business or Government → require WhatsApp OTP (returns verification_id).\nIf org type is NonProfit → login immediately.\nChannels: internal, partner"
      },
      "response": []
     },
@@ -15023,7 +15023,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Create a new Simple Solution Finder entry.\n\nSchema v2 (June 2026 overhaul) \u2014 structured 4-level tree:\n  concerns: [{concern_id, text, is_primary, order}]            \u2190 Q1 (a)+(b) via \u2b50\n  root_causes: [{rca_id, concern_id, text, order}]              \u2190 Q2 (NEW)\n  solutions: [{sol_id, rca_id, text, capabilities, resources}]  \u2190 Q3\n  risks: [{risk_id, sol_id, name, impact_pct, probability_pct,  \u2190 Q4a\n          risk_index_pct, order}]\n  mitigations: [{mit_id, risk_id, text, order}]                 \u2190 Q4b (1..many)\n  contingencies: [{cont_id, risk_id, text, order}]              \u2190 Q4c (1..many)\n  action_plan_items: [{ap_id, source_type, source_id, text,     \u2190 Q5\n          who, by_when, status, pushed_to_action_center,\n          action_id, pushed_to_ctt, pushed_to_lifestyle}]\nLegacy v1 free-text fields are still accepted on the body but new entries\nshould use the v2 arrays. Use POST /solution-finders/{id}/push-action-plan\nto fan out Q5 items into the universal Action Center.\nChannels: internal"
+      "description": "Create a new Simple Solution Finder entry.\n\nSchema v2 (June 2026 overhaul) — structured 4-level tree:\n  concerns: [{concern_id, text, is_primary, order}]            ← Q1 (a)+(b) via ⭐\n  root_causes: [{rca_id, concern_id, text, order}]              ← Q2 (NEW)\n  solutions: [{sol_id, rca_id, text, capabilities, resources}]  ← Q3\n  risks: [{risk_id, sol_id, name, impact_pct, probability_pct,  ← Q4a\n          risk_index_pct, order}]\n  mitigations: [{mit_id, risk_id, text, order}]                 ← Q4b (1..many)\n  contingencies: [{cont_id, risk_id, text, order}]              ← Q4c (1..many)\n  action_plan_items: [{ap_id, source_type, source_id, text,     ← Q5\n          who, by_when, status, pushed_to_action_center,\n          action_id, pushed_to_ctt, pushed_to_lifestyle}]\nLegacy v1 free-text fields are still accepted on the body but new entries\nshould use the v2 arrays. Use POST /solution-finders/{id}/push-action-plan\nto fan out Q5 items into the universal Action Center.\nChannels: internal"
      },
      "response": []
     },
@@ -15166,7 +15166,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Q3 \u2014 AI-suggest root-cause-specific solutions for the given root causes.\n\nBody: {\n  area_of_life, smart_goal,\n  root_causes: [{rca_id, text, concern_text?, existing?: [str]}]\n}\nReturns: { suggestions: { <rca_id>: [str, ...] } }\nMetered against the AI-credits wallet. Raises HTTP 402 when out of credits.\nChannels: internal"
+      "description": "Q3 — AI-suggest root-cause-specific solutions for the given root causes.\n\nBody: {\n  area_of_life, smart_goal,\n  root_causes: [{rca_id, text, concern_text?, existing?: [str]}]\n}\nReturns: { suggestions: { <rca_id>: [str, ...] } }\nMetered against the AI-credits wallet. Raises HTTP 402 when out of credits.\nChannels: internal"
      },
      "response": []
     },
@@ -15198,7 +15198,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Q4 \u2014 AI-suggest risks (with impact%/probability%), mitigations & contingencies\nfor the given solutions.\n\nBody: {\n  area_of_life, smart_goal,\n  solutions: [{sol_id, text, existing_risks?: [str]}]\n}\nReturns: { suggestions: { <sol_id>: [\n    {name, impact_pct, probability_pct, mitigations:[str], contingencies:[str]}\n] } }\nMetered against the AI-credits wallet. Raises HTTP 402 when out of credits.\nChannels: internal"
+      "description": "Q4 — AI-suggest risks (with impact%/probability%), mitigations & contingencies\nfor the given solutions.\n\nBody: {\n  area_of_life, smart_goal,\n  solutions: [{sol_id, text, existing_risks?: [str]}]\n}\nReturns: { suggestions: { <sol_id>: [\n    {name, impact_pct, probability_pct, mitigations:[str], contingencies:[str]}\n] } }\nMetered against the AI-credits wallet. Raises HTTP 402 when out of credits.\nChannels: internal"
      },
      "response": []
     },
@@ -15236,7 +15236,7 @@
         }
        ]
       },
-      "description": "Q5 \u2192 Action Center fan-out (per-item granularity).\n\nAccepts either of two body shapes:\n  A)  { \"items\": [{\"ap_id\": \"...\", \"push_ctt\": bool, \"push_lifestyle\": bool}, ...] }\n      \u2192 preferred. Per-item CTT / Lifestyle decisions.\n  B)  { \"ap_ids\": [\"...\"], \"push_to_ctt\": bool, \"push_to_lifestyle\": bool }\n      \u2192 legacy global-flag shape (kept for backward compat).\n\nPushes any action_plan_item that's not yet pushed to the universal\n`action_items` collection (source_module='solution_finder'), and only\nfans the item into CTT / Lifestyle when its own per-item flag is true.\nIdempotent: items with pushed_to_action_center=true are skipped.\nChannels: internal"
+      "description": "Q5 → Action Center fan-out (per-item granularity).\n\nAccepts either of two body shapes:\n  A)  { \"items\": [{\"ap_id\": \"...\", \"push_ctt\": bool, \"push_lifestyle\": bool}, ...] }\n      → preferred. Per-item CTT / Lifestyle decisions.\n  B)  { \"ap_ids\": [\"...\"], \"push_to_ctt\": bool, \"push_to_lifestyle\": bool }\n      → legacy global-flag shape (kept for backward compat).\n\nPushes any action_plan_item that's not yet pushed to the universal\n`action_items` collection (source_module='solution_finder'), and only\nfans the item into CTT / Lifestyle when its own per-item flag is true.\nIdempotent: items with pushed_to_action_center=true are skipped.\nChannels: internal"
      },
      "response": []
     },
@@ -15274,7 +15274,7 @@
         }
        ]
       },
-      "description": "ASM Action Plan \u2192 Action Center / CTT / Lifestyle fan-out.\n\nThe ASM Action Plan is the aggregate of every non-empty matrix cell entry\n(15 or 60 cells). The frontend sends the selected aggregated items:\n\n  { \"items\": [ { \"text\": \"<Layer\u00b7OrgType\u00b7Field: detail>\",\n                 \"push_ctt\": bool, \"push_lifestyle\": bool }, ... ] }\n\nEach selected item is written to the universal action_items collection\n(source_module='solution_matrix'), and optionally fanned into CTT and/or\nLifestyle when its per-item flag is set.\nChannels: internal"
+      "description": "ASM Action Plan → Action Center / CTT / Lifestyle fan-out.\n\nThe ASM Action Plan is the aggregate of every non-empty matrix cell entry\n(15 or 60 cells). The frontend sends the selected aggregated items:\n\n  { \"items\": [ { \"text\": \"<Layer·OrgType·Field: detail>\",\n                 \"push_ctt\": bool, \"push_lifestyle\": bool }, ... ] }\n\nEach selected item is written to the universal action_items collection\n(source_module='solution_matrix'), and optionally fanned into CTT and/or\nLifestyle when its per-item flag is set.\nChannels: internal"
      },
      "response": []
     },
@@ -15344,7 +15344,7 @@
         }
        ]
       },
-      "description": "Reverse hook for the SSF UI.\n\nReturns the count of Advanced Solution Matrix entries that were spawned\nfrom each Q3/Q4b/Q4c row of this Simple Solution Finder, so the SSF UI\ncan render a small \"\ud83d\udcca N ASM deep-dive(s)\" badge next to each row.\nResponse shape: { \"<source_id>\": <count>, ... }\nChannels: internal"
+      "description": "Reverse hook for the SSF UI.\n\nReturns the count of Advanced Solution Matrix entries that were spawned\nfrom each Q3/Q4b/Q4c row of this Simple Solution Finder, so the SSF UI\ncan render a small \"📊 N ASM deep-dive(s)\" badge next to each row.\nResponse shape: { \"<source_id>\": <count>, ... }\nChannels: internal"
      },
      "response": []
     },
@@ -15760,7 +15760,7 @@
         }
        ]
       },
-      "description": "Brand-safe embed config for a partner slug. PUBLIC \u2014 used by the widget\nto theme itself before sign-in. Returns 404 only for unknown slugs.\nChannels: internal"
+      "description": "Brand-safe embed config for a partner slug. PUBLIC — used by the widget\nto theme itself before sign-in. Returns 404 only for unknown slugs.\nChannels: internal"
      },
      "response": []
     },
@@ -16436,7 +16436,7 @@
         }
        }
       },
-      "description": "Step-2 \"Import from URL\" \u2014 crawl a comparison page and MERGE the derived\nfactors (with suggested Expected values) + options (with assessment %) into\nan EXISTING MyDezider decision, behind the same consent gate.\nChannels: internal"
+      "description": "Step-2 \"Import from URL\" — crawl a comparison page and MERGE the derived\nfactors (with suggested Expected values) + options (with assessment %) into\nan EXISTING MyDezider decision, behind the same consent gate.\nChannels: internal"
      },
      "response": []
     },
@@ -17225,7 +17225,7 @@
        ],
        "variable": []
       },
-      "description": "Frontend paywall hook \u2014 answers \"can this user create a new decision?\".\nChannels: internal"
+      "description": "Frontend paywall hook — answers \"can this user create a new decision?\".\nChannels: internal"
      },
      "response": []
     },
@@ -17265,7 +17265,7 @@
         }
        }
       },
-      "description": "Create a Razorpay order for an SKU purchase (coupon + GST applied).\n\nAmount math:  base \u2192 (\u2212 coupon discount) = taxable \u2192 (+ GST%) = total.\nVerify via /store/verify.\nChannels: internal"
+      "description": "Create a Razorpay order for an SKU purchase (coupon + GST applied).\n\nAmount math:  base → (− coupon discount) = taxable → (+ GST%) = total.\nVerify via /store/verify.\nChannels: internal"
      },
      "response": []
     },
@@ -17549,7 +17549,7 @@
         }
        ]
       },
-      "description": "Lightweight check \u2014 returns whether the report is unlocked for this user\n+ decision combo, and the user's current L1/L2 balances. Used by the\nfinal-summary screen to decide which button to show.\nChannels: internal"
+      "description": "Lightweight check — returns whether the report is unlocked for this user\n+ decision combo, and the user's current L1/L2 balances. Used by the\nfinal-summary screen to decide which button to show.\nChannels: internal"
      },
      "response": []
     },
@@ -17807,7 +17807,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Aggregate counts by type / life_area / status \u2014 for dashboard cards & filter badges.\nChannels: internal"
+      "description": "Aggregate counts by type / life_area / status — for dashboard cards & filter badges.\nChannels: internal"
      },
      "response": []
     },
@@ -18480,7 +18480,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Get audit trail statistics \u2014 total events, sensitive accesses, breakdown by type.\nChannels: internal"
+      "description": "Get audit trail statistics — total events, sensitive accesses, breakdown by type.\nChannels: internal"
      },
      "response": []
     },
@@ -19967,7 +19967,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Get the current user's access levels for ALL features.\nReturns a map of feature_id \u2192 {access_level, quota_limit, quota_used, quota_remaining, quota_unit}\nUsed by the frontend to render the entire UI conditionally.\nChannels: internal"
+      "description": "Get the current user's access levels for ALL features.\nReturns a map of feature_id → {access_level, quota_limit, quota_used, quota_remaining, quota_unit}\nUsed by the frontend to render the entire UI conditionally.\nChannels: internal"
      },
      "response": []
     },
@@ -21907,7 +21907,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Withdraw consent \u2014 flips active record + creates a withdrawal marker.\nChannels: internal"
+      "description": "Withdraw consent — flips active record + creates a withdrawal marker.\nChannels: internal"
      },
      "response": []
     },
@@ -22217,7 +22217,7 @@
         }
        ]
       },
-      "description": "Finalize session \u2014 compute Score + Insight + Recommendations + Hidden Hook.\nChannels: internal"
+      "description": "Finalize session — compute Score + Insight + Recommendations + Hidden Hook.\nChannels: internal"
      },
      "response": []
     },
@@ -22417,7 +22417,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Top declared 'biggest needs' among benefit-finder respondents \u2014 proxy for scheme demand.\nChannels: internal"
+      "description": "Top declared 'biggest needs' among benefit-finder respondents — proxy for scheme demand.\nChannels: internal"
      },
      "response": []
     },
@@ -22665,7 +22665,7 @@
        ],
        "variable": []
       },
-      "description": "Seed N synthetic completed sessions per tool \u2014 for dashboard demo before real users.\n\nAll seeded sessions have user_id='SEED_<uuid>' and contributed_to_research=True\nso they show up in dashboards above k-threshold.\nChannels: internal"
+      "description": "Seed N synthetic completed sessions per tool — for dashboard demo before real users.\n\nAll seeded sessions have user_id='SEED_<uuid>' and contributed_to_research=True\nso they show up in dashboards above k-threshold.\nChannels: internal"
      },
      "response": []
     },
@@ -22908,7 +22908,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Public \u2014 list org types for the application form.\nChannels: internal"
+      "description": "Public — list org types for the application form.\nChannels: internal"
      },
      "response": []
     },
@@ -22947,7 +22947,7 @@
         }
        ]
       },
-      "description": "Client-side precheck \u2014 shows why a user cannot apply (if any).\nChannels: internal"
+      "description": "Client-side precheck — shows why a user cannot apply (if any).\nChannels: internal"
      },
      "response": []
     },
@@ -23019,7 +23019,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Public \u2014 any client can query limits to pre-validate before uploading.\nChannels: internal"
+      "description": "Public — any client can query limits to pre-validate before uploading.\nChannels: internal"
      },
      "response": []
     },
@@ -23089,7 +23089,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Admin \u2014 view current + default limits side-by-side.\nChannels: internal"
+      "description": "Admin — view current + default limits side-by-side.\nChannels: internal"
      },
      "response": []
     },
@@ -23130,7 +23130,7 @@
         }
        }
       },
-      "description": "Admin \u2014 update limits for a specific category (merges with defaults).\nChannels: internal"
+      "description": "Admin — update limits for a specific category (merges with defaults).\nChannels: internal"
      },
      "response": []
     },
@@ -23171,7 +23171,7 @@
         }
        }
       },
-      "description": "Admin \u2014 switch storage backend. Existing files keep their original URIs.\nChannels: internal"
+      "description": "Admin — switch storage backend. Existing files keep their original URIs.\nChannels: internal"
      },
      "response": []
     },
@@ -23275,7 +23275,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Admin queue \u2014 all pending applications (docs included).\nChannels: internal"
+      "description": "Admin queue — all pending applications (docs included).\nChannels: internal"
      },
      "response": []
     },
@@ -23315,7 +23315,7 @@
        ],
        "variable": []
       },
-      "description": "Admin \u2014 all applications, optionally filtered by status.\nChannels: internal"
+      "description": "Admin — all applications, optionally filtered by status.\nChannels: internal"
      },
      "response": []
     },
@@ -23475,7 +23475,7 @@
         }
        ]
       },
-      "description": "Get org profile \u2014 accessible to members (full) or public (limited).\nChannels: internal"
+      "description": "Get org profile — accessible to members (full) or public (limited).\nChannels: internal"
      },
      "response": []
     },
@@ -23620,7 +23620,7 @@
         }
        ]
       },
-      "description": "Filtered aggregate view for verified orgs \u2014 k-anonymity enforced.\nChannels: internal"
+      "description": "Filtered aggregate view for verified orgs — k-anonymity enforced.\nChannels: internal"
      },
      "response": []
     },
@@ -23746,7 +23746,7 @@
         }
        ]
       },
-      "description": "Citizen declines all suggestions \u2014 feedback escalates to admin triage.\nChannels: internal"
+      "description": "Citizen declines all suggestions — feedback escalates to admin triage.\nChannels: internal"
      },
      "response": []
     },
@@ -23839,7 +23839,7 @@
         }
        ]
       },
-      "description": "First-come-basis claim \u2014 used when visibility policy is 'first_come'.\nChannels: internal"
+      "description": "First-come-basis claim — used when visibility policy is 'first_come'.\nChannels: internal"
      },
      "response": []
     },
@@ -23894,7 +23894,7 @@
         }
        }
       },
-      "description": "Unified action endpoint \u2014 acknowledge, respond, action_taken, close, reopen.\nChannels: internal"
+      "description": "Unified action endpoint — acknowledge, respond, action_taken, close, reopen.\nChannels: internal"
      },
      "response": []
     },
@@ -28832,7 +28832,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Public endpoint \u2014 frontend hydrates the active edition's brand surface on boot.\nNo auth required so the splash / login screen can render before user signs in.\nChannels: internal"
+      "description": "Public endpoint — frontend hydrates the active edition's brand surface on boot.\nNo auth required so the splash / login screen can render before user signs in.\nChannels: internal"
      },
      "response": []
     },
@@ -28863,7 +28863,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Super-admin only \u2014 list every registered edition.\nChannels: internal"
+      "description": "Super-admin only — list every registered edition.\nChannels: internal"
      },
      "response": []
     },
@@ -29118,7 +29118,7 @@
         }
        ]
       },
-      "description": "Used by Time Dezider \u2014 returns weight for a single freedom (with pin multiplier).\nChannels: internal"
+      "description": "Used by Time Dezider — returns weight for a single freedom (with pin multiplier).\nChannels: internal"
      },
      "response": []
     },
@@ -29522,7 +29522,7 @@
        "query": [],
        "variable": []
       },
-      "description": "The user's consent to use OpenAI's free (data-sharing) tier as a fallback.\n`mode`: 'ask' \u21d2 prompt at each no-balance failure (default); 'always' \u21d2 use\nOpenAI automatically without prompting.\nChannels: internal"
+      "description": "The user's consent to use OpenAI's free (data-sharing) tier as a fallback.\n`mode`: 'ask' ⇒ prompt at each no-balance failure (default); 'always' ⇒ use\nOpenAI automatically without prompting.\nChannels: internal"
      },
      "response": []
     },
@@ -30096,7 +30096,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Public (auth) endpoint \u2014 used by Contacts, Decision Flow, Coupon UI, etc.\nChannels: internal"
+      "description": "Public (auth) endpoint — used by Contacts, Decision Flow, Coupon UI, etc.\nChannels: internal"
      },
      "response": []
     },
@@ -30126,7 +30126,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Exposed to ALL authenticated users so the FE can decide whether to render\nthe Razorpay button or a \"Skip payment (Admin override)\" CTA. Returns only\na tiny slice \u2014 never the audit fields.\nChannels: internal"
+      "description": "Exposed to ALL authenticated users so the FE can decide whether to render\nthe Razorpay button or a \"Skip payment (Admin override)\" CTA. Returns only\na tiny slice — never the audit fields.\nChannels: internal"
      },
      "response": []
     },
@@ -30549,7 +30549,7 @@
         }
        ]
       },
-      "description": "Pull the legacy MPPS action items (decisions.mpps_improvements[].action_items[])\ninto the universal store. Idempotent \u2014 skips items already linked.\nChannels: internal"
+      "description": "Pull the legacy MPPS action items (decisions.mpps_improvements[].action_items[])\ninto the universal store. Idempotent — skips items already linked.\nChannels: internal"
      },
      "response": []
     },
@@ -30587,7 +30587,7 @@
         }
        ]
       },
-      "description": "Seed the Action Plan from the CHOSEN option's per-factor improvement deltas\n(Pros & Cons Step 8 \"Improvement %\"). Mirrors the My Dezider MPPS import.\nOnly positive deltas (actionable improvements) are imported. Idempotent \u2014\nskips items already linked (keyed on option|factor|delta).\nChannels: internal"
+      "description": "Seed the Action Plan from the CHOSEN option's per-factor improvement deltas\n(Pros & Cons Step 8 \"Improvement %\"). Mirrors the My Dezider MPPS import.\nOnly positive deltas (actionable improvements) are imported. Idempotent —\nskips items already linked (keyed on option|factor|delta).\nChannels: internal"
      },
      "response": []
     },
@@ -31091,7 +31091,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Get PNA dashboard \u2014 counts by area, category, status.\nChannels: internal, chatbot"
+      "description": "Get PNA dashboard — counts by area, category, status.\nChannels: internal, chatbot"
      },
      "response": []
     },
@@ -31653,7 +31653,7 @@
         }
        ]
       },
-      "description": "LLM-scored satisfaction % (0-100) for a factor/sub-factor.\n\nValidation + actual-value resolution are delegated to core.ai_assess\n(shared with Pros & Cons for parity):\n  * Quantitative \u2192 needs Expected + Operator + Actual (Unit optional).\n  * Qualitative  \u2192 needs Expected only; AI fetches/infers the Actual.\n  * Actual resolution: Data Source \u2192 linked Solution Store / ReviewNet \u2192 AI guess.\nChannels: internal, chatbot, partner"
+      "description": "LLM-scored satisfaction % (0-100) for a factor/sub-factor.\n\nValidation + actual-value resolution are delegated to core.ai_assess\n(shared with Pros & Cons for parity):\n  * Quantitative → needs Expected + Operator + Actual (Unit optional).\n  * Qualitative  → needs Expected only; AI fetches/infers the Actual.\n  * Actual resolution: Data Source → linked Solution Store / ReviewNet → AI guess.\nChannels: internal, chatbot, partner"
      },
      "response": []
     },
@@ -31691,7 +31691,7 @@
         }
        ]
       },
-      "description": "Assess a SMALL batch of (option, factor) cells in ONE request.\n\nPowers \"AI Assess All\": the client chunks all empty cells into batches and\ncalls this once per chunk. This replaces firing dozens of individual POSTs\n(which some production edges/CDNs reject as a burst with 405), while keeping\neach request short enough to avoid gateway timeouts.\n\nBody: { cells: [{option_id, factor_id, actual_value?}], force_fill?: bool }\nReturns: { results: [{option_id, factor_id, status, percentage?, actual_value?}],\n           out_of_credits: bool }   (status \u2208 done|skipped|error)\nChannels: internal, chatbot, partner"
+      "description": "Assess a SMALL batch of (option, factor) cells in ONE request.\n\nPowers \"AI Assess All\": the client chunks all empty cells into batches and\ncalls this once per chunk. This replaces firing dozens of individual POSTs\n(which some production edges/CDNs reject as a burst with 405), while keeping\neach request short enough to avoid gateway timeouts.\n\nBody: { cells: [{option_id, factor_id, actual_value?}], force_fill?: bool }\nReturns: { results: [{option_id, factor_id, status, percentage?, actual_value?}],\n           out_of_credits: bool }   (status ∈ done|skipped|error)\nChannels: internal, chatbot, partner"
      },
      "response": []
     },
@@ -31729,7 +31729,7 @@
         }
        ]
       },
-      "description": "Score EVERY requested cell using as FEW LLM calls as possible (~1 call per\n40 cells via core.ai_assess.batch_score_cells). This is the primary \"AI\nAssess All\" path \u2014 it keeps usage inside the free Gemini/Groq quotas instead\nof firing 1-2 calls per cell.\n\nBody: { cells: [{option_id, factor_id, actual_value?}], force_fill?: bool,\n        allow_openai?: bool }   (allow_openai overrides the user's stored\n        consent for THIS run, e.g. the in-the-moment \"use OpenAI free\" choice)\nReturns: { results: [...], out_of_credits, ai_unavailable }\nChannels: internal, chatbot, partner"
+      "description": "Score EVERY requested cell using as FEW LLM calls as possible (~1 call per\n40 cells via core.ai_assess.batch_score_cells). This is the primary \"AI\nAssess All\" path — it keeps usage inside the free Gemini/Groq quotas instead\nof firing 1-2 calls per cell.\n\nBody: { cells: [{option_id, factor_id, actual_value?}], force_fill?: bool,\n        allow_openai?: bool }   (allow_openai overrides the user's stored\n        consent for THIS run, e.g. the in-the-moment \"use OpenAI free\" choice)\nReturns: { results: [...], out_of_credits, ai_unavailable }\nChannels: internal, chatbot, partner"
      },
      "response": []
     },
@@ -32417,7 +32417,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Server-side enforced bypass \u2014 must verify the toggle is ON. Records a\npseudo-order so downstream features (credits, SKU unlocks) behave the same\nas a normal Razorpay capture. NEVER trust an FE-supplied flag alone.\n\nBody: {\n  flow: 'DECISION_FLOW' | 'SUBSCRIPTION' | 'TOPUP' | 'SKU',\n  sku_id?: str, plan_id?: str, amount: number (rupees),\n  coupon_code?: str, net_payable_amount?: number, list_price?: number,\n  metadata?: dict\n}\nChannels: internal, partner"
+      "description": "Server-side enforced bypass — must verify the toggle is ON. Records a\npseudo-order so downstream features (credits, SKU unlocks) behave the same\nas a normal Razorpay capture. NEVER trust an FE-supplied flag alone.\n\nBody: {\n  flow: 'DECISION_FLOW' | 'SUBSCRIPTION' | 'TOPUP' | 'SKU',\n  sku_id?: str, plan_id?: str, amount: number (rupees),\n  coupon_code?: str, net_payable_amount?: number, list_price?: number,\n  metadata?: dict\n}\nChannels: internal, partner"
      },
      "response": []
     },
@@ -32456,7 +32456,7 @@
    ]
   },
   {
-   "name": "Pricing \u2014 7 Chakras",
+   "name": "Pricing — 7 Chakras",
    "item": [
     {
      "name": "Public Pricing Payload",
@@ -32881,7 +32881,7 @@
         }
        ]
       },
-      "description": "Body: { ordered_ids: [factor_id, ...] }.\n\nSets priority_rank 1..N for every factor in the order received AND\nauto-ladders std_rating for MAIN factors only:\n\n    bottom main factor gets `std_gap` (default 10),\n    each step up adds `std_gap`,\n    top main factor ends at  N_mains * std_gap.\n\nSo if std_gap=10 and there are 8 mains: top=80, 70, 60, 50, 40, 30, 20, bottom=10.\nSub-factors and duplicates keep std_rating=0 \u2014 the aggregator excludes\nthem from scoring anyway (compute_option_rollups \u2192 scoring_factors).\nChannels: internal, chatbot"
+      "description": "Body: { ordered_ids: [factor_id, ...] }.\n\nSets priority_rank 1..N for every factor in the order received AND\nauto-ladders std_rating for MAIN factors only:\n\n    bottom main factor gets `std_gap` (default 10),\n    each step up adds `std_gap`,\n    top main factor ends at  N_mains * std_gap.\n\nSo if std_gap=10 and there are 8 mains: top=80, 70, 60, 50, 40, 30, 20, bottom=10.\nSub-factors and duplicates keep std_rating=0 — the aggregator excludes\nthem from scoring anyway (compute_option_rollups → scoring_factors).\nChannels: internal, chatbot"
      },
      "response": []
     },
@@ -32920,7 +32920,7 @@
         }
        ]
       },
-      "description": "Re-apply the per-pair priority-gap auto-ladder to all main factors\nWITHOUT changing their priority order. Called by the frontend on Step 7\nentry (to fix legacy analyses) AND whenever the user tweaks any single\nfactor's `priority_gap_pct` via the inline between-cards gap selector.\n\nIdempotent \u2014 calling repeatedly with the same data yields the same ratings.\nChannels: internal, chatbot"
+      "description": "Re-apply the per-pair priority-gap auto-ladder to all main factors\nWITHOUT changing their priority order. Called by the frontend on Step 7\nentry (to fix legacy analyses) AND whenever the user tweaks any single\nfactor's `priority_gap_pct` via the inline between-cards gap selector.\n\nIdempotent — calling repeatedly with the same data yields the same ratings.\nChannels: internal, chatbot"
      },
      "response": []
     },
@@ -33340,7 +33340,7 @@
         }
        ]
       },
-      "description": "Inline-edit a Con's text. Body: { text }. Enforces uniqueness and\npropagates the rename to its promoted 'SHOULD NOT - \u2026' factor.\nChannels: internal, chatbot"
+      "description": "Inline-edit a Con's text. Body: { text }. Enforces uniqueness and\npropagates the rename to its promoted 'SHOULD NOT - …' factor.\nChannels: internal, chatbot"
      },
      "response": []
     },
@@ -33378,7 +33378,7 @@
         }
        ]
       },
-      "description": "Step #3.1 \u2014 promote every Pro/Con item across all options to a factor.\nCons get prefixed with 'SHOULD NOT - '.  Idempotent \u2014 skips items already promoted.\nChannels: internal, chatbot"
+      "description": "Step #3.1 — promote every Pro/Con item across all options to a factor.\nCons get prefixed with 'SHOULD NOT - '.  Idempotent — skips items already promoted.\nChannels: internal, chatbot"
      },
      "response": []
     },
@@ -33466,7 +33466,7 @@
         }
        ]
       },
-      "description": "Update / create the cell that holds Step #7 + #8 values for one (option, factor).\nBody may include: assessment_pct, actual_value, satisfaction_pct, improvement_pct, notes.\ncell_value and satisfaction_value are derived server-side.\n\nCONCURRENCY: Uses MongoDB $set on individual nested fields, so two\nparallel PUTs from the frontend (e.g. DebouncedInput unmount-flushes for\n`actual_value` and `assessment_pct` firing simultaneously when navigating\nStep 7 \u2192 8) do NOT clobber each other. Previously this route used a\nread-modify-write pattern (load full doc, mutate, persist), which caused\nthe second writer to overwrite the first writer's field on race.\nChannels: internal, chatbot"
+      "description": "Update / create the cell that holds Step #7 + #8 values for one (option, factor).\nBody may include: assessment_pct, actual_value, satisfaction_pct, improvement_pct, notes.\ncell_value and satisfaction_value are derived server-side.\n\nCONCURRENCY: Uses MongoDB $set on individual nested fields, so two\nparallel PUTs from the frontend (e.g. DebouncedInput unmount-flushes for\n`actual_value` and `assessment_pct` firing simultaneously when navigating\nStep 7 → 8) do NOT clobber each other. Previously this route used a\nread-modify-write pattern (load full doc, mutate, persist), which caused\nthe second writer to overwrite the first writer's field on race.\nChannels: internal, chatbot"
      },
      "response": []
     },
@@ -33511,7 +33511,7 @@
         }
        ]
       },
-      "description": "LLM-scored satisfaction % (0-100) for one (option, factor).\n\nValidation + actual-value resolution are delegated to core.ai_assess\n(shared with My Dezider for parity):\n  * Quantitative \u2192 needs Expected + Operator + Actual (Unit optional).\n  * Qualitative  \u2192 needs Expected only; AI fetches/infers the Actual.\n  * Actual resolution: Data Source \u2192 linked Solution Store / ReviewNet \u2192 AI guess.\nChannels: internal, chatbot"
+      "description": "LLM-scored satisfaction % (0-100) for one (option, factor).\n\nValidation + actual-value resolution are delegated to core.ai_assess\n(shared with My Dezider for parity):\n  * Quantitative → needs Expected + Operator + Actual (Unit optional).\n  * Qualitative  → needs Expected only; AI fetches/infers the Actual.\n  * Actual resolution: Data Source → linked Solution Store / ReviewNet → AI guess.\nChannels: internal, chatbot"
      },
      "response": []
     },
@@ -34019,7 +34019,7 @@
         }
        ]
       },
-      "description": "Convert SWOT analysis into a PRR Decision with AI-generated expected values.\n\n- Strengths (internal positive) \u2192 factors as-is\n- Opportunities (external positive) \u2192 factors as-is\n- Weaknesses (internal negative) \u2192 prefixed with 'NOT '\n- Threats (external negative) \u2192 prefixed with 'NOT '\n- AI generates expected values for all factors\nChannels: internal, chatbot"
+      "description": "Convert SWOT analysis into a PRR Decision with AI-generated expected values.\n\n- Strengths (internal positive) → factors as-is\n- Opportunities (external positive) → factors as-is\n- Weaknesses (internal negative) → prefixed with 'NOT '\n- Threats (external negative) → prefixed with 'NOT '\n- AI generates expected values for all factors\nChannels: internal, chatbot"
      },
      "response": []
     },
@@ -34769,7 +34769,7 @@
         }
        ]
       },
-      "description": "Field-level $set so concurrent partial updates (e.g. actual_value &\nassessment_pct flushed in parallel by DebouncedInput on Step 7\u21928\ntransitions) don't clobber each other. See pros_cons.upsert_assessment\nfor the full rationale.\nChannels: internal, chatbot"
+      "description": "Field-level $set so concurrent partial updates (e.g. actual_value &\nassessment_pct flushed in parallel by DebouncedInput on Step 7→8\ntransitions) don't clobber each other. See pros_cons.upsert_assessment\nfor the full rationale.\nChannels: internal, chatbot"
      },
      "response": []
     },
@@ -35117,7 +35117,7 @@
        ],
        "variable": []
       },
-      "description": "List solutions visible to the user (own + org + authorized/public approved).\n\n`sort=top_rated` ranks by the new ReviewNet `overall_rating \u00d7 log(1+review_count)`\nscore so freshly-popular items rise to the top.\n\n`org_type`, `decision_type`, `scenario_id` filters honor the v2 taxonomy\narrays \u2014 solutions with empty arrays are treated as \"applies to all\".\nChannels: internal, chatbot, partner"
+      "description": "List solutions visible to the user (own + org + authorized/public approved).\n\n`sort=top_rated` ranks by the new ReviewNet `overall_rating × log(1+review_count)`\nscore so freshly-popular items rise to the top.\n\n`org_type`, `decision_type`, `scenario_id` filters honor the v2 taxonomy\narrays — solutions with empty arrays are treated as \"applies to all\".\nChannels: internal, chatbot, partner"
      },
      "response": []
     },
@@ -35405,7 +35405,7 @@
        ],
        "variable": []
       },
-      "description": "Get solutions relevant to a decision context \u2014 used during 'Add Options'.\nChannels: internal, chatbot, partner"
+      "description": "Get solutions relevant to a decision context — used during 'Add Options'.\nChannels: internal, chatbot, partner"
      },
      "response": []
     },
@@ -35949,7 +35949,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Public 7-tier metadata \u2014 used by the pricing page + admin UI headers.\nChannels: internal, chatbot, partner"
+      "description": "Public 7-tier metadata — used by the pricing page + admin UI headers.\nChannels: internal, chatbot, partner"
      },
      "response": []
     }
@@ -36617,14 +36617,14 @@
        "query": [],
        "variable": []
       },
-      "description": "Public read of the matrix (no auth) \u2014 used by pricing-page comparison table.\nChannels: internal, chatbot, partner"
+      "description": "Public read of the matrix (no auth) — used by pricing-page comparison table.\nChannels: internal, chatbot, partner"
      },
      "response": []
     }
    ]
   },
   {
-   "name": "Tier Matrix \u2014 7 Chakras (Admin)",
+   "name": "Tier Matrix — 7 Chakras (Admin)",
    "item": [
     {
      "name": "Admin Get Matrix",
@@ -36653,7 +36653,7 @@
        "query": [],
        "variable": []
       },
-      "description": "Admin read \u2014 same as public but always seeds first if empty.\nChannels: internal"
+      "description": "Admin read — same as public but always seeds first if empty.\nChannels: internal"
      },
      "response": []
     },
@@ -37095,7 +37095,7 @@
        "query": [],
        "variable": []
       },
-      "description": "AI-powered analysis to find where to free up desired time.\nUses ALL 5 TEPFI dimensions \u00d7 3 layers + CLD analysis.\nBody: { desired_free_hours: float, period: 'daily'|'weekly' }\nChannels: internal, chatbot"
+      "description": "AI-powered analysis to find where to free up desired time.\nUses ALL 5 TEPFI dimensions × 3 layers + CLD analysis.\nBody: { desired_free_hours: float, period: 'daily'|'weekly' }\nChannels: internal, chatbot"
      },
      "response": []
     },
@@ -37500,7 +37500,7 @@
   },
   {
    "name": "Notification Engine (Admin)",
-   "description": "v3.18.0 \u2014 Generic CRUD-able notification triggers (scheduled digests + event alerts) \u2192 Email (Resend) + WhatsApp (UltraMsg). Super-admin only.",
+   "description": "v3.18.0 — Generic CRUD-able notification triggers (scheduled digests + event alerts) → Email (Resend) + WhatsApp (UltraMsg). Super-admin only.",
    "item": [
     {
      "name": "List trigger-event registry",
@@ -37688,6 +37688,373 @@
       },
       "description": ""
      }
+    }
+   ]
+  },
+  {
+   "name": "Life Goals (My 360° Life)",
+   "item": [
+    {
+     "name": "Get Life Goals meta",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "Authorization",
+        "value": "Bearer {{AUTH_TOKEN}}"
+       }
+      ],
+      "url": {
+       "raw": "{{BASE_URL}}/api/life-goals/meta",
+       "host": [
+        "{{BASE_URL}}"
+       ],
+       "path": [
+        "api",
+        "life-goals",
+        "meta"
+       ],
+       "query": [],
+       "variable": []
+      },
+      "description": "Config for the UI: life_areas, sub_types [Present Problem, Need, Future Risk, Aspiration] (exact order), levels L1..L7, horizons, statuses. Stored in db.gem_goals (GEM = central connector)."
+     },
+     "response": []
+    },
+    {
+     "name": "Create Life Goal — timeline (By Life Area)",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "Authorization",
+        "value": "Bearer {{AUTH_TOKEN}}"
+       }
+      ],
+      "url": {
+       "raw": "{{BASE_URL}}/api/life-goals",
+       "host": [
+        "{{BASE_URL}}"
+       ],
+       "path": [
+        "api",
+        "life-goals"
+       ],
+       "query": [],
+       "variable": []
+      },
+      "description": "Timeline mode requires title + horizon (quarter|1yr|3yr|5yr|10yr) + life_area; sub_type optional.",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"mode\": \"timeline\",\n  \"title\": \"Build a 6-month emergency fund\",\n  \"description\": \"\",\n  \"horizon\": \"1yr\",\n  \"life_area\": \"finance\",\n  \"sub_type\": \"aspiration\",\n  \"target_date\": \"2027-06-30\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": []
+    },
+    {
+     "name": "Create Life Goal — tree L1 (Overall)",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "Authorization",
+        "value": "Bearer {{AUTH_TOKEN}}"
+       }
+      ],
+      "url": {
+       "raw": "{{BASE_URL}}/api/life-goals",
+       "host": [
+        "{{BASE_URL}}"
+       ],
+       "path": [
+        "api",
+        "life-goals"
+       ],
+       "query": [],
+       "variable": []
+      },
+      "description": "Tree mode: level 1..7. L1 has no parent.",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"mode\": \"tree\",\n  \"level\": 1,\n  \"title\": \"Live a fulfilled, healthy life\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": []
+    },
+    {
+     "name": "Create Life Goal — tree child (L2..L7)",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "Authorization",
+        "value": "Bearer {{AUTH_TOKEN}}"
+       }
+      ],
+      "url": {
+       "raw": "{{BASE_URL}}/api/life-goals",
+       "host": [
+        "{{BASE_URL}}"
+       ],
+       "path": [
+        "api",
+        "life-goals"
+       ],
+       "query": [],
+       "variable": []
+      },
+      "description": "L>1 requires parent_id of EXACTLY level-1. L5 requires life_area; L6 requires sub_type.",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"mode\": \"tree\",\n  \"level\": 2,\n  \"parent_id\": \"<L1 goal_id>\",\n  \"title\": \"10yr: financial independence\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": []
+    },
+    {
+     "name": "List Life Goals",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "Authorization",
+        "value": "Bearer {{AUTH_TOKEN}}"
+       }
+      ],
+      "url": {
+       "raw": "{{BASE_URL}}/api/life-goals?mode=tree",
+       "host": [
+        "{{BASE_URL}}"
+       ],
+       "path": [
+        "api",
+        "life-goals"
+       ],
+       "query": [
+        {
+         "key": "mode",
+         "value": "tree"
+        }
+       ],
+       "variable": []
+      },
+      "description": "Filters: mode, level, parent_id, life_area."
+     },
+     "response": []
+    },
+    {
+     "name": "Get Life Goal tree",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "Authorization",
+        "value": "Bearer {{AUTH_TOKEN}}"
+       }
+      ],
+      "url": {
+       "raw": "{{BASE_URL}}/api/life-goals/tree",
+       "host": [
+        "{{BASE_URL}}"
+       ],
+       "path": [
+        "api",
+        "life-goals",
+        "tree"
+       ],
+       "query": [],
+       "variable": []
+      },
+      "description": "All tree-mode goals flat (client nests by parent_id) + level config."
+     },
+     "response": []
+    },
+    {
+     "name": "Get one Life Goal",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "Authorization",
+        "value": "Bearer {{AUTH_TOKEN}}"
+       }
+      ],
+      "url": {
+       "raw": "{{BASE_URL}}/api/life-goals/{goal_id}",
+       "host": [
+        "{{BASE_URL}}"
+       ],
+       "path": [
+        "api",
+        "life-goals",
+        "{goal_id}"
+       ],
+       "query": [],
+       "variable": []
+      },
+      "description": ""
+     },
+     "response": []
+    },
+    {
+     "name": "Update Life Goal",
+     "request": {
+      "method": "PUT",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "Authorization",
+        "value": "Bearer {{AUTH_TOKEN}}"
+       }
+      ],
+      "url": {
+       "raw": "{{BASE_URL}}/api/life-goals/{goal_id}",
+       "host": [
+        "{{BASE_URL}}"
+       ],
+       "path": [
+        "api",
+        "life-goals",
+        "{goal_id}"
+       ],
+       "query": [],
+       "variable": []
+      },
+      "description": "Allowed: title, description, status, life_area, sub_type, target_date, horizon, period_label, priority, progress (0-100). status='done' sets progress 100.",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"status\": \"done\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": []
+    },
+    {
+     "name": "Delete Life Goal (tree cascades)",
+     "request": {
+      "method": "DELETE",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "Authorization",
+        "value": "Bearer {{AUTH_TOKEN}}"
+       }
+      ],
+      "url": {
+       "raw": "{{BASE_URL}}/api/life-goals/{goal_id}",
+       "host": [
+        "{{BASE_URL}}"
+       ],
+       "path": [
+        "api",
+        "life-goals",
+        "{goal_id}"
+       ],
+       "query": [],
+       "variable": []
+      },
+      "description": "Tree goals cascade-delete all descendants."
+     },
+     "response": []
+    }
+   ]
+  },
+  {
+   "name": "Import from File (MyDezider Step 2)",
+   "item": [
+    {
+     "name": "Import file into decision",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       },
+       {
+        "key": "Authorization",
+        "value": "Bearer {{AUTH_TOKEN}}"
+       }
+      ],
+      "url": {
+       "raw": "{{BASE_URL}}/api/file-import/decision/{decision_id}",
+       "host": [
+        "{{BASE_URL}}"
+       ],
+       "path": [
+        "api",
+        "file-import",
+        "decision",
+        "{decision_id}"
+       ],
+       "query": [],
+       "variable": []
+      },
+      "description": "Parse pdf/docx/txt/xlsx/xls/csv/image(OCR) -> AI extracts factors+options (metered via AI wallet, same as URL import) -> optional DuckDuckGo+LLM web-enrichment of options (cap 8) -> merge_into_mydezider. ai_tier: fast|precise. Returns {factors_added, options_added, enriched, enriched_count, factors[], options[]}. Errors: unsupported ext 400, bad/empty base64 400, >8MB 413, unreadable 422.",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n  \"filename\": \"vc_list.csv\",\n  \"file_b64\": \"<base64 of file, optional data: prefix stripped>\",\n  \"ai_tier\": \"fast\",\n  \"crawl_web\": false,\n  \"context\": \"Choosing a lead VC for our seed round\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": []
     }
    ]
   }

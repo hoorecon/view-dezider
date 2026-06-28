@@ -1,6 +1,6 @@
 # Product Requirements Document — Dezider
 
-_metadata: { "version": "3.19.0", "updated": "2026-06-15", "author": "engineering" }
+_metadata: { "version": "3.20.0", "updated": "2026-06-28", "author": "engineering" }
 
 ## 1. Vision
 
@@ -435,3 +435,33 @@ Two product gaps:
   deferred — purge cron will be added in v3.20).
 - Browser-mic E2E test (headless browser cannot grant mic permission;
   flagged for manual device QA).
+
+
+## Life Goals, Import-from-File & Global Sub-types (v3.20.0 · 2026-06-28)
+
+### Life Goals — 7-level planner inside "My 360° Life"
+The PNA module was renamed **My 360° Life**; a 4th category **Future Risk** was added so the
+canonical sub-types (in this exact order) are **Present Problem · Need · Future Risk · Aspiration**.
+The screen now has an in-screen tab switch: **Life Map** | **Life Goals**.
+
+Life Goals offers two planning modes, both stored in **GEM** (`db.gem_goals`) — GEM is the central
+connector across Goal Setter, Solution Finder, MyDezider, Pros & Cons and Action Tracker:
+- **By Life Area (timeline):** per Life Area, a goal with a target horizon (This Quarter / 1yr / 3yr / 5yr / 10yr).
+- **7-Level Tree (strict hierarchy):** L1 Overall → L2 10yr → L3 5yr → L4 3yr → L5 1yr (mapped to a Life Area)
+  → L6 Quarterly (mapped to a sub-type) → L7 Monthly. Each child references a parent exactly one level up;
+  deleting a node cascade-deletes its descendants.
+
+### Import from File (MyDezider Step 2)
+A 4th import source ("File") alongside XLS/Sheet/URL. Accepts **pdf · docx · txt · xlsx/xls · csv · jpg/png**
+(≤8 MB), extracts text (OCR for images), and uses AI to produce decision **Factors + Options** — metered
+through the same AI wallet as URL import (Cheap & Fast vs Costly & Precise tiers). An optional
+**"Also research the web (AI crawl)"** toggle enriches each option (e.g. fills a VC firm's stage/sector/
+ticket-size missing in the file) via DuckDuckGo + LLM. After import the user is offered an opt-in to run the
+plan-capped "Fetch My Best Factors" so AI can add any missed-out factors.
+
+### Sub-type consistency
+The 4 sub-types now appear as a **Type** chip selector in the Initial-Info step of **MyDezider**,
+**Pros & Cons** (Step 1) and **Solution Finder** (Step 0), persisted as `decision_type`.
+
+_Status: shipped & tested (27/27 backend pytest + frontend flows). Build v3.176 / 2026.06.28.003._
+
