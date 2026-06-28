@@ -134,7 +134,7 @@ export default function CollaborateScreen() {
       const [decisionsRes, pcRes, sfRes, modesRes, contactsRes] = await Promise.all([
         api.get('/decisions?limit=50').catch(() => ({ data: [] })),
         api.get('/pros-cons?limit=50').catch(() => ({ data: [] })),
-        api.get('/solution-finder').catch(() => ({ data: [] })),
+        api.get('/solution-finders').catch(() => ({ data: [] })),
         api.get('/collaboration/decision-modes'),
         api.get('/contacts?limit=200'),
       ]);
