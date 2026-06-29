@@ -28,6 +28,7 @@ from core import chunk_upload
 from core import fin_template
 from core import matrix_import as mx
 from core import google_sheets as gs
+from core import zoho_books
 from fastapi.responses import Response
 from routes.file_import import _extract_text, _detect_type
 
@@ -409,3 +410,31 @@ async def import_template_sheet(body: ImportSheetIn, user: dict = Depends(get_cu
     if not patch:
         raise HTTPException(422, "No template rows matched. Keep the labels in column A unchanged.")
     return {"patch": patch, "found": matched}
+
+
+
+# ── Zoho Books sync (auto-pull historical P&L + Balance Sheet) ───────────────
+class ZohoSyncIn(BaseModel):
+    from_date: Optional[str] = None
+    to_date: Optional[str] = None
+    as_of: Optional[str] = None
+
+
+@router.get("/zoho/status")
+async def zoho_status(user: dict = Depends(get_current_user)):
+    return {"configured": zoho_books.is_configured()}
+
+
+@router.post("/zoho-sync")
+async def zoho_sync(body: ZohoSyncIn, user: dict = Depends(get_current_user)):
+    if not zoho_books.is_configured():
+        raise HTTPException(400, "Zoho Books isn't configured on this server.")
+    try:
+        result = await zoho_books.fetch_and_map(body.from_date, body.to_date, body.as_of)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"Zoho Books sync failed: {str(e)[:160]}")
+    if not result.get("patch"):
+        raise HTTPException(
+            422, "Connected to Zoho Books, but no mappable figures were found for that period. "
+                 "Check the date range or that the books have data.")
+    return result

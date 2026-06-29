@@ -301,6 +301,16 @@ export default function FinancialModelScreen() {
 
   const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
+  const syncZoho = async () => {
+    setImporting('zoho');
+    try {
+      const { data } = await api.post('/financial-models/zoho-sync', {}, { timeout: 120000 });
+      await applyPatch(data?.patch || {}, data?.found || []);
+    } catch (e: any) {
+      showAlert('Zoho sync failed', e?.response?.data?.detail || e.message || 'Could not reach Zoho Books.');
+    } finally { setImporting(null); }
+  };
+
   const exportReport = async (kind: 'investor' | 'cma', fmt: 'pdf' | 'xlsx') => {
     if (!model?.id) {
       showAlert('Save first', 'Create or Save the model before exporting a report.');
@@ -372,6 +382,15 @@ export default function FinancialModelScreen() {
         </TouchableOpacity>
       </View>
       <Text style={s.seedHint}>Download the template, fill it, then import (Excel or Google Sheet) — no AI credits used.</Text>
+      <TouchableOpacity style={s.zohoBtn} onPress={syncZoho} disabled={!!importing} testID="fm-zoho-sync">
+        {importing === 'zoho' ? <ActivityIndicator color="#FFF" /> : (
+          <>
+            <Ionicons name="sync-outline" size={16} color="#FFF" />
+            <Text style={s.zohoTxt}>  Sync historicals from Zoho Books</Text>
+          </>
+        )}
+      </TouchableOpacity>
+      <Text style={s.seedHint}>Pulls last financial year&apos;s P&amp;L + Balance Sheet from your connected Zoho Books org.</Text>
       <View style={s.waccBar}>
         <Text style={s.waccLabel}>WACC source</Text>
         {(['direct', 'capm'] as const).map((m) => (
@@ -697,6 +716,8 @@ const s = StyleSheet.create({
   impRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
   impBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 9, paddingVertical: 10 },
   impTxt: { color: '#003087', fontWeight: '800', fontSize: 11.5 },
+  zohoBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0F9D58', borderRadius: 10, paddingVertical: 12, marginTop: 8 },
+  zohoTxt: { color: '#FFF', fontWeight: '800', fontSize: 13.5 },
   waccBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, marginBottom: 10 },
   waccLabel: { fontSize: 12, fontWeight: '700', color: '#64748B' },
   waccChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#CBD5E1' },

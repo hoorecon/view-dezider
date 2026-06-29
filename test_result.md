@@ -10957,3 +10957,22 @@ test_plan:
     - "Iter182 — Prefilled FM template (?model_id) + existing import (Excel/GSheet) still parse"
   test_all: false
   test_priority: "high_first"
+
+# ITER 183 — Zoho Books sync (auto-pull P&L + Balance Sheet into Financial Model)
+agent_communication:
+  - agent: "main"
+    message: |
+      ITER 183. Zoho Books (India DC) integration LIVE & VERIFIED with real org data (60068643866).
+      Creds in backend/.env (ZOHO_CLIENT_ID/SECRET/REFRESH_TOKEN/ORGANIZATION_ID/ACCOUNTS_URL/API_URL).
+      core/zoho_books.py: refresh-token->access-token cache, fetch P&L (reports/profitandloss) + Balance
+      Sheet (reports/balancesheet), flatten + best-effort map to assumptions patch.
+      Endpoints: GET /api/financial-models/zoho/status -> {configured}; POST /api/financial-models/zoho-sync
+      {from_date?,to_date?,as_of?} -> {patch,found} (defaults to last completed FY). VERIFIED 200:
+      pulled revenue 707799, GM 81.26pct, cash 1438396, debtors/creditors/equity.
+      Frontend: Inputs tab green "Sync historicals from Zoho Books" button (testID fm-zoho-sync) -> merges patch + recalc.
+      PROD NOTE: .env is not in git — user must add the ZOHO_ vars to production backend .env on EC2.
+test_plan:
+  current_focus:
+    - "Iter183 — POST /financial-models/zoho-sync returns mapped patch from live Zoho Books; fm-zoho-sync button merges + recalcs"
+  test_all: false
+  test_priority: "high_first"
