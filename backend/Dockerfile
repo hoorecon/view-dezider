@@ -29,6 +29,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
     DEZIDER_ENV=prod \
     HSTS_ENABLED=true
 WORKDIR /app
+# Tesseract OCR engine — runtime binary invoked by pytesseract to read text from
+# image-only PDF slides / uploaded images during "Import from File".
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        tesseract-ocr \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /root/.local /root/.local
 COPY . .
 EXPOSE 8001

@@ -10890,3 +10890,19 @@ test_plan:
   test_all: false
   test_priority: "high_first"
 
+
+#====================================================================================================
+# ITER 180 — OCR for image-only PDF slides (recovers options + factors printed as images)
+#====================================================================================================
+agent_communication:
+  - agent: "main"
+    message: |
+      ITER 180. ROOT CAUSE of "only 3/11 options" AND "key factors missed": the early
+      pitch-deck slides were IMAGES (no text layer), so PyPDF2 read nothing from them.
+      FIX = OCR fallback. Installed tesseract-ocr (apt) + PyMuPDF (pip, in requirements.txt).
+      _extract_text() now OCRs any PDF page with <25 chars of text-layer (capped 40 pages).
+      Added tesseract-ocr to backend/Dockerfile RUNTIME stage so it also works on prod.
+      VERIFIED e2e: a 2-slide IMAGE-ONLY PDF (0 text-layer chars) -> options [Mela Ventures,
+      TVS Capital] + factors [Fund Size, Fund Type, Stage Focus, Sector Focus, Cumulative
+      Portfolio Value, Number of Startups Backed, ...]. PROD NOTE: user must redeploy (sync.sh
+      rebuilds backend image incl. tesseract); Cloudflare Pages rebuilds frontend.

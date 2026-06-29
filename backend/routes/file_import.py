@@ -58,16 +58,66 @@ def _detect_type(filename: str) -> str:
     return "unknown"
 
 
+def _ocr_pdf_pages(file_bytes: bytes, page_indices: List[int]) -> Dict[int, str]:
+    """OCR specific PDF pages (0-based) by rendering them to images.
+
+    Used for slides whose text is baked into images (logos, infographics) so the
+    embedded text-layer extraction returns nothing. Best-effort: any failure for a
+    page just yields no text for that page.
+    """
+    out: Dict[int, str] = {}
+    if not page_indices:
+        return out
+    try:
+        import fitz  # PyMuPDF
+        import pytesseract
+        from PIL import Image
+    except Exception:  # noqa: BLE001 — OCR deps unavailable; skip silently
+        return out
+    try:
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
+    except Exception:  # noqa: BLE001
+        return out
+    try:
+        mat = fitz.Matrix(2, 2)  # ~200 DPI for legible OCR
+        for idx in page_indices:
+            if idx < 0 or idx >= doc.page_count:
+                continue
+            try:
+                pix = doc.load_page(idx).get_pixmap(matrix=mat)
+                img = Image.open(io.BytesIO(pix.tobytes("png")))
+                txt = (pytesseract.image_to_string(img, lang="eng") or "").strip()
+                if txt:
+                    out[idx] = txt
+            except Exception:  # noqa: BLE001
+                continue
+    finally:
+        doc.close()
+    return out
+
+
+# Cap how many image-only pages we OCR per import (keeps latency/cost bounded).
+_MAX_OCR_PAGES = 40
+
+
 def _extract_text(file_bytes: bytes, ftype: str) -> str:
     """Blocking — call via asyncio.to_thread."""
     if ftype == "pdf":
         from PyPDF2 import PdfReader
         reader = PdfReader(io.BytesIO(file_bytes))
-        parts = []
-        for i, p in enumerate(reader.pages, 1):
+        page_texts: List[str] = []
+        ocr_needed: List[int] = []
+        for i, p in enumerate(reader.pages):
             t = (p.extract_text() or "").strip()
-            if t:
-                parts.append(f"--- Page {i} ---\n{t}")
+            page_texts.append(t)
+            # Pages with little/no extractable text are likely image slides → OCR them.
+            if len(t) < 25:
+                ocr_needed.append(i)
+        if ocr_needed:
+            ocr_map = _ocr_pdf_pages(file_bytes, ocr_needed[:_MAX_OCR_PAGES])
+            for i, txt in ocr_map.items():
+                page_texts[i] = (page_texts[i] + "\n" + txt).strip() if page_texts[i] else txt
+        parts = [f"--- Page {i + 1} ---\n{t}" for i, t in enumerate(page_texts) if t.strip()]
         return "\n\n".join(parts)
     if ftype == "docx":
         from docx import Document
