@@ -148,3 +148,75 @@ async def fetch_and_map(from_date: Optional[str] = None,
         "from_date": from_date, "to_date": to_date, "as_of": as_of,
         "patch": patch, "found": found,
     }
+
+
+def current_fy_to_date() -> Tuple[str, str]:
+    """Start of the in-progress Indian FY (Apr 1) through today."""
+    today = date.today()
+    start_year = today.year if today.month >= 4 else today.year - 1
+    return date(start_year, 4, 1).isoformat(), today.isoformat()
+
+
+# ── Nightly auto-sync scheduler (snapshot only; user applies manually) ────────
+import logging  # noqa: E402
+
+from apscheduler.schedulers.asyncio import AsyncIOScheduler  # noqa: E402
+from apscheduler.triggers.cron import CronTrigger  # noqa: E402
+
+logger = logging.getLogger("zoho_books")
+_scheduler: Optional[AsyncIOScheduler] = None
+_lock_fd = None
+
+
+async def nightly_refresh() -> int:
+    """Refresh the cached Zoho snapshot on every model flagged zoho_auto_sync.
+    Never overwrites the model's own assumptions — only stores a snapshot the
+    user can Apply from the UI."""
+    if not is_configured():
+        return 0
+    from core.database import db
+    frm, to = current_fy_to_date()
+    n = 0
+    try:
+        result = await fetch_and_map(frm, to, to)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Zoho nightly fetch failed: %s", str(e)[:160])
+        return 0
+    snapshot = {
+        "patch": result["patch"], "found": result["found"],
+        "from_date": frm, "to_date": to, "fetched_at": datetime.utcnow().isoformat() + "Z",
+    }
+    async for m in db.financial_models.find({"zoho_auto_sync": True}, {"id": 1}):
+        await db.financial_models.update_one(
+            {"id": m["id"]}, {"$set": {"zoho_snapshot": snapshot}})
+        n += 1
+    if n:
+        logger.info("Zoho nightly snapshot updated for %d model(s)", n)
+    return n
+
+
+def start_scheduler() -> None:
+    global _scheduler, _lock_fd
+    if _scheduler is not None or not is_configured():
+        return
+    try:
+        import fcntl
+        lock_path = os.environ.get("ZOHO_SCHEDULER_LOCK", "/tmp/dezider_zoho_scheduler.lock")
+        _lock_fd = open(lock_path, "w")
+        fcntl.flock(_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _lock_fd.write(str(os.getpid()))
+        _lock_fd.flush()
+    except Exception:  # noqa: BLE001 — another worker holds the lock
+        if _lock_fd is not None:
+            try:
+                _lock_fd.close()
+            except Exception:
+                pass
+            _lock_fd = None
+        return
+    _scheduler = AsyncIOScheduler(timezone="UTC")
+    # 19:30 UTC ≈ 01:00 IST — after business hours.
+    _scheduler.add_job(nightly_refresh, CronTrigger(hour=19, minute=30),
+                       id="zoho_nightly", replace_existing=True, max_instances=1, coalesce=True)
+    _scheduler.start()
+    logger.info("Zoho nightly scheduler started pid=%s", os.getpid())

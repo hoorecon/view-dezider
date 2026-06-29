@@ -608,6 +608,12 @@ async def _run_boot_work(boot_owner: bool):
     except Exception as e:
         logger.error(f"Notification engine boot failed: {e}", exc_info=True)
 
+    try:
+        from core.zoho_books import start_scheduler as _start_zoho
+        _start_zoho()
+    except Exception as e:
+        logger.error(f"Zoho scheduler boot failed: {e}", exc_info=True)
+
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

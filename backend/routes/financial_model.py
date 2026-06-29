@@ -438,3 +438,37 @@ async def zoho_sync(body: ZohoSyncIn, user: dict = Depends(get_current_user)):
             422, "Connected to Zoho Books, but no mappable figures were found for that period. "
                  "Check the date range or that the books have data.")
     return result
+
+
+class ZohoAutoSyncIn(BaseModel):
+    enabled: bool
+
+
+@router.post("/{model_id}/zoho-autosync")
+async def set_zoho_autosync(model_id: str, body: ZohoAutoSyncIn, user: dict = Depends(get_current_user)):
+    """Toggle nightly Zoho snapshot for a model. Enabling fetches one immediately.
+    Snapshots are stored on the model (zoho_snapshot) and never auto-applied —
+    the user reviews and taps Apply."""
+    model = await db.financial_models.find_one(
+        {"id": model_id, "user_id": user["user_id"]}, {"_id": 0, "id": 1})
+    if not model:
+        raise HTTPException(404, "Financial model not found")
+    if body.enabled and not zoho_books.is_configured():
+        raise HTTPException(400, "Zoho Books isn't configured on this server.")
+    update: dict = {"zoho_auto_sync": body.enabled}
+    snapshot = None
+    if body.enabled:
+        try:
+            frm, to = zoho_books.current_fy_to_date()
+            res = await zoho_books.fetch_and_map(frm, to, to)
+            snapshot = {
+                "patch": res["patch"], "found": res["found"],
+                "from_date": frm, "to_date": to,
+                "fetched_at": datetime.utcnow().isoformat() + "Z",
+            }
+            update["zoho_snapshot"] = snapshot
+        except Exception as e:  # noqa: BLE001 — toggle still succeeds; snapshot best-effort
+            logging.getLogger("financial_model").warning("Zoho snapshot on enable failed: %s", str(e)[:160])
+    await db.financial_models.update_one({"id": model_id}, {"$set": update})
+    return {"zoho_auto_sync": body.enabled, "zoho_snapshot": snapshot}
+

@@ -335,6 +335,27 @@ export default function FinancialModelScreen() {
     } finally { setImporting(null); }
   };
 
+  const toggleAutoSync = async () => {
+    if (!model?.id) { showAlert('Save first', 'Save the model before enabling nightly auto-sync.'); return; }
+    const enabled = !model.zoho_auto_sync;
+    setImporting('autosync');
+    try {
+      const { data } = await api.post(`/financial-models/${model.id}/zoho-autosync`, { enabled });
+      setModel({ ...model, zoho_auto_sync: data.zoho_auto_sync, zoho_snapshot: data.zoho_snapshot ?? model.zoho_snapshot });
+      showAlert(
+        enabled ? 'Nightly auto-sync ON' : 'Auto-sync OFF',
+        enabled ? 'A fresh Zoho snapshot is fetched nightly. Review & tap Apply — it never overwrites your inputs automatically.' : 'Nightly Zoho sync disabled.');
+    } catch (e: any) {
+      showAlert('Failed', e?.response?.data?.detail || e.message || 'Try again.');
+    } finally { setImporting(null); }
+  };
+
+  const applyZohoSnapshot = async () => {
+    const snap = model?.zoho_snapshot;
+    if (!snap?.patch) return;
+    await applyPatch(snap.patch, snap.found || Object.keys(snap.patch));
+  };
+
   const exportReport = async (kind: 'investor' | 'cma', fmt: 'pdf' | 'xlsx') => {
     if (!model?.id) {
       showAlert('Save first', 'Create or Save the model before exporting a report.');
@@ -415,6 +436,21 @@ export default function FinancialModelScreen() {
         )}
       </TouchableOpacity>
       <Text style={s.seedHint}>Pulls last financial year&apos;s P&amp;L + Balance Sheet from your connected Zoho Books org.</Text>
+      <View style={s.waccBar}>
+        <Text style={s.waccLabel}>Nightly auto-sync</Text>
+        <TouchableOpacity style={[s.waccChip, model?.zoho_auto_sync && s.waccChipOn]} onPress={toggleAutoSync} disabled={importing === 'autosync'} testID="fm-zoho-autosync">
+          {importing === 'autosync' ? <ActivityIndicator color="#003087" /> : <Text style={[s.waccChipTxt, model?.zoho_auto_sync && s.waccChipTxtOn]}>{model?.zoho_auto_sync ? 'ON' : 'OFF'}</Text>}
+        </TouchableOpacity>
+      </View>
+      {!!model?.zoho_snapshot?.patch && Object.keys(model.zoho_snapshot.patch).length > 0 && (
+        <View style={s.snapCard}>
+          <Text style={s.snapTitle}>Latest from Zoho · {String(model.zoho_snapshot.fetched_at || '').slice(0, 10)}</Text>
+          <Text style={s.snapHint}>{(model.zoho_snapshot.found || []).length} field(s): {(model.zoho_snapshot.found || []).join(', ')}</Text>
+          <TouchableOpacity style={s.snapApply} onPress={applyZohoSnapshot} testID="fm-zoho-apply">
+            <Text style={s.snapApplyTxt}>Apply to model</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       <View style={s.waccBar}>
         <Text style={s.waccLabel}>WACC source</Text>
         {(['direct', 'capm'] as const).map((m) => (
@@ -777,6 +813,11 @@ const s = StyleSheet.create({
   impTxt: { color: '#003087', fontWeight: '800', fontSize: 11.5 },
   zohoBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0F9D58', borderRadius: 10, paddingVertical: 12, marginTop: 8 },
   zohoTxt: { color: '#FFF', fontWeight: '800', fontSize: 13.5 },
+  snapCard: { backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0', borderRadius: 10, padding: 12, marginTop: 8 },
+  snapTitle: { fontSize: 12.5, fontWeight: '800', color: '#065F46' },
+  snapHint: { fontSize: 11, color: '#047857', marginTop: 4, lineHeight: 15 },
+  snapApply: { alignSelf: 'flex-start', marginTop: 10, backgroundColor: '#0F9D58', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 9 },
+  snapApplyTxt: { color: '#FFF', fontWeight: '800', fontSize: 12.5 },
   waccBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, marginBottom: 10 },
   waccLabel: { fontSize: 12, fontWeight: '700', color: '#64748B' },
   waccChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#CBD5E1' },
