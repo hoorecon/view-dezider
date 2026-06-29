@@ -324,8 +324,14 @@ async def seed_from_file(body: SeedIn, user: dict = Depends(get_current_user)):
 
 # ── Template download + deterministic Excel / Google-Sheet import ────────────
 @router.get("/templates/inputs.xlsx")
-async def download_template(user: dict = Depends(get_current_user)):
-    data = fin_template.build_template_xlsx()
+async def download_template(model_id: Optional[str] = None, user: dict = Depends(get_current_user)):
+    values = None
+    if model_id:
+        doc = await db.financial_models.find_one(
+            {"id": model_id, "user_id": user["user_id"]}, {"_id": 0, "assumptions": 1})
+        if doc:
+            values = {**default_assumptions(), **(doc.get("assumptions") or {})}
+    data = fin_template.build_template_xlsx(values)
     return Response(
         content=data, media_type=XLSX_MIME,
         headers={"Content-Disposition": 'attachment; filename="financial-model-template.xlsx"'},

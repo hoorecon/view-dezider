@@ -71,9 +71,10 @@ def _to_num(v: Any):
         return None
 
 
-def build_template_xlsx() -> bytes:
+def build_template_xlsx(values: Dict[str, Any] = None) -> bytes:
     """Return a labelled .xlsx the user fills and re-imports. Opens in Excel and
-    Google Sheets alike."""
+    Google Sheets alike. If `values` (an assumptions dict) is given, the value
+    cells are pre-filled from it so re-imports are one tweak away."""
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment
 
@@ -101,6 +102,14 @@ def build_template_xlsx() -> bytes:
         ncols = 5 if kind == "series" else 1
         for c in range(2, 2 + ncols):
             ws.cell(row=r, column=c).fill = value_fill
+        if values and key in values and values[key] not in (None, ""):
+            v = values[key]
+            if kind == "series" and isinstance(v, list):
+                for j, x in enumerate(v[:5]):
+                    if isinstance(x, (int, float)):
+                        ws.cell(row=r, column=2 + j, value=x)
+            elif kind != "series" and isinstance(v, (int, float)):
+                ws.cell(row=r, column=2, value=v)
         r += 1
     ws.column_dimensions["A"].width = 34
     for col in "BCDEF":

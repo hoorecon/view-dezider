@@ -10931,3 +10931,29 @@ test_plan:
     - "Iter181 — FM WACC toggle (direct/CAPM) + Valuation (IIMB) tab renders build-up & cross-checks"
   test_all: false
   test_priority: "high_first"
+
+#====================================================================================================
+# ITER 182 — Live OCR per-page progress (polling+Mongo job) + pip OCR (rapidocr) + prefilled template
+#====================================================================================================
+agent_communication:
+  - agent: "main"
+    message: |
+      ITER 182 (creds super@test.com/SuperPass2026!).
+      (A) OCR ENGINE SWAP: preview pod reverts apt installs (install-guard), so tesseract binary vanished.
+          Switched OCR to pip-based rapidocr-onnxruntime (no system binary; persists via requirements.txt;
+          works in preview AND prod Docker). numpy pinned <2 (1.26.4) for mediapipe compat; backend imports OK.
+          Removed dead tesseract line from backend/Dockerfile. VERIFIED: image-only PDF -> options extracted.
+      (B) LIVE PROGRESS: new async job flow. POST /api/file-import/decision/{id}/start {upload_id,...} -> {job_id};
+          GET /api/file-import/jobs/{job_id} -> {status,stage,page,total_pages,result,error}. Mongo import_jobs
+          collection (works across workers). Stages: reading/ocr(page X of N)/analyzing/enriching/saving/done.
+          Step2 import now uploads->start->polls(1s), shows progress text (testID step2-file-progress).
+          Old sync endpoint /file-import/decision/{id} still works (shared _process_import). VERIFIED job e2e done.
+      (C) PREFILLED TEMPLATE: GET /api/financial-models/templates/inputs.xlsx?model_id=<id> pre-fills the saved
+          models values into the template. FM Download-template button passes model_id when a model is saved.
+      PENDING: Zoho Books (have playbook; need user creds: Client ID/Secret/Refresh Token + region URLs).
+test_plan:
+  current_focus:
+    - "Iter182 — Live import progress: start+poll job, step2-file-progress shows OCR page X of N; image-PDF options extracted"
+    - "Iter182 — Prefilled FM template (?model_id) + existing import (Excel/GSheet) still parse"
+  test_all: false
+  test_priority: "high_first"

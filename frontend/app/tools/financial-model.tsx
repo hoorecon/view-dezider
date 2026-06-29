@@ -263,7 +263,8 @@ export default function FinancialModelScreen() {
   const downloadTemplate = async () => {
     setImporting('tpl');
     try {
-      await downloadAuthedFile('/financial-models/templates/inputs.xlsx', 'financial-model-template.xlsx', XLSX_MIME);
+      const q = model?.id ? `?model_id=${model.id}` : '';
+      await downloadAuthedFile(`/financial-models/templates/inputs.xlsx${q}`, 'financial-model-template.xlsx', XLSX_MIME);
     } catch (e: any) {
       showAlert('Download failed', e?.message || 'Could not download the template.');
     } finally { setImporting(null); }

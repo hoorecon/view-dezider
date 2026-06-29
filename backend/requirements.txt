@@ -89,8 +89,10 @@ mypy==1.19.1
 mypy_extensions==1.1.0
 numpy==1.26.4
 oauthlib==3.3.1
+onnxruntime==1.27.0
 openai==1.99.9
 opencv-contrib-python==4.11.0.86
+opencv-python==4.13.0.92
 opencv-python-headless==4.11.0.86
 openpyxl==3.1.5
 opt_einsum==3.4.0
@@ -108,6 +110,7 @@ proto-plus==1.27.1
 protobuf==4.25.9
 pyasn1==0.6.2
 pyasn1_modules==0.4.2
+pyclipper==1.4.0
 pycodestyle==2.14.0
 pycparser==3.0
 pydantic==2.12.5
@@ -131,6 +134,7 @@ python-jose==3.5.0
 python-multipart==0.0.22
 pytokens==0.4.1
 PyYAML==6.0.3
+rapidocr-onnxruntime==1.4.4
 razorpay==2.0.1
 referencing==0.37.0
 regex==2026.2.19
@@ -144,6 +148,7 @@ s3transfer==0.16.0
 s5cmd==0.2.0
 scipy==1.17.1
 sentencepiece==0.2.1
+shapely==2.1.2
 shellingham==1.5.4
 six==1.17.0
 slowapi==0.1.9

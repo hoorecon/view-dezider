@@ -1,0 +1,57 @@
+{
+  "summary": "ITER 180 — Backend 9/9 GREEN after fixing one critical P0 bug. FOUND + FIXED: GET /api/financial-models/templates/inputs.xlsx?model_id= queried Mongo by 'owner_user_id' but financial-model documents are stored with 'user_id' (see /app/backend/routes/financial_model.py:331) — the lookup ALWAYS returned None so the template was NEVER pre-filled, regardless of model_id. Replaced with 'user_id' and verified the template now contains the saved assumptions (Year-1 revenue=7,654,321 / Gross margin %=42 / WACC %=19). All async-import-job, sync-import regression and Google-Sheet/Excel template-import flows are GREEN. Frontend FM Inputs tab regression VERIFIED on mobile (390x844): every required testID renders (fm-template-dl, fm-wacc-direct, fm-wacc-capm, fm-import-xls, fm-import-sheet, fm-tab-iimb, fm-tab-pnl, fm-tab-valuation). Step2 file-import progress flow exercised at API level (start → poll → done) and source-verified (testIDs step2-file-pick:Step2.tsx:1051, step2-file-import:1118, step2-file-progress:1123) — could not deep-link into the MyDezider wizard for a live tap-through, but the async pipeline that the progress UI polls is proven working end-to-end via pytest.\n\nBACKEND DETAIL (BASE=https://modal-responsive-fix.preview.emergentagent.com, login → session_token):\n  • Async happy path: chunked upload (filename+chunk_b64 final=true) → POST /api/file-import/decision/{id}/start {filename,upload_id,ai_tier:'fast',crawl_web:false} → 200 {job_id}. Polling GET /api/file-import/jobs/{job_id} progresses through stages and lands on status='done' with result.factors/result.options (small TXT, fast tier, ~6–10s). ✓\n  • Error cases: GET /api/file-import/jobs/does-not-exist-xyz → 404 ✓; POST .../start with no upload_id → 400 ('upload_id is required …') ✓; POST .../start on a fake decision id → 404 ('Decision not found') ✓.\n  • OLD synchronous endpoint regression: POST /api/file-import/decision/{id} {filename,upload_id} still returns 200 with factors/options merged into the decision ✓.\n  • Template (blank): GET /api/financial-models/templates/inputs.xlsx → 200 xlsx, value cells empty ✓.\n  • Template (prefilled — AFTER FIX): GET /api/financial-models/templates/inputs.xlsx?model_id=<own_model_id> → 200 xlsx with the saved assumptions populated (Year-1 revenue=7,654,321, Gross margin %=42, WACC %=19) ✓.\n  • POST /api/financial-models/import-file (filled .xlsx via chunked upload) → 200 {patch:{year1_revenue:9000000, gross_margin_pct:55, wacc_pct:18}, found:[…]} ✓.\n  • POST /api/financial-models/import-sheet {sheet_url:'https://example.com/not-a-sheet'} → 422 'Paste a valid Google Sheets link.' ✓.\n\nFRONTEND DETAIL (mobile 390x844, session_token injected into localStorage):\n  • /tools/financial-model?org=<seeded>&goal=<L1> renders the Inputs tab; every required testID present: fm-template-dl ✓, fm-wacc-direct ✓, fm-wacc-capm ✓, fm-import-xls ✓, fm-import-sheet ✓, fm-tab-iimb ✓, fm-tab-pnl ✓, fm-tab-valuation ✓.\n  • MyDezider deep-link into Step 2: /tools/new-decision?id=…&step=2 redirected to the dashboard (the wizard expects in-app state navigation, not URL params) — could not exercise the file-import dialog through Playwright. Step2.tsx source verified: testID 'step2-file-pick' at line 1051, 'step2-file-import' at 1118, 'step2-file-progress' at 1123 (visible whenever fileProgress text is set during the async job poll). The job-poll API it depends on is proven working (see backend tests).",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "GET /api/financial-models/templates/inputs.xlsx?model_id=",
+        "issue": "[FIXED in this iteration] Mongo lookup used 'owner_user_id' but financial_models docs store 'user_id' — model was never found, so the template was always blank. Fixed in /app/backend/routes/financial_model.py line ~331. Retest now passes.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "MyDezider Step 2 deep-link via URL",
+        "issue": "/tools/new-decision?id=<id>&step=2 redirects to the dashboard instead of opening the wizard at Step 2 — blocks deep-link-based UI tests for the Step 2 file-import progress UI. Not a regression of iter180 features but limits automated coverage.",
+        "affected_testIDs": ["step2-file-pick", "step2-file-import", "step2-file-progress"]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props (RN-Web)", "issue": "Chronic '\"shadow*\" style props are deprecated. Use \"boxShadow\".' — pre-existing, not iter180."},
+      {"component": "props.pointerEvents (RN-Web)", "issue": "Chronic 'props.pointerEvents is deprecated. Use style.pointerEvents' — pre-existing."},
+      {"component": "TouchableWithoutFeedback", "issue": "Chronic 'TouchableWithoutFeedback is deprecated. Please use Pressable.' — pre-existing."},
+      {"component": "Image.style.resizeMode", "issue": "RN-Web warning 'Image: style.resizeMode is deprecated. Please use props.resizeMode.' — pre-existing chronic."},
+      {"component": "expo-notifications web", "issue": "Informational only — 'Listening to push token changes is not yet fully supported on web.'"}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter180_async_import_and_fm_prefill.py",
+    "/app/test_reports/pytest/iter180.xml"
+  ],
+  "action_items": [
+    "(NONE blocking) Main agent: confirm the financial_model.py one-line fix (owner_user_id → user_id) is acceptable. With it, ?model_id= prefill works end-to-end and matches the iter180 spec.",
+    "(optional) Add a deep-link route for MyDezider so QA can open a specific decision at a specific step (e.g. /decision/{id}/step/2). Today /tools/new-decision?id=…&step=2 redirects out, so the live Step 2 file-import progress UI cannot be exercised via deep-link in CI/Playwright. The underlying job-polling pipeline is otherwise proven working at the API layer."
+  ],
+  "critical_code_review_comments": [
+    "[BUG, NOW FIXED] /app/backend/routes/financial_model.py:331 — download_template() queried db.financial_models by 'owner_user_id' but documents are stored with 'user_id' (see create_model at line ~119). This silently broke the entire iter180 'prefill template by model_id' feature: the find_one() always returned None, so values stayed None, so the template was always blank. Replaced with 'user_id' and verified prefill works.",
+    "/app/backend/routes/file_import.py — async job loop is clean: progress() schedules a Mongo update via asyncio.run_coroutine_threadsafe, decision-ownership is checked before the upload_id is enqueued, and final state is always set (done / error). Error mapping (404 for missing decision / missing job, 400 for missing upload_id and assemble failures, 413 for >100MB) matches the spec.",
+    "/app/backend/routes/file_import.py — `_run_import_job` always calls `chunk_upload.discard(upload_id)` in finally even when assemble() succeeds (assemble already discards the assembled session), so the discard is idempotent — keep an eye on this if chunk_upload ever starts raising on double-discard."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter180_async_import_and_fm_prefill.py  (NEW, 9 tests, ALL PASS)",
+    "/app/backend/routes/financial_model.py  (FIX: download_template() Mongo filter owner_user_id → user_id)"
+  ],
+  "success_rate": {
+    "backend": "100% (9/9 pytest after fix; 1 P0 found + fixed during this run)",
+    "frontend": "FM Inputs tab regression 100% (8/8 testIDs verified on mobile 390x844). Step 2 progress UI not live-exercised due to wizard deep-link gap — source wiring verified."
+  },
+  "seed_data_creation": "Created one transient financial-model doc on the pre-seeded Org c7941866-ca40-4a68-af9f-c232cd2c6c32 for super@test.com (TEST_iter180_model). Linked to existing L1 goal dd23b482-9109-4878-a53b-5e24e0af7474. No other persistent seed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Auth POST /api/auth/login returns session_token (40 chars). Chunked-upload chunk payload key is 'chunk_b64' (NOT data_b64); pass final:true on the last chunk. Async file-import flow: /api/uploads/init → /api/uploads/chunk → POST /api/file-import/decision/{id}/start {filename, upload_id, ai_tier, crawl_web, context} → {job_id}; poll GET /api/file-import/jobs/{job_id} every 1–2s until status in {done, error}. Small TXT lands in ~6–10s on the 'fast' tier. Template prefill: GET /api/financial-models/templates/inputs.xlsx?model_id=<own_model_id> returns an xlsx whose value-column cells equal the saved assumptions (verify with openpyxl.load_workbook, look up rows by column-A label substring like 'Year-1 revenue', 'Gross margin', 'WACC'). The frontend wizard does NOT accept ?id=&step=2 deep-link — to test Step 2 UI live you must navigate in-app via the home → decision → step flow.",
+  "rca_of_issue": "Symptom: ?model_id= had no effect — the downloaded template was identical with or without it. RCA: /app/backend/routes/financial_model.py download_template() filtered db.financial_models by {'id': model_id, 'owner_user_id': user['user_id']}, but documents inserted by POST /api/financial-models store the owner under 'user_id' (see create_model). The find_one() therefore never matched, the local `values` stayed None, and fin_template.build_template_xlsx(None) emitted a blank template every time. Mitigation applied: changed 'owner_user_id' → 'user_id'. Verified with a fresh model carrying distinctive assumption values (7,654,321 / 42 / 19) — those exact values now appear in the downloaded xlsx; without model_id the value cells remain empty, confirming there's no accidental leakage."
+}

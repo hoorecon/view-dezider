@@ -14,6 +14,13 @@ import base64
 import io
 import json
 import logging
+import uuid
+from datetime import datetime, timezone
+
+
+def _now():
+    return datetime.now(timezone.utc)
+
 import re
 from typing import Dict, List, Optional, Tuple
 
@@ -58,7 +65,20 @@ def _detect_type(filename: str) -> str:
     return "unknown"
 
 
-def _ocr_pdf_pages(file_bytes: bytes, page_indices: List[int]) -> Dict[int, str]:
+_RAPID_OCR = None
+
+
+def _get_rapidocr():
+    """Lazily build a single RapidOCR engine (pip-only, no system binary — works
+    in both the preview pod and the production Docker image)."""
+    global _RAPID_OCR
+    if _RAPID_OCR is None:
+        from rapidocr_onnxruntime import RapidOCR
+        _RAPID_OCR = RapidOCR()
+    return _RAPID_OCR
+
+
+def _ocr_pdf_pages(file_bytes: bytes, page_indices: List[int], progress=None) -> Dict[int, str]:
     """OCR specific PDF pages (0-based) by rendering them to images.
 
     Used for slides whose text is baked into images (logos, infographics) so the
@@ -70,8 +90,9 @@ def _ocr_pdf_pages(file_bytes: bytes, page_indices: List[int]) -> Dict[int, str]
         return out
     try:
         import fitz  # PyMuPDF
-        import pytesseract
+        import numpy as np
         from PIL import Image
+        ocr = _get_rapidocr()
     except Exception:  # noqa: BLE001 — OCR deps unavailable; skip silently
         return out
     try:
@@ -80,17 +101,24 @@ def _ocr_pdf_pages(file_bytes: bytes, page_indices: List[int]) -> Dict[int, str]
         return out
     try:
         mat = fitz.Matrix(2, 2)  # ~200 DPI for legible OCR
-        for idx in page_indices:
-            if idx < 0 or idx >= doc.page_count:
-                continue
-            try:
-                pix = doc.load_page(idx).get_pixmap(matrix=mat)
-                img = Image.open(io.BytesIO(pix.tobytes("png")))
-                txt = (pytesseract.image_to_string(img, lang="eng") or "").strip()
-                if txt:
-                    out[idx] = txt
-            except Exception:  # noqa: BLE001
-                continue
+        total = len(page_indices)
+        for n, idx in enumerate(page_indices, 1):
+            if 0 <= idx < doc.page_count:
+                try:
+                    pix = doc.load_page(idx).get_pixmap(matrix=mat)
+                    img = Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
+                    res, _ = ocr(np.array(img))
+                    txt = "\n".join(
+                        ln[1] for ln in (res or []) if ln and len(ln) > 1 and ln[1]).strip()
+                    if txt:
+                        out[idx] = txt
+                except Exception:  # noqa: BLE001
+                    pass
+            if progress:
+                try:
+                    progress("ocr", n, total)
+                except Exception:  # noqa: BLE001
+                    pass
     finally:
         doc.close()
     return out
@@ -100,7 +128,7 @@ def _ocr_pdf_pages(file_bytes: bytes, page_indices: List[int]) -> Dict[int, str]
 _MAX_OCR_PAGES = 40
 
 
-def _extract_text(file_bytes: bytes, ftype: str) -> str:
+def _extract_text(file_bytes: bytes, ftype: str, progress=None) -> str:
     """Blocking — call via asyncio.to_thread."""
     if ftype == "pdf":
         from PyPDF2 import PdfReader
@@ -114,7 +142,7 @@ def _extract_text(file_bytes: bytes, ftype: str) -> str:
             if len(t) < 25:
                 ocr_needed.append(i)
         if ocr_needed:
-            ocr_map = _ocr_pdf_pages(file_bytes, ocr_needed[:_MAX_OCR_PAGES])
+            ocr_map = _ocr_pdf_pages(file_bytes, ocr_needed[:_MAX_OCR_PAGES], progress)
             for i, txt in ocr_map.items():
                 page_texts[i] = (page_texts[i] + "\n" + txt).strip() if page_texts[i] else txt
         parts = [f"--- Page {i + 1} ---\n{t}" for i, t in enumerate(page_texts) if t.strip()]
@@ -137,10 +165,15 @@ def _extract_text(file_bytes: bytes, ftype: str) -> str:
             parts.append(f"# Sheet: {name}\n" + df.to_csv(index=False))
         return "\n\n".join(parts)
     if ftype == "image":
+        import numpy as np
         from PIL import Image
-        import pytesseract
-        image = Image.open(io.BytesIO(file_bytes))
-        return pytesseract.image_to_string(image, lang="eng").strip()
+        image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
+        try:
+            ocr = _get_rapidocr()
+            res, _ = ocr(np.array(image))
+            return "\n".join(ln[1] for ln in (res or []) if ln and len(ln) > 1 and ln[1]).strip()
+        except Exception:  # noqa: BLE001
+            return ""
     raise ValueError(f"Unsupported file type: {ftype}")
 
 
@@ -290,8 +323,24 @@ async def import_file_into_decision(
     if len(raw) > MAX_BYTES:
         raise HTTPException(413, "File too large — keep it under 100 MB.")
 
+    return await _process_import(
+        user["user_id"], decision_id, raw, ftype,
+        req.ai_tier, req.context or "", req.crawl_web)
+
+
+async def _process_import(user_id, decision_id, raw, ftype, ai_tier, context, crawl_web, progress=None):
+    """Shared import pipeline: extract (with OCR) → AI factors/options →
+    (optional) web enrich → merge. `progress(stage, page, total)` is optional."""
+    def _p(stage, page=None, total=None):
+        if progress:
+            try:
+                progress(stage, page, total)
+            except Exception:  # noqa: BLE001
+                pass
+
+    _p("reading")
     try:
-        text = await asyncio.to_thread(_extract_text, raw, ftype)
+        text = await asyncio.to_thread(_extract_text, raw, ftype, progress)
     except Exception as e:  # noqa: BLE001
         logger.warning("file extract failed (%s): %s", ftype, str(e)[:160])
         raise HTTPException(422, "Couldn't read text from this file. Try a clearer file.")
@@ -299,9 +348,10 @@ async def import_file_into_decision(
         raise HTTPException(
             422, "No readable text found in the file (an image scan may need clearer text).")
 
-    tier = _tier(req.ai_tier)
+    tier = _tier(ai_tier)
+    _p("analyzing")
     try:
-        factors, options = await _ai_extract(user["user_id"], text, tier, req.context or "")
+        factors, options = await _ai_extract(user_id, text, tier, context or "")
     except ai_wallet.InsufficientCredits as e:
         raise HTTPException(
             402, f"You're out of AI credits (balance {round(e.balance, 2)}) — top up to import.")
@@ -311,26 +361,26 @@ async def import_file_into_decision(
                  "Add a short context note and retry, or use a more structured file.")
 
     enriched: Dict[str, Dict[str, str]] = {}
-    if req.crawl_web and options:
+    if crawl_web and options:
+        _p("enriching")
         try:
-            enriched = await _enrich_web(
-                user["user_id"], factors, options, req.context or "", tier)
+            enriched = await _enrich_web(user_id, factors, options, context or "", tier)
         except ai_wallet.InsufficientCredits:
-            enriched = {}  # enrichment is best-effort — never fail the whole import
+            enriched = {}
         except Exception as e:  # noqa: BLE001
             logger.warning("web enrichment failed: %s", str(e)[:160])
             enriched = {}
 
+    _p("saving")
     factor_dicts = [{"name": n} for n in factors]
     candidates = []
     for o in options:
         uv = enriched.get(o, {})
-        # only keep values whose factor name we actually imported
         uv = {k: v for k, v in uv.items() if k in factors}
         candidates.append({"name": o, "unit_values": uv})
 
     counts = await merge_into_mydezider(
-        user["user_id"], decision_id, factors=factor_dicts, candidates=candidates)
+        user_id, decision_id, factors=factor_dicts, candidates=candidates)
 
     return {
         "mode": "file",
@@ -343,3 +393,85 @@ async def import_file_into_decision(
         "factors": factors,
         "options": options,
     }
+
+
+# ── Background job + polling (live per-page OCR progress) ─────────────────────
+async def _set_job(job_id: str, **fields):
+    fields["updated_at"] = _now()
+    await db.import_jobs.update_one({"id": job_id}, {"$set": fields})
+
+
+async def _run_import_job(job_id, user_id, decision_id, upload_id, ftype, ai_tier, crawl_web, context):
+    loop = asyncio.get_running_loop()
+
+    def progress(stage, page=None, total=None):
+        fut = asyncio.run_coroutine_threadsafe(
+            _set_job(job_id, stage=stage, page=page, total_pages=total), loop)
+        try:
+            fut.result(timeout=5)
+        except Exception:  # noqa: BLE001
+            pass
+
+    await _set_job(job_id, status="running", stage="reading")
+    try:
+        try:
+            _fn, raw = await asyncio.to_thread(chunk_upload.assemble, upload_id)
+        except KeyError:
+            raise HTTPException(404, "Upload session expired — please re-pick the file and retry.")
+        except Exception:  # noqa: BLE001
+            raise HTTPException(400, "Could not assemble the uploaded file.")
+        if not raw:
+            raise HTTPException(400, "The uploaded file is empty.")
+        if len(raw) > MAX_BYTES:
+            raise HTTPException(413, "File too large — keep it under 100 MB.")
+        result = await _process_import(
+            user_id, decision_id, raw, ftype, ai_tier, context, crawl_web, progress=progress)
+        await _set_job(job_id, status="done", stage="done", result=result)
+    except HTTPException as e:
+        await _set_job(job_id, status="error", stage="error", error=str(e.detail))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("import job %s failed: %s", job_id, str(e)[:200])
+        await _set_job(job_id, status="error", stage="error", error="Import failed unexpectedly.")
+    finally:
+        chunk_upload.discard(upload_id)
+
+
+@router.post("/decision/{decision_id}/start")
+async def start_import_job(
+    decision_id: str, req: FileImportRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Kick off an async import and return a job_id to poll for live progress."""
+    decision = await db.decisions.find_one(
+        {"id": decision_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not decision:
+        raise HTTPException(404, "Decision not found")
+    if not has_any_llm():
+        raise HTTPException(400, "AI is not configured on this server.")
+    if not req.upload_id:
+        raise HTTPException(400, "upload_id is required (upload the file in chunks first).")
+    ftype = _detect_type(req.filename or "")
+    if ftype == "doc_legacy":
+        raise HTTPException(400, "Legacy .doc files aren't supported — save as .docx or PDF and retry.")
+    if ftype == "unknown":
+        raise HTTPException(400, "Unsupported file. Use PDF, DOCX, TXT, XLS/XLSX, CSV or an image (JPG/PNG).")
+
+    job_id = uuid.uuid4().hex
+    await db.import_jobs.insert_one({
+        "id": job_id, "user_id": user["user_id"], "decision_id": decision_id,
+        "status": "queued", "stage": "queued", "page": None, "total_pages": None,
+        "result": None, "error": None, "created_at": _now(), "updated_at": _now(),
+    })
+    asyncio.create_task(_run_import_job(
+        job_id, user["user_id"], decision_id, req.upload_id, ftype,
+        req.ai_tier, req.crawl_web, req.context or ""))
+    return {"job_id": job_id}
+
+
+@router.get("/jobs/{job_id}")
+async def get_import_job(job_id: str, user: dict = Depends(get_current_user)):
+    job = await db.import_jobs.find_one(
+        {"id": job_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not job:
+        raise HTTPException(404, "Import job not found")
+    return job

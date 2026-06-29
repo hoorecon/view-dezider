@@ -301,6 +301,7 @@ export default function Step2() {
   const [fileCrawl, setFileCrawl] = useState(false);
   const [fileContext, setFileContext] = useState('');
   const [fileBusy, setFileBusy] = useState(false);
+  const [fileProgress, setFileProgress] = useState('');
   const [picked, setPicked] = useState<PickedFile | null>(null);
 
   const afterMatrixImport = async (data: any) => {
@@ -368,21 +369,49 @@ export default function Step2() {
     }
   };
 
+  const STAGE_LABEL: Record<string, string> = {
+    queued: 'Starting…', running: 'Reading file…', reading: 'Reading file…',
+    analyzing: 'Finding factors & options…', enriching: 'Researching the web…',
+    saving: 'Saving…', done: 'Done',
+  };
+
+  const pollImportJob = (jobId: string): Promise<any> =>
+    new Promise((resolve, reject) => {
+      const started = Date.now();
+      const tick = async () => {
+        try {
+          const { data: job } = await api.get(`/file-import/jobs/${jobId}`);
+          if (job.stage === 'ocr' && job.page && job.total_pages) {
+            setFileProgress(`Reading image slides (OCR) — page ${job.page} of ${job.total_pages}…`);
+          } else {
+            setFileProgress(STAGE_LABEL[job.stage] || 'Working…');
+          }
+          if (job.status === 'done') { resolve(job.result); return; }
+          if (job.status === 'error') { reject(new Error(job.error || 'Import failed')); return; }
+          if (Date.now() - started > 600000) { reject(new Error('Import timed out — please retry')); return; }
+          setTimeout(tick, 1000);
+        } catch (e) { reject(e); }
+      };
+      tick();
+    });
+
   const runFileImport = async () => {
     if (!picked) {
       showAlert('Pick a file', 'Choose a PDF, DOCX, TXT, XLS/CSV or image first.');
       return;
     }
     setFileBusy(true);
+    setFileProgress('Uploading…');
     try {
-      const uploadId = await uploadFileChunked(picked);
-      const { data } = await api.post(`/file-import/decision/${decision.id}`, {
+      const uploadId = await uploadFileChunked(picked, (frac) => setFileProgress(`Uploading… ${Math.round(frac * 100)}%`));
+      const { data: startData } = await api.post(`/file-import/decision/${decision.id}/start`, {
         filename: picked.filename,
         upload_id: uploadId,
         ai_tier: fileTier,
         crawl_web: fileCrawl,
         context: fileContext.trim() || undefined,
-      }, { timeout: 300000 });
+      });
+      const data = await pollImportJob(startData.job_id);
       setFileDialogOpen(false);
       setPicked(null);
       setFileContext('');
@@ -407,6 +436,7 @@ export default function Step2() {
       showAlert('Import failed', typeof msg === 'string' ? msg : JSON.stringify(msg));
     } finally {
       setFileBusy(false);
+      setFileProgress('');
     }
   };
 
@@ -1089,6 +1119,9 @@ export default function Step2() {
                 {fileBusy ? <ActivityIndicator size="small" color="#fff" /> : <Text style={iurl.dlgGoText}>Import</Text>}
               </TouchableOpacity>
             </View>
+            {fileBusy && !!fileProgress && (
+              <Text testID="step2-file-progress" style={{ marginTop: 10, fontSize: 12, color: '#7C3AED', fontWeight: '700', textAlign: 'center' }}>{fileProgress}</Text>
+            )}
           </View>
         </View>
       </Modal>
