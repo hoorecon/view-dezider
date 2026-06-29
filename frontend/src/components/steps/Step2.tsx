@@ -494,11 +494,44 @@ export default function Step2() {
         );
         return;
       }
-      const added = addFactorsFromTemplate(factors);
+      // Re-read the latest decision from the server so we never drop factors that
+      // were just imported from a file (this handler can be invoked from an alert
+      // whose closure captured a pre-import, empty factor list).
+      let existing: any[] = [];
+      try {
+        const fresh = await api.get(`/decisions/${decision.id}`);
+        existing = (fresh.data?.factors || []) as any[];
+      } catch {
+        existing = decision.factors || [];
+      }
+      const existingNames = new Set(existing.map((f: any) => (f.name || '').trim().toLowerCase()));
+      let order = existing.length;
+      const newOnes: any[] = [];
+      for (const tf of factors) {
+        const name = (tf.name || '').trim();
+        if (!name || existingNames.has(name.toLowerCase())) continue;
+        existingNames.add(name.toLowerCase());
+        const priority = tf.priority || 5;
+        newOnes.push({
+          id: `factor_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          name,
+          category: priority >= 7 ? 'primary' : 'secondary',
+          rating: Math.min(priority * 10, 100),
+          order: order++,
+          expected_value: tf.expected_value_pct ?? undefined,
+          factor_type: tf.factor_type === 'quantitative' ? 'quantitative' : 'qualitative',
+          data_type: tf.factor_type === 'quantitative' ? 'numeric' : 'text',
+        });
+      }
+      const added = newOnes.length;
+      if (added > 0) {
+        await saveDecision({ factors: [...existing, ...newOnes] });
+        await fetchDecision();
+      }
       showAlert(
         added > 0 ? 'Factors added' : 'Already covered',
         added > 0
-          ? `Added ${added} AI-suggested factor${added === 1 ? '' : 's'}. Review, reorder or remove any, then continue to Step 3.`
+          ? `Added ${added} AI-suggested factor${added === 1 ? '' : 's'} on top of your existing ${existing.length}. Review, reorder or remove any, then continue to Step 3.`
           : 'These factors are already in your list.'
       );
     } catch (e: any) {

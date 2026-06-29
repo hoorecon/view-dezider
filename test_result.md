@@ -10857,3 +10857,36 @@ test_plan:
     - "Iter178 — Financial Model investor/CMA PDF+Excel downloads from a saved model"
   test_all: false
   test_priority: "high_first"
+
+#====================================================================================================
+# ITER 179 — Fix: file-import only extracted 3/11 options + AI factors wiped imported factors
+#====================================================================================================
+agent_communication:
+  - agent: "main"
+    message: |
+      ITER 179 (creds super@test.com/SuperPass2026!). TWO user-reported bugs fixed:
+
+      BUG A — "Import from File" extracted only 3 of 11 VC options.
+        Root causes addressed: (1) AI text was truncated to 16,000 chars -> raised to 120,000;
+        (2) output caps were 24 options/15 factors -> raised to 60/20; (3) extraction prompt now
+        explicitly says "list EVERY option across ALL pages/slides, do not stop early"; (4) PDF text
+        is now emitted with "--- Page N ---" markers so the model enumerates across pages.
+        VERIFIED: importing a TXT with 11 firms returns options_added=11 (was capping before).
+        KNOWN LIMITATION (told user): VC names baked into slide IMAGES on the early slides cannot be
+        read — that needs OCR (tesseract + pymupdf), which is NOT installed. Offered to add it.
+
+      BUG B — Choosing "add AI factors" after a file import WIPED the imported factors.
+        Root cause: handleFetchBestFactors() in src/components/steps/Step2.tsx merged onto a STALE
+        `decision` captured before the import finished (factors=[]), so saveDecision overwrote with
+        only the AI factors. Fix: it now re-GETs /decisions/{id} for the latest factors, dedupes,
+        appends the new AI factors, saves the FULL merged list, then fetchDecision().
+        Backend /ai/suggest-factors only returns (never writes), so no server change needed.
+
+      Files: backend/routes/file_import.py (extract+prompt+caps), frontend Step2.tsx (factor merge).
+test_plan:
+  current_focus:
+    - "Iter179 — file-import extracts ALL options (verified 11/11 on TXT); image-only PDF slides need OCR (not installed)"
+    - "Iter179 — 'Fetch My Best Factors' after import APPENDS to imported factors, never wipes them"
+  test_all: false
+  test_priority: "high_first"
+

@@ -63,7 +63,12 @@ def _extract_text(file_bytes: bytes, ftype: str) -> str:
     if ftype == "pdf":
         from PyPDF2 import PdfReader
         reader = PdfReader(io.BytesIO(file_bytes))
-        return "\n".join((p.extract_text() or "") for p in reader.pages)
+        parts = []
+        for i, p in enumerate(reader.pages, 1):
+            t = (p.extract_text() or "").strip()
+            if t:
+                parts.append(f"--- Page {i} ---\n{t}")
+        return "\n\n".join(parts)
     if ftype == "docx":
         from docx import Document
         doc = Document(io.BytesIO(file_bytes))
@@ -90,26 +95,36 @@ def _extract_text(file_bytes: bytes, ftype: str) -> str:
 
 
 _EXTRACT_SYS = (
-    "You are extracting decision inputs from a document's text. Identify:\n"
-    "(1) OPTIONS — the alternatives / choices / entities being compared or listed "
-    "(e.g. specific companies, investors / VC firms, products, candidates, vendors, paths).\n"
-    "(2) FACTORS — the criteria / attributes used to compare them "
-    "(e.g. price, stage, sector, ticket size, location, fit).\n"
+    "You are extracting decision inputs from a document's text. Identify two things:\n"
+    "(1) OPTIONS — every alternative / choice / entity being compared or listed "
+    "(e.g. specific companies, investors / VC firms, products, candidates, vendors, paths). "
+    "List EVERY option that appears ANYWHERE in the document — scan ALL pages/slides "
+    "(text is split with '--- Page N ---' markers). Do NOT stop early, summarize, or drop any. "
+    "Include each distinct option exactly once even if it repeats.\n"
+    "(2) FACTORS — the criteria used to compare the options. Include BOTH:\n"
+    "   - factors explicitly mentioned in the document, AND\n"
+    "   - the KEY standard criteria a domain expert would use to compare these specific options, "
+    "inferred from the type of option and the user's context, EVEN IF not spelled out in the text.\n"
+    "   Example: for choosing a VC / investor, strong factors include Fund Size, Fund Type "
+    "(equity / credit / debt), Stage Focus (seed / Series A / growth), Sector Focus, Ticket / Cheque Size, "
+    "Cumulative Portfolio Value, Number of Startups Backed, Value-Add / Support, Geography, "
+    "Follow-on Capacity, Reputation. Adapt the criteria to whatever the options actually are.\n"
+    "Use concise, comparable factor names. Prefer specific, measurable criteria over vague ones.\n"
     'Reply with ONLY compact JSON: {"factors":["..."],"options":["..."]} . '
-    "Use concise names exactly as they appear. Max 15 factors and 24 options. No prose."
+    "Max 20 factors and 60 options. No prose."
 )
 
 
 async def _ai_extract(user_id: str, text: str, tier: str, context: str) -> Tuple[List[str], List[str]]:
     prompt = (f"CONTEXT (what the user wants to decide): {context}\n\n" if context else "")
-    prompt += "DOCUMENT TEXT:\n" + text[:16000]
+    prompt += "DOCUMENT TEXT:\n" + text[:120000]
     out = await metered_chat(
         user_id, system_message=_EXTRACT_SYS, prompt=prompt,
         feature="file_import_extract", session_prefix="fileimp", tier=tier)
     m = re.search(r"\{.*\}", out, re.S)
     data = json.loads(m.group(0)) if m else {}
-    factors = [str(x).strip() for x in (data.get("factors") or []) if str(x).strip()][:15]
-    options = [str(x).strip() for x in (data.get("options") or []) if str(x).strip()][:24]
+    factors = [str(x).strip() for x in (data.get("factors") or []) if str(x).strip()][:20]
+    options = [str(x).strip() for x in (data.get("options") or []) if str(x).strip()][:60]
     return factors, options
 
 
