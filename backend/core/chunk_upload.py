@@ -18,7 +18,7 @@ import uuid
 
 _ROOT = os.path.join(tempfile.gettempdir(), "jelcos_uploads")
 _TTL_SECONDS = 60 * 60                  # discard abandoned sessions after 1 hour
-_MAX_TOTAL_BYTES = 25 * 1024 * 1024     # hard cap on the assembled raw file
+_MAX_TOTAL_BYTES = 105 * 1024 * 1024    # hard cap on the assembled raw file (~100 MB)
 
 
 def _dir(upload_id: str) -> str:

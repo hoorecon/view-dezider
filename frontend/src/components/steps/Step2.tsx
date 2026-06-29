@@ -27,7 +27,7 @@ import { useAiTouchpoint } from '../../utils/aiEstimates';
 import DecisionLinkPicker from '../DecisionLinkPicker';
 import { useRouter } from 'expo-router';
 import { pickAndReadFile, PickedFile } from '../../utils/filePick';
-import { uploadFileChunked } from '../../utils/chunkUpload';
+import { uploadFileChunked, MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from '../../utils/chunkUpload';
 
 const DATA_SOURCE_TYPES = [
   { key: 'webhook', label: 'Webhook/API', icon: 'link-outline', color: '#3B82F6' },
@@ -357,7 +357,12 @@ export default function Step2() {
   const choosePickFile = async () => {
     try {
       const f = await pickAndReadFile();
-      if (f) setPicked(f);
+      if (!f) return;
+      if (f.sizeBytes && f.sizeBytes > MAX_UPLOAD_BYTES) {
+        showAlert('File too large', `That file is ${(f.sizeBytes / 1048576).toFixed(1)} MB. Please choose a file under ${MAX_UPLOAD_LABEL}.`);
+        return;
+      }
+      setPicked(f);
     } catch (e: any) {
       showAlert('Could not read file', e?.message || 'Try another file.');
     }

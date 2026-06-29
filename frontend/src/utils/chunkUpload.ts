@@ -1,6 +1,11 @@
 import api from './api';
 import { PickedFile } from './filePick';
 
+// Largest file we accept. Files are validated against this BEFORE any upload so
+// an oversized pick fails instantly with a clear message instead of mid-transfer.
+export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // 100 MB
+export const MAX_UPLOAD_LABEL = '100 MB';
+
 // Each request carries ~512 KB of base64 text — comfortably below the 1 MB body
 // limit that reverse proxies (nginx default) impose, so large files never 413.
 const CHUNK_CHARS = 512 * 1024;

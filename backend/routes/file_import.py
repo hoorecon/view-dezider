@@ -31,7 +31,7 @@ logger = logging.getLogger("file_import")
 
 router = APIRouter(prefix="/file-import", tags=["File Import"])
 
-MAX_BYTES = 8 * 1024 * 1024  # raw bytes (ingress body cap is 10MB; b64 ~+33%)
+MAX_BYTES = 100 * 1024 * 1024  # raw bytes; large files arrive via chunked upload
 MAX_OPTIONS_ENRICH = 8
 
 
@@ -223,7 +223,7 @@ async def import_file_into_decision(
     if not raw:
         raise HTTPException(400, "The uploaded file is empty.")
     if len(raw) > MAX_BYTES:
-        raise HTTPException(413, "File too large — keep it under 8 MB.")
+        raise HTTPException(413, "File too large — keep it under 100 MB.")
 
     try:
         text = await asyncio.to_thread(_extract_text, raw, ftype)
