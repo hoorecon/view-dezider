@@ -27,6 +27,7 @@ import { useAiTouchpoint } from '../../utils/aiEstimates';
 import DecisionLinkPicker from '../DecisionLinkPicker';
 import { useRouter } from 'expo-router';
 import { pickAndReadFile, PickedFile } from '../../utils/filePick';
+import { uploadFileChunked } from '../../utils/chunkUpload';
 
 const DATA_SOURCE_TYPES = [
   { key: 'webhook', label: 'Webhook/API', icon: 'link-outline', color: '#3B82F6' },
@@ -369,9 +370,10 @@ export default function Step2() {
     }
     setFileBusy(true);
     try {
+      const uploadId = await uploadFileChunked(picked);
       const { data } = await api.post(`/file-import/decision/${decision.id}`, {
         filename: picked.filename,
-        file_b64: picked.base64,
+        upload_id: uploadId,
         ai_tier: fileTier,
         crawl_web: fileCrawl,
         context: fileContext.trim() || undefined,

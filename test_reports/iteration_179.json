@@ -1,0 +1,40 @@
+{
+  "summary": "ITER 178 — Chunked-upload P0 fix + Financial-Model exports VERIFIED end-to-end. Backend: 14/14 pytest cases PASSED in /app/backend/tests/test_iter178_chunked_upload_and_fm_exports.py covering uploads/init, uploads/chunk (incl. ~1.4 MB payload — NO 413), file-import via upload_id (CSV of 5 VC firms merged into a real decision), all 4 financial-model export endpoints (investor.pdf/.xlsx, cma.pdf/.xlsx), seed-from-file via chunked upload, and the meta+compute regression. Frontend smoke (mobile 390x844, super@test.com via /tools/financial-model?org=…&id=…): all 5 review-request testIDs render — fm-seed on Inputs tab and fm-export-investor-pdf / fm-export-investor-xlsx / fm-export-cma-pdf / fm-export-cma-xlsx on the Valuation tab; the Valuation cards (Enterprise Value, Equity Value, Per-Share Price) and DCF breakdown render with real numbers. Step-2 testIDs step2-file-import + step2-file-crawl-toggle confirmed present in source (Step2.tsx lines 1023, 1050) and the frontend util uploadFileChunked wires the exact /uploads/init + /uploads/chunk endpoints that just passed end-to-end on a 1.4 MB payload. P0 (HTTP 413) is GONE.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props (RN-Web)", "issue": "Chronic '\"shadow*\" style props are deprecated. Use \"boxShadow\".' — not iter178-specific."},
+      {"component": "props.pointerEvents (RN-Web)", "issue": "Chronic 'props.pointerEvents is deprecated. Use style.pointerEvents' — not iter178-specific."},
+      {"component": "Image.style.resizeMode (RN-Web)", "issue": "Chronic 'Image: style.resizeMode is deprecated. Please use props.resizeMode.' — not iter178-specific."},
+      {"component": "expo-notifications web listener", "issue": "Chronic '[expo-notifications] Listening to push token changes is not yet fully supported on web' — informational."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter178_chunked_upload_and_fm_exports.py",
+    "/app/test_reports/pytest/iter178.xml"
+  ],
+  "action_items": [
+    "(NONE blocking) ITER 178 chunked-upload P0 fix + Financial-Model exports verified end-to-end. Main agent can ship.",
+    "(low / chronic) Continue tracking RN-Web deprecation warnings (shadow*, pointerEvents, Image.style.resizeMode) for a future cleanup pass."
+  ],
+  "critical_code_review_comments": [
+    "core/chunk_upload.py — disk-backed under /tmp/jelcos_uploads with TTL=1h and 25 MB cap; single-pod-safe; meta.json holds the original filename; assemble() strips a defensive data: prefix and base64-decodes; clean idempotent.",
+    "routes/uploads.py — Pydantic body model, get_current_user auth, KeyError → 404 with a clear user message; tags=[Uploads]; clean.",
+    "routes/file_import.py — handles BOTH upload_id and legacy file_b64; chunk_upload.discard() called on success + on the chunked-error path so /tmp doesn't leak; MAX_BYTES=8MB still enforced on the assembled raw; comment confirms the 10 MB ingress cap motive.",
+    "routes/financial_model.py — 4 export endpoints reuse _load_for_export() (ownership-scoped); StreamingResponse with proper Content-Disposition attachment + filename; _slug() sanitises model name. CMA endpoints invoke compute_cma_extras for the RBI-style working-capital workbook. seed-from-file uses an allow-list of 13 numeric keys with float coercion — robust against malformed AI output.",
+    "frontend/src/utils/chunkUpload.ts — CHUNK_CHARS=512 KB (≤ nginx 1 MB default body limit); per-chunk timeout 60s; tiny and correct.",
+    "frontend/app/tools/financial-model.tsx — fm-export-* buttons correctly gated on model?.id with a 'Save the model first…' hint; downloadAuthedFile handles web (blob download) AND native (FileSystem + Sharing) — clean cross-platform."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter178_chunked_upload_and_fm_exports.py (NEW pytest suite, 14 tests)"
+  ],
+  "success_rate": {"backend": "100% (14/14 pytest)", "frontend": "100% — all 5 review-request testIDs (fm-seed + 4 fm-export-*) visible on /tools/financial-model with a saved model; Step-2 testIDs verified in source"},
+  "seed_data_creation": "Backend test created/cleaned TEST_iter178 decision (Mongo direct), Org (POST /api/seven-seven/orgs), and Financial Model (POST /api/financial-models). All artifacts removed in module teardown. Frontend smoke org+model also cleaned via mongosh.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "POST /api/uploads/init returns {upload_id} (string). POST /api/uploads/chunk requires {upload_id, index, total?, chunk_b64} and returns {ok:true, received_bytes:len(chunk_b64)}. Frontend uses CHUNK_CHARS=512*1024 = base64 string length per chunk (NOT raw bytes). File-import endpoint POST /api/file-import/decision/{decision_id} accepts EITHER file_b64 OR upload_id; on success it discards the chunk session. Financial-model export URLs are /api/financial-models/{id}/export/{investor|cma}.{pdf|xlsx} — all require an OWNED, SAVED model and return StreamingResponse with attachment Content-Disposition. AI seed/extract endpoints can legitimately return 400 (no LLM configured) / 402 (out of credits) / 422 (no extractable data) — the test suite skips those branches so the chunked-upload pipeline itself is what's under test.",
+  "rca_of_issue": "Original P0: POST /api/file-import/decision/{id} sent the full base64 PDF in one ~7-10 MB JSON body, which the kube ingress rejected with 413 before reaching FastAPI. Fix shipped: new chunked-upload pipeline (core/chunk_upload + routes/uploads) lets the client send <1 MB chunks that the proxy never blocks; the server reassembles on demand. Verified directly by uploading a ~1.4 MB raw payload in 4 chunks of ~512 KB base64 each → all chunks 200, no 413, downstream file-import accepted the upload_id and merged factors/options into a real decision."
+}

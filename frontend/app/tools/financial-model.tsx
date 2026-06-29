@@ -18,6 +18,9 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { showAlert } from '../../src/utils/alert';
 import api from '../../src/utils/api';
 import { safeBack } from '../../src/utils/navigation';
+import { downloadAuthedFile } from '../../src/utils/downloadFile';
+import { pickAndReadFile } from '../../src/utils/filePick';
+import { uploadFileChunked } from '../../src/utils/chunkUpload';
 
 const CURRENCY_SYMBOL: Record<string, string> = {
   INR: '₹', USD: '$', EUR: '€', GBP: '£', AED: 'د.إ', SGD: 'S$',
@@ -117,6 +120,8 @@ export default function FinancialModelScreen() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [seeding, setSeeding] = useState(false);
+  const [exporting, setExporting] = useState<string | null>(null);
 
   const sym = CURRENCY_SYMBOL[currency] || '';
   const unit = useMemo(() => (meta?.units || []).find((u: any) => u.id === unitsId) || { divisor: 1, suffix: '' }, [meta, unitsId]);
@@ -205,6 +210,51 @@ export default function FinancialModelScreen() {
     finally { setBusy(false); }
   };
 
+  // ── seed base year + export reports (Phase 2) ──
+  const seedFromExcel = async () => {
+    setSeeding(true);
+    try {
+      const picked = await pickAndReadFile();
+      if (!picked) { setSeeding(false); return; }
+      const uploadId = await uploadFileChunked(picked);
+      const { data } = await api.post('/financial-models/seed-from-file', {
+        filename: picked.filename, upload_id: uploadId, ai_tier: 'fast',
+      }, { timeout: 180000 });
+      const patch = data?.patch || {};
+      if (!Object.keys(patch).length) {
+        showAlert('Nothing found', 'Could not read opening balances from this file.');
+        return;
+      }
+      const next = { ...assumptions, ...patch };
+      setAssumptions(next);
+      setDirty(true);
+      await recalc(next);
+      showAlert('Base year seeded', `Pre-filled ${Object.keys(patch).length} field(s): ${(data.found || []).join(', ')}.`);
+    } catch (e: any) {
+      showAlert('Seed failed', e?.response?.data?.detail || e.message || 'Try a clearer Excel/PDF.');
+    } finally { setSeeding(false); }
+  };
+
+  const exportReport = async (kind: 'investor' | 'cma', fmt: 'pdf' | 'xlsx') => {
+    if (!model?.id) {
+      showAlert('Save first', 'Create or Save the model before exporting a report.');
+      return;
+    }
+    if (dirty) { await saveModel(); }
+    const key = `${kind}-${fmt}`;
+    setExporting(key);
+    try {
+      const mime = fmt === 'pdf'
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const slug = (model.name || 'financial-model').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'financial-model';
+      const filename = `${slug}-${kind}.${fmt}`;
+      await downloadAuthedFile(`/financial-models/${model.id}/export/${kind}.${fmt}`, filename, mime);
+    } catch (e: any) {
+      showAlert('Export failed', e?.message || 'Could not generate the file.');
+    } finally { setExporting(null); }
+  };
+
   // ── renderers ──
   const yearLabels: string[] = computed?.year_labels || ['Y1', 'Y2', 'Y3', 'Y4', 'Y5'];
 
@@ -235,6 +285,15 @@ export default function FinancialModelScreen() {
 
   const renderAssumptions = () => (
     <View>
+      <TouchableOpacity style={s.seedBtn} onPress={seedFromExcel} disabled={seeding} testID="fm-seed">
+        {seeding ? <ActivityIndicator color="#003087" /> : (
+          <>
+            <Ionicons name="cloud-upload-outline" size={16} color="#003087" />
+            <Text style={s.seedTxt}>  Seed base year from Excel</Text>
+          </>
+        )}
+      </TouchableOpacity>
+      <Text style={s.seedHint}>Upload last year's P&amp;L + Balance Sheet (Excel/PDF) — AI fills your opening balances. Uses AI credits.</Text>
       <View style={s.unitBar}>
         <Text style={s.unitBarLabel}>Units</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -340,6 +399,37 @@ export default function FinancialModelScreen() {
             <View key={k as string} style={s.kvRow}><Text style={s.kvK}>{k}</Text><Text style={[s.kvV, { color: '#16A34A' }]}>{val}</Text></View>
           ))}
         </View>
+        <View style={s.kvCard}>
+          <Text style={s.kvTitle}>Investor &amp; Bank Reports</Text>
+          <Text style={s.exportHint}>Download a polished, ready-to-share report. Investor pack = summary + 3 statements + DCF. Bank CMA = RBI-style working-capital workbook.</Text>
+          {!model?.id && <Text style={s.exportWarn}>Save the model first to enable downloads.</Text>}
+          <View style={s.exportGrid}>
+            {([
+              ['Investor PDF', 'investor', 'pdf', 'document-text-outline'],
+              ['Investor Excel', 'investor', 'xlsx', 'grid-outline'],
+              ['Bank CMA PDF', 'cma', 'pdf', 'document-text-outline'],
+              ['Bank CMA Excel', 'cma', 'xlsx', 'grid-outline'],
+            ] as const).map(([label, kind, fmt, icon]) => {
+              const key = `${kind}-${fmt}`;
+              return (
+                <TouchableOpacity
+                  key={key}
+                  style={[s.exportBtn, !model?.id && { opacity: 0.5 }]}
+                  disabled={!!exporting || !model?.id}
+                  onPress={() => exportReport(kind, fmt)}
+                  testID={`fm-export-${key}`}
+                >
+                  {exporting === key ? <ActivityIndicator color="#003087" /> : (
+                    <>
+                      <Ionicons name={icon as any} size={16} color="#003087" />
+                      <Text style={s.exportBtnTxt}>{label}</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
       </View>
     );
   };
@@ -394,7 +484,7 @@ export default function FinancialModelScreen() {
         {tab === 'valuation' && computed && renderValuation()}
         {tab !== 'assumptions' && computed && (
           <Text style={s.disclaimer}>
-            Indicative model for planning. Phase 2 will add bank-ready CMA (Excel) &amp; investor PDF exports; Phase 3 adds Zoho Books / Analytics sync.
+            Indicative model for planning. Use the Valuation tab to download bank-ready CMA (Excel/PDF) &amp; investor reports. Phase 3 will add Zoho Books sync.
           </Text>
         )}
       </ScrollView>
@@ -436,6 +526,14 @@ const s = StyleSheet.create({
   emptyCard: { alignItems: 'center', paddingVertical: 40 },
   emptyTxt: { fontSize: 13, color: '#94A3B8', marginTop: 10, textAlign: 'center' },
   disclaimer: { fontSize: 10.5, color: '#94A3B8', marginTop: 14, lineHeight: 15, fontStyle: 'italic' },
+  seedBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF2FF', borderWidth: 1, borderColor: '#C7D2FE', borderRadius: 10, paddingVertical: 12, marginBottom: 4 },
+  seedTxt: { color: '#003087', fontWeight: '800', fontSize: 13.5 },
+  seedHint: { fontSize: 10.5, color: '#94A3B8', marginBottom: 12, lineHeight: 14 },
+  exportHint: { fontSize: 11, color: '#64748B', marginBottom: 10, lineHeight: 15 },
+  exportWarn: { fontSize: 11, color: '#B45309', marginBottom: 8, fontWeight: '700' },
+  exportGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  exportBtn: { flexGrow: 1, flexBasis: '45%', minWidth: 130, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, paddingVertical: 12 },
+  exportBtnTxt: { color: '#003087', fontWeight: '800', fontSize: 12.5 },
   // valuation
   valCards: { flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' },
   valCard: { flexGrow: 1, flexBasis: '30%', minWidth: 100, borderRadius: 12, padding: 12 },

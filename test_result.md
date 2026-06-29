@@ -10820,3 +10820,40 @@ test_plan:
   test_all: false
   test_priority: "high_first"
 
+
+
+
+#====================================================================================================
+# ITER 178 — Chunked upload (fix 413 on file import) + Financial Model Phase-2 export/seed UI
+#====================================================================================================
+agent_communication:
+  - agent: "main"
+    message: |
+      ITER 178 (creds super@test.com/SuperPass2026!). TWO things:
+
+      (1) BUG FIX — File Import returned HTTP 413 (Request Entity Too Large) for a real PDF because the
+          whole base64 was sent in one JSON POST and the reverse proxy rejected it before FastAPI.
+          NEW chunked-upload pipeline bypasses any proxy body cap:
+            - POST /api/uploads/init {filename} -> {upload_id}
+            - POST /api/uploads/chunk {upload_id, index, total, chunk_b64} -> {ok, received_bytes}
+            - backend core/chunk_upload.py reassembles on disk; consumers pass `upload_id` instead of file_b64.
+          Wired into:
+            - MyDezider Step-2 "Import from File": src/components/steps/Step2.tsx now uploads via
+              src/utils/chunkUpload.ts then POSTs /file-import/decision/{id} with {upload_id,...}.
+            - file_import.py + financial_model.py accept optional upload_id (file_b64 still works for small).
+          Verified by main agent: init+chunk+assemble+AI extract roundtrip returns 200 with full patch.
+
+      (2) FEATURE — Financial Model Phase-2 UI wiring in app/tools/financial-model.tsx:
+            - Inputs tab: "Seed base year from Excel" button (testID fm-seed) -> pick file -> chunk upload ->
+              POST /financial-models/seed-from-file -> merges AI patch into assumptions + recalc.
+            - Valuation tab: "Investor & Bank Reports" card with 4 downloads (testIDs fm-export-investor-pdf,
+              fm-export-investor-xlsx, fm-export-cma-pdf, fm-export-cma-xlsx) via src/utils/downloadFile.ts
+              hitting GET /financial-models/{id}/export/{investor|cma}.{pdf|xlsx}. Requires a SAVED model.
+          NOTE: super@test.com may have 0 Orgs — create an Org + a Financial Model first to test exports.
+test_plan:
+  current_focus:
+    - "Iter178 — Chunked upload: /uploads/init + /uploads/chunk; MyDezider Step-2 file import no longer 413s"
+    - "Iter178 — Financial Model seed-from-file via upload_id pre-fills opening balances + recalc"
+    - "Iter178 — Financial Model investor/CMA PDF+Excel downloads from a saved model"
+  test_all: false
+  test_priority: "high_first"

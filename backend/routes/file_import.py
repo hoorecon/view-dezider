@@ -25,6 +25,7 @@ from core.auth import get_current_user
 from core import ai_wallet
 from core.url_crawl import has_any_llm, metered_chat
 from core.decision_builder import merge_into_mydezider
+from core import chunk_upload
 
 logger = logging.getLogger("file_import")
 
@@ -171,7 +172,8 @@ async def _enrich_web(user_id: str, factors: List[str], options: List[str],
 
 class FileImportRequest(BaseModel):
     filename: str
-    file_b64: str
+    file_b64: Optional[str] = None
+    upload_id: Optional[str] = None
     ai_tier: Optional[str] = "fast"
     crawl_web: bool = False
     context: Optional[str] = ""
@@ -199,9 +201,25 @@ async def import_file_into_decision(
             400, "Unsupported file. Use PDF, DOCX, TXT, XLS/XLSX, CSV or an image (JPG/PNG).")
 
     try:
-        raw = base64.b64decode((req.file_b64 or "").split(",")[-1])
+        if req.upload_id:
+            try:
+                _fn, raw = await asyncio.to_thread(chunk_upload.assemble, req.upload_id)
+            except KeyError:
+                raise HTTPException(404, "Upload session expired — please re-pick the file and retry.")
+            except HTTPException:
+                raise
+            except Exception:  # noqa: BLE001
+                raise HTTPException(400, "Could not assemble the uploaded file.")
+        else:
+            raw = base64.b64decode((req.file_b64 or "").split(",")[-1])
+    except HTTPException:
+        if req.upload_id:
+            chunk_upload.discard(req.upload_id)
+        raise
     except Exception:  # noqa: BLE001
         raise HTTPException(400, "Could not decode the uploaded file.")
+    if req.upload_id:
+        chunk_upload.discard(req.upload_id)
     if not raw:
         raise HTTPException(400, "The uploaded file is empty.")
     if len(raw) > MAX_BYTES:

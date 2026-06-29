@@ -24,6 +24,7 @@ from core import ai_wallet
 from core.fin_model import compute_model, default_assumptions, compute_cma_extras
 from core.url_crawl import has_any_llm, metered_chat
 from core import fin_export
+from core import chunk_upload
 from routes.file_import import _extract_text, _detect_type
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -258,7 +259,8 @@ _SEED_SYS = (
 
 class SeedIn(BaseModel):
     filename: str
-    file_b64: str
+    file_b64: Optional[str] = None
+    upload_id: Optional[str] = None
     ai_tier: Optional[str] = "fast"
 
 
@@ -271,10 +273,20 @@ async def seed_from_file(body: SeedIn, user: dict = Depends(get_current_user)):
     ftype = _detect_type(body.filename or "")
     if ftype in ("unknown", "doc_legacy"):
         raise HTTPException(400, "Use an Excel/CSV/PDF/text financial statements file.")
-    try:
-        raw = base64.b64decode((body.file_b64 or "").split(",")[-1])
-    except Exception:
-        raise HTTPException(400, "Could not decode the uploaded file.")
+    if body.upload_id:
+        try:
+            _fn, raw = await asyncio.to_thread(chunk_upload.assemble, body.upload_id)
+        except KeyError:
+            raise HTTPException(404, "Upload session expired — please re-pick the file and retry.")
+        except Exception:
+            raise HTTPException(400, "Could not assemble the uploaded file.")
+        finally:
+            chunk_upload.discard(body.upload_id)
+    else:
+        try:
+            raw = base64.b64decode((body.file_b64 or "").split(",")[-1])
+        except Exception:
+            raise HTTPException(400, "Could not decode the uploaded file.")
     if not raw:
         raise HTTPException(400, "The uploaded file is empty.")
     try:

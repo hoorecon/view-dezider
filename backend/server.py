@@ -179,6 +179,7 @@ from routes.conflict_breaker import router as conflict_breaker_router
 from routes.pna import router as pna_router
 from routes.life_goals import router as life_goals_router
 from routes.file_import import router as file_import_router
+from routes.uploads import router as uploads_router
 from routes.financial_model import router as financial_model_router
 from routes.lifestyle_designer import router as lifestyle_designer_router
 from routes.ai_assistant import router as ai_assistant_router
@@ -288,6 +289,7 @@ api_router.include_router(conflict_breaker_router)
 api_router.include_router(pna_router)
 api_router.include_router(life_goals_router)
 api_router.include_router(file_import_router)
+api_router.include_router(uploads_router)
 api_router.include_router(financial_model_router)
 api_router.include_router(lifestyle_designer_router)
 api_router.include_router(ai_assistant_router)
