@@ -139,6 +139,9 @@ export default function FinancialModelScreen() {
   const [importing, setImporting] = useState<string | null>(null);
   const [sheetModal, setSheetModal] = useState(false);
   const [sheetUrl, setSheetUrl] = useState('');
+  const [zohoModal, setZohoModal] = useState(false);
+  const [zohoFrom, setZohoFrom] = useState('');
+  const [zohoTo, setZohoTo] = useState('');
 
   const sym = CURRENCY_SYMBOL[currency] || '';
   const unit = useMemo(() => (meta?.units || []).find((u: any) => u.id === unitsId) || { divisor: 1, suffix: '' }, [meta, unitsId]);
@@ -301,10 +304,31 @@ export default function FinancialModelScreen() {
 
   const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
+  const lastCompletedFY = (): { from: string; to: string } => {
+    const now = new Date();
+    const endY = (now.getMonth() + 1) >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+    return { from: `${endY - 1}-04-01`, to: `${endY}-03-31` };
+  };
+
+  const openZohoModal = () => {
+    if (!zohoFrom || !zohoTo) {
+      const fy = lastCompletedFY();
+      setZohoFrom(fy.from); setZohoTo(fy.to);
+    }
+    setZohoModal(true);
+  };
+
   const syncZoho = async () => {
+    if (!zohoFrom.trim() || !zohoTo.trim()) {
+      showAlert('Pick dates', 'Enter a From and To date (YYYY-MM-DD).');
+      return;
+    }
     setImporting('zoho');
     try {
-      const { data } = await api.post('/financial-models/zoho-sync', {}, { timeout: 120000 });
+      const { data } = await api.post('/financial-models/zoho-sync', {
+        from_date: zohoFrom.trim(), to_date: zohoTo.trim(), as_of: zohoTo.trim(),
+      }, { timeout: 120000 });
+      setZohoModal(false);
       await applyPatch(data?.patch || {}, data?.found || []);
     } catch (e: any) {
       showAlert('Zoho sync failed', e?.response?.data?.detail || e.message || 'Could not reach Zoho Books.');
@@ -382,7 +406,7 @@ export default function FinancialModelScreen() {
         </TouchableOpacity>
       </View>
       <Text style={s.seedHint}>Download the template, fill it, then import (Excel or Google Sheet) — no AI credits used.</Text>
-      <TouchableOpacity style={s.zohoBtn} onPress={syncZoho} disabled={!!importing} testID="fm-zoho-sync">
+      <TouchableOpacity style={s.zohoBtn} onPress={openZohoModal} disabled={!!importing} testID="fm-zoho-sync">
         {importing === 'zoho' ? <ActivityIndicator color="#FFF" /> : (
           <>
             <Ionicons name="sync-outline" size={16} color="#FFF" />
@@ -688,6 +712,41 @@ export default function FinancialModelScreen() {
               </TouchableOpacity>
               <TouchableOpacity style={s.modalGo} onPress={importFromSheet} disabled={importing === 'sheet'} testID="fm-sheet-import">
                 {importing === 'sheet' ? <ActivityIndicator color="#FFF" /> : <Text style={s.modalGoTxt}>Import</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal visible={zohoModal} transparent animationType="fade" onRequestClose={() => setZohoModal(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.modalWrap}>
+          <View style={s.modalCard}>
+            <Text style={s.modalTitle}>Sync from Zoho Books</Text>
+            <Text style={s.modalHint}>Pick the period to pull P&amp;L + Balance Sheet for. Defaults to your last completed financial year.</Text>
+            <View style={s.waccBar}>
+              {[0, 1, 2].map((back) => {
+                const now = new Date();
+                const baseEndY = (now.getMonth() + 1) >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+                const endY = baseEndY - back;
+                const from = `${endY - 1}-04-01`; const to = `${endY}-03-31`;
+                const on = zohoFrom === from && zohoTo === to;
+                return (
+                  <TouchableOpacity key={back} style={[s.waccChip, on && s.waccChipOn]} onPress={() => { setZohoFrom(from); setZohoTo(to); }} testID={`fm-zoho-fy-${endY}`}>
+                    <Text style={[s.waccChipTxt, on && s.waccChipTxtOn]}>{`FY${endY - 1}-${String(endY).slice(2)}`}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <Text style={s.modalHint}>From (YYYY-MM-DD)</Text>
+            <TextInput style={s.modalInput} value={zohoFrom} onChangeText={setZohoFrom} placeholder="2025-04-01" placeholderTextColor="#94A3B8" autoCapitalize="none" testID="fm-zoho-from" />
+            <Text style={s.modalHint}>To (YYYY-MM-DD)</Text>
+            <TextInput style={s.modalInput} value={zohoTo} onChangeText={setZohoTo} placeholder="2026-03-31" placeholderTextColor="#94A3B8" autoCapitalize="none" testID="fm-zoho-to" />
+            <View style={s.modalBtns}>
+              <TouchableOpacity style={s.modalCancel} onPress={() => setZohoModal(false)}>
+                <Text style={s.modalCancelTxt}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.modalGo, { backgroundColor: '#0F9D58' }]} onPress={syncZoho} disabled={importing === 'zoho'} testID="fm-zoho-go">
+                {importing === 'zoho' ? <ActivityIndicator color="#FFF" /> : <Text style={s.modalGoTxt}>Sync</Text>}
               </TouchableOpacity>
             </View>
           </View>
