@@ -10,7 +10,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput,
-  ActivityIndicator, useWindowDimensions,
+  ActivityIndicator, useWindowDimensions, Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -65,6 +65,20 @@ const SECTIONS: { title: string; icon: string; fields: { key: string; label: str
     { key: 'wacc_pct', label: 'WACC / discount rate %', type: 'num' },
     { key: 'terminal_growth_pct', label: 'Terminal growth %', type: 'num' },
   ] },
+  { title: 'WACC build-up (CAPM) — used when WACC mode = CAPM', icon: 'trending-up', fields: [
+    { key: 'risk_free_pct', label: 'Risk-free rate %', type: 'num' },
+    { key: 'beta', label: 'Beta', type: 'num' },
+    { key: 'market_risk_premium_pct', label: 'Market risk premium %', type: 'num' },
+    { key: 'cost_of_debt_pct', label: 'Cost of debt % (pre-tax)', type: 'num' },
+    { key: 'market_cap', label: 'Market cap (0 = use price×shares)', type: 'num' },
+    { key: 'share_price', label: 'Share price (if no market cap)', type: 'num' },
+    { key: 'debt_weight_pct', label: 'Debt weight % (if no market cap)', type: 'num' },
+  ] },
+  { title: 'Market-EV cross-checks (IIMB)', icon: 'business', fields: [
+    { key: 'minority_interest', label: 'Minority (non-controlling) interest', type: 'num' },
+    { key: 'preference_capital', label: 'Preference capital', type: 'num' },
+    { key: 'non_operating_assets', label: 'Non-operating assets', type: 'num' },
+  ] },
 ];
 
 const PNL_ROWS = [
@@ -96,9 +110,9 @@ const RATIO_ROWS: [string, string, boolean][] = [
   ['creditor_days', 'Creditor Days', false],
 ];
 
-const TABS = ['assumptions', 'pnl', 'bs', 'cf', 'ratios', 'valuation'] as const;
+const TABS = ['assumptions', 'pnl', 'bs', 'cf', 'ratios', 'valuation', 'iimb'] as const;
 const TAB_LABEL: Record<string, string> = {
-  assumptions: 'Inputs', pnl: 'P&L', bs: 'Balance Sheet', cf: 'Cash Flow', ratios: 'Ratios', valuation: 'Valuation',
+  assumptions: 'Inputs', pnl: 'P&L', bs: 'Balance Sheet', cf: 'Cash Flow', ratios: 'Ratios', valuation: 'Valuation', iimb: 'Valuation (IIMB)',
 };
 
 export default function FinancialModelScreen() {
@@ -122,6 +136,9 @@ export default function FinancialModelScreen() {
   const [dirty, setDirty] = useState(false);
   const [seeding, setSeeding] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
+  const [importing, setImporting] = useState<string | null>(null);
+  const [sheetModal, setSheetModal] = useState(false);
+  const [sheetUrl, setSheetUrl] = useState('');
 
   const sym = CURRENCY_SYMBOL[currency] || '';
   const unit = useMemo(() => (meta?.units || []).find((u: any) => u.id === unitsId) || { divisor: 1, suffix: '' }, [meta, unitsId]);
@@ -235,6 +252,54 @@ export default function FinancialModelScreen() {
     } finally { setSeeding(false); }
   };
 
+  const applyPatch = async (patch: any, found: string[]) => {
+    const next = { ...assumptions, ...patch };
+    setAssumptions(next);
+    setDirty(true);
+    await recalc(next);
+    showAlert('Imported', `Filled ${found.length} field(s): ${found.join(', ')}.`);
+  };
+
+  const downloadTemplate = async () => {
+    setImporting('tpl');
+    try {
+      await downloadAuthedFile('/financial-models/templates/inputs.xlsx', 'financial-model-template.xlsx', XLSX_MIME);
+    } catch (e: any) {
+      showAlert('Download failed', e?.message || 'Could not download the template.');
+    } finally { setImporting(null); }
+  };
+
+  const importFromExcel = async () => {
+    setImporting('xls');
+    try {
+      const picked = await pickAndReadFile();
+      if (!picked) { setImporting(null); return; }
+      if (picked.sizeBytes && picked.sizeBytes > MAX_UPLOAD_BYTES) {
+        showAlert('File too large', `Please choose a file under ${MAX_UPLOAD_LABEL}.`);
+        return;
+      }
+      const uploadId = await uploadFileChunked(picked);
+      const { data } = await api.post('/financial-models/import-file', { filename: picked.filename, upload_id: uploadId }, { timeout: 120000 });
+      await applyPatch(data?.patch || {}, data?.found || []);
+    } catch (e: any) {
+      showAlert('Import failed', e?.response?.data?.detail || e.message || 'Use the provided template.');
+    } finally { setImporting(null); }
+  };
+
+  const importFromSheet = async () => {
+    if (!sheetUrl.trim()) return;
+    setImporting('sheet');
+    try {
+      const { data } = await api.post('/financial-models/import-sheet', { sheet_url: sheetUrl.trim() }, { timeout: 120000 });
+      setSheetModal(false); setSheetUrl('');
+      await applyPatch(data?.patch || {}, data?.found || []);
+    } catch (e: any) {
+      showAlert('Import failed', e?.response?.data?.detail || e.message || 'Check the sheet link & sharing.');
+    } finally { setImporting(null); }
+  };
+
+  const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
   const exportReport = async (kind: 'investor' | 'cma', fmt: 'pdf' | 'xlsx') => {
     if (!model?.id) {
       showAlert('Save first', 'Create or Save the model before exporting a report.');
@@ -293,7 +358,32 @@ export default function FinancialModelScreen() {
           </>
         )}
       </TouchableOpacity>
-      <Text style={s.seedHint}>Upload last year's P&amp;L + Balance Sheet (Excel/PDF) — AI fills your opening balances. Uses AI credits.</Text>
+      <Text style={s.seedHint}>Upload last year&apos;s P&amp;L + Balance Sheet (Excel/PDF) — AI fills your opening balances. Uses AI credits.</Text>
+      <View style={s.impRow}>
+        <TouchableOpacity style={s.impBtn} onPress={downloadTemplate} disabled={!!importing} testID="fm-template-dl">
+          {importing === 'tpl' ? <ActivityIndicator color="#003087" /> : <><Ionicons name="download-outline" size={15} color="#003087" /><Text style={s.impTxt}>Template</Text></>}
+        </TouchableOpacity>
+        <TouchableOpacity style={s.impBtn} onPress={importFromExcel} disabled={!!importing} testID="fm-import-xls">
+          {importing === 'xls' ? <ActivityIndicator color="#003087" /> : <><Ionicons name="grid-outline" size={15} color="#003087" /><Text style={s.impTxt}>Import Excel</Text></>}
+        </TouchableOpacity>
+        <TouchableOpacity style={s.impBtn} onPress={() => setSheetModal(true)} disabled={!!importing} testID="fm-import-sheet">
+          {importing === 'sheet' ? <ActivityIndicator color="#003087" /> : <><Ionicons name="logo-google" size={15} color="#003087" /><Text style={s.impTxt}>Google Sheet</Text></>}
+        </TouchableOpacity>
+      </View>
+      <Text style={s.seedHint}>Download the template, fill it, then import (Excel or Google Sheet) — no AI credits used.</Text>
+      <View style={s.waccBar}>
+        <Text style={s.waccLabel}>WACC source</Text>
+        {(['direct', 'capm'] as const).map((m) => (
+          <TouchableOpacity
+            key={m}
+            style={[s.waccChip, (assumptions.wacc_mode || 'direct') === m && s.waccChipOn]}
+            onPress={() => setField('wacc_mode', m)}
+            testID={`fm-wacc-${m}`}
+          >
+            <Text style={[s.waccChipTxt, (assumptions.wacc_mode || 'direct') === m && s.waccChipTxtOn]}>{m === 'direct' ? 'Direct WACC %' : 'CAPM build-up'}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
       <View style={s.unitBar}>
         <Text style={s.unitBarLabel}>Units</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -434,6 +524,74 @@ export default function FinancialModelScreen() {
     );
   };
 
+  const renderIIMB = () => {
+    const i = computed?.iimb || {};
+    return (
+      <View>
+        <View style={s.valCards}>
+          <View style={[s.valCard, { backgroundColor: '#003087' }]}>
+            <Text style={s.valCardLabel}>Enterprise Value</Text>
+            <Text style={s.valCardNum}>{sym}{fmt(i.enterprise_value)}</Text>
+          </View>
+          <View style={[s.valCard, { backgroundColor: '#16A34A' }]}>
+            <Text style={s.valCardLabel}>Equity Value</Text>
+            <Text style={s.valCardNum}>{sym}{fmt(i.equity_value)}</Text>
+          </View>
+          <View style={[s.valCard, { backgroundColor: '#7C3AED' }]}>
+            <Text style={s.valCardLabel}>Per-Share</Text>
+            <Text style={s.valCardNum}>{sym}{(i.per_share ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</Text>
+          </View>
+        </View>
+        <View style={s.kvCard}>
+          <Text style={s.kvTitle}>WACC build-up (CAPM)</Text>
+          {[
+            ['WACC source', i.wacc_mode === 'capm' ? 'CAPM build-up' : 'Direct %'],
+            ['Cost of Equity (Ke = Rf + β·MRP)', `${i.cost_of_equity_pct ?? 0}%`],
+            ['Cost of Debt (pre-tax)', `${i.cost_of_debt_pre_pct ?? 0}%`],
+            ['Cost of Debt (after tax)', `${i.cost_of_debt_after_tax_pct ?? 0}%`],
+            ['Equity weight (E/V)', `${i.equity_weight_pct ?? 0}%`],
+            ['Debt weight (D/V)', `${i.debt_weight_pct ?? 0}%`],
+            ['WACC (CAPM)', `${i.wacc_capm_pct ?? 0}%`],
+            ['WACC used in DCF', `${i.wacc_used_pct ?? 0}%`],
+          ].map(([k, val]) => (
+            <View key={k as string} style={s.kvRow}><Text style={s.kvK}>{k}</Text><Text style={s.kvV}>{val}</Text></View>
+          ))}
+        </View>
+        <View style={s.kvCard}>
+          <Text style={s.kvTitle}>NOPLAT → FCFF bridge</Text>
+          {renderTable([
+            ['noplat', 'NOPLAT = EBIT×(1−tax)'], ['depreciation', '(+) Depreciation'],
+            ['gross_cash_flow', '(=) Gross Cash Flow'], ['capex', '(−) Capex'],
+            ['increase_in_nwc', '(−) Increase in NWC'], ['fcff', '(=) FCFF'], ['pv_fcff', 'PV of FCFF'],
+          ], i)}
+          {[
+            ['Sum of PV (FCFF)', fmt(i.sum_pv_fcff)],
+            ['Terminal Value', fmt(i.terminal_value)],
+            ['PV of Terminal Value', fmt(i.pv_terminal)],
+            ['(=) Enterprise Value', fmt(i.enterprise_value)],
+            ['Less: Net Debt', fmt(i.net_debt)],
+            ['Less: Minority + Preference', fmt((i.minority_interest || 0) + (i.preference_capital || 0))],
+            ['Add: Non-operating assets', fmt(i.non_operating_assets)],
+            ['(=) Equity Value', fmt(i.equity_value)],
+          ].map(([k, val]) => (
+            <View key={k as string} style={s.kvRow}><Text style={s.kvK}>{k}</Text><Text style={s.kvV}>{sym}{val}</Text></View>
+          ))}
+        </View>
+        <View style={s.kvCard}>
+          <Text style={s.kvTitle}>Market-EV cross-checks</Text>
+          {[
+            ['Market cap', fmt(i.market_cap)],
+            ['Simple EV (MktCap + Net Debt)', fmt(i.simple_market_ev)],
+            ['Fuller EV (+ Minority + Pref − Non-op)', fmt(i.fuller_market_ev)],
+          ].map(([k, val]) => (
+            <View key={k as string} style={s.kvRow}><Text style={s.kvK}>{k}</Text><Text style={[s.kvV, { color: '#7C3AED' }]}>{sym}{val}</Text></View>
+          ))}
+          <Text style={s.exportHint}>Per IIMB Valuation Course: DCF Enterprise Value vs market-based EV cross-checks. Switch WACC source in the Inputs tab.</Text>
+        </View>
+      </View>
+    );
+  };
+
   if (loading) return <SafeAreaView style={s.wrap}><ActivityIndicator style={{ marginTop: 80 }} color="#003087" /></SafeAreaView>;
 
   return (
@@ -482,12 +640,39 @@ export default function FinancialModelScreen() {
         {tab === 'cf' && computed && renderTable(CF_ROWS, computed.cash_flow)}
         {tab === 'ratios' && computed && renderTable(RATIO_ROWS, computed.ratios)}
         {tab === 'valuation' && computed && renderValuation()}
+        {tab === 'iimb' && computed && renderIIMB()}
         {tab !== 'assumptions' && computed && (
           <Text style={s.disclaimer}>
             Indicative model for planning. Use the Valuation tab to download bank-ready CMA (Excel/PDF) &amp; investor reports. Phase 3 will add Zoho Books sync.
           </Text>
         )}
       </ScrollView>
+
+      <Modal visible={sheetModal} transparent animationType="fade" onRequestClose={() => setSheetModal(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.modalWrap}>
+          <View style={s.modalCard}>
+            <Text style={s.modalTitle}>Import from Google Sheet</Text>
+            <Text style={s.modalHint}>Fill the downloaded template in Google Sheets, then paste its link. Public links work instantly; private sheets use your connected Google account.</Text>
+            <TextInput
+              style={s.modalInput}
+              value={sheetUrl}
+              onChangeText={setSheetUrl}
+              placeholder="https://docs.google.com/spreadsheets/d/…"
+              placeholderTextColor="#94A3B8"
+              autoCapitalize="none"
+              testID="fm-sheet-url"
+            />
+            <View style={s.modalBtns}>
+              <TouchableOpacity style={s.modalCancel} onPress={() => { setSheetModal(false); setSheetUrl(''); }}>
+                <Text style={s.modalCancelTxt}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.modalGo} onPress={importFromSheet} disabled={importing === 'sheet'} testID="fm-sheet-import">
+                {importing === 'sheet' ? <ActivityIndicator color="#FFF" /> : <Text style={s.modalGoTxt}>Import</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -508,6 +693,25 @@ const s = StyleSheet.create({
   dirtyBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#FEF3C7', paddingVertical: 7 },
   dirtyTxt: { color: '#92400E', fontSize: 12, fontWeight: '700' },
   unitBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  impRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  impBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 9, paddingVertical: 10 },
+  impTxt: { color: '#003087', fontWeight: '800', fontSize: 11.5 },
+  waccBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, marginBottom: 10 },
+  waccLabel: { fontSize: 12, fontWeight: '700', color: '#64748B' },
+  waccChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#CBD5E1' },
+  waccChipOn: { backgroundColor: '#003087', borderColor: '#003087' },
+  waccChipTxt: { fontSize: 12, fontWeight: '700', color: '#64748B' },
+  waccChipTxtOn: { color: '#FFF' },
+  modalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 22 },
+  modalCard: { backgroundColor: '#FFF', borderRadius: 14, padding: 18 },
+  modalTitle: { fontSize: 16, fontWeight: '800', color: '#003087' },
+  modalHint: { fontSize: 11.5, color: '#64748B', marginTop: 6, lineHeight: 16 },
+  modalInput: { borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 9, paddingHorizontal: 12, paddingVertical: 10, marginTop: 12, fontSize: 13, color: '#0F172A' },
+  modalBtns: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  modalCancel: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 9, backgroundColor: '#F1F5F9' },
+  modalCancelTxt: { color: '#64748B', fontWeight: '800', fontSize: 13 },
+  modalGo: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 9, backgroundColor: '#003087' },
+  modalGoTxt: { color: '#FFF', fontWeight: '800', fontSize: 13 },
   unitBarLabel: { fontSize: 12, fontWeight: '800', color: '#475569' },
   unitChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', marginRight: 6, backgroundColor: '#FFF' },
   unitChipOn: { backgroundColor: '#003087', borderColor: '#003087' },

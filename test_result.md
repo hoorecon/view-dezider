@@ -10906,3 +10906,28 @@ agent_communication:
       TVS Capital] + factors [Fund Size, Fund Type, Stage Focus, Sector Focus, Cumulative
       Portfolio Value, Number of Startups Backed, ...]. PROD NOTE: user must redeploy (sync.sh
       rebuilds backend image incl. tesseract); Cloudflare Pages rebuilds frontend.
+
+#====================================================================================================
+# ITER 181 — Financial Model: template+import (Excel/GSheet) + IIMB Valuation tab + CAPM WACC
+#====================================================================================================
+agent_communication:
+  - agent: "main"
+    message: |
+      ITER 181 (creds super@test.com/SuperPass2026!). Added per IIMB Valuation Course request:
+      (1) Inputs tab: Download template (GET /financial-models/templates/inputs.xlsx), Import filled
+          Excel (POST /financial-models/import-file, chunked upload_id, deterministic parse NO AI),
+          Import from Google Sheet (POST /financial-models/import-sheet {sheet_url}; public via CSV,
+          private via users own connected Google account). testIDs: fm-template-dl, fm-import-xls,
+          fm-import-sheet, fm-sheet-url, fm-sheet-import.
+      (2) WACC source toggle (fm-wacc-direct / fm-wacc-capm). New CAPM + market-EV input fields in Inputs.
+      (3) New Valuation (IIMB) tab: WACC build-up (Ke=Rf+beta*MRP, WACC=we*Ke+wd*Kd(1-t)), NOPLAT->FCFF
+          bridge, EV->Equity, and Simple/Fuller market-EV cross-checks. computed.iimb block.
+      VERIFIED by main agent: template GET 200, import-file parses series+scalars 200, compute iimb +
+      CAPM WACC correct. EV/DCF core already matched IIMB.
+      NOT DONE (deferred, told user): live per-page OCR progress (option 1b) — needs polling/job infra.
+test_plan:
+  current_focus:
+    - "Iter181 — FM Inputs: template download + Import Excel (deterministic) + Import Google Sheet (public/private)"
+    - "Iter181 — FM WACC toggle (direct/CAPM) + Valuation (IIMB) tab renders build-up & cross-checks"
+  test_all: false
+  test_priority: "high_first"

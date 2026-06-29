@@ -88,6 +88,19 @@ def default_assumptions() -> Dict[str, Any]:
         # ── Valuation ──
         "wacc_pct": 18,
         "terminal_growth_pct": 4,
+        # ── WACC build-up (CAPM) — used when wacc_mode == "capm" ──
+        "wacc_mode": "direct",          # "direct" | "capm"
+        "risk_free_pct": 7,
+        "beta": 1.1,
+        "market_risk_premium_pct": 6,
+        "cost_of_debt_pct": 12,
+        "market_cap": 0,                # 0 → derive from share_price × shares
+        "share_price": 0,
+        "debt_weight_pct": 30,          # used only when no market cap is available
+        # ── IIMB market-EV cross-checks ──
+        "minority_interest": 0,
+        "preference_capital": 0,
+        "non_operating_assets": 0,
     }
 
 
@@ -250,8 +263,28 @@ def compute_model(assumptions: Dict[str, Any], projection_years: int = 5,
     dscr_vals = [d for d in dscr if d > 0]
     dscr_avg = sum(dscr_vals) / len(dscr_vals) if dscr_vals else 0.0
 
+    # ── WACC (direct % or CAPM build-up per IIMB) ──
+    cost_of_equity = (_num(a.get("risk_free_pct"), 0) + _num(a.get("beta"), 0) * _num(a.get("market_risk_premium_pct"), 0)) / 100.0
+    kd_pre = _num(a.get("cost_of_debt_pct"), 0) / 100.0
+    cost_of_debt_at = kd_pre * (1 - tax_rate)
+    mkt_cap = _num(a.get("market_cap"), 0)
+    if mkt_cap <= 0:
+        sp = _num(a.get("share_price"), 0)
+        mkt_cap = sp * shares if (sp > 0 and shares) else 0.0
+    if mkt_cap > 0:
+        _tot = mkt_cap + open_debt
+        we = mkt_cap / _tot if _tot else 1.0
+        wd = open_debt / _tot if _tot else 0.0
+    else:
+        wd = _num(a.get("debt_weight_pct"), 0) / 100.0
+        we = 1 - wd
+    wacc_capm = we * cost_of_equity + wd * cost_of_debt_at
+    if str(a.get("wacc_mode") or "direct").lower() == "capm":
+        wacc = wacc_capm
+    else:
+        wacc = _num(a.get("wacc_pct"), 0) / 100.0
+
     # ── DCF valuation (FCFF) ──
-    wacc = _num(a.get("wacc_pct"), 0) / 100.0
     tg = _num(a.get("terminal_growth_pct"), 0) / 100.0
     pv_fcff = []
     for i in range(n):
@@ -267,6 +300,18 @@ def compute_model(assumptions: Dict[str, Any], projection_years: int = 5,
     net_debt = open_debt - open_cash
     equity_value = enterprise_value - net_debt
     per_share = equity_value / shares if shares else 0.0
+
+    # ── IIMB valuation view: NOPLAT→FCFF bridge, WACC build-up, market-EV cross-checks ──
+    minority = _num(a.get("minority_interest"), 0)
+    pref_cap = _num(a.get("preference_capital"), 0)
+    non_op = _num(a.get("non_operating_assets"), 0)
+    noplat_l = [ebit[i] * (1 - tax_rate) for i in range(n)]
+    gross_cf_l = [noplat_l[i] + depreciation[i] for i in range(n)]
+    delta_wc_l = [noplat_l[i] + depreciation[i] - capex[i] - fcff[i] for i in range(n)]
+    simple_market_ev = mkt_cap + net_debt
+    fuller_market_ev = mkt_cap + open_debt + minority + pref_cap - open_cash - non_op
+    equity_value_iimb = enterprise_value - net_debt - minority - pref_cap + non_op
+    per_share_iimb = equity_value_iimb / shares if shares else 0.0
 
     rnd = lambda lst: [_r(x) for x in lst]  # noqa: E731
     rnd2 = lambda lst: [_r(x, 2) for x in lst]  # noqa: E731
@@ -307,6 +352,24 @@ def compute_model(assumptions: Dict[str, Any], projection_years: int = 5,
             "enterprise_value": _r(enterprise_value), "net_debt": _r(net_debt),
             "equity_value": _r(equity_value), "per_share": _r(per_share, 2),
             "wacc_pct": _r(wacc * 100, 2), "terminal_growth_pct": _r(tg * 100, 2),
+        },
+        "iimb": {
+            "wacc_mode": str(a.get("wacc_mode") or "direct").lower(),
+            "cost_of_equity_pct": _r(cost_of_equity * 100, 2),
+            "cost_of_debt_pre_pct": _r(kd_pre * 100, 2),
+            "cost_of_debt_after_tax_pct": _r(cost_of_debt_at * 100, 2),
+            "equity_weight_pct": _r(we * 100, 2), "debt_weight_pct": _r(wd * 100, 2),
+            "wacc_capm_pct": _r(wacc_capm * 100, 2), "wacc_used_pct": _r(wacc * 100, 2),
+            "noplat": rnd(noplat_l), "depreciation": rnd(depreciation),
+            "gross_cash_flow": rnd(gross_cf_l), "capex": rnd(capex),
+            "increase_in_nwc": rnd(delta_wc_l), "fcff": rnd(fcff), "pv_fcff": rnd(pv_fcff),
+            "sum_pv_fcff": _r(sum_pv), "terminal_value": _r(terminal_value),
+            "pv_terminal": _r(pv_terminal), "enterprise_value": _r(enterprise_value),
+            "net_debt": _r(net_debt), "market_cap": _r(mkt_cap),
+            "minority_interest": _r(minority), "preference_capital": _r(pref_cap),
+            "non_operating_assets": _r(non_op),
+            "simple_market_ev": _r(simple_market_ev), "fuller_market_ev": _r(fuller_market_ev),
+            "equity_value": _r(equity_value_iimb), "per_share": _r(per_share_iimb, 2),
         },
         "summary": {
             "dscr_avg": _r(dscr_avg, 2),

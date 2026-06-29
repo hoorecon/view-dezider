@@ -25,6 +25,10 @@ from core.fin_model import compute_model, default_assumptions, compute_cma_extra
 from core.url_crawl import has_any_llm, metered_chat
 from core import fin_export
 from core import chunk_upload
+from core import fin_template
+from core import matrix_import as mx
+from core import google_sheets as gs
+from fastapi.responses import Response
 from routes.file_import import _extract_text, _detect_type
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -316,3 +320,86 @@ async def seed_from_file(body: SeedIn, user: dict = Depends(get_current_user)):
         raise HTTPException(422, "Couldn't extract opening balances from this file.")
     return {"patch": patch, "found": list(patch.keys())}
 
+
+
+# ── Template download + deterministic Excel / Google-Sheet import ────────────
+@router.get("/templates/inputs.xlsx")
+async def download_template(user: dict = Depends(get_current_user)):
+    data = fin_template.build_template_xlsx()
+    return Response(
+        content=data, media_type=XLSX_MIME,
+        headers={"Content-Disposition": 'attachment; filename="financial-model-template.xlsx"'},
+    )
+
+
+class ImportFileIn(BaseModel):
+    filename: str
+    upload_id: Optional[str] = None
+    file_b64: Optional[str] = None
+
+
+def _rows_from_bytes(filename: str, raw: bytes):
+    name = (filename or "").lower()
+    if name.endswith(".csv"):
+        return mx.extract_rows_from_csv(raw)
+    return mx.extract_rows_from_xlsx(raw)
+
+
+@router.post("/import-file")
+async def import_template_file(body: ImportFileIn, user: dict = Depends(get_current_user)):
+    """Parse a filled template (.xlsx/.csv) into an assumptions patch — no AI."""
+    if body.upload_id:
+        try:
+            fn, raw = await asyncio.to_thread(chunk_upload.assemble, body.upload_id)
+        except KeyError:
+            raise HTTPException(404, "Upload session expired — please re-pick the file.")
+        except Exception:
+            raise HTTPException(400, "Could not assemble the uploaded file.")
+        finally:
+            chunk_upload.discard(body.upload_id)
+        filename = body.filename or fn
+    else:
+        try:
+            raw = base64.b64decode((body.file_b64 or "").split(",")[-1])
+        except Exception:
+            raise HTTPException(400, "Could not decode the uploaded file.")
+        filename = body.filename
+    try:
+        rows = await asyncio.to_thread(_rows_from_bytes, filename, raw)
+    except Exception:
+        raise HTTPException(422, "Could not read the file. Use the provided .xlsx/.csv template.")
+    patch, matched = fin_template.parse_rows_to_assumptions(rows)
+    if not patch:
+        raise HTTPException(422, "No template rows matched. Keep the labels in column A unchanged.")
+    return {"patch": patch, "found": matched}
+
+
+class ImportSheetIn(BaseModel):
+    sheet_url: str
+
+
+@router.post("/import-sheet")
+async def import_template_sheet(body: ImportSheetIn, user: dict = Depends(get_current_user)):
+    """Parse a filled template from a Google Sheet link (public, else the user's
+    own connected Google account) into an assumptions patch — no AI."""
+    url = (body.sheet_url or "").strip()
+    sid, _ = mx.gsheet_id_and_gid(url)
+    if not sid:
+        raise HTTPException(422, "Paste a valid Google Sheets link.")
+    try:
+        rows = await mx.fetch_public_gsheet_rows(url)
+    except PermissionError:
+        try:
+            rows = await gs.read_first_sheet(user["user_id"], sid)
+        except PermissionError as e:
+            raise HTTPException(403, str(e) or "Connect your Google account to import this private sheet.")
+        except Exception:
+            raise HTTPException(422, "Could not read this Google Sheet via your account.")
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    if not rows:
+        raise HTTPException(422, "The Google Sheet appears to be empty.")
+    patch, matched = fin_template.parse_rows_to_assumptions(rows)
+    if not patch:
+        raise HTTPException(422, "No template rows matched. Keep the labels in column A unchanged.")
+    return {"patch": patch, "found": matched}
