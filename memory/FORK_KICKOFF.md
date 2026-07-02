@@ -5,6 +5,27 @@
 > file SHORT and CURRENT — it is the first thing to read after PRD.md.
 
 ## 0) Last user intent (update at end of every session)
+- 2026-07-02 (fork — deploy build fix + operators-common-to-both + WhatsApp-gate register fix):
+  (1) EC2 Docker build was failing at `pip install` (ResolutionImpossible): `opencv-python==4.13.0.92`
+      declares numpy>=2 but `numpy==1.26.4` is pinned (mediapipe needs <2). FIX: pinned
+      `opencv-python==4.11.0.86` (matches opencv-contrib/headless; numpy<2 OK). Verified imports +
+      `pip install --dry-run` resolves. This is a backend/requirements deploy fix only.
+  (2) "Skip WhatsApp Gate" (Admin → Settings) wasn't reflecting for freshly-registered users: the
+      /auth/register response HARD-CODED whatsapp_verified:false (and /auth/google/session used the raw
+      stored flag) while only /auth/login + /auth/me applied effective_whatsapp_verified(). FIX: both
+      register + google-session now return `await effective_whatsapp_verified(user_doc)`. Frontend gate
+      (_layout.tsx:288) trusts that flag. Verified via curl (register → whatsapp_verified:true when gate ON).
+  (3) Operators are now COMMON to both Quantitative & Qualitative factors (user request). Added
+      ALL_OPERATORS (decisionHelpers.ts) = numeric (≥ ≤ > < = ≠) + text (Contains/Starts with/Ends with/
+      Equals/Not equals); Step2.tsx renderCriteria always shows the full list. Default is AUTO-SELECTED by
+      the expected VALUE type (numeric→">=", text→"contains") but user can override to any. Backend
+      set-expectations (url_analyze.py) now derives operator+data_type from the ACTUAL value (regex numeric
+      test) — a text value even on a Quantitative factor (e.g. Role/Title="Managing Partner") gets
+      "contains", never ">=". EXPECTATIONS_SYSTEM prompt updated to enforce value-typed operators.
+      Verified: FE screenshot shows all 11 operator chips; BE coercion unit-checked. Build 2026.07.02.001.
+- 2026-06-29 (fork — Financial Model + Zoho verify/polish): smoke-tested all FM endpoints (3-statement,
+  DSCR/ratios, IIMB DCF, Investor/CMA xlsx+pdf exports, template import, Zoho live sync + nightly autosync
+  snapshot). All PASS, nothing mocked. Build 2026.06.29.001.
 - 2026-06-27 (latest, fork — REAL-FLOW step contribution for ALL 3 modules, built on share-step):
   User clarified "Contribute" must open the SAME module flow scoped to a step (Google-Docs-style), NOT a
   text box / PDF. RETIRED the collaboration-session text box. Built on the existing share-step system.

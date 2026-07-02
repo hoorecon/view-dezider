@@ -55,6 +55,25 @@ export const TEXT_OPERATORS = [
   { label: '≠', value: 'not_equals' },
 ];
 
+// Combined list — operators are common to BOTH Quantitative & Qualitative
+// factors. The editor always shows every operator; the sensible default is
+// auto-selected from the expected VALUE (numeric → "≥", text → "Contains"),
+// but the user can override to any operator. Text ≠/= relabelled to avoid
+// clashing with the numeric ≠/= glyphs.
+export const ALL_OPERATORS = [
+  { label: '≥', value: '>=' },
+  { label: '≤', value: '<=' },
+  { label: '>', value: '>' },
+  { label: '<', value: '<' },
+  { label: '=', value: '=' },
+  { label: '≠', value: '!=' },
+  { label: 'Contains', value: 'contains' },
+  { label: 'Starts with', value: 'starts_with' },
+  { label: 'Ends with', value: 'ends_with' },
+  { label: 'Equals', value: 'equals' },
+  { label: 'Not equals', value: 'not_equals' },
+];
+
 // TEPFI Elements & Layers
 export const TEPFI_ELEMENTS: { key: 'T' | 'E' | 'P' | 'F' | 'I'; label: string; icon: string; color: string }[] = [
   { key: 'T', label: 'Time', icon: 'time-outline', color: '#3B82F6' },

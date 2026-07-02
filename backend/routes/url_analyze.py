@@ -1064,13 +1064,14 @@ class SetExpectationsRequest(BaseModel):
 EXPECTATIONS_SYSTEM = """You set decision EXPECTATIONS. Given a decision (title/context), its factors (each with an index id, data format, nature, unit) and the ACTUAL values each option holds, propose for EVERY factor the Expected value + operator a sensible decision-maker would set in this context.
 
 RULES
-1. operator conveys DIRECTION of satisfaction:
-   • "<=" lower-is-better numerics (price, rent, fees, distance, weight) — inversely proportional
-   • ">=" higher-is-better numerics (area, scores, ratings, battery, warranty) — directly proportional
-   • "=" numeric identity (bedroom count)
-   • "equals" for text-format factors (categories, yes/no, names)
+1. operator conveys DIRECTION of satisfaction and MUST match the expected_value TYPE (not the factor's Quantitative/Qualitative nature):
+   • For a NUMERIC expected_value use math operators:
+     - "<=" lower-is-better numerics (price, rent, fees, distance, weight) — inversely proportional
+     - ">=" higher-is-better numerics (area, scores, ratings, battery, warranty) — directly proportional
+     - "=" numeric identity (bedroom count)
+   • For a TEXT expected_value use text operators — default "contains"; also allowed: "equals", "starts_with", "ends_with", "not_equals". NEVER put a math operator (>=, <=, =, >, <, !=) on a text value, even for Quantitative factors (e.g. Role/Title = "Managing Partner" → "contains").
 2. expected_value must be REALISTIC versus the actual option values supplied: anchor near the best actual value (e.g. cheapest rent seen → "<=" that rent; largest area seen → ">=" that area). For text factors pick the most desirable actual value in context. Plain numbers only (no currency symbols/commas); keep units out of the value.
-3. QUALITATIVE factors (Comfort, Luxury Feel …) still get an expectation — phrase a concise desirable level (e.g. "High", "Premium feel") with operator "equals".
+3. QUALITATIVE factors (Comfort, Luxury Feel …) still get an expectation — phrase a concise desirable level (e.g. "High", "Premium feel") with a text operator (default "contains").
 4. Cover EVERY factor id given. Do not invent new factors.
 Reply ONLY compact JSON: {"expectations":[{"id":"F1","operator":"<=","expected_value":"18000"}]}"""
 
@@ -1162,11 +1163,18 @@ async def set_expectations_by_ai(decision_id: str, req: SetExpectationsRequest,
         ev = row.get("expected_value")
         ev = str(ev).strip() if ev not in (None, "") else None
         op = str(row.get("operator") or "").strip()
-        ok_ops = num_ops if (f.get("data_type") or "numeric") == "numeric" else txt_ops
-        if op not in ok_ops:
-            op = ">=" if (f.get("data_type") or "numeric") == "numeric" else "equals"
         if ev is None:
             continue
+        # Operator is driven by the ACTUAL expected VALUE (numeric vs text),
+        # NOT by the Quantitative/Qualitative classification. A text value —
+        # even on a Quantitative factor (e.g. Role/Title = "Managing Partner") —
+        # uses text operators (default "contains"); a numeric value uses math
+        # operators (default ">="). Also correct data_type to match the value.
+        is_num = bool(re.match(r"^-?\d+(\.\d+)?$", ev))
+        ok_ops = num_ops if is_num else txt_ops
+        if op not in ok_ops:
+            op = ">=" if is_num else "contains"
+        detected_dt = "numeric" if is_num else "text"
         prev_ev = str(f.get("expected_value")).strip() if f.get("expected_value") not in (None, "") else None
         prev_op = (f.get("operator") or "").strip()
         if prev_ev == ev and prev_op == op:
@@ -1175,6 +1183,7 @@ async def set_expectations_by_ai(decision_id: str, req: SetExpectationsRequest,
             changed += 1
         f["expected_value"] = ev
         f["operator"] = op
+        f["data_type"] = detected_dt
         updated += 1
 
     if updated:

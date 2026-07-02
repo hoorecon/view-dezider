@@ -19,6 +19,7 @@ import {
   UNIT_PRESETS,
   NUMERIC_OPERATORS,
   TEXT_OPERATORS,
+  ALL_OPERATORS,
   senseDataType,
   parseCountInput,
 } from '../../utils/decisionHelpers';
@@ -662,7 +663,10 @@ export default function Step2() {
 
   const renderCriteria = (factor: Factor, indent: boolean = false) => {
     const detectedType = getDetectedType(factor);
-    const operators = detectedType === 'numeric' ? NUMERIC_OPERATORS : TEXT_OPERATORS;
+    // Operators are common to BOTH factor types — always show the full list so
+    // the user can pick any operator. The sensible default is auto-selected from
+    // the expected value's type (handled on value blur / import).
+    const operators = ALL_OPERATORS;
 
     return (
       <View style={indent ? styles.subFactorCriteria : undefined}>

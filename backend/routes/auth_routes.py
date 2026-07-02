@@ -110,7 +110,8 @@ async def register(request: Request, user_data: UserCreate, response: Response):
     return {
         "user_id": user_id, "email": user_data.email, "name": user_data.name,
         "picture": None, "auth_method": "email",
-        "whatsapp_number": None, "whatsapp_verified": False,
+        "whatsapp_number": None,
+        "whatsapp_verified": await effective_whatsapp_verified(user_doc),
         "session_token": session_token
     }
 
@@ -217,7 +218,7 @@ async def google_session(session_data: SessionRequest, response: Response):
         "user_id": user_id, "email": email, "name": name,
         "picture": picture, "auth_method": "google",
         "whatsapp_number": (existing_user or {}).get("whatsapp_number"),
-        "whatsapp_verified": bool((existing_user or {}).get("whatsapp_verified")),
+        "whatsapp_verified": await effective_whatsapp_verified(existing_user or {}),
         "session_token": session_token
     }
 
