@@ -17,6 +17,7 @@ import { AI_FEATURE_LABELS, labelForFeature } from '../src/utils/aiFeatureLabels
 import { useAiWalletStore } from '../src/store/aiWalletStore';
 import AiConsumptionPie from '../src/components/AiConsumptionPie';
 import { safeBack } from '../src/utils/navigation';
+import { startStripeCheckout, StripeCurrency } from '../src/utils/stripeCheckout';
 
 const BASE_URL = (Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL as string) || process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
@@ -75,6 +76,8 @@ export default function AiWalletScreen() {
   // refill
   const [packsInfo, setPacksInfo] = useState<any>(null);
   const [customCredits, setCustomCredits] = useState('');
+  const [stripeCurrency, setStripeCurrency] = useState<StripeCurrency>('usd');
+  const [stripeBuyingId, setStripeBuyingId] = useState<string | null>(null);
   const [customQuote, setCustomQuote] = useState<any>(null);
   const [quoting, setQuoting] = useState(false);
   const [buyingId, setBuyingId] = useState<string | null>(null);
@@ -164,6 +167,20 @@ export default function AiWalletScreen() {
       showAlert('Payment error', e?.response?.data?.detail || 'Could not start checkout. Please try again.');
     } finally {
       setBuyingId(null);
+    }
+  };
+
+  const payWithStripe = async (opts: { pack_id?: string; credits?: number }, buttonId: string) => {
+    setStripeBuyingId(buttonId);
+    try {
+      const r = await startStripeCheckout({ kind: 'ai_wallet', currency: stripeCurrency, ...opts });
+      if (r.status === 'completed') { showAlert('Payment successful', 'Credits added to your wallet.'); }
+      else if (r.status === 'cancelled') { /* silent */ }
+      await fetchData();
+    } catch (e: any) {
+      showAlert('Payment error', e?.response?.data?.detail || 'Could not start Stripe checkout. Please try again.');
+    } finally {
+      setStripeBuyingId(null);
     }
   };
 
@@ -307,8 +324,22 @@ export default function AiWalletScreen() {
             {/* Refill — credit packs */}
             <Text style={styles.sectionTitle}>Top up credits</Text>
             <Text style={styles.fieldHint}>
-              Priced at Gemini&apos;s list rate{packsInfo ? ` + ${packsInfo.markup_pct}% service fee` : ''}. Secure payment via Razorpay (INR).
+              Priced at Gemini&apos;s list rate{packsInfo ? ` + ${packsInfo.markup_pct}% service fee` : ''}. Pay with Razorpay (INR) or card via Stripe.
             </Text>
+
+            {/* Stripe currency toggle */}
+            <View style={styles.curToggle}>
+              <Text style={styles.curToggleLabel}>Card currency:</Text>
+              {(['usd', 'inr'] as StripeCurrency[]).map((c) => (
+                <TouchableOpacity
+                  key={c}
+                  style={[styles.curChip, stripeCurrency === c && styles.curChipActive]}
+                  onPress={() => setStripeCurrency(c)}
+                >
+                  <Text style={[styles.curChipText, stripeCurrency === c && styles.curChipTextActive]}>{c.toUpperCase()}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
             {(packsInfo?.packs || []).map((p: any) => (
               <View key={p.id} style={styles.packRow}>
@@ -324,11 +355,20 @@ export default function AiWalletScreen() {
                 <TouchableOpacity
                   style={styles.buyBtn}
                   onPress={() => buy({ pack_id: p.id }, p.id)}
-                  disabled={buyingId !== null}
+                  disabled={buyingId !== null || stripeBuyingId !== null}
                 >
                   {buyingId === p.id
                     ? <ActivityIndicator color={COLORS.white} size="small" />
                     : <Text style={styles.buyBtnText}>₹{p.price_inr}</Text>}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.stripeBtn}
+                  onPress={() => payWithStripe({ pack_id: p.id }, `st_${p.id}`)}
+                  disabled={buyingId !== null || stripeBuyingId !== null}
+                >
+                  {stripeBuyingId === `st_${p.id}`
+                    ? <ActivityIndicator color={COLORS.primary} size="small" />
+                    : <><Ionicons name="card-outline" size={14} color={COLORS.primary} /><Text style={styles.stripeBtnText}> Card</Text></>}
                 </TouchableOpacity>
               </View>
             ))}
@@ -533,6 +573,14 @@ const styles = StyleSheet.create({
   packCredits: { fontSize: 13, color: COLORS.textSecondary, marginTop: 3 },
   buyBtn: { backgroundColor: COLORS.primary, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, minWidth: 84, alignItems: 'center' },
   buyBtnText: { color: COLORS.white, fontWeight: '800', fontSize: 14 },
+  stripeBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.white, borderWidth: 1.5, borderColor: COLORS.primary, borderRadius: 10, paddingVertical: 9, paddingHorizontal: 12, minWidth: 72, marginLeft: 8 },
+  stripeBtnText: { color: COLORS.primary, fontWeight: '800', fontSize: 13 },
+  curToggle: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, marginTop: 2 },
+  curToggleLabel: { fontSize: 13, color: COLORS.textSecondary },
+  curChip: { paddingVertical: 5, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.white },
+  curChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  curChipText: { fontSize: 12, fontWeight: '700', color: COLORS.textSecondary },
+  curChipTextActive: { color: COLORS.white },
 
   customCard: { backgroundColor: COLORS.surface, borderRadius: 12, padding: 14, marginTop: 4, marginBottom: 20, borderWidth: 1, borderColor: COLORS.border },
   quoteBtn: { borderWidth: 1.5, borderColor: COLORS.primary, borderRadius: 10, paddingHorizontal: 14, justifyContent: 'center', alignItems: 'center' },

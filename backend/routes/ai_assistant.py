@@ -162,6 +162,48 @@ async def _gather_user_context(user_id: str) -> str:
     return "\n\n".join(parts) if parts else "No data available yet. The user is new."
 
 
+async def _assistant_reply(user_id: str, system_msg: str, prompt: str,
+                           session_tag: str, request: Request):
+    """Anthropic Claude is the DEFAULT model, via the metered AI wallet (precise
+    tier → admin-configured `precise_model`, e.g. claude-sonnet-4-6). When the
+    user's AI quota/credits are exhausted (InsufficientCredits), gracefully fall
+    back to another model (gpt-4.1-mini via the Emergent universal key) so the
+    assistant keeps responding instead of hard-blocking.
+
+    Returns (response_text, model_label)."""
+    from core import ai_wallet
+    from core.ai_metering import metered_chat
+    from core.llm_errors import llm_error_to_http
+
+    meta: dict = {}
+    try:
+        text = await metered_chat(
+            user_id, system_message=system_msg, prompt=prompt,
+            feature="ai_assistant_chat", session_prefix=f"ai_asst_{session_tag}",
+            tier="precise", meta=meta)
+        return text.strip(), (meta.get("model") or "claude-sonnet-4-6")
+    except ai_wallet.InsufficientCredits:
+        # Quota exceeded → switch to a free/cheaper model rather than blocking.
+        from core.llm_compat import LlmChat, UserMessage
+        api_key = os.getenv("EMERGENT_LLM_KEY")
+        if not api_key:
+            raise HTTPException(500, "LLM key not configured")
+        try:
+            chat = LlmChat(
+                api_key=api_key,
+                session_id=f"ai_asst_fb_{session_tag}_{uuid.uuid4().hex[:6]}",
+                system_message=system_msg,
+            ).with_model("openai", "gpt-4.1-mini")
+            text = await chat.send_message(UserMessage(text=prompt))
+            return text.strip(), "gpt-4.1-mini (quota fallback)"
+        except Exception as e:  # noqa: BLE001
+            rid = getattr(request.state, "request_id", None)
+            raise llm_error_to_http(e, request_id=rid)
+    except Exception as e:  # noqa: BLE001
+        rid = getattr(request.state, "request_id", None)
+        raise llm_error_to_http(e, request_id=rid)
+
+
 @router.post("/conversations/{conv_id}/message")
 @limiter.limit(AI_LIMIT)
 async def send_message(conv_id: str, request: Request, user: dict = Depends(get_current_user)):
@@ -196,8 +238,6 @@ async def send_message(conv_id: str, request: Request, user: dict = Depends(get_
     if not api_key:
         raise HTTPException(500, "LLM key not configured")
 
-    from core.llm_compat import LlmChat, UserMessage  # provider-agnostic shim (Emergent | direct via litellm)
-
     system_msg = f"""You are a personal advisor and life coach in the "View Dezider" app. You help users make better decisions, manage conflicts, achieve goals, and optimize their lifestyle.
 
 RESPOND IN {lang_name.upper()} LANGUAGE. If the user writes in any language, still respond in {lang_name}.
@@ -216,23 +256,12 @@ GUIDELINES:
 - If user asks about CLD, explain how their factors are interconnected across modules
 - If user seems stressed about conflicts, guide them toward the Conflict Breaker tool"""
 
-    chat = LlmChat(
-        api_key=api_key,
-        session_id=f"ai_asst_{conv_id}_{uuid.uuid4().hex[:6]}",
-        system_message=system_msg
-    ).with_model("openai", "gpt-4.1-mini")
-
     prompt = user_message
     if history:
         prompt = f"Previous conversation:\n{history}\n\nUser's new message: {user_message}"
 
-    try:
-        resp = await chat.send_message(UserMessage(text=prompt))
-        ai_response = resp.strip()
-    except Exception as e:
-        from core.llm_errors import llm_error_to_http
-        rid = getattr(request.state, "request_id", None)
-        raise llm_error_to_http(e, request_id=rid)
+    ai_response, model_used = await _assistant_reply(
+        user["user_id"], system_msg, prompt, conv_id, request)
 
     now = datetime.now(timezone.utc).isoformat()
 
@@ -262,6 +291,7 @@ GUIDELINES:
         "user_message": user_message,
         "ai_response": ai_response,
         "language": language,
+        "model": model_used,
         "timestamp": now,
     }
 
@@ -283,18 +313,7 @@ async def quick_ask(request: Request, user: dict = Depends(get_current_user)):
     if not api_key:
         raise HTTPException(500, "LLM key not configured")
 
-    from core.llm_compat import LlmChat, UserMessage  # provider-agnostic shim (Emergent | direct via litellm)
-
-    chat = LlmChat(
-        api_key=api_key,
-        session_id=f"quick_{user['user_id']}_{uuid.uuid4().hex[:6]}",
-        system_message=f"You are a personal advisor. Respond in {lang_name}. Be concise and practical.\n\nUser Context:\n{user_context}"
-    ).with_model("openai", "gpt-4.1-mini")
-
-    try:
-        resp = await chat.send_message(UserMessage(text=question))
-    except Exception as e:
-        from core.llm_errors import llm_error_to_http
-        rid = getattr(request.state, "request_id", None)
-        raise llm_error_to_http(e, request_id=rid)
-    return {"question": question, "answer": resp.strip(), "language": language}
+    system_msg = f"You are a personal advisor. Respond in {lang_name}. Be concise and practical.\n\nUser Context:\n{user_context}"
+    answer, model_used = await _assistant_reply(
+        user["user_id"], system_msg, question, "quick", request)
+    return {"question": question, "answer": answer, "language": language, "model": model_used}

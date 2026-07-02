@@ -5,7 +5,27 @@
 > file SHORT and CURRENT — it is the first thing to read after PRD.md.
 
 ## 0) Last user intent (update at end of every session)
-- 2026-07-02 (fork — deploy build fix + operators-common-to-both + WhatsApp-gate register fix):
+- 2026-07-02 (fork — Anthropic-in-AI-Assistant + Stripe integration):
+  (A) ANTHROPIC as DEFAULT in AI Assistant (More Tools). `routes/ai_assistant.py` now routes
+      send_message + quick_ask through a shared `_assistant_reply()` → `metered_chat(tier="precise")`
+      = Claude (claude-sonnet-4-6) via the AI wallet. On `InsufficientCredits` (quota exhausted) it
+      falls back to gpt-4.1-mini so the assistant keeps replying. Response includes `model` label.
+      VERIFIED: credits→claude-sonnet-4-6; balance 0→"gpt-4.1-mini (quota fallback)".
+  (B) STRIPE (alongside Razorpay) — new `routes/stripe_payments.py` (prefix /api/stripe): /checkout,
+      /status/{id} (poll+fulfil), /webhook (verified if STRIPE_WEBHOOK_SECRET set, else parses),
+      /health. Flows built+TESTED: kind="ai_wallet" (reuses ai_wallet packs pricing + `_credit_refill`
+      → ai_wallet.grant) and kind="subscription" (reuses subscriptions.apply_charge). Fulfillment is
+      idempotent via atomic pending→completed flip on `stripe_payments` (verified: no double-grant).
+      Currency USD or INR (server-side pricing via core.ai_billing; USD = price_inr/fx). Frontend:
+      `src/utils/stripeCheckout.ts` (web redirect + native auth-session + poll), `app/checkout-result.tsx`,
+      and AI Wallet screen now has a USD/INR toggle + "Card" (Stripe) button per pack.
+      ⚠️ Pod STRIPE_API_KEY is a PLACEHOLDER ("sk_test_emergent") → live session creation returns 401
+      until a REAL Stripe test/live key is injected (added to backend/.env; replace on deploy). Money
+      paths tested directly (DB-level) since a live Stripe call needs the real key.
+      NOT YET DONE (immediate follow-up): Stripe UI on subscription-plans.tsx (backend ready) and the
+      MARKETPLACE/solutions-store flow (kind not built — store fulfillment is SKU/entitlement/payout-based).
+  (C) NOTE: "Sign in with Google" (Emergent-managed) was already fully implemented — no change needed.
+- 2026-07-02 (fork — operators-common + WhatsApp-gate register fix): build 2026.06.29.002 → see below.
   (1) EC2 Docker build was failing at `pip install` (ResolutionImpossible): `opencv-python==4.13.0.92`
       declares numpy>=2 but `numpy==1.26.4` is pinned (mediapipe needs <2). FIX: pinned
       `opencv-python==4.11.0.86` (matches opencv-contrib/headless; numpy<2 OK). Verified imports +
