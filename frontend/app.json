@@ -15,7 +15,8 @@
         "NSMicrophoneUsageDescription": "Speak assessment values hands-free",
         "NSContactsUsageDescription": "Pick a recipient to share a report",
         "NSPhotoLibraryUsageDescription": "Choose a brand logo for your app"
-      }
+      },
+      "bundleIdentifier": "com.emergent.modalresponsivefix.j3mfw7"
     },
     "android": {
       "adaptiveIcon": {
@@ -26,7 +27,8 @@
       "permissions": [
         "RECORD_AUDIO",
         "READ_CONTACTS"
-      ]
+      ],
+      "package": "com.emergent.modalresponsivefix.j3mfw7"
     },
     "web": {
       "bundler": "metro",
