@@ -1,6 +1,8 @@
 # REST API Reference — Dezider
 
-_metadata: { "version": "3.20.0", "updated": "2026-06-28" }
+_metadata: { "version": "3.21.0", "updated": "2026-07-13" }
+
+> **v3.21.0 (2026-07-13) additions —** **Stripe Payments** `/stripe/*`: `POST /stripe/checkout` `{kind: ai_wallet|subscription, currency: usd|inr, pack_id|plan_id, success_url}` → `{checkout_url, session_id}`; `GET /stripe/status/{session_id}` (polls + idempotently fulfils); `POST /stripe/webhook` (verified when `STRIPE_WEBHOOK_SECRET` set); `GET /stripe/health`. Amounts are computed server-side; fulfillment reuses `_credit_refill` (wallet) / `apply_charge` (subscription). **AI Assistant** `/ai-assistant/quick-ask` & `/ai-assistant/conversations/{id}/message` now return a `model` field and default to Claude `claude-sonnet-4-6` (metered), falling back to `gpt-4.1-mini` when wallet credits are exhausted. **Auth** `/auth/register` & `/auth/google/session` responses now reflect `effective_whatsapp_verified` (honour `skip_whatsapp_gate`).
 
 Base URL: `/api`. Auth: `Authorization: Bearer <session_token>` from `/auth/login`.
 Every response carries `X-Request-ID`, `X-Response-Time-MS`, security headers.

@@ -24,6 +24,7 @@ DOCS_DIR = Path("/app/docs")
 # Map URL slug → disk filename (markdown + json artefacts)
 DOC_FILES: Dict[str, Dict[str, str]] = {
     "INDEX":         {"file": "INDEX.md",                  "title": "Documentation Index"},
+    "SYSTEM_KT":     {"file": "SYSTEM_KT.md",              "title": "System KT — Block Diagram & Flow Charts"},
     "PRD":           {"file": "PRD.md",                    "title": "Product Requirements (PRD)"},
     "SRS":           {"file": "SRS.md",                    "title": "System Requirements (SRS)"},
     "API_REFERENCE": {"file": "API_REFERENCE.md",          "title": "REST API Reference"},

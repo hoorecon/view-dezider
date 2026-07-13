@@ -1,8 +1,8 @@
 # Deployment runbook — Dezider
 
-_metadata: { "version": "3.16.0", "updated": "2026-06-12" }
+_metadata: { "version": "3.21.0", "updated": "2026-07-13" }
 
-Three supported deploy targets:
+> **v3.21.0 (2026-07-13):** (1) **Build fix** — `backend/requirements.txt` pins `opencv-python==4.11.0.86` (the previous `4.13.0.92` forced `numpy>=2` and clashed with `numpy==1.26.4`/mediapipe → EC2 `pip install` ResolutionImpossible). (2) **Env** — add `SECRET_KEY` (strong random) and `CORS_ORIGINS=*` to `backend/.env`. (3) **Stripe** — set a REAL `STRIPE_API_KEY` in production (pod value is the placeholder `sk_test_emergent`); optionally set `STRIPE_WEBHOOK_SECRET` and add a Stripe dashboard webhook → `/api/stripe/webhook`. (4) Build stamp `2026.07.02.002`; remember the `EXPECT_BUILD` guard in `deploy/sync.sh`.
 
 1. **Emergent managed runtime** (current, alpha) — zero-config, push and go.
 2. **Single-node Docker Compose** (stage / pre-prod) — `deploy/docker-compose.yml`.

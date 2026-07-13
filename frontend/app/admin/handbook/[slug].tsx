@@ -7,7 +7,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -70,6 +70,21 @@ function renderMarkdown(text: string) {
       continue;
     }
     if (inCode) { codeBuf.push(line); i++; continue; }
+
+    const imgMatch = line.match(/^!\[([^\]]*)\]\(([^)]+)\)\s*$/);
+    if (imgMatch) {
+      flushList();
+      out.push(
+        <Image
+          key={i}
+          source={{ uri: imgMatch[2] }}
+          style={styles.docImage}
+          resizeMode="contain"
+          accessibilityLabel={imgMatch[1]}
+        />
+      );
+      i++; continue;
+    }
 
     if (/^#{1,6}\s/.test(line)) {
       flushList();
@@ -192,6 +207,7 @@ const styles = StyleSheet.create({
   inlineCode: { fontFamily: 'Courier', fontSize: 13, backgroundColor: '#F3F4F6', paddingHorizontal: 4, borderRadius: 3 },
   codeBlock: { backgroundColor: '#0F172A', borderRadius: 8, padding: 12, marginVertical: 8 },
   codeText: { color: '#E2E8F0', fontFamily: 'Courier', fontSize: 11, lineHeight: 16 },
+  docImage: { width: '100%', height: 220, borderRadius: 8, marginVertical: 8, backgroundColor: '#0F172A' },
   listBlock: { marginVertical: 4 },
   listRow: { flexDirection: 'row', gap: 6, paddingVertical: 1 },
   bullet: { color: COLORS.primary, fontSize: 14, fontWeight: '700' },

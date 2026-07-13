@@ -1,6 +1,8 @@
 # System Requirements Specification — Dezider
 
-_metadata: { "version": "3.19.0", "updated": "2026-06-15" }
+_metadata: { "version": "3.21.0", "updated": "2026-07-13" }
+
+> **v3.21.0 (2026-07-13):** New non-functional/integration items — **Stripe** payment rail (`/api/stripe/*`, USD/INR, idempotent server-side-priced checkout for wallet + subscriptions); **AI Assistant** model policy = Claude default + quota-based fallback to `gpt-4.1-mini`; **auth** `effective_whatsapp_verified` applied at register/google-session; **build** `opencv-python==4.11.0.86` pin; env adds `SECRET_KEY`/`CORS_ORIGINS`. Architecture overview: see `SYSTEM_KT`.
 
 ## 1. Architecture
 Expo frontend → NGINX ingress → FastAPI pods → MongoDB replica-set.

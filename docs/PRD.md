@@ -1,6 +1,8 @@
 # Product Requirements Document — Dezider
 
-_metadata: { "version": "3.20.0", "updated": "2026-06-28", "author": "engineering" }
+_metadata: { "version": "3.21.0", "updated": "2026-07-13", "author": "engineering" }
+
+> **v3.21.0 (2026-07-13):** Added **Stripe checkout** (USD/INR) for AI-wallet top-ups + subscriptions alongside Razorpay. **AI Assistant** now defaults to **Anthropic Claude** with automatic fallback to a cheaper model when the user's AI quota is exhausted. WhatsApp-gate skip now applies at registration. MyDezider expectation operators are common to both factor types (value-driven default). See `SYSTEM_KT` for the full block diagram & flow charts.
 
 ## 1. Vision
 

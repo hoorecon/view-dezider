@@ -1,6 +1,8 @@
 # Admin User Guide
 
-**Version:** 3.20.0 (2026-06-28)
+**Version:** 3.21.0 (2026-07-13)
+
+> **v3.21.0 additions:** **AI Assistant** (More Tools) now runs on **Anthropic Claude (claude-sonnet-4-6)** by default via the AI wallet; when a user's credits/quota run out it automatically switches to `gpt-4.1-mini` so answers keep flowing (the reply shows which model answered). **AI Wallet** screen now offers **card payment via Stripe** (USD/INR toggle + a "Card" button per pack) in addition to Razorpay (₹). **WhatsApp gate:** turning ON "Skip WhatsApp Gate" (Admin → Settings) now also applies to brand-new sign-ups/registrations (previously only to later logins).
 **Audience:** Anyone with admin/super_admin/co_admin role
 **Purpose:** Explain every Admin Panel menu item — what it does, when to use it, and a sample workflow.
 
