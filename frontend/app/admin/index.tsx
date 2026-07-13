@@ -41,6 +41,7 @@ const QUICK_ACTIONS: QuickAction[] = [
   { key: 'audit',           label: 'Audit Trail',         description: 'All admin actions · forensic timeline',        icon: 'time',            color: '#64748B', href: '/admin/audit-trail' },
   { key: 'incident',        label: 'Incident Response',   description: 'Active incidents · post-mortems · SLAs',       icon: 'alert-circle',    color: '#DC2626', href: '/admin/incident-response' },
   { key: 'docs',            label: 'Admin Docs',          description: 'PRD · SRS · UAT · Postman · Regression',       icon: 'library',         color: '#059669', href: '/admin/docs' },
+  { key: 'handbook',        label: 'Handbook & System KT', description: 'Block diagram · flow charts · PRD/SRS/API/Security/Deployment (markdown)', icon: 'git-network',    color: '#0EA5E9', href: '/admin/handbook' },
   { key: 'masters',         label: 'Masters',             description: 'Org Types · Religions · Castes · Languages · Occupations · Skills · Drives · Traits', icon: 'list-circle', color: '#9333EA', href: '/admin/masters' },
   { key: 'scenarios',       label: 'Intake Scenarios',    description: 'Org-type-aware scenario suggestions on the decision intake (e.g. Family-only)', icon: 'bulb', color: '#0EA5E9', href: '/admin/scenarios' },
   { key: 'appearance',      label: 'Appearance · Font',   description: 'App-wide font family · Inter default · live preview', icon: 'text', color: '#EC4899', href: '/admin/appearance' },
@@ -74,7 +75,7 @@ const ACTION_GROUPS: { key: string; label: string; icon: string; keys: string[] 
   { key: 'plans',          label: 'Plans, Tiers & Segments',   icon: 'apps',          keys: ['segments', 'tier-segments', 'acm-resolver-cfg', 'seven-seven', 'values', 'collab-auth'] },
   { key: 'people',         label: 'People & Experts',          icon: 'people',        keys: ['org-members', 'experts', 'platform-experts', 'embed-partners'] },
   { key: 'content',        label: 'Content & Intelligence',    icon: 'sparkles',      keys: ['catalog', 'content-library', 'manifestation-content', 'scenarios', 'import-analytics', 'url-training', 'notification-engine'] },
-  { key: 'ops',            label: 'Operations & Docs',         icon: 'construct',     keys: ['audit', 'incident', 'docs'] },
+  { key: 'ops',            label: 'Operations & Docs',         icon: 'construct',     keys: ['audit', 'incident', 'docs', 'handbook'] },
 ];
 
 export default function AdminHomeScreen() {
