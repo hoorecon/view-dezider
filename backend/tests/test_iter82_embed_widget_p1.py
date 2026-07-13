@@ -8,7 +8,7 @@ from urllib.parse import quote
 import pytest
 import requests
 
-BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL") or "https://modal-responsive-fix.preview.emergentagent.com"
+BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL") or "https://repo-blueprint-1.preview.emergentagent.com"
 SLUG = "pmsbazaar-demo"
 
 

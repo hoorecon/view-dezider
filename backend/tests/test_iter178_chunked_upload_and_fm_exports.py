@@ -28,7 +28,7 @@ from pymongo import MongoClient
 
 BASE_URL = os.environ.get(
     "EXPO_PUBLIC_BACKEND_URL",
-    "https://modal-responsive-fix.preview.emergentagent.com",
+    "https://repo-blueprint-1.preview.emergentagent.com",
 ).rstrip("/")
 API = f"{BASE_URL}/api"
 

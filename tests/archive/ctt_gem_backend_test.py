@@ -8,7 +8,7 @@ import string
 from datetime import datetime, timedelta
 
 # Backend URL
-BASE_URL = "https://modal-responsive-fix.preview.emergentagent.com/api"
+BASE_URL = "https://repo-blueprint-1.preview.emergentagent.com/api"
 
 def generate_random_suffix():
     """Generate random suffix for unique emails"""

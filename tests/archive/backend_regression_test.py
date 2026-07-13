@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 import uuid
 
 # Backend URL
-BASE_URL = "https://modal-responsive-fix.preview.emergentagent.com/api"
+BASE_URL = "https://repo-blueprint-1.preview.emergentagent.com/api"
 
 class RegressionTester:
     def __init__(self):

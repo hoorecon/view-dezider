@@ -14,7 +14,7 @@ import pytest
 import requests
 
 BASE_URL = (os.environ.get("EXPO_PUBLIC_BACKEND_URL")
-            or "https://modal-responsive-fix.preview.emergentagent.com").rstrip("/")
+            or "https://repo-blueprint-1.preview.emergentagent.com").rstrip("/")
 
 ADMIN_EMAIL = "admin@test.com"
 ADMIN_PASS = "AdminPass2026!"

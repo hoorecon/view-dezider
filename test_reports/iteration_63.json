@@ -16,7 +16,7 @@
   ],
   "action_items": [],
   "critical_code_review_comments": [
-    "routes/google_sheets.py:27 — DEFAULT_RETURN is hardcoded to https://modal-responsive-fix.preview.emergentagent.com. This is fine in dev but should ideally be sourced from APP_BASE_URL/EXPO_BACKEND_URL env var to avoid breakage when the preview slug changes.",
+    "routes/google_sheets.py:27 — DEFAULT_RETURN is hardcoded to https://repo-blueprint-1.preview.emergentagent.com. This is fine in dev but should ideally be sourced from APP_BASE_URL/EXPO_BACKEND_URL env var to avoid breakage when the preview slug changes.",
     "core/google_sheets.py:37-40 — REDIRECT_URI defaults to the same hardcoded preview host. Already configurable via GOOGLE_SHEETS_REDIRECT_URI env var (good), but the fallback default should either be empty + fail-fast, or be derived from the protected EXPO_BACKEND_URL.",
     "routes/pros_cons.py is ~1146 lines — exceeds the 700-line guideline. Consider splitting the 8-step framework endpoints and the assessment (xlsx + gsheet) endpoints into separate routers for maintainability.",
     "routes/decisions.py is ~1179 lines — same split recommendation as above.",

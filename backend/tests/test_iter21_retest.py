@@ -19,7 +19,7 @@ import asyncio
 
 BASE_URL = os.environ.get(
     "EXPO_BACKEND_URL",
-    "https://modal-responsive-fix.preview.emergentagent.com",
+    "https://repo-blueprint-1.preview.emergentagent.com",
 ).rstrip("/")
 ADMIN_EMAIL = "admin@test.com"
 ADMIN_PASSWORD = "AdminPass2026!"

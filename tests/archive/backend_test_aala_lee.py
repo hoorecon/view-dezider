@@ -8,7 +8,7 @@ import json
 from datetime import datetime, timedelta
 
 # Backend URL from environment
-BASE_URL = "https://modal-responsive-fix.preview.emergentagent.com/api"
+BASE_URL = "https://repo-blueprint-1.preview.emergentagent.com/api"
 
 # Test credentials - use unique timestamp to avoid conflicts
 timestamp = int(datetime.now().timestamp())

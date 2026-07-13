@@ -19,7 +19,7 @@ import uuid
 import pytest
 import requests
 
-BASE = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "").rstrip("/") or "https://modal-responsive-fix.preview.emergentagent.com"
+BASE = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "").rstrip("/") or "https://repo-blueprint-1.preview.emergentagent.com"
 API = f"{BASE}/api"
 
 OWNER = {"email": "super@test.com", "password": "SuperPass2026!"}

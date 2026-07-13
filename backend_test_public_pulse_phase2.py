@@ -12,7 +12,7 @@ import json
 import requests
 from pymongo import MongoClient
 
-BACKEND_URL = "https://modal-responsive-fix.preview.emergentagent.com/api"
+BACKEND_URL = "https://repo-blueprint-1.preview.emergentagent.com/api"
 MONGO_URL = "mongodb://localhost:27017"
 DB_NAME = "test_database"
 

@@ -21,7 +21,7 @@ import requests
 BASE_URL = (
     os.environ.get("EXPO_PUBLIC_BACKEND_URL")
     or os.environ.get("EXPO_BACKEND_URL")
-    or "https://modal-responsive-fix.preview.emergentagent.com"
+    or "https://repo-blueprint-1.preview.emergentagent.com"
 ).rstrip("/")
 ADMIN_EMAIL = "super@test.com"
 ADMIN_PASSWORD = "SuperPass2026!"

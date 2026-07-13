@@ -24,7 +24,7 @@ from core.database import db
 router = APIRouter()
 log = logging.getLogger("google_sheets_routes")
 
-DEFAULT_RETURN = "https://modal-responsive-fix.preview.emergentagent.com"
+DEFAULT_RETURN = "https://repo-blueprint-1.preview.emergentagent.com"
 
 
 async def _user_from_token(token: str):

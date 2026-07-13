@@ -16,7 +16,7 @@ import pytest
 import requests
 
 BASE_URL = os.environ.get(
-    "TEST_BASE_URL", "https://modal-responsive-fix.preview.emergentagent.com")
+    "TEST_BASE_URL", "https://repo-blueprint-1.preview.emergentagent.com")
 SUPER = {"email": "veales.vedic.decisions@gmail.com", "password": "Jelcos@Admin2026"}
 
 

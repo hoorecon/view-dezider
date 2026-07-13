@@ -20,7 +20,7 @@
     "MyDezider Step 2: every sub-factor row shows a pencil icon (Step2.tsx:550-557) AND a close-circle delete (Step2.tsx:579-581) ✓",
     "MyDezider Step 2: rename persists via updateFactor (context save) on commit/onBlur/onSubmitEditing (Step2.tsx:50-58) ✓",
     "MyDezider Step 2 renderCriteria order: Operator chips first, then Expected row, then Unit row (Step2.tsx:224-279). Matches required order ✓",
-    "App boots on https://modal-responsive-fix.preview.emergentagent.com with no red-screen / compile error after the two COLORS fixes"
+    "App boots on https://repo-blueprint-1.preview.emergentagent.com with no red-screen / compile error after the two COLORS fixes"
   ],
   "test_report_links": ["/app/test_reports/iteration_69.json"],
   "action_items": [

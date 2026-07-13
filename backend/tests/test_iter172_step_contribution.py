@@ -14,7 +14,7 @@ import os
 import pytest
 import requests
 
-BASE = (os.environ.get("EXPO_BACKEND_URL") or "https://modal-responsive-fix.preview.emergentagent.com").rstrip("/") + "/api"
+BASE = (os.environ.get("EXPO_BACKEND_URL") or "https://repo-blueprint-1.preview.emergentagent.com").rstrip("/") + "/api"
 
 
 def _login(email: str, pwd: str):

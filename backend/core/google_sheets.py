@@ -40,7 +40,7 @@ AUTH_URI = "https://accounts.google.com/o/oauth2/auth"
 # Must EXACTLY match the redirect URI registered in the Google Cloud Console.
 REDIRECT_URI = os.getenv(
     "GOOGLE_SHEETS_REDIRECT_URI",
-    "https://modal-responsive-fix.preview.emergentagent.com/api/oauth/sheets/callback",
+    "https://repo-blueprint-1.preview.emergentagent.com/api/oauth/sheets/callback",
 )
 
 SCOPES = [

@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Dict, Any, List
 
 # Use the production URL from frontend/.env
-BACKEND_URL = "https://modal-responsive-fix.preview.emergentagent.com/api"
+BACKEND_URL = "https://repo-blueprint-1.preview.emergentagent.com/api"
 
 class TestResults:
     def __init__(self):

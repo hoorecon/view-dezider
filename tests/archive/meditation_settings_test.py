@@ -10,7 +10,7 @@ import time
 from datetime import datetime
 
 # Backend URL from environment
-BACKEND_URL = "https://modal-responsive-fix.preview.emergentagent.com/api"
+BACKEND_URL = "https://repo-blueprint-1.preview.emergentagent.com/api"
 
 # Test results tracking
 test_results = []

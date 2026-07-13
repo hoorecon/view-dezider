@@ -4,7 +4,7 @@ import time
 import requests
 import pytest
 
-BASE_URL = "https://modal-responsive-fix.preview.emergentagent.com"
+BASE_URL = "https://repo-blueprint-1.preview.emergentagent.com"
 API = f"{BASE_URL}/api"
 
 SUPER_EMAIL = "veales.vedic.decisions@gmail.com"

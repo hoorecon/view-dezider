@@ -11,7 +11,7 @@ import time
 from datetime import datetime
 
 # Base URL from environment
-BASE_URL = "https://modal-responsive-fix.preview.emergentagent.com/api"
+BASE_URL = "https://repo-blueprint-1.preview.emergentagent.com/api"
 
 class ViewDeziderTester:
     def __init__(self):

@@ -21,7 +21,7 @@ from core.url_crawl import is_gemini_share_url, is_conversation_url  # noqa: E40
 
 BASE_URL = (os.environ.get("EXPO_BACKEND_URL")
             or os.environ.get("EXPO_PUBLIC_BACKEND_URL")
-            or "https://modal-responsive-fix.preview.emergentagent.com").rstrip("/")
+            or "https://repo-blueprint-1.preview.emergentagent.com").rstrip("/")
 EMAIL = "super@test.com"
 PASSWORD = "SuperPass2026!"
 GEMINI_URL = "https://share.gemini.google/eOlCCzMAqeHt"

@@ -3,7 +3,7 @@ import os
 import pytest
 import requests
 
-BASE = (os.environ.get("EXPO_PUBLIC_BACKEND_URL") or os.environ.get("EXPO_BACKEND_URL") or "https://modal-responsive-fix.preview.emergentagent.com").rstrip("/")
+BASE = (os.environ.get("EXPO_PUBLIC_BACKEND_URL") or os.environ.get("EXPO_BACKEND_URL") or "https://repo-blueprint-1.preview.emergentagent.com").rstrip("/")
 SUPER = {"email": "super@test.com", "password": "SuperPass2026!"}
 
 
