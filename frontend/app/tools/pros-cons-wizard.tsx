@@ -1867,15 +1867,16 @@ export default function ProsConsWizard() {
             //    returns null so we render "—" instead of NaN.
             const mandFactors = directFactors.filter(f => f.notation === 'mandatory');
             const optFactors  = directFactors.filter(f => f.notation !== 'mandatory');
-            const sectionPctByOpt: Record<string, { a: number | null; b: number | null }> = {};
+            const sectionPctByOpt: Record<string, { a: number | null; b: number | null }> = {};    // Case-2 (MPPS)
+            const sectionPctByOptC1: Record<string, { a: number | null; b: number | null }> = {};   // Case-1 (Step 7)
             analysis.options.forEach(o => {
-              const calcPct = (subset: Factor[]): number | null => {
+              const calcPct = (subset: Factor[], withImprovement: boolean): number | null => {
                 if (!subset.length) return null;
                 let num = 0, den = 0;
                 subset.forEach(f => {
                   const cell = (analysis.assessments?.[o.id] || {})[f.id] || {};
                   const a7 = Number(cell.assessment_pct) || 0;
-                  const d  = Number(cell.improvement_pct) || 0;
+                  const d  = withImprovement ? (Number(cell.improvement_pct) || 0) : 0;
                   const std = Number(f.std_rating) || 0;
                   const eff = Math.max(0, Math.min(100, a7 + d));
                   num += (eff * std) / 100;
@@ -1883,7 +1884,8 @@ export default function ProsConsWizard() {
                 });
                 return den > 0 ? (num / den) * 100 : null;
               };
-              sectionPctByOpt[o.id] = { a: calcPct(mandFactors), b: calcPct(optFactors) };
+              sectionPctByOpt[o.id]   = { a: calcPct(mandFactors, true),  b: calcPct(optFactors, true) };
+              sectionPctByOptC1[o.id] = { a: calcPct(mandFactors, false), b: calcPct(optFactors, false) };
             });
             // listing order; disqualified options pushed to bottom with no rank).
             const rankByOptId: Record<string, number | null> = {};
