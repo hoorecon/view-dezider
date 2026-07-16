@@ -270,8 +270,9 @@ export function FactorGroupRow({ factor, parentName, candidateChildren, onAddChi
                     key={c.id}
                     style={styles.parentChip}
                     onPress={() => { onAddChild(c.id); setOpen(false); }}
+                    {...({ title: c.name } as any)}
                   >
-                    <Text style={styles.parentChipText} numberOfLines={1}>{c.name}</Text>
+                    <Text style={styles.parentChipText} numberOfLines={1} {...({ title: c.name } as any)}>{c.name}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -813,7 +814,7 @@ export function FactorAssessmentCard({ factor, factorIndex, options, cells, disp
         const bgTint = isPos ? '#ECFDF5' : isNeg ? '#FEF2F2' : '#FFFFFF';
         return (
           <View key={o.id} style={styles.assessRow}>
-            <Text style={styles.assessOpt} numberOfLines={1}>{o.name}</Text>
+            <Text style={styles.assessOpt}>{o.name}</Text>
             <TextInput style={[styles.inputSm, { width: 80 }]} placeholder="Actual"
               defaultValue={c.actual_value || ''}
               onEndEditing={e => onCellUpdate(o.id, { actual_value: e.nativeEvent.text })} />
@@ -1046,7 +1047,7 @@ export function SubFactorEditableList({
                 const cell = (assessments[o.id] || {})[s.id] || { assessment_pct: 0, cell_value: 0, actual_value: '' };
                 return (
                   <View key={o.id} style={[styles.assessRow, { flexWrap: 'wrap' }]}>
-                    <Text style={styles.assessOpt} numberOfLines={1}>{o.name}</Text>
+                    <Text style={styles.assessOpt}>{o.name}</Text>
                     <Text style={styles.cellLabel}>Actual</Text>
                     <DebouncedInput
                       style={[styles.inputSm, { width: 80 }]}

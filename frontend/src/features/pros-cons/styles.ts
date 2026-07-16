@@ -45,6 +45,24 @@ export const pcAssess = StyleSheet.create({
   xlsBar: { flexDirection: 'row', gap: 8, marginTop: 8, marginBottom: 4, flexWrap: 'wrap' },
   xlsBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#BBD6FF', backgroundColor: '#EFF6FF' },
   xlsBtnText: { fontSize: 12.5, fontWeight: '700', color: '#1F6FEB' },
+
+  // Step 7 — per-factor "Realistic gap" inline reveal (shown when the global
+  // Show/Hide Realistic Gap toggle is OFF).
+  gapToggleInline: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: '#F5F3FF', borderWidth: 1, borderColor: '#DDD6FE' },
+  gapToggleInlineText: { fontSize: 11, fontWeight: '800', color: '#7C3AED' },
+
+  // Step 8 — Case-1 vs Case-2 comparison table (per option).
+  overallCard: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  overallHeadRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
+  cmpTable: { marginTop: 8, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, overflow: 'hidden' },
+  cmpRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8, borderTopWidth: 1, borderTopColor: '#EEF1F6' },
+  cmpHeadRow: { backgroundColor: '#F1F5F9', borderTopWidth: 0 },
+  cmpHeadText: { fontSize: 10.5, fontWeight: '800', color: COLORS.textDim, textTransform: 'uppercase', letterSpacing: 0.3 },
+  cmpCell: { fontSize: 12.5, color: COLORS.text },
+  cmpMetricCol: { flex: 1.6, fontWeight: '700' },
+  cmpValCol: { flex: 1, textAlign: 'right', fontWeight: '700' },
+  cmpC2Val: { color: COLORS.primary },
+  cmpDeltaCol: { flex: 1, textAlign: 'right', fontWeight: '800' },
 });
 
 export const pcWeightStyles = StyleSheet.create({
@@ -347,7 +365,7 @@ export const styles = StyleSheet.create({
   factorCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   rankBadge: { backgroundColor: COLORS.primary, color: '#fff', fontSize: 12, fontWeight: '800', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, overflow: 'hidden' },
   assessRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' },
-  assessOpt: { fontSize: 12, color: COLORS.text, fontWeight: '600', width: 80 },
+  assessOpt: { fontSize: 12, color: COLORS.text, fontWeight: '600', width: '100%', marginBottom: 2 },
   cellLabel: { fontSize: 11, color: COLORS.textDim },
   cellValue: { fontSize: 12, color: COLORS.text, fontWeight: '700', minWidth: 36 },
   overallRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border },

@@ -20,7 +20,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
-  ActivityIndicator, KeyboardAvoidingView, Platform, Modal,
+  ActivityIndicator, KeyboardAvoidingView, Platform, Modal, Linking,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -40,6 +40,7 @@ import { CollabBar } from '../../src/components/CollabBar';
 import LiveSessionPill from '../../src/components/LiveSessionPill';
 import { DecisionContinuePanel } from '../../src/components/DecisionContinuePanel';
 import { safeBack } from '../../src/utils/navigation';
+import ReportShareSheet from '../../src/components/ReportShareSheet';
 
 // ============== CONSTANTS ==============
 // NOTE: Life-area list is no longer hardcoded — it now flows from the
@@ -90,6 +91,15 @@ const clampPct = (n: any): number | undefined => {
   const x = parseInt(String(n ?? '').replace(/[^0-9]/g, ''), 10);
   if (isNaN(x)) return undefined;
   return Math.min(100, Math.max(0, x));
+};
+
+// Elegant, distinct accent palette for the three Action-Plan lineages so a
+// user can tell at a glance whether an action came from a Solution (Q3),
+// a Risk Mitigation (Q4b) or a Risk Contingency (Q4c).
+const AP_COLORS: Record<string, { accent: string; bg: string; tagBg: string }> = {
+  solution:    { accent: 'rgb(79, 70, 229)',  bg: 'rgb(245, 245, 255)', tagBg: 'rgb(238, 242, 255)' }, // indigo
+  mitigation:  { accent: 'rgb(5, 150, 105)',  bg: 'rgb(240, 253, 248)', tagBg: 'rgb(236, 253, 245)' }, // emerald
+  contingency: { accent: 'rgb(217, 119, 6)',  bg: 'rgb(255, 251, 240)', tagBg: 'rgb(255, 251, 235)' }, // amber
 };
 
 // ============== COMPONENT ==============
@@ -168,6 +178,14 @@ export default function SimpleSolutionFinder() {
   const [asmCounts, setAsmCounts] = useState<Record<string, number>>({});
   // AI auto-fill (metered AI-credits wallet, Gemini-first). On-demand only.
   const [aiBusy, setAiBusy] = useState<null | 'sol' | 'risk'>(null);
+  // Report export (PDF download + share sheet) — Step 5.
+  const [shareOpen, setShareOpen] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  // Hierarchy expand/collapse — Step 4 (risks grouped by solution) & Step 5
+  // (action items). A *collapsed* Set keeps everything expanded by default so
+  // existing users lose nothing; Expand-all clears it, Collapse-all fills it.
+  const [collapsedRiskSols, setCollapsedRiskSols] = useState<Set<string>>(new Set());
+  const [collapsedApIds, setCollapsedApIds] = useState<Set<string>>(new Set());
 
   // Per-row "draft" inputs (so adding doesn't require a modal)
   const [newConcernText, setNewConcernText] = useState('');
@@ -849,7 +867,6 @@ export default function SimpleSolutionFinder() {
     if (m >= 4) m = 5;
     return m;
   }, [areaOfLife, smartGoal, concerns, rootCauses, solutions]);
-  const [hoverStep, setHoverStep] = useState<number | null>(null);
 
   // ── Hierarchy lookups (Q4/Q5 context) ──
   const concernById = useMemo(() => new Map(concerns.map(c => [c.id, c])), [concerns]);
@@ -861,6 +878,24 @@ export default function SimpleSolutionFinder() {
     const rca = sol ? rcaById.get(sol.rca_id) : undefined;
     const concern = rca ? concernById.get(rca.concern_id) : undefined;
     return { sol, rca, concern };
+  };
+
+  // Full lineage for any Action-Plan item so Step 5 can show WHERE each action
+  // originated. Mitigations & contingencies hang off a Risk, which hangs off a
+  // Solution → Root Cause → Concern.
+  const mitById = useMemo(() => new Map(mitigations.map(m => [m.id, m])), [mitigations]);
+  const conById = useMemo(() => new Map(contingencies.map(c => [c.id, c])), [contingencies]);
+  const lineageForAp = (p: APItem) => {
+    if (p.source_type === 'solution') {
+      const { sol, rca, concern } = chainForSol(p.source_id);
+      return { concern, rca, sol, risk: undefined as Risk | undefined };
+    }
+    const node: any = p.source_type === 'mitigation' ? mitById.get(p.source_id) : conById.get(p.source_id);
+    const risk = node ? riskById.get(node.risk_id) : undefined;
+    const { sol, rca, concern } = risk
+      ? chainForSol(risk.sol_id)
+      : { sol: undefined, rca: undefined, concern: undefined };
+    return { concern, rca, sol, risk };
   };
 
   // ── #3 AI credits metering (visible estimate + balance; confirm before spend) ──
@@ -902,24 +937,85 @@ export default function SimpleSolutionFinder() {
     });
   };
 
+  // Authenticated PDF download of the full Solution Finder worksheet. The
+  // report is a paid L1 artifact (same gate as MyDezider / Pros & Cons / SWOT);
+  // a 402 routes the user to the store to unlock instead of erroring out.
+  const downloadPdf = async () => {
+    const id = savedId || (await handleSave(true));
+    if (!id) { showAlert('Save first', 'Add a life area and SMART goal so the report can be built.'); return; }
+    setPdfBusy(true);
+    try {
+      const base = (process.env.EXPO_PUBLIC_BACKEND_URL || '') + `/api/reports/solution_finder/${id}.pdf`;
+      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+      const token = await AsyncStorage.getItem('session_token');
+      const resp = await fetch(base, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (resp.status === 402) {
+        showAlert('Unlock report',
+          'Downloading the PDF needs a DIY Decision Report (L1) or any active plan. Open the store now?', [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Open store', onPress: () => router.push({ pathname: '/store', params: { highlight: 'L1', module: 'solution_finder', decision_id: id } } as any) },
+        ]);
+        return;
+      }
+      if (!resp.ok) throw new Error((await resp.text()) || 'Download failed');
+      const blob = await resp.blob();
+      if (Platform.OS === 'web') {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `jelcos_solution_finder_${String(id).slice(0, 8)}.pdf`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+      } else {
+        const reader = new FileReader();
+        reader.onloadend = () => Linking.openURL(reader.result as string);
+        reader.readAsDataURL(blob);
+      }
+    } catch (e: any) {
+      showAlert('PDF', e?.message || 'Could not generate the PDF.');
+    } finally { setPdfBusy(false); }
+  };
+
+  // Compact AI-credits meter (balance + per-action estimate) shown above the
+  // AI auto-fill buttons in Q3 / Q4 (#3 credits visibility).
+  const renderAiMeterRow = (kind: 'sol' | 'risk') => {
+    if (!aiMeter) return null;
+    const est = kind === 'sol' ? aiMeter.sol : aiMeter.risk;
+    const low = aiMeter.balance < est;
+    return (
+      <View style={[s.meterRow, low && s.meterRowLow]}>
+        <Ionicons name="sparkles" size={13} color={low ? '#B45309' : '#7C3AED'} />
+        <Text style={[s.meterEst, low && { color: '#B45309' }]}>Est. ~{est} credit{est === 1 ? '' : 's'}</Text>
+        <View style={{ flex: 1 }} />
+        <Text style={[s.meterBal, low && { color: '#B45309' }]}>Balance {aiMeter.balance.toFixed(aiMeter.balance < 10 ? 1 : 0)}</Text>
+        <TouchableOpacity onPress={() => router.push('/ai-wallet' as any)} style={s.meterTopup} testID={`sf-meter-topup-${kind}`}>
+          <Ionicons name="add-circle" size={12} color="#FFF" />
+          <Text style={s.meterTopupText}>Top up</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   // ============ RENDER STEPS ============
   const renderStepIndicator = () => (
     <View style={s.stepIndicator}>
       {STEPS.map((st, i) => {
-        const canEdit = i <= step;                 // already reached → tappable
+        const isCurrent = i === step;
+        const isReachable = i <= reachableMax;      // unlocked → tappable (fwd + back)
         return (
           <View key={st.title} style={s.stepDotWrap}>
             <TouchableOpacity
-              activeOpacity={canEdit ? 0.7 : 1}
-              disabled={!canEdit}
-              onPress={() => { if (canEdit) setStep(i); }}
-              accessibilityLabel={`Step ${i + 1}: ${st.title}`}
+              testID={`sf-breadcrumb-${i}`}
+              activeOpacity={isReachable ? 0.7 : 1}
+              disabled={!isReachable}
+              onPress={() => { if (isReachable) setStep(i); }}
+              accessibilityLabel={`Go to Step ${i + 1}: ${STEPS[i].title}`}
+              hitSlop={6}
             >
-              <View style={[s.stepDot, i <= step && s.stepDotActive]}>
-                <Ionicons name={st.icon as any} size={12} color={i <= step ? '#FFF' : '#94A3B8'} />
+              <View style={[s.stepDot, isReachable && s.stepDotActive, isCurrent && s.stepDotCurrent]}>
+                <Ionicons name={st.icon as any} size={12} color={isReachable ? '#FFF' : '#94A3B8'} />
               </View>
             </TouchableOpacity>
-            {i < STEPS.length - 1 && <View style={[s.stepLine, i < step && s.stepLineActive]} />}
+            {i < STEPS.length - 1 && <View style={[s.stepLine, i < reachableMax && s.stepLineActive]} />}
           </View>
         );
       })}
@@ -1078,18 +1174,21 @@ export default function SimpleSolutionFinder() {
       <Text style={s.qTitle}>Q3. Solutions within your Current Capabilities & Resources</Text>
       <Text style={s.qHint}>Step 3 · Solution Identification. ASM deep-dive is available at every level — Overall, per PRIMARY concern, per Root Cause, and per Solution.</Text>
       {rootCauses.length > 0 && (
-        <TouchableOpacity
-          style={[s.aiFillBtn, aiBusy === 'sol' && s.aiFillBtnBusy]}
-          onPress={aiFillSolutions}
-          disabled={!!aiBusy}
-          activeOpacity={0.8}
-          testID="ai-fill-solutions-btn"
-        >
-          {aiBusy === 'sol'
-            ? <ActivityIndicator size="small" color="#FFF" />
-            : <Ionicons name="sparkles" size={15} color="#FFF" />}
-          <Text style={s.aiFillBtnText}>{aiBusy === 'sol' ? 'Generating…' : 'AI auto-fill solutions'}</Text>
-        </TouchableOpacity>
+        <>
+          {renderAiMeterRow('sol')}
+          <TouchableOpacity
+            style={[s.aiFillBtn, aiBusy === 'sol' && s.aiFillBtnBusy]}
+            onPress={aiFillSolutions}
+            disabled={!!aiBusy}
+            activeOpacity={0.8}
+            testID="ai-fill-solutions-btn"
+          >
+            {aiBusy === 'sol'
+              ? <ActivityIndicator size="small" color="#FFF" />
+              : <Ionicons name="sparkles" size={15} color="#FFF" />}
+            <Text style={s.aiFillBtnText}>{aiBusy === 'sol' ? 'Generating…' : 'AI auto-fill solutions'}</Text>
+          </TouchableOpacity>
+        </>
       )}
       {rootCauses.length === 0 && (
         <Text style={s.empty}>No root causes yet. Go back to Q2.</Text>
@@ -1212,23 +1311,73 @@ export default function SimpleSolutionFinder() {
         4b · Mitigations (1..many) · 4c · Contingencies (1..many). Use “ASM” to deep-dive any item.
       </Text>
       {solutions.length > 0 && (
-        <TouchableOpacity
-          style={[s.aiFillBtn, aiBusy === 'risk' && s.aiFillBtnBusy]}
-          onPress={aiFillRisks}
-          disabled={!!aiBusy}
-          activeOpacity={0.8}
-          testID="ai-fill-risks-btn"
-        >
-          {aiBusy === 'risk'
-            ? <ActivityIndicator size="small" color="#FFF" />
-            : <Ionicons name="sparkles" size={15} color="#FFF" />}
-          <Text style={s.aiFillBtnText}>{aiBusy === 'risk' ? 'Generating…' : 'AI auto-fill risks, mitigations & contingencies'}</Text>
-        </TouchableOpacity>
+        <>
+          {renderAiMeterRow('risk')}
+          <TouchableOpacity
+            style={[s.aiFillBtn, aiBusy === 'risk' && s.aiFillBtnBusy]}
+            onPress={aiFillRisks}
+            disabled={!!aiBusy}
+            activeOpacity={0.8}
+            testID="ai-fill-risks-btn"
+          >
+            {aiBusy === 'risk'
+              ? <ActivityIndicator size="small" color="#FFF" />
+              : <Ionicons name="sparkles" size={15} color="#FFF" />}
+            <Text style={s.aiFillBtnText}>{aiBusy === 'risk' ? 'Generating…' : 'AI auto-fill risks, mitigations & contingencies'}</Text>
+          </TouchableOpacity>
+        </>
       )}
       {solutions.length === 0 && <Text style={s.empty}>No solutions yet. Go back to Q3.</Text>}
-      {solutions.map(sol => (
-        <View key={sol.id} style={s.groupCard}>
-          <Text style={s.subGroupTitle}>Solution: {sol.text}</Text>
+      {solutions.length > 0 && (
+        <View style={s.expandBar}>
+          <TouchableOpacity style={s.expandBtn} onPress={() => setCollapsedRiskSols(new Set())} testID="sf-risk-expand-all">
+            <Ionicons name="chevron-down" size={13} color="#7C3AED" />
+            <Text style={s.expandBtnText}>Expand all</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.expandBtn} onPress={() => setCollapsedRiskSols(new Set(solutions.map(x => x.id)))} testID="sf-risk-collapse-all">
+            <Ionicons name="chevron-forward" size={13} color="#7C3AED" />
+            <Text style={s.expandBtnText}>Collapse all</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      {solutions.map(sol => {
+        const _ch = chainForSol(sol.id);
+        const _collapsed = collapsedRiskSols.has(sol.id);
+        const _riskCount = risksFor(sol.id).length;
+        return (
+        <View key={sol.id} style={[s.groupCard, s.solHierCard]}>
+          {(_ch.concern || _ch.rca) && (
+            <View style={s.trailRow}>
+              {_ch.concern && (
+                <View style={[s.trailChip, s.trailConcern]}>
+                  <Ionicons name="alert-circle" size={9} color="#92400E" />
+                  <Text style={[s.trailChipText, { color: '#92400E' }]} numberOfLines={1}>{_ch.concern.text}</Text>
+                </View>
+              )}
+              {_ch.rca && (
+                <>
+                  <Ionicons name="chevron-forward" size={10} color="#CBD5E1" />
+                  <View style={[s.trailChip, s.trailRca]}>
+                    <Ionicons name="git-branch" size={9} color="#4338CA" />
+                    <Text style={[s.trailChipText, { color: '#4338CA' }]} numberOfLines={1}>{_ch.rca.text}</Text>
+                  </View>
+                </>
+              )}
+            </View>
+          )}
+          <TouchableOpacity
+            style={s.solCollapseHead}
+            activeOpacity={0.7}
+            onPress={() => setCollapsedRiskSols(prev => { const n = new Set(prev); if (n.has(sol.id)) n.delete(sol.id); else n.add(sol.id); return n; })}
+            testID={`sf-risk-sol-toggle-${sol.id}`}
+          >
+            <Ionicons name={_collapsed ? 'chevron-forward' : 'chevron-down'} size={15} color="#6366F1" />
+            <Text style={[s.subGroupTitle, { flex: 1, marginBottom: 0 }]}>Solution: {sol.text}</Text>
+            {_collapsed && _riskCount > 0 && (
+              <View style={s.countPill}><Text style={s.countPillText}>{_riskCount} risk{_riskCount === 1 ? '' : 's'}</Text></View>
+            )}
+          </TouchableOpacity>
+          {!_collapsed && (<>
           {risksFor(sol.id).map(r => (
             <View key={r.id} style={s.riskCard}>
               <View style={s.riskHeader}>
@@ -1366,8 +1515,10 @@ export default function SimpleSolutionFinder() {
               <Ionicons name="add" size={18} color="#FFF" />
             </TouchableOpacity>
           </View>
+          </>)}
         </View>
-      ))}
+        );
+      })}
     </ScrollView>
   );
 
@@ -1406,15 +1557,42 @@ export default function SimpleSolutionFinder() {
       {actionPlan.length === 0 && (
         <Text style={s.empty}>Nothing aggregated yet. Add items in Q3 / Q4 and tap re-aggregate.</Text>
       )}
-      {actionPlan.map(p => (
-        <View key={p.ap_id} style={s.apCard}>
-          <View style={s.apHeader}>
-            <View style={[s.apTag,
-              p.source_type === 'solution' && { backgroundColor: '#EEF2FF', borderColor: '#6366F1' },
-              p.source_type === 'mitigation' && { backgroundColor: '#ECFDF5', borderColor: '#10B981' },
-              p.source_type === 'contingency' && { backgroundColor: '#FFFBEB', borderColor: '#F59E0B' },
-            ]}>
-              <Text style={s.apTagText}>{p.source_type.toUpperCase()}</Text>
+      {actionPlan.length > 0 && (
+        <View style={s.expandBar}>
+          <View style={s.legendRow}>
+            <View style={[s.legendDot, { backgroundColor: AP_COLORS.solution.accent }]} />
+            <Text style={s.legendText}>Solution</Text>
+            <View style={[s.legendDot, { backgroundColor: AP_COLORS.mitigation.accent, marginLeft: 8 }]} />
+            <Text style={s.legendText}>Mitigation</Text>
+            <View style={[s.legendDot, { backgroundColor: AP_COLORS.contingency.accent, marginLeft: 8 }]} />
+            <Text style={s.legendText}>Contingency</Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity style={s.expandBtn} onPress={() => setCollapsedApIds(new Set())} testID="sf-ap-expand-all">
+              <Ionicons name="chevron-down" size={13} color="#7C3AED" />
+              <Text style={s.expandBtnText}>Expand all</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.expandBtn} onPress={() => setCollapsedApIds(new Set(actionPlan.map(x => x.ap_id)))} testID="sf-ap-collapse-all">
+              <Ionicons name="chevron-forward" size={13} color="#7C3AED" />
+              <Text style={s.expandBtnText}>Collapse all</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+      {actionPlan.map(p => {
+        const _c = AP_COLORS[p.source_type] || AP_COLORS.solution;
+        const _lin = lineageForAp(p);
+        const _apCollapsed = collapsedApIds.has(p.ap_id);
+        return (
+        <View key={p.ap_id} style={[s.apCard, { borderLeftWidth: 4, borderLeftColor: _c.accent, backgroundColor: _c.bg }]}>
+          <TouchableOpacity
+            style={s.apHeader}
+            activeOpacity={0.7}
+            onPress={() => setCollapsedApIds(prev => { const n = new Set(prev); if (n.has(p.ap_id)) n.delete(p.ap_id); else n.add(p.ap_id); return n; })}
+            testID={`sf-ap-toggle-${p.ap_id}`}
+          >
+            <View style={[s.apTag, { backgroundColor: _c.tagBg, borderColor: _c.accent }]}>
+              <Text style={[s.apTagText, { color: _c.accent }]}>{p.source_type.toUpperCase()}</Text>
             </View>
             {p.pushed_to_action_center && (
               <View style={s.apPushed}>
@@ -1422,8 +1600,24 @@ export default function SimpleSolutionFinder() {
                 <Text style={s.apPushedText}>In Action Center</Text>
               </View>
             )}
-          </View>
+            <View style={{ flex: 1 }} />
+            <Ionicons name={_apCollapsed ? 'chevron-forward' : 'chevron-down'} size={16} color="#94A3B8" />
+          </TouchableOpacity>
+          {/* Hierarchy trail — where this action came from (Concern ▸ RCA ▸ Solution ▸ Risk) */}
+          {(_lin.concern || _lin.rca || _lin.sol || _lin.risk) && (
+            <View style={s.trailRow}>
+              {_lin.concern && (
+                <View style={[s.trailChip, s.trailConcern]}>
+                  <Text style={[s.trailChipText, { color: '#92400E' }]} numberOfLines={1}>{_lin.concern.text}</Text>
+                </View>
+              )}
+              {_lin.rca && (<><Ionicons name="chevron-forward" size={9} color="#CBD5E1" /><View style={[s.trailChip, s.trailRca]}><Text style={[s.trailChipText, { color: '#4338CA' }]} numberOfLines={1}>{_lin.rca.text}</Text></View></>)}
+              {_lin.sol && (<><Ionicons name="chevron-forward" size={9} color="#CBD5E1" /><View style={[s.trailChip, s.trailSol]}><Text style={[s.trailChipText, { color: '#3730A3' }]} numberOfLines={1}>{_lin.sol.text}</Text></View></>)}
+              {_lin.risk && (<><Ionicons name="chevron-forward" size={9} color="#CBD5E1" /><View style={[s.trailChip, s.trailRisk]}><Text style={[s.trailChipText, { color: '#B91C1C' }]} numberOfLines={1}>{_lin.risk.name}</Text></View></>)}
+            </View>
+          )}
           <Text style={s.apText}>{p.text}</Text>
+          {!_apCollapsed && (<>
           <View style={s.apMetaRow}>
             <TextInput
               style={[s.apMetaInput, { flex: 1 }]}
@@ -1466,13 +1660,36 @@ export default function SimpleSolutionFinder() {
               </Text>
             </TouchableOpacity>
           </View>
+          </>)}
         </View>
-      ))}
+        );
+      })}
       {actionPlan.length > 0 && (
         <TouchableOpacity style={s.pushBtn} onPress={pushAllToActionCenter}>
           <Ionicons name="rocket" size={16} color="#FFF" />
           <Text style={s.pushBtnText}>Push pending items to Action Center</Text>
         </TouchableOpacity>
+      )}
+      {savedId && (
+        <View style={s.reportRow}>
+          <TouchableOpacity
+            style={[s.reportBtn, s.reportPdfBtn]}
+            onPress={downloadPdf}
+            disabled={pdfBusy}
+            testID="sf-download-pdf"
+          >
+            {pdfBusy ? <ActivityIndicator size="small" color="#7C3AED" /> : <Ionicons name="document-text" size={16} color="#7C3AED" />}
+            <Text style={s.reportPdfText}>Download PDF</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.reportBtn, s.reportShareBtn]}
+            onPress={() => setShareOpen(true)}
+            testID="sf-share-report"
+          >
+            <Ionicons name="share-social" size={16} color="#FFF" />
+            <Text style={s.reportShareText}>Share report</Text>
+          </TouchableOpacity>
+        </View>
       )}
       {editId && (
         <TouchableOpacity
@@ -1656,6 +1873,15 @@ export default function SimpleSolutionFinder() {
         </View>
       </Modal>
       {contributionMode && <LiveSessionPill shareId={contribShareId} />}
+      {savedId && (
+        <ReportShareSheet
+          visible={shareOpen}
+          onClose={() => setShareOpen(false)}
+          module="solution_finder"
+          decisionId={savedId}
+          title={smartGoal || 'Solution Finder'}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -1672,6 +1898,7 @@ const s = StyleSheet.create({
   stepDotWrap: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   stepDot: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center' },
   stepDotActive: { backgroundColor: '#7C3AED' },
+  stepDotCurrent: { borderWidth: 2.5, borderColor: '#4C1D95' },
   stepEditBadge: { position: 'absolute', top: -4, right: -4, width: 14, height: 14, borderRadius: 7, backgroundColor: '#F59E0B', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#FFF' },
   capBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: '#C7D2FE', backgroundColor: '#EEF2FF', alignSelf: 'flex-start' },
   capBtnText: { fontSize: 12, fontWeight: '600', color: '#4338CA' },
@@ -1799,4 +2026,41 @@ const s = StyleSheet.create({
   emoPrimaryText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
   emoSecondaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 11, borderRadius: 10, borderWidth: 1, borderColor: '#BAE6FD', backgroundColor: '#F0F9FF' },
   emoSecondaryText: { color: '#0369A1', fontSize: 13, fontWeight: '700' },
+
+  // ── AI credits meter row (Q3 / Q4) ──
+  meterRow: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F5F3FF', borderWidth: 1, borderColor: '#DDD6FE', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 8 },
+  meterRowLow: { backgroundColor: '#FEF3C7', borderColor: '#FCD34D' },
+  meterEst: { fontSize: 11.5, fontWeight: '800', color: '#7C3AED' },
+  meterBal: { fontSize: 11.5, fontWeight: '700', color: '#6D28D9', marginRight: 8 },
+  meterTopup: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#7C3AED', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  meterTopupText: { fontSize: 10.5, fontWeight: '800', color: '#FFF' },
+
+  // ── Expand / Collapse bar (Q4 / Q5) ──
+  expandBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
+  expandBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F5F3FF', borderWidth: 1, borderColor: '#DDD6FE', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  expandBtnText: { fontSize: 11.5, fontWeight: '800', color: '#7C3AED' },
+  legendRow: { flexDirection: 'row', alignItems: 'center' },
+  legendDot: { width: 10, height: 10, borderRadius: 5 },
+  legendText: { fontSize: 10.5, fontWeight: '700', color: '#64748B', marginLeft: 4 },
+
+  // ── Hierarchy trail chips ──
+  trailRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap', marginBottom: 8 },
+  trailChip: { flexDirection: 'row', alignItems: 'center', gap: 3, borderWidth: 1, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 3, maxWidth: 160 },
+  trailChipText: { fontSize: 10, fontWeight: '700' },
+  trailConcern: { backgroundColor: '#FEF3C7', borderColor: '#FCD34D' },
+  trailRca: { backgroundColor: '#EEF2FF', borderColor: '#C7D2FE' },
+  trailSol: { backgroundColor: '#E0E7FF', borderColor: '#A5B4FC' },
+  trailRisk: { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' },
+  solHierCard: { borderLeftWidth: 3, borderLeftColor: '#6366F1' },
+  solCollapseHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  countPill: { backgroundColor: '#EEF2FF', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
+  countPillText: { fontSize: 10, fontWeight: '800', color: '#4338CA' },
+
+  // ── Report export row (Q5) ──
+  reportRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  reportBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 12 },
+  reportPdfBtn: { backgroundColor: '#F5F3FF', borderWidth: 1.5, borderColor: '#7C3AED' },
+  reportPdfText: { fontSize: 13, fontWeight: '800', color: '#7C3AED' },
+  reportShareBtn: { backgroundColor: '#7C3AED' },
+  reportShareText: { fontSize: 13, fontWeight: '800', color: '#FFF' },
 });

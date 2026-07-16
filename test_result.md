@@ -10976,3 +10976,42 @@ test_plan:
     - "Iter183 — POST /financial-models/zoho-sync returns mapped patch from live Zoho Books; fm-zoho-sync button merges + recalcs"
   test_all: false
   test_priority: "high_first"
+
+# ITER 184 — Solution Finder UX finish + Pros & Cons Step 4/7/8 polish (June 2026)
+agent_communication:
+  - agent: "main"
+    message: |
+      ITER 184 (fork continuation of the Solution Finder 6-point feedback + new Pros & Cons asks).
+
+      SOLUTION FINDER (app/tools/solution-finder.tsx):
+      1. Clickable breadcrumbs — step dots now tappable up to `reachableMax` (forward + back),
+         current step ringed. testID sf-breadcrumb-{i}.
+      2. Visible AI credits meter row above the AI auto-fill buttons in Q3 & Q4 (balance +
+         per-action estimate + Top up). Uses /api/ai-wallet + /api/ai-wallet/estimates.
+      3. Hierarchy in UI:
+         - Step 4 (Risks): each Solution card shows Concern > RCA trail chips; card is
+           collapsible; Expand-all / Collapse-all bar (testID sf-risk-expand-all / -collapse-all).
+         - Step 5 (Action Plan): each action item shows full lineage trail (Concern > RCA >
+           Solution > Risk), colour-coded by source (solution=indigo, mitigation=emerald,
+           contingency=amber) with a legend; per-item + Expand-all/Collapse-all collapse.
+      4. Report export (Step 5, only when savedId): "Download PDF" (GET /api/reports/solution_finder/{id}.pdf;
+         402 -> prompt to open /store highlight=L1) + "Share report" (ReportShareSheet, module=solution_finder).
+         NOTE: PDF is a paid L1 artifact (same gate as dezider/pros_cons/swot). 402 -> store is EXPECTED.
+
+      PROS & CONS WIZARD (app/tools/pros-cons-wizard.tsx + src/features/pros-cons/*):
+      5. Step 7 — new 3rd toggle "Show/Hide Realistic Gap" (testID pc-toggle-gaps) hides/shows all
+         gap connectors; when hidden, each factor gets a per-factor "Realistic gap" reveal
+         (testID pc-gap-toggle-{id}).
+      6. Step 7 — option names now wrap full-width (assessOpt width:'100%'), no more truncation.
+      7. Step 4 — "pick existing top-level factor" chips now carry a web hover tooltip (title=full name).
+      8. Step 8 — per-option "Case-1 vs Case-2" comparison table: Overall %, Score, Mandatory %,
+         Optional % with a Change (delta) column; A%/B% relabeled to Mandatory %/Optional %.
+
+      Backend unchanged this iter (all report/PDF/estimates endpoints already existed & verified).
+      Creds: super@test.com / SuperPass2026!. Sample SF entry (super): 11cf0bc0-8086-40c3-a679-6da1ea10fdab.
+test_plan:
+  current_focus:
+    - "Iter184 — Solution Finder: breadcrumb jump, AI meter row, Step4/Step5 hierarchy + collapse, PDF/Share buttons"
+    - "Iter184 — Pros&Cons Step7 gap toggle + option wrap; Step4 chip tooltip; Step8 Case1-vs-Case2 table + Mandatory/Optional labels"
+  test_all: false
+  test_priority: "high_first"
