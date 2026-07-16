@@ -258,3 +258,21 @@ Multi-user Decision Making App based on a 10-step Proactive Risk Response (PRR) 
 
 **Status**: Verified by testing_agent (13/13 backend pytest PASS incl. BS-ties-out & DCF; all 5 frontend flows PASS; no new bugs).
 
+
+---
+
+## ITER 184 — Solution Finder UX finish + Pros & Cons Step 4/5/7/8 polish ✅ TESTED
+
+**Solution Finder** (`app/tools/solution-finder.tsx`) — completed the 6-point feedback:
+- Clickable breadcrumbs (jump fwd/back up to `reachableMax`; current step ringed).
+- Visible AI-credits meter row above the AI auto-fill buttons in Q3 & Q4 (balance + per-action estimate + Top up).
+- Hierarchy in UI: Step 4 Solution cards show Concern›RCA trail chips + collapse (Expand/Collapse all); Step 5 action items show full lineage (Concern›RCA›Solution›Risk), colour-coded by source (solution=indigo / mitigation=emerald / contingency=amber) with legend + per-item & all collapse.
+- Report export (Step 5, when saved): Download PDF (`GET /api/reports/solution_finder/{id}.pdf`; 402 → store, paid L1 gate like dezider/pros_cons/swot) + Share report (ReportShareSheet, module=solution_finder).
+
+**Pros & Cons** (`pros-cons-wizard.tsx` + `src/features/pros-cons/*`):
+- Step 4: "+ Sub-factor" existing-factor chips now carry a web hover tooltip (WebTitle → real `<div title>`; RN-Web strips `title` from View/Text).
+- Step 5: ALL operators (numeric symbols + Contains/Starts/Ends/Equals/Not-equals) now common to BOTH Quantitative & Qualitative factors (`ALL_OPERATORS`).
+- Step 7: new "Show/Hide Realistic Gap" 3rd toggle hides/shows all gap connectors; per-factor "Realistic gap" reveal when hidden; option names wrap full-width (no truncation).
+- Step 8 (Case-2/MPPS): per-option **Case-1 vs Case-2 comparison table** (Overall %, Score, Mandatory %, Optional % + Change delta); A%/B% relabeled to Mandatory %/Optional %. Factor card Type chips renamed Subjective/Objective → **Quantitative/Qualitative** (preselected from Step-5 type, writes data_type+factor_type), a `|` separator between Type & Improvability groups, and **multi-select improvability** (Not-improvable exclusive; Improvable + Improvable(self) combinable → stored `y_both`).
+
+**Status**: Verified by testing_agent across 2 rounds — Solution Finder all 6 PASS; Pros & Cons Step 4/5/7/8 all PASS; no new bugs. Backend unchanged (report/PDF/estimate endpoints pre-existing). NOTE: Stripe key is still the pod placeholder (`sk_test_emergent`) — live checkout only works post-deploy.
