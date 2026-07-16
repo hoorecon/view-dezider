@@ -199,6 +199,28 @@ def _strip_code_fence(txt: str) -> str:
     return t.strip()
 
 
+def _parse_ai_json(txt: str):
+    """Lenient JSON parse for LLM output — strips code fences, then falls back
+    to extracting the outermost {...} block. Reduces intermittent 502s when the
+    model wraps JSON in prose/markdown. Returns a dict or None."""
+    import json as _json
+    import re as _re
+    if not txt:
+        return None
+    cleaned = _strip_code_fence(txt)
+    try:
+        return _json.loads(cleaned)
+    except Exception:
+        pass
+    m = _re.search(r"\{.*\}", cleaned, _re.DOTALL)
+    if m:
+        try:
+            return _json.loads(m.group(0))
+        except Exception:
+            return None
+    return None
+
+
 def _clamp_pct(v) -> int:
     try:
         n = int(round(float(v)))
@@ -267,11 +289,12 @@ async def ai_suggest_solutions(request: Request, user: dict = Depends(get_curren
             ),
         )
 
-    try:
-        data = _json.loads(_strip_code_fence(txt))
-        raw = data.get("suggestions") or data
-    except Exception:
+    data = _parse_ai_json(txt)
+    if data is None:
         raise HTTPException(status_code=502, detail="AI returned an unreadable response — please try again.")
+    raw = data.get("suggestions") if isinstance(data, dict) else None
+    if raw is None:
+        raw = data
 
     valid_ids = {r["rca_id"] for r in rcas}
     out: Dict = {}
@@ -349,11 +372,12 @@ async def ai_suggest_risks(request: Request, user: dict = Depends(get_current_us
             ),
         )
 
-    try:
-        data = _json.loads(_strip_code_fence(txt))
-        raw = data.get("suggestions") or data
-    except Exception:
+    data = _parse_ai_json(txt)
+    if data is None:
         raise HTTPException(status_code=502, detail="AI returned an unreadable response — please try again.")
+    raw = data.get("suggestions") if isinstance(data, dict) else None
+    if raw is None:
+        raw = data
 
     valid_ids = {s["sol_id"] for s in sols}
     out: Dict = {}

@@ -1164,6 +1164,93 @@ def _sf_rows(items, header):
     return rows
 
 
+def _sf_build_index(raw: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "concern": {c.get("id"): c for c in (raw.get("concerns") or [])},
+        "rca": {r.get("id"): r for r in (raw.get("root_causes") or [])},
+        "sol": {s.get("id"): s for s in (raw.get("solutions") or [])},
+        "risk": {k.get("id"): k for k in (raw.get("risks") or [])},
+        "mit": {m.get("id"): m for m in (raw.get("mitigations") or [])},
+        "con": {c.get("id"): c for c in (raw.get("contingencies") or [])},
+    }
+
+
+def _sf_chain_label(by: Dict[str, Any], source_type: str, source_id: str) -> str:
+    """Compact hierarchy path for an action item, e.g. '★ Concern › Solution › ⚠ Risk'."""
+    parts, sol, risk = [], None, None
+    if source_type == "solution":
+        sol = by["sol"].get(source_id)
+    elif source_type in ("mitigation", "contingency"):
+        node = by["mit" if source_type == "mitigation" else "con"].get(source_id)
+        risk = by["risk"].get(node.get("risk_id")) if node else None
+        sol = by["sol"].get(risk.get("sol_id")) if risk else None
+    if sol:
+        rca = by["rca"].get(sol.get("rca_id"))
+        concern = by["concern"].get(rca.get("concern_id")) if rca else None
+        if concern:
+            parts.append(("★ " if concern.get("is_primary") else "") + str(concern.get("text") or "")[:40])
+        parts.append(str(sol.get("text") or "")[:40])
+    if risk:
+        parts.append("⚠ " + str(risk.get("name") or "")[:30])
+    return " › ".join([p for p in parts if p])
+
+
+def _sf_hierarchy_rows(raw: Dict[str, Any]):
+    """Nested Concern ★ → Root Cause → Solution → Risk → Mitigation/Contingency
+    as an indented 2-column table (nbsp indentation renders under reportlab)."""
+    NB = "\u00a0"
+    concerns = raw.get("concerns") or []
+    if not (concerns or raw.get("solutions")):
+        return None
+    rcas_by_c: Dict[Any, list] = {}
+    for r in (raw.get("root_causes") or []):
+        rcas_by_c.setdefault(r.get("concern_id"), []).append(r)
+    sols_by_rca: Dict[Any, list] = {}
+    for s in (raw.get("solutions") or []):
+        sols_by_rca.setdefault(s.get("rca_id"), []).append(s)
+    risks_by_sol: Dict[Any, list] = {}
+    for k in (raw.get("risks") or []):
+        risks_by_sol.setdefault(k.get("sol_id"), []).append(k)
+    mits_by_risk: Dict[Any, list] = {}
+    for m in (raw.get("mitigations") or []):
+        mits_by_risk.setdefault(m.get("risk_id"), []).append(m)
+    cons_by_risk: Dict[Any, list] = {}
+    for c in (raw.get("contingencies") or []):
+        cons_by_risk.setdefault(c.get("risk_id"), []).append(c)
+
+    rows = [["Level", "Detail"]]
+    seen_sol = set()
+
+    def add_solution(s):
+        seen_sol.add(s.get("id"))
+        rows.append([NB * 4 + "↳ Solution", _t(s.get("text"))])
+        for k in risks_by_sol.get(s.get("id"), []):
+            idx = k.get("risk_index_pct")
+            meta = f" · Impact {_num(k.get('impact_pct'))}% · Prob {_num(k.get('probability_pct'))}%"
+            if idx not in (None, ""):
+                meta += f" · Index {_num(idx)}%"
+            rows.append([NB * 6 + "• Risk", _t(k.get("name")) + meta])
+            for m in mits_by_risk.get(k.get("id"), []):
+                rows.append([NB * 8 + "– Mitigation", _t(m.get("text"))])
+            for c in cons_by_risk.get(k.get("id"), []):
+                rows.append([NB * 8 + "– Contingency", _t(c.get("text"))])
+
+    ordered = sorted(concerns, key=lambda c: (0 if c.get("is_primary") else 1, c.get("order", 0)))
+    for c in ordered:
+        star = "★ " if c.get("is_primary") else ""
+        rows.append([star + "Concern", _t(c.get("text"))])
+        for r in rcas_by_c.get(c.get("id"), []):
+            rows.append([NB * 2 + "↳ Root Cause", _t(r.get("text"))])
+            for s in sols_by_rca.get(r.get("id"), []):
+                add_solution(s)
+    orphans = [s for s in (raw.get("solutions") or []) if s.get("id") not in seen_sol]
+    if orphans:
+        rows.append(["Ungrouped", "Solutions not linked to a concern/root-cause"])
+        for s in orphans:
+            add_solution(s)
+    return rows if len(rows) > 1 else None
+
+
 def _pdf_payload_for_solution_finder(raw: Dict[str, Any]) -> Dict[str, Any]:
     """Content report for the Solution Finder worksheet (no scoring/% — it is a
     goal → concerns → solutions → risks → action-plan worksheet)."""
@@ -1175,6 +1262,14 @@ def _pdf_payload_for_solution_finder(raw: Dict[str, Any]) -> Dict[str, Any]:
     if raw.get("milestones"):
         sections.append({"heading": "Milestones",
                          "table": _sf_rows(raw["milestones"], "Milestone")})
+
+    _hier = _sf_hierarchy_rows(raw)
+    if _hier:
+        sections.append({
+            "heading": "Risk Management Map (hierarchy)",
+            "table": _hier,
+            "col_ratios": [2.4, 4.6],
+        })
 
     if raw.get("concerns"):
         sections.append({"heading": "Concerns", "table": _sf_rows(raw["concerns"], "Concern")})
@@ -1228,20 +1323,23 @@ def _pdf_payload_for_solution_finder(raw: Dict[str, Any]) -> Dict[str, Any]:
 
     ap = raw.get("action_plan_items") or raw.get("action_items") or []
     if ap:
-        rows = [["ID", "Action", "Who", "By When", "Status"]]
+        _idx = _sf_build_index(raw)
+        rows = [["ID", "Action", "Under (hierarchy)", "Who", "By When", "Status"]]
         for idx, it in enumerate(ap, 1):
             if isinstance(it, dict):
+                ctx = _sf_chain_label(_idx, it.get("source_type") or "", it.get("source_id") or "")
                 rows.append([
                     _num(idx),
                     _t(it.get("text") or it.get("what") or it.get("title")),
+                    _t(ctx) if ctx else "—",
                     _t(it.get("who")),
                     _ddmmyyyy(it.get("by_when") or it.get("byWhen") or it.get("deadline")),
                     _t(it.get("status")),
                 ])
             else:
-                rows.append([_num(idx), _t(str(it)), "—", "—", "—"])
+                rows.append([_num(idx), _t(str(it)), "—", "—", "—", "—"])
         sections.append({"heading": "Action Plan", "table": rows,
-                         "col_ratios": [0.6, 3.2, 1.5, 1.5, 1.2]})
+                         "col_ratios": [0.5, 2.4, 2.4, 1.2, 1.2, 1.0]})
 
     goal = (raw.get("smart_goal") or "").strip()
     title = (goal[:80] + ("…" if len(goal) > 80 else "")) if goal else "Solution Finder"

@@ -50,12 +50,12 @@ import { safeBack } from '../../src/utils/navigation';
 // canonical `id` (la_career, la_finance, …).
 
 const STEPS = [
-  { title: 'Goal',         icon: 'flag' },
-  { title: 'Concerns',     icon: 'alert-circle' },
-  { title: 'RCA',          icon: 'git-branch' },
-  { title: 'Solutions',    icon: 'bulb' },
-  { title: 'Risks',        icon: 'shield-checkmark' },
-  { title: 'Action Plan',  icon: 'rocket' },
+  { title: 'Goal',         icon: 'flag',              desc: 'Define your SMART goal & timing' },
+  { title: 'Concerns',     icon: 'alert-circle',      desc: 'List concerns; ★ mark the primary one' },
+  { title: 'RCA',          icon: 'git-branch',        desc: 'Root-cause analysis for the primary concern' },
+  { title: 'Solutions',    icon: 'bulb',              desc: 'Generate solutions per root cause' },
+  { title: 'Risks',        icon: 'shield-checkmark',  desc: 'Risks + mitigations & contingencies' },
+  { title: 'Action Plan',  icon: 'rocket',            desc: 'Owners, timelines & final actions' },
 ];
 
 // ============== TYPES ==============
@@ -402,6 +402,7 @@ export default function SimpleSolutionFinder() {
       showAlert('Add root causes first', 'Go to Q2 and add at least one root cause.');
       return;
     }
+    if (!(await confirmAiSpend('sol'))) return;
     setAiBusy('sol');
     try {
       const concernText = (cid: string) => concerns.find(c => c.id === cid)?.text || '';
@@ -415,7 +416,7 @@ export default function SimpleSolutionFinder() {
           existing: solsFor(r.id).map(s => s.text),
         })),
       };
-      const res = await api.post('/solution-finders/ai/suggest-solutions', payload);
+      const res = await api.post('/solution-finders/ai/suggest-solutions', payload, { timeout: 90000 });
       const sug: Record<string, string[]> = res.data?.suggestions || {};
       let added = 0;
       setSolutions(prev => {
@@ -436,7 +437,7 @@ export default function SimpleSolutionFinder() {
       showAlert('AI auto-fill', added > 0 ? `Added ${added} new solution${added === 1 ? '' : 's'}.` : 'No new solutions to add — you’re all set.');
     } catch (e: any) {
       handleAiError(e, 'Please try again.');
-    } finally { setAiBusy(null); }
+    } finally { setAiBusy(null); loadAiMeter(); }
   };
 
   // Q4 — append AI-suggested risks (+ mitigations/contingencies) per solution.
@@ -446,6 +447,7 @@ export default function SimpleSolutionFinder() {
       showAlert('Add solutions first', 'Go to Q3 and add at least one solution.');
       return;
     }
+    if (!(await confirmAiSpend('risk'))) return;
     setAiBusy('risk');
     try {
       const payload = {
@@ -457,7 +459,7 @@ export default function SimpleSolutionFinder() {
           existing_risks: risksFor(s.id).map(r => r.name),
         })),
       };
-      const res = await api.post('/solution-finders/ai/suggest-risks', payload);
+      const res = await api.post('/solution-finders/ai/suggest-risks', payload, { timeout: 90000 });
       const sug: Record<string, any[]> = res.data?.suggestions || {};
       let addedRisks = 0, addedMits = 0, addedCons = 0;
       const newRisks: Risk[] = [];
@@ -530,7 +532,7 @@ export default function SimpleSolutionFinder() {
       showAlert('AI auto-fill', parts.length ? `Added ${parts.join(', ')}.` : 'No new items to add — you’re all set.');
     } catch (e: any) {
       handleAiError(e, 'Please try again.');
-    } finally { setAiBusy(null); }
+    } finally { setAiBusy(null); loadAiMeter(); }
   };
 
   // ── Q3: pull skills / resources from Self (Contact-Self) and other contacts ──
@@ -836,6 +838,69 @@ export default function SimpleSolutionFinder() {
     setStep(s => Math.min(5, s + 1));
   };
   const onBack = () => setStep(s => Math.max(0, s - 1));
+
+  // ── #6 Breadcrumb: allow jumping to any already-reachable step ──
+  const reachableMax = useMemo(() => {
+    let m = 0;
+    if (areaOfLife && smartGoal.trim()) m = 1;
+    if (m >= 1 && concerns.some(c => c.is_primary)) m = 2;
+    if (m >= 2 && rootCauses.length > 0) m = 3;
+    if (m >= 3 && solutions.length > 0) m = 4;
+    if (m >= 4) m = 5;
+    return m;
+  }, [areaOfLife, smartGoal, concerns, rootCauses, solutions]);
+  const [hoverStep, setHoverStep] = useState<number | null>(null);
+
+  // ── Hierarchy lookups (Q4/Q5 context) ──
+  const concernById = useMemo(() => new Map(concerns.map(c => [c.id, c])), [concerns]);
+  const rcaById = useMemo(() => new Map(rootCauses.map(r => [r.id, r])), [rootCauses]);
+  const solById = useMemo(() => new Map(solutions.map(sx => [sx.id, sx])), [solutions]);
+  const riskById = useMemo(() => new Map(risks.map(r => [r.id, r])), [risks]);
+  const chainForSol = (solId: string) => {
+    const sol = solById.get(solId);
+    const rca = sol ? rcaById.get(sol.rca_id) : undefined;
+    const concern = rca ? concernById.get(rca.concern_id) : undefined;
+    return { sol, rca, concern };
+  };
+
+  // ── #3 AI credits metering (visible estimate + balance; confirm before spend) ──
+  const [aiMeter, setAiMeter] = useState<{ balance: number; sol: number; risk: number } | null>(null);
+  const loadAiMeter = useCallback(async () => {
+    try {
+      const [est, bal] = await Promise.all([api.get('/ai-wallet/estimates'), api.get('/ai-wallet')]);
+      const f = est.data?.features || {};
+      const def = Number(est.data?.default_estimate ?? 0);
+      setAiMeter({
+        balance: Number(bal.data?.balance ?? 0),
+        sol: Number(f.solution_finder_solutions ?? def),
+        risk: Number(f.solution_finder_risks ?? def),
+      });
+    } catch { /* metering is best-effort */ }
+  }, []);
+  useEffect(() => { if (authHydrated) loadAiMeter(); }, [authHydrated, loadAiMeter]);
+
+  const confirmAiSpend = (kind: 'sol' | 'risk'): Promise<boolean> => {
+    const est = kind === 'sol' ? (aiMeter?.sol ?? 0) : (aiMeter?.risk ?? 0);
+    return new Promise((resolve) => {
+      (async () => {
+        let bal = aiMeter?.balance;
+        try { const b = await api.get('/ai-wallet'); bal = Number(b.data?.balance ?? bal ?? 0); } catch { /* keep cached */ }
+        if (bal !== undefined && est > 0 && bal < est) {
+          showAlert('Not enough AI credits',
+            `This uses about ${est} credits, but you have ${bal.toFixed(2)}. Top up to continue.`, [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'View wallet', onPress: () => { resolve(false); router.push('/ai-wallet' as any); } },
+          ]);
+          return;
+        }
+        showAlert('Use AI credits?',
+          `This will use about ${est} AI credit${est === 1 ? '' : 's'}. You have ${bal !== undefined ? bal.toFixed(2) : '—'} available. Proceed?`, [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Proceed', onPress: () => resolve(true) },
+        ]);
+      })();
+    });
+  };
 
   // ============ RENDER STEPS ============
   const renderStepIndicator = () => (
