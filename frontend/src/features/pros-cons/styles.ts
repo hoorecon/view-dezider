@@ -63,6 +63,22 @@ export const pcAssess = StyleSheet.create({
   cmpValCol: { flex: 1, textAlign: 'right', fontWeight: '700' },
   cmpC2Val: { color: COLORS.primary },
   cmpDeltaCol: { flex: 1, textAlign: 'right', fontWeight: '800' },
+
+  // Step 8 — "Compare all options" ranked summary bar (winner at a glance).
+  cmpAllWrap: { backgroundColor: '#FFFDF5', borderWidth: 1, borderColor: '#FCE8B2', borderRadius: 12, padding: 10, marginBottom: 14 },
+  cmpAllHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  cmpAllTitle: { fontSize: 13, fontWeight: '800', color: '#92400E' },
+  cmpAllWinner: { flex: 1, textAlign: 'right', fontSize: 12, fontWeight: '800', color: '#B45309' },
+  cmpAllRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderRadius: 8, paddingHorizontal: 4 },
+  cmpAllRowWin: { backgroundColor: '#FEF6E0' },
+  cmpAllRankPill: { width: 30, height: 24, borderRadius: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: COLORS.border },
+  cmpAllRankText: { fontSize: 11, fontWeight: '800', color: COLORS.text },
+  cmpAllName: { fontSize: 12.5, fontWeight: '700', color: COLORS.text, marginBottom: 3 },
+  cmpAllBarTrack: { height: 7, borderRadius: 4, backgroundColor: '#EEF1F6', overflow: 'hidden' },
+  cmpAllBarFill: { height: 7, borderRadius: 4 },
+  cmpAllPct: { fontSize: 13, fontWeight: '800', color: COLORS.text },
+  cmpAllDelta: { fontSize: 10, fontWeight: '700' },
+  cmpAllFoot: { fontSize: 10, color: COLORS.textDim, marginTop: 8, fontStyle: 'italic' },
 });
 
 export const pcWeightStyles = StyleSheet.create({

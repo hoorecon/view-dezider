@@ -1942,6 +1942,54 @@ export default function ProsConsWizard() {
               {/* Per-option overall card */}
               <View style={styles.card}>
                 <Text style={styles.sectionTitle}>Overall score per option (Case-2 / MPPS)</Text>
+
+                {/* Compare all options — ranked winner at a glance (no scrolling each card) */}
+                {(() => {
+                  const rows = analysis.options.map(o => {
+                    const c2 = maxScore > 0 ? ((case2ScoreByOpt[o.id] || 0) / maxScore) * 100 : 0;
+                    const c1 = maxScore > 0 ? ((case1ScoreByOpt[o.id] || 0) / maxScore) * 100 : 0;
+                    return { id: o.id, name: o.name, c2, c1, delta: c2 - c1, rank: rankByOptId[o.id], dqd: !!rollupByOpt[o.id]?.disqualified };
+                  }).sort((a, b) => {
+                    if (a.dqd !== b.dqd) return a.dqd ? 1 : -1;
+                    return (a.rank ?? 999) - (b.rank ?? 999) || b.c2 - a.c2;
+                  });
+                  if (rows.length === 0) return null;
+                  const best = rows.find(r => r.rank === 1);
+                  return (
+                    <View style={pcAssess.cmpAllWrap}>
+                      <View style={pcAssess.cmpAllHead}>
+                        <Ionicons name="trophy" size={14} color="#B45309" />
+                        <Text style={pcAssess.cmpAllTitle}>Compare all options</Text>
+                        {best && <Text style={pcAssess.cmpAllWinner} numberOfLines={1}>🏆 {best.name}</Text>}
+                      </View>
+                      {rows.map(r => (
+                        <View key={r.id} style={[pcAssess.cmpAllRow, r.rank === 1 && pcAssess.cmpAllRowWin, r.dqd && { opacity: 0.55 }]}>
+                          <View style={[pcAssess.cmpAllRankPill, r.rank === 1 && { backgroundColor: '#F59E0B', borderColor: '#F59E0B' }]}>
+                            <Text style={[pcAssess.cmpAllRankText, r.rank === 1 && { color: '#fff' }]}>{r.dqd ? '—' : `#${r.rank}`}</Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={pcAssess.cmpAllName} numberOfLines={1}>{r.name}</Text>
+                            <View style={pcAssess.cmpAllBarTrack}>
+                              <View style={[pcAssess.cmpAllBarFill, { width: `${Math.max(2, Math.min(100, r.c2))}%`, backgroundColor: r.dqd ? COLORS.textDim : r.rank === 1 ? '#F59E0B' : COLORS.primary }]} />
+                            </View>
+                          </View>
+                          <View style={{ alignItems: 'flex-end', minWidth: 76 }}>
+                            <Text style={pcAssess.cmpAllPct}>{r.c2.toFixed(1)}%</Text>
+                            <Text style={[pcAssess.cmpAllDelta, { color: Math.abs(r.delta) < 0.05 ? COLORS.textDim : r.delta > 0 ? COLORS.ok : COLORS.con }]}>
+                              {Math.abs(r.delta) < 0.05 ? '±0' : `${r.delta > 0 ? '▲' : '▼'} ${Math.abs(r.delta).toFixed(1)}`} vs C1
+                            </Text>
+                          </View>
+                        </View>
+                      ))}
+                      {best && (
+                        <Text style={pcAssess.cmpAllFoot}>
+                          Bars show Case-2 (MPPS) Overall %. “vs C1” is the change from Case-1 (Step 7).
+                        </Text>
+                      )}
+                    </View>
+                  );
+                })()}
+
                 {analysis.options.map(o => {
                   const score = case2ScoreByOpt[o.id] || 0;
                   const baseline = case1ScoreByOpt[o.id] || 0;
