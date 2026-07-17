@@ -11060,3 +11060,49 @@ test_plan:
     - "Iter187 — PDF: SF title untruncated; Action Plan group prefixes I/II/III + suffixes Mandatory/Most Recommended/Recommended; canonical status labels"
   test_all: false
   test_priority: "high_first"
+
+# ITER 188 — The Decider Store (Phase 1: Admin authoring + Excel/GSheet import + clone→MyDezider)
+agent_communication:
+  - agent: "main"
+    message: |
+      ITER 188 (fork). New feature "The Decider Store" — public storefront for Admin-Authorized
+      Decision Templates. Phase 1 delivered (Phase 2 = public storefront UI + login-gated launch, next).
+
+      PARSED the user's Business_Model_Assessments.xlsx: 10 factors (Org Type, Solution Category,
+      Nature of Solution, Intensity/Urgency, Affordability, Revenue Model, Tech Orientation,
+      Distribution Channels, Value Creation, Differentiation Strategy) × 54 business-model options.
+      Cell "Solo, Startup (40%)" => Solo 100%, Startup 40% (per-value suitability, NOT the scoring %).
+
+      BACKEND (all verified via scripts/test_decider_store.py — PASS):
+      - core/decider_import.py: robust parser (col-A row-labels: Factor Name / Possible Values /
+        Main+Sub Factor Data/Select/UI / Factor Group / Classification / Priority; option rows below
+        a header row). parse_value_cell handles per-value %. build_import_template_xlsx() generates the
+        downloadable authoring template (round-trips through the parser). gsheet_to_csv_url().
+      - routes/decider_store.py (prefix /api/decider-store):
+        PUBLIC (no auth): GET "" (list authorized+public cards), GET /meta, GET /{id} (detail),
+          GET /import-template.xlsx (download).
+        ADMIN: GET /admin/all, POST /import/excel {file_b64}, POST /import/gsheet {sheet_url},
+          POST "" (create; admin=authorized+public, user=pending), PUT /{id}, POST /{id}/authorize,
+          POST /{id}/unpublish, DELETE /{id}.
+        AUTH clone: POST /{id}/clone {mode: full|values_only} -> inserts a MyDezider decision in
+          db.decisions prefilled; returns decision_id. full => factor.category=mandatory + priority;
+          values_only => category='' + rating=0 (user classifies). Option values carried as
+          assessment.unit_value ("Solo, Startup (40%)") + suitability_values; percentage left None.
+          Paid templates -> 402 with price (fulfillment = Phase 2).
+      - Seeded "The 55 Business Model Patterns" (template_id=bmp-55-patterns) via
+        scripts/seed_decider_store_bmp.py (idempotent) — LIVE, free, both clone modes.
+
+      FRONTEND (admin, verified via screenshot login):
+      - app/admin/decider-store.tsx: Download Excel template, Import Excel (filePick->base64),
+        Import Google Sheet (URL), Create modal (title/subtitle/desc/category/decision_type/
+        clone-modes/paid+price+creator split), Classify-factors modal (Mandatory/Optional + priority
+        1-10 per factor), per-template Authorize/Unpublish/Delete. Tile added to /admin (Content group).
+
+      Creds: super@test.com / SuperPass2026! (admin portal at /admin uses its OWN login form).
+test_plan:
+  current_focus:
+    - "Iter188 BE — Decider Store public browse (no auth): GET /api/decider-store, /meta, /{id}, /import-template.xlsx"
+    - "Iter188 BE — Admin import/excel (base64) + create + authorize + clone (full & values_only) prefill a MyDezider decision"
+    - "Iter188 FE — /admin/decider-store renders, shows seeded template LIVE with Classify/Authorize/Delete; Create & Classify modals work"
+  test_all: false
+  test_priority: "high_first"

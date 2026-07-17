@@ -65,6 +65,7 @@ const QUICK_ACTIONS: QuickAction[] = [
   { key: 'signup-gate', label: 'Signup & WhatsApp Gate', description: 'Toggle the post-login WhatsApp verification gate for all users (opens Settings)', icon: 'shield-half', color: '#0EA5E9', href: '/admin/settings' },
   { key: 'dashboard-layout', label: 'Dashboard Sections', description: 'Rename section titles · drag to reorder sections · move modules between sections · auto-numbered', icon: 'grid', color: '#0D9488', href: '/admin/dashboard-layout' },
   { key: 'subscription-plans', label: 'Subscription Plans', description: 'Plan credits/month · Active toggle · Sync live pricing & plan IDs from Razorpay', icon: 'diamond', color: '#7C3AED', href: '/admin/subscription-plans' },
+  { key: 'decider-store', label: 'The Decider Store', description: 'Author & authorize public Decision Templates · import 55×10 grids from Excel/Google Sheet · pricing & clone modes', icon: 'storefront', color: '#4F46E5', href: '/admin/decider-store' },
 ];
 
 // Meaningful grouping of the 32 admin modules into 6 collapsible sections.
@@ -74,7 +75,7 @@ const ACTION_GROUPS: { key: string; label: string; icon: string; keys: string[] 
   { key: 'monetization',   label: 'Monetization & Billing',    icon: 'cash',          keys: ['subscription-plans', 'payments', 'payouts', 'ai-wallet-cfg', 'recon', 'trial-payments', 'quota-editor', 'referral', 'karma'] },
   { key: 'plans',          label: 'Plans, Tiers & Segments',   icon: 'apps',          keys: ['segments', 'tier-segments', 'acm-resolver-cfg', 'seven-seven', 'values', 'collab-auth'] },
   { key: 'people',         label: 'People & Experts',          icon: 'people',        keys: ['org-members', 'experts', 'platform-experts', 'embed-partners'] },
-  { key: 'content',        label: 'Content & Intelligence',    icon: 'sparkles',      keys: ['catalog', 'content-library', 'manifestation-content', 'scenarios', 'import-analytics', 'url-training', 'notification-engine'] },
+  { key: 'content',        label: 'Content & Intelligence',    icon: 'sparkles',      keys: ['catalog', 'decider-store', 'content-library', 'manifestation-content', 'scenarios', 'import-analytics', 'url-training', 'notification-engine'] },
   { key: 'ops',            label: 'Operations & Docs',         icon: 'construct',     keys: ['audit', 'incident', 'docs', 'handbook'] },
 ];
 

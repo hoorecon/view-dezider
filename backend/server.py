@@ -127,6 +127,7 @@ from routes.analytics import router as analytics_router
 from routes.ai_tools import router as ai_tools_router
 from routes.video_calls import router as video_calls_router
 from routes.decision_templates import router as decision_templates_router
+from routes.decider_store import router as decider_store_router
 
 # -- Pre-existing modular routes --
 from routes.tools import router as tools_router
@@ -239,6 +240,7 @@ api_router.include_router(analytics_router)
 api_router.include_router(ai_tools_router)
 api_router.include_router(video_calls_router)
 api_router.include_router(decision_templates_router)
+api_router.include_router(decider_store_router)
 
 # Pre-existing modular routes
 api_router.include_router(tools_router)
