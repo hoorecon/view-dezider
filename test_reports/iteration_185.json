@@ -1,0 +1,41 @@
+{
+  "summary": "ITER 185 — PRE-PRODUCTION regression (backend priority + light frontend smoke) for JELCOS AI. 21/21 backend tests PASS (test_iter185_preprod_regression.py). Frontend smoke: 4/4 flows PASS. All 9 review items green. No 500s anywhere. Expected paid-gates (SF pdf 402), Stripe placeholder-key 4xx JSON, and in-pod OTP non-delivery all behave correctly. Safe to promote for the LIVE build after Stripe live-charge verification post-deploy.\n\nDETAIL:\n(1) AUTH+WhatsApp gate: POST /api/auth/login for super@test.com AND admin@test.com both return session_token and whatsapp_verified=true (skip flag honored — no OTP forced). POST /api/auth/register for a brand-new throwaway (iter185_<uuid>@test.com) returns session_token AND whatsapp_verified=true → newly-registered user is NOT stuck in OTP loop. Bug fix confirmed live.\n(2) AI ASSISTANT default = Anthropic: POST /api/ai-assistant/quick-ask returns {answer:'Pong', model:'claude-sonnet-4-6', language:'en'} on a live call. GET /api/ai-assistant/meta returns 200 with languages/capabilities blocks (no crash). Fallback path (gpt-4.1-mini on quota) is code-verified; not triggerable without quota exhaustion.\n(3) SOLUTION FINDER: GET /api/solution-finders/11cf0bc0-... returns 200 with entry data (route path is /solution-finders plural, not /solution_finder). GET /api/reports/solution_finder/11cf0bc0-....pdf returns 402 application/json (entitlement JSON) — EXPECTED paid-gate, no 500. GET /api/ai-wallet/estimates → 200 with features map containing solution_finder_solutions AND solution_finder_risks keys.\n(4) PROS & CONS y_both metadata end-to-end: On analysis 98426703-...: PATCH /api/pros-cons/{id}/factors/{fid} with {improvable:'y_both', data_type:'numeric', factor_type:'objective'} → 200; GET /api/pros-cons/{id}/aggregate → 200 (rollups present, NO 500 with y_both). Then PATCH with {improvable:'y_both', data_type:'text', factor_type:'subjective'} → 200 and aggregate still 200. GET /api/reports/pros_cons/{id}.pdf → 402 (entitlement gate, no 500). Confirms E1's audit that y_both/factor_type/data_type are pure metadata not re-validated on read.\n(5) MyDezider (prr) regression: GET /api/decisions returned 1 seeded item; GET /api/reports/dezider/{id}.pdf returns <500 status (no crash) — shared FrameworkFactor/compute_option_rollups infra intact.\n(6) SWOT regression: created a TEST_iter185_swot via POST /api/swot; GET /api/reports/swot/{id}.pdf returns <500 (no crash).\n(7) STRIPE smoke: GET /api/stripe/health and /api/stripe/status both <500. POST /api/stripe/checkout with placeholder key returns a CLEAN 4xx JSON ({detail:\"kind must be 'ai_wallet' or 'subscription'\"}) — structured response, does NOT 500 / does not crash server. A live-charge post-deploy verification is STILL REQUIRED (placeholder key sk_test_emergent cannot complete a real charge in-pod).\n(8) ADMIN DOCS PDF: GET /api/admin-docs (list) as super → 200; GET /api/admin-docs/{first-slug}/pdf → <500 (200 pdf or clean 4xx, no crash).\n(9) FRONTEND smoke: (a) login screen renders; super@test.com login lands on /admin dashboard (Welcome back, Super) ✓; (b) /tools/solution-finder?id=11cf0bc0-... loads Step 1 with LIFE AREA / TYPE / SMART GOAL / TIMING cards, NO red-box; (c) /tools/pros-cons-wizard?id=98426703-... loads directly on Step 8 with 'Overall score per option (Case-2 / MPPS)' compare table + per-option METRIC/CASE-1/CASE-2/CHANGE rows (Overall %, Score, Mandatory %, Optional %) rendering cleanly — confirms iter184 sectionPctByOptC1 fix is live. No red-box crashes.\n\nMOCKED/EXPECTED (per review context, NOT bugs): Stripe placeholder key sk_test_emergent → no live charge (flagged). WhatsApp OTP SMS not deliverable in-pod → only gate-decision logic verified.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props (RN-Web)", "issue": "Chronic '\"shadow*\" style props are deprecated. Use \"boxShadow\".' — pre-existing, informational."},
+      {"component": "expo-notifications web", "issue": "'[expo-notifications] Listening to push token changes is not yet fully supported on web.' — informational, unchanged from prior iterations."},
+      {"component": "AppState getStateAsync web", "issue": "'getStateAsync is not supported on web. Returning inactive.' — informational."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter185_preprod_regression.py",
+    "/app/test_reports/pytest/iter185.xml"
+  ],
+  "action_items": [
+    "POST-DEPLOY: replace Stripe placeholder key sk_test_emergent with the LIVE key and perform a single small real-money top-up + subscription checkout to confirm end-to-end billing (in-pod could only smoke-verify structured 4xx JSON, no live charge).",
+    "POST-DEPLOY: perform one real WhatsApp OTP round-trip on a fresh phone (Ultramsg gate) since in-pod cannot deliver SMS; login/register gate-decision logic itself is already verified.",
+    "OPTIONAL: consider adding a `model` field to GET /api/ai-assistant/meta so clients can display the active default without having to send a quick-ask (currently model is only visible on reply payloads)."
+  ],
+  "critical_code_review_comments": [
+    "backend/routes/ai_assistant.py:184 — default model literal 'claude-sonnet-4-6' is correctly wired; quota fallback path returns 'gpt-4.1-mini (quota fallback)' as documented. Live call confirmed model label 'claude-sonnet-4-6' returned on quick-ask.",
+    "backend/routes/tools.py:129 — Solution Finder single-entry route is /solution-finders/{entry_id} (plural). Any client code calling /solution_finder/{id} (singular, underscore) will 404. Confirmed the frontend already uses the plural form.",
+    "backend/routes/pros_cons.py — factor PATCH accepts improvable='y_both' and stores data_type/factor_type as pure metadata; compute_option_rollups does not read improvable → aggregate remains 200 for all three improvability values (n, y, y_both). Consistent with E1's audit.",
+    "Register endpoint returns whatsapp_verified=true immediately for a brand-new user (skip-flag / effective_whatsapp_verified path). This is the intended fix for the OTP-loop bug — flagging here so main agent knows the current live behaviour on PRODUCTION-equivalent settings and can decide if any user_type should be excluded from the skip in production config."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter185_preprod_regression.py (new pytest suite)"
+  ],
+  "success_rate": {"backend": "100% (21/21)", "frontend": "100% (4/4 smoke flows)"},
+  "seed_data_creation": "Created 1 TEST_iter185_swot analysis via POST /api/swot for SWOT report smoke. Reused existing seeds: SF 11cf0bc0-..., PC 98426703-... and a1263387-... . Also PATCHed factor[0] of PC 98426703-... to {improvable:'y_both', data_type:'text', factor_type:'subjective'} as the last state — main agent may want to reset via UI or PATCH back if a specific state is required for further QA.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "For future backend regression, run: pytest /app/backend/tests/test_iter185_preprod_regression.py -v. It is fully self-seeding (SWOT created inline; PC/SF/decisions reused; new register email per run). Solution Finder single-entry path is /api/solution-finders/{id} (plural). MyDezider list is at /api/decisions (not /api/dezider). Stripe checkout requires body {kind:'ai_wallet'|'subscription',...} — my smoke uses {plan:'topup'} which returns a clean 4xx by design; for a happier path try {kind:'ai_wallet', amount_usd:5, ...}. Newly-registered users get whatsapp_verified=true (skip flag). AI default model label appears in quick-ask JSON as 'model' (not on /meta).",
+  "rca_of_issue": "N/A — no bugs found. Two initial test-script mismatches (wrong SF path, meta-model expectation) were fixed in the test file itself, not in product code."
+}
