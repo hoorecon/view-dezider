@@ -276,3 +276,26 @@ Multi-user Decision Making App based on a 10-step Proactive Risk Response (PRR) 
 - Step 8 (Case-2/MPPS): per-option **Case-1 vs Case-2 comparison table** (Overall %, Score, Mandatory %, Optional % + Change delta); A%/B% relabeled to Mandatory %/Optional %. Factor card Type chips renamed Subjective/Objective → **Quantitative/Qualitative** (preselected from Step-5 type, writes data_type+factor_type), a `|` separator between Type & Improvability groups, and **multi-select improvability** (Not-improvable exclusive; Improvable + Improvable(self) combinable → stored `y_both`).
 
 **Status**: Verified by testing_agent across 2 rounds — Solution Finder all 6 PASS; Pros & Cons Step 4/5/7/8 all PASS; no new bugs. Backend unchanged (report/PDF/estimate endpoints pre-existing). NOTE: Stripe key is still the pod placeholder (`sk_test_emergent`) — live checkout only works post-deploy.
+
+---
+
+## ITER 188 — The Decider Store (Phase 1) ✅ TESTED (13/13 BE + admin FE PASS)
+
+**What**: A public storefront (App-Store/Play-Store style) for Admin-**Authorized Decision Templates**.
+Browsable WITHOUT login; cloning requires login and auto-launches a **prefilled MyDezider decision**.
+
+**Backend** (`routes/decider_store.py`, prefix `/api/decider-store`; parser `core/decider_import.py`):
+- PUBLIC (no auth): `GET ""` (cards), `GET /meta`, `GET /{id}`, `GET /import-template.xlsx` (downloadable authoring template).
+- ADMIN: `GET /admin/all`, `POST /import/excel {file_b64}`, `POST /import/gsheet {sheet_url}`, `POST ""` (create), `PUT /{id}`, `POST /{id}/authorize`, `POST /{id}/unpublish`, `DELETE /{id}`.
+- CLONE (auth): `POST /{id}/clone {mode}` → inserts a MyDezider decision (`db.decisions`, source=decider_store) and returns `decision_id`.
+  - `full` = factors + classification (category mandatory/optional) + priority + options + option-values.
+  - `values_only` = factors + options + option-values; category='' & rating=0 (user classifies).
+  - Option value carried as `assessment.unit_value` ("Solo, Startup (40%)") + `suitability_values`; `percentage`=None (suitability % is per-value info, NOT the scoring %).
+  - Paid template clone → **402** with price (fulfillment = Phase 2).
+- Collection `db.decider_store_templates`. Seeded "The 55 Business Model Patterns" (`bmp-55-patterns`, 10 factors × 54 options) via `scripts/seed_decider_store_bmp.py` (idempotent).
+
+**Import layout** (XLSX/Google-Sheet; col-A row labels): Factor Name / Possible Values / Main Factor Data-Type / Select-Type / UI-Object / Sub Factor Data-Type / Select-Type / UI-Object / Factor Group / Classification / Priority, then an option header row (No · Product Model · Option Name · Affected Components · Exemplary Companies · Description · Remarks · <factor cols>) with one option per row. Factor cell = "Value (nn%), Value2" (no % ⇒ 100%).
+
+**Frontend**: `app/admin/decider-store.tsx` (Download template · Import Excel/GSheet · Create · Classify factors mandatory/optional+priority · Authorize/Unpublish/Delete). Tile in `/admin` → Content group.
+
+**DEFERRED — Phase 2**: public storefront screen (`/decider-store` + detail) browsable logged-out; login-gated "Use this template" that launches the prefilled MyDezider flow; paid-template payment fulfillment (Stripe/Razorpay) with platform/creator split.
