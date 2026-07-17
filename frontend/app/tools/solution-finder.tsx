@@ -186,6 +186,12 @@ export default function SimpleSolutionFinder() {
   // existing users lose nothing; Expand-all clears it, Collapse-all fills it.
   const [collapsedRiskSols, setCollapsedRiskSols] = useState<Set<string>>(new Set());
   const [collapsedApIds, setCollapsedApIds] = useState<Set<string>>(new Set());
+  // AI generation limits pop-up (a 172-item auto-generated plan was unusable).
+  const [aiOptsOpen, setAiOptsOpen] = useState<null | 'sol' | 'risk'>(null);
+  const [maxPerRca, setMaxPerRca] = useState(2);
+  const [maxRisks, setMaxRisks] = useState(2);
+  const [maxMits, setMaxMits] = useState(2);
+  const [maxCons, setMaxCons] = useState(2);
 
   // Per-row "draft" inputs (so adding doesn't require a modal)
   const [newConcernText, setNewConcernText] = useState('');
@@ -414,19 +420,24 @@ export default function SimpleSolutionFinder() {
   };
 
   // Q3 — append AI-suggested solutions per root cause (dedup, gaps only).
-  const aiFillSolutions = async () => {
+  const aiFillSolutions = () => {
     if (aiBusy) return;
     if (rootCauses.length === 0) {
       showAlert('Add root causes first', 'Go to Q2 and add at least one root cause.');
       return;
     }
-    if (!(await confirmAiSpend('sol'))) return;
+    setAiOptsOpen('sol');
+  };
+
+  // Runs after the user picks limits in the AI options pop-up.
+  const runAiSolutions = async (limitPerRca: number) => {
     setAiBusy('sol');
     try {
       const concernText = (cid: string) => concerns.find(c => c.id === cid)?.text || '';
       const payload = {
         area_of_life: areaOfLife,
         smart_goal: smartGoal,
+        max_per_rca: limitPerRca,
         root_causes: rootCauses.map(r => ({
           rca_id: r.id,
           text: r.text,
@@ -459,18 +470,25 @@ export default function SimpleSolutionFinder() {
   };
 
   // Q4 — append AI-suggested risks (+ mitigations/contingencies) per solution.
-  const aiFillRisks = async () => {
+  const aiFillRisks = () => {
     if (aiBusy) return;
     if (solutions.length === 0) {
       showAlert('Add solutions first', 'Go to Q3 and add at least one solution.');
       return;
     }
-    if (!(await confirmAiSpend('risk'))) return;
+    setAiOptsOpen('risk');
+  };
+
+  // Runs after the user picks limits in the AI options pop-up.
+  const runAiRisks = async (limitRisks: number, limitMits: number, limitCons: number) => {
     setAiBusy('risk');
     try {
       const payload = {
         area_of_life: areaOfLife,
         smart_goal: smartGoal,
+        max_risks_per_solution: limitRisks,
+        max_mitigations_per_risk: limitMits,
+        max_contingencies_per_risk: limitCons,
         solutions: solutions.map(s => ({
           sol_id: s.id,
           text: s.text,
@@ -914,28 +932,51 @@ export default function SimpleSolutionFinder() {
   }, []);
   useEffect(() => { if (authHydrated) loadAiMeter(); }, [authHydrated, loadAiMeter]);
 
-  const confirmAiSpend = (kind: 'sol' | 'risk'): Promise<boolean> => {
+  // Triggered by the AI options pop-up's "Generate" button — guards the credit
+  // balance, then runs the generation with the user-selected limits.
+  const runFromModal = async () => {
+    const kind = aiOptsOpen;
+    if (!kind) return;
     const est = kind === 'sol' ? (aiMeter?.sol ?? 0) : (aiMeter?.risk ?? 0);
-    return new Promise((resolve) => {
-      (async () => {
-        let bal = aiMeter?.balance;
-        try { const b = await api.get('/ai-wallet'); bal = Number(b.data?.balance ?? bal ?? 0); } catch { /* keep cached */ }
-        if (bal !== undefined && est > 0 && bal < est) {
-          showAlert('Not enough AI credits',
-            `This uses about ${est} credits, but you have ${bal.toFixed(2)}. Top up to continue.`, [
-            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-            { text: 'View wallet', onPress: () => { resolve(false); router.push('/ai-wallet' as any); } },
-          ]);
-          return;
-        }
-        showAlert('Use AI credits?',
-          `This will use about ${est} AI credit${est === 1 ? '' : 's'}. You have ${bal !== undefined ? bal.toFixed(2) : '—'} available. Proceed?`, [
-          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-          { text: 'Proceed', onPress: () => resolve(true) },
-        ]);
-      })();
-    });
+    let bal = aiMeter?.balance;
+    try { const b = await api.get('/ai-wallet'); bal = Number(b.data?.balance ?? bal ?? 0); } catch { /* keep cached */ }
+    if (bal !== undefined && est > 0 && bal < est) {
+      showAlert('Not enough AI credits',
+        `This uses about ${est} credits, but you have ${bal.toFixed(2)}. Top up to continue.`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'View wallet', onPress: () => router.push('/ai-wallet' as any) },
+      ]);
+      return;
+    }
+    setAiOptsOpen(null);
+    if (kind === 'sol') runAiSolutions(maxPerRca);
+    else runAiRisks(maxRisks, maxMits, maxCons);
   };
+
+  const renderStepper = (label: string, value: number, setValue: (n: number) => void, testId: string) => (
+    <View style={s.stepperRow}>
+      <Text style={s.stepperLabel}>{label}</Text>
+      <View style={s.stepperCtrl}>
+        <TouchableOpacity
+          style={[s.stepperBtn, value <= 1 && s.stepperBtnOff]}
+          disabled={value <= 1}
+          onPress={() => setValue(Math.max(1, value - 1))}
+          testID={`${testId}-minus`}
+        >
+          <Ionicons name="remove" size={16} color={value <= 1 ? '#CBD5E1' : '#7C3AED'} />
+        </TouchableOpacity>
+        <Text style={s.stepperVal} testID={`${testId}-val`}>{value}</Text>
+        <TouchableOpacity
+          style={[s.stepperBtn, value >= 10 && s.stepperBtnOff]}
+          disabled={value >= 10}
+          onPress={() => setValue(Math.min(10, value + 1))}
+          testID={`${testId}-plus`}
+        >
+          <Ionicons name="add" size={16} color={value >= 10 ? '#CBD5E1' : '#7C3AED'} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 
   // Authenticated PDF download of the full Solution Finder worksheet. The
   // report is a paid L1 artifact (same gate as MyDezider / Pros & Cons / SWOT);
@@ -1882,6 +1923,41 @@ export default function SimpleSolutionFinder() {
           title={smartGoal || 'Solution Finder'}
         />
       )}
+
+      {/* AI generation limits pop-up — keeps the auto-generated plan practical */}
+      <Modal visible={!!aiOptsOpen} transparent animationType="fade" onRequestClose={() => setAiOptsOpen(null)}>
+        <View style={s.aiOptsOverlay}>
+          <View style={s.aiOptsCard}>
+            <View style={s.aiOptsHead}>
+              <Ionicons name="sparkles" size={18} color="#7C3AED" />
+              <Text style={s.aiOptsTitle}>{aiOptsOpen === 'sol' ? 'AI Auto — Solutions' : 'AI Auto — Risk Analysis'}</Text>
+            </View>
+            <Text style={s.aiOptsSub}>Set how many items AI generates per parent, so your action plan stays doable.</Text>
+            {aiOptsOpen === 'sol' && renderStepper('Max Solutions per Root Cause', maxPerRca, setMaxPerRca, 'sf-max-sol')}
+            {aiOptsOpen === 'risk' && (
+              <>
+                {renderStepper('Max Risks per Solution', maxRisks, setMaxRisks, 'sf-max-risk')}
+                {renderStepper('Max Mitigations per Risk', maxMits, setMaxMits, 'sf-max-mit')}
+                {renderStepper('Max Contingencies per Risk', maxCons, setMaxCons, 'sf-max-con')}
+              </>
+            )}
+            {aiMeter && (
+              <Text style={s.aiOptsEst}>
+                Uses ~{aiOptsOpen === 'sol' ? aiMeter.sol : aiMeter.risk} AI credit{(aiOptsOpen === 'sol' ? aiMeter.sol : aiMeter.risk) === 1 ? '' : 's'} · Balance {aiMeter.balance.toFixed(aiMeter.balance < 10 ? 1 : 0)}
+              </Text>
+            )}
+            <View style={s.aiOptsBtns}>
+              <TouchableOpacity style={[s.aiOptsBtn, s.aiOptsCancel]} onPress={() => setAiOptsOpen(null)} testID="sf-aiopts-cancel">
+                <Text style={s.aiOptsCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.aiOptsBtn, s.aiOptsGo]} onPress={runFromModal} testID="sf-aiopts-generate">
+                <Ionicons name="sparkles" size={15} color="#FFF" />
+                <Text style={s.aiOptsGoText}>Generate</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -2063,4 +2139,24 @@ const s = StyleSheet.create({
   reportPdfText: { fontSize: 13, fontWeight: '800', color: '#7C3AED' },
   reportShareBtn: { backgroundColor: '#7C3AED' },
   reportShareText: { fontSize: 13, fontWeight: '800', color: '#FFF' },
+
+  // ── AI generation limits pop-up ──
+  aiOptsOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  aiOptsCard: { width: '100%', maxWidth: 420, backgroundColor: '#FFF', borderRadius: 18, padding: 20, gap: 10 },
+  aiOptsHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  aiOptsTitle: { fontSize: 16, fontWeight: '800', color: '#1E293B' },
+  aiOptsSub: { fontSize: 12.5, color: '#64748B', marginBottom: 4 },
+  stepperRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  stepperLabel: { flex: 1, fontSize: 13, fontWeight: '600', color: '#334155' },
+  stepperCtrl: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  stepperBtn: { width: 34, height: 34, borderRadius: 9, borderWidth: 1.5, borderColor: '#DDD6FE', backgroundColor: '#F5F3FF', alignItems: 'center', justifyContent: 'center' },
+  stepperBtnOff: { borderColor: '#E2E8F0', backgroundColor: '#F8FAFC' },
+  stepperVal: { minWidth: 22, textAlign: 'center', fontSize: 16, fontWeight: '800', color: '#1E293B' },
+  aiOptsEst: { fontSize: 11.5, fontWeight: '700', color: '#7C3AED', backgroundColor: '#F5F3FF', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, marginTop: 4, overflow: 'hidden' },
+  aiOptsBtns: { flexDirection: 'row', gap: 10, marginTop: 8 },
+  aiOptsBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 12 },
+  aiOptsCancel: { backgroundColor: '#F1F5F9' },
+  aiOptsCancelText: { fontSize: 13.5, fontWeight: '800', color: '#475569' },
+  aiOptsGo: { backgroundColor: '#7C3AED' },
+  aiOptsGoText: { fontSize: 13.5, fontWeight: '800', color: '#FFF' },
 });

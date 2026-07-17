@@ -327,6 +327,8 @@ def _build_pdf(payload: Dict[str, Any], logo_data_url=None) -> bytes:
 
     # Module-specific body
     for section in payload.get("sections", []):
+        if section.get("page_break"):
+            story.append(PageBreak())
         if section.get("heading"):
             story.append(Paragraph(_esc(section["heading"]), h2))
         if section.get("paragraph"):
@@ -1176,7 +1178,9 @@ def _sf_build_index(raw: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _sf_chain_label(by: Dict[str, Any], source_type: str, source_id: str) -> str:
-    """Compact hierarchy path for an action item, e.g. '★ Concern › Solution › ⚠ Risk'."""
+    """Full hierarchy path for an action item — every level, no truncation:
+    'Concern › Root Cause › Solution [› ⚠ Risk]'. Wrapping is handled by the
+    PDF table cell (Paragraph), so long names stay fully visible."""
     parts, sol, risk = [], None, None
     if source_type == "solution":
         sol = by["sol"].get(source_id)
@@ -1188,10 +1192,12 @@ def _sf_chain_label(by: Dict[str, Any], source_type: str, source_id: str) -> str
         rca = by["rca"].get(sol.get("rca_id"))
         concern = by["concern"].get(rca.get("concern_id")) if rca else None
         if concern:
-            parts.append(("★ " if concern.get("is_primary") else "") + str(concern.get("text") or "")[:40])
-        parts.append(str(sol.get("text") or "")[:40])
+            parts.append(("★ " if concern.get("is_primary") else "") + str(concern.get("text") or ""))
+        if rca:
+            parts.append(str(rca.get("text") or ""))
+        parts.append(str(sol.get("text") or ""))
     if risk:
-        parts.append("⚠ " + str(risk.get("name") or "")[:30])
+        parts.append("⚠ " + str(risk.get("name") or ""))
     return " › ".join([p for p in parts if p])
 
 
@@ -1324,22 +1330,59 @@ def _pdf_payload_for_solution_finder(raw: Dict[str, Any]) -> Dict[str, Any]:
     ap = raw.get("action_plan_items") or raw.get("action_items") or []
     if ap:
         _idx = _sf_build_index(raw)
-        rows = [["ID", "Action", "Under (hierarchy)", "Who", "By When", "Status"]]
-        for idx, it in enumerate(ap, 1):
+
+        def _ap_row(n, it):
             if isinstance(it, dict):
                 ctx = _sf_chain_label(_idx, it.get("source_type") or "", it.get("source_id") or "")
-                rows.append([
-                    _num(idx),
+                return [
+                    _num(n),
                     _t(it.get("text") or it.get("what") or it.get("title")),
                     _t(ctx) if ctx else "—",
                     _t(it.get("who")),
                     _ddmmyyyy(it.get("by_when") or it.get("byWhen") or it.get("deadline")),
                     _t(it.get("status")),
-                ])
-            else:
-                rows.append([_num(idx), _t(str(it)), "—", "—", "—", "—"])
-        sections.append({"heading": "Action Plan", "table": rows,
-                         "col_ratios": [0.5, 2.4, 2.4, 1.2, 1.2, 1.0]})
+                ]
+            return [_num(n), _t(str(it)), "—", "—", "—", "—"]
+
+        # Start the Action Plan on a fresh page so it can be printed on its own.
+        sections.append({
+            "heading": "Action Plan",
+            "page_break": True,
+            "paragraph": _esc(f"{len(ap)} action item(s), grouped by origin so Solutions, "
+                              f"Risk Mitigations and Risk Contingencies are clearly separated."),
+        })
+
+        header = ["ID", "Action",
+                  "Under (Concern › Root Cause › Solution › Risk)",
+                  "Who", "By When", "Status"]
+        col_ratios = [0.4, 2.2, 3.0, 1.0, 1.1, 0.9]
+        groups = [
+            ("solution", "Solution Actions"),
+            ("mitigation", "Risk Mitigation Actions"),
+            ("contingency", "Risk Contingency Actions"),
+        ]
+        known = {g[0] for g in groups}
+        counter = 0
+        for st, label in groups:
+            items = [it for it in ap if isinstance(it, dict) and (it.get("source_type") or "") == st]
+            if not items:
+                continue
+            rows = [header]
+            for it in items:
+                counter += 1
+                rows.append(_ap_row(counter, it))
+            sections.append({"heading": f"{label} ({len(items)})",
+                             "table": rows, "col_ratios": col_ratios})
+        # Anything without a recognised origin (or plain-string items) → catch-all.
+        leftover = [it for it in ap
+                    if not (isinstance(it, dict) and (it.get("source_type") or "") in known)]
+        if leftover:
+            rows = [header]
+            for it in leftover:
+                counter += 1
+                rows.append(_ap_row(counter, it))
+            sections.append({"heading": f"Other Actions ({len(leftover)})",
+                             "table": rows, "col_ratios": col_ratios})
 
     goal = (raw.get("smart_goal") or "").strip()
     title = (goal[:80] + ("…" if len(goal) > 80 else "")) if goal else "Solution Finder"

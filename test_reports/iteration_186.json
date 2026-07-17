@@ -1,0 +1,35 @@
+{
+  "summary": "ITER 186 — FRONTEND priority: Solution Finder AI-limits pop-up (Q3 & Q4) fully verified on mobile viewport (390x844) after login as super@test.com and loading entry 11cf0bc0-... Both modals open, contain the correct title / steppers / credit-estimate line / Cancel / Generate. All requested testIDs are present. Steppers clamp correctly to 1..10 with aria-disabled at both bounds. Cancel closes the modal. BACKEND smoke: 5/5 pytest passed on /api/solution-finders/ai/suggest-solutions (max_per_rca=1 honored) and /api/solution-finders/ai/suggest-risks (max_risks/mits/cons=1 honored); ALSO validated server-side clamp with max_per_rca=11 → returns ≤10. Wallet balance during smoke = 1223.06 (super) so paid caps were exercised (not 402). Q5 regression: Download PDF button, Share, Expand all, Collapse all all render; no red-box on any step; breadcrumb jumps sf-breadcrumb-0..5 all reachable.\n\nDETAIL (Q3): Clicking [data-testid=ai-fill-solutions-btn] on Step 4-of-6 'Solutions' opens Modal with title 'AI Auto — Solutions', single stepper 'Max Solutions per Root Cause' (default=2), buttons sf-max-sol-minus / sf-max-sol-val / sf-max-sol-plus / sf-aiopts-cancel / sf-aiopts-generate. Credit line 'Uses ~14 AI credits · Balance 1222' rendered. Minus × 3 → value stays at 1 and minus button aria-disabled=true. Plus × 15 → stays at 10 and plus button aria-disabled=true. Cancel closes modal (sf-aiopts-generate count=0 after cancel).\n\nDETAIL (Q4): Clicking [data-testid=ai-fill-risks-btn] on Step 5-of-6 'Risks' opens Modal 'AI Auto — Risk Analysis' with THREE steppers (sf-max-risk-*, sf-max-mit-*, sf-max-con-*), each default 2. Mit minus × 3 → clamps at 1; Con plus × 15 → clamps at 10. Credit estimate line 'Uses ~18 AI credits · Balance 1222' shown. Cancel closes.\n\nDETAIL (Q5 regression): Step 6-of-6 'Action Plan' renders 'Convert to Action', 'Re-aggregate from Q3+Q4b+Q4c', Expand all / Collapse all, Solution/Mitigation/Contingency chips, Values Alignment card, Save & Close. No red-box.\n\nBACKEND smoke (test_iter186_ai_limits_popup.py, 5 passed in 14.97s):\n  - GET /api/ai-wallet → 200 (balance 1223.06 — plenty to run one call)\n  - GET /api/ai-wallet/estimates → 200 with features.solution_finder_solutions & solution_finder_risks present\n  - POST /api/solution-finders/ai/suggest-solutions {max_per_rca:1, root_causes:[first 2]} → 200; every suggestion list ≤ 1 item\n  - POST /api/solution-finders/ai/suggest-risks {max_risks/mits/cons:1, solutions:[first 2]} → 200; every risk list ≤1, mitigations ≤1, contingencies ≤1\n  - POST /api/solution-finders/ai/suggest-solutions {max_per_rca:11} → 200 with items ≤10 (server _lim clamp works)\n\nMOCKED/EXPECTED: none — real LLM calls made (small, one per endpoint). Report PDF 402 for unpaid L1 is expected and was NOT re-exercised here (already verified in main-agent PDF test).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props (RN-Web)", "issue": "'shadow* style props are deprecated. Use \"boxShadow\".' — pre-existing, informational."},
+      {"component": "expo-notifications web", "issue": "'Listening to push token changes is not yet fully supported on web.' — informational."},
+      {"component": "AppState getStateAsync", "issue": "'getStateAsync is not supported on web. Returning inactive.' — informational."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter186_ai_limits_popup.py",
+    "/app/test_reports/pytest/iter186.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "backend/routes/tools.py:232 _lim() correctly clamps 1..10 with default 2, wrapped in try/except. Used by BOTH suggest-solutions (max_per_rca) and suggest-risks (max_risks/mits/cons).",
+    "backend/routes/tools.py:316 out[k]=items[:max_per_rca] — server enforces cap even if LLM returns more; verified live (max_per_rca=1 → ≤1 items).",
+    "backend/routes/tools.py:402/408/409 — risks[:max_risks], mits[:max_mit], cons[:max_con] all clamped server-side.",
+    "frontend/app/tools/solution-finder.tsx:190-194 — default states maxPerRca/maxRisks/maxMits/maxCons all = 2 (as spec).",
+    "frontend/app/tools/solution-finder.tsx:960-978 renderStepper — disabled at value<=1 and value>=10 with grayed icon (#CBD5E1), aria-disabled surfaced to Playwright as expected.",
+    "frontend/app/tools/solution-finder.tsx:937-954 runFromModal — credit-balance guard: re-fetches /ai-wallet, compares balance against per-feature estimate; if insufficient shows 'Not enough AI credits' alert with 'View wallet' route to /ai-wallet, and does NOT close modal → correct.",
+    "frontend/app/tools/solution-finder.tsx:1928-1958 Modal — Correctly conditionally renders one stepper for 'sol' and three for 'risk'. Estimate line combines feature-specific credit cost and current balance."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter186_ai_limits_popup.py (new)"],
+  "success_rate": {"backend": "100% (5/5)", "frontend": "100% (all requested testIDs, defaults, clamps, cancel, and Q5 regression pass)"},
+  "seed_data_creation": "None — reused existing SF entry 11cf0bc0-8086-40c3-a679-6da1ea10fdab (super). One tiny AI call per endpoint spent ≈1-2 credits (wallet still ~1220).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "SF entry 11cf0bc0-... has Q1..Q5 data ready. Breadcrumb testIDs are sf-breadcrumb-0..5 (index-based). Steps: 0=Goal 1=Concerns 2=RCA 3=Solutions(Q3) 4=Risks(Q4) 5=Action Plan(Q5). AI-limits modal opens via ai-fill-solutions-btn / ai-fill-risks-btn; steppers sf-max-sol-*, sf-max-risk-*, sf-max-mit-*, sf-max-con-*; actions sf-aiopts-cancel / sf-aiopts-generate. Backend caps enforced with _lim() in /app/backend/routes/tools.py. Regression: pytest /app/backend/tests/test_iter186_ai_limits_popup.py — self-fixtured, one LLM call per endpoint per run.",
+  "rca_of_issue": "N/A — feature working as designed. The original bug (AI auto-fill producing 172 action items) is architecturally prevented by (a) server-side _lim() clamp (max 10), (b) frontend modal defaults=2, and (c) frontend clamp UI. Every layer is defense-in-depth."
+}
