@@ -4,7 +4,36 @@
 > know to continue View Dezider lives here or is linked from here. Keep this
 > file SHORT and CURRENT — it is the first thing to read after PRD.md.
 
+
+> 🚨 **DEPLOY / OPS + INCIDENT RUNBOOK: `/app/memory/DEPLOY_OPS_RUNBOOK.md`** —
+> READ IT before any deploy, build-stamp bump, or "my data is gone" report.
+> It has the prod topology (EC2 `deploy-api-1`, **Atlas `dezider`**, Cloudflare-Pages
+> frontend), the build-stamp rule, the post-deploy per-module verification checklist,
+> and the data-loss incident runbook. Owner has been burned by agents forgetting this.
+
 ## 0) Last user intent (update at end of every session)
+- 2026-07-17 (fork — Solution Finder UX + Pros&Cons Step4/5/7/8 + PROD INCIDENT):
+  (A) DONE+TESTED (testing_agent, 2 rounds, all PASS): Solution Finder — clickable breadcrumbs,
+      AI-credits meter row (Q3/Q4), Step-4 & Step-5 hierarchy trail chips + Expand/Collapse-all,
+      Step-5 action items colour-coded by source (solution/mitigation/contingency) + Download PDF
+      (402→store) + Share (ReportShareSheet). Pros&Cons — Step-4 sub-factor chip web tooltip (WebTitle
+      div), Step-5 ALL operators common to both types, Step-7 Show/Hide-Realistic-Gap toggle + per-factor
+      reveal + option-name wrap, Step-8 Case-1 vs Case-2 comparison table + Mandatory/Optional relabel +
+      Quantitative/Qualitative type chips (preselected from Step-5) + `|` separator + multi-select
+      improvability (`y_both`) + "Compare all options" winner bar. Pre-prod regression: BE 21/21, FE 4/4 PASS.
+  (B) 🔥 PROD INCIDENT (MyDezider looked "empty" right after deploy; owner feared data loss).
+      ROOT CAUSE = NOT data loss. Atlas `dezider` had all 47 decisions the whole time. The
+      `dezider-list.tsx` fetch `catch` only logged and left items=[] → rendered the SAME "No Decisions
+      Yet" screen as a truly-empty account. During deploy the backend workers were still booting
+      (health-check attempts 1–2 failed) + Cloudflare Pages mid-propagation, so the one focus-time fetch
+      came back empty and stuck (no auto-retry). Owner opened MyDezider in that window; Pros&Cons/Solution
+      Finder were opened after healthy → they showed data. A plain refresh fixed it (proof: no data change).
+      FIX SHIPPED (build v3.102): dezider-list now distinguishes load-error from empty → shows
+      "Couldn't load — your data is safe — Retry", never wipes loaded items.
+      ⏭️ TODO: apply the SAME load-error/Retry guard to Pros&Cons, Solution Finder, and SWOT list screens.
+  (C) Build stamps this session (hand-bumped README, auto-bump-on-Save was NOT firing):
+      2026.07.17.001 (v3.101-solfinder-ux-proscons-step8) → 2026.07.17.002 (v3.102-dezider-list-load-error-guard).
+
 - 2026-07-02 (fork — Anthropic-in-AI-Assistant + Stripe integration):
   (A) ANTHROPIC as DEFAULT in AI Assistant (More Tools). `routes/ai_assistant.py` now routes
       send_message + quick_ask through a shared `_assistant_reply()` → `metered_chat(tier="precise")`
@@ -290,6 +319,18 @@ Whenever code is ready to ship, BEFORE finishing:
      action does. Never claim a git push happened. sync.sh fail-fasts if the
      remote BUILD_VERSION != EXPECT_BUILD (catches dropped/partial pushes).
 Cloudflare Pages auto-builds the frontend on push to emergent-v3 (~3-5 min).
+After it builds, HARD-REFRESH the site (per-route JS chunks + CF cache can be stale).
+
+### 2a) POST-DEPLOY VERIFICATION — never call a deploy "done" on /api/health alone
+A "healthy" backend can still be mid-worker-boot. After deploy + hard-refresh, confirm
+EACH module's list actually loads a real user's data (this is what the 2026-07-17 incident
+would have caught): MyDezider (`/tools/dezider-list`), Pros & Cons, Solution Finder, SWOT,
+plus login (email + Google). Full checklist + topology: `/app/memory/DEPLOY_OPS_RUNBOOK.md`.
+
+### 2b) "MY DATA IS GONE" — it's almost always a display glitch, NOT loss
+Prod DB is **MongoDB Atlas `dezider`** (NOT the local `deploy_mongo_data` volume). Prove data
+is safe first, then fix routing — do NOT run destructive ops. Exact commands in the runbook §5.
+Empty list right after a deploy = transient fetch failure or a frontend→backend URL mismatch.
 
 ## 3) Local QA facts
 - Test creds: /app/memory/test_credentials.md (admin super@test.com / SuperPass2026!).
