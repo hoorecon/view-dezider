@@ -62,6 +62,7 @@ export default function DeziderListScreen() {
   const router = useRouter();
   const [items, setItems] = useState<DecisionItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [templateBrowserVisible, setTemplateBrowserVisible] = useState(false);
   const [cloneModalVisible, setCloneModalVisible] = useState(false);
@@ -69,6 +70,7 @@ export default function DeziderListScreen() {
 
   const fetchItems = async () => {
     try {
+      setLoadError(false);
       const res = await api.get('/decisions');
       const all: DecisionItem[] = res.data || [];
       // Exclude SWOT-converted decisions — they live under the SWOT list.
@@ -78,6 +80,10 @@ export default function DeziderListScreen() {
       setItems(onlyDezider);
     } catch (err) {
       console.error('Error fetching decisions:', err);
+      // CRITICAL: never let a failed fetch masquerade as "No Decisions Yet".
+      // Flag the error so the UI shows a Retry state instead of an empty one,
+      // and DO NOT wipe any decisions already on screen.
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -166,7 +172,23 @@ export default function DeziderListScreen() {
             </Text>
           </View>
 
-          {items.length === 0 ? (
+          {loadError && items.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="cloud-offline-outline" size={48} color="#F59E0B" />
+              <Text style={styles.emptyStateTitle}>Couldn’t load your decisions</Text>
+              <Text style={styles.emptyStateText}>
+                This is a temporary connection issue — your data is safe. Please retry.
+              </Text>
+              <TouchableOpacity
+                style={styles.emptyCreateBtn}
+                onPress={() => { setLoading(true); fetchItems(); }}
+                testID="dezider-list-retry"
+              >
+                <Ionicons name="refresh" size={20} color="#FFF" />
+                <Text style={styles.emptyCreateText}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          ) : items.length === 0 ? (
             <View style={styles.emptyState}>
               <Ionicons name="compass-outline" size={48} color="#D1D5DB" />
               <Text style={styles.emptyStateTitle}>No Decisions Yet</Text>
