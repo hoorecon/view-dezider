@@ -11106,3 +11106,37 @@ test_plan:
     - "Iter188 FE — /admin/decider-store renders, shows seeded template LIVE with Classify/Authorize/Delete; Create & Classify modals work"
   test_all: false
   test_priority: "high_first"
+
+# ITER 189 — Decider Store Phase 2A: public storefront + login-gated clone launch + Quant/Qual classification
+agent_communication:
+  - agent: "main"
+    message: |
+      ITER 189 (fork). Phase 2A of The Decider Store + factor Quant/Qual classification.
+
+      PUBLIC STOREFRONT (browse WITHOUT login — 'decider-store' added to PUBLIC_SEGMENTS in app/_layout.tsx):
+      - app/decider-store/index.tsx: hero + tagline, search, category chips (from /meta), template cards.
+      - app/decider-store/[id].tsx: detail (cover, stats, description), clone-mode chooser (Full / Values-only
+        per allowed_clone_modes), factors preview (with Quant/Qual tag + possible values), options preview,
+        sticky CTA.
+      LOGIN-GATED CLONE:
+      - Logged-out "Use" -> stores AsyncStorage 'pending_decider_clone'=`${id}::${mode}` then /auth/login.
+      - getPostAuthRoute() (src/utils/postAuthRedirect.ts) now returns `/decider-store/{id}?use={mode}` after
+        auth; register.tsx also routes via getPostAuthRoute now.
+      - Detail screen auto-resumes: when ?use=<mode> present + authenticated -> POST /decider-store/{id}/clone
+        -> router.replace(`/prr/{decision_id}`) (opens the prefilled MyDezider decision).
+      - Authenticated direct "Use this template" clones immediately. Paid template -> 402 -> alert (checkout TBD).
+
+      QUANT/QUAL CLASSIFICATION (admin):
+      - app/admin/decider-store.tsx Classify modal now has a per-factor Type toggle:
+        Quantitative → Solution Store  /  Qualitative → ReviewNet (persists factor_type via PUT /decider-store/{id}).
+
+      Verified via screenshot (logged-out): storefront + detail render; factor shows 'Qual' tag; CTA 'Sign in to use'.
+      Creds: super@test.com / SuperPass2026!.  NOTE: seeded template bmp-55-patterns (free).
+test_plan:
+  current_focus:
+    - "Iter189 FE — /decider-store loads WITHOUT login; card -> /decider-store/[id] detail renders"
+    - "Iter189 FE — logged-out 'Sign in to use' -> login -> AUTO-RESUME clone -> lands on /prr/<decision_id> (prefilled decision)"
+    - "Iter189 FE — authenticated 'Use this template' (mode Full & Values-only) clones and opens /prr/<id>"
+    - "Iter189 FE — admin Classify modal Quant/Qual toggle persists (PUT), factor_type reflected in public detail tag"
+  test_all: false
+  test_priority: "high_first"

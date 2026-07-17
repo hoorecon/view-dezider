@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { useAuthStore } from '../../src/store/authStore';
+import { getPostAuthRoute } from '../../src/utils/postAuthRedirect';
 import { COLORS } from '../../src/constants/colors';
 import { Input } from '../../src/components/Input';
 import { GradientButton } from '../../src/components/GradientButton';
@@ -35,7 +36,7 @@ export default function RegisterScreen() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      router.replace('/(tabs)');
+      getPostAuthRoute().then((r) => router.replace(r as any));
     }
   }, [isAuthenticated]);
 

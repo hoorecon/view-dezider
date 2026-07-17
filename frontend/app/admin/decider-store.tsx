@@ -377,6 +377,21 @@ export default function AdminDeciderStore() {
                       <TouchableOpacity onPress={() => setClassFactors(prev => prev.map((x, j) => j === i ? { ...x, priority: Math.min(10, (x.priority || 0) + 1) } : x))}><Ionicons name="add-circle" size={20} color="#4F46E5" /></TouchableOpacity>
                     </View>
                   </View>
+                  <View style={s.facTypeRow}>
+                    <Text style={s.facTypeLabel}>Type:</Text>
+                    <TouchableOpacity
+                      style={[s.typeBtn, (f.factor_type || 'qualitative') === 'quantitative' && s.typeQuant]}
+                      onPress={() => setClassFactors(prev => prev.map((x, j) => j === i ? { ...x, factor_type: 'quantitative' } : x))}>
+                      <Ionicons name="stats-chart" size={12} color={(f.factor_type || '') === 'quantitative' ? '#FFF' : '#0369A1'} />
+                      <Text style={[s.typeText, (f.factor_type || '') === 'quantitative' && { color: '#FFF' }]}>Quantitative → Solution Store</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[s.typeBtn, (f.factor_type || 'qualitative') === 'qualitative' && s.typeQual]}
+                      onPress={() => setClassFactors(prev => prev.map((x, j) => j === i ? { ...x, factor_type: 'qualitative' } : x))}>
+                      <Ionicons name="chatbubbles" size={12} color={(f.factor_type || 'qualitative') === 'qualitative' ? '#FFF' : '#9333EA'} />
+                      <Text style={[s.typeText, (f.factor_type || 'qualitative') === 'qualitative' && { color: '#FFF' }]}>Qualitative → ReviewNet</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ))}
             </ScrollView>
@@ -449,4 +464,10 @@ const s = StyleSheet.create({
   segText: { fontSize: 11.5, fontWeight: '700', color: '#475569' },
   priBox: { flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 'auto' },
   priNum: { fontSize: 14, fontWeight: '800', color: '#0F172A', minWidth: 18, textAlign: 'center' },
+  facTypeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' },
+  facTypeLabel: { fontSize: 11.5, color: '#64748B', fontWeight: '700' },
+  typeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#FFF' },
+  typeQuant: { backgroundColor: '#0369A1', borderColor: '#0369A1' },
+  typeQual: { backgroundColor: '#9333EA', borderColor: '#9333EA' },
+  typeText: { fontSize: 10.5, fontWeight: '700', color: '#475569' },
 });
