@@ -32,7 +32,16 @@
       "Couldn't load — your data is safe — Retry", never wipes loaded items.
       ⏭️ TODO: apply the SAME load-error/Retry guard to Pros&Cons, Solution Finder, and SWOT list screens.
   (C) Build stamps this session (hand-bumped README, auto-bump-on-Save was NOT firing):
-      2026.07.17.001 (v3.101-solfinder-ux-proscons-step8) → 2026.07.17.002 (v3.102-dezider-list-load-error-guard).
+      2026.07.17.001 (v3.101-solfinder-ux-proscons-step8) → .002 (v3.102-dezider-list-load-error-guard)
+      → .003 (v3.103-solfinder-pdf-hierarchy-groups-ailimits).
+  (D) DONE+TESTED (iter186, FE+BE all PASS): Solution Finder report PDF — hierarchy column now shows the
+      FULL path (Concern › Root Cause › Solution › ⚠ Risk, no truncation, RCA no longer missing); Action
+      Plan split into "Solution / Risk Mitigation / Risk Contingency Actions" subsections; Action Plan
+      starts on a fresh page (PageBreak). AI auto-fill now opens a LIMITS pop-up: Q3 "Max Solutions per
+      Root Cause" (default 2, 1–10); Q4 "Max Risks per Solution / Max Mitigations per Risk / Max
+      Contingencies per Risk" (each default 2, 1–10). Enforced BOTH frontend (stepper clamp) AND backend
+      (`_lim()` clamp 1–10 in routes/tools.py + prompt + slice) so the "172 action items" explosion is
+      architecturally impossible. PDF renderer gained a `page_break` section flag (decision_reports.py).
 
 - 2026-07-02 (fork — Anthropic-in-AI-Assistant + Stripe integration):
   (A) ANTHROPIC as DEFAULT in AI Assistant (More Tools). `routes/ai_assistant.py` now routes
