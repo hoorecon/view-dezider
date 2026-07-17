@@ -14,16 +14,19 @@ import { COLORS, GRADIENTS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import TimestampLine from '../../src/components/TimestampLine';
 import { safeBack } from '../../src/utils/navigation';
+import { ACTION_STATUS_OPTS, statusLabel, statusColor, normStatus } from '../../src/constants/actionStatus';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
 const STATUS_COLORS: Record<string, string> = {
-  open: '#6B7280', in_progress: '#3B82F6', done: '#10B981',
-  blocked: '#EF4444', cancelled: '#9CA3AF',
+  open: '#94A3B8', pending: '#94A3B8', wip_25: '#60A5FA', wip_50: '#3B82F6',
+  wip_75: '#6366F1', in_progress: '#3B82F6', done: '#10B981',
+  deferred: '#A855F7', blocked: '#EF4444', cancelled: '#A1A1AA',
 };
 const STATUS_ICONS: Record<string, string> = {
-  open: 'radio-button-off', in_progress: 'time', done: 'checkmark-circle',
-  blocked: 'close-circle', cancelled: 'ban',
+  open: 'radio-button-off', pending: 'radio-button-off', wip_25: 'time-outline',
+  wip_50: 'time', wip_75: 'time', in_progress: 'time', done: 'checkmark-circle',
+  deferred: 'pause-circle', blocked: 'close-circle', cancelled: 'ban',
 };
 const PRIORITY_COLORS: Record<string, string> = {
   critical: '#EF4444', high: '#F59E0B', medium: '#3B82F6', low: '#6B7280',
@@ -41,10 +44,7 @@ const SOURCE_ICONS: Record<string, string> = {
 
 const STATUS_FILTERS = [
   { key: 'all', label: 'All' },
-  { key: 'open', label: 'Open' },
-  { key: 'in_progress', label: 'Active' },
-  { key: 'done', label: 'Done' },
-  { key: 'blocked', label: 'Blocked' },
+  ...ACTION_STATUS_OPTS.map(o => ({ key: o.id, label: o.label })),
 ];
 
 type ViewMode = 'list' | 'board' | 'calendar';
@@ -191,12 +191,14 @@ export default function CTTScreen() {
 
   const renderStats = () => {
     if (!stats) return null;
+    const bs = stats.by_status || {};
+    const wip = (bs.wip_25||0)+(bs.wip_50||0)+(bs.wip_75||0)+(bs.in_progress||0);
     const items = [
       { label: 'Total', value: stats.total || 0, color: COLORS.primary, icon: 'layers' },
-      { label: 'Open', value: stats.by_status?.open || 0, color: '#6B7280', icon: 'radio-button-off' },
-      { label: 'Active', value: stats.by_status?.in_progress || 0, color: '#3B82F6', icon: 'time' },
-      { label: 'Done', value: stats.by_status?.done || 0, color: '#10B981', icon: 'checkmark-circle' },
-      { label: 'Blocked', value: stats.by_status?.blocked || 0, color: '#EF4444', icon: 'close-circle' },
+      { label: 'Pending', value: (bs.pending||0)+(bs.open||0), color: '#94A3B8', icon: 'radio-button-off' },
+      { label: 'WIP', value: wip, color: '#3B82F6', icon: 'time' },
+      { label: 'Done', value: bs.done || 0, color: '#10B981', icon: 'checkmark-circle' },
+      { label: 'Blocked', value: bs.blocked || 0, color: '#EF4444', icon: 'close-circle' },
     ];
     return (
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.statsScroll}>
@@ -328,7 +330,7 @@ export default function CTTScreen() {
               color={STATUS_COLORS[task.current_status] || '#6B7280'}
             />
             <Text style={[s.statusPillText, { color: STATUS_COLORS[task.current_status] || '#6B7280' }]}>
-              {(task.current_status || 'open').replace('_', ' ')}
+              {statusLabel(task.current_status)}
             </Text>
           </View>
           {task.source_type && task.source_type !== 'manual' && (
@@ -421,25 +423,28 @@ export default function CTTScreen() {
 
       {/* Quick actions row */}
       <View style={s.quickRow}>
-        {['open', 'in_progress', 'done', 'blocked'].map(st => (
+        {ACTION_STATUS_OPTS.map(o => o.id).map(st => {
+          const active = normStatus(task.current_status) === st;
+          return (
           <TouchableOpacity
             key={st}
             style={[
               s.quickBtn,
-              task.current_status === st && { backgroundColor: STATUS_COLORS[st], borderColor: STATUS_COLORS[st] }
+              active && { backgroundColor: STATUS_COLORS[st], borderColor: STATUS_COLORS[st] }
             ]}
             onPress={() => quickStatus(task.task_id, st)}
           >
             <Ionicons
               name={(STATUS_ICONS[st] || 'ellipse') as any}
               size={12}
-              color={task.current_status === st ? '#FFF' : STATUS_COLORS[st]}
+              color={active ? '#FFF' : STATUS_COLORS[st]}
             />
-            <Text style={[s.quickText, task.current_status === st && { color: '#FFF' }]}>
-              {st === 'in_progress' ? 'Active' : st === 'open' ? 'Open' : st === 'done' ? 'Done' : 'Blocked'}
+            <Text style={[s.quickText, active && { color: '#FFF' }]}>
+              {statusLabel(st)}
             </Text>
           </TouchableOpacity>
-        ))}
+          );
+        })}
         <TouchableOpacity style={s.calBtn} onPress={() => openCalendar(task.task_id)}>
           <Ionicons name="calendar" size={14} color="#FFF" />
         </TouchableOpacity>
@@ -678,7 +683,7 @@ const s = StyleSheet.create({
   dayEmpty: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#E5E7EB' },
 
   // Quick actions
-  quickRow: { flexDirection: 'row', gap: 5, marginTop: 10, marginLeft: 8, borderTopWidth: 1, borderTopColor: COLORS.divider, paddingTop: 10 },
+  quickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 10, marginLeft: 8, borderTopWidth: 1, borderTopColor: COLORS.divider, paddingTop: 10 },
   quickBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border },
   quickText: { fontSize: 10, fontWeight: '600', color: COLORS.textMuted },
   calBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, backgroundColor: '#4285F4', justifyContent: 'center', alignItems: 'center' },

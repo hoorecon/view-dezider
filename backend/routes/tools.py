@@ -133,6 +133,21 @@ async def get_solution_finder(entry_id: str, user: dict = Depends(get_current_us
     )
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
+    # Central → SF status reconciliation: pushed action-plan items mirror the
+    # live status of their linked central action item (kept in sync by CTT /
+    # Lifestyle / Action Center edits) so the Action Plan step never goes stale.
+    plan = entry.get("action_plan_items") or []
+    linked_ids = [it.get("action_id") for it in plan
+                  if isinstance(it, dict) and it.get("action_id")]
+    if linked_ids:
+        cur = await db.action_items.find(
+            {"action_id": {"$in": linked_ids}, "user_id": user["user_id"]},
+            {"_id": 0, "action_id": 1, "status": 1},
+        ).to_list(500)
+        status_by_id = {c["action_id"]: c.get("status") for c in cur}
+        for it in plan:
+            if isinstance(it, dict) and it.get("action_id") in status_by_id:
+                it["status"] = status_by_id[it["action_id"]]
     return entry
 
 
@@ -498,7 +513,8 @@ async def push_action_plan_to_action_center(
                 "user_id": user["user_id"],
                 "task": it.get("text") or "Solution Finder action",
                 "deadline": it.get("by_when"),
-                "status": "pending",
+                "status": it.get("status") or "pending",
+                "current_status": it.get("status") or "pending",
                 "source_module": "solution_finder",
                 "source_id": entry_id,
                 "linked_action_id": action_id,

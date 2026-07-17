@@ -1,0 +1,47 @@
+{
+  "summary": "ITER 187 — Canonical 8-state action-status vocabulary + TRUE bi-directional sync verified end-to-end (backend + frontend). Backend pytest 18/18 collected → 17 PASS + 1 EXPECTED SKIP (SF PDF gated by 402 as designed). Frontend UI smoke on mobile (390x844) confirms the 8 canonical labels {Pending, WIP 25%, WIP 50%, WIP 75%, Done, Deferred, Blocked, Cancelled} render as filter chips on Action Center, filters + per-task quick-status buttons on CTT, and 8 chips + 'Deadline (DD-MM-YYYY)' labelled input per Action-Plan item on Solution Finder Step 6 (SF entry 11cf0bc0-...).\n\nBACKEND DETAIL (test_iter187_status_sync_and_pdf.py):\n  * TestActionItemStatusVocabulary: create default=pending/0, PATCH → each of {pending 0, wip_25 25, wip_50 50, wip_75 75, done 100} auto-aligns progress_pct; terminal states {deferred, blocked, cancelled} accepted; legacy alias 'in_progress' ⇒ wip_50 & 'completed' ⇒ done+100% via normalize_status().\n  * TestBiDirectionalSync (matches scripts/test_status_sync.py): create AI → port-to-CTT → PATCH AI to done ⇒ GET ctt/tasks/{id}.current_status=='done' (forward). PATCH ctt/tasks/{id}.current_status=wip_25 ⇒ GET action-items/{id}.status=='wip_25' & progress_pct==25 (reverse). Also reverse ctt wip_75 ⇒ AI wip_75/75, and forward AI blocked ⇒ CTT blocked.\n  * TestSolutionFinderReconciliation: GET /api/solution-finders/11cf0bc0-...=200; PDF /api/reports/solution_finder/{id}.pdf returns 402 with JSON detail (EXPECTED paid-L1 gate, NOT a bug). Pushed-item reconciliation verified live: pushed ap-item jgwjhng4 → central action item {aid}. PATCH central to 'blocked' ⇒ GET /api/solution-finders/{id} returns the plan item with status 'blocked' (central→SF sync via reconciliation loop in tools.py:136-150 confirmed).\n  * TestPDFActionPlanGroupLabels: SKIPPED (402 entitlement gate). Group prefixes/suffixes hard-coded in decision_reports.py:1367-1370 as 'I. Solution Actions (n) - Mandatory', 'II. Risk Mitigation Actions (n) - Most Recommended', 'III. Risk Contingency Actions (n) - Recommended' — code-verified; runtime confirmation blocked by paid gate (as intended).\n\nFRONTEND DETAIL:\n  * Login via Organization Login (email super@test.com / SuperPass2026!) → /admin, then /tools/action-center rendered STATUS row with 'All / Pending / WIP 25% / WIP 50% / WIP 75% / Done / Deferred / Blocked / Cancelled' — all 8 chips present + 'All'.\n  * /tools/ctt showed the same 8 chips in the top filter row AND under every task card 8 per-task status buttons (Pending / WIP 25% / WIP 50% / WIP 75% / Done / Deferred / Blocked / Cancelled) — bi-directional quick-status wired.\n  * /tools/solution-finder?id=11cf0bc0-... → clicked sf-breadcrumb-5 → Step 6 of 6 Action Plan renders: Owner/Who input, 'Deadline (DD-MM-YYYY)' label with placeholder '30-08-2026', Status label followed by 8 chips in the exact canonical order. Chip count in body text = 3 per label (matches 3 AP items × 1 chip each rendered — confirms the wrapped grid renders one chip-per-status per item).\n\nMOCKED/EXPECTED (not bugs): SF PDF 402 for unpaid L1 remains an expected paid gate. No changes made to product code.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props (RN-Web)", "issue": "Chronic '\"shadow*\" style props are deprecated. Use \"boxShadow\".' — pre-existing informational, unchanged from prior iterations."},
+      {"component": "expo-notifications web", "issue": "'Listening to push token changes is not yet fully supported on web.' — informational."},
+      {"component": "AppState getStateAsync web", "issue": "'getStateAsync is not supported on web. Returning inactive.' — informational."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter187_status_sync_and_pdf.py",
+    "/app/test_reports/pytest/iter187.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: add per-chip testID (e.g. sf-status-chip-{apId}-{status}, ac-status-filter-{status}, ctt-status-filter-{status}) to make future Playwright coverage assert individual chip tap targets rather than relying on innerText. Not blocking — labels render correctly today.",
+    "OPTIONAL: on a paid environment (or under an admin-skip flag), rerun test_iter187_status_sync_and_pdf.py::TestPDFActionPlanGroupLabels to positively confirm the PDF body contains 'I. Solution Actions (n) - Mandatory', 'II. Risk Mitigation Actions (n) - Most Recommended', 'III. Risk Contingency Actions (n) - Recommended'. Currently code-verified only."
+  ],
+  "critical_code_review_comments": [
+    "backend/core/action_status.py — single source of truth for the 8 canonical states + progress map + legacy alias table. Clean and pytest-verified.",
+    "backend/routes/action_items.py:73-96 _sync_ported_status() propagates AI→CTT (via task_id refs) AND AI→lifestyle_routines (via routine_id refs) with normalize_status() so the shared vocabulary flows out to every downstream record.",
+    "backend/routes/ctt_gem.py:143-153 CTT→AI reverse sync uses the same normalize_status()/progress_for() helpers, honouring BOTH port-path (source_type/source_id=ACTION_ITEM) AND SF/matrix-push path (linked_action_id). Verified live with wip_25 / wip_75 / blocked round-trips.",
+    "backend/routes/tools.py:136-150 SF reconciliation loop reads central action_items and stamps each pushed item's status on-the-fly at GET time — safest strategy (no drift). Verified live: PATCH central=blocked ⇒ GET /solution-finders reflects blocked immediately.",
+    "backend/routes/decision_reports.py:1367-1370 hard-codes group headings 'I. Solution Actions (n) - Mandatory', 'II. Risk Mitigation Actions (n) - Most Recommended', 'III. Risk Contingency Actions (n) - Recommended' — matches spec exactly; leftover items fall to 'IV. Other Actions (n)'.",
+    "backend/routes/decision_reports.py:306 title uses Paragraph(h2) — no fixed-width truncation; ReportLab will wrap. Un-truncation requirement satisfied.",
+    "frontend/src/constants/actionStatus.ts + ActionItemEditor.tsx + solution-finder.tsx + action-center.tsx + ctt.tsx all import from the single ACTION_STATUS_OPTS constant → guarantees identical vocab & ordering across every UI surface.",
+    "frontend/app/tools/solution-finder.tsx:1755 Deadline label 'Deadline (DD-MM-YYYY)' matches spec verbatim; DD-MM-YYYY mask is enforced by the shared onDeadlineChange handler."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter187_status_sync_and_pdf.py (new pytest suite — 18 tests)"
+  ],
+  "success_rate": {
+    "backend": "100% (17/17 executed; 1 skipped by design due to 402 paid gate)",
+    "frontend": "100% (Action Center, CTT, Solution Finder Step 6 — all 8 canonical labels present on all 3 screens)"
+  },
+  "seed_data_creation": "Pushed SF ap_id 'jgwjhng4' on entry 11cf0bc0-8086-40c3-a679-6da1ea10fdab to central action_items (one new action_id created via /solution-finders/{id}/push-action-plan) to unblock the reconciliation test; also created ~10 short-lived TEST_iter187 action_items which were auto-cleaned via DELETE /api/action-items/{id} in fixture teardown.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "For future regression: pytest /app/backend/tests/test_iter187_status_sync_and_pdf.py -v. Self-fixtured — creates & deletes its own action-items each run. SF sample entry 11cf0bc0-... now has 1 pushed action-plan item (jgwjhng4). Public backend URL is EXPO_PUBLIC_BACKEND_URL from /app/frontend/.env; the pytest reads that env var. Legacy aliases 'in_progress'/'completed'/'open' normalize to wip_50/done/pending at BOTH create and update paths (backend/core/action_status.py). Sync directions: (A) AI→CTT via _sync_ported_status (action_items.py:73), (B) CTT→AI via ctt_gem.py:143, (C) SF reconciliation via tools.py:136 at GET time (no drift). SF PDF returns 402 unless the user has L1 entitlement — do NOT treat as failure.",
+  "rca_of_issue": "N/A — all 5 items from ITER 187 spec are implemented correctly at backend and frontend. Testing focused on: 8-state vocab presence in every UI (verified via label scan on rendered pages), backend PATCH round-trips for all 5 progress-bearing states + 3 terminal states, forward+reverse sync between action_items and ctt_tasks, and SF reconciliation via pushed-item central-status mirroring. PDF group prefixes/suffixes are code-verified (paid gate prevents runtime PDF-body inspection in-pod)."
+}

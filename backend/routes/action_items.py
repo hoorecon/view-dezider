@@ -63,8 +63,37 @@ SOURCE_MODULES = {
 RECURRENCE_TYPES = {"one_time", "recurring"}
 FREQUENCIES = {"daily", "weekly", "biweekly", "monthly", "quarterly", "yearly", "custom"}
 PRIORITIES = {"low", "medium", "high", "urgent"}
-STATUSES = {"pending", "in_progress", "done", "blocked", "cancelled"}
+from core.action_status import (
+    CANONICAL_STATUSES, normalize_status, progress_for,
+)
+STATUSES = set(CANONICAL_STATUSES)
 PORT_TARGETS = {"CTT", "LIFESTYLE"}
+
+
+async def _sync_ported_status(ai_doc: Dict[str, Any]) -> None:
+    """Propagate an action-item's status to every downstream record it feeds:
+      • the ActionItemEditor port path  (action_item.ported_to / ported_ref_id)
+      • the Solution-Finder / Matrix push path (records carrying linked_action_id)
+    One-way here; the reverse hooks live in ctt_gem / lifestyle."""
+    st = normalize_status(ai_doc.get("status"))
+    now = _now_iso()
+    action_id = ai_doc.get("action_id")
+    pt = (ai_doc.get("ported_to") or "").upper()
+    ref = ai_doc.get("ported_ref_id")
+    if pt == "CTT" and ref:
+        await db.ctt_tasks.update_one(
+            {"task_id": ref}, {"$set": {"current_status": st, "updated_at": now}})
+    elif pt == "LIFESTYLE" and ref:
+        await db.lifestyle_routines.update_one(
+            {"routine_id": ref},
+            {"$set": {"status": st, "is_active": st != "cancelled", "updated_at": now}})
+    if action_id:
+        await db.ctt_tasks.update_many(
+            {"linked_action_id": action_id},
+            {"$set": {"current_status": st, "status": st, "updated_at": now}})
+        await db.lifestyle_routines.update_many(
+            {"linked_action_id": action_id},
+            {"$set": {"status": st, "is_active": st != "cancelled", "updated_at": now}})
 
 
 def _now_iso() -> str:
@@ -82,7 +111,7 @@ def _normalise(body: Dict[str, Any], user: Dict[str, Any]) -> Dict[str, Any]:
     pri = (body.get("priority") or "medium").lower()
     if pri not in PRIORITIES:
         raise HTTPException(400, f"priority must be one of {sorted(PRIORITIES)}")
-    status = (body.get("status") or "pending").lower()
+    status = normalize_status(body.get("status"))
     if status not in STATUSES:
         raise HTTPException(400, f"status must be one of {sorted(STATUSES)}")
     freq = body.get("recurrence_frequency")
@@ -96,8 +125,10 @@ def _normalise(body: Dict[str, Any], user: Dict[str, Any]) -> Dict[str, Any]:
 
     progress = int(body.get("progress_pct") or 0)
     progress = max(0, min(100, progress))
-    if status == "done" and progress < 100:
-        progress = 100
+    # WIP / pending / done states carry a canonical %, which wins over any
+    # stale client-supplied progress so the two never drift apart.
+    if status in ("pending", "wip_25", "wip_50", "wip_75", "done"):
+        progress = progress_for(status)
 
     return {
         "user_id": user.get("user_id"),
@@ -191,6 +222,9 @@ async def update_action_item(action_id: str, request: Request, user: dict = Depe
     norm["updated_at"] = _now_iso()
     await db.action_items.update_one({"action_id": action_id}, {"$set": norm})
     out = await db.action_items.find_one({"action_id": action_id}, {"_id": 0})
+    # Bi-directional status sync: push status onto the ported CTT/Lifestyle record.
+    if out:
+        await _sync_ported_status(out)
     return out
 
 

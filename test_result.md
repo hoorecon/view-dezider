@@ -11015,3 +11015,48 @@ test_plan:
     - "Iter184 — Pros&Cons Step7 gap toggle + option wrap; Step4 chip tooltip; Step8 Case1-vs-Case2 table + Mandatory/Optional labels"
   test_all: false
   test_priority: "high_first"
+
+# ITER 187 — Canonical Action Status (8 states) + Bi-directional Sync + PDF fixes (June 2026)
+agent_communication:
+  - agent: "main"
+    message: |
+      ITER 187 (fork). User's 5-point request implemented.
+
+      CANONICAL STATUS SET (one source of truth):
+        pending · wip_25 · wip_50 · wip_75 · done · deferred · blocked · cancelled
+        Backend: core/action_status.py (normalize_status/status_label/progress_for; aliases
+        open->pending, in_progress->wip_50, completed->done). Frontend: src/constants/actionStatus.ts.
+        WIP states carry progress % (pending0/wip25/wip50/wip75/done100) kept in lockstep.
+        Applied consistently in: ActionItemEditor (Pros&Cons + SWOT + MyDezider Step10 Action Plans),
+        Action Center (filters+edit dropdown+tags), CTT (ctt.tsx status filters/quick buttons/pills,
+        ctt-task.tsx status chips default pending), and Solution Finder Action Plan step.
+
+      BI-DIRECTIONAL STATUS SYNC (true two-way, verified via scripts/test_status_sync.py):
+        Hub = action_items collection. 
+        - PUT /action-items/{id} -> _sync_ported_status fans status to ported CTT task
+          (current_status) / Lifestyle routine (status) AND to any record carrying
+          linked_action_id (Solution-Finder / Matrix push path).
+        - PUT /ctt/tasks/{id} (current_status) -> back-writes parent action item
+          (source_id when source_type=ACTION_ITEM, else linked_action_id).
+        - PUT /lifestyle/routines/{id} (status now allowed) -> back-writes parent action item.
+        - GET /solution-finders/{id} reconciles each pushed action_plan_item.status from its
+          linked central action item (central->SF), so SF Action Plan never goes stale.
+
+      PDF (routes/decision_reports.py):
+        1. Solution Finder title no longer truncated at 80 chars (shows full smart_goal).
+        2. Action Plan groups now prefixed + suffixed:
+           "I. Solution Actions (n) - Mandatory", "II. Risk Mitigation Actions (n) - Most Recommended",
+           "III. Risk Contingency Actions (n) - Recommended", "IV. Other Actions (n)".
+        3. Action-plan Status column renders canonical labels (wip_25 -> "WIP 25%") via _fmt_status.
+
+      UI LABEL: Action Plan date field label = "Deadline (DD-MM-YYYY)" (ActionItemEditor + Solution
+      Finder); SF deadline input masks DD-MM-YYYY and persists ISO in by_when.
+
+      Creds: super@test.com / SuperPass2026!.
+test_plan:
+  current_focus:
+    - "Iter187 — Action item status: 8 canonical states everywhere (Action Center, CTT, Pros&Cons/MyDezider/SWOT Action Plan, Solution Finder)"
+    - "Iter187 — Bi-directional status sync: change in Action Center/CTT/Lifestyle reflects in Pros&Cons/MyDezider/SolutionFinder and vice-versa"
+    - "Iter187 — PDF: SF title untruncated; Action Plan group prefixes I/II/III + suffixes Mandatory/Most Recommended/Recommended; canonical status labels"
+  test_all: false
+  test_priority: "high_first"

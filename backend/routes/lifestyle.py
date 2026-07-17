@@ -89,13 +89,25 @@ async def update_routine(routine_id: str, request: Request, user: dict = Depends
 
     allowed = [
         "name", "description", "life_area", "frequency", "time_slot",
-        "priority", "category", "expected_value", "unit", "is_active",
+        "priority", "category", "expected_value", "unit", "is_active", "status",
         "linked_freedoms", "linked_aala_cells",
     ]
     update = {k: body[k] for k in allowed if k in body}
     update["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     await db.lifestyle_routines.update_one({"routine_id": routine_id}, {"$set": update})
+    # Bi-directional status sync back to the parent action item.
+    if "status" in update:
+        linked = (routine.get("source_id") if routine.get("source_type") == "ACTION_ITEM"
+                  else None) or routine.get("linked_action_id")
+        if linked:
+            from core.action_status import normalize_status, progress_for
+            st = normalize_status(update["status"])
+            await db.action_items.update_one(
+                {"action_id": linked, "user_id": user["user_id"]},
+                {"$set": {"status": st, "progress_pct": progress_for(st),
+                          "updated_at": datetime.now(timezone.utc).isoformat()}},
+            )
     updated = await db.lifestyle_routines.find_one({"routine_id": routine_id}, {"_id": 0})
     return updated
 

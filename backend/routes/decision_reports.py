@@ -747,6 +747,14 @@ def _ddmmyyyy(v) -> str:
         return f"{m.group(3)}-{m.group(2)}-{m.group(1)}" if m else s
 
 
+def _fmt_status(v) -> str:
+    """Render a canonical action status code (e.g. 'wip_25') as 'WIP 25%'."""
+    from core.action_status import status_label
+    if v is None or v == "":
+        return "—"
+    return status_label(v)
+
+
 def _action_plan_section(action_items):
     """Action Plan table (ID · Action · Who · By When · Recurrence · Status).
     Shared by Pros & Cons and My Dezider reports."""
@@ -765,7 +773,7 @@ def _action_plan_section(action_items):
             _t(a.get("who")),
             _ddmmyyyy(a.get("by_when")),
             rec,
-            _t((a.get("status") or "").replace("_", " ").title()),
+            _fmt_status(a.get("status")),
         ])
     return {"heading": "Action Plan — Who · What · By When", "table": rows,
             "col_ratios": [0.6, 3.0, 1.6, 1.4, 1.4, 1.2]}
@@ -1340,7 +1348,7 @@ def _pdf_payload_for_solution_finder(raw: Dict[str, Any]) -> Dict[str, Any]:
                     _t(ctx) if ctx else "—",
                     _t(it.get("who")),
                     _ddmmyyyy(it.get("by_when") or it.get("byWhen") or it.get("deadline")),
-                    _t(it.get("status")),
+                    _fmt_status(it.get("status")),
                 ]
             return [_num(n), _t(str(it)), "—", "—", "—", "—"]
 
@@ -1357,13 +1365,13 @@ def _pdf_payload_for_solution_finder(raw: Dict[str, Any]) -> Dict[str, Any]:
                   "Who", "By When", "Status"]
         col_ratios = [0.4, 2.2, 3.0, 1.0, 1.1, 0.9]
         groups = [
-            ("solution", "Solution Actions"),
-            ("mitigation", "Risk Mitigation Actions"),
-            ("contingency", "Risk Contingency Actions"),
+            ("solution",    "I",   "Solution Actions",         "Mandatory"),
+            ("mitigation",  "II",  "Risk Mitigation Actions",  "Most Recommended"),
+            ("contingency", "III", "Risk Contingency Actions", "Recommended"),
         ]
         known = {g[0] for g in groups}
         counter = 0
-        for st, label in groups:
+        for st, roman, label, suffix in groups:
             items = [it for it in ap if isinstance(it, dict) and (it.get("source_type") or "") == st]
             if not items:
                 continue
@@ -1371,7 +1379,7 @@ def _pdf_payload_for_solution_finder(raw: Dict[str, Any]) -> Dict[str, Any]:
             for it in items:
                 counter += 1
                 rows.append(_ap_row(counter, it))
-            sections.append({"heading": f"{label} ({len(items)})",
+            sections.append({"heading": f"{roman}. {label} ({len(items)}) - {suffix}",
                              "table": rows, "col_ratios": col_ratios})
         # Anything without a recognised origin (or plain-string items) → catch-all.
         leftover = [it for it in ap
@@ -1381,11 +1389,11 @@ def _pdf_payload_for_solution_finder(raw: Dict[str, Any]) -> Dict[str, Any]:
             for it in leftover:
                 counter += 1
                 rows.append(_ap_row(counter, it))
-            sections.append({"heading": f"Other Actions ({len(leftover)})",
+            sections.append({"heading": f"IV. Other Actions ({len(leftover)})",
                              "table": rows, "col_ratios": col_ratios})
 
     goal = (raw.get("smart_goal") or "").strip()
-    title = (goal[:80] + ("…" if len(goal) > 80 else "")) if goal else "Solution Finder"
+    title = goal if goal else "Solution Finder"
     return {
         "title": title,
         "context": None,

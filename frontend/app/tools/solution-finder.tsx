@@ -40,6 +40,23 @@ import { CollabBar } from '../../src/components/CollabBar';
 import LiveSessionPill from '../../src/components/LiveSessionPill';
 import { DecisionContinuePanel } from '../../src/components/DecisionContinuePanel';
 import { safeBack } from '../../src/utils/navigation';
+import { ACTION_STATUS_OPTS, normStatus } from '../../src/constants/actionStatus';
+import { formatDMY } from '../../src/utils/datetime';
+
+// DD-MM-YYYY input helpers (local; mirror ActionItemEditor behaviour).
+const maskDMY = (t: string) => {
+  const d = t.replace(/[^0-9]/g, '').slice(0, 8);
+  const parts = [d.slice(0, 2), d.slice(2, 4), d.slice(4, 8)].filter(Boolean);
+  return parts.join('-');
+};
+const dmyToISO = (s: string): string | null => {
+  const m = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (!m) return null;
+  const dd = +m[1], mm = +m[2];
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+  const iso = `${m[3]}-${m[2]}-${m[1]}`;
+  return isNaN(new Date(`${iso}T00:00:00`).getTime()) ? null : iso;
+};
 import ReportShareSheet from '../../src/components/ReportShareSheet';
 
 // ============== CONSTANTS ==============
@@ -761,6 +778,28 @@ export default function SimpleSolutionFinder() {
 
   const editPlanItem = (apId: string, patch: Partial<APItem>) =>
     setActionPlan(prev => prev.map(p => p.ap_id === apId ? { ...p, ...patch } : p));
+
+  // Deadline field: keep a DD-MM-YYYY display string but persist ISO in by_when.
+  const [apDeadlineText, setApDeadlineText] = useState<Record<string, string>>({});
+  const deadlineText = (p: APItem) =>
+    apDeadlineText[p.ap_id] ?? (p.by_when ? formatDMY(p.by_when) : '');
+  const onDeadlineChange = (p: APItem, t: string) => {
+    const masked = maskDMY(t);
+    setApDeadlineText(prev => ({ ...prev, [p.ap_id]: masked }));
+    const iso = dmyToISO(masked);
+    if (iso) editPlanItem(p.ap_id, { by_when: iso });
+    else if (!masked) editPlanItem(p.ap_id, { by_when: undefined });
+  };
+
+  // Status change → update locally + (if pushed) sync the linked central action
+  // item, which fans the new status out to CTT / Lifestyle / Action Center.
+  const changePlanStatus = async (p: APItem, status: string) => {
+    editPlanItem(p.ap_id, { status });
+    if (p.action_id) {
+      try { await api.put(`/action-items/${p.action_id}`, { status }); }
+      catch { /* keep the local optimistic update; retried on next save */ }
+    }
+  };
 
   const pushAllToActionCenter = async () => {
     const id = await handleSave(true);
@@ -1702,20 +1741,42 @@ export default function SimpleSolutionFinder() {
           <Text style={s.apText}>{p.text}</Text>
           {!_apCollapsed && (<>
           <View style={s.apMetaRow}>
-            <TextInput
-              style={[s.apMetaInput, { flex: 1 }]}
-              placeholder="Owner / Who"
-              placeholderTextColor="#9CA3AF"
-              value={p.who || ''}
-              onChangeText={t => editPlanItem(p.ap_id, { who: t })}
-            />
-            <TextInput
-              style={[s.apMetaInput, { width: 110 }]}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor="#9CA3AF"
-              value={p.by_when || ''}
-              onChangeText={t => editPlanItem(p.ap_id, { by_when: t })}
-            />
+            <View style={{ flex: 1 }}>
+              <Text style={s.apFieldLabel}>Owner / Who</Text>
+              <TextInput
+                style={s.apMetaInput}
+                placeholder="Owner / Who"
+                placeholderTextColor="#9CA3AF"
+                value={p.who || ''}
+                onChangeText={t => editPlanItem(p.ap_id, { who: t })}
+              />
+            </View>
+            <View style={{ width: 130 }}>
+              <Text style={s.apFieldLabel}>Deadline (DD-MM-YYYY)</Text>
+              <TextInput
+                style={s.apMetaInput}
+                placeholder="30-08-2026"
+                placeholderTextColor="#9CA3AF"
+                value={deadlineText(p)}
+                onChangeText={t => onDeadlineChange(p, t)}
+                keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'default'}
+              />
+            </View>
+          </View>
+          <Text style={s.apFieldLabel}>Status</Text>
+          <View style={s.apStatusRow}>
+            {ACTION_STATUS_OPTS.map(opt => {
+              const active = normStatus(p.status) === opt.id;
+              return (
+                <TouchableOpacity
+                  key={opt.id}
+                  style={[s.apStatusChip, active && { backgroundColor: opt.color, borderColor: opt.color }]}
+                  onPress={() => changePlanStatus(p, opt.id)}
+                >
+                  <Text style={[s.apStatusChipText, active && { color: '#FFF' }]}>{opt.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
           <View style={s.apFlagRow}>
             <TouchableOpacity
@@ -2120,8 +2181,12 @@ const s = StyleSheet.create({
   apPushed: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   apPushedText: { fontSize: 10, fontWeight: '700', color: '#10B981' },
   apText: { fontSize: 13, color: '#0F172A', marginBottom: 6 },
-  apMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  apMetaRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginBottom: 6 },
   apMetaInput: { backgroundColor: '#F8FAFC', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 6, fontSize: 11, color: '#0F172A', borderWidth: 1, borderColor: '#E2E8F0' },
+  apFieldLabel: { fontSize: 10, fontWeight: '700', color: '#64748B', marginBottom: 3, marginTop: 4 },
+  apStatusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginBottom: 6 },
+  apStatusChip: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#FFF' },
+  apStatusChipText: { fontSize: 10.5, fontWeight: '700', color: '#475569' },
   apFlagRow: { flexDirection: 'row', gap: 6 },
   apFlag: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#CBD5E1' },
   apFlagActive: { backgroundColor: '#10B981', borderColor: '#10B981' },

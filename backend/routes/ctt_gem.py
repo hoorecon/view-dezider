@@ -137,6 +137,20 @@ async def update_ctt_task(task_id: str, request: Request, user: dict = Depends(g
     update["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     await db.ctt_tasks.update_one({"task_id": task_id}, {"$set": update})
+    # Bi-directional status sync: a CTT task sourced from an action item (either
+    # the port path via source_type/source_id, or the SF/Matrix push path via
+    # linked_action_id) pushes its status back onto the parent action item.
+    if "current_status" in update:
+        linked = (task.get("source_id") if task.get("source_type") == "ACTION_ITEM"
+                  else None) or task.get("linked_action_id")
+        if linked:
+            from core.action_status import normalize_status, progress_for
+            st = normalize_status(update["current_status"])
+            await db.action_items.update_one(
+                {"action_id": linked, "user_id": user["user_id"]},
+                {"$set": {"status": st, "progress_pct": progress_for(st),
+                          "updated_at": datetime.now(timezone.utc).isoformat()}},
+            )
     updated = await db.ctt_tasks.find_one({"task_id": task_id}, {"_id": 0})
     return updated
 
