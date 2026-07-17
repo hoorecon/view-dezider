@@ -93,6 +93,14 @@ const clampPct = (n: any): number | undefined => {
   return Math.min(100, Math.max(0, x));
 };
 
+// Web-only hover tooltip: RN-Web drops `title` from View/Text/Touchable, so on
+// web we wrap in a real DOM node that carries the title; on native we pass the
+// children straight through (no-op).
+const WebTitle = ({ title, children }: { title: string; children: React.ReactNode }) =>
+  Platform.OS === 'web'
+    ? React.createElement('div', { title, style: { display: 'inline-flex' } }, children as any)
+    : (children as any);
+
 // Elegant, distinct accent palette for the three Action-Plan lineages so a
 // user can tell at a glance whether an action came from a Solution (Q3),
 // a Risk Mitigation (Q4b) or a Risk Contingency (Q4c).
@@ -1036,6 +1044,35 @@ export default function SimpleSolutionFinder() {
     );
   };
 
+  // ── Clear All / Reset for a whole step (with cascade + confirmation) ──
+  const confirmClearAll = (what: string, cascades: boolean, fn: () => void) => {
+    showAlert(
+      `Clear all ${what}?`,
+      `This removes ALL ${what} on this step${cascades ? ' and everything derived from them' : ''}. You can re-add them, but this can’t be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Clear all', style: 'destructive', onPress: fn },
+      ],
+    );
+  };
+  const clearAllRootCauses = () => confirmClearAll('root causes', true, () => {
+    setRootCauses([]); setSolutions([]); setRisks([]); setMitigations([]); setContingencies([]);
+  });
+  const clearAllSolutions = () => confirmClearAll('solutions', true, () => {
+    setSolutions([]); setRisks([]); setMitigations([]); setContingencies([]);
+  });
+  const clearAllRisks = () => confirmClearAll('risks, mitigations & contingencies', false, () => {
+    setRisks([]); setMitigations([]); setContingencies([]);
+  });
+  const renderClearAll = (onPress: () => void, count: number, testID: string) => count > 0 ? (
+    <View style={s.clearAllRow}>
+      <TouchableOpacity style={s.clearAllBtn} onPress={onPress} testID={testID}>
+        <Ionicons name="trash-outline" size={13} color="#DC2626" />
+        <Text style={s.clearAllText}>Clear all ({count})</Text>
+      </TouchableOpacity>
+    </View>
+  ) : null;
+
   // ============ RENDER STEPS ============
   const renderStepIndicator = () => (
     <View style={s.stepIndicator}>
@@ -1044,18 +1081,20 @@ export default function SimpleSolutionFinder() {
         const isReachable = i <= reachableMax;      // unlocked → tappable (fwd + back)
         return (
           <View key={st.title} style={s.stepDotWrap}>
-            <TouchableOpacity
-              testID={`sf-breadcrumb-${i}`}
-              activeOpacity={isReachable ? 0.7 : 1}
-              disabled={!isReachable}
-              onPress={() => { if (isReachable) setStep(i); }}
-              accessibilityLabel={`Go to Step ${i + 1}: ${STEPS[i].title}`}
-              hitSlop={6}
-            >
-              <View style={[s.stepDot, isReachable && s.stepDotActive, isCurrent && s.stepDotCurrent]}>
-                <Ionicons name={st.icon as any} size={12} color={isReachable ? '#FFF' : '#94A3B8'} />
-              </View>
-            </TouchableOpacity>
+            <WebTitle title={`${i + 1}. ${STEPS[i].title} — ${STEPS[i].desc}`}>
+              <TouchableOpacity
+                testID={`sf-breadcrumb-${i}`}
+                activeOpacity={isReachable ? 0.7 : 1}
+                disabled={!isReachable}
+                onPress={() => { if (isReachable) setStep(i); }}
+                accessibilityLabel={`Go to Step ${i + 1}: ${STEPS[i].title} — ${STEPS[i].desc}`}
+                hitSlop={6}
+              >
+                <View style={[s.stepDot, isReachable && s.stepDotActive, isCurrent && s.stepDotCurrent]}>
+                  <Ionicons name={st.icon as any} size={12} color={isReachable ? '#FFF' : '#94A3B8'} />
+                </View>
+              </TouchableOpacity>
+            </WebTitle>
             {i < STEPS.length - 1 && <View style={[s.stepLine, i < reachableMax && s.stepLineActive]} />}
           </View>
         );
@@ -1165,6 +1204,7 @@ export default function SimpleSolutionFinder() {
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 80 }}>
       <Text style={s.qTitle}>Q2. Root Cause Analysis</Text>
       <Text style={s.qHint}>For each PRIMARY concern, list the root causes (1 to many).</Text>
+      {renderClearAll(clearAllRootCauses, rootCauses.length, 'sf-clear-rca')}
       {primaryConcerns.length === 0 && (
         <Text style={s.empty}>No primary concerns yet. Go back to Q1 and tap ⭐ to mark some.</Text>
       )}
@@ -1214,6 +1254,7 @@ export default function SimpleSolutionFinder() {
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 80 }}>
       <Text style={s.qTitle}>Q3. Solutions within your Current Capabilities & Resources</Text>
       <Text style={s.qHint}>Step 3 · Solution Identification. ASM deep-dive is available at every level — Overall, per PRIMARY concern, per Root Cause, and per Solution.</Text>
+      {renderClearAll(clearAllSolutions, solutions.length, 'sf-clear-sol')}
       {rootCauses.length > 0 && (
         <>
           {renderAiMeterRow('sol')}
@@ -1351,6 +1392,7 @@ export default function SimpleSolutionFinder() {
         4a · Risks per solution (Impact% × Probability% = Risk Index%).{'\n'}
         4b · Mitigations (1..many) · 4c · Contingencies (1..many). Use “ASM” to deep-dive any item.
       </Text>
+      {renderClearAll(clearAllRisks, risks.length, 'sf-clear-risk')}
       {solutions.length > 0 && (
         <>
           {renderAiMeterRow('risk')}
@@ -2159,4 +2201,9 @@ const s = StyleSheet.create({
   aiOptsCancelText: { fontSize: 13.5, fontWeight: '800', color: '#475569' },
   aiOptsGo: { backgroundColor: '#7C3AED' },
   aiOptsGoText: { fontSize: 13.5, fontWeight: '800', color: '#FFF' },
+
+  // ── Clear all / reset (Q2 RCA, Q3 Solutions, Q4 Risks) ──
+  clearAllRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8 },
+  clearAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: '#FECACA', backgroundColor: '#FEF2F2', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  clearAllText: { fontSize: 11.5, fontWeight: '800', color: '#DC2626' },
 });

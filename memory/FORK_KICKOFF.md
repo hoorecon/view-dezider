@@ -42,6 +42,12 @@
       Contingencies per Risk" (each default 2, 1–10). Enforced BOTH frontend (stepper clamp) AND backend
       (`_lim()` clamp 1–10 in routes/tools.py + prompt + slice) so the "172 action items" explosion is
       architecturally impossible. PDF renderer gained a `page_break` section flag (decision_reports.py).
+  (E) DONE+VERIFIED (build v3.104): Solution Finder step-breadcrumb icons now show web hover tooltips
+      (WebTitle → real <div title> "N. Title — desc"); added "Clear all (N)" reset button at top of
+      Q2 RCA / Q3 Solutions / Q4 Risks (cascades: clearing RCAs also clears solutions/risks/mits/cons;
+      clearing solutions clears risks/mits/cons; confirm dialog before wiping). NOTE: user said "Pros &
+      Cons flow" but the icon breadcrumbs + RCA/Solution/Risk pages are SOLUTION FINDER (P&C wizard has no
+      icon breadcrumbs) — implemented in Solution Finder.
 
 - 2026-07-02 (fork — Anthropic-in-AI-Assistant + Stripe integration):
   (A) ANTHROPIC as DEFAULT in AI Assistant (More Tools). `routes/ai_assistant.py` now routes
