@@ -299,3 +299,34 @@ Browsable WITHOUT login; cloning requires login and auto-launches a **prefilled 
 **Frontend**: `app/admin/decider-store.tsx` (Download template · Import Excel/GSheet · Create · Classify factors mandatory/optional+priority · Authorize/Unpublish/Delete). Tile in `/admin` → Content group.
 
 **DEFERRED — Phase 2**: public storefront screen (`/decider-store` + detail) browsable logged-out; login-gated "Use this template" that launches the prefilled MyDezider flow; paid-template payment fulfillment (Stripe/Razorpay) with platform/creator split.
+
+---
+
+## ITER 189-190 — Decider Store Phase 2 + Store⇄ReviewNet Bridge ✅ TESTED
+
+**Phase 2A (public storefront + login-gated launch)** — `app/decider-store/index.tsx` (public grid,
+search, categories) + `app/decider-store/[id].tsx` (detail, Full/Values-only chooser, factor Quant/Qual
+tags). Route whitelisted in `app/_layout.tsx` PUBLIC_SEGMENTS. Logged-out "Use" stashes
+`pending_decider_clone` and bounces to /auth/login; `getPostAuthRoute()` returns `/decider-store/{id}?use={mode}`
+and the detail screen AUTO-RESUMES the clone → `/prr/{decision_id}` (prefilled MyDezider decision). Paid → 402.
+
+**Quant/Qual classification** — admin Classify modal per-factor Type toggle (Quantitative→Solution Store /
+Qualitative→ReviewNet), persisted as `factor_type`.
+
+**Store ⇄ ReviewNet bridge** (`routes/decider_store.py`):
+- New master solution type **STRATEGY** (models/solutions_store_data.py + catalog_explorer.py + add-solution.tsx).
+- `POST /decider-store/{id}/push-to-stores`: each option → upsert Solution-Store solution (type STRATEGY,
+  quantitative_factors, `decider_template_id`/`decider_option_id`, `linked_solution_id` back on option =
+  non-duplication) + ReviewNet baseline doc (`review_net` review_id=`rv_baseline_<sid>`,
+  reviewer_segment='authoritative', is_baseline, `baseline_profile` categorical + `factor_ratings` ★=pct/20);
+  qualitative factors also upsert `review_factors` catalog entries.
+- `POST /decider-store/{id}/sync-from-stores`: pull quant (solution) + qual (baseline) back into options.
+- `POST /decider-store/from-solutions`: build a NEW template from selected Strategy solutions + baselines.
+- `auto_push_on_authorize` flag (create/update) → authorize auto-pushes.
+- FE: admin Push to Stores / Sync / Build-from-Solution-Store; `app/tools/solution-detail.tsx` shows
+  "Open in The Decider Store" cross-link when `decider_template_id` present.
+
+**Regression suites**: scripts/test_decider_store.py, test_bridge.py; tests/test_decider_store_iter188.py (13/13),
+test_decider_bridge_iter190.py (13/13); FE iter189 (5/5), iter190 (7/7).
+
+**DEFERRED**: paid-template checkout (Stripe/Razorpay) with platform/creator split — clone returns 402 today.
