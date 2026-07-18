@@ -5,10 +5,10 @@
  * Google Sheet) → set metadata/pricing/clone-modes → Create → Classify factors
  * (mandatory/optional + priority) → Authorize (goes public).
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
-  ActivityIndicator, Modal, Switch, Platform, Linking,
+  ActivityIndicator, Modal, Switch, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -29,6 +29,20 @@ const DECISION_TYPES = [
 ];
 const CATEGORIES = ['Financial', 'Career', 'Business', 'Health', 'Relationships',
   'Learning', 'Spiritual', 'Social', 'Recreation', 'General'];
+
+// Cell (option×factor) value <-> "Value (nn%), Value2" text — mirrors backend parse_value_cell.
+const parseCell = (text?: string): { value: string; pct: number }[] => {
+  const t = (text || '').trim();
+  if (!t || ['na', 'n/a', '-'].includes(t.toLowerCase())) return [];
+  return t.split(/,(?![^(]*\))/).map(p => p.trim()).filter(Boolean).map(p => {
+    const m = p.match(/\((\d+(?:\.\d+)?)\s*%?\)/);
+    const pct = m ? parseFloat(m[1]) : 100;
+    const value = p.replace(/\s*\(\s*\d+(?:\.\d+)?\s*%?\s*\)\s*/, '').trim();
+    return value ? { value, pct } : null;
+  }).filter(Boolean) as { value: string; pct: number }[];
+};
+const fmtCell = (vals?: { value: string; pct?: number }[]): string =>
+  (vals || []).map(v => (v.pct == null || v.pct === 100) ? v.value : `${v.value} (${v.pct}%)`).join(', ');
 
 type Factor = {
   id: string; name: string; order?: number; factor_type?: string;
@@ -77,6 +91,14 @@ export default function AdminDeciderStore() {
   // classify editor
   const [classifyId, setClassifyId] = useState<string | null>(null);
   const [classFactors, setClassFactors] = useState<Factor[]>([]);
+
+  // per-cell data editor
+  const [dataId, setDataId] = useState<string | null>(null);
+  const [dataFactors, setDataFactors] = useState<Factor[]>([]);
+  const [dataOpts, setDataOpts] = useState<any[]>([]);
+  const [cellText, setCellText] = useState<Record<string, string>>({});
+  const [expandedOpt, setExpandedOpt] = useState<string | null>(null);
+  const [optSearch, setOptSearch] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -221,6 +243,43 @@ export default function AdminDeciderStore() {
     } finally { setBusy(false); }
   };
 
+  // ── Per-cell option/value editor (CRUD without re-importing) ──────────────
+  const openData = (t: Template) => {
+    const facs = (t.factors || []).map(f => ({ ...f }));
+    const opts = (t.options || []).map((o: any) => ({ ...o, values: { ...(o.values || {}) } }));
+    const text: Record<string, string> = {};
+    opts.forEach((o: any) => facs.forEach(f => { text[`${o.id}::${f.id}`] = fmtCell(o.values?.[f.id]); }));
+    setDataId(t.template_id); setDataFactors(facs); setDataOpts(opts);
+    setCellText(text); setExpandedOpt(opts[0]?.id || null); setOptSearch('');
+  };
+  const addOption = () => {
+    const nid = `opt_${Date.now()}`;
+    setDataOpts(prev => [...prev, { id: nid, name: 'New option', values: {} }]);
+    setExpandedOpt(nid);
+  };
+  const deleteOption = (oid: string) => {
+    setDataOpts(prev => prev.filter(o => o.id !== oid));
+  };
+  const saveData = async () => {
+    if (!dataId) return;
+    setBusy(true);
+    try {
+      const options = dataOpts.map((o: any) => {
+        const values: Record<string, any[]> = {};
+        dataFactors.forEach(f => {
+          const parsed = parseCell(cellText[`${o.id}::${f.id}`] || '');
+          if (parsed.length) values[f.id] = parsed;
+        });
+        return { ...o, values };
+      });
+      await api.put(`/decider-store/${dataId}`, { options });
+      setDataId(null); load();
+      showAlert('Saved', 'Option values updated.');
+    } catch (e: any) {
+      showAlert('Failed', e?.response?.data?.detail || 'Try again');
+    } finally { setBusy(false); }
+  };
+
   return (
     <SafeAreaView style={s.root} edges={['top']}>
       <View style={s.header}>
@@ -297,6 +356,9 @@ export default function AdminDeciderStore() {
             <View style={s.tActions}>
               <TouchableOpacity style={[s.act, { backgroundColor: '#EEF2FF' }]} onPress={() => openClassify(t)}>
                 <Ionicons name="options" size={13} color="#4F46E5" /><Text style={[s.actText, { color: '#4F46E5' }]}>Classify</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.act, { backgroundColor: '#FEF9C3' }]} onPress={() => openData(t)}>
+                <Ionicons name="create" size={13} color="#A16207" /><Text style={[s.actText, { color: '#A16207' }]}>Edit Data</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[s.act, { backgroundColor: '#E0F2FE' }]} onPress={() => pushStores(t)}>
                 <Ionicons name="cloud-upload" size={13} color="#0369A1" /><Text style={[s.actText, { color: '#0369A1' }]}>Push to Stores</Text>
@@ -442,6 +504,67 @@ export default function AdminDeciderStore() {
         </View>
       </Modal>
 
+      {/* Per-cell option/value editor modal */}
+      <Modal visible={!!dataId} transparent animationType="slide" onRequestClose={() => setDataId(null)}>
+        <View style={s.overlay}>
+          <View style={s.sheet}>
+            <View style={s.mHeader}>
+              <Text style={s.mTitle}>Edit option values</Text>
+              <TouchableOpacity onPress={() => setDataId(null)}><Ionicons name="close" size={22} color="#475569" /></TouchableOpacity>
+            </View>
+            <Text style={s.help}>Tap an option to edit its per-factor cells. Format: {'"Value (80%), Value2"'} — no % means 100%. Leave blank if N/A.</Text>
+            <View style={s.search}>
+              <Ionicons name="search" size={15} color="#94A3B8" />
+              <TextInput style={s.searchInput} value={optSearch} onChangeText={setOptSearch} placeholder="Filter options…" placeholderTextColor="#9CA3AF" />
+            </View>
+            <ScrollView style={{ maxHeight: 420, marginTop: 8 }}>
+              {dataOpts
+                .filter(o => !optSearch || (o.name || '').toLowerCase().includes(optSearch.toLowerCase()))
+                .map((o) => {
+                  const open = expandedOpt === o.id;
+                  return (
+                    <View key={o.id} style={s.optCard}>
+                      <View style={s.optHead}>
+                        <TouchableOpacity style={s.optHeadMain} onPress={() => setExpandedOpt(open ? null : o.id)}>
+                          <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={16} color="#64748B" />
+                          <TextInput
+                            style={s.optNameInput}
+                            value={o.name}
+                            onChangeText={(v) => setDataOpts(prev => prev.map(x => x.id === o.id ? { ...x, name: v } : x))}
+                            placeholder="Option name"
+                            placeholderTextColor="#9CA3AF"
+                          />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => deleteOption(o.id)}><Ionicons name="trash-outline" size={18} color="#DC2626" /></TouchableOpacity>
+                      </View>
+                      {open && dataFactors.map((f) => (
+                        <View key={f.id} style={s.cellRow}>
+                          <Text style={s.cellLabel} numberOfLines={1}>{f.name}
+                            <Text style={s.cellType}>{(f.factor_type === 'quantitative') ? '  ·Quant' : '  ·Qual'}</Text>
+                          </Text>
+                          <TextInput
+                            style={s.cellInput}
+                            value={cellText[`${o.id}::${f.id}`] || ''}
+                            onChangeText={(v) => setCellText(prev => ({ ...prev, [`${o.id}::${f.id}`]: v }))}
+                            placeholder={(f.possible_values || []).slice(0, 2).join(', ') || 'value (nn%)'}
+                            placeholderTextColor="#CBD5E1"
+                          />
+                        </View>
+                      ))}
+                    </View>
+                  );
+                })}
+              <TouchableOpacity style={s.addOptBtn} onPress={addOption}>
+                <Ionicons name="add-circle" size={18} color="#4F46E5" /><Text style={s.addOptText}>Add option</Text>
+              </TouchableOpacity>
+            </ScrollView>
+            <TouchableOpacity style={s.createBtn} onPress={saveData} disabled={busy}>
+              {busy ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={s.createBtnText}>Save option values</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* Classify factors modal */}
       <Modal visible={!!classifyId} transparent animationType="slide" onRequestClose={() => setClassifyId(null)}>
         <View style={s.overlay}>
@@ -450,7 +573,7 @@ export default function AdminDeciderStore() {
               <Text style={s.mTitle}>Classify factors</Text>
               <TouchableOpacity onPress={() => setClassifyId(null)}><Ionicons name="close" size={22} color="#475569" /></TouchableOpacity>
             </View>
-            <Text style={s.help}>Set Mandatory/Optional & Priority (1–10) — used when a user picks "Full clone".</Text>
+            <Text style={s.help}>Set Mandatory/Optional & Priority (1–10) — used when a user picks {'"Full clone"'}.</Text>
             <ScrollView style={{ maxHeight: 460 }}>
               {classFactors.map((f, i) => (
                 <View key={f.id} style={s.facRow}>
@@ -568,4 +691,16 @@ const s = StyleSheet.create({
   solRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
   solName: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
   solMeta: { fontSize: 11, color: '#94A3B8', marginTop: 1 },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F1F5F9', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, marginTop: 8 },
+  searchInput: { flex: 1, fontSize: 13, color: '#0F172A', padding: 0 },
+  optCard: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, padding: 10, marginBottom: 8 },
+  optHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  optHeadMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  optNameInput: { flex: 1, fontSize: 13.5, fontWeight: '700', color: '#0F172A', paddingVertical: 4 },
+  cellRow: { marginTop: 8 },
+  cellLabel: { fontSize: 11.5, fontWeight: '700', color: '#475569', marginBottom: 3 },
+  cellType: { fontSize: 10, fontWeight: '600', color: '#94A3B8' },
+  cellInput: { backgroundColor: '#F8FAFC', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 12.5, color: '#0F172A', borderWidth: 1, borderColor: '#E2E8F0' },
+  addOptBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, marginTop: 4 },
+  addOptText: { fontSize: 13, fontWeight: '700', color: '#4F46E5' },
 });

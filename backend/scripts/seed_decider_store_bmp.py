@@ -20,7 +20,10 @@ async def main():
     parsed = parse_import(data=open(XLSX, "rb").read())
     now = datetime.now(timezone.utc).isoformat()
 
-    admin = await db.users.find_one({"email": "super@test.com"}, {"user_id": 1, "name": 1})
+    # Attribution only — prefer the known super admin, else any super/admin user.
+    admin = (await db.users.find_one({"email": "super@test.com"}, {"user_id": 1})
+             or await db.users.find_one({"role": "super_admin"}, {"user_id": 1})
+             or await db.users.find_one({"role": "admin"}, {"user_id": 1}))
     admin_id = admin["user_id"] if admin else "system"
 
     doc = {

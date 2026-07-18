@@ -108,3 +108,22 @@ your data is safe — Retry"** state. It must **NEVER** fall through to the gene
 - Stripe key in the pod is placeholder `sk_test_emergent`; live charge only works post-deploy.
 - WhatsApp OTP SMS cannot be delivered in-pod; only gate-decision logic is testable here.
 - `improvable='y_both'` + Step-8 `data_type`/`factor_type` are metadata only (not in scoring/report).
+
+---
+
+## Seed "The Decider Store" — Business-Model template (prod)
+
+Code + data ship with the repo:
+- `backend/scripts/seed_decider_store_bmp.py` (idempotent — safe to re-run)
+- `backend/scripts/data/Business_Model_Assessments.xlsx`
+
+**Production DB is separate from code**, so after Save-to-GitHub + `sync.sh`, seed the
+template into prod ONCE with this one command (backend runs in the `deploy-api-1` container):
+
+```
+docker exec deploy-api-1 python scripts/seed_decider_store_bmp.py
+```
+
+Expected: `Seeded 'The 55 Business Model Patterns' — 10 factors, 54 options (…status=authorized, public).`
+Re-running only refreshes factors/options; it preserves created_at + install_count.
+(Alternatively, an admin can Import the same XLSX via Admin → The Decider Store.)
