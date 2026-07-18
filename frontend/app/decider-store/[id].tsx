@@ -54,7 +54,7 @@ export default function DeciderStoreDetail() {
     setCloning(true);
     try {
       const r = await api.post(`/decider-store/${id}/clone`, { mode: m });
-      router.replace(`/prr/${r.data.decision_id}` as any);
+      router.replace(`/prr/${r.data.decision_id}?step=2` as any);
     } catch (e: any) {
       if (e?.response?.status === 402) {
         const d = e.response.data?.detail || {};

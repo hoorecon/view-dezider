@@ -312,50 +312,84 @@ def _val_num(v: Any):
     return None
 
 
+def _dt_map(dt: Any) -> str:
+    return "text" if str(dt or "").strip().lower().startswith("text") else "numeric"
+
+
+def _cat_map(cat: Any) -> str:
+    c = str(cat or "").strip().lower()
+    if c.startswith("mand"):
+        return "primary"
+    if c.startswith("opt"):
+        return "secondary"
+    return "primary"
+
+
 def _build_decision_from_template(t: Dict[str, Any], mode: str, user: dict) -> Dict[str, Any]:
+    """Clone -> MyDezider decision. Each MAIN factor becomes a top-level factor;
+    its sub-factors become native child factors (parent_id + weight=split_pct)."""
     full = (mode == "full")
     factors_out: List[Dict[str, Any]] = []
-    sid_to_new: Dict[str, str] = {}          # sub-factor id -> new MyDezider factor id
+    sid_to_fid: Dict[str, str] = {}          # template sub-factor id -> MyDezider factor id
     order = 0
     for f in t.get("factors") or []:
         subs = _sf_list(f)
-        multi = len(subs) > 1
-        for sf in subs:
-            new_id = str(uuid.uuid4())
-            sid_to_new[sf.get("id")] = new_id
-            sub_name = sf.get("name") or "Value"
-            disp = f"{f.get('name')} — {sub_name}" if multi else (f.get("name") or sub_name)
-            factors_out.append({
-                "id": new_id,
-                "name": disp,
-                "order": order,
-                # classification + prioritization only carried in FULL mode
-                "category": (f.get("category") or "primary") if full else "",
-                "rating": (int(f.get("priority") or 0)) if full else 0,
-                "data_type": sf.get("data_type") or f.get("data_type") or "Text",
-                "factor_type": f.get("factor_type") or "qualitative",
-                "gap_multiplier": 1.0,
-                # store-template metadata (informational; harmless extra fields)
-                "parent_factor": f.get("name"),
-                "sub_factor": sub_name,
-                "split_pct": sf.get("split_pct"),
-            })
-            order += 1
+        # "real" sub-factors = an explicit list that isn't just the factor itself
+        raw_subs = f.get("sub_factors") or []
+        has_real_subs = bool(raw_subs) and (
+            len(raw_subs) > 1 or (raw_subs[0].get("name") or "") != (f.get("name") or ""))
+        parent_id = str(uuid.uuid4())
+        cat = _cat_map(f.get("category")) if full else ""
+        factors_out.append({
+            "id": parent_id,
+            "name": f.get("name") or "Factor",
+            "order": order,
+            "category": cat,                                   # '' for values_only -> user classifies
+            "rating": (int(f.get("priority") or 0)) if full else 0,
+            "gap_multiplier": 1.0,
+            "factor_type": f.get("factor_type") or "qualitative",
+            "data_type": "numeric",
+        })
+        order += 1
+        if has_real_subs:
+            for si, sf in enumerate(subs):
+                cid = str(uuid.uuid4())
+                sid_to_fid[sf.get("id")] = cid
+                is_pct = str(sf.get("data_type") or "").strip() == "%"
+                factors_out.append({
+                    "id": cid,
+                    "name": sf.get("name") or "Sub-factor",
+                    "order": si,
+                    "category": cat,
+                    "rating": 0,
+                    "gap_multiplier": 1.0,
+                    "parent_id": parent_id,
+                    "weight": float(sf.get("split_pct") or 0),
+                    "factor_type": f.get("factor_type") or "qualitative",
+                    "data_type": _dt_map(sf.get("data_type")),
+                    "unit": "%" if is_pct else "",
+                })
+        else:
+            # single implicit sub-factor -> maps straight onto the parent
+            sid_to_fid[subs[0].get("id")] = parent_id
 
     options_out: List[Dict[str, Any]] = []
     for opt in t.get("options") or []:
         assessments = []
         for old_sid, v in (opt.get("values") or {}).items():
-            new_fid = sid_to_new.get(old_sid)
-            if not new_fid:
+            fid = sid_to_fid.get(old_sid)
+            if not fid:
                 continue
-            # option value is prefilled as unit_value; num_value is the numeric
-            # suitability (NOT the scoring % the user fills during assessment).
+            num = _val_num(v)
+            # %-type sub-factor value doubles as the prefilled suitability %.
+            pct = None
+            if num is not None:
+                pct = max(0.0, min(100.0, float(num)))
             assessments.append({
-                "factor_id": new_fid,
-                "percentage": None,
+                "factor_id": fid,
+                "percentage": pct,
                 "unit_value": _val_raw(v),
-                "num_value": _val_num(v),
+                "actual_value": num,
             })
         options_out.append({
             "id": str(uuid.uuid4()),
