@@ -60,7 +60,7 @@ LEAF_GROUPS = [
     {"key": "solution_templates", "label": "Solution Templates (ASM)",    "icon": "construct",   "color": "#0891B2"},
     {"key": "solution_items",     "label": "Solution Store Items",        "icon": "pricetags",   "color": "#059669"},
 ]
-SOLUTION_TYPES = ["PRODUCT", "SERVICE", "EVENT", "PROJECT", "PERSON_CONTACT"]
+SOLUTION_TYPES = ["PRODUCT", "SERVICE", "EVENT", "PROJECT", "PERSON_CONTACT", "STRATEGY"]
 
 
 def _now() -> str:

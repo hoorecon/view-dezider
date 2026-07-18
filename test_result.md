@@ -11140,3 +11140,45 @@ test_plan:
     - "Iter189 FE — admin Classify modal Quant/Qual toggle persists (PUT), factor_type reflected in public detail tag"
   test_all: false
   test_priority: "high_first"
+
+# ITER 190 — Decider Store ⇄ Solution Store ⇄ ReviewNet bridge + STRATEGY solution type
+agent_communication:
+  - agent: "main"
+    message: |
+      ITER 190 (fork). Full Store↔ReviewNet bridge (user confirmed: 1c both categorical+★, 2 new
+      STRATEGY type in master + admin UI, 3c manual button + optional auto-push-on-authorize, 4c both
+      cross-link + build-from-store, 5a all now). Backend verified via scripts/test_bridge.py (all pass).
+
+      NEW SOLUTION TYPE "STRATEGY": added to models/solutions_store_data.py SOLUTION_TYPES +
+      TYPE_SPECIFIC_FIELDS, routes/catalog_explorer.py, and frontend app/tools/add-solution.tsx (CRUDible).
+
+      BRIDGE (routes/decider_store.py):
+      - POST /decider-store/{id}/push-to-stores (admin): each option → upsert Solution Store solution
+        (type STRATEGY) carrying its QUANTITATIVE factor values + decider_template_id/decider_option_id
+        cross-link + linked_solution_id back on the option (non-duplication). Qualitative factors →
+        ensure review_factors catalog + upsert a ReviewNet baseline doc (review_net, review_id=
+        rv_baseline_<sid>, reviewer_segment='authoritative', is_baseline=true) storing BOTH categorical
+        baseline_profile {factor:[{value,pct}]} AND factor_ratings ★ (pct/20, 1-5).
+      - POST /decider-store/{id}/sync-from-stores (admin): pull quant (solution) + qual (baseline) back
+        into template options.
+      - POST /decider-store/from-solutions (admin): build a NEW template from selected Strategy solutions'
+        quant factors + ReviewNet baselines.
+      - auto_push_on_authorize flag: create/update; authorize_template auto-pushes when set.
+      Verified: push=54 solutions+54 baselines; STRATEGY solution has quant values + decider_template_id;
+      ReviewNet baseline has factor_ratings + baseline_profile; sync=54; from-solutions builds template;
+      STRATEGY accepted by POST /solutions-store/solutions.
+
+      FRONTEND:
+      - app/admin/decider-store.tsx: toolbar "Build from Solution Store" (solution picker modal),
+        per-template "Push to Stores" + "Sync" buttons, "Auto-push … on Authorize" switch in create,
+        Quant/Qual toggle already in Classify modal (iter189).
+      - app/tools/solution-detail.tsx: "Use as decision template · Open in The Decider Store" cross-link
+        when solution.decider_template_id present.
+      Seeded bmp-55-patterns reset to all-qualitative + re-pushed (faithful). Creds: super@test.com / SuperPass2026!.
+test_plan:
+  current_focus:
+    - "Iter190 BE — push-to-stores creates STRATEGY solutions (quant) + ReviewNet baselines (qual, categorical+star); sync-from-stores; from-solutions; auto_push_on_authorize"
+    - "Iter190 BE — STRATEGY accepted by POST /solutions-store/solutions"
+    - "Iter190 FE — admin Push to Stores / Sync / Build from Solution Store actions work; solution-detail shows 'Open in The Decider Store' cross-link"
+  test_all: false
+  test_priority: "high_first"

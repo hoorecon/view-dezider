@@ -5,7 +5,7 @@ Lifted out of the route file so non-developers can localise / extend
 without touching code paths.
 """
 
-SOLUTION_TYPES = ["PRODUCT", "SERVICE", "EVENT", "PROJECT", "PERSON_CONTACT"]
+SOLUTION_TYPES = ["PRODUCT", "SERVICE", "EVENT", "PROJECT", "PERSON_CONTACT", "STRATEGY"]
 VISIBILITY_LEVELS = ["PRIVATE", "ORG", "PUBLIC"]
 APPROVAL_STATUSES = ["pending", "approved", "rejected"]
 
@@ -16,6 +16,7 @@ TYPE_SPECIFIC_FIELDS = {
     "EVENT": ["event_date", "event_end_date", "location", "venue", "capacity", "registration_url"],
     "PROJECT": ["timeline_months", "team_size", "budget", "milestones"],
     "PERSON_CONTACT": ["phone", "email", "designation", "organization", "expertise"],
+    "STRATEGY": ["strategy_type", "time_horizon", "risk_level", "affected_components"],
 }
 
 # Default qualitative factor names for ReviewNet

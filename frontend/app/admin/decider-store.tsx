@@ -66,6 +66,13 @@ export default function AdminDeciderStore() {
   const [fSplit, setFSplit] = useState('70');
   const [fModeFull, setFModeFull] = useState(true);
   const [fModeValues, setFModeValues] = useState(true);
+  const [fAutoPush, setFAutoPush] = useState(false);
+
+  // build-from-solution-store
+  const [fromOpen, setFromOpen] = useState(false);
+  const [solList, setSolList] = useState<any[]>([]);
+  const [selSols, setSelSols] = useState<Record<string, boolean>>({});
+  const [fsTitle, setFsTitle] = useState('');
 
   // classify editor
   const [classifyId, setClassifyId] = useState<string | null>(null);
@@ -86,7 +93,7 @@ export default function AdminDeciderStore() {
   const resetForm = () => {
     setFTitle(''); setFSubtitle(''); setFDesc(''); setFCategory('General');
     setFType('aspiration'); setFPaid(false); setFPrice(''); setFSplit('70');
-    setFModeFull(true); setFModeValues(true); setParsed(null);
+    setFModeFull(true); setFModeValues(true); setFAutoPush(false); setParsed(null);
   };
 
   const doImportExcel = async () => {
@@ -131,7 +138,7 @@ export default function AdminDeciderStore() {
         pricing_type: fPaid ? 'paid' : 'free',
         price_paise: fPaid ? Math.round((parseFloat(fPrice) || 0) * 100) : 0,
         creator_split_pct: parseInt(fSplit) || 70,
-        allowed_clone_modes: modes,
+        allowed_clone_modes: modes, auto_push_on_authorize: fAutoPush,
         factors: parsed.factors, options: parsed.options,
       });
       setShowCreate(false); resetForm(); load();
@@ -157,6 +164,45 @@ export default function AdminDeciderStore() {
         catch (e: any) { showAlert('Failed', e?.response?.data?.detail || 'Try again'); }
       } },
     ]);
+  };
+
+  const pushStores = async (t: Template) => {
+    setBusy(true);
+    try {
+      const r = await api.post(`/decider-store/${t.template_id}/push-to-stores`);
+      showAlert('Pushed to stores', `${r.data.solutions} solutions → Solution Store · ${r.data.reviews} baselines → ReviewNet.`);
+      load();
+    } catch (e: any) { showAlert('Push failed', e?.response?.data?.detail || 'Try again'); }
+    finally { setBusy(false); }
+  };
+  const syncStores = async (t: Template) => {
+    setBusy(true);
+    try {
+      const r = await api.post(`/decider-store/${t.template_id}/sync-from-stores`);
+      showAlert('Synced from stores', `${r.data.options} options refreshed from Solution Store + ReviewNet.`);
+      load();
+    } catch (e: any) { showAlert('Sync failed', e?.response?.data?.detail || 'Try again'); }
+    finally { setBusy(false); }
+  };
+
+  const openFrom = async () => {
+    setFromOpen(true); setSelSols({}); setFsTitle('');
+    try {
+      const r = await api.get('/solutions-store/solutions', { params: { type: 'STRATEGY', limit: 100 } });
+      setSolList(r.data.solutions || r.data.items || r.data || []);
+    } catch { setSolList([]); }
+  };
+  const buildFromSolutions = async () => {
+    const ids = Object.keys(selSols).filter(k => selSols[k]);
+    if (ids.length === 0) return showAlert('Select solutions', 'Pick at least one solution.');
+    if (!fsTitle.trim()) return showAlert('Title required', 'Name the new template.');
+    setBusy(true);
+    try {
+      await api.post('/decider-store/from-solutions', { solution_ids: ids, title: fsTitle.trim() });
+      setFromOpen(false); load();
+      showAlert('Template created', `Built from ${ids.length} solution(s).`);
+    } catch (e: any) { showAlert('Failed', e?.response?.data?.detail || 'Try again'); }
+    finally { setBusy(false); }
   };
 
   const openClassify = (t: Template) => {
@@ -208,6 +254,10 @@ export default function AdminDeciderStore() {
               <Ionicons name="logo-google" size={16} color="#B45309" />
               <Text style={[s.toolText, { color: '#B45309' }]}>Import Google Sheet</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={[s.tool, { backgroundColor: '#E0F2FE' }]} onPress={openFrom} disabled={busy}>
+              <Ionicons name="git-compare" size={16} color="#0369A1" />
+              <Text style={[s.toolText, { color: '#0369A1' }]}>Build from Solution Store</Text>
+            </TouchableOpacity>
           </View>
           {parsed && (
             <TouchableOpacity style={s.parsedPill} onPress={() => setShowCreate(true)}>
@@ -247,6 +297,12 @@ export default function AdminDeciderStore() {
             <View style={s.tActions}>
               <TouchableOpacity style={[s.act, { backgroundColor: '#EEF2FF' }]} onPress={() => openClassify(t)}>
                 <Ionicons name="options" size={13} color="#4F46E5" /><Text style={[s.actText, { color: '#4F46E5' }]}>Classify</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.act, { backgroundColor: '#E0F2FE' }]} onPress={() => pushStores(t)}>
+                <Ionicons name="cloud-upload" size={13} color="#0369A1" /><Text style={[s.actText, { color: '#0369A1' }]}>Push to Stores</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.act, { backgroundColor: '#F3E8FF' }]} onPress={() => syncStores(t)}>
+                <Ionicons name="sync" size={13} color="#9333EA" /><Text style={[s.actText, { color: '#9333EA' }]}>Sync</Text>
               </TouchableOpacity>
               {!(t.status === 'authorized' && t.is_public) ? (
                 <TouchableOpacity style={[s.act, { backgroundColor: '#DCFCE7' }]} onPress={() => authorize(t)}>
@@ -327,6 +383,10 @@ export default function AdminDeciderStore() {
                 <Text style={s.switchLabel}>Paid template</Text>
                 <Switch value={fPaid} onValueChange={setFPaid} />
               </View>
+              <View style={s.rowBetween}>
+                <Text style={s.switchLabel}>Auto-push to Solution Store & ReviewNet on Authorize</Text>
+                <Switch value={fAutoPush} onValueChange={setFAutoPush} />
+              </View>
               {fPaid && (
                 <View style={s.row2}>
                   <View style={{ flex: 1 }}>
@@ -343,6 +403,41 @@ export default function AdminDeciderStore() {
                 {busy ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={s.createBtnText}>Create & Authorize</Text>}
               </TouchableOpacity>
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Build from Solution Store modal */}
+      <Modal visible={fromOpen} transparent animationType="slide" onRequestClose={() => setFromOpen(false)}>
+        <View style={s.overlay}>
+          <View style={s.sheet}>
+            <View style={s.mHeader}>
+              <Text style={s.mTitle}>Build from Solution Store</Text>
+              <TouchableOpacity onPress={() => setFromOpen(false)}><Ionicons name="close" size={22} color="#475569" /></TouchableOpacity>
+            </View>
+            <Text style={s.help}>Pick Strategy solutions — their quantitative factors + ReviewNet qualitative baselines become a new Decider template.</Text>
+            <Text style={s.label}>New template title *</Text>
+            <TextInput style={s.input} value={fsTitle} onChangeText={setFsTitle} placeholder="e.g. Growth Strategies 2026" placeholderTextColor="#9CA3AF" />
+            <ScrollView style={{ maxHeight: 320, marginTop: 10 }}>
+              {solList.length === 0 ? (
+                <Text style={s.empty}>No Strategy solutions found. Push a template to Stores first.</Text>
+              ) : solList.map((sol) => {
+                const on = !!selSols[sol.solution_id];
+                return (
+                  <TouchableOpacity key={sol.solution_id} style={s.solRow}
+                    onPress={() => setSelSols(prev => ({ ...prev, [sol.solution_id]: !prev[sol.solution_id] }))}>
+                    <Ionicons name={on ? 'checkbox' : 'square-outline'} size={20} color={on ? '#0369A1' : '#94A3B8'} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.solName} numberOfLines={1}>{sol.name}</Text>
+                      <Text style={s.solMeta} numberOfLines={1}>{(sol.quantitative_factors || []).length} quant · {sol.decider_template_id ? 'from Decider' : sol.type}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <TouchableOpacity style={s.createBtn} onPress={buildFromSolutions} disabled={busy}>
+              {busy ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={s.createBtnText}>Create template</Text>}
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -470,4 +565,7 @@ const s = StyleSheet.create({
   typeQuant: { backgroundColor: '#0369A1', borderColor: '#0369A1' },
   typeQual: { backgroundColor: '#9333EA', borderColor: '#9333EA' },
   typeText: { fontSize: 10.5, fontWeight: '700', color: '#475569' },
+  solRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  solName: { fontSize: 13, fontWeight: '700', color: '#0F172A' },
+  solMeta: { fontSize: 11, color: '#94A3B8', marginTop: 1 },
 });

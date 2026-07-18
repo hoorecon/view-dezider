@@ -16,6 +16,7 @@ Collection: db.decider_store_templates
 from __future__ import annotations
 
 import base64
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -28,7 +29,7 @@ import io
 from core.auth import get_current_user
 from core.database import db
 from core.decider_import import (
-    parse_import, gsheet_to_csv_url, build_import_template_xlsx,
+    parse_import, gsheet_to_csv_url, build_import_template_xlsx, parse_value_cell,
 )
 
 router = APIRouter(prefix="/decider-store", tags=["The Decider Store"])
@@ -184,6 +185,7 @@ async def create_template(request: Request, user: dict = Depends(get_current_use
         "currency": body.get("currency") or "INR",
         "creator_split_pct": int(body.get("creator_split_pct") or 70),
         "allowed_clone_modes": modes or ["full", "values_only"],
+        "auto_push_on_authorize": bool(body.get("auto_push_on_authorize", False)),
         "factors": body.get("factors") or [],
         "options": body.get("options") or [],
         "created_by": user["user_id"],
@@ -210,7 +212,8 @@ async def update_template(template_id: str, request: Request, user: dict = Depen
     body = await request.json()
     allowed = ["title", "subtitle", "description", "category", "decision_type",
                "cover_icon", "cover_color", "pricing_type", "price_paise", "currency",
-               "creator_split_pct", "allowed_clone_modes", "factors", "options", "is_public"]
+               "creator_split_pct", "allowed_clone_modes", "factors", "options", "is_public",
+               "auto_push_on_authorize"]
     update = {k: body[k] for k in allowed if k in body}
     if "allowed_clone_modes" in update:
         update["allowed_clone_modes"] = [m for m in update["allowed_clone_modes"] if m in CLONE_MODES] or ["full"]
@@ -225,14 +228,19 @@ async def update_template(template_id: str, request: Request, user: dict = Depen
 async def authorize_template(template_id: str, user: dict = Depends(get_current_user)):
     if not _is_admin(user):
         raise HTTPException(403, "Admin access required")
-    res = await db.decider_store_templates.update_one(
+    t = await db.decider_store_templates.find_one({"template_id": template_id})
+    if not t:
+        raise HTTPException(404, "Template not found")
+    await db.decider_store_templates.update_one(
         {"template_id": template_id},
         {"$set": {"status": "authorized", "is_public": True,
                   "authorized_at": _now(), "authorized_by": user["user_id"], "updated_at": _now()}},
     )
-    if res.matched_count == 0:
-        raise HTTPException(404, "Template not found")
-    return {"message": "authorized"}
+    pushed = None
+    if t.get("auto_push_on_authorize"):
+        t["status"] = "authorized"
+        pushed = await _push_template_to_stores(t, user)
+    return {"message": "authorized", "auto_pushed": pushed}
 
 
 @router.post("/{template_id}/unpublish")
@@ -380,3 +388,257 @@ async def clone_template(template_id: str, request: Request, user: dict = Depend
         {"template_id": template_id}, {"$inc": {"install_count": 1}})
     return {"decision_id": decision["id"], "mode": mode,
             "factors": len(decision["factors"]), "options": len(decision["options"])}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# STORE ⇄ REVIEWNET BRIDGE
+# Each unique Option ↔ one Solution-Store solution (its QUANTITATIVE factor
+# values) ↔ its ReviewNet baseline (its QUALITATIVE factor values). Linked by
+# solution_id stored on the option (non-duplication). Qualitative values are
+# stored BOTH as a categorical baseline_profile AND as a 1–5★ admin baseline.
+# ══════════════════════════════════════════════════════════════════════════
+def _slug(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", (s or "").strip().lower()).strip("_") or "factor"
+
+
+def _star_from_pct(pct) -> int:
+    try:
+        return max(1, min(5, round(float(pct) / 20.0)))
+    except (TypeError, ValueError):
+        return 5
+
+
+def _best_pct(vals) -> float:
+    ps = [v.get("pct", 100) for v in (vals or []) if v.get("pct") is not None]
+    return max(ps) if ps else 100.0
+
+
+async def _push_template_to_stores(t: dict, user: dict) -> dict:
+    """Push each option → Solution Store (quant) + ReviewNet baseline (qual)."""
+    factors = t.get("factors") or []
+    fmap = {f.get("id"): f for f in factors}
+    qual_factors = {f.get("id"): f for f in factors if (f.get("factor_type") or "qualitative") != "quantitative"}
+
+    # Ensure a ReviewNet catalog factor exists for every qualitative factor.
+    rf_id_for: dict = {}
+    for fid, f in qual_factors.items():
+        rf_id = f"qf_decider_{_slug(f.get('name'))}"
+        rf_id_for[fid] = rf_id
+        await db.review_factors.update_one(
+            {"factor_id": rf_id},
+            {"$set": {"factor_id": rf_id, "name": f.get("name"), "slug": _slug(f.get("name")),
+                      "scope_type": "global", "scope_id": None, "is_active": True,
+                      "source": "decider_store", "updated_at": _now()},
+             "$setOnInsert": {"created_at": _now()}},
+            upsert=True,
+        )
+
+    options = t.get("options") or []
+    solutions_out, reviews_out = 0, 0
+    updated_options = []
+    for opt in options:
+        quant_factors_payload = []
+        qual_profile: dict = {}
+        factor_ratings: dict = {}
+        for fid, vals in (opt.get("values") or {}).items():
+            f = fmap.get(fid)
+            if not f:
+                continue
+            text = _fmt_value_text(vals)
+            if (f.get("factor_type") or "qualitative") == "quantitative":
+                quant_factors_payload.append({
+                    "factor_id": fid, "name": f.get("name"), "value": text,
+                    "unit": "", "values": vals, "data_type": f.get("data_type") or "Text",
+                })
+            else:
+                qual_profile[f.get("name")] = vals
+                factor_ratings[rf_id_for.get(fid, f"qf_decider_{_slug(f.get('name'))}")] = _star_from_pct(_best_pct(vals))
+
+        sol_id = opt.get("linked_solution_id") or str(uuid.uuid4())
+        sol_doc = {
+            "solution_id": sol_id,
+            "type": "STRATEGY",
+            "name": opt.get("name") or "Option",
+            "description": opt.get("description") or opt.get("remarks") or "",
+            "visibility": "PUBLIC",
+            "approval_status": "approved",
+            "is_authorized": True,
+            "status": "active",
+            "provider": opt.get("exemplary_companies") or "",
+            "tags": [t.get("category")] if t.get("category") else [],
+            "quantitative_factors": quant_factors_payload,
+            "type_specific": {"affected_components": opt.get("affected_components") or "",
+                              "strategy_type": t.get("title") or ""},
+            "org_types": [], "decision_types": [t.get("decision_type")] if t.get("decision_type") else [],
+            "currency": t.get("currency") or "INR",
+            # cross-links (non-duplication + "Open in Decider Store")
+            "source": "decider_store",
+            "decider_template_id": t.get("template_id"),
+            "decider_option_id": opt.get("id"),
+            "created_by": user["user_id"],
+            "created_by_name": user.get("name") or "",
+            "org_id": user.get("org_id"),
+            "updated_at": _now(),
+        }
+        existing = await db.solutions_store.find_one({"solution_id": sol_id}, {"created_at": 1})
+        sol_doc["created_at"] = (existing or {}).get("created_at", _now())
+        await db.solutions_store.replace_one({"solution_id": sol_id}, sol_doc, upsert=True)
+        solutions_out += 1
+
+        opt["linked_solution_id"] = sol_id
+        updated_options.append(opt)
+
+        if factor_ratings or qual_profile:
+            rv_id = f"rv_baseline_{sol_id}"
+            avg = round(sum(factor_ratings.values()) / len(factor_ratings), 2) if factor_ratings else 5.0
+            await db.review_net.update_one(
+                {"review_id": rv_id},
+                {"$set": {
+                    "review_id": rv_id, "solution_id": sol_id, "solution_name": opt.get("name"),
+                    "reviewer_id": "decider_baseline", "reviewer_name": "Decider Baseline",
+                    "reviewer_segment": "authoritative", "reviewer_subsegment": None,
+                    "factor_ratings": factor_ratings, "overall_rating": avg,
+                    "baseline_profile": qual_profile, "is_baseline": True,
+                    "status": "approved", "moderation_action": "AUTO_APPROVE",
+                    "source": "decider_store", "source_template_id": t.get("template_id"),
+                    "source_option_id": opt.get("id"), "updated_at": _now(),
+                }, "$setOnInsert": {"created_at": _now()}},
+                upsert=True,
+            )
+            reviews_out += 1
+
+    await db.decider_store_templates.update_one(
+        {"template_id": t.get("template_id")},
+        {"$set": {"options": updated_options, "pushed_to_stores_at": _now(), "updated_at": _now()}})
+    return {"solutions": solutions_out, "reviews": reviews_out}
+
+
+@router.post("/{template_id}/push-to-stores")
+async def push_to_stores(template_id: str, user: dict = Depends(get_current_user)):
+    if not _is_admin(user):
+        raise HTTPException(403, "Admin access required")
+    t = await db.decider_store_templates.find_one({"template_id": template_id})
+    if not t:
+        raise HTTPException(404, "Template not found")
+    res = await _push_template_to_stores(t, user)
+    return {"message": "pushed", **res}
+
+
+@router.post("/{template_id}/sync-from-stores")
+async def sync_from_stores(template_id: str, user: dict = Depends(get_current_user)):
+    """Pull latest quant (Solution Store) + qual baseline (ReviewNet) back into
+    the template options (reverse of push)."""
+    if not _is_admin(user):
+        raise HTTPException(403, "Admin access required")
+    t = await db.decider_store_templates.find_one({"template_id": template_id}, {"_id": 0})
+    if not t:
+        raise HTTPException(404, "Template not found")
+    factors = t.get("factors") or []
+    fid_by_name = {f.get("name"): f.get("id") for f in factors}
+    synced = 0
+    options = t.get("options") or []
+    for opt in options:
+        sol_id = opt.get("linked_solution_id")
+        if not sol_id:
+            continue
+        sol = await db.solutions_store.find_one({"solution_id": sol_id}, {"_id": 0})
+        if not sol:
+            continue
+        vals = dict(opt.get("values") or {})
+        # quantitative back from solution
+        for qf in sol.get("quantitative_factors") or []:
+            fid = qf.get("factor_id") or fid_by_name.get(qf.get("name"))
+            if not fid:
+                continue
+            vals[fid] = qf.get("values") or parse_value_cell(qf.get("value"))
+        # qualitative back from ReviewNet baseline
+        baseline = await db.review_net.find_one(
+            {"review_id": f"rv_baseline_{sol_id}"}, {"_id": 0, "baseline_profile": 1})
+        for fname, fvals in ((baseline or {}).get("baseline_profile") or {}).items():
+            fid = fid_by_name.get(fname)
+            if fid:
+                vals[fid] = fvals
+        opt["values"] = vals
+        synced += 1
+    await db.decider_store_templates.update_one(
+        {"template_id": template_id},
+        {"$set": {"options": options, "synced_from_stores_at": _now(), "updated_at": _now()}})
+    return {"message": "synced", "options": synced}
+
+
+@router.post("/from-solutions")
+async def create_template_from_solutions(request: Request, user: dict = Depends(get_current_user)):
+    """Build a NEW Decider template from a set of Solution-Store solutions
+    (their quantitative_factors) + their ReviewNet baselines (qualitative)."""
+    if not _is_admin(user):
+        raise HTTPException(403, "Admin access required")
+    body = await request.json()
+    solution_ids = body.get("solution_ids") or []
+    if not solution_ids:
+        raise HTTPException(400, "solution_ids required")
+    sols = await db.solutions_store.find({"solution_id": {"$in": solution_ids}}, {"_id": 0}).to_list(500)
+    if not sols:
+        raise HTTPException(404, "No matching solutions")
+
+    # Build the factor set: quantitative from solutions, qualitative from baselines.
+    factors: list = []
+    factor_id_by_name: dict = {}
+
+    def _ensure_factor(name: str, ftype: str) -> str:
+        if name in factor_id_by_name:
+            return factor_id_by_name[name]
+        fid = str(uuid.uuid4())
+        factor_id_by_name[name] = fid
+        factors.append({"id": fid, "name": name, "order": len(factors),
+                        "factor_type": ftype, "data_type": "Number" if ftype == "quantitative" else "Text",
+                        "category": "", "priority": 0, "possible_values": [], "has_sub_pct": True})
+        return fid
+
+    baselines: dict = {}
+    for sol in sols:
+        b = await db.review_net.find_one({"review_id": f"rv_baseline_{sol['solution_id']}"}, {"_id": 0})
+        if b:
+            baselines[sol["solution_id"]] = b
+        for qf in sol.get("quantitative_factors") or []:
+            if qf.get("name"):
+                _ensure_factor(qf["name"], "quantitative")
+        for fname in ((b or {}).get("baseline_profile") or {}).keys():
+            _ensure_factor(fname, "qualitative")
+
+    options: list = []
+    for sol in sols:
+        vals: dict = {}
+        for qf in sol.get("quantitative_factors") or []:
+            if qf.get("name") in factor_id_by_name:
+                vals[factor_id_by_name[qf["name"]]] = qf.get("values") or parse_value_cell(qf.get("value"))
+        for fname, fvals in (baselines.get(sol["solution_id"], {}).get("baseline_profile") or {}).items():
+            if fname in factor_id_by_name:
+                vals[factor_id_by_name[fname]] = fvals
+        options.append({
+            "id": str(uuid.uuid4()), "name": sol.get("name") or "Option",
+            "description": sol.get("description") or "",
+            "exemplary_companies": sol.get("provider") or "",
+            "affected_components": (sol.get("type_specific") or {}).get("affected_components") or "",
+            "remarks": "", "product_model": "",
+            "values": vals, "linked_solution_id": sol["solution_id"],
+        })
+
+    doc = {
+        "template_id": str(uuid.uuid4()),
+        "title": (body.get("title") or "Template from Solution Store").strip(),
+        "subtitle": body.get("subtitle") or "",
+        "description": body.get("description") or "",
+        "category": body.get("category") or "General",
+        "decision_type": body.get("decision_type") or "aspiration",
+        "cover_icon": body.get("cover_icon") or "git-compare",
+        "cover_color": body.get("cover_color") or "#0369A1",
+        "pricing_type": "free", "price_paise": 0, "currency": "INR", "creator_split_pct": 70,
+        "allowed_clone_modes": ["full", "values_only"], "auto_push_on_authorize": False,
+        "factors": factors, "options": options,
+        "created_by": user["user_id"], "creator_name": user.get("name") or "",
+        "source": "solution_store", "status": "authorized", "is_public": True,
+        "install_count": 0, "created_at": _now(), "updated_at": _now(),
+        "authorized_at": _now(), "authorized_by": user["user_id"],
+    }
+    await db.decider_store_templates.insert_one(doc)
+    return {"template_id": doc["template_id"], "factors": len(factors), "options": len(options)}
