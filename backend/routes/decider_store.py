@@ -29,7 +29,7 @@ import io
 from core.auth import get_current_user
 from core.database import db
 from core.decider_import import (
-    parse_import, gsheet_to_csv_url, build_import_template_xlsx, parse_value_cell,
+    parse_import, gsheet_to_csv_url, build_import_template_xlsx,
 )
 
 router = APIRouter(prefix="/decider-store", tags=["The Decider Store"])

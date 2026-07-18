@@ -127,3 +127,14 @@ docker exec deploy-api-1 python scripts/seed_decider_store_bmp.py
 Expected: `Seeded 'The 55 Business Model Patterns' — 10 factors, 54 options (…status=authorized, public).`
 Re-running only refreshes factors/options; it preserves created_at + install_count.
 (Alternatively, an admin can Import the same XLSX via Admin → The Decider Store.)
+
+### v3.108 — Generic Main-Factor / Sub-Factor import format (2026-07-18)
+The import format was re-architected: templates now store `factors[].sub_factors[]`
+(each with data_type / ui_object / split_pct that totals 100% per factor) and options
+store per-sub-factor values `{raw,num}` keyed by sub-factor id (no more collapsed
+"Value (40%)" strings). The downloadable XLSX has 2 sheets: **Template Data** +
+**Instructions** (colour-coded worked example). OLD collapsed-string sheets are no
+longer parseable (import returns a clear HTTP 400 telling the user to grab the new template).
+- `core/decider_import.py` = 2-sheet generator + new parser.
+- `scripts/migrate_bmp_to_subfactors.py` = one-off that rebuilt
+  `scripts/data/Business_Model_Assessments.xlsx` into the new format (backup at `*.old_backup`).

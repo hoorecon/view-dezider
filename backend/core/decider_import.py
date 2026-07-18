@@ -259,10 +259,12 @@ def parse_import(data: bytes = None, csv_text: str = None) -> Dict[str, Any]:
             })
         # normalise / validate split %
         total = round(sum(s["split_pct"] for s in subs), 2)
-        if total == 0:
-            eq = round(100.0 / len(subs), 2) if subs else 0.0
+        if total == 0 and subs:
+            base = round(100.0 / len(subs), 2)
             for s in subs:
-                s["split_pct"] = eq
+                s["split_pct"] = base
+            # push the rounding remainder onto the last sub-factor -> exact 100
+            subs[-1]["split_pct"] = round(100.0 - base * (len(subs) - 1), 2)
         elif abs(total - 100.0) > 1.0:
             warnings.append(f"'{name}': Split % totals {total:g}% (should be 100%).")
         factors.append({

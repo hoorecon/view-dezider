@@ -55,12 +55,13 @@ def main():
     sub_ids = {}      # (fi, si) -> sid
     for fi, (fname, subvals) in enumerate(CANON):
         subs = []
-        eq = round(100.0 / len(subvals), 2)
+        base = round(100.0 / len(subvals), 2)
         for si, val in enumerate(subvals):
             sid = str(uuid.uuid4())
             sub_ids[(fi, si)] = sid
+            split = base if si < len(subvals) - 1 else round(100.0 - base * (len(subvals) - 1), 2)
             subs.append({"id": sid, "name": f"{val} %", "order": si,
-                         "data_type": "%", "ui_object": "Input Box", "split_pct": eq})
+                         "data_type": "%", "ui_object": "Input Box", "split_pct": split})
         factors.append({
             "id": str(uuid.uuid4()), "name": fname, "order": fi,
             "category": "Mandatory", "priority": fi + 1, "factor_type": "Qualitative",
