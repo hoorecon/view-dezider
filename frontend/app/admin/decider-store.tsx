@@ -30,24 +30,20 @@ const DECISION_TYPES = [
 const CATEGORIES = ['Financial', 'Career', 'Business', 'Health', 'Relationships',
   'Learning', 'Spiritual', 'Social', 'Recreation', 'General'];
 
-// Cell (option×factor) value <-> "Value (nn%), Value2" text — mirrors backend parse_value_cell.
-const parseCell = (text?: string): { value: string; pct: number }[] => {
-  const t = (text || '').trim();
-  if (!t || ['na', 'n/a', '-'].includes(t.toLowerCase())) return [];
-  return t.split(/,(?![^(]*\))/).map(p => p.trim()).filter(Boolean).map(p => {
-    const m = p.match(/\((\d+(?:\.\d+)?)\s*%?\)/);
-    const pct = m ? parseFloat(m[1]) : 100;
-    const value = p.replace(/\s*\(\s*\d+(?:\.\d+)?\s*%?\s*\)\s*/, '').trim();
-    return value ? { value, pct } : null;
-  }).filter(Boolean) as { value: string; pct: number }[];
+// Sub-factor helper: legacy factors (no sub_factors) behave as a single sub-factor.
+type SubFactor = {
+  id: string; name: string; order?: number;
+  data_type?: string; ui_object?: string; split_pct?: number;
 };
-const fmtCell = (vals?: { value: string; pct?: number }[]): string =>
-  (vals || []).map(v => (v.pct == null || v.pct === 100) ? v.value : `${v.value} (${v.pct}%)`).join(', ');
+const subsOf = (f: Factor): SubFactor[] =>
+  (f.sub_factors && f.sub_factors.length)
+    ? f.sub_factors
+    : [{ id: f.id, name: f.name, data_type: 'Text', split_pct: 100 }];
 
 type Factor = {
   id: string; name: string; order?: number; factor_type?: string;
   category?: string; priority?: number; possible_values?: string[];
-  has_sub_pct?: boolean;
+  sub_factors?: SubFactor[];
 };
 type Template = {
   template_id: string; title: string; subtitle?: string; description?: string;
@@ -248,7 +244,10 @@ export default function AdminDeciderStore() {
     const facs = (t.factors || []).map(f => ({ ...f }));
     const opts = (t.options || []).map((o: any) => ({ ...o, values: { ...(o.values || {}) } }));
     const text: Record<string, string> = {};
-    opts.forEach((o: any) => facs.forEach(f => { text[`${o.id}::${f.id}`] = fmtCell(o.values?.[f.id]); }));
+    opts.forEach((o: any) => facs.forEach(f => subsOf(f).forEach(sf => {
+      const v = o.values?.[sf.id];
+      text[`${o.id}::${sf.id}`] = v == null ? '' : String((v.raw ?? v) || '');
+    })));
     setDataId(t.template_id); setDataFactors(facs); setDataOpts(opts);
     setCellText(text); setExpandedOpt(opts[0]?.id || null); setOptSearch('');
   };
@@ -265,11 +264,14 @@ export default function AdminDeciderStore() {
     setBusy(true);
     try {
       const options = dataOpts.map((o: any) => {
-        const values: Record<string, any[]> = {};
-        dataFactors.forEach(f => {
-          const parsed = parseCell(cellText[`${o.id}::${f.id}`] || '');
-          if (parsed.length) values[f.id] = parsed;
-        });
+        const values: Record<string, any> = {};
+        dataFactors.forEach(f => subsOf(f).forEach(sf => {
+          const raw = (cellText[`${o.id}::${sf.id}`] || '').trim();
+          if (!raw) return;
+          const isText = (sf.data_type || '').toLowerCase().startsWith('text');
+          const n = parseFloat(raw.replace(/[^0-9.\-]/g, ''));
+          values[sf.id] = { raw, num: isText || isNaN(n) ? null : n };
+        }));
         return { ...o, values };
       });
       await api.put(`/decider-store/${dataId}`, { options });
@@ -512,7 +514,7 @@ export default function AdminDeciderStore() {
               <Text style={s.mTitle}>Edit option values</Text>
               <TouchableOpacity onPress={() => setDataId(null)}><Ionicons name="close" size={22} color="#475569" /></TouchableOpacity>
             </View>
-            <Text style={s.help}>Tap an option to edit its per-factor cells. Format: {'"Value (80%), Value2"'} — no % means 100%. Leave blank if N/A.</Text>
+            <Text style={s.help}>Tap an option to edit its per-sub-factor values (one input per sub-factor). Enter the value (e.g. 100 for 100%). Leave blank if N/A.</Text>
             <View style={s.search}>
               <Ionicons name="search" size={15} color="#94A3B8" />
               <TextInput style={s.searchInput} value={optSearch} onChangeText={setOptSearch} placeholder="Filter options…" placeholderTextColor="#9CA3AF" />
@@ -538,17 +540,25 @@ export default function AdminDeciderStore() {
                         <TouchableOpacity onPress={() => deleteOption(o.id)}><Ionicons name="trash-outline" size={18} color="#DC2626" /></TouchableOpacity>
                       </View>
                       {open && dataFactors.map((f) => (
-                        <View key={f.id} style={s.cellRow}>
-                          <Text style={s.cellLabel} numberOfLines={1}>{f.name}
+                        <View key={f.id} style={s.facBlock}>
+                          <Text style={s.facBlockName} numberOfLines={2}>{f.name}
                             <Text style={s.cellType}>{(f.factor_type === 'quantitative') ? '  ·Quant' : '  ·Qual'}</Text>
                           </Text>
-                          <TextInput
-                            style={s.cellInput}
-                            value={cellText[`${o.id}::${f.id}`] || ''}
-                            onChangeText={(v) => setCellText(prev => ({ ...prev, [`${o.id}::${f.id}`]: v }))}
-                            placeholder={(f.possible_values || []).slice(0, 2).join(', ') || 'value (nn%)'}
-                            placeholderTextColor="#CBD5E1"
-                          />
+                          {subsOf(f).map((sf) => (
+                            <View key={sf.id} style={s.cellRow}>
+                              <Text style={s.cellLabel} numberOfLines={1}>{sf.name}
+                                {sf.split_pct != null && <Text style={s.cellType}>{`  (split ${sf.split_pct}%)`}</Text>}
+                              </Text>
+                              <TextInput
+                                style={s.cellInput}
+                                value={cellText[`${o.id}::${sf.id}`] || ''}
+                                onChangeText={(v) => setCellText(prev => ({ ...prev, [`${o.id}::${sf.id}`]: v }))}
+                                placeholder={sf.data_type || '%'}
+                                placeholderTextColor="#CBD5E1"
+                                keyboardType={((sf.data_type || '').toLowerCase().startsWith('text')) ? 'default' : 'numeric'}
+                              />
+                            </View>
+                          ))}
                         </View>
                       ))}
                     </View>
@@ -610,6 +620,32 @@ export default function AdminDeciderStore() {
                       <Text style={[s.typeText, (f.factor_type || 'qualitative') === 'qualitative' && { color: '#FFF' }]}>Qualitative → ReviewNet</Text>
                     </TouchableOpacity>
                   </View>
+                  {!!(f.sub_factors && f.sub_factors.length) && (
+                    <View style={s.subWrap}>
+                      {(() => {
+                        const sum = Math.round((f.sub_factors || []).reduce((a, x) => a + (x.split_pct || 0), 0) * 100) / 100;
+                        const ok = Math.abs(sum - 100) <= 0.5;
+                        return <Text style={[s.subHint, !ok && { color: '#DC2626' }]}>Sub-factors · Split total {sum}% {ok ? '✓' : '(should be 100%)'}</Text>;
+                      })()}
+                      {(f.sub_factors || []).map((sf, si) => (
+                        <View key={sf.id} style={s.subRow}>
+                          <Text style={s.subName} numberOfLines={1}>{sf.name}</Text>
+                          <Text style={s.subMeta}>{sf.data_type || '%'}</Text>
+                          <View style={s.subSplit}>
+                            <TextInput
+                              style={s.subSplitInput}
+                              value={String(sf.split_pct ?? '')}
+                              keyboardType="numeric"
+                              onChangeText={(v) => setClassFactors(prev => prev.map((x, j) => j === i
+                                ? { ...x, sub_factors: (x.sub_factors || []).map((y, k) => k === si ? { ...y, split_pct: parseFloat(v) || 0 } : y) }
+                                : x))}
+                            />
+                            <Text style={s.subPct}>%</Text>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  )}
                 </View>
               ))}
             </ScrollView>
@@ -698,6 +734,16 @@ const s = StyleSheet.create({
   optHeadMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
   optNameInput: { flex: 1, fontSize: 13.5, fontWeight: '700', color: '#0F172A', paddingVertical: 4 },
   cellRow: { marginTop: 8 },
+  facBlock: { marginTop: 10, borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 6 },
+  facBlockName: { fontSize: 12.5, fontWeight: '800', color: '#334155' },
+  subWrap: { marginTop: 8, backgroundColor: '#F8FAFC', borderRadius: 8, padding: 8 },
+  subHint: { fontSize: 11, fontWeight: '700', color: '#16A34A', marginBottom: 4 },
+  subRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 3 },
+  subName: { flex: 1, fontSize: 12, color: '#0F172A' },
+  subMeta: { fontSize: 10.5, color: '#94A3B8', width: 52, textAlign: 'right' },
+  subSplit: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  subSplitInput: { width: 46, backgroundColor: '#FFF', borderRadius: 6, borderWidth: 1, borderColor: '#E2E8F0', paddingVertical: 4, paddingHorizontal: 6, fontSize: 12, color: '#0F172A', textAlign: 'center' },
+  subPct: { fontSize: 11, color: '#64748B' },
   cellLabel: { fontSize: 11.5, fontWeight: '700', color: '#475569', marginBottom: 3 },
   cellType: { fontSize: 10, fontWeight: '600', color: '#94A3B8' },
   cellInput: { backgroundColor: '#F8FAFC', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 12.5, color: '#0F172A', borderWidth: 1, borderColor: '#E2E8F0' },

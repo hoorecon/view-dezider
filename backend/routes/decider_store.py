@@ -278,6 +278,7 @@ async def get_template(template_id: str):
 # CLONE (login required) -> new MyDezider decision, prefilled
 # ══════════════════════════════════════════════════════════════════════════
 def _fmt_value_text(vals: List[Dict[str, Any]]) -> str:
+    """Legacy [{value,pct}] -> 'Solo (100%), Startup (40%)' text."""
     parts = []
     for v in vals:
         pct = v.get("pct")
@@ -286,45 +287,75 @@ def _fmt_value_text(vals: List[Dict[str, Any]]) -> str:
     return ", ".join(parts)
 
 
+def _sf_list(f: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """A factor's sub-factors; synthesize one for legacy factors without any."""
+    subs = f.get("sub_factors")
+    if subs:
+        return subs
+    return [{"id": f.get("id"), "name": f.get("name"),
+             "data_type": f.get("data_type") or "Text", "split_pct": 100}]
+
+
+def _val_raw(v: Any) -> str:
+    if isinstance(v, dict):
+        return str(v.get("raw", ""))
+    if isinstance(v, list):  # legacy [{value,pct}]
+        return _fmt_value_text(v)
+    return "" if v is None else str(v)
+
+
+def _val_num(v: Any):
+    if isinstance(v, dict):
+        return v.get("num")
+    if isinstance(v, list):
+        return _best_pct(v)
+    return None
+
+
 def _build_decision_from_template(t: Dict[str, Any], mode: str, user: dict) -> Dict[str, Any]:
     full = (mode == "full")
     factors_out: List[Dict[str, Any]] = []
-    id_map: Dict[str, str] = {}
-    for order, f in enumerate(t.get("factors") or []):
-        new_id = str(uuid.uuid4())
-        id_map[f.get("id")] = new_id
-        factors_out.append({
-            "id": new_id,
-            "name": f.get("name") or "Factor",
-            "order": order,
-            # classification + prioritization only carried in FULL mode
-            "category": (f.get("category") or "primary") if full else "",
-            "rating": (int(f.get("priority") or 0)) if full else 0,
-            "data_type": f.get("data_type") or "Text",
-            "factor_type": f.get("factor_type") or "qualitative",
-            "gap_multiplier": 1.0,
-            # store-template metadata (informational; harmless extra fields)
-            "possible_values": f.get("possible_values") or [],
-            "select_type": f.get("select_type"),
-            "ui_object": f.get("ui_object"),
-            "has_sub_pct": f.get("has_sub_pct", False),
-        })
+    sid_to_new: Dict[str, str] = {}          # sub-factor id -> new MyDezider factor id
+    order = 0
+    for f in t.get("factors") or []:
+        subs = _sf_list(f)
+        multi = len(subs) > 1
+        for sf in subs:
+            new_id = str(uuid.uuid4())
+            sid_to_new[sf.get("id")] = new_id
+            sub_name = sf.get("name") or "Value"
+            disp = f"{f.get('name')} — {sub_name}" if multi else (f.get("name") or sub_name)
+            factors_out.append({
+                "id": new_id,
+                "name": disp,
+                "order": order,
+                # classification + prioritization only carried in FULL mode
+                "category": (f.get("category") or "primary") if full else "",
+                "rating": (int(f.get("priority") or 0)) if full else 0,
+                "data_type": sf.get("data_type") or f.get("data_type") or "Text",
+                "factor_type": f.get("factor_type") or "qualitative",
+                "gap_multiplier": 1.0,
+                # store-template metadata (informational; harmless extra fields)
+                "parent_factor": f.get("name"),
+                "sub_factor": sub_name,
+                "split_pct": sf.get("split_pct"),
+            })
+            order += 1
 
     options_out: List[Dict[str, Any]] = []
     for opt in t.get("options") or []:
         assessments = []
-        for old_fid, vals in (opt.get("values") or {}).items():
-            new_fid = id_map.get(old_fid)
+        for old_sid, v in (opt.get("values") or {}).items():
+            new_fid = sid_to_new.get(old_sid)
             if not new_fid:
                 continue
-            # option "value" is prefilled as unit_value text; the suitability %
-            # is retained as structured metadata (NOT the scoring assessment %,
-            # which the user fills during their own assessment step).
+            # option value is prefilled as unit_value; num_value is the numeric
+            # suitability (NOT the scoring % the user fills during assessment).
             assessments.append({
                 "factor_id": new_fid,
                 "percentage": None,
-                "unit_value": _fmt_value_text(vals),
-                "suitability_values": vals,
+                "unit_value": _val_raw(v),
+                "num_value": _val_num(v),
             })
         options_out.append({
             "id": str(uuid.uuid4()),
@@ -414,19 +445,32 @@ def _best_pct(vals) -> float:
 
 
 async def _push_template_to_stores(t: dict, user: dict) -> dict:
-    """Push each option → Solution Store (quant) + ReviewNet baseline (qual)."""
+    """Push each option → Solution Store (quant sub-factors) + ReviewNet baseline
+    (qual sub-factors). Keyed by sub-factor id for a clean reverse-sync."""
     factors = t.get("factors") or []
-    fmap = {f.get("id"): f for f in factors}
-    qual_factors = {f.get("id"): f for f in factors if (f.get("factor_type") or "qualitative") != "quantitative"}
+    # sub-factor id -> (main factor, sub factor)
+    sub_index: dict = {}
+    for f in factors:
+        for sf in _sf_list(f):
+            sub_index[sf.get("id")] = (f, sf)
 
-    # Ensure a ReviewNet catalog factor exists for every qualitative factor.
-    rf_id_for: dict = {}
-    for fid, f in qual_factors.items():
-        rf_id = f"qf_decider_{_slug(f.get('name'))}"
-        rf_id_for[fid] = rf_id
+    def _is_quant(f):
+        return (f.get("factor_type") or "qualitative") == "quantitative"
+
+    def _label(f, sf):
+        subs = f.get("sub_factors") or []
+        return f"{f.get('name')} · {sf.get('name')}" if len(subs) > 1 else (f.get("name") or sf.get("name"))
+
+    # Ensure a ReviewNet catalog factor per qualitative sub-factor.
+    rf_for: dict = {}
+    for sid, (f, sf) in sub_index.items():
+        if _is_quant(f):
+            continue
+        rf_id = f"qf_decider_{_slug(f.get('name'))}_{_slug(sf.get('name'))}"
+        rf_for[sid] = rf_id
         await db.review_factors.update_one(
             {"factor_id": rf_id},
-            {"$set": {"factor_id": rf_id, "name": f.get("name"), "slug": _slug(f.get("name")),
+            {"$set": {"factor_id": rf_id, "name": _label(f, sf), "slug": _slug(_label(f, sf)),
                       "scope_type": "global", "scope_id": None, "is_active": True,
                       "source": "decider_store", "updated_at": _now()},
              "$setOnInsert": {"created_at": _now()}},
@@ -440,19 +484,22 @@ async def _push_template_to_stores(t: dict, user: dict) -> dict:
         quant_factors_payload = []
         qual_profile: dict = {}
         factor_ratings: dict = {}
-        for fid, vals in (opt.get("values") or {}).items():
-            f = fmap.get(fid)
-            if not f:
+        for sid, v in (opt.get("values") or {}).items():
+            fi = sub_index.get(sid)
+            if not fi:
                 continue
-            text = _fmt_value_text(vals)
-            if (f.get("factor_type") or "qualitative") == "quantitative":
+            f, sf = fi
+            raw, num = _val_raw(v), _val_num(v)
+            label = _label(f, sf)
+            if _is_quant(f):
                 quant_factors_payload.append({
-                    "factor_id": fid, "name": f.get("name"), "value": text,
-                    "unit": "", "values": vals, "data_type": f.get("data_type") or "Text",
+                    "factor_id": sid, "name": label, "value": raw, "unit": "",
+                    "num": num, "data_type": sf.get("data_type") or "Number",
                 })
             else:
-                qual_profile[f.get("name")] = vals
-                factor_ratings[rf_id_for.get(fid, f"qf_decider_{_slug(f.get('name'))}")] = _star_from_pct(_best_pct(vals))
+                qual_profile[sid] = {"name": label, "value": raw, "num": num}
+                factor_ratings[rf_for.get(sid, f"qf_decider_{_slug(label)}")] = _star_from_pct(
+                    num if num is not None else 100)
 
         sol_id = opt.get("linked_solution_id") or str(uuid.uuid4())
         sol_doc = {
@@ -534,7 +581,7 @@ async def sync_from_stores(template_id: str, user: dict = Depends(get_current_us
     if not t:
         raise HTTPException(404, "Template not found")
     factors = t.get("factors") or []
-    fid_by_name = {f.get("name"): f.get("id") for f in factors}
+    valid_sids = {sf.get("id") for f in factors for sf in _sf_list(f)}
     synced = 0
     options = t.get("options") or []
     for opt in options:
@@ -545,19 +592,17 @@ async def sync_from_stores(template_id: str, user: dict = Depends(get_current_us
         if not sol:
             continue
         vals = dict(opt.get("values") or {})
-        # quantitative back from solution
+        # quantitative back from solution (factor_id == sub-factor id)
         for qf in sol.get("quantitative_factors") or []:
-            fid = qf.get("factor_id") or fid_by_name.get(qf.get("name"))
-            if not fid:
-                continue
-            vals[fid] = qf.get("values") or parse_value_cell(qf.get("value"))
-        # qualitative back from ReviewNet baseline
+            sid = qf.get("factor_id")
+            if sid and sid in valid_sids:
+                vals[sid] = {"raw": _val_raw(qf.get("value")), "num": qf.get("num")}
+        # qualitative back from ReviewNet baseline (keyed by sub-factor id)
         baseline = await db.review_net.find_one(
             {"review_id": f"rv_baseline_{sol_id}"}, {"_id": 0, "baseline_profile": 1})
-        for fname, fvals in ((baseline or {}).get("baseline_profile") or {}).items():
-            fid = fid_by_name.get(fname)
-            if fid:
-                vals[fid] = fvals
+        for sid, entry in ((baseline or {}).get("baseline_profile") or {}).items():
+            if sid in valid_sids and isinstance(entry, dict):
+                vals[sid] = {"raw": _val_raw(entry.get("value")), "num": entry.get("num")}
         opt["values"] = vals
         synced += 1
     await db.decider_store_templates.update_one(
@@ -581,18 +626,24 @@ async def create_template_from_solutions(request: Request, user: dict = Depends(
         raise HTTPException(404, "No matching solutions")
 
     # Build the factor set: quantitative from solutions, qualitative from baselines.
+    # Each becomes a main factor with a single sub-factor (uniform new model).
     factors: list = []
-    factor_id_by_name: dict = {}
+    sid_by_name: dict = {}   # source name -> its sub-factor id
 
     def _ensure_factor(name: str, ftype: str) -> str:
-        if name in factor_id_by_name:
-            return factor_id_by_name[name]
-        fid = str(uuid.uuid4())
-        factor_id_by_name[name] = fid
-        factors.append({"id": fid, "name": name, "order": len(factors),
-                        "factor_type": ftype, "data_type": "Number" if ftype == "quantitative" else "Text",
-                        "category": "", "priority": 0, "possible_values": [], "has_sub_pct": True})
-        return fid
+        if name in sid_by_name:
+            return sid_by_name[name]
+        sid = str(uuid.uuid4())
+        sid_by_name[name] = sid
+        factors.append({
+            "id": str(uuid.uuid4()), "name": name, "order": len(factors),
+            "factor_type": ftype, "category": "", "priority": len(factors) + 1,
+            "sub_factors": [{"id": sid, "name": name, "order": 0,
+                             "data_type": "Number" if ftype == "quantitative" else "%",
+                             "ui_object": "Input Box", "split_pct": 100}],
+            "possible_values": [name],
+        })
+        return sid
 
     baselines: dict = {}
     for sol in sols:
@@ -602,18 +653,21 @@ async def create_template_from_solutions(request: Request, user: dict = Depends(
         for qf in sol.get("quantitative_factors") or []:
             if qf.get("name"):
                 _ensure_factor(qf["name"], "quantitative")
-        for fname in ((b or {}).get("baseline_profile") or {}).keys():
-            _ensure_factor(fname, "qualitative")
+        for entry in ((b or {}).get("baseline_profile") or {}).values():
+            nm = entry.get("name") if isinstance(entry, dict) else None
+            if nm:
+                _ensure_factor(nm, "qualitative")
 
     options: list = []
     for sol in sols:
         vals: dict = {}
         for qf in sol.get("quantitative_factors") or []:
-            if qf.get("name") in factor_id_by_name:
-                vals[factor_id_by_name[qf["name"]]] = qf.get("values") or parse_value_cell(qf.get("value"))
-        for fname, fvals in (baselines.get(sol["solution_id"], {}).get("baseline_profile") or {}).items():
-            if fname in factor_id_by_name:
-                vals[factor_id_by_name[fname]] = fvals
+            if qf.get("name") in sid_by_name:
+                vals[sid_by_name[qf["name"]]] = {"raw": _val_raw(qf.get("value")), "num": qf.get("num")}
+        for entry in (baselines.get(sol["solution_id"], {}).get("baseline_profile") or {}).values():
+            nm = entry.get("name") if isinstance(entry, dict) else None
+            if nm and nm in sid_by_name:
+                vals[sid_by_name[nm]] = {"raw": _val_raw(entry.get("value")), "num": entry.get("num")}
         options.append({
             "id": str(uuid.uuid4()), "name": sol.get("name") or "Option",
             "description": sol.get("description") or "",
