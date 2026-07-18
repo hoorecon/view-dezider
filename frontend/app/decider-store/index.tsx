@@ -148,26 +148,25 @@ export default function DeciderStoreHome() {
             <Text style={s.empty}>No templates yet. Check back soon.</Text>
           ) : (
             <>
-              {apps.length > 0 && (
-                <>
-                  <View style={s.sectionHead}>
-                    <Ionicons name="search-circle" size={18} color="#4F46E5" />
-                    <Text style={s.sectionTitle}>Decider Apps · Finders</Text>
-                  </View>
-                  <Text style={s.sectionHint}>Set what you want — the app auto-ranks the best matches for you.</Text>
-                  <View style={s.gridRow}>{apps.map(renderCard)}</View>
-                </>
-              )}
-              {templates.length > 0 && (
-                <>
-                  <View style={[s.sectionHead, apps.length > 0 && { marginTop: 22 }]}>
-                    <Ionicons name="documents" size={18} color="#0D9488" />
-                    <Text style={s.sectionTitle}>Decision Templates</Text>
-                  </View>
-                  <Text style={s.sectionHint}>Clone a prefilled blueprint and assess the options yourself.</Text>
-                  <View style={s.gridRow}>{templates.map(renderCard)}</View>
-                </>
-              )}
+              <View style={s.sectionHead}>
+                <Ionicons name="search-circle" size={18} color="#4F46E5" />
+                <Text style={s.sectionTitle}>Decider Apps · Finders</Text>
+                <View style={s.countPill}><Text style={s.countText}>{apps.length}</Text></View>
+              </View>
+              <Text style={s.sectionHint}>Set what you want — the app auto-ranks the best matches for you.</Text>
+              {apps.length > 0
+                ? <View style={s.gridRow}>{apps.map(renderCard)}</View>
+                : <Text style={s.sectionEmpty}>No Decider Apps in this view yet.</Text>}
+
+              <View style={[s.sectionHead, { marginTop: 24 }]}>
+                <Ionicons name="documents" size={18} color="#0D9488" />
+                <Text style={s.sectionTitle}>Decision Templates</Text>
+                <View style={[s.countPill, { backgroundColor: '#CCFBF1' }]}><Text style={[s.countText, { color: '#0D9488' }]}>{templates.length}</Text></View>
+              </View>
+              <Text style={s.sectionHint}>Clone a prefilled blueprint and assess the options yourself.</Text>
+              {templates.length > 0
+                ? <View style={s.gridRow}>{templates.map(renderCard)}</View>
+                : <Text style={s.sectionEmpty}>No decision templates in this view yet.</Text>}
             </>
           )}
           <View style={{ height: 40 }} />
@@ -198,7 +197,10 @@ const s = StyleSheet.create({
   gridRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'flex-start' },
   sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 2 },
   sectionTitle: { fontSize: 16, fontWeight: '900', color: '#0F172A' },
+  countPill: { backgroundColor: '#EEF2FF', minWidth: 22, paddingHorizontal: 7, paddingVertical: 1, borderRadius: 10, alignItems: 'center' },
+  countText: { fontSize: 12, fontWeight: '800', color: '#4F46E5' },
   sectionHint: { fontSize: 12, color: '#64748B', marginBottom: 12, marginTop: 2 },
+  sectionEmpty: { fontSize: 12.5, color: '#94A3B8', fontStyle: 'italic', paddingVertical: 10 },
   finderTag: { position: 'absolute', top: 8, left: 8, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#4F46E5', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8 },
   finderTagText: { fontSize: 9.5, fontWeight: '900', color: '#FFF', letterSpacing: 0.4 },
   empty: { textAlign: 'center', color: '#94A3B8', marginTop: 40 },
