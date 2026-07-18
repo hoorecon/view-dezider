@@ -43,6 +43,7 @@ async def main():
         "pricing_type": "free",
         "price_paise": 0,
         "currency": "INR",
+        "kind": "app",  # DeciderApp / Finder — auto-filters + auto-ranks Top-N
         "creator_split_pct": 70,
         "allowed_clone_modes": ["full", "values_only"],
         "factors": parsed["factors"],

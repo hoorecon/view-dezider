@@ -347,6 +347,20 @@ function PRRDecisionDetailInner() {
             </View>
           );
         })()}
+        {(decision as any)?.decider_kind === 'app' && !contributionMode && (
+          <TouchableOpacity
+            onPress={() => router.push(`/finder/${id}` as any)}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginTop: 8, backgroundColor: '#EEF2FF', borderWidth: 1, borderColor: '#C7D2FE', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11 }}
+            accessibilityLabel="Run Finder"
+          >
+            <Ionicons name="search-circle" size={20} color="#4F46E5" />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13.5, fontWeight: '800', color: '#3730A3' }}>Run Finder — auto-rank the best options</Text>
+              <Text style={{ fontSize: 11.5, color: '#6366F1', marginTop: 1 }}>Set expectations (Step 2) & priorities, then find your Top matches.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#6366F1" />
+          </TouchableOpacity>
+        )}
         {contributionMode && (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#EEF2FF', borderBottomWidth: 1, borderBottomColor: '#C7D2FE' }}>
             <Ionicons name="people-circle-outline" size={18} color="#4338CA" />

@@ -99,6 +99,7 @@ export default function DeciderStoreDetail() {
   const modes: string[] = t.allowed_clone_modes || ['full'];
   const factors: any[] = t.factors || [];
   const options: any[] = t.options || [];
+  const isApp = t.kind === 'app';
   const paid = t.pricing_type === 'paid' && (t.price_paise || 0) > 0;
   const priceStr = paid ? `${t.currency === 'INR' ? '₹' : '$'}${((t.price_paise || 0) / 100).toFixed(0)}` : 'Free';
 
@@ -116,6 +117,12 @@ export default function DeciderStoreDetail() {
           <Ionicons name={(t.cover_icon || 'grid') as any} size={40} color={t.cover_color || '#4F46E5'} />
         </View>
         <Text style={s.title}>{t.title}</Text>
+        {isApp && (
+          <View style={s.finderBanner}>
+            <Ionicons name="search-circle" size={16} color="#4F46E5" />
+            <Text style={s.finderBannerText}>Finder — set your expectations & priorities, then it auto-ranks the best matches for you.</Text>
+          </View>
+        )}
         {!!t.subtitle && <Text style={s.subtitle}>{t.subtitle}</Text>}
         <View style={s.chipRow}>
           <View style={[s.stat, { backgroundColor: '#EEF2FF' }]}><Text style={[s.statText, { color: '#4F46E5' }]}>📊 {factors.length} factors</Text></View>
@@ -144,9 +151,11 @@ export default function DeciderStoreDetail() {
           <View key={f.id} style={s.facRow}>
             <View style={{ flex: 1 }}>
               <Text style={s.facName}>{f.name}</Text>
-              {!!(f.possible_values || []).length && (
-                <Text style={s.facVals} numberOfLines={1}>{(f.possible_values || []).join(' · ')}</Text>
-              )}
+              {(() => {
+                const subs = (f.sub_factors || []).map((x: any) => x.name).filter(Boolean);
+                const vals = subs.length ? subs : (f.possible_values || []);
+                return vals.length ? <Text style={s.facVals} numberOfLines={1}>{vals.join(' · ')}</Text> : null;
+              })()}
             </View>
             <View style={[s.typeTag, { backgroundColor: (f.factor_type === 'quantitative') ? '#E0F2FE' : '#F3E8FF' }]}>
               <Text style={[s.typeTagText, { color: (f.factor_type === 'quantitative') ? '#0369A1' : '#9333EA' }]}>
@@ -174,7 +183,7 @@ export default function DeciderStoreDetail() {
           {cloning ? <ActivityIndicator color="#FFF" /> : (
             <>
               <Ionicons name={isAuthenticated ? 'rocket' : 'log-in'} size={18} color="#FFF" />
-              <Text style={s.useBtnText}>{isAuthenticated ? 'Use this template' : 'Sign in to use'}{paid ? ` · ${priceStr}` : ''}</Text>
+              <Text style={s.useBtnText}>{isAuthenticated ? (isApp ? 'Use this Finder' : 'Use this template') : 'Sign in to use'}{paid ? ` · ${priceStr}` : ''}</Text>
             </>
           )}
         </TouchableOpacity>
@@ -192,6 +201,8 @@ const s = StyleSheet.create({
   cover: { height: 120, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
   title: { fontSize: 22, fontWeight: '900', color: '#0F172A' },
   subtitle: { fontSize: 14, color: '#64748B', marginTop: 4 },
+  finderBanner: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#EEF2FF', borderRadius: 10, padding: 10, marginTop: 10 },
+  finderBannerText: { flex: 1, fontSize: 12, color: '#3730A3', fontWeight: '600', lineHeight: 17 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
   stat: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
   statText: { fontSize: 12.5, fontWeight: '700' },

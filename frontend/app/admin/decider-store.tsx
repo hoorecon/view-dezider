@@ -50,7 +50,7 @@ type Template = {
   category?: string; decision_type?: string; pricing_type?: string;
   price_paise?: number; creator_split_pct?: number; allowed_clone_modes?: string[];
   factors?: Factor[]; options?: any[]; status?: string; is_public?: boolean;
-  install_count?: number;
+  install_count?: number; kind?: string; finder_settings?: any;
 };
 
 export default function AdminDeciderStore() {
@@ -77,6 +77,20 @@ export default function AdminDeciderStore() {
   const [fModeFull, setFModeFull] = useState(true);
   const [fModeValues, setFModeValues] = useState(true);
   const [fAutoPush, setFAutoPush] = useState(false);
+  const [fKind, setFKind] = useState<'template' | 'app'>('template');
+
+  // Finder defaults + Landing settings modal
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [fdMin, setFdMin] = useState('3');
+  const [fdMax, setFdMax] = useState('15');
+  const [fdTop, setFdTop] = useState('5');
+  const [fdMatch, setFdMatch] = useState<'all' | 'any'>('all');
+  const [fdEngine, setFdEngine] = useState<'deterministic' | 'llm'>('deterministic');
+  const [ldTitle, setLdTitle] = useState('');
+  const [ldSubtitle, setLdSubtitle] = useState('');
+  const [ldHero, setLdHero] = useState('');
+  const [ldCta, setLdCta] = useState('');
+  const [ldTarget, setLdTarget] = useState('');
 
   // build-from-solution-store
   const [fromOpen, setFromOpen] = useState(false);
@@ -111,7 +125,7 @@ export default function AdminDeciderStore() {
   const resetForm = () => {
     setFTitle(''); setFSubtitle(''); setFDesc(''); setFCategory('General');
     setFType('aspiration'); setFPaid(false); setFPrice(''); setFSplit('70');
-    setFModeFull(true); setFModeValues(true); setFAutoPush(false); setParsed(null);
+    setFModeFull(true); setFModeValues(true); setFAutoPush(false); setFKind('template'); setParsed(null);
   };
 
   const doImportExcel = async () => {
@@ -157,6 +171,7 @@ export default function AdminDeciderStore() {
         price_paise: fPaid ? Math.round((parseFloat(fPrice) || 0) * 100) : 0,
         creator_split_pct: parseInt(fSplit) || 70,
         allowed_clone_modes: modes, auto_push_on_authorize: fAutoPush,
+        kind: fKind,
         factors: parsed.factors, options: parsed.options,
       });
       setShowCreate(false); resetForm(); load();
@@ -169,6 +184,52 @@ export default function AdminDeciderStore() {
   const authorize = async (t: Template) => {
     try { await api.post(`/decider-store/${t.template_id}/authorize`); load(); }
     catch (e: any) { showAlert('Failed', e?.response?.data?.detail || 'Try again'); }
+  };
+  const toggleKind = async (t: Template) => {
+    const next = t.kind === 'app' ? 'template' : 'app';
+    try { await api.put(`/decider-store/${t.template_id}`, { kind: next }); load(); }
+    catch (e: any) { showAlert('Failed', e?.response?.data?.detail || 'Try again'); }
+  };
+  const openSettings = async () => {
+    try {
+      const [cfg, land] = await Promise.all([
+        api.get('/admin/ai-wallet/config').catch(() => ({ data: {} })),
+        api.get('/decider-store/landing'),
+      ]);
+      const c = cfg.data || {};
+      setFdMin(String(c.finder_min_options ?? 3));
+      setFdMax(String(c.finder_max_options ?? 15));
+      setFdTop(String(c.finder_top_n ?? 5));
+      setFdMatch(c.finder_match_rule === 'any' ? 'any' : 'all');
+      setFdEngine(c.finder_engine === 'llm' ? 'llm' : 'deterministic');
+      const l = land.data || {};
+      setLdTitle(l.title || ''); setLdSubtitle(l.subtitle || ''); setLdHero(l.hero || '');
+      setLdCta(l.cta_label || ''); setLdTarget(l.cta_target || '');
+      setSettingsOpen(true);
+    } catch (e: any) { showAlert('Failed', e?.response?.data?.detail || 'Try again'); }
+  };
+  const saveSettings = async () => {
+    setBusy(true);
+    try {
+      await api.put('/admin/ai-wallet/config', {
+        finder_min_options: parseInt(fdMin) || 3,
+        finder_max_options: parseInt(fdMax) || 15,
+        finder_top_n: parseInt(fdTop) || 5,
+        finder_match_rule: fdMatch, finder_engine: fdEngine,
+      }).catch((e: any) => { if (e?.response?.status === 403) throw new Error('Finder defaults need Super-Admin. Landing saved.'); throw e; });
+    } catch (e: any) {
+      // continue to save landing even if finder-config was forbidden
+      showAlert('Note', e?.message || 'Finder defaults not saved (permission).');
+    }
+    try {
+      await api.put('/decider-store/landing', {
+        title: ldTitle, subtitle: ldSubtitle, hero: ldHero, cta_label: ldCta, cta_target: ldTarget,
+      });
+      setSettingsOpen(false);
+      showAlert('Saved', 'Finder defaults & landing page updated.');
+    } catch (e: any) {
+      showAlert('Failed', e?.response?.data?.detail || 'Try again');
+    } finally { setBusy(false); }
   };
   const unpublish = async (t: Template) => {
     try { await api.post(`/decider-store/${t.template_id}/unpublish`); load(); }
@@ -319,6 +380,10 @@ export default function AdminDeciderStore() {
               <Ionicons name="git-compare" size={16} color="#0369A1" />
               <Text style={[s.toolText, { color: '#0369A1' }]}>Build from Solution Store</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={[s.tool, { backgroundColor: '#F1F5F9' }]} onPress={openSettings} disabled={busy}>
+              <Ionicons name="settings" size={16} color="#475569" />
+              <Text style={[s.toolText, { color: '#475569' }]}>Finder & Landing</Text>
+            </TouchableOpacity>
           </View>
           {parsed && (
             <TouchableOpacity style={s.parsedPill} onPress={() => setShowCreate(true)}>
@@ -337,6 +402,11 @@ export default function AdminDeciderStore() {
           <View key={t.template_id} style={s.tCard}>
             <View style={s.tHead}>
               <Text style={s.tTitle} numberOfLines={2}>{t.title}</Text>
+              {t.kind === 'app' && (
+                <View style={[s.badge, { backgroundColor: '#EEF2FF' }]}>
+                  <Text style={[s.badgeText, { color: '#4F46E5' }]}>FINDER</Text>
+                </View>
+              )}
               <View style={[s.badge, { backgroundColor: t.status === 'authorized' && t.is_public ? '#DCFCE7' : t.status === 'pending' ? '#FEF3C7' : '#E2E8F0' }]}>
                 <Text style={[s.badgeText, { color: t.status === 'authorized' && t.is_public ? '#166534' : t.status === 'pending' ? '#B45309' : '#475569' }]}>
                   {t.status === 'authorized' && t.is_public ? 'LIVE' : (t.status || 'draft').toUpperCase()}
@@ -358,6 +428,9 @@ export default function AdminDeciderStore() {
             <View style={s.tActions}>
               <TouchableOpacity style={[s.act, { backgroundColor: '#EEF2FF' }]} onPress={() => openClassify(t)}>
                 <Ionicons name="options" size={13} color="#4F46E5" /><Text style={[s.actText, { color: '#4F46E5' }]}>Classify</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.act, { backgroundColor: '#F1F5F9' }]} onPress={() => toggleKind(t)}>
+                <Ionicons name="swap-horizontal" size={13} color="#475569" /><Text style={[s.actText, { color: '#475569' }]}>{t.kind === 'app' ? '→ Template' : '→ Finder'}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[s.act, { backgroundColor: '#FEF9C3' }]} onPress={() => openData(t)}>
                 <Ionicons name="create" size={13} color="#A16207" /><Text style={[s.actText, { color: '#A16207' }]}>Edit Data</Text>
@@ -402,6 +475,62 @@ export default function AdminDeciderStore() {
         </View>
       </Modal>
 
+      {/* Finder defaults + Landing page settings modal */}
+      <Modal visible={settingsOpen} transparent animationType="slide" onRequestClose={() => setSettingsOpen(false)}>
+        <View style={s.overlay}>
+          <View style={s.modalCard}>
+            <View style={s.mHead}>
+              <Text style={s.mTitle}>Finder & Landing settings</Text>
+              <TouchableOpacity onPress={() => setSettingsOpen(false)}><Ionicons name="close" size={22} color="#64748B" /></TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
+              <Text style={s.secLabel}>🔍 Finder defaults (users can override per run)</Text>
+              <View style={s.row2}>
+                <View style={{ flex: 1 }}><Text style={s.label}>Min options</Text>
+                  <TextInput style={s.input} value={fdMin} onChangeText={setFdMin} keyboardType="numeric" /></View>
+                <View style={{ flex: 1 }}><Text style={s.label}>Max options</Text>
+                  <TextInput style={s.input} value={fdMax} onChangeText={setFdMax} keyboardType="numeric" /></View>
+                <View style={{ flex: 1 }}><Text style={s.label}>Top N</Text>
+                  <TextInput style={s.input} value={fdTop} onChangeText={setFdTop} keyboardType="numeric" /></View>
+              </View>
+              <Text style={s.label}>Sub-factor match rule</Text>
+              <View style={s.kindRow}>
+                {(['all', 'any'] as const).map((m) => (
+                  <TouchableOpacity key={m} style={[s.kindBtn, fdMatch === m && s.kindOnApp]} onPress={() => setFdMatch(m)}>
+                    <Text style={[s.kindTitle, fdMatch === m && { color: '#FFF' }]}>{m === 'all' ? 'Match ALL' : 'Match ANY'}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={s.label}>Assessment engine</Text>
+              <View style={s.kindRow}>
+                {(['deterministic', 'llm'] as const).map((m) => (
+                  <TouchableOpacity key={m} style={[s.kindBtn, fdEngine === m && s.kindOnApp]} onPress={() => setFdEngine(m)}>
+                    <Text style={[s.kindTitle, fdEngine === m && { color: '#FFF' }]}>{m === 'deterministic' ? '⚡ Fast (rules)' : '🤖 AI (LLM)'}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[s.secLabel, { marginTop: 20 }]}>🌐 TheDecider.store landing page</Text>
+              <Text style={s.help}>Edit the public landing page. Preview: /api/decider-store/landing.html</Text>
+              <Text style={s.label}>Title</Text>
+              <TextInput style={s.input} value={ldTitle} onChangeText={setLdTitle} placeholder="The Decider Store" placeholderTextColor="#9CA3AF" />
+              <Text style={s.label}>Subtitle</Text>
+              <TextInput style={s.input} value={ldSubtitle} onChangeText={setLdSubtitle} placeholderTextColor="#9CA3AF" />
+              <Text style={s.label}>Hero paragraph</Text>
+              <TextInput style={[s.input, { height: 80 }]} value={ldHero} onChangeText={setLdHero} multiline placeholderTextColor="#9CA3AF" />
+              <Text style={s.label}>CTA button label</Text>
+              <TextInput style={s.input} value={ldCta} onChangeText={setLdCta} placeholder="Explore Decider Apps" placeholderTextColor="#9CA3AF" />
+              <Text style={s.label}>CTA target URL (opens masked)</Text>
+              <TextInput style={s.input} value={ldTarget} onChangeText={setLdTarget} autoCapitalize="none" placeholder="https://jelcos.ai/decider-store" placeholderTextColor="#9CA3AF" />
+              <TouchableOpacity style={s.createBtn} onPress={saveSettings} disabled={busy}>
+                {busy ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={s.createBtnText}>Save settings</Text>}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+
       {/* Create modal */}
       <Modal visible={showCreate} transparent animationType="slide" onRequestClose={() => setShowCreate(false)}>
         <View style={s.overlay}>
@@ -433,6 +562,23 @@ export default function AdminDeciderStore() {
                     <Text style={[s.chipText, fType === d.id && s.chipTextOn]}>{d.label}</Text>
                   </TouchableOpacity>
                 ))}
+              </View>
+              <Text style={s.label}>Store kind</Text>
+              <View style={s.kindRow}>
+                <TouchableOpacity style={[s.kindBtn, fKind === 'template' && s.kindOn]} onPress={() => setFKind('template')}>
+                  <Ionicons name="documents" size={16} color={fKind === 'template' ? '#FFF' : '#0D9488'} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.kindTitle, fKind === 'template' && { color: '#FFF' }]}>Decision Template</Text>
+                    <Text style={[s.kindSub, fKind === 'template' && { color: '#D1FAE5' }]}>User assesses options manually</Text>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.kindBtn, fKind === 'app' && s.kindOnApp]} onPress={() => setFKind('app')}>
+                  <Ionicons name="search-circle" size={16} color={fKind === 'app' ? '#FFF' : '#4F46E5'} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.kindTitle, fKind === 'app' && { color: '#FFF' }]}>DeciderApp · Finder</Text>
+                    <Text style={[s.kindSub, fKind === 'app' && { color: '#E0E7FF' }]}>System auto-ranks Top-N</Text>
+                  </View>
+                </TouchableOpacity>
               </View>
               <Text style={s.label}>Clone modes offered</Text>
               <View style={s.rowBetween}>
@@ -689,6 +835,15 @@ const s = StyleSheet.create({
   act: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 9 },
   actText: { fontSize: 12, fontWeight: '700' },
   overlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.5)', justifyContent: 'flex-end', alignItems: 'center' },
+  modalCard: { backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, width: '100%', maxWidth: 560, maxHeight: '90%', alignSelf: 'center' },
+  mHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  secLabel: { fontSize: 13.5, fontWeight: '800', color: '#0F172A', marginTop: 8, marginBottom: 6 },
+  kindRow: { flexDirection: 'row', gap: 10, marginBottom: 4 },
+  kindBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, padding: 11, backgroundColor: '#FFF' },
+  kindOn: { backgroundColor: '#0D9488', borderColor: '#0D9488' },
+  kindOnApp: { backgroundColor: '#4F46E5', borderColor: '#4F46E5' },
+  kindTitle: { fontSize: 13, fontWeight: '800', color: '#0F172A' },
+  kindSub: { fontSize: 10.5, color: '#64748B', marginTop: 1 },
   sheet: { backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, width: '100%', maxWidth: 520, alignSelf: 'center' },
   mHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   mTitle: { fontSize: 17, fontWeight: '800', color: '#0F172A' },

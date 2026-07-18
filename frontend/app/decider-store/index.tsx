@@ -18,7 +18,7 @@ import { useAuthStore } from '../../src/store/authStore';
 type Card = {
   template_id: string; title: string; subtitle?: string; description?: string;
   category?: string; decision_type?: string; cover_icon?: string; cover_color?: string;
-  pricing_type?: string; price_paise?: number; currency?: string;
+  pricing_type?: string; price_paise?: number; currency?: string; kind?: string;
   allowed_clone_modes?: string[]; factor_count?: number; option_count?: number;
   install_count?: number; creator_name?: string;
 };
@@ -58,6 +58,44 @@ export default function DeciderStoreHome() {
     c.pricing_type === 'paid' && (c.price_paise || 0) > 0
       ? `${c.currency === 'INR' ? '₹' : '$'}${((c.price_paise || 0) / 100).toFixed(0)}`
       : 'Free';
+
+  const renderCard = (c: Card) => {
+    const isApp = c.kind === 'app';
+    return (
+      <TouchableOpacity
+        key={c.template_id}
+        style={[s.card, { width: numCols === 1 ? '100%' : `${100 / numCols - 2}%` }]}
+        activeOpacity={0.85}
+        onPress={() => router.push(`/decider-store/${c.template_id}`)}
+      >
+        <View style={[s.cardCover, { backgroundColor: (c.cover_color || '#4F46E5') + '18' }]}>
+          <Ionicons name={(c.cover_icon || 'grid') as any} size={26} color={c.cover_color || '#4F46E5'} />
+          <View style={[s.priceTag, { backgroundColor: price(c) === 'Free' ? '#DCFCE7' : '#FEF3C7' }]}>
+            <Text style={[s.priceTagText, { color: price(c) === 'Free' ? '#166534' : '#B45309' }]}>{price(c)}</Text>
+          </View>
+          {isApp && (
+            <View style={s.finderTag}>
+              <Ionicons name="search" size={10} color="#FFF" />
+              <Text style={s.finderTagText}>FINDER</Text>
+            </View>
+          )}
+        </View>
+        <Text style={s.cardTitle} numberOfLines={2}>{c.title}</Text>
+        {!!c.subtitle && <Text style={s.cardSub} numberOfLines={2}>{c.subtitle}</Text>}
+        <View style={s.cardMeta}>
+          <Text style={s.cardMetaText}>📊 {c.factor_count || 0}</Text>
+          <Text style={s.cardMetaText}>🧩 {c.option_count || 0}</Text>
+          <Text style={s.cardMetaText}>⬇️ {c.install_count || 0}</Text>
+        </View>
+        <View style={s.cardBadgeRow}>
+          <View style={s.catPill}><Text style={s.catPillText}>{c.category}</Text></View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const apps = cards.filter((c) => c.kind === 'app');
+  const templates = cards.filter((c) => c.kind !== 'app');
 
   return (
     <SafeAreaView style={s.root} edges={['top']}>
@@ -109,33 +147,28 @@ export default function DeciderStoreHome() {
           {cards.length === 0 ? (
             <Text style={s.empty}>No templates yet. Check back soon.</Text>
           ) : (
-            <View style={[s.gridRow, { }]}>
-              {cards.map((c) => (
-                <TouchableOpacity
-                  key={c.template_id}
-                  style={[s.card, { width: numCols === 1 ? '100%' : `${100 / numCols - 2}%` }]}
-                  activeOpacity={0.85}
-                  onPress={() => router.push(`/decider-store/${c.template_id}`)}
-                >
-                  <View style={[s.cardCover, { backgroundColor: (c.cover_color || '#4F46E5') + '18' }]}>
-                    <Ionicons name={(c.cover_icon || 'grid') as any} size={26} color={c.cover_color || '#4F46E5'} />
-                    <View style={[s.priceTag, { backgroundColor: price(c) === 'Free' ? '#DCFCE7' : '#FEF3C7' }]}>
-                      <Text style={[s.priceTagText, { color: price(c) === 'Free' ? '#166534' : '#B45309' }]}>{price(c)}</Text>
-                    </View>
+            <>
+              {apps.length > 0 && (
+                <>
+                  <View style={s.sectionHead}>
+                    <Ionicons name="search-circle" size={18} color="#4F46E5" />
+                    <Text style={s.sectionTitle}>Decider Apps · Finders</Text>
                   </View>
-                  <Text style={s.cardTitle} numberOfLines={2}>{c.title}</Text>
-                  {!!c.subtitle && <Text style={s.cardSub} numberOfLines={2}>{c.subtitle}</Text>}
-                  <View style={s.cardMeta}>
-                    <Text style={s.cardMetaText}>📊 {c.factor_count || 0}</Text>
-                    <Text style={s.cardMetaText}>🧩 {c.option_count || 0}</Text>
-                    <Text style={s.cardMetaText}>⬇️ {c.install_count || 0}</Text>
+                  <Text style={s.sectionHint}>Set what you want — the app auto-ranks the best matches for you.</Text>
+                  <View style={s.gridRow}>{apps.map(renderCard)}</View>
+                </>
+              )}
+              {templates.length > 0 && (
+                <>
+                  <View style={[s.sectionHead, apps.length > 0 && { marginTop: 22 }]}>
+                    <Ionicons name="documents" size={18} color="#0D9488" />
+                    <Text style={s.sectionTitle}>Decision Templates</Text>
                   </View>
-                  <View style={s.cardBadgeRow}>
-                    <View style={s.catPill}><Text style={s.catPillText}>{c.category}</Text></View>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
+                  <Text style={s.sectionHint}>Clone a prefilled blueprint and assess the options yourself.</Text>
+                  <View style={s.gridRow}>{templates.map(renderCard)}</View>
+                </>
+              )}
+            </>
           )}
           <View style={{ height: 40 }} />
         </ScrollView>
@@ -163,6 +196,11 @@ const s = StyleSheet.create({
   catChipTextOn: { color: '#FFF' },
   grid: { padding: 14, maxWidth: 1100, width: '100%', alignSelf: 'center' },
   gridRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'flex-start' },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 2 },
+  sectionTitle: { fontSize: 16, fontWeight: '900', color: '#0F172A' },
+  sectionHint: { fontSize: 12, color: '#64748B', marginBottom: 12, marginTop: 2 },
+  finderTag: { position: 'absolute', top: 8, left: 8, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#4F46E5', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8 },
+  finderTagText: { fontSize: 9.5, fontWeight: '900', color: '#FFF', letterSpacing: 0.4 },
   empty: { textAlign: 'center', color: '#94A3B8', marginTop: 40 },
   card: { backgroundColor: '#FFF', borderRadius: 16, padding: 12, borderWidth: 1, borderColor: '#E2E8F0' },
   cardCover: { height: 84, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 10, position: 'relative' },

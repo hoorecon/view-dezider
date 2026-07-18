@@ -85,6 +85,13 @@ DEFAULTS = {
     # Step 8 (Decision Comparison). Default 5.
     "deep_import_max_options": 10,
     "deep_import_top_n": 5,
+    # ── DeciderApp / Finder (auto-filter + auto-assess + Top-N) defaults ──
+    # Users can override any of these per run; admin sets the defaults.
+    "finder_min_options": 3,
+    "finder_max_options": 15,
+    "finder_top_n": 5,
+    "finder_match_rule": "all",        # all | any  (sub-factor match within a factor)
+    "finder_engine": "deterministic",  # deterministic | llm
     # ── ScraperAPI (web-scrape) metering — auto cost-derived per fetch ──
     # $/credit = plan_usd / plan_credits; each rendered fetch = 10 credits,
     # premium = 25. Charged to the user's wallet with `scrape_markup_pct` on top.
@@ -144,6 +151,7 @@ async def update_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
               "razorpay_fee_pct", "razorpay_gst_pct",
               "min_custom_credits", "precise_usd_per_mtok", "import_group_threshold",
               "deep_import_max_options", "deep_import_top_n",
+              "finder_min_options", "finder_max_options", "finder_top_n",
               "loader_music_volume_web", "loader_music_volume_android", "loader_music_volume_ios",
               "scraperapi_plan_usd_month", "scraperapi_plan_credits_month", "scrape_markup_pct",
               "audio_storage_usd_per_gb_month", "audio_storage_retention_days",
@@ -167,6 +175,14 @@ async def update_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
                     val = int(val)
                 if k == "deep_import_top_n":
                     if val < 1 or val > 20:
+                        raise ValueError
+                    val = int(val)
+                if k in ("finder_min_options", "finder_max_options"):
+                    if val < 1 or val > 200:
+                        raise ValueError
+                    val = int(val)
+                if k == "finder_top_n":
+                    if val < 1 or val > 50:
                         raise ValueError
                     val = int(val)
                 if k in ("loader_music_volume_web", "loader_music_volume_android", "loader_music_volume_ios"):
@@ -205,6 +221,11 @@ async def update_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
     # Feature flag — admin toggle for the OpenAI free-tier opt-in.
     if "openai_free_tier_feature_enabled" in patch and patch["openai_free_tier_feature_enabled"] is not None:
         allowed["openai_free_tier_feature_enabled"] = bool(patch["openai_free_tier_feature_enabled"])
+    # Finder string defaults
+    if str(patch.get("finder_match_rule") or "").lower() in ("all", "any"):
+        allowed["finder_match_rule"] = str(patch["finder_match_rule"]).lower()
+    if str(patch.get("finder_engine") or "").lower() in ("deterministic", "llm"):
+        allowed["finder_engine"] = str(patch["finder_engine"]).lower()
     # AI touchpoint master switches (MyDezider core flow).
     for tp in ("tp_best_factors", "tp_prioritize_factors", "tp_best_options", "tp_assess_all", "tp_collab_ai_merge"):
         if tp in patch and patch[tp] is not None:

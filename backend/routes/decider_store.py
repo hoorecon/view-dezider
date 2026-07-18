@@ -37,6 +37,25 @@ router = APIRouter(prefix="/decider-store", tags=["The Decider Store"])
 CLONE_MODES = {"full", "values_only"}
 
 
+def _clean_finder_settings(raw: Any) -> Dict[str, Any]:
+    """Validate optional per-template Finder overrides (blanks fall back to
+    the global admin defaults at run time)."""
+    if not isinstance(raw, dict):
+        return {}
+    out: Dict[str, Any] = {}
+    for k in ("min_options", "max_options", "top_n"):
+        if raw.get(k) not in (None, ""):
+            try:
+                out[k] = max(1, int(float(raw[k])))
+            except (TypeError, ValueError):
+                pass
+    if str(raw.get("match_rule") or "").lower() in ("all", "any"):
+        out["match_rule"] = str(raw["match_rule"]).lower()
+    if str(raw.get("engine") or "").lower() in ("deterministic", "llm"):
+        out["engine"] = str(raw["engine"]).lower()
+    return out
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -59,6 +78,8 @@ def _card(t: Dict[str, Any]) -> Dict[str, Any]:
         "pricing_type": t.get("pricing_type") or "free",
         "price_paise": t.get("price_paise") or 0,
         "currency": t.get("currency") or "INR",
+        "kind": t.get("kind") or "template",
+        "finder_settings": t.get("finder_settings") or {},
         "allowed_clone_modes": t.get("allowed_clone_modes") or ["full", "values_only"],
         "factor_count": len(t.get("factors") or []),
         "option_count": len(t.get("options") or []),
@@ -73,12 +94,14 @@ def _card(t: Dict[str, Any]) -> Dict[str, Any]:
 # ══════════════════════════════════════════════════════════════════════════
 @router.get("")
 async def list_store(category: Optional[str] = None, decision_type: Optional[str] = None,
-                     q: Optional[str] = None):
+                     q: Optional[str] = None, kind: Optional[str] = None):
     query: Dict[str, Any] = {"status": "authorized", "is_public": True}
     if category:
         query["category"] = category
     if decision_type:
         query["decision_type"] = decision_type
+    if kind in ("template", "app"):
+        query["kind"] = kind if kind == "app" else {"$ne": "app"}
     if q:
         query["title"] = {"$regex": q, "$options": "i"}
     docs = await db.decider_store_templates.find(query).sort("install_count", -1).to_list(200)
@@ -107,6 +130,93 @@ async def download_import_template(sample: bool = True):
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": 'attachment; filename="decider_store_import_template.xlsx"'},
     )
+
+
+# ── TheDecider.store landing page (admin-editable content) ─────────────────
+_LANDING_DEFAULT = {
+    "title": "The Decider Store",
+    "subtitle": "Decider Apps & Templates for every big decision",
+    "hero": ("Find your best business model, property, freelancer and more — ranked by "
+             "YOUR priorities, expectations and realistic gap-adjusted ratings."),
+    "cta_label": "Explore Decider Apps",
+    "cta_target": "https://jelcos.ai/decider-store",
+    "brand_color": "#4F46E5",
+}
+
+
+async def _get_landing() -> Dict[str, Any]:
+    doc = await db.decider_store_config.find_one({"key": "landing"}, {"_id": 0})
+    cfg = dict(_LANDING_DEFAULT)
+    if doc:
+        for k in _LANDING_DEFAULT:
+            if doc.get(k) not in (None, ""):
+                cfg[k] = doc[k]
+    return cfg
+
+
+@router.get("/landing")
+async def get_landing():
+    return await _get_landing()
+
+
+@router.put("/landing")
+async def update_landing(request: Request, user: dict = Depends(get_current_user)):
+    if not _is_admin(user):
+        raise HTTPException(403, "Admin access required")
+    body = await request.json()
+    patch = {k: str(body[k]).strip() for k in _LANDING_DEFAULT if k in body}
+    patch["key"] = "landing"
+    patch["updated_at"] = _now()
+    patch["updated_by"] = user.get("email") or user["user_id"]
+    await db.decider_store_config.update_one({"key": "landing"}, {"$set": patch}, upsert=True)
+    return await _get_landing()
+
+
+@router.get("/landing.html")
+async def landing_html():
+    """Self-contained landing page for TheDecider.store. 'Explore' opens the
+    storefront in a masked full-screen iframe (URL stays on TheDecider.store)."""
+    c = await _get_landing()
+    import html as _html
+    t = _html.escape(c["title"]); sub = _html.escape(c["subtitle"])
+    hero = _html.escape(c["hero"]); cta = _html.escape(c["cta_label"])
+    target = _html.escape(c["cta_target"]); color = _html.escape(c["brand_color"])
+    page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>{t}</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#0B1020;color:#fff}}
+.wrap{{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px;
+background:radial-gradient(1200px 600px at 50% -10%, {color}55, transparent), #0B1020}}
+.badge{{width:64px;height:64px;border-radius:18px;background:{color};display:flex;align-items:center;justify-content:center;font-size:30px;margin-bottom:22px}}
+h1{{font-size:clamp(28px,6vw,52px);font-weight:900;letter-spacing:-.5px}}
+h2{{font-size:clamp(15px,3vw,20px);font-weight:600;color:#C7D2FE;margin-top:10px}}
+p.hero{{max-width:640px;font-size:clamp(14px,2.4vw,18px);color:#94A3B8;margin-top:18px;line-height:1.6}}
+.cta{{margin-top:34px;background:{color};color:#fff;border:none;font-size:17px;font-weight:800;padding:16px 30px;border-radius:14px;cursor:pointer;box-shadow:0 12px 30px {color}66}}
+.cta:hover{{filter:brightness(1.08)}}
+#frame{{position:fixed;inset:0;width:100%;height:100%;border:0;display:none;background:#fff;z-index:9}}
+#back{{position:fixed;top:14px;left:14px;z-index:10;display:none;background:rgba(15,23,42,.85);color:#fff;border:0;border-radius:10px;padding:9px 14px;font-weight:700;cursor:pointer}}
+.foot{{margin-top:40px;color:#475569;font-size:12px}}
+</style></head><body>
+<div class="wrap" id="landing">
+  <div class="badge">🧭</div>
+  <h1>{t}</h1>
+  <h2>{sub}</h2>
+  <p class="hero">{hero}</p>
+  <button class="cta" onclick="openStore()">{cta} →</button>
+  <div class="foot">Powered by JELCOS AI</div>
+</div>
+<button id="back" onclick="closeStore()">← Back</button>
+<iframe id="frame" title="Decider Apps"></iframe>
+<script>
+function openStore(){{var f=document.getElementById('frame');f.src='{target}';f.style.display='block';
+document.getElementById('back').style.display='block';document.getElementById('landing').style.display='none';}}
+function closeStore(){{var f=document.getElementById('frame');f.style.display='none';f.src='';
+document.getElementById('back').style.display='none';document.getElementById('landing').style.display='flex';}}
+</script></body></html>"""
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(content=page)
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -171,6 +281,9 @@ async def create_template(request: Request, user: dict = Depends(get_current_use
     pricing = (body.get("pricing_type") or "free").lower()
     if pricing not in ("free", "paid"):
         pricing = "free"
+    kind = (body.get("kind") or "template").lower()
+    if kind not in ("template", "app"):
+        kind = "template"
     doc = {
         "template_id": str(uuid.uuid4()),
         "title": (body.get("title") or "Untitled Template").strip(),
@@ -180,6 +293,8 @@ async def create_template(request: Request, user: dict = Depends(get_current_use
         "decision_type": body.get("decision_type") or "aspiration",
         "cover_icon": body.get("cover_icon") or "grid",
         "cover_color": body.get("cover_color") or "#4F46E5",
+        "kind": kind,
+        "finder_settings": _clean_finder_settings(body.get("finder_settings")),
         "pricing_type": pricing,
         "price_paise": int(body.get("price_paise") or 0),
         "currency": body.get("currency") or "INR",
@@ -213,8 +328,12 @@ async def update_template(template_id: str, request: Request, user: dict = Depen
     allowed = ["title", "subtitle", "description", "category", "decision_type",
                "cover_icon", "cover_color", "pricing_type", "price_paise", "currency",
                "creator_split_pct", "allowed_clone_modes", "factors", "options", "is_public",
-               "auto_push_on_authorize"]
+               "auto_push_on_authorize", "kind", "finder_settings"]
     update = {k: body[k] for k in allowed if k in body}
+    if "kind" in update and update["kind"] not in ("template", "app"):
+        update["kind"] = "template"
+    if "finder_settings" in update:
+        update["finder_settings"] = _clean_finder_settings(update["finder_settings"])
     if "allowed_clone_modes" in update:
         update["allowed_clone_modes"] = [m for m in update["allowed_clone_modes"] if m in CLONE_MODES] or ["full"]
     update["updated_at"] = _now()
@@ -421,6 +540,9 @@ def _build_decision_from_template(t: Dict[str, Any], mode: str, user: dict) -> D
         "source_template_id": t.get("template_id"),
         "source": "decider_store",
         "clone_mode": mode,
+        # DeciderApp (Finder) vs plain Decision Template
+        "decider_kind": ("app" if (t.get("kind") == "app") else "template"),
+        "finder_config": t.get("finder_settings") or {},
         "created_at": _now(),
         "updated_at": _now(),
     }
