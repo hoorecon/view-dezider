@@ -1,6 +1,6 @@
 # Access Control Matrix (ACM) — Dezider
 
-_metadata: { "version": "3.16.0", "updated": "2026-06-12" }
+_metadata: { "version": "3.23.0", "updated": "2026-07-19" }
 
 ## Concept
 Every feature gated by a row in `acm_features`. Feature has `feature_id`,
@@ -101,3 +101,13 @@ Companion to ACM/tier-matrix: defines **non-technical** target-group profiles (d
 ### Emergent Universal Key — STATUS UPDATE
 - ✅ **Topped up & live (verified 2026-06-12)**. Claude (`claude-sonnet-4-6`) precise tier active. The earlier `LLM_BUDGET=exhausted → 503` graceful-degrade path is dormant; will reactivate only if balance is consumed.
 - Admins can monitor remaining balance via Profile → Universal Key, or enable auto top-up to avoid manual recharge.
+
+## v3.23.0 additions (2026-07-19)
+- New module **`ad_programs`** ("Ad Programs (AdMaker Studio)", order 46) with feature
+  **`admaker_program`** — release_stage `ga_paid`:
+  `trial/paid_pro/paid_enterprise = full · free/paid_starter = locked · paid_api = hidden ·
+  all tester tiers = full`.
+- Enforcement is layered in `routes/admaker._require_admaker`: platform admins always pass;
+  Org members with `org_role ∈ {org_admin, advertiser}` bypass the matrix; everyone else goes
+  through `check_feature_access(user, "admaker_program")`.
+- Seed version bumped to **2026-07-19-01** (auto-reseeds on backend restart).

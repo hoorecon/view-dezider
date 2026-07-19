@@ -1,6 +1,8 @@
 # Jelcos Production Deployment — Complete Runbook
 **Version:** 1.1 (2026-07-13)
 
+_metadata: { "version": "1.1", "updated": "2026-07-13", "author": "engineering" }
+
 > **v1.1 (2026-07-13):** Deploy ritual = bump `README.md BUILD_VERSION` → **Save to GitHub** (repo `hoorecon/view-dezider` @ `emergent-v3`) → Cloudflare Pages auto-builds the FRONTEND + on EC2 run `EXPECT_BUILD=<build> ./deploy/sync.sh emergent-v3` for the BACKEND. `sync.sh` aborts if `origin/emergent-v3` build ≠ `EXPECT_BUILD` (guards stale/dropped pushes). Recovery from a wrong push: re-push correct workspace via Save-to-GitHub, then on EC2 `git fetch && git reset --hard origin/emergent-v3` (env files are gitignored — verify `backend/.env` after). **Prod secrets to set:** real `STRIPE_API_KEY` (+`STRIPE_WEBHOOK_SECRET`), `SECRET_KEY`, `CORS_ORIGINS`.
 **Audience:** Junior engineers, ops handover, future agent sessions
 **Live URLs:** `https://www.jelcos.ai` (frontend) + `https://api.jelcos.ai` (backend)

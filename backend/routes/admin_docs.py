@@ -7,7 +7,6 @@ and OpenAPI sample-payload generation lives in /core/openapi_helpers.py.
 
 import uuid
 import os
-import json as json_module
 import logging
 from datetime import datetime, timezone
 from typing import Optional
@@ -133,106 +132,14 @@ async def export_postman_collection(
     request: Request,
     user: dict = Depends(require_admin),
 ):
-    """Export full API catalog as Postman Collection v2.1 JSON (downloadable)."""
+    """Export full API catalog as Postman Collection v2.1 JSON (downloadable).
+
+    Same builder as backend/scripts/generate_postman_collection.py — see
+    core/openapi_helpers.build_postman_collection.
+    """
     from server import app as fastapi_app
-    openapi = fastapi_app.openapi()
-    paths = openapi.get("paths", {})
-    definitions = {}
-    if "components" in openapi and "schemas" in openapi["components"]:
-        definitions = openapi["components"]["schemas"]
-
-    items_by_category = {}
-    for path, methods in paths.items():
-        for method, detail in methods.items():
-            if method not in ("get", "post", "put", "delete", "patch"):
-                continue
-
-            category = get_category(path)
-            channels = get_channels(path)
-
-            req_body_raw = None
-            req_body = detail.get("requestBody", {})
-            if req_body:
-                schema = (req_body.get("content", {})
-                          .get("application/json", {})
-                          .get("schema", {}))
-                if schema:
-                    sample = generate_sample_payload(schema, definitions)
-                    if sample:
-                        req_body_raw = json_module.dumps(sample, indent=2)
-
-            query_params = []
-            path_vars = []
-            for p in detail.get("parameters", []):
-                if p.get("in") == "query":
-                    query_params.append({
-                        "key": p["name"],
-                        "value": "",
-                        "description": p.get("description", ""),
-                        "disabled": not p.get("required", False),
-                    })
-                elif p.get("in") == "path":
-                    path_vars.append({
-                        "key": p["name"],
-                        "value": f"{{{{SAMPLE_{p['name'].upper()}}}}}",
-                        "description": p.get("description", ""),
-                    })
-
-            postman_url = path.replace("{", ":").replace("}", "")
-
-            pm_request = {
-                "method": method.upper(),
-                "header": [
-                    {"key": "Content-Type", "value": "application/json"},
-                    {"key": "Authorization", "value": "Bearer {{AUTH_TOKEN}}"},
-                ],
-                "url": {
-                    "raw": "{{BASE_URL}}" + postman_url + (
-                        "?" + "&".join(f"{q['key']}=" for q in query_params)
-                        if query_params else ""
-                    ),
-                    "host": ["{{BASE_URL}}"],
-                    "path": [s for s in postman_url.strip("/").split("/") if s],
-                    "query": query_params,
-                    "variable": path_vars,
-                },
-            }
-            if req_body_raw:
-                pm_request["body"] = {
-                    "mode": "raw",
-                    "raw": req_body_raw,
-                    "options": {"raw": {"language": "json"}},
-                }
-
-            desc_parts = []
-            if detail.get("description"):
-                desc_parts.append(detail["description"])
-            desc_parts.append(f"Channels: {', '.join(channels)}")
-            pm_request["description"] = "\n".join(desc_parts)
-
-            items_by_category.setdefault(category, []).append({
-                "name": detail.get("summary") or f"{method.upper()} {path}",
-                "request": pm_request,
-                "response": [],
-            })
-
-    folders = [{"name": cat, "item": items} for cat, items in sorted(items_by_category.items())]
-
-    collection = {
-        "info": {
-            "name": "View Dezider API — Full Collection",
-            "description": (
-                "Auto-generated Postman Collection from View Dezider OpenAPI schema.\n"
-                f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
-            ),
-            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-        },
-        "item": folders,
-        "variable": [
-            {"key": "BASE_URL", "value": "https://your-domain.com/api", "type": "string"},
-            {"key": "AUTH_TOKEN", "value": "session_xxx", "type": "string"},
-        ],
-    }
+    from core.openapi_helpers import build_postman_collection
+    collection = build_postman_collection(fastapi_app.openapi())
 
     return JSONResponse(
         content=collection,

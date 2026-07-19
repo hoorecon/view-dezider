@@ -62,6 +62,14 @@ CHANNEL_RULES = {
     "/tiers": ["internal", "chatbot", "partner"],
     "/tier-matrix": ["internal", "chatbot", "partner"],
     "/me/tier-access": ["internal", "chatbot"],
+    "/admaker": ["internal", "partner"],
+    "/adtaker": ["internal", "partner"],
+    "/embed": ["internal", "partner"],
+    "/p": ["internal", "partner"],
+    "/public-pulse": ["internal", "partner"],
+    "/public-help": ["internal", "chatbot", "partner"],
+    "/webhooks": ["partner"],
+    "/stripe": ["internal", "partner"],
 }
 
 CATEGORY_MAP = {
@@ -122,7 +130,115 @@ CATEGORY_MAP = {
     "/tiers": "Subscription Tiers (Public)",
     "/tier-matrix": "Tier Matrix (Public)",
     "/me/tier-access": "My Tier Access",
+    # ---- Admin sub-areas (split out of the generic "Admin Management" bucket) ----
+    "/admin/import-analytics": "Import Analytics & Auto-Tune (Admin)",
+    "/admin/url-training": "URL Import Training (Admin)",
+    "/admin/notification-engine": "Notification Engine (Admin)",
+    "/admin/recon": "Revenue Reconciliation (Admin)",
+    "/admin/ai-wallet": "AI Wallet — Admin Config",
+    "/admin/quota": "Quota Management (Admin)",
+    "/admin/pii": "PII & User Lookup (Admin)",
+    "/admin/payouts": "Payouts (Admin)",
+    "/admin/regression": "Regression Runner (Admin)",
+    "/admin/loader-music": "App Appearance & Loader Music",
+    "/admin/docs": "Admin Documentation Hub",
+    "/admin-docs": "Admin Handbook Docs",
+    # ---- Monetization: FRAME (v3.22–v3.23) ----
+    "/admaker": "AdMaker Program (Sponsored Auction)",
+    "/adtaker": "AdTaker Program (Publisher Widgets)",
+    "/finder": "Option Bank & Finder Jobs",
+    "/decider-store": "The Decider Store",
+    "/catalog": "Central Catalog Management (CCM)",
+    "/catalog-explorer": "Catalog Explorer",
+    "/option-publish": "Option Publishing",
+    # ---- Payments / commerce ----
+    "/stripe": "Payments · Stripe",
+    "/webhooks": "Webhooks · Razorpay",
+    "/subscriptions": "Payments & Subscriptions",
+    "/payment-settings": "Payments & Subscriptions",
+    "/ai-wallet": "AI Wallet",
+    "/coupons": "Coupons",
+    "/store": "SKU Store",
+    "/marketplace": "Knowledge Marketplace",
+    "/earnings": "Earnings & Payouts",
+    "/referral": "Referral Bonus",
+    "/karma": "Karma & Fame",
+    # ---- Decision engines & imports ----
+    "/solution-finders": "Solution Finder",
+    "/solution-matrices": "Solution Matrix",
+    "/solution-box": "Solution Box",
+    "/seven-seven": "7×7 Matrix",
+    "/six-legs": "6 LeGs",
+    "/emotional-gatekeeper": "Emotional Gatekeeper",
+    "/url-analyze": "URL Analyse (Import from URL)",
+    "/file-import": "Import from File",
+    "/deep-import": "Deep Import",
+    "/uploads": "Chunked Uploads",
+    "/ai": "AI Tools",
+    "/factors": "AI Tools",
+    "/tepfi-auto-map": "Capabilities & Resources Index",
+    "/atex": "ATEX Estimation",
+    "/decision-links": "Decision Linking",
+    "/templates": "Decision Templates",
+    "/reports": "Decision Reports",
+    "/shares": "Report Shares",
+    "/trash": "Trash & Recovery",
+    # ---- Life / growth ----
+    "/life-goals": "Life Goals (My 360° Life)",
+    "/ldc": "Life Directions Compass",
+    "/time-allocation": "Time Allocation — LDC × AALA",
+    "/daily-time-log": "Daily Time Log",
+    "/daily-tracker": "Daily Tracker",
+    "/raja-guru": "Time Dezider — Raja Guru",
+    "/values": "Values Tracker",
+    "/tenses-feels": "Tenses & Feels",
+    # ---- Community / experts / content ----
+    "/expert-net": "ExpertNet",
+    "/platform-experts": "Platform Experts",
+    "/review-net": "ReviewNet",
+    "/reviewnet": "ReviewNet",
+    "/social-learning": "Social Learning",
+    "/public-help": "Public Help Feed",
+    "/content-library": "Content Library — Admin CMS",
+    "/collab": "Collab Hub",
+    # ---- Public Pulse / embeds ----
+    "/public-pulse": "Public Pulse",
+    "/p": "Public Pulse — Sub-Portal",
+    "/embed": "Partner Embed & Widgets",
+    # ---- Org / platform ----
+    "/acm": "ACM — Access Control Matrix",
+    "/acm-v2": "ACM v2 — Resolver, Trials & Geography",
+    "/geo": "ACM v2 — Resolver, Trials & Geography",
+    "/org-types": "Organizations",
+    "/financial-models": "Financial Model",
+    "/action-items": "Action Items",
+    "/masters": "Masters Data",
+    "/oauth": "OAuth (Google)",
+    "/face-auth": "Face Authentication",
+    "/users": "Authentication & User Management",
+    "/dpdp": "DPDP / GDPR Privacy",
+    "/audit-trail": "Audit Trail",
+    "/incidents": "Incident Response",
+    "/appearance": "App Appearance & Loader Music",
+    "/branding": "Branding",
+    "/dashboard-layout": "Dashboard Layout",
+    "/calendar": "Google Calendar Integration",
+    "/call-config": "Video Call Sessions",
+    "/call-sessions": "Video Call Sessions",
+    "/analytics": "Analytics & Stats",
+    "/decision-meta": "Analytics & Stats",
+    "/metrics": "System",
+    "/version": "System",
 }
+
+# Subpath overrides — checked BEFORE the prefix map. Needed where a module
+# lives UNDER another module's path (e.g. Option Bank under /decider-store/{id}/bank,
+# Finder runs under /decisions/{id}/finder). (starts_with, contains, category).
+SUBPATH_CATEGORY_RULES = [
+    ("/decider-store", "/bank", "Option Bank & Finder Jobs"),
+    ("/decisions", "/finder", "Option Bank & Finder Jobs"),
+    ("/decisions", "/deep-import", "Deep Import"),
+]
 
 
 def _longest_prefix_match(path: str, table: dict):
@@ -141,5 +257,9 @@ def get_channels(path: str) -> list:
 
 
 def get_category(path: str) -> str:
-    """Get category name for a path (longest-prefix wins)."""
+    """Get category name for a path (subpath overrides first, then longest-prefix)."""
+    clean = path.replace("/api", "", 1) if path.startswith("/api") else path
+    for starts_with, contains, category in SUBPATH_CATEGORY_RULES:
+        if clean.startswith(starts_with) and contains in clean:
+            return category
     return _longest_prefix_match(path, CATEGORY_MAP) or "Other"

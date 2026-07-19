@@ -1,6 +1,6 @@
 # System KT — Block Diagram & Flow Charts (Whole System)
 
-_metadata: { "version": "3.21.0", "updated": "2026-07-13", "author": "engineering" }
+_metadata: { "version": "3.23.1", "updated": "2026-07-19", "author": "engineering" }
 
 **Purpose:** One-stop **Knowledge Transfer** doc. Read this first to understand
 how the whole system fits together — the block diagram, the major end-to-end
@@ -392,5 +392,85 @@ AI wallet top-up / pricing         routes/ai_wallet.py, core/ai_billing.py
 Subscriptions                      routes/subscriptions.py
 Financial model / Zoho             routes/financial_model.py, core/zoho_books.py
 Import from file / OCR             routes/file_import.py, core/chunk_upload.py
+Postman collection out of date     backend/scripts/generate_postman_collection.py (+ prompts/admin_docs_taxonomy.py folder names)
 Deploy / build guard               deploy/sync.sh, README.md (BUILD_VERSION)
+```
+
+---
+
+## 10. FRAME — Finder Ranking & Monetization Engine (v3.22–v3.23)
+
+**FRAME** = Filter → Rank → Auction → Merge → Embed. Powers "Decider Apps"
+(auto-finders) in The Decider Store, at two scales: embedded options (classic
+sync run) and the **Option Bank** (indexed pipeline for millions of options).
+
+```
+                 USER RUNS A DECIDER APP (/finder/{decision_id})
+                                    │
+             bank_options == 0      │      bank_options > 0
+        ┌───────────────────────────┴───────────────────────────┐
+        ▼                                                        ▼
+  POST /finder/run  (sync)                       POST /finder/jobs (async, %progress
+  core/finder_engine.py                          + 'finder' loader-music slot)
+        │                                        core/finder_bank.py
+        │                                              │
+        │                          S0 decider_option_bank (vals pre-normalized
+        │                             at ingest; wildcard index vals.$**)
+        │                          S1 mandatory expectations → NATIVE Mongo query
+        │                             (DB prunes 10M → 10⁴-10⁵; adaptive funnel;
+        │                              residual Python checks for odd operators)
+        │                          S2 motor cursor + projection + heapq Top-K
+        │                             (O(K) memory, progress every batch)
+        ▼                                              ▼
+        └──────────────────────┬───────────────────────┘
+                               ▼
+        S3  QUALITY GATE: min_cutoff_pct — resolution precedence:
+            template.finder_settings → CCM node chain (Scenario→…→LifeArea,
+            catalog_nodes.finder_ad_config, nearest wins) → ai_wallet globals
+                               │
+        S4  ADMAKER AUCTION (core/ad_auction.py):
+            AdRank = bid_paise × QualityScore(worth/100)
+            GSP price = next AdRank ÷ own QS + 1p  (clamped [1, own bid])
+            bid liveness: region + calendar slot + daily hours (IANA tz)
+            billing: CPC at POST /admaker/track; budget → status=exhausted
+                               │
+        S5  MERGE: organic Top-N first (money NEVER reorders it),
+            "Sponsored Solutions · AD" block BELOW; impressions logged
+                               │
+        S6  EMBED (AdTaker): widget.js + tracker DZ-PUB-… on 3rd-party sites
+            impression → click → conversion (clone?ref=) per tracker;
+            publisher revenue share; API key dzk_/secret dzs_ (hash-only) or
+            org-login portal (/adtaker-portal)
+```
+
+**Data stores**: `decider_option_bank`, `finder_jobs`, `admaker_bids`,
+`admaker_events`, `adtaker_publishers`, `adtaker_events`,
+`catalog_nodes.finder_ad_config`, `decisions.finder_sponsored_ids`,
+`Factor.source_sub_id` (decision→bank join key — must survive factor saves).
+
+**Ingestion rails** (routes/option_bank.py, all → `bank_upsert`, idempotent on
+template+name_norm): template sync · Solution-Store/ReviewNet bridge ·
+partner JSON APIs · Deep-Import/bulk. Synthetic seeder + benchmark:
+`scripts/seed_finder_bank_synthetic.py` (measured: 200K → 25K → 2.65s;
+full 200K scan ≈ 10s; ≤60s SLA).
+
+**Identity ladder** (no third auth stack):
+```
+Free user → Premium (ACM tier) → Organization (OrgLogin)
+   │              │                      │
+Solution     AdMaker Studio        Publisher Portal (AdTaker)
+Store        /admaker-studio       /adtaker-portal
+             (admaker_program)     (publisher.org_id link)
+```
+
+### Cheat-sheet additions
+```
+Symptom / task                     Start here
+---------------------------------  --------------------------------------------
+Sponsored results wrong/missing    core/ad_auction.py (cutoff resolution, GSP)
+Finder slow / bank job stuck       core/finder_bank.py, finder_jobs collection
+Bank ingest issues                 routes/option_bank.py (3 rails), bank_upsert
+Advertiser can't bid (403)         routes/admaker.py _require_admaker/_owned_options
+Publisher widget/keys              routes/adtaker.py (widget.js, self/*, rotate)
+Cutoff/slots config               /admin/ad-programs → Cutoffs tab; catalog_nodes.finder_ad_config
 ```

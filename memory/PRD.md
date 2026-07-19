@@ -409,3 +409,31 @@ AdMaker Studio / Publisher Portal. decider-store/[id] forwards ?ref for conversi
 **Tests**: `tests/test_iter194_bank_studio_keys.py` 14/14 + iter193 13/13 regression; FE testing agent all
 6 flows + regression PASS (`/app/test_reports/iteration_194.json`). BUILD 2026.07.19.002 (no deploy).
 **Note**: BMP has a 200K synthetic bank — clear via admin Bank modal ('Clear bank') if real data lands.
+
+---
+
+## ITER 194b — KT doc bundle refresh v3.23.0 + release commit message ✅
+- Updated: docs/API_REFERENCE.md (v3.23 endpoint tables), Postman_Collection.json (+3 folders → 58: AdMaker 11 / AdTaker 13 / Option Bank & Jobs 8), POSTMAN.md, SYSTEM_KT.md (§10 FRAME diagram + cheat-sheet), ADMIN_USER_GUIDE.md ("Ad Programs" section), docs/PRD.md appendix, ACM.md (ad_programs module), INDEX.md changelog.
+- Release commit message (dual Technical/Functional KT) saved at `/app/memory/COMMIT_MSG_2026-07-19.md`.
+- BUILD bumped for push: **2026.07.19.003** / v3.111-frame-adprograms-optionbank-kt → deploy with `EXPECT_BUILD=2026.07.19.003 ./deploy/sync.sh emergent-v3` (owner runs it, per runbook).
+
+## ITER 194c — Docs comprehensiveness audit + Postman full parity ✅ (2026-07-19)
+User asked to ensure the KT docs are "comprehensive rather than a mere eye wash". Audit found the
+Postman collection was stale (generated 2026-06-12, hand-patched since): ~300 newer endpoints missing
+(live OpenAPI = 1,316 ops vs 1,021 in collection) and 419 requests dumped in an "Other" folder.
+Fixed permanently:
+- `backend/prompts/admin_docs_taxonomy.py` — CATEGORY_MAP overhauled: ALL ~130 route prefixes named,
+  admin sub-areas split out (Recon/Notification Engine/Import Analytics/PII/Quota/Payouts/Regression/
+  Loader Music), SUBPATH_CATEGORY_RULES (decider-store/*/bank → Option Bank; decisions/*/finder →
+  Finder Jobs; decisions/*/deep-import → Deep Import), partner channel tags.
+- `backend/core/openapi_helpers.py` — build_postman_collection() extracted (shared by admin endpoint
+  GET /admin/docs/postman-collection AND new script). AdTaker self/* requests carry X-Adtaker-Key/-Secret;
+  collection vars: BASE_URL, AUTH_TOKEN, adtakerKey/Secret, trackerId, templateId, decisionId, finderJobId.
+- `backend/scripts/generate_postman_collection.py` — NEW one-command regenerator (warns on "Other").
+- Regenerated `docs/Postman_Collection.json`: **126 folders · 1,316 requests · 0 uncategorized**.
+- Doc fixes: INDEX.md header refreshed to v3.23.1 + table now lists PRODUCTION_DEPLOYMENT and
+  ADMIN_USER_GUIDE; API_REFERENCE.md "Admin Docs" section corrected (16 slugs, PDF endpoint, live
+  /admin/docs tooling table) + Postman-parity banner; POSTMAN.md v3.23.1 regen guide; SYSTEM_KT
+  cheat-sheet row for stale-collection debugging.
+- COMMIT_MSG_2026-07-19.md updated (new Postman numbers + tooling section). BUILD bumped to
+  **2026.07.19.004** (same tag v3.111) → `EXPECT_BUILD=2026.07.19.004 ./deploy/sync.sh emergent-v3`.
