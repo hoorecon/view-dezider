@@ -366,3 +366,46 @@ mapping modal per template. `finder/[id].tsx`: amber "Sponsored Solutions · AD"
 **Indexes**: admaker_bids/admaker_events/adtaker_publishers(unique tracker)/adtaker_events in db_indices.
 **Tests**: `tests/test_iter193_admaker_adtaker.py` (13/13) + FE testing agent all flows PASS
 (`/app/test_reports/iteration_193.json`). BUILD_VERSION bumped to 2026.07.19.001 (no deploy run).
+
+---
+
+## ITER 194 — FRAME @ Scale: Option Bank · AdMaker Studio · AdTaker Identity ✅ TESTED (14/14 BE pytest + all 6 FE flows)
+
+**SRS**: `docs/SRS.md` v3.23.0 (Part A scale architecture + Part B identity ladder + measured benchmarks).
+
+**Option-Bank Finder** (`core/finder_bank.py`): `decider_option_bank` (1 doc/option, vals pre-normalized
+at ingest, wildcard index `vals.$**`). Pipeline: S1 mandatory expectations compile to native Mongo query
+(indexed prune, adaptive funnel: relaxed_all / mandatory+optional, residual Python checks for
+non-compilable ops) → S2 motor cursor + projection + heapq Top-K (O(K) memory, yield/1K docs) → S3
+existing cutoff+AdRank/GSP auction (bid targets scored via name_norm even outside heap). Async
+`finder_jobs` {progress{pct,label}, spec_hash cache <10min} via POST /decisions/{id}/finder/jobs +
+GET /finder/jobs/{id}. Decision→bank join via new `Factor.source_sub_id` (persisted in clone +
+decisions_models; name-match fallback). **Benchmarks**: 200K bank → 25K candidates → 2.65s;
+full 200K scan (no expectations) → ~10s. 'finder' loader-music slot added (backend LOADER_SLOTS +
+useLoaderMusic union); finder/[id].tsx auto-switches to job mode when bank_options>0 (progress bar +
+LoaderMusicChip; Step-7 link hidden in bank mode).
+
+**Ingestion (3 rails, admin)** (`routes/option_bank.py`): GET /decider-store/{tid}/bank (stats by source),
+POST …/bank/sync-template, …/ingest/solutions (bridged solutions_store quantitative_factors +
+ReviewNet baseline_profile), …/ingest/partner {api_url, items_path, name_key, value_map}, …/ingest/bulk
+(≤50K, deep_import source), DELETE …/bank?source=. All → idempotent `bank_upsert` on (template_id,
+name_norm). Admin UI: 'Bank' action + modal on decider-store cards. Synthetic seeder/benchmark:
+`scripts/seed_finder_bank_synthetic.py` (200K seeded on BMP — left in place).
+
+**AdMaker Studio** (same user login): ACM module `ad_programs` / feature `admaker_program`
+(ACM_SEED_VERSION 2026-07-19-01; trial/paid_pro/paid_enterprise full; free/paid_starter locked; org_role
+org_admin|advertiser bypass; platform admins always). Routes `/admaker/my/*`: eligible-options
+(ownership = template options[].linked_solution_id ∪ bank store_bridge source_ref × solutions_store
+.created_by incl. same-org), bids CRUD (own-only, ownership 403 guard), dashboard (impressions/clicks/
+CTR/spend/avg CPC per bid + totals). FE `/admaker-studio` (locked-state w/ upgrade CTA on 403).
+
+**AdTaker identity (BOTH rails)**: publishers now mint `api_key` (dzk_) + `api_secret` (dzs_, returned
+ONCE, sha256 hash only) + optional `org_id`. Admin rotate: POST /adtaker/publishers/{id}/rotate-keys.
+Self-serve (X-Adtaker-Key/-Secret headers): GET /adtaker/self/profile|stats|apps (apps include embed
+snippets). Org portal: GET /adtaker/portal/me (org_id match) + FE `/adtaker-portal`. Admin ad-programs UI:
+api_key row + Rotate keys + one-time secret modal + Linked Org ID field. Storefront hero pills →
+AdMaker Studio / Publisher Portal. decider-store/[id] forwards ?ref for conversions (iter193).
+
+**Tests**: `tests/test_iter194_bank_studio_keys.py` 14/14 + iter193 13/13 regression; FE testing agent all
+6 flows + regression PASS (`/app/test_reports/iteration_194.json`). BUILD 2026.07.19.002 (no deploy).
+**Note**: BMP has a 200K synthetic bank — clear via admin Bank modal ('Clear bank') if real data lands.

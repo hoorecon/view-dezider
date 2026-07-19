@@ -11193,3 +11193,15 @@ test_plan:
       FE: /admin/ad-programs (Bids/Publishers/Cutoffs), decider-store Catalog mapping + Sponsored globals,
       finder sponsored card. BE 13/13 pytest (tests/test_iter193_admaker_adtaker.py); FE testing agent all
       5 flows + regression PASS (iteration_193.json). No open bugs.
+
+  - agent: "main"
+    message: |
+      ITER 194. FRAME @ scale shipped + SRS v3.23.0. Option Bank (decider_option_bank, wildcard-indexed,
+      ingest rails: template sync / solution-store+reviewnet bridge / partner API / bulk-deep-import),
+      async finder_jobs (indexed S1 prune -> heap Top-K -> auction; spec-hash cache; 200K->25K->2.65s,
+      full 200K scan ~10s), finder UI job mode w/ progress + 'finder' loader-music slot. AdMaker Studio
+      (/admaker-studio, ACM admaker_program ga_paid, /admaker/my/* w/ ownership guard + metrics dashboard).
+      AdTaker keys (dzk_/dzs_ minted once, sha256, rotate, /adtaker/self/* header auth) + org portal
+      (/adtaker-portal, publisher.org_id). Factor.source_sub_id persisted for bank join. BE 14/14
+      (test_iter194_bank_studio_keys.py) + 13/13 iter193 regression; FE testing agent 6/6 flows PASS
+      (iteration_194.json). Orphan test publishers cleaned. No open bugs.
