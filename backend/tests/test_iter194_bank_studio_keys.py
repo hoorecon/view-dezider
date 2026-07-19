@@ -34,7 +34,15 @@ def _base_url() -> str:
 
 
 API = f"{_base_url()}/api"
-BMP = "bmp-55-patterns"
+def _resolve_bmc() -> str:
+    """The live Business Model Chooser Decider App (replaced bmp-55-patterns)."""
+    import requests as _rq
+    r = _rq.get(f"{API}/decider-store", timeout=30)
+    return next(t["template_id"] for t in r.json()["templates"]
+                if t.get("title") == "Business Model Chooser")
+
+
+BMP = _resolve_bmc()
 
 
 @pytest.fixture(scope="module")
@@ -155,7 +163,7 @@ class TestFinderJob:
 
     def test_config_exposes_bank_count(self, s, H, decision):
         c = s.get(f"{API}/decisions/{decision}/finder/config", headers=H, timeout=30).json()
-        assert c["bank_options"] >= 200000  # synthetic benchmark bank
+        assert c["bank_options"] >= 54  # real BMC bank (200K synthetic bank retired with bmp-55)
 
     def test_job_prunes_and_finishes_under_sla(self, s, H, decision):
         r = s.post(f"{API}/decisions/{decision}/finder/jobs",
@@ -165,7 +173,7 @@ class TestFinderJob:
         assert job["status"] == "done", job.get("error")
         res = job["result"]
         assert res["engine"] == "bank"
-        assert res["total_options"] >= 200000
+        assert res["total_options"] >= 54
         assert res["candidates"] < res["total_options"]      # S1 actually pruned
         assert len(res["top"]) == 5
         assert res["duration_ms"] < 60000                    # ≤ 60s SLA

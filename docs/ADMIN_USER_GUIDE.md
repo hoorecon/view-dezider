@@ -474,6 +474,22 @@ A 5-MB clip at the same settings = ~2.2 credits. A user with a fresh 20-credit w
 - **Business rules to remember:** organic ranking is NEVER affected by money; ads must clear the user's own quality bar; billing is per click at the second-price (GSP) — competitive but fair.
 - **Linked APIs:** `/api/admaker/bids*`, `/api/admaker/resolve-config`, `/api/adtaker/publishers*` (+`/rotate-keys`, `/stats`), `/api/admin/ai-wallet/config`, `PUT /api/catalog/nodes/{id}`.
 
+### 📋 Import Template v2 — Column Roles & Dynamic UI Objects (`/admin/decider-store` → Download template)
+
+The authoring workbook now models **3 column roles** under every Main Factor (old sheets still import unchanged — all rows are optional):
+
+| Sheet row | What it does |
+|---|---|
+| **Main UI Object** (factor level) | How deciders pick this factor in Step 2: `Input Box` (default), `Checkbox (multi-select)`, `Radio (single)`, `Dropdown (single)`. |
+| **Column Role** | `Value` = a selectable choice of the parent (e.g. Org Type → Solo/Startup/SME/Corporate); option rows hold that option's **Suitability %** per value. `Sub-Factor` (default) = classic weighted split. `Dependent` = an optional extra refiner, never part of the split. |
+| **Linked Value** | Dependent columns only — which parent Value reveals it (blank = always shown). |
+| **Default Operator / Default Expected** | Pre-fills the Step-2 refiner (e.g. `>=` / `60`); the decider can override any value. |
+| **Split %** | **Sub-Factor columns ONLY** must total 100. Value/Dependent columns are exempt. |
+
+**End-user effect (Step 2):** a Checkbox factor renders as tickboxes (☑ Solo ☑ Startup …); each tick reveals an editable "Suitability ≥ 60 %" refiner; Dependent refiners appear only with their linked value. The Finder matches **ANY** ticked value (union), then applies the per-value thresholds; unticked values neither filter nor score.
+
+**Configure UI objects flag (Decider Apps only):** inside a cloned Decider App's Step 2 there's a "Configure UI objects" toggle — flip it and every main factor card shows a `Text input / Checkbox / Radio / Dropdown` picker plus add/remove-value controls, so the widgets can be re-shaped without re-importing the workbook.
+
 ### 🗄️ Decider Store — new per-template actions (`/admin/decider-store`)
 
 - **Catalog** (purple) — map the template to its Central-Catalog Scenario node. This mapping decides which cutoff/slot defaults its Finder inherits. "Catalog ✓" = mapped; "Clear mapping" reverts to globals.

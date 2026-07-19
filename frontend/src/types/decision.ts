@@ -36,6 +36,16 @@ export interface Factor {
   weight?: number;
   factor_type?: 'quantitative' | 'qualitative';
   data_source?: FactorDataSource;
+  // Option-Bank join key (template sub-factor id) — must survive saves
+  source_sub_id?: string;
+  // ── Dynamic UI objects (v2) ──
+  // Parent-level widget: checkbox (multi) | radio | dropdown | listbox | undefined (= classic input)
+  ui_object?: 'checkbox' | 'radio' | 'dropdown' | 'listbox' | string;
+  // Child column role: 'value' (selectable choice — no 100% split), 'sub' (classic weighted), 'dependent' (optional refiner)
+  role?: 'value' | 'sub' | 'dependent' | string;
+  linked_value?: string;            // dependent → parent value name that reveals it
+  default_operator?: string;        // pre-selected operator (user-overridable)
+  default_expected?: string | number; // pre-filled expected (user-overridable)
 }
 
 export interface OptionAssessment {
@@ -115,4 +125,6 @@ export interface Decision {
   folder?: string;
   reflection?: string;
   final_notes?: string;
+  // 'app' = Decider App / Finder clone (enables dynamic UI-object config in Step 2)
+  decider_kind?: 'app' | 'template' | string;
 }

@@ -1,5 +1,10 @@
 # Business Model Chooser — Source→Template Mapping Report
 
+> **v2 update (2026-07-19):** the converted workbook now uses **Import Template v2** —
+> every main factor is a `Checkbox (multi-select)` whose 28 columns carry
+> `Column Role = Value` with `Default Operator >=` / `Default Expected 60`
+> (no 100% Split rule). The per-cell value mapping below is unchanged.
+
 **Rules applied (locked with user 2026-07-19):**
 
 - Unnamed sub-factor value → **0**

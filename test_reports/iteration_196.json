@@ -1,0 +1,44 @@
+{
+  "summary": "Iter 196 — Decider Store 'Import Template v2' + Dynamic UI Objects. Backend + Frontend PASS. Backend: (a) existing suite test_decider_store_subfactor_v2.py already covers import-template v2 fields (ui_object='checkbox', per-value role, linked_value 'Startup', default_operator '>=' / default_expected 60, classic Affordability splits to 100) and clone → decider_kind='app' + Org Type ui_object='checkbox' + child role='value' + defaults; NOT rerun per main-agent instructions. (b) NEW test file test_iter196_finder_any_semantics.py validates finder ANY-semantics on BMC clone: Solo>=60 → candidates in 5..20 window; adding Startup>=50 → candidates in 15..40 window AND strictly greater than Solo-only count (union grows, not intersection). Both new tests PASS. Frontend (mobile viewport 390×844, Expo web preview): all 4 requested scenarios verified — (1) super_admin login → /decider-store → Business Model Chooser detail → 'Use this Finder' → lands on /prr/{did}?step=2. (2) Step 2 value mode: Org Type card renders 4 checkbox rows (fv-value-*), 28 total value rows across 10 factors, ZERO md-split bars for value-mode, ten '0 selected' badges. Ticking Solo → badge switches to '1 selected', fv-refiner-{id} appears with prefill 60 and badge preview '>= 60%'; edit to 40 works via input; untick → refiner disappears, badge returns to '0 selected'. (3) 'Configure UI objects' toggle (testID step2-config-ui-toggle) visible ONLY on Decider App clone; enabling shows 40 UI picker chips (4 per factor × 10) with testIDs ui-obj-input/checkbox/radio/dropdown-{fid}; switching Org Type to Radio → single-select layout confirmed; switching to Dropdown → fv-dd-{fid} field visible with 'Tap to choose…'; fv-add-value-{fid} 'Add a value' input present (10 total). (4) Regression: freshly created NORMAL decision (POST /api/decisions with title/description/context) → step 2 shows NO step2-config-ui-toggle (count=0, 'Configure UI objects' text absent). (5) Run Finder banner on the BMC clone opens the finder job screen (Fast rules engine, Match ANY default) and finishes with a 'Top match' result, no errors. Minor console warning noted: 'Unexpected text node' React Native warning in the finder-run screen (cosmetic, non-blocking).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "Finder run screen (opened from Run Finder banner on /prr/{id})", "issue": "Console warning: 'Unexpected text node: . A text node cannot be a child of a <View>.' — stray whitespace/text node inside a View. Cosmetic only, but should be cleaned up to keep the console noise-free. Reference file to inspect: /app/frontend/src/components/... (finder run panel opened from /prr/{decision_id})."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter196_finder_any_semantics.py",
+    "/app/test_reports/pytest/iter196_finder_any.xml",
+    "/tmp/iter196b_01_after_clone.png",
+    "/tmp/iter196b_02_step2_initial.png",
+    "/tmp/iter196b_03_solo_ticked_refiner.png",
+    "/tmp/iter196b_04_config_ui_on.png",
+    "/tmp/iter196b_05_radio_mode.png",
+    "/tmp/iter196b_07_dropdown_mode.png",
+    "/tmp/iter196b_09_finder_running.png",
+    "/tmp/iter196c_01_solo_ticked.png",
+    "/tmp/iter196c_02_refiner_40.png",
+    "/tmp/iter196d_regression.png"
+  ],
+  "action_items": [
+    "Optional cleanup: remove the stray text node in the Finder run panel to eliminate the 'Unexpected text node: . A text node cannot be a child of a <View>.' warning printed twice when landing on /prr/{id} with Run Finder banner. Non-blocking."
+  ],
+  "critical_code_review_comments": [
+    "FactorValueUI.tsx correctly gates value-mode UI on `role==='value'` sub-factors and uses `data-testid` for fv-value-{id}, fv-refiner-{id}, fv-dd-{fid} and fv-add-value-{fid} — Playwright selectors work as documented.",
+    "Step2.tsx line 1260 renders `step2-config-ui-toggle` inside a block guarded by decider_kind==='app' — confirmed by the regression test (toggle absent on NORMAL decision).",
+    "backend/routes/finder.py `finder_job_start` bypasses cache with body.force=true; both new tests use force=true so results are recomputed after PUT /decisions/{id} factors update — no stale-cache risk.",
+    "backend/core/finder_bank build_leaf_specs + ANY-semantics logic verified indirectly: Solo>=60 gave ~11 candidates and adding Startup>=50 grew to ~23 (union, not intersection) as spec requires."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter196_finder_any_semantics.py (new)"
+  ],
+  "success_rate": {"backend": "100% (2/2 new tests; existing v2 suite not re-run per main-agent guidance)", "frontend": "100% (all 4 scenarios + regression + finder-run pass)"},
+  "seed_data_creation": "None new. Reused live 'Business Model Chooser' template (template_id resolved by title, uuid 1a5b85dc-8a1e-4ace-82b5-137e11486e67). Cloned decisions from tests are deleted in fixture teardown; a temporary normal decision created for the regression check was also deleted at the end.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "For BMC finder API test, POST /api/decisions/{id}/finder/jobs needs body.force=true to bypass the 600-sec spec-hash cache when re-running after a PUT /decisions/{id}. Poll GET /api/finder/jobs/{job_id} until status='done' — result contains 'candidates' (int OR list — code accepts both shapes). Frontend: super_admin login lands on /admin, not /home; use /prr/{id}?step=2 for Step 2 deep-link. Solo/Startup fv-value-* rows have inner_text like '\\uf593\\nSolo' (icon + newline + label) — match with `if 'Solo' in text` (contains), not startswith. To create a NORMAL decision via API, POST /api/decisions requires fields {title, description, context, factors, options}; without 'context' it returns 422. The 'Configure UI objects' toggle only renders when decision.decider_kind==='app'.",
+  "rca_of_issue": "N/A — no defects observed. All acceptance criteria in the review request are met by the current implementation."
+}

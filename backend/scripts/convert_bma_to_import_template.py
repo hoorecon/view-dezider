@@ -255,26 +255,23 @@ def read_source(src_path: Path) -> Tuple[List[Dict[str, Any]], List[Dict[str, An
             "values": values,
         })
 
-    # Build factor blocks in template shape.
+    # Build factor blocks in template shape (v2: Checkbox multi-select main UI,
+    # each sub-factor column is a selectable VALUE — no 100% split rule; the
+    # Step-2 refiner defaults to Suitability >= 60%, user-overridable).
     factors: List[Dict[str, Any]] = []
     for mf in MAIN_FACTORS:
-        n_subs = len(mf["subs"])
-        equal_split = round(100.0 / n_subs, 2)
-        # Ensure integer-sum == 100 by adjusting the last one.
-        splits = [equal_split] * n_subs
-        drift = round(100 - sum(splits), 2)
-        if abs(drift) > 0.001:
-            splits[-1] = round(splits[-1] + drift, 2)
         sub_blocks = [
             {"name": sub, "data_type": "%", "ui_object": "Input Box",
-             "split_pct": splits[i]}
-            for i, sub in enumerate(mf["subs"])
+             "split_pct": "", "role": "value",
+             "default_operator": ">=", "default_expected": 60}
+            for sub in mf["subs"]
         ]
         factors.append({
             "name": mf["name"],
             "category": "Mandatory",
             "priority": mf["priority"],
             "factor_type": "Qualitative",
+            "ui_object": "checkbox",
             "sub_factors": sub_blocks,
         })
 

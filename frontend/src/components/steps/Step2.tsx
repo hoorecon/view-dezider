@@ -13,6 +13,7 @@ import UrlAccessConsentModal, { UrlConsentPayload } from '../UrlAccessConsentMod
 import ImportReviewModal from '../ImportReviewModal';
 import ImportCreditsStrip from '../ImportCreditsStrip';
 import DeepImport from './DeepImport';
+import FactorValueUI from './FactorValueUI';
 import TrainAIPanel from '../TrainAIPanel';
 import { downloadAssessmentTemplate, importAssessmentTemplate } from '../../utils/assessmentXlsx';
 import {
@@ -36,6 +37,15 @@ const DATA_SOURCE_TYPES = [
   { key: 'ai_llm', label: 'AI/LLM', icon: 'sparkles-outline', color: '#8B5CF6' },
 ] as const;
 
+// Dynamic UI objects (template v2) — choice widgets a main factor can render as
+const VALUE_UI_TYPES = ['checkbox', 'radio', 'dropdown', 'listbox'];
+const UI_OBJECT_CHOICES = [
+  { key: '', label: 'Text input', icon: 'create-outline' },
+  { key: 'checkbox', label: 'Checkbox · multi', icon: 'checkbox-outline' },
+  { key: 'radio', label: 'Radio · single', icon: 'radio-button-on-outline' },
+  { key: 'dropdown', label: 'Dropdown · single', icon: 'chevron-down-circle-outline' },
+] as const;
+
 export default function Step2() {
   const {
     decision, saveDecision, updateFactor, removeFactor, addFactor, addFactorsFromTemplate,
@@ -55,6 +65,27 @@ export default function Step2() {
   const aiBestFactorsEnabled = useAiTouchpoint('tp_best_factors');
   const [linkPickerOpen, setLinkPickerOpen] = useState(false);
   const router = useRouter();
+
+  // ── Dynamic UI objects (Decider Apps): single flag that makes every main
+  // factor's widget configurable (Text input / Checkbox / Radio / Dropdown). ──
+  const isDeciderApp = (decision as any)?.decider_kind === 'app';
+  const [configUi, setConfigUi] = useState(false);
+
+  const setFactorUiObject = (factor: Factor, ui: string) => {
+    const kids = decision.factors.filter((f) => f.parent_id === factor.id);
+    const factors = decision.factors.map((f) => {
+      if (f.id === factor.id) return { ...f, ui_object: ui || undefined };
+      if (f.parent_id !== factor.id) return f;
+      if (ui) {
+        // choice widget → children become selectable VALUES (dependents stay)
+        return f.role === 'dependent' ? f : { ...f, role: 'value' };
+      }
+      // back to classic input → children revert to weighted sub-factors
+      return { ...f, role: 'sub' };
+    });
+    saveDecision({ factors });
+    if (kids.length) setExpandedGroups({ ...expandedGroups, [factor.id]: true });
+  };
 
   // Open the linked target decision in a new flow view.
   const openLinkedDecision = (factor: Factor) => {
@@ -786,7 +817,7 @@ export default function Step2() {
         <Text style={{ color: COLORS.primary, fontSize: 14.5, fontWeight: '800' }}>Link a Decision</Text>
       </TouchableOpacity>
       <Text style={{ fontSize: 11, color: COLORS.textMuted, textAlign: 'center', marginBottom: 14, lineHeight: 16, paddingHorizontal: 8 }}>
-        Pull another scored decision's option result in as a factor (and optionally an option).
+        Pull another scored decision&apos;s option result in as a factor (and optionally an option).
       </Text>
 
       <View style={iurl.box}>
@@ -1222,10 +1253,40 @@ export default function Step2() {
         </View>
       </Modal>
 
+      {/* Configure UI objects — Decider Apps only: one flag makes every main
+          factor's widget selectable (Text input / Checkbox / Radio / Dropdown) */}
+      {isDeciderApp && (
+        <TouchableOpacity
+          testID="step2-config-ui-toggle"
+          onPress={() => setConfigUi((v) => !v)}
+          activeOpacity={0.85}
+          style={{
+            flexDirection: 'row', alignItems: 'center', gap: 8,
+            borderWidth: 1.5, borderColor: configUi ? '#7C3AED' : '#E2E8F0',
+            backgroundColor: configUi ? '#FAF5FF' : '#FFF',
+            borderRadius: 12, paddingVertical: 11, paddingHorizontal: 14, marginBottom: 12,
+          }}
+        >
+          <Ionicons name={configUi ? 'toggle' : 'toggle-outline'} size={22} color={configUi ? '#7C3AED' : '#94A3B8'} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 13.5, fontWeight: '800', color: configUi ? '#6D28D9' : COLORS.textSecondary }}>
+              Configure UI objects
+            </Text>
+            <Text style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 1 }}>
+              Turn any factor into a Checkbox (multi-select), Radio or Dropdown of values — instead of the default text input.
+            </Text>
+          </View>
+        </TouchableOpacity>
+      )}
+
       {topLevelFactors.map((factor) => {
         const subs = getSubFactors(factor.id);
         const hasChildren = subs.length > 0;
         const isExpanded = expandedGroups[factor.id] !== false;
+        const valueSubs = subs.filter((s) => s.role === 'value');
+        const isValueMode = VALUE_UI_TYPES.includes(factor.ui_object || '') && (valueSubs.length > 0 || configUi);
+        const selectedCount = valueSubs.filter((s) =>
+          s.expected_value !== undefined && s.expected_value !== null && String(s.expected_value).trim() !== '').length;
         const weightTotalRaw = getSubWeightTotal(factor.id);
         const weightTotal = Math.round(weightTotalRaw * 10) / 10;          // tidy display
         const weightComplete = Math.abs(weightTotalRaw - 100) < 0.5;       // float-safe "= 100"
@@ -1261,9 +1322,14 @@ export default function Step2() {
                   </TouchableOpacity>
                 </>
               )}
-              {hasChildren && (
+              {hasChildren && !isValueMode && (
                 <View style={[styles.weightTotalBadge, weightComplete && styles.weightTotalComplete, weightOver && styles.weightTotalOver]}>
                   <Text style={styles.weightTotalText}>{weightTotal}%</Text>
+                </View>
+              )}
+              {isValueMode && (
+                <View style={[styles.weightTotalBadge, selectedCount > 0 && styles.weightTotalComplete]}>
+                  <Text style={styles.weightTotalText}>{selectedCount} selected</Text>
                 </View>
               )}
               {hasExpected && !hasChildren && (
@@ -1277,6 +1343,32 @@ export default function Step2() {
                 <Ionicons name="close-circle" size={22} color={COLORS.error} />
               </TouchableOpacity>
             </View>
+
+            {/* UI-object picker — visible in "Configure UI objects" mode */}
+            {configUi && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 4, marginBottom: 6 }}>
+                <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#6D28D9' }}>UI:</Text>
+                {UI_OBJECT_CHOICES.map((c) => {
+                  const active = (factor.ui_object || '') === c.key;
+                  return (
+                    <TouchableOpacity
+                      key={c.key || 'input'}
+                      testID={`ui-obj-${c.key || 'input'}-${factor.id}`}
+                      onPress={() => setFactorUiObject(factor, c.key)}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 4,
+                        paddingHorizontal: 9, paddingVertical: 6, borderRadius: 8,
+                        borderWidth: 1, borderColor: active ? '#7C3AED' : '#E2E8F0',
+                        backgroundColor: active ? '#7C3AED' : '#FFF',
+                      }}
+                    >
+                      <Ionicons name={c.icon as any} size={12} color={active ? '#FFF' : COLORS.textSecondary} />
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: active ? '#FFF' : COLORS.textSecondary }}>{c.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
 
             {factor.data_source?.type === 'decision_link' && (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F5F3FF',
@@ -1300,7 +1392,7 @@ export default function Step2() {
             )}
 
             {/* Factor Type Toggle: Quantitative / Qualitative — placed ABOVE the Operator/Expected/Unit criteria */}
-            {!hasChildren && (
+            {!hasChildren && !isValueMode && (
               <View style={dsStyles.factorTypeRow}>
                 <Text style={dsStyles.factorTypeLabel}>Type:</Text>
                 <TouchableOpacity
@@ -1320,7 +1412,18 @@ export default function Step2() {
               </View>
             )}
 
-            {!hasChildren && renderCriteria(factor)}
+            {!hasChildren && !isValueMode && renderCriteria(factor)}
+
+            {/* Value-mode body: dynamic checkbox / radio / dropdown of values,
+                per-tick Suitability refiners + dependent factors. No 100% split. */}
+            {isValueMode && (isExpanded || !hasChildren) && (
+              <FactorValueUI
+                factor={factor}
+                subs={subs}
+                configMode={configUi}
+                renderCriteria={renderCriteria}
+              />
+            )}
 
             {/* Data Source toggle — kept adjacent to its collapsible config panel below */}
             {!hasChildren && factor.data_source?.type !== 'decision_link' && (
@@ -1428,7 +1531,7 @@ export default function Step2() {
               </View>
             )}
 
-            {hasChildren && isExpanded && (
+            {hasChildren && isExpanded && !isValueMode && (
               <View style={styles.subFactorsContainer}>
                 <View style={styles.weightProgressRow}>
                   <View style={styles.weightProgressBar}>
@@ -1534,7 +1637,7 @@ export default function Step2() {
               </View>
             )}
 
-            {!hasChildren && (
+            {!hasChildren && !isValueMode && (
               <TouchableOpacity style={styles.addSubToggle} onPress={() => {
                 setExpandedGroups({ ...expandedGroups, [factor.id]: true });
                 const firstSub: Factor = {

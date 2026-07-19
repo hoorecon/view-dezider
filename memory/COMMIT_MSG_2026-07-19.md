@@ -294,3 +294,88 @@ OPS / DATA MIGRATION NOTES
 DEPLOY
   EXPECT_BUILD=2026.07.19.006 ./deploy/sync.sh emergent-v3
 
+
+════════════════════════════════════════════════════════════════════════════
+COMMIT — 2026-07-19 · BUILD 2026.07.19.007 · v3.113-template-v2-dynamic-ui-objects
+════════════════════════════════════════════════════════════════════════════
+
+feat(decider): Import Template v2 — Column Roles (Value/Sub-Factor/Dependent)
++ Dynamic UI Objects (Checkbox/Radio/Dropdown) end-to-end
+
+FUNCTIONAL KT (what the user gets)
+  • Step 2 of a Decider App no longer forces choice-style factors into the
+    100%-split sub-factor model. "Org Type" now renders as a MULTI-SELECT
+    CHECKBOX of its predefined values (Solo / Startup / SME / Corporate).
+    Ticking a value reveals an optional, editable "Suitability >= 60 %"
+    refiner (default comes from the template, user-overridable). Unticked
+    values neither filter nor score.
+  • NEW column roles in the authoring workbook:
+      Value      → a selectable choice of the parent factor (checkbox list);
+                   option rows hold per-value Suitability %. EXEMPT from the
+                   100% Split rule.
+      Sub-Factor → classic weighted split (must still total 100).
+      Dependent  → optional extra refiner (own operator + expected input),
+                   revealed only when its "Linked Value" is ticked; never
+                   counted in the split.
+  • NEW factor-level "Main UI Object": Input Box (default) / Checkbox
+    (multi-select) / Radio (single) / Dropdown (single) — Step 2 renders it
+    dynamically.
+  • Finder semantics: a multi-select factor matches ANY ticked value (union)
+    — verified: Solo>=60 → 11 candidates; +Startup>=50 → 23 (union, not
+    intersection). Per-value thresholds refine each match.
+  • "Configure UI objects" flag (Decider Apps only) in Step 2: one toggle
+    makes EVERY main factor's widget selectable (Text input / Checkbox /
+    Radio / Dropdown) with add/remove-value controls — no re-import needed.
+  • Business Model Chooser regenerated & reseeded in v2 shape: all 10 main
+    factors are Checkbox (multi-select); 28 Value columns default ">= 60".
+
+TECHNICAL KT (what devs need to know)
+  core/decider_import.py     v2 label rows (all optional, old sheets parse
+    unchanged): "Main UI Object" (row 6), "Column Role" (row 8), "Linked
+    Value" (row 9), "Default Operator" (row 12), "Default Expected" (row 13);
+    header row moved 10 → 15 (parser is label-driven, not row-driven).
+    norm_main_ui()/norm_role() normalizers; role/def-op/def-exp forward-fill
+    WITHIN a factor's column run (merged-cell friendly); split-100 validation
+    now applies to role='sub' columns only; a choice-widget factor with no
+    Role row implies all its columns are Values. Instructions sheet + sample
+    template rewritten (worked example: Org Type checkbox + a "Min Team
+    Size" Dependent linked to Startup).
+  models/decisions_models.py Factor += ui_object, role, linked_value,
+    default_operator, default_expected (survive every save).
+  routes/decider_store.py    clone carries the new fields: parent factor
+    gets ui_object; children get role/linked_value/default_operator/
+    default_expected (children of a choice widget default to role='value').
+  core/finder_bank.py        build_leaf_specs: value/dependent leaves WITHOUT
+    an expectation are EXCLUDED (unticked ⇒ no filter, no self-score);
+    spec.match='any' for checkbox/listbox parents. compile_prefilter honours
+    the per-spec match override.
+  core/finder_engine.py      factor_pct skips unticked value/dependent kids;
+    factor_matches forces ANY for checkbox/listbox factors.
+  scripts/convert_bma_to_import_template.py  emits v2 (checkbox + Value roles
+    + ">= 60" defaults); Business_Model_Chooser_ready.xlsx regenerated
+    (540/540 cells, mapping unchanged). seed_business_model_chooser.py
+    carries the v2 fields into decider_store_templates.
+  FRONTEND
+    src/types/decision.ts    Factor/Decision typed for the v2 fields.
+    src/components/steps/FactorValueUI.tsx  NEW — renders checkbox/radio/
+      dropdown value pickers, per-tick Suitability refiners (numeric operator
+      chips + % input), Dependent blocks gated on their linked value, and
+      config-mode add/remove-value controls.
+    src/components/steps/Step2.tsx  value-mode branch (hides split bar /
+      "Split evenly" / classic criteria for choice factors; header badge
+      shows "n selected"); "Configure UI objects" toggle (visible only when
+      decision.decider_kind === 'app') + per-factor UI picker that converts
+      children roles when switching widget types.
+  TESTS  retargeted bmp-55-patterns → live "Business Model Chooser" (dynamic
+    lookup); iter193 fixture ticks Solo>=1 (value leaves need a selection to
+    score); 194 bank-count thresholds now match the real 54-row bank.
+    Suites green: subfactor_v2 + iter188 (23) · iter193 (13) · iter194 (14).
+
+OPS / DATA MIGRATION
+  • Re-run on prod AFTER code deploy (data push, same as before):
+      docker exec deploy-api-1 python3 scripts/seed_business_model_chooser.py
+    (idempotent — replaces the template + 54 bank rows in v2 shape).
+  • Old sheets import unchanged (all v2 rows optional). No .env changes.
+
+DEPLOY
+  EXPECT_BUILD=2026.07.19.007 ./deploy/sync.sh emergent-v3

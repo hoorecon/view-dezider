@@ -37,7 +37,15 @@ def _base_url() -> str:
 
 BASE_URL = _base_url()
 API = f"{BASE_URL}/api"
-BMP = "bmp-55-patterns"
+def _resolve_bmc() -> str:
+    """The live Business Model Chooser Decider App (replaced bmp-55-patterns)."""
+    import requests as _rq
+    r = _rq.get(f"{API}/decider-store", timeout=30)
+    return next(t["template_id"] for t in r.json()["templates"]
+                if t.get("title") == "Business Model Chooser")
+
+
+BMP = _resolve_bmc()
 SUPER_EMAIL, SUPER_PASS = "super@test.com", "SuperPass2026!"
 
 
@@ -166,6 +174,14 @@ class TestAdMakerEndToEnd:
         r = s.post(f"{API}/decider-store/{BMP}/clone", json={"mode": "full"}, headers=H, timeout=60)
         assert r.status_code == 200, r.text[:300]
         did = r.json()["decision_id"]
+        # v2 checkbox app: value-role children only score when SELECTED —
+        # tick one value (Solo >= 1) so options have a scoring basis.
+        dec = s.get(f"{API}/decisions/{did}", headers=H, timeout=30).json()
+        factors = dec["factors"]
+        solo = next(f for f in factors if f["name"] == "Solo" and f.get("parent_id"))
+        solo.update({"operator": ">=", "expected_value": 1, "data_type": "numeric"})
+        r = s.put(f"{API}/decisions/{did}", json={"factors": factors}, headers=H, timeout=30)
+        assert r.status_code == 200, r.text[:300]
         yield did
         s.delete(f"{API}/decisions/{did}", headers=H, timeout=30)
 

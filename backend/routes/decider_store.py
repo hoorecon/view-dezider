@@ -481,6 +481,8 @@ def _build_decision_from_template(t: Dict[str, Any], mode: str, user: dict) -> D
             "gap_multiplier": 1.0,
             "factor_type": f.get("factor_type") or "qualitative",
             "data_type": "numeric",
+            # Dynamic UI (v2): checkbox / radio / dropdown / listbox / None
+            "ui_object": f.get("ui_object") or None,
         })
         order += 1
         if has_real_subs:
@@ -503,6 +505,11 @@ def _build_decision_from_template(t: Dict[str, Any], mode: str, user: dict) -> D
                     # Option-Bank join key (bank `vals` are keyed by the
                     # ORIGINAL template sub-factor id).
                     "source_sub_id": sf.get("id"),
+                    # Column role (v2): value | sub | dependent
+                    "role": sf.get("role") or ("value" if f.get("ui_object") else None),
+                    "linked_value": sf.get("linked_value") or None,
+                    "default_operator": sf.get("default_operator") or None,
+                    "default_expected": sf.get("default_expected"),
                 })
         else:
             # single implicit sub-factor -> maps straight onto the parent

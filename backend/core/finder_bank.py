@@ -76,6 +76,7 @@ def build_leaf_specs(decision: Dict[str, Any], template: Dict[str, Any]) -> List
             kids.setdefault(f["parent_id"], []).append(f)
 
     specs: List[Dict[str, Any]] = []
+    multi_ui = ("checkbox", "listbox")
     for top in factors:
         if top.get("parent_id"):
             continue
@@ -84,6 +85,13 @@ def build_leaf_specs(decision: Dict[str, Any], template: Dict[str, Any]) -> List
         for lf in leaves_raw:
             sid = lf.get("source_sub_id") or name_to_sid.get(_norm(lf.get("name")))
             if not sid:
+                continue
+            # Choice values (role='value') only participate when SELECTED —
+            # i.e. when the decider gave them an expectation. Unticked values
+            # must not filter NOR score (their raw suitability is irrelevant).
+            role = str(lf.get("role") or "")
+            has_exp = str(lf.get("expected_value") if lf.get("expected_value") is not None else "").strip() != ""
+            if role in ("value", "dependent") and not has_exp:
                 continue
             leaves.append({
                 "sid": sid,
@@ -96,6 +104,9 @@ def build_leaf_specs(decision: Dict[str, Any], template: Dict[str, Any]) -> List
             specs.append({
                 "rating": int(top.get("rating") or 0),
                 "category": top.get("category") or "",
+                # Multi-select widgets match ANY ticked value regardless of
+                # the template-level match rule.
+                "match": ("any" if str(top.get("ui_object") or "") in multi_ui else None),
                 "leaves": leaves,
             })
     return specs
@@ -155,6 +166,8 @@ def compile_prefilter(specs: List[Dict[str, Any]], categories: Tuple[str, ...],
     for spec in specs:
         if spec["category"] not in categories:
             continue
+        # per-factor override (multi-select widgets are always ANY)
+        f_rule = spec.get("match") or match_rule
         leaf_clauses, leaf_residual = [], []
         for leaf in spec["leaves"]:
             exp = leaf.get("expected")
@@ -165,7 +178,7 @@ def compile_prefilter(specs: List[Dict[str, Any]], categories: Tuple[str, ...],
                 leaf_clauses.append(c)
             else:
                 leaf_residual.append(leaf)
-        if match_rule == "any" and (leaf_clauses or leaf_residual):
+        if f_rule == "any" and (leaf_clauses or leaf_residual):
             if leaf_residual:
                 # ANY with a non-compilable leaf → the whole factor must be
                 # checked in Python (a DB $or would wrongly exclude rows).

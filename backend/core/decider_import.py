@@ -44,11 +44,42 @@ _LABELS = {
     "category":    ("category",),
     "priority":    ("priority",),
     "factor_type": ("factor type",),
+    "main_ui":     ("main ui object",),           # v2 — factor-level widget
     "sub_factor":  ("sub-factor", "sub factor"),
+    "role":        ("column role",),              # v2 — Value / Sub-Factor / Dependent
+    "linked":      ("linked value",),             # v2 — dependent → parent value
     "data_type":   ("data type",),
     "ui_object":   ("ui object",),
+    "def_op":      ("default operator",),         # v2 — pre-selected operator
+    "def_exp":     ("default expected",),         # v2 — pre-filled expected
     "split":       ("split %", "split"),
 }
+
+# ── v2 normalizers ────────────────────────────────────────────────────────
+def norm_main_ui(v: Any) -> Optional[str]:
+    """'Checkbox (multi-select)' -> 'checkbox' | radio | dropdown | listbox | None."""
+    s = _norm(v)
+    if not s:
+        return None
+    if "check" in s:
+        return "checkbox"
+    if "radio" in s:
+        return "radio"
+    if "drop" in s or "select box" in s:
+        return "dropdown"
+    if "list" in s:
+        return "listbox"
+    return None  # 'Input Box' / 'Text' / anything else = classic input
+
+
+def norm_role(v: Any) -> str:
+    """'Value' | 'Dependent' | 'Sub-Factor'(default) -> value|dependent|sub."""
+    s = _norm(v)
+    if s.startswith("val"):
+        return "value"
+    if s.startswith("dep"):
+        return "dependent"
+    return "sub"
 
 # option-metadata header aliases -> canonical key
 _META_ALIASES = {
@@ -207,13 +238,22 @@ def parse_import(data: bytes = None, csv_text: str = None) -> Dict[str, Any]:
     cat_fill = _ffill(rows[_find_label_row(rows, _LABELS["category"])] if _find_label_row(rows, _LABELS["category"]) is not None else [], first_sub, max_col)
     pri_fill = _ffill(rows[_find_label_row(rows, _LABELS["priority"])] if _find_label_row(rows, _LABELS["priority"]) is not None else [], first_sub, max_col)
     typ_fill = _ffill(rows[_find_label_row(rows, _LABELS["factor_type"])] if _find_label_row(rows, _LABELS["factor_type"]) is not None else [], first_sub, max_col)
+    mui_fill = _ffill(rows[_find_label_row(rows, _LABELS["main_ui"])] if _find_label_row(rows, _LABELS["main_ui"]) is not None else [], first_sub, max_col)
 
     dt_i = _find_label_row(rows, _LABELS["data_type"])
     ui_i = _find_label_row(rows, _LABELS["ui_object"])
     sp_i = _find_label_row(rows, _LABELS["split"])
+    role_i = _find_label_row(rows, _LABELS["role"])
+    lnk_i = _find_label_row(rows, _LABELS["linked"])
+    dop_i = _find_label_row(rows, _LABELS["def_op"])
+    dxp_i = _find_label_row(rows, _LABELS["def_exp"])
     r_dt = rows[dt_i] if dt_i is not None else []
     r_ui = rows[ui_i] if ui_i is not None else []
     r_sp = rows[sp_i] if sp_i is not None else []
+    r_role = rows[role_i] if role_i is not None else []
+    r_lnk = rows[lnk_i] if lnk_i is not None else []
+    r_dop = rows[dop_i] if dop_i is not None else []
+    r_dxp = rows[dxp_i] if dxp_i is not None else []
 
     def at(row: List[Any], ci: int) -> str:
         return _cell(row[ci]) if row and ci < len(row) else ""
@@ -239,8 +279,12 @@ def parse_import(data: bytes = None, csv_text: str = None) -> Dict[str, Any]:
         except ValueError:
             priority = 0
         ftype = _norm(typ_fill.get(c0, ""))
+        main_ui = norm_main_ui(mui_fill.get(c0, ""))
         fid = str(uuid.uuid4())
         subs: List[Dict[str, Any]] = []
+        # role / default-operator / default-expected forward-fill WITHIN the run
+        # (authors merge one 'Value' / '>= 60' across their value columns).
+        cur_role, cur_dop, cur_dxp = "", "", ""
         for so, ci in enumerate(run):
             sid = str(uuid.uuid4())
             col_to_sid[ci] = sid
@@ -249,6 +293,10 @@ def parse_import(data: bytes = None, csv_text: str = None) -> Dict[str, Any]:
                 split = float(re.sub(r"[^\d.]", "", sp_raw)) if sp_raw else 0.0
             except ValueError:
                 split = 0.0
+            cur_role = at(r_role, ci) or cur_role
+            cur_dop = at(r_dop, ci) or cur_dop
+            cur_dxp = at(r_dxp, ci) or cur_dxp
+            role = norm_role(cur_role)
             subs.append({
                 "id": sid,
                 "name": re.sub(r"^\s*\d+[.)]\s*", "", at(sub_row, ci)) or f"Sub {so + 1}",
@@ -256,17 +304,28 @@ def parse_import(data: bytes = None, csv_text: str = None) -> Dict[str, Any]:
                 "data_type": at(r_dt, ci) or "%",
                 "ui_object": at(r_ui, ci) or "Input Box",
                 "split_pct": split,
+                "role": role,
+                "linked_value": at(r_lnk, ci) or None,
+                "default_operator": cur_dop or None,
+                "default_expected": cur_dxp or None,
             })
-        # normalise / validate split %
-        total = round(sum(s["split_pct"] for s in subs), 2)
-        if total == 0 and subs:
-            base = round(100.0 / len(subs), 2)
+        # A choice-widget parent implies its unlabeled columns are Values.
+        if main_ui and role_i is None:
             for s in subs:
+                s["role"] = "value"
+        # normalise / validate split % — the 100% rule applies ONLY to classic
+        # 'sub' columns; 'value' choices & 'dependent' refiners are exempt.
+        split_subs = [s for s in subs if s["role"] == "sub"]
+        total = round(sum(s["split_pct"] for s in split_subs), 2)
+        if total == 0 and split_subs:
+            base = round(100.0 / len(split_subs), 2)
+            for s in split_subs:
                 s["split_pct"] = base
             # push the rounding remainder onto the last sub-factor -> exact 100
-            subs[-1]["split_pct"] = round(100.0 - base * (len(subs) - 1), 2)
-        elif abs(total - 100.0) > 1.0:
+            split_subs[-1]["split_pct"] = round(100.0 - base * (len(split_subs) - 1), 2)
+        elif split_subs and abs(total - 100.0) > 1.0:
             warnings.append(f"'{name}': Split % totals {total:g}% (should be 100%).")
+        value_names = [s["name"] for s in subs if s["role"] == "value"]
         factors.append({
             "id": fid,
             "name": re.sub(r"^\s*\d+[.)]\s*", "", name),
@@ -275,8 +334,9 @@ def parse_import(data: bytes = None, csv_text: str = None) -> Dict[str, Any]:
                          else "optional" if cat.startswith("opt") else ""),
             "priority": priority,
             "factor_type": ("quantitative" if ftype.startswith("quant") else "qualitative"),
+            "ui_object": main_ui,
             "sub_factors": subs,
-            "possible_values": [s["name"] for s in subs],
+            "possible_values": value_names or [s["name"] for s in subs],
         })
         order += 1
         i = j
@@ -389,9 +449,15 @@ def _write_data_sheet(ws, factors: List[Dict[str, Any]], option_rows: List[List[
     label_rows = [
         (2, "Main Factor"), (3, "Category (Mandatory/Optional)"),
         (4, "Priority (1,2,3...)"), (5, "Factor Type (Quantitative/Qualitative)"),
-        (6, "Sub-Factor"), (7, "Data Type (% / Number / Text)"),
-        (8, "UI Object (Input Box / Slider / Dropdown)"),
-        (9, "Split % (must total 100 per main factor)"),
+        (6, "Main UI Object (Input Box / Checkbox multi-select / Radio / Dropdown)"),
+        (7, "Sub-Factor / Column Name"),
+        (8, "Column Role (Value / Sub-Factor / Dependent)"),
+        (9, "Linked Value (Dependent only — parent Value that reveals it)"),
+        (10, "Data Type (% / Number / Text)"),
+        (11, "UI Object (Input Box / Slider / Dropdown)"),
+        (12, "Default Operator (>= / <= / = / contains …)"),
+        (13, "Default Expected (pre-filled, user-overridable)"),
+        (14, "Split % (total 100 — Sub-Factor columns ONLY)"),
     ]
     for r, lbl in label_rows:
         put(r, 1, lbl, fill=st["lbl_fill"], font=st["bold"])
@@ -404,25 +470,36 @@ def _write_data_sheet(ws, factors: List[Dict[str, Any]], option_rows: List[List[
         subs = f["sub_factors"]
         span = len(subs)
         c0, c1 = col, col + span - 1
+        main_ui_label = {
+            "checkbox": "Checkbox (multi-select)", "radio": "Radio (single)",
+            "dropdown": "Dropdown (single)", "listbox": "List Box (multi)",
+        }.get(str(f.get("ui_object") or "").lower(), f.get("ui_object") or "Input Box")
         # main-factor rows (merge across the span)
         for r, val in ((2, f["name"]), (3, f.get("category", "")),
-                       (4, f.get("priority", "")), (5, f.get("factor_type", ""))):
+                       (4, f.get("priority", "")), (5, f.get("factor_type", "")),
+                       (6, main_ui_label)):
             put(r, c0, val, fill=st["mf_fill"], font=(st["bold"] if r == 2 else None))
             for c in range(c0 + 1, c1 + 1):
                 put(r, c, "", fill=st["mf_fill"])
             if span > 1:
                 ws.merge_cells(start_row=r, start_column=c0, end_row=r, end_column=c1)
-        # sub-factor rows (per column)
+        # per-column rows
+        role_label = {"value": "Value", "dependent": "Dependent", "sub": "Sub-Factor"}
         for so, sub in enumerate(subs):
             c = c0 + so
-            put(6, c, sub["name"], fill=st["sf_fill"], font=st["bold"])
-            put(7, c, sub.get("data_type", "%"), fill=st["sf_fill"])
-            put(8, c, sub.get("ui_object", "Input Box"), fill=st["sf_fill"])
-            put(9, c, sub.get("split_pct", ""), fill=st["sf_fill"])
+            role = str(sub.get("role") or "sub").lower()
+            put(7, c, sub["name"], fill=st["sf_fill"], font=st["bold"])
+            put(8, c, role_label.get(role, "Sub-Factor"), fill=st["sf_fill"])
+            put(9, c, sub.get("linked_value") or "", fill=st["sf_fill"])
+            put(10, c, sub.get("data_type", "%"), fill=st["sf_fill"])
+            put(11, c, sub.get("ui_object", "Input Box"), fill=st["sf_fill"])
+            put(12, c, sub.get("default_operator") or "", fill=st["sf_fill"])
+            put(13, c, sub.get("default_expected") if sub.get("default_expected") is not None else "", fill=st["sf_fill"])
+            put(14, c, sub.get("split_pct", "") if role == "sub" else (sub.get("split_pct") or ""), fill=st["sf_fill"])
         col = c1 + 1
 
-    # Header row (row 10)
-    HROW = 10
+    # Header row (row 15)
+    HROW = 15
     for i, h in enumerate(META_COLS):
         put(HROW, i + 1, h, fill=st["hdr_fill"], font=st["white"])
     col = first_sub
@@ -465,59 +542,80 @@ def _write_instructions_sheet(ws):
 
     r = 3
     sections = [
-        (C_MAIN, "① MAIN FACTOR (indigo rows 2-5)",
+        (C_MAIN, "① MAIN FACTOR (indigo rows 2-6)",
          "One MAIN FACTOR per group of columns. Type its name once in the 'Main Factor' "
-         "row above its sub-factor columns. Set Category = Mandatory/Optional, Priority = "
-         "1,2,3… (1 = most important) and Factor Type = Quantitative or Qualitative. "
-         "These apply to the whole factor."),
-        (C_SUB, "② SUB-FACTOR (green rows 6-8)",
-         "Each MAIN FACTOR breaks into one or more SUB-FACTORS — one column each. Give each "
-         "a name (e.g. 'Solo %'), a Data Type (% / Number / Text) and a UI Object "
-         "(Input Box / Slider / Dropdown). Sub-factors can be one-per-value (Solo, Startup…) "
-         "OR arbitrary measures (Setup Cost, Break-even…)."),
-        (C_SPLIT, "③ SPLIT % (amber row 9)",
-         "Split % is the WEIGHT of each sub-factor inside its main factor. The split % of all "
-         "sub-factors under one main factor MUST TOTAL 100%. Example: Org Type → Solo 40, "
-         "Startup 30, SME 20, Corporate 10 (= 100). Leave all blank to split equally."),
-        (C_OPT, "④ OPTION VALUES (pink — rows 11 onward)",
-         "One OPTION per row (fill No / Option Name / Description / Remarks on the left). In "
-         "each sub-factor cell put THIS option's value for that sub-factor (e.g. Solo % = 100, "
-         "Startup % = 40). Leave blank or 'NA' if not applicable. This is different from "
-         "Split %: Split % is set once per factor; option values change every row."),
+         "row above its columns. Set Category = Mandatory/Optional, Priority = 1,2,3… "
+         "(1 = most important), Factor Type = Quantitative or Qualitative, and the "
+         "MAIN UI OBJECT — how deciders pick this factor in Step 2: 'Input Box' "
+         "(default, free text/number), 'Checkbox (multi-select)', 'Radio (single)' or "
+         "'Dropdown (single)'. These apply to the whole factor."),
+        (C_SUB, "② COLUMN ROLE (green rows 7-13) — Value / Sub-Factor / Dependent",
+         "Every column under a main factor plays ONE of 3 roles:\n"
+         "• VALUE — a selectable choice of the parent (e.g. Org Type → Solo, Startup, "
+         "SME, Corporate). Deciders just tick the values that apply; each option row "
+         "holds that option's Suitability % for the value. NOT bound by the 100% split.\n"
+         "• SUB-FACTOR (default) — the classic weighted breakdown; Split % of all "
+         "Sub-Factor columns must total 100.\n"
+         "• DEPENDENT — an OPTIONAL extra refiner (own operator + expected input) shown "
+         "only when its 'Linked Value' is ticked (blank = always shown). Never counted "
+         "in the 100% split.\n"
+         "Give each column a Data Type (% / Number / Text), a UI Object, and optionally "
+         "a Default Operator (>= / <= / = / contains…) + Default Expected — these "
+         "pre-fill the Step-2 refiner and stay fully user-overridable."),
+        (C_SPLIT, "③ SPLIT % (amber row 14) — Sub-Factor columns ONLY",
+         "Split % is the WEIGHT of each SUB-FACTOR column inside its main factor and "
+         "must total 100 (leave all blank to split equally). Value columns may carry an "
+         "optional importance weight; Dependent columns leave blank — neither is part "
+         "of the 100% rule."),
+        (C_OPT, "④ OPTION VALUES (pink — rows 16 onward)",
+         "One OPTION per row (fill No / Option Name / Description / Remarks on the "
+         "left). In each column cell put THIS option's value: for VALUE columns that's "
+         "its Suitability % for the choice (e.g. Solo = 100, Startup = 40, SME = 0); "
+         "for Sub-Factor/Dependent columns its measured value. Leave blank or 'NA' if "
+         "not applicable."),
     ]
     for fill, title, body in sections:
         put(r, 1, title, fill=fill, bold=True, size=12)
         ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=6)
         put(r + 1, 1, body, size=11)
         ws.merge_cells(start_row=r + 1, start_column=1, end_row=r + 1, end_column=6)
-        ws.row_dimensions[r + 1].height = 58
+        ws.row_dimensions[r + 1].height = 118 if "ROLE" in title else 58
         r += 3
 
     # Worked example
-    put(r, 1, "WORKED EXAMPLE — Main Factor 'Org Type'", bold=True, size=13, color="1E3A8A")
+    put(r, 1, "WORKED EXAMPLE — Main Factor 'Org Type' as a Checkbox (multi-select)", bold=True, size=13, color="1E3A8A")
     ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=6)
     r += 2
 
     put(r, 1, "Main Factor", fill=C_MAIN, bold=True)
-    put(r, 2, "Org Type (Mandatory · Priority 1 · Qualitative)", fill=C_MAIN)
+    put(r, 2, "Org Type (Mandatory · Priority 1 · Qualitative · Checkbox multi-select)", fill=C_MAIN)
     ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=6)
     r += 1
-    put(r, 1, "Sub-Factor", fill=C_SUB, bold=True)
-    for i, v in enumerate(["Solo %", "Startup %", "SME %", "Corporate %"]):
+    put(r, 1, "Column Name", fill=C_SUB, bold=True)
+    for i, v in enumerate(["Solo", "Startup", "SME", "Corporate", "Min Team Size"]):
         put(r, 2 + i, v, fill=C_SUB, bold=True)
     r += 1
-    put(r, 1, "Split %", fill=C_SPLIT, bold=True)
-    for i, v in enumerate([40, 30, 20, 10]):
-        put(r, 2 + i, v, fill=C_SPLIT)
-    put(r, 6, "= 100%", fill=C_SPLIT, italic=True)
+    put(r, 1, "Column Role", fill=C_SUB, bold=True)
+    for i, v in enumerate(["Value", "Value", "Value", "Value", "Dependent"]):
+        put(r, 2 + i, v, fill=C_SUB)
     r += 1
-    for opt, vals in [("AFFILIATION", [100, 40, 0, 0]), ("FREEMIUM", [60, 100, 80, 50])]:
+    put(r, 1, "Linked Value", fill=C_SUB, bold=True)
+    for i, v in enumerate(["", "", "", "", "Startup"]):
+        put(r, 2 + i, v, fill=C_SUB)
+    r += 1
+    put(r, 1, "Default Op / Expected", fill=C_SPLIT, bold=True)
+    for i, v in enumerate([">= 60", ">= 60", ">= 60", ">= 60", ">= 3"]):
+        put(r, 2 + i, v, fill=C_SPLIT)
+    r += 1
+    for opt, vals in [("AFFILIATION", [100, 40, 0, 0, 2]), ("FREEMIUM", [60, 100, 80, 50, 5])]:
         put(r, 1, opt, fill=C_OPT, bold=True)
         for i, v in enumerate(vals):
             put(r, 2 + i, v, fill=C_OPT)
         r += 1
-    put(r + 1, 1, "↑ Split % (amber) = weights that total 100. Each option row (pink) = that "
-                  "option's suitability value per sub-factor.", italic=True, color="475569")
+    put(r + 1, 1, "↑ In Step 2 the decider TICKS the Org Types that apply (e.g. ☑ Solo ☑ Startup); "
+                  "each ticked value shows an optional 'Suitability >= 60%' refiner (editable). "
+                  "'Min Team Size' appears only when Startup is ticked. No 100% split needed.",
+        italic=True, color="475569")
     ws.merge_cells(start_row=r + 1, start_column=1, end_row=r + 1, end_column=6)
 
     ws.column_dimensions["A"].width = 16
@@ -525,25 +623,36 @@ def _write_instructions_sheet(ws):
         ws.column_dimensions[c].width = 20
 
 
-# sample factors for the downloadable blank/sample template
+# sample factors for the downloadable blank/sample template — showcases all 3
+# column roles + a Checkbox main UI (v2 format).
 _SAMPLE_FACTORS = [
     {"name": "Org Type", "category": "Mandatory", "priority": 1, "factor_type": "Qualitative",
+     "ui_object": "checkbox",
      "sub_factors": [
-         {"name": "Solo %", "data_type": "%", "ui_object": "Input Box", "split_pct": 25},
-         {"name": "Startup %", "data_type": "%", "ui_object": "Input Box", "split_pct": 25},
-         {"name": "SME %", "data_type": "%", "ui_object": "Input Box", "split_pct": 25},
-         {"name": "Corporate %", "data_type": "%", "ui_object": "Input Box", "split_pct": 25},
+         {"name": "Solo", "data_type": "%", "ui_object": "Input Box", "split_pct": "",
+          "role": "value", "default_operator": ">=", "default_expected": 60},
+         {"name": "Startup", "data_type": "%", "ui_object": "Input Box", "split_pct": "",
+          "role": "value", "default_operator": ">=", "default_expected": 60},
+         {"name": "SME", "data_type": "%", "ui_object": "Input Box", "split_pct": "",
+          "role": "value", "default_operator": ">=", "default_expected": 60},
+         {"name": "Corporate", "data_type": "%", "ui_object": "Input Box", "split_pct": "",
+          "role": "value", "default_operator": ">=", "default_expected": 60},
+         {"name": "Min Team Size", "data_type": "Number", "ui_object": "Input Box", "split_pct": "",
+          "role": "dependent", "linked_value": "Startup", "default_operator": ">=", "default_expected": 3},
      ]},
     {"name": "Solution Category", "category": "Mandatory", "priority": 2, "factor_type": "Qualitative",
+     "ui_object": "radio",
      "sub_factors": [
-         {"name": "Product %", "data_type": "%", "ui_object": "Input Box", "split_pct": 50},
-         {"name": "Service %", "data_type": "%", "ui_object": "Input Box", "split_pct": 50},
+         {"name": "Product", "data_type": "%", "ui_object": "Input Box", "split_pct": "",
+          "role": "value", "default_operator": ">=", "default_expected": 60},
+         {"name": "Service", "data_type": "%", "ui_object": "Input Box", "split_pct": "",
+          "role": "value", "default_operator": ">=", "default_expected": 60},
      ]},
     {"name": "Affordability", "category": "Optional", "priority": 3, "factor_type": "Qualitative",
      "sub_factors": [
-         {"name": "Low %", "data_type": "%", "ui_object": "Input Box", "split_pct": 34},
-         {"name": "Medium %", "data_type": "%", "ui_object": "Input Box", "split_pct": 33},
-         {"name": "High %", "data_type": "%", "ui_object": "Input Box", "split_pct": 33},
+         {"name": "Low %", "data_type": "%", "ui_object": "Input Box", "split_pct": 34, "role": "sub"},
+         {"name": "Medium %", "data_type": "%", "ui_object": "Input Box", "split_pct": 33, "role": "sub"},
+         {"name": "High %", "data_type": "%", "ui_object": "Input Box", "split_pct": 33, "role": "sub"},
      ]},
 ]
 
@@ -558,14 +667,14 @@ def build_import_template_xlsx(sample: bool = True) -> bytes:
     if sample:
         # META_COLS = No, Product Model, Option Name, Affected Components,
         #             Exemplary Companies, Description, Remarks
-        # then sub cols: Solo,Startup,SME,Corporate, Product,Service, Low,Medium,High
+        # then cols: Solo,Startup,SME,Corporate,MinTeamSize, Product,Service, Low,Medium,High
         option_rows = [
             [1, "", "AFFILIATION", "How, Value", "Amazon Associates, Pinterest",
              "Pay partners a commission for referred sales.", "About HOW you share revenue.",
-             100, 40, 0, 0,  60, 40,  40, 70, 100],
+             100, 40, 0, 0, 2,  60, 40,  40, 70, 100],
             [2, "", "FREEMIUM", "Value, Revenue", "Spotify, Dropbox, LinkedIn",
              "Free basic tier; paid premium upgrade.", "Conversion rate is key.",
-             60, 100, 80, 50,  50, 50,  100, 70, 40],
+             60, 100, 80, 50, 5,  50, 50,  100, 70, 40],
         ]
     _write_data_sheet(ws, _SAMPLE_FACTORS, option_rows)
 

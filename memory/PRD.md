@@ -451,3 +451,25 @@ Fixed permanently:
   requests; INDEX v3.23.1).
 - COMMIT_MSG_2026-07-19.md updated (FRONTEND section + functional note). BUILD → **2026.07.19.005**
   (`EXPECT_BUILD=2026.07.19.005 ./deploy/sync.sh emergent-v3`).
+
+## ITER 196 — Import Template v2: Column Roles + Dynamic UI Objects ✅ (2026-07-19)
+- **3 column roles** under a Main Factor: `Value` (selectable choice — option rows carry
+  per-value Suitability %, EXEMPT from 100% split), `Sub-Factor` (classic weighted split,
+  must total 100), `Dependent` (optional refiner with own operator/expected, revealed by its
+  `Linked Value`, never in the split). Factor-level **Main UI Object**: Input Box / Checkbox
+  (multi) / Radio / Dropdown. Per-column **Default Operator/Expected** pre-fill the Step-2
+  refiner (user-overridable). All new rows OPTIONAL → old sheets import unchanged.
+- **Step 2 dynamic rendering** (`FactorValueUI.tsx`): checkbox/radio/dropdown value pickers;
+  tick → "Suitability >= 60 %" refiner; dependents gated on linked value; "n selected" badge;
+  split bar hidden for value-mode. **"Configure UI objects"** toggle (Decider Apps only,
+  `decision.decider_kind==='app'`) exposes a per-factor widget picker + add/remove values.
+- **Finder**: multi-select factors match ANY ticked value (bank + in-decision engines);
+  unticked value/dependent leaves neither filter nor score. Verified union semantics
+  (Solo>=60 → 11 cands; +Startup>=50 → 23).
+- **BMC reseeded in v2** (10 checkbox factors × 28 Value cols, default >= 60). Prod data push:
+  `docker exec deploy-api-1 python3 scripts/seed_business_model_chooser.py` after code deploy.
+- Files: core/decider_import.py, models/decisions_models.py, routes/decider_store.py,
+  core/finder_bank.py, core/finder_engine.py, scripts/convert_bma_to_import_template.py,
+  src/components/steps/{FactorValueUI,Step2}.tsx, src/types/decision.ts. Tests: subfactor_v2 +
+  iter188/193/194 all green (retargeted from deleted bmp-55-patterns to live BMC).
+  BUILD → **2026.07.19.007** (`EXPECT_BUILD=2026.07.19.007 ./deploy/sync.sh emergent-v3`).

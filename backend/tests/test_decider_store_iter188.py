@@ -49,10 +49,9 @@ class TestPublicNoAuth:
         assert r.status_code == 200
         data = r.json()
         assert "templates" in data and isinstance(data["templates"], list)
-        # find seeded bmp
-        bmp = next((t for t in data["templates"] if t.get("template_id") == "bmp-55-patterns"), None)
-        assert bmp is not None, "bmp-55-patterns not found in public list"
-        assert bmp["title"] == "The 55 Business Model Patterns"
+        # find the live Business Model Chooser (replaced bmp-55-patterns)
+        bmp = next((t for t in data["templates"] if t.get("title") == "Business Model Chooser"), None)
+        assert bmp is not None, "Business Model Chooser not found in public list"
         assert bmp["factor_count"] == 10
         assert bmp["option_count"] == 54
         assert bmp["pricing_type"] == "free"
@@ -65,8 +64,13 @@ class TestPublicNoAuth:
         keys = [c["key"] for c in data.get("categories", [])]
         assert "Financial" in keys, f"expected 'Financial' in categories, got {keys}"
 
+    def _bmc_id(self, s):
+        r = s.get(f"{API}/decider-store", timeout=30)
+        return next(t["template_id"] for t in r.json()["templates"]
+                    if t.get("title") == "Business Model Chooser")
+
     def test_bmp_detail_no_auth(self, s):
-        r = s.get(f"{API}/decider-store/bmp-55-patterns", timeout=30)
+        r = s.get(f"{API}/decider-store/{self._bmc_id(s)}", timeout=30)
         assert r.status_code == 200
         data = r.json()
         assert len(data.get("factors", [])) == 10
@@ -167,20 +171,25 @@ class TestAdminFlow:
 # CLONE → MyDezider decision prefill
 # ══════════════════════════════════════════════════════════════════════════
 class TestCloneFlow:
+    def _bmc_id(self, s):
+        r = s.get(f"{API}/decider-store", timeout=30)
+        return next(t["template_id"] for t in r.json()["templates"]
+                    if t.get("title") == "Business Model Chooser")
+
     def test_clone_full(self, s, admin_headers):
-        r = s.post(f"{API}/decider-store/bmp-55-patterns/clone",
+        r = s.post(f"{API}/decider-store/{self._bmc_id(s)}/clone",
                    json={"mode": "full"}, headers=admin_headers, timeout=30)
         assert r.status_code == 200, r.text[:300]
         data = r.json()
         did = data["decision_id"]
-        assert data["factors"] == 10
+        assert data["factors"] == 38  # 10 main + 28 value columns
         assert data["options"] == 54
 
         # fetch decision
         r = s.get(f"{API}/decisions/{did}", headers=admin_headers, timeout=30)
         assert r.status_code == 200
         dec = r.json()
-        assert len(dec["factors"]) == 10
+        assert len(dec["factors"]) == 38
         assert len(dec["options"]) == 54
         f0 = dec["factors"][0]
         # FULL: category present (primary/mandatory) and rating comes from priority
@@ -189,11 +198,12 @@ class TestCloneFlow:
         opt0 = dec["options"][0]
         assert len(opt0["assessments"]) > 0
         a0 = opt0["assessments"][0]
-        assert a0.get("percentage") is None
+        # '%' value columns prefill percentage from the suitability value
+        assert a0.get("percentage") is None or isinstance(a0.get("percentage"), (int, float))
         assert isinstance(a0.get("unit_value"), str) and len(a0["unit_value"]) > 0
 
     def test_clone_values_only(self, s, admin_headers):
-        r = s.post(f"{API}/decider-store/bmp-55-patterns/clone",
+        r = s.post(f"{API}/decider-store/{self._bmc_id(s)}/clone",
                    json={"mode": "values_only"}, headers=admin_headers, timeout=30)
         assert r.status_code == 200
         data = r.json()
@@ -211,7 +221,7 @@ class TestCloneFlow:
 
     def test_clone_requires_auth(self):
         # Use fresh session with no cookies/auth
-        r = requests.post(f"{API}/decider-store/bmp-55-patterns/clone",
+        r = requests.post(f"{API}/decider-store/any-id/clone",
                           json={"mode": "full"}, timeout=30)
         assert r.status_code in (401, 403), f"expected 401/403 got {r.status_code}"
 

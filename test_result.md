@@ -11218,3 +11218,26 @@ test_plan:
       tools/solution-finder-list.tsx — transient fetch failures now show Retry instead of "empty account".
       NEEDS FE TESTING: 3 list screens normal load + simulated API failure -> retry panel -> retry recovers;
       /admin/handbook renders updated docs (INDEX v3.23.1).
+
+  - agent: "main"
+    message: |
+      ITER 196. Import Template v2 (Column Roles + Dynamic UI Objects) shipped end-to-end.
+      Backend: decider_import.py v2 label rows (Main UI Object row 6 / Column Role row 8 / Linked Value
+      row 9 / Default Operator row 12 / Default Expected row 13; header row 10->15; all optional =
+      backward compatible); split-100 rule now applies to role='sub' columns only. Factor pydantic model
+      += ui_object/role/linked_value/default_operator/default_expected. Clone carries them. Finder:
+      checkbox/listbox factors match ANY ticked value (bank compile_prefilter per-spec match override +
+      finder_engine factor_matches); unticked value/dependent leaves excluded from filter AND score.
+      BMC reseeded v2 (10 checkbox factors x 28 Value cols, defaults >=60). BE suites green:
+      subfactor_v2+iter188 23 passed, iter193 13, iter194 14 (retargeted from deleted bmp-55-patterns
+      to live "Business Model Chooser" via dynamic title lookup).
+      Frontend: NEW src/components/steps/FactorValueUI.tsx (checkbox/radio/dropdown value pickers,
+      per-tick Suitability refiner w/ numeric operator chips + % input prefilled from defaults,
+      dependent blocks gated on linked value, config-mode add/remove values). Step2.tsx: value-mode
+      branch (no split bar / "n selected" badge), "Configure UI objects" toggle only when
+      decision.decider_kind==='app' (testID step2-config-ui-toggle; per-factor picker testIDs
+      ui-obj-{input|checkbox|radio|dropdown}-{factorId}; value rows fv-value-{subId}; refiner input
+      fv-refiner-{subId}).
+      NEEDS FE TESTING: clone BMC -> Step 2 checkbox render/tick/refiner/untick; finder job run with
+      ticked values; Configure UI objects toggle (switch factor widget types incl. back to Text input);
+      regression: classic split sub-factor factors on a NON-app decision unchanged (no toggle shown).

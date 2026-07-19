@@ -87,6 +87,9 @@ async def _create_new(admin: dict, model: dict) -> dict:
             "category": f.get("category", "mandatory"),
             "priority": f.get("priority", 1),
             "factor_type": f.get("factor_type", "qualitative"),
+            # Dynamic UI (v2): 'checkbox' -> Step 2 renders a multi-select of
+            # the value-role columns instead of split-100 sub-factor inputs.
+            "ui_object": f.get("ui_object"),
             "sub_factors": [
                 {
                     "id": s["id"],
@@ -95,6 +98,10 @@ async def _create_new(admin: dict, model: dict) -> dict:
                     "data_type": s.get("data_type", "%"),
                     "ui_object": s.get("ui_object", "Input Box"),
                     "split_pct": s.get("split_pct"),
+                    "role": s.get("role", "sub"),
+                    "linked_value": s.get("linked_value"),
+                    "default_operator": s.get("default_operator"),
+                    "default_expected": s.get("default_expected"),
                 } for s in f["sub_factors"]
             ],
             "possible_values": f.get("possible_values") or [

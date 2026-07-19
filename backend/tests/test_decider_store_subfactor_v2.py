@@ -4,7 +4,7 @@ Verifies:
   - GET /api/decider-store/import-template.xlsx returns 2-sheet XLSX
   - POST /api/decider-store/import/excel with the downloaded template parses
     to factors with sub_factors[] and options with values keyed by sub-factor id
-  - GET /api/decider-store/bmp-55-patterns returns 10 factors each with
+  - GET /api/decider-store/{Business Model Chooser} returns 10 factors each with
     sub_factors[] and 54 options
   - POST /clone {full} creates a MyDezider decision with ~28 factors
     (one per sub-factor) and assessments carrying unit_value + num_value
@@ -52,6 +52,17 @@ def admin_headers(s):
     return {"Authorization": f"Bearer {tok}"}
 
 
+@pytest.fixture(scope="module")
+def bmc_id(s):
+    """The live 'Business Model Chooser' Decider App (replaced bmp-55-patterns)."""
+    r = s.get(f"{API}/decider-store", timeout=30)
+    assert r.status_code == 200
+    t = next((t for t in r.json().get("templates", [])
+              if t.get("title") == "Business Model Chooser"), None)
+    assert t is not None, "Business Model Chooser not found in public list"
+    return t["template_id"]
+
+
 # ══════════════════════════════════════════════════════════════════════════
 # 1) Downloadable template (2 sheets)
 # ══════════════════════════════════════════════════════════════════════════
@@ -94,11 +105,19 @@ class TestImportExcelParse:
         assert factors[0]["priority"] == 1
         assert factors[0]["factor_type"] == "qualitative"
         subs = factors[0]["sub_factors"]
-        assert [s["name"] for s in subs] == ["Solo %", "Startup %", "SME %", "Corporate %"]
-        # data_type / ui_object / split_pct
+        assert [s["name"] for s in subs] == ["Solo", "Startup", "SME", "Corporate", "Min Team Size"]
+        # v2: main UI object + column roles / defaults
+        assert factors[0]["ui_object"] == "checkbox"
+        assert [s["role"] for s in subs] == ["value", "value", "value", "value", "dependent"]
+        assert subs[4]["linked_value"] == "Startup"
+        assert subs[0]["default_operator"] == ">="
+        assert str(subs[0]["default_expected"]) == "60"
+        # data_type / ui_object — value columns are exempt from the 100% split
         assert subs[0]["data_type"] == "%"
         assert subs[0]["ui_object"] == "Input Box"
-        assert sum(s["split_pct"] for s in subs) == 100
+        # classic sub-role factor (Affordability) still splits to 100
+        aff = next(f for f in factors if f["name"] == "Affordability")
+        assert sum(x["split_pct"] for x in aff["sub_factors"]) == 100
         # each option's values are keyed by sub-factor id AND every value is {raw,num}
         assert len(options) == 2
         opt = options[0]
@@ -108,7 +127,7 @@ class TestImportExcelParse:
             assert sid in sub_ids
             assert set(cell.keys()) >= {"raw", "num"}
         # AFFILIATION → Solo=100
-        solo_id = next(s["id"] for s in factors[0]["sub_factors"] if s["name"] == "Solo %")
+        solo_id = next(s["id"] for s in factors[0]["sub_factors"] if s["name"] == "Solo")
         assert opt["values"][solo_id]["num"] == 100.0
 
     def test_old_collapsed_format_returns_400(self, s, admin_headers):
@@ -133,8 +152,8 @@ class TestImportExcelParse:
 # 3) Seeded BMP template — new sub-factor model
 # ══════════════════════════════════════════════════════════════════════════
 class TestBmpSeed:
-    def test_bmp_has_sub_factors(self, s):
-        r = s.get(f"{API}/decider-store/bmp-55-patterns", timeout=30)
+    def test_bmp_has_sub_factors(self, s, bmc_id):
+        r = s.get(f"{API}/decider-store/{bmc_id}", timeout=30)
         assert r.status_code == 200
         d = r.json()
         assert len(d["factors"]) == 10
@@ -153,7 +172,10 @@ class TestBmpSeed:
         # Org Type breakdown matches the new spec
         org = next(f for f in d["factors"] if f["name"] == "Org Type")
         names = [s["name"] for s in org["sub_factors"]]
-        assert names == ["Solo %", "Startup %", "SME %", "Corporate %"]
+        assert names == ["Solo", "Startup", "SME", "Corporate"]
+        # v2 dynamic UI: checkbox parent + value-role columns
+        assert org.get("ui_object") == "checkbox"
+        assert all(sf.get("role") == "value" for sf in org["sub_factors"])
         # options[0].values keyed by sub-factor id
         opt = d["options"][0]
         vals = opt["values"]
@@ -168,8 +190,8 @@ class TestBmpSeed:
 # 4) Clone — one MyDezider factor per sub-factor (~28)
 # ══════════════════════════════════════════════════════════════════════════
 class TestClone:
-    def test_clone_full_expands_sub_factors(self, s, admin_headers):
-        r = s.post(f"{API}/decider-store/bmp-55-patterns/clone",
+    def test_clone_full_expands_sub_factors(self, s, admin_headers, bmc_id):
+        r = s.post(f"{API}/decider-store/{bmc_id}/clone",
                    json={"mode": "full"}, headers=admin_headers, timeout=60)
         assert r.status_code == 200, r.text[:400]
         info = r.json()
@@ -183,25 +205,30 @@ class TestClone:
         assert r.status_code == 200
         dec = r.json()
         assert len(dec["factors"]) == info["factors"]
-        # display name: "Org Type — Solo %"
+        # value children carry the plain value name + parent link + v2 role
         by_name = {f["name"]: f for f in dec["factors"]}
-        assert any(name.startswith("Org Type") and "Solo" in name for name in by_name)
+        assert "Solo" in by_name and by_name["Solo"].get("parent_id")
+        assert by_name["Solo"].get("role") == "value"
+        assert by_name["Solo"].get("default_operator") == ">="
+        org = by_name.get("Org Type")
+        assert org and org.get("ui_object") == "checkbox"
         f0 = dec["factors"][0]
         assert f0["category"] in ("primary", "mandatory", "optional")
         # option assessments carry unit_value + num_value; percentage=None
         opt0 = dec["options"][0]
         assert len(opt0["assessments"]) > 0
         a0 = opt0["assessments"][0]
-        assert a0.get("percentage") is None
+        # '%' columns prefill percentage from the suitability value
+        assert a0.get("percentage") is None or isinstance(a0.get("percentage"), (int, float))
         assert isinstance(a0.get("unit_value"), str)
-        # at least one assessment should have a numeric num_value
-        assert any(isinstance(a.get("num_value"), (int, float))
-                   for a in opt0["assessments"]), "no num_value found"
+        # at least one assessment should have a numeric actual_value
+        assert any(isinstance(a.get("actual_value"), (int, float))
+                   for a in opt0["assessments"]), "no actual_value found"
         # cleanup
         s.delete(f"{API}/decisions/{did}", headers=admin_headers, timeout=30)
 
-    def test_clone_values_only_strips_classification(self, s, admin_headers):
-        r = s.post(f"{API}/decider-store/bmp-55-patterns/clone",
+    def test_clone_values_only_strips_classification(self, s, admin_headers, bmc_id):
+        r = s.post(f"{API}/decider-store/{bmc_id}/clone",
                    json={"mode": "values_only"}, headers=admin_headers, timeout=60)
         assert r.status_code == 200
         did = r.json()["decision_id"]
@@ -218,16 +245,16 @@ class TestClone:
 # 5) Push / Sync bridges
 # ══════════════════════════════════════════════════════════════════════════
 class TestBridges:
-    def test_push_to_stores(self, s, admin_headers):
-        r = s.post(f"{API}/decider-store/bmp-55-patterns/push-to-stores",
+    def test_push_to_stores(self, s, admin_headers, bmc_id):
+        r = s.post(f"{API}/decider-store/{bmc_id}/push-to-stores",
                    headers=admin_headers, timeout=120)
         assert r.status_code == 200, r.text[:400]
         d = r.json()
         assert d.get("solutions", 0) > 0
         assert d.get("reviews", 0) > 0
 
-    def test_sync_from_stores(self, s, admin_headers):
-        r = s.post(f"{API}/decider-store/bmp-55-patterns/sync-from-stores",
+    def test_sync_from_stores(self, s, admin_headers, bmc_id):
+        r = s.post(f"{API}/decider-store/{bmc_id}/sync-from-stores",
                    headers=admin_headers, timeout=120)
         assert r.status_code == 200, r.text[:400]
         d = r.json()
@@ -235,9 +262,9 @@ class TestBridges:
         assert isinstance(d["options"], int)
 
     def test_push_requires_admin(self):
-        r = requests.post(f"{API}/decider-store/bmp-55-patterns/push-to-stores", timeout=30)
+        r = requests.post(f"{API}/decider-store/any-id/push-to-stores", timeout=30)
         assert r.status_code in (401, 403)
 
     def test_sync_requires_admin(self):
-        r = requests.post(f"{API}/decider-store/bmp-55-patterns/sync-from-stores", timeout=30)
+        r = requests.post(f"{API}/decider-store/any-id/sync-from-stores", timeout=30)
         assert r.status_code in (401, 403)

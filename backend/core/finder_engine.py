@@ -124,6 +124,11 @@ def factor_pct(option: Dict[str, Any], factor: Dict[str, Any],
         num = 0.0
         wsum = 0.0
         for k in kids:
+            # Unticked choice values / dependent refiners (no expectation set)
+            # must not self-score — only what the decider selected counts.
+            if (str(k.get("role") or "") in ("value", "dependent")
+                    and str(k.get("expected_value") if k.get("expected_value") is not None else "").strip() == ""):
+                continue
             sc = _score(_actual_val(option, k["id"]), k.get("operator"),
                         k.get("expected_value"), k.get("data_type"))
             if sc is None:
@@ -172,7 +177,9 @@ def factor_matches(option: Dict[str, Any], factor: Dict[str, Any],
                                  exp, lf.get("data_type")))
     if not checks:
         return True
-    return all(checks) if match_rule == "all" else any(checks)
+    # Multi-select widgets (checkbox/listbox) match ANY ticked value.
+    rule = "any" if str(factor.get("ui_object") or "") in ("checkbox", "listbox") else match_rule
+    return all(checks) if rule == "all" else any(checks)
 
 
 def _filter(options: List[Dict[str, Any]], factors: List[Dict[str, Any]],
