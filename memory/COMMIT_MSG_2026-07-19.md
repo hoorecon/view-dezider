@@ -228,3 +228,69 @@ OPS / MIGRATION NOTES
 
 DEPLOY
   EXPECT_BUILD=2026.07.19.005 ./deploy/sync.sh emergent-v3
+
+════════════════════════════════════════════════════════════════════
+ADDENDUM · Iter 196 (2026-07-19 · BUILD_VERSION 2026.07.19.006)
+════════════════════════════════════════════════════════════════════
+feat(store): "Business Model Chooser" — first Decider App / Finder
+             seeded from user's Business_Model_Assessments.xlsx
+
+BUILD_TAG=v3.112-business-model-chooser-finder
+
+USER-REPORTED SYMPTOM
+  The seeded `The 55 Business Model Patterns` template was showing up under
+  DECISION TEMPLATES on the storefront (not "Decider Apps · Finders"), and its
+  "Edit Data" panel had main-factor "Org Type" with NO value — only its
+  sub-factors (Solo / Startup / SME / Corporate) held numbers. The user's
+  source Business_Model_Assessments.xlsx keeps possible values comma-separated
+  on ONE main-factor cell (e.g. "Solo, Startup (40%)") whereas the Decider
+  Store template shape needs each possible value to be its OWN sub-factor
+  column with a numeric % cell per option.
+
+FUNCTIONAL KT (what changed for users)
+  • The old "55 Business Model Patterns" Decision Template is REPLACED by a
+    brand-new "Business Model Chooser" DECIDER APP (kind='app'), which now
+    appears under the storefront's "Decider Apps · Finders" section with a
+    FINDER badge — see /decider-store.
+  • Finder ships with min_cutoff_pct=60, sponsored_n=3, top_n=5, match_rule
+    "any", deterministic engine. All 54 patterns pre-loaded into the Option
+    Bank so `bank_options>0` triggers the async 10M-scale job-mode Finder.
+  • Data is now the SHAPE the platform expects: 10 Main Factors × 28 Sub-
+    Factors (per-value columns) × 54 options with numeric % cells.
+
+TECHNICAL KT (what devs need to know)
+  scripts/convert_bma_to_import_template.py  NEW converter — reads a user
+    workbook whose Row 3 lists comma-separated possible values per main
+    factor and each option cell holds free text like "Solo, Startup (40%)",
+    and rewrites it in the standard decider_store_import_template.xlsx
+    shape (label rows 1–9, header row 10, options from row 11). Parser
+    obeys the three rules locked with user on 2026-07-19:
+      · unnamed sub-factor        → 0
+      · mentioned without "(X%)"  → 100
+      · mentioned with "(X%)"     → X   (last mention wins)
+    Handles source typos (Prodcut/Ponint/Soltuion/Deepere/etc.) via a
+    per-factor alias map; longest-alias-first + span-blank-out prevents
+    "Single Point - Deeper Solution" from being masked by a "Single Point"
+    substring match. 540/540 cells mapped from the user's file (1 legit
+    N/A = BARTER · Differentiation Strategy).
+  scripts/seed_business_model_chooser.py   NEW one-shot seeder. Deletes the
+    old 55-BMP template (+ its ~200K synthetic bench rows + finder_jobs),
+    creates the new template with kind='app', authorised+public+is_public,
+    then bank_upsert()s all 54 options with source='template'.
+  docs/business_model_chooser/               NEW artefact bundle: source
+    xlsx, converted xlsx, plus mapping_report.md (822 lines, every option
+    × factor cell shown side-by-side with the parsed sub-factor values).
+  README.md                                  BUILD_VERSION → 2026.07.19.006.
+
+OPS / DATA MIGRATION NOTES
+  • Old template_id "The 55 Business Model Patterns" is GONE along with its
+    200,054 option-bank rows (the 200K synthetic benchmark set was riding on
+    the same template_id — expected per user's Q2 "delete the old"; the
+    synthetic seed is no longer needed post-benchmark).
+  • Existing user decisions cloned from the old template retain their own
+    factor/option snapshots and are unaffected.
+  • No .env changes. No breaking API changes. All existing routes intact.
+
+DEPLOY
+  EXPECT_BUILD=2026.07.19.006 ./deploy/sync.sh emergent-v3
+
