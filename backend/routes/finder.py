@@ -14,7 +14,7 @@ from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from core import ai_wallet, finder_engine
+from core import ad_auction, ai_wallet, finder_engine
 from core.auth import get_current_user
 from core.database import db
 
@@ -129,6 +129,23 @@ async def finder_run(decision_id: str, body: Dict[str, Any] = None,
 
     result = finder_engine.run_finder(decision, cfg)
 
+    # ── Sponsored Solutions (AdMaker auction) — rendered BELOW organic ──
+    # Quality gate (Min-Cutoff %) + slot count resolve hierarchically:
+    # template finder_settings → CCM node chain → global admin defaults.
+    template = None
+    if decision.get("source_template_id"):
+        template = await db.decider_store_templates.find_one(
+            {"template_id": decision["source_template_id"]},
+            {"_id": 0, "template_id": 1, "finder_settings": 1, "catalog_node_id": 1})
+    ad_cfg = await ad_auction.resolve_ad_config(template)
+    region = str(body.get("region") or user.get("country") or "global").strip().lower() or "global"
+    sponsored: List[Dict[str, Any]] = []
+    if template:
+        sponsored = await ad_auction.run_auction(
+            template_id=template["template_id"], ranked=result["ranked"],
+            region=region, sponsored_n=ad_cfg["sponsored_n"],
+            min_cutoff_pct=ad_cfg["min_cutoff_pct"])
+
     # Persist worth on options + the winning ids for later display.
     worth_by_id = {r["option_id"]: r["worth_percentage"] for r in result["ranked"]}
     for o in decision["options"]:
@@ -138,6 +155,7 @@ async def finder_run(decision_id: str, body: Dict[str, Any] = None,
         {"id": decision_id, "user_id": user["user_id"]},
         {"$set": {"options": decision["options"],
                   "finder_result_ids": result["top_ids"],
+                  "finder_sponsored_ids": [w["option_id"] for w in sponsored],
                   "finder_last_run": datetime.now(timezone.utc).isoformat(),
                   "finder_config_used": cfg,
                   "updated_at": datetime.now(timezone.utc)}})
@@ -151,6 +169,23 @@ async def finder_run(decision_id: str, body: Dict[str, Any] = None,
                           "source": o.get("source")})
     result["top"] = top_cards
     result["engine"] = cfg["engine"]
+    # User-safe Sponsored cards — bid amounts / CPC prices are NEVER exposed.
+    result["sponsored"] = [{
+        "option_id": w["option_id"], "name": w["name"],
+        "worth_percentage": w["worth_percentage"], "slot": w["slot"],
+        "advertiser_name": w["advertiser_name"], "bid_id": w["bid_id"],
+        "ai_rationale": (opt_by_id.get(w["option_id"]) or {}).get("ai_rationale") or "",
+    } for w in sponsored]
+    result["ad_config"] = {
+        "min_cutoff_pct": ad_cfg["min_cutoff_pct"],
+        "sponsored_n": ad_cfg["sponsored_n"], "region": region,
+        "eligible_above_cutoff": sum(
+            1 for r in result["ranked"]
+            if r["worth_percentage"] >= ad_cfg["min_cutoff_pct"]),
+    }
+    if sponsored:
+        await ad_auction.record_impressions(
+            sponsored, template["template_id"], decision_id, region, user["user_id"])
     if llm_info:
         result["llm"] = llm_info
     return result

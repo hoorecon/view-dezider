@@ -17,6 +17,23 @@ Format:
 # Coverage focus: auth/session lookups, user-scoped reads, time-sorted lists.
 
 INDEX_SPECS: dict[str, list] = {
+    # ─── AdMaker / AdTaker (Sponsored Solutions + publisher widgets) ───
+    "admaker_bids": [
+        [("template_id", 1), ("status", 1)],
+        ("created_at", -1),
+    ],
+    "admaker_events": [
+        [("bid_id", 1), ("ts", -1)],
+        [("template_id", 1), ("ts", -1)],
+    ],
+    "adtaker_publishers": [
+        {"keys": [("tracker_id", 1)], "unique": True},
+        {"keys": [("publisher_id", 1)], "unique": True},
+    ],
+    "adtaker_events": [
+        [("tracker_id", 1), ("ts", -1)],
+        [("template_id", 1), ("event", 1)],
+    ],
     # ─── Auth & Sessions ─────────────────────────────────────────
     "users": [
         {"keys": [("email", 1)], "unique": True, "sparse": True},

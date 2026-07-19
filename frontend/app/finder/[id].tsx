@@ -74,6 +74,13 @@ export default function FinderScreen() {
     } finally { setRunning(false); }
   };
 
+  const [clickedBids, setClickedBids] = useState<Record<string, boolean>>({});
+  const trackSponsoredClick = (r: any) => {
+    if (clickedBids[r.bid_id]) return;
+    setClickedBids((p) => ({ ...p, [r.bid_id]: true }));
+    api.post('/admaker/track', { bid_id: r.bid_id, decision_id: id, option_id: r.option_id }).catch(() => {});
+  };
+
   const STAGE_LABEL: Record<string, string> = {
     mandatory: 'Filtered by your Mandatory factors',
     'mandatory+optional': 'Filtered by Mandatory + Optional factors',
@@ -163,6 +170,36 @@ export default function FinderScreen() {
             </TouchableOpacity>
           </View>
         )}
+
+        {/* Sponsored Solutions — ALWAYS below organic, clearly labelled */}
+        {result && (result.sponsored || []).length > 0 && (
+          <View style={[s.card, s.sponCard]}>
+            <View style={s.sponHead}>
+              <Text style={s.cardTitle}>Sponsored Solutions</Text>
+              <View style={s.adBadge}><Text style={s.adBadgeText}>AD</Text></View>
+            </View>
+            <Text style={s.help}>
+              Promoted picks that also cleared your {result.ad_config?.min_cutoff_pct ?? 60}%+ quality cutoff.
+              They never change the organic ranking above.
+            </Text>
+            {(result.sponsored as any[]).map((r) => (
+              <TouchableOpacity key={r.bid_id} style={s.resRow} onPress={() => trackSponsoredClick(r)} activeOpacity={0.7}>
+                <View style={[s.rank, { backgroundColor: '#FEF3C7' }]}>
+                  <Ionicons name="megaphone" size={12} color="#B45309" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.resName} numberOfLines={2}>{r.name}</Text>
+                  <Text style={s.sponBy}>Promoted by {r.advertiser_name}</Text>
+                  {!!r.ai_rationale && <Text style={s.resWhy} numberOfLines={2}>{r.ai_rationale}</Text>}
+                  <View style={s.barTrack}>
+                    <View style={[s.barFill, { width: `${Math.max(2, r.worth_percentage)}%`, backgroundColor: barColor(r.worth_percentage) }]} />
+                  </View>
+                </View>
+                <Text style={[s.pct, { color: barColor(r.worth_percentage) }]}>{Number(r.worth_percentage).toFixed(1)}%</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
         <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
@@ -204,4 +241,9 @@ const s = StyleSheet.create({
   pct: { fontSize: 15, fontWeight: '900', minWidth: 54, textAlign: 'right' },
   openBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 14, paddingVertical: 10 },
   openText: { fontSize: 13, fontWeight: '700', color: '#4F46E5' },
+  sponCard: { borderColor: '#FDE68A', backgroundColor: '#FFFBEB' },
+  sponHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  adBadge: { backgroundColor: '#F59E0B', borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2, marginBottom: 6 },
+  adBadgeText: { color: '#FFF', fontSize: 9.5, fontWeight: '900', letterSpacing: 0.6 },
+  sponBy: { fontSize: 11, color: '#B45309', fontWeight: '700', marginTop: 2 },
 });

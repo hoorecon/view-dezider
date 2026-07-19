@@ -92,6 +92,16 @@ DEFAULTS = {
     "finder_top_n": 5,
     "finder_match_rule": "all",        # all | any  (sub-factor match within a factor)
     "finder_engine": "deterministic",  # deterministic | llm
+    # ── Sponsored Solutions (AdMaker auction) global defaults ──
+    # `finder_min_cutoff_pct`: quality gate — only options whose Overall % is
+    # at/above this compete in the ad auction. CCM catalog nodes can override
+    # per LifeArea/SubArea/Scenario (nearest configured ancestor wins).
+    # `finder_sponsored_n`: max Sponsored slots shown BELOW the organic list.
+    "finder_min_cutoff_pct": 60.0,
+    "finder_sponsored_n": 3,
+    # ── AdTaker (publisher widget) defaults ──
+    "adtaker_default_share_pct": 68.0,       # publisher revenue share
+    "adtaker_conversion_bounty_paise": 500,  # est. payout per attributed install
     # ── ScraperAPI (web-scrape) metering — auto cost-derived per fetch ──
     # $/credit = plan_usd / plan_credits; each rendered fetch = 10 credits,
     # premium = 25. Charged to the user's wallet with `scrape_markup_pct` on top.
@@ -152,6 +162,8 @@ async def update_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
               "min_custom_credits", "precise_usd_per_mtok", "import_group_threshold",
               "deep_import_max_options", "deep_import_top_n",
               "finder_min_options", "finder_max_options", "finder_top_n",
+              "finder_min_cutoff_pct", "finder_sponsored_n",
+              "adtaker_default_share_pct", "adtaker_conversion_bounty_paise",
               "loader_music_volume_web", "loader_music_volume_android", "loader_music_volume_ios",
               "scraperapi_plan_usd_month", "scraperapi_plan_credits_month", "scrape_markup_pct",
               "audio_storage_usd_per_gb_month", "audio_storage_retention_days",
@@ -184,6 +196,16 @@ async def update_config(patch: Dict[str, Any], by: str) -> Dict[str, Any]:
                 if k == "finder_top_n":
                     if val < 1 or val > 50:
                         raise ValueError
+                    val = int(val)
+                if k == "finder_min_cutoff_pct" and val > 100:
+                    raise ValueError
+                if k == "finder_sponsored_n":
+                    if val > 20:
+                        raise ValueError
+                    val = int(val)
+                if k == "adtaker_default_share_pct" and val > 95:
+                    raise ValueError
+                if k == "adtaker_conversion_bounty_paise":
                     val = int(val)
                 if k in ("loader_music_volume_web", "loader_music_volume_android", "loader_music_volume_ios"):
                     val = float(val)

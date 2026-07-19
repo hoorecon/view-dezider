@@ -50,7 +50,7 @@ type Template = {
   category?: string; decision_type?: string; pricing_type?: string;
   price_paise?: number; creator_split_pct?: number; allowed_clone_modes?: string[];
   factors?: Factor[]; options?: any[]; status?: string; is_public?: boolean;
-  install_count?: number; kind?: string; finder_settings?: any;
+  install_count?: number; kind?: string; finder_settings?: any; catalog_node_id?: string | null;
 };
 
 export default function AdminDeciderStore() {
@@ -86,6 +86,8 @@ export default function AdminDeciderStore() {
   const [fdTop, setFdTop] = useState('5');
   const [fdMatch, setFdMatch] = useState<'all' | 'any'>('all');
   const [fdEngine, setFdEngine] = useState<'deterministic' | 'llm'>('deterministic');
+  const [fdCutoff, setFdCutoff] = useState('60');
+  const [fdSponsN, setFdSponsN] = useState('3');
   const [ldTitle, setLdTitle] = useState('');
   const [ldSubtitle, setLdSubtitle] = useState('');
   const [ldHero, setLdHero] = useState('');
@@ -202,6 +204,8 @@ export default function AdminDeciderStore() {
       setFdTop(String(c.finder_top_n ?? 5));
       setFdMatch(c.finder_match_rule === 'any' ? 'any' : 'all');
       setFdEngine(c.finder_engine === 'llm' ? 'llm' : 'deterministic');
+      setFdCutoff(String(c.finder_min_cutoff_pct ?? 60));
+      setFdSponsN(String(c.finder_sponsored_n ?? 3));
       const l = land.data || {};
       setLdTitle(l.title || ''); setLdSubtitle(l.subtitle || ''); setLdHero(l.hero || '');
       setLdCta(l.cta_label || ''); setLdTarget(l.cta_target || '');
@@ -234,6 +238,25 @@ export default function AdminDeciderStore() {
   const unpublish = async (t: Template) => {
     try { await api.post(`/decider-store/${t.template_id}/unpublish`); load(); }
     catch (e: any) { showAlert('Failed', e?.response?.data?.detail || 'Try again'); }
+  };
+  // Central-Catalog (Scenario) mapping — drives Sponsored cutoff/slots inheritance
+  const [catForId, setCatForId] = useState<string | null>(null);
+  const [catNodes, setCatNodes] = useState<any[]>([]);
+  const [catSearch, setCatSearch] = useState('');
+  const openCatalog = async (t: Template) => {
+    setCatForId(t.template_id); setCatSearch('');
+    if (!catNodes.length) {
+      try {
+        const r = await api.get('/catalog/nodes?is_active=true');
+        setCatNodes(r.data.items || []);
+      } catch { /* non-fatal */ }
+    }
+  };
+  const setCatalogNode = async (nodeId: string | null) => {
+    try {
+      await api.put(`/decider-store/${catForId}`, { catalog_node_id: nodeId });
+      setCatForId(null); load();
+    } catch (e: any) { showAlert('Failed', e?.response?.data?.detail || 'Try again'); }
   };
   const remove = async (t: Template) => {
     showAlert('Delete template?', t.title, [
@@ -432,6 +455,9 @@ export default function AdminDeciderStore() {
               <TouchableOpacity style={[s.act, { backgroundColor: '#F1F5F9' }]} onPress={() => toggleKind(t)}>
                 <Ionicons name="swap-horizontal" size={13} color="#475569" /><Text style={[s.actText, { color: '#475569' }]}>{t.kind === 'app' ? '→ Template' : '→ Finder'}</Text>
               </TouchableOpacity>
+              <TouchableOpacity style={[s.act, { backgroundColor: '#EDE9FE' }]} onPress={() => openCatalog(t)}>
+                <Ionicons name="git-network" size={13} color="#7C3AED" /><Text style={[s.actText, { color: '#7C3AED' }]}>{t.catalog_node_id ? 'Catalog ✓' : 'Catalog'}</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={[s.act, { backgroundColor: '#FEF9C3' }]} onPress={() => openData(t)}>
                 <Ionicons name="create" size={13} color="#A16207" /><Text style={[s.actText, { color: '#A16207' }]}>Edit Data</Text>
               </TouchableOpacity>
@@ -510,6 +536,18 @@ export default function AdminDeciderStore() {
                 ))}
               </View>
 
+              <Text style={[s.secLabel, { marginTop: 20 }]}>📣 Sponsored Solutions (global defaults)</Text>
+              <Text style={s.help}>
+                Min Cutoff % = quality gate for ad eligibility · N = Sponsored slots shown BELOW organic.
+                Central-Catalog nodes can override per LifeArea/SubArea/Scenario (Admin → AdMaker & AdTaker → Cutoffs).
+              </Text>
+              <View style={s.row2}>
+                <View style={{ flex: 1 }}><Text style={s.label}>Min Cutoff %</Text>
+                  <TextInput style={s.input} value={fdCutoff} onChangeText={setFdCutoff} keyboardType="numeric" /></View>
+                <View style={{ flex: 1 }}><Text style={s.label}>Sponsored slots (N)</Text>
+                  <TextInput style={s.input} value={fdSponsN} onChangeText={setFdSponsN} keyboardType="numeric" /></View>
+              </View>
+
               <Text style={[s.secLabel, { marginTop: 20 }]}>🌐 TheDecider.store landing page</Text>
               <Text style={s.help}>Edit the public landing page. Preview: /api/decider-store/landing.html</Text>
               <Text style={s.label}>Title</Text>
@@ -526,6 +564,44 @@ export default function AdminDeciderStore() {
                 {busy ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={s.createBtnText}>Save settings</Text>}
               </TouchableOpacity>
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Central-Catalog (Scenario) mapping modal */}
+      <Modal visible={!!catForId} transparent animationType="fade" onRequestClose={() => setCatForId(null)}>
+        <View style={s.overlay}>
+          <View style={s.sheet}>
+            <View style={s.mHeader}>
+              <Text style={s.mTitle}>Map to Central Catalog</Text>
+              <TouchableOpacity onPress={() => setCatForId(null)}><Ionicons name="close" size={22} color="#475569" /></TouchableOpacity>
+            </View>
+            <Text style={s.help}>
+              The mapped LifeArea/SubArea/Scenario node decides which Min-Cutoff % and Sponsored-slot
+              defaults apply to this app&apos;s Finder results (nearest configured ancestor wins).
+            </Text>
+            {(() => {
+              const cur = templates.find(t => t.template_id === catForId);
+              const name = cur?.catalog_node_id
+                ? (catNodes.find(n => n.node_id === cur.catalog_node_id)?.name || cur.catalog_node_id)
+                : 'not mapped (global defaults apply)';
+              return <Text style={s.curMap}>Current: {name}</Text>;
+            })()}
+            <TextInput style={s.input} value={catSearch} onChangeText={setCatSearch}
+              placeholder="Search nodes…" placeholderTextColor="#9CA3AF" />
+            <ScrollView style={{ maxHeight: 300 }}>
+              {catNodes
+                .filter(n => { const q = catSearch.trim().toLowerCase(); return !q || (n.name || '').toLowerCase().includes(q); })
+                .slice(0, 40).map(n => (
+                  <TouchableOpacity key={n.node_id} style={s.catRow} onPress={() => setCatalogNode(n.node_id)}>
+                    <Text style={s.catLevel}>L{n.level}</Text>
+                    <Text style={s.catName} numberOfLines={1}>{n.name}</Text>
+                  </TouchableOpacity>
+                ))}
+            </ScrollView>
+            <TouchableOpacity style={s.clearMapBtn} onPress={() => setCatalogNode(null)}>
+              <Text style={s.clearMapText}>Clear mapping</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -904,4 +980,10 @@ const s = StyleSheet.create({
   cellInput: { backgroundColor: '#F8FAFC', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 12.5, color: '#0F172A', borderWidth: 1, borderColor: '#E2E8F0' },
   addOptBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, marginTop: 4 },
   addOptText: { fontSize: 13, fontWeight: '700', color: '#4F46E5' },
+  curMap: { fontSize: 12, fontWeight: '700', color: '#7C3AED', marginBottom: 8 },
+  catRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 8, borderRadius: 8 },
+  catLevel: { fontSize: 10, fontWeight: '900', color: '#94A3B8', width: 22 },
+  catName: { flex: 1, fontSize: 13, fontWeight: '600', color: '#0F172A' },
+  clearMapBtn: { alignItems: 'center', paddingVertical: 10, marginTop: 6 },
+  clearMapText: { fontSize: 12.5, fontWeight: '700', color: '#DC2626' },
 });

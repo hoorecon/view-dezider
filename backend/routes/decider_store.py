@@ -53,6 +53,17 @@ def _clean_finder_settings(raw: Any) -> Dict[str, Any]:
         out["match_rule"] = str(raw["match_rule"]).lower()
     if str(raw.get("engine") or "").lower() in ("deterministic", "llm"):
         out["engine"] = str(raw["engine"]).lower()
+    # Sponsored Solutions per-app overrides (blank → CCM node chain → global).
+    if raw.get("sponsored_n") not in (None, ""):
+        try:
+            out["sponsored_n"] = max(0, min(20, int(float(raw["sponsored_n"]))))
+        except (TypeError, ValueError):
+            pass
+    if raw.get("min_cutoff_pct") not in (None, ""):
+        try:
+            out["min_cutoff_pct"] = max(0.0, min(100.0, float(raw["min_cutoff_pct"])))
+        except (TypeError, ValueError):
+            pass
     return out
 
 
@@ -80,6 +91,7 @@ def _card(t: Dict[str, Any]) -> Dict[str, Any]:
         "currency": t.get("currency") or "INR",
         "kind": t.get("kind") or "template",
         "finder_settings": t.get("finder_settings") or {},
+        "catalog_node_id": t.get("catalog_node_id"),
         "allowed_clone_modes": t.get("allowed_clone_modes") or ["full", "values_only"],
         "factor_count": len(t.get("factors") or []),
         "option_count": len(t.get("options") or []),
@@ -295,6 +307,7 @@ async def create_template(request: Request, user: dict = Depends(get_current_use
         "cover_color": body.get("cover_color") or "#4F46E5",
         "kind": kind,
         "finder_settings": _clean_finder_settings(body.get("finder_settings")),
+        "catalog_node_id": (body.get("catalog_node_id") or None),
         "pricing_type": pricing,
         "price_paise": int(body.get("price_paise") or 0),
         "currency": body.get("currency") or "INR",
@@ -328,7 +341,7 @@ async def update_template(template_id: str, request: Request, user: dict = Depen
     allowed = ["title", "subtitle", "description", "category", "decision_type",
                "cover_icon", "cover_color", "pricing_type", "price_paise", "currency",
                "creator_split_pct", "allowed_clone_modes", "factors", "options", "is_public",
-               "auto_push_on_authorize", "kind", "finder_settings"]
+               "auto_push_on_authorize", "kind", "finder_settings", "catalog_node_id"]
     update = {k: body[k] for k in allowed if k in body}
     if "kind" in update and update["kind"] not in ("template", "app"):
         update["kind"] = "template"
@@ -573,6 +586,14 @@ async def clone_template(template_id: str, request: Request, user: dict = Depend
     await db.decisions.insert_one(decision)
     await db.decider_store_templates.update_one(
         {"template_id": template_id}, {"$inc": {"install_count": 1}})
+    # AdTaker attribution — a `ref` tracker ID marks a publisher-driven install.
+    ref = str(body.get("ref") or "").strip()
+    if ref:
+        try:
+            from routes.adtaker import log_conversion
+            await log_conversion(ref, template_id, {"decision_id": decision["id"], "mode": mode})
+        except Exception:
+            pass
     return {"decision_id": decision["id"], "mode": mode,
             "factors": len(decision["factors"]), "options": len(decision["options"])}
 

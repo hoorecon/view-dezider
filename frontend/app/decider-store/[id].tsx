@@ -27,7 +27,7 @@ const MODE_INFO: Record<string, { label: string; desc: string; icon: string }> =
 
 export default function DeciderStoreDetail() {
   const router = useRouter();
-  const { id, use } = useLocalSearchParams<{ id: string; use?: string }>();
+  const { id, use, ref } = useLocalSearchParams<{ id: string; use?: string; ref?: string }>();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const authLoading = useAuthStore((s) => s.isLoading);
 
@@ -53,7 +53,7 @@ export default function DeciderStoreDetail() {
   const doClone = useCallback(async (m: string) => {
     setCloning(true);
     try {
-      const r = await api.post(`/decider-store/${id}/clone`, { mode: m });
+      const r = await api.post(`/decider-store/${id}/clone`, { mode: m, ref: ref || undefined });
       router.replace(`/prr/${r.data.decision_id}?step=2` as any);
     } catch (e: any) {
       if (e?.response?.status === 402) {
