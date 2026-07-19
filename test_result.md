@@ -11182,3 +11182,14 @@ test_plan:
     - "Iter190 FE — admin Push to Stores / Sync / Build from Solution Store actions work; solution-detail shows 'Open in The Decider Store' cross-link"
   test_all: false
   test_priority: "high_first"
+
+  - agent: "main"
+    message: |
+      ITER 193. FRAME (Finder Ranking & Monetization Engine) shipped + specced in docs/SRS.md v3.22.0.
+      AdMaker: admaker_bids CRUD, AdRank=bid×QS auction, GSP CPC pricing, region+time-slot targeting,
+      hierarchical Min-Cutoff%/Sponsored-N (template → CCM node chain → ai-wallet globals). Finder run
+      returns sponsored[] BELOW organic (organic order untouched). AdTaker: adtaker_publishers w/ tracker
+      IDs, public widget.js + embed card + track beacon, clone?ref=conversion, stats+earnings.
+      FE: /admin/ad-programs (Bids/Publishers/Cutoffs), decider-store Catalog mapping + Sponsored globals,
+      finder sponsored card. BE 13/13 pytest (tests/test_iter193_admaker_adtaker.py); FE testing agent all
+      5 flows + regression PASS (iteration_193.json). No open bugs.

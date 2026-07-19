@@ -330,3 +330,39 @@ Qualitative→ReviewNet), persisted as `factor_type`.
 test_decider_bridge_iter190.py (13/13); FE iter189 (5/5), iter190 (7/7).
 
 **DEFERRED**: paid-template checkout (Stripe/Razorpay) with platform/creator split — clone returns 402 today.
+
+---
+
+## ITER 193 — FRAME: Finder logic spec + AdMaker & AdTaker Programs ✅ TESTED (13/13 BE pytest + all 5 FE flows)
+
+**SRS**: `docs/SRS.md` v3.22.0 — full **FRAME** pipeline spec (Filter → Rank → Auction → Merge → Embed)
+with FR/NFR, data models, indexes, perf targets. Principles: organic is sacred (money never reorders it),
+AdRank = bid × QualityScore, GSP pricing, config cascades via CCM, AdSense-style distribution.
+
+**Quality gate (hierarchical)**: `catalog_nodes.finder_ad_config {min_cutoff_pct, sponsored_n}` at ANY level
+(PUT /catalog/nodes/{id}, -1 clears) → nearest ancestor wins → globals `ai_wallet_config.finder_min_cutoff_pct`
+(60) / `finder_sponsored_n` (3). Template override via `finder_settings.{min_cutoff_pct,sponsored_n}` +
+`decider_store_templates.catalog_node_id` mapping (admin "Catalog" action).
+
+**AdMaker** (`core/ad_auction.py` + `routes/admaker.py`): `admaker_bids` CRUD (region, calendar slot,
+daily hours + IANA tz w/ overnight wrap, budget). Auction on finder run: eligible = ranked ≥ cutoff; AdRank
+= bid_paise × QS (worth/100, floor .05); one slot/option; GSP price = next AdRank ÷ own QS + 1p, clamped
+[1, own bid]; CPC billed at POST /admaker/track; budget exhaustion → status=exhausted. Impressions +
+last_price_paise persisted (`admaker_events`). Finder run response += `sponsored[]` (no bid/price exposure)
++ `ad_config`; decisions += `finder_sponsored_ids`. `GET /admaker/resolve-config` shows effective + source.
+
+**AdTaker** (`routes/adtaker.py`): `adtaker_publishers` (tracker `DZ-PUB-XXXXXXXX`, share % default 68)
+CRUD + stats (daily series, CTR, earnings = conversions × `adtaker_conversion_bounty_paise`(500) × share%).
+Public: `GET /adtaker/widget.js?tracker&app` (iframe loader), `GET /adtaker/embed/{tid}?tracker` (HTML card,
+frame-ancestors *, logs impression, CTA beacons click → deep-links `/decider-store/{id}?ref=tracker`),
+`POST /adtaker/track`. Clone accepts `ref` → conversion (`log_conversion`). FE detail screen forwards `ref`.
+
+**FE**: `/admin/ad-programs` (3 tabs: Bids CRUD w/ option suggestions · Publishers w/ snippet+stats ·
+Cutoffs & Slots w/ global + per-node override editor + effective-source display); admin index tile
+(Monetization group). `admin/decider-store.tsx`: Sponsored globals in Finder & Landing modal + Catalog
+mapping modal per template. `finder/[id].tsx`: amber "Sponsored Solutions · AD" card BELOW organic,
+"Promoted by X", click beacon.
+
+**Indexes**: admaker_bids/admaker_events/adtaker_publishers(unique tracker)/adtaker_events in db_indices.
+**Tests**: `tests/test_iter193_admaker_adtaker.py` (13/13) + FE testing agent all flows PASS
+(`/app/test_reports/iteration_193.json`). BUILD_VERSION bumped to 2026.07.19.001 (no deploy run).
