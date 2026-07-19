@@ -437,3 +437,17 @@ Fixed permanently:
   cheat-sheet row for stale-collection debugging.
 - COMMIT_MSG_2026-07-19.md updated (new Postman numbers + tooling section). BUILD bumped to
   **2026.07.19.004** (same tag v3.111) → `EXPECT_BUILD=2026.07.19.004 ./deploy/sync.sh emergent-v3`.
+
+## ITER 195 — List-screen Retry Guards + in-app doc verification ✅ (2026-07-19)
+- NEW `src/components/LoadErrorState.tsx` (testIDs: load-error-state / load-error-retry) — friendly
+  "Couldn't load your data" + Retry panel for transient fetch failures.
+- Wired into: `(tabs)/prr.tsx` (Solution Box / MyDezider list — via ListEmptyComponent, retry re-runs
+  with active filters), `tools/pros-cons-list.tsx`, `tools/solution-finder-list.tsx` (error panel only
+  when fetch failed AND no items; stale items keep showing on those two).
+- Note for user: these list fetches are plain REST (no AI models involved) — intermittent empties were
+  network/API hiccups being swallowed into empty states, now surfaced with Retry.
+- Frontend testing agent 6/6 PASS (`/app/test_reports/iteration_195.json`): 3 normal loads, 3 simulated
+  API-failure→Retry recoveries, /admin/handbook renders 15 docs (POSTMAN shows 126 folders/1,316
+  requests; INDEX v3.23.1).
+- COMMIT_MSG_2026-07-19.md updated (FRONTEND section + functional note). BUILD → **2026.07.19.005**
+  (`EXPECT_BUILD=2026.07.19.005 ./deploy/sync.sh emergent-v3`).
