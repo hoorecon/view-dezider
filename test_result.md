@@ -11205,3 +11205,16 @@ test_plan:
       (/adtaker-portal, publisher.org_id). Factor.source_sub_id persisted for bank join. BE 14/14
       (test_iter194_bank_studio_keys.py) + 13/13 iter193 regression; FE testing agent 6/6 flows PASS
       (iteration_194.json). Orphan test publishers cleaned. No open bugs.
+
+  - agent: "main"
+    message: |
+      ITER 195. (a) Docs comprehensiveness: Postman_Collection.json fully regenerated from live OpenAPI
+      (126 folders / 1,316 requests / 0 "Other"), taxonomy CATEGORY_MAP overhauled, new script
+      backend/scripts/generate_postman_collection.py, builder shared via core/openapi_helpers.
+      INDEX/API_REFERENCE/POSTMAN metadata fixed. Backend verified: /api/admin/docs/postman-collection +
+      /api/admin/docs/api-catalog (1316 ops, 0 Other) + /api/admin-docs (15 docs w/ metadata); 27/27 pytest.
+      (b) NEW LoadErrorState retry guard (src/components/LoadErrorState.tsx, testID load-error-state /
+      load-error-retry) wired into (tabs)/prr.tsx (Solution Box ListEmptyComponent), tools/pros-cons-list.tsx,
+      tools/solution-finder-list.tsx — transient fetch failures now show Retry instead of "empty account".
+      NEEDS FE TESTING: 3 list screens normal load + simulated API failure -> retry panel -> retry recovers;
+      /admin/handbook renders updated docs (INDEX v3.23.1).

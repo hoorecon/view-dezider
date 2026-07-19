@@ -18,12 +18,14 @@ import { COLORS, GRADIENTS } from '../../src/constants/colors';
 import api from '../../src/utils/api';
 import { getLifeAreaName } from '../../src/constants/lifeAreas';
 import { safeBack } from '../../src/utils/navigation';
+import LoadErrorState from '../../src/components/LoadErrorState';
 
 export default function SolutionFinderListScreen() {
   const router = useRouter();
   const [entries, setEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   // Robust back: pop history if we got here via in-app nav, else go to the
   // dashboard. Fixes the dead "back" button on direct/deep-linked loads
@@ -38,11 +40,19 @@ export default function SolutionFinderListScreen() {
     try {
       const res = await api.get('/solution-finders');
       setEntries(res.data || []);
+      setLoadError(false);
     } catch (e) {
       console.error('Error fetching solution finders:', e);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
+  };
+
+  const retryFetch = () => {
+    setLoading(true);
+    setLoadError(false);
+    fetchEntries();
   };
 
   useFocusEffect(
@@ -99,6 +109,8 @@ export default function SolutionFinderListScreen() {
       >
         {loading ? (
           <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 40 }} />
+        ) : loadError && entries.length === 0 ? (
+          <LoadErrorState onRetry={retryFetch} />
         ) : entries.length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name="search" size={56} color={COLORS.textMuted} />

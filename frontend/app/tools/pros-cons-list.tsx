@@ -24,6 +24,7 @@ import api from '../../src/utils/api';
 import { formatAbsolute } from '../../src/utils/datetime';
 import PaywallGate from '../../src/components/PaywallGate';
 import TimestampLine from '../../src/components/TimestampLine';
+import LoadErrorState from '../../src/components/LoadErrorState';
 
 interface ProsConsAnalysis {
   id: string;
@@ -59,6 +60,7 @@ export default function ProsConsListScreen() {
   const [items, setItems] = useState<ProsConsAnalysis[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   // Create modal
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -73,11 +75,19 @@ export default function ProsConsListScreen() {
       const all: ProsConsAnalysis[] = res.data || [];
       all.sort((a, b) => (b.updated_at || b.created_at).localeCompare(a.updated_at || a.created_at));
       setItems(all);
+      setLoadError(false);
     } catch (err) {
       console.error('Error fetching pros-cons:', err);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
+  };
+
+  const retryFetch = () => {
+    setLoading(true);
+    setLoadError(false);
+    fetchItems();
   };
 
   useFocusEffect(useCallback(() => { fetchItems(); }, []));
@@ -181,7 +191,9 @@ export default function ProsConsListScreen() {
             </Text>
           </View>
 
-          {items.length === 0 ? (
+          {loadError && items.length === 0 ? (
+            <LoadErrorState onRetry={retryFetch} />
+          ) : items.length === 0 ? (
             <View style={styles.emptyState}>
               <Ionicons name="layers-outline" size={48} color="#D1D5DB" />
               <Text style={styles.emptyStateTitle}>No Pros & Cons Yet</Text>

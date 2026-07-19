@@ -1,6 +1,6 @@
 feat(frame): Sponsored Solutions (AdMaker) + publisher widgets (AdTaker) + 10M-option Option-Bank Finder + full KT doc refresh
 
-BUILD_VERSION=2026.07.19.004 · BUILD_TAG=v3.111-frame-adprograms-optionbank-kt
+BUILD_VERSION=2026.07.19.005 · BUILD_TAG=v3.111-frame-adprograms-optionbank-kt
 Scope: Iter 193–194 (everything since v3.108-decider-store-subfactors / 2026.07.18.004)
 Tests: 27/27 backend pytest (iter193: 13, iter194: 14) + 11 testing-agent UI flows PASS, zero regressions.
 
@@ -56,6 +56,9 @@ FUNCTIONAL KT — for Product Managers & End Users
 
 4. DASHBOARD & DOCS
    • Storefront hero (signed-in) links to AdMaker Studio + Publisher Portal.
+   • List screens (Solution Box / Pros & Cons / Solution Finder) now show a
+     friendly "Couldn't load your data" panel with a RETRY button when a fetch
+     fails transiently — no more scary "empty account" on a network hiccup.
    • Full KT refresh to v3.23.1: SRS (FRAME spec + scale architecture +
      benchmarks), API_REFERENCE (all new endpoint tables), SYSTEM_KT §10
      (block diagram + cheat-sheet), ADMIN_USER_GUIDE ("Ad Programs" how-tos),
@@ -152,6 +155,16 @@ BACKEND — modified
   server.py                 include admaker/adtaker/option_bank routers.
 
 FRONTEND
+  src/components/LoadErrorState.tsx  NEW shared "Couldn't load your data" panel
+                            (cloud-offline icon + Retry button, testIDs
+                            load-error-state / load-error-retry). Transient
+                            network/API failures no longer render as a
+                            misleading "empty account" on list screens.
+  app/(tabs)/prr.tsx        Solution Box (MyDezider list): fetch failure →
+                            LoadErrorState via ListEmptyComponent + retryFetch
+                            re-runs with active filters.
+  app/tools/pros-cons-list.tsx    same retry-guard pattern.
+  app/tools/solution-finder-list.tsx  same retry-guard pattern.
   app/finder/[id].tsx       auto job-mode when bank_options>0: start job → poll
                             1.2s → progress bar + % + LoaderMusicChip('finder');
                             Sponsored Solutions amber card BELOW organic (AD
@@ -214,4 +227,4 @@ OPS / MIGRATION NOTES
   • No .env changes. No breaking API changes; finder/run response is additive.
 
 DEPLOY
-  EXPECT_BUILD=2026.07.19.004 ./deploy/sync.sh emergent-v3
+  EXPECT_BUILD=2026.07.19.005 ./deploy/sync.sh emergent-v3
