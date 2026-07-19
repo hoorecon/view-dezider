@@ -47,20 +47,21 @@ async def _resolve_admin_user() -> dict:
 
 
 async def _delete_old(admin: dict) -> dict:
-    """Remove the old 55-BMP template and its bank rows."""
-    old = await db.decider_store_templates.find_one(
-        {"title": {"$regex": r"^The 55 Business Model Patterns", "$options": "i"}},
-        {"template_id": 1, "title": 1})
+    """Remove ANY prior `Business Model Chooser` doc AND the legacy
+    `The 55 Business Model Patterns` template (+ their bank / finder_jobs).
+
+    Idempotent — safe to re-run.
+    """
     result = {"deleted_templates": 0, "deleted_bank_rows": 0,
               "deleted_finder_jobs": 0, "old_template_ids": []}
-    if not old:
-        # Nothing to delete
-        return result
-
-    # Find EVERY doc matching that title (in case multiple exist)
     olds = await db.decider_store_templates.find(
-        {"title": {"$regex": r"^The 55 Business Model Patterns", "$options": "i"}}
+        {"$or": [
+            {"title": {"$regex": r"^The 55 Business Model Patterns", "$options": "i"}},
+            {"title": {"$regex": r"^Business Model Chooser", "$options": "i"}},
+        ]}
     ).to_list(50)
+    if not olds:
+        return result
     for o in olds:
         tid = o["template_id"]
         result["old_template_ids"].append(tid)
